@@ -8,6 +8,8 @@ export type AgentModel = {
   id: string;
   label: string;
   description: string;
+  /** The model behind it, by its public name, e.g. `Claude Sonnet 5.5`. */
+  modelName: string;
 };
 
 export type RunHostedInput = {

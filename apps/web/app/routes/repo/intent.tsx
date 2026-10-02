@@ -247,7 +247,7 @@ export default function IntentPage({
                 >
                   {agentModels.map((model) => (
                     <option key={model.id} value={model.id} title={model.description}>
-                      {model.label}
+                      {model.label} · {model.modelName}
                     </option>
                   ))}
                 </select>

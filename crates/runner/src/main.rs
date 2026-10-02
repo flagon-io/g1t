@@ -63,6 +63,9 @@ fn run(reporter: &mut Reporter) -> Result<String> {
     let auth = auth_option(&env("G1T_USER")?, &env("G1T_TOKEN")?);
     let workdir = Path::new(WORKDIR);
 
+    if let Ok(model) = std::env::var("AGENT_MODEL_NAME") {
+        reporter.record(Entry::new("note", &format!("Running on {model}.")));
+    }
     reporter.record(Entry::new("prompt", &prompt));
     reporter.flush();
 

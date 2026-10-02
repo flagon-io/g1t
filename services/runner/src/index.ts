@@ -29,8 +29,9 @@ export interface RunnerEnv {
    */
   HOSTED_AGENT_USERS: string;
   /**
-   * The models offered, as JSON: `[{ id, label, description, model }]`.
-   * `model` is the provider's model name and is never shown to users.
+   * The models offered, as JSON:
+   * `[{ id, label, description, modelName, model }]`. `modelName` is what
+   * people see; `model` is the identifier sent to the provider.
    */
   AGENT_MODELS: string;
   /**
@@ -86,6 +87,8 @@ function modelEnv(env: RunnerEnv, model: ConfiguredModel): Record<string, string
   const vars: Record<string, string> = {
     ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY!,
     ANTHROPIC_MODEL: model.model,
+    // Recorded at the top of the session, so anyone can see what ran.
+    AGENT_MODEL_NAME: `${model.modelName} (${model.label})`,
   };
   if (env.AI_GATEWAY_ID) {
     vars.ANTHROPIC_BASE_URL = `https://gateway.ai.cloudflare.com/v1/${env.CLOUDFLARE_ACCOUNT_ID}/${env.AI_GATEWAY_ID}/anthropic`;
@@ -137,10 +140,11 @@ export default class RunnerService
 
   async models(viewer: Viewer): Promise<AgentModel[]> {
     if (!this.allowed(viewer)) return [];
-    return this.configuredModels().map(({ id, label, description }) => ({
+    return this.configuredModels().map(({ id, label, description, modelName }) => ({
       id,
       label,
       description,
+      modelName,
     }));
   }
 

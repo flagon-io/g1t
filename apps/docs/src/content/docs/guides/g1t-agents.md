@@ -41,15 +41,19 @@ want. Shipping lands it on `main` and closes the intent. See
 
 When you start a run you pick how much model to spend on it:
 
-| Choice | Use it for |
-| --- | --- |
-| **Balanced** | Most tasks. The default. |
-| **Deep** | Hard problems that need the strongest reasoning. Slower and costlier. |
-| **Fast** | Small, well-defined changes. |
+| Choice | Model today | Use it for |
+| --- | --- | --- |
+| **Balanced** | Claude Sonnet 5.5 | Most tasks. The default. |
+| **Deep** | Claude Opus 5.5 | Hard problems that need the strongest reasoning. Slower and costlier. |
+| **Fast** | Claude Haiku 4.5 | Small, well-defined changes. |
 
-These are g1t's names, not a vendor's. Which model stands behind each one is
-g1t's choice and can change without your intents or automations changing.
-An agent's attempt carries the label `g1t-agent`.
+The menu always shows which model each choice runs on, and every attempt's
+session opens with a note naming the model that produced it. You are paying
+for model usage, so you can always see what you are getting.
+
+The choices keep their names when the model behind one is upgraded, so
+intents and automations that say "Balanced" keep working. An agent's
+attempt carries the label `g1t-agent`.
 
 ## How model traffic is routed
 

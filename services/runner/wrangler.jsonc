@@ -27,8 +27,8 @@
 	"vars": {
 		"HOSTED_AGENT_USERS": "syntaqx",
 		// What a person can choose when starting g1t agents. The first is the
-		// default. "model" is the provider's name for it and stays server-side.
-		"AGENT_MODELS": "[{\"id\":\"balanced\",\"label\":\"Balanced\",\"description\":\"Good at most tasks.\",\"model\":\"claude-sonnet-5-5\"},{\"id\":\"deep\",\"label\":\"Deep\",\"description\":\"Strongest reasoning; slower and costlier.\",\"model\":\"claude-opus-5-5\"},{\"id\":\"fast\",\"label\":\"Fast\",\"description\":\"Quick and cheap, for small changes.\",\"model\":\"claude-haiku-4-5-20251001\"}]",
+		// default. "modelName" is shown to people; "model" is sent to the provider.
+		"AGENT_MODELS": "[{\"id\":\"balanced\",\"label\":\"Balanced\",\"description\":\"Good at most tasks.\",\"modelName\":\"Claude Sonnet 5.5\",\"model\":\"claude-sonnet-5-5\"},{\"id\":\"deep\",\"label\":\"Deep\",\"description\":\"Strongest reasoning; slower and costlier.\",\"modelName\":\"Claude Opus 5.5\",\"model\":\"claude-opus-5-5\"},{\"id\":\"fast\",\"label\":\"Fast\",\"description\":\"Quick and cheap, for small changes.\",\"modelName\":\"Claude Haiku 4.5\",\"model\":\"claude-haiku-4-5-20251001\"}]",
 		// Set to a Cloudflare AI Gateway id to route model traffic through it.
 		"AI_GATEWAY_ID": "",
 		"CLOUDFLARE_ACCOUNT_ID": "1e6f2cffa3f445920836e8ebe446bb58"
