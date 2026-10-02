@@ -8,16 +8,28 @@
  */
 export type EventPayloads = {
   "repo.created": { repoId: string; namespace: string; name: string; isPrivate: boolean };
-  "repo.forked": { repoId: string; sourceRepoId: string; attemptId: string };
+  "repo.forked": { repoId: string; sourceRepoId: string; pullId: string };
   /** `after` is the commit the ref points to once the push has landed. */
   "git.push": { repoId: string; ref: string; after: string };
-  "intent.opened": { intentId: string; repoId: string; number: number; title: string };
-  "intent.closed": { intentId: string; repoId: string; reason: "shipped" | "withdrawn" };
-  "attempt.started": { attemptId: string; intentId: string; repoId: string; agent: string };
-  "attempt.updated": { attemptId: string; intentId: string; repoId: string; status: string };
-  "attempt.submitted": { attemptId: string; intentId: string; repoId: string };
-  "attempt.shipped": { attemptId: string; intentId: string; repoId: string; commit: string };
-  "session.appended": { attemptId: string; sessionId: string; count: number };
+  "issue.opened": { issueId: string; repoId: string; number: number; title: string };
+  "issue.updated": { issueId: string; repoId: string; number: number };
+  /** `resolvedBy` is the number of the pull request whose merge closed it. */
+  "issue.closed": {
+    issueId: string;
+    repoId: string;
+    number: number;
+    reason: "completed" | "not_planned";
+    resolvedBy?: number;
+  };
+  "issue.reopened": { issueId: string; repoId: string; number: number };
+  /** `issue` is the number of the issue the pull request is for. */
+  "pull.opened": { pullId: string; repoId: string; number: number; issue?: number; agent: string };
+  "pull.ready": { pullId: string; repoId: string; number: number; issue?: number };
+  "pull.closed": { pullId: string; repoId: string; number: number; issue?: number };
+  "pull.merged": { pullId: string; repoId: string; number: number; issue?: number; commit: string };
+  /** `number` is the issue or pull request commented on. */
+  "comment.created": { commentId: string; repoId: string; number: number };
+  "session.appended": { pullId: string; repoId: string; number: number; count: number };
 };
 
 export type EventType = keyof EventPayloads;

@@ -25,10 +25,10 @@ use worker::{Context, Env, Request, Response, Result, event};
 use registry::{Registry, can_read, can_write, store_key};
 use store::{ArtifactsStore, GitRepo, GitStore, Scope};
 
-/// Namespace that holds every attempt's fork: `attempts/<attempt id>`.
-const ATTEMPTS_NAMESPACE: &str = "attempts";
+/// Namespace that holds every pull request's fork: `pulls/<pull id>`.
+const PULLS_NAMESPACE: &str = "pulls";
 const MAX_TEXT_BYTES: usize = 512 * 1024;
-/// How far back an attempt may have forked and still be landed.
+/// How far back a pull request may have forked and still be landed.
 const MAX_ANCESTRY: u32 = 1000;
 const SOURCE: &str = "repos";
 const UNVERIFIED: &str = "Confirm your email address first. Check your inbox, or resend the link from the banner on g1t.sh.";
@@ -325,7 +325,7 @@ impl<S: GitStore> Repos<S> {
         Ok(Outcome::Ok(git.log(&git_ref, a.limit).await?))
     }
 
-    async fn fork_for_attempt(&self, a: ForkArgs) -> Result<Outcome<Repo>> {
+    async fn fork_for_pull(&self, a: ForkArgs) -> Result<Outcome<Repo>> {
         let viewer = Some(a.actor.clone());
         let Some(source) = self
             .registry
@@ -338,8 +338,8 @@ impl<S: GitStore> Repos<S> {
         let now = now_ms();
         let fork = Repo {
             id: new_id("rep", now),
-            namespace: ATTEMPTS_NAMESPACE.to_owned(),
-            name: a.attempt_id.clone(),
+            namespace: PULLS_NAMESPACE.to_owned(),
+            name: a.pull_id.clone(),
             description: None,
             // A fork is exactly as visible as the repo it came from.
             is_private: source.is_private,
@@ -362,7 +362,7 @@ impl<S: GitStore> Repos<S> {
             data: RepoForked {
                 repo_id: fork.id.clone(),
                 source_repo_id: source.id,
-                attempt_id: a.attempt_id,
+                pull_id: a.pull_id,
             },
         })
         .await?;
@@ -439,7 +439,7 @@ impl<S: GitStore> Repos<S> {
         if !can_write(&target, &actor) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
-                "Only members of the repository's workspace can land an attempt.",
+                "Only members of the repository's workspace can merge a pull request.",
             ));
         }
         if !a.actor.verified {
@@ -453,7 +453,7 @@ impl<S: GitStore> Repos<S> {
         let Some(new) = history.first().map(|commit| commit.hash.clone()) else {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
-                "This attempt has no commits to land.",
+                "This pull request has no commits to merge.",
             ));
         };
         let old = target_git
@@ -477,7 +477,7 @@ impl<S: GitStore> Repos<S> {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
                 format!(
-                    "{branch} has moved since this attempt started. Pull {branch} into the attempt's fork, push, and land again."
+                    "{branch} has moved since this pull request was opened. Pull {branch} into the pull request's fork, push, and merge again."
                 ),
             ));
         }
@@ -488,7 +488,7 @@ impl<S: GitStore> Repos<S> {
             land::fast_forward(&source_access, &target_access, branch, old.as_deref(), &new)
                 .await?;
         if let Err(reason) = pushed {
-            // Most often another attempt landed between the check and the push.
+            // Most often another pull request landed between the check and the push.
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
                 format!("{branch} could not be updated: {reason}"),
@@ -592,7 +592,7 @@ impl<S: GitStore> Repos<S> {
         let response = git_http::forward(request, &git, &access).await?;
 
         // Artifacts' own push notifications are per repository, which does
-        // not fit a repo per attempt, so the front end reports pushes itself.
+        // not fit a repo per pull request, so the front end reports pushes itself.
         let pushed = git.endpoint == "git-receive-pack" && response.status_code() == 200;
         if pushed && let Some(repo) = self.registry.by_path(&git.path).await? {
             let head = self
@@ -643,7 +643,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "tree" => reply(&repos.tree(args(body)?).await?),
         "blob" => reply(&repos.blob(args(body)?).await?),
         "log" => reply(&repos.log(args(body)?).await?),
-        "fork_for_attempt" => reply(&repos.fork_for_attempt(args(body)?).await?),
+        "fork_for_pull" => reply(&repos.fork_for_pull(args(body)?).await?),
         "git_access" => reply(&repos.git_access(args(body)?).await?),
         "land" => reply(&repos.land(args(body)?).await?),
         "compare" => reply(&repos.compare(args(body)?).await?),

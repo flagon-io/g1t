@@ -45,7 +45,7 @@ pub fn can_read(repo: &Repo, viewer: &Viewer) -> bool {
 }
 
 /// A repository belongs to its workspace, so any member may write to it. An
-/// attempt's fork belongs to whoever started the attempt.
+/// pull request's fork belongs to whoever opened the pull request.
 pub fn can_write(repo: &Repo, viewer: &Viewer) -> bool {
     viewer.as_ref().is_some_and(|user| {
         if repo.fork_of.is_some() {
@@ -88,7 +88,7 @@ impl Registry {
             .map(Repo::from))
     }
 
-    /// Repos the viewer may see, newest first. Excludes attempt forks.
+    /// Repos the viewer may see, newest first. Excludes pull request forks.
     /// With `member_only`, only repos in the viewer's own workspaces.
     pub async fn list(
         &self,

@@ -31,7 +31,7 @@ pub struct RepoCreated {
 pub struct RepoForked {
     pub repo_id: String,
     pub source_repo_id: String,
-    pub attempt_id: String,
+    pub pull_id: String,
 }
 
 /// `after` is the commit the ref points to once the push has landed.
@@ -44,45 +44,60 @@ pub struct GitPush {
     pub after: String,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IntentOpened {
-    pub intent_id: String,
-    pub repo_id: String,
-    pub number: u32,
-    pub title: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IntentClosed {
-    pub intent_id: String,
-    pub repo_id: String,
-    /// `shipped` or `withdrawn`.
-    pub reason: &'static str,
-}
-
-/// The payload of `attempt.started`, `attempt.updated`, `attempt.submitted`
-/// and `attempt.shipped`; each uses the fields that apply to it.
+/// The payload of `issue.opened`, `issue.updated`, `issue.closed` and
+/// `issue.reopened`; each uses the fields that apply to it.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AttemptEvent {
-    pub attempt_id: String,
-    pub intent_id: String,
+pub struct IssueEvent {
+    pub issue_id: String,
     pub repo_id: String,
+    pub number: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// On close: `completed` or `not_planned`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<&'static str>,
+    /// On close: the number of the pull request whose merge closed it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_by: Option<u32>,
+}
+
+/// The payload of `pull.opened`, `pull.ready`, `pull.closed` and
+/// `pull.merged`; each uses the fields that apply to it.
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PullEvent {
+    pub pull_id: String,
+    pub repo_id: String,
+    pub number: u32,
+    /// The number of the issue it is for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issue: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<&'static str>,
+    /// On merge: the commit the branch now points to.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit: Option<String>,
+    /// On close: the pull request that was merged instead.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub superseded_by: Option<u32>,
+}
+
+/// `comment.created`. `number` is the issue or pull request commented on.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommentCreated {
+    pub comment_id: String,
+    pub repo_id: String,
+    pub number: u32,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionAppended {
-    pub attempt_id: String,
-    pub session_id: String,
+    pub pull_id: String,
+    pub repo_id: String,
+    pub number: u32,
     pub count: u32,
 }
 

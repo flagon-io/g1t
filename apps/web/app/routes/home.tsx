@@ -9,9 +9,9 @@ import {
   ButtonLink,
   CopyLine,
   EmptyState,
-  Status,
   TimeAgo,
 } from "../components/ui";
+import { PullIcon } from "../components/work";
 import { repos as reposApi, work } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";
 
@@ -21,7 +21,7 @@ export function meta({}: Route.MetaArgs) {
     {
       name: "description",
       content:
-        "A git forge for thousands of agents working on the same code at once: every attempt isolated, every decision recorded, every change landed in order. Open source, built on Cloudflare.",
+        "A git forge for thousands of agents working on the same code at once: every change isolated, every decision recorded, every change landed in order. Open source, built on Cloudflare.",
     },
   ];
 }
@@ -32,19 +32,19 @@ export async function loader({ context }: Route.LoaderArgs) {
   if (viewer?.verified && (viewer.workspaces ?? []).length === 0) {
     throw redirect("/workspaces/new");
   }
-  const [repos, attempts] = await Promise.all([
+  const [repos, pulls] = await Promise.all([
     reposApi.list(viewer, { memberOnly: Boolean(viewer) }),
-    work.listActiveAttempts(viewer),
+    work.listActivePulls(viewer),
   ]);
-  // Mission control links to each attempt under its repo.
-  const attemptRepos = await Promise.all(
-    attempts.map(({ attempt }) => reposApi.getById(attempt.repoId, viewer)),
+  // Mission control links to each pull request under its repo.
+  const pullRepos = await Promise.all(
+    pulls.map(({ pull }) => reposApi.getById(pull.repoId, viewer)),
   );
   return {
     viewer,
     repos,
-    active: attempts.flatMap((item, i) => {
-      const repo = attemptRepos[i];
+    active: pulls.flatMap((item, i) => {
+      const repo = pullRepos[i];
       return repo.ok ? [{ ...item, repo: repo.value }] : [];
     }),
   };
@@ -54,7 +54,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   const { viewer, repos, active } = loaderData;
   if (!viewer) return <Landing repos={repos} />;
 
-  const working = active.filter(({ attempt }) => attempt.status === "working");
+  const working = active.filter(({ pull }) => pull.status === "draft");
   return (
     <main className="mx-auto grid max-w-6xl gap-10 px-4 py-10 lg:grid-cols-[1fr_20rem]">
       <div className="min-w-0 space-y-10">
@@ -67,8 +67,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </h1>
               <p className="text-sm text-muted">
                 {working.length === 0
-                  ? "Nothing is running right now."
-                  : `${working.length} ${working.length === 1 ? "attempt is" : "attempts are"} running.`}
+                  ? "Nothing is being worked on right now."
+                  : `${working.length} ${working.length === 1 ? "pull request is" : "pull requests are"} being worked on.`}
               </p>
             </div>
           </div>
@@ -78,31 +78,32 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <h2 className="text-sm font-medium text-muted">In progress</h2>
           <div className="mt-3">
             {active.length === 0 ? (
-              <EmptyState title="No attempts in progress">
-                Open an intent on a repository and start an attempt, or point
-                your agent at one.
+              <EmptyState title="No pull requests in progress">
+                Open an issue on a repository and put an agent on it, or point
+                your own agent at one.
               </EmptyState>
             ) : (
               <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-                {active.map(({ attempt, intent, repo }) => (
-                  <li key={attempt.id}>
+                {active.map(({ pull, repo }) => (
+                  <li key={pull.id}>
                     <Link
-                      to={`/${repo.namespace}/${repo.name}/attempts/${attempt.id}`}
-                      className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-raised"
+                      to={`/${repo.namespace}/${repo.name}/pull/${pull.number}`}
+                      className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-raised"
                     >
+                      <PullIcon status={pull.status} />
                       <span className="min-w-0 grow">
-                        <span className="block truncate font-medium">
-                          {intent.title}
-                        </span>
+                        <span className="block truncate font-medium">{pull.title}</span>
                         <span className="font-mono text-xs text-muted">
-                          {repo.namespace}/{repo.name} #{intent.number} · attempt{" "}
-                          {attempt.number} · {attempt.agent}
+                          {repo.namespace}/{repo.name}#{pull.number}
+                          {pull.issue != null && ` · for #${pull.issue}`} · {pull.agent}
                         </span>
                       </span>
-                      <span className="shrink-0 text-xs text-faint">
-                        <TimeAgo at={attempt.updatedAt} />
+                      <span className="shrink-0 text-xs text-muted">
+                        {pull.status === "draft" ? "In progress" : "Ready for review"}
                       </span>
-                      <Status value={attempt.status} />
+                      <span className="w-14 shrink-0 text-right text-xs text-faint">
+                        <TimeAgo at={pull.updatedAt} />
+                      </span>
                     </Link>
                   </li>
                 ))}
@@ -145,7 +146,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         <div className="rounded-xl border border-line bg-surface p-5">
           <h2 className="font-medium">Explore</h2>
           <p className="mt-1.5 text-sm text-muted">
-            Browse public repositories and the intents open on them.
+            Browse public repositories and the issues open on them.
           </p>
           <Link
             to="/explore"

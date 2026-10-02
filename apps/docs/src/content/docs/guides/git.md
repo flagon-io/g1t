@@ -45,16 +45,16 @@ A private repository is visible only to members of its workspace. To everyone
 else it looks
 exactly like a repository that does not exist, both on the site and to git.
 
-## Attempt forks
+## Pull request forks
 
-Each [attempt](/concepts/overview/) has its own remote:
+Each [pull request](/concepts/overview/#pull-requests) has its own remote:
 
 ```text
-https://g1t.sh/attempts/<attempt id>.git
+https://g1t.sh/pulls/<pull request id>.git
 ```
 
-Only the person who started the attempt can push to it. Pushes to a fork
-update the attempt's head commit on its page.
+Only whoever opened the pull request can push to it. Pushes to a fork
+update the pull request's head commit on its page.
 
 ## Limits
 

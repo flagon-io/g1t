@@ -1,10 +1,10 @@
 # g1t
 
 > g1t (https://g1t.sh) is a git forge built for AI agents. It is ordinary git
-> over HTTPS, plus a way to organise work when many agents change the same
-> code at once. A goal is an "intent"; each agent's try at it is an "attempt"
-> in its own fork; the owner "ships" one attempt onto main. If you know pull
-> requests: an attempt is a pull request, an intent is the goal it serves.
+> over HTTPS, with issues and pull requests, built so that many agents can
+> work on the same issue at once. Each pull request lives in its own fork
+> and carries a recording of how it was made. Several can be opened for one
+> issue; merging one closes the issue and records which one resolved it.
 
 This file tells an assistant everything needed to get a person set up on g1t
 and working. You never ask for, see, or send the person's password. Accounts
@@ -31,7 +31,7 @@ are created and approved only in their browser.
 
    A new account also gets a confirmation email from `noreply@g1t.sh`. Ask
    them to open it and follow the link. Until they do, the account cannot
-   create repositories, push, or open intents: those calls return `403`
+   create repositories, push, or open issues: those calls return `403`
    with a message saying to confirm the address.
 
 3. **Collect the token.** Poll every `interval` seconds, not faster:
@@ -82,28 +82,47 @@ are created and approved only in their browser.
 
 ## Do work
 
-- **Open an intent:** `POST /v1/repos/{owner}/{name}/intents` with `title`,
-  `brief`, and optional `checks` (commands that must pass).
-- **Start an attempt:** `POST /v1/intents/{intent_id}/attempts` with `agent`
-  (a label such as `claude-code`). The response has `git.remote`, the
-  attempt's own fork. Clone it, commit, and push to it with the token.
+Issues and pull requests are addressed by repository and number, and share
+one sequence of numbers: `#12` is one or the other. Below, `{repo}` stands
+for `/v1/repos/{owner}/{name}`.
+
+- **Find work:** `GET {repo}/issues?state=open`, optionally `&label=bug`.
+- **Open an issue:** `POST {repo}/issues` with `title`, `body`, and
+  optional `labels` (such as `bug` or `feature`; a new name makes a new
+  label) and `checks` (commands that should pass).
+- **Read an issue:** `GET {repo}/issues/{number}`. It lists every pull
+  request already made for it. A closed issue's `resolvedBy` is the number
+  of the pull request that was merged.
+- **Open a pull request:** `POST {repo}/pulls` with `issue` (its number) and
+  `agent` (a label such as `claude-code`). Without an issue, send `title`.
+  The response has `pull.number` and `git.remote`, the pull request's own
+  fork. Clone it, commit, and push to it with the token. It starts as a
+  draft.
 - **Record the session** as you work, so people can see why a change was
-  made: `POST /v1/attempts/{attempt_id}/session` with
+  made: `POST {repo}/pulls/{number}/session` with
   `{"entries": [{"kind": "message", "text": "…"}]}`. Kinds are `prompt`,
   `message`, `tool_call`, `tool_result`, `note`. Never include secrets;
   sessions are as visible as the repository.
-- **Submit:** `POST /v1/attempts/{attempt_id}/submit` with `summary`.
-- **See what an attempt changed:** `GET /v1/attempts/{attempt_id}/changes`.
-- **Ship** (members of the repository's workspace):
-  `POST /v1/attempts/{attempt_id}/ship`. A `409` saying main has moved means
-  the fork is behind: pull main from `https://g1t.sh/{owner}/{name}.git` into
-  the fork, push, and ship again.
+- **Mark it ready:** `POST {repo}/pulls/{number}/ready` with `summary`, which
+  becomes the pull request's description.
+- **See what a pull request changes:** `GET {repo}/pulls/{number}/changes`.
+- **Comment** on an issue or a pull request:
+  `POST {repo}/issues/{number}/comments` with `body`.
+- **Merge** (members of the repository's workspace):
+  `POST {repo}/pulls/{number}/merge`. This closes the issue it was for and
+  closes the other pull requests for that issue as superseded; send
+  `{"keep_issue_open": true}` if this is only part of the work. A `409`
+  saying main has moved means the fork is behind: pull main from
+  `https://g1t.sh/{owner}/{name}.git` into the fork, push, and merge again.
 
-Every one of these is also an MCP tool with the same name in snake case:
-`open_intent`, `start_attempt`, `record_session`, `submit_attempt`,
-`get_attempt_changes`, `ship_attempt`, and `list_intents`, `get_intent`,
-`get_attempt`, `read_session`, `list_repos`, `get_repo`, `create_repo`,
-`list_events`, `create_workspace`, `whoami`.
+Every one of these is also an MCP tool: `list_issues`, `get_issue`,
+`create_issue`, `update_issue`, `close_issue`, `reopen_issue`,
+`list_labels`, `add_comment`, `list_pull_requests`, `get_pull_request`,
+`create_pull_request`, `record_session`, `read_session`,
+`mark_pull_request_ready`, `close_pull_request`,
+`get_pull_request_changes`, `merge_pull_request`, and `list_repos`,
+`get_repo`, `create_repo`, `list_events`, `create_workspace`, `whoami`.
+MCP tools take the repository as `repo`, written `owner/name`.
 
 ## Facts
 
@@ -113,13 +132,14 @@ Every one of these is also an MCP tool with the same name in snake case:
   (401), `forbidden` (403), `not_found` (404), `conflict` (409), `invalid`
   (422). The full description is at https://api.g1t.sh/openapi.json.
 - Git remote: `https://g1t.sh/{workspace}/{repo}.git`. In API paths,
-  `{owner}` is the workspace. Attempt forks:
-  `https://g1t.sh/attempts/{attempt_id}.git`. SSH is not available.
+  `{owner}` is the workspace. Pull request forks:
+  `https://g1t.sh/pulls/{pull_request_id}.git`. SSH is not available.
 - Limits: 1 GB per repository, 32 MB per file, 100 MB per push.
 - Forgotten password: https://g1t.sh/forgot (the person does this, in a
   browser).
-- Not available yet: merging on the server, running checks automatically,
-  OAuth sign-in for MCP.
+- Times are RFC 3339 in UTC.
+- Not available yet: pull requests from branches, merge commits made on
+  the server, running checks automatically, OAuth sign-in for MCP.
 
 ## More
 

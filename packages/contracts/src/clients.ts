@@ -80,8 +80,8 @@ export function reposClient(service: ServiceBinding): ReposApi {
     blob: (path, viewer, ref, filePath) =>
       call("blob", { path, viewer, ref, filePath }),
     log: (path, viewer, ref, limit) => call("log", { path, viewer, ref, limit }),
-    forkForAttempt: (sourceId, attemptId, actor) =>
-      call("fork_for_attempt", { sourceId, attemptId, actor }),
+    forkForPull: (sourceId, pullId, actor) =>
+      call("fork_for_pull", { sourceId, pullId, actor }),
     gitAccess: (path, viewer, service) =>
       call("git_access", { path, viewer, service }),
     land: (forkId, actor) => call("land", { forkId, actor }),
@@ -92,21 +92,30 @@ export function reposClient(service: ServiceBinding): ReposApi {
 export function workClient(service: ServiceBinding): WorkApi {
   const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
   return {
-    openIntent: (actor, repo, input) => call("open_intent", { actor, repo, ...input }),
-    listIntents: (repo, viewer, status) => call("list_intents", { repo, viewer, status }),
-    getIntent: (repo, number, viewer) => call("get_intent", { repo, number, viewer }),
-    withdrawIntent: (actor, intentId) => call("withdraw_intent", { actor, intentId }),
-    startAttempt: (actor, intentId, input) =>
-      call("start_attempt", { actor, intentId, ...input }),
-    getAttempt: (attemptId, viewer) => call("get_attempt", { attemptId, viewer }),
-    submitAttempt: (actor, attemptId, summary) =>
-      call("submit_attempt", { actor, attemptId, summary }),
-    abandonAttempt: (actor, attemptId) => call("abandon_attempt", { actor, attemptId }),
-    shipAttempt: (actor, attemptId) => call("ship_attempt", { actor, attemptId }),
-    listActiveAttempts: (viewer) => call("list_active_attempts", { viewer }),
-    appendSession: (actor, attemptId, entries) =>
-      call("append_session", { actor, attemptId, entries }),
-    readSession: (attemptId, viewer, afterSeq = 0) =>
-      call("read_session", { attemptId, viewer, afterSeq }),
+    openIssue: (actor, repo, input) => call("open_issue", { actor, repo, ...input }),
+    listIssues: (repo, viewer, filter = {}) => call("list_issues", { repo, viewer, ...filter }),
+    getIssue: (repo, number, viewer) => call("get_issue", { repo, number, viewer }),
+    updateIssue: (actor, repo, number, input) =>
+      call("update_issue", { actor, repo, number, ...input }),
+    closeIssue: (actor, repo, number, reason) =>
+      call("close_issue", { actor, repo, number, reason }),
+    reopenIssue: (actor, repo, number) => call("reopen_issue", { actor, repo, number }),
+    listLabels: (repo, viewer) => call("list_labels", { repo, viewer }),
+    counts: (repo, viewer) => call("counts", { repo, viewer }),
+    addComment: (actor, repo, number, body) =>
+      call("add_comment", { actor, repo, number, body }),
+    openPull: (actor, repo, input) => call("open_pull", { actor, repo, ...input }),
+    listPulls: (repo, viewer, state) => call("list_pulls", { repo, viewer, state }),
+    getPull: (repo, number, viewer) => call("get_pull", { repo, number, viewer }),
+    readyPull: (actor, repo, number, summary) =>
+      call("ready_pull", { actor, repo, number, summary }),
+    closePull: (actor, repo, number) => call("close_pull", { actor, repo, number }),
+    mergePull: (actor, repo, number, keepIssueOpen = false) =>
+      call("merge_pull", { actor, repo, number, keepIssueOpen }),
+    listActivePulls: (viewer) => call("list_active_pulls", { viewer }),
+    appendSession: (actor, repo, number, entries) =>
+      call("append_session", { actor, repo, number, entries }),
+    readSession: (repo, number, viewer, afterSeq = 0) =>
+      call("read_session", { repo, number, viewer, afterSeq }),
   };
 }

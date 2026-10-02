@@ -1,6 +1,7 @@
 import type { User, Viewer } from "./identity";
 import type { Result } from "./result";
-import type { Attempt } from "./work";
+import type { RepoPath } from "./repos";
+import type { Pull } from "./work";
 
 /** A model a g1t agent can run on, as offered to the person starting it. */
 export type AgentModel = {
@@ -13,22 +14,22 @@ export type AgentModel = {
 };
 
 export type RunHostedInput = {
-  /** How many agents to race on the intent, each in its own sandbox. */
+  /** How many agents to put on the issue, each in its own sandbox. */
   count: number;
-  /** Extra guidance appended to the intent's brief for these runs. */
+  /** Extra guidance given to the agents along with the issue. */
   instructions?: string;
   /** One of the offered model ids; the first offered when absent. */
   model?: string;
 };
 
-/** Hosted agents: sandboxes on g1t that work on an intent. */
+/** Hosted agents: sandboxes on g1t that work on an issue. */
 export interface RunnerApi {
   /** The models this viewer may run g1t agents on; empty if they may not. */
   models(viewer: Viewer): Promise<AgentModel[]>;
   /**
-   * Starts `count` attempts on the intent, each run by an agent in its own
-   * sandbox. Returns as soon as the sandboxes are starting; progress shows
-   * up in each attempt's session.
+   * Opens `count` draft pull requests for the issue, each made by an agent
+   * in its own sandbox. Returns as soon as the sandboxes are starting;
+   * progress shows up in each pull request's session.
    */
-  run(actor: User, intentId: string, input: RunHostedInput): Promise<Result<Attempt[]>>;
+  run(actor: User, repo: RepoPath, issue: number, input: RunHostedInput): Promise<Result<Pull[]>>;
 }

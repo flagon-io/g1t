@@ -11,97 +11,116 @@ the "Build the Next-Gen Git Platform on Cloudflare" competition.
 
 ## Product model
 
-A pull request assumes one author and one change. g1t assumes many agents
-working at once, in two shapes: several agents racing on the same goal, and
-many different goals in flight that all have to land on `main`.
+g1t keeps the two things every engineer already knows, issues and pull
+requests, and changes the assumption underneath them. A forge built for
+people expects one pull request per issue. g1t expects many agents working
+at once, in two shapes: several agents on the same issue, and many different
+issues in flight that all have to land on `main`.
 
 | Concept | What it is |
 | --- | --- |
-| **Intent** | A goal stated against a repo, with acceptance checks (commands that must pass). The issue, and the home of every pull request made for it. |
-| **Attempt** | One agent's run at an intent, in its own Artifacts fork. Any number run in parallel. |
-| **Session** | The agent's full context for an attempt: prompt, messages, tool calls, cost. Stored with the attempt and linked from every commit it produced. |
-| **Arena** | The compare view for an intent: every attempt side by side with diff, check results, conflicts against main and against each other, and a reviewer agent's summary. |
-| **Ship** | A person or a policy picks an attempt. A per-repo merge queue lands it; the other attempts are rebased by their agents or closed. |
+| **Issue** | What should change in a repo: a bug, a feature, a question. Opened by a person, an agent or an integration such as an error tracker. Carries labels, acceptance checks (commands that must pass), comments, and every pull request made for it. |
+| **Pull request** | A proposed change in its own Artifacts fork, made by an agent or a person, usually for an issue. Any number can be open for one issue. Starts as a draft; marked ready; merged or closed. |
+| **Session** | The agent's full context for a pull request: prompt, messages, tool calls, cost. Stored with the pull request and linked from every commit it produced. |
+| **Compare view** | Every pull request for an issue side by side with diff, check results, conflicts against main and against each other, and a reviewer agent's summary. |
+| **Merge** | A person or a policy picks a pull request. A per-repo merge queue lands it. The issue closes, recording which pull request resolved it; the others for that issue close as superseded, or are rebased by their agents when the issue is kept open. |
+
+Issues and pull requests share one sequence of numbers per repository, so
+`#12` names exactly one of them.
 
 Features that fall out of the model:
 
 - **Why-blame.** Click a line and see the prompt and reasoning that produced
   it, not only the commit.
-- **Overlap radar.** Attempts that touch the same files are flagged while the
-  agents are still working, and the agents are told.
-- **Live lanes.** Watch every attempt progress in real time.
+- **Overlap radar.** Pull requests that touch the same files are flagged
+  while the agents are still working, and the agents are told.
+- **Live lanes.** Watch every pull request progress in real time.
 
-## Pull requests are not removed
+## Why issues and pull requests, not something new
 
-g1t is ordinary git, and the pull request stays. The model extends it rather
-than replacing it, so an engineer's habits keep working and the agent
-features are there when wanted.
+An earlier version of this plan merged the two into one new object, an
+"issue" holding "pull requests". That was wrong, for three reasons.
 
-- **An attempt is a pull request.** It has a source (a fork, or a branch
-  pushed to the repo), a diff, review comments, checks and a merge button.
-  It is reachable as a pull request, with that name, in the UI and API.
-- **An intent is the goal above it.** Opening a pull request the familiar way
-  creates its intent from the title and description, so nobody has to learn
-  the word to use the product.
-- **The developer path is unchanged.** Push a branch, open a pull request,
-  get review, merge.
-- **The agent path adds to it.** State the intent first, let several
-  attempts run, compare them, ship one.
+- **Issues come from everywhere.** People file them, agents file them, and
+  Sentry files them. Most are never worked on by whoever opened them. They
+  need their own life: labels, triage, discussion, closing as not planned.
+- **"Which change did we take?" needs two objects.** When five agents each
+  propose a change, the answer has to be recorded somewhere other than the
+  five proposals. On g1t it is on the issue: `resolved by #14`.
+- **Nobody should have to learn a word to use the product.** An engineer who
+  has used any forge can use g1t on the first day, and finds the agent
+  features where they would look for them.
+
+What g1t adds to the familiar pair:
+
+- **Several pull requests per issue is the normal case**, not an accident.
+  The issue's page lists them with their state, and merging one closes the
+  issue with that pull request recorded and the others marked superseded.
+- **A pull request can be part of the work.** Merging with "keep the issue
+  open" leaves the issue and its other pull requests alone.
+- **Every pull request has a fork and a session.** See
+  [forks and branches](https://docs.g1t.sh/concepts/forks/).
+- **Labels need no setup.** A repository starts with `bug`, `feature`,
+  `docs`, `chore` and `question`; any other name becomes a label the first
+  time it is used, so an integration can tag what it files.
+- **The developer path is unchanged.** Push, open a pull request, get review,
+  merge. Pull requests from a branch pushed to the repo itself are next in
+  the build order; today each one has a fork.
 - **Both paths meet at `main`.** The same landing rules apply to a person's
-  pull request and an agent's attempt.
+  pull request and an agent's.
 
 ## Converging on main
 
-Twelve intents started together will finish at different times and touch
+Twelve issues started together will finish at different times and touch
 overlapping code. Getting them all into `main` without a person refereeing
 is the hard part, and it is handled in four places.
 
 1. **Before work starts: plan the overlap away.** A project is a graph of
-   intents. A planner agent can split a large goal into intents, predict
+   issues. A planner agent can split a large goal into issues, predict
    which files each will touch, and add a dependency where two would collide,
    so one starts from the other's result instead of from `main`.
-2. **While agents work: overlap radar.** Each attempt's changed files and
-   symbols are tracked as it pushes. When two attempts from different intents
+2. **While agents work: overlap radar.** Each pull request's changed files and
+   symbols are tracked as it pushes. When two pull requests from different issues
    enter the same area, both agents are told what the other is doing there.
-3. **When `main` moves: the author resolves.** Every open attempt is
-   trial-merged against the new `main`. A clean merge updates the attempt
-   silently. A conflict resumes that attempt's agent with its original
+3. **When `main` moves: the author resolves.** Every open pull request is
+   trial-merged against the new `main`. A clean merge updates the pull request
+   silently. A conflict resumes that pull request's agent with its original
    session and the incoming change, so the conflict is resolved by the agent
    that wrote the code and still knows why.
-4. **At landing: a speculative queue.** Shipped attempts enter the repo's
-   queue. g1t builds the combined states (`main`+A, `main`+A+B, …) and runs
-   their checks in parallel. Attempts land in order as their combined state
+4. **At landing: a speculative queue.** Approved pull requests enter the
+   repo's queue. g1t builds the combined states (`main`+A, `main`+A+B, …) and runs
+   their checks in parallel. Pull requests land in order as their combined state
    passes; one that fails is ejected back to its agent and the states behind
    it are rebuilt. `main` only ever receives a state that passed.
 
 Landing can be fully automatic: a repo policy such as "checks pass and the
-reviewer agent approves" ships without a person.
+reviewer agent approves" merges without a person.
 
 ## Agents aware of each other
 
-Each repo keeps a live **work registry**: for every running attempt, its
-intent, a running summary of what it has done, and the files and symbols it
+Each repo keeps a live **work registry**: for every running pull request, its
+issue, a running summary of what it has done, and the files and symbols it
 has touched or plans to touch. Agents use it through MCP tools; g1t also
 acts on it without being asked.
 
-- **Before starting.** When an intent is opened, or an agent is about to
-  begin a task, g1t searches open intents and running attempts for the same
+- **Before starting.** When an issue is opened, or an agent is about to
+  begin a task, g1t searches open issues and running pull requests for the same
   goal (by meaning, not wording) and for the same area of code. If a match
   exists the agent is told who is on it and how far along, and chooses: join
   as a deliberate racer, wait for the result, or drop the task. Duplicate
-  intents are offered for merging.
+  issues are offered for merging.
 - **Finding out-of-scope work.** An agent that discovers something outside
-  its intent asks the registry who works there. If another attempt owns that
+  its issue asks the registry who works there. If another pull request owns that
   area, it **hands off**: a note, the relevant excerpt of its session, and
   optionally commits the receiver can take. If nobody does, it opens a child
-  intent instead of widening its own change.
-- **Asking.** An agent can put a question or a request to another attempt.
+  issue instead of widening its own change.
+- **Asking.** An agent can put a question or a request to another pull request.
   The receiver gets it at its next turn.
-- **Waiting.** An agent that needs another attempt's result parks itself.
+- **Waiting.** An agent that needs another pull request's result parks itself.
   Its sandbox sleeps, spend stops, and it resumes from the new state when
-  that attempt ships.
+  that pull request merges.
 - **Agents that do not cooperate.** For pushes from tools that never call
-  these tools, g1t compares the pushed change against running attempts and
+  these tools, g1t compares the pushed change against running pull requests and
   flags near-duplicates itself.
 
 Every handoff, question and wait has a state (offered, accepted, declined,
@@ -115,25 +134,25 @@ Cloudflare's brief asks "how do you review everything they produce?". With
 hundreds of agents, a person cannot read every diff, so review is by
 exception.
 
-- **Evidence, not diffs.** Every attempt carries a proof bundle: checks run
+- **Evidence, not diffs.** Every pull request carries a proof bundle: checks run
   and their output, a preview URL, a plain-language summary, and the
   behaviour that changed.
-- **Two agent reviewers.** One reviews the change against the intent. A
+- **Two agent reviewers.** One reviews the change against the issue. A
   second is adversarial: it tries to break the change and reports what it
   found.
 - **Risk tiers.** Each change is scored from what it touches, how large it
-  is, and how the reviewers ruled. Low risk ships on policy; high risk goes
+  is, and how the reviewers ruled. Low risk merges on policy; high risk goes
   to a person with the evidence already assembled.
-- **Trust is earned.** An agent's record on a path (shipped, reverted, caught
+- **Trust is earned.** An agent's record on a path (merged, reverted, caught
   by review) raises or lowers the tier its changes land in.
-- **Sampling.** A share of auto-shipped changes is sent to a person anyway,
+- **Sampling.** A share of auto-merged changes is sent to a person anyway,
   to keep the policy honest.
 
 ## Rethinking the git primitives
 
-- **No branches for agents.** An attempt is a fork; `main` is the only
+- **No branches for agents.** A pull request is a fork; `main` is the only
   long-lived line. There is nothing to name, clean up or go stale.
-- **Projected main.** New attempts start from `main` plus everything already
+- **Projected main.** New pull requests start from `main` plus everything already
   in the landing queue, so they are built on the state they will land on.
 - **Structural merge.** The merge engine merges by syntax tree, not by line,
   for supported languages. Two agents adding different functions to the same
@@ -142,8 +161,8 @@ exception.
   was at that moment plus the conversation up to it, continued with a
   different instruction. Branching applies to the reasoning as well as the
   code.
-- **Provenance in history.** Every commit records its intent, session,
-  agent, model and cost, and is signed with a key issued to that attempt. The
+- **Provenance in history.** Every commit records its issue, session,
+  agent, model and cost, and is signed with a key issued to that pull request. The
   history can be audited by machine.
 
 ## People in the loop
@@ -153,18 +172,18 @@ exception.
 People will keep pushing with plain git, their editor, or another tool. Every
 push goes through g1t's git front end, so none of it bypasses the model.
 
-- **A push to a branch becomes an attempt.** g1t adopts it with the pusher as
-  author. A reviewer agent writes the intent it appears to serve and offers
-  to attach it to an open intent it matches. From there it gets the same
-  checks, arena and queue as agent work.
+- **A push to a branch becomes a pull request.** g1t adopts it with the pusher as
+  author. A reviewer agent writes the issue it appears to serve and offers
+  to attach it to an open issue it matches. From there it gets the same
+  checks, compare view and queue as agent work.
 - **A push to `main` follows repo policy.** Protected: refused with a message
   saying which ref to push to instead, so it enters the queue. Open: accepted
   and treated as "`main` moved", which re-verifies the queue and triggers
-  resolve-on-move for every open attempt.
+  resolve-on-move for every open pull request.
 - **Context is an open format.** A commit trailer names the session that
   produced it, so any tool can attach its transcript. Commits without one are
   shown in why-blame as "pushed by a person, no session".
-- **Approval rules.** Per repo and per path: ship automatically, require a
+- **Approval rules.** Per repo and per path: merge automatically, require a
   named person, or require a person when the change is large or the reviewer
   agent is unsure.
 
@@ -177,28 +196,28 @@ push goes through g1t's git front end, so none of it bypasses the model.
   through the CLI hooks.
 - **Answer.** When an agent is blocked on a question, it appears in a "needs
   you" inbox and as a notification. The answer resumes the agent.
-- **Take over and hand back.** Check out the attempt's fork, commit by hand,
+- **Take over and hand back.** Check out the pull request's fork, commit by hand,
   push, and let the agent continue from there.
 
 ### Planning by writing
 
 - **Brief.** Write the outcome in prose on the site, or commit it as a
-  markdown file. A planner agent turns it into a project: intents, acceptance
+  markdown file. A planner agent turns it into a project: issues, acceptance
   checks, dependencies. The person edits the graph before anything starts.
 - **Plan from their own agent.** The same operations are MCP tools, so a
   person can plan in their own Claude Code session and create the project
   from there.
 - **The brief stays the source of truth.** Editing it later re-plans: new
-  intents are added, obsolete ones are closed.
+  issues are added, obsolete ones are closed.
 
 ### Seeing what moved
 
-- **Project page.** The outcome, the intent graph coloured by state, and how
+- **Project page.** The outcome, the issue graph coloured by state, and how
   many acceptance checks pass now compared with when the project started.
 - **Digest.** An agent-written summary per project and per person: what
-  shipped, what is blocked on whom, which conflicts were resolved, what it
+  merged, what is blocked on whom, which conflicts were resolved, what it
   cost.
-- **Timeline.** Every event (push, steer, check, conflict, ship) in order,
+- **Timeline.** Every event (push, steer, check, conflict, merge) in order,
   each linked to the session and the person or agent behind it.
 
 ## One session, any surface
@@ -208,7 +227,7 @@ phone and Claude Code are views of the same session.
 
 - **Browser and phone.** The site is a responsive, installable web app with
   push notifications. Everything a person does (brief, steer, answer,
-  approve, ship) works there.
+  approve, merge) works there.
 - **Claude Code.** Through `mcp.g1t.sh` and the CLI hooks, a local session is
   a g1t session: its transcript syncs as it runs and it appears in mission
   control like any other.
@@ -225,19 +244,19 @@ phone and Claude Code are views of the same session.
 - **Documents are first-class.** Specs, guides, policies and decisions live
   in repos as markdown, shown in a Docs view: rendered pages, edited in the
   browser like a document, with inline comments. "Suggest a change" is an
-  attempt and "publish" is ship, without git vocabulary.
-- **Document intents.** "Write the onboarding guide for the billing API" is
-  an intent. Its acceptance checks are a checklist judged by a reviewer agent
+  pull request and "publish" is merge, without git vocabulary.
+- **Document issues.** "Write the onboarding guide for the billing API" is
+  an issue. Its acceptance checks are a checklist judged by a reviewer agent
   instead of commands. Agents draft and revise; people comment and approve.
 - **Templates.** Product brief, RFC, decision record. A filled-in template is
   a brief the planner can turn into a project.
 - **Explain.** Ask about any repo, project or change in plain language and
   get an answer with links to the code and sessions behind it.
 - **Living documentation.** g1t generates "how this works" pages from the
-  code and keeps them current. When a shipped change contradicts a document,
-  an intent opens to update it.
-- **See it, don't read it.** Every attempt on a deployable repo gets a
-  preview URL (Workers Builds from the attempt's fork), so an approver clicks
+  code and keeps them current. When a merged change contradicts a document,
+  an issue opens to update it.
+- **See it, don't read it.** Every pull request on a deployable repo gets a
+  preview URL (Workers Builds from the pull request's fork), so an approver clicks
   through the result instead of reading a diff. Changes are also summarised
   in plain language.
 - **Roles.** Viewer, commenter, planner, approver: a person can plan and
@@ -251,20 +270,20 @@ The hierarchy above a single repo:
 | --- | --- |
 | **Workspace** | A company or team: its people, repos, agents, budget and policies. |
 | **Initiative** | A business outcome with an owner and measurable results, e.g. "move billing to usage-based pricing". Spans any number of repos. |
-| **Project** | One deliverable inside an initiative: a brief and its graph of intents. |
-| **Intent / Attempt** | As above. An intent may touch several repos; its attempt then holds one fork per repo and they land together. |
+| **Project** | One deliverable inside an initiative: a brief and its graph of issues. |
+| **Issue / Pull request** | As above. An issue may touch several repos; a pull request for it then holds one fork per repo and they land together. |
 
 ### Portfolio
 
 One page answers "where is the business" across every initiative:
 
 - **Health** per initiative: on track, at risk, or blocked, derived from
-  facts (checks passing, intents stalled, questions waiting on a person),
+  facts (checks passing, issues stalled, questions waiting on a person),
   not self-reported.
-- **Progress** as measurable results: acceptance checks passing, intents
-  shipped out of planned, and the trend since the start.
+- **Progress** as measurable results: acceptance checks passing, issues
+  merged out of planned, and the trend since the start.
 - **Forecast** from actual throughput: at the current rate, when the
-  remaining intents land.
+  remaining issues land.
 - **Spend** in tokens and dollars against a budget, per initiative.
 - **Waiting on people**: every decision or approval a person owes, by name.
 - **Roadmap**: initiatives laid out as now, next, later, with optional
@@ -273,7 +292,7 @@ One page answers "where is the business" across every initiative:
 ### Status without asking
 
 - **Standup.** An agent writes a daily report per initiative and one for the
-  whole workspace: what shipped, what changed direction, what is at risk and
+  whole workspace: what merged, what changed direction, what is at risk and
   why, what needs a person. Delivered by email or webhook.
 - **Ask.** A question box over the full event log and all sessions: "what
   happened on the billing migration since Monday?" answers with links to the
@@ -284,12 +303,12 @@ One page answers "where is the business" across every initiative:
 Work that runs for days needs supervision that does not depend on someone
 watching.
 
-- **Checkpoints.** A long attempt reports milestones against its intent, so
-  progress is visible before anything ships.
-- **Stall and drift detection.** An attempt with no meaningful progress, or
-  whose changes have wandered away from its intent, is flagged and can be
+- **Checkpoints.** A long pull request reports milestones against its issue, so
+  progress is visible before anything merges.
+- **Stall and drift detection.** A pull request with no meaningful progress, or
+  whose changes have wandered away from its issue, is flagged and can be
   stopped or re-briefed automatically.
-- **Budgets.** Hard limits on spend and time per attempt, project and
+- **Budgets.** Hard limits on spend and time per pull request, project and
   initiative.
 
 ### Context hub
@@ -311,7 +330,7 @@ How it behaves:
   fresh it is.
 - **Connected sources stay where they are.** g1t indexes them for search and
   fetches the current version when an agent opens one. The external system
-  remains the source of truth, and a link placed on an intent ("see
+  remains the source of truth, and a link placed on an issue ("see
   JIRA-482", a Notion URL) is pulled into the agent's starting context.
 - **Permissions carry over.** A connector only exposes what the connecting
   account can see, and a workspace admin chooses which spaces, projects or
@@ -335,7 +354,7 @@ Memory is the part of the hub that g1t owns and agents write to:
   conflicts it cannot settle. People can pin an entry (agents may not change
   it), correct it, or retract it.
 - **Agents read it.** Every session starts with the context relevant to its
-  intent, found by search, and can query more through MCP.
+  issue, found by search, and can query more through MCP.
 - **Updates are events.** A memory write or a change in a connected source
   is an event, so "when context changes, update the affected docs" is an
   automation, on by default.
@@ -349,11 +368,11 @@ Memory is the part of the hub that g1t owns and agents write to:
 ## Working in g1t
 
 - **Mission control.** The signed-in home page: every running session, every
-  intent waiting on a decision, and what shipped, across all repos.
-- **Projects.** Group intents across repos toward one outcome and track how
-  many are open, racing, or shipped.
-- **Steering.** Send a message to a running attempt, or to all attempts on an
-  intent at once, without stopping them.
+  issue waiting on a decision, and what merged, across all repos.
+- **Projects.** Group issues across repos toward one outcome and track how
+  many are open, racing, or merged.
+- **Steering.** Send a message to a running pull request, or to all pull requests on an
+  issue at once, without stopping them.
 - **Automations.** Rules that start work without a person (next section).
 
 ## Automations and integrations
@@ -366,35 +385,36 @@ way GitHub Actions workflows are, and can also be built in the UI.
 
 | Source | Examples |
 | --- | --- |
-| Git | push, ship, check failed, `main` moved |
-| g1t | intent opened, attempt stalled, context updated, handoff declined, budget reached |
+| Git | push, merge, check failed, `main` moved |
+| g1t | issue opened, pull request stalled, context updated, handoff declined, budget reached |
 | Time | cron schedule |
 | Integrations | Sentry issue, PagerDuty incident, Linear or Jira ticket, Slack message or mention, GitHub issue, Stripe event |
 | Anything else | a signed generic webhook, or an email to a per-repo address |
 
-**Actions**: open an intent (optionally racing N attempts with a named
-agent), message a running attempt, update documentation, notify, call a
+**Actions**: open an issue (optionally assigning N agents to it), message
+a running pull request, update documentation, notify, call a
 webhook, write back to the source system.
 
 **Example: Sentry.** A new production error arrives. The automation opens an
-intent with the stack trace, release and frequency as its brief. Why-blame
+issue labelled `bug`, with the stack trace, release and frequency in its
+description. Why-blame
 finds the session that wrote the failing line, so the fixing agent starts
-with the original reasoning. When the fix ships, g1t comments on the Sentry
+with the original reasoning. When the fix merges, g1t comments on the Sentry
 issue and resolves it.
 
 ### Rules every automation obeys
 
 - **Deduplication.** The same Sentry issue firing 500 times maps to one
-  intent.
+  issue.
 - **Limits.** Concurrency and budget caps per automation.
 - **Loop protection.** Work started by an automation cannot retrigger the
   same automation without a person in between.
 - **External input is untrusted.** A webhook payload can contain text written
   by an attacker. Agents started by external events run with reduced
-  permissions and cannot ship without the repo's approval rule passing.
+  permissions and cannot merge without the repo's approval rule passing.
 
 **Checks** are the other half of what GitHub Actions does: build and test
-commands declared in `.g1t/checks.yaml`, run in sandboxes on every attempt
+commands declared in `.g1t/checks.yaml`, run in sandboxes on every pull request
 and on every combined state in the landing queue.
 
 Agents can also reach integrations directly: an agent definition lists MCP
@@ -417,7 +437,7 @@ Each role has a default that a repo can replace.
 | Hosted, g1t's model | g1t runs the sandbox and bills usage | Getting started; no keys to manage |
 | Hosted, your API key | Same sandbox, your Anthropic, OpenAI or Google key | Teams with existing contracts |
 | Hosted, your endpoint | Any OpenAI-compatible URL: Bedrock, Vertex, Azure, a self-hosted model | Private or fine-tuned models |
-| Your runner | A g1t runner daemon on your own machines picks up attempts | Code or models that may not leave your network |
+| Your runner | A g1t runner daemon on your own machines picks up pull requests | Code or models that may not leave your network |
 | Your own session | Local Claude Code, Cursor or any MCP client joins through `mcp.g1t.sh` | Individuals; subscription plans |
 
 Decisions behind this:
@@ -433,14 +453,14 @@ Decisions behind this:
   hosted sandbox; it needs an API key. People on subscriptions use their own
   Claude Code session, which is a full participant.
 - **Keys are secrets.** Stored in Cloudflare Secrets Store, injected into the
-  sandbox for one attempt, never shown again.
+  sandbox for one pull request, never shown again.
 
 ### Choosing the right agent automatically
 
-Because several agents can race on the same intent, every arena is an
-evaluation on real work. g1t records, per repo and per kind of intent, each
+Because several agents can work on the same issue, every issue with more
+than one pull request is an evaluation on real work. g1t records, per repo and per kind of issue, each
 agent's win rate, cost and time. That produces a leaderboard, and a routing
-policy: send each new intent to the agent that wins that kind most often,
+policy: send each new issue to the agent that wins that kind most often,
 start with the cheapest that is good enough, and escalate to a stronger one
 when checks fail.
 
@@ -455,21 +475,21 @@ compared. Underneath, the unit of work is still a branch and a pull request.
 | --- | --- | --- |
 | Where a session works | A worktree on one developer's machine, or a cloud sandbox | A server-side fork that any agent on any machine can join and anyone can open |
 | Agent context | Lives in the app's session view | Stored with the repository and linked from each commit (why-blame) |
-| Several agents on one task | Separate pull requests to compare by hand | One intent, one arena, ranked attempts |
+| Several agents on one task | Separate pull requests to compare by hand | One issue holding every pull request made for it, compared side by side, with the merged one recorded on the issue |
 | Collisions between agents | Found as merge conflicts at the end | Flagged during the work (overlap radar) |
-| Landing changes | One pull request at a time | A merge queue that ships the winner and rebases or closes the rest |
+| Landing changes | One pull request at a time | A merge queue that lands the chosen one and closes the rest as superseded |
 | Which agents | Those offered through a Copilot subscription | Any MCP client, plus hosted agents |
 
 ## How agents connect
 
 1. **Bring your own agent.** A remote MCP server at `mcp.g1t.sh` lets Claude
-   Code (or any MCP client) list intents, claim one, get a clone URL and
+   Code (or any MCP client) list issues, claim one, get a clone URL and
    token, report progress and submit. Adding it is one command; sign-in is a
    browser OAuth flow with no token to paste. The `g1t` CLI installs Claude
    Code hooks that upload the session transcript as the agent works.
-2. **Hosted agents.** Press "Run 10 attempts" on an intent. g1t starts
-   sandboxes (Cloudflare Sandbox SDK), each running a coding agent headless
-   against its own fork.
+2. **g1t agents.** Assign up to five of g1t's own agents to an issue. g1t
+   starts a sandbox for each (Cloudflare Containers), running a coding agent
+   headless against its own pull request and fork.
 3. **API and CLI.** Everything above is available at `api.g1t.sh` and
    through `g1t`.
 
@@ -478,12 +498,12 @@ compared. Underneath, the unit of work is still a branch and a pull request.
 | Host | What it serves |
 | --- | --- |
 | `g1t.sh` | The site, git over HTTPS, git over SSH |
-| `api.g1t.sh` | Versioned REST API with a published OpenAPI document, cursor pagination, rate-limit headers, idempotency keys on writes, server-sent events for live attempt state, and signed webhooks |
+| `api.g1t.sh` | Versioned REST API with a published OpenAPI document, cursor pagination, rate-limit headers, idempotency keys on writes, server-sent events for live pull request state, and signed webhooks |
 | `mcp.g1t.sh` | Remote MCP server over streamable HTTP |
 
 g1t is its own OAuth 2.1 authorization server: authorization code with PKCE,
 dynamic client registration, discovery metadata, refresh tokens, and scopes
-per resource (`repo:read`, `repo:write`, `intent:write`, `attempt:write`).
+per resource (`repo:read`, `repo:write`, `issue:write`, `pull:write`).
 MCP clients, the CLI (device flow) and third-party apps all use it. Access
 tokens and SSH keys remain for git itself.
 
@@ -491,20 +511,21 @@ tokens and SSH keys remain for git itself.
 
 | Component | Language | Runs on | Responsibility |
 | --- | --- | --- | --- |
-| `packages/contracts` | TypeScript | — | The interface of every service, the event catalogue, shared types. Services and clients depend on this, never on each other's code. |
-| `services/identity` | TypeScript | Worker + D1 | Accounts, sessions, SSH keys, access tokens; later the OAuth server |
-| `services/repos` | TypeScript | Worker + D1 + Artifacts | Repository registry, contents, forks, git over HTTPS. Storage sits behind a `GitStore` port with an Artifacts adapter. |
-| `services/events` | TypeScript | Worker + Queues + D1 | The event bus: durable log, and one queue per subscribing service |
-| `services/work` | TypeScript | Worker + D1 | Intents, attempts, sessions; later a Durable Object per repo for the landing queue and live state |
+| `crates/contracts`, `packages/contracts` | Rust, TypeScript | — | The interface of every service, the event catalogue, shared types. Services and clients depend on this, never on each other's code. |
+| `services/identity` | Rust | Worker + D1 | Accounts, workspaces and memberships, sessions, SSH keys, access tokens, device sign-in; later the OAuth server |
+| `services/repos` | Rust | Worker + D1 + Artifacts | Repository registry, contents, forks, diffs, landing, git over HTTPS. Storage sits behind a `GitStore` port with an Artifacts adapter. |
+| `services/work` | Rust | Worker + D1 | Issues, pull requests, comments, sessions; later a Durable Object per repo for the landing queue and live state |
+| `services/events` | TypeScript, moving to Rust | Worker + Queues + D1 | The event bus: durable log, and one queue per subscribing service |
+| `services/runner`, `crates/runner` | TypeScript, Rust | Worker + Containers | Starts a sandbox per g1t agent; the program inside runs the agent harness and reports through the public API |
 | `apps/web` | TypeScript | Worker | Server-rendered site. Holds no data; calls services over RPC. |
-| `apps/api` (next) | TypeScript | Worker | REST API (`api.g1t.sh`) and MCP server (`mcp.g1t.sh`) over the same services |
+| `apps/docs` | TypeScript | Worker (static) | Documentation and the API explorer |
+| `apps/api` | TypeScript, moving to Rust | Worker | REST API (`api.g1t.sh`) and MCP server (`mcp.g1t.sh`), both generated from one list of operations |
 | `crates/sshd` | Rust | Container | Git over SSH, bridged to Artifacts |
 | `crates/merged` | Rust | Container | Trial merges, conflict matrix, landing merges (needs real git; the Artifacts binding is read-only) |
 | `crates/core` | Rust | native and WASM | pkt-line, packfile and diff code shared by the above and by the Worker |
-| `crates/g1t` | Rust | user's machine | CLI: auth, SSH proxy, Claude Code hooks, intents and attempts |
-| runner image | — | Sandbox | Hosted agent environment |
+| `crates/g1t` | Rust | user's machine | CLI: auth, SSH proxy, Claude Code hooks, issues and pull requests |
 
-Storage: Artifacts for repositories (one fork per attempt), D1 for accounts
+Storage: Artifacts for repositories (one fork per pull request), D1 for accounts
 and metadata, R2 for session transcripts and logs, Durable Object SQLite for
 per-repo coordination state.
 
@@ -516,7 +537,7 @@ How the services fit together:
 - **Expected failures are values.** Every call returns a `Result`, so "not
   found" or "forbidden" crosses a service boundary as data.
 - **Side effects travel as events.** A service publishes what happened
-  (`git.push`, `intent.opened`, `attempt.started`, …) to the bus and does not
+  (`git.push`, `issue.opened`, `pull.merged`, …) to the bus and does not
   call other services to react. Each subscriber consumes from its own queue.
   Timelines, webhooks and automations read the same stream, which is what
   lets something like GitHub Actions be built on top.
@@ -531,7 +552,8 @@ protocol to implement.
 
 The site is TypeScript. Everything behind it is Rust, compiled to
 WebAssembly for Workers and natively for containers and the CLI. Services
-are being ported one at a time; identity is done. Rust services speak a
+are being ported one at a time; identity, repos and work are done, events
+and the API are next. Rust services speak a
 small JSON protocol over service bindings (`POST /rpc/<method>`), with the
 types in `crates/contracts`.
 
@@ -539,7 +561,7 @@ types in `crates/contracts`.
 
 Every id is a [TypeID](https://github.com/jetify-com/typeid): a prefix naming
 the kind of thing, then a UUIDv7 in lowercase base32, such as
-`att_01jb2k7x9hfq0b3zj0f5s2m8ra`.
+`pr_01jb2k7x9hfq0b3zj0f5s2m8ra`.
 
 - The prefix makes an id self-describing and stops ids of different kinds
   being mixed up.
@@ -585,12 +607,12 @@ for volume splits storage by how the data is read.
 
 | Need | Product |
 | --- | --- |
-| Repositories; a fork per attempt; data residency per workspace | Artifacts (forks, jurisdictions) |
+| Repositories; a fork per pull request; data residency per workspace | Artifacts (forks, jurisdictions) |
 | Reacting to pushes | Artifacts event subscriptions on Queues |
-| Preview URL per attempt; deploy on ship | Workers Builds and previews |
+| Preview URL per pull request; deploy on merge | Workers Builds and previews |
 | Site, API, MCP, git front end | Workers |
 | Per-repo coordination, live updates | Durable Objects |
-| Attempt lifecycles, automations | Workflows, Cron Triggers |
+| Pull request lifecycles, automations | Workflows, Cron Triggers |
 | Agent sandboxes, SSH server, merge engine | Sandbox SDK and Containers |
 | Fast starts on large repos | ArtifactFS |
 | Model traffic, spend, budgets | AI Gateway |
@@ -603,9 +625,9 @@ for volume splits storage by how the data is read.
 ## The submission
 
 - **g1t is built on g1t.** This repository is hosted on g1t.sh, its features
-  are opened as intents and built by racing agents, and it deploys from
+  are opened as issues and built by racing agents, and it deploys from
   Artifacts through Workers Builds. The history is the proof.
-- **The demo follows one story.** A brief becomes a project; twelve intents
+- **The demo follows one story.** A brief becomes a project; twelve issues
   fan out to dozens of agents; agents notice each other, hand off, and
   resolve a conflict; reviewers triage; the queue lands everything on
   `main`; why-blame explains a line; the portfolio shows where it all
@@ -618,26 +640,28 @@ for volume splits storage by how the data is read.
 
 ## Build order
 
-Done: site with marketing page and docs; git over HTTPS; accounts with
-registration, email verification and password reset; intents, attempts and
-sessions; REST API and MCP server; event bus; shipping an attempt to `main`
-with a behind check. Identity and repos are in Rust.
+Done: site with marketing page; separate docs site with API explorer; git
+over HTTPS; accounts with registration, email verification, password reset
+and device sign-in; workspaces with members; issues with labels, checks and
+comments; pull requests in forks with diffs and sessions, several per
+issue; merging with a behind check, which resolves the issue and supersedes
+the rest; g1t agents in sandboxes with a choice of model; REST API, OpenAPI
+and MCP server; event bus. Identity, repos and work are in Rust.
 
-1. Diffs and review on attempts; pull requests from pushed branches, under
-   that name.
+1. Pull requests from branches pushed to the repository.
 2. OAuth server, so MCP clients sign in through the browser with no token
    to paste.
-3. Port work, events and the API to Rust; event storage per the design
-   above.
+3. Port events and the API to Rust; event storage per the design above.
 4. CLI with Claude Code hooks to record sessions automatically.
-5. Hosted agents in sandboxes; acceptance checks.
+5. Acceptance checks run in sandboxes; review comments on lines.
 6. Server-side merge and rebase; landing queue with speculative checks;
    resolve-on-move.
-7. Arena, proof bundles, reviewers, risk tiers; work registry, handoff.
+7. Compare view, proof bundles, reviewers, risk tiers; work registry,
+   handoff.
 8. Projects, mission control, steering; why-blame, digest, timeline.
-9. Workspaces, context hub, portfolio; automations and integrations.
+9. Context hub, portfolio; automations and integrations (Sentry first).
 10. SSH; bot protection; own keys, endpoints and runners.
-11. Large run (100+ agents across many intents), hardening, demo.
+11. Large run (100+ agents across many issues), hardening, demo.
 
 Later: code search, mirroring to GitHub, passkeys, SSH
 on port 22 without the CLI proxy (needs the Workers inbound TCP private

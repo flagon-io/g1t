@@ -10,7 +10,7 @@ export type Repo = {
   isPrivate: boolean;
   ownerId: string;
   defaultBranch: string;
-  /** Set when this repo is an attempt's working copy of another repo. */
+  /** Set when this repo is a pull request's working copy of another repo. */
   forkOf: string | null;
   /** RFC 3339. */
   createdAt: string;
@@ -88,10 +88,10 @@ export interface ReposApi {
   log(path: RepoPath, viewer: Viewer, ref: string | null, limit: number): Promise<Result<Commit[]>>;
 
   /**
-   * A copy-on-write copy of `source`, hidden from listings, for one attempt
+   * A copy-on-write copy of `source`, hidden from listings, for one pull request
    * to work in.
    */
-  forkForAttempt(sourceId: string, attemptId: string, actor: User): Promise<Result<Repo>>;
+  forkForPull(sourceId: string, pullId: string, actor: User): Promise<Result<Repo>>;
 
   /**
    * Authorizes a git operation and returns where to send it. Pushing to a
@@ -107,7 +107,7 @@ export interface ReposApi {
   land(forkId: string, actor: User): Promise<Result<{ commit: string; previous: string | null }>>;
 
   /**
-   * What a repository's head changes. An attempt's fork is compared with the
+   * What a repository's head changes. A pull request's fork is compared with the
    * last commit it shares with the repository it came from, unless `base`
    * says otherwise.
    */

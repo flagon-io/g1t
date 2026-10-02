@@ -43,23 +43,23 @@ function Pulse({
 const LANES = [
   { y: 60, state: "passed" },
   { y: 135, state: "failed" },
-  { y: 210, state: "shipped" },
+  { y: 210, state: "merged" },
   { y: 285, state: "passed" },
   { y: 360, state: "working" },
 ] as const;
 
 /**
- * The hero: one intent fans out to five attempts, each in its own lane;
- * the one that ships lands on main.
+ * The hero: one issue fans out to five pull requests, each in its own
+ * lane; the one that is merged lands on main.
  */
-export function ArenaIllustration() {
+export function HeroIllustration() {
   return (
     <svg
       viewBox="0 0 1000 420"
       fill="none"
       className="w-full"
       role="img"
-      aria-label="An intent fans out to five attempts running in parallel; one ships to main."
+      aria-label="An issue fans out to five pull requests being worked on in parallel; one is merged into main."
     >
       {/* Faint grid. */}
       <g stroke={LINE} strokeWidth="1" opacity="0.35">
@@ -71,11 +71,11 @@ export function ArenaIllustration() {
         ))}
       </g>
 
-      {/* The intent. */}
+      {/* The issue. */}
       <g>
         <rect x="24" y="150" width="170" height="120" rx="12" fill={SURFACE} stroke={LINE} />
         <text x="42" y="178" fill={MUTED} fontSize="11" fontFamily="var(--font-mono)">
-          intent #12
+          issue #12
         </text>
         <rect x="42" y="190" width="120" height="7" rx="3.5" fill={FAINT} />
         <rect x="42" y="206" width="134" height="5" rx="2.5" fill={LINE} />
@@ -93,10 +93,10 @@ export function ArenaIllustration() {
         const out = `M194 210C250 210 250 ${y} 310 ${y}`;
         const lane = `M310 ${y}H690`;
         const back = `M690 ${y}C750 ${y} 750 210 806 210`;
-        const ships = state === "shipped";
+        const merges = state === "merged";
         const failed = state === "failed";
         const working = state === "working";
-        const stroke = ships ? ACCENT : failed ? LINE : FAINT;
+        const stroke = merges ? ACCENT : failed ? LINE : FAINT;
         const end = working ? 520 : failed ? 480 : 690;
         return (
           <g key={y}>
@@ -121,13 +121,13 @@ export function ArenaIllustration() {
                 d={back}
                 stroke={stroke}
                 strokeWidth="1.5"
-                strokeDasharray={ships ? undefined : "3 6"}
-                opacity={ships ? 1 : 0.5}
+                strokeDasharray={merges ? undefined : "3 6"}
+                opacity={merges ? 1 : 0.5}
               />
             )}
 
-            <text x="310" y={y - 14} fill={ships ? ACCENT : MUTED} fontSize="11" fontFamily="var(--font-mono)">
-              attempt {i + 1}
+            <text x="310" y={y - 14} fill={merges ? ACCENT : MUTED} fontSize="11" fontFamily="var(--font-mono)">
+              #{13 + i}
             </text>
 
             {/* Commits along the lane. */}
@@ -140,7 +140,7 @@ export function ArenaIllustration() {
                   cy={y}
                   r="4"
                   fill={SURFACE}
-                  stroke={ships ? ACCENT : MUTED}
+                  stroke={merges ? ACCENT : MUTED}
                   strokeWidth="1.5"
                 />
               ))}
@@ -164,9 +164,9 @@ export function ArenaIllustration() {
               path={`${out}H${end}`}
               dur={`${3.2 + i * 0.35}s`}
               begin={`${i * 0.5}s`}
-              color={ships ? ACCENT : MUTED}
+              color={merges ? ACCENT : MUTED}
             />
-            {ships && <Pulse path={`${lane}${back.replace("M690 " + y, "")}`} dur="2.4s" begin="1.2s" r={3.5} />}
+            {merges && <Pulse path={`${lane}${back.replace("M690 " + y, "")}`} dur="2.4s" begin="1.2s" r={3.5} />}
           </g>
         );
       })}
@@ -202,8 +202,8 @@ function tile(cx: number, cy: number, w = 60, h = 30): string {
   return `M${cx} ${cy - h}L${cx + w} ${cy}L${cx} ${cy + h}L${cx - w} ${cy}Z`;
 }
 
-/** A brief with acceptance checks ticking off. */
-export function IntentIllustration() {
+/** An issue with acceptance checks ticking off. */
+export function IssueIllustration() {
   return (
     <svg viewBox="0 0 320 180" fill="none" className="w-full" aria-hidden="true">
       <path d="M0 150H320" stroke={LINE} strokeDasharray="2 8" />
@@ -363,8 +363,8 @@ export function EventsIllustration() {
   );
 }
 
-/** Attempts queued in order, landing on main one at a time. */
-export function ShipIllustration() {
+/** Pull requests queued in order, landing on main one at a time. */
+export function MergeIllustration() {
   return (
     <svg viewBox="0 0 320 180" fill="none" className="w-full" aria-hidden="true">
       <path d="M20 120H300" stroke={ACCENT} strokeWidth="1.5" />

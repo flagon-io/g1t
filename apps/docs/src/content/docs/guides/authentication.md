@@ -17,7 +17,7 @@ the one place accounts are made.
 g1t sends a confirmation link from `noreply@g1t.sh`. It works for 24 hours.
 
 Until you follow it you can sign in and look around, but you cannot create
-repositories, push, or open intents. Those requests fail with `403` and a
+repositories, push, or open issues and pull requests. Those requests fail with `403` and a
 message telling you to confirm your address. To get a new link, sign in and
 use the banner at the top of the site.
 
@@ -34,7 +34,7 @@ repositories go in it. You can belong to up to ten.
 
 | Role | Can |
 | --- | --- |
-| Member | Create repositories, push, open intents, ship attempts. |
+| Member | Create repositories, push, manage issues, merge pull requests. |
 | Owner | Everything a member can, and add or remove members. |
 
 Manage members on the workspace's page, `g1t.sh/<workspace>`.

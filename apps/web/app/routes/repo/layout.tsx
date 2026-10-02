@@ -1,6 +1,6 @@
-import { BookMarked, Code2, History, Lock, Target } from "lucide-react";
+import { BookMarked, CircleDot, Code2, GitPullRequest, History, Lock } from "lucide-react";
 import type { ReactNode } from "react";
-import { Link, NavLink, Outlet } from "react-router";
+import { Link, NavLink, Outlet, useLocation } from "react-router";
 
 import type { Route } from "./+types/layout";
 import { Pill } from "../../components/ui";
@@ -14,36 +14,40 @@ export function meta({ params }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const path = { namespace: params.owner, name: params.repo };
-  const [repo, intents] = await Promise.all([
+  const [repo, counts] = await Promise.all([
     repos.get(path, viewer),
-    work.listIntents(path, viewer, "open"),
+    work.counts(path, viewer),
   ]);
   return {
     repo: unwrap(repo),
-    openIntents: intents.ok ? intents.value.length : 0,
+    open: counts.ok ? counts.value : { issues: 0, pulls: 0 },
   };
 }
 
 function Tab({
   to,
+  also,
   end,
   icon,
   count,
   children,
 }: {
   to: string;
+  /** Another path prefix under which this tab is the current one. */
+  also?: string;
   end?: boolean;
   icon: ReactNode;
   count?: number;
   children: ReactNode;
 }) {
+  const { pathname } = useLocation();
   return (
     <NavLink
       to={to}
       end={end}
       className={({ isActive }) =>
         `-mb-px flex items-center gap-2 border-b-2 px-1 pb-3 text-sm transition-colors ${
-          isActive
+          isActive || (also && pathname.startsWith(also + "/"))
             ? "border-accent font-medium text-fg"
             : "border-transparent text-muted hover:text-fg"
         }`
@@ -61,7 +65,7 @@ function Tab({
 }
 
 export default function RepoLayout({ loaderData }: Route.ComponentProps) {
-  const { repo, openIntents } = loaderData;
+  const { repo, open } = loaderData;
   const base = `/${repo.namespace}/${repo.name}`;
   return (
     <>
@@ -92,8 +96,16 @@ export default function RepoLayout({ loaderData }: Route.ComponentProps) {
             <Tab to={base} end icon={<Code2 size={15} />}>
               Code
             </Tab>
-            <Tab to={`${base}/intents`} icon={<Target size={15} />} count={openIntents}>
-              Intents
+            <Tab to={`${base}/issues`} icon={<CircleDot size={15} />} count={open.issues}>
+              Issues
+            </Tab>
+            <Tab
+              to={`${base}/pulls`}
+              also={`${base}/pull`}
+              icon={<GitPullRequest size={15} />}
+              count={open.pulls}
+            >
+              Pull requests
             </Tab>
             <Tab to={`${base}/commits`} icon={<History size={15} />}>
               Commits

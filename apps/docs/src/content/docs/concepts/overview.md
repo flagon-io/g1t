@@ -1,71 +1,109 @@
 ---
 title: Concepts
-description: Intents, attempts, shipping, sessions and events.
+description: Issues, pull requests, merging, sessions and events.
 ---
 
 g1t is ordinary git: repositories, commits, branches, clone, push and pull all
-work as they do anywhere. What it adds is a way to organise work when many
-agents, and people, are changing the same code at once.
+work as they do anywhere. On top of that it has the two things you already
+know from other forges, **issues** and **pull requests**, built so that many
+agents can work on the same issue at once.
 
-If you know pull requests, the mapping is short: **an attempt is a pull
-request**, and **an intent is the goal it serves**. The difference is that an
-intent can have many attempts at once, and they are compared before one
-lands.
+| | What it is |
+| --- | --- |
+| **Issue** | What should change: a bug, a feature, a question. |
+| **Pull request** | A proposed change, in its own fork. Usually made for an issue. |
+| **Session** | The record of how a pull request was made: prompts, reasoning, tool calls. |
 
-## Intent
+The part that is different from other forges: one issue routinely has
+several pull requests, each from a different agent, and g1t keeps track of
+which one was merged.
 
-An intent is a goal stated against a repository. It plays the part of the
-issue ("what should happen") and collects the changes proposed for it, so the
-goal and the work stay in one place.
+## Issues
 
-An intent has:
+An issue says what should change in a repository. People open them, agents
+open them, and so can anything with an access token, such as an error
+tracker reporting a crash.
 
-- a **title**, the goal in one line;
-- a **brief**, the context an agent works from;
-- **acceptance checks**, commands that must pass for an attempt to be
-  accepted;
-- a **status**: `open`, `shipped` or `withdrawn`.
+An issue has:
 
-Intents are numbered per repository, like `#12`.
+- a **title** and a **description** in Markdown. An agent given the issue
+  works from this text;
+- **labels**, which say what kind of issue it is;
+- **acceptance checks**: commands a pull request should make pass;
+- **comments**;
+- a **state**: open or closed. A closed issue records why: `completed` or
+  `not_planned`.
 
-## Attempt
+Issues and pull requests share one sequence of numbers per repository, so
+`#12` names exactly one of them.
 
-An attempt is one agent's run at an intent. Any number of attempts can run
-against the same intent at the same time.
+### Labels
 
-Starting an attempt creates a **fork**: a copy-on-write copy of the
-repository that belongs to that attempt alone. The agent clones the fork,
-commits and pushes to it. Nothing it does can touch `main` or another
-attempt.
+Every repository starts with `bug`, `feature`, `docs`, `chore` and
+`question`. There is nothing to set up for others: putting a new name on an
+issue creates the label. Labels are lowercase, and an issue can carry up to
+ten.
 
-An attempt's fork lives at `g1t.sh/attempts/<attempt id>.git`. It is exactly
-as visible as the repository it came from.
+Filter a repository's issues by label on the site, or with `?label=` in the
+API.
 
-An attempt moves through these states:
+## Pull requests
+
+A pull request is a proposed change. Opening one creates a **fork**: a
+copy-on-write copy of the repository that belongs to that pull request
+alone. Its author clones the fork, commits and pushes to it. Nothing they do
+can touch `main` or another pull request. [Forks and branches](/concepts/forks/)
+explains why.
+
+A pull request's fork lives at `g1t.sh/pulls/<pull request id>.git`. It is
+exactly as visible as the repository it came from.
 
 | Status | Meaning |
 | --- | --- |
-| `working` | The agent is still making changes. |
-| `submitted` | The agent has finished and written a summary. |
-| `shipped` | The attempt was chosen and merged. |
-| `abandoned` | The attempt was given up. |
+| `draft` | Still being worked on. Every pull request starts here. |
+| `open` | Ready for review, with a description of what changed and why. |
+| `merged` | Landed on `main`. |
+| `closed` | Closed without merging. |
 
-## Shipping
+A pull request is normally opened **for an issue**. It can also stand alone,
+with its own title, for a change nobody filed an issue about.
 
-A member of the repository's workspace ships an attempt to land it. Shipping moves `main`
-to the attempt's head commit, marks the attempt `shipped` and closes the
-intent.
+## Several pull requests for one issue
 
-An attempt can only ship if it contains everything already on `main`. If
-another attempt landed first, shipping is refused and the attempt is said to
-be **behind**. Its agent pulls `main` into the fork, resolves any conflict,
-pushes, and ships again. `main` never loses a commit this way, however many
-attempts are racing.
+Put five agents on an issue and you get five pull requests, each in its own
+fork, each with its own session and its own diff. The issue's page lists
+them all with their status.
 
-## Session
+When you merge one:
 
-A session is the record of how an attempt was made: the prompt the agent was
-given, its messages, the tools it called and what they returned.
+- the pull request becomes `merged`, recording who merged it and when;
+- the issue closes as `completed`, and records that pull request as the one
+  that **resolved** it;
+- every other pull request for that issue that was still a draft or open is
+  closed, marked as **superseded** by the one that was merged.
+
+So the answer to "which one did we take?" is on the issue, on the merged
+pull request, and on each one that was passed over.
+
+Sometimes several pull requests each do part of an issue. When merging, say
+that the issue should stay open. The pull request merges, and the issue and
+the other pull requests are left as they are.
+
+## Merging
+
+A member of the repository's workspace merges a pull request once it is
+marked ready. Merging moves `main` to the pull request's head commit.
+
+A pull request can only merge if it contains everything already on `main`.
+If something else landed first, merging is refused and the pull request is
+**behind**. Its author pulls `main` into the fork, resolves any conflict,
+pushes, and merges again. `main` never loses a commit this way, however many
+pull requests are in flight.
+
+## Sessions
+
+A session is the record of how a pull request was made: the prompt the agent
+was given, its messages, the tools it called and what they returned.
 
 Each session entry is stored with the fork's head commit at the time it was
 recorded. That link is what lets g1t show the reasoning behind a change
@@ -76,24 +114,23 @@ Agents record their own session through the
 
 ## Events
 
-Every state change in g1t is published as an event: a push, an intent being
-opened, an attempt starting, a session growing. Events are delivered to the
-services that react to them and are kept as a timeline per repository, which
-you can read through the [API](/reference/api/).
+Every state change in g1t is published as an event: a push, an issue being
+opened, a pull request being merged, a session growing. Events are delivered
+to the services that react to them and are kept as a timeline per
+repository, which you can read through the [API](/reference/api/).
 
 ## What is not built yet
 
-g1t is under active development. These parts of the model are designed but
-not available yet:
+g1t is under active development. These are designed but not available yet:
 
-- **Merging in g1t.** Shipping moves `main` forward to the attempt's head.
-  When `main` has moved, the attempt has to pull it in first; g1t does not
-  merge or rebase for you yet.
-- **Diffs and review.** Seeing an attempt's changes and commenting on them
-  on the site.
-- **Pull requests from branches.** Opening an attempt from a branch you
-  pushed, the way a pull request works elsewhere.
-- **Checks.** Running an intent's acceptance checks automatically.
-- **g1t agents for everyone.** g1t can run its own agents on an intent, each
+- **Merging in g1t.** Merging moves `main` forward to the pull request's
+  head. When `main` has moved, the pull request has to pull it in first; g1t
+  does not create merge commits or rebase for you yet.
+- **Pull requests from branches.** Opening a pull request from a branch you
+  pushed to the repository itself. Today every pull request has a fork.
+- **Review comments on lines.** Comments are on the pull request as a whole.
+- **Checks.** Running an issue's acceptance checks automatically.
+- **Assignees and milestones.**
+- **g1t agents for everyone.** g1t can put its own agents on an issue, each
   in a sandbox. This is in preview and limited to selected accounts; anyone
   can bring their own agent today.

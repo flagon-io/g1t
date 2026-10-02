@@ -3,13 +3,15 @@
 Git for AI scale: a forge for thousands of agents working on the same code at
 once, running on Cloudflare Workers and Artifacts.
 
-A pull request assumes one author and one change. g1t assumes many agents
-working at once: you state a goal as an **intent**, any number of agents
-**attempt** it in parallel, each in its own fork, and the one that works
-ships.
+g1t has the issues and pull requests you already know. What changes is how
+many there are. An issue is opened by a person, an agent or your error
+tracker; any number of agents each open a pull request for it, every one in
+its own fork with a recording of how it was made; you merge one, and the
+issue records which pull request resolved it while the others close as
+superseded.
 
 - Site: <https://g1t.sh>
-- Docs: <https://g1t.sh/docs>
+- Docs: <https://docs.g1t.sh>
 - API: <https://api.g1t.sh> · MCP: <https://mcp.g1t.sh>
 - Plan and design: [docs/PLAN.md](docs/PLAN.md)
 
@@ -17,59 +19,73 @@ ships.
 
 Working today:
 
-- Accounts, access tokens, public and private repositories.
-- Git over HTTPS, including creating a repository by pushing to it.
-- Intents, attempts (a copy-on-write fork each) and recorded agent sessions.
-- Shipping: landing an attempt on `main`, refused when the attempt is behind
-  so that no commit is ever lost.
-- Registration with email verification, and password reset.
-- A REST API and an MCP server over the same operations.
+- Accounts with email verification and password reset; sign-in from a tool
+  by approving a code in the browser.
+- Workspaces that own repositories, with members and roles.
+- Public and private repositories, and git over HTTPS, including creating a
+  repository by pushing to it.
+- Issues with labels, acceptance checks and comments.
+- Pull requests, each in a copy-on-write fork, with a diff and a recorded
+  agent session. Several can be made for one issue.
+- Merging: lands a pull request on `main`, closes its issue naming the pull
+  request that resolved it, and closes the others for that issue as
+  superseded. Refused when the pull request is behind, so no commit is lost.
+- g1t agents: g1t's own agents working on an issue in sandboxes on
+  Cloudflare Containers (preview, limited accounts).
+- A REST API, an OpenAPI document and an MCP server over the same operations.
 - An event bus: every state change is published, logged and delivered to
   subscribers.
 
-Not built yet: diffs and review on the site, pull requests from branches,
-server-side merging, running acceptance checks, hosted agents, git over SSH. See the build order in the
-plan.
+Not built yet: pull requests from branches, server-side merge commits,
+review comments on lines, running acceptance checks, OAuth sign-in for MCP,
+git over SSH. See the build order in the plan.
 
 ## Try it
 
 ```sh
-# 1. Create an account at https://g1t.sh/register and an access token in Settings.
+# 1. Create an account at https://g1t.sh/register, a workspace, and an
+#    access token in Settings.
 export G1T_TOKEN=g1t_…
 
 # 2. Connect Claude Code.
 claude mcp add --transport http g1t https://mcp.g1t.sh \
   --header "Authorization: Bearer $G1T_TOKEN"
 
-# 3. Ask it to start an attempt on an open intent.
+# 3. Ask it to open a pull request for an open issue.
 ```
 
-[Getting started](https://g1t.sh/docs) walks through this in full.
+[Getting started](https://docs.g1t.sh/quickstart/) walks through this in
+full. An assistant can do it for you from <https://g1t.sh/llms.txt>.
 
 ## Layout
 
 | Path | What it is |
 | --- | --- |
 | `apps/web` | The site: server-rendered React on a Worker. Holds no data. |
+| `apps/docs` | The documentation site, with the API explorer. |
 | `apps/api` | REST API and MCP server. |
-| `services/identity` | Accounts, sessions, keys and tokens. Rust. |
-| `services/repos` | Repository registry, contents, forks, landing, git over HTTPS. Rust. |
-| `services/work` | Intents, attempts and sessions. |
+| `services/identity` | Accounts, workspaces, sessions, keys and tokens. Rust. |
+| `services/repos` | Repository registry, contents, forks, diffs, landing, git over HTTPS. Rust. |
+| `services/work` | Issues, pull requests, comments and sessions. Rust. |
 | `services/events` | The event bus and its log. |
+| `services/runner` | Starts the sandboxes g1t agents work in. |
+| `crates/runner` | The program inside a sandbox: runs the agent and reports back. Rust. |
 | `crates/contracts` | Types and service interfaces for the Rust services. |
 | `crates/kit` | Plumbing shared by Rust services on Workers. |
 | `crates/sshd` | Git over SSH, bridged to Artifacts. Not deployed yet. |
 | `packages/contracts` | The same interfaces for TypeScript callers. |
+| `packages/theme` | Design tokens and the logo, shared by the site and the docs. |
 
 Each service is its own Worker with its own database. They call each other
-through service bindings and react to each other through events. Services
-are being moved from TypeScript to Rust one at a time; identity and repos are
-done.
+through service bindings and react to each other through events. Anything
+that is not a web UI is written in Rust or on its way there; the events
+service and the API are next.
 
 ## Run your own
 
 You need a Cloudflare account on the Workers Paid plan (Artifacts requires
-it), Node 22 or newer, and Rust with the `wasm32-unknown-unknown` target.
+it), Node 22 or newer, Rust with the `wasm32-unknown-unknown` target, and
+Docker to build the sandbox image.
 
 ```sh
 npm install
@@ -91,7 +107,10 @@ Deploy everything in dependency order:
 ```sh
 (cd services/identity && npx wrangler deploy)
 (cd services/repos && npx wrangler deploy)
+(cd services/work && npx wrangler deploy)
 npm run deploy
+(cd services/runner && npx wrangler deploy)   # optional: g1t agents
+(cd apps/docs && npm run deploy)
 ```
 
 Create the first account by registering on your site, or with

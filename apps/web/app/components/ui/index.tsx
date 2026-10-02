@@ -74,28 +74,6 @@ export function ErrorText({ children }: { children: ReactNode }) {
   return children ? <p className="text-sm text-danger">{children}</p> : null;
 }
 
-const STATUS_STYLES: Record<string, string> = {
-  open: "border-accent/30 bg-accent/10 text-accent",
-  working: "border-accent/30 bg-accent/10 text-accent",
-  submitted: "border-info/30 bg-info/10 text-info",
-  shipped: "border-shipped/30 bg-shipped/10 text-shipped",
-};
-
-/** A status pill; unknown statuses render muted. */
-export function Status({ value }: { value: string }) {
-  const style = STATUS_STYLES[value] ?? "border-line bg-surface text-muted";
-  return (
-    <span
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium ${style}`}
-    >
-      {value === "working" && (
-        <span className="size-1.5 animate-pulse rounded-full bg-accent" />
-      )}
-      {value}
-    </span>
-  );
-}
-
 /** A small outlined label. */
 export function Pill({ children }: { children: ReactNode }) {
   return (

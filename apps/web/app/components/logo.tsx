@@ -1,4 +1,4 @@
-/** Three lanes converging on one node: many attempts, one ships. */
+/** Three lanes converging on one node: many pull requests, one merged. */
 export function Mark({ className }: { className?: string }) {
   return (
     <svg

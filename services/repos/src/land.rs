@@ -1,4 +1,4 @@
-//! Landing an attempt: moving a repository's branch forward to a commit
+//! Landing a pull request: moving a repository's branch forward to a commit
 //! that so far exists only in a fork.
 //!
 //! The Artifacts binding cannot write, so this speaks git's smart HTTP

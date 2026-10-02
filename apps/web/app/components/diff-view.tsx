@@ -137,7 +137,7 @@ export function DiffView({ comparison }: { comparison: Comparison }) {
   if (files.length === 0) {
     return (
       <EmptyState title="No changes yet">
-        Nothing has been pushed to this attempt's fork, or it matches the
+        Nothing has been pushed to this pull request's fork, or it matches the
         repository it came from.
       </EmptyState>
     );

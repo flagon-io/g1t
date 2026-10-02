@@ -119,7 +119,7 @@ export default function WorkspacePage({
         </div>
         {!role && (
           <p className="mt-2 text-sm text-muted">
-            Members can create repositories here and ship changes to them.
+            Members can create repositories here and merge pull requests into them.
           </p>
         )}
       </aside>

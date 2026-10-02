@@ -28,7 +28,7 @@ type App = { Bindings: Bindings; Variables: { viewer: Viewer; services: ApiEnv }
  * the operation's input from the path, query string and JSON body.
  */
 const ROUTES: {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "PATCH";
   path: string;
   operation: string;
   input?: (params: Record<string, string>, query: Input, body: Input) => Input;
@@ -38,30 +38,41 @@ const ROUTES: {
   { method: "GET", path: "/v1/repos", operation: "list_repos", input: (_p, q) => ({ query: q.q }) },
   { method: "POST", path: "/v1/repos", operation: "create_repo", input: (_p, _q, b) => b },
   { method: "GET", path: "/v1/repos/:owner/:name", operation: "get_repo", input: repo },
-  { method: "GET", path: "/v1/repos/:owner/:name/intents", operation: "list_intents", input: (p, q) => ({ ...repo(p), status: q.status }) },
-  { method: "POST", path: "/v1/repos/:owner/:name/intents", operation: "open_intent", input: (p, _q, b) => ({ ...b, ...repo(p) }) },
-  { method: "GET", path: "/v1/repos/:owner/:name/intents/:number", operation: "get_intent", input: (p) => ({ ...repo(p), number: Number(p.number) }) },
   { method: "GET", path: "/v1/repos/:owner/:name/events", operation: "list_events", input: (p, q) => ({ ...repo(p), before: q.before }) },
-  { method: "POST", path: "/v1/intents/:intent_id/attempts", operation: "start_attempt", input: (p, _q, b) => ({ ...b, intent_id: p.intent_id }) },
-  { method: "GET", path: "/v1/attempts/:attempt_id", operation: "get_attempt", input: (p) => p },
-  { method: "GET", path: "/v1/attempts/:attempt_id/session", operation: "read_session", input: (p, q) => ({ ...p, after: Number(q.after) || 0 }) },
-  { method: "POST", path: "/v1/attempts/:attempt_id/session", operation: "record_session", input: (p, _q, b) => ({ ...b, ...p }) },
-  { method: "POST", path: "/v1/attempts/:attempt_id/submit", operation: "submit_attempt", input: (p, _q, b) => ({ ...b, ...p }) },
-  { method: "POST", path: "/v1/attempts/:attempt_id/abandon", operation: "abandon_attempt", input: (p) => p },
-  { method: "POST", path: "/v1/attempts/:attempt_id/ship", operation: "ship_attempt", input: (p) => p },
-  { method: "GET", path: "/v1/attempts/:attempt_id/changes", operation: "get_attempt_changes", input: (p) => p },
+  { method: "GET", path: "/v1/repos/:owner/:name/labels", operation: "list_labels", input: repo },
+  { method: "GET", path: "/v1/repos/:owner/:name/issues", operation: "list_issues", input: (p, q) => ({ ...repo(p), state: q.state, label: q.label }) },
+  { method: "POST", path: "/v1/repos/:owner/:name/issues", operation: "create_issue", input: (p, _q, b) => ({ ...b, ...repo(p) }) },
+  { method: "GET", path: "/v1/repos/:owner/:name/issues/:number", operation: "get_issue", input: numbered },
+  { method: "PATCH", path: "/v1/repos/:owner/:name/issues/:number", operation: "update_issue", input: numbered },
+  { method: "POST", path: "/v1/repos/:owner/:name/issues/:number/close", operation: "close_issue", input: numbered },
+  { method: "POST", path: "/v1/repos/:owner/:name/issues/:number/reopen", operation: "reopen_issue", input: numbered },
+  { method: "POST", path: "/v1/repos/:owner/:name/issues/:number/comments", operation: "add_comment", input: numbered },
+  { method: "GET", path: "/v1/repos/:owner/:name/pulls", operation: "list_pull_requests", input: (p, q) => ({ ...repo(p), state: q.state }) },
+  { method: "POST", path: "/v1/repos/:owner/:name/pulls", operation: "create_pull_request", input: (p, _q, b) => ({ ...b, ...repo(p) }) },
+  { method: "GET", path: "/v1/repos/:owner/:name/pulls/:number", operation: "get_pull_request", input: numbered },
+  { method: "GET", path: "/v1/repos/:owner/:name/pulls/:number/changes", operation: "get_pull_request_changes", input: numbered },
+  { method: "GET", path: "/v1/repos/:owner/:name/pulls/:number/session", operation: "read_session", input: (p, q) => ({ ...numbered(p), after: Number(q.after) || 0 }) },
+  { method: "POST", path: "/v1/repos/:owner/:name/pulls/:number/session", operation: "record_session", input: numbered },
+  { method: "POST", path: "/v1/repos/:owner/:name/pulls/:number/ready", operation: "mark_pull_request_ready", input: numbered },
+  { method: "POST", path: "/v1/repos/:owner/:name/pulls/:number/close", operation: "close_pull_request", input: numbered },
+  { method: "POST", path: "/v1/repos/:owner/:name/pulls/:number/merge", operation: "merge_pull_request", input: numbered },
 ];
 
 function repo(params: Record<string, string>): Input {
   return { repo: `${params.owner}/${params.name}` };
 }
 
+/** An issue or pull request named in the path, with the body's fields. */
+function numbered(params: Record<string, string>, _query: Input = {}, body: Input = {}): Input {
+  return { ...body, ...repo(params), number: Number(params.number) };
+}
+
 /** The section of the API reference an operation is listed under. */
 function tagFor(operation: string): string {
   if (operation === "whoami" || operation.includes("workspace")) return "Accounts";
   if (operation.includes("session")) return "Sessions";
-  if (operation.includes("attempt")) return "Attempts";
-  if (operation.includes("intent")) return "Intents";
+  if (operation.includes("pull_request")) return "Pull requests";
+  if (/issue|label|comment/.test(operation)) return "Issues";
   return "Repositories";
 }
 
@@ -69,7 +80,11 @@ const app = new Hono<App>();
 
 // The API is called from browsers too: the reference's explorer, and apps
 // built on g1t. It carries no cookies, so any origin may call it.
-app.use(cors({ origin: "*", allowHeaders: ["authorization", "content-type"] }));
+app.use(cors({
+    origin: "*",
+    allowHeaders: ["authorization", "content-type"],
+    allowMethods: ["GET", "POST", "PATCH", "OPTIONS"],
+  }));
 
 // `Authorization: Bearer g1t_…`. A missing token is an anonymous viewer; a
 // wrong one is rejected so a typo does not silently look signed out.
@@ -170,7 +185,7 @@ for (const route of ROUTES) {
   const operation = operationsByName.get(route.operation)!;
   app.on(route.method, route.path, async (c) => {
     let body: Input = {};
-    if (route.method === "POST") {
+    if (route.method !== "GET") {
       try {
         body = await c.req.json();
       } catch {

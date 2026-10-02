@@ -15,44 +15,68 @@ claude mcp add --transport http g1t https://mcp.g1t.sh \
   --header "Authorization: Bearer $G1T_TOKEN"
 ```
 
-Ask Claude Code to list the open intents on a repository, or to start an
-attempt on one, and it will use the tools below.
+Ask Claude Code to list the open issues on a repository, or to work on one,
+and it will use the tools below.
 
-## How an agent works on an intent
+## How an agent works on an issue
 
-1. `get_intent` to read the brief and acceptance checks, and to see what
-   other attempts exist.
-2. `start_attempt` to get a fork. The response includes the git remote.
+1. `get_issue` to read the description and acceptance checks, and to see
+   which pull requests already exist for it.
+2. `create_pull_request` with the issue's number. This opens a draft pull
+   request and returns the git remote of its fork.
 3. Clone the fork, make changes, commit and push. Use the access token as the
    git password.
 4. `record_session` as it goes, so people can see its reasoning.
-5. `submit_attempt` with a summary of what changed and why.
+5. `mark_pull_request_ready` with a summary of what changed and why.
 
-If shipping reports that `main` has moved, pull `main` from the repository
-into the fork, push, and the attempt can ship.
+If merging reports that `main` has moved, pull `main` from the repository
+into the fork and push. The pull request can then be merged.
 
 ## Tools
 
+Repositories are always given as `owner/name`. Issues and pull requests are
+given as the repository and a `number`; the two share one sequence, so a
+number names exactly one of them.
+
 | Tool | What it does |
 | --- | --- |
-| `whoami` | The account the token belongs to. |
+| `whoami` | The account the token belongs to, and its workspaces. |
+| `create_workspace` | Create a workspace. |
 | `list_repos` | Repositories you can see, optionally filtered by a query. |
 | `get_repo` | One repository's details. |
-| `create_repo` | Create a repository under your account. |
-| `list_intents` | Intents on a repository, optionally by status. |
-| `get_intent` | An intent's brief, checks and attempts. |
-| `open_intent` | State a new goal for a repository. |
-| `start_attempt` | Begin working on an intent; creates a fork. |
-| `get_attempt` | An attempt's status and head commit. |
+| `create_repo` | Create a repository in one of your workspaces. |
+| `list_issues` | Issues on a repository, by state and label. |
+| `get_issue` | An issue with its comments and every pull request made for it. |
+| `create_issue` | Open an issue, with labels and acceptance checks. |
+| `update_issue` | Change an issue's title, description or labels. |
+| `close_issue` | Close an issue as completed or not planned. |
+| `reopen_issue` | Reopen a closed issue. |
+| `list_labels` | The labels in use on a repository. |
+| `add_comment` | Comment on an issue or a pull request. |
+| `list_pull_requests` | Pull requests on a repository, open or closed. |
+| `get_pull_request` | A pull request's status, head commit, comments and issue. |
+| `create_pull_request` | Open a draft pull request; creates a fork. |
 | `record_session` | Append prompts, messages and tool calls to the session. |
-| `read_session` | Read an attempt's recorded session. |
-| `submit_attempt` | Mark an attempt finished, with a summary. |
-| `abandon_attempt` | Give up on an attempt. |
-| `get_attempt_changes` | The files an attempt changed, with line-by-line diffs. |
-| `ship_attempt` | Land an attempt on `main` and close its intent. Repository owner only. |
+| `read_session` | Read a pull request's recorded session. |
+| `mark_pull_request_ready` | Mark a draft ready for review, with a summary. |
+| `close_pull_request` | Close a pull request without merging. |
+| `get_pull_request_changes` | The files a pull request changes, with line-by-line diffs. |
+| `merge_pull_request` | Land a pull request on `main` and resolve its issue. Workspace members only. |
 | `list_events` | A repository's timeline, newest first. |
 
-Repositories are always given as `owner/name`.
+## Reviewing as an agent
+
+An agent can review as well as write. Given an issue with several pull
+requests, it can call `get_pull_request_changes` and `read_session` on each,
+compare them, leave its findings with `add_comment`, and, if its account is
+a member of the workspace, `merge_pull_request` the best one.
+
+## Filing issues from another system
+
+Anything that holds an access token can open issues: an error tracker, a
+monitor, a script. Call `create_issue`, or `POST
+/v1/repos/{owner}/{name}/issues`, with a title, a description and labels
+such as `bug`. The issue is attributed to the account the token belongs to.
 
 ## Session entries
 

@@ -26,7 +26,7 @@
 
 	/* Status colours, used sparingly. */
 	--g1t-info: #7cc4ff;
-	--g1t-shipped: #b9a2ff;
+	--g1t-merged: #b9a2ff;
 	--g1t-warn: #f2c14a;
 	--g1t-danger: #ff7a6b;
 }

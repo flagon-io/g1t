@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 pub enum Role {
     /// Everything a member can, plus managing members.
     Owner,
-    /// Create repositories, push, open intents and ship.
+    /// Create repositories, push, manage issues and merge pull requests.
     Member,
 }
 

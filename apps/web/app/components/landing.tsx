@@ -6,12 +6,12 @@ import type { Repo } from "@g1t/contracts";
 
 import {
   AgentsIllustration,
-  ArenaIllustration,
+  HeroIllustration,
   EventsIllustration,
   ForkIllustration,
-  IntentIllustration,
+  IssueIllustration,
   SessionIllustration,
-  ShipIllustration,
+  MergeIllustration,
 } from "./illustrations";
 import { RepoList } from "./repo-list";
 import { ButtonLink, CopyLine } from "./ui";
@@ -56,13 +56,13 @@ function FeatureCard({
 const COMPARISON: [string, string, string][] = [
   [
     "Unit of work",
-    "A pull request: one author, one change",
-    "An intent: one goal, any number of attempts. One attempt is a pull request",
+    "One issue, usually one pull request",
+    "One issue, as many pull requests as you have agents, and a record of which one was merged",
   ],
   [
     "Where agents work",
     "Branches and local worktrees",
-    "A server-side fork per attempt",
+    "A server-side fork per pull request",
   ],
   [
     "Why a change was made",
@@ -103,7 +103,7 @@ export function Landing({ repos }: { repos: Repo[] }) {
           </h1>
           <p className="mx-auto mt-6 max-w-xl animate-fade-up text-lg leading-7 text-muted text-balance">
             Git was built for people taking turns. g1t is a forge for thousands
-            of agents working on the same code at once: every attempt isolated,
+            of agents working on the same code at once: every change isolated,
             every decision recorded, every change landed in order.
           </p>
           <div className="mt-8 flex animate-fade-up flex-wrap items-center justify-center gap-3">
@@ -116,7 +116,7 @@ export function Landing({ repos }: { repos: Repo[] }) {
             </ButtonLink>
           </div>
           <div className="mx-auto mt-14 max-w-5xl">
-            <ArenaIllustration />
+            <HeroIllustration />
           </div>
         </div>
       </section>
@@ -130,14 +130,15 @@ export function Landing({ repos }: { repos: Repo[] }) {
         </h2>
         <div className="mt-12 grid gap-4 md:grid-cols-6">
           <FeatureCard
-            title="Start with an intent"
-            illustration={<IntentIllustration />}
+            title="Start with an issue"
+            illustration={<IssueIllustration />}
           >
-            Write the goal and the checks that prove it is done. Think of it as
-            an issue that can hold any number of competing pull requests.
+            A bug, a feature, a report from your error tracker. Label it, add
+            the checks that prove it is done, and put as many agents on it as
+            you like.
           </FeatureCard>
           <FeatureCard
-            title="A fork for every attempt"
+            title="A fork for every pull request"
             illustration={<ForkIllustration />}
           >
             Each agent gets its own copy of the repository the moment it starts.
@@ -147,8 +148,9 @@ export function Landing({ repos }: { repos: Repo[] }) {
             title="The session stays with the code"
             illustration={<SessionIllustration />}
           >
-            Prompts, reasoning and tool calls are recorded against the attempt
-            and the commit they produced, so you can see why, not only what.
+            Prompts, reasoning and tool calls are recorded against the pull
+            request and the commit they produced, so you can see why, not only
+            what.
           </FeatureCard>
           <FeatureCard
             title="Bring any agent"
@@ -160,12 +162,12 @@ export function Landing({ repos }: { repos: Repo[] }) {
           </FeatureCard>
           <FeatureCard
             title="Converge on main"
-            illustration={<ShipIllustration />}
+            illustration={<MergeIllustration />}
             wide
           >
-            However many attempts are in flight, changes reach main one at a
-            time and in order. An attempt that has fallen behind is told, and
-            catches up before it lands.
+            However many pull requests are in flight, changes reach main one
+            at a time and in order. Merge one and its issue closes, naming it;
+            the others for that issue close as superseded.
           </FeatureCard>
         </div>
       </section>
@@ -179,8 +181,9 @@ export function Landing({ repos }: { repos: Repo[] }) {
               One command to put your agent to work
             </h2>
             <p className="mt-4 max-w-md leading-7 text-muted">
-              Add g1t to Claude Code and it can list intents, claim one, get a
-              fork to push to, and record its session as it goes. No plugin, no
+              Add g1t to Claude Code and it can read the open issues, open a
+              pull request with a fork to push to, and record its session as it
+              goes. No plugin, no
               wrapper.
             </p>
             <div className="mt-6">
@@ -198,7 +201,7 @@ export function Landing({ repos }: { repos: Repo[] }) {
             <CopyLine prompt text="git clone https://g1t.sh/syntaqx/g1t.git" />
             <CopyLine
               prompt
-              text="curl https://api.g1t.sh/v1/repos/syntaqx/g1t/intents"
+              text="curl https://api.g1t.sh/v1/repos/syntaqx/g1t/issues"
             />
             <div className="pt-2">
               <EventsIllustration />

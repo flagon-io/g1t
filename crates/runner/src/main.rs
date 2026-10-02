@@ -1,15 +1,15 @@
-//! Runs a coding agent on one attempt and reports back to g1t.
+//! Runs a coding agent on one pull request and reports back to g1t.
 //!
-//! This is the program a hosted sandbox starts. It clones the attempt's
-//! fork, runs the agent harness headless, streams what the agent does into
-//! the attempt's session as it happens, pushes the result and submits the
-//! attempt. It talks to g1t only through the public API and git, exactly
+//! This is the program a hosted sandbox starts. It clones the pull
+//! request's fork, runs the agent harness headless, streams what the agent
+//! does into the pull request's session as it happens, pushes the result
+//! and marks the pull request ready for review. It talks to g1t only through the public API and git, exactly
 //! as an agent on someone's own machine would.
 //!
 //! Configuration comes from the environment:
 //!
 //! - `G1T_API`, `G1T_TOKEN`, `G1T_USER`: where and who to report as.
-//! - `ATTEMPT_ID`, `GIT_REMOTE`: the attempt and its fork.
+//! - `G1T_REPO`, `PULL_NUMBER`, `GIT_REMOTE`: the pull request and its fork.
 //! - `PROMPT`: what the agent is asked to do.
 //! - `COMMIT_MESSAGE`: used if the agent leaves changes uncommitted.
 //! - `ANTHROPIC_API_KEY`: read by the harness itself.
@@ -74,7 +74,7 @@ fn run(reporter: &mut Reporter) -> Result<String> {
         Path::new("/work"),
         &["-c", &auth, "clone", "--quiet", &remote, WORKDIR],
     )
-    .context("could not clone the attempt's fork")?;
+    .context("could not clone the pull request's fork")?;
     git(workdir, &["config", "user.name", "g1t agent"])?;
     git(workdir, &["config", "user.email", "agent@g1t.sh"])?;
     let branch = git(workdir, &["rev-parse", "--abbrev-ref", "HEAD"])?;
@@ -103,13 +103,10 @@ fn run(reporter: &mut Reporter) -> Result<String> {
             &format!("HEAD:{branch}"),
         ],
     )
-    .context("could not push the attempt's commits")?;
+    .context("could not push the pull request's commits")?;
     reporter.record(Entry::new(
         "note",
-        &format!(
-            "Pushed {} to the attempt's fork.",
-            &head[..head.len().min(12)]
-        ),
+        &format!("Pushed {}.", &head[..head.len().min(12)]),
     ));
     Ok(summary)
 }
@@ -125,8 +122,8 @@ fn main() {
     match run(&mut reporter) {
         Ok(summary) => {
             reporter.flush();
-            if let Err(error) = reporter.submit(&summary) {
-                eprintln!("g1t-runner: could not submit: {error:#}");
+            if let Err(error) = reporter.ready(&summary) {
+                eprintln!("g1t-runner: could not mark the pull request ready: {error:#}");
                 std::process::exit(1);
             }
         }
@@ -134,7 +131,7 @@ fn main() {
             eprintln!("g1t-runner: {error:#}");
             reporter.record(Entry::new("note", &format!("The run failed: {error:#}")));
             reporter.flush();
-            let _ = reporter.abandon();
+            let _ = reporter.close();
             std::process::exit(1);
         }
     }

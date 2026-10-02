@@ -18,7 +18,7 @@ pub struct Repo {
     pub is_private: bool,
     pub owner_id: String,
     pub default_branch: String,
-    /// Set when this repo is an attempt's working copy of another repo.
+    /// Set when this repo is a pull request's working copy of another repo.
     pub fork_of: Option<String>,
     /// RFC 3339.
     pub created_at: String,
@@ -110,13 +110,13 @@ pub enum GitService {
     ReceivePack,
 }
 
-/// The result of landing an attempt.
+/// The result of landing a pull request.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Landed {
     /// The commit the branch points to now.
     pub commit: String,
     /// The commit it pointed to before, if it had one. Comparing against
-    /// this shows what the attempt changed.
+    /// this shows what the pull request changed.
     pub previous: Option<String>,
 }
 
@@ -198,13 +198,13 @@ pub struct LogArgs {
     pub limit: u32,
 }
 
-/// `fork_for_attempt`: a copy-on-write copy of the source repo, hidden from
-/// listings, for one attempt to work in. Returns `Outcome<Repo>`.
+/// `fork_for_pull`: a copy-on-write copy of the source repo, hidden from
+/// listings, for one pull request to be made in. Returns `Outcome<Repo>`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ForkArgs {
     pub source_id: String,
-    pub attempt_id: String,
+    pub pull_id: String,
     pub actor: User,
 }
 
@@ -285,7 +285,7 @@ pub struct Comparison {
 
 /// `compare`: what a repository's head changes.
 ///
-/// With no `base`, an attempt's fork is compared against the point where it
+/// With no `base`, a pull request's fork is compared against the point where it
 /// and the repository it came from last agreed, and any other repository
 /// against its head's parent. Returns `Outcome<Comparison>`.
 #[derive(Debug, Serialize, Deserialize)]

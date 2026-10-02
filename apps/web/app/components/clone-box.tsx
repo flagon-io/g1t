@@ -33,7 +33,7 @@ export function CloneBox({ path }: { path: string }) {
           text='claude mcp add --transport http g1t https://mcp.g1t.sh --header "Authorization: Bearer $G1T_TOKEN"'
         />
         <p className="mt-2 text-xs text-muted">
-          Connects Claude Code to g1t. Then ask it to work on an intent in{" "}
+          Connects Claude Code to g1t. Then ask it to work on an issue in{" "}
           <span className="font-mono text-fg">{path}</span>.{" "}
           <Link to="https://docs.g1t.sh/guides/bring-your-own-agent/" className="text-fg underline underline-offset-4">
             More

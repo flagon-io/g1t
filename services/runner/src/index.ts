@@ -3,8 +3,9 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 
 import {
   type AgentModel,
-  type Attempt,
-  type Intent,
+  type Issue,
+  type Pull,
+  type RepoPath,
   type Result,
   type RunHostedInput,
   type RunnerApi,
@@ -52,10 +53,12 @@ const TOKEN_TTL_SECONDS = 2 * 60 * 60;
 /** How g1t's own agent is labelled. What runs behind it is g1t's choice. */
 const AGENT = "g1t-agent";
 
-type RunRequest = { actor: User; attemptId: string; envVars: Record<string, string> };
+/** Which pull request a sandbox is working on, and as whom. */
+type Run = { actor: User; repo: RepoPath; number: number };
+type RunRequest = Run & { envVars: Record<string, string> };
 
 /**
- * One sandbox, for one attempt. The image's entrypoint is the g1t runner,
+ * One sandbox, for one pull request. The image's entrypoint is the g1t runner,
  * which does the work and exits; this class only starts it and cleans up
  * if it dies without reporting.
  */
@@ -63,20 +66,18 @@ export class AttemptSandbox extends Container<RunnerEnv> {
   sleepAfter = "45m";
 
   async run(request: RunRequest): Promise<void> {
-    await this.ctx.storage.put("run", {
-      actor: request.actor,
-      attemptId: request.attemptId,
-    });
-    await this.start({ envVars: request.envVars, enableInternet: true });
+    const { envVars, ...run } = request;
+    await this.ctx.storage.put("run", run);
+    await this.start({ envVars, enableInternet: true });
   }
 
   override async onStop({ exitCode }: StopParams): Promise<void> {
     if (exitCode === 0) return;
-    // The runner abandons its own attempt when it fails. This covers a
-    // sandbox that was killed before it could; abandoning twice is refused
+    // The runner closes its own pull request when it fails. This covers a
+    // sandbox that was killed before it could; closing twice is refused
     // harmlessly.
-    const run = await this.ctx.storage.get<Pick<RunRequest, "actor" | "attemptId">>("run");
-    if (run) await workClient(this.env.WORK).abandonAttempt(run.actor, run.attemptId);
+    const run = await this.ctx.storage.get<Run>("run");
+    if (run) await workClient(this.env.WORK).closePull(run.actor, run.repo, run.number);
   }
 }
 
@@ -100,20 +101,20 @@ function modelEnv(env: RunnerEnv, model: ConfiguredModel): Record<string, string
   return vars;
 }
 
-function buildPrompt(intent: Intent, instructions: string): string {
+function buildPrompt(issue: Issue, instructions: string): string {
   const parts = [
     "You are a coding agent working in the git repository checked out in the current directory.",
-    `Goal: ${intent.title}`,
-    intent.brief,
+    `Issue #${issue.number}: ${issue.title}`,
+    issue.body,
   ];
-  if (intent.checks.length > 0) {
+  if (issue.checks.length > 0) {
     parts.push(
-      `These commands must pass when you are done. Run them if the tools are installed:\n${intent.checks.map((check) => `- ${check}`).join("\n")}`,
+      `These commands must pass when you are done. Run them if the tools are installed:\n${issue.checks.map((check) => `- ${check}`).join("\n")}`,
     );
   }
   if (instructions) parts.push(instructions);
   parts.push(
-    "Make the change and keep it focused on the goal. Commit your work with a clear message. Do not push; that is done for you. Finish with a short summary of what you changed and why.",
+    "Make the change and keep it focused on the issue. Commit your work with a clear message. Do not push; that is done for you. Finish with a short summary of what you changed and why.",
   );
   return parts.filter(Boolean).join("\n\n");
 }
@@ -150,9 +151,10 @@ export default class RunnerService
 
   async run(
     actor: User,
-    intentId: string,
+    repo: RepoPath,
+    issueNumber: number,
     input: RunHostedInput,
-  ): Promise<Result<Attempt[]>> {
+  ): Promise<Result<Pull[]>> {
     if (!this.allowed(actor)) {
       return fail("forbidden", "g1t agents are not enabled for your account.");
     }
@@ -165,42 +167,48 @@ export default class RunnerService
     const identity = identityClient(this.env.IDENTITY);
     const work = workClient(this.env.WORK);
 
-    const attempts: Attempt[] = [];
+    const found = await work.getIssue(repo, issueNumber, actor);
+    if (!found.ok) return found;
+    const { issue } = found.value;
+    const prompt = buildPrompt(issue, input.instructions?.trim() ?? "");
+
+    const pulls: Pull[] = [];
     for (let i = 0; i < count; i++) {
-      const started = await work.startAttempt(actor, intentId, {
+      const opened = await work.openPull(actor, repo, {
+        issue: issue.number,
         agent: AGENT,
         runtime: "hosted",
       });
       // The first failure is the answer; later ones mean some already run.
-      if (!started.ok) return attempts.length ? ok(attempts) : started;
-      const attempt = started.value;
-      attempts.push(attempt);
+      if (!opened.ok) return pulls.length ? ok(pulls) : opened;
+      const pull = opened.value;
+      pulls.push(pull);
 
-      const found = await work.getAttempt(attempt.id, actor);
-      if (!found.ok) return found;
       // The sandbox acts as the person who started it, through a token
       // that only lives as long as a run can.
       const { token } = await identity.createAccessToken(
         actor,
-        `Hosted attempt ${attempt.id}`,
+        `g1t agent on ${repo.namespace}/${repo.name}#${pull.number}`,
         TOKEN_TTL_SECONDS,
       );
-      const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(attempt.id));
+      const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(pull.id));
       await sandbox.run({
         actor,
-        attemptId: attempt.id,
+        repo,
+        number: pull.number,
         envVars: {
           G1T_API: "https://api.g1t.sh",
           G1T_TOKEN: token,
           G1T_USER: actor.username,
-          ATTEMPT_ID: attempt.id,
-          GIT_REMOTE: `https://g1t.sh/${attempt.fork.namespace}/${attempt.fork.name}.git`,
-          COMMIT_MESSAGE: found.value.intent.title,
-          PROMPT: buildPrompt(found.value.intent, input.instructions?.trim() ?? ""),
+          G1T_REPO: `${repo.namespace}/${repo.name}`,
+          PULL_NUMBER: String(pull.number),
+          GIT_REMOTE: `https://g1t.sh/${pull.fork.namespace}/${pull.fork.name}.git`,
+          COMMIT_MESSAGE: issue.title,
+          PROMPT: prompt,
           ...modelEnv(this.env, model),
         },
       });
     }
-    return ok(attempts);
+    return ok(pulls);
   }
 }

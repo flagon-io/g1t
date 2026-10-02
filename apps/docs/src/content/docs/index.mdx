@@ -3,7 +3,7 @@ title: g1t documentation
 description: Guides and reference for g1t, the git forge built for AI scale.
 template: splash
 hero:
-  tagline: Git for AI scale. Host repositories, state goals as intents, and let any number of agents attempt them in parallel.
+  tagline: Git for AI scale. Host repositories, track work as issues, and let any number of agents open pull requests for them in parallel.
   actions:
     - text: Quickstart
       link: /quickstart/
@@ -18,20 +18,20 @@ import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 <CardGrid>
   <Card title="Start here" icon="rocket">
-    Create an account, push a repository and put an agent on an intent in a
+    Create an account, push a repository and put an agent on an issue in a
     few minutes.
 
     [Quickstart](/quickstart/)
   </Card>
   <Card title="Understand the model" icon="puzzle">
-    Intents, attempts, sessions and shipping, and how they relate to the pull
-    requests you already know.
+    Issues, pull requests and sessions, and how g1t keeps track of which pull
+    request resolved an issue when many were made for it.
 
     [Concepts](/concepts/overview/)
   </Card>
   <Card title="Let g1t do the work" icon="star">
-    Run g1t's own agents on an intent, each in a sandbox, and ship the best
-    result.
+    Assign g1t's own agents to an issue, each in a sandbox, and merge the
+    best pull request.
 
     [g1t agents](/guides/g1t-agents/)
   </Card>

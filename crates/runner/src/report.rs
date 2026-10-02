@@ -1,4 +1,4 @@
-//! Reports an attempt's progress to g1t through its public API.
+//! Reports a pull request's progress to g1t through its public API.
 
 use std::time::{Duration, Instant};
 
@@ -53,7 +53,8 @@ fn redact(text: &str, secrets: &[String]) -> String {
 pub struct Reporter {
     api: String,
     token: String,
-    attempt: String,
+    /// The pull request's path in the API: `repos/<owner>/<name>/pulls/<number>`.
+    pull: String,
     /// Values that must never reach a session, which is as public as the
     /// repository: the credentials this process was started with.
     secrets: Vec<String>,
@@ -73,7 +74,7 @@ impl Reporter {
         Ok(Reporter {
             api: var("G1T_API")?,
             token,
-            attempt: var("ATTEMPT_ID")?,
+            pull: format!("repos/{}/pulls/{}", var("G1T_REPO")?, var("PULL_NUMBER")?),
             secrets,
             pending: Vec::new(),
             last_flush: Instant::now(),
@@ -81,13 +82,10 @@ impl Reporter {
     }
 
     fn post(&self, action: &str, body: serde_json::Value) -> Result<()> {
-        ureq::post(&format!(
-            "{}/v1/attempts/{}/{action}",
-            self.api, self.attempt
-        ))
-        .set("authorization", &format!("Bearer {}", self.token))
-        .send_json(body)
-        .with_context(|| format!("{action} request failed"))?;
+        ureq::post(&format!("{}/v1/{}/{action}", self.api, self.pull))
+            .set("authorization", &format!("Bearer {}", self.token))
+            .send_json(body)
+            .with_context(|| format!("{action} request failed"))?;
         Ok(())
     }
 
@@ -114,12 +112,15 @@ impl Reporter {
         }
     }
 
-    pub fn submit(&self, summary: &str) -> Result<()> {
-        self.post("submit", serde_json::json!({ "summary": summary }))
+    /// Marks the pull request ready for review, with `summary` as its
+    /// description.
+    pub fn ready(&self, summary: &str) -> Result<()> {
+        self.post("ready", serde_json::json!({ "summary": summary }))
     }
 
-    pub fn abandon(&self) -> Result<()> {
-        self.post("abandon", serde_json::json!({}))
+    /// Closes the pull request without merging.
+    pub fn close(&self) -> Result<()> {
+        self.post("close", serde_json::json!({}))
     }
 }
 

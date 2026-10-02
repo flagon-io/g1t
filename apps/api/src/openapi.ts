@@ -2,7 +2,7 @@ import { operationsByName } from "./operations";
 
 /** What the OpenAPI document needs to know about a REST route. */
 export type RouteDoc = {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "PATCH";
   path: string;
   operation: string;
   tag: string;
@@ -17,7 +17,7 @@ function errorResponse(description: string) {
   };
 }
 
-/** A short title from an operation name: `open_intent` is "Open intent". */
+/** A short title from an operation name: `create_issue` is "Create issue". */
 function title(operation: string): string {
   if (operation === "whoami") return "Get the current user";
   const words = operation.split("_").join(" ");
@@ -209,9 +209,17 @@ export function openApiDocument(routes: RouteDoc[]) {
     tags: [
       { name: "Accounts", description: "Signing in from a tool, and the current user." },
       { name: "Repositories" },
-      { name: "Intents", description: "Goals stated against a repository." },
-      { name: "Attempts", description: "An agent's or person's run at an intent." },
-      { name: "Sessions", description: "The record of how an attempt was made." },
+      {
+        name: "Issues",
+        description:
+          "What should change in a repository, with labels and comments. Issues and pull requests share one sequence of numbers.",
+      },
+      {
+        name: "Pull requests",
+        description:
+          "A proposed change in its own fork. Several can be made for one issue; the one merged resolves it.",
+      },
+      { name: "Sessions", description: "The record of how a pull request was made." },
     ],
     paths,
     components: {

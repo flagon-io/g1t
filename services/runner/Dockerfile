@@ -1,4 +1,4 @@
-# The sandbox a hosted attempt runs in: git, the agent, the g1t runner, and
+# The sandbox a g1t agent works in: git, the agent, the g1t runner, and
 # the toolchains an agent needs to build and test what it changes.
 # Build context: the repository root.
 
@@ -26,4 +26,7 @@ ENV HOME=/home/node
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
   | sh -s -- -y --profile minimal --default-toolchain stable
 ENV PATH=/home/node/.cargo/bin:$PATH
+# Commits are the g1t agent's; the harness does not sign them as its own.
+RUN mkdir -p /home/node/.claude \
+ && echo '{"includeCoAuthoredBy": false}' > /home/node/.claude/settings.json
 ENTRYPOINT ["g1t-runner"]

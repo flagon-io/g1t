@@ -6,7 +6,7 @@ const REPO_NAME = /^[a-z0-9._-]{1,100}$/;
 /** Routes and reserved words that may not be registered as usernames. */
 const RESERVED = new Set([
   "api", "mcp", "login", "logout", "register", "new", "settings", "search",
-  "admin", "auth", "attempts", "verify", "forgot", "reset", "device", "workspaces", "u", "oauth", "assets", "docs", "explore", "g1t", "about",
+  "admin", "auth", "pulls", "issues", "verify", "forgot", "reset", "device", "workspaces", "u", "oauth", "assets", "docs", "explore", "g1t", "about",
 ]);
 
 export function isValidNamespace(value: string): boolean {
