@@ -22,6 +22,23 @@ export type SshKey = {
 
 export type AccessToken = { id: string; name: string; createdAt: number };
 
+export type DeviceStart = {
+  /** Secret held by the tool and exchanged for a token once approved. */
+  deviceCode: string;
+  /** Short code shown to the person, e.g. `WDJB-MJHT`. */
+  userCode: string;
+  /** Seconds until both codes stop working. */
+  expiresIn: number;
+  /** Seconds the tool should wait between polls. */
+  interval: number;
+};
+
+export type DeviceRequest = { userCode: string; clientName: string };
+
+export type DeviceClaim =
+  | { status: "pending" | "denied" | "expired" }
+  | { status: "approved"; token: string; user: User };
+
 /** Accounts, credentials and sessions. */
 export interface IdentityApi {
   /** Creates an account and signs it in. */
@@ -38,6 +55,16 @@ export interface IdentityApi {
   requestPasswordReset(email: string): Promise<boolean>;
   /** Sets a new password from an emailed token and ends every session. */
   resetPassword(token: string, password: string): Promise<Result<User>>;
+
+  /**
+   * Device sign-in (RFC 8628). A tool starts a request, a person approves
+   * its short code in a browser, and the tool claims an access token.
+   */
+  deviceStart(clientName: string): Promise<DeviceStart>;
+  /** What a user code is asking for, or null if it is not valid. */
+  deviceLookup(userCode: string): Promise<DeviceRequest | null>;
+  deviceResolve(userCode: string, user: User, approve: boolean): Promise<Result<boolean>>;
+  deviceClaim(deviceCode: string): Promise<DeviceClaim>;
 
   userForSession(sessionToken: string): Promise<Viewer>;
 

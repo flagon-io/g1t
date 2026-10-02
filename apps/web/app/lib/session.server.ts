@@ -45,8 +45,9 @@ export function getViewer(context: Context): Viewer {
 export function requireUser(context: Context, request: Request): User {
   const viewer = getViewer(context);
   if (!viewer) {
-    const next = new URL(request.url).pathname;
-    throw redirect(`/login?next=${encodeURIComponent(next)}`);
+    // Keep the query string: a device sign-in link carries its code there.
+    const { pathname, search } = new URL(request.url);
+    throw redirect(`/login?next=${encodeURIComponent(pathname + search)}`);
   }
   return viewer;
 }

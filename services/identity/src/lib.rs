@@ -4,6 +4,7 @@
 //! the methods and their arguments.
 
 mod crypto;
+mod device;
 mod email;
 
 use g1t_contracts::identity::*;
@@ -549,6 +550,10 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     match method.as_str() {
         "register" => reply(&identity.register(args(body)?).await?),
         "sign_in" => reply(&identity.sign_in(args(body)?).await?),
+        "device_start" => reply(&identity.device_start(args(body)?).await?),
+        "device_lookup" => reply(&identity.device_lookup(args(body)?).await?),
+        "device_resolve" => reply(&identity.device_resolve(args(body)?).await?),
+        "device_claim" => reply(&identity.device_claim(args(body)?).await?),
         "resend_verification" => reply(&identity.resend_verification(args(body)?).await?),
         "verify_email" => reply(&identity.verify_email(args(body)?).await?),
         "request_password_reset" => reply(&identity.request_password_reset(args(body)?).await?),

@@ -39,6 +39,11 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     requestPasswordReset: (email) => call("request_password_reset", { email }),
     resetPassword: (token, password) =>
       call("reset_password", { token, password }),
+    deviceStart: (clientName) => call("device_start", { clientName }),
+    deviceLookup: (userCode) => call("device_lookup", { userCode }),
+    deviceResolve: (userCode, user, approve) =>
+      call("device_resolve", { userCode, user, approve }),
+    deviceClaim: (deviceCode) => call("device_claim", { deviceCode }),
     userForSession: (sessionToken) => call("user_for_session", { sessionToken }),
     userForGitCredentials: (username, secret) =>
       call("user_for_git_credentials", { username, secret }),

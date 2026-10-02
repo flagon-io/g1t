@@ -10,8 +10,8 @@ agents can attempt in parallel.
 This page takes you from nothing to an agent working on your repository.
 
 Prefer to have an assistant do it? Give it [g1t.sh/llms.txt](https://g1t.sh/llms.txt) and
-ask it to set you up. It can do everything except open the confirmation
-email.
+ask it to set you up. It will give you a link to open in your browser, where
+you create your account and approve it. It never sees your password.
 
 ## 1. Create an account
 

@@ -17,7 +17,7 @@ export function meta({}: Route.MetaArgs) {
 
 export function loader({ request, context }: Route.LoaderArgs) {
   if (getViewer(context)) throw redirect(nextPath(request));
-  return null;
+  return { next: nextPath(request) };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -33,7 +33,11 @@ export async function action({ request }: Route.ActionArgs) {
   });
 }
 
-export default function Login({ actionData }: Route.ComponentProps) {
+export default function Login({ loaderData, actionData }: Route.ComponentProps) {
+  const registerUrl =
+    loaderData.next === "/"
+      ? "/register"
+      : `/register?next=${encodeURIComponent(loaderData.next)}`;
   return (
     <AuthCard
       title="Welcome back"
@@ -41,7 +45,7 @@ export default function Login({ actionData }: Route.ComponentProps) {
       footer={
         <>
           New to g1t?{" "}
-          <Link to="/register" className="text-fg underline underline-offset-4">
+          <Link to={registerUrl} className="text-fg underline underline-offset-4">
             Create an account
           </Link>
         </>

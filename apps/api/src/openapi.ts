@@ -29,73 +29,88 @@ function openApiPath(path: string): string {
   return path.replace(/:([a-z_]+)/g, "{$1}");
 }
 
-/** Hand-written entries for the two onboarding routes, which are not operations. */
+/** Hand-written entries for device sign-in, which is not an operation. */
 const ONBOARDING = {
-  "/v1/register": {
+  "/v1/device/code": {
     post: {
-      operationId: "register",
+      operationId: "device_code",
       tags: ["Accounts"],
-      summary: "Register",
-      description: "Create an account. Sends a confirmation email.",
+      summary: "Start signing in",
+      description:
+        "Begins a device sign-in. Show the person `verification_uri_complete` and have them open it in a browser, where they sign in or register and approve the code. Then poll `/v1/device/token`.",
       security: [],
       requestBody: {
-        required: true,
         content: {
           "application/json": {
             schema: {
               type: "object",
-              required: ["username", "email", "password"],
               properties: {
-                username: {
+                client_name: {
                   type: "string",
-                  description: "Lowercase letters, digits and single hyphens; at most 39 characters.",
+                  description: "What is asking, shown to the person approving. For example, Claude Code.",
                 },
-                email: { type: "string", format: "email" },
-                password: { type: "string", minLength: 10 },
               },
             },
           },
         },
       },
       responses: {
-        "201": { description: "The account was created; a confirmation link was emailed." },
-        "409": errorResponse("The username or email is already registered."),
-        "422": errorResponse("The input is not valid."),
-      },
-    },
-  },
-  "/v1/tokens": {
-    post: {
-      operationId: "create_token",
-      tags: ["Accounts"],
-      summary: "Create token",
-      description: "Create an access token from a username and password.",
-      security: [],
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              required: ["username", "password"],
-              properties: {
-                username: { type: "string" },
-                password: { type: "string" },
-                name: { type: "string", description: "A label for the token." },
-              },
-            },
-          },
-        },
-      },
-      responses: {
-        "201": {
-          description: "The token, shown once.",
+        "200": {
+          description: "The codes for this sign-in.",
           content: {
             "application/json": {
               schema: {
                 type: "object",
                 properties: {
-                  token: { type: "string" },
+                  device_code: { type: "string", description: "Secret. Send it to /v1/device/token." },
+                  user_code: { type: "string", description: "Shown to the person, like WDJB-MJHT." },
+                  verification_uri: { type: "string" },
+                  verification_uri_complete: {
+                    type: "string",
+                    description: "The link to give the person; it carries the code.",
+                  },
+                  expires_in: { type: "integer", description: "Seconds until the codes expire." },
+                  interval: { type: "integer", description: "Seconds to wait between polls." },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  "/v1/device/token": {
+    post: {
+      operationId: "device_token",
+      tags: ["Accounts"],
+      summary: "Finish signing in",
+      description:
+        "Asks whether the person has approved. Poll no faster than the interval. The token is returned once.",
+      security: [],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["device_code"],
+              properties: { device_code: { type: "string" } },
+            },
+          },
+        },
+      },
+      responses: {
+        "200": {
+          description: "The state of the sign-in.",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["status"],
+                properties: {
+                  status: { type: "string", enum: ["pending", "approved", "denied", "expired"] },
+                  token: { type: "string", description: "Present when approved." },
+                  username: { type: "string" },
                   verified: {
                     type: "boolean",
                     description: "Whether the account's email is confirmed.",
@@ -105,7 +120,6 @@ const ONBOARDING = {
             },
           },
         },
-        "401": errorResponse("Incorrect username or password."),
       },
     },
   },
@@ -193,7 +207,7 @@ export function openApiDocument(routes: RouteDoc[]) {
     servers: [{ url: "https://api.g1t.sh" }],
     security: [{ token: [] }, {}],
     tags: [
-      { name: "Accounts", description: "Registering and getting a token." },
+      { name: "Accounts", description: "Signing in from a tool, and the current user." },
       { name: "Repositories" },
       { name: "Intents", description: "Goals stated against a repository." },
       { name: "Attempts", description: "An agent's or person's run at an intent." },

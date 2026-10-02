@@ -7,6 +7,7 @@ import { identity } from "../lib/services.server";
 import {
   assertSameOrigin,
   getViewer,
+  nextPath,
   startSession,
 } from "../lib/session.server";
 
@@ -14,8 +15,8 @@ export function meta({}: Route.MetaArgs) {
   return [{ title: "Create an account · g1t" }];
 }
 
-export function loader({ context }: Route.LoaderArgs) {
-  if (getViewer(context)) throw redirect("/");
+export function loader({ request, context }: Route.LoaderArgs) {
+  if (getViewer(context)) throw redirect(nextPath(request));
   return null;
 }
 
@@ -28,7 +29,7 @@ export async function action({ request }: Route.ActionArgs) {
     String(form.get("password") ?? ""),
   );
   if (!result.ok) return { error: result.error.message };
-  throw redirect("/", {
+  throw redirect(nextPath(request), {
     headers: { "set-cookie": startSession(result.value.sessionToken) },
   });
 }

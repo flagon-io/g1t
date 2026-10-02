@@ -99,8 +99,8 @@ app.all("*", async (c, next) => {
   await next();
 });
 
-// Onboarding. These two are REST only: they take a password, which has no
-// place in an agent's tool call.
+// Signing in from a tool. Accounts are created, and passwords typed, only
+// in a browser; a tool gets its token by having a person approve a code.
 
 async function jsonBody(request: Request): Promise<Record<string, unknown>> {
   try {
@@ -110,41 +110,33 @@ async function jsonBody(request: Request): Promise<Record<string, unknown>> {
   }
 }
 
-app.post("/v1/register", async (c) => {
+app.post("/v1/device/code", async (c) => {
   const body = await jsonBody(c.req.raw);
-  const result = await c.get("services").IDENTITY.register(
-    String(body.username ?? ""),
-    String(body.email ?? ""),
-    String(body.password ?? ""),
-  );
-  if (!result.ok) {
-    return c.json({ error: result.error }, httpStatus(result.error) as 409 | 422);
-  }
-  return c.json(
-    {
-      user: result.value.user,
-      next: "A confirmation link was sent to that email address. The account cannot create or push anything until the link is opened.",
-    },
-    201,
-  );
+  const started = await c
+    .get("services")
+    .IDENTITY.deviceStart(String(body.client_name ?? ""));
+  return c.json({
+    device_code: started.deviceCode,
+    user_code: started.userCode,
+    verification_uri: "https://g1t.sh/device",
+    verification_uri_complete: `https://g1t.sh/device?code=${started.userCode}`,
+    expires_in: started.expiresIn,
+    interval: started.interval,
+  });
 });
 
-app.post("/v1/tokens", async (c) => {
+app.post("/v1/device/token", async (c) => {
   const body = await jsonBody(c.req.raw);
-  const identity = c.get("services").IDENTITY;
-  const password = String(body.password ?? "");
-  // An existing token must not be usable to mint more tokens.
-  const user = password.startsWith("g1t_")
-    ? null
-    : await identity.userForGitCredentials(String(body.username ?? ""), password);
-  if (!user) {
-    return c.json(
-      { error: { code: "unauthenticated", message: "Incorrect username or password." } },
-      401,
-    );
-  }
-  const created = await identity.createAccessToken(user, String(body.name ?? ""));
-  return c.json({ token: created.token, verified: user.verified === true }, 201);
+  const claim = await c
+    .get("services")
+    .IDENTITY.deviceClaim(String(body.device_code ?? ""));
+  if (claim.status !== "approved") return c.json({ status: claim.status });
+  return c.json({
+    status: "approved",
+    token: claim.token,
+    username: claim.user.username,
+    verified: claim.user.verified === true,
+  });
 });
 
 app.get("/openapi.json", (c) =>

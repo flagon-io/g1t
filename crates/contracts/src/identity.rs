@@ -143,3 +143,72 @@ pub struct ResetPasswordArgs {
     pub token: String,
     pub password: String,
 }
+
+/// `device_start`: begins a device sign-in. Returns `DeviceStart`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceStartArgs {
+    /// What is asking, shown to the person approving, e.g. "Claude Code".
+    pub client_name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceStart {
+    /// Secret held by the tool and exchanged for a token once approved.
+    pub device_code: String,
+    /// Short code shown to the person, e.g. `WDJB-MJHT`.
+    pub user_code: String,
+    /// Seconds until both codes stop working.
+    pub expires_in: u32,
+    /// Seconds the tool should wait between polls.
+    pub interval: u32,
+}
+
+/// `device_lookup`: what a user code is asking for, or null if it is not
+/// valid. Returns `Option<DeviceRequest>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceLookupArgs {
+    pub user_code: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceRequest {
+    pub user_code: String,
+    pub client_name: String,
+}
+
+/// `device_resolve`: the signed-in person approves or denies a request.
+/// Returns `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceResolveArgs {
+    pub user_code: String,
+    pub user: User,
+    pub approve: bool,
+}
+
+/// `device_claim`: the tool asks whether its request was approved.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceClaimArgs {
+    pub device_code: String,
+}
+
+/// The answer to a `device_claim`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum DeviceClaim {
+    /// Nobody has approved or denied it yet; ask again after the interval.
+    Pending,
+    Denied,
+    /// The code was never issued, has expired, or was already used.
+    Expired,
+    /// The access token, returned once.
+    Approved {
+        token: String,
+        user: User,
+    },
+}

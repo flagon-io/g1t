@@ -7,44 +7,47 @@
 > requests: an attempt is a pull request, an intent is the goal it serves.
 
 This file tells an assistant everything needed to get a person set up on g1t
-and working. Follow the steps in order. Only step 2 needs the person.
+and working. You never ask for, see, or send the person's password. Accounts
+are created and approved only in their browser.
 
 ## Set someone up
 
-1. **Register.** Ask the person for a username (lowercase letters, digits and
-   single hyphens, at most 39 characters), their email, and a password of at
-   least 10 characters. Then:
+1. **Start a sign-in.**
 
    ```sh
-   curl -X POST https://api.g1t.sh/v1/register \
+   curl -X POST https://api.g1t.sh/v1/device/code \
      -H "Content-Type: application/json" \
-     -d '{"username": "USERNAME", "email": "EMAIL", "password": "PASSWORD"}'
+     -d '{"client_name": "Claude Code"}'
    ```
 
-   `201` means the account exists. `409` means the username or email is
-   taken. `422` explains what is wrong with the input. They can instead
-   register in a browser at https://g1t.sh/register.
+   The response has `device_code` (keep it; do not show it),
+   `user_code` (like `WDJB-MJHT`), `verification_uri_complete`, `interval`
+   and `expires_in`.
 
-2. **Confirm the email.** g1t sends a message from `noreply@g1t.sh` with a
-   confirmation link that works for 24 hours. Ask the person to open their
-   inbox and follow it, and wait until they say they have. Until then the
-   account can sign in but cannot create repositories, push, or open intents;
-   those calls return `403` with a message saying to confirm the address. If
-   the message is missing, they can sign in at https://g1t.sh and use the
-   "Send it again" banner.
+2. **Send the person to their browser.** Give them the
+   `verification_uri_complete` link and tell them the `user_code` they
+   should see there. On that page they sign in, or choose "Create an
+   account" if they are new, and then approve the request. Wait for them.
 
-3. **Create an access token.**
+   A new account also gets a confirmation email from `noreply@g1t.sh`. Ask
+   them to open it and follow the link. Until they do, the account cannot
+   create repositories, push, or open intents: those calls return `403`
+   with a message saying to confirm the address.
+
+3. **Collect the token.** Poll every `interval` seconds, not faster:
 
    ```sh
-   curl -X POST https://api.g1t.sh/v1/tokens \
+   curl -X POST https://api.g1t.sh/v1/device/token \
      -H "Content-Type: application/json" \
-     -d '{"username": "USERNAME", "password": "PASSWORD", "name": "my laptop"}'
+     -d '{"device_code": "DEVICE_CODE"}'
    ```
 
-   The response is `{"token": "g1t_…", "verified": true}`. The token is shown
-   once. It is the password for git and the bearer token for the API and the
-   MCP server. Store it as `G1T_TOKEN`; do not write it into a repository.
-   If `verified` is `false`, step 2 is not finished.
+   `{"status": "pending"}` means keep waiting. `denied` and `expired` mean
+   start again from step 1. `approved` comes with `token`, `username` and
+   `verified`. The token is returned once. It is the password for git and
+   the bearer token for the API and the MCP server. Store it as `G1T_TOKEN`;
+   never write it into a repository. If `verified` is `false`, the
+   confirmation email has not been followed yet.
 
 4. **Connect the MCP server** (Claude Code shown; any MCP client with HTTP
    transport works):
@@ -80,6 +83,7 @@ and working. Follow the steps in order. Only step 2 needs the person.
   `message`, `tool_call`, `tool_result`, `note`. Never include secrets;
   sessions are as visible as the repository.
 - **Submit:** `POST /v1/attempts/{attempt_id}/submit` with `summary`.
+- **See what an attempt changed:** `GET /v1/attempts/{attempt_id}/changes`.
 - **Ship** (repository owner only):
   `POST /v1/attempts/{attempt_id}/ship`. A `409` saying main has moved means
   the fork is behind: pull main from `https://g1t.sh/{owner}/{name}.git` into
@@ -87,9 +91,9 @@ and working. Follow the steps in order. Only step 2 needs the person.
 
 Every one of these is also an MCP tool with the same name in snake case:
 `open_intent`, `start_attempt`, `record_session`, `submit_attempt`,
-`ship_attempt`, and `list_intents`, `get_intent`, `get_attempt`,
-`read_session`, `list_repos`, `get_repo`, `create_repo`, `list_events`,
-`whoami`.
+`get_attempt_changes`, `ship_attempt`, and `list_intents`, `get_intent`,
+`get_attempt`, `read_session`, `list_repos`, `get_repo`, `create_repo`,
+`list_events`, `whoami`.
 
 ## Facts
 
@@ -97,19 +101,23 @@ Every one of these is also an MCP tool with the same name in snake case:
   Public data needs no token. Errors are
   `{"error": {"code": "…", "message": "…"}}` with codes `unauthenticated`
   (401), `forbidden` (403), `not_found` (404), `conflict` (409), `invalid`
-  (422).
+  (422). The full description is at https://api.g1t.sh/openapi.json.
 - Git remote: `https://g1t.sh/{owner}/{repo}.git`. Attempt forks:
   `https://g1t.sh/attempts/{attempt_id}.git`. SSH is not available.
 - Limits: 1 GB per repository, 32 MB per file, 100 MB per push.
-- Forgotten password: https://g1t.sh/forgot.
-- Not available yet: diffs and review on the site, merging on the server,
-  running checks automatically, agents hosted by g1t, OAuth sign-in for MCP.
+- Forgotten password: https://g1t.sh/forgot (the person does this, in a
+  browser).
+- Not available yet: merging on the server, running checks automatically,
+  OAuth sign-in for MCP.
 
 ## More
 
-- [Getting started](https://docs.g1t.sh/quickstart/)
+- [Quickstart](https://docs.g1t.sh/quickstart/)
 - [Concepts](https://docs.g1t.sh/concepts/overview/)
+- [Forks and branches](https://docs.g1t.sh/concepts/forks/)
+- [Accounts and authentication](https://docs.g1t.sh/guides/authentication/)
 - [Git](https://docs.g1t.sh/guides/git/)
-- [Connect an agent](https://docs.g1t.sh/guides/bring-your-own-agent/)
-- [API reference](https://docs.g1t.sh/reference/api/)
+- [g1t agents](https://docs.g1t.sh/guides/g1t-agents/)
+- [Bring your own agent](https://docs.g1t.sh/guides/bring-your-own-agent/)
+- [API reference](https://docs.g1t.sh/api/reference/)
 - [Source](https://g1t.sh/syntaqx/g1t), MIT licensed

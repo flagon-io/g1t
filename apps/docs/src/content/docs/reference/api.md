@@ -23,15 +23,17 @@ curl https://api.g1t.sh/v1/user \
 Public data can be read without a token. A token that is not valid is
 rejected with `401` rather than treated as anonymous.
 
-## Getting an account and a token
+## Signing in from a tool
 
-These two calls need no token, so an assistant can set someone up from
-scratch. See [llms.txt](https://g1t.sh/llms.txt) for the full walkthrough.
+A tool gets a token by having a person approve a short code in their
+browser. See [signing in from a tool](/guides/authentication/#signing-in-from-a-tool).
 
 | Method | Path | |
 | --- | --- | --- |
-| `POST` | `/v1/register` | Create an account. Body: `username`, `email`, `password`. Sends a confirmation email. |
-| `POST` | `/v1/tokens` | Create an access token. Body: `username`, `password`, `name`. |
+| `POST` | `/v1/device/code` | Start a sign-in. Body: `client_name`. |
+| `POST` | `/v1/device/token` | Ask whether it was approved. Body: `device_code`. |
+
+Accounts are created in a browser only. There is no registration endpoint.
 
 ## Errors
 
