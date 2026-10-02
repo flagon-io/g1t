@@ -160,14 +160,6 @@ impl From<SessionRow> for SessionEntry {
     }
 }
 
-/// An open pull request made from a branch of its repository.
-#[derive(Deserialize)]
-pub struct BranchRow {
-    pub id: String,
-    pub source_branch: String,
-    pub head_commit: Option<String>,
-}
-
 /// A single number selected as `n`.
 #[derive(Deserialize)]
 pub struct NumberRow {

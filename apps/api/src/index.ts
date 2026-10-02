@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import {
   type ServiceBinding,
   type Viewer,
+  eventsClient,
   httpStatus,
   identityClient,
   reposClient,
@@ -17,7 +18,8 @@ import { type ApiEnv, operations, operationsByName } from "./operations";
 
 type Input = Record<string, unknown>;
 /** The Worker's raw bindings; Rust services are reached through clients. */
-type Bindings = Omit<ApiEnv, "IDENTITY" | "REPOS" | "WORK"> & {
+type Bindings = {
+  EVENTS: ServiceBinding;
   IDENTITY: ServiceBinding;
   REPOS: ServiceBinding;
   WORK: ServiceBinding;
@@ -92,7 +94,7 @@ app.use(cors({
 app.use(async (c, next) => {
   const [scheme, token] = (c.req.header("authorization") ?? "").split(" ");
   const services: ApiEnv = {
-    ...c.env,
+    EVENTS: eventsClient(c.env.EVENTS),
     IDENTITY: identityClient(c.env.IDENTITY),
     REPOS: reposClient(c.env.REPOS),
     WORK: workClient(c.env.WORK),

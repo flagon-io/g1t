@@ -9,8 +9,11 @@
 export type EventPayloads = {
   "repo.created": { repoId: string; namespace: string; name: string; isPrivate: boolean };
   "repo.forked": { repoId: string; sourceRepoId: string; pullId: string };
-  /** `after` is the commit the ref points to once the push has landed. */
-  "git.push": { repoId: string; ref: string; after: string };
+  /**
+   * One branch moved by a push. `ref` is the full ref, `after` the commit it
+   * points to now, and `defaultBranch` whether it is the default branch.
+   */
+  "git.push": { repoId: string; ref: string; after: string; defaultBranch: boolean };
   "issue.opened": { issueId: string; repoId: string; number: number; title: string };
   "issue.updated": { issueId: string; repoId: string; number: number };
   /** `resolvedBy` is the number of the pull request whose merge closed it. */
@@ -40,8 +43,8 @@ export type G1tEvent<T extends EventType = EventType> = {
     type: K;
     /** The service that published it. */
     source: string;
-    /** Milliseconds since the epoch. */
-    time: number;
+    /** RFC 3339. */
+    time: string;
     /** The repo the event concerns, used to scope timelines and deliveries. */
     repoId: string | null;
     /** The user or agent that caused it, if any. */
@@ -68,9 +71,4 @@ export interface EventsApi {
   publish(events: NewEvent[]): Promise<void>;
   /** Newest first. */
   list(query: EventQuery): Promise<G1tEvent[]>;
-}
-
-/** Implemented by services that consume events from the bus. */
-export interface EventSubscriber {
-  onEvents(events: G1tEvent[]): Promise<void>;
 }

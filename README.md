@@ -64,7 +64,7 @@ full. An assistant can do it for you from <https://g1t.sh/llms.txt>.
 | `services/identity` | Accounts, workspaces, sessions, keys and tokens. Rust. |
 | `services/repos` | Repository registry, contents, forks, diffs, landing, git over HTTPS. Rust. |
 | `services/work` | Issues, pull requests, comments and sessions. Rust. |
-| `services/events` | The event bus and its log. |
+| `services/events` | The event bus and its log. Rust. |
 | `services/runner` | Starts the sandboxes g1t agents work in. |
 | `crates/runner` | The program inside a sandbox: runs the agent and reports back. Rust. |
 | `crates/contracts` | Types and service interfaces for the Rust services. |
@@ -75,8 +75,8 @@ full. An assistant can do it for you from <https://g1t.sh/llms.txt>.
 
 Each service is its own Worker with its own database. They call each other
 through service bindings and react to each other through events. Anything
-that is not a web UI is written in Rust or on its way there; the events
-service and the API are next.
+that is not a web UI is written in Rust or on its way there; the API is
+next.
 
 ## Run your own
 
@@ -102,6 +102,7 @@ Then, once:
 Deploy everything in dependency order:
 
 ```sh
+(cd services/events && npx wrangler deploy)
 (cd services/identity && npx wrangler deploy)
 (cd services/repos && npx wrangler deploy)
 (cd services/work && npx wrangler deploy)

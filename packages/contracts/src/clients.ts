@@ -1,3 +1,4 @@
+import type { EventsApi } from "./events";
 import type { IdentityApi } from "./identity";
 import type { ReposApi } from "./repos";
 import type { WorkApi } from "./work";
@@ -125,5 +126,13 @@ export function workClient(service: ServiceBinding): WorkApi {
       call("append_session", { actor, repo, number, entries }),
     readSession: (repo, number, viewer, afterSeq = 0) =>
       call("read_session", { repo, number, viewer, afterSeq }),
+  };
+}
+
+export function eventsClient(service: ServiceBinding): EventsApi {
+  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
+  return {
+    publish: (events) => call("publish", { events }),
+    list: (query) => call("list", query),
   };
 }

@@ -5,7 +5,7 @@
   "workspaces": ["apps/*", "services/*", "packages/*"],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "deploy": "npm run deploy -w @g1t/events -w @g1t/api -w @g1t/web"
+    "deploy": "npm run deploy -w @g1t/api -w @g1t/web"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

@@ -1,4 +1,5 @@
-//! Events published on the bus. Mirrors `packages/contracts/src/events.ts`.
+//! Events published on the bus, and the events service that carries them.
+//! Mirrors `packages/contracts/src/events.ts`.
 
 use serde::Serialize;
 
@@ -34,14 +35,17 @@ pub struct RepoForked {
     pub pull_id: String,
 }
 
-/// `after` is the commit the ref points to once the push has landed.
+/// One branch moved by a push. `after` is the commit it points to now.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitPush {
     pub repo_id: String,
+    /// The full ref, such as `refs/heads/main`.
     #[serde(rename = "ref")]
     pub git_ref: String,
     pub after: String,
+    /// Whether the ref is the repository's default branch.
+    pub default_branch: bool,
 }
 
 /// The payload of `issue.opened`, `issue.updated`, `issue.closed` and
@@ -101,16 +105,64 @@ pub struct SessionAppended {
     pub count: u32,
 }
 
-/// An event as delivered to subscribers. `data` is left as JSON; each
-/// subscriber decodes the types it cares about.
-#[derive(Debug, serde::Deserialize)]
+/// An event as stored in the log and delivered to subscribers. `data` is
+/// left as JSON; each reader decodes the types it cares about.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Delivered {
+pub struct Event {
+    /// Sorts by the time the event was published.
     pub id: String,
     #[serde(rename = "type")]
     pub kind: String,
-    /// Milliseconds since the epoch, until the bus itself moves to RFC 3339.
-    pub time: serde_json::Value,
+    /// The service that published it.
+    pub source: String,
+    /// RFC 3339.
+    pub time: String,
+    /// The repo the event concerns.
     pub repo_id: Option<String>,
+    /// The user or agent that caused it, if any.
+    pub actor: Option<String>,
     pub data: serde_json::Value,
+}
+
+/// `publish`, as a publisher sends it. Returns nothing.
+#[derive(Debug, Serialize)]
+pub struct Publish<T: Serialize> {
+    pub events: Vec<NewEvent<T>>,
+}
+
+/// `publish`, as the events service reads it.
+#[derive(Debug, serde::Deserialize)]
+pub struct PublishArgs {
+    pub events: Vec<Published>,
+}
+
+/// A [`NewEvent`] of any type, as received.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Published {
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub source: String,
+    #[serde(default)]
+    pub repo_id: Option<String>,
+    #[serde(default)]
+    pub actor: Option<String>,
+    pub data: serde_json::Value,
+}
+
+/// `list`: events from the log, newest first. Returns `Vec<Event>`.
+#[derive(Debug, Default, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListArgs {
+    #[serde(default)]
+    pub repo_id: Option<String>,
+    /// Only these types; all types when empty.
+    #[serde(default)]
+    pub types: Vec<String>,
+    /// Only events older than this event id.
+    #[serde(default)]
+    pub before: Option<String>,
+    #[serde(default)]
+    pub limit: Option<u32>,
 }

@@ -516,7 +516,7 @@ tokens and SSH keys remain for git itself.
 | `services/identity` | Rust | Worker + D1 | Accounts, workspaces and memberships, sessions, SSH keys, access tokens, device sign-in, OAuth codes and grants |
 | `services/repos` | Rust | Worker + D1 + Artifacts | Repository registry, contents, forks, diffs, landing, git over HTTPS. Storage sits behind a `GitStore` port with an Artifacts adapter. |
 | `services/work` | Rust | Worker + D1 | Issues, pull requests, comments, sessions; later a Durable Object per repo for the landing queue and live state |
-| `services/events` | TypeScript, moving to Rust | Worker + Queues + D1 | The event bus: durable log, and one queue per subscribing service |
+| `services/events` | Rust | Worker + Queues + D1 | The event bus: durable log, and one queue per subscribing service |
 | `services/runner`, `crates/runner` | TypeScript, Rust | Worker + Containers | Starts a sandbox per g1t agent; the program inside runs the agent harness and reports through the public API |
 | `apps/web` | TypeScript | Worker | Server-rendered site. Holds no data; calls services over RPC. |
 | `apps/docs` | TypeScript | Worker (static) | Documentation and the API explorer |
@@ -553,8 +553,8 @@ protocol to implement.
 
 The site is TypeScript. Everything behind it is Rust, compiled to
 WebAssembly for Workers and natively for containers and the CLI. Services
-are being ported one at a time; identity, repos and work are done, events
-and the API are next. Rust services speak a
+are being ported one at a time; identity, repos, work and events are done,
+and the API is next. Rust services speak a
 small JSON protocol over service bindings (`POST /rpc/<method>`), with the
 types in `crates/contracts`.
 
@@ -648,11 +648,11 @@ browser with no token to paste; workspaces with members; issues with labels, che
 comments; pull requests in forks or from branches, with diffs and sessions,
 several per issue; merging with a behind check, which resolves the issue and supersedes
 the rest; g1t agents in sandboxes with a choice of model; REST API, OpenAPI
-and MCP server; event bus. Identity, repos and work are in Rust.
+and MCP server; event bus. Identity, repos, work and events are in Rust.
 
 1. Branch protection, and deleting a branch once its pull request merges.
 2. Scopes on OAuth grants and access tokens.
-3. Port events and the API to Rust; event storage per the design above.
+3. Port the API to Rust; event storage per the design above.
 4. CLI with Claude Code hooks to record sessions automatically.
 5. Acceptance checks run in sandboxes; review comments on lines.
 6. Server-side merge and rebase; landing queue with speculative checks;

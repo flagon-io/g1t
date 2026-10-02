@@ -128,6 +128,11 @@ pub mod js {
         Reflect::get(target, &name.into()).unwrap_or(JsValue::UNDEFINED)
     }
 
+    /// Sets a property on an object.
+    pub fn set(target: &JsValue, name: &str, value: &JsValue) {
+        let _ = Reflect::set(target, &name.into(), value);
+    }
+
     pub fn to_js<T: Serialize>(value: &T) -> Result<JsValue> {
         Ok(JSON::parse(&serde_json::to_string(value)?).map_err(Thrown::from_value)?)
     }

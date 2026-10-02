@@ -1,0 +1,205 @@
+//! The events service: the bus every state change in g1t is published on,
+//! and its durable log.
+//!
+//! Publishing puts events on a queue and returns. The queue consumer writes
+//! them to the log and passes each batch on to every subscriber's own
+//! queue, so a slow or failing subscriber holds up nobody else.
+//!
+//! Other services reach it over `POST /rpc/<method>`; see
+//! `g1t_contracts::events` for the methods and their arguments.
+
+use g1t_contracts::events::{Event, ListArgs, PublishArgs};
+use g1t_contracts::new_id;
+use g1t_contracts::time::rfc3339;
+use g1t_kit::{args, js, now_ms, reply, rpc_method};
+use serde::Deserialize;
+use worker::js_sys::{Array, Object};
+use worker::wasm_bindgen::{JsCast, JsValue};
+use worker::{Context, D1Database, Env, MessageBatch, Request, Response, Result, event};
+
+const DEFAULT_PAGE: u32 = 50;
+const MAX_PAGE: u32 = 200;
+/// Every binding whose name starts with this is a queue that receives all
+/// events: one per subscribing service.
+const SUBSCRIBER_PREFIX: &str = "SUBSCRIBER_";
+
+#[derive(Deserialize)]
+struct EventRow {
+    id: String,
+    #[serde(rename = "type")]
+    kind: String,
+    source: String,
+    time: String,
+    repo_id: Option<String>,
+    actor: Option<String>,
+    /// JSON.
+    data: String,
+}
+
+impl From<EventRow> for Event {
+    fn from(row: EventRow) -> Self {
+        Event {
+            id: row.id,
+            kind: row.kind,
+            source: row.source,
+            time: row.time,
+            repo_id: row.repo_id,
+            actor: row.actor,
+            data: serde_json::from_str(&row.data).unwrap_or_default(),
+        }
+    }
+}
+
+fn optional(value: &Option<String>) -> JsValue {
+    value.as_deref().map_or(JsValue::NULL, JsValue::from)
+}
+
+/// Sends `events` to a queue binding, one message each.
+async fn send(queue: &JsValue, events: &[Event]) -> Result<()> {
+    let messages = Array::new();
+    for event in events {
+        let message = Object::new();
+        js::set(&message, "body", &js::to_js(event)?);
+        messages.push(&message);
+    }
+    js::call(queue, "sendBatch", &[messages.into()]).await?;
+    Ok(())
+}
+
+struct Events {
+    db: D1Database,
+    env: Env,
+}
+
+impl Events {
+    /// Assigns each event its id and time and puts it on the bus.
+    async fn publish(&self, a: PublishArgs) -> Result<()> {
+        if a.events.is_empty() {
+            return Ok(());
+        }
+        let now = now_ms();
+        let events: Vec<Event> = a
+            .events
+            .into_iter()
+            .map(|event| Event {
+                id: new_id("evt", now),
+                kind: event.kind,
+                source: event.source,
+                time: rfc3339(now),
+                repo_id: event.repo_id,
+                actor: event.actor,
+                data: event.data,
+            })
+            .collect();
+        send(&js::binding(&self.env, "BUS")?, &events).await
+    }
+
+    /// Newest first. Callers must have checked that the viewer may see the
+    /// repository asked about.
+    async fn list(&self, a: ListArgs) -> Result<Vec<Event>> {
+        let mut conditions = Vec::new();
+        let mut values: Vec<JsValue> = Vec::new();
+        if let Some(repo_id) = &a.repo_id {
+            conditions.push("repo_id = ?".to_owned());
+            values.push(repo_id.as_str().into());
+        }
+        if !a.types.is_empty() {
+            let marks = vec!["?"; a.types.len()].join(", ");
+            conditions.push(format!("type IN ({marks})"));
+            values.extend(a.types.iter().map(|kind| JsValue::from(kind.as_str())));
+        }
+        if let Some(before) = &a.before {
+            conditions.push("id < ?".to_owned());
+            values.push(before.as_str().into());
+        }
+        let filter = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", conditions.join(" AND "))
+        };
+        values.push(a.limit.unwrap_or(DEFAULT_PAGE).min(MAX_PAGE).into());
+        let rows = self
+            .db
+            .prepare(format!(
+                "SELECT * FROM events {filter} ORDER BY id DESC LIMIT ?"
+            ))
+            .bind(&values)?
+            .all()
+            .await?
+            .results::<EventRow>()?;
+        Ok(rows.into_iter().map(Event::from).collect())
+    }
+
+    /// Writes a batch from the bus to the log, then hands it to every
+    /// subscriber.
+    async fn deliver(&self, events: &[Event]) -> Result<()> {
+        let mut statements = Vec::with_capacity(events.len());
+        for event in events {
+            statements.push(
+                self.db
+                    .prepare(
+                        // Redelivered batches must not duplicate log rows.
+                        "INSERT OR IGNORE INTO events (id, type, source, time, repo_id, actor, data)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    )
+                    .bind(&[
+                        event.id.as_str().into(),
+                        event.kind.as_str().into(),
+                        event.source.as_str().into(),
+                        event.time.as_str().into(),
+                        optional(&event.repo_id),
+                        optional(&event.actor),
+                        serde_json::to_string(&event.data)?.into(),
+                    ])?,
+            );
+        }
+        self.db.batch(statements).await?;
+
+        let bindings: &JsValue = self.env.as_ref();
+        for name in Object::keys(bindings.unchecked_ref::<Object>()).iter() {
+            let Some(name) = name
+                .as_string()
+                .filter(|name| name.starts_with(SUBSCRIBER_PREFIX))
+            else {
+                continue;
+            };
+            send(&js::binding(&self.env, &name)?, events).await?;
+        }
+        Ok(())
+    }
+}
+
+#[event(fetch)]
+async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response> {
+    let Some(method) = rpc_method(&request) else {
+        return Response::error("Not found", 404);
+    };
+    let body: serde_json::Value = request.json().await?;
+    let events = Events {
+        db: env.d1("DB")?,
+        env,
+    };
+    match method.as_str() {
+        "publish" => reply(&events.publish(args(body)?).await?),
+        "list" => reply(&events.list(args(body)?).await?),
+        _ => Response::error("Unknown method", 404),
+    }
+}
+
+/// Events from the bus. A batch that fails is retried whole, which is safe
+/// because both the log and subscribers ignore an event they have seen.
+#[event(queue)]
+async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()> {
+    let events = Events {
+        db: env.d1("DB")?,
+        env,
+    };
+    let delivered: Vec<Event> = batch
+        .messages()?
+        .into_iter()
+        .map(|message| message.into_body())
+        .collect();
+    events.deliver(&delivered).await?;
+    batch.ack_all();
+    Ok(())
+}

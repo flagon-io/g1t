@@ -12,16 +12,15 @@ mod refs;
 mod registry;
 mod store;
 
-use g1t_contracts::events::{GitPush, NewEvent, RepoCreated, RepoForked};
+use g1t_contracts::events::{GitPush, NewEvent, Publish, RepoCreated, RepoForked};
 use g1t_contracts::repos::*;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, User, Viewer, is_valid_repo_name, new_id};
-use g1t_kit::{args, js, now_ms, reply, rpc_method};
+use g1t_kit::{args, now_ms, reply, rpc_method};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use serde::Serialize;
-use worker::wasm_bindgen::JsValue;
-use worker::{Context, Env, Request, Response, Result, event};
+use worker::{Context, Env, Fetcher, Request, Response, Result, event};
 
 use registry::{Registry, can_read, can_write, store_key};
 use store::{ArtifactsStore, GitRepo, GitStore, Scope};
@@ -119,14 +118,19 @@ async fn nearest_ancestor_in<R: GitRepo>(
 struct Repos<S: GitStore> {
     registry: Registry,
     store: S,
-    /// The events service, an RPC stub.
-    events: JsValue,
+    events: Fetcher,
 }
 
 impl<S: GitStore> Repos<S> {
     async fn publish<T: Serialize>(&self, event: NewEvent<T>) -> Result<()> {
-        js::call(&self.events, "publish", &[js::to_js(&[event])?]).await?;
-        Ok(())
+        g1t_kit::call(
+            &self.events,
+            "publish",
+            &Publish {
+                events: vec![event],
+            },
+        )
+        .await
     }
 
     /// Resolves a repo the viewer may read; private repos look missing.
@@ -542,7 +546,8 @@ impl<S: GitStore> Repos<S> {
                 format!("{branch} could not be updated: {reason}"),
             ));
         }
-        self.publish_push(&target, &new, Some(a.actor.id)).await?;
+        self.publish_push(&target, branch, &new, Some(a.actor.id))
+            .await?;
         Ok(Outcome::Ok(Landed {
             commit: new,
             previous: old,
@@ -610,7 +615,14 @@ impl<S: GitStore> Repos<S> {
         }))
     }
 
-    async fn publish_push(&self, repo: &Repo, after: &str, actor: Option<String>) -> Result<()> {
+    /// Reports that `branch` of `repo` now points to `after`.
+    async fn publish_push(
+        &self,
+        repo: &Repo,
+        branch: &str,
+        after: &str,
+        actor: Option<String>,
+    ) -> Result<()> {
         self.publish(NewEvent {
             kind: "git.push",
             source: SOURCE,
@@ -618,8 +630,9 @@ impl<S: GitStore> Repos<S> {
             actor,
             data: GitPush {
                 repo_id: repo.id.clone(),
-                git_ref: format!("refs/heads/{}", repo.default_branch),
+                git_ref: format!("refs/heads/{branch}"),
                 after: after.to_owned(),
+                default_branch: branch == repo.default_branch,
             },
         })
         .await
@@ -642,24 +655,26 @@ impl<S: GitStore> Repos<S> {
             Outcome::Ok(access) => access,
             refused => return git_http::refuse(refused),
         };
-        let response = git_http::forward(request, &git, &access).await?;
+        let forwarded = git_http::forward(request, &git, &access).await?;
 
         // Artifacts' own push notifications are per repository, which does
-        // not fit a repo per pull request, so the front end reports pushes itself.
-        let pushed = git.endpoint == "git-receive-pack" && response.status_code() == 200;
-        if pushed && let Some(repo) = self.registry.by_path(&git.path).await? {
-            let head = self
-                .store
-                .open(&store_key(&repo))
-                .await?
-                .log(&repo.default_branch, 1)
-                .await?;
-            if let Some(head) = head.first() {
-                self.publish_push(&repo, &head.hash, viewer.map(|user: User| user.id))
-                    .await?;
+        // not fit a repo per pull request, so the front end reports pushes
+        // itself: one event for each branch that moved.
+        let accepted = forwarded.response.status_code() == 200 && !forwarded.pushed.is_empty();
+        if accepted && let Some(repo) = self.registry.by_path(&git.path).await? {
+            let stored = self.store.open(&store_key(&repo)).await?;
+            let actor = viewer.map(|user: User| user.id);
+            for (branch, pushed) in &forwarded.pushed {
+                // The store can refuse one ref and accept another, so each
+                // is checked against where the branch actually is.
+                let head = stored.log(branch, 1).await?;
+                if head.first().is_some_and(|commit| commit.hash == *pushed) {
+                    self.publish_push(&repo, branch, pushed, actor.clone())
+                        .await?;
+                }
             }
         }
-        Ok(response)
+        Ok(forwarded.response)
     }
 }
 
@@ -668,7 +683,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     let repos = Repos {
         registry: Registry { db: env.d1("DB")? },
         store: ArtifactsStore::new(&env)?,
-        events: js::binding(&env, "EVENTS")?,
+        events: env.service("EVENTS")?,
     };
     let Some(method) = rpc_method(&request) else {
         return repos.git_http(request, &env).await;

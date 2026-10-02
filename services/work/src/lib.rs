@@ -7,20 +7,20 @@
 mod rows;
 
 use g1t_contracts::events::{
-    CommentCreated, Delivered, IssueEvent, NewEvent, PullEvent, SessionAppended,
+    CommentCreated, Event, IssueEvent, NewEvent, Publish, PullEvent, SessionAppended,
 };
 use g1t_contracts::repos::{ForkArgs, GetArgs, HeadArgs, LandArgs, Landed, Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome, User, Viewer, new_id};
-use g1t_kit::{args, js, now_ms, reply, rpc_method};
+use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::Serialize;
 use worker::wasm_bindgen::JsValue;
 use worker::{
     Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, Request, Response, Result, event,
 };
 
-use rows::{BranchRow, CommentRow, IssueRow, NumberRow, PullRow, SessionRow, ValueRow};
+use rows::{CommentRow, IssueRow, NumberRow, PullRow, SessionRow, ValueRow};
 
 const SOURCE: &str = "work";
 const MAX_ENTRY_BATCH: usize = 200;
@@ -84,8 +84,7 @@ macro_rules! check {
 struct Work {
     db: D1Database,
     repos: Fetcher,
-    /// The events service, an RPC stub.
-    events: JsValue,
+    events: Fetcher,
 }
 
 impl Work {
@@ -103,8 +102,14 @@ impl Work {
             actor: Some(actor.id.clone()),
             data,
         };
-        js::call(&self.events, "publish", &[js::to_js(&[event])?]).await?;
-        Ok(())
+        g1t_kit::call(
+            &self.events,
+            "publish",
+            &Publish {
+                events: vec![event],
+            },
+        )
+        .await
     }
 
     /// The repository, if the viewer may see it. Whether they may is
@@ -1098,57 +1103,49 @@ impl Work {
         ))
     }
 
-    /// A push moves the head of the pull requests it concerns: the one
-    /// whose fork was pushed to, or those from branches of the repository
-    /// that was.
-    async fn on_event(&self, event: &Delivered) -> Result<()> {
+    /// A push moves the head of the pull request it concerns: the one whose
+    /// fork was pushed to, or the one opened from the branch that moved.
+    async fn on_event(&self, event: &Event) -> Result<()> {
         if event.kind != "git.push" {
             return Ok(());
         }
-        let (Some(repo_id), Some(after)) = (event.repo_id.as_deref(), event.data["after"].as_str())
-        else {
+        let (Some(repo_id), Some(after), Some(git_ref)) = (
+            event.repo_id.as_deref(),
+            event.data["after"].as_str(),
+            event.data["ref"].as_str(),
+        ) else {
             return Ok(());
         };
         let now = rfc3339(now_ms());
-        self.db
-            .prepare(
-                "UPDATE pulls SET head_commit = ?, updated_at = ?
-                 WHERE fork_repo_id = ? AND status IN ('draft', 'open')",
-            )
-            .bind(&[after.into(), now.as_str().into(), repo_id.into()])?
-            .run()
-            .await?;
-
-        // The event does not say which branch moved, so each open pull
-        // request from a branch of this repository is checked.
-        let from_branches = self
-            .db
-            .prepare(
-                "SELECT id, source_branch, head_commit FROM pulls
-                 WHERE repo_id = ? AND source_branch IS NOT NULL AND status IN ('draft', 'open')",
-            )
-            .bind(&[repo_id.into()])?
-            .all()
-            .await?
-            .results::<BranchRow>()?;
-        for row in from_branches {
-            let head: Option<String> = g1t_kit::call(
-                &self.repos,
-                "head",
-                &HeadArgs {
-                    repo_id: repo_id.to_owned(),
-                    branch: row.source_branch,
-                },
-            )
-            .await?;
-            if let Some(head) = head.filter(|head| Some(head) != row.head_commit.as_ref()) {
+        let active = "status IN ('draft', 'open')";
+        let mut statements = Vec::new();
+        // A fork carries its pull request on its default branch.
+        if event.data["defaultBranch"].as_bool() == Some(true) {
+            statements.push(
                 self.db
-                    .prepare("UPDATE pulls SET head_commit = ?, updated_at = ? WHERE id = ?")
-                    .bind(&[head.into(), now.as_str().into(), row.id.into()])?
-                    .run()
-                    .await?;
-            }
+                    .prepare(format!(
+                        "UPDATE pulls SET head_commit = ?, updated_at = ?
+                         WHERE fork_repo_id = ? AND {active}"
+                    ))
+                    .bind(&[after.into(), now.as_str().into(), repo_id.into()])?,
+            );
         }
+        if let Some(branch) = git_ref.strip_prefix("refs/heads/") {
+            statements.push(
+                self.db
+                    .prepare(format!(
+                        "UPDATE pulls SET head_commit = ?, updated_at = ?
+                         WHERE repo_id = ? AND source_branch = ? AND {active}"
+                    ))
+                    .bind(&[
+                        after.into(),
+                        now.as_str().into(),
+                        repo_id.into(),
+                        branch.into(),
+                    ])?,
+            );
+        }
+        self.db.batch(statements).await?;
         Ok(())
     }
 }
@@ -1157,7 +1154,7 @@ fn service(env: &Env) -> Result<Work> {
     Ok(Work {
         db: env.d1("DB")?,
         repos: env.service("REPOS")?,
-        events: js::binding(env, "EVENTS")?,
+        events: env.service("EVENTS")?,
     })
 }
 
@@ -1194,7 +1191,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
 
 /// Events from the bus, delivered on this service's own queue.
 #[event(queue)]
-async fn queue(batch: MessageBatch<Delivered>, env: Env, _ctx: Context) -> Result<()> {
+async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()> {
     let work = service(&env)?;
     for message in batch.messages()? {
         work.on_event(message.body()).await?;

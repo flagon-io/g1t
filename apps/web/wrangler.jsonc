@@ -10,7 +10,6 @@
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "REPOS", "service": "g1t-repos" },
 		{ "binding": "WORK", "service": "g1t-work" },
-		{ "binding": "EVENTS", "service": "g1t-events" },
 		{ "binding": "RUNNER", "service": "g1t-runner" }
 	],
 	"observability": { "enabled": true },
