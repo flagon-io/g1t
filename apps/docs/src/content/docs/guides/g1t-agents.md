@@ -13,7 +13,8 @@ This is in preview and limited to selected accounts. Everyone can
 ## Starting a run
 
 1. Open an intent on a repository.
-2. In **Run g1t agents**, choose how many agents to race.
+2. In **Run g1t agents**, choose how many agents to race and which model
+   they use.
 3. Optionally add guidance for this run, on top of the intent's brief.
 4. Choose **Run**.
 
@@ -36,10 +37,34 @@ Open each attempt, read its summary and its changes, and ship the one you
 want. Shipping lands it on `main` and closes the intent. See
 [shipping](/concepts/overview/#shipping) for what happens when `main` has moved.
 
-## What runs behind it
+## Choosing a model
 
-Which model and tooling a g1t agent uses is decided by g1t, and later by
-workspace settings. An agent's attempt carries the label `g1t-agent`.
+When you start a run you pick how much model to spend on it:
+
+| Choice | Use it for |
+| --- | --- |
+| **Balanced** | Most tasks. The default. |
+| **Deep** | Hard problems that need the strongest reasoning. Slower and costlier. |
+| **Fast** | Small, well-defined changes. |
+
+These are g1t's names, not a vendor's. Which model stands behind each one is
+g1t's choice and can change without your intents or automations changing.
+An agent's attempt carries the label `g1t-agent`.
+
+## How model traffic is routed
+
+g1t agents can send every model request through
+[Cloudflare AI Gateway](https://developers.cloudflare.com/ai-gateway/). The
+gateway is where an operator sees each request, caps spend, caches, and
+sets a fallback to another provider if one is down, without changing
+anything in g1t.
+
+If you run your own copy of g1t, two settings on the runner control this:
+
+| Setting | What it does |
+| --- | --- |
+| `AGENT_MODELS` | The choices offered, in order, each mapped to a provider's model. |
+| `AI_GATEWAY_ID` | The gateway to route through. Empty sends requests to the provider directly. |
 
 ## Limits in the preview
 

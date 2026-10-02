@@ -48,7 +48,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   return {
     ...detail,
     viewer,
-    canRunHosted: await env.RUNNER.available(viewer),
+    agentModels: await env.RUNNER.models(viewer),
   };
 }
 
@@ -62,6 +62,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     const result = await env.RUNNER.run(user, intentId, {
       count: Number(form.get("count")),
       instructions: String(form.get("instructions") ?? ""),
+      model: String(form.get("model") ?? "") || undefined,
     });
     return result.ok ? null : { error: result.error.message };
   }
@@ -84,7 +85,7 @@ export default function IntentPage({
   actionData,
   params,
 }: Route.ComponentProps) {
-  const { intent, attempts, viewer, canRunHosted } = loaderData;
+  const { intent, attempts, viewer, agentModels } = loaderData;
 
   // Follow running attempts without a manual reload.
   const revalidator = useRevalidator();
@@ -211,7 +212,7 @@ export default function IntentPage({
           </section>
         )}
 
-        {open && canRunHosted && (
+        {open && agentModels.length > 0 && (
           <section className="rounded-xl border border-accent/30 bg-accent/5 p-4">
             <h3 className="flex items-center gap-2 text-sm font-medium">
               <Sparkles size={15} className="text-accent" />
@@ -234,6 +235,19 @@ export default function IntentPage({
                   {[1, 2, 3, 4, 5].map((count) => (
                     <option key={count} value={count}>
                       {count}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted">Model</span>
+                <select
+                  name="model"
+                  className="rounded-md border border-line bg-bg px-2 py-1 text-sm"
+                >
+                  {agentModels.map((model) => (
+                    <option key={model.id} value={model.id} title={model.description}>
+                      {model.label}
                     </option>
                   ))}
                 </select>

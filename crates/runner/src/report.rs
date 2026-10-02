@@ -67,6 +67,7 @@ impl Reporter {
         let token = var("G1T_TOKEN")?;
         let secrets = std::iter::once(token.clone())
             .chain(std::env::var("ANTHROPIC_API_KEY"))
+            .chain(std::env::var("AI_GATEWAY_TOKEN"))
             .filter(|secret| !secret.is_empty())
             .collect();
         Ok(Reporter {

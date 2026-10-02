@@ -2,6 +2,7 @@ import { Container, type StopParams } from "@cloudflare/containers";
 import { WorkerEntrypoint } from "cloudflare:workers";
 
 import {
+  type AgentModel,
   type Attempt,
   type Intent,
   type Result,
@@ -27,6 +28,21 @@ export interface RunnerEnv {
    * key above, so this stays an allowlist until accounts bring their own.
    */
   HOSTED_AGENT_USERS: string;
+  /**
+   * The models offered, as JSON: `[{ id, label, description, model }]`.
+   * `model` is the provider's model name and is never shown to users.
+   */
+  AGENT_MODELS: string;
+  /**
+   * A Cloudflare AI Gateway id. When set, model traffic goes through that
+   * gateway, which is where logging, spend limits, caching and fallback
+   * between providers are configured. Empty sends it to the provider
+   * directly.
+   */
+  AI_GATEWAY_ID: string;
+  CLOUDFLARE_ACCOUNT_ID: string;
+  /** Secret. Needed only if the gateway requires authentication. */
+  AI_GATEWAY_TOKEN?: string;
 }
 
 const MAX_AGENTS_PER_RUN = 5;
@@ -63,6 +79,24 @@ export class AttemptSandbox extends Container<RunnerEnv> {
   }
 }
 
+type ConfiguredModel = AgentModel & { model: string };
+
+/** Where the sandbox sends model requests, and what it sends with them. */
+function modelEnv(env: RunnerEnv, model: ConfiguredModel): Record<string, string> {
+  const vars: Record<string, string> = {
+    ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY!,
+    ANTHROPIC_MODEL: model.model,
+  };
+  if (env.AI_GATEWAY_ID) {
+    vars.ANTHROPIC_BASE_URL = `https://gateway.ai.cloudflare.com/v1/${env.CLOUDFLARE_ACCOUNT_ID}/${env.AI_GATEWAY_ID}/anthropic`;
+    if (env.AI_GATEWAY_TOKEN) {
+      vars.AI_GATEWAY_TOKEN = env.AI_GATEWAY_TOKEN;
+      vars.ANTHROPIC_CUSTOM_HEADERS = `cf-aig-authorization: Bearer ${env.AI_GATEWAY_TOKEN}`;
+    }
+  }
+  return vars;
+}
+
 function buildPrompt(intent: Intent, instructions: string): string {
   const parts = [
     "You are a coding agent working in the git repository checked out in the current directory.",
@@ -90,11 +124,24 @@ export default class RunnerService
     return new Response("Not found\n", { status: 404 });
   }
 
-  async available(viewer: Viewer): Promise<boolean> {
+  private configuredModels(): ConfiguredModel[] {
+    return JSON.parse(this.env.AGENT_MODELS);
+  }
+
+  private allowed(viewer: Viewer): boolean {
     if (!viewer || !this.env.ANTHROPIC_API_KEY) return false;
     return this.env.HOSTED_AGENT_USERS.split(",")
       .map((name) => name.trim())
       .includes(viewer.username);
+  }
+
+  async models(viewer: Viewer): Promise<AgentModel[]> {
+    if (!this.allowed(viewer)) return [];
+    return this.configuredModels().map(({ id, label, description }) => ({
+      id,
+      label,
+      description,
+    }));
   }
 
   async run(
@@ -102,9 +149,14 @@ export default class RunnerService
     intentId: string,
     input: RunHostedInput,
   ): Promise<Result<Attempt[]>> {
-    if (!(await this.available(actor))) {
-      return fail("forbidden", "Hosted agents are not enabled for your account.");
+    if (!this.allowed(actor)) {
+      return fail("forbidden", "g1t agents are not enabled for your account.");
     }
+    const models = this.configuredModels();
+    const model = input.model
+      ? models.find((candidate) => candidate.id === input.model)
+      : models[0];
+    if (!model) return fail("invalid", "That model is not available.");
     const count = Math.min(Math.max(Math.trunc(input.count) || 1, 1), MAX_AGENTS_PER_RUN);
     const identity = identityClient(this.env.IDENTITY);
 
@@ -140,7 +192,7 @@ export default class RunnerService
           GIT_REMOTE: `https://g1t.sh/${attempt.fork.namespace}/${attempt.fork.name}.git`,
           COMMIT_MESSAGE: found.value.intent.title,
           PROMPT: buildPrompt(found.value.intent, input.instructions?.trim() ?? ""),
-          ANTHROPIC_API_KEY: this.env.ANTHROPIC_API_KEY!,
+          ...modelEnv(this.env, model),
         },
       });
     }
