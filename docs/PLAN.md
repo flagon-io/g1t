@@ -520,7 +520,7 @@ tokens and SSH keys remain for git itself.
 | `services/runner`, `crates/runner` | TypeScript, Rust | Worker + Containers | Starts a sandbox per g1t agent; the program inside runs the agent harness and reports through the public API |
 | `apps/web` | TypeScript | Worker | Server-rendered site. Holds no data; calls services over RPC. |
 | `apps/docs` | TypeScript | Worker (static) | Documentation and the API explorer |
-| `apps/api` | TypeScript, moving to Rust | Worker | REST API (`api.g1t.sh`) and MCP server (`mcp.g1t.sh`), both generated from one list of operations |
+| `apps/api` | Rust | Worker | REST API (`api.g1t.sh`), MCP server (`mcp.g1t.sh`) and OpenAPI document, all generated from one list of operations; the OAuth endpoints |
 | `crates/sshd` | Rust | Container | Git over SSH, bridged to Artifacts |
 | `crates/merged` | Rust | Container | Trial merges, conflict matrix, landing merges (needs real git; the Artifacts binding is read-only) |
 | `crates/core` | Rust | native and WASM | pkt-line, packfile and diff code shared by the above and by the Worker |
@@ -552,9 +552,9 @@ protocol to implement.
 ## Languages
 
 The site is TypeScript. Everything behind it is Rust, compiled to
-WebAssembly for Workers and natively for containers and the CLI. Services
-are being ported one at a time; identity, repos, work and events are done,
-and the API is next. Rust services speak a
+WebAssembly for Workers and natively for containers and the CLI. Identity, repos, work, events and the API are all Rust. The one exception
+is the Worker that starts sandboxes, because Cloudflare's Containers
+library is TypeScript. Rust services speak a
 small JSON protocol over service bindings (`POST /rpc/<method>`), with the
 types in `crates/contracts`.
 
@@ -648,11 +648,12 @@ browser with no token to paste; workspaces with members; issues with labels, che
 comments; pull requests in forks or from branches, with diffs and sessions,
 several per issue; merging with a behind check, which resolves the issue and supersedes
 the rest; g1t agents in sandboxes with a choice of model; REST API, OpenAPI
-and MCP server; event bus. Identity, repos, work and events are in Rust.
+and MCP server; event bus. Every service and the API are in Rust.
 
 1. Branch protection, and deleting a branch once its pull request merges.
 2. Scopes on OAuth grants and access tokens.
-3. Port the API to Rust; event storage per the design above.
+3. Event storage per the design above: per-repo hot log, Iceberg on R2,
+   hash-chained audit.
 4. CLI with Claude Code hooks to record sessions automatically.
 5. Acceptance checks run in sandboxes; review comments on lines.
 6. Server-side merge and rebase; landing queue with speculative checks;

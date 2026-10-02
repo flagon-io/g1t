@@ -60,7 +60,7 @@ full. An assistant can do it for you from <https://g1t.sh/llms.txt>.
 | --- | --- |
 | `apps/web` | The site: server-rendered React on a Worker. Holds no data. |
 | `apps/docs` | The documentation site, with the API explorer. |
-| `apps/api` | REST API and MCP server. |
+| `apps/api` | REST API and MCP server. Rust. |
 | `services/identity` | Accounts, workspaces, sessions, keys and tokens. Rust. |
 | `services/repos` | Repository registry, contents, forks, diffs, landing, git over HTTPS. Rust. |
 | `services/work` | Issues, pull requests, comments and sessions. Rust. |
@@ -74,9 +74,9 @@ full. An assistant can do it for you from <https://g1t.sh/llms.txt>.
 | `packages/theme` | Design tokens and the logo, shared by the site and the docs. |
 
 Each service is its own Worker with its own database. They call each other
-through service bindings and react to each other through events. Anything
-that is not a web UI is written in Rust or on its way there; the API is
-next.
+through service bindings and react to each other through events. Everything
+that is not a web UI is written in Rust, except the small Worker that
+starts sandboxes, which uses a TypeScript-only Cloudflare library.
 
 ## Run your own
 
@@ -106,6 +106,7 @@ Deploy everything in dependency order:
 (cd services/identity && npx wrangler deploy)
 (cd services/repos && npx wrangler deploy)
 (cd services/work && npx wrangler deploy)
+(cd apps/api && npx wrangler deploy)
 npm run deploy
 (cd services/runner && npx wrangler deploy)   # optional: g1t agents
 (cd apps/docs && npm run deploy)

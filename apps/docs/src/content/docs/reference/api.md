@@ -11,9 +11,30 @@ every endpoint with its parameters and lets you call them from the page. The
 machine-readable description is at
 [api.g1t.sh/openapi.json](https://api.g1t.sh/openapi.json).
 
+## Start at the root
+
+The API is public. Anything you could see on the site without signing in,
+you can read without a token. `GET https://api.g1t.sh/` returns where
+everything is, as URL templates:
+
+```sh
+curl https://api.g1t.sh/
+```
+
+```json
+{
+  "documentation_url": "https://docs.g1t.sh/api/reference/",
+  "current_user_url": "https://api.g1t.sh/v1/user",
+  "repository_url": "https://api.g1t.sh/v1/repos/{owner}/{name}",
+  "issues_url": "https://api.g1t.sh/v1/repos/{owner}/{name}/issues{?state,label}",
+  "pulls_url": "https://api.g1t.sh/v1/repos/{owner}/{name}/pulls{?state}"
+}
+```
+
 ## Authentication
 
-Send an [access token](https://g1t.sh/settings) as a bearer token:
+A token is needed to change anything, and to see what is private. Send an
+[access token](https://g1t.sh/settings) as a bearer token:
 
 ```sh
 curl https://api.g1t.sh/v1/user \

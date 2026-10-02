@@ -1,0 +1,18 @@
+[package]
+name = "g1t-api"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "The REST API and MCP server."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+g1t-contracts.workspace = true
+g1t-kit.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+worker.workspace = true
+base64 = "0.22"
+form_urlencoded = "1"

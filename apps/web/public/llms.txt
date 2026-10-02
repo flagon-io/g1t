@@ -132,8 +132,8 @@ MCP tools take the repository as `repo`, written `owner/name`.
 
 ## Facts
 
-- API base: `https://api.g1t.sh`. Auth: `Authorization: Bearer g1t_…`.
-  Public data needs no token. Errors are
+- API base: `https://api.g1t.sh`. `GET /` lists every URL as a template.
+  Auth: `Authorization: Bearer g1t_…`. Public data needs no token. Errors are
   `{"error": {"code": "…", "message": "…"}}` with codes `unauthenticated`
   (401), `forbidden` (403), `not_found` (404), `conflict` (409), `invalid`
   (422). The full description is at https://api.g1t.sh/openapi.json.

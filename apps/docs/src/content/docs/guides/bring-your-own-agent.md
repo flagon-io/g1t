@@ -110,7 +110,9 @@ Do not put secrets in a session. Sessions are as visible as the repository.
 ## Other clients
 
 The server speaks MCP over streamable HTTP and answers each request with
-JSON. Every request needs to be signed in.
+JSON. Every call needs to be signed in. Opening
+[mcp.g1t.sh](https://mcp.g1t.sh) in a browser shows what the server is, how
+to connect, and the tools it offers.
 
 A client that supports MCP authorization needs only the URL. An
 unauthenticated request is answered with `401` and a pointer to
