@@ -45,6 +45,7 @@ into the fork, push, and the attempt can ship.
 | `read_session` | Read an attempt's recorded session. |
 | `submit_attempt` | Mark an attempt finished, with a summary. |
 | `abandon_attempt` | Give up on an attempt. |
+| `get_attempt_changes` | The files an attempt changed, with line-by-line diffs. |
 | `ship_attempt` | Land an attempt on `main` and close its intent. Repository owner only. |
 | `list_events` | A repository's timeline, newest first. |
 

@@ -17,7 +17,13 @@ const MARKERS: Record<DiffLine["kind"], string> = {
 };
 
 /** `+12 −3` with a five-block bar, like the summary on a pull request. */
-function Stat({ additions, deletions }: { additions: number; deletions: number }) {
+function Stat({
+  additions,
+  deletions,
+}: {
+  additions: number;
+  deletions: number;
+}) {
   const total = additions + deletions;
   const green = total === 0 ? 0 : Math.round((additions / total) * 5);
   return (
@@ -28,7 +34,7 @@ function Stat({ additions, deletions }: { additions: number; deletions: number }
         {Array.from({ length: 5 }, (_, i) => (
           <span
             key={i}
-            className={`size-2 rounded-[2px] ${
+            className={`size-2 rounded-xs ${
               total === 0 ? "bg-line" : i < green ? "bg-accent" : "bg-danger"
             }`}
           />
@@ -40,7 +46,11 @@ function Stat({ additions, deletions }: { additions: number; deletions: number }
 
 function File({ file }: { file: FileDiff }) {
   const Icon =
-    file.status === "added" ? FilePlus : file.status === "deleted" ? FileMinus : FileIcon;
+    file.status === "added"
+      ? FilePlus
+      : file.status === "deleted"
+        ? FileMinus
+        : FileIcon;
   return (
     <section
       id={`file-${file.path}`}
@@ -88,15 +98,22 @@ function HunkRows({ lines, first }: { lines: DiffLine[]; first: boolean }) {
     <>
       {!first && (
         <tr aria-hidden="true">
-          <td colSpan={4} className="border-y border-line bg-surface py-1 text-center text-faint">
+          <td
+            colSpan={4}
+            className="border-y border-line bg-surface py-1 text-center text-faint"
+          >
             ⋯
           </td>
         </tr>
       )}
       {lines.map((line, index) => (
         <tr key={index} className={ROW_STYLES[line.kind]}>
-          <td className="w-10 px-2 text-right text-faint select-none">{line.old}</td>
-          <td className="w-10 px-2 text-right text-faint select-none">{line.new}</td>
+          <td className="w-10 px-2 text-right text-faint select-none">
+            {line.old}
+          </td>
+          <td className="w-10 px-2 text-right text-faint select-none">
+            {line.new}
+          </td>
           <td
             className={`w-5 text-center select-none ${
               line.kind === "add"

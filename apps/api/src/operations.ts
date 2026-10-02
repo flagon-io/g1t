@@ -306,6 +306,22 @@ export const operations: Operation[] = [
     ),
   },
   {
+    name: "get_attempt_changes",
+    description:
+      "What an attempt changed: the files it touched and their line-by-line diff against the commit it started from. Use it to review an attempt or to compare several attempts at the same intent.",
+    input: {
+      type: "object",
+      properties: { attempt_id: { type: "string" } },
+      required: ["attempt_id"],
+    },
+    run: async (env, viewer, input) => {
+      const found = await env.WORK.getAttempt(text(input, "attempt_id"), viewer);
+      if (!found.ok) return found;
+      const { forkRepoId, landedBase } = found.value.attempt;
+      return env.REPOS.compare(forkRepoId, viewer, landedBase);
+    },
+  },
+  {
     name: "ship_attempt",
     description:
       "Land an attempt on the repository's main branch and close its intent. Only the repository's owner can ship. Fails if main has moved since the attempt started; the attempt must then pull main into its fork and push before shipping again.",

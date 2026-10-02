@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 
 import {
   type ServiceBinding,
@@ -9,6 +10,7 @@ import {
 } from "@g1t/contracts";
 
 import { handleMcp } from "./mcp";
+import { openApiDocument } from "./openapi";
 import { type ApiEnv, operations, operationsByName } from "./operations";
 
 type Input = Record<string, unknown>;
@@ -44,13 +46,27 @@ const ROUTES: {
   { method: "POST", path: "/v1/attempts/:attempt_id/submit", operation: "submit_attempt", input: (p, _q, b) => ({ ...b, ...p }) },
   { method: "POST", path: "/v1/attempts/:attempt_id/abandon", operation: "abandon_attempt", input: (p) => p },
   { method: "POST", path: "/v1/attempts/:attempt_id/ship", operation: "ship_attempt", input: (p) => p },
+  { method: "GET", path: "/v1/attempts/:attempt_id/changes", operation: "get_attempt_changes", input: (p) => p },
 ];
 
 function repo(params: Record<string, string>): Input {
   return { repo: `${params.owner}/${params.name}` };
 }
 
+/** The section of the API reference an operation is listed under. */
+function tagFor(operation: string): string {
+  if (operation === "whoami") return "Accounts";
+  if (operation.includes("session")) return "Sessions";
+  if (operation.includes("attempt")) return "Attempts";
+  if (operation.includes("intent")) return "Intents";
+  return "Repositories";
+}
+
 const app = new Hono<App>();
+
+// The API is called from browsers too: the reference's explorer, and apps
+// built on g1t. It carries no cookies, so any origin may call it.
+app.use(cors({ origin: "*", allowHeaders: ["authorization", "content-type"] }));
 
 // `Authorization: Bearer g1t_…`. A missing token is an anonymous viewer; a
 // wrong one is rejected so a typo does not silently look signed out.
@@ -131,11 +147,25 @@ app.post("/v1/tokens", async (c) => {
   return c.json({ token: created.token, verified: user.verified === true }, 201);
 });
 
+app.get("/openapi.json", (c) =>
+  c.json(
+    openApiDocument(
+      ROUTES.map(({ method, path, operation }) => ({
+        method,
+        path,
+        operation,
+        tag: tagFor(operation),
+      })),
+    ),
+  ),
+);
+
 app.get("/", (c) =>
   c.json({
     name: "g1t API",
     version: "v1",
-    documentation: "https://g1t.sh/syntaqx/g1t",
+    documentation: "https://docs.g1t.sh/api",
+    openapi: "https://api.g1t.sh/openapi.json",
     operations: operations.map(({ name, description }) => ({ name, description })),
   }),
 );

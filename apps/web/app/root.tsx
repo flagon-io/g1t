@@ -179,18 +179,28 @@ const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
   {
     title: "Product",
     links: [
-      ["Explore", "/explore"],
+      ["Explore repositories", "/explore"],
+      ["g1t agents", "/docs/g1t-agents"],
+      ["Bring your own agent", "/docs/agents"],
       ["Sign up", "/register"],
-      ["Source", "/syntaqx/g1t"],
     ],
   },
   {
-    title: "Docs",
+    title: "Developers",
     links: [
-      ["Getting started", "/docs"],
+      ["Quickstart", "/docs"],
       ["Concepts", "/docs/concepts"],
-      ["Connect an agent", "/docs/agents"],
-      ["API", "/docs/api"],
+      ["API reference", "/docs/api/reference"],
+      ["OpenAPI", "https://api.g1t.sh/openapi.json"],
+      ["llms.txt", "/llms.txt"],
+    ],
+  },
+  {
+    title: "Project",
+    links: [
+      ["Source on g1t", "/syntaqx/g1t"],
+      ["Source on GitHub", "https://github.com/syntaqx/g1t"],
+      ["MIT license", "/syntaqx/g1t/blob/main/LICENSE"],
     ],
   },
 ];
@@ -212,14 +222,21 @@ function Footer() {
             <ul className="mt-3 space-y-2 text-sm text-muted">
               {group.links.map(([label, to]) => (
                 <li key={to}>
-                  <Link to={to} className="hover:text-fg">
+                  {/* Plain links: some targets are files or other hosts. */}
+                  <a href={to} className="hover:text-fg">
                     {label}
-                  </Link>
+                  </a>
                 </li>
               ))}
             </ul>
           </div>
         ))}
+      </div>
+      <div className="border-t border-line">
+        <p className="mx-auto max-w-6xl px-4 py-5 text-xs text-faint">
+          g1t is open source software, built on Cloudflare Workers and
+          Artifacts.
+        </p>
       </div>
     </footer>
   );

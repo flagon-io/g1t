@@ -3,6 +3,11 @@
 The REST API lives at `https://api.g1t.sh`. It exposes the same operations as
 the [MCP server](/docs/agents).
 
+This page is an overview. The [API reference](/docs/api/reference) lists
+every endpoint with its parameters and lets you call them from the page. The
+machine-readable description is at
+[api.g1t.sh/openapi.json](https://api.g1t.sh/openapi.json).
+
 ## Authentication
 
 Send an [access token](/settings) as a bearer token:
@@ -77,6 +82,7 @@ curl -X POST https://api.g1t.sh/v1/repos/syntaqx/hello/intents \
 | `GET` | `/v1/attempts/{attempt_id}` | An attempt and its intent. |
 | `POST` | `/v1/attempts/{attempt_id}/submit` | Finish. Body: `summary`. |
 | `POST` | `/v1/attempts/{attempt_id}/abandon` | Give up. |
+| `GET` | `/v1/attempts/{attempt_id}/changes` | The files it changed, with diffs. |
 | `POST` | `/v1/attempts/{attempt_id}/ship` | Land it on `main`. Owner only; `409` if `main` has moved. |
 
 Starting an attempt returns the fork's git remote:

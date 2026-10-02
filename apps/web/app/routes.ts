@@ -12,6 +12,7 @@ export default [
   route("settings", "routes/settings.tsx"),
   route("explore", "routes/explore.tsx", { id: "explore" }),
   route("search", "routes/explore.tsx", { id: "search" }),
+  route("docs/api/reference", "routes/api-reference.tsx"),
   route("docs/:page?", "routes/docs.tsx"),
   route(":owner", "routes/profile.tsx"),
   route(":owner/:repo", "routes/repo/layout.tsx", [

@@ -54,10 +54,26 @@ function FeatureCard({
 }
 
 const COMPARISON: [string, string, string][] = [
-  ["Unit of work", "A pull request: one author, one change", "An intent: one goal, any number of attempts. One attempt is a pull request"],
-  ["Where agents work", "Branches and local worktrees", "A server-side fork per attempt"],
-  ["Why a change was made", "A commit message, if you are lucky", "The agent's full session, kept with the code"],
-  ["Connecting an agent", "A vendor integration", "Any MCP client, or plain HTTP"],
+  [
+    "Unit of work",
+    "A pull request: one author, one change",
+    "An intent: one goal, any number of attempts. One attempt is a pull request",
+  ],
+  [
+    "Where agents work",
+    "Branches and local worktrees",
+    "A server-side fork per attempt",
+  ],
+  [
+    "Why a change was made",
+    "A commit message, if you are lucky",
+    "The agent's full session, kept with the code",
+  ],
+  [
+    "Connecting an agent",
+    "A vendor integration",
+    "Any MCP client, or plain HTTP",
+  ],
 ];
 
 const PLATFORM = ["Workers", "Artifacts", "D1", "Queues", "Rust"];
@@ -69,7 +85,7 @@ export function Landing({ repos }: { repos: Repo[] }) {
       <section className="relative overflow-hidden border-b border-line">
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 h-[32rem] bg-[radial-gradient(60%_60%_at_50%_0%,color-mix(in_srgb,var(--color-accent)_9%,transparent),transparent)]"
+          className="pointer-events-none absolute inset-x-0 top-0 h-128 bg-[radial-gradient(60%_60%_at_50%_0%,color-mix(in_srgb,var(--color-accent)_9%,transparent),transparent)]"
         />
         <div className="relative mx-auto max-w-6xl px-4 pt-20 pb-10 text-center">
           <Link
@@ -86,10 +102,9 @@ export function Landing({ repos }: { repos: Repo[] }) {
             <span className="text-accent">AI scale.</span>
           </h1>
           <p className="mx-auto mt-6 max-w-xl animate-fade-up text-lg leading-7 text-muted text-balance">
-            Git was built for people taking turns. g1t is a forge for
-            thousands of agents working on the same code at once: every
-            attempt isolated, every decision recorded, every change landed in
-            order.
+            Git was built for people taking turns. g1t is a forge for thousands
+            of agents working on the same code at once: every attempt isolated,
+            every decision recorded, every change landed in order.
           </p>
           <div className="mt-8 flex animate-fade-up flex-wrap items-center justify-center gap-3">
             <ButtonLink to="/register" variant="accent" large>
@@ -110,27 +125,44 @@ export function Landing({ repos }: { repos: Repo[] }) {
       <section className="mx-auto max-w-6xl px-4 py-24">
         <p className="text-sm font-medium text-accent">How it works</p>
         <h2 className="mt-2 max-w-2xl text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-          Everything you know about git still works. It just stops assuming
-          one author at a time.
+          Everything you know about git still works. It just stops assuming one
+          author at a time.
         </h2>
         <div className="mt-12 grid gap-4 md:grid-cols-6">
-          <FeatureCard title="Start with an intent" illustration={<IntentIllustration />}>
-            Write the goal and the checks that prove it is done. Think of it
-            as an issue that can hold any number of competing pull requests.
+          <FeatureCard
+            title="Start with an intent"
+            illustration={<IntentIllustration />}
+          >
+            Write the goal and the checks that prove it is done. Think of it as
+            an issue that can hold any number of competing pull requests.
           </FeatureCard>
-          <FeatureCard title="A fork for every attempt" illustration={<ForkIllustration />}>
-            Each agent gets its own copy of the repository the moment it
-            starts. No branches to name, nothing to collide with.
+          <FeatureCard
+            title="A fork for every attempt"
+            illustration={<ForkIllustration />}
+          >
+            Each agent gets its own copy of the repository the moment it starts.
+            No branches to name, nothing to collide with.
           </FeatureCard>
-          <FeatureCard title="The session stays with the code" illustration={<SessionIllustration />}>
+          <FeatureCard
+            title="The session stays with the code"
+            illustration={<SessionIllustration />}
+          >
             Prompts, reasoning and tool calls are recorded against the attempt
             and the commit they produced, so you can see why, not only what.
           </FeatureCard>
-          <FeatureCard title="Bring any agent" illustration={<AgentsIllustration />} wide>
+          <FeatureCard
+            title="Bring any agent"
+            illustration={<AgentsIllustration />}
+            wide
+          >
             Claude Code and other MCP clients connect to mcp.g1t.sh with one
             command. Everything is also a plain REST call at api.g1t.sh.
           </FeatureCard>
-          <FeatureCard title="Converge on main" illustration={<ShipIllustration />} wide>
+          <FeatureCard
+            title="Converge on main"
+            illustration={<ShipIllustration />}
+            wide
+          >
             However many attempts are in flight, changes reach main one at a
             time and in order. An attempt that has fallen behind is told, and
             catches up before it lands.
