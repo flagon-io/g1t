@@ -263,3 +263,66 @@ pub struct MemberArgs {
     pub slug: String,
     pub username: String,
 }
+
+/// `oauth_authorize`: the signed-in person approved an application. The
+/// caller has checked the client and that it may be redirected to
+/// `redirect_uri`. Returns `OAuthCode`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthAuthorizeArgs {
+    pub user: User,
+    pub client_id: String,
+    /// Shown wherever the application's access is listed.
+    pub client_name: String,
+    pub redirect_uri: String,
+    /// PKCE challenge, method S256.
+    pub code_challenge: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OAuthCode {
+    pub code: String,
+}
+
+/// `oauth_exchange`: redeems an authorization code.
+/// Returns `Outcome<OAuthTokens>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthExchangeArgs {
+    pub code: String,
+    pub code_verifier: String,
+    pub client_id: String,
+    pub redirect_uri: String,
+}
+
+/// `oauth_refresh`: trades a refresh token for new tokens.
+/// Returns `Outcome<OAuthTokens>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthRefreshArgs {
+    pub refresh_token: String,
+    pub client_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthTokens {
+    pub access_token: String,
+    /// Works once; using it returns the next one.
+    pub refresh_token: String,
+    /// Seconds until the access token stops working.
+    pub expires_in: u64,
+}
+
+/// An application a person has signed in to. Listed by `list_oauth_grants`
+/// and ended by `revoke_oauth_grant`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthGrant {
+    pub id: String,
+    pub client_name: String,
+    /// RFC 3339.
+    pub created_at: String,
+    /// RFC 3339.
+    pub last_used_at: String,
+}

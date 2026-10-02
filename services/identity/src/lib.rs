@@ -6,6 +6,7 @@
 mod crypto;
 mod device;
 mod email;
+mod oauth;
 mod workspaces;
 
 use g1t_contracts::identity::*;
@@ -585,6 +586,11 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "list_members" => reply(&identity.list_members(args(body)?).await?),
         "add_member" => reply(&identity.add_member(args(body)?).await?),
         "remove_member" => reply(&identity.remove_member(args(body)?).await?),
+        "oauth_authorize" => reply(&identity.oauth_authorize(args(body)?).await?),
+        "oauth_exchange" => reply(&identity.oauth_exchange(args(body)?).await?),
+        "oauth_refresh" => reply(&identity.oauth_refresh(args(body)?).await?),
+        "list_oauth_grants" => reply(&identity.list_oauth_grants(args(body)?).await?),
+        "revoke_oauth_grant" => reply(&identity.revoke_oauth_grant(args(body)?).await?),
         "device_start" => reply(&identity.device_start(args(body)?).await?),
         "device_lookup" => reply(&identity.device_lookup(args(body)?).await?),
         "device_resolve" => reply(&identity.device_resolve(args(body)?).await?),

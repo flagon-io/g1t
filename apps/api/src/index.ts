@@ -11,6 +11,7 @@ import {
 } from "@g1t/contracts";
 
 import { handleMcp } from "./mcp";
+import { MCP_CHALLENGE, oauth } from "./oauth";
 import { openApiDocument } from "./openapi";
 import { type ApiEnv, operations, operationsByName } from "./operations";
 
@@ -104,6 +105,8 @@ app.use(async (c, next) => {
       return c.json(
         { error: { code: "unauthenticated", message: "Invalid access token." } },
         401,
+        // Tells an MCP client where to sign in again.
+        { "www-authenticate": `${MCP_CHALLENGE}, error="invalid_token"` },
       );
     }
   }
@@ -111,11 +114,28 @@ app.use(async (c, next) => {
   await next();
 });
 
+// Signing in with OAuth. Served on both hosts: an MCP client looks for the
+// metadata next to the MCP server.
+app.route("/", oauth);
+
 app.all("*", async (c, next) => {
-  if (new URL(c.req.url).hostname.startsWith("mcp.")) {
-    return handleMcp(c.req.raw, c.get("services"), c.get("viewer"));
+  if (!new URL(c.req.url).hostname.startsWith("mcp.")) return next();
+  const viewer = c.get("viewer");
+  // The MCP server needs a signed-in user. Saying so this way is what
+  // makes a client open the browser to sign in.
+  if (!viewer) {
+    return c.json(
+      {
+        error: {
+          code: "unauthenticated",
+          message: "Sign in to use the g1t MCP server.",
+        },
+      },
+      401,
+      { "www-authenticate": MCP_CHALLENGE },
+    );
   }
-  await next();
+  return handleMcp(c.req.raw, c.get("services"), viewer);
 });
 
 // Signing in from a tool. Accounts are created, and passwords typed, only

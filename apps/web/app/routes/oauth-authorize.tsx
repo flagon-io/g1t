@@ -1,0 +1,166 @@
+import { CircleX, KeyRound } from "lucide-react";
+import { Form, redirect } from "react-router";
+
+import { decodeOAuthClient, isRegisteredRedirect } from "@g1t/contracts";
+
+import type { Route } from "./+types/oauth-authorize";
+import { Button } from "../components/ui";
+import { identity } from "../lib/services.server";
+import { assertSameOrigin, requireUser } from "../lib/session.server";
+
+export function meta({}: Route.MetaArgs) {
+  return [{ title: "Sign in to an application · g1t" }];
+}
+
+type Checked =
+  | { ok: false; problem: string }
+  | {
+      ok: true;
+      clientId: string;
+      clientName: string;
+      redirectUri: string;
+      codeChallenge: string;
+      state: string;
+    };
+
+/**
+ * Checks an authorization request. A request that names a client or a
+ * redirect address we cannot vouch for is never redirected anywhere; the
+ * person is told instead.
+ */
+function check(params: URLSearchParams | FormData): Checked {
+  const get = (key: string) => String(params.get(key) ?? "");
+  const client = decodeOAuthClient(get("client_id"));
+  if (!client) {
+    return { ok: false, problem: "This sign-in link names an application g1t does not recognise." };
+  }
+  const redirectUri = get("redirect_uri") || client.redirectUris[0];
+  if (!isRegisteredRedirect(client, redirectUri)) {
+    return {
+      ok: false,
+      problem: "This sign-in link would send you somewhere the application did not register.",
+    };
+  }
+  if (get("response_type") !== "code") {
+    return { ok: false, problem: "This sign-in link asks for a kind of access g1t does not offer." };
+  }
+  if (!get("code_challenge") || get("code_challenge_method") !== "S256") {
+    return {
+      ok: false,
+      problem: "This application did not protect its sign-in with PKCE (S256), which g1t requires.",
+    };
+  }
+  return {
+    ok: true,
+    clientId: get("client_id"),
+    clientName: client.name,
+    redirectUri,
+    codeChallenge: get("code_challenge"),
+    state: get("state"),
+  };
+}
+
+/** The application's redirect address with the outcome added to it. */
+function callback(redirectUri: string, params: Record<string, string>): string {
+  const url = new URL(redirectUri);
+  for (const [key, value] of Object.entries(params)) {
+    if (value) url.searchParams.set(key, value);
+  }
+  return url.toString();
+}
+
+/** Where an application sends a person to approve its sign-in. */
+export function loader({ request, context }: Route.LoaderArgs) {
+  const user = requireUser(context, request);
+  const { searchParams } = new URL(request.url);
+  return {
+    user,
+    request: check(searchParams),
+    // Sent back unchanged when the person decides.
+    query: Object.fromEntries(searchParams),
+  };
+}
+
+export async function action({ request, context }: Route.ActionArgs) {
+  assertSameOrigin(request);
+  const user = requireUser(context, request);
+  const form = await request.formData();
+  const checked = check(form);
+  if (!checked.ok) return null;
+  if (form.get("decision") !== "approve") {
+    throw redirect(
+      callback(checked.redirectUri, { error: "access_denied", state: checked.state }),
+    );
+  }
+  const { code } = await identity.oauthAuthorize(user, {
+    clientId: checked.clientId,
+    clientName: checked.clientName,
+    redirectUri: checked.redirectUri,
+    codeChallenge: checked.codeChallenge,
+  });
+  throw redirect(
+    callback(checked.redirectUri, { code, state: checked.state, iss: "https://api.g1t.sh" }),
+  );
+}
+
+export default function Authorize({ loaderData }: Route.ComponentProps) {
+  const { user, request, query } = loaderData;
+
+  if (!request.ok) {
+    return (
+      <main className="mx-auto max-w-md px-4 py-32 text-center">
+        <CircleX size={40} className="mx-auto text-muted" />
+        <h1 className="mt-6 text-2xl font-semibold tracking-tight">This link cannot be used</h1>
+        <p className="mt-2 text-muted">{request.problem}</p>
+        <p className="mt-2 text-sm text-faint">Nothing was given access to your account.</p>
+      </main>
+    );
+  }
+
+  const destination = new URL(request.redirectUri);
+  return (
+    <main className="mx-auto max-w-md px-4 py-24">
+      <KeyRound size={36} className="text-accent" />
+      <h1 className="mt-6 text-2xl font-semibold tracking-tight">
+        Sign in to {request.clientName}
+      </h1>
+      <p className="mt-2 text-muted">
+        <span className="font-medium text-fg">{request.clientName}</span> wants to act as{" "}
+        <span className="font-mono font-medium text-fg">{user.username}</span> on g1t.
+      </p>
+
+      <dl className="mt-6 space-y-3 rounded-xl border border-line bg-surface p-4 text-sm">
+        <div>
+          <dt className="text-xs text-faint">It will be able to</dt>
+          <dd className="mt-0.5">
+            Read and change what you can: repositories, issues and pull requests.
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-faint">You will be sent back to</dt>
+          <dd className="mt-0.5 font-mono text-[0.8125rem] break-all">
+            {destination.protocol === "https:" || destination.protocol === "http:"
+              ? destination.host + destination.pathname
+              : request.redirectUri}
+          </dd>
+        </div>
+      </dl>
+      <p className="mt-3 text-xs text-faint">
+        Approve only if you started this from {request.clientName} yourself. You can
+        sign it out again in Settings.
+      </p>
+
+      <Form method="post" className="mt-6 flex gap-2">
+        {Object.entries(query).map(([name, value]) => (
+          <input key={name} type="hidden" name={name} value={value} />
+        ))}
+        <Button variant="accent" type="submit" name="decision" value="approve">
+          Approve
+        </Button>
+        <Button variant="quiet" type="submit" name="decision" value="deny">
+          Deny
+        </Button>
+      </Form>
+    </main>
+  );
+}

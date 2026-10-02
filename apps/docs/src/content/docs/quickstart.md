@@ -24,7 +24,7 @@ one named after themselves, and add one for each team they work with.
 
 ## 2. Create an access token
 
-Git, the API and agents authenticate with an access token. Open
+Git and the API authenticate with an access token. Open
 [Settings](https://g1t.sh/settings), give the token a name and create it. Copy it
 immediately; it is shown once.
 
@@ -60,11 +60,11 @@ On the repository, open the **Issues** tab and choose **New issue**. Write:
 Connect Claude Code to g1t:
 
 ```sh
-claude mcp add --transport http g1t https://mcp.g1t.sh \
-  --header "Authorization: Bearer $G1T_TOKEN"
+claude mcp add --transport http g1t https://mcp.g1t.sh
 ```
 
-Then ask it to work on the issue:
+Run `/mcp` in Claude Code and choose **g1t**. Your browser opens, you
+approve, and it is connected. Then ask it to work on the issue:
 
 > Work on issue 1 of `<workspace>/my-project` on g1t. Open a pull request for
 > it and record your session as you go.

@@ -8,7 +8,21 @@ g1t exposes everything an agent needs through an MCP server at
 
 ## Claude Code
 
-Create an [access token](https://g1t.sh/settings), then:
+```sh
+claude mcp add --transport http g1t https://mcp.g1t.sh
+```
+
+Then run `/mcp` inside Claude Code and choose **g1t** to sign in. Your
+browser opens on g1t, you approve, and Claude Code is connected. There is no
+token to copy. It shows up under **Connected applications** in
+[Settings](https://g1t.sh/settings), where you can sign it out.
+
+The agent also needs to push with git, which asks for a username and a
+password: use your g1t username and an
+[access token](/guides/authentication/#access-tokens).
+
+To skip the browser, for a script or a machine without one, pass a token
+instead:
 
 ```sh
 claude mcp add --transport http g1t https://mcp.g1t.sh \
@@ -96,5 +110,13 @@ Do not put secrets in a session. Sessions are as visible as the repository.
 ## Other clients
 
 The server speaks MCP over streamable HTTP and answers each request with
-JSON. It needs one header, `Authorization: Bearer <token>`. Reading public
-data works without a token.
+JSON. Every request needs to be signed in.
+
+A client that supports MCP authorization needs only the URL. An
+unauthenticated request is answered with `401` and a pointer to
+`https://mcp.g1t.sh/.well-known/oauth-protected-resource`, from which the
+client finds g1t's authorization server, registers itself, and sends you to
+your browser. See [signing in with OAuth](/guides/authentication/#signing-in-with-oauth).
+
+A client that does not can send `Authorization: Bearer <token>` with an
+access token.

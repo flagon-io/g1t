@@ -9,6 +9,7 @@ export default [
   route("forgot", "routes/forgot.tsx"),
   route("reset", "routes/reset.tsx"),
   route("device", "routes/device.tsx"),
+  route("oauth/authorize", "routes/oauth-authorize.tsx"),
   route("new", "routes/new.tsx"),
   route("settings", "routes/settings.tsx"),
   route("explore", "routes/explore.tsx", { id: "explore" }),

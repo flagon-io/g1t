@@ -56,10 +56,43 @@ seen it.
 
 A token has the full rights of your account. Scoped tokens are planned.
 
+## Signing in with OAuth
+
+Applications that can open your browser, such as an agent connecting to the
+[MCP server](/guides/bring-your-own-agent/), sign you in with OAuth 2.1.
+You see a page on g1t naming the application and where it will send you
+back, and you approve or deny. The application never sees your password and
+there is no token to copy.
+
+Applications you have approved are listed under **Connected applications**
+in [Settings](https://g1t.sh/settings). Signing one out ends its access at
+once.
+
+For people building a client:
+
+| | |
+| --- | --- |
+| Metadata | `https://api.g1t.sh/.well-known/oauth-authorization-server` |
+| Authorization | `https://g1t.sh/oauth/authorize` |
+| Token | `https://api.g1t.sh/oauth/token` |
+| Registration | `https://api.g1t.sh/oauth/register` |
+
+- The flow is authorization code with PKCE. `S256` is required.
+- Clients are public: there are no client secrets.
+- Register with `client_name` and `redirect_uris`. A redirect address is an
+  `https` URL, `http` on `localhost`, or the application's own scheme. A
+  client on `localhost` may use any port.
+- Registration stores nothing. The client id it returns encodes what was
+  registered, so it cannot be used to fill g1t with junk.
+- An access token lasts 30 days. The refresh token returned with it works
+  once and returns the next pair; the previous access token stops working.
+- An authorization code lasts five minutes and works once.
+
 ## Signing in from a tool
 
-An agent or command-line tool gets a token without ever handling your
-password, the same way `gh auth login` works:
+A tool that cannot receive a redirect, such as a script on a remote machine,
+gets a token without ever handling your password, the same way
+`gh auth login` works:
 
 1. The tool asks g1t for a code and shows you a link and a short code such
    as `WDJB-MJHT`.

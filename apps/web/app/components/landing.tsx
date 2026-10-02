@@ -196,7 +196,7 @@ export function Landing({ repos }: { repos: Repo[] }) {
           <div className="space-y-3">
             <CopyLine
               prompt
-              text='claude mcp add --transport http g1t https://mcp.g1t.sh --header "Authorization: Bearer $G1T_TOKEN"'
+              text="claude mcp add --transport http g1t https://mcp.g1t.sh"
             />
             <CopyLine prompt text="git clone https://g1t.sh/syntaqx/g1t.git" />
             <CopyLine

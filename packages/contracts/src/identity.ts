@@ -65,6 +65,34 @@ export type DeviceClaim =
   | { status: "pending" | "denied" | "expired" }
   | { status: "approved"; token: string; user: User };
 
+/** What the site passes on once a person has approved an application. */
+export type OAuthApproval = {
+  clientId: string;
+  /** Shown wherever the application's access is listed. */
+  clientName: string;
+  redirectUri: string;
+  /** PKCE challenge, method S256. */
+  codeChallenge: string;
+};
+
+export type OAuthTokens = {
+  accessToken: string;
+  /** Works once; using it returns the next one. */
+  refreshToken: string;
+  /** Seconds until the access token stops working. */
+  expiresIn: number;
+};
+
+/** An application a person has signed in to. */
+export type OAuthGrant = {
+  id: string;
+  clientName: string;
+  /** RFC 3339. */
+  createdAt: string;
+  /** RFC 3339. */
+  lastUsedAt: string;
+};
+
 /** Accounts, credentials and sessions. */
 export interface IdentityApi {
   /** Creates an account and signs it in. */
@@ -91,6 +119,21 @@ export interface IdentityApi {
   deviceLookup(userCode: string): Promise<DeviceRequest | null>;
   deviceResolve(userCode: string, user: User, approve: boolean): Promise<Result<boolean>>;
   deviceClaim(deviceCode: string): Promise<DeviceClaim>;
+
+  /**
+   * OAuth 2.1 for applications that sign a person in through the browser.
+   * The caller has checked the client and its redirect address; this
+   * returns the one-time code the application exchanges for tokens.
+   */
+  oauthAuthorize(user: User, approval: OAuthApproval): Promise<{ code: string }>;
+  /** Redeems a code. It works once, for that client, with the PKCE verifier. */
+  oauthExchange(code: string, codeVerifier: string, clientId: string, redirectUri: string): Promise<Result<OAuthTokens>>;
+  /** Trades a refresh token for new tokens; the old ones stop working. */
+  oauthRefresh(refreshToken: string, clientId: string): Promise<Result<OAuthTokens>>;
+  /** Applications the user has signed in to, most recently used first. */
+  listOAuthGrants(user: User): Promise<OAuthGrant[]>;
+  /** Signs an application out. */
+  revokeOAuthGrant(user: User, id: string): Promise<void>;
 
   createWorkspace(user: User, slug: string, name: string): Promise<Result<Workspace>>;
   /** Public details of a workspace, or null. */

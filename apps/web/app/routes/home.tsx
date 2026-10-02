@@ -128,12 +128,13 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         <div className="rounded-xl border border-line bg-surface p-5">
           <h2 className="font-medium">Connect an agent</h2>
           <p className="mt-1.5 text-sm text-muted">
-            Create an access token in settings, then add g1t to Claude Code.
+            Add g1t to Claude Code, then run /mcp in it to sign in through
+            your browser.
           </p>
           <div className="mt-4 space-y-2">
             <CopyLine
               prompt
-              text='claude mcp add --transport http g1t https://mcp.g1t.sh --header "Authorization: Bearer $G1T_TOKEN"'
+              text="claude mcp add --transport http g1t https://mcp.g1t.sh"
             />
           </div>
           <Link

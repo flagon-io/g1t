@@ -57,6 +57,10 @@ are created and approved only in their browser.
      --header "Authorization: Bearer $G1T_TOKEN"
    ```
 
+   Without the header, a client that supports MCP authorization signs the
+   person in through their browser instead (in Claude Code: `/mcp`, then
+   choose g1t). The MCP server always needs one or the other.
+
 5. **Create a workspace** if `GET /v1/user` shows none. A workspace owns
    repositories and is the first part of their address. Ask the person what
    to call it; their username is a sensible default.
@@ -138,8 +142,11 @@ MCP tools take the repository as `repo`, written `owner/name`.
 - Forgotten password: https://g1t.sh/forgot (the person does this, in a
   browser).
 - Times are RFC 3339 in UTC.
+- OAuth 2.1 for applications: metadata at
+  `https://api.g1t.sh/.well-known/oauth-authorization-server`; authorization
+  code with PKCE (S256), public clients, dynamic registration.
 - Not available yet: pull requests from branches, merge commits made on
-  the server, running checks automatically, OAuth sign-in for MCP.
+  the server, running checks automatically.
 
 ## More
 

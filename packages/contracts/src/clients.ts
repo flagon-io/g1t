@@ -45,6 +45,13 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     deviceResolve: (userCode, user, approve) =>
       call("device_resolve", { userCode, user, approve }),
     deviceClaim: (deviceCode) => call("device_claim", { deviceCode }),
+    oauthAuthorize: (user, approval) => call("oauth_authorize", { user, ...approval }),
+    oauthExchange: (code, codeVerifier, clientId, redirectUri) =>
+      call("oauth_exchange", { code, codeVerifier, clientId, redirectUri }),
+    oauthRefresh: (refreshToken, clientId) =>
+      call("oauth_refresh", { refreshToken, clientId }),
+    listOAuthGrants: (user) => call("list_oauth_grants", { user }),
+    revokeOAuthGrant: (user, id) => call("revoke_oauth_grant", { user, id }),
     createWorkspace: (user, slug, name) => call("create_workspace", { user, slug, name }),
     getWorkspace: (slug) => call("get_workspace", { slug }),
     listMembers: (slug, viewer) => call("list_members", { slug, viewer }),

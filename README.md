@@ -19,8 +19,9 @@ superseded.
 
 Working today:
 
-- Accounts with email verification and password reset; sign-in from a tool
-  by approving a code in the browser.
+- Accounts with email verification and password reset. Applications sign
+  in through the browser with OAuth 2.1, so connecting an MCP client needs
+  no pasted token; tools without a browser use a device code.
 - Workspaces that own repositories, with members and roles.
 - Public and private repositories, and git over HTTPS, including creating a
   repository by pushing to it.
@@ -37,19 +38,15 @@ Working today:
   subscribers.
 
 Not built yet: pull requests from branches, server-side merge commits,
-review comments on lines, running acceptance checks, OAuth sign-in for MCP,
-git over SSH. See the build order in the plan.
+review comments on lines, running acceptance checks, git over SSH. See the build order in the plan.
 
 ## Try it
 
 ```sh
-# 1. Create an account at https://g1t.sh/register, a workspace, and an
-#    access token in Settings.
-export G1T_TOKEN=g1t_…
+# 1. Create an account and a workspace at https://g1t.sh/register.
 
-# 2. Connect Claude Code.
-claude mcp add --transport http g1t https://mcp.g1t.sh \
-  --header "Authorization: Bearer $G1T_TOKEN"
+# 2. Connect Claude Code, then run /mcp in it to sign in through your browser.
+claude mcp add --transport http g1t https://mcp.g1t.sh
 
 # 3. Ask it to open a pull request for an open issue.
 ```

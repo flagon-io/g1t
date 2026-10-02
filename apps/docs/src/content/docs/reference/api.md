@@ -33,7 +33,17 @@ browser. See [signing in from a tool](/guides/authentication/#signing-in-from-a-
 | `POST` | `/v1/device/code` | Start a sign-in. Body: `client_name`. |
 | `POST` | `/v1/device/token` | Ask whether it was approved. Body: `device_code`. |
 
-Accounts are created in a browser only. There is no registration endpoint.
+Applications that can open a browser use OAuth instead. See
+[signing in with OAuth](/guides/authentication/#signing-in-with-oauth).
+
+| Method | Path | |
+| --- | --- | --- |
+| `GET` | `/.well-known/oauth-authorization-server` | Where the endpoints are. |
+| `POST` | `/oauth/register` | Register a client. Body: `client_name`, `redirect_uris`. |
+| `POST` | `/oauth/token` | Exchange a code, or refresh. Form-encoded or JSON. |
+
+Accounts are created in a browser only. There is no registration endpoint
+for accounts.
 
 ## Errors
 

@@ -502,7 +502,9 @@ compared. Underneath, the unit of work is still a branch and a pull request.
 | `mcp.g1t.sh` | Remote MCP server over streamable HTTP |
 
 g1t is its own OAuth 2.1 authorization server: authorization code with PKCE,
-dynamic client registration, discovery metadata, refresh tokens, and scopes
+dynamic client registration that stores nothing (a client id encodes its
+own registration, so the open endpoint cannot be used to fill a database),
+discovery metadata and rotating refresh tokens. Still to come: scopes
 per resource (`repo:read`, `repo:write`, `issue:write`, `pull:write`).
 MCP clients, the CLI (device flow) and third-party apps all use it. Access
 tokens and SSH keys remain for git itself.
@@ -512,7 +514,7 @@ tokens and SSH keys remain for git itself.
 | Component | Language | Runs on | Responsibility |
 | --- | --- | --- | --- |
 | `crates/contracts`, `packages/contracts` | Rust, TypeScript | — | The interface of every service, the event catalogue, shared types. Services and clients depend on this, never on each other's code. |
-| `services/identity` | Rust | Worker + D1 | Accounts, workspaces and memberships, sessions, SSH keys, access tokens, device sign-in; later the OAuth server |
+| `services/identity` | Rust | Worker + D1 | Accounts, workspaces and memberships, sessions, SSH keys, access tokens, device sign-in, OAuth codes and grants |
 | `services/repos` | Rust | Worker + D1 + Artifacts | Repository registry, contents, forks, diffs, landing, git over HTTPS. Storage sits behind a `GitStore` port with an Artifacts adapter. |
 | `services/work` | Rust | Worker + D1 | Issues, pull requests, comments, sessions; later a Durable Object per repo for the landing queue and live state |
 | `services/events` | TypeScript, moving to Rust | Worker + Queues + D1 | The event bus: durable log, and one queue per subscribing service |
@@ -642,15 +644,15 @@ for volume splits storage by how the data is read.
 
 Done: site with marketing page; separate docs site with API explorer; git
 over HTTPS; accounts with registration, email verification, password reset
-and device sign-in; workspaces with members; issues with labels, checks and
+and device sign-in; an OAuth 2.1 server, so MCP clients sign in through the
+browser with no token to paste; workspaces with members; issues with labels, checks and
 comments; pull requests in forks with diffs and sessions, several per
 issue; merging with a behind check, which resolves the issue and supersedes
 the rest; g1t agents in sandboxes with a choice of model; REST API, OpenAPI
 and MCP server; event bus. Identity, repos and work are in Rust.
 
 1. Pull requests from branches pushed to the repository.
-2. OAuth server, so MCP clients sign in through the browser with no token
-   to paste.
+2. Scopes on OAuth grants and access tokens.
 3. Port events and the API to Rust; event storage per the design above.
 4. CLI with Claude Code hooks to record sessions automatically.
 5. Acceptance checks run in sandboxes; review comments on lines.

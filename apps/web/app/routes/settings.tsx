@@ -2,7 +2,7 @@ import { identity } from "../lib/services.server";
 import { Form } from "react-router";
 
 import type { Route } from "./+types/settings";
-import { Button, ErrorText, Field, Input } from "../components/ui";
+import { Button, ErrorText, Field, Input, TimeAgo } from "../components/ui";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
 
 export function meta({}: Route.MetaArgs) {
@@ -11,11 +11,12 @@ export function meta({}: Route.MetaArgs) {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
-  const [keys, tokens] = await Promise.all([
+  const [keys, tokens, applications] = await Promise.all([
     identity.listSshKeys(user),
     identity.listAccessTokens(user),
+    identity.listOAuthGrants(user),
   ]);
-  return { user, keys, tokens };
+  return { user, keys, tokens, applications };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -46,17 +47,28 @@ export async function action({ request, context }: Route.ActionArgs) {
     case "delete-token":
       await identity.removeAccessToken(user, id);
       return null;
+    case "sign-out-application":
+      await identity.revokeOAuthGrant(user, id);
+      return null;
   }
   return null;
 }
 
-function DeleteButton({ intent, id }: { intent: string; id: string }) {
+function DeleteButton({
+  intent,
+  id,
+  label = "Delete",
+}: {
+  intent: string;
+  id: string;
+  label?: string;
+}) {
   return (
     <Form method="post" className="ml-auto">
       <input type="hidden" name="intent" value={intent} />
       <input type="hidden" name="id" value={id} />
       <Button variant="quiet" type="submit">
-        Delete
+        {label}
       </Button>
     </Form>
   );
@@ -66,7 +78,7 @@ export default function Settings({
   loaderData,
   actionData,
 }: Route.ComponentProps) {
-  const { user, keys, tokens } = loaderData;
+  const { user, keys, tokens, applications } = loaderData;
   return (
     <main className="mx-auto max-w-2xl space-y-12 px-4 py-12">
       <h1 className="text-xl font-semibold">
@@ -132,6 +144,37 @@ export default function Settings({
           </div>
           <Button type="submit">Create token</Button>
         </Form>
+      </section>
+
+      <section>
+        <h2 className="font-medium">Connected applications</h2>
+        <p className="mt-1 text-sm text-muted">
+          Applications you signed in to through your browser, such as an agent
+          connected to the g1t MCP server. Signing one out ends its access at
+          once.
+        </p>
+        {applications.length === 0 ? (
+          <p className="mt-4 text-sm text-faint">None yet.</p>
+        ) : (
+          <ul className="mt-4 divide-y divide-line rounded-md border border-line">
+            {applications.map((application) => (
+              <li key={application.id} className="flex items-center gap-4 px-4 py-3">
+                <div>
+                  <p className="text-sm">{application.clientName}</p>
+                  <p className="text-xs text-faint">
+                    Connected <TimeAgo at={application.createdAt} /> · last used{" "}
+                    <TimeAgo at={application.lastUsedAt} />
+                  </p>
+                </div>
+                <DeleteButton
+                  intent="sign-out-application"
+                  id={application.id}
+                  label="Sign out"
+                />
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </main>
   );
