@@ -53,7 +53,10 @@ export type PullStatus = "draft" | "open" | "merged" | "closed";
 /** Where the agent runs: on g1t's sandboxes, or in someone's own session. */
 export type Runtime = "hosted" | "external";
 
-/** A proposed change, made in its own fork by an agent or a person. */
+/**
+ * A proposed change. It is made either in a fork created for it, which is
+ * how agents work, or on a branch pushed to the repository itself.
+ */
 export type Pull = {
   id: string;
   repoId: string;
@@ -68,9 +71,12 @@ export type Pull = {
   agent: string;
   runtime: Runtime;
   status: PullStatus;
-  fork: RepoPath;
+  /** The fork holding the change, unless it is on a branch. */
+  fork: RepoPath | null;
   /** The fork's repository id. */
-  forkRepoId: string;
+  forkRepoId: string | null;
+  /** The branch of the repository holding the change, unless it is in a fork. */
+  branch: string | null;
   headCommit: string | null;
   /**
    * For a merged pull request, what the branch pointed to before the merge.
@@ -148,6 +154,13 @@ export type OpenPullInput = {
   issue?: number;
   /** Defaults to the issue's title; required without an issue. */
   title?: string;
+  /** What changed and why. Usually set later, when a draft is marked ready. */
+  body?: string;
+  /**
+   * A branch of the repository that already holds the change. The pull
+   * request is then ready for review at once and has no fork.
+   */
+  branch?: string;
   agent: string;
   runtime: Runtime;
 };
@@ -174,7 +187,10 @@ export interface WorkApi {
   /** On an issue or a pull request. */
   addComment(actor: User, repo: RepoPath, number: number, body: string): Promise<Result<Comment>>;
 
-  /** Forks the repo and returns the draft pull request to push to. */
+  /**
+   * Opens a pull request: a draft with a fork to push to, or, given a
+   * branch, one ready for review.
+   */
   openPull(actor: User, repo: RepoPath, input: OpenPullInput): Promise<Result<Pull>>;
   /** Newest first. */
   listPulls(repo: RepoPath, viewer: Viewer, state?: State): Promise<Result<Pull[]>>;
@@ -194,4 +210,25 @@ export interface WorkApi {
 
   appendSession(actor: User, repo: RepoPath, number: number, entries: NewSessionEntry[]): Promise<Result<{ count: number }>>;
   readSession(repo: RepoPath, number: number, viewer: Viewer, afterSeq?: number): Promise<Result<SessionEntry[]>>;
+}
+
+/**
+ * What to pass `ReposApi.compare` to see what a pull request changes.
+ *
+ * A fork is compared as a whole. A branch is compared by name while the
+ * pull request is open, and by the commit it was merged or closed at
+ * afterwards, so later pushes to the branch do not change the record.
+ */
+export function pullComparison(pull: Pull): {
+  repoId: string;
+  base: string | null;
+  head: string | null;
+} {
+  if (pull.forkRepoId) return { repoId: pull.forkRepoId, base: pull.mergeBase, head: null };
+  const settled = pull.status === "merged" || pull.status === "closed";
+  return {
+    repoId: pull.repoId,
+    base: pull.mergeBase,
+    head: (settled && pull.headCommit) || pull.branch,
+  };
 }

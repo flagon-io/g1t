@@ -43,9 +43,12 @@ CREATE TABLE pulls (
   agent TEXT NOT NULL,
   runtime TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'draft',
-  fork_repo_id TEXT NOT NULL UNIQUE,
-  fork_namespace TEXT NOT NULL,
-  fork_name TEXT NOT NULL,
+  -- Where the change is: a fork made for the pull request, or a branch of
+  -- the repository itself.
+  fork_repo_id TEXT UNIQUE,
+  fork_namespace TEXT,
+  fork_name TEXT,
+  source_branch TEXT,
   head_commit TEXT,
   -- What the branch pointed to before a merged pull request landed.
   merge_base TEXT,

@@ -9,7 +9,7 @@ mod rows;
 use g1t_contracts::events::{
     CommentCreated, Delivered, IssueEvent, NewEvent, PullEvent, SessionAppended,
 };
-use g1t_contracts::repos::{ForkArgs, GetArgs, LandArgs, Landed, Repo, RepoPath};
+use g1t_contracts::repos::{ForkArgs, GetArgs, HeadArgs, LandArgs, Landed, Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome, User, Viewer, new_id};
@@ -20,7 +20,7 @@ use worker::{
     Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, Request, Response, Result, event,
 };
 
-use rows::{CommentRow, IssueRow, NumberRow, PullRow, SessionRow, ValueRow};
+use rows::{BranchRow, CommentRow, IssueRow, NumberRow, PullRow, SessionRow, ValueRow};
 
 const SOURCE: &str = "work";
 const MAX_ENTRY_BATCH: usize = 200;
@@ -636,27 +636,81 @@ impl Work {
 
         let now = now_ms();
         let id = new_id("pr", now);
-        let fork: Outcome<Repo> = g1t_kit::call(
-            &self.repos,
-            "fork_for_pull",
-            &ForkArgs {
-                source_id: repo.id.clone(),
-                pull_id: id.clone(),
-                actor: a.actor.clone(),
-            },
-        )
-        .await?;
-        let fork = check!(fork);
+        let branch = a
+            .branch
+            .as_deref()
+            .map(str::trim)
+            .filter(|branch| !branch.is_empty());
+        // The change is on a branch already pushed to the repository, or
+        // will be made in a fork created for this pull request.
+        let (fork, head) = match branch {
+            Some(branch) => {
+                if branch == repo.default_branch {
+                    return Ok(Outcome::fail(
+                        FailureCode::Invalid,
+                        format!("Choose a branch other than {branch}."),
+                    ));
+                }
+                let head: Option<String> = g1t_kit::call(
+                    &self.repos,
+                    "head",
+                    &HeadArgs {
+                        repo_id: repo.id.clone(),
+                        branch: branch.to_owned(),
+                    },
+                )
+                .await?;
+                let Some(head) = head else {
+                    return Ok(Outcome::fail(
+                        FailureCode::NotFound,
+                        format!("There is no branch named {branch}. Push it first."),
+                    ));
+                };
+                let existing = self
+                    .db
+                    .prepare(
+                        "SELECT number AS n FROM pulls
+                         WHERE repo_id = ? AND source_branch = ? AND status IN ('draft', 'open')",
+                    )
+                    .bind(&[repo.id.as_str().into(), branch.into()])?
+                    .first::<NumberRow>(None)
+                    .await?;
+                if let Some(existing) = existing {
+                    return Ok(Outcome::fail(
+                        FailureCode::Conflict,
+                        format!("Pull request #{} is already open for {branch}.", existing.n),
+                    ));
+                }
+                (None, Some(head))
+            }
+            None => {
+                let fork: Outcome<Repo> = g1t_kit::call(
+                    &self.repos,
+                    "fork_for_pull",
+                    &ForkArgs {
+                        source_id: repo.id.clone(),
+                        pull_id: id.clone(),
+                        actor: a.actor.clone(),
+                    },
+                )
+                .await?;
+                (Some(check!(fork)), None)
+            }
+        };
+        // A branch already holds the work, so its pull request is ready for
+        // review from the start; one with a fork starts as a draft.
+        let status = if branch.is_some() { "open" } else { "draft" };
+        let body = Some(a.body.trim().to_owned()).filter(|body| !body.is_empty());
 
         let number = self.next_number(&repo.id).await?;
         let timestamp = rfc3339(now);
         self.db
             .prepare(
                 "INSERT INTO pulls
-                   (id, repo_id, number, issue_id, issue_number, title, agent, runtime,
-                    fork_repo_id, fork_namespace, fork_name, author_id, author_name,
-                    created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   (id, repo_id, number, issue_id, issue_number, title, body, agent, runtime,
+                    status, fork_repo_id, fork_namespace, fork_name, source_branch, head_commit,
+                    author_id, author_name, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 id.as_str().into(),
@@ -665,11 +719,15 @@ impl Work {
                 optional(&issue.as_ref().map(|issue| issue.id.clone())),
                 optional_number(issue.as_ref().map(|issue| issue.number)),
                 title.into(),
+                optional(&body),
                 agent.into(),
                 runtime.into(),
-                fork.id.into(),
-                fork.namespace.into(),
-                fork.name.into(),
+                status.into(),
+                optional(&fork.as_ref().map(|fork| fork.id.clone())),
+                optional(&fork.as_ref().map(|fork| fork.namespace.clone())),
+                optional(&fork.as_ref().map(|fork| fork.name.clone())),
+                optional(&branch.map(str::to_owned)),
+                optional(&head),
                 a.actor.id.as_str().into(),
                 a.actor.username.as_str().into(),
                 timestamp.as_str().into(),
@@ -837,7 +895,9 @@ impl Work {
             &self.repos,
             "land",
             &LandArgs {
-                fork_id: pull.fork_repo_id.clone(),
+                // A pull request from a branch lands from the repository itself.
+                source_id: pull.fork_repo_id.clone().unwrap_or_else(|| repo.id.clone()),
+                branch: pull.branch.clone(),
                 actor: a.actor.clone(),
             },
         )
@@ -1038,7 +1098,9 @@ impl Work {
         ))
     }
 
-    /// A push to a pull request's fork moves that pull request's head.
+    /// A push moves the head of the pull requests it concerns: the one
+    /// whose fork was pushed to, or those from branches of the repository
+    /// that was.
     async fn on_event(&self, event: &Delivered) -> Result<()> {
         if event.kind != "git.push" {
             return Ok(());
@@ -1047,14 +1109,46 @@ impl Work {
         else {
             return Ok(());
         };
+        let now = rfc3339(now_ms());
         self.db
             .prepare(
                 "UPDATE pulls SET head_commit = ?, updated_at = ?
                  WHERE fork_repo_id = ? AND status IN ('draft', 'open')",
             )
-            .bind(&[after.into(), rfc3339(now_ms()).into(), repo_id.into()])?
+            .bind(&[after.into(), now.as_str().into(), repo_id.into()])?
             .run()
             .await?;
+
+        // The event does not say which branch moved, so each open pull
+        // request from a branch of this repository is checked.
+        let from_branches = self
+            .db
+            .prepare(
+                "SELECT id, source_branch, head_commit FROM pulls
+                 WHERE repo_id = ? AND source_branch IS NOT NULL AND status IN ('draft', 'open')",
+            )
+            .bind(&[repo_id.into()])?
+            .all()
+            .await?
+            .results::<BranchRow>()?;
+        for row in from_branches {
+            let head: Option<String> = g1t_kit::call(
+                &self.repos,
+                "head",
+                &HeadArgs {
+                    repo_id: repo_id.to_owned(),
+                    branch: row.source_branch,
+                },
+            )
+            .await?;
+            if let Some(head) = head.filter(|head| Some(head) != row.head_commit.as_ref()) {
+                self.db
+                    .prepare("UPDATE pulls SET head_commit = ?, updated_at = ? WHERE id = ?")
+                    .bind(&[head.into(), now.as_str().into(), row.id.into()])?
+                    .run()
+                    .await?;
+            }
+        }
         Ok(())
     }
 }

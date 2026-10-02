@@ -63,9 +63,8 @@ What g1t adds to the familiar pair:
 - **Labels need no setup.** A repository starts with `bug`, `feature`,
   `docs`, `chore` and `question`; any other name becomes a label the first
   time it is used, so an integration can tag what it files.
-- **The developer path is unchanged.** Push, open a pull request, get review,
-  merge. Pull requests from a branch pushed to the repo itself are next in
-  the build order; today each one has a fork.
+- **The developer path is unchanged.** Push a branch, open a pull request
+  from it, get review, merge. Agents get a fork per pull request instead.
 - **Both paths meet at `main`.** The same landing rules apply to a person's
   pull request and an agent's.
 
@@ -646,12 +645,12 @@ Done: site with marketing page; separate docs site with API explorer; git
 over HTTPS; accounts with registration, email verification, password reset
 and device sign-in; an OAuth 2.1 server, so MCP clients sign in through the
 browser with no token to paste; workspaces with members; issues with labels, checks and
-comments; pull requests in forks with diffs and sessions, several per
-issue; merging with a behind check, which resolves the issue and supersedes
+comments; pull requests in forks or from branches, with diffs and sessions,
+several per issue; merging with a behind check, which resolves the issue and supersedes
 the rest; g1t agents in sandboxes with a choice of model; REST API, OpenAPI
 and MCP server; event bus. Identity, repos and work are in Rust.
 
-1. Pull requests from branches pushed to the repository.
+1. Branch protection, and deleting a branch once its pull request merges.
 2. Scopes on OAuth grants and access tokens.
 3. Port events and the API to Rust; event storage per the design above.
 4. CLI with Claude Code hooks to record sessions automatically.

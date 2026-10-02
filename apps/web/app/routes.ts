@@ -25,6 +25,7 @@ export default [
     route("issues/new", "routes/repo/issue-new.tsx"),
     route("issues/:number", "routes/repo/issue.tsx"),
     route("pulls", "routes/repo/pulls.tsx"),
+    route("pulls/new", "routes/repo/pull-new.tsx"),
     route("pull/:number", "routes/repo/pull.tsx"),
   ]),
 ] satisfies RouteConfig;

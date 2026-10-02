@@ -1,5 +1,5 @@
 //! Landing a pull request: moving a repository's branch forward to a commit
-//! that so far exists only in a fork.
+//! from a fork, or from another of its own branches.
 //!
 //! The Artifacts binding cannot write, so this speaks git's smart HTTP
 //! protocol directly. It asks the fork for a pack holding exactly the
@@ -43,7 +43,7 @@ async fn post(access: &GitAccess, service: &str, body: Vec<u8>) -> Result<Vec<u8
 }
 
 /// The payloads of the pkt-lines in `bytes`, and the offset where they stop.
-fn read_pkt_lines(bytes: &[u8]) -> (Vec<&[u8]>, usize) {
+pub(crate) fn read_pkt_lines(bytes: &[u8]) -> (Vec<&[u8]>, usize) {
     let mut lines = Vec::new();
     let mut position = 0;
     while position + 4 <= bytes.len() {
@@ -86,7 +86,7 @@ async fn fetch_pack(source: &GitAccess, want: &str, have: Option<&str>) -> Resul
             Some(&PACK_BAND) => pack.extend_from_slice(&line[1..]),
             Some(&ERROR_BAND) => {
                 return Err(Error::RustError(format!(
-                    "the fork refused the fetch: {}",
+                    "the source refused the fetch: {}",
                     String::from_utf8_lossy(&line[1..])
                 )));
             }
@@ -96,7 +96,7 @@ async fn fetch_pack(source: &GitAccess, want: &str, have: Option<&str>) -> Resul
     }
     if !pack.starts_with(b"PACK") {
         return Err(Error::RustError(format!(
-            "the fork did not send a pack: {}",
+            "the source did not send a pack: {}",
             String::from_utf8_lossy(&response)
         )));
     }

@@ -8,6 +8,7 @@
 mod diff;
 mod git_http;
 mod land;
+mod refs;
 mod registry;
 mod store;
 
@@ -325,6 +326,29 @@ impl<S: GitStore> Repos<S> {
         Ok(Outcome::Ok(git.log(&git_ref, a.limit).await?))
     }
 
+    /// The repository's branches, default branch first.
+    async fn branches(&self, a: BranchesArgs) -> Result<Outcome<Vec<Branch>>> {
+        let Some(repo) = self.readable(&a.path, &a.viewer).await? else {
+            return Ok(not_found());
+        };
+        let mut branches = self.store.open(&store_key(&repo)).await?.branches().await?;
+        branches.sort_by_key(|branch| branch.name != repo.default_branch);
+        Ok(Outcome::Ok(branches))
+    }
+
+    async fn head(&self, a: HeadArgs) -> Result<Option<String>> {
+        let Some(repo) = self.registry.by_id(&a.repo_id).await? else {
+            return Ok(None);
+        };
+        let git = self.store.open(&store_key(&repo)).await?;
+        Ok(git
+            .log(&a.branch, 1)
+            .await?
+            .into_iter()
+            .next()
+            .map(|commit| commit.hash))
+    }
+
     async fn fork_for_pull(&self, a: ForkArgs) -> Result<Outcome<Repo>> {
         let viewer = Some(a.actor.clone());
         let Some(source) = self
@@ -426,12 +450,13 @@ impl<S: GitStore> Repos<S> {
 
     async fn land(&self, a: LandArgs) -> Result<Outcome<Landed>> {
         let actor: Viewer = Some(a.actor.clone());
-        let Some(fork) = self.registry.by_id(&a.fork_id).await? else {
+        let Some(source) = self.registry.by_id(&a.source_id).await? else {
             return Ok(not_found());
         };
-        let target = match &fork.fork_of {
+        // A fork lands on the repository it came from; a branch on its own.
+        let target = match &source.fork_of {
             Some(id) => self.registry.by_id(id).await?,
-            None => None,
+            None => Some(source.clone()),
         };
         let Some(target) = target.filter(|repo| can_read(repo, &actor)) else {
             return Ok(not_found());
@@ -447,9 +472,27 @@ impl<S: GitStore> Repos<S> {
         }
 
         let branch = &target.default_branch;
-        let fork_git = self.store.open(&store_key(&fork)).await?;
+        let from_fork = source.id != target.id;
+        let source_branch = match a.branch {
+            Some(name) if !from_fork && name == *branch => {
+                return Ok(Outcome::fail(
+                    FailureCode::Invalid,
+                    format!("{branch} cannot be merged into itself."),
+                ));
+            }
+            Some(name) => name,
+            None if from_fork => branch.clone(),
+            None => {
+                return Ok(Outcome::fail(
+                    FailureCode::Invalid,
+                    "Say which branch to merge.",
+                ));
+            }
+        };
+
+        let source_git = self.store.open(&store_key(&source)).await?;
         let target_git = self.store.open(&store_key(&target)).await?;
-        let history = fork_git.log(branch, MAX_ANCESTRY).await?;
+        let history = source_git.log(&source_branch, MAX_ANCESTRY).await?;
         let Some(new) = history.first().map(|commit| commit.hash.clone()) else {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
@@ -472,17 +515,22 @@ impl<S: GitStore> Repos<S> {
         // Moving the branch to a commit that does not descend from its
         // current head would discard whatever landed in between.
         if let Some(old) = &old
-            && !descends_from(&fork_git, &history, old).await?
+            && !descends_from(&source_git, &history, old).await?
         {
+            let remedy = if from_fork {
+                format!("Pull {branch} into the pull request's fork, push, and merge again.")
+            } else {
+                format!("Merge {branch} into {source_branch}, push, and merge again.")
+            };
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
-                format!(
-                    "{branch} has moved since this pull request was opened. Pull {branch} into the pull request's fork, push, and merge again."
-                ),
+                format!("{branch} has moved since this pull request was opened. {remedy}"),
             ));
         }
 
-        let source_access = fork_git.access(Scope::Read).await?;
+        // For a branch the objects are already in the target; sending them
+        // again is harmless and keeps one way of moving a ref.
+        let source_access = source_git.access(Scope::Read).await?;
         let target_access = target_git.access(Scope::Write).await?;
         let pushed =
             land::fast_forward(&source_access, &target_access, branch, old.as_deref(), &new)
@@ -511,31 +559,36 @@ impl<S: GitStore> Repos<S> {
             return Ok(not_found());
         };
         let git = self.store.open(&store_key(&repo)).await?;
-        let history = git.log(&repo.default_branch, MAX_ANCESTRY).await?;
+        let head_ref = a.head.as_deref().unwrap_or(&repo.default_branch);
+        let history = git.log(head_ref, MAX_ANCESTRY).await?;
         let Some(head) = history.first() else {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
-                "This repository has no commits yet.",
+                "There are no commits to compare.",
             ));
         };
 
+        // Where the head's history meets the default branch of `against`.
+        let shared_with = async |against: &Repo| -> Result<Option<String>> {
+            let against_git = self.store.open(&store_key(against)).await?;
+            let shared: HashSet<String> = against_git
+                .log(&against.default_branch, MAX_ANCESTRY)
+                .await?
+                .into_iter()
+                .map(|commit| commit.hash)
+                .collect();
+            nearest_ancestor_in(&git, &history, &shared).await
+        };
         let base = match (a.base, &repo.fork_of) {
             (Some(base), _) => Some(base),
             // A fork is compared with the last commit it shares with the
             // repository it came from.
             (None, Some(target_id)) => match self.registry.by_id(target_id).await? {
-                Some(target) => {
-                    let target_git = self.store.open(&store_key(&target)).await?;
-                    let shared: HashSet<String> = target_git
-                        .log(&target.default_branch, MAX_ANCESTRY)
-                        .await?
-                        .into_iter()
-                        .map(|commit| commit.hash)
-                        .collect();
-                    nearest_ancestor_in(&git, &history, &shared).await?
-                }
+                Some(target) => shared_with(&target).await?,
                 None => None,
             },
+            // A branch, with the point where it left the default branch.
+            (None, None) if head_ref != repo.default_branch => shared_with(&repo).await?,
             (None, None) => head.parents.first().cloned(),
         };
         let base_tree = match &base {
@@ -645,6 +698,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "log" => reply(&repos.log(args(body)?).await?),
         "fork_for_pull" => reply(&repos.fork_for_pull(args(body)?).await?),
         "git_access" => reply(&repos.git_access(args(body)?).await?),
+        "branches" => reply(&repos.branches(args(body)?).await?),
+        "head" => reply(&repos.head(args(body)?).await?),
         "land" => reply(&repos.land(args(body)?).await?),
         "compare" => reply(&repos.compare(args(body)?).await?),
         _ => Response::error("Unknown method", 404),

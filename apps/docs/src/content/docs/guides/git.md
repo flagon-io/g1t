@@ -45,9 +45,20 @@ A private repository is visible only to members of its workspace. To everyone
 else it looks
 exactly like a repository that does not exist, both on the site and to git.
 
+## Branches
+
+Push any branch to a repository you can write to, and open a
+[pull request](/concepts/overview/#pull-requests) from it on the
+repository's **Pull requests** tab.
+
+```sh
+git switch -c my-change
+git push origin my-change
+```
+
 ## Pull request forks
 
-Each [pull request](/concepts/overview/#pull-requests) has its own remote:
+A pull request that was not opened from a branch has its own remote:
 
 ```text
 https://g1t.sh/pulls/<pull request id>.git

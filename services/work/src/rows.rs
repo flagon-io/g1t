@@ -72,9 +72,10 @@ pub struct PullRow {
     pub agent: String,
     pub runtime: Runtime,
     pub status: PullStatus,
-    pub fork_repo_id: String,
-    pub fork_namespace: String,
-    pub fork_name: String,
+    pub fork_repo_id: Option<String>,
+    pub fork_namespace: Option<String>,
+    pub fork_name: Option<String>,
+    pub source_branch: Option<String>,
     pub head_commit: Option<String>,
     pub merge_base: Option<String>,
     pub merged_by: Option<String>,
@@ -98,11 +99,12 @@ impl From<PullRow> for Pull {
             agent: row.agent,
             runtime: row.runtime,
             status: row.status,
-            fork: RepoPath {
-                namespace: row.fork_namespace,
-                name: row.fork_name,
-            },
+            fork: row
+                .fork_namespace
+                .zip(row.fork_name)
+                .map(|(namespace, name)| RepoPath { namespace, name }),
             fork_repo_id: row.fork_repo_id,
+            branch: row.source_branch,
             head_commit: row.head_commit,
             merge_base: row.merge_base,
             merged_by: row.merged_by,
@@ -156,6 +158,14 @@ impl From<SessionRow> for SessionEntry {
             at: row.at,
         }
     }
+}
+
+/// An open pull request made from a branch of its repository.
+#[derive(Deserialize)]
+pub struct BranchRow {
+    pub id: String,
+    pub source_branch: String,
+    pub head_commit: Option<String>,
 }
 
 /// A single number selected as `n`.

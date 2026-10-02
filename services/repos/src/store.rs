@@ -3,7 +3,7 @@
 //! The service depends on the [`GitStore`] and [`GitRepo`] ports;
 //! [`ArtifactsStore`] is the adapter for Cloudflare Artifacts.
 
-use g1t_contracts::repos::{Commit, EntryKind, GitAccess, Signature, TreeEntry};
+use g1t_contracts::repos::{Branch, Commit, EntryKind, GitAccess, Signature, TreeEntry};
 use g1t_contracts::time::rfc3339;
 use g1t_kit::js;
 use serde::Deserialize;
@@ -40,6 +40,8 @@ pub trait GitStore {
 pub trait GitRepo {
     /// A remote URL and short-lived credential for git itself.
     async fn access(&self, scope: Scope) -> Result<GitAccess>;
+    /// Every branch and the commit it points to.
+    async fn branches(&self) -> Result<Vec<Branch>>;
     /// Newest first along the first-parent chain; empty for an unknown ref.
     async fn log(&self, git_ref: &str, limit: u32) -> Result<Vec<Commit>>;
     /// The parents of a commit, or `None` if the commit does not exist.
@@ -167,6 +169,10 @@ impl GitRepo for ArtifactsRepo {
             remote: info.remote,
             token: token.plaintext,
         })
+    }
+
+    async fn branches(&self) -> Result<Vec<Branch>> {
+        crate::refs::branches(&self.access(Scope::Read).await?).await
     }
 
     async fn log(&self, git_ref: &str, limit: u32) -> Result<Vec<Commit>> {

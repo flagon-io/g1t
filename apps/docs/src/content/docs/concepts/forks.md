@@ -3,9 +3,10 @@ title: Forks and branches
 description: Why a pull request on g1t gets its own fork, when a branch is the better choice, and what each costs.
 ---
 
-On most forges, a pull request comes from a branch of the repository. On
-g1t, a pull request comes from a **fork**: a separate repository that starts
-as a copy of yours. This page explains why, and what it costs.
+On most forges, a pull request comes from a branch of the repository. g1t
+has those too. But an agent's pull request comes from a **fork**: a separate
+repository that starts as a copy of yours. This page explains why, what it
+costs, and when to use which.
 
 ## The short version
 
@@ -80,8 +81,18 @@ When you are a person working on your own repository, or a small team that
 already has write access. Nothing about isolation or scale is at stake, and
 a branch is the tool you already know.
 
-You can push branches to a g1t repository today. Opening a pull request
-*from* one is being built; until then, every pull request has a fork.
+Push the branch, open **Pull requests**, choose **New pull request** and
+pick it. Or from the API, send `branch` when creating the pull request:
+
+```sh
+git push origin my-change
+curl -X POST https://api.g1t.sh/v1/repos/<workspace>/<repo>/pulls \
+  -H "Authorization: Bearer $G1T_TOKEN" -H "Content-Type: application/json" \
+  -d '{"branch": "my-change", "title": "My change", "issue": 12}'
+```
+
+A branch can have one open pull request at a time. Pushing to the branch
+updates it.
 
 ## How this adds up
 

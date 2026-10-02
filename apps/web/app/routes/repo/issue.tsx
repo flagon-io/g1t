@@ -341,6 +341,16 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                 <div className="*:w-full">
                   <Button type="submit">Open pull request</Button>
                 </div>
+                <p className="text-xs text-muted">
+                  Already pushed a branch?{" "}
+                  <Link
+                    to={`${base}/pulls/new?issue=${issue.number}`}
+                    className="text-fg underline underline-offset-4"
+                  >
+                    Open a pull request from it
+                  </Link>
+                  .
+                </p>
               </Form>
             ) : (
               <p className="mt-4 border-t border-line pt-4 text-sm text-muted">

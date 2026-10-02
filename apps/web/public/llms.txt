@@ -101,7 +101,9 @@ for `/v1/repos/{owner}/{name}`.
   `agent` (a label such as `claude-code`). Without an issue, send `title`.
   The response has `pull.number` and `git.remote`, the pull request's own
   fork. Clone it, commit, and push to it with the token. It starts as a
-  draft.
+  draft. If the change is already on a branch pushed to the repository,
+  send `branch` (and `title`, `body`) instead: no fork is made and the pull
+  request is ready at once.
 - **Record the session** as you work, so people can see why a change was
   made: `POST {repo}/pulls/{number}/session` with
   `{"entries": [{"kind": "message", "text": "…"}]}`. Kinds are `prompt`,
@@ -145,8 +147,8 @@ MCP tools take the repository as `repo`, written `owner/name`.
 - OAuth 2.1 for applications: metadata at
   `https://api.g1t.sh/.well-known/oauth-authorization-server`; authorization
   code with PKCE (S256), public clients, dynamic registration.
-- Not available yet: pull requests from branches, merge commits made on
-  the server, running checks automatically.
+- Not available yet: merge commits made on the server, running checks
+  automatically.
 
 ## More
 

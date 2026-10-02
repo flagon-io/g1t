@@ -218,13 +218,19 @@ pub struct GitAccessArgs {
     pub service: GitService,
 }
 
-/// `land`: moves the default branch of the repo a fork came from to the
-/// fork's head. Refused with `conflict` when the fork is behind, since
-/// that would discard commits. Returns `Outcome<Landed>`.
+/// `land`: moves a repository's default branch to the head of a pull
+/// request's source. Refused with `conflict` when the source is behind,
+/// since that would discard commits. Returns `Outcome<Landed>`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LandArgs {
-    pub fork_id: String,
+    /// The repository holding the commits: a pull request's fork, or the
+    /// target itself when landing one of its own branches.
+    pub source_id: String,
+    /// The branch of the source to land. Required when the source is the
+    /// target; a fork lands its default branch.
+    #[serde(default)]
+    pub branch: Option<String>,
     pub actor: User,
 }
 
@@ -283,11 +289,13 @@ pub struct Comparison {
     pub truncated: bool,
 }
 
-/// `compare`: what a repository's head changes.
+/// `compare`: what `head` changes relative to `base`.
 ///
-/// With no `base`, a pull request's fork is compared against the point where it
-/// and the repository it came from last agreed, and any other repository
-/// against its head's parent. Returns `Outcome<Comparison>`.
+/// `head` is a branch or a commit, and defaults to the default branch.
+/// With no `base`, a fork is compared against the point where it and the
+/// repository it came from last agreed; a branch against the point where it
+/// left the default branch; and the default branch against its head's
+/// parent. Returns `Outcome<Comparison>`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompareArgs {
@@ -295,4 +303,31 @@ pub struct CompareArgs {
     pub viewer: Viewer,
     #[serde(default)]
     pub base: Option<String>,
+    #[serde(default)]
+    pub head: Option<String>,
+}
+
+/// A branch and the commit it points to.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Branch {
+    pub name: String,
+    pub hash: String,
+}
+
+/// `branches`: the repository's branches, default branch first.
+/// Returns `Outcome<Vec<Branch>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BranchesArgs {
+    pub path: RepoPath,
+    pub viewer: Viewer,
+}
+
+/// `head`: the commit a branch points to, or null. For services reacting
+/// to a push, which have no viewer; it reveals nothing but a commit hash.
+/// Returns `Option<String>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeadArgs {
+    pub repo_id: String,
+    pub branch: String,
 }

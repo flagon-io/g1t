@@ -2,6 +2,7 @@ import {
   Bot,
   ChevronRight,
   FileDiff,
+  GitBranch,
   GitCommitHorizontal,
   GitMerge,
   MessageSquare,
@@ -13,7 +14,7 @@ import {
 import { useEffect } from "react";
 import { Form, Link, redirect, useRevalidator } from "react-router";
 
-import type { Comparison, SessionEntry } from "@g1t/contracts";
+import { type Comparison, type SessionEntry, pullComparison } from "@g1t/contracts";
 
 import type { Route } from "./+types/pull";
 import { DiffView } from "../../components/diff-view";
@@ -61,9 +62,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     throw new Response("Pull request not found.", { status: 404 });
   }
   const { pull } = found.value;
+  const range = pullComparison(pull);
   const [session, comparison] = await Promise.all([
     tab === "session" ? work.readSession(path, number, viewer) : null,
-    tab === "changes" ? repos.compare(pull.forkRepoId, viewer, pull.mergeBase) : null,
+    tab === "changes"
+      ? repos.compare(range.repoId, viewer, range.base, range.head)
+      : null,
   ]);
   const member = (viewer?.workspaces ?? []).some(
     (membership) => membership.slug === params.owner,
@@ -215,7 +219,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const here = `${base}/pull/${pull.number}`;
-  const remote = `https://g1t.sh/${pull.fork.namespace}/${pull.fork.name}.git`;
+  const remote = pull.fork
+    ? `https://g1t.sh/${pull.fork.namespace}/${pull.fork.name}.git`
+    : `https://g1t.sh/${params.owner}/${params.repo}.git`;
   const active = pull.status === "draft" || pull.status === "open";
 
   // Follow an agent at work without a manual reload.
@@ -241,15 +247,24 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             <Avatar name={pull.author.username} size={18} />
             <span>
               <span className="font-medium text-fg">{pull.author.username}</span>{" "}
-              {pull.status === "merged" ? "merged" : "wants to merge"} into{" "}
-              <span className="font-mono text-fg">{defaultBranch}</span>
+              {pull.status === "merged" ? "merged" : "wants to merge"}
+              {pull.branch && (
+                <>
+                  {" "}
+                  <span className="font-mono text-fg">{pull.branch}</span>
+                </>
+              )}{" "}
+              into <span className="font-mono text-fg">{defaultBranch}</span>
             </span>
           </span>
-          <span className="flex items-center gap-1.5 font-mono text-xs">
-            <Bot size={14} />
-            {pull.agent}
-            {pull.runtime === "hosted" && <span className="text-faint">on g1t</span>}
-          </span>
+          {/* A pull request from a branch was made by its author, not an agent. */}
+          {!pull.branch && (
+            <span className="flex items-center gap-1.5 font-mono text-xs">
+              <Bot size={14} />
+              {pull.agent}
+              {pull.runtime === "hosted" && <span className="text-faint">on g1t</span>}
+            </span>
+          )}
         </div>
 
         {issue && (
@@ -407,12 +422,27 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
 
         <section>
           <h3 className="text-sm font-medium">Working copy</h3>
-          <p className="mt-1 text-xs text-muted">
-            This fork belongs to the pull request. Pushes to it show up here.
-          </p>
-          <div className="mt-2">
-            <CopyLine text={`git clone ${remote}`} />
-          </div>
+          {pull.branch ? (
+            <>
+              <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+                <GitBranch size={13} />
+                Branch <span className="font-mono text-fg">{pull.branch}</span> of this
+                repository. Pushes to it show up here.
+              </p>
+              <div className="mt-2">
+                <CopyLine text={`git clone -b ${pull.branch} ${remote}`} />
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="mt-1 text-xs text-muted">
+                This fork belongs to the pull request. Pushes to it show up here.
+              </p>
+              <div className="mt-2">
+                <CopyLine text={`git clone ${remote}`} />
+              </div>
+            </>
+          )}
           <p className="mt-3 flex items-center gap-1.5 font-mono text-xs text-faint">
             <GitCommitHorizontal size={13} />
             {pull.headCommit?.slice(0, 12) ?? "no commits pushed yet"}

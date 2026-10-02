@@ -112,7 +112,8 @@ pub enum Runtime {
     External,
 }
 
-/// A proposed change, made in its own fork by an agent or a person.
+/// A proposed change. It is made either in a fork created for it, which is
+/// how agents work, or on a branch pushed to the repository itself.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Pull {
@@ -129,9 +130,13 @@ pub struct Pull {
     pub agent: String,
     pub runtime: Runtime,
     pub status: PullStatus,
-    pub fork: RepoPath,
+    /// The fork holding the change, unless it is on a branch.
+    pub fork: Option<RepoPath>,
     /// The fork's repository id.
-    pub fork_repo_id: String,
+    pub fork_repo_id: Option<String>,
+    /// The branch of the repository holding the change, unless it is in a
+    /// fork.
+    pub branch: Option<String>,
     pub head_commit: Option<String>,
     /// For a merged pull request, what the branch pointed to before the
     /// merge. Comparing against it shows what the pull request changed.
@@ -304,8 +309,9 @@ pub struct AddCommentArgs {
     pub body: String,
 }
 
-/// `open_pull`: forks the repo and returns the draft pull request to push
-/// to. Returns `Outcome<Pull>`.
+/// `open_pull`. Without `branch`, forks the repo and returns a draft pull
+/// request to push to. With it, opens a pull request, ready for review,
+/// for a branch already pushed to the repo. Returns `Outcome<Pull>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OpenPullArgs {
     pub actor: User,
@@ -316,6 +322,12 @@ pub struct OpenPullArgs {
     /// Defaults to the issue's title; required without an issue.
     #[serde(default)]
     pub title: String,
+    /// What changed and why. Usually set later, when a draft is marked ready.
+    #[serde(default)]
+    pub body: String,
+    /// A branch of the repository that already holds the change.
+    #[serde(default)]
+    pub branch: Option<String>,
     #[serde(default)]
     pub agent: String,
     pub runtime: Runtime,

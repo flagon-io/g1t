@@ -91,8 +91,9 @@ export function reposClient(service: ServiceBinding): ReposApi {
       call("fork_for_pull", { sourceId, pullId, actor }),
     gitAccess: (path, viewer, service) =>
       call("git_access", { path, viewer, service }),
-    land: (forkId, actor) => call("land", { forkId, actor }),
-    compare: (repoId, viewer, base) => call("compare", { repoId, viewer, base }),
+    branches: (path, viewer) => call("branches", { path, viewer }),
+    land: (sourceId, actor, branch) => call("land", { sourceId, actor, branch }),
+    compare: (repoId, viewer, base, head) => call("compare", { repoId, viewer, base, head }),
   };
 }
 

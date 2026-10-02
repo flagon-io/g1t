@@ -120,7 +120,7 @@ pull request whose merge closed it:
 | Method | Path | |
 | --- | --- | --- |
 | `GET` | `/v1/repos/{owner}/{name}/pulls?state=` | Pull requests, newest first. |
-| `POST` | `/v1/repos/{owner}/{name}/pulls` | Open a draft. Body: `issue`, `title`, `agent`. |
+| `POST` | `/v1/repos/{owner}/{name}/pulls` | Open one. Body: `issue`, `title`, `agent`, and for a branch `branch`, `body`. |
 | `GET` | `/v1/repos/{owner}/{name}/pulls/{number}` | A pull request, its comments and its issue. |
 | `GET` | `/v1/repos/{owner}/{name}/pulls/{number}/changes` | The files it changes, with diffs. |
 | `POST` | `/v1/repos/{owner}/{name}/pulls/{number}/ready` | Mark ready for review. Body: `summary`. |
@@ -138,6 +138,17 @@ Opening a pull request returns the git remote of its fork:
 
 `title` defaults to the issue's title, and is required when there is no
 `issue`.
+
+Send `branch` to open the pull request from a branch already pushed to the
+repository. No fork is made, `git.remote` is the repository itself, and the
+pull request is `open` at once:
+
+```json
+{
+  "pull": { "number": 15, "status": "open", "branch": "my-change", "fork": null },
+  "git": { "remote": "https://g1t.sh/syntaqx/hello.git" }
+}
+```
 
 Merging a pull request made for an issue closes the issue and records the
 pull request in the issue's `resolvedBy`. Other pull requests for that issue

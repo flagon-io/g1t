@@ -1,8 +1,8 @@
-import { Bot } from "lucide-react";
+import { Bot, GitBranch, Plus } from "lucide-react";
 import { Link } from "react-router";
 
 import type { Route } from "./+types/pulls";
-import { EmptyState, TimeAgo } from "../../components/ui";
+import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
 import { PullIcon, StateTabs } from "../../components/work";
 import { work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
@@ -26,14 +26,24 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
   const base = `/${params.owner}/${params.repo}`;
   return (
     <div>
-      <StateTabs to={`${base}/pulls`} state={state} />
+      <StateTabs
+        to={`${base}/pulls`}
+        state={state}
+        action={
+          <ButtonLink to={`${base}/pulls/new`}>
+            <Plus size={15} />
+            New pull request
+          </ButtonLink>
+        }
+      />
       <div className="mt-4">
         {pulls.length === 0 ? (
           <EmptyState
             title={state === "open" ? "No open pull requests" : "No closed pull requests"}
           >
-            A pull request is a change proposed from its own fork. Open one
-            from an issue, or have an agent do it.
+            A pull request proposes a change. Assign agents to an issue and
+            each opens one in its own fork, or push a branch and open one
+            yourself.
           </EmptyState>
         ) : (
           <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
@@ -63,8 +73,8 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
                     </span>
                   </span>
                   <span className="mt-0.5 flex shrink-0 items-center gap-1 font-mono text-xs text-muted">
-                    <Bot size={13} />
-                    {pull.agent}
+                    {pull.branch ? <GitBranch size={13} /> : <Bot size={13} />}
+                    {pull.branch ?? pull.agent}
                   </span>
                 </Link>
               </li>

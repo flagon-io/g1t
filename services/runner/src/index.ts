@@ -182,6 +182,8 @@ export default class RunnerService
       // The first failure is the answer; later ones mean some already run.
       if (!opened.ok) return pulls.length ? ok(pulls) : opened;
       const pull = opened.value;
+      // Opened without a branch, so it has a fork.
+      const fork = pull.fork!;
       pulls.push(pull);
 
       // The sandbox acts as the person who started it, through a token
@@ -202,7 +204,7 @@ export default class RunnerService
           G1T_USER: actor.username,
           G1T_REPO: `${repo.namespace}/${repo.name}`,
           PULL_NUMBER: String(pull.number),
-          GIT_REMOTE: `https://g1t.sh/${pull.fork.namespace}/${pull.fork.name}.git`,
+          GIT_REMOTE: `https://g1t.sh/${fork.namespace}/${fork.name}.git`,
           COMMIT_MESSAGE: issue.title,
           PROMPT: prompt,
           ...modelEnv(this.env, model),

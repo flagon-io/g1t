@@ -26,8 +26,9 @@ Working today:
 - Public and private repositories, and git over HTTPS, including creating a
   repository by pushing to it.
 - Issues with labels, acceptance checks and comments.
-- Pull requests, each in a copy-on-write fork, with a diff and a recorded
-  agent session. Several can be made for one issue.
+- Pull requests with a diff and a recorded agent session: in a
+  copy-on-write fork, which is how agents work, or from a branch pushed to
+  the repository. Several can be made for one issue.
 - Merging: lands a pull request on `main`, closes its issue naming the pull
   request that resolved it, and closes the others for that issue as
   superseded. Refused when the pull request is behind, so no commit is lost.
@@ -37,8 +38,7 @@ Working today:
 - An event bus: every state change is published, logged and delivered to
   subscribers.
 
-Not built yet: pull requests from branches, server-side merge commits,
-review comments on lines, running acceptance checks, git over SSH. See the build order in the plan.
+Not built yet: server-side merge commits, review comments on lines, running acceptance checks, git over SSH. See the build order in the plan.
 
 ## Try it
 

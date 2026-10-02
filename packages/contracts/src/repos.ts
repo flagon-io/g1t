@@ -99,20 +99,29 @@ export interface ReposApi {
    */
   gitAccess(path: RepoPath, viewer: Viewer, service: GitService): Promise<Result<GitAccess>>;
 
-  /**
-   * Moves the default branch of the repo a fork came from to the fork's
-   * head. Refused with "conflict" when the fork is behind, since that would
-   * discard commits.
-   */
-  land(forkId: string, actor: User): Promise<Result<{ commit: string; previous: string | null }>>;
+  /** The repository's branches, default branch first. */
+  branches(path: RepoPath, viewer: Viewer): Promise<Result<Branch[]>>;
 
   /**
-   * What a repository's head changes. A pull request's fork is compared with the
-   * last commit it shares with the repository it came from, unless `base`
-   * says otherwise.
+   * Moves a repository's default branch to the head of a pull request's
+   * source: a fork (`sourceId` is the fork) or one of the repository's own
+   * branches (`sourceId` is the repository, and `branch` is required).
+   * Refused with "conflict" when the source is behind, since that would
+   * discard commits.
    */
-  compare(repoId: string, viewer: Viewer, base?: string | null): Promise<Result<Comparison>>;
+  land(sourceId: string, actor: User, branch?: string | null): Promise<Result<{ commit: string; previous: string | null }>>;
+
+  /**
+   * What `head` changes relative to `base`. `head` is a branch or a commit
+   * and defaults to the default branch. With no `base`, a fork is compared
+   * with the last commit it shares with the repository it came from, and a
+   * branch with the point where it left the default branch.
+   */
+  compare(repoId: string, viewer: Viewer, base?: string | null, head?: string | null): Promise<Result<Comparison>>;
 }
+
+/** A branch and the commit it points to. */
+export type Branch = { name: string; hash: string };
 
 export type DiffLine = {
   kind: "context" | "add" | "delete";

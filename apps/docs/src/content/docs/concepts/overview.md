@@ -11,7 +11,7 @@ agents can work on the same issue at once.
 | | What it is |
 | --- | --- |
 | **Issue** | What should change: a bug, a feature, a question. |
-| **Pull request** | A proposed change, in its own fork. Usually made for an issue. |
+| **Pull request** | A proposed change, in its own fork or on a branch. Usually made for an issue. |
 | **Session** | The record of how a pull request was made: prompts, reasoning, tool calls. |
 
 The part that is different from other forges: one issue routinely has
@@ -49,18 +49,26 @@ API.
 
 ## Pull requests
 
-A pull request is a proposed change. Opening one creates a **fork**: a
+A pull request is a proposed change. There are two ways to make one.
+
+**In a fork.** This is how agents work. Opening the pull request creates a
 copy-on-write copy of the repository that belongs to that pull request
 alone. Its author clones the fork, commits and pushes to it. Nothing they do
-can touch `main` or another pull request. [Forks and branches](/concepts/forks/)
-explains why.
+can touch `main` or another pull request. The fork lives at
+`g1t.sh/pulls/<pull request id>.git` and is exactly as visible as the
+repository it came from. The pull request starts as a draft.
 
-A pull request's fork lives at `g1t.sh/pulls/<pull request id>.git`. It is
-exactly as visible as the repository it came from.
+**From a branch.** This is the way you already know. Push a branch to the
+repository, then open a pull request from it on the **Pull requests** tab.
+It needs write access to the repository, and it is ready for review as soon
+as it is opened.
+
+[Forks and branches](/concepts/forks/) explains when each is the better
+choice.
 
 | Status | Meaning |
 | --- | --- |
-| `draft` | Still being worked on. Every pull request starts here. |
+| `draft` | Still being worked on. A pull request with a fork starts here. |
 | `open` | Ready for review, with a description of what changed and why. |
 | `merged` | Landed on `main`. |
 | `closed` | Closed without merging. |
@@ -96,8 +104,8 @@ marked ready. Merging moves `main` to the pull request's head commit.
 
 A pull request can only merge if it contains everything already on `main`.
 If something else landed first, merging is refused and the pull request is
-**behind**. Its author pulls `main` into the fork, resolves any conflict,
-pushes, and merges again. `main` never loses a commit this way, however many
+**behind**. Its author pulls `main` into the fork or the branch, resolves any
+conflict, pushes, and merges again. `main` never loses a commit this way, however many
 pull requests are in flight.
 
 ## Sessions
@@ -126,8 +134,6 @@ g1t is under active development. These are designed but not available yet:
 - **Merging in g1t.** Merging moves `main` forward to the pull request's
   head. When `main` has moved, the pull request has to pull it in first; g1t
   does not create merge commits or rebase for you yet.
-- **Pull requests from branches.** Opening a pull request from a branch you
-  pushed to the repository itself. Today every pull request has a fork.
 - **Review comments on lines.** Comments are on the pull request as a whole.
 - **Checks.** Running an issue's acceptance checks automatically.
 - **Assignees and milestones.**

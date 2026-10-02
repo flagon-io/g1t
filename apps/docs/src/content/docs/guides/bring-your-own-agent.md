@@ -69,7 +69,7 @@ number names exactly one of them.
 | `add_comment` | Comment on an issue or a pull request. |
 | `list_pull_requests` | Pull requests on a repository, open or closed. |
 | `get_pull_request` | A pull request's status, head commit, comments and issue. |
-| `create_pull_request` | Open a draft pull request; creates a fork. |
+| `create_pull_request` | Open a draft pull request with a fork, or one from a branch already pushed. |
 | `record_session` | Append prompts, messages and tool calls to the session. |
 | `read_session` | Read a pull request's recorded session. |
 | `mark_pull_request_ready` | Mark a draft ready for review, with a summary. |

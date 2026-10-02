@@ -10,6 +10,7 @@ import {
   type WorkApi,
   fail,
   ok,
+  pullComparison,
 } from "@g1t/contracts";
 
 export interface ApiEnv {
@@ -335,7 +336,7 @@ export const operations: Operation[] = [
   {
     name: "create_pull_request",
     description:
-      "Start a change. Opens a draft pull request with its own fork of the repository and returns the fork's git remote. Clone it, commit your work there, push, record your session as you go, then call mark_pull_request_ready. Give the issue it is for whenever there is one.",
+      "Start a change. Opens a draft pull request with its own fork of the repository and returns the fork's git remote. Clone it, commit your work there, push, record your session as you go, then call mark_pull_request_ready. Give the issue it is for whenever there is one. If the change is already on a branch pushed to the repository, give that branch instead: no fork is made and the pull request is ready for review at once.",
     input: {
       type: "object",
       properties: {
@@ -344,6 +345,15 @@ export const operations: Operation[] = [
         title: {
           type: "string",
           description: "Defaults to the issue's title. Required when there is no issue.",
+        },
+        branch: {
+          type: "string",
+          description:
+            "A branch already pushed to the repository that holds the change. Leave out to get a fork.",
+        },
+        body: {
+          type: "string",
+          description: "Markdown: what changed and why. Mainly for pull requests from a branch.",
         },
         agent: {
           type: "string",
@@ -356,6 +366,8 @@ export const operations: Operation[] = [
       const opened = await env.WORK.openPull(user, path, {
         issue: input.issue == null ? undefined : Number(input.issue),
         title: text(input, "title"),
+        body: text(input, "body"),
+        branch: text(input, "branch") || undefined,
         agent: text(input, "agent") || "agent",
         runtime: "external",
       });
@@ -363,8 +375,12 @@ export const operations: Operation[] = [
       const { fork } = opened.value;
       return ok({
         pull: opened.value,
+        // Where to push. A pull request from a branch has no fork: push to
+        // that branch of the repository.
         git: {
-          remote: `https://g1t.sh/${fork.namespace}/${fork.name}.git`,
+          remote: fork
+            ? `https://g1t.sh/${fork.namespace}/${fork.name}.git`
+            : `https://g1t.sh/${path.namespace}/${path.name}.git`,
           username: user.username,
           password: "your g1t access token",
         },
@@ -453,8 +469,8 @@ export const operations: Operation[] = [
     run: onRepo(async (env, path, viewer, input) => {
       const found = await env.WORK.getPull(path, Number(input.number), viewer);
       if (!found.ok) return found;
-      const { forkRepoId, mergeBase } = found.value.pull;
-      return env.REPOS.compare(forkRepoId, viewer, mergeBase);
+      const { repoId, base, head } = pullComparison(found.value.pull);
+      return env.REPOS.compare(repoId, viewer, base, head);
     }),
   },
   {
