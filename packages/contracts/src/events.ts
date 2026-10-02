@@ -28,8 +28,18 @@ export type EventPayloads = {
   /** `issue` is the number of the issue the pull request is for. */
   "pull.opened": { pullId: string; repoId: string; number: number; issue?: number; agent: string };
   "pull.ready": { pullId: string; repoId: string; number: number; issue?: number };
+  /** A push moved the head of a pull request that is ready for review. */
+  "pull.updated": { pullId: string; repoId: string; number: number; issue?: number; commit: string };
   "pull.closed": { pullId: string; repoId: string; number: number; issue?: number };
   "pull.merged": { pullId: string; repoId: string; number: number; issue?: number; commit: string };
+  /** A run of the acceptance checks finished. `commit` is what was checked. */
+  "checks.completed": {
+    pullId: string;
+    repoId: string;
+    number: number;
+    status: "passed" | "failed" | "errored";
+    commit: string;
+  };
   /** `number` is the issue or pull request commented on. */
   "comment.created": { commentId: string; repoId: string; number: number };
   "session.appended": { pullId: string; repoId: string; number: number; count: number };

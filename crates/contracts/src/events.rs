@@ -66,8 +66,8 @@ pub struct IssueEvent {
     pub resolved_by: Option<u32>,
 }
 
-/// The payload of `pull.opened`, `pull.ready`, `pull.closed` and
-/// `pull.merged`; each uses the fields that apply to it.
+/// The payload of `pull.opened`, `pull.ready`, `pull.updated` (its head
+/// moved), `pull.closed` and `pull.merged`; each uses the fields that apply to it.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PullEvent {
@@ -85,6 +85,20 @@ pub struct PullEvent {
     /// On close: the pull request that was merged instead.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub superseded_by: Option<u32>,
+}
+
+/// `checks.completed`: a run of an issue's acceptance checks against a pull
+/// request finished.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChecksEvent {
+    pub pull_id: String,
+    pub repo_id: String,
+    pub number: u32,
+    /// `passed`, `failed` or `errored`.
+    pub status: &'static str,
+    /// The commit that was checked.
+    pub commit: String,
 }
 
 /// `comment.created`. `number` is the issue or pull request commented on.

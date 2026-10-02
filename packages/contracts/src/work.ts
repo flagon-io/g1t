@@ -92,6 +92,11 @@ export type Pull = {
    * merged: that one's number.
    */
   supersededBy: number | null;
+  /**
+   * Where the latest run of the issue's acceptance checks stands, if there
+   * has been one against the current head.
+   */
+  checkStatus: CheckStatus | null;
   author: User;
   /** RFC 3339. */
   createdAt: string;
@@ -99,14 +104,85 @@ export type Pull = {
   updatedAt: string;
 };
 
+/** `queued` waits for a sandbox; `errored` means the checks could not be run. */
+export type CheckStatus = "queued" | "running" | "passed" | "failed" | "errored";
+
+/** How one acceptance check went. */
+export type CheckResult = {
+  command: string;
+  passed: boolean;
+  /** Null when the command was stopped for taking too long. */
+  exitCode: number | null;
+  /** What the command printed; the end of it, when there was a lot. */
+  output: string;
+  durationMs: number;
+};
+
+/**
+ * One run of an issue's acceptance checks against a pull request's head, in
+ * a sandbox that holds nothing but that commit.
+ */
+export type CheckRun = {
+  id: string;
+  /** The commit that was checked. */
+  headCommit: string;
+  status: CheckStatus;
+  results: CheckResult[];
+  /** Why the checks could not be run, when `status` is `errored`. */
+  error: string | null;
+  /** RFC 3339. */
+  createdAt: string;
+  /** RFC 3339. */
+  finishedAt: string | null;
+};
+
+/** A reviewer's decision on a pull request. */
+export type Verdict = "approve" | "request_changes";
+
+/**
+ * A comment on an issue or a pull request. On a pull request it can sit on
+ * one line of the change, and it can carry a reviewer's verdict.
+ */
 export type Comment = {
   id: string;
   author: User;
   /** Markdown. */
   body: string;
+  /** The file commented on, for a comment on a line. */
+  path: string | null;
+  /** The line of that file, as numbered after the change. */
+  line: number | null;
+  verdict: Verdict | null;
   /** RFC 3339. */
   createdAt: string;
 };
+
+export type NewComment = {
+  /** May be empty when approving. */
+  body: string;
+  path?: string;
+  line?: number;
+  verdict?: Verdict;
+};
+
+/** What a sandbox needs to carry out a check run. */
+export type CheckJob = {
+  runId: string;
+  /** Lets the sandbox, and nothing else, report this run's results. */
+  token: string;
+  commands: string[];
+  /** The repository holding the commit: the fork, or the repository itself. */
+  source: RepoPath;
+  commit: string;
+  /** Who opened the pull request, and so can read its source. */
+  author: User;
+  /** Username of whoever wrote the checks: the issue's author. */
+  requestedBy: string;
+  repo: RepoPath;
+  number: number;
+};
+
+export type CheckReport = { results?: CheckResult[]; error?: string; skip?: boolean };
 
 export type SessionEntryKind = "prompt" | "message" | "tool_call" | "tool_result" | "note";
 
@@ -138,6 +214,8 @@ export type PullDetail = {
   /** The issue it is for, if any. */
   issue: Issue | null;
   comments: Comment[];
+  /** The latest run of the issue's acceptance checks. */
+  checks: CheckRun | null;
 };
 
 export type OpenIssueInput = {
@@ -184,8 +262,22 @@ export interface WorkApi {
   /** How many issues and pull requests are open. */
   counts(repo: RepoPath, viewer: Viewer): Promise<Result<{ issues: number; pulls: number }>>;
 
-  /** On an issue or a pull request. */
-  addComment(actor: User, repo: RepoPath, number: number, body: string): Promise<Result<Comment>>;
+  /**
+   * On an issue or a pull request. On a pull request it may name a line of
+   * the change and carry a verdict; nobody can give a verdict on their own.
+   */
+  addComment(actor: User, repo: RepoPath, number: number, comment: NewComment): Promise<Result<Comment>>;
+
+  /**
+   * Begins a run of the acceptance checks for a pull request that is ready
+   * for review. For the runner service, which starts the sandbox.
+   */
+  startChecks(pullId: string): Promise<Result<CheckJob>>;
+  /**
+   * What a sandbox says about its run. With no results and no error it has
+   * started; `skip` forgets a run that will not be carried out.
+   */
+  reportChecks(runId: string, token: string, report: CheckReport): Promise<Result<CheckRun>>;
 
   /**
    * Opens a pull request: a draft with a fork to push to, or, given a
@@ -204,7 +296,16 @@ export interface WorkApi {
    * naming this pull request, and the others still in progress for it close
    * as superseded. Only members of the repository's workspace may merge.
    */
-  mergePull(actor: User, repo: RepoPath, number: number, keepIssueOpen?: boolean): Promise<Result<Pull>>;
+  mergePull(
+    actor: User,
+    repo: RepoPath,
+    number: number,
+    options?: {
+      keepIssueOpen?: boolean;
+      /** Merge although the acceptance checks have not passed. */
+      ignoreChecks?: boolean;
+    },
+  ): Promise<Result<Pull>>;
   /** Drafts and open pull requests the viewer started, most recently active first. */
   listActivePulls(viewer: Viewer): Promise<{ pull: Pull; issue: Issue | null }[]>;
 

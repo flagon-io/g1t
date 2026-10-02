@@ -6,6 +6,8 @@
 //! and marks the pull request ready for review. It talks to g1t only through the public API and git, exactly
 //! as an agent on someone's own machine would.
 //!
+//! With `MODE=checks` it runs acceptance checks instead; see `checks`.
+//!
 //! Configuration comes from the environment:
 //!
 //! - `G1T_API`, `G1T_TOKEN`, `G1T_USER`: where and who to report as.
@@ -14,6 +16,7 @@
 //! - `COMMIT_MESSAGE`: used if the agent leaves changes uncommitted.
 //! - `ANTHROPIC_API_KEY`: read by the harness itself.
 
+mod checks;
 mod harness;
 mod report;
 
@@ -26,14 +29,14 @@ use base64::engine::general_purpose::STANDARD;
 
 use report::{Entry, Reporter};
 
-const WORKDIR: &str = "/work/repo";
+pub(crate) const WORKDIR: &str = "/work/repo";
 
-fn env(name: &str) -> Result<String> {
+pub(crate) fn env(name: &str) -> Result<String> {
     std::env::var(name).with_context(|| format!("{name} is not set"))
 }
 
 /// Runs git and returns its trimmed output, failing on a non-zero exit.
-fn git(dir: &Path, args: &[&str]) -> Result<String> {
+pub(crate) fn git(dir: &Path, args: &[&str]) -> Result<String> {
     let output = Command::new("git")
         .current_dir(dir)
         .args(args)
@@ -52,7 +55,7 @@ fn git(dir: &Path, args: &[&str]) -> Result<String> {
 /// A git option that authenticates one command. The credential is passed
 /// per command and never written to the clone's config or its remote URL,
 /// where the agent would find it.
-fn auth_option(user: &str, token: &str) -> String {
+pub(crate) fn auth_option(user: &str, token: &str) -> String {
     let credentials = STANDARD.encode(format!("{user}:{token}"));
     format!("http.extraHeader=Authorization: Basic {credentials}")
 }
@@ -112,6 +115,10 @@ fn run(reporter: &mut Reporter) -> Result<String> {
 }
 
 fn main() {
+    // The same image also runs acceptance checks, with no agent involved.
+    if std::env::var("MODE").as_deref() == Ok("checks") {
+        std::process::exit(checks::main());
+    }
     let mut reporter = match Reporter::from_env() {
         Ok(reporter) => reporter,
         Err(error) => {

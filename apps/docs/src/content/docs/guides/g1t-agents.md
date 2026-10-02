@@ -32,13 +32,18 @@ seconds. The page updates on its own while they work.
 Everything it reads, runs and decides is recorded in the pull request's
 **Session** as it happens. The **Changes** tab shows the resulting diff.
 
+Once the pull request is ready, the issue's
+[acceptance checks](/concepts/overview/#acceptance-checks) run against it in
+a separate, clean sandbox. The agent has no say in the result.
+
 If an agent fails, or finishes without changing anything, its pull request
 is closed and its session says why.
 
 ## Choosing between pull requests
 
-Open each pull request, read its description and its changes, and merge the
-one you want. Merging lands it on `main` and closes the issue, which records
+Each pull request on the issue's page shows whether its checks passed. Open
+the ones that did, read their descriptions and changes, and merge the one
+you want. Merging lands it on `main` and closes the issue, which records
 that pull request as the one that resolved it. The other pull requests for
 the issue close as superseded. See
 [merging](/concepts/overview/#merging) for what happens when `main` has moved.

@@ -646,7 +646,8 @@ over HTTPS; accounts with registration, email verification, password reset
 and device sign-in; an OAuth 2.1 server, so MCP clients sign in through the
 browser with no token to paste; workspaces with members; issues with labels, checks and
 comments; pull requests in forks or from branches, with diffs and sessions,
-several per issue; merging with a behind check, which resolves the issue and supersedes
+several per issue; acceptance checks run in clean sandboxes, gating the
+merge; line comments and review verdicts; merging with a behind check, which resolves the issue and supersedes
 the rest; g1t agents in sandboxes with a choice of model; REST API, OpenAPI
 and MCP server; event bus. Every service and the API are in Rust.
 
@@ -655,11 +656,10 @@ and MCP server; event bus. Every service and the API are in Rust.
 3. Event storage per the design above: per-repo hot log, Iceberg on R2,
    hash-chained audit.
 4. CLI with Claude Code hooks to record sessions automatically.
-5. Acceptance checks run in sandboxes; review comments on lines.
+5. Reviewer agents assigned automatically; required reviews; risk tiers.
 6. Server-side merge and rebase; landing queue with speculative checks;
    resolve-on-move.
-7. Compare view, proof bundles, reviewers, risk tiers; work registry,
-   handoff.
+7. Compare view, proof bundles; work registry, handoff.
 8. Projects, mission control, steering; why-blame, digest, timeline.
 9. Context hub, portfolio; automations and integrations (Sentry first).
 10. SSH; bot protection; own keys, endpoints and runners.

@@ -1,9 +1,12 @@
+import { env } from "cloudflare:workers";
 import {
   Bot,
   ChevronRight,
   FileDiff,
   GitBranch,
   GitCommitHorizontal,
+  CircleCheck,
+  CircleSlash,
   GitMerge,
   MessageSquare,
   MessagesSquare,
@@ -28,7 +31,8 @@ import {
   Textarea,
   TimeAgo,
 } from "../../components/ui";
-import { Comments, IssueIcon, PullState } from "../../components/work";
+import { ChecksPanel } from "../../components/checks";
+import { Comments, IssueIcon, PullState, verdicts } from "../../components/work";
 import { repos, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 
@@ -93,14 +97,27 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const number = Number(params.number);
   const action = form.get("action");
+  const verdict = form.get("verdict");
+  const line = Number(form.get("line"));
   const result =
     action === "merge"
-      ? await work.mergePull(user, path, number, form.get("keepIssueOpen") === "on")
+      ? await work.mergePull(user, path, number, {
+          keepIssueOpen: form.get("keepIssueOpen") === "on",
+          ignoreChecks: form.get("ignoreChecks") === "on",
+        })
       : action === "close"
         ? await work.closePull(user, path, number)
-        : action === "comment"
-          ? await work.addComment(user, path, number, String(form.get("body") ?? ""))
-          : await work.readyPull(user, path, number, String(form.get("summary") ?? ""));
+        : action === "recheck"
+          ? await env.RUNNER.recheck(user, path, number)
+          : action === "comment"
+            ? await work.addComment(user, path, number, {
+                body: String(form.get("body") ?? ""),
+                path: String(form.get("path") ?? "") || undefined,
+                line: line > 0 ? line : undefined,
+                verdict:
+                  verdict === "approve" || verdict === "request_changes" ? verdict : undefined,
+              })
+            : await work.readyPull(user, path, number, String(form.get("summary") ?? ""));
   return result.ok ? null : { error: result.error.message, action };
 }
 
@@ -209,6 +226,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     pull,
     issue,
     comments,
+    checks,
     tab,
     session,
     comparison,
@@ -224,16 +242,20 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     : `https://g1t.sh/${params.owner}/${params.repo}.git`;
   const active = pull.status === "draft" || pull.status === "open";
 
-  // Follow an agent at work without a manual reload.
+  // Follow an agent at work, or checks in progress, without a manual reload.
   const revalidator = useRevalidator();
   const working = pull.status === "draft";
+  const checking = checks?.status === "queued" || checks?.status === "running";
+  const reviews = verdicts(comments);
+  // What stands between this pull request and a merge, if anything.
+  const unchecked = checks && checks.status !== "passed";
   useEffect(() => {
-    if (!working) return;
+    if (!working && !checking) return;
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") revalidator.revalidate();
     }, REFRESH_MS);
     return () => clearInterval(timer);
-  }, [working, revalidator]);
+  }, [working, checking, revalidator]);
 
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_19rem]">
@@ -266,6 +288,23 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             </span>
           )}
         </div>
+
+        {reviews.length > 0 && (
+          <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            {reviews.map(({ reviewer, verdict }) => (
+              <span
+                key={reviewer}
+                className={`flex items-center gap-1.5 ${
+                  verdict === "approve" ? "text-accent" : "text-danger"
+                }`}
+              >
+                {verdict === "approve" ? <CircleCheck size={15} /> : <CircleSlash size={15} />}
+                {verdict === "approve" ? "Approved by" : "Changes requested by"}{" "}
+                <span className="font-medium">{reviewer}</span>
+              </span>
+            ))}
+          </p>
+        )}
 
         {issue && (
           <Link
@@ -330,7 +369,13 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
         </nav>
         <div className="mt-5">
           {comparison ? (
-            <DiffView comparison={comparison} />
+            <DiffView
+              comparison={comparison}
+              review={{
+                comments: comments.filter((comment) => comment.path),
+                canComment: Boolean(viewer),
+              }}
+            />
           ) : tab === "session" ? (
             session.length === 0 ? (
               <EmptyState title="Nothing recorded yet">
@@ -357,14 +402,33 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                     : "No description."}
                 </p>
               )}
-              <Comments comments={comments} canComment={Boolean(viewer)} />
-              {actionData?.action === "comment" && <ErrorText>{actionData.error}</ErrorText>}
+              <Comments
+                comments={comments}
+                canComment={Boolean(viewer)}
+                review={{
+                  changesUrl: here + "?tab=changes",
+                  // Nobody reviews their own pull request.
+                  canJudge: active && viewer != null && viewer.id !== pull.author.id,
+                }}
+              />
+            </div>
+          )}
+          {actionData?.action === "comment" && (
+            <div className="mt-2">
+              <ErrorText>{actionData.error}</ErrorText>
             </div>
           )}
         </div>
       </div>
 
       <aside className="space-y-6">
+        <ChecksPanel
+          run={checks}
+          commands={issue?.checks ?? []}
+          canRerun={canManage && pull.status === "open"}
+        />
+        {actionData?.action === "recheck" && <ErrorText>{actionData.error}</ErrorText>}
+
         {canMerge && pull.status === "open" && (
           <section className="rounded-xl border border-accent/30 bg-accent/5 p-4">
             <h3 className="text-sm font-medium">Merge this pull request</h3>
@@ -379,6 +443,15 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   <input type="checkbox" name="keepIssueOpen" className="mt-0.5 accent-accent" />
                   <span>
                     Keep #{issue.number} open. This is only part of the work.
+                  </span>
+                </label>
+              )}
+              {unchecked && (
+                <label className="flex items-start gap-2 text-xs text-muted">
+                  <input type="checkbox" name="ignoreChecks" className="mt-0.5 accent-accent" />
+                  <span>
+                    Merge although the checks{" "}
+                    {checking ? "have not finished" : "did not pass"}.
                   </span>
                 </label>
               )}
@@ -414,7 +487,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                 </Button>
               </div>
             </Form>
-            {actionData && actionData.action !== "merge" && actionData.action !== "comment" && (
+            {actionData &&
+              !["merge", "comment", "recheck"].includes(String(actionData.action)) && (
               <ErrorText>{actionData.error}</ErrorText>
             )}
           </section>

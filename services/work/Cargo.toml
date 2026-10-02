@@ -3,7 +3,7 @@ name = "g1t-work"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
-description = "Intents, attempts and sessions."
+description = "Issues, pull requests, reviews, checks and sessions."
 
 [lib]
 crate-type = ["cdylib"]
@@ -14,3 +14,6 @@ g1t-kit.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 worker.workspace = true
+getrandom = { version = "0.2", features = ["js"] }
+hex = "0.4"
+sha2 = "0.10"

@@ -22,7 +22,7 @@ export type RunHostedInput = {
   model?: string;
 };
 
-/** Hosted agents: sandboxes on g1t that work on an issue. */
+/** Sandboxes on g1t: agents that work on an issue, and acceptance checks. */
 export interface RunnerApi {
   /** The models this viewer may run g1t agents on; empty if they may not. */
   models(viewer: Viewer): Promise<AgentModel[]>;
@@ -32,4 +32,9 @@ export interface RunnerApi {
    * progress shows up in each pull request's session.
    */
   run(actor: User, repo: RepoPath, issue: number, input: RunHostedInput): Promise<Result<Pull[]>>;
+  /**
+   * Runs the acceptance checks of a pull request again. Whoever opened it,
+   * or a member of the repository's workspace, may ask.
+   */
+  recheck(actor: User, repo: RepoPath, number: number): Promise<Result<boolean>>;
 }

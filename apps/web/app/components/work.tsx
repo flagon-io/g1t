@@ -155,35 +155,92 @@ export function StateTabs({
   );
 }
 
-/** Comments in order, then the box to add one. */
+const VERDICTS = {
+  approve: { label: "approved these changes", style: "text-accent" },
+  request_changes: { label: "requested changes", style: "text-danger" },
+} as const;
+
+/**
+ * Comments in order, then the box to add one. On a pull request, `review`
+ * says where its changes are shown and whether the viewer may give a
+ * verdict.
+ */
 export function Comments({
   comments,
   canComment,
+  review,
 }: {
   comments: Comment[];
   canComment: boolean;
+  review?: { changesUrl: string; canJudge: boolean };
 }) {
   return (
     <div className="space-y-4">
-      {comments.map((comment) => (
-        <article key={comment.id} className="rounded-xl border border-line bg-surface">
-          <header className="flex items-center gap-2 border-b border-line px-4 py-2 text-sm text-muted">
-            <Avatar name={comment.author.username} size={18} />
-            <span className="font-medium text-fg">{comment.author.username}</span>
-            <span>
-              commented <TimeAgo at={comment.createdAt} />
-            </span>
-          </header>
-          <div className="px-4 py-3">
-            <Markdown source={comment.body} />
-          </div>
-        </article>
-      ))}
+      {comments.map((comment) => {
+        const verdict = comment.verdict && VERDICTS[comment.verdict];
+        return (
+          <article key={comment.id} className="rounded-xl border border-line bg-surface">
+            <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2 text-sm text-muted">
+              <Avatar name={comment.author.username} size={18} />
+              <span className="font-medium text-fg">{comment.author.username}</span>
+              {verdict ? (
+                <span className={`flex items-center gap-1 font-medium ${verdict.style}`}>
+                  {comment.verdict === "approve" ? (
+                    <CircleCheck size={14} />
+                  ) : (
+                    <CircleSlash size={14} />
+                  )}
+                  {verdict.label}
+                </span>
+              ) : (
+                <span>commented</span>
+              )}
+              <TimeAgo at={comment.createdAt} />
+              {comment.path && review && (
+                <Link
+                  to={`${review.changesUrl}#file-${comment.path}`}
+                  className="ml-auto truncate font-mono text-xs text-faint hover:text-fg"
+                >
+                  {comment.path}
+                  {comment.line != null && `:${comment.line}`}
+                </Link>
+              )}
+            </header>
+            {comment.body && (
+              <div className="px-4 py-3">
+                <Markdown source={comment.body} />
+              </div>
+            )}
+          </article>
+        );
+      })}
       {canComment ? (
         <Form method="post" className="space-y-2" key={comments.length}>
           <input type="hidden" name="action" value="comment" />
-          <Textarea name="body" rows={3} required placeholder="Leave a comment. Markdown works." />
-          <Button type="submit">Comment</Button>
+          <Textarea
+            name="body"
+            rows={3}
+            placeholder={
+              review?.canJudge
+                ? "Leave a comment, or a review. Markdown works."
+                : "Leave a comment. Markdown works."
+            }
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit">Comment</Button>
+            {review?.canJudge && (
+              <>
+                <Button variant="quiet" type="submit" name="verdict" value="approve">
+                  <CircleCheck size={14} className="text-accent" />
+                  Approve
+                </Button>
+                <Button variant="quiet" type="submit" name="verdict" value="request_changes">
+                  <CircleSlash size={14} className="text-danger" />
+                  Request changes
+                </Button>
+              </>
+            )}
+          </div>
         </Form>
       ) : (
         <p className="text-sm text-muted">
@@ -195,4 +252,13 @@ export function Comments({
       )}
     </div>
   );
+}
+
+/** Where each reviewer stands: their most recent verdict. */
+export function verdicts(comments: Comment[]): { reviewer: string; verdict: NonNullable<Comment["verdict"]> }[] {
+  const latest = new Map<string, NonNullable<Comment["verdict"]>>();
+  for (const comment of comments) {
+    if (comment.verdict) latest.set(comment.author.username, comment.verdict);
+  }
+  return [...latest].map(([reviewer, verdict]) => ({ reviewer, verdict }));
 }

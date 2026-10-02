@@ -17,6 +17,7 @@ import {
   Textarea,
   TimeAgo,
 } from "../../components/ui";
+import { CheckBadge } from "../../components/checks";
 import { Comments, IssueState, Label, PullIcon } from "../../components/work";
 import { work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
@@ -83,7 +84,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       throw redirect(`/${params.owner}/${params.repo}/pull/${result.value.number}`);
     }
     case "comment": {
-      const result = await work.addComment(user, path, number, String(form.get("body") ?? ""));
+      const result = await work.addComment(user, path, number, {
+        body: String(form.get("body") ?? ""),
+      });
       return result.ok ? null : { error: result.error.message };
     }
     case "labels": {
@@ -141,6 +144,7 @@ function PullRow({ pull, base }: { pull: Pull; base: string }) {
             <span className="size-1.5 animate-pulse rounded-full bg-accent" />
           )}
           <span className="ml-auto flex items-center gap-3 text-xs text-faint">
+            <CheckBadge status={pull.checkStatus} />
             <span className="flex items-center gap-1 font-mono">
               <GitCommitHorizontal size={13} />
               {pull.headCommit?.slice(0, 7) ?? "no commits"}
@@ -170,7 +174,12 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
   // Follow agents at work without a manual reload.
   const revalidator = useRevalidator();
   const navigation = useNavigation();
-  const running = pulls.some((pull) => pull.status === "draft");
+  const running = pulls.some(
+    (pull) =>
+      pull.status === "draft" ||
+      pull.checkStatus === "queued" ||
+      pull.checkStatus === "running",
+  );
   useEffect(() => {
     if (!running) return;
     const timer = setInterval(() => {

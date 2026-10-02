@@ -4,6 +4,7 @@
 //! `g1t_contracts::work` for the methods and their arguments. It also
 //! consumes its queue of events from the bus.
 
+mod checks;
 mod rows;
 
 use g1t_contracts::events::{
@@ -20,7 +21,7 @@ use worker::{
     Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, Request, Response, Result, event,
 };
 
-use rows::{CommentRow, IssueRow, NumberRow, PullRow, SessionRow, ValueRow};
+use rows::{CommentRow, IssueRow, MovedRow, NumberRow, PullRow, SessionRow, ValueRow};
 
 const SOURCE: &str = "work";
 const MAX_ENTRY_BATCH: usize = 200;
@@ -95,11 +96,23 @@ impl Work {
         actor: &User,
         data: T,
     ) -> Result<()> {
+        self.publish_as(kind, repo_id, Some(actor.id.clone()), data)
+            .await
+    }
+
+    /// Publishes an event caused by `actor`, or by g1t itself.
+    async fn publish_as<T: Serialize>(
+        &self,
+        kind: &'static str,
+        repo_id: &str,
+        actor: Option<String>,
+        data: T,
+    ) -> Result<()> {
         let event = NewEvent {
             kind,
             source: SOURCE,
             repo_id: Some(repo_id.to_owned()),
-            actor: Some(actor.id.clone()),
+            actor,
             data,
         };
         g1t_kit::call(
@@ -528,12 +541,19 @@ impl Work {
             return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
         }
         let body = a.body.trim();
-        if body.is_empty() {
+        // An approval speaks for itself; anything else has to say something.
+        if body.is_empty() && a.verdict != Some(Verdict::Approve) {
             return Ok(Outcome::fail(
                 FailureCode::Invalid,
                 "A comment cannot be empty.",
             ));
         }
+        let path = a
+            .path
+            .as_deref()
+            .map(str::trim)
+            .filter(|path| !path.is_empty());
+        let line = a.line.filter(|line| *line > 0 && path.is_some());
         if body.chars().count() > MAX_ENTRY_CHARS {
             return Ok(Outcome::fail(
                 FailureCode::Invalid,
@@ -543,8 +563,20 @@ impl Work {
         let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
         // The number names an issue or a pull request, never both.
         let table = if self.issue(&repo.id, a.number).await?.is_some() {
+            if path.is_some() || a.verdict.is_some() {
+                return Ok(Outcome::fail(
+                    FailureCode::Invalid,
+                    "Only a pull request can be reviewed or commented on by line.",
+                ));
+            }
             "issues"
-        } else if self.pull(&repo.id, a.number).await?.is_some() {
+        } else if let Some(pull) = self.pull(&repo.id, a.number).await? {
+            if a.verdict.is_some() && pull.author.id == a.actor.id {
+                return Ok(Outcome::fail(
+                    FailureCode::Forbidden,
+                    "You cannot approve or request changes on your own pull request.",
+                ));
+            }
             "pulls"
         } else {
             return Ok(Outcome::fail(
@@ -558,6 +590,9 @@ impl Work {
             id: new_id("cmt", now),
             author: a.actor.clone(),
             body: body.to_owned(),
+            path: path.map(str::to_owned),
+            line,
+            verdict: a.verdict,
             created_at: rfc3339(now),
         };
         self.db
@@ -565,8 +600,9 @@ impl Work {
                 self.db
                     .prepare(
                         "INSERT INTO comments
-                           (id, repo_id, number, author_id, author_name, body, created_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?)",
+                           (id, repo_id, number, author_id, author_name, body, path, line,
+                            verdict, created_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     )
                     .bind(&[
                         comment.id.as_str().into(),
@@ -575,6 +611,10 @@ impl Work {
                         a.actor.id.as_str().into(),
                         a.actor.username.as_str().into(),
                         body.into(),
+                        optional(&comment.path),
+                        optional_number(line),
+                        a.verdict
+                            .map_or(JsValue::NULL, |verdict| verdict.as_str().into()),
                         comment.created_at.as_str().into(),
                     ])?,
                 self.db
@@ -783,6 +823,7 @@ impl Work {
         };
         Ok(Outcome::Ok(PullDetail {
             comments: self.comments(&repo.id, pull.number).await?,
+            checks: self.latest_checks(&pull.id).await?,
             issue,
             pull,
         }))
@@ -884,6 +925,22 @@ impl Work {
                 return Ok(Outcome::fail(
                     FailureCode::Conflict,
                     format!("This pull request is already {}.", status.as_str()),
+                ));
+            }
+        }
+        if !a.ignore_checks {
+            let waiting = match pull.check_status {
+                Some(CheckStatus::Queued | CheckStatus::Running) => {
+                    Some("The acceptance checks are still running.")
+                }
+                Some(CheckStatus::Failed) => Some("The acceptance checks did not pass."),
+                Some(CheckStatus::Errored) => Some("The acceptance checks could not be run."),
+                Some(CheckStatus::Passed) | None => None,
+            };
+            if let Some(reason) = waiting {
+                return Ok(Outcome::fail(
+                    FailureCode::Conflict,
+                    format!("{reason} Wait or fix them, or merge anyway by ignoring the checks."),
                 ));
             }
         }
@@ -1117,35 +1174,68 @@ impl Work {
             return Ok(());
         };
         let now = rfc3339(now_ms());
-        let active = "status IN ('draft', 'open')";
-        let mut statements = Vec::new();
+        // The head moved, so whatever the checks said no longer applies.
+        let moved = "UPDATE pulls
+             SET head_commit = ?, updated_at = ?, check_status = NULL, check_run_id = NULL";
+        let active = "status IN ('draft', 'open') AND head_commit IS NOT ?";
+        let returning = "RETURNING id, repo_id, number, issue_number, status";
+        let mut pulls: Vec<MovedRow> = Vec::new();
         // A fork carries its pull request on its default branch.
         if event.data["defaultBranch"].as_bool() == Some(true) {
-            statements.push(
+            pulls.extend(
                 self.db
                     .prepare(format!(
-                        "UPDATE pulls SET head_commit = ?, updated_at = ?
-                         WHERE fork_repo_id = ? AND {active}"
+                        "{moved} WHERE fork_repo_id = ? AND {active} {returning}"
                     ))
-                    .bind(&[after.into(), now.as_str().into(), repo_id.into()])?,
+                    .bind(&[
+                        after.into(),
+                        now.as_str().into(),
+                        repo_id.into(),
+                        after.into(),
+                    ])?
+                    .all()
+                    .await?
+                    .results::<MovedRow>()?,
             );
         }
         if let Some(branch) = git_ref.strip_prefix("refs/heads/") {
-            statements.push(
+            pulls.extend(
                 self.db
                     .prepare(format!(
-                        "UPDATE pulls SET head_commit = ?, updated_at = ?
-                         WHERE repo_id = ? AND source_branch = ? AND {active}"
+                        "{moved} WHERE repo_id = ? AND source_branch = ? AND {active} {returning}"
                     ))
                     .bind(&[
                         after.into(),
                         now.as_str().into(),
                         repo_id.into(),
                         branch.into(),
-                    ])?,
+                        after.into(),
+                    ])?
+                    .all()
+                    .await?
+                    .results::<MovedRow>()?,
             );
         }
-        self.db.batch(statements).await?;
+        // A draft is announced when it is marked ready instead.
+        for pull in pulls
+            .into_iter()
+            .filter(|pull| pull.status == PullStatus::Open)
+        {
+            self.publish_as(
+                "pull.updated",
+                &pull.repo_id,
+                event.actor.clone(),
+                PullEvent {
+                    pull_id: pull.id,
+                    repo_id: pull.repo_id.clone(),
+                    number: pull.number,
+                    issue: pull.issue_number,
+                    commit: Some(after.to_owned()),
+                    ..PullEvent::default()
+                },
+            )
+            .await?;
+        }
         Ok(())
     }
 }
@@ -1176,6 +1266,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "list_labels" => reply(&work.list_labels(args(body)?).await?),
         "counts" => reply(&work.counts(args(body)?).await?),
         "add_comment" => reply(&work.add_comment(args(body)?).await?),
+        "start_checks" => reply(&work.start_checks(args(body)?).await?),
+        "report_checks" => reply(&work.report_checks(args(body)?).await?),
         "open_pull" => reply(&work.open_pull(args(body)?).await?),
         "list_pulls" => reply(&work.list_pulls(args(body)?).await?),
         "get_pull" => reply(&work.get_pull(args(body)?).await?),

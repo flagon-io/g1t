@@ -19,6 +19,7 @@ import {
   Scripts,
   ScrollRestoration,
   useRouteLoaderData,
+  useSubmit,
 } from "react-router";
 
 import type { User } from "@g1t/contracts";
@@ -73,6 +74,7 @@ function HeaderLink({ to, children }: { to: string; children: React.ReactNode })
 }
 
 function Header({ user }: { user: User | null | undefined }) {
+  const submit = useSubmit();
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4">
@@ -162,15 +164,16 @@ function Header({ user }: { user: User | null | undefined }) {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <button type="submit" form="sign-out" className="w-full">
-                      <LogOut />
-                      Sign out
-                    </button>
+                  {/* Submitted from here: the menu closes on select, and a button
+                      that has left the page cannot submit a form. */}
+                  <DropdownMenuItem
+                    onSelect={() => submit(null, { method: "post", action: "/logout" })}
+                  >
+                    <LogOut />
+                    Sign out
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Form method="post" action="/logout" id="sign-out" hidden />
             </>
           ) : (
             <>

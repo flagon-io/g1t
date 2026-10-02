@@ -3,6 +3,8 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 
 import {
   type AgentModel,
+  type CheckJob,
+  type G1tEvent,
   type Issue,
   type Pull,
   type RepoPath,
@@ -55,14 +57,22 @@ const TOKEN_TTL_SECONDS = 2 * 60 * 60;
 /** How g1t's own agent is labelled. What runs behind it is g1t's choice. */
 const AGENT = "g1t-agent";
 
-/** Which pull request a sandbox is working on, and as whom. */
-type Run = { actor: User; repo: RepoPath; number: number };
+/**
+ * What a sandbox is doing: an agent working on a pull request as someone,
+ * or a run of acceptance checks.
+ */
+type Run =
+  | { kind: "agent"; actor: User; repo: RepoPath; number: number }
+  | { kind: "checks"; runId: string; token: string };
 type RunRequest = Run & { envVars: Record<string, string> };
 
+/** Long enough to clone, install and test; then the token stops working. */
+const CHECKS_TOKEN_TTL_SECONDS = 45 * 60;
+
 /**
- * One sandbox, for one pull request. The image's entrypoint is the g1t runner,
- * which does the work and exits; this class only starts it and cleans up
- * if it dies without reporting.
+ * One sandbox, for one agent or one run of checks. The image's entrypoint
+ * is the g1t runner, which does the work and exits; this class only starts
+ * it and cleans up if it dies without reporting.
  */
 export class AttemptSandbox extends Container<RunnerEnv> {
   sleepAfter = "45m";
@@ -75,11 +85,20 @@ export class AttemptSandbox extends Container<RunnerEnv> {
 
   override async onStop({ exitCode }: StopParams): Promise<void> {
     if (exitCode === 0) return;
+    const run = await this.ctx.storage.get<Run>("run");
+    if (!run) return;
+    const work = workClient(this.env.WORK);
+    if (run.kind === "checks") {
+      // Refused harmlessly if the run did report before it stopped.
+      await work.reportChecks(run.runId, run.token, {
+        error: "The sandbox stopped before the checks finished.",
+      });
+      return;
+    }
     // The runner closes its own pull request when it fails. This covers a
     // sandbox that was killed before it could; closing twice is refused
     // harmlessly.
-    const run = await this.ctx.storage.get<Run>("run");
-    if (run) await workClient(this.env.WORK).closePull(run.actor, run.repo, run.number);
+    await work.closePull(run.actor, run.repo, run.number);
   }
 }
 
@@ -114,11 +133,93 @@ export default class RunnerService
     return JSON.parse(this.env.AGENT_MODELS);
   }
 
-  private allowed(viewer: Viewer): boolean {
-    if (!viewer || !this.env.ANTHROPIC_API_KEY) return false;
+  /** Whether sandboxes may be started on this person's say-so. */
+  private enabledFor(username: string): boolean {
     return this.env.HOSTED_AGENT_USERS.split(",")
       .map((name) => name.trim())
-      .includes(viewer.username);
+      .includes(username);
+  }
+
+  private allowed(viewer: Viewer): boolean {
+    if (!viewer || !this.env.ANTHROPIC_API_KEY) return false;
+    return this.enabledFor(viewer.username);
+  }
+
+  /** Events from the bus: a pull request was opened, became ready, or moved. */
+  async queue(batch: MessageBatch<G1tEvent>): Promise<void> {
+    for (const message of batch.messages) {
+      const event = message.body;
+      // A pull request opened from a branch is ready from the start; one
+      // opened as a draft is refused below until it is marked ready.
+      if (
+        event.type === "pull.opened" ||
+        event.type === "pull.ready" ||
+        event.type === "pull.updated"
+      ) {
+        await this.startChecks(event.data.pullId);
+      }
+      message.ack();
+    }
+  }
+
+  /**
+   * Runs a pull request's acceptance checks in a sandbox of its own. Does
+   * nothing when there is nothing to run.
+   */
+  private async startChecks(pullId: string): Promise<boolean> {
+    const work = workClient(this.env.WORK);
+    const started = await work.startChecks(pullId);
+    if (!started.ok) return false;
+    const job: CheckJob = started.value;
+    // Checks are commands one person wrote, run against code another
+    // pushed, on g1t's machines. In the preview they run only when one of
+    // the two is someone sandboxes are enabled for.
+    if (!this.enabledFor(job.requestedBy) && !this.enabledFor(job.author.username)) {
+      await work.reportChecks(job.runId, job.token, { skip: true });
+      return false;
+    }
+    // To read the commit, which may be private, as the one who pushed it.
+    const { token } = await identityClient(this.env.IDENTITY).createAccessToken(
+      job.author,
+      `Checks on ${job.repo.namespace}/${job.repo.name}#${job.number}`,
+      CHECKS_TOKEN_TTL_SECONDS,
+    );
+    const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(job.runId));
+    await sandbox.run({
+      kind: "checks",
+      runId: job.runId,
+      token: job.token,
+      envVars: {
+        MODE: "checks",
+        G1T_API: "https://api.g1t.sh",
+        CHECK_RUN: job.runId,
+        CHECK_TOKEN: job.token,
+        G1T_USER: job.author.username,
+        G1T_TOKEN: token,
+        GIT_REMOTE: `https://g1t.sh/${job.source.namespace}/${job.source.name}.git`,
+        GIT_COMMIT: job.commit,
+        CHECKS: JSON.stringify(job.commands),
+      },
+    });
+    return true;
+  }
+
+  async recheck(actor: User, repo: RepoPath, number: number): Promise<Result<boolean>> {
+    const found = await workClient(this.env.WORK).getPull(repo, number, actor);
+    if (!found.ok) return found;
+    const { pull } = found.value;
+    const member = (actor.workspaces ?? []).some(
+      (membership) => membership.slug === repo.namespace,
+    );
+    if (!member && pull.author.id !== actor.id) {
+      return fail(
+        "forbidden",
+        "Only whoever opened a pull request, or a member of the workspace, can run its checks.",
+      );
+    }
+    return (await this.startChecks(pull.id))
+      ? ok(true)
+      : fail("conflict", "There are no checks to run for this pull request right now.");
   }
 
   async models(viewer: Viewer): Promise<AgentModel[]> {
@@ -177,6 +278,7 @@ export default class RunnerService
       );
       const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(pull.id));
       await sandbox.run({
+        kind: "agent",
         actor,
         repo,
         number: pull.number,

@@ -107,6 +107,12 @@ pub const ROUTES: &[Route] = &[
         &[],
     ),
     route(
+        "POST",
+        "/v1/repos/:owner/:name/pulls/:number/reviews",
+        Op::ReviewPullRequest,
+        &[],
+    ),
+    route(
         "GET",
         "/v1/repos/:owner/:name/pulls/:number/session",
         Op::ReadSession,

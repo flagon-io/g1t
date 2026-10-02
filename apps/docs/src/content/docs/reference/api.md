@@ -107,7 +107,7 @@ Issues and pull requests share one sequence of numbers per repository.
 | `PATCH` | `/v1/repos/{owner}/{name}/issues/{number}` | Change `title`, `body` or `labels`. |
 | `POST` | `/v1/repos/{owner}/{name}/issues/{number}/close` | Close. Body: `reason`, `completed` or `not_planned`. |
 | `POST` | `/v1/repos/{owner}/{name}/issues/{number}/reopen` | Reopen. |
-| `POST` | `/v1/repos/{owner}/{name}/issues/{number}/comments` | Comment. Body: `body`. The number may be a pull request's. |
+| `POST` | `/v1/repos/{owner}/{name}/issues/{number}/comments` | Comment. Body: `body`. The number may be a pull request's, and then `path` and `line` put the comment on a line of its change. |
 | `GET` | `/v1/repos/{owner}/{name}/labels` | The labels in use. |
 
 ```sh
@@ -146,7 +146,8 @@ pull request whose merge closed it:
 | `GET` | `/v1/repos/{owner}/{name}/pulls/{number}/changes` | The files it changes, with diffs. |
 | `POST` | `/v1/repos/{owner}/{name}/pulls/{number}/ready` | Mark ready for review. Body: `summary`. |
 | `POST` | `/v1/repos/{owner}/{name}/pulls/{number}/close` | Close without merging. |
-| `POST` | `/v1/repos/{owner}/{name}/pulls/{number}/merge` | Land it on `main`. Body: `keep_issue_open`. Workspace members only; `409` if it is a draft or `main` has moved. |
+| `POST` | `/v1/repos/{owner}/{name}/pulls/{number}/reviews` | Give a verdict. Body: `verdict` (`approve` or `request_changes`), `body`. Not on your own pull request. |
+| `POST` | `/v1/repos/{owner}/{name}/pulls/{number}/merge` | Land it on `main`. Body: `keep_issue_open`, `ignore_checks`. Workspace members only; `409` if it is a draft, its checks have not passed, or `main` has moved. |
 
 Opening a pull request returns the git remote of its fork:
 
@@ -175,6 +176,28 @@ Merging a pull request made for an issue closes the issue and records the
 pull request in the issue's `resolvedBy`. Other pull requests for that issue
 that are still a draft or open are closed with `supersededBy` set. Send
 `"keep_issue_open": true` to merge without any of that.
+
+### Checks
+
+A pull request carries `checkStatus`: `queued`, `running`, `passed`, `failed`,
+`errored`, or `null` when no checks have run against its head. Fetching one
+pull request also returns the latest run in full:
+
+```json
+{
+  "pull": { "number": 14, "status": "open", "checkStatus": "failed" },
+  "checks": {
+    "headCommit": "8f3c2e1…",
+    "status": "failed",
+    "results": [
+      { "command": "cargo test", "passed": false, "exitCode": 101, "output": "…", "durationMs": 8420 }
+    ]
+  }
+}
+```
+
+Checks are started by g1t, not through the API. They run when a pull
+request becomes ready for review and again when its head moves.
 
 ## Sessions
 

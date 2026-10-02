@@ -3,6 +3,7 @@ import { Link } from "react-router";
 
 import type { Route } from "./+types/pulls";
 import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
+import { CheckBadge } from "../../components/checks";
 import { PullIcon, StateTabs } from "../../components/work";
 import { work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
@@ -71,6 +72,9 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
                       {pull.issue != null && <> · for #{pull.issue}</>}
                       {pull.supersededBy != null && <> · superseded by #{pull.supersededBy}</>}
                     </span>
+                  </span>
+                  <span className="mt-0.5">
+                    <CheckBadge status={pull.checkStatus} />
                   </span>
                   <span className="mt-0.5 flex shrink-0 items-center gap-1 font-mono text-xs text-muted">
                     {pull.branch ? <GitBranch size={13} /> : <Bot size={13} />}

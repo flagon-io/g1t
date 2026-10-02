@@ -56,6 +56,9 @@ CREATE TABLE pulls (
   merged_at TEXT,
   -- The pull request merged instead of this one.
   superseded_by INTEGER,
+  -- The latest run of the issue's acceptance checks, and where it stands.
+  check_run_id TEXT,
+  check_status TEXT,
   author_id TEXT NOT NULL,
   author_name TEXT NOT NULL,
   created_at TEXT NOT NULL,
@@ -74,6 +77,12 @@ CREATE TABLE comments (
   author_id TEXT NOT NULL,
   author_name TEXT NOT NULL,
   body TEXT NOT NULL,
+  -- For a comment on one line of a pull request's change: the file, and
+  -- the line as numbered after the change.
+  path TEXT,
+  line INTEGER,
+  -- A reviewer's decision: approve or request_changes.
+  verdict TEXT,
   created_at TEXT NOT NULL
 );
 CREATE INDEX comments_by_subject ON comments (repo_id, number, id);
@@ -89,3 +98,20 @@ CREATE TABLE session_entries (
   at TEXT NOT NULL,
   PRIMARY KEY (pull_id, seq)
 );
+
+-- Runs of an issue's acceptance checks against a pull request's head.
+CREATE TABLE check_runs (
+  id TEXT PRIMARY KEY,
+  pull_id TEXT NOT NULL REFERENCES pulls (id),
+  head_commit TEXT NOT NULL,
+  -- queued, running, passed, failed or errored.
+  status TEXT NOT NULL DEFAULT 'queued',
+  -- JSON array of { command, passed, exitCode, output, durationMs }.
+  results TEXT NOT NULL DEFAULT '[]',
+  error TEXT,
+  -- SHA-256 of the token the sandbox reports with.
+  token_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  finished_at TEXT
+);
+CREATE INDEX check_runs_by_pull ON check_runs (pull_id, id);

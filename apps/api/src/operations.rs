@@ -50,6 +50,7 @@ pub enum Op {
     ReopenIssue,
     ListLabels,
     AddComment,
+    ReviewPullRequest,
     ListPullRequests,
     GetPullRequest,
     CreatePullRequest,
@@ -192,7 +193,7 @@ fn comparison(pull: Pull, viewer: &Viewer) -> CompareArgs {
 }
 
 impl Op {
-    pub const ALL: [Op; 23] = [
+    pub const ALL: [Op; 24] = [
         Op::Whoami,
         Op::CreateWorkspace,
         Op::ListRepos,
@@ -206,6 +207,7 @@ impl Op {
         Op::ReopenIssue,
         Op::ListLabels,
         Op::AddComment,
+        Op::ReviewPullRequest,
         Op::ListPullRequests,
         Op::GetPullRequest,
         Op::CreatePullRequest,
@@ -238,6 +240,7 @@ impl Op {
             Op::ReopenIssue => "reopen_issue",
             Op::ListLabels => "list_labels",
             Op::AddComment => "add_comment",
+            Op::ReviewPullRequest => "review_pull_request",
             Op::ListPullRequests => "list_pull_requests",
             Op::GetPullRequest => "get_pull_request",
             Op::CreatePullRequest => "create_pull_request",
@@ -275,12 +278,17 @@ impl Op {
             }
             Op::ReopenIssue => "Reopen a closed issue.",
             Op::ListLabels => "The labels available on a repository's issues.",
-            Op::AddComment => "Comment on an issue or a pull request.",
+            Op::AddComment => {
+                "Comment on an issue or a pull request. On a pull request, give path and line to comment on one line of the change."
+            }
+            Op::ReviewPullRequest => {
+                "Give a verdict on a pull request: approve it, or request changes and say what. Read get_pull_request_changes first. You cannot review a pull request you opened."
+            }
             Op::ListPullRequests => {
                 "Pull requests on a repository, newest first. State open covers drafts and those ready for review; closed covers merged and closed."
             }
             Op::GetPullRequest => {
-                "A pull request's status, head commit, comments and the issue it is for."
+                "A pull request's status, head commit, comments and reviews, the issue it is for, and the latest run of that issue's acceptance checks with each command's output."
             }
             Op::CreatePullRequest => {
                 "Start a change. Opens a draft pull request with its own fork of the repository and returns the fork's git remote. Clone it, commit your work there, push, record your session as you go, then call mark_pull_request_ready. Give the issue it is for whenever there is one. If the change is already on a branch pushed to the repository, give that branch instead: no fork is made and the pull request is ready for review at once."
@@ -297,7 +305,7 @@ impl Op {
                 "What a pull request changes: the files it touches and their line-by-line diff against the commit it started from. Use it to review a pull request or to compare several made for the same issue."
             }
             Op::MergePullRequest => {
-                "Land a pull request on the repository's main branch. Only members of the repository's workspace can merge, and only once it is marked ready. Merging resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded. Fails if main has moved since the pull request was opened; pull main into its fork or branch and push, then merge again."
+                "Land a pull request on the repository's main branch. Only members of the repository's workspace can merge, and only once it is marked ready and its acceptance checks have passed. Merging resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded. Fails if main has moved since the pull request was opened; pull main into its fork or branch and push, then merge again."
             }
             Op::ListEvents => {
                 "The timeline of a repository: pushes, issues, pull requests, comments and session activity, newest first."
@@ -394,8 +402,28 @@ impl Op {
                 &["repo", "number"],
             ),
             Op::AddComment => object(
-                numbered(json!({ "body": { "type": "string", "description": "Markdown." } })),
+                numbered(json!({
+                    "body": { "type": "string", "description": "Markdown." },
+                    "path": {
+                        "type": "string",
+                        "description": "On a pull request: the file to comment on.",
+                    },
+                    "line": {
+                        "type": "integer",
+                        "description": "The line of that file, as numbered after the change.",
+                    },
+                })),
                 &["repo", "number", "body"],
+            ),
+            Op::ReviewPullRequest => object(
+                numbered(json!({
+                    "verdict": { "type": "string", "enum": ["approve", "request_changes"] },
+                    "body": {
+                        "type": "string",
+                        "description": "Markdown. Required when requesting changes.",
+                    },
+                })),
+                &["repo", "number", "verdict"],
             ),
             Op::ListPullRequests => {
                 object(json!({ "repo": repo_schema(), "state": states }), &["repo"])
@@ -458,6 +486,10 @@ impl Op {
                     "keep_issue_open": {
                         "type": "boolean",
                         "description": "Set when this pull request is only part of the work: the issue stays open and the other pull requests for it are left alone.",
+                    },
+                    "ignore_checks": {
+                        "type": "boolean",
+                        "description": "Merge although the acceptance checks have not passed.",
                     },
                 })),
                 &["repo", "number"],
@@ -537,6 +569,7 @@ impl Op {
             number,
             summary: text(input, "summary"),
             keep_issue_open: input["keep_issue_open"].as_bool() == Some(true),
+            ignore_checks: input["ignore_checks"].as_bool() == Some(true),
         };
         let Services {
             identity,
@@ -673,7 +706,18 @@ impl Op {
                 .await
             }
             Op::ListLabels => pass(work, "list_labels", &view()).await,
-            Op::AddComment => {
+            Op::AddComment | Op::ReviewPullRequest => {
+                let verdict = match (self, input["verdict"].as_str()) {
+                    (Op::AddComment, _) => None,
+                    (_, Some("approve")) => Some(Verdict::Approve),
+                    (_, Some("request_changes")) => Some(Verdict::RequestChanges),
+                    _ => {
+                        return failed(
+                            FailureCode::Invalid,
+                            "verdict must be approve or request_changes.",
+                        );
+                    }
+                };
                 pass(
                     work,
                     "add_comment",
@@ -682,6 +726,9 @@ impl Op {
                         repo,
                         number,
                         body: text(input, "body"),
+                        path: optional_text(input, "path"),
+                        line: integer(input, "line"),
+                        verdict,
                     },
                 )
                 .await

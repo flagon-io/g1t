@@ -13,6 +13,7 @@ mod rest;
 use g1t_contracts::identity::{
     DeviceClaim, DeviceClaimArgs, DeviceStart, DeviceStartArgs, TokenArgs,
 };
+use g1t_contracts::work::{CheckRun, ReportChecksArgs};
 use g1t_contracts::{Failure, FailureCode, Outcome, Viewer};
 use serde_json::{Value, json};
 use worker::{Context, Env, Method, Request, Response, Result, event};
@@ -104,6 +105,7 @@ fn index() -> Value {
         "pulls_url": format!("{repo}/pulls{{?state}}"),
         "pull_url": format!("{repo}/pulls/{{number}}"),
         "pull_changes_url": format!("{repo}/pulls/{{number}}/changes"),
+        "pull_reviews_url": format!("{repo}/pulls/{{number}}/reviews"),
         "pull_session_url": format!("{repo}/pulls/{{number}}/session{{?after}}"),
         "device_code_url": format!("{API}/v1/device/code"),
         "device_token_url": format!("{API}/v1/device/token"),
@@ -158,6 +160,33 @@ async fn device_token(request: &mut Request, services: &Services) -> Result<Resp
     })
 }
 
+/// A sandbox reporting on its run of a pull request's acceptance checks.
+/// The run's own token, in the body, is the credential: it was given to
+/// that sandbox and to nothing else.
+async fn report_checks(
+    request: &mut Request,
+    services: &Services,
+    run_id: &str,
+) -> Result<Response> {
+    let body = json_body(request).await;
+    let reported: Outcome<CheckRun> = g1t_kit::call(
+        &services.work,
+        "report_checks",
+        &ReportChecksArgs {
+            run_id: run_id.to_owned(),
+            token: body["token"].as_str().unwrap_or_default().to_owned(),
+            results: serde_json::from_value(body["results"].clone()).unwrap_or_default(),
+            error: body["error"].as_str().map(str::to_owned),
+            skip: false,
+        },
+    )
+    .await?;
+    match reported {
+        Outcome::Ok(run) => Response::from_json(&json!({ "status": run.status })),
+        Outcome::Fail(refused) => failure(&refused),
+    }
+}
+
 async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     let method = method_name(request.method());
     if method == "OPTIONS" {
@@ -184,6 +213,10 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         ("GET", "/openapi.json") => return Response::from_json(&openapi::document()),
         ("POST", "/v1/device/code") => return device_code(&mut request, &services).await,
         ("POST", "/v1/device/token") => return device_token(&mut request, &services).await,
+        ("POST", path) if path.starts_with("/v1/checks/") => {
+            let run_id = path.trim_start_matches("/v1/checks/").to_owned();
+            return report_checks(&mut request, &services, &run_id).await;
+        }
         _ => {}
     }
 

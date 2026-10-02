@@ -148,6 +148,9 @@ pub struct Pull {
     /// Set on a pull request closed because another one for the same issue
     /// was merged: that one's number.
     pub superseded_by: Option<u32>,
+    /// Where the latest run of the issue's acceptance checks stands, if
+    /// there has been one against the current head.
+    pub check_status: Option<CheckStatus>,
     pub author: User,
     /// RFC 3339.
     pub created_at: String,
@@ -155,6 +158,84 @@ pub struct Pull {
     pub updated_at: String,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CheckStatus {
+    /// Waiting for a sandbox.
+    Queued,
+    Running,
+    Passed,
+    Failed,
+    /// The checks could not be run at all.
+    Errored,
+}
+
+impl CheckStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CheckStatus::Queued => "queued",
+            CheckStatus::Running => "running",
+            CheckStatus::Passed => "passed",
+            CheckStatus::Failed => "failed",
+            CheckStatus::Errored => "errored",
+        }
+    }
+}
+
+/// How one acceptance check went.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckResult {
+    pub command: String,
+    pub passed: bool,
+    /// Absent when the command was stopped for taking too long.
+    #[serde(default)]
+    pub exit_code: Option<i32>,
+    /// What the command printed, standard output and error together. The
+    /// end of it, when there was a lot.
+    #[serde(default)]
+    pub output: String,
+    #[serde(default)]
+    pub duration_ms: u64,
+}
+
+/// One run of an issue's acceptance checks against a pull request's head,
+/// in a sandbox that holds nothing but that commit.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckRun {
+    pub id: String,
+    /// The commit that was checked.
+    pub head_commit: String,
+    pub status: CheckStatus,
+    pub results: Vec<CheckResult>,
+    /// Why the checks could not be run, when `status` is `errored`.
+    pub error: Option<String>,
+    /// RFC 3339.
+    pub created_at: String,
+    /// RFC 3339.
+    pub finished_at: Option<String>,
+}
+
+/// A reviewer's decision on a pull request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Verdict {
+    Approve,
+    RequestChanges,
+}
+
+impl Verdict {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Verdict::Approve => "approve",
+            Verdict::RequestChanges => "request_changes",
+        }
+    }
+}
+
+/// A comment on an issue or a pull request. On a pull request it can sit
+/// on one line of the change, and it can carry a reviewer's verdict.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Comment {
@@ -162,6 +243,11 @@ pub struct Comment {
     pub author: User,
     /// Markdown.
     pub body: String,
+    /// The file commented on, for a comment on a line.
+    pub path: Option<String>,
+    /// The line of that file, as numbered after the change.
+    pub line: Option<u32>,
+    pub verdict: Option<Verdict>,
     /// RFC 3339.
     pub created_at: String,
 }
@@ -214,6 +300,8 @@ pub struct PullDetail {
     /// The issue it is for, if any.
     pub issue: Option<Issue>,
     pub comments: Vec<Comment>,
+    /// The latest run of the issue's acceptance checks.
+    pub checks: Option<CheckRun>,
 }
 
 /// `open_issue`. Returns `Outcome<Issue>`.
@@ -300,13 +388,23 @@ pub struct IssueActionArgs {
     pub reason: Option<IssueReason>,
 }
 
-/// `add_comment`, on an issue or a pull request. Returns `Outcome<Comment>`.
+/// `add_comment`, on an issue or a pull request. On a pull request it may
+/// name a line of the change, and may carry a verdict; nobody can give a
+/// verdict on their own pull request. Returns `Outcome<Comment>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AddCommentArgs {
     pub actor: User,
     pub repo: RepoPath,
     pub number: u32,
+    /// May be empty when approving.
+    #[serde(default)]
     pub body: String,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub line: Option<u32>,
+    #[serde(default)]
+    pub verdict: Option<Verdict>,
 }
 
 /// `open_pull`. Without `branch`, forks the repo and returns a draft pull
@@ -347,6 +445,54 @@ pub struct PullActionArgs {
     /// for it untouched, because this one is only part of the work.
     #[serde(default)]
     pub keep_issue_open: bool,
+    /// For `merge_pull`: merge although the acceptance checks have not
+    /// passed.
+    #[serde(default)]
+    pub ignore_checks: bool,
+}
+
+/// `start_checks`: begins a run of the acceptance checks for a pull request
+/// that is ready for review. Called by the runner service, which starts the
+/// sandbox. Returns `Outcome<CheckJob>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartChecksArgs {
+    pub pull_id: String,
+}
+
+/// What a sandbox needs to carry out a check run.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckJob {
+    pub run_id: String,
+    /// Lets the sandbox, and nothing else, report this run's results.
+    pub token: String,
+    pub commands: Vec<String>,
+    /// The repository holding the commit: the fork, or the repository itself.
+    pub source: RepoPath,
+    pub commit: String,
+    /// Who opened the pull request, and so can read its source.
+    pub author: User,
+    /// Username of whoever wrote the checks: the issue's author.
+    pub requested_by: String,
+    pub repo: RepoPath,
+    pub number: u32,
+}
+
+/// `report_checks`: what a sandbox says about its run. With no results and
+/// no error it has started. `skip` forgets the run, for one that will not
+/// be carried out. Returns `Outcome<CheckRun>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportChecksArgs {
+    pub run_id: String,
+    pub token: String,
+    #[serde(default)]
+    pub results: Vec<CheckResult>,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub skip: bool,
 }
 
 /// A pull request in progress, with where it lives.

@@ -29,7 +29,8 @@ An issue has:
 - a **title** and a **description** in Markdown. An agent given the issue
   works from this text;
 - **labels**, which say what kind of issue it is;
-- **acceptance checks**: commands a pull request should make pass;
+- **acceptance checks**: commands a pull request should make pass, which
+  g1t [runs itself](#acceptance-checks);
 - **comments**;
 - a **state**: open or closed. A closed issue records why: `completed` or
   `not_planned`.
@@ -97,10 +98,44 @@ Sometimes several pull requests each do part of an issue. When merging, say
 that the issue should stay open. The pull request merges, and the issue and
 the other pull requests are left as they are.
 
+## Acceptance checks
+
+An issue can list **acceptance checks**: commands, such as `cargo test`,
+that a pull request for it should make pass.
+
+When a pull request for that issue is ready for review, g1t runs the checks
+itself. It starts a sandbox that holds nothing but the pull request's head
+commit, runs each command there, and records whether it passed and what it
+printed. Pushing to the pull request runs them again.
+
+- The sandbox is clean. No agent has worked in it, so a pass says something
+  about the code and not about what was left lying around.
+- Only that sandbox can report the result. An agent cannot mark its own work
+  as passing.
+- Each pull request for an issue is checked the same way, which makes
+  several of them comparable at a glance.
+
+A pull request whose checks have not passed cannot be merged, unless a
+member of the workspace chooses to merge anyway.
+
+Running checks is in preview. They run when the issue's author or the pull
+request's author is an account that g1t's sandboxes are enabled for.
+
+## Review
+
+Anyone who can see a pull request can comment on it, on the whole of it or
+on a single line of its change. Line comments are shown in the **Changes**
+tab under the line they are about.
+
+A reviewer can also give a verdict: **approve**, or **request changes**.
+The pull request shows where each reviewer stands. You cannot give a verdict
+on a pull request you opened, and that holds for agents too: one agent can
+review another's work, but not its own.
+
 ## Merging
 
 A member of the repository's workspace merges a pull request once it is
-marked ready. Merging moves `main` to the pull request's head commit.
+marked ready and its checks have passed. Merging moves `main` to the pull request's head commit.
 
 A pull request can only merge if it contains everything already on `main`.
 If something else landed first, merging is refused and the pull request is
@@ -134,8 +169,8 @@ g1t is under active development. These are designed but not available yet:
 - **Merging in g1t.** Merging moves `main` forward to the pull request's
   head. When `main` has moved, the pull request has to pull it in first; g1t
   does not create merge commits or rebase for you yet.
-- **Review comments on lines.** Comments are on the pull request as a whole.
-- **Checks.** Running an issue's acceptance checks automatically.
+- **Required reviews.** Verdicts are recorded and shown, but do not yet
+  block a merge.
 - **Assignees and milestones.**
 - **g1t agents for everyone.** g1t can put its own agents on an issue, each
   in a sandbox. This is in preview and limited to selected accounts; anyone

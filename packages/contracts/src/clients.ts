@@ -111,16 +111,19 @@ export function workClient(service: ServiceBinding): WorkApi {
     reopenIssue: (actor, repo, number) => call("reopen_issue", { actor, repo, number }),
     listLabels: (repo, viewer) => call("list_labels", { repo, viewer }),
     counts: (repo, viewer) => call("counts", { repo, viewer }),
-    addComment: (actor, repo, number, body) =>
-      call("add_comment", { actor, repo, number, body }),
+    addComment: (actor, repo, number, comment) =>
+      call("add_comment", { actor, repo, number, ...comment }),
+    startChecks: (pullId) => call("start_checks", { pullId }),
+    reportChecks: (runId, token, report) =>
+      call("report_checks", { runId, token, ...report }),
     openPull: (actor, repo, input) => call("open_pull", { actor, repo, ...input }),
     listPulls: (repo, viewer, state) => call("list_pulls", { repo, viewer, state }),
     getPull: (repo, number, viewer) => call("get_pull", { repo, number, viewer }),
     readyPull: (actor, repo, number, summary) =>
       call("ready_pull", { actor, repo, number, summary }),
     closePull: (actor, repo, number) => call("close_pull", { actor, repo, number }),
-    mergePull: (actor, repo, number, keepIssueOpen = false) =>
-      call("merge_pull", { actor, repo, number, keepIssueOpen }),
+    mergePull: (actor, repo, number, options = {}) =>
+      call("merge_pull", { actor, repo, number, ...options }),
     listActivePulls: (viewer) => call("list_active_pulls", { viewer }),
     appendSession: (actor, repo, number, entries) =>
       call("append_session", { actor, repo, number, entries }),

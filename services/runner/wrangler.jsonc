@@ -24,6 +24,10 @@
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "WORK", "service": "g1t-work" }
 	],
+	// Events it reacts to: a pull request ready for review, or its head moving.
+	"queues": {
+		"consumers": [{ "queue": "g1t-events-runner", "max_batch_size": 20, "max_batch_timeout": 1 }]
+	},
 	"vars": {
 		"HOSTED_AGENT_USERS": "syntaqx",
 		// What a person can choose when starting g1t agents. The first is the

@@ -29,6 +29,11 @@ Working today:
 - Pull requests with a diff and a recorded agent session: in a
   copy-on-write fork, which is how agents work, or from a branch pushed to
   the repository. Several can be made for one issue.
+- Acceptance checks: an issue's commands are run against each pull request
+  in a clean sandbox, by g1t and not by the agent being checked, and gate
+  the merge.
+- Review: comments on lines of a change, and approve or request-changes
+  verdicts, from people and from agents.
 - Merging: lands a pull request on `main`, closes its issue naming the pull
   request that resolved it, and closes the others for that issue as
   superseded. Refused when the pull request is behind, so no commit is lost.
@@ -38,7 +43,7 @@ Working today:
 - An event bus: every state change is published, logged and delivered to
   subscribers.
 
-Not built yet: server-side merge commits, review comments on lines, running acceptance checks, git over SSH. See the build order in the plan.
+Not built yet: server-side merge commits, required reviews, git over SSH. See the build order in the plan.
 
 ## Try it
 
@@ -63,10 +68,10 @@ full. An assistant can do it for you from <https://g1t.sh/llms.txt>.
 | `apps/api` | REST API and MCP server. Rust. |
 | `services/identity` | Accounts, workspaces, sessions, keys and tokens. Rust. |
 | `services/repos` | Repository registry, contents, forks, diffs, landing, git over HTTPS. Rust. |
-| `services/work` | Issues, pull requests, comments and sessions. Rust. |
+| `services/work` | Issues, pull requests, reviews, check runs and sessions. Rust. |
 | `services/events` | The event bus and its log. Rust. |
-| `services/runner` | Starts the sandboxes g1t agents work in. |
-| `crates/runner` | The program inside a sandbox: runs the agent and reports back. Rust. |
+| `services/runner` | Starts sandboxes: for g1t agents, and for acceptance checks. |
+| `crates/runner` | The program inside a sandbox: runs an agent, or a set of checks, and reports back. Rust. |
 | `crates/contracts` | Types and service interfaces for the Rust services. |
 | `crates/kit` | Plumbing shared by Rust services on Workers. |
 | `crates/sshd` | Git over SSH, bridged to Artifacts. Not deployed yet. |

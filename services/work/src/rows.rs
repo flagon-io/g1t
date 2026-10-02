@@ -3,7 +3,8 @@
 use g1t_contracts::User;
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::work::{
-    Comment, Issue, IssueReason, Pull, PullStatus, Runtime, SessionEntry, SessionEntryKind, State,
+    CheckStatus, Comment, Issue, IssueReason, Pull, PullStatus, Runtime, SessionEntry,
+    SessionEntryKind, State, Verdict,
 };
 use serde::Deserialize;
 
@@ -81,6 +82,7 @@ pub struct PullRow {
     pub merged_by: Option<String>,
     pub merged_at: Option<String>,
     pub superseded_by: Option<u32>,
+    pub check_status: Option<CheckStatus>,
     pub author_id: String,
     pub author_name: String,
     pub created_at: String,
@@ -110,6 +112,7 @@ impl From<PullRow> for Pull {
             merged_by: row.merged_by,
             merged_at: row.merged_at,
             superseded_by: row.superseded_by,
+            check_status: row.check_status,
             author: user(row.author_id, row.author_name),
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -123,6 +126,9 @@ pub struct CommentRow {
     pub author_id: String,
     pub author_name: String,
     pub body: String,
+    pub path: Option<String>,
+    pub line: Option<u32>,
+    pub verdict: Option<Verdict>,
     pub created_at: String,
 }
 
@@ -132,6 +138,9 @@ impl From<CommentRow> for Comment {
             id: row.id,
             author: user(row.author_id, row.author_name),
             body: row.body,
+            path: row.path,
+            line: row.line,
+            verdict: row.verdict,
             created_at: row.created_at,
         }
     }
@@ -158,6 +167,16 @@ impl From<SessionRow> for SessionEntry {
             at: row.at,
         }
     }
+}
+
+/// A pull request whose head a push moved.
+#[derive(Deserialize)]
+pub struct MovedRow {
+    pub id: String,
+    pub repo_id: String,
+    pub number: u32,
+    pub issue_number: Option<u32>,
+    pub status: PullStatus,
 }
 
 /// A single number selected as `n`.

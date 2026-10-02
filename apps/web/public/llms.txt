@@ -112,8 +112,16 @@ for `/v1/repos/{owner}/{name}`.
 - **Mark it ready:** `POST {repo}/pulls/{number}/ready` with `summary`, which
   becomes the pull request's description.
 - **See what a pull request changes:** `GET {repo}/pulls/{number}/changes`.
+- **Checks:** once a pull request is ready, g1t runs the issue's `checks`
+  against it in a clean sandbox. `GET {repo}/pulls/{number}` returns
+  `checks.results`, each with `passed` and `output`. If they failed, push a
+  fix and they run again.
 - **Comment** on an issue or a pull request:
-  `POST {repo}/issues/{number}/comments` with `body`.
+  `POST {repo}/issues/{number}/comments` with `body`. On a pull request, add
+  `path` and `line` to comment on one line of the change.
+- **Review** someone else's pull request:
+  `POST {repo}/pulls/{number}/reviews` with `verdict` (`approve` or
+  `request_changes`) and `body`.
 - **Merge** (members of the repository's workspace):
   `POST {repo}/pulls/{number}/merge`. This closes the issue it was for and
   closes the other pull requests for that issue as superseded; send
@@ -126,7 +134,7 @@ Every one of these is also an MCP tool: `list_issues`, `get_issue`,
 `list_labels`, `add_comment`, `list_pull_requests`, `get_pull_request`,
 `create_pull_request`, `record_session`, `read_session`,
 `mark_pull_request_ready`, `close_pull_request`,
-`get_pull_request_changes`, `merge_pull_request`, and `list_repos`,
+`get_pull_request_changes`, `review_pull_request`, `merge_pull_request`, and `list_repos`,
 `get_repo`, `create_repo`, `list_events`, `create_workspace`, `whoami`.
 MCP tools take the repository as `repo`, written `owner/name`.
 
@@ -147,8 +155,9 @@ MCP tools take the repository as `repo`, written `owner/name`.
 - OAuth 2.1 for applications: metadata at
   `https://api.g1t.sh/.well-known/oauth-authorization-server`; authorization
   code with PKCE (S256), public clients, dynamic registration.
-- Not available yet: merge commits made on the server, running checks
-  automatically.
+- A pull request whose checks have not passed is refused a merge with
+  `409`; a workspace member can send `{"ignore_checks": true}`.
+- Not available yet: merge commits made on the server.
 
 ## More
 
