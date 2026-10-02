@@ -5,6 +5,7 @@
 //! `g1t_contracts::repos` for the methods and their arguments. Any other
 //! request is treated as git's smart HTTP protocol.
 
+mod diff;
 mod git_http;
 mod land;
 mod registry;
@@ -16,7 +17,7 @@ use g1t_contracts::{
     FailureCode, Outcome, User, Viewer, is_valid_namespace, is_valid_repo_name, new_id,
 };
 use g1t_kit::{args, js, now_ms, reply, rpc_method};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use serde::Serialize;
 use worker::wasm_bindgen::JsValue;
@@ -81,6 +82,38 @@ async fn descends_from<R: GitRepo>(repo: &R, history: &[Commit], ancestor: &str)
         }
     }
     Ok(false)
+}
+
+/// The commit closest to the newest in `history` that is also in `shared`:
+/// where a fork and the repository it came from last agreed.
+async fn nearest_ancestor_in<R: GitRepo>(
+    repo: &R,
+    history: &[Commit],
+    shared: &HashSet<String>,
+) -> Result<Option<String>> {
+    let known: HashMap<&str, &[String]> = history
+        .iter()
+        .map(|commit| (commit.hash.as_str(), commit.parents.as_slice()))
+        .collect();
+    let mut seen = HashSet::new();
+    let mut queue: VecDeque<String> = history
+        .first()
+        .map(|c| c.hash.clone())
+        .into_iter()
+        .collect();
+    while let Some(hash) = queue.pop_front() {
+        if shared.contains(&hash) {
+            return Ok(Some(hash));
+        }
+        if !seen.insert(hash.clone()) || seen.len() > MAX_ANCESTRY as usize {
+            continue;
+        }
+        match known.get(hash.as_str()) {
+            Some(parents) => queue.extend(parents.iter().cloned()),
+            None => queue.extend(repo.parents(&hash).await?.unwrap_or_default()),
+        }
+    }
+    Ok(None)
 }
 
 struct Repos<S: GitStore> {
@@ -427,7 +460,10 @@ impl<S: GitStore> Repos<S> {
             .map(|commit| commit.hash);
 
         if old.as_deref() == Some(new.as_str()) {
-            return Ok(Outcome::Ok(Landed { commit: new }));
+            return Ok(Outcome::Ok(Landed {
+                commit: new,
+                previous: None,
+            }));
         }
         // Moving the branch to a commit that does not descend from its
         // current head would discard whatever landed in between.
@@ -455,7 +491,66 @@ impl<S: GitStore> Repos<S> {
             ));
         }
         self.publish_push(&target, &new, Some(a.actor.id)).await?;
-        Ok(Outcome::Ok(Landed { commit: new }))
+        Ok(Outcome::Ok(Landed {
+            commit: new,
+            previous: old,
+        }))
+    }
+
+    async fn compare(&self, a: CompareArgs) -> Result<Outcome<Comparison>> {
+        let Some(repo) = self
+            .registry
+            .by_id(&a.repo_id)
+            .await?
+            .filter(|repo| can_read(repo, &a.viewer))
+        else {
+            return Ok(not_found());
+        };
+        let git = self.store.open(&store_key(&repo)).await?;
+        let history = git.log(&repo.default_branch, MAX_ANCESTRY).await?;
+        let Some(head) = history.first() else {
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "This repository has no commits yet.",
+            ));
+        };
+
+        let base = match (a.base, &repo.fork_of) {
+            (Some(base), _) => Some(base),
+            // A fork is compared with the last commit it shares with the
+            // repository it came from.
+            (None, Some(target_id)) => match self.registry.by_id(target_id).await? {
+                Some(target) => {
+                    let target_git = self.store.open(&store_key(&target)).await?;
+                    let shared: HashSet<String> = target_git
+                        .log(&target.default_branch, MAX_ANCESTRY)
+                        .await?
+                        .into_iter()
+                        .map(|commit| commit.hash)
+                        .collect();
+                    nearest_ancestor_in(&git, &history, &shared).await?
+                }
+                None => None,
+            },
+            (None, None) => head.parents.first().cloned(),
+        };
+        let base_tree = match &base {
+            Some(base) => git
+                .log(base, 1)
+                .await?
+                .into_iter()
+                .next()
+                .map(|commit| commit.tree_hash),
+            None => None,
+        };
+        let (files, truncated) =
+            diff::compare_trees(&git, base_tree.as_deref(), &head.tree_hash).await?;
+        Ok(Outcome::Ok(Comparison {
+            base,
+            head: head.hash.clone(),
+            files,
+            truncated,
+        }))
     }
 
     async fn publish_push(&self, repo: &Repo, after: &str, actor: Option<String>) -> Result<()> {
@@ -542,6 +637,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "fork_for_attempt" => reply(&repos.fork_for_attempt(args(body)?).await?),
         "git_access" => reply(&repos.git_access(args(body)?).await?),
         "land" => reply(&repos.land(args(body)?).await?),
+        "compare" => reply(&repos.compare(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }

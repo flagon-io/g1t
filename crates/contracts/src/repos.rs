@@ -110,10 +110,14 @@ pub enum GitService {
     ReceivePack,
 }
 
-/// The commit `main` points to after an attempt has landed.
+/// The result of landing an attempt.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Landed {
+    /// The commit the branch points to now.
     pub commit: String,
+    /// The commit it pointed to before, if it had one. Comparing against
+    /// this shows what the attempt changed.
+    pub previous: Option<String>,
 }
 
 /// `get`. Returns `Outcome<Repo>`.
@@ -214,4 +218,73 @@ pub struct GitAccessArgs {
 pub struct LandArgs {
     pub fork_id: String,
     pub actor: User,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FileStatus {
+    Added,
+    Modified,
+    Deleted,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LineKind {
+    /// Unchanged, shown for context.
+    Context,
+    Add,
+    Delete,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DiffLine {
+    pub kind: LineKind,
+    /// Line number in the old file; absent for added lines.
+    pub old: Option<u32>,
+    /// Line number in the new file; absent for deleted lines.
+    pub new: Option<u32>,
+    pub text: String,
+}
+
+/// A run of changed lines with their surrounding context.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Hunk {
+    pub lines: Vec<DiffLine>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FileDiff {
+    pub path: String,
+    pub status: FileStatus,
+    pub additions: u32,
+    pub deletions: u32,
+    /// True when the file is binary or too large, so no lines are shown.
+    pub binary: bool,
+    pub hunks: Vec<Hunk>,
+}
+
+/// What changed between two commits.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Comparison {
+    /// Null when the head has no earlier commit to compare against.
+    pub base: Option<String>,
+    pub head: String,
+    pub files: Vec<FileDiff>,
+    /// True when the change was too large to return in full.
+    pub truncated: bool,
+}
+
+/// `compare`: what a repository's head changes.
+///
+/// With no `base`, an attempt's fork is compared against the point where it
+/// and the repository it came from last agreed, and any other repository
+/// against its head's parent. Returns `Outcome<Comparison>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompareArgs {
+    pub repo_id: String,
+    pub viewer: Viewer,
+    #[serde(default)]
+    pub base: Option<String>,
 }

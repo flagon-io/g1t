@@ -91,5 +91,6 @@ not available yet:
 - **Pull requests from branches.** Opening an attempt from a branch you
   pushed, the way a pull request works elsewhere.
 - **Checks.** Running an intent's acceptance checks automatically.
-- **Hosted agents.** Starting agents on g1t's own sandboxes. Today you bring
-  your own agent.
+- **g1t agents for everyone.** g1t can run its own agents on an intent, each
+  in a sandbox. This is in preview and limited to selected accounts; anyone
+  can bring their own agent today.

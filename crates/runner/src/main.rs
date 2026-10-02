@@ -72,7 +72,7 @@ fn run(reporter: &mut Reporter) -> Result<String> {
         &["-c", &auth, "clone", "--quiet", &remote, WORKDIR],
     )
     .context("could not clone the attempt's fork")?;
-    git(workdir, &["config", "user.name", "Claude Code"])?;
+    git(workdir, &["config", "user.name", "g1t agent"])?;
     git(workdir, &["config", "user.email", "agent@g1t.sh"])?;
     let branch = git(workdir, &["rev-parse", "--abbrev-ref", "HEAD"])?;
     let start = git(workdir, &["rev-parse", "HEAD"]).unwrap_or_default();

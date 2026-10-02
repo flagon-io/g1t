@@ -32,7 +32,8 @@ export interface RunnerEnv {
 const MAX_AGENTS_PER_RUN = 5;
 /** A run that takes longer than this has its token expire under it. */
 const TOKEN_TTL_SECONDS = 2 * 60 * 60;
-const AGENT = "claude-code";
+/** How g1t's own agent is labelled. What runs behind it is g1t's choice. */
+const AGENT = "g1t-agent";
 
 type RunRequest = { actor: User; attemptId: string; envVars: Record<string, string> };
 

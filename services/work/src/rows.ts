@@ -35,6 +35,7 @@ export type AttemptRow = {
   fork_namespace: string;
   fork_name: string;
   head_commit: string | null;
+  landed_base: string | null;
   started_by_id: string;
   started_by_name: string;
   created_at: number;
@@ -77,7 +78,9 @@ export function toAttempt(row: AttemptRow): Attempt {
     status: row.status,
     summary: row.summary,
     fork: { namespace: row.fork_namespace, name: row.fork_name },
+    forkRepoId: row.fork_repo_id,
     headCommit: row.head_commit,
+    landedBase: row.landed_base,
     startedBy: { id: row.started_by_id, username: row.started_by_name },
     createdAt: row.created_at,
     updatedAt: row.updated_at,

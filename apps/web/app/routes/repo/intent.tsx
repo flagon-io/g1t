@@ -215,11 +215,11 @@ export default function IntentPage({
           <section className="rounded-xl border border-accent/30 bg-accent/5 p-4">
             <h3 className="flex items-center gap-2 text-sm font-medium">
               <Sparkles size={15} className="text-accent" />
-              Run hosted agents
+              Run g1t agents
             </h3>
             <p className="mt-1 text-xs text-muted">
-              g1t starts Claude Code in a sandbox for each attempt. They work
-              in parallel, each in its own fork.
+              Each agent works in its own sandbox and its own fork, in
+              parallel. Compare what they produce and ship the best.
             </p>
             <Form method="post" className="mt-3 space-y-2">
               <input type="hidden" name="intentId" value={intent.id} />

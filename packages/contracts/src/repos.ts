@@ -91,5 +91,43 @@ export interface ReposApi {
    * head. Refused with "conflict" when the fork is behind, since that would
    * discard commits.
    */
-  land(forkId: string, actor: User): Promise<Result<{ commit: string }>>;
+  land(forkId: string, actor: User): Promise<Result<{ commit: string; previous: string | null }>>;
+
+  /**
+   * What a repository's head changes. An attempt's fork is compared with the
+   * last commit it shares with the repository it came from, unless `base`
+   * says otherwise.
+   */
+  compare(repoId: string, viewer: Viewer, base?: string | null): Promise<Result<Comparison>>;
 }
+
+export type DiffLine = {
+  kind: "context" | "add" | "delete";
+  /** Line number in the old file; null for added lines. */
+  old: number | null;
+  /** Line number in the new file; null for deleted lines. */
+  new: number | null;
+  text: string;
+};
+
+/** A run of changed lines with their surrounding context. */
+export type Hunk = { lines: DiffLine[] };
+
+export type FileDiff = {
+  path: string;
+  status: "added" | "modified" | "deleted";
+  additions: number;
+  deletions: number;
+  /** True when the file is binary or too large, so no lines are shown. */
+  binary: boolean;
+  hunks: Hunk[];
+};
+
+/** What changed between two commits. */
+export type Comparison = {
+  base: string | null;
+  head: string;
+  files: FileDiff[];
+  /** True when the change was too large to return in full. */
+  truncated: boolean;
+};

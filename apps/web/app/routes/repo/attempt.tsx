@@ -2,7 +2,9 @@ import { env } from "cloudflare:workers";
 import {
   Bot,
   ChevronRight,
+  FileDiff,
   GitCommitHorizontal,
+  MessagesSquare,
   Rocket,
   StickyNote,
   User,
@@ -11,9 +13,10 @@ import {
 import { useEffect } from "react";
 import { Form, Link, useRevalidator } from "react-router";
 
-import type { SessionEntry } from "@g1t/contracts";
+import type { Comparison, SessionEntry } from "@g1t/contracts";
 
 import type { Route } from "./+types/attempt";
+import { DiffView } from "../../components/diff-view";
 import { Markdown } from "../../components/markdown";
 import {
   Button,
@@ -33,6 +36,7 @@ import {
 } from "../../lib/session.server";
 
 const REFRESH_MS = 4000;
+const EMPTY_COMPARISON: Comparison = { base: null, head: "", files: [], truncated: false };
 
 export function meta({ loaderData }: Route.MetaArgs) {
   return [
@@ -44,7 +48,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
   ];
 }
 
-export async function loader({ params, context }: Route.LoaderArgs) {
+export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const [found, session] = await Promise.all([
     env.WORK.getAttempt(params.id, viewer),
@@ -52,8 +56,18 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   ]);
   const detail = unwrap(found);
   const repo = await repos.getById(detail.attempt.repoId, viewer);
+  const showChanges = new URL(request.url).searchParams.get("tab") === "changes";
+  const comparison = showChanges
+    ? await repos.compare(
+        detail.attempt.forkRepoId,
+        viewer,
+        detail.attempt.landedBase,
+      )
+    : null;
   return {
     ...detail,
+    // Null on the session tab; an empty comparison if it could not be made.
+    comparison: comparison && (comparison.ok ? comparison.value : EMPTY_COMPARISON),
     session: unwrap(session),
     viewer,
     // Only the repository's owner can land an attempt.
@@ -81,6 +95,31 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 /** One step of the session, on the timeline's rail. */
+function TabLink({
+  to,
+  active,
+  children,
+}: {
+  to: string;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      to={to}
+      preventScrollReset
+      className={
+        "-mb-px flex items-center gap-2 border-b-2 px-1 pb-2.5 text-sm transition-colors " +
+        (active
+          ? "border-accent font-medium text-fg"
+          : "border-transparent text-muted hover:text-fg")
+      }
+    >
+      {children}
+    </Link>
+  );
+}
+
 function Entry({ entry, agent }: { entry: SessionEntry; agent: string }) {
   const isTool = entry.kind === "tool_call" || entry.kind === "tool_result";
   const Icon =
@@ -160,8 +199,10 @@ export default function AttemptPage({
   actionData,
   params,
 }: Route.ComponentProps) {
-  const { attempt, intent, session, viewer, canShip, defaultBranch } = loaderData;
+  const { attempt, intent, session, viewer, canShip, defaultBranch, comparison } =
+    loaderData;
   const base = `/${params.owner}/${params.repo}`;
+  const here = base + "/attempts/" + attempt.id;
   const remote = `https://g1t.sh/${attempt.fork.namespace}/${attempt.fork.name}.git`;
   const mine = viewer?.id === attempt.startedBy.id;
   const active = attempt.status === "working" || attempt.status === "submitted";
@@ -215,9 +256,20 @@ export default function AttemptPage({
           </section>
         )}
 
-        <h3 className="mt-10 font-semibold tracking-tight">Session</h3>
-        <div className="mt-4">
-          {session.length === 0 ? (
+        <nav className="mt-10 flex gap-6 border-b border-line">
+          <TabLink to={here} active={!comparison}>
+            <MessagesSquare size={15} />
+            Session
+          </TabLink>
+          <TabLink to={here + "?tab=changes"} active={Boolean(comparison)}>
+            <FileDiff size={15} />
+            Changes
+          </TabLink>
+        </nav>
+        <div className="mt-5">
+          {comparison ? (
+            <DiffView comparison={comparison} />
+          ) : session.length === 0 ? (
             <EmptyState title="Nothing recorded yet">
               The agent's prompts, reasoning and tool calls appear here as it
               works.

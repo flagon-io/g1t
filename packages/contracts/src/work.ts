@@ -41,7 +41,14 @@ export type Attempt = {
   /** The agent's own account of what it did, set on submit. */
   summary: string | null;
   fork: RepoPath;
+  /** The fork's repository id. */
+  forkRepoId: string;
   headCommit: string | null;
+  /**
+   * For a shipped attempt, what the branch pointed to before it landed.
+   * Comparing against it shows what the attempt changed.
+   */
+  landedBase: string | null;
   startedBy: User;
   createdAt: number;
   updatedAt: number;

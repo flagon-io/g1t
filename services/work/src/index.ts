@@ -353,9 +353,9 @@ export default class WorkService
     await this.db.batch([
       this.db
         .prepare(
-          "UPDATE attempts SET status = 'shipped', head_commit = ?, updated_at = ? WHERE id = ?",
+          "UPDATE attempts SET status = 'shipped', head_commit = ?, landed_base = ?, updated_at = ? WHERE id = ?",
         )
-        .bind(landed.value.commit, now, attempt.id),
+        .bind(landed.value.commit, landed.value.previous, now, attempt.id),
       this.db
         .prepare("UPDATE intents SET status = 'shipped' WHERE id = ?")
         .bind(intent.id),
@@ -385,6 +385,7 @@ export default class WorkService
       ...attempt,
       status: "shipped",
       headCommit: landed.value.commit,
+      landedBase: landed.value.previous,
       updatedAt: now,
     });
   }
