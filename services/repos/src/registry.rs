@@ -44,8 +44,16 @@ pub fn can_read(repo: &Repo, viewer: &Viewer) -> bool {
     !repo.is_private || can_write(repo, viewer)
 }
 
+/// A repository belongs to its workspace, so any member may write to it. An
+/// attempt's fork belongs to whoever started the attempt.
 pub fn can_write(repo: &Repo, viewer: &Viewer) -> bool {
-    viewer.as_ref().is_some_and(|user| user.id == repo.owner_id)
+    viewer.as_ref().is_some_and(|user| {
+        if repo.fork_of.is_some() {
+            user.id == repo.owner_id
+        } else {
+            user.is_member(&repo.namespace)
+        }
+    })
 }
 
 fn optional(value: &Option<String>) -> JsValue {
@@ -81,21 +89,42 @@ impl Registry {
     }
 
     /// Repos the viewer may see, newest first. Excludes attempt forks.
+    /// With `member_only`, only repos in the viewer's own workspaces.
     pub async fn list(
         &self,
         viewer: &Viewer,
         query: Option<&str>,
         namespace: Option<&str>,
+        member_only: bool,
     ) -> Result<Vec<Repo>> {
-        let mut conditions = vec!["fork_of IS NULL", "(is_private = 0 OR owner_id = ?)"];
-        let viewer_id = viewer.as_ref().map_or("", |user| user.id.as_str());
-        let mut params: Vec<JsValue> = vec![viewer_id.into()];
+        let workspaces: Vec<&str> = viewer
+            .iter()
+            .flat_map(|user| &user.workspaces)
+            .map(|membership| membership.slug.as_str())
+            .collect();
+        // An empty IN list is not valid SQL, so a viewer in no workspace
+        // gets a name no workspace can have.
+        let mut params: Vec<JsValue> = if workspaces.is_empty() {
+            vec!["".into()]
+        } else {
+            workspaces.iter().map(|slug| JsValue::from(*slug)).collect()
+        };
+        let mine = format!("namespace IN ({})", vec!["?"; params.len()].join(", "));
+        let mut conditions = vec![
+            "fork_of IS NULL".to_owned(),
+            if member_only {
+                mine
+            } else {
+                format!("(is_private = 0 OR {mine})")
+            },
+        ];
         if let Some(namespace) = namespace {
-            conditions.push("namespace = ?");
+            conditions.push("namespace = ?".to_owned());
             params.push(namespace.to_lowercase().into());
         }
         if let Some(query) = query.map(str::trim).filter(|query| !query.is_empty()) {
-            conditions.push("(name LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\')");
+            conditions
+                .push("(name LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\')".to_owned());
             // LIKE wildcards in the query are matched literally.
             let escaped: String = query
                 .chars()

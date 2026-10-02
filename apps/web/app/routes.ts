@@ -13,7 +13,8 @@ export default [
   route("settings", "routes/settings.tsx"),
   route("explore", "routes/explore.tsx", { id: "explore" }),
   route("search", "routes/explore.tsx", { id: "search" }),
-  route(":owner", "routes/profile.tsx"),
+  route("workspaces/new", "routes/workspace-new.tsx"),
+  route(":owner", "routes/workspace.tsx"),
   route(":owner/:repo", "routes/repo/layout.tsx", [
     index("routes/repo/code.tsx"),
     route("tree/:ref/*", "routes/repo/tree.tsx"),

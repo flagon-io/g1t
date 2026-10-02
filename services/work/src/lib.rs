@@ -260,10 +260,10 @@ impl Work {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(_) => return Ok(no_intent()),
         };
-        if intent.author.id != a.actor.id && repo.owner_id != a.actor.id {
+        if intent.author.id != a.actor.id && !a.actor.is_member(&repo.namespace) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
-                "Only the author or the repo owner can withdraw an intent.",
+                "Only the author or a member of the workspace can withdraw an intent.",
             ));
         }
         if intent.status != IntentStatus::Open {

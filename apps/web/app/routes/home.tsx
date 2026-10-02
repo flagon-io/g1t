@@ -1,5 +1,5 @@
 import { ArrowRight, Plus } from "lucide-react";
-import { Link } from "react-router";
+import { Link, redirect } from "react-router";
 
 import type { Route } from "./+types/home";
 import { Landing } from "../components/landing";
@@ -28,8 +28,12 @@ export function meta({}: Route.MetaArgs) {
 
 export async function loader({ context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
+  // Nothing can be created outside a workspace, so a new account starts there.
+  if (viewer?.verified && (viewer.workspaces ?? []).length === 0) {
+    throw redirect("/workspaces/new");
+  }
   const [repos, attempts] = await Promise.all([
-    reposApi.list(viewer, viewer ? { namespace: viewer.username } : {}),
+    reposApi.list(viewer, { memberOnly: Boolean(viewer) }),
     work.listActiveAttempts(viewer),
   ]);
   // Mission control links to each attempt under its repo.

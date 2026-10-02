@@ -52,7 +52,7 @@ An attempt moves through these states:
 
 ## Shipping
 
-The owner of a repository ships an attempt to land it. Shipping moves `main`
+A member of the repository's workspace ships an attempt to land it. Shipping moves `main`
 to the attempt's head commit, marks the attempt `shipped` and closes the
 intent.
 

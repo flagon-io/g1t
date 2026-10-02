@@ -6,8 +6,7 @@ description: Accounts, email confirmation, access tokens and password reset.
 ## Creating an account
 
 Register at [g1t.sh/register](https://g1t.sh/register). Usernames are
-lowercase letters, digits and single hyphens, up to 39 characters. Your
-username is your namespace: `g1t.sh/<username>`.
+lowercase letters, digits and single hyphens, up to 39 characters.
 
 Accounts can only be created in a browser. There is no API for it, by
 design: it keeps passwords out of scripts and agents, and lets g1t protect
@@ -21,6 +20,24 @@ Until you follow it you can sign in and look around, but you cannot create
 repositories, push, or open intents. Those requests fail with `403` and a
 message telling you to confirm your address. To get a new link, sign in and
 use the banner at the top of the site.
+
+## Workspaces
+
+A workspace owns repositories and is the first part of their address:
+`g1t.sh/<workspace>/<repo>`. There is one kind. A workspace for just you and
+one for a company are the same thing with a different number of members, so
+there is no separate notion of an organization.
+
+Your account does not own repositories itself. After confirming your email
+you create a workspace, which can have the same name as your username, and
+repositories go in it. You can belong to up to ten.
+
+| Role | Can |
+| --- | --- |
+| Member | Create repositories, push, open intents, ship attempts. |
+| Owner | Everything a member can, and add or remove members. |
+
+Manage members on the workspace's page, `g1t.sh/<workspace>`.
 
 ## Access tokens
 

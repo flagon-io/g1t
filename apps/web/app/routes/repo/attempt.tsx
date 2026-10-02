@@ -69,8 +69,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     comparison: comparison && (comparison.ok ? comparison.value : EMPTY_COMPARISON),
     session: unwrap(session),
     viewer,
-    // Only the repository's owner can land an attempt.
-    canShip: repo.ok && repo.value.ownerId === viewer?.id,
+    // Members of the repository's workspace can land an attempt.
+    canShip:
+      repo.ok &&
+      (viewer?.workspaces ?? []).some(
+        (membership) => membership.slug === repo.value.namespace,
+      ),
     defaultBranch: repo.ok ? repo.value.defaultBranch : "main",
   };
 }

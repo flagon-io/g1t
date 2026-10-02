@@ -213,3 +213,53 @@ pub enum DeviceClaim {
         user: User,
     },
 }
+
+/// A workspace: the owner of repositories, and the first segment of their
+/// URLs. A person's own space and a team's are the same thing.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Workspace {
+    pub id: String,
+    pub slug: String,
+    pub name: String,
+    /// RFC 3339.
+    pub created_at: String,
+    pub member_count: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Member {
+    pub username: String,
+    pub role: crate::Role,
+}
+
+/// `create_workspace`. Returns `Outcome<Workspace>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateWorkspaceArgs {
+    pub user: User,
+    pub slug: String,
+    #[serde(default)]
+    pub name: String,
+}
+
+/// `get_workspace`: public details, or null. Returns `Option<Workspace>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SlugArgs {
+    pub slug: String,
+}
+
+/// `list_members`: members only. Returns `Outcome<Vec<Member>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ListMembersArgs {
+    pub slug: String,
+    pub viewer: crate::Viewer,
+}
+
+/// `add_member` and `remove_member`: owners only.
+/// Each returns `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MemberArgs {
+    pub actor: User,
+    pub slug: String,
+    pub username: String,
+}

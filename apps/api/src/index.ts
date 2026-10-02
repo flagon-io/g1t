@@ -34,6 +34,7 @@ const ROUTES: {
   input?: (params: Record<string, string>, query: Input, body: Input) => Input;
 }[] = [
   { method: "GET", path: "/v1/user", operation: "whoami" },
+  { method: "POST", path: "/v1/workspaces", operation: "create_workspace", input: (_p, _q, b) => b },
   { method: "GET", path: "/v1/repos", operation: "list_repos", input: (_p, q) => ({ query: q.q }) },
   { method: "POST", path: "/v1/repos", operation: "create_repo", input: (_p, _q, b) => b },
   { method: "GET", path: "/v1/repos/:owner/:name", operation: "get_repo", input: repo },
@@ -57,7 +58,7 @@ function repo(params: Record<string, string>): Input {
 
 /** The section of the API reference an operation is listed under. */
 function tagFor(operation: string): string {
-  if (operation === "whoami") return "Accounts";
+  if (operation === "whoami" || operation.includes("workspace")) return "Accounts";
   if (operation.includes("session")) return "Sessions";
   if (operation.includes("attempt")) return "Attempts";
   if (operation.includes("intent")) return "Intents";

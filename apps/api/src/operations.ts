@@ -68,9 +68,28 @@ function authed(
 export const operations: Operation[] = [
   {
     name: "whoami",
-    description: "The account the access token belongs to.",
+    description: "The account the access token belongs to, and its workspaces.",
     input: { type: "object", properties: {} },
     run: authed(async (_env, user) => ok(user)),
+  },
+  {
+    name: "create_workspace",
+    description:
+      "Create a workspace. A workspace owns repositories and is the first part of their address, g1t.sh/<workspace>/<repo>. The whoami tool lists the ones you already belong to.",
+    input: {
+      type: "object",
+      properties: {
+        slug: {
+          type: "string",
+          description: "Its name in URLs: lowercase letters, digits and single hyphens.",
+        },
+        name: { type: "string", description: "A display name." },
+      },
+      required: ["slug"],
+    },
+    run: authed((env, user, input) =>
+      env.IDENTITY.createWorkspace(user, text(input, "slug"), text(input, "name")),
+    ),
   },
   {
     name: "list_repos",
@@ -93,10 +112,15 @@ export const operations: Operation[] = [
   },
   {
     name: "create_repo",
-    description: "Create a repository under your account.",
+    description: "Create a repository in one of your workspaces.",
     input: {
       type: "object",
       properties: {
+        workspace: {
+          type: "string",
+          description:
+            "The workspace to create it in. May be left out if you belong to exactly one.",
+        },
         name: { type: "string" },
         description: { type: "string" },
         private: { type: "boolean" },
@@ -105,6 +129,9 @@ export const operations: Operation[] = [
     },
     run: authed((env, user, input) =>
       env.REPOS.create(user, {
+        namespace:
+          text(input, "workspace") ||
+          (user.workspaces?.length === 1 ? user.workspaces[0].slug : ""),
         name: text(input, "name"),
         description: text(input, "description"),
         isPrivate: input.private === true,

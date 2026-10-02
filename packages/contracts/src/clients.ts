@@ -45,6 +45,12 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     deviceResolve: (userCode, user, approve) =>
       call("device_resolve", { userCode, user, approve }),
     deviceClaim: (deviceCode) => call("device_claim", { deviceCode }),
+    createWorkspace: (user, slug, name) => call("create_workspace", { user, slug, name }),
+    getWorkspace: (slug) => call("get_workspace", { slug }),
+    listMembers: (slug, viewer) => call("list_members", { slug, viewer }),
+    addMember: (actor, slug, username) => call("add_member", { actor, slug, username }),
+    removeMember: (actor, slug, username) =>
+      call("remove_member", { actor, slug, username }),
     userForSession: (sessionToken) => call("user_for_session", { sessionToken }),
     userForGitCredentials: (username, secret) =>
       call("user_for_git_credentials", { username, secret }),

@@ -11,7 +11,7 @@ use crate::{User, Viewer};
 #[serde(rename_all = "camelCase")]
 pub struct Repo {
     pub id: String,
-    /// The owning user's (later, workspace's) name: the first URL segment.
+    /// The slug of the workspace that owns it: the first URL segment.
     pub namespace: String,
     pub name: String,
     pub description: Option<String>,
@@ -136,19 +136,27 @@ pub struct GetByIdArgs {
 
 /// `list`: repos the viewer may see, newest first. Returns `Vec<Repo>`.
 #[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListArgs {
     pub viewer: Viewer,
     #[serde(default)]
     pub query: Option<String>,
+    /// Only repos in this workspace.
     #[serde(default)]
     pub namespace: Option<String>,
+    /// Only repos in workspaces the viewer belongs to.
+    #[serde(default)]
+    pub member_only: bool,
 }
 
 /// `create`. Returns `Outcome<Repo>`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateArgs {
+    /// Who is creating it; they must belong to the workspace.
     pub owner: User,
+    /// The workspace it is created in.
+    pub namespace: String,
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,

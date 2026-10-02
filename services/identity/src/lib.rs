@@ -6,6 +6,7 @@
 mod crypto;
 mod device;
 mod email;
+mod workspaces;
 
 use g1t_contracts::identity::*;
 use g1t_contracts::time::{SQL_NOW, rfc3339, sql_after};
@@ -36,6 +37,7 @@ impl From<Account> for User {
             id: row.id,
             username: row.username,
             verified: row.verified != 0,
+            workspaces: Vec::new(),
         }
     }
 }
@@ -98,8 +100,9 @@ struct Identity {
 }
 
 impl Identity {
-    /// Runs a query that returns at most one user.
-    async fn find_user(&self, sql: &str, param: &str) -> Result<Viewer> {
+    /// Runs a query that returns at most one user, for showing to others:
+    /// without their workspaces.
+    async fn find_public_user(&self, sql: &str, param: &str) -> Result<Viewer> {
         Ok(self
             .db
             .prepare(sql)
@@ -107,6 +110,22 @@ impl Identity {
             .first::<Account>(None)
             .await?
             .map(User::from))
+    }
+
+    /// Attaches the workspaces a user belongs to, so that any service can
+    /// authorize them without asking again.
+    async fn with_workspaces(&self, user: Viewer) -> Result<Viewer> {
+        let Some(mut user) = user else {
+            return Ok(None);
+        };
+        user.workspaces = self.memberships(&user.id).await?;
+        Ok(Some(user))
+    }
+
+    /// Runs a query that resolves credentials to at most one user.
+    async fn find_user(&self, sql: &str, param: &str) -> Result<Viewer> {
+        let user = self.find_public_user(sql, param).await?;
+        self.with_workspaces(user).await
     }
 
     /// Stores a one-time token of `kind` for the user and returns it.
@@ -200,6 +219,7 @@ impl Identity {
             id: owner.id,
             username: owner.username,
             verified: true,
+            ..User::default()
         }))
     }
 
@@ -258,6 +278,7 @@ impl Identity {
             id: owner.id,
             username: owner.username,
             verified: true,
+            ..User::default()
         }))
     }
 
@@ -268,13 +289,15 @@ impl Identity {
             .bind(&[JsValue::from(username.to_lowercase())])?
             .first::<UserRow>(None)
             .await?;
-        Ok(row
+        let user = row
             .filter(|row| crypto::verify_password(password, &row.password_hash))
             .map(|row| User {
                 id: row.id,
                 username: row.username,
                 verified: row.verified != 0,
-            }))
+                ..User::default()
+            });
+        self.with_workspaces(user).await
     }
 
     async fn register(&self, a: RegisterArgs) -> Result<Outcome<SignedIn>> {
@@ -311,7 +334,7 @@ impl Identity {
         let user = User {
             id: new_id("usr", now_ms()),
             username,
-            verified: false,
+            ..User::default()
         };
         self.db
             .prepare("INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)")
@@ -416,7 +439,7 @@ impl Identity {
     }
 
     async fn user_by_username(&self, a: UsernameArgs) -> Result<Viewer> {
-        self.find_user(
+        self.find_public_user(
             "SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE username = ?",
             &a.username.to_lowercase(),
         )
@@ -557,6 +580,11 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     match method.as_str() {
         "register" => reply(&identity.register(args(body)?).await?),
         "sign_in" => reply(&identity.sign_in(args(body)?).await?),
+        "create_workspace" => reply(&identity.create_workspace(args(body)?).await?),
+        "get_workspace" => reply(&identity.get_workspace(args(body)?).await?),
+        "list_members" => reply(&identity.list_members(args(body)?).await?),
+        "add_member" => reply(&identity.add_member(args(body)?).await?),
+        "remove_member" => reply(&identity.remove_member(args(body)?).await?),
         "device_start" => reply(&identity.device_start(args(body)?).await?),
         "device_lookup" => reply(&identity.device_lookup(args(body)?).await?),
         "device_resolve" => reply(&identity.device_resolve(args(body)?).await?),

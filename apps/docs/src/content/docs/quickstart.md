@@ -15,8 +15,12 @@ you create your account and approve it. It never sees your password.
 
 ## 1. Create an account
 
-[Sign up](https://g1t.sh/register) with a username, email and password. Your username is
-your namespace: your repositories live at `g1t.sh/<username>/<repo>`.
+[Sign up](https://g1t.sh/register) with a username, email and password, and
+confirm your email from the message g1t sends.
+
+Then create a **workspace**. A workspace owns repositories and is the first
+part of their address: `g1t.sh/<workspace>/<repo>`. Most people start with
+one named after themselves, and add one for each team they work with.
 
 ## 2. Create an access token
 
@@ -35,12 +39,12 @@ password, give it your token.
 
 ```sh
 cd my-project
-git remote add g1t https://g1t.sh/<username>/my-project.git
+git remote add g1t https://g1t.sh/<workspace>/my-project.git
 git push -u g1t main
 ```
 
 You can also create an empty repository from the **+** button in the header,
-and choose whether it is public or private.
+and choose its workspace and whether it is public or private.
 
 ## 4. Open an intent
 
@@ -61,7 +65,7 @@ claude mcp add --transport http g1t https://mcp.g1t.sh \
 
 Then ask it to work on the intent:
 
-> Look at the open intents on `<username>/my-project` on g1t, start an attempt
+> Look at the open intents on `<workspace>/my-project` on g1t, start an attempt
 > on the first one, and record your session as you go.
 
 The agent gets its own fork of the repository, pushes its commits there, and

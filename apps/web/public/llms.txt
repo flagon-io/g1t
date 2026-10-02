@@ -57,11 +57,21 @@ are created and approved only in their browser.
      --header "Authorization: Bearer $G1T_TOKEN"
    ```
 
-5. **Push a repository.** Pushing to a repository that does not exist under
-   the person's own username creates it, public by default.
+5. **Create a workspace** if `GET /v1/user` shows none. A workspace owns
+   repositories and is the first part of their address. Ask the person what
+   to call it; their username is a sensible default.
 
    ```sh
-   git remote add g1t https://g1t.sh/USERNAME/REPO.git
+   curl -X POST https://api.g1t.sh/v1/workspaces \
+     -H "Authorization: Bearer $G1T_TOKEN" -H "Content-Type: application/json" \
+     -d '{"slug": "WORKSPACE"}'
+   ```
+
+6. **Push a repository.** Pushing to a repository that does not exist, in a
+   workspace the person belongs to, creates it, public by default.
+
+   ```sh
+   git remote add g1t https://g1t.sh/WORKSPACE/REPO.git
    git -c credential.helper= \
        -c "http.extraHeader=Authorization: Basic $(printf '%s' "USERNAME:$G1T_TOKEN" | base64)" \
        push -u g1t main
@@ -84,7 +94,7 @@ are created and approved only in their browser.
   sessions are as visible as the repository.
 - **Submit:** `POST /v1/attempts/{attempt_id}/submit` with `summary`.
 - **See what an attempt changed:** `GET /v1/attempts/{attempt_id}/changes`.
-- **Ship** (repository owner only):
+- **Ship** (members of the repository's workspace):
   `POST /v1/attempts/{attempt_id}/ship`. A `409` saying main has moved means
   the fork is behind: pull main from `https://g1t.sh/{owner}/{name}.git` into
   the fork, push, and ship again.
@@ -93,7 +103,7 @@ Every one of these is also an MCP tool with the same name in snake case:
 `open_intent`, `start_attempt`, `record_session`, `submit_attempt`,
 `get_attempt_changes`, `ship_attempt`, and `list_intents`, `get_intent`,
 `get_attempt`, `read_session`, `list_repos`, `get_repo`, `create_repo`,
-`list_events`, `whoami`.
+`list_events`, `create_workspace`, `whoami`.
 
 ## Facts
 
@@ -102,7 +112,8 @@ Every one of these is also an MCP tool with the same name in snake case:
   `{"error": {"code": "…", "message": "…"}}` with codes `unauthenticated`
   (401), `forbidden` (403), `not_found` (404), `conflict` (409), `invalid`
   (422). The full description is at https://api.g1t.sh/openapi.json.
-- Git remote: `https://g1t.sh/{owner}/{repo}.git`. Attempt forks:
+- Git remote: `https://g1t.sh/{workspace}/{repo}.git`. In API paths,
+  `{owner}` is the workspace. Attempt forks:
   `https://g1t.sh/attempts/{attempt_id}.git`. SSH is not available.
 - Limits: 1 GB per repository, 32 MB per file, 100 MB per push.
 - Forgotten password: https://g1t.sh/forgot (the person does this, in a

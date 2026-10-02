@@ -36,7 +36,7 @@ impl From<IntentRow> for Intent {
             author: User {
                 id: row.author_id,
                 username: row.author_name,
-                verified: false,
+                ..User::default()
             },
             created_at: row.created_at,
             attempt_count: row.attempt_count,
@@ -86,7 +86,7 @@ impl From<AttemptRow> for Attempt {
             started_by: User {
                 id: row.started_by_id,
                 username: row.started_by_name,
-                verified: false,
+                ..User::default()
             },
             created_at: row.created_at,
             updated_at: row.updated_at,

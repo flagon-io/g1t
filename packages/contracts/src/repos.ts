@@ -3,7 +3,7 @@ import type { Result } from "./result";
 
 export type Repo = {
   id: string;
-  /** The owning user's (later, workspace's) name: the first URL segment. */
+  /** The slug of the workspace that owns it: the first URL segment. */
   namespace: string;
   name: string;
   description: string | null;
@@ -59,6 +59,8 @@ export type GitAccess = { remote: string; token: string };
 export type GitService = "git-upload-pack" | "git-receive-pack";
 
 export type CreateRepoInput = {
+  /** The workspace to create it in; the creator must be a member. */
+  namespace: string;
   name: string;
   description?: string | null;
   isPrivate?: boolean;
@@ -69,7 +71,16 @@ export interface ReposApi {
   get(path: RepoPath, viewer: Viewer): Promise<Result<Repo>>;
   getById(id: string, viewer: Viewer): Promise<Result<Repo>>;
   /** Repos the viewer may see, newest first, optionally matching `query`. */
-  list(viewer: Viewer, options?: { query?: string; namespace?: string }): Promise<Repo[]>;
+  list(
+    viewer: Viewer,
+    options?: {
+      query?: string;
+      /** Only repos in this workspace. */
+      namespace?: string;
+      /** Only repos in workspaces the viewer belongs to. */
+      memberOnly?: boolean;
+    },
+  ): Promise<Repo[]>;
   create(owner: User, input: CreateRepoInput): Promise<Result<Repo>>;
 
   tree(path: RepoPath, viewer: Viewer, ref: string | null, treePath: string): Promise<Result<TreeView>>;

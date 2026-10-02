@@ -1,12 +1,12 @@
 import {
   BookOpen,
+  Building2,
   ChevronDown,
   LayoutDashboard,
   LogOut,
   Plus,
   Search,
   Settings,
-  UserRound,
 } from "lucide-react";
 import {
   Form,
@@ -121,12 +121,21 @@ function Header({ user }: { user: User | null | undefined }) {
                     </span>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  {(user.workspaces ?? []).map((membership) => (
+                    <DropdownMenuItem asChild key={membership.slug}>
+                      <Link to={`/${membership.slug}`}>
+                        <Building2 />
+                        {membership.slug}
+                      </Link>
+                    </DropdownMenuItem>
+                  ))}
                   <DropdownMenuItem asChild>
-                    <Link to={`/${user.username}`}>
-                      <UserRound />
-                      Your profile
+                    <Link to="/workspaces/new">
+                      <Plus />
+                      New workspace
                     </Link>
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <Link to="/">
                       <LayoutDashboard />

@@ -14,9 +14,7 @@ mod store;
 use g1t_contracts::events::{GitPush, NewEvent, RepoCreated, RepoForked};
 use g1t_contracts::repos::*;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::{
-    FailureCode, Outcome, User, Viewer, is_valid_namespace, is_valid_repo_name, new_id,
-};
+use g1t_contracts::{FailureCode, Outcome, User, Viewer, is_valid_repo_name, new_id};
 use g1t_kit::{args, js, now_ms, reply, rpc_method};
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -166,20 +164,24 @@ impl<S: GitStore> Repos<S> {
                 "Use letters, digits, dots, hyphens and underscores only.",
             ));
         }
-        if !is_valid_namespace(&a.owner.username) {
+        let namespace = a.namespace.trim().to_lowercase();
+        if namespace.is_empty() {
             return Ok(Outcome::fail(
                 FailureCode::Invalid,
-                "This account cannot own repositories.",
+                "Say which workspace to create the repository in.",
             ));
         }
-        let path = RepoPath {
-            namespace: a.owner.username.clone(),
-            name,
-        };
+        if !a.owner.is_member(&namespace) {
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                "You are not a member of that workspace.",
+            ));
+        }
+        let path = RepoPath { namespace, name };
         if self.registry.by_path(&path).await?.is_some() {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
-                "You already have a repository with that name.",
+                "That workspace already has a repository with that name.",
             ));
         }
         let now = now_ms();
@@ -394,17 +396,18 @@ impl<S: GitStore> Repos<S> {
                 repo
             }
             None => {
-                // Push to create, in the pusher's own namespace only.
+                // Push to create, in a workspace the pusher belongs to.
                 let owner = a
                     .viewer
                     .as_ref()
-                    .filter(|user| write && user.username == a.path.namespace.to_lowercase());
+                    .filter(|user| write && user.is_member(&a.path.namespace.to_lowercase()));
                 let Some(owner) = owner else {
                     return Ok(denied());
                 };
                 let created = self
                     .create(CreateArgs {
                         owner: owner.clone(),
+                        namespace: a.path.namespace.clone(),
                         name: a.path.name.clone(),
                         description: None,
                         is_private: false,
@@ -436,7 +439,7 @@ impl<S: GitStore> Repos<S> {
         if !can_write(&target, &actor) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
-                "Only the repository's owner can land an attempt.",
+                "Only members of the repository's workspace can land an attempt.",
             ));
         }
         if !a.actor.verified {
@@ -627,7 +630,12 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
             reply(
                 &repos
                     .registry
-                    .list(&a.viewer, a.query.as_deref(), a.namespace.as_deref())
+                    .list(
+                        &a.viewer,
+                        a.query.as_deref(),
+                        a.namespace.as_deref(),
+                        a.member_only,
+                    )
                     .await?,
             )
         }

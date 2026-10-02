@@ -8,7 +8,7 @@ g1t speaks git's smart HTTP protocol. Any git client works.
 ## Remotes
 
 ```text
-https://g1t.sh/<owner>/<repo>.git
+https://g1t.sh/<workspace>/<repo>.git
 ```
 
 Public repositories can be cloned without signing in:
@@ -32,16 +32,17 @@ git config --global credential.helper store
 
 ## Creating a repository by pushing
 
-Pushing to a repository that does not exist under your own username creates
-it as a public repository.
+Pushing to a repository that does not exist, in a workspace you belong to,
+creates it as a public repository.
 
 ```sh
-git push https://g1t.sh/<username>/new-repo.git main
+git push https://g1t.sh/<workspace>/new-repo.git main
 ```
 
 ## Private repositories
 
-A private repository is visible only to its owner. To everyone else it looks
+A private repository is visible only to members of its workspace. To everyone
+else it looks
 exactly like a repository that does not exist, both on the site and to git.
 
 ## Attempt forks

@@ -8,7 +8,32 @@ export type User = {
    * resolved from credentials; unverified accounts cannot change anything.
    */
   verified?: boolean;
+  /**
+   * The workspaces this user belongs to. Set on users resolved from
+   * credentials, so any service can authorize from it.
+   */
+  workspaces?: Membership[];
 };
+
+/** What a member may do: an owner also manages the workspace's members. */
+export type Role = "owner" | "member";
+
+export type Membership = { slug: string; role: Role };
+
+/**
+ * A workspace: the owner of repositories, and the first segment of their
+ * URLs. A person's own space and a team's are the same thing.
+ */
+export type Workspace = {
+  id: string;
+  slug: string;
+  name: string;
+  /** RFC 3339. */
+  createdAt: string;
+  memberCount: number;
+};
+
+export type Member = { username: string; role: Role };
 
 /** Who is asking. Every read and write in every service takes one. */
 export type Viewer = User | null;
@@ -66,6 +91,16 @@ export interface IdentityApi {
   deviceLookup(userCode: string): Promise<DeviceRequest | null>;
   deviceResolve(userCode: string, user: User, approve: boolean): Promise<Result<boolean>>;
   deviceClaim(deviceCode: string): Promise<DeviceClaim>;
+
+  createWorkspace(user: User, slug: string, name: string): Promise<Result<Workspace>>;
+  /** Public details of a workspace, or null. */
+  getWorkspace(slug: string): Promise<Workspace | null>;
+  /** Members only. */
+  listMembers(slug: string, viewer: Viewer): Promise<Result<Member[]>>;
+  /** Owners only. */
+  addMember(actor: User, slug: string, username: string): Promise<Result<boolean>>;
+  /** Owners only. */
+  removeMember(actor: User, slug: string, username: string): Promise<Result<boolean>>;
 
   userForSession(sessionToken: string): Promise<Viewer>;
 

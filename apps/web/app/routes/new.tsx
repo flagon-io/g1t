@@ -10,7 +10,15 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export function loader({ request, context }: Route.LoaderArgs) {
-  return { user: requireUser(context, request) };
+  const user = requireUser(context, request);
+  const workspaces = (user.workspaces ?? []).map((membership) => membership.slug);
+  // Repositories live in a workspace, so there has to be one first.
+  if (workspaces.length === 0) throw redirect("/workspaces/new");
+  const asked = new URL(request.url).searchParams.get("workspace");
+  return {
+    workspaces,
+    selected: asked && workspaces.includes(asked) ? asked : workspaces[0],
+  };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -18,6 +26,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const user = requireUser(context, request);
   const form = await request.formData();
   const result = await repos.create(user, {
+    namespace: String(form.get("workspace") ?? ""),
     name: String(form.get("name") ?? ""),
     description: String(form.get("description") ?? ""),
     isPrivate: form.get("visibility") === "private",
@@ -36,7 +45,19 @@ export default function NewRepo({
       <Form method="post" className="mt-8 space-y-4">
         <Field label="Name">
           <div className="flex items-center gap-2 font-mono text-sm">
-            <span className="text-muted">{loaderData.user.username}/</span>
+            <select
+              name="workspace"
+              defaultValue={loaderData.selected}
+              aria-label="Workspace"
+              className="rounded-md border border-line bg-bg px-2 py-2 text-sm"
+            >
+              {loaderData.workspaces.map((slug) => (
+                <option key={slug} value={slug}>
+                  {slug}
+                </option>
+              ))}
+            </select>
+            <span className="text-muted">/</span>
             <Input name="name" required autoFocus maxLength={100} />
           </div>
         </Field>
