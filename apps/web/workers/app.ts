@@ -6,49 +6,32 @@ const requestHandler = createRequestHandler(
 );
 
 const GIT_PATH = /\/(info\/refs|git-upload-pack|git-receive-pack)$/;
-const DOCS_HOST = "docs.g1t.sh";
-const SITE = "https://g1t.sh";
+const DOCS = "https://docs.g1t.sh";
 
-/**
- * docs.g1t.sh serves the site's /docs pages from its root: /concepts there
- * is /docs/concepts here. Anything on that hostname that is not
- * documentation belongs to the main site.
- */
-function docsRequest(request: Request, url: URL): Request | Response {
-  const { pathname } = url;
-  if (pathname === "/docs" || pathname.startsWith("/docs/")) return request;
-  // React Router's data requests for in-site navigation.
-  if (pathname.startsWith("/__manifest") || pathname.endsWith(".data")) return request;
-  const first = pathname.split("/")[1];
-  if (DOCS_PAGES.has(first)) {
-    url.pathname = "/docs" + (pathname === "/" ? "" : pathname);
-    return new Request(url, request);
-  }
-  return Response.redirect(SITE + pathname + url.search, 302);
-}
-
-/** First path segments that are documentation; "" is the docs home page. */
-const DOCS_PAGES = new Set([
-  "",
-  "concepts",
-  "authentication",
-  "git",
-  "g1t-agents",
-  "agents",
-  "api",
-]);
+/** Where the documentation pages that used to live under /docs are now. */
+const MOVED_DOCS: Record<string, string> = {
+  "/docs": "/quickstart/",
+  "/docs/concepts": "/concepts/overview/",
+  "/docs/authentication": "/guides/authentication/",
+  "/docs/git": "/guides/git/",
+  "/docs/g1t-agents": "/guides/g1t-agents/",
+  "/docs/agents": "/guides/bring-your-own-agent/",
+  "/docs/api": "/reference/api/",
+  "/docs/api/reference": "/api/reference/",
+};
 
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
+    const { pathname } = new URL(request.url);
     // Git over HTTPS shares this hostname but belongs to the repos service.
-    if (GIT_PATH.test(url.pathname)) {
+    if (GIT_PATH.test(pathname)) {
       return env.REPOS.fetch(request);
     }
-    if (url.hostname === DOCS_HOST) {
-      const rewritten = docsRequest(request, url);
-      if (rewritten instanceof Response) return rewritten;
-      return requestHandler(rewritten);
+    // The documentation is its own site.
+    if (pathname === "/docs" || pathname.startsWith("/docs/")) {
+      const page = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+      const target = MOVED_DOCS[page] ?? "/";
+      return Response.redirect(DOCS + target, 301);
     }
     return requestHandler(request);
   },

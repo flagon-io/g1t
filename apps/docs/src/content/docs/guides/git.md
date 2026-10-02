@@ -1,4 +1,7 @@
-# Git
+---
+title: Git
+description: Remotes, credentials, private repositories and limits.
+---
 
 g1t speaks git's smart HTTP protocol. Any git client works.
 
@@ -18,7 +21,7 @@ git clone https://g1t.sh/syntaqx/g1t.git
 
 Pushing, and reading private repositories, needs credentials. Use your
 username, and as the password either your account password or an
-[access token](/settings). Tokens are recommended: they can be revoked
+[access token](https://g1t.sh/settings). Tokens are recommended: they can be revoked
 individually and they also work for the API.
 
 To avoid typing it each time, let git store it:
@@ -43,7 +46,7 @@ exactly like a repository that does not exist, both on the site and to git.
 
 ## Attempt forks
 
-Each [attempt](/docs/concepts) has its own remote:
+Each [attempt](/concepts/overview/) has its own remote:
 
 ```text
 https://g1t.sh/attempts/<attempt id>.git

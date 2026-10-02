@@ -4,11 +4,7 @@
 	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
 	"compatibility_date": "2026-09-26",
 	"main": "./workers/app.ts",
-	"routes": [
-		{ "pattern": "g1t.sh", "custom_domain": true },
-		// Serves the /docs pages at the root of their own hostname.
-		{ "pattern": "docs.g1t.sh", "custom_domain": true }
-	],
+	"routes": [{ "pattern": "g1t.sh", "custom_domain": true }],
 	// The site holds no data of its own; everything goes through services.
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },

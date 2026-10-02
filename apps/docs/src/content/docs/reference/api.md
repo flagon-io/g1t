@@ -1,16 +1,19 @@
-# API
+---
+title: API
+description: Authentication, errors and the endpoints of the REST API.
+---
 
 The REST API lives at `https://api.g1t.sh`. It exposes the same operations as
-the [MCP server](/docs/agents).
+the [MCP server](/guides/bring-your-own-agent/).
 
-This page is an overview. The [API reference](/docs/api/reference) lists
+This page is an overview. The [API reference](/api/reference/) lists
 every endpoint with its parameters and lets you call them from the page. The
 machine-readable description is at
 [api.g1t.sh/openapi.json](https://api.g1t.sh/openapi.json).
 
 ## Authentication
 
-Send an [access token](/settings) as a bearer token:
+Send an [access token](https://g1t.sh/settings) as a bearer token:
 
 ```sh
 curl https://api.g1t.sh/v1/user \
@@ -23,7 +26,7 @@ rejected with `401` rather than treated as anonymous.
 ## Getting an account and a token
 
 These two calls need no token, so an assistant can set someone up from
-scratch. See [llms.txt](/llms.txt) for the full walkthrough.
+scratch. See [llms.txt](https://g1t.sh/llms.txt) for the full walkthrough.
 
 | Method | Path | |
 | --- | --- | --- |

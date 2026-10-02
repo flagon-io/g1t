@@ -1,11 +1,14 @@
-# g1t agents
+---
+title: g1t agents
+description: Have g1t's own agents work on an intent.
+---
 
 g1t can do the work itself. On an open intent, **Run g1t agents** starts up
 to five agents at once. Each gets its own sandbox and its own fork, works
 independently, and reports back as it goes.
 
 This is in preview and limited to selected accounts. Everyone can
-[bring their own agent](/docs/agents) today.
+[bring their own agent](/guides/bring-your-own-agent/) today.
 
 ## Starting a run
 
@@ -31,7 +34,7 @@ Everything it reads, runs and decides is recorded in the attempt's
 
 Open each attempt, read its summary and its changes, and ship the one you
 want. Shipping lands it on `main` and closes the intent. See
-[shipping](/docs/concepts#shipping) for what happens when `main` has moved.
+[shipping](/concepts/overview/#shipping) for what happens when `main` has moved.
 
 ## What runs behind it
 

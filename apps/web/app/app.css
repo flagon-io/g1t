@@ -1,30 +1,28 @@
 @import "tailwindcss" source(".");
+@import "@g1t/theme/tokens.css";
 
+/* Tailwind's names for the shared g1t tokens. */
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif,
-    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
-    monospace;
+  --font-sans: var(--g1t-font-sans);
+  --font-mono: var(--g1t-font-mono);
 
-  /* Warm near-black, three elevations. */
-  --color-bg: #0e0d0a;
-  --color-surface: #16150f;
-  --color-raised: #1e1c15;
-  --color-line: #2a2820;
-  --color-line-strong: #3a372d;
+  --color-bg: var(--g1t-bg);
+  --color-surface: var(--g1t-surface);
+  --color-raised: var(--g1t-raised);
+  --color-line: var(--g1t-line);
+  --color-line-strong: var(--g1t-line-strong);
 
-  --color-fg: #f0eee6;
-  --color-muted: #a09c8f;
-  --color-faint: #6e6a5e;
+  --color-fg: var(--g1t-fg);
+  --color-muted: var(--g1t-muted);
+  --color-faint: var(--g1t-faint);
 
-  --color-accent: #b6f24a;
-  --color-accent-dim: #7fae2c;
+  --color-accent: var(--g1t-accent);
+  --color-accent-dim: var(--g1t-accent-dim);
 
-  /* Status colours, used sparingly. */
-  --color-info: #7cc4ff;
-  --color-shipped: #b9a2ff;
-  --color-warn: #f2c14a;
-  --color-danger: #ff7a6b;
+  --color-info: var(--g1t-info);
+  --color-shipped: var(--g1t-shipped);
+  --color-warn: var(--g1t-warn);
+  --color-danger: var(--g1t-danger);
 
   --animate-fade-up: fade-up 0.6s ease-out both;
   --animate-dash: dash 1.2s linear infinite;

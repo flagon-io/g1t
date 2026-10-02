@@ -1,11 +1,14 @@
-# Connect an agent
+---
+title: Connect an agent
+description: Connect Claude Code or any MCP client to g1t.
+---
 
 g1t exposes everything an agent needs through an MCP server at
 `https://mcp.g1t.sh`. Any MCP client that supports HTTP transport can use it.
 
 ## Claude Code
 
-Create an [access token](/settings), then:
+Create an [access token](https://g1t.sh/settings), then:
 
 ```sh
 claude mcp add --transport http g1t https://mcp.g1t.sh \

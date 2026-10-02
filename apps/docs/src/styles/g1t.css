@@ -1,0 +1,58 @@
+/* Starlight's names for the shared g1t tokens. The docs are dark, like the site. */
+:root,
+:root[data-theme='light'] {
+	--sl-font: var(--g1t-font-sans);
+	--sl-font-mono: var(--g1t-font-mono);
+
+	--sl-color-accent-low: var(--g1t-accent-low);
+	--sl-color-accent: var(--g1t-accent-dim);
+	--sl-color-accent-high: var(--g1t-accent);
+
+	--sl-color-white: var(--g1t-fg);
+	--sl-color-gray-1: var(--g1t-fg-soft);
+	--sl-color-gray-2: var(--g1t-fg-soft);
+	--sl-color-gray-3: var(--g1t-muted);
+	--sl-color-gray-4: var(--g1t-faint);
+	--sl-color-gray-5: var(--g1t-line);
+	--sl-color-gray-6: var(--g1t-surface);
+	--sl-color-gray-7: var(--g1t-surface);
+	--sl-color-black: var(--g1t-bg);
+
+	--sl-color-bg: var(--g1t-bg);
+	--sl-color-bg-nav: var(--g1t-surface);
+	--sl-color-bg-sidebar: var(--g1t-bg);
+	--sl-color-hairline: var(--g1t-line);
+	--sl-color-hairline-light: var(--g1t-line);
+	--sl-color-hairline-shade: var(--g1t-surface);
+	--sl-color-text: var(--g1t-fg-soft);
+	--sl-color-text-accent: var(--g1t-accent);
+	--sl-color-text-invert: var(--g1t-bg);
+	--sl-color-bg-inline-code: var(--g1t-raised);
+
+	color-scheme: dark;
+}
+
+/* There is one theme, so the switcher has nothing to switch. */
+starlight-theme-select {
+	display: none;
+}
+
+.sl-markdown-content :is(h1, h2, h3) {
+	letter-spacing: -0.02em;
+}
+
+.hero h1 {
+	letter-spacing: -0.035em;
+}
+
+.sl-link-button.primary {
+	background: var(--g1t-accent);
+	border-color: var(--g1t-accent);
+	color: var(--g1t-bg);
+}
+
+.card {
+	background: var(--g1t-surface);
+	border-color: var(--g1t-line);
+	border-radius: 0.75rem;
+}

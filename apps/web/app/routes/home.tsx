@@ -133,7 +133,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             />
           </div>
           <Link
-            to="/docs/agents"
+            to="https://docs.g1t.sh/guides/bring-your-own-agent/"
             className="mt-4 inline-flex items-center gap-1 text-sm text-accent hover:underline"
           >
             How it works <ArrowRight size={13} />

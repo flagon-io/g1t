@@ -24,7 +24,8 @@
     "react-router": "^8.4.0",
     "remark-gfm": "^4.0.1",
     "shiki": "^4.5.0",
-    "tailwind-merge": "^3.7.0"
+    "tailwind-merge": "^3.7.0",
+    "@g1t/theme": "*"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.62.4",

@@ -1,4 +1,7 @@
-# Accounts and authentication
+---
+title: Accounts and authentication
+description: Accounts, email confirmation, access tokens and password reset.
+---
 
 ## Creating an account
 

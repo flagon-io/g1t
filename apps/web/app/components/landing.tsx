@@ -89,7 +89,7 @@ export function Landing({ repos }: { repos: Repo[] }) {
         />
         <div className="relative mx-auto max-w-6xl px-4 pt-20 pb-10 text-center">
           <Link
-            to="/docs/concepts"
+            to="https://docs.g1t.sh/concepts/overview/"
             className="inline-flex animate-fade-up items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-xs text-muted transition-colors hover:border-line-strong hover:text-fg"
           >
             <span className="size-1.5 rounded-full bg-accent" />
@@ -111,7 +111,7 @@ export function Landing({ repos }: { repos: Repo[] }) {
               Get started
               <ArrowRight size={15} />
             </ButtonLink>
-            <ButtonLink to="/docs" variant="quiet" large>
+            <ButtonLink to="https://docs.g1t.sh/quickstart/" variant="quiet" large>
               Read the docs
             </ButtonLink>
           </div>
@@ -184,7 +184,7 @@ export function Landing({ repos }: { repos: Repo[] }) {
               wrapper.
             </p>
             <div className="mt-6">
-              <ButtonLink to="/docs/agents" variant="quiet">
+              <ButtonLink to="https://docs.g1t.sh/guides/bring-your-own-agent/" variant="quiet">
                 Connect an agent
                 <ArrowRight size={14} />
               </ButtonLink>

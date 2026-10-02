@@ -1,0 +1,12 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-docs",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	// A static site: Astro builds it to ./dist and Workers serves the files.
+	"assets": {
+		"directory": "./dist",
+		"not_found_handling": "404-page"
+	},
+	"routes": [{ "pattern": "docs.g1t.sh", "custom_domain": true }]
+}

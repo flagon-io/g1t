@@ -1,0 +1,19 @@
+{
+  "name": "@g1t/docs",
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "deploy": "astro build && wrangler deploy"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.42.5",
+    "astro": "^7.2.10",
+    "sharp": "^0.35.3",
+    "@g1t/theme": "*"
+  },
+  "private": true,
+  "license": "MIT"
+}

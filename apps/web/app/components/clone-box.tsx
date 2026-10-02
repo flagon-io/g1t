@@ -35,7 +35,7 @@ export function CloneBox({ path }: { path: string }) {
         <p className="mt-2 text-xs text-muted">
           Connects Claude Code to g1t. Then ask it to work on an intent in{" "}
           <span className="font-mono text-fg">{path}</span>.{" "}
-          <Link to="/docs/agents" className="text-fg underline underline-offset-4">
+          <Link to="https://docs.g1t.sh/guides/bring-your-own-agent/" className="text-fg underline underline-offset-4">
             More
           </Link>
         </p>

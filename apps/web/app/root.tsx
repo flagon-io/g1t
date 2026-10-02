@@ -93,7 +93,7 @@ function Header({ user }: { user: User | null | undefined }) {
         </Form>
         <nav className="flex items-center gap-0.5">
           <HeaderLink to="/explore">Explore</HeaderLink>
-          <HeaderLink to="/docs">Docs</HeaderLink>
+          <HeaderLink to="https://docs.g1t.sh/">Docs</HeaderLink>
         </nav>
         <div className="ml-auto flex items-center gap-2">
           {user ? (
@@ -147,7 +147,7 @@ function Header({ user }: { user: User | null | undefined }) {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link to="/docs">
+                    <Link to="https://docs.g1t.sh/quickstart/">
                       <BookOpen />
                       Documentation
                     </Link>
@@ -180,17 +180,17 @@ const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
     title: "Product",
     links: [
       ["Explore repositories", "/explore"],
-      ["g1t agents", "/docs/g1t-agents"],
-      ["Bring your own agent", "/docs/agents"],
+      ["g1t agents", "https://docs.g1t.sh/guides/g1t-agents/"],
+      ["Bring your own agent", "https://docs.g1t.sh/guides/bring-your-own-agent/"],
       ["Sign up", "/register"],
     ],
   },
   {
     title: "Developers",
     links: [
-      ["Quickstart", "/docs"],
-      ["Concepts", "/docs/concepts"],
-      ["API reference", "/docs/api/reference"],
+      ["Quickstart", "https://docs.g1t.sh/quickstart/"],
+      ["Concepts", "https://docs.g1t.sh/concepts/overview/"],
+      ["API reference", "https://docs.g1t.sh/api/reference/"],
       ["OpenAPI", "https://api.g1t.sh/openapi.json"],
       ["llms.txt", "/llms.txt"],
     ],

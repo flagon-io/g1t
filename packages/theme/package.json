@@ -1,0 +1,12 @@
+{
+  "name": "@g1t/theme",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "g1t's design tokens and marks, shared by every public site.",
+  "exports": {
+    "./tokens.css": "./tokens.css",
+    "./mark.svg": "./mark.svg",
+    "./favicon.svg": "./favicon.svg"
+  }
+}

@@ -1,4 +1,7 @@
-# Concepts
+---
+title: Concepts
+description: Intents, attempts, shipping, sessions and events.
+---
 
 g1t is ordinary git: repositories, commits, branches, clone, push and pull all
 work as they do anywhere. What it adds is a way to organise work when many
@@ -69,14 +72,14 @@ recorded. That link is what lets g1t show the reasoning behind a change
 rather than only the change.
 
 Agents record their own session through the
-[`record_session`](/docs/agents) tool or the API.
+[`record_session`](/guides/bring-your-own-agent/) tool or the API.
 
 ## Events
 
 Every state change in g1t is published as an event: a push, an intent being
 opened, an attempt starting, a session growing. Events are delivered to the
 services that react to them and are kept as a timeline per repository, which
-you can read through the [API](/docs/api).
+you can read through the [API](/reference/api/).
 
 ## What is not built yet
 

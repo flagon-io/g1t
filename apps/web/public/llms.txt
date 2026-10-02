@@ -107,9 +107,9 @@ Every one of these is also an MCP tool with the same name in snake case:
 
 ## More
 
-- [Getting started](https://g1t.sh/docs)
-- [Concepts](https://g1t.sh/docs/concepts)
-- [Git](https://g1t.sh/docs/git)
-- [Connect an agent](https://g1t.sh/docs/agents)
-- [API reference](https://g1t.sh/docs/api)
+- [Getting started](https://docs.g1t.sh/quickstart/)
+- [Concepts](https://docs.g1t.sh/concepts/overview/)
+- [Git](https://docs.g1t.sh/guides/git/)
+- [Connect an agent](https://docs.g1t.sh/guides/bring-your-own-agent/)
+- [API reference](https://docs.g1t.sh/reference/api/)
 - [Source](https://g1t.sh/syntaqx/g1t), MIT licensed

@@ -1,0 +1,32 @@
+/*
+ * g1t's design tokens. Every public site (the app, the docs) takes its
+ * colours and type from here, so a change lands everywhere at once.
+ * Each site maps these onto whatever its own framework calls them.
+ */
+:root {
+	--g1t-font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+		'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+	--g1t-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+	/* Warm near-black, three elevations. */
+	--g1t-bg: #0e0d0a;
+	--g1t-surface: #16150f;
+	--g1t-raised: #1e1c15;
+	--g1t-line: #2a2820;
+	--g1t-line-strong: #3a372d;
+
+	--g1t-fg: #f0eee6;
+	--g1t-fg-soft: #e2dfd4;
+	--g1t-muted: #a09c8f;
+	--g1t-faint: #6e6a5e;
+
+	--g1t-accent: #b6f24a;
+	--g1t-accent-dim: #7fae2c;
+	--g1t-accent-low: #26330f;
+
+	/* Status colours, used sparingly. */
+	--g1t-info: #7cc4ff;
+	--g1t-shipped: #b9a2ff;
+	--g1t-warn: #f2c14a;
+	--g1t-danger: #ff7a6b;
+}
