@@ -11,6 +11,7 @@ mod names;
 mod outcome;
 pub mod repos;
 pub mod time;
+pub mod work;
 
 pub use ids::new_id;
 pub use names::{is_valid_namespace, is_valid_repo_name};

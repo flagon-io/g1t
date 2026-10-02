@@ -1,11 +1,10 @@
-import { env } from "cloudflare:workers";
 import { BookMarked, Code2, History, Lock, Target } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, NavLink, Outlet } from "react-router";
 
 import type { Route } from "./+types/layout";
 import { Pill } from "../../components/ui";
-import { repos } from "../../lib/services.server";
+import { repos, work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
 export function meta({ params }: Route.MetaArgs) {
@@ -17,7 +16,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const [repo, intents] = await Promise.all([
     repos.get(path, viewer),
-    env.WORK.listIntents(path, viewer, "open"),
+    work.listIntents(path, viewer, "open"),
   ]);
   return {
     repo: unwrap(repo),

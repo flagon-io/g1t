@@ -1,8 +1,8 @@
-import { env } from "cloudflare:workers";
 import { Form, redirect } from "react-router";
 
 import type { Route } from "./+types/intent-new";
 import { Button, ErrorText, Field, Input, Textarea } from "../../components/ui";
+import { work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
 
 export function loader({ request, context }: Route.LoaderArgs) {
@@ -14,7 +14,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
   const form = await request.formData();
-  const result = await env.WORK.openIntent(
+  const result = await work.openIntent(
     user,
     { namespace: params.owner, name: params.repo },
     {

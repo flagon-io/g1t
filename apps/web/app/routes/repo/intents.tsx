@@ -1,4 +1,3 @@
-import { env } from "cloudflare:workers";
 import { CircleDot, GitMerge, Plus, XCircle } from "lucide-react";
 import { Link } from "react-router";
 
@@ -6,6 +5,7 @@ import type { Intent } from "@g1t/contracts";
 
 import type { Route } from "./+types/intents";
 import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
+import { work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
 export function meta({ params }: Route.MetaArgs) {
@@ -15,7 +15,7 @@ export function meta({ params }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   return {
-    intents: unwrap(await env.WORK.listIntents(path, getViewer(context))),
+    intents: unwrap(await work.listIntents(path, getViewer(context))),
   };
 }
 

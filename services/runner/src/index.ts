@@ -11,16 +11,16 @@ import {
   type ServiceBinding,
   type User,
   type Viewer,
-  type WorkApi,
   fail,
   identityClient,
   ok,
+  workClient,
 } from "@g1t/contracts";
 
 export interface RunnerEnv {
   SANDBOX: DurableObjectNamespace<AttemptSandbox>;
   IDENTITY: ServiceBinding;
-  WORK: WorkApi;
+  WORK: ServiceBinding;
   /** Secret. The model key the hosted agent runs on. */
   ANTHROPIC_API_KEY?: string;
   /**
@@ -76,7 +76,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     // sandbox that was killed before it could; abandoning twice is refused
     // harmlessly.
     const run = await this.ctx.storage.get<Pick<RunRequest, "actor" | "attemptId">>("run");
-    if (run) await this.env.WORK.abandonAttempt(run.actor, run.attemptId);
+    if (run) await workClient(this.env.WORK).abandonAttempt(run.actor, run.attemptId);
   }
 }
 
@@ -163,10 +163,11 @@ export default class RunnerService
     if (!model) return fail("invalid", "That model is not available.");
     const count = Math.min(Math.max(Math.trunc(input.count) || 1, 1), MAX_AGENTS_PER_RUN);
     const identity = identityClient(this.env.IDENTITY);
+    const work = workClient(this.env.WORK);
 
     const attempts: Attempt[] = [];
     for (let i = 0; i < count; i++) {
-      const started = await this.env.WORK.startAttempt(actor, intentId, {
+      const started = await work.startAttempt(actor, intentId, {
         agent: AGENT,
         runtime: "hosted",
       });
@@ -175,7 +176,7 @@ export default class RunnerService
       const attempt = started.value;
       attempts.push(attempt);
 
-      const found = await this.env.WORK.getAttempt(attempt.id, actor);
+      const found = await work.getAttempt(attempt.id, actor);
       if (!found.ok) return found;
       // The sandbox acts as the person who started it, through a token
       // that only lives as long as a run can.

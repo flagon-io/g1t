@@ -1,4 +1,3 @@
-import { env } from "cloudflare:workers";
 import { ArrowRight, Plus } from "lucide-react";
 import { Link } from "react-router";
 
@@ -13,7 +12,7 @@ import {
   Status,
   TimeAgo,
 } from "../components/ui";
-import { repos as reposApi } from "../lib/services.server";
+import { repos as reposApi, work } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";
 
 export function meta({}: Route.MetaArgs) {
@@ -31,7 +30,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const [repos, attempts] = await Promise.all([
     reposApi.list(viewer, viewer ? { namespace: viewer.username } : {}),
-    env.WORK.listActiveAttempts(viewer),
+    work.listActiveAttempts(viewer),
   ]);
   // Mission control links to each attempt under its repo.
   const attemptRepos = await Promise.all(

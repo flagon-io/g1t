@@ -1,4 +1,3 @@
-import type { EventSubscriber } from "./events";
 import type { User, Viewer } from "./identity";
 import type { RepoPath } from "./repos";
 import type { Result } from "./result";
@@ -18,7 +17,8 @@ export type Intent = {
   checks: string[];
   status: IntentStatus;
   author: User;
-  createdAt: number;
+  /** RFC 3339. */
+  createdAt: string;
   attemptCount: number;
 };
 
@@ -50,8 +50,10 @@ export type Attempt = {
    */
   landedBase: string | null;
   startedBy: User;
-  createdAt: number;
-  updatedAt: number;
+  /** RFC 3339. */
+  createdAt: string;
+  /** RFC 3339. */
+  updatedAt: string;
 };
 
 export type SessionEntryKind = "prompt" | "message" | "tool_call" | "tool_result" | "note";
@@ -65,11 +67,12 @@ export type SessionEntry = {
   tool: string | null;
   /** The fork's head commit when this entry was recorded, if known. */
   commit: string | null;
-  at: number;
+  /** RFC 3339. */
+  at: string;
 };
 
 export type NewSessionEntry = Pick<SessionEntry, "kind" | "text"> &
-  Partial<Pick<SessionEntry, "tool" | "commit" | "at">>;
+  Partial<Pick<SessionEntry, "tool" | "commit">>;
 
 export type IntentDetail = { intent: Intent; attempts: Attempt[] };
 
@@ -78,7 +81,7 @@ export type OpenIntentInput = { title: string; brief: string; checks?: string[] 
 export type StartAttemptInput = { agent: string; runtime: AttemptRuntime };
 
 /** Intents, attempts and sessions. */
-export interface WorkApi extends EventSubscriber {
+export interface WorkApi {
   openIntent(actor: User, repo: RepoPath, input: OpenIntentInput): Promise<Result<Intent>>;
   listIntents(repo: RepoPath, viewer: Viewer, status?: IntentStatus): Promise<Result<Intent[]>>;
   getIntent(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<IntentDetail>>;

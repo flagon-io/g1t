@@ -1,5 +1,6 @@
 import type { IdentityApi } from "./identity";
 import type { ReposApi } from "./repos";
+import type { WorkApi } from "./work";
 
 /** A service binding, as far as these clients need it. */
 export type ServiceBinding = {
@@ -79,5 +80,27 @@ export function reposClient(service: ServiceBinding): ReposApi {
       call("git_access", { path, viewer, service }),
     land: (forkId, actor) => call("land", { forkId, actor }),
     compare: (repoId, viewer, base) => call("compare", { repoId, viewer, base }),
+  };
+}
+
+export function workClient(service: ServiceBinding): WorkApi {
+  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
+  return {
+    openIntent: (actor, repo, input) => call("open_intent", { actor, repo, ...input }),
+    listIntents: (repo, viewer, status) => call("list_intents", { repo, viewer, status }),
+    getIntent: (repo, number, viewer) => call("get_intent", { repo, number, viewer }),
+    withdrawIntent: (actor, intentId) => call("withdraw_intent", { actor, intentId }),
+    startAttempt: (actor, intentId, input) =>
+      call("start_attempt", { actor, intentId, ...input }),
+    getAttempt: (attemptId, viewer) => call("get_attempt", { attemptId, viewer }),
+    submitAttempt: (actor, attemptId, summary) =>
+      call("submit_attempt", { actor, attemptId, summary }),
+    abandonAttempt: (actor, attemptId) => call("abandon_attempt", { actor, attemptId }),
+    shipAttempt: (actor, attemptId) => call("ship_attempt", { actor, attemptId }),
+    listActiveAttempts: (viewer) => call("list_active_attempts", { viewer }),
+    appendSession: (actor, attemptId, entries) =>
+      call("append_session", { actor, attemptId, entries }),
+    readSession: (attemptId, viewer, afterSeq = 0) =>
+      call("read_session", { attemptId, viewer, afterSeq }),
   };
 }

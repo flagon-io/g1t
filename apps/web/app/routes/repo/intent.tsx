@@ -22,6 +22,7 @@ import {
   Textarea,
   TimeAgo,
 } from "../../components/ui";
+import { work } from "../../lib/services.server";
 import {
   assertSameOrigin,
   getViewer,
@@ -39,7 +40,7 @@ export function meta({ loaderData, params }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const detail = unwrap(
-    await env.WORK.getIntent(
+    await work.getIntent(
       { namespace: params.owner, name: params.repo },
       Number(params.number),
       viewer,
@@ -67,10 +68,10 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return result.ok ? null : { error: result.error.message };
   }
   if (form.get("action") === "withdraw") {
-    const result = await env.WORK.withdrawIntent(user, intentId);
+    const result = await work.withdrawIntent(user, intentId);
     return result.ok ? null : { error: result.error.message };
   }
-  const result = await env.WORK.startAttempt(user, intentId, {
+  const result = await work.startAttempt(user, intentId, {
     agent: String(form.get("agent") ?? ""),
     runtime: "external",
   });

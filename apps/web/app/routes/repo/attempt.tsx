@@ -1,4 +1,3 @@
-import { env } from "cloudflare:workers";
 import {
   Bot,
   ChevronRight,
@@ -27,7 +26,7 @@ import {
   Textarea,
   TimeAgo,
 } from "../../components/ui";
-import { repos } from "../../lib/services.server";
+import { repos, work } from "../../lib/services.server";
 import {
   assertSameOrigin,
   getViewer,
@@ -51,8 +50,8 @@ export function meta({ loaderData }: Route.MetaArgs) {
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const [found, session] = await Promise.all([
-    env.WORK.getAttempt(params.id, viewer),
-    env.WORK.readSession(params.id, viewer),
+    work.getAttempt(params.id, viewer),
+    work.readSession(params.id, viewer),
   ]);
   const detail = unwrap(found);
   const repo = await repos.getById(detail.attempt.repoId, viewer);
@@ -83,10 +82,10 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const action = form.get("action");
   const result =
     action === "ship"
-      ? await env.WORK.shipAttempt(user, params.id)
+      ? await work.shipAttempt(user, params.id)
       : action === "abandon"
-        ? await env.WORK.abandonAttempt(user, params.id)
-        : await env.WORK.submitAttempt(
+        ? await work.abandonAttempt(user, params.id)
+        : await work.submitAttempt(
             user,
             params.id,
             String(form.get("summary") ?? ""),

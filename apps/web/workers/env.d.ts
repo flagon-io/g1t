@@ -1,4 +1,4 @@
-import type { EventsApi, RunnerApi, ServiceBinding, WorkApi } from "@g1t/contracts";
+import type { EventsApi, RunnerApi, ServiceBinding } from "@g1t/contracts";
 
 declare global {
   namespace Cloudflare {
@@ -6,7 +6,7 @@ declare global {
       IDENTITY: ServiceBinding;
       /** Also serves git over HTTPS through `fetch`. */
       REPOS: ServiceBinding & { fetch(request: Request): Promise<Response> };
-      WORK: WorkApi;
+      WORK: ServiceBinding;
       EVENTS: EventsApi;
       RUNNER: RunnerApi;
     }

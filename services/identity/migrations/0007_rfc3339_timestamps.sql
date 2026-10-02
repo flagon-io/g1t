@@ -1,6 +1,10 @@
 -- Every timestamp becomes RFC 3339 UTC text (2026-10-02T05:16:19.000Z)
 -- instead of Unix seconds. SQLite cannot change a column's type, so each
 -- table is rebuilt and its rows converted.
+--
+-- The new child tables must reference users_new, not users: dropping the old
+-- users table deletes its rows, and that cascades to anything still pointing
+-- at it. The renames at the end carry the references along.
 PRAGMA defer_foreign_keys = on;
 
 CREATE TABLE users_new (
@@ -20,7 +24,7 @@ FROM users;
 -- id is the SHA-256 of the session token.
 CREATE TABLE sessions_new (
   id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users_new (id) ON DELETE CASCADE,
   expires_at TEXT NOT NULL
 );
 INSERT INTO sessions_new (id, user_id, expires_at)
@@ -28,7 +32,7 @@ SELECT id, user_id, strftime('%Y-%m-%dT%H:%M:%fZ', expires_at, 'unixepoch') FROM
 
 CREATE TABLE access_tokens_new (
   id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users_new (id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   token_hash TEXT NOT NULL UNIQUE,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -43,7 +47,7 @@ FROM access_tokens;
 
 CREATE TABLE ssh_keys_new (
   id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users_new (id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   public_key TEXT NOT NULL,
   fingerprint TEXT NOT NULL UNIQUE,
@@ -57,7 +61,7 @@ FROM ssh_keys;
 -- One-time links sent by email. id is the SHA-256 of the token in the link.
 CREATE TABLE email_tokens_new (
   id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users_new (id) ON DELETE CASCADE,
   -- 'verify' or 'reset'
   kind TEXT NOT NULL,
   expires_at TEXT NOT NULL

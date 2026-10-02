@@ -43,3 +43,59 @@ pub struct GitPush {
     pub git_ref: String,
     pub after: String,
 }
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IntentOpened {
+    pub intent_id: String,
+    pub repo_id: String,
+    pub number: u32,
+    pub title: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IntentClosed {
+    pub intent_id: String,
+    pub repo_id: String,
+    /// `shipped` or `withdrawn`.
+    pub reason: &'static str,
+}
+
+/// The payload of `attempt.started`, `attempt.updated`, `attempt.submitted`
+/// and `attempt.shipped`; each uses the fields that apply to it.
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttemptEvent {
+    pub attempt_id: String,
+    pub intent_id: String,
+    pub repo_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionAppended {
+    pub attempt_id: String,
+    pub session_id: String,
+    pub count: u32,
+}
+
+/// An event as delivered to subscribers. `data` is left as JSON; each
+/// subscriber decodes the types it cares about.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Delivered {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    /// Milliseconds since the epoch, until the bus itself moves to RFC 3339.
+    pub time: serde_json::Value,
+    pub repo_id: Option<String>,
+    pub data: serde_json::Value,
+}

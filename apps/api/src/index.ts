@@ -7,6 +7,7 @@ import {
   httpStatus,
   identityClient,
   reposClient,
+  workClient,
 } from "@g1t/contracts";
 
 import { handleMcp } from "./mcp";
@@ -15,9 +16,10 @@ import { type ApiEnv, operations, operationsByName } from "./operations";
 
 type Input = Record<string, unknown>;
 /** The Worker's raw bindings; Rust services are reached through clients. */
-type Bindings = Omit<ApiEnv, "IDENTITY" | "REPOS"> & {
+type Bindings = Omit<ApiEnv, "IDENTITY" | "REPOS" | "WORK"> & {
   IDENTITY: ServiceBinding;
   REPOS: ServiceBinding;
+  WORK: ServiceBinding;
 };
 type App = { Bindings: Bindings; Variables: { viewer: Viewer; services: ApiEnv } };
 
@@ -76,6 +78,7 @@ app.use(async (c, next) => {
     ...c.env,
     IDENTITY: identityClient(c.env.IDENTITY),
     REPOS: reposClient(c.env.REPOS),
+    WORK: workClient(c.env.WORK),
   };
   c.set("services", services);
   let viewer: Viewer = null;

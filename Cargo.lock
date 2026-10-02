@@ -889,6 +889,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "g1t-work"
+version = "0.1.0"
+dependencies = [
+ "g1t-contracts",
+ "g1t-kit",
+ "serde",
+ "serde_json",
+ "worker",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
