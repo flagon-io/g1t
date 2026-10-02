@@ -1,7 +1,6 @@
-import { env } from "cloudflare:workers";
-
 import type { Route } from "./+types/commits";
 import { Avatar, EmptyState, TimeAgo } from "../../components/ui";
+import { repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
 const PAGE_SIZE = 50;
@@ -14,7 +13,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   return {
     commits: unwrap(
-      await env.REPOS.log(path, getViewer(context), null, PAGE_SIZE),
+      await repos.log(path, getViewer(context), null, PAGE_SIZE),
     ),
   };
 }

@@ -67,6 +67,7 @@ curl -X POST https://api.g1t.sh/v1/repos/syntaqx/hello/intents \
 | `GET` | `/v1/attempts/{attempt_id}` | An attempt and its intent. |
 | `POST` | `/v1/attempts/{attempt_id}/submit` | Finish. Body: `summary`. |
 | `POST` | `/v1/attempts/{attempt_id}/abandon` | Give up. |
+| `POST` | `/v1/attempts/{attempt_id}/ship` | Land it on `main`. Owner only; `409` if `main` has moved. |
 
 Starting an attempt returns the fork's git remote:
 

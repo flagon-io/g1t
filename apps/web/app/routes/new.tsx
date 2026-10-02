@@ -1,8 +1,8 @@
-import { env } from "cloudflare:workers";
 import { Form, redirect } from "react-router";
 
 import type { Route } from "./+types/new";
 import { Button, ErrorText, Field, Input } from "../components/ui";
+import { repos } from "../lib/services.server";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
 
 export function meta({}: Route.MetaArgs) {
@@ -17,7 +17,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
   const form = await request.formData();
-  const result = await env.REPOS.create(user, {
+  const result = await repos.create(user, {
     name: String(form.get("name") ?? ""),
     description: String(form.get("description") ?? ""),
     isPrivate: form.get("visibility") === "private",

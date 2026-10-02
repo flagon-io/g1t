@@ -12,6 +12,7 @@ import {
   type OpenIntentInput,
   type RepoPath,
   type ReposApi,
+  type ServiceBinding,
   type Result,
   type SessionEntry,
   type StartAttemptInput,
@@ -22,6 +23,7 @@ import {
   fail,
   newId,
   ok,
+  reposClient,
 } from "@g1t/contracts";
 
 import {
@@ -35,7 +37,7 @@ import {
 
 export interface WorkEnv {
   DB: D1Database;
-  REPOS: ReposApi;
+  REPOS: ServiceBinding;
   EVENTS: EventsApi;
 }
 
@@ -59,6 +61,10 @@ export default class WorkService
     return this.env.DB;
   }
 
+  private get repos(): ReposApi {
+    return reposClient(this.env.REPOS);
+  }
+
   private async intentById(id: string): Promise<Intent | null> {
     const row = await this.db
       .prepare(`SELECT ${INTENT_COLUMNS} FROM intents WHERE id = ?`)
@@ -80,7 +86,7 @@ export default class WorkService
     const attempt = await this.attemptById(id);
     if (!attempt) return NO_ATTEMPT;
     // Reading it must be allowed before "forbidden" may reveal it exists.
-    const repo = await this.env.REPOS.getById(attempt.repoId, actor);
+    const repo = await this.repos.getById(attempt.repoId, actor);
     if (!repo.ok) return NO_ATTEMPT;
     if (attempt.startedBy.id !== actor.id) {
       return fail("forbidden", "Only the person who started an attempt can change it.");
@@ -101,7 +107,7 @@ export default class WorkService
     const title = input.title.trim();
     const brief = input.brief.trim();
     if (!title) return fail("invalid", "An intent needs a title.");
-    const repo = await this.env.REPOS.get(repoPath, actor);
+    const repo = await this.repos.get(repoPath, actor);
     if (!repo.ok) return repo;
     const checks = (input.checks ?? []).map((check) => check.trim()).filter(Boolean);
 
@@ -148,7 +154,7 @@ export default class WorkService
     viewer: Viewer,
     status?: IntentStatus,
   ): Promise<Result<Intent[]>> {
-    const repo = await this.env.REPOS.get(repoPath, viewer);
+    const repo = await this.repos.get(repoPath, viewer);
     if (!repo.ok) return repo;
     const { results } = await this.db
       .prepare(
@@ -166,7 +172,7 @@ export default class WorkService
     number: number,
     viewer: Viewer,
   ): Promise<Result<IntentDetail>> {
-    const repo = await this.env.REPOS.get(repoPath, viewer);
+    const repo = await this.repos.get(repoPath, viewer);
     if (!repo.ok) return repo;
     const row = await this.db
       .prepare(
@@ -185,7 +191,7 @@ export default class WorkService
   async withdrawIntent(actor: User, intentId: string): Promise<Result<Intent>> {
     const intent = await this.intentById(intentId);
     if (!intent) return NO_INTENT;
-    const repo = await this.env.REPOS.getById(intent.repoId, actor);
+    const repo = await this.repos.getById(intent.repoId, actor);
     if (!repo.ok) return NO_INTENT;
     if (intent.author.id !== actor.id && repo.value.ownerId !== actor.id) {
       return fail("forbidden", "Only the author or the repo owner can withdraw an intent.");
@@ -221,7 +227,7 @@ export default class WorkService
     const agent = input.agent.trim() || "agent";
 
     const id = newId("att");
-    const fork = await this.env.REPOS.forkForAttempt(intent.repoId, id, actor);
+    const fork = await this.repos.forkForAttempt(intent.repoId, id, actor);
     if (!fork.ok) return fork.error.code === "not_found" ? NO_INTENT : fork;
 
     const now = Date.now();
@@ -272,7 +278,7 @@ export default class WorkService
   ): Promise<Result<{ attempt: Attempt; intent: Intent }>> {
     const attempt = await this.attemptById(attemptId);
     if (!attempt) return NO_ATTEMPT;
-    const repo = await this.env.REPOS.getById(attempt.repoId, viewer);
+    const repo = await this.repos.getById(attempt.repoId, viewer);
     if (!repo.ok) return NO_ATTEMPT;
     return ok({ attempt, intent: (await this.intentById(attempt.intentId))! });
   }
@@ -320,6 +326,67 @@ export default class WorkService
 
   abandonAttempt(actor: User, attemptId: string): Promise<Result<Attempt>> {
     return this.setStatus(actor, attemptId, "abandoned", null);
+  }
+
+  async shipAttempt(actor: User, attemptId: string): Promise<Result<Attempt>> {
+    const row = await this.db
+      .prepare("SELECT * FROM attempts WHERE id = ?")
+      .bind(attemptId)
+      .first<AttemptRow>();
+    if (!row) return NO_ATTEMPT;
+    const attempt = toAttempt(row);
+    // Whether the actor may see and write the repo is decided by repos.
+    const repo = await this.repos.getById(attempt.repoId, actor);
+    if (!repo.ok) return NO_ATTEMPT;
+    if (attempt.status !== "working" && attempt.status !== "submitted") {
+      return fail("conflict", `This attempt is already ${attempt.status}.`);
+    }
+    const intent = (await this.intentById(attempt.intentId))!;
+    if (intent.status !== "open") {
+      return fail("conflict", `This intent is already ${intent.status}.`);
+    }
+
+    const landed = await this.repos.land(row.fork_repo_id, actor);
+    if (!landed.ok) return landed;
+
+    const now = Date.now();
+    await this.db.batch([
+      this.db
+        .prepare(
+          "UPDATE attempts SET status = 'shipped', head_commit = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(landed.value.commit, now, attempt.id),
+      this.db
+        .prepare("UPDATE intents SET status = 'shipped' WHERE id = ?")
+        .bind(intent.id),
+    ]);
+    const ids = {
+      attemptId: attempt.id,
+      intentId: intent.id,
+      repoId: attempt.repoId,
+    };
+    await this.publish(
+      {
+        type: "attempt.shipped",
+        source: SOURCE,
+        repoId: attempt.repoId,
+        actor: actor.id,
+        data: { ...ids, commit: landed.value.commit },
+      },
+      {
+        type: "intent.closed",
+        source: SOURCE,
+        repoId: attempt.repoId,
+        actor: actor.id,
+        data: { intentId: intent.id, repoId: attempt.repoId, reason: "shipped" },
+      },
+    );
+    return ok({
+      ...attempt,
+      status: "shipped",
+      headCommit: landed.value.commit,
+      updatedAt: now,
+    });
   }
 
   async listActiveAttempts(

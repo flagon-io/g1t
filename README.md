@@ -20,12 +20,15 @@ Working today:
 - Accounts, access tokens, public and private repositories.
 - Git over HTTPS, including creating a repository by pushing to it.
 - Intents, attempts (a copy-on-write fork each) and recorded agent sessions.
+- Shipping: landing an attempt on `main`, refused when the attempt is behind
+  so that no commit is ever lost.
+- Registration with email verification, and password reset.
 - A REST API and an MCP server over the same operations.
 - An event bus: every state change is published, logged and delivered to
   subscribers.
 
-Not built yet: shipping an attempt through a landing queue, running
-acceptance checks, hosted agents, git over SSH. See the build order in the
+Not built yet: diffs and review on the site, pull requests from branches,
+server-side merging, running acceptance checks, hosted agents, git over SSH. See the build order in the
 plan.
 
 ## Try it
@@ -50,7 +53,7 @@ claude mcp add --transport http g1t https://mcp.g1t.sh \
 | `apps/web` | The site: server-rendered React on a Worker. Holds no data. |
 | `apps/api` | REST API and MCP server. |
 | `services/identity` | Accounts, sessions, keys and tokens. Rust. |
-| `services/repos` | Repository registry, contents, forks, git over HTTPS. |
+| `services/repos` | Repository registry, contents, forks, landing, git over HTTPS. Rust. |
 | `services/work` | Intents, attempts and sessions. |
 | `services/events` | The event bus and its log. |
 | `crates/contracts` | Types and service interfaces for the Rust services. |
@@ -60,7 +63,8 @@ claude mcp add --transport http g1t https://mcp.g1t.sh \
 
 Each service is its own Worker with its own database. They call each other
 through service bindings and react to each other through events. Services
-are being moved from TypeScript to Rust one at a time; identity is done.
+are being moved from TypeScript to Rust one at a time; identity and repos are
+done.
 
 ## Run your own
 
@@ -86,6 +90,7 @@ Deploy everything in dependency order:
 
 ```sh
 (cd services/identity && npx wrangler deploy)
+(cd services/repos && npx wrangler deploy)
 npm run deploy
 ```
 

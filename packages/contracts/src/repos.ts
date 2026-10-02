@@ -85,4 +85,11 @@ export interface ReposApi {
    * repo that does not exist creates it in the pusher's own namespace.
    */
   gitAccess(path: RepoPath, viewer: Viewer, service: GitService): Promise<Result<GitAccess>>;
+
+  /**
+   * Moves the default branch of the repo a fork came from to the fork's
+   * head. Refused with "conflict" when the fork is behind, since that would
+   * discard commits.
+   */
+  land(forkId: string, actor: User): Promise<Result<{ commit: string }>>;
 }

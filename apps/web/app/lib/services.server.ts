@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 
-import { identityClient } from "@g1t/contracts";
+import { identityClient, reposClient } from "@g1t/contracts";
 
 export const identity = identityClient(env.IDENTITY);
+export const repos = reposClient(env.REPOS);

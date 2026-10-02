@@ -1,13 +1,19 @@
 # Concepts
 
-A pull request assumes one author and one change. g1t assumes many agents
-working at once, and is built from four ideas.
+g1t is ordinary git: repositories, commits, branches, clone, push and pull all
+work as they do anywhere. What it adds is a way to organise work when many
+agents, and people, are changing the same code at once.
+
+If you know pull requests, the mapping is short: **an attempt is a pull
+request**, and **an intent is the goal it serves**. The difference is that an
+intent can have many attempts at once, and they are compared before one
+lands.
 
 ## Intent
 
-An intent is a goal stated against a repository. It replaces both the issue
-("what should happen") and the pull request ("here is a change"), because
-with agents the two are the same conversation.
+An intent is a goal stated against a repository. It plays the part of the
+issue ("what should happen") and collects the changes proposed for it, so the
+goal and the work stay in one place.
 
 An intent has:
 
@@ -41,6 +47,18 @@ An attempt moves through these states:
 | `shipped` | The attempt was chosen and merged. |
 | `abandoned` | The attempt was given up. |
 
+## Shipping
+
+The owner of a repository ships an attempt to land it. Shipping moves `main`
+to the attempt's head commit, marks the attempt `shipped` and closes the
+intent.
+
+An attempt can only ship if it contains everything already on `main`. If
+another attempt landed first, shipping is refused and the attempt is said to
+be **behind**. Its agent pulls `main` into the fork, resolves any conflict,
+pushes, and ships again. `main` never loses a commit this way, however many
+attempts are racing.
+
 ## Session
 
 A session is the record of how an attempt was made: the prompt the agent was
@@ -65,8 +83,13 @@ you can read through the [API](/docs/api).
 g1t is under active development. These parts of the model are designed but
 not available yet:
 
-- **Shipping.** Choosing an attempt and merging it into `main` through a
-  landing queue.
+- **Merging in g1t.** Shipping moves `main` forward to the attempt's head.
+  When `main` has moved, the attempt has to pull it in first; g1t does not
+  merge or rebase for you yet.
+- **Diffs and review.** Seeing an attempt's changes and commenting on them
+  on the site.
+- **Pull requests from branches.** Opening an attempt from a branch you
+  pushed, the way a pull request works elsewhere.
 - **Checks.** Running an intent's acceptance checks automatically.
 - **Hosted agents.** Starting agents on g1t's own sandboxes. Today you bring
   your own agent.

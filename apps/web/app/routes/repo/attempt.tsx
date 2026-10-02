@@ -3,6 +3,7 @@ import {
   Bot,
   ChevronRight,
   GitCommitHorizontal,
+  Rocket,
   StickyNote,
   User,
   Wrench,
@@ -22,6 +23,7 @@ import {
   Textarea,
   TimeAgo,
 } from "../../components/ui";
+import { repos } from "../../lib/services.server";
 import {
   assertSameOrigin,
   getViewer,
@@ -47,21 +49,33 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     env.WORK.getAttempt(params.id, viewer),
     env.WORK.readSession(params.id, viewer),
   ]);
-  return { ...unwrap(found), session: unwrap(session), viewer };
+  const detail = unwrap(found);
+  const repo = await repos.getById(detail.attempt.repoId, viewer);
+  return {
+    ...detail,
+    session: unwrap(session),
+    viewer,
+    // Only the repository's owner can land an attempt.
+    canShip: repo.ok && repo.value.ownerId === viewer?.id,
+    defaultBranch: repo.ok ? repo.value.defaultBranch : "main",
+  };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
   const form = await request.formData();
+  const action = form.get("action");
   const result =
-    form.get("action") === "abandon"
-      ? await env.WORK.abandonAttempt(user, params.id)
-      : await env.WORK.submitAttempt(
-          user,
-          params.id,
-          String(form.get("summary") ?? ""),
-        );
+    action === "ship"
+      ? await env.WORK.shipAttempt(user, params.id)
+      : action === "abandon"
+        ? await env.WORK.abandonAttempt(user, params.id)
+        : await env.WORK.submitAttempt(
+            user,
+            params.id,
+            String(form.get("summary") ?? ""),
+          );
   return result.ok ? null : { error: result.error.message };
 }
 
@@ -139,7 +153,7 @@ export default function AttemptPage({
   actionData,
   params,
 }: Route.ComponentProps) {
-  const { attempt, intent, session, viewer } = loaderData;
+  const { attempt, intent, session, viewer, canShip, defaultBranch } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const remote = `https://g1t.sh/${attempt.fork.namespace}/${attempt.fork.name}.git`;
   const mine = viewer?.id === attempt.startedBy.id;
@@ -212,6 +226,21 @@ export default function AttemptPage({
       </div>
 
       <aside className="space-y-6">
+        {canShip && active && intent.status === "open" && (
+          <section className="rounded-xl border border-accent/30 bg-accent/5 p-4">
+            <h3 className="text-sm font-medium">Ship this attempt</h3>
+            <p className="mt-1 text-xs text-muted">
+              Lands its commits on {defaultBranch} and closes the intent.
+            </p>
+            <Form method="post" className="mt-3 *:w-full">
+              <Button variant="accent" type="submit" name="action" value="ship">
+                <Rocket size={15} />
+                Ship to {defaultBranch}
+              </Button>
+            </Form>
+            {!(mine && active) && <ErrorText>{actionData?.error}</ErrorText>}
+          </section>
+        )}
         <section>
           <h3 className="text-sm font-medium">Working copy</h3>
           <p className="mt-1 text-xs text-muted">

@@ -16,6 +16,7 @@ export type EventPayloads = {
   "attempt.started": { attemptId: string; intentId: string; repoId: string; agent: string };
   "attempt.updated": { attemptId: string; intentId: string; repoId: string; status: string };
   "attempt.submitted": { attemptId: string; intentId: string; repoId: string };
+  "attempt.shipped": { attemptId: string; intentId: string; repoId: string; commit: string };
   "session.appended": { attemptId: string; sessionId: string; count: number };
 };
 

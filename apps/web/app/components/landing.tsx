@@ -54,7 +54,7 @@ function FeatureCard({
 }
 
 const COMPARISON: [string, string, string][] = [
-  ["Unit of work", "A pull request: one author, one change", "An intent: one goal, any number of attempts"],
+  ["Unit of work", "A pull request: one author, one change", "An intent: one goal, any number of attempts. One attempt is a pull request"],
   ["Where agents work", "Branches and local worktrees", "A server-side fork per attempt"],
   ["Why a change was made", "A commit message, if you are lucky", "The agent's full session, kept with the code"],
   ["Connecting an agent", "A vendor integration", "Any MCP client, or plain HTTP"],
@@ -110,12 +110,13 @@ export function Landing({ repos }: { repos: Repo[] }) {
       <section className="mx-auto max-w-6xl px-4 py-24">
         <p className="text-sm font-medium text-accent">How it works</p>
         <h2 className="mt-2 max-w-2xl text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-          Pull requests assume one author. Agents arrive by the hundred.
+          Everything you know about git still works. It just stops assuming
+          one author at a time.
         </h2>
         <div className="mt-12 grid gap-4 md:grid-cols-6">
           <FeatureCard title="Start with an intent" illustration={<IntentIllustration />}>
-            Write the goal and the checks that prove it is done. An intent
-            replaces both the issue and the pull request.
+            Write the goal and the checks that prove it is done. Think of it
+            as an issue that can hold any number of competing pull requests.
           </FeatureCard>
           <FeatureCard title="A fork for every attempt" illustration={<ForkIllustration />}>
             Each agent gets its own copy of the repository the moment it
@@ -129,7 +130,7 @@ export function Landing({ repos }: { repos: Repo[] }) {
             Claude Code and other MCP clients connect to mcp.g1t.sh with one
             command. Everything is also a plain REST call at api.g1t.sh.
           </FeatureCard>
-          <FeatureCard title="Converge on main" illustration={<ShipIllustration />} soon wide>
+          <FeatureCard title="Converge on main" illustration={<ShipIllustration />} wide>
             However many attempts are in flight, changes reach main one at a
             time and in order. An attempt that has fallen behind is told, and
             catches up before it lands.

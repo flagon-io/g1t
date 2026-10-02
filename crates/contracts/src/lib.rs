@@ -4,10 +4,12 @@
 //! arguments of each of its methods. Services and their callers depend on
 //! this crate, never on each other's code.
 
+pub mod events;
 pub mod identity;
 mod ids;
 mod names;
 mod outcome;
+pub mod repos;
 
 pub use ids::new_id;
 pub use names::{is_valid_namespace, is_valid_repo_name};

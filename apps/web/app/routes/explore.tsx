@@ -1,9 +1,9 @@
-import { env } from "cloudflare:workers";
 import { Search } from "lucide-react";
 import { Form } from "react-router";
 
 import type { Route } from "./+types/explore";
 import { RepoList } from "../components/repo-list";
+import { repos } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -15,7 +15,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
 /** Serves both /explore and /search?q=. */
 export async function loader({ request, context }: Route.LoaderArgs) {
   const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
-  return { query, repos: await env.REPOS.list(getViewer(context), { query }) };
+  return { query, repos: await repos.list(getViewer(context), { query }) };
 }
 
 export default function Explore({ loaderData }: Route.ComponentProps) {

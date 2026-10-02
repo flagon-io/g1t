@@ -25,6 +25,9 @@ attempt on one, and it will use the tools below.
 4. `record_session` as it goes, so people can see its reasoning.
 5. `submit_attempt` with a summary of what changed and why.
 
+If shipping reports that `main` has moved, pull `main` from the repository
+into the fork, push, and the attempt can ship.
+
 ## Tools
 
 | Tool | What it does |
@@ -42,6 +45,7 @@ attempt on one, and it will use the tools below.
 | `read_session` | Read an attempt's recorded session. |
 | `submit_attempt` | Mark an attempt finished, with a summary. |
 | `abandon_attempt` | Give up on an attempt. |
+| `ship_attempt` | Land an attempt on `main` and close its intent. Repository owner only. |
 | `list_events` | A repository's timeline, newest first. |
 
 Repositories are always given as `owner/name`.

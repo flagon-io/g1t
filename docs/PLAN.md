@@ -17,7 +17,7 @@ many different goals in flight that all have to land on `main`.
 
 | Concept | What it is |
 | --- | --- |
-| **Intent** | A goal stated against a repo, with acceptance checks (commands that must pass). Replaces the issue and the pull request. |
+| **Intent** | A goal stated against a repo, with acceptance checks (commands that must pass). The issue, and the home of every pull request made for it. |
 | **Attempt** | One agent's run at an intent, in its own Artifacts fork. Any number run in parallel. |
 | **Session** | The agent's full context for an attempt: prompt, messages, tool calls, cost. Stored with the attempt and linked from every commit it produced. |
 | **Arena** | The compare view for an intent: every attempt side by side with diff, check results, conflicts against main and against each other, and a reviewer agent's summary. |
@@ -30,6 +30,25 @@ Features that fall out of the model:
 - **Overlap radar.** Attempts that touch the same files are flagged while the
   agents are still working, and the agents are told.
 - **Live lanes.** Watch every attempt progress in real time.
+
+## Pull requests are not removed
+
+g1t is ordinary git, and the pull request stays. The model extends it rather
+than replacing it, so an engineer's habits keep working and the agent
+features are there when wanted.
+
+- **An attempt is a pull request.** It has a source (a fork, or a branch
+  pushed to the repo), a diff, review comments, checks and a merge button.
+  It is reachable as a pull request, with that name, in the UI and API.
+- **An intent is the goal above it.** Opening a pull request the familiar way
+  creates its intent from the title and description, so nobody has to learn
+  the word to use the product.
+- **The developer path is unchanged.** Push a branch, open a pull request,
+  get review, merge.
+- **The agent path adds to it.** State the intent first, let several
+  attempts run, compare them, ship one.
+- **Both paths meet at `main`.** The same landing rules apply to a person's
+  pull request and an agent's attempt.
 
 ## Converging on main
 
@@ -599,39 +618,26 @@ for volume splits storage by how the data is read.
 
 ## Build order
 
-Done: site on g1t.sh; git over HTTPS; accounts and private repos; the four
-services and the event bus; intents, attempts (a fork each) and session
-storage, with pages for each. SSH server written, not deployed.
+Done: site with marketing page and docs; git over HTTPS; accounts with
+registration, email verification and password reset; intents, attempts and
+sessions; REST API and MCP server; event bus; shipping an attempt to `main`
+with a behind check. Identity and repos are in Rust.
 
-1. `api.g1t.sh` and `mcp.g1t.sh`; CLI with Claude Code hooks, so an outside
-   agent can claim an intent, push, and record its session.
-2. OAuth server.
-3. SSH deployed; registration, email verification, forgot password; search;
-   GitHub import; this repo hosted on g1t.
-4. Hosted agents in sandboxes behind the runner contract; agent
-   definitions; AI Gateway; push events; checks.
-5. Merge engine with structural merge; landing queue with speculative
-   checks; projected main; resolve-on-move.
-6. Arena, diffs, proof bundles, reviewer and adversarial reviewer, risk
-   tiers; work registry with overlap radar,
-   duplicate detection, handoff, ask and wait.
-7. Adopting outside pushes; protected `main`; approval rules.
-8. Projects with briefs, planner and dependency graph; mission control with
-   the "needs you" inbox; live session pages and steering.
-9. Why-blame, signed provenance, forkable sessions, digest and timeline,
-   landing page.
-10. Workspaces and initiatives; context hub (memory, unified search,
-    Jira and Notion connectors); multi-repo intents.
-11. Portfolio, standup and ask; checkpoints, stall detection, budgets.
-12. Moving sessions between local and hosted; installable web app with
-    notifications; preview URLs per attempt.
-13. Docs view, document intents, templates, explain, living documentation,
-    roles.
-14. Automations: event bus, triggers, Sentry and generic webhook
-    integrations, write-back.
-15. Own keys, own endpoints, self-hosted runners; agent leaderboard and
-    routing.
-16. Large run (100+ agents across many intents), hardening, README, demo.
+1. Diffs and review on attempts; pull requests from pushed branches, under
+   that name.
+2. OAuth server, so MCP clients sign in through the browser with no token
+   to paste.
+3. Port work, events and the API to Rust; event storage per the design
+   above.
+4. CLI with Claude Code hooks to record sessions automatically.
+5. Hosted agents in sandboxes; acceptance checks.
+6. Server-side merge and rebase; landing queue with speculative checks;
+   resolve-on-move.
+7. Arena, proof bundles, reviewers, risk tiers; work registry, handoff.
+8. Projects, mission control, steering; why-blame, digest, timeline.
+9. Workspaces, context hub, portfolio; automations and integrations.
+10. SSH; bot protection; own keys, endpoints and runners.
+11. Large run (100+ agents across many intents), hardening, demo.
 
 Later: code search, mirroring to GitHub, passkeys, SSH
 on port 22 without the CLI proxy (needs the Workers inbound TCP private

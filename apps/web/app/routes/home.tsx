@@ -13,6 +13,7 @@ import {
   Status,
   TimeAgo,
 } from "../components/ui";
+import { repos as reposApi } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";
 
 export function meta({}: Route.MetaArgs) {
@@ -29,12 +30,12 @@ export function meta({}: Route.MetaArgs) {
 export async function loader({ context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const [repos, attempts] = await Promise.all([
-    env.REPOS.list(viewer, viewer ? { namespace: viewer.username } : {}),
+    reposApi.list(viewer, viewer ? { namespace: viewer.username } : {}),
     env.WORK.listActiveAttempts(viewer),
   ]);
   // Mission control links to each attempt under its repo.
   const attemptRepos = await Promise.all(
-    attempts.map(({ attempt }) => env.REPOS.getById(attempt.repoId, viewer)),
+    attempts.map(({ attempt }) => reposApi.getById(attempt.repoId, viewer)),
   );
   return {
     viewer,

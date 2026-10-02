@@ -1,4 +1,5 @@
 import type { IdentityApi } from "./identity";
+import type { ReposApi } from "./repos";
 
 /** A service binding, as far as these clients need it. */
 export type ServiceBinding = {
@@ -51,5 +52,25 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     listAccessTokens: (user) => call("list_access_tokens", { user }),
     createAccessToken: (user, name) => call("create_access_token", { user, name }),
     removeAccessToken: (user, id) => call("remove_access_token", { user, id }),
+  };
+}
+
+export function reposClient(service: ServiceBinding): ReposApi {
+  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
+  return {
+    get: (path, viewer) => call("get", { path, viewer }),
+    getById: (id, viewer) => call("get_by_id", { id, viewer }),
+    list: (viewer, options = {}) => call("list", { viewer, ...options }),
+    create: (owner, input) => call("create", { owner, ...input }),
+    tree: (path, viewer, ref, treePath) =>
+      call("tree", { path, viewer, ref, treePath }),
+    blob: (path, viewer, ref, filePath) =>
+      call("blob", { path, viewer, ref, filePath }),
+    log: (path, viewer, ref, limit) => call("log", { path, viewer, ref, limit }),
+    forkForAttempt: (sourceId, attemptId, actor) =>
+      call("fork_for_attempt", { sourceId, attemptId, actor }),
+    gitAccess: (path, viewer, service) =>
+      call("git_access", { path, viewer, service }),
+    land: (forkId, actor) => call("land", { forkId, actor }),
   };
 }

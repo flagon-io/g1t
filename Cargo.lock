@@ -851,6 +851,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "g1t-repos"
+version = "0.1.0"
+dependencies = [
+ "g1t-contracts",
+ "g1t-kit",
+ "serde",
+ "serde_json",
+ "worker",
+]
+
+[[package]]
 name = "g1t-sshd"
 version = "0.1.0"
 dependencies = [

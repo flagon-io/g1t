@@ -1,6 +1,6 @@
 import {
   type EventsApi,
-  type ServiceBinding,
+  type IdentityApi,
   type NewSessionEntry,
   type RepoPath,
   type ReposApi,
@@ -13,7 +13,7 @@ import {
 } from "@g1t/contracts";
 
 export interface ApiEnv {
-  IDENTITY: ServiceBinding;
+  IDENTITY: IdentityApi;
   REPOS: ReposApi;
   WORK: WorkApi;
   EVENTS: EventsApi;
@@ -303,6 +303,19 @@ export const operations: Operation[] = [
     },
     run: authed((env, user, input) =>
       env.WORK.abandonAttempt(user, text(input, "attempt_id")),
+    ),
+  },
+  {
+    name: "ship_attempt",
+    description:
+      "Land an attempt on the repository's main branch and close its intent. Only the repository's owner can ship. Fails if main has moved since the attempt started; the attempt must then pull main into its fork and push before shipping again.",
+    input: {
+      type: "object",
+      properties: { attempt_id: { type: "string" } },
+      required: ["attempt_id"],
+    },
+    run: authed((env, user, input) =>
+      env.WORK.shipAttempt(user, text(input, "attempt_id")),
     ),
   },
   {

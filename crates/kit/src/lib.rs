@@ -63,30 +63,58 @@ pub async fn call<A: Serialize, R: DeserializeOwned>(
 /// Helpers for bindings that workers-rs has no typed wrapper for, such as
 /// Artifacts and Email Sending. Values cross the boundary as JSON.
 pub mod js {
+    use std::fmt;
+
     use serde::Serialize;
     use serde::de::DeserializeOwned;
-    use worker::js_sys::{Function, JSON, Promise, Reflect};
+    use worker::js_sys::{Array, Function, JSON, Promise, Reflect};
     use worker::wasm_bindgen::{JsCast, JsValue};
     use worker::wasm_bindgen_futures::JsFuture;
     use worker::{Env, Error, Result};
 
-    fn error(context: &str, value: JsValue) -> Error {
-        let message = JSON::stringify(&value)
-            .ok()
-            .and_then(|text| text.as_string())
-            .filter(|text| text != "{}")
-            .or_else(|| {
-                Reflect::get(&value, &"message".into())
+    /// An exception thrown by JavaScript, with its `code` if it had one.
+    #[derive(Debug)]
+    pub struct Thrown {
+        pub code: Option<String>,
+        pub message: String,
+    }
+
+    impl Thrown {
+        fn from_value(value: JsValue) -> Self {
+            let property = |name: &str| {
+                Reflect::get(&value, &name.into())
                     .ok()
-                    .and_then(|message| message.as_string())
-            })
-            .unwrap_or_else(|| format!("{value:?}"));
-        Error::RustError(format!("{context}: {message}"))
+                    .and_then(|property| property.as_string())
+            };
+            Thrown {
+                code: property("code"),
+                message: property("message").unwrap_or_else(|| format!("{value:?}")),
+            }
+        }
+
+        pub fn is(&self, code: &str) -> bool {
+            self.code.as_deref() == Some(code)
+        }
+    }
+
+    impl fmt::Display for Thrown {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match &self.code {
+                Some(code) => write!(f, "{code}: {}", self.message),
+                None => f.write_str(&self.message),
+            }
+        }
+    }
+
+    impl From<Thrown> for Error {
+        fn from(thrown: Thrown) -> Self {
+            Error::RustError(thrown.to_string())
+        }
     }
 
     /// The binding called `name`, as a raw JavaScript value.
     pub fn binding(env: &Env, name: &str) -> Result<JsValue> {
-        let value = Reflect::get(env.as_ref(), &name.into()).map_err(|e| error(name, e))?;
+        let value = Reflect::get(env.as_ref(), &name.into()).map_err(Thrown::from_value)?;
         if value.is_undefined() {
             return Err(Error::RustError(format!(
                 "binding {name} is not configured"
@@ -95,38 +123,65 @@ pub mod js {
         Ok(value)
     }
 
+    /// Reads a property of a JavaScript object.
+    pub fn get(target: &JsValue, name: &str) -> JsValue {
+        Reflect::get(target, &name.into()).unwrap_or(JsValue::UNDEFINED)
+    }
+
     pub fn to_js<T: Serialize>(value: &T) -> Result<JsValue> {
-        JSON::parse(&serde_json::to_string(value)?).map_err(|e| error("to_js", e))
+        Ok(JSON::parse(&serde_json::to_string(value)?).map_err(Thrown::from_value)?)
     }
 
     pub fn from_js<T: DeserializeOwned>(value: &JsValue) -> Result<T> {
-        if value.is_undefined() {
-            return Ok(serde_json::from_value(serde_json::Value::Null)?);
-        }
-        let text = JSON::stringify(value)
-            .map_err(|e| error("from_js", e))?
-            .as_string()
-            .unwrap_or_else(|| "null".to_owned());
-        Ok(serde_json::from_str(&text)?)
+        let text = if value.is_undefined() {
+            None
+        } else {
+            JSON::stringify(value)
+                .map_err(Thrown::from_value)?
+                .as_string()
+        };
+        let text = text.as_deref().unwrap_or("null");
+        serde_json::from_str(text).map_err(|error| {
+            // Say what arrived; a bare serde error is useless in a log.
+            let seen: String = text.chars().take(300).collect();
+            Error::RustError(format!(
+                "unexpected value from JavaScript ({error}): {seen}"
+            ))
+        })
     }
 
-    /// Calls `target.method(...args)` and awaits the result if it is a
-    /// promise.
-    pub async fn call(target: &JsValue, method: &str, args: &[JsValue]) -> Result<JsValue> {
-        let function: Function = Reflect::get(target, &method.into())
-            .map_err(|e| error(method, e))?
+    /// Calls `target[method](...args)` and awaits the result if it is a
+    /// thenable. `method` may be a name or a symbol.
+    pub async fn call_key(
+        target: &JsValue,
+        method: &JsValue,
+        args: &[JsValue],
+    ) -> std::result::Result<JsValue, Thrown> {
+        let function: Function = Reflect::get(target, method)
+            .map_err(Thrown::from_value)?
             .dyn_into()
-            .map_err(|_| Error::RustError(format!("{method} is not a function")))?;
-        let arguments = worker::js_sys::Array::new();
-        for arg in args {
-            arguments.push(arg);
-        }
-        let returned = function
-            .apply(target, &arguments)
-            .map_err(|e| error(method, e))?;
-        match returned.dyn_into::<Promise>() {
-            Ok(promise) => JsFuture::from(promise).await.map_err(|e| error(method, e)),
-            Err(value) => Ok(value),
-        }
+            .map_err(|_| Thrown {
+                code: None,
+                message: format!("{method:?} is not a function"),
+            })?;
+        let arguments: Array = args.iter().collect();
+        // An RPC stub treats every property access as a remote method, so
+        // `function.apply(...)` would be sent over the wire as a call to
+        // "apply". Reflect.apply invokes the function without touching it.
+        let returned = Reflect::apply(&function, target, &arguments).map_err(Thrown::from_value)?;
+        // Worker RPC returns its own thenable rather than a Promise, so
+        // resolve whatever came back instead of testing its type.
+        JsFuture::from(Promise::resolve(&returned))
+            .await
+            .map_err(Thrown::from_value)
+    }
+
+    /// Calls `target.method(...args)`; see [`call_key`].
+    pub async fn call(
+        target: &JsValue,
+        method: &str,
+        args: &[JsValue],
+    ) -> std::result::Result<JsValue, Thrown> {
+        call_key(target, &method.into(), args).await
     }
 }

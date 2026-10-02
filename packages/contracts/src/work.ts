@@ -82,6 +82,11 @@ export interface WorkApi extends EventSubscriber {
   getAttempt(attemptId: string, viewer: Viewer): Promise<Result<{ attempt: Attempt; intent: Intent }>>;
   submitAttempt(actor: User, attemptId: string, summary: string): Promise<Result<Attempt>>;
   abandonAttempt(actor: User, attemptId: string): Promise<Result<Attempt>>;
+  /**
+   * Lands the attempt on the repository's default branch and closes its
+   * intent as shipped. Only the repository's owner may ship.
+   */
+  shipAttempt(actor: User, attemptId: string): Promise<Result<Attempt>>;
   /** Attempts in progress that the viewer started, newest first. */
   listActiveAttempts(viewer: Viewer): Promise<{ attempt: Attempt; intent: Intent }[]>;
 

@@ -1,12 +1,23 @@
 import { Hono } from "hono";
 
-import { type Viewer, httpStatus, identityClient } from "@g1t/contracts";
+import {
+  type ServiceBinding,
+  type Viewer,
+  httpStatus,
+  identityClient,
+  reposClient,
+} from "@g1t/contracts";
 
 import { handleMcp } from "./mcp";
 import { type ApiEnv, operations, operationsByName } from "./operations";
 
 type Input = Record<string, unknown>;
-type App = { Bindings: ApiEnv; Variables: { viewer: Viewer } };
+/** The Worker's raw bindings; Rust services are reached through clients. */
+type Bindings = Omit<ApiEnv, "IDENTITY" | "REPOS"> & {
+  IDENTITY: ServiceBinding;
+  REPOS: ServiceBinding;
+};
+type App = { Bindings: Bindings; Variables: { viewer: Viewer; services: ApiEnv } };
 
 /**
  * REST routes. Each maps an HTTP request onto one operation; `input` builds
@@ -32,6 +43,7 @@ const ROUTES: {
   { method: "POST", path: "/v1/attempts/:attempt_id/session", operation: "record_session", input: (p, _q, b) => ({ ...b, ...p }) },
   { method: "POST", path: "/v1/attempts/:attempt_id/submit", operation: "submit_attempt", input: (p, _q, b) => ({ ...b, ...p }) },
   { method: "POST", path: "/v1/attempts/:attempt_id/abandon", operation: "abandon_attempt", input: (p) => p },
+  { method: "POST", path: "/v1/attempts/:attempt_id/ship", operation: "ship_attempt", input: (p) => p },
 ];
 
 function repo(params: Record<string, string>): Input {
@@ -44,9 +56,15 @@ const app = new Hono<App>();
 // wrong one is rejected so a typo does not silently look signed out.
 app.use(async (c, next) => {
   const [scheme, token] = (c.req.header("authorization") ?? "").split(" ");
+  const services: ApiEnv = {
+    ...c.env,
+    IDENTITY: identityClient(c.env.IDENTITY),
+    REPOS: reposClient(c.env.REPOS),
+  };
+  c.set("services", services);
   let viewer: Viewer = null;
   if (scheme?.toLowerCase() === "bearer" && token) {
-    viewer = await identityClient(c.env.IDENTITY).userForAccessToken(token);
+    viewer = await services.IDENTITY.userForAccessToken(token);
     if (!viewer) {
       return c.json(
         { error: { code: "unauthenticated", message: "Invalid access token." } },
@@ -60,7 +78,7 @@ app.use(async (c, next) => {
 
 app.all("*", async (c, next) => {
   if (new URL(c.req.url).hostname.startsWith("mcp.")) {
-    return handleMcp(c.req.raw, c.env, c.get("viewer"));
+    return handleMcp(c.req.raw, c.get("services"), c.get("viewer"));
   }
   await next();
 });
@@ -86,7 +104,7 @@ for (const route of ROUTES) {
       }
     }
     const input = route.input?.(c.req.param(), c.req.query(), body) ?? {};
-    const outcome = await operation.run(c.env, c.get("viewer"), input);
+    const outcome = await operation.run(c.get("services"), c.get("viewer"), input);
     if (outcome.ok) return c.json(outcome.value);
     return c.json(
       { error: outcome.error },
