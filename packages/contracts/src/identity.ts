@@ -16,6 +16,8 @@ export type AccessToken = { id: string; name: string; createdAt: number };
 
 /** Accounts, credentials and sessions. */
 export interface IdentityApi {
+  /** Creates an account and signs it in. */
+  register(username: string, email: string, password: string): Promise<Result<{ user: User; sessionToken: string }>>;
   /** Verifies a username and password for website sign-in. */
   signIn(username: string, password: string): Promise<Result<{ user: User; sessionToken: string }>>;
   signOut(sessionToken: string): Promise<void>;
@@ -23,6 +25,8 @@ export interface IdentityApi {
 
   /** Verifies git credentials: the account password or an access token. */
   userForGitCredentials(username: string, secret: string): Promise<Viewer>;
+  /** Resolves a `g1t_…` access token, as sent to the API and MCP server. */
+  userForAccessToken(token: string): Promise<Viewer>;
   userForSshKey(fingerprint: string): Promise<Viewer>;
   userByUsername(username: string): Promise<Viewer>;
 

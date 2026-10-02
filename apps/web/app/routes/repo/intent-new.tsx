@@ -31,7 +31,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 export default function NewIntent({ actionData }: Route.ComponentProps) {
   return (
-    <Form method="post" className="mt-6 max-w-2xl space-y-4">
+    <Form method="post" className="max-w-2xl space-y-4">
       <Field label="Goal">
         <Input
           name="title"

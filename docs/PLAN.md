@@ -508,6 +508,52 @@ The Workers runtime scales request handling on its own, so the edge layer
 stays in TypeScript. Rust is used where there is real computation or a real
 protocol to implement.
 
+## Languages
+
+The site is TypeScript. Everything behind it is Rust, compiled to
+WebAssembly for Workers and natively for containers and the CLI. Services
+are being ported one at a time; identity is done. Rust services speak a
+small JSON protocol over service bindings (`POST /rpc/<method>`), with the
+types in `crates/contracts`.
+
+## Identifiers
+
+Every id is a [TypeID](https://github.com/jetify-com/typeid): a prefix naming
+the kind of thing, then a UUIDv7 in lowercase base32, such as
+`att_01jb2k7x9hfq0b3zj0f5s2m8ra`.
+
+- The prefix makes an id self-describing and stops ids of different kinds
+  being mixed up.
+- Ids sort by creation time as plain strings. In SQLite (D1 and Durable
+  Objects) that keeps inserts at the end of the primary-key index instead of
+  scattering them, and gives time-ordered paging for free.
+- The suffix decodes to a standard UUIDv7 for any system that wants one.
+- Ids are made by the service that creates the record, not by the database,
+  so they work across services and can be assigned before a write.
+
+## Events at scale, and audit
+
+The current event log is a single D1 database. That is fine for a
+prototype and wrong for the target: D1 is one writer and 10 GB. The design
+for volume splits storage by how the data is read.
+
+| Tier | Store | Holds | Read by |
+| --- | --- | --- | --- |
+| Hot | A Durable Object per repository, with SQLite | Recent events for that repo | Timelines, live pages over WebSocket |
+| Complete | Cloudflare Pipelines into R2 as Apache Iceberg | Every event, forever, partitioned by day and workspace | Analytics, standups, "ask", export |
+| Audit | The same R2 store, under object lock | Who did what, from where, with which credential | Compliance, investigation |
+
+- **No single hot database.** Each repository's recent events live with that
+  repository, so load spreads across as many objects as there are repos.
+- **The complete record is files, not rows.** Iceberg on R2 has no practical
+  size limit and is queried with SQL.
+- **Audit is a property of every event.** The envelope carries the actor
+  (person, agent, token or system), the credential used, the request id and
+  the source address. Audit entries for a workspace are hash-chained, so a
+  removed or altered entry is detectable, and are written under a retention
+  lock.
+- **Delivery is at least once.** Consumers are idempotent on the event id.
+
 ## Accounts and forge basics
 
 - Registration with email verification, sign-in, forgot password (Cloudflare

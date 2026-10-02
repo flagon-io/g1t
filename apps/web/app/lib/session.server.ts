@@ -1,4 +1,3 @@
-import { env } from "cloudflare:workers";
 import {
   type MiddlewareFunction,
   type RouterContextProvider,
@@ -8,6 +7,8 @@ import {
 } from "react-router";
 
 import { type Result, type User, type Viewer, httpStatus } from "@g1t/contracts";
+
+import { identity } from "./services.server";
 
 const SESSION_COOKIE = "g1t_session";
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
@@ -31,7 +32,7 @@ export const viewerMiddleware: MiddlewareFunction<Response> = async ({
 }) => {
   const token = sessionToken(request);
   if (token) {
-    context.set(viewerContext, await env.IDENTITY.userForSession(token));
+    context.set(viewerContext, await identity.userForSession(token));
   }
 };
 
@@ -50,6 +51,15 @@ export function requireUser(context: Context, request: Request): User {
   return viewer;
 }
 
+/**
+ * Where to go after signing in. Only same-site paths are honoured, so
+ * `next` cannot redirect off g1t.
+ */
+export function nextPath(request: Request): string {
+  const next = new URL(request.url).searchParams.get("next") ?? "/";
+  return next.startsWith("/") && !next.startsWith("//") ? next : "/";
+}
+
 /** `Set-Cookie` value that starts a session. */
 export function startSession(token: string): string {
   return sessionCookie(token, SESSION_TTL_SECONDS);
@@ -58,7 +68,7 @@ export function startSession(token: string): string {
 /** Ends the session and returns the `Set-Cookie` value that clears it. */
 export async function endSession(request: Request): Promise<string> {
   const token = sessionToken(request);
-  if (token) await env.IDENTITY.signOut(token);
+  if (token) await identity.signOut(token);
   return sessionCookie("", 0);
 }
 

@@ -1,16 +1,15 @@
 {
-  "name": "@g1t/identity",
+  "name": "@g1t/api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "types": "wrangler types --include-env=false",
     "typecheck": "wrangler types --include-env=false && tsc -p tsconfig.json",
-    "deploy": "wrangler deploy",
-    "migrate": "wrangler d1 migrations apply DB --remote"
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@g1t/contracts": "*"
+    "@g1t/contracts": "*",
+    "hono": "^4"
   }
 }

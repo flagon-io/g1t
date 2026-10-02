@@ -1,6 +1,10 @@
+import { BookOpen, File, Folder, FolderGit2 } from "lucide-react";
 import { Link } from "react-router";
 
-import type { BlobView as Blob, TreeView as Tree } from "@g1t/contracts";
+import type { BlobView as Blob, Commit, TreeView as Tree } from "@g1t/contracts";
+
+import { Markdown } from "./markdown";
+import { Avatar, CopyLine, TimeAgo } from "./ui";
 
 function encodePath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
@@ -21,7 +25,7 @@ function Breadcrumbs({
   if (segments.length === 0) return null;
   return (
     <p className="mb-4 font-mono text-sm text-muted">
-      <Link to={`${base}/tree/${gitRef}`} className="hover:text-fg">
+      <Link to={`${base}/tree/${gitRef}`} className="text-accent hover:underline">
         {repo}
       </Link>
       {segments.map((segment, i) => {
@@ -29,11 +33,14 @@ function Breadcrumbs({
         const last = i === segments.length - 1;
         return (
           <span key={to}>
-            {" / "}
+            <span className="mx-1.5 text-faint">/</span>
             {last ? (
-              <span className="text-fg">{segment}</span>
+              <span className="font-medium text-fg">{segment}</span>
             ) : (
-              <Link to={`${base}/tree/${gitRef}/${to}`} className="hover:text-fg">
+              <Link
+                to={`${base}/tree/${gitRef}/${to}`}
+                className="text-accent hover:underline"
+              >
                 {segment}
               </Link>
             )}
@@ -41,6 +48,24 @@ function Breadcrumbs({
         );
       })}
     </p>
+  );
+}
+
+/** The bar above a file listing describing the latest commit. */
+function CommitBar({ commit, gitRef }: { commit: Commit; gitRef: string }) {
+  return (
+    <div className="flex items-center gap-3 border-b border-line bg-surface px-4 py-2.5 text-sm">
+      <Avatar name={commit.author.name} />
+      <span className="shrink-0 font-medium">{commit.author.name}</span>
+      <span className="truncate text-muted">{commit.message.split("\n")[0]}</span>
+      <span className="ml-auto flex shrink-0 items-center gap-3 text-xs text-faint">
+        <span className="rounded-full border border-line px-2 py-0.5 font-mono text-accent">
+          {gitRef}
+        </span>
+        <span className="font-mono">{commit.hash.slice(0, 7)}</span>
+        <TimeAgo at={commit.authoredAt} />
+      </span>
+    </div>
   );
 }
 
@@ -52,92 +77,131 @@ export function TreeView({ tree }: { tree: Tree }) {
 
   if (!head) {
     return (
-      <div className="mt-6 rounded-md border border-line bg-surface p-6">
-        <p className="text-muted">This repository is empty. Push to it:</p>
-        <pre className="mt-3 overflow-x-auto font-mono text-sm">
-          git remote add origin {cloneUrl}
-          {"\n"}git push -u origin {ref}
-        </pre>
+      <div className="mx-auto max-w-2xl rounded-xl border border-line bg-surface p-8">
+        <h2 className="text-lg font-semibold tracking-tight">
+          This repository is empty
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          Push an existing project to it. Use an access token as the password.
+        </p>
+        <div className="mt-5 space-y-2">
+          <CopyLine prompt text={`git remote add g1t ${cloneUrl}`} />
+          <CopyLine prompt text={`git push -u g1t ${ref}`} />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mt-6">
-      <Breadcrumbs base={base} repo={repo.name} gitRef={ref} path={path} />
-      <div className="overflow-hidden rounded-md border border-line">
-        <div className="flex items-baseline gap-3 border-b border-line bg-surface px-4 py-2 text-sm">
-          <span className="font-mono text-accent">{ref}</span>
-          <span className="truncate">{head.message.split("\n")[0]}</span>
-          <span className="ml-auto shrink-0 font-mono text-muted">
-            {head.author.name} · {head.hash.slice(0, 7)}
-          </span>
+    <div className="grid gap-6 lg:grid-cols-[1fr_18rem]">
+      <div className="min-w-0">
+        <Breadcrumbs base={base} repo={repo.name} gitRef={ref} path={path} />
+        <div className="overflow-hidden rounded-xl border border-line">
+          <CommitBar commit={head} gitRef={ref} />
+          <ul className="divide-y divide-line text-sm">
+            {entries.map((entry) => {
+              const isTree = entry.kind === "tree";
+              const Icon = isTree ? Folder : entry.kind === "gitlink" ? FolderGit2 : File;
+              return (
+                <li key={entry.name}>
+                  <Link
+                    to={`${base}/${isTree ? "tree" : "blob"}/${ref}/${prefix}${encodeURIComponent(entry.name)}`}
+                    className="flex items-center gap-3 px-4 py-2 transition-colors hover:bg-surface"
+                  >
+                    <Icon
+                      size={15}
+                      className={isTree ? "text-accent-dim" : "text-faint"}
+                    />
+                    <span className="font-mono text-[0.8125rem]">{entry.name}</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
         </div>
-        <ul className="divide-y divide-line font-mono text-sm">
-          {entries.map((entry) => {
-            const isTree = entry.kind === "tree";
-            const kind = isTree ? "tree" : "blob";
-            return (
-              <li key={entry.name}>
-                <Link
-                  to={`${base}/${kind}/${ref}/${prefix}${encodeURIComponent(entry.name)}`}
-                  className="block px-4 py-1.5 hover:bg-surface"
-                >
-                  {entry.name}
-                  {isTree && <span className="text-muted">/</span>}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+
+        {readme?.text != null && (
+          <section className="mt-6 overflow-hidden rounded-xl border border-line">
+            <h2 className="flex items-center gap-2 border-b border-line bg-surface px-4 py-2.5 text-sm font-medium">
+              <BookOpen size={15} className="text-faint" />
+              {readme.name}
+            </h2>
+            <div className="p-6">
+              {/\.(md|markdown)$/i.test(readme.name) ? (
+                <Markdown source={readme.text} />
+              ) : (
+                <pre className="whitespace-pre-wrap text-sm">{readme.text}</pre>
+              )}
+            </div>
+          </section>
+        )}
       </div>
 
       {!path && (
-        <pre className="mt-4 overflow-x-auto rounded-md border border-line bg-surface px-4 py-2 font-mono text-sm">
-          git clone {cloneUrl}
-        </pre>
-      )}
-
-      {readme?.text != null && (
-        <section className="mt-6 rounded-md border border-line">
-          <h2 className="border-b border-line bg-surface px-4 py-2 font-mono text-sm text-muted">
-            {readme.name}
-          </h2>
-          <pre className="whitespace-pre-wrap p-4 text-sm">{readme.text}</pre>
-        </section>
+        <aside className="space-y-6">
+          <section>
+            <h2 className="text-sm font-medium">Clone</h2>
+            <div className="mt-2">
+              <CopyLine text={`git clone ${cloneUrl}`} />
+            </div>
+          </section>
+          <section>
+            <h2 className="text-sm font-medium">About</h2>
+            <p className="mt-2 text-sm text-muted">
+              {repo.description ?? "No description."}
+            </p>
+            <p className="mt-3 text-xs text-faint">
+              Created <TimeAgo at={repo.createdAt} />
+            </p>
+          </section>
+        </aside>
       )}
     </div>
   );
 }
 
-export function BlobView({ blob }: { blob: Blob }) {
+export function BlobView({
+  blob,
+  html,
+}: {
+  blob: Blob;
+  /** Syntax-highlighted HTML, when the language is known. */
+  html: string | null;
+}) {
   const { repo, ref, path, size, text } = blob;
   const lines = text?.replace(/\n$/, "").split("\n");
   return (
-    <div className="mt-6">
+    <div>
       <Breadcrumbs
         base={`/${repo.namespace}/${repo.name}`}
         repo={repo.name}
         gitRef={ref}
         path={path}
       />
-      <div className="overflow-hidden rounded-md border border-line">
-        <div className="border-b border-line bg-surface px-4 py-2 font-mono text-sm text-muted">
-          {size.toLocaleString("en-US")} bytes
+      <div className="overflow-hidden rounded-xl border border-line">
+        <div className="flex items-center gap-3 border-b border-line bg-surface px-4 py-2.5 text-xs text-muted">
+          {lines && <span>{lines.length.toLocaleString("en-US")} lines</span>}
+          <span>{size.toLocaleString("en-US")} bytes</span>
         </div>
-        {lines ? (
-          <div className="flex overflow-x-auto font-mono text-sm leading-6">
+        {html ? (
+          <div
+            className="overflow-x-auto py-3 pr-4"
+            // Shiki escapes the source; this is its generated markup.
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        ) : lines ? (
+          <div className="flex overflow-x-auto py-3 font-mono text-sm leading-6">
             <pre
               aria-hidden="true"
-              className="select-none px-4 py-3 text-right text-muted"
+              className="w-10 shrink-0 text-right text-faint select-none"
             >
               {lines.map((_, i) => i + 1).join("\n")}
             </pre>
-            <pre className="py-3 pr-4">{lines.join("\n")}</pre>
+            <pre className="pr-4 pl-5">{lines.join("\n")}</pre>
           </div>
         ) : (
-          <p className="p-4 text-sm text-muted">
-            Binary or large file not shown.
+          <p className="p-6 text-sm text-muted">
+            This file is binary or too large to show.
           </p>
         )}
       </div>

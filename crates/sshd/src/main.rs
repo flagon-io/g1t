@@ -14,8 +14,8 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use futures_util::{SinkExt, StreamExt};
-use russh::keys::ssh_key::{HashAlg, PublicKey};
 use russh::keys::PrivateKey;
+use russh::keys::ssh_key::{HashAlg, PublicKey};
 use russh::server::{Auth, Config, Handler, Msg, Session};
 use russh::{Channel, ChannelId, MethodKind, MethodSet};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
@@ -217,7 +217,8 @@ impl Handler for Connection {
             let (mut read_half, write_half) = channel.split();
             let mut reader = BufReader::new(read_half.make_reader());
             let mut writer = write_half.make_writer();
-            let result = run_git(&api, &user, &command, protocol_v2, &mut reader, &mut writer).await;
+            let result =
+                run_git(&api, &user, &command, protocol_v2, &mut reader, &mut writer).await;
             let status = match result {
                 Ok(()) => 0,
                 Err(error) => {

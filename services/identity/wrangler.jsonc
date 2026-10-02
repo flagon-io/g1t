@@ -3,7 +3,8 @@
 	"name": "g1t-identity",
 	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
 	"compatibility_date": "2026-09-26",
-	"main": "./src/index.ts",
+	"main": "build/index.js",
+	"build": { "command": "cargo install -q worker-build@0.8.7 && worker-build --release" },
 	// Reached only through service bindings.
 	"workers_dev": false,
 	"d1_databases": [

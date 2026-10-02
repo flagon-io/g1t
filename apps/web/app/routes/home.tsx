@@ -1,20 +1,27 @@
 import { env } from "cloudflare:workers";
+import { ArrowRight, Plus } from "lucide-react";
 import { Link } from "react-router";
 
-import type { Repo } from "@g1t/contracts";
-
 import type { Route } from "./+types/home";
-import { Mark } from "../components/logo";
-import { Status, TimeAgo } from "../components/ui";
+import { Landing } from "../components/landing";
+import { RepoList } from "../components/repo-list";
+import {
+  Avatar,
+  ButtonLink,
+  CopyLine,
+  EmptyState,
+  Status,
+  TimeAgo,
+} from "../components/ui";
 import { getViewer } from "../lib/session.server";
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "g1t — git for many agents at once" },
+    { title: "g1t — a git forge built for agents" },
     {
       name: "description",
       content:
-        "g1t is a git platform built on Cloudflare where many agents attempt the same change in parallel and the best one ships.",
+        "State a goal, let any number of agents attempt it in parallel, each in its own fork, and land the one that works. Open source, built on Cloudflare.",
     },
   ];
 }
@@ -22,7 +29,7 @@ export function meta({}: Route.MetaArgs) {
 export async function loader({ context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const [repos, attempts] = await Promise.all([
-    env.REPOS.list(viewer),
+    env.REPOS.list(viewer, viewer ? { namespace: viewer.username } : {}),
     env.WORK.listActiveAttempts(viewer),
   ]);
   // Mission control links to each attempt under its repo.
@@ -39,98 +46,111 @@ export async function loader({ context }: Route.LoaderArgs) {
   };
 }
 
-function RepoList({ repos }: { repos: Repo[] }) {
-  if (repos.length === 0) {
-    return <p className="mt-4 text-muted">Nothing here yet.</p>;
-  }
-  return (
-    <ul className="mt-4 divide-y divide-line rounded-md border border-line">
-      {repos.map((repo) => (
-        <li key={repo.id} className="px-4 py-3">
-          <Link
-            to={`/${repo.namespace}/${repo.name}`}
-            className="font-mono text-sm hover:text-accent"
-          >
-            {repo.namespace}/{repo.name}
-          </Link>
-          {repo.isPrivate && (
-            <span className="ml-2 text-xs text-muted">private</span>
-          )}
-          {repo.description && (
-            <p className="mt-1 text-sm text-muted">{repo.description}</p>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 export default function Home({ loaderData }: Route.ComponentProps) {
   const { viewer, repos, active } = loaderData;
+  if (!viewer) return <Landing repos={repos} />;
 
-  if (viewer) {
-    return (
-      <main className="mx-auto max-w-5xl space-y-12 px-4 py-12">
+  const working = active.filter(({ attempt }) => attempt.status === "working");
+  return (
+    <main className="mx-auto grid max-w-6xl gap-10 px-4 py-10 lg:grid-cols-[1fr_20rem]">
+      <div className="min-w-0 space-y-10">
         <section>
-          <h1 className="text-sm font-medium text-muted">In progress</h1>
-          {active.length === 0 ? (
-            <p className="mt-4 rounded-md border border-dashed border-line p-8 text-center text-sm text-muted">
-              No attempts running. Open an intent on a repository to start one.
-            </p>
-          ) : (
-            <ul className="mt-4 divide-y divide-line rounded-md border border-line">
-              {active.map(({ attempt, intent, repo }) => (
-                <li key={attempt.id}>
-                  <Link
-                    to={`/${repo.namespace}/${repo.name}/attempts/${attempt.id}`}
-                    className="flex items-center gap-4 px-4 py-3 hover:bg-surface"
-                  >
-                    <span className="min-w-0 grow">
-                      <span className="block truncate">{intent.title}</span>
-                      <span className="font-mono text-xs text-muted">
-                        {repo.namespace}/{repo.name} #{intent.number} · attempt{" "}
-                        {attempt.number} · {attempt.agent}
-                      </span>
-                    </span>
-                    <span className="shrink-0 text-xs text-muted">
-                      <TimeAgo at={attempt.updatedAt} />
-                    </span>
-                    <Status value={attempt.status} />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
+          <div className="flex items-center gap-3">
+            <Avatar name={viewer.username} size={36} />
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight">
+                Mission control
+              </h1>
+              <p className="text-sm text-muted">
+                {working.length === 0
+                  ? "Nothing is running right now."
+                  : `${working.length} ${working.length === 1 ? "attempt is" : "attempts are"} running.`}
+              </p>
+            </div>
+          </div>
         </section>
+
         <section>
-          <h2 className="text-sm font-medium text-muted">Repositories</h2>
+          <h2 className="text-sm font-medium text-muted">In progress</h2>
+          <div className="mt-3">
+            {active.length === 0 ? (
+              <EmptyState title="No attempts in progress">
+                Open an intent on a repository and start an attempt, or point
+                your agent at one.
+              </EmptyState>
+            ) : (
+              <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+                {active.map(({ attempt, intent, repo }) => (
+                  <li key={attempt.id}>
+                    <Link
+                      to={`/${repo.namespace}/${repo.name}/attempts/${attempt.id}`}
+                      className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-raised"
+                    >
+                      <span className="min-w-0 grow">
+                        <span className="block truncate font-medium">
+                          {intent.title}
+                        </span>
+                        <span className="font-mono text-xs text-muted">
+                          {repo.namespace}/{repo.name} #{intent.number} · attempt{" "}
+                          {attempt.number} · {attempt.agent}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-xs text-faint">
+                        <TimeAgo at={attempt.updatedAt} />
+                      </span>
+                      <Status value={attempt.status} />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-medium text-muted">Your repositories</h2>
+            <ButtonLink to="/new" variant="quiet">
+              <Plus size={14} />
+              New
+            </ButtonLink>
+          </div>
           <RepoList repos={repos} />
         </section>
-      </main>
-    );
-  }
+      </div>
 
-  return (
-    <main className="mx-auto max-w-5xl px-4 pb-24">
-      <section className="py-24">
-        <Mark className="size-14" />
-        <h1 className="mt-8 text-4xl font-semibold tracking-tight sm:text-5xl">
-          Many attempts. <span className="text-accent">One ships.</span>
-        </h1>
-        <p className="mt-4 max-w-xl text-lg text-muted">
-          g1t is a git platform for the age of agents. State an intent, let
-          agents attempt it in parallel, compare the results, and ship the best
-          one.
-        </p>
-        <pre className="mt-8 inline-block rounded-md border border-line bg-surface px-4 py-3 font-mono text-sm">
-          git clone https://g1t.sh/<span className="text-muted">owner</span>/
-          <span className="text-muted">repo</span>.git
-        </pre>
-      </section>
-      <section>
-        <h2 className="text-sm font-medium text-muted">Public repositories</h2>
-        <RepoList repos={repos} />
-      </section>
+      <aside className="space-y-4">
+        <div className="rounded-xl border border-line bg-surface p-5">
+          <h2 className="font-medium">Connect an agent</h2>
+          <p className="mt-1.5 text-sm text-muted">
+            Create an access token in settings, then add g1t to Claude Code.
+          </p>
+          <div className="mt-4 space-y-2">
+            <CopyLine
+              prompt
+              text='claude mcp add --transport http g1t https://mcp.g1t.sh --header "Authorization: Bearer $G1T_TOKEN"'
+            />
+          </div>
+          <Link
+            to="/docs/agents"
+            className="mt-4 inline-flex items-center gap-1 text-sm text-accent hover:underline"
+          >
+            How it works <ArrowRight size={13} />
+          </Link>
+        </div>
+        <div className="rounded-xl border border-line bg-surface p-5">
+          <h2 className="font-medium">Explore</h2>
+          <p className="mt-1.5 text-sm text-muted">
+            Browse public repositories and the intents open on them.
+          </p>
+          <Link
+            to="/explore"
+            className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline"
+          >
+            Public repositories <ArrowRight size={13} />
+          </Link>
+        </div>
+      </aside>
     </main>
   );
 }

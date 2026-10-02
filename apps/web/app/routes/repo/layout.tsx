@@ -1,7 +1,10 @@
 import { env } from "cloudflare:workers";
+import { BookMarked, Code2, History, Lock, Target } from "lucide-react";
+import type { ReactNode } from "react";
 import { Link, NavLink, Outlet } from "react-router";
 
 import type { Route } from "./+types/layout";
+import { Pill } from "../../components/ui";
 import { getViewer, unwrap } from "../../lib/session.server";
 
 export function meta({ params }: Route.MetaArgs) {
@@ -21,20 +24,38 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   };
 }
 
-function Tab({ to, end, children }: { to: string; end?: boolean; children: React.ReactNode }) {
+function Tab({
+  to,
+  end,
+  icon,
+  count,
+  children,
+}: {
+  to: string;
+  end?: boolean;
+  icon: ReactNode;
+  count?: number;
+  children: ReactNode;
+}) {
   return (
     <NavLink
       to={to}
       end={end}
       className={({ isActive }) =>
-        `-mb-px border-b-2 px-1 pb-2.5 text-sm ${
+        `-mb-px flex items-center gap-2 border-b-2 px-1 pb-3 text-sm transition-colors ${
           isActive
-            ? "border-accent text-fg"
+            ? "border-accent font-medium text-fg"
             : "border-transparent text-muted hover:text-fg"
         }`
       }
     >
+      {icon}
       {children}
+      {count != null && count > 0 && (
+        <span className="rounded-full bg-raised px-1.5 py-px text-xs text-muted">
+          {count}
+        </span>
+      )}
     </NavLink>
   );
 }
@@ -43,37 +64,46 @@ export default function RepoLayout({ loaderData }: Route.ComponentProps) {
   const { repo, openIntents } = loaderData;
   const base = `/${repo.namespace}/${repo.name}`;
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
-      <div className="flex items-center gap-3">
-        <h1 className="font-mono text-xl">
-          <span className="text-muted">{repo.namespace}/</span>
-          <Link to={base} className="font-semibold">
-            {repo.name}
-          </Link>
-        </h1>
-        {repo.isPrivate && (
-          <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">
-            private
-          </span>
-        )}
-      </div>
-      {repo.description && (
-        <p className="mt-2 text-sm text-muted">{repo.description}</p>
-      )}
-      <nav className="mt-6 flex gap-6 border-b border-line">
-        <Tab to={base} end>
-          Code
-        </Tab>
-        <Tab to={`${base}/intents`}>
-          Intents
-          {openIntents > 0 && (
-            <span className="ml-1.5 rounded-full bg-surface px-1.5 py-0.5 text-xs">
-              {openIntents}
-            </span>
+    <>
+      {/* The repository's own header band, under the site header. */}
+      <div className="border-b border-line bg-surface/60">
+        <div className="mx-auto max-w-6xl px-4 pt-6">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {repo.isPrivate ? (
+              <Lock size={17} className="text-faint" />
+            ) : (
+              <BookMarked size={17} className="text-faint" />
+            )}
+            <h1 className="font-mono text-lg">
+              <Link to={`/${repo.namespace}`} className="text-muted hover:text-fg">
+                {repo.namespace}
+              </Link>
+              <span className="mx-1 text-faint">/</span>
+              <Link to={base} className="font-semibold hover:underline">
+                {repo.name}
+              </Link>
+            </h1>
+            <Pill>{repo.isPrivate ? "private" : "public"}</Pill>
+          </div>
+          {repo.description && (
+            <p className="mt-2 max-w-2xl text-sm text-muted">{repo.description}</p>
           )}
-        </Tab>
-      </nav>
-      <Outlet />
-    </div>
+          <nav className="mt-5 flex gap-6">
+            <Tab to={base} end icon={<Code2 size={15} />}>
+              Code
+            </Tab>
+            <Tab to={`${base}/intents`} icon={<Target size={15} />} count={openIntents}>
+              Intents
+            </Tab>
+            <Tab to={`${base}/commits`} icon={<History size={15} />}>
+              Commits
+            </Tab>
+          </nav>
+        </div>
+      </div>
+      <div className="mx-auto max-w-6xl px-4 py-6">
+        <Outlet />
+      </div>
+    </>
   );
 }

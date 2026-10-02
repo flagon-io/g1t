@@ -66,13 +66,19 @@ impl Bridge<'_> {
     async fn advertise<W: AsyncWrite + Unpin>(&self, writer: &mut W) -> Result<()> {
         let service = self.service.as_str();
         let response = self
-            .request(reqwest::Method::GET, &format!("info/refs?service={service}"))
+            .request(
+                reqwest::Method::GET,
+                &format!("info/refs?service={service}"),
+            )
             .send()
             .await?
             .error_for_status()?;
         let body = response.bytes().await?;
         let mut advertisement = &body[..];
-        if advertisement.get(4..).is_some_and(|rest| rest.starts_with(b"# service=")) {
+        if advertisement
+            .get(4..)
+            .is_some_and(|rest| rest.starts_with(b"# service="))
+        {
             let length = usize::from_str_radix(std::str::from_utf8(&body[..4])?, 16)?;
             ensure!(body.len() >= length + 4, "truncated ref advertisement");
             advertisement = &body[length + 4..];
@@ -232,9 +238,7 @@ async fn read_pack<R: AsyncBufRead + Unpin>(reader: &mut R, raw: &mut Vec<u8>) -
             byte = read_byte(reader, raw).await?;
         }
         match kind {
-            OFS_DELTA => {
-                while read_byte(reader, raw).await? & 0x80 != 0 {}
-            }
+            OFS_DELTA => while read_byte(reader, raw).await? & 0x80 != 0 {},
             REF_DELTA => read_into(reader, raw, 20).await?,
             _ => {}
         }

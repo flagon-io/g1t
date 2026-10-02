@@ -1,0 +1,11 @@
+[package]
+name = "g1t-contracts"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Types and service interfaces shared by every g1t service."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+getrandom = { version = "0.2", features = ["js"] }

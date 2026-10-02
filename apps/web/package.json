@@ -12,11 +12,15 @@
     "postinstall": "wrangler types --include-env=false"
   },
   "dependencies": {
+    "@g1t/contracts": "*",
     "isbot": "^5.1.36",
+    "lucide-react": "^1.49.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0",
     "react-router": "^8.4.0",
-    "@g1t/contracts": "*"
+    "remark-gfm": "^4.0.1",
+    "shiki": "^4.5.0"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.62.4",

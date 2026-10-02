@@ -7,7 +7,7 @@ import {
   type EventsApi,
   type GitAccess,
   type GitService,
-  type IdentityApi,
+  type ServiceBinding,
   type NewEvent,
   type Repo,
   type RepoPath,
@@ -17,6 +17,7 @@ import {
   type User,
   type Viewer,
   fail,
+  identityClient,
   isValidNamespace,
   isValidRepoName,
   newId,
@@ -36,7 +37,7 @@ import {
 export interface ReposEnv {
   DB: D1Database;
   ARTIFACTS: Artifacts;
-  IDENTITY: IdentityApi;
+  IDENTITY: ServiceBinding;
   EVENTS: EventsApi;
 }
 
@@ -277,7 +278,7 @@ export default class ReposService
 
   /** Git over HTTPS. */
   async fetch(request: Request): Promise<Response> {
-    const response = await handleGitHttp(request, this.env.IDENTITY, this, (path) =>
+    const response = await handleGitHttp(request, identityClient(this.env.IDENTITY), this, (path) =>
       this.ctx.waitUntil(this.pushed(path)),
     );
     return response ?? new Response("Not found\n", { status: 404 });

@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { identity } from "../lib/services.server";
 import { Form } from "react-router";
 
 import type { Route } from "./+types/settings";
@@ -12,8 +12,8 @@ export function meta({}: Route.MetaArgs) {
 export async function loader({ request, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
   const [keys, tokens] = await Promise.all([
-    env.IDENTITY.listSshKeys(user),
-    env.IDENTITY.listAccessTokens(user),
+    identity.listSshKeys(user),
+    identity.listAccessTokens(user),
   ]);
   return { user, keys, tokens };
 }
@@ -26,7 +26,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
   switch (form.get("intent")) {
     case "add-key": {
-      const result = await env.IDENTITY.addSshKey(
+      const result = await identity.addSshKey(
         user,
         String(form.get("title") ?? ""),
         String(form.get("key") ?? ""),
@@ -34,17 +34,17 @@ export async function action({ request, context }: Route.ActionArgs) {
       return result.ok ? null : { keyError: result.error.message };
     }
     case "delete-key":
-      await env.IDENTITY.removeSshKey(user, id);
+      await identity.removeSshKey(user, id);
       return null;
     case "add-token": {
-      const created = await env.IDENTITY.createAccessToken(
+      const created = await identity.createAccessToken(
         user,
         String(form.get("name") ?? ""),
       );
       return { newToken: created.token };
     }
     case "delete-token":
-      await env.IDENTITY.removeAccessToken(user, id);
+      await identity.removeAccessToken(user, id);
       return null;
   }
   return null;

@@ -1,11 +1,27 @@
 import { env } from "cloudflare:workers";
+import {
+  Bot,
+  ChevronRight,
+  GitCommitHorizontal,
+  StickyNote,
+  User,
+  Wrench,
+} from "lucide-react";
 import { useEffect } from "react";
 import { Form, Link, useRevalidator } from "react-router";
 
 import type { SessionEntry } from "@g1t/contracts";
 
 import type { Route } from "./+types/attempt";
-import { Button, ErrorText, Status, Textarea, TimeAgo } from "../../components/ui";
+import {
+  Button,
+  CopyLine,
+  EmptyState,
+  ErrorText,
+  Status,
+  Textarea,
+  TimeAgo,
+} from "../../components/ui";
 import {
   assertSameOrigin,
   getViewer,
@@ -15,8 +31,14 @@ import {
 
 const REFRESH_MS = 4000;
 
-export function meta({ loaderData: data }: Route.MetaArgs) {
-  return [{ title: data ? `Attempt ${data.attempt.number} · ${data.intent.title} · g1t` : "g1t" }];
+export function meta({ loaderData }: Route.MetaArgs) {
+  return [
+    {
+      title: loaderData
+        ? `Attempt ${loaderData.attempt.number} · ${loaderData.intent.title} · g1t`
+        : "g1t",
+    },
+  ];
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
@@ -43,38 +65,71 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   return result.ok ? null : { error: result.error.message };
 }
 
-const KIND_LABEL: Record<SessionEntry["kind"], string> = {
-  prompt: "Prompt",
-  message: "Agent",
-  tool_call: "Tool",
-  tool_result: "Result",
-  note: "Note",
-};
-
-function Entry({ entry }: { entry: SessionEntry }) {
+/** One step of the session, on the timeline's rail. */
+function Entry({ entry, agent }: { entry: SessionEntry; agent: string }) {
   const isTool = entry.kind === "tool_call" || entry.kind === "tool_result";
+  const Icon =
+    entry.kind === "prompt"
+      ? User
+      : entry.kind === "note"
+        ? StickyNote
+        : isTool
+          ? Wrench
+          : Bot;
   return (
-    <li className="grid grid-cols-[4.5rem_1fr] gap-3 px-4 py-3">
-      <span className="pt-0.5 text-xs text-muted">
-        {KIND_LABEL[entry.kind]}
+    <li className="relative pl-10">
+      <span
+        className={`absolute top-0.5 left-0 flex size-7 items-center justify-center rounded-full border bg-bg ${
+          entry.kind === "prompt"
+            ? "border-accent/50 text-accent"
+            : "border-line text-faint"
+        }`}
+      >
+        <Icon size={14} />
       </span>
-      <div className="min-w-0">
-        {entry.tool && (
-          <p className="font-mono text-xs text-accent">{entry.tool}</p>
-        )}
-        <p
-          className={`whitespace-pre-wrap break-words text-sm ${
-            isTool ? "font-mono text-muted" : ""
-          } ${entry.kind === "prompt" ? "font-medium" : ""}`}
-        >
-          {entry.text}
-        </p>
-        {entry.commit && (
-          <p className="mt-1 font-mono text-xs text-muted">
-            at {entry.commit.slice(0, 7)}
+      {isTool ? (
+        <details className="group rounded-lg border border-line bg-surface">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-1.5 text-sm">
+            <ChevronRight
+              size={14}
+              className="text-faint transition-transform group-open:rotate-90"
+            />
+            <span className="font-mono text-xs text-accent">
+              {entry.tool ?? "tool"}
+            </span>
+            <span className="truncate font-mono text-xs text-muted">
+              {entry.kind === "tool_result" ? "→ " : ""}
+              {entry.text.split("\n")[0]}
+            </span>
+          </summary>
+          <pre className="overflow-x-auto border-t border-line p-3 font-mono text-xs whitespace-pre-wrap text-muted">
+            {entry.text}
+          </pre>
+        </details>
+      ) : (
+        <div>
+          <p className="text-xs font-medium text-faint">
+            {entry.kind === "prompt"
+              ? "Prompt"
+              : entry.kind === "note"
+                ? "Note"
+                : agent}
           </p>
-        )}
-      </div>
+          <p
+            className={`mt-1 text-[0.9375rem] leading-relaxed wrap-break-word whitespace-pre-wrap ${
+              entry.kind === "prompt" ? "font-medium" : ""
+            }`}
+          >
+            {entry.text}
+          </p>
+        </div>
+      )}
+      {entry.commit && (
+        <p className="mt-1.5 flex items-center gap-1 font-mono text-xs text-faint">
+          <GitCommitHorizontal size={12} />
+          {entry.commit.slice(0, 7)}
+        </p>
+      )}
     </li>
   );
 }
@@ -102,65 +157,81 @@ export default function AttemptPage({
   }, [working, revalidator]);
 
   return (
-    <div className="mt-6 grid gap-8 lg:grid-cols-[1fr_20rem]">
+    <div className="grid gap-8 lg:grid-cols-[1fr_19rem]">
       <div className="min-w-0">
         <p className="text-sm text-muted">
-          <Link to={`${base}/intents/${intent.number}`} className="hover:text-fg">
-            {intent.title} #{intent.number}
+          <Link
+            to={`${base}/intents/${intent.number}`}
+            className="hover:text-fg hover:underline"
+          >
+            {intent.title} <span className="text-faint">#{intent.number}</span>
           </Link>
         </p>
-        <div className="mt-1 flex items-center gap-3">
+        <div className="mt-1 flex flex-wrap items-center gap-3">
           <h2 className="text-2xl font-semibold tracking-tight">
             Attempt {attempt.number}
           </h2>
-          <span className="font-mono text-sm text-muted">{attempt.agent}</span>
+          <span className="flex items-center gap-1.5 font-mono text-sm text-muted">
+            <Bot size={15} />
+            {attempt.agent}
+          </span>
           <Status value={attempt.status} />
         </div>
-        <p className="mt-1 text-sm text-muted">
-          Started by {attempt.startedBy.username}{" "}
-          <TimeAgo at={attempt.createdAt} /> · head{" "}
-          <span className="font-mono">
-            {attempt.headCommit?.slice(0, 7) ?? "none yet"}
-          </span>
+        <p className="mt-2 text-sm text-muted">
+          Started by{" "}
+          <span className="font-medium text-fg">{attempt.startedBy.username}</span>{" "}
+          <TimeAgo at={attempt.createdAt} />
         </p>
 
         {attempt.summary && (
-          <p className="mt-6 whitespace-pre-wrap rounded-md border border-line bg-surface p-4 text-sm leading-relaxed">
-            {attempt.summary}
-          </p>
+          <section className="mt-6 rounded-xl border border-line bg-surface p-5">
+            <h3 className="text-xs font-medium tracking-wide text-faint uppercase">
+              Summary
+            </h3>
+            <p className="mt-2 leading-relaxed whitespace-pre-wrap">
+              {attempt.summary}
+            </p>
+          </section>
         )}
 
-        <h3 className="mt-10 text-sm font-medium text-muted">Session</h3>
-        {session.length === 0 ? (
-          <p className="mt-3 rounded-md border border-dashed border-line p-6 text-center text-sm text-muted">
-            Nothing recorded yet. The agent's prompts, messages and tool calls
-            appear here as it works.
-          </p>
-        ) : (
-          <ol className="mt-3 divide-y divide-line rounded-md border border-line">
-            {session.map((entry) => (
-              <Entry key={entry.seq} entry={entry} />
-            ))}
-          </ol>
-        )}
+        <h3 className="mt-10 font-semibold tracking-tight">Session</h3>
+        <div className="mt-4">
+          {session.length === 0 ? (
+            <EmptyState title="Nothing recorded yet">
+              The agent's prompts, reasoning and tool calls appear here as it
+              works.
+            </EmptyState>
+          ) : (
+            <ol className="relative space-y-5 before:absolute before:top-2 before:bottom-2 before:left-3.25 before:w-px before:bg-line">
+              {session.map((entry) => (
+                <Entry key={entry.seq} entry={entry} agent={attempt.agent} />
+              ))}
+            </ol>
+          )}
+        </div>
       </div>
 
       <aside className="space-y-6">
         <section>
-          <h3 className="text-sm font-medium text-muted">Working copy</h3>
-          <pre className="mt-2 overflow-x-auto rounded-md border border-line bg-surface p-3 font-mono text-xs">
-            git clone {remote}
-          </pre>
-          <p className="mt-2 text-xs text-muted">
+          <h3 className="text-sm font-medium">Working copy</h3>
+          <p className="mt-1 text-xs text-muted">
             This fork belongs to the attempt. Pushes to it show up here.
           </p>
+          <div className="mt-2">
+            <CopyLine text={`git clone ${remote}`} />
+          </div>
+          <p className="mt-3 flex items-center gap-1.5 font-mono text-xs text-faint">
+            <GitCommitHorizontal size={13} />
+            {attempt.headCommit?.slice(0, 12) ?? "no commits pushed yet"}
+          </p>
         </section>
+
         {mine && active && (
-          <section>
-            <h3 className="text-sm font-medium text-muted">
+          <section className="rounded-xl border border-line bg-surface p-4">
+            <h3 className="text-sm font-medium">
               {attempt.status === "submitted" ? "Update summary" : "Submit"}
             </h3>
-            <Form method="post" className="mt-2 space-y-2">
+            <Form method="post" className="mt-3 space-y-2">
               <Textarea
                 name="summary"
                 rows={4}
