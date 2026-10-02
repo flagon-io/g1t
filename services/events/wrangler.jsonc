@@ -1,0 +1,27 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-events",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	"main": "./src/index.ts",
+	"workers_dev": false,
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "g1t-events",
+			"database_id": "dd889749-0d01-4c94-8b9b-d789dec1c0e4",
+			"migrations_dir": "migrations"
+		}
+	],
+	"queues": {
+		"producers": [
+			{ "binding": "BUS", "queue": "g1t-events" },
+			// One queue per subscribing service, so each consumes, retries
+			// and scales on its own. Bindings named SUBSCRIBER_* receive
+			// every event.
+			{ "binding": "SUBSCRIBER_WORK", "queue": "g1t-events-work" }
+		],
+		"consumers": [{ "queue": "g1t-events", "max_batch_size": 100, "max_batch_timeout": 1 }]
+	},
+	"observability": { "enabled": true }
+}

@@ -1,0 +1,21 @@
+@import "tailwindcss" source(".");
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    monospace;
+
+  --color-bg: #12110d;
+  --color-surface: #1b1a15;
+  --color-line: #2a2822;
+  --color-fg: #edece6;
+  --color-muted: #8f8c82;
+  --color-accent: #b6f24a;
+}
+
+html,
+body {
+  @apply bg-bg text-fg font-sans antialiased;
+  color-scheme: dark;
+}

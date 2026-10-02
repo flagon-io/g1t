@@ -1,0 +1,22 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-repos",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	"main": "./src/index.ts",
+	"workers_dev": false,
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "g1t-repos",
+			"database_id": "f9544c51-c3bf-4621-a96f-8a6d5cf24a97",
+			"migrations_dir": "migrations"
+		}
+	],
+	"artifacts": [{ "binding": "ARTIFACTS", "namespace": "g1t" }],
+	"services": [
+		{ "binding": "IDENTITY", "service": "g1t-identity" },
+		{ "binding": "EVENTS", "service": "g1t-events" }
+	],
+	"observability": { "enabled": true }
+}

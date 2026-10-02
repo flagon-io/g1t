@@ -1,0 +1,17 @@
+[package]
+name = "g1t-sshd"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow = "1.0.104"
+flate2 = "1.1.10"
+futures-util = "0.3.34"
+reqwest = { version = "0.13.5", features = ["json", "stream"] }
+russh = "0.63.3"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tokio = { version = "1.53.1", features = ["full"] }
+tokio-tungstenite = "0.30.0"

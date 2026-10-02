@@ -1,0 +1,9 @@
+# Generated account passwords (services/identity/scripts/create-user.mjs)
+/.credentials/
+
+node_modules/
+target/
+.DS_Store
+worker-configuration.d.ts
+.wrangler/
+.dev.vars*

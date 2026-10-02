@@ -1,0 +1,24 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-work",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	"main": "./src/index.ts",
+	"workers_dev": false,
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "g1t-work",
+			"database_id": "f35a9022-e36b-4547-b596-9ab9d5f1c47a",
+			"migrations_dir": "migrations"
+		}
+	],
+	"services": [
+		{ "binding": "REPOS", "service": "g1t-repos" },
+		{ "binding": "EVENTS", "service": "g1t-events" }
+	],
+	"queues": {
+		"consumers": [{ "queue": "g1t-events-work", "max_batch_size": 100, "max_batch_timeout": 1 }]
+	},
+	"observability": { "enabled": true }
+}

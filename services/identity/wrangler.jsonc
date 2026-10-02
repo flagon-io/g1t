@@ -1,0 +1,18 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-identity",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	"main": "./src/index.ts",
+	// Reached only through service bindings.
+	"workers_dev": false,
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "g1t",
+			"database_id": "b7d49c93-2666-4006-a3c3-073a01838dc9",
+			"migrations_dir": "migrations"
+		}
+	],
+	"observability": { "enabled": true }
+}
