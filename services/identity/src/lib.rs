@@ -4,6 +4,7 @@
 //! the methods and their arguments.
 
 mod crypto;
+mod email;
 
 use g1t_contracts::identity::*;
 use g1t_contracts::{FailureCode, Outcome, User, Viewer, is_valid_namespace, new_id};
@@ -13,14 +14,44 @@ use worker::wasm_bindgen::JsValue;
 use worker::{Context, D1Database, Env, Request, Response, Result, event};
 
 const SESSION_TTL_SECONDS: u32 = 30 * 24 * 60 * 60;
+const VERIFY_TTL_SECONDS: u32 = 24 * 60 * 60;
+const RESET_TTL_SECONDS: u32 = 60 * 60;
 const TOKEN_PREFIX: &str = "g1t_";
 const MIN_PASSWORD_LENGTH: usize = 10;
+const PASSWORD_TOO_SHORT: &str = "Use a password of at least 10 characters.";
+
+/// A user as selected from the database; `verified` arrives as 0 or 1.
+#[derive(Deserialize)]
+struct Account {
+    id: String,
+    username: String,
+    verified: u8,
+}
+
+impl From<Account> for User {
+    fn from(row: Account) -> Self {
+        User {
+            id: row.id,
+            username: row.username,
+            verified: row.verified != 0,
+        }
+    }
+}
 
 #[derive(Deserialize)]
 struct UserRow {
     id: String,
     username: String,
     password_hash: String,
+    verified: u8,
+}
+
+/// The owner of an emailed token.
+#[derive(Deserialize)]
+struct TokenOwner {
+    id: String,
+    username: String,
+    email: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -61,22 +92,175 @@ impl From<TokenRow> for AccessToken {
 
 struct Identity {
     db: D1Database,
+    env: Env,
 }
 
 impl Identity {
     /// Runs a query that returns at most one user.
     async fn find_user(&self, sql: &str, param: &str) -> Result<Viewer> {
-        self.db
+        Ok(self
+            .db
             .prepare(sql)
             .bind(&[JsValue::from(param)])?
-            .first::<User>(None)
-            .await
+            .first::<Account>(None)
+            .await?
+            .map(User::from))
+    }
+
+    /// Stores a one-time token of `kind` for the user and returns it.
+    async fn issue_email_token(&self, user_id: &str, kind: &str, ttl: u32) -> Result<String> {
+        let token = crypto::random_hex(32);
+        self.db
+            .prepare(
+                "INSERT INTO email_tokens (id, user_id, kind, expires_at)
+                 VALUES (?, ?, ?, unixepoch() + ?)",
+            )
+            .bind(&[
+                crypto::sha256_hex(&token).into(),
+                user_id.into(),
+                kind.into(),
+                ttl.into(),
+            ])?
+            .run()
+            .await?;
+        Ok(token)
+    }
+
+    /// Consumes a token of `kind`, returning its owner if it was valid.
+    async fn redeem_email_token(&self, token: &str, kind: &str) -> Result<Option<TokenOwner>> {
+        let id = crypto::sha256_hex(token);
+        let owner = self
+            .db
+            .prepare(
+                "SELECT users.id, users.username, users.email FROM email_tokens
+                 JOIN users ON users.id = email_tokens.user_id
+                 WHERE email_tokens.id = ? AND email_tokens.kind = ?
+                   AND email_tokens.expires_at > unixepoch()",
+            )
+            .bind(&[id.as_str().into(), kind.into()])?
+            .first::<TokenOwner>(None)
+            .await?;
+        if let Some(owner) = &owner {
+            // Every outstanding token of this kind dies with the one used.
+            self.db
+                .prepare("DELETE FROM email_tokens WHERE user_id = ? AND kind = ?")
+                .bind(&[owner.id.as_str().into(), kind.into()])?
+                .run()
+                .await?;
+        }
+        Ok(owner)
+    }
+
+    async fn send_verification(&self, user: &User, email: &str) -> Result<()> {
+        let token = self
+            .issue_email_token(&user.id, "verify", VERIFY_TTL_SECONDS)
+            .await?;
+        email::send_verification(&self.env, email, &user.username, &token).await
+    }
+
+    async fn resend_verification(&self, a: UserArgs) -> Result<Outcome<bool>> {
+        let row = self
+            .db
+            .prepare(
+                "SELECT id, username, email FROM users WHERE id = ? AND email_verified_at IS NULL",
+            )
+            .bind(&[a.user.id.as_str().into()])?
+            .first::<TokenOwner>(None)
+            .await?;
+        let Some(TokenOwner {
+            email: Some(email), ..
+        }) = row
+        else {
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "This account's email is already confirmed.",
+            ));
+        };
+        self.send_verification(&a.user, &email).await?;
+        Ok(Outcome::Ok(true))
+    }
+
+    async fn verify_email(&self, a: EmailTokenArgs) -> Result<Outcome<User>> {
+        let Some(owner) = self.redeem_email_token(&a.token, "verify").await? else {
+            return Ok(Outcome::fail(
+                FailureCode::Invalid,
+                "This confirmation link is not valid or has expired.",
+            ));
+        };
+        self.db
+            .prepare("UPDATE users SET email_verified_at = unixepoch() WHERE id = ?")
+            .bind(&[owner.id.as_str().into()])?
+            .run()
+            .await?;
+        Ok(Outcome::Ok(User {
+            id: owner.id,
+            username: owner.username,
+            verified: true,
+        }))
+    }
+
+    async fn request_password_reset(&self, a: EmailArgs) -> Result<bool> {
+        let row = self
+            .db
+            .prepare("SELECT id, username, email FROM users WHERE email = ?")
+            .bind(&[a.email.trim().to_lowercase().into()])?
+            .first::<TokenOwner>(None)
+            .await?;
+        if let Some(TokenOwner {
+            id,
+            username,
+            email: Some(email),
+        }) = row
+        {
+            let token = self
+                .issue_email_token(&id, "reset", RESET_TTL_SECONDS)
+                .await?;
+            email::send_password_reset(&self.env, &email, &username, &token).await?;
+        }
+        // The same answer either way, so addresses cannot be probed.
+        Ok(true)
+    }
+
+    async fn reset_password(&self, a: ResetPasswordArgs) -> Result<Outcome<User>> {
+        if a.password.chars().count() < MIN_PASSWORD_LENGTH {
+            return Ok(Outcome::fail(FailureCode::Invalid, PASSWORD_TOO_SHORT));
+        }
+        let Some(owner) = self.redeem_email_token(&a.token, "reset").await? else {
+            return Ok(Outcome::fail(
+                FailureCode::Invalid,
+                "This reset link is not valid or has expired.",
+            ));
+        };
+        // Following an emailed link also proves the address.
+        self.db
+            .prepare(
+                "UPDATE users SET password_hash = ?,
+                   email_verified_at = COALESCE(email_verified_at, unixepoch())
+                 WHERE id = ?",
+            )
+            .bind(&[
+                crypto::hash_password(&a.password).into(),
+                owner.id.as_str().into(),
+            ])?
+            .run()
+            .await?;
+        // Anyone signed in with the old password is signed out.
+        self.db
+            .prepare("DELETE FROM sessions WHERE user_id = ?")
+            .bind(&[owner.id.as_str().into()])?
+            .run()
+            .await?;
+        Ok(Outcome::Ok(User {
+            id: owner.id,
+            username: owner.username,
+            verified: true,
+        }))
     }
 
     async fn user_for_password(&self, username: &str, password: &str) -> Result<Viewer> {
         let row = self
             .db
-            .prepare("SELECT id, username, password_hash FROM users WHERE username = ?")
+            .prepare("SELECT id, username, password_hash, email_verified_at IS NOT NULL AS verified FROM users WHERE username = ?")
             .bind(&[JsValue::from(username.to_lowercase())])?
             .first::<UserRow>(None)
             .await?;
@@ -85,6 +269,7 @@ impl Identity {
             .map(|row| User {
                 id: row.id,
                 username: row.username,
+                verified: row.verified != 0,
             }))
     }
 
@@ -105,7 +290,7 @@ impl Identity {
             return invalid("Enter a valid email address.");
         }
         if a.password.chars().count() < MIN_PASSWORD_LENGTH {
-            return invalid("Use a password of at least 10 characters.");
+            return invalid(PASSWORD_TOO_SHORT);
         }
         let taken = self
             .db
@@ -122,17 +307,22 @@ impl Identity {
         let user = User {
             id: new_id("usr", now_ms()),
             username,
+            verified: false,
         };
         self.db
             .prepare("INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)")
             .bind(&[
                 user.id.as_str().into(),
                 user.username.as_str().into(),
-                email.into(),
+                email.as_str().into(),
                 crypto::hash_password(&a.password).into(),
             ])?
             .run()
             .await?;
+        // The account exists either way; the email can be sent again later.
+        if let Err(error) = self.send_verification(&user, &email).await {
+            worker::console_error!("verification email failed: {error}");
+        }
         self.start_session(user).await
     }
 
@@ -176,7 +366,7 @@ impl Identity {
 
     async fn user_for_session(&self, a: SessionArgs) -> Result<Viewer> {
         self.find_user(
-            "SELECT users.id, users.username FROM sessions
+            "SELECT users.id, users.username, users.email_verified_at IS NOT NULL AS verified FROM sessions
              JOIN users ON users.id = sessions.user_id
              WHERE sessions.id = ? AND sessions.expires_at > unixepoch()",
             &crypto::sha256_hex(&a.session_token),
@@ -189,7 +379,7 @@ impl Identity {
             return Ok(None);
         }
         self.find_user(
-            "SELECT users.id, users.username FROM access_tokens
+            "SELECT users.id, users.username, users.email_verified_at IS NOT NULL AS verified FROM access_tokens
              JOIN users ON users.id = access_tokens.user_id
              WHERE token_hash = ?",
             &crypto::sha256_hex(token),
@@ -208,7 +398,7 @@ impl Identity {
 
     async fn user_for_ssh_key(&self, a: FingerprintArgs) -> Result<Viewer> {
         self.find_user(
-            "SELECT users.id, users.username FROM ssh_keys
+            "SELECT users.id, users.username, users.email_verified_at IS NOT NULL AS verified FROM ssh_keys
              JOIN users ON users.id = ssh_keys.user_id
              WHERE fingerprint = ?",
             &a.fingerprint,
@@ -218,7 +408,7 @@ impl Identity {
 
     async fn user_by_username(&self, a: UsernameArgs) -> Result<Viewer> {
         self.find_user(
-            "SELECT id, username FROM users WHERE username = ?",
+            "SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE username = ?",
             &a.username.to_lowercase(),
         )
         .await
@@ -344,11 +534,18 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         return Response::error("Not found", 404);
     };
     let body: serde_json::Value = request.json().await?;
-    let identity = Identity { db: env.d1("DB")? };
+    let identity = Identity {
+        db: env.d1("DB")?,
+        env,
+    };
 
     match method.as_str() {
         "register" => reply(&identity.register(args(body)?).await?),
         "sign_in" => reply(&identity.sign_in(args(body)?).await?),
+        "resend_verification" => reply(&identity.resend_verification(args(body)?).await?),
+        "verify_email" => reply(&identity.verify_email(args(body)?).await?),
+        "request_password_reset" => reply(&identity.request_password_reset(args(body)?).await?),
+        "reset_password" => reply(&identity.reset_password(args(body)?).await?),
         "sign_out" => reply(&identity.sign_out(args(body)?).await?),
         "user_for_session" => reply(&identity.user_for_session(args(body)?).await?),
         "user_for_git_credentials" => reply(&identity.user_for_git_credentials(args(body)?).await?),

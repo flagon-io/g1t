@@ -16,6 +16,7 @@ import {
   type TreeView,
   type User,
   type Viewer,
+  UNVERIFIED,
   fail,
   identityClient,
   isValidNamespace,
@@ -88,6 +89,7 @@ export default class ReposService
   }
 
   async create(owner: User, input: CreateRepoInput): Promise<Result<Repo>> {
+    if (!owner.verified) return UNVERIFIED;
     const name = input.name.trim().toLowerCase();
     if (!isValidRepoName(name)) {
       return fail("invalid", "Use letters, digits, dots, hyphens and underscores only.");
@@ -247,6 +249,7 @@ export default class ReposService
     service: GitService,
   ): Promise<Result<GitAccess>> {
     const write = service === "git-receive-pack";
+    if (write && viewer && !viewer.verified) return UNVERIFIED;
     let repo = await this.registry.byPath(path);
     if (!repo) {
       // Push to create, in the pusher's own namespace only.

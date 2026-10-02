@@ -117,3 +117,24 @@ pub struct RegisterArgs {
     pub email: String,
     pub password: String,
 }
+
+/// `verify_email`: the token from the emailed link. Returns `Outcome<User>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EmailTokenArgs {
+    pub token: String,
+}
+
+/// `request_password_reset`. Always succeeds, so it cannot be used to find
+/// out which addresses have accounts.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EmailArgs {
+    pub email: String,
+}
+
+/// `reset_password`: sets a new password and ends every session.
+/// Returns `Outcome<User>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ResetPasswordArgs {
+    pub token: String,
+    pub password: String,
+}

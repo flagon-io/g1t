@@ -63,6 +63,11 @@ export default function Login({ actionData }: Route.ComponentProps) {
         <div className="pt-2 *:w-full">
           <Button type="submit">Sign in</Button>
         </div>
+        <p className="text-center text-sm">
+          <Link to="/forgot" className="text-muted hover:text-fg">
+            Forgot your password?
+          </Link>
+        </p>
       </Form>
     </AuthCard>
   );

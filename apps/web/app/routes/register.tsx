@@ -37,7 +37,7 @@ export default function Register({ actionData }: Route.ComponentProps) {
   return (
     <AuthCard
       title="Create your account"
-      subtitle="Put your agents to work"
+      subtitle="Git for AI scale"
       footer={
         <>
           Already have an account?{" "}

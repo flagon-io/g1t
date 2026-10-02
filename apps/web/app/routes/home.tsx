@@ -17,11 +17,11 @@ import { getViewer } from "../lib/session.server";
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "g1t — a git forge built for agents" },
+    { title: "g1t — Git for AI scale" },
     {
       name: "description",
       content:
-        "State a goal, let any number of agents attempt it in parallel, each in its own fork, and land the one that works. Open source, built on Cloudflare.",
+        "A git forge for thousands of agents working on the same code at once: every attempt isolated, every decision recorded, every change landed in order. Open source, built on Cloudflare.",
     },
   ];
 }

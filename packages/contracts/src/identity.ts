@@ -1,6 +1,14 @@
 import type { Result } from "./result";
 
-export type User = { id: string; username: string };
+export type User = {
+  id: string;
+  username: string;
+  /**
+   * Whether the account's email address is confirmed. Only set on users
+   * resolved from credentials; unverified accounts cannot change anything.
+   */
+  verified?: boolean;
+};
 
 /** Who is asking. Every read and write in every service takes one. */
 export type Viewer = User | null;
@@ -21,6 +29,16 @@ export interface IdentityApi {
   /** Verifies a username and password for website sign-in. */
   signIn(username: string, password: string): Promise<Result<{ user: User; sessionToken: string }>>;
   signOut(sessionToken: string): Promise<void>;
+
+  /** Sends the confirmation email again. */
+  resendVerification(user: User): Promise<Result<boolean>>;
+  /** Confirms the address the emailed token was sent to. */
+  verifyEmail(token: string): Promise<Result<User>>;
+  /** Emails a reset link if the address has an account. Always resolves. */
+  requestPasswordReset(email: string): Promise<boolean>;
+  /** Sets a new password from an emailed token and ends every session. */
+  resetPassword(token: string, password: string): Promise<Result<User>>;
+
   userForSession(sessionToken: string): Promise<Viewer>;
 
   /** Verifies git credentials: the account password or an access token. */

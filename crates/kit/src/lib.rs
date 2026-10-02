@@ -59,3 +59,74 @@ pub async fn call<A: Serialize, R: DeserializeOwned>(
     }
     response.json().await
 }
+
+/// Helpers for bindings that workers-rs has no typed wrapper for, such as
+/// Artifacts and Email Sending. Values cross the boundary as JSON.
+pub mod js {
+    use serde::Serialize;
+    use serde::de::DeserializeOwned;
+    use worker::js_sys::{Function, JSON, Promise, Reflect};
+    use worker::wasm_bindgen::{JsCast, JsValue};
+    use worker::wasm_bindgen_futures::JsFuture;
+    use worker::{Env, Error, Result};
+
+    fn error(context: &str, value: JsValue) -> Error {
+        let message = JSON::stringify(&value)
+            .ok()
+            .and_then(|text| text.as_string())
+            .filter(|text| text != "{}")
+            .or_else(|| {
+                Reflect::get(&value, &"message".into())
+                    .ok()
+                    .and_then(|message| message.as_string())
+            })
+            .unwrap_or_else(|| format!("{value:?}"));
+        Error::RustError(format!("{context}: {message}"))
+    }
+
+    /// The binding called `name`, as a raw JavaScript value.
+    pub fn binding(env: &Env, name: &str) -> Result<JsValue> {
+        let value = Reflect::get(env.as_ref(), &name.into()).map_err(|e| error(name, e))?;
+        if value.is_undefined() {
+            return Err(Error::RustError(format!(
+                "binding {name} is not configured"
+            )));
+        }
+        Ok(value)
+    }
+
+    pub fn to_js<T: Serialize>(value: &T) -> Result<JsValue> {
+        JSON::parse(&serde_json::to_string(value)?).map_err(|e| error("to_js", e))
+    }
+
+    pub fn from_js<T: DeserializeOwned>(value: &JsValue) -> Result<T> {
+        if value.is_undefined() {
+            return Ok(serde_json::from_value(serde_json::Value::Null)?);
+        }
+        let text = JSON::stringify(value)
+            .map_err(|e| error("from_js", e))?
+            .as_string()
+            .unwrap_or_else(|| "null".to_owned());
+        Ok(serde_json::from_str(&text)?)
+    }
+
+    /// Calls `target.method(...args)` and awaits the result if it is a
+    /// promise.
+    pub async fn call(target: &JsValue, method: &str, args: &[JsValue]) -> Result<JsValue> {
+        let function: Function = Reflect::get(target, &method.into())
+            .map_err(|e| error(method, e))?
+            .dyn_into()
+            .map_err(|_| Error::RustError(format!("{method} is not a function")))?;
+        let arguments = worker::js_sys::Array::new();
+        for arg in args {
+            arguments.push(arg);
+        }
+        let returned = function
+            .apply(target, &arguments)
+            .map_err(|e| error(method, e))?;
+        match returned.dyn_into::<Promise>() {
+            Ok(promise) => JsFuture::from(promise).await.map_err(|e| error(method, e)),
+            Err(value) => Ok(value),
+        }
+    }
+}

@@ -18,6 +18,7 @@ import {
   type User,
   type Viewer,
   type WorkApi,
+  UNVERIFIED,
   fail,
   newId,
   ok,
@@ -96,6 +97,7 @@ export default class WorkService
     repoPath: RepoPath,
     input: OpenIntentInput,
   ): Promise<Result<Intent>> {
+    if (!actor.verified) return UNVERIFIED;
     const title = input.title.trim();
     const brief = input.brief.trim();
     if (!title) return fail("invalid", "An intent needs a title.");
@@ -210,6 +212,7 @@ export default class WorkService
     intentId: string,
     input: StartAttemptInput,
   ): Promise<Result<Attempt>> {
+    if (!actor.verified) return UNVERIFIED;
     const intent = await this.intentById(intentId);
     if (!intent) return NO_INTENT;
     if (intent.status !== "open") {

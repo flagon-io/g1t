@@ -19,6 +19,10 @@ use serde::{Deserialize, Serialize};
 pub struct User {
     pub id: String,
     pub username: String,
+    /// Whether the account's email address has been confirmed. Unverified
+    /// accounts can sign in but cannot create or change anything.
+    #[serde(default)]
+    pub verified: bool,
 }
 
 /// Who is asking. Every read and write in every service takes one.

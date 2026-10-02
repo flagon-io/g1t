@@ -12,6 +12,8 @@ import {
   useRouteLoaderData,
 } from "react-router";
 
+import type { User } from "@g1t/contracts";
+
 import type { Route } from "./+types/root";
 import "./app.css";
 import { Logo } from "./components/logo";
@@ -53,7 +55,7 @@ function HeaderLink({ to, children }: { to: string; children: React.ReactNode })
   );
 }
 
-function Header({ user }: { user: { username: string } | null | undefined }) {
+function Header({ user }: { user: User | null | undefined }) {
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4">
@@ -179,6 +181,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body className="flex min-h-screen flex-col">
         <Header user={user} />
+        {user && !user.verified && (
+          <Form
+            method="post"
+            action="/verify"
+            className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-warn/30 bg-warn/10 px-4 py-2 text-sm"
+          >
+            <span>
+              Confirm your email address to create repositories and push. We
+              sent you a link.
+            </span>
+            <button type="submit" className="font-medium underline underline-offset-4">
+              Send it again
+            </button>
+          </Form>
+        )}
         <div className="grow">{children}</div>
         <Footer />
         <ScrollRestoration />

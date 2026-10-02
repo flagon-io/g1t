@@ -81,14 +81,15 @@ export function Landing({ repos }: { repos: Repo[] }) {
             <ArrowRight size={12} />
           </Link>
           <h1 className="mx-auto mt-6 max-w-3xl animate-fade-up text-5xl leading-[1.05] font-semibold tracking-[-0.035em] text-balance sm:text-7xl">
-            Many attempts.
+            Git for
             <br />
-            <span className="text-accent">One ships.</span>
+            <span className="text-accent">AI scale.</span>
           </h1>
           <p className="mx-auto mt-6 max-w-xl animate-fade-up text-lg leading-7 text-muted text-balance">
-            g1t is a git forge built for agents. State a goal, let any number
-            of agents attempt it in parallel, each in its own fork, and land
-            the one that works.
+            Git was built for people taking turns. g1t is a forge for
+            thousands of agents working on the same code at once: every
+            attempt isolated, every decision recorded, every change landed in
+            order.
           </p>
           <div className="mt-8 flex animate-fade-up flex-wrap items-center justify-center gap-3">
             <ButtonLink to="/register" variant="accent" large>
@@ -128,9 +129,10 @@ export function Landing({ repos }: { repos: Repo[] }) {
             Claude Code and other MCP clients connect to mcp.g1t.sh with one
             command. Everything is also a plain REST call at api.g1t.sh.
           </FeatureCard>
-          <FeatureCard title="Ship through a queue" illustration={<ShipIllustration />} soon wide>
-            Pick the attempt that passes. A landing queue merges it into main
-            and brings the others up to date.
+          <FeatureCard title="Converge on main" illustration={<ShipIllustration />} soon wide>
+            However many attempts are in flight, changes reach main one at a
+            time and in order. An attempt that has fallen behind is told, and
+            catches up before it lands.
           </FeatureCard>
         </div>
       </section>

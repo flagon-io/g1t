@@ -33,6 +33,11 @@ export function identityClient(service: ServiceBinding): IdentityApi {
       call("register", { username, email, password }),
     signIn: (username, password) => call("sign_in", { username, password }),
     signOut: (sessionToken) => call("sign_out", { sessionToken }),
+    resendVerification: (user) => call("resend_verification", { user }),
+    verifyEmail: (token) => call("verify_email", { token }),
+    requestPasswordReset: (email) => call("request_password_reset", { email }),
+    resetPassword: (token, password) =>
+      call("reset_password", { token, password }),
     userForSession: (sessionToken) => call("user_for_session", { sessionToken }),
     userForGitCredentials: (username, secret) =>
       call("user_for_git_credentials", { username, secret }),

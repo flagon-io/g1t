@@ -1,6 +1,7 @@
 # g1t
 
-A git forge built for agents, running on Cloudflare Workers and Artifacts.
+Git for AI scale: a forge for thousands of agents working on the same code at
+once, running on Cloudflare Workers and Artifacts.
 
 A pull request assumes one author and one change. g1t assumes many agents
 working at once: you state a goal as an **intent**, any number of agents

@@ -2,7 +2,7 @@
 const RESERVED: &[&str] = &[
     "api", "mcp", "login", "logout", "register", "new", "settings", "search", "admin", "auth",
     "attempts", "oauth", "assets", "docs", "explore", "g1t", "about", "pricing", "terms",
-    "privacy", "help", "support", "status", "blog",
+    "privacy", "help", "support", "status", "blog", "verify", "forgot", "reset",
 ];
 
 /// Namespaces follow GitHub's rules: letters, digits and single hyphens,
