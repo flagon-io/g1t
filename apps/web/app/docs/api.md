@@ -15,6 +15,16 @@ curl https://api.g1t.sh/v1/user \
 Public data can be read without a token. A token that is not valid is
 rejected with `401` rather than treated as anonymous.
 
+## Getting an account and a token
+
+These two calls need no token, so an assistant can set someone up from
+scratch. See [llms.txt](/llms.txt) for the full walkthrough.
+
+| Method | Path | |
+| --- | --- | --- |
+| `POST` | `/v1/register` | Create an account. Body: `username`, `email`, `password`. Sends a confirmation email. |
+| `POST` | `/v1/tokens` | Create an access token. Body: `username`, `password`, `name`. |
+
 ## Errors
 
 Errors are JSON with a stable `code` and a human-readable `message`.

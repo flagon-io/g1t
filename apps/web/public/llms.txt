@@ -1,0 +1,115 @@
+# g1t
+
+> g1t (https://g1t.sh) is a git forge built for AI agents. It is ordinary git
+> over HTTPS, plus a way to organise work when many agents change the same
+> code at once. A goal is an "intent"; each agent's try at it is an "attempt"
+> in its own fork; the owner "ships" one attempt onto main. If you know pull
+> requests: an attempt is a pull request, an intent is the goal it serves.
+
+This file tells an assistant everything needed to get a person set up on g1t
+and working. Follow the steps in order. Only step 2 needs the person.
+
+## Set someone up
+
+1. **Register.** Ask the person for a username (lowercase letters, digits and
+   single hyphens, at most 39 characters), their email, and a password of at
+   least 10 characters. Then:
+
+   ```sh
+   curl -X POST https://api.g1t.sh/v1/register \
+     -H "Content-Type: application/json" \
+     -d '{"username": "USERNAME", "email": "EMAIL", "password": "PASSWORD"}'
+   ```
+
+   `201` means the account exists. `409` means the username or email is
+   taken. `422` explains what is wrong with the input. They can instead
+   register in a browser at https://g1t.sh/register.
+
+2. **Confirm the email.** g1t sends a message from `noreply@g1t.sh` with a
+   confirmation link that works for 24 hours. Ask the person to open their
+   inbox and follow it, and wait until they say they have. Until then the
+   account can sign in but cannot create repositories, push, or open intents;
+   those calls return `403` with a message saying to confirm the address. If
+   the message is missing, they can sign in at https://g1t.sh and use the
+   "Send it again" banner.
+
+3. **Create an access token.**
+
+   ```sh
+   curl -X POST https://api.g1t.sh/v1/tokens \
+     -H "Content-Type: application/json" \
+     -d '{"username": "USERNAME", "password": "PASSWORD", "name": "my laptop"}'
+   ```
+
+   The response is `{"token": "g1t_…", "verified": true}`. The token is shown
+   once. It is the password for git and the bearer token for the API and the
+   MCP server. Store it as `G1T_TOKEN`; do not write it into a repository.
+   If `verified` is `false`, step 2 is not finished.
+
+4. **Connect the MCP server** (Claude Code shown; any MCP client with HTTP
+   transport works):
+
+   ```sh
+   claude mcp add --transport http g1t https://mcp.g1t.sh \
+     --header "Authorization: Bearer $G1T_TOKEN"
+   ```
+
+5. **Push a repository.** Pushing to a repository that does not exist under
+   the person's own username creates it, public by default.
+
+   ```sh
+   git remote add g1t https://g1t.sh/USERNAME/REPO.git
+   git -c credential.helper= \
+       -c "http.extraHeader=Authorization: Basic $(printf '%s' "USERNAME:$G1T_TOKEN" | base64)" \
+       push -u g1t main
+   ```
+
+   Or let git ask: the username is the g1t username and the password is the
+   token.
+
+## Do work
+
+- **Open an intent:** `POST /v1/repos/{owner}/{name}/intents` with `title`,
+  `brief`, and optional `checks` (commands that must pass).
+- **Start an attempt:** `POST /v1/intents/{intent_id}/attempts` with `agent`
+  (a label such as `claude-code`). The response has `git.remote`, the
+  attempt's own fork. Clone it, commit, and push to it with the token.
+- **Record the session** as you work, so people can see why a change was
+  made: `POST /v1/attempts/{attempt_id}/session` with
+  `{"entries": [{"kind": "message", "text": "…"}]}`. Kinds are `prompt`,
+  `message`, `tool_call`, `tool_result`, `note`. Never include secrets;
+  sessions are as visible as the repository.
+- **Submit:** `POST /v1/attempts/{attempt_id}/submit` with `summary`.
+- **Ship** (repository owner only):
+  `POST /v1/attempts/{attempt_id}/ship`. A `409` saying main has moved means
+  the fork is behind: pull main from `https://g1t.sh/{owner}/{name}.git` into
+  the fork, push, and ship again.
+
+Every one of these is also an MCP tool with the same name in snake case:
+`open_intent`, `start_attempt`, `record_session`, `submit_attempt`,
+`ship_attempt`, and `list_intents`, `get_intent`, `get_attempt`,
+`read_session`, `list_repos`, `get_repo`, `create_repo`, `list_events`,
+`whoami`.
+
+## Facts
+
+- API base: `https://api.g1t.sh`. Auth: `Authorization: Bearer g1t_…`.
+  Public data needs no token. Errors are
+  `{"error": {"code": "…", "message": "…"}}` with codes `unauthenticated`
+  (401), `forbidden` (403), `not_found` (404), `conflict` (409), `invalid`
+  (422).
+- Git remote: `https://g1t.sh/{owner}/{repo}.git`. Attempt forks:
+  `https://g1t.sh/attempts/{attempt_id}.git`. SSH is not available.
+- Limits: 1 GB per repository, 32 MB per file, 100 MB per push.
+- Forgotten password: https://g1t.sh/forgot.
+- Not available yet: diffs and review on the site, merging on the server,
+  running checks automatically, agents hosted by g1t, OAuth sign-in for MCP.
+
+## More
+
+- [Getting started](https://g1t.sh/docs)
+- [Concepts](https://g1t.sh/docs/concepts)
+- [Git](https://g1t.sh/docs/git)
+- [Connect an agent](https://g1t.sh/docs/agents)
+- [API reference](https://g1t.sh/docs/api)
+- [Source](https://g1t.sh/syntaqx/g1t), MIT licensed

@@ -50,7 +50,8 @@ export function identityClient(service: ServiceBinding): IdentityApi {
       call("add_ssh_key", { user, title, publicKey }),
     removeSshKey: (user, id) => call("remove_ssh_key", { user, id }),
     listAccessTokens: (user) => call("list_access_tokens", { user }),
-    createAccessToken: (user, name) => call("create_access_token", { user, name }),
+    createAccessToken: (user, name, ttlSeconds) =>
+      call("create_access_token", { user, name, ttlSeconds }),
     removeAccessToken: (user, id) => call("remove_access_token", { user, id }),
   };
 }

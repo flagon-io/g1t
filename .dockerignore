@@ -1,0 +1,11 @@
+# Image builds use the repository root as their context.
+.git
+.credentials
+**/node_modules
+**/target
+**/build
+**/.wrangler
+**/.dev.vars*
+apps
+packages
+docs

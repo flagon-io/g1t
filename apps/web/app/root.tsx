@@ -1,4 +1,13 @@
-import { Plus, Search } from "lucide-react";
+import {
+  BookOpen,
+  ChevronDown,
+  LayoutDashboard,
+  LogOut,
+  Plus,
+  Search,
+  Settings,
+  UserRound,
+} from "lucide-react";
 import {
   Form,
   isRouteErrorResponse,
@@ -18,6 +27,14 @@ import type { Route } from "./+types/root";
 import "./app.css";
 import { Logo } from "./components/logo";
 import { Avatar, ButtonLink } from "./components/ui";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./components/ui/dropdown-menu";
 import { getViewer, viewerMiddleware } from "./lib/session.server";
 
 export const links: Route.LinksFunction = () => [
@@ -88,22 +105,63 @@ function Header({ user }: { user: User | null | undefined }) {
               >
                 <Plus size={16} />
               </Link>
-              <Link
-                to={`/${user.username}`}
-                className="flex items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-raised"
-              >
-                <Avatar name={user.username} size={22} />
-                <span className="hidden font-mono sm:inline">{user.username}</span>
-              </Link>
-              <HeaderLink to="/settings">Settings</HeaderLink>
-              <Form method="post" action="/logout">
-                <button
-                  type="submit"
-                  className="rounded-md px-2.5 py-1.5 text-sm text-muted hover:bg-raised hover:text-fg"
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  aria-label="Account menu"
+                  className="flex items-center gap-1.5 rounded-md p-1 outline-none transition-colors hover:bg-raised data-[state=open]:bg-raised"
                 >
-                  Sign out
-                </button>
-              </Form>
+                  <Avatar name={user.username} size={24} />
+                  <ChevronDown size={14} className="text-faint" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>
+                    Signed in as{" "}
+                    <span className="font-mono font-medium text-fg">
+                      {user.username}
+                    </span>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link to={`/${user.username}`}>
+                      <UserRound />
+                      Your profile
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/">
+                      <LayoutDashboard />
+                      Mission control
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/new">
+                      <Plus />
+                      New repository
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link to="/settings">
+                      <Settings />
+                      Settings
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/docs">
+                      <BookOpen />
+                      Documentation
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <button type="submit" form="sign-out" className="w-full">
+                      <LogOut />
+                      Sign out
+                    </button>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Form method="post" action="/logout" id="sign-out" hidden />
             </>
           ) : (
             <>

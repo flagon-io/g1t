@@ -6,6 +6,10 @@ agents can attempt in parallel.
 
 This page takes you from nothing to an agent working on your repository.
 
+Prefer to have an assistant do it? Give it [g1t.sh/llms.txt](/llms.txt) and
+ask it to set you up. It can do everything except open the confirmation
+email.
+
 ## 1. Create an account
 
 [Sign up](/register) with a username, email and password. Your username is

@@ -381,7 +381,8 @@ impl Identity {
         self.find_user(
             "SELECT users.id, users.username, users.email_verified_at IS NOT NULL AS verified FROM access_tokens
              JOIN users ON users.id = access_tokens.user_id
-             WHERE token_hash = ?",
+             WHERE token_hash = ?
+               AND (access_tokens.expires_at IS NULL OR access_tokens.expires_at > unixepoch())",
             &crypto::sha256_hex(token),
         )
         .await
@@ -477,7 +478,11 @@ impl Identity {
     async fn list_access_tokens(&self, a: UserArgs) -> Result<Vec<AccessToken>> {
         let rows = self
             .db
-            .prepare("SELECT id, name, created_at FROM access_tokens WHERE user_id = ? ORDER BY id")
+            // Expiring tokens belong to hosted attempts, not to the user's list.
+            .prepare(
+                "SELECT id, name, created_at FROM access_tokens
+                 WHERE user_id = ? AND expires_at IS NULL ORDER BY id",
+            )
             .bind(&[a.user.id.into()])?
             .all()
             .await?
@@ -499,8 +504,8 @@ impl Identity {
         };
         self.db
             .prepare(
-                "INSERT INTO access_tokens (id, user_id, name, token_hash, created_at)
-                 VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO access_tokens (id, user_id, name, token_hash, created_at, expires_at)
+                 VALUES (?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 row.id.as_str().into(),
@@ -508,6 +513,8 @@ impl Identity {
                 row.name.as_str().into(),
                 crypto::sha256_hex(&token).into(),
                 (row.created_at as f64).into(),
+                a.ttl_seconds
+                    .map_or(JsValue::NULL, |ttl| ((row.created_at + ttl) as f64).into()),
             ])?
             .run()
             .await?;

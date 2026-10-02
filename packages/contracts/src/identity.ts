@@ -55,6 +55,10 @@ export interface IdentityApi {
 
   listAccessTokens(user: User): Promise<AccessToken[]>;
   /** The plaintext token is returned once and never stored. */
-  createAccessToken(user: User, name: string): Promise<{ token: string; info: AccessToken }>;
+  /**
+   * With `ttlSeconds` the token expires and is left out of the user's list;
+   * that form is used for hosted attempts.
+   */
+  createAccessToken(user: User, name: string, ttlSeconds?: number): Promise<{ token: string; info: AccessToken }>;
   removeAccessToken(user: User, id: string): Promise<void>;
 }

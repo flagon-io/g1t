@@ -97,9 +97,14 @@ pub struct RemoveArgs {
 
 /// `create_access_token`.
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateAccessTokenArgs {
     pub user: User,
     pub name: String,
+    /// When set, the token stops working after this many seconds and is
+    /// left out of the user's token list. Used for hosted attempts.
+    #[serde(default)]
+    pub ttl_seconds: Option<u64>,
 }
 
 /// The plaintext token is returned once and never stored.

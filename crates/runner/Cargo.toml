@@ -1,0 +1,13 @@
+[package]
+name = "g1t-runner"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Runs a coding agent on one attempt inside a sandbox and reports back to g1t."
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+serde = { workspace = true }
+serde_json = { workspace = true }
+ureq = { version = "2", features = ["json"] }
