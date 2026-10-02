@@ -1,6 +1,13 @@
 import { env } from "cloudflare:workers";
-import { Bot, GitCommitHorizontal, Terminal } from "lucide-react";
-import { Form, Link, redirect } from "react-router";
+import { Bot, GitCommitHorizontal, Play, Sparkles, Terminal } from "lucide-react";
+import { useEffect } from "react";
+import {
+  Form,
+  Link,
+  redirect,
+  useNavigation,
+  useRevalidator,
+} from "react-router";
 
 import type { Route } from "./+types/intent";
 import { Markdown } from "../../components/markdown";
@@ -12,6 +19,7 @@ import {
   ErrorText,
   Input,
   Status,
+  Textarea,
   TimeAgo,
 } from "../../components/ui";
 import {
@@ -20,6 +28,8 @@ import {
   requireUser,
   unwrap,
 } from "../../lib/session.server";
+
+const REFRESH_MS = 4000;
 
 export function meta({ loaderData, params }: Route.MetaArgs) {
   const title = loaderData ? `${loaderData.intent.title} · ` : "";
@@ -35,7 +45,11 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       viewer,
     ),
   );
-  return { ...detail, viewer };
+  return {
+    ...detail,
+    viewer,
+    canRunHosted: await env.RUNNER.available(viewer),
+  };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -44,6 +58,13 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const form = await request.formData();
   const intentId = String(form.get("intentId") ?? "");
 
+  if (form.get("action") === "run-hosted") {
+    const result = await env.RUNNER.run(user, intentId, {
+      count: Number(form.get("count")),
+      instructions: String(form.get("instructions") ?? ""),
+    });
+    return result.ok ? null : { error: result.error.message };
+  }
   if (form.get("action") === "withdraw") {
     const result = await env.WORK.withdrawIntent(user, intentId);
     return result.ok ? null : { error: result.error.message };
@@ -63,7 +84,20 @@ export default function IntentPage({
   actionData,
   params,
 }: Route.ComponentProps) {
-  const { intent, attempts, viewer } = loaderData;
+  const { intent, attempts, viewer, canRunHosted } = loaderData;
+
+  // Follow running attempts without a manual reload.
+  const revalidator = useRevalidator();
+  const navigation = useNavigation();
+  const running = attempts.some((attempt) => attempt.status === "working");
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") revalidator.revalidate();
+    }, REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [running, revalidator]);
+  const starting = navigation.formData?.get("action") === "run-hosted";
   const base = `/${params.owner}/${params.repo}`;
   const open = intent.status === "open";
   return (
@@ -129,6 +163,11 @@ export default function IntentPage({
                         <Bot size={15} className="text-faint" />
                         {attempt.agent}
                       </span>
+                      {attempt.runtime === "hosted" && (
+                        <span className="rounded-full border border-line px-1.5 py-px text-[0.6875rem] text-faint">
+                          hosted
+                        </span>
+                      )}
                       <span className="text-sm text-faint">
                         attempt {attempt.number}
                       </span>
@@ -172,9 +211,51 @@ export default function IntentPage({
           </section>
         )}
 
+        {open && canRunHosted && (
+          <section className="rounded-xl border border-accent/30 bg-accent/5 p-4">
+            <h3 className="flex items-center gap-2 text-sm font-medium">
+              <Sparkles size={15} className="text-accent" />
+              Run hosted agents
+            </h3>
+            <p className="mt-1 text-xs text-muted">
+              g1t starts Claude Code in a sandbox for each attempt. They work
+              in parallel, each in its own fork.
+            </p>
+            <Form method="post" className="mt-3 space-y-2">
+              <input type="hidden" name="intentId" value={intent.id} />
+              <input type="hidden" name="action" value="run-hosted" />
+              <label className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted">Agents</span>
+                <select
+                  name="count"
+                  defaultValue="1"
+                  className="rounded-md border border-line bg-bg px-2 py-1 text-sm"
+                >
+                  {[1, 2, 3, 4, 5].map((count) => (
+                    <option key={count} value={count}>
+                      {count}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Textarea
+                name="instructions"
+                rows={2}
+                placeholder="Extra guidance (optional)"
+              />
+              <div className="*:w-full">
+                <Button variant="accent" type="submit" disabled={starting}>
+                  <Play size={14} />
+                  {starting ? "Starting sandboxes…" : "Run"}
+                </Button>
+              </div>
+            </Form>
+          </section>
+        )}
+
         {open && (
           <section className="rounded-xl border border-line bg-surface p-4">
-            <h3 className="text-sm font-medium">Put an agent on it</h3>
+            <h3 className="text-sm font-medium">Bring your own agent</h3>
             <p className="mt-1 text-xs text-muted">
               With g1t connected to your agent, give it this intent id.
             </p>

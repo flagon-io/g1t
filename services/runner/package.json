@@ -1,0 +1,15 @@
+{
+  "name": "@g1t/runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "typecheck": "wrangler types --include-env=false && tsc -p tsconfig.json",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.7",
+    "@g1t/contracts": "*"
+  }
+}

@@ -1,0 +1,31 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-runner",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	"main": "./src/index.ts",
+	"workers_dev": false,
+	"containers": [
+		{
+			"class_name": "AttemptSandbox",
+			// Built from the repository root so the image can compile the
+			// runner crate.
+			"image": "./Dockerfile",
+			"image_build_context": "../..",
+			"instance_type": "standard-1",
+			"max_instances": 10
+		}
+	],
+	"durable_objects": {
+		"bindings": [{ "name": "SANDBOX", "class_name": "AttemptSandbox" }]
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["AttemptSandbox"] }],
+	"services": [
+		{ "binding": "IDENTITY", "service": "g1t-identity" },
+		{ "binding": "WORK", "service": "g1t-work" }
+	],
+	"vars": {
+		"HOSTED_AGENT_USERS": "syntaqx"
+	},
+	"observability": { "enabled": true }
+}

@@ -1,4 +1,4 @@
-import type { EventsApi, ServiceBinding, WorkApi } from "@g1t/contracts";
+import type { EventsApi, RunnerApi, ServiceBinding, WorkApi } from "@g1t/contracts";
 
 declare global {
   namespace Cloudflare {
@@ -8,6 +8,7 @@ declare global {
       REPOS: ServiceBinding & { fetch(request: Request): Promise<Response> };
       WORK: WorkApi;
       EVENTS: EventsApi;
+      RUNNER: RunnerApi;
     }
   }
   interface Env extends Cloudflare.Env {}

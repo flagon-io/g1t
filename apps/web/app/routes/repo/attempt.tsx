@@ -14,6 +14,7 @@ import { Form, Link, useRevalidator } from "react-router";
 import type { SessionEntry } from "@g1t/contracts";
 
 import type { Route } from "./+types/attempt";
+import { Markdown } from "../../components/markdown";
 import {
   Button,
   CopyLine,
@@ -129,13 +130,19 @@ function Entry({ entry, agent }: { entry: SessionEntry; agent: string }) {
                 ? "Note"
                 : agent}
           </p>
-          <p
-            className={`mt-1 text-[0.9375rem] leading-relaxed wrap-break-word whitespace-pre-wrap ${
-              entry.kind === "prompt" ? "font-medium" : ""
-            }`}
-          >
-            {entry.text}
-          </p>
+          {entry.kind === "message" ? (
+            <div className="mt-1">
+              <Markdown source={entry.text} />
+            </div>
+          ) : (
+            <p
+              className={`mt-1 text-[0.9375rem] leading-relaxed wrap-break-word whitespace-pre-wrap ${
+                entry.kind === "prompt" ? "font-medium" : ""
+              }`}
+            >
+              {entry.text}
+            </p>
+          )}
         </div>
       )}
       {entry.commit && (
@@ -202,9 +209,9 @@ export default function AttemptPage({
             <h3 className="text-xs font-medium tracking-wide text-faint uppercase">
               Summary
             </h3>
-            <p className="mt-2 leading-relaxed whitespace-pre-wrap">
-              {attempt.summary}
-            </p>
+            <div className="mt-2">
+              <Markdown source={attempt.summary} />
+            </div>
           </section>
         )}
 

@@ -3,6 +3,7 @@ import { Link } from "react-router";
 
 import type { BlobView as Blob, Commit, TreeView as Tree } from "@g1t/contracts";
 
+import { CloneBox } from "./clone-box";
 import { Markdown } from "./markdown";
 import { Avatar, CopyLine, TimeAgo } from "./ui";
 
@@ -142,7 +143,7 @@ export function TreeView({ tree }: { tree: Tree }) {
           <section>
             <h2 className="text-sm font-medium">Clone</h2>
             <div className="mt-2">
-              <CopyLine text={`git clone ${cloneUrl}`} />
+              <CloneBox path={`${repo.namespace}/${repo.name}`} />
             </div>
           </section>
           <section>
