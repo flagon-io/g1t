@@ -13,6 +13,7 @@ mod store;
 
 use g1t_contracts::events::{GitPush, NewEvent, RepoCreated, RepoForked};
 use g1t_contracts::repos::*;
+use g1t_contracts::time::rfc3339;
 use g1t_contracts::{
     FailureCode, Outcome, User, Viewer, is_valid_namespace, is_valid_repo_name, new_id,
 };
@@ -194,7 +195,7 @@ impl<S: GitStore> Repos<S> {
             owner_id: a.owner.id.clone(),
             default_branch: "main".to_owned(),
             fork_of: None,
-            created_at: now,
+            created_at: rfc3339(now),
         };
         self.store
             .create(
@@ -343,7 +344,7 @@ impl<S: GitStore> Repos<S> {
             owner_id: a.actor.id.clone(),
             default_branch: source.default_branch.clone(),
             fork_of: Some(source.id.clone()),
-            created_at: now,
+            created_at: rfc3339(now),
         };
         self.store
             .open(&store_key(&source))

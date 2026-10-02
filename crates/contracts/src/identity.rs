@@ -13,8 +13,8 @@ pub struct SshKey {
     pub id: String,
     pub title: String,
     pub fingerprint: String,
-    /// Milliseconds since the epoch.
-    pub created_at: u64,
+    /// RFC 3339.
+    pub created_at: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -22,7 +22,8 @@ pub struct SshKey {
 pub struct AccessToken {
     pub id: String,
     pub name: String,
-    pub created_at: u64,
+    /// RFC 3339.
+    pub created_at: String,
 }
 
 /// `sign_in`: verifies a username and password for website sign-in.

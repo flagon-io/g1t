@@ -20,8 +20,8 @@ pub struct Repo {
     pub default_branch: String,
     /// Set when this repo is an attempt's working copy of another repo.
     pub fork_of: Option<String>,
-    /// Milliseconds since the epoch.
-    pub created_at: u64,
+    /// RFC 3339.
+    pub created_at: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -44,8 +44,8 @@ pub struct Commit {
     pub message: String,
     pub author: Signature,
     pub parents: Vec<String>,
-    /// Milliseconds since the epoch.
-    pub authored_at: u64,
+    /// RFC 3339.
+    pub authored_at: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

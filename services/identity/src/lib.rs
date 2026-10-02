@@ -8,15 +8,16 @@ mod device;
 mod email;
 
 use g1t_contracts::identity::*;
+use g1t_contracts::time::{SQL_NOW, rfc3339, sql_after};
 use g1t_contracts::{FailureCode, Outcome, User, Viewer, is_valid_namespace, new_id};
 use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::Deserialize;
 use worker::wasm_bindgen::JsValue;
 use worker::{Context, D1Database, Env, Request, Response, Result, event};
 
-const SESSION_TTL_SECONDS: u32 = 30 * 24 * 60 * 60;
-const VERIFY_TTL_SECONDS: u32 = 24 * 60 * 60;
-const RESET_TTL_SECONDS: u32 = 60 * 60;
+const SESSION_TTL_SECONDS: u64 = 30 * 24 * 60 * 60;
+const VERIFY_TTL_SECONDS: u64 = 24 * 60 * 60;
+const RESET_TTL_SECONDS: u64 = 60 * 60;
 const TOKEN_PREFIX: &str = "g1t_";
 const MIN_PASSWORD_LENGTH: usize = 10;
 const PASSWORD_TOO_SHORT: &str = "Use a password of at least 10 characters.";
@@ -60,7 +61,7 @@ struct KeyRow {
     id: String,
     title: String,
     fingerprint: String,
-    created_at: u64,
+    created_at: String,
 }
 
 impl From<KeyRow> for SshKey {
@@ -69,7 +70,7 @@ impl From<KeyRow> for SshKey {
             id: row.id,
             title: row.title,
             fingerprint: row.fingerprint,
-            created_at: row.created_at * 1000,
+            created_at: row.created_at,
         }
     }
 }
@@ -78,7 +79,7 @@ impl From<KeyRow> for SshKey {
 struct TokenRow {
     id: String,
     name: String,
-    created_at: u64,
+    created_at: String,
 }
 
 impl From<TokenRow> for AccessToken {
@@ -86,7 +87,7 @@ impl From<TokenRow> for AccessToken {
         AccessToken {
             id: row.id,
             name: row.name,
-            created_at: row.created_at * 1000,
+            created_at: row.created_at,
         }
     }
 }
@@ -109,18 +110,18 @@ impl Identity {
     }
 
     /// Stores a one-time token of `kind` for the user and returns it.
-    async fn issue_email_token(&self, user_id: &str, kind: &str, ttl: u32) -> Result<String> {
+    async fn issue_email_token(&self, user_id: &str, kind: &str, ttl: u64) -> Result<String> {
         let token = crypto::random_hex(32);
         self.db
-            .prepare(
+            .prepare(format!(
                 "INSERT INTO email_tokens (id, user_id, kind, expires_at)
-                 VALUES (?, ?, ?, unixepoch() + ?)",
-            )
+                 VALUES (?, ?, ?, {})",
+                sql_after(ttl)
+            ))
             .bind(&[
                 crypto::sha256_hex(&token).into(),
                 user_id.into(),
                 kind.into(),
-                ttl.into(),
             ])?
             .run()
             .await?;
@@ -132,12 +133,12 @@ impl Identity {
         let id = crypto::sha256_hex(token);
         let owner = self
             .db
-            .prepare(
+            .prepare(format!(
                 "SELECT users.id, users.username, users.email FROM email_tokens
                  JOIN users ON users.id = email_tokens.user_id
                  WHERE email_tokens.id = ? AND email_tokens.kind = ?
-                   AND email_tokens.expires_at > unixepoch()",
-            )
+                   AND email_tokens.expires_at > {SQL_NOW}"
+            ))
             .bind(&[id.as_str().into(), kind.into()])?
             .first::<TokenOwner>(None)
             .await?;
@@ -189,7 +190,9 @@ impl Identity {
             ));
         };
         self.db
-            .prepare("UPDATE users SET email_verified_at = unixepoch() WHERE id = ?")
+            .prepare(format!(
+                "UPDATE users SET email_verified_at = {SQL_NOW} WHERE id = ?"
+            ))
             .bind(&[owner.id.as_str().into()])?
             .run()
             .await?;
@@ -234,11 +237,11 @@ impl Identity {
         };
         // Following an emailed link also proves the address.
         self.db
-            .prepare(
+            .prepare(format!(
                 "UPDATE users SET password_hash = ?,
-                   email_verified_at = COALESCE(email_verified_at, unixepoch())
-                 WHERE id = ?",
-            )
+                   email_verified_at = COALESCE(email_verified_at, {SQL_NOW})
+                 WHERE id = ?"
+            ))
             .bind(&[
                 crypto::hash_password(&a.password).into(),
                 owner.id.as_str().into(),
@@ -340,13 +343,13 @@ impl Identity {
     async fn start_session(&self, user: User) -> Result<Outcome<SignedIn>> {
         let session_token = crypto::random_hex(32);
         self.db
-            .prepare(
-                "INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, unixepoch() + ?)",
-            )
+            .prepare(format!(
+                "INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, {})",
+                sql_after(SESSION_TTL_SECONDS)
+            ))
             .bind(&[
                 crypto::sha256_hex(&session_token).into(),
                 user.id.as_str().into(),
-                SESSION_TTL_SECONDS.into(),
             ])?
             .run()
             .await?;
@@ -367,9 +370,11 @@ impl Identity {
 
     async fn user_for_session(&self, a: SessionArgs) -> Result<Viewer> {
         self.find_user(
-            "SELECT users.id, users.username, users.email_verified_at IS NOT NULL AS verified FROM sessions
-             JOIN users ON users.id = sessions.user_id
-             WHERE sessions.id = ? AND sessions.expires_at > unixepoch()",
+            &format!(
+                "SELECT users.id, users.username, users.email_verified_at IS NOT NULL AS verified
+                 FROM sessions JOIN users ON users.id = sessions.user_id
+                 WHERE sessions.id = ? AND sessions.expires_at > {SQL_NOW}"
+            ),
             &crypto::sha256_hex(&a.session_token),
         )
         .await
@@ -380,10 +385,12 @@ impl Identity {
             return Ok(None);
         }
         self.find_user(
-            "SELECT users.id, users.username, users.email_verified_at IS NOT NULL AS verified FROM access_tokens
-             JOIN users ON users.id = access_tokens.user_id
-             WHERE token_hash = ?
-               AND (access_tokens.expires_at IS NULL OR access_tokens.expires_at > unixepoch())",
+            &format!(
+                "SELECT users.id, users.username, users.email_verified_at IS NOT NULL AS verified
+                 FROM access_tokens JOIN users ON users.id = access_tokens.user_id
+                 WHERE token_hash = ?
+                   AND (access_tokens.expires_at IS NULL OR access_tokens.expires_at > {SQL_NOW})"
+            ),
             &crypto::sha256_hex(token),
         )
         .await
@@ -456,7 +463,7 @@ impl Identity {
             id: new_id("key", now),
             title,
             fingerprint: key.fingerprint,
-            created_at: now / 1000,
+            created_at: rfc3339(now),
         };
         self.db
             .prepare(
@@ -469,7 +476,7 @@ impl Identity {
                 row.title.as_str().into(),
                 key.public_key.into(),
                 row.fingerprint.as_str().into(),
-                (row.created_at as f64).into(),
+                row.created_at.as_str().into(),
             ])?
             .run()
             .await?;
@@ -501,7 +508,7 @@ impl Identity {
         let row = TokenRow {
             id: new_id("tok", now),
             name: name.to_owned(),
-            created_at: now / 1000,
+            created_at: rfc3339(now),
         };
         self.db
             .prepare(
@@ -513,9 +520,9 @@ impl Identity {
                 a.user.id.into(),
                 row.name.as_str().into(),
                 crypto::sha256_hex(&token).into(),
-                (row.created_at as f64).into(),
+                row.created_at.as_str().into(),
                 a.ttl_seconds
-                    .map_or(JsValue::NULL, |ttl| ((row.created_at + ttl) as f64).into()),
+                    .map_or(JsValue::NULL, |ttl| rfc3339(now + ttl * 1000).into()),
             ])?
             .run()
             .await?;

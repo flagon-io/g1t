@@ -7,18 +7,17 @@
 //! creation and passwords stay in the browser, where they can be protected.
 
 use g1t_contracts::identity::*;
+use g1t_contracts::time::{SQL_NOW, sql_after};
 use g1t_contracts::{FailureCode, Outcome, User};
 use serde::Deserialize;
 use worker::Result;
 
 use crate::{Identity, crypto};
 
-const EXPIRES_IN_SECONDS: u32 = 15 * 60;
+const EXPIRES_IN_SECONDS: u64 = 15 * 60;
 const POLL_INTERVAL_SECONDS: u32 = 5;
 /// No vowels, so a code never spells a word, and nothing easily confused.
 const USER_CODE_ALPHABET: &[u8] = b"BCDFGHJKLMNPQRSTVWXZ";
-/// SQLite's expression for the current time as RFC 3339 UTC text.
-const NOW: &str = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
 #[derive(Deserialize)]
 struct DeviceRow {
@@ -63,7 +62,8 @@ impl Identity {
         self.db
             .prepare(format!(
                 "INSERT INTO device_codes (id, user_code, client_name, expires_at)
-                 VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '+{EXPIRES_IN_SECONDS} seconds'))"
+                 VALUES (?, ?, ?, {})",
+                sql_after(EXPIRES_IN_SECONDS)
             ))
             .bind(&[
                 crypto::sha256_hex(&device_code).into(),
@@ -75,7 +75,7 @@ impl Identity {
         Ok(DeviceStart {
             device_code,
             user_code,
-            expires_in: EXPIRES_IN_SECONDS,
+            expires_in: EXPIRES_IN_SECONDS as u32,
             interval: POLL_INTERVAL_SECONDS,
         })
     }
@@ -85,7 +85,7 @@ impl Identity {
         self.db
             .prepare(format!(
                 "SELECT user_code, client_name, status, user_id FROM device_codes
-                 WHERE user_code = ? AND status = 'pending' AND expires_at > {NOW}"
+                 WHERE user_code = ? AND status = 'pending' AND expires_at > {SQL_NOW}"
             ))
             .bind(&[normalize(user_code).into()])?
             .first::<DeviceRow>(None)
@@ -127,7 +127,7 @@ impl Identity {
             .db
             .prepare(format!(
                 "SELECT user_code, client_name, status, user_id FROM device_codes
-                 WHERE id = ? AND expires_at > {NOW}"
+                 WHERE id = ? AND expires_at > {SQL_NOW}"
             ))
             .bind(&[id.as_str().into()])?
             .first::<DeviceRow>(None)

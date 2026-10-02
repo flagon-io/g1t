@@ -12,7 +12,8 @@ export type Repo = {
   defaultBranch: string;
   /** Set when this repo is an attempt's working copy of another repo. */
   forkOf: string | null;
-  createdAt: number;
+  /** RFC 3339. */
+  createdAt: string;
 };
 
 export type RepoPath = { namespace: string; name: string };
@@ -23,7 +24,8 @@ export type Commit = {
   message: string;
   author: { name: string; email: string };
   parents: string[];
-  authoredAt: number;
+  /** RFC 3339. */
+  authoredAt: string;
 };
 
 export type TreeEntry = {

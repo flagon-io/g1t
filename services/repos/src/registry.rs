@@ -16,7 +16,7 @@ struct RepoRow {
     owner_id: String,
     default_branch: String,
     fork_of: Option<String>,
-    created_at: u64,
+    created_at: String,
 }
 
 impl From<RepoRow> for Repo {
@@ -30,7 +30,7 @@ impl From<RepoRow> for Repo {
             owner_id: row.owner_id,
             default_branch: row.default_branch,
             fork_of: row.fork_of,
-            created_at: row.created_at * 1000,
+            created_at: row.created_at,
         }
     }
 }
@@ -139,7 +139,7 @@ impl Registry {
                 repo.owner_id.as_str().into(),
                 repo.default_branch.as_str().into(),
                 optional(&repo.fork_of),
-                ((repo.created_at / 1000) as f64).into(),
+                repo.created_at.as_str().into(),
             ])?
             .run()
             .await?;

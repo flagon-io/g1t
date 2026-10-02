@@ -17,10 +17,11 @@ export type SshKey = {
   id: string;
   title: string;
   fingerprint: string;
-  createdAt: number;
+  /** RFC 3339. */
+  createdAt: string;
 };
 
-export type AccessToken = { id: string; name: string; createdAt: number };
+export type AccessToken = { id: string; name: string; createdAt: string };
 
 export type DeviceStart = {
   /** Secret held by the tool and exchanged for a token once approved. */

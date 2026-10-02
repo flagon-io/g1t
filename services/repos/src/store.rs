@@ -4,6 +4,7 @@
 //! [`ArtifactsStore`] is the adapter for Cloudflare Artifacts.
 
 use g1t_contracts::repos::{Commit, EntryKind, GitAccess, Signature, TreeEntry};
+use g1t_contracts::time::rfc3339;
 use g1t_kit::js;
 use serde::Deserialize;
 use worker::js_sys::{Reflect, Uint8Array};
@@ -180,7 +181,7 @@ impl GitRepo for ArtifactsRepo {
                 message: commit.message,
                 author: commit.author,
                 parents: commit.parents,
-                authored_at: commit.authored_at * 1000,
+                authored_at: rfc3339(commit.authored_at * 1000),
             })
             .collect())
     }

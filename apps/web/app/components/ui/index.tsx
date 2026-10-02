@@ -167,8 +167,9 @@ const UNITS: [string, number][] = [
 ];
 
 /** Compact relative time such as "5m ago". */
-export function TimeAgo({ at }: { at: number }) {
-  const elapsed = Date.now() - at;
+export function TimeAgo({ at }: { at: string | number }) {
+  // Timestamps are RFC 3339 strings; a few older ones are still numbers.
+  const elapsed = Date.now() - new Date(at).getTime();
   const unit = UNITS.find(([, size]) => elapsed >= size);
   const label = unit ? `${Math.floor(elapsed / unit[1])}${unit[0]} ago` : "just now";
   return (
