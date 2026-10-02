@@ -18,6 +18,8 @@ import {
   workClient,
 } from "@g1t/contracts";
 
+import { type ConfiguredModel, modelEnv } from "./model-env";
+
 export interface RunnerEnv {
   SANDBOX: DurableObjectNamespace<AttemptSandbox>;
   IDENTITY: ServiceBinding;
@@ -81,26 +83,6 @@ export class AttemptSandbox extends Container<RunnerEnv> {
   }
 }
 
-type ConfiguredModel = AgentModel & { model: string };
-
-/** Where the sandbox sends model requests, and what it sends with them. */
-function modelEnv(env: RunnerEnv, model: ConfiguredModel): Record<string, string> {
-  const vars: Record<string, string> = {
-    ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY!,
-    ANTHROPIC_MODEL: model.model,
-    // Recorded at the top of the session, so anyone can see what ran.
-    AGENT_MODEL_NAME: `${model.modelName} (${model.label})`,
-  };
-  if (env.AI_GATEWAY_ID) {
-    vars.ANTHROPIC_BASE_URL = `https://gateway.ai.cloudflare.com/v1/${env.CLOUDFLARE_ACCOUNT_ID}/${env.AI_GATEWAY_ID}/anthropic`;
-    if (env.AI_GATEWAY_TOKEN) {
-      vars.AI_GATEWAY_TOKEN = env.AI_GATEWAY_TOKEN;
-      vars.ANTHROPIC_CUSTOM_HEADERS = `cf-aig-authorization: Bearer ${env.AI_GATEWAY_TOKEN}`;
-    }
-  }
-  return vars;
-}
-
 function buildPrompt(issue: Issue, instructions: string): string {
   const parts = [
     "You are a coding agent working in the git repository checked out in the current directory.",
@@ -114,7 +96,7 @@ function buildPrompt(issue: Issue, instructions: string): string {
   }
   if (instructions) parts.push(instructions);
   parts.push(
-    "Make the change and keep it focused on the issue. Commit your work with a clear message. Do not push; that is done for you. Finish with a short summary of what you changed and why.",
+    "Make the change and keep it focused on the issue. Commit your work with a clear message. Do not push; that is done for you. Finish with a short summary of what you changed and why. It becomes the description of your pull request, so write it for a reviewer and leave out whether anything was committed or pushed.",
   );
   return parts.filter(Boolean).join("\n\n");
 }

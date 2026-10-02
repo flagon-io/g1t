@@ -133,13 +133,36 @@ impl<S: GitStore> Repos<S> {
         .await
     }
 
-    /// Resolves a repo the viewer may read; private repos look missing.
-    async fn readable(&self, path: &RepoPath, viewer: &Viewer) -> Result<Option<Repo>> {
+    /// Whether the viewer may read `repo`. A pull request's fork of a
+    /// private repository can be read by everyone who can read that
+    /// repository, so its members can review and check out the change, as
+    /// well as by whoever opened the pull request.
+    async fn may_read(&self, repo: &Repo, viewer: &Viewer) -> Result<bool> {
+        if can_read(repo, viewer) {
+            return Ok(true);
+        }
+        let Some(source_id) = &repo.fork_of else {
+            return Ok(false);
+        };
         Ok(self
             .registry
-            .by_path(path)
+            .by_id(source_id)
             .await?
-            .filter(|repo| can_read(repo, viewer)))
+            .is_some_and(|source| can_read(&source, viewer)))
+    }
+
+    /// `repo`, if there is one and the viewer may read it.
+    async fn visible(&self, repo: Option<Repo>, viewer: &Viewer) -> Result<Option<Repo>> {
+        Ok(match repo {
+            Some(repo) if self.may_read(&repo, viewer).await? => Some(repo),
+            _ => None,
+        })
+    }
+
+    /// Resolves a repo the viewer may read; private repos look missing.
+    async fn readable(&self, path: &RepoPath, viewer: &Viewer) -> Result<Option<Repo>> {
+        self.visible(self.registry.by_path(path).await?, viewer)
+            .await
     }
 
     async fn get(&self, a: GetArgs) -> Result<Outcome<Repo>> {
@@ -151,10 +174,8 @@ impl<S: GitStore> Repos<S> {
 
     async fn get_by_id(&self, a: GetByIdArgs) -> Result<Outcome<Repo>> {
         Ok(self
-            .registry
-            .by_id(&a.id)
+            .visible(self.registry.by_id(&a.id).await?, &a.viewer)
             .await?
-            .filter(|repo| can_read(repo, &a.viewer))
             .map_or_else(not_found, Outcome::Ok))
     }
 
@@ -416,7 +437,7 @@ impl<S: GitStore> Repos<S> {
                 let allowed = if write {
                     can_write(&repo, &a.viewer)
                 } else {
-                    can_read(&repo, &a.viewer)
+                    self.may_read(&repo, &a.viewer).await?
                 };
                 if !allowed {
                     return Ok(denied());
@@ -556,10 +577,8 @@ impl<S: GitStore> Repos<S> {
 
     async fn compare(&self, a: CompareArgs) -> Result<Outcome<Comparison>> {
         let Some(repo) = self
-            .registry
-            .by_id(&a.repo_id)
+            .visible(self.registry.by_id(&a.repo_id).await?, &a.viewer)
             .await?
-            .filter(|repo| can_read(repo, &a.viewer))
         else {
             return Ok(not_found());
         };

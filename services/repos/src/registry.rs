@@ -40,11 +40,14 @@ pub fn store_key(repo: &Repo) -> String {
     format!("{}--{}", repo.namespace, repo.name)
 }
 
+/// Whether the viewer may read `repo`, going by the repository alone. A
+/// private pull request fork is also readable by whoever can read the
+/// repository it came from, which `Repos::may_read` checks.
 pub fn can_read(repo: &Repo, viewer: &Viewer) -> bool {
     !repo.is_private || can_write(repo, viewer)
 }
 
-/// A repository belongs to its workspace, so any member may write to it. An
+/// A repository belongs to its workspace, so any member may write to it. A
 /// pull request's fork belongs to whoever opened the pull request.
 pub fn can_write(repo: &Repo, viewer: &Viewer) -> bool {
     viewer.as_ref().is_some_and(|user| {
