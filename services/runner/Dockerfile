@@ -6,6 +6,8 @@
 FROM rust:1-slim-bookworm AS build
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
+# Cargo needs every workspace member present to resolve the workspace.
+COPY apps/api apps/api
 COPY crates crates
 COPY services services
 RUN cargo build --release --package g1t-runner
