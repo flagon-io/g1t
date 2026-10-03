@@ -1,11 +1,12 @@
 import { ArrowRight, Hand, Plus } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
-import { Link, data, useRevalidator } from "react-router";
+import { Link, data, useRevalidator, useRouteLoaderData } from "react-router";
 
 import type { Lifecycle, Pull, Repo } from "@g1t/contracts";
 
 import type { Route } from "./+types/home";
 import { Landing } from "../components/landing";
+import type { ShellData } from "../components/shell";
 import { STAGE_LABEL, StageDots } from "../components/lifecycle";
 import { RepoList } from "../components/repo-list";
 import {
@@ -137,6 +138,56 @@ function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
+type Step = { done: boolean; title: string; about: string; to: string | null; action: string };
+
+/**
+ * The first things to do, ticked off as they are done, until an outcome has
+ * been handed to agents. Shown above everything else on mission control.
+ */
+function GetStarted({ steps }: { steps: Step[] }) {
+  const left = steps.filter((step) => !step.done).length;
+  return (
+    <section className="rounded-2xl bg-surface p-5 ring-1 ring-line">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="font-semibold tracking-tight">Get started</h2>
+        <span className="text-xs text-muted">
+          {steps.length - left} of {steps.length} done
+        </span>
+      </div>
+      <ol className="mt-4 space-y-2">
+        {steps.map((step, index) => (
+          <li
+            key={step.title}
+            className={`flex items-start gap-3 rounded-xl px-3 py-2.5 ${step.done ? "" : "bg-bg/50 ring-1 ring-line"}`}
+          >
+            <span
+              className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[0.6875rem] font-medium ${
+                step.done ? "bg-accent text-bg" : "text-muted ring-1 ring-line-strong"
+              }`}
+            >
+              {step.done ? "✓" : index + 1}
+            </span>
+            <span className="min-w-0 grow">
+              <span className={`block text-sm font-medium ${step.done ? "text-muted line-through decoration-faint" : ""}`}>
+                {step.title}
+              </span>
+              {!step.done && <span className="mt-0.5 block text-xs leading-5 text-muted">{step.about}</span>}
+            </span>
+            {!step.done && step.to && (
+              <Link
+                to={step.to}
+                className="shrink-0 rounded-md bg-fg px-2.5 py-1 text-xs font-medium text-bg transition-colors hover:bg-white"
+              >
+                {step.action}
+              </Link>
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 export default function Home({ loaderData }: Route.ComponentProps) {
   const { viewer, repos, active, assigned } = loaderData;
 
@@ -156,7 +207,43 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     return () => clearInterval(timer);
   }, [changing, revalidator]);
 
+  const shell = useRouteLoaderData("root")?.shell as ShellData | null | undefined;
   if (!viewer) return <Landing repos={repos} />;
+
+  const workspace = shell?.workspace?.slug;
+  const first = repos[0];
+  const handedOff = active.length > 0 || (shell?.monthSpentMicros ?? 0) > 0;
+  const steps: Step[] = [
+    {
+      done: Boolean(workspace),
+      title: "Create a workspace",
+      about: "Repositories, people and agent credit live in one.",
+      to: "/workspaces/new",
+      action: "Create",
+    },
+    {
+      done: repos.length > 0,
+      title: "Add a repository",
+      about: "Create one, or import one from GitHub by its address. Push to it with git as usual.",
+      to: workspace ? `/new?workspace=${workspace}` : "/new",
+      action: "Add",
+    },
+    {
+      done: shell?.creditMicros == null || shell.creditMicros > 0,
+      title: "Add agent credit",
+      about: "g1t's agents are paid for from the workspace's credit, at what the model costs plus 20%.",
+      to: workspace ? `/${workspace}/-/billing` : null,
+      action: "Add credit",
+    },
+    {
+      done: handedOff,
+      title: "Hand off an outcome",
+      about: "Write what you want on a repository's Plan page. A planner splits it into issues, and agents take them and land them on main.",
+      to: first ? `/${first.namespace}/${first.name}/plans` : null,
+      action: "Write one",
+    },
+  ];
+  const starting = steps.some((step) => !step.done);
 
   const summary = [
     moving.length > 0 && `${moving.length} in progress`,
@@ -182,6 +269,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             </div>
           </div>
         </section>
+
+        {starting && <GetStarted steps={steps} />}
 
         {needsYou.length > 0 && (
           <Section
