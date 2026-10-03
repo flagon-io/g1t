@@ -161,51 +161,139 @@ const MINT = "var(--color-accent)";
 const LAVENDER = "var(--color-merged)";
 const PEACH = "var(--color-warn)";
 
+/** A label off to the side of a shape, joined to it by a short line. */
+function Callout({
+  at,
+  dx,
+  dy,
+  children,
+  tone = "var(--color-muted)",
+}: {
+  at: [number, number];
+  dx: number;
+  dy: number;
+  children: string;
+  tone?: string;
+}) {
+  const [x, y] = at;
+  const end: [number, number] = [x + dx, y + dy];
+  return (
+    <g>
+      <line x1={x} y1={y} x2={end[0]} y2={end[1]} stroke="var(--color-faint)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+      <circle cx={x} cy={y} r={1.8} fill="var(--color-faint)" />
+      <text
+        x={end[0] + (dx >= 0 ? 6 : -6)}
+        y={end[1] + 3}
+        textAnchor={dx >= 0 ? "start" : "end"}
+        fill={tone}
+        fontSize={9}
+        fontFamily="var(--font-mono)"
+        letterSpacing="0.12em"
+      >
+        {children}
+      </text>
+    </g>
+  );
+}
+
 /**
- * The hero: lanes of agents at work, each on its own track, converging
- * through the queue into one main line that only moves forward.
+ * The hero: agents at work on their own lanes, their changes bending into
+ * the queue, where they are stacked and tested together, and one beam out
+ * of it: main, only moving forward.
  */
 export function ConvergeArt({ className }: { className?: string }) {
-  const lanes = [20, 60, 100, 140, 180];
+  const lanes = [0, 34, 68, 102];
+  const agentsAt = [70, 30, 95, 50];
+  const queue = { x: 196, y: 40, w: 36, d: 36 };
+  const mid = queue.y + queue.d / 2;
   return (
-    <svg viewBox="-260 -70 560 300" className={className} role="img" aria-label="Agents on parallel lanes converging into main">
-      <Grid size={300} />
-      {/* The lanes, each with an agent at work. */}
+    <svg viewBox="-150 -45 420 275" className={className} role="img" aria-label="Agents on parallel lanes converging through the queue into main">
+      <defs>
+        {/* The floor fades out towards its edges, so the drawing floats. */}
+        <radialGradient id="floor-fade" cx="45%" cy="50%" r="60%">
+          <stop offset="0%" stopColor="white" stopOpacity="1" />
+          <stop offset="100%" stopColor="white" stopOpacity="0" />
+        </radialGradient>
+        <mask id="floor-mask">
+          <rect x="-200" y="-100" width="600" height="400" fill="url(#floor-fade)" />
+        </mask>
+      </defs>
+      <g mask="url(#floor-mask)">
+        <Grid size={320} step={16} opacity={0.07} />
+      </g>
+
+      {/* Lanes: a raised slab each, with an agent riding it. */}
       {lanes.map((y, index) => (
         <g key={y}>
-          <Plate x={0} y={y - 8} w={150} d={16} opacity={0.22} dots={false} />
-          <Track
-            points={[[0, y], [150, y], [205, 100]]}
-            stroke={index === 2 ? MINT : LAVENDER}
-            opacity={0.65}
-            dash="3 5"
-            flow
-          />
-          <Box x={30 + ((index * 37) % 80)} y={y - 6} w={12} d={12} h={10} stroke={LAVENDER} opacity={0.8} />
+          <Box x={0} y={y} w={150} d={16} h={3} stroke="var(--color-fg)" opacity={0.22} top="var(--color-surface)" />
+          <Box x={agentsAt[index]!} y={y + 2} z={3} w={12} d={12} h={12} stroke={LAVENDER} opacity={0.9} top="var(--color-raised)" />
         </g>
       ))}
-      {/* The queue: combinations stacked and checked before they land. */}
-      {[0, 1, 2].map((level) => (
-        <Plate key={level} x={200} y={84} w={34} d={32} z={level * 9} stroke={PEACH} opacity={0.55 - level * 0.12} />
+
+      {/* Each lane bends into the queue. */}
+      {lanes.map((y, index) => (
+        <Track
+          key={`t${y}`}
+          points={[
+            [150, y + 8],
+            [172, y + 8],
+            [186, mid + (index - 1.5) * 4],
+            [queue.x, mid + (index - 1.5) * 4],
+          ]}
+          z={3}
+          stroke={LAVENDER}
+          opacity={0.55}
+          dash="3 4"
+          flow
+        />
       ))}
-      <Label x={196} y={124} tone="var(--color-faint)">QUEUE</Label>
-      {/* Main: one line, only forward. */}
-      <Track points={[[234, 100], [300, 100]]} stroke={MINT} opacity={0.95} width={2} />
-      {[248, 266, 284].map((x) => {
-        const [cx, cy] = iso(x, 100);
-        return <circle key={x} cx={cx} cy={cy} r={3} fill={MINT} />;
+
+      {/* The queue: combinations stacked and tested before they land. */}
+      {[0, 1, 2].map((level) => (
+        <Plate
+          key={level}
+          x={queue.x}
+          y={queue.y}
+          w={queue.w}
+          d={queue.d}
+          z={6 + level * 16}
+          stroke={level === 0 ? MINT : PEACH}
+          opacity={level === 0 ? 0.85 : 0.6 - level * 0.12}
+          fill={level === 0 ? "color-mix(in srgb, var(--color-accent) 8%, transparent)" : "none"}
+        />
+      ))}
+      {/* Posts at the corners tie the stack together. */}
+      {[
+        [queue.x, queue.y],
+        [queue.x + queue.w, queue.y],
+        [queue.x + queue.w, queue.y + queue.d],
+      ].map(([x, y]) => {
+        const [x1, y1] = iso(x!, y!, 6);
+        const [x2, y2] = iso(x!, y!, 38);
+        return (
+          <line key={`${x}-${y}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke={PEACH} strokeOpacity={0.3} strokeDasharray="2 3" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+        );
+      })}
+
+      {/* Main: one beam out of the queue, commits on it, moving forward. */}
+      <Box x={queue.x + queue.w} y={mid - 6} w={92} d={12} h={3} stroke={MINT} opacity={0.75} top="color-mix(in srgb, var(--color-accent) 12%, var(--color-surface))" />
+      {[246, 266, 286, 306].map((x) => {
+        const [cx, cy] = iso(x, mid, 3);
+        return <circle key={x} cx={cx} cy={cy} r={2.6} fill={MINT} />;
       })}
       {(() => {
-        const [cx, cy] = iso(300, 100);
+        const [cx, cy] = iso(326, mid, 3);
         return (
           <g>
-            <circle cx={cx} cy={cy} r={11} fill={MINT} fillOpacity={0.12} />
+            <circle cx={cx} cy={cy} r={12} fill={MINT} fillOpacity={0.1} />
             <circle cx={cx} cy={cy} r={5} fill={MINT} />
           </g>
         );
       })()}
-      <Label x={270} y={112} tone={MINT}>MAIN</Label>
-      <Label x={-2} y={8} tone="var(--color-faint)">AGENTS</Label>
+
+      <Callout at={iso(0, 0, 3)} dx={-18} dy={-14}>AGENTS</Callout>
+      <Callout at={iso(queue.x + queue.w / 2, queue.y, 38)} dx={10} dy={-18} tone={PEACH}>MERGE QUEUE</Callout>
+      <Callout at={iso(326, mid + 6, 0)} dx={10} dy={20} tone={MINT}>MAIN</Callout>
     </svg>
   );
 }
