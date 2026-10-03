@@ -371,7 +371,7 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
                 _ => {}
             }
             if let Some(uses) = &step.uses
-                && let Some((severity, message)) = action_note(uses)
+                && let Some((severity, message)) = action_note(uses, fields.get("with").and_then(|with| with.get("cache")).is_some())
             {
                 note(severity, Some(id), message);
             }
@@ -457,7 +457,8 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
 }
 
 /// What to say about an action g1t runs differently, if anything.
-fn action_note(uses: &str) -> Option<(Severity, String)> {
+/// `caches`: the step sets a `cache` input.
+fn action_note(uses: &str, caches: bool) -> Option<(Severity, String)> {
     if uses.starts_with("docker://") {
         return Some((Severity::Unsupported, format!("`{uses}`: Docker actions do not run on g1t yet.")));
     }
@@ -465,12 +466,16 @@ fn action_note(uses: &str) -> Option<(Severity, String)> {
     match name.as_str() {
         "actions/checkout" => Some((Severity::Info, "`actions/checkout` checks out from g1t.".to_owned())),
         "actions/cache" | "actions/cache/restore" | "actions/cache/save" => Some((
-            Severity::Warning,
-            format!("`{name}`: g1t has no cache yet, so it always misses and the job does the work again."),
+            Severity::Info,
+            format!("`{name}`: g1t keeps the cache per repository for 7 days, up to 60 MB an entry."),
         )),
         "actions/upload-artifact" | "actions/download-artifact" => Some((
+            Severity::Info,
+            format!("`{name}`: g1t keeps artifacts with the run for 14 days, up to 60 MB each."),
+        )),
+        _ if caches && name.starts_with("actions/setup-") => Some((
             Severity::Warning,
-            format!("`{name}`: artifacts are kept for the run on g1t, and passed between its jobs."),
+            format!("`{name}` with `cache:` runs without that cache on g1t. Add an `actions/cache` step for the same effect."),
         )),
         _ => None,
     }
@@ -562,7 +567,7 @@ jobs:
     #[test]
     fn notes_say_what_runs_differently() {
         let workflow = parse(
-            "on: [push, release]\njobs:\n  win:\n    runs-on: windows-latest\n    services:\n      db: { image: postgres }\n    steps:\n      - uses: actions/cache@v6\n      - uses: docker://alpine\n      - run: dir\n        shell: pwsh",
+            "on: [push, release]\njobs:\n  win:\n    runs-on: windows-latest\n    services:\n      db: { image: postgres }\n    steps:\n      - uses: actions/cache@v6\n      - uses: actions/setup-node@v7\n        with: { cache: npm }\n      - uses: docker://alpine\n      - run: dir\n        shell: pwsh",
         )
         .unwrap();
         let unsupported: Vec<&str> =
@@ -572,7 +577,8 @@ jobs:
         assert!(unsupported.iter().any(|m| m.contains("services")));
         assert!(unsupported.iter().any(|m| m.contains("docker://alpine")));
         assert!(unsupported.iter().any(|m| m.contains("pwsh")));
-        assert!(workflow.notes.iter().any(|n| n.severity == Severity::Warning && n.message.contains("actions/cache")));
+        assert!(workflow.notes.iter().any(|n| n.severity == Severity::Info && n.message.contains("actions/cache")));
+        assert!(workflow.notes.iter().any(|n| n.severity == Severity::Warning && n.message.contains("actions/setup-node")));
     }
 
     #[test]
