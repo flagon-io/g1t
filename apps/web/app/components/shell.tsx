@@ -249,7 +249,7 @@ const SETTINGS_PAGE = /^\/([^/]+)\/-\/(settings|people|tokens|billing|integratio
  * the main menu leaves to the left as the settings arrive from the right,
  * together, with a long ease-out, the way a phone pushes a screen.
  */
-const TRACK = "flex h-full w-[200%] transition-transform duration-[550ms] ease-[cubic-bezier(0.45,0,0.15,1)] will-change-transform motion-reduce:transition-none";
+const TRACK = "flex h-full w-[200%] transition-transform duration-[380ms] ease-[cubic-bezier(0.45,0,0.15,1)] will-change-transform motion-reduce:transition-none";
 /** One menu on the track. */
 const PANEL = "h-full w-1/2 shrink-0 overflow-y-auto px-2 pb-4";
 
