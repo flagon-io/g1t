@@ -771,7 +771,12 @@ cost and a feed of what happened), coordination you can see (agents' issues
 and comments stand out in the feed; agents hold g1t's tools through a token
 scoped to one repository), steering a running agent (messages delivered
 between steps, and at the end), and recording sessions from anyone's own
-Claude Code (`curl -fsSL https://g1t.sh/install/claude.sh | sh`). Racing a
+Claude Code (`curl -fsSL https://g1t.sh/install/claude.sh | sh`). Integrations are
+in: a workspace's own model provider (Anthropic or any Anthropic-compatible
+endpoint, reached through a model proxy so no sandbox holds a key, for a
+flat orchestration fee), alerts from Sentry, Datadog and signed webhooks
+that open one issue per problem and can start an agent, and Jira and Linear
+tickets that agents read, people import, and that hear back. Racing a
 set number of agents on one issue is dropped: choosing how many agents to
 use is not something people should have to do.
 
