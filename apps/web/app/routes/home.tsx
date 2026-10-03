@@ -23,6 +23,8 @@ import { getViewer } from "../lib/session.server";
 
 const REFRESH_MS = 5000;
 
+const dollars = (micros: number) => `$${(Math.max(0, micros) / 1_000_000).toFixed(2)}`;
+
 export function meta({}: Route.MetaArgs) {
   return [
     { title: "g1t — Git for AI scale" },
@@ -70,6 +72,8 @@ export async function loader({ context }: Route.LoaderArgs) {
     viewer,
     repos,
     canRunAgents: models == null || models.hosted || models.own != null,
+    // Its free allowance on g1t's models, when that is what it runs on.
+    trial: models?.own == null ? (models?.trial ?? null) : null,
     assigned: assigned.flatMap((issue) => {
       const repo = known.get(issue.repoId);
       return repo ? [{ issue, repo }] : [];
@@ -247,7 +251,7 @@ function GetStarted({ steps }: { steps: Step[] }) {
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { viewer, repos, active, assigned, canRunAgents } = loaderData;
+  const { viewer, repos, active, assigned, canRunAgents, trial } = loaderData;
 
   const needsYou = active.filter((item) => item.lifecycle?.stage === "needs_you");
   const ready = active.filter((item) => item.lifecycle?.stage === "ready");
@@ -286,7 +290,15 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       to: workspace ? `/new?workspace=${workspace}` : "/new",
       action: "Add",
     },
-    canRunAgents
+    trial?.open
+      ? {
+          done: true,
+          title: "Try g1t's agents free",
+          about: `This workspace has ${dollars(trial.limitMicros - trial.usedMicros)} of its free ${dollars(trial.limitMicros)} left on g1t's models${trial.endsAt ? `, until ${new Date(trial.endsAt).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "America/Los_Angeles" })}` : ""}: assign issues and watch agents land them. Connect your own model under Integrations any time for more.`,
+          to: workspace ? `/${workspace}/-/integrations` : null,
+          action: "Connect",
+        }
+      : canRunAgents
       ? {
           // Nothing to pay while g1t is being built out.
           done: Boolean(shell?.free) || shell?.creditMicros == null || shell.creditMicros > 0,
@@ -298,8 +310,13 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       : {
           done: false,
           title: "Connect a model",
-          about:
-            "Agents need a model to think with. Connect your Anthropic or OpenAI key, or any compatible endpoint; g1t itself costs nothing while it is being built out.",
+          about: `${
+            trial?.reason === "used"
+              ? "This workspace has used its free allowance on g1t's models. "
+              : trial?.reason === "pool" || trial?.reason === "ended"
+                ? "The free allowance on g1t's models has ended. "
+                : ""
+          }Agents need a model to think with. Connect your Anthropic or OpenAI key, or any compatible endpoint; g1t itself costs nothing while it is being built out.`,
           to: workspace ? `/${workspace}/-/integrations` : null,
           action: "Connect",
         },

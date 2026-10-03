@@ -224,9 +224,9 @@ else, the agent will say in its summary what it could not run.
 
 - g1t's agents, and the sandboxes that run acceptance checks and the merge
   queue, work in any workspace that has
-  [its own model provider](/guides/models/). g1t's hosted models are open to
-  selected workspaces until payments go live. See
-  [the preview](/guides/usage-and-billing/#the-preview).
+  [its own model provider](/guides/models/), and, until October 22, in any
+  workspace on its free $1 of g1t's own models. See
+  [the free allowance](/guides/usage-and-billing/#the-free-allowance).
 - An agent is given one fork and the issue. Its credential, though, is your
   account's for the length of the run; credentials limited to the pull
   request are planned.

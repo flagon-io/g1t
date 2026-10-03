@@ -67,6 +67,20 @@ export type RunTicket = { runId: string; token: string };
  * buys credit; each run deducts its cost plus g1t's margin; with no credit,
  * no agent starts.
  */
+/**
+ * The free allowance on g1t's hosted models for a workspace not otherwise
+ * open to them: a few dollars of model cost each, out of one pool, until a
+ * date. Mirrors `Trial` in `crates/contracts/src/billing.rs`.
+ */
+export type Trial = {
+  open: boolean;
+  usedMicros: number;
+  limitMicros: number;
+  endsAt: string | null;
+  /** Why it is closed: `off`, `ended`, `used` (this workspace's) or `pool` (everyone's). */
+  reason: "off" | "ended" | "used" | "pool" | null;
+};
+
 export interface BillingApi {
   status(): Promise<BillingStatus>;
   /** Members of the workspace only. */
@@ -88,6 +102,8 @@ export interface BillingApi {
    * opened for it. A failure, with the reason to show, when it has no credit.
    */
   canStart(workspace: string): Promise<Result<boolean>>;
+  /** A workspace's free allowance on g1t's hosted models; `exempt` are open to them anyway. */
+  trial(workspace: string, exempt: string[]): Promise<Trial>;
   /**
    * Asks whether a workspace may start an agent and opens the run it will be
    * charged for. Null when billing is off; a failure when there is no credit.

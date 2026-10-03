@@ -562,21 +562,26 @@ export default class RunnerService
    * How a workspace's agents reach a model, as the workspace decided: its
    * own provider, which it pays, or g1t's hosted models, which its credit
    * pays for. Hosted models are open to every workspace once billing takes
-   * real money, and before that to those listed. Null when it can use
-   * neither yet.
+   * real money; before that to those listed, and to any other on its free
+   * allowance while that lasts. Null when it can use neither yet.
    */
   async modelAccess(namespace: string): Promise<ModelAccess> {
-    if (!this.modelsReachable()) return { own: null, hosted: false };
+    if (!this.modelsReachable()) return { own: null, hosted: false, trial: null };
+    const billing = billingClient(this.env.BILLING);
     const [own, status] = await Promise.all([
       integrationsClient(this.env.INTEGRATIONS)
         .modelProvider(namespace)
         .catch(() => null),
-      billingClient(this.env.BILLING).status(),
+      billing.status(),
     ]);
-    return {
-      own: own?.name ?? null,
-      hosted: this.previewListed(namespace) || (status.enabled && status.live),
-    };
+    if (this.previewListed(namespace) || (status.enabled && status.live)) {
+      return { own: own?.name ?? null, hosted: true, trial: null };
+    }
+    const exempt = this.env.HOSTED_AGENT_WORKSPACES.split(",")
+      .map((name) => name.trim().toLowerCase())
+      .filter((name) => name && name !== "*");
+    const trial = await billing.trial(namespace, exempt).catch(() => null);
+    return { own: own?.name ?? null, hosted: Boolean(trial?.open), trial };
   }
 
   /**
@@ -598,7 +603,7 @@ export default class RunnerService
         error: {
           code: "forbidden",
           message:
-            "Workflows run on g1t's runners for workspaces that use g1t's agents: connect your own model provider under Integrations, free while g1t is being built out.",
+            "Workflows run on g1t's runners for workspaces that can use g1t's agents, and this one has no model to use: its free allowance on g1t's models is used up or over. Connect your own model provider under Integrations; g1t is free while it is being built out.",
         },
       };
     }
@@ -1033,7 +1038,7 @@ export default class RunnerService
     if (!(await this.workspaceAllowed(repo.namespace))) {
       return fail(
         "forbidden",
-        `g1t's hosted models are not open to the ${repo.namespace} workspace yet. An owner can connect the workspace's own model provider under Integrations, and its agents start at once.`,
+        `The ${repo.namespace} workspace has no model for its agents: its free allowance on g1t's models is used up or over. An owner can connect the workspace's own model provider under Integrations, and its agents start at once.`,
       );
     }
     if (!(await this.allowed(actor, repo))) {

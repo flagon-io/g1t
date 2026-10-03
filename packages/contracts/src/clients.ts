@@ -186,6 +186,7 @@ export function billingClient(service: ServiceBinding): BillingApi {
       call("checkout", { actor, workspace, amountCents, returnUrl }),
     confirm: (workspace, viewer, session) => call("confirm", { workspace, viewer, session }),
     canStart: (workspace) => call("can_start", { workspace }),
+    trial: (workspace, exempt) => call("trial", { workspace, exempt }),
     startRun: (run) => call("start_run", run),
   };
 }

@@ -1,3 +1,4 @@
+import type { Trial } from "./billing";
 import type { User, Viewer } from "./identity";
 import type { Result } from "./result";
 import type { RepoPath } from "./repos";
@@ -21,8 +22,10 @@ export type RunHostedInput = {
 export type ModelAccess = {
   /** The workspace's own model connection, by name, if it has one. */
   own: string | null;
-  /** Whether g1t's hosted models are open to it. */
+  /** Whether g1t's hosted models are open to it, on its free allowance or otherwise. */
   hosted: boolean;
+  /** Its free allowance, when that is how it reaches g1t's hosted models; null when it needs none. */
+  trial: Trial | null;
 };
 
 export interface RunnerApi {

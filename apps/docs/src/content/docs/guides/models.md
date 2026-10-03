@@ -7,7 +7,9 @@ Each workspace decides where its agents' model spend goes:
 
 - **g1t's hosted models.** g1t chooses the model for each kind of work, pays
   the provider, and charges your workspace's credit what it cost plus a
-  margin. Open to selected workspaces until payments go live, then to all.
+  margin. Until October 22 every workspace gets $1 of it free (see
+  [the free allowance](/guides/usage-and-billing/#the-free-allowance));
+  once payments go live, open to all.
 - **Your own providers.** Connect as many as you use, then choose, for each
   kind of work, which provider and model it runs on. Each provider bills
   you directly. Open to every workspace now.

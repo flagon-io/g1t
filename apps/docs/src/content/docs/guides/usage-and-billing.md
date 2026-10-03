@@ -15,6 +15,22 @@ nothing on g1t. What costs money is g1t's own agents: each run uses a
 model, and a workspace pays for the runs on its repositories from credit it
 buys in advance. There is no subscription and no seat price.
 
+## The free allowance
+
+So anyone can try g1t's agents without a key of their own, every workspace
+gets **$1 of model cost on g1t's own models**, free, until **October 22,
+2026** (11:59 PM Pacific). That is roughly 10 to 25 agent runs: changes,
+reviews and revisions. The allowance covers the GitHub Actions runners
+too, while it lasts.
+
+- Mission control and **Settings → Integrations** show what is left.
+- When it is used up, agents and workflow runs stop starting, and the
+  pages that start them say so and link to Integrations. Connect your own
+  model provider there and everything carries on at once.
+- The allowance draws on one shared pool. If the pool runs out before
+  October 22, the allowance ends for everyone early.
+- Workspaces on their own provider never use it.
+
 ## What is charged
 
 | | Charged |
@@ -124,10 +140,11 @@ g1t is in preview.
   workspace's agents, acceptance checks and merge queue work at once. Your
   provider bills you for the models; g1t charges nothing for now, and $0.10
   a run once pricing starts.
-- **g1t's hosted models, for selected workspaces:** while payments are in
-  test mode, g1t's own models are open only to workspaces it has opened
-  them to. When payments go live, every workspace can use them, paid from
-  its credit.
+- **g1t's hosted models:** while payments are in test mode, every
+  workspace can use g1t's own models on
+  [the free allowance](#the-free-allowance) ($1 each, until October 22),
+  and a few g1t has opened them to without limit. When payments go live,
+  every workspace can use them, paid from its credit.
 
 Each workspace decides where its model spend goes. A workspace that can use
 neither sees a message saying so, with the way to connect its own provider.

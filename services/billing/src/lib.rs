@@ -126,6 +126,21 @@ struct Billing {
     orchestration_fee_micros: i64,
     /// While g1t is being built out, nothing is charged (`FREE_WHILE_BUILDING`).
     free: bool,
+    /// The free allowance on g1t's hosted models, when there is one.
+    trial: Option<TrialConfig>,
+}
+
+/// `TRIAL_WORKSPACE_MICROS`, `TRIAL_TOTAL_MICROS` and `TRIAL_UNTIL`.
+struct TrialConfig {
+    per_workspace_micros: i64,
+    total_micros: i64,
+    /// RFC 3339, in UTC.
+    until: String,
+}
+
+#[derive(serde::Deserialize)]
+struct Sum {
+    micros: Option<i64>,
 }
 
 impl Billing {
@@ -468,6 +483,66 @@ impl Billing {
         }))
     }
 
+    /// A workspace's free allowance on g1t's hosted models: what its runs
+    /// there have cost against its share, and the pool everyone draws on.
+    async fn trial(&self, a: TrialArgs) -> Result<Trial> {
+        let workspace = a.workspace.to_lowercase();
+        let Some(config) = &self.trial else {
+            return Ok(Trial {
+                open: false,
+                used_micros: 0,
+                limit_micros: 0,
+                ends_at: None,
+                reason: Some("off".to_owned()),
+            });
+        };
+        let used = self
+            .db
+            .prepare(
+                "SELECT SUM(cost_micros) AS micros FROM ledger
+                 WHERE kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' AND workspace = ?",
+            )
+            .bind(&[workspace.as_str().into()])?
+            .first::<Sum>(None)
+            .await?
+            .and_then(|sum| sum.micros)
+            .unwrap_or_default();
+        // Everyone's, but for the workspaces open to hosted models anyway.
+        let exempt: Vec<String> = a.exempt.iter().map(|name| name.trim().to_lowercase()).collect();
+        let marks = vec!["?"; exempt.len().max(1)].join(", ");
+        let mut values: Vec<JsValue> = exempt.iter().map(|name| JsValue::from(name.as_str())).collect();
+        if values.is_empty() {
+            values.push(JsValue::from(""));
+        }
+        let pooled = self
+            .db
+            .prepare(format!(
+                "SELECT SUM(cost_micros) AS micros FROM ledger
+                 WHERE kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' AND workspace NOT IN ({marks})"
+            ))
+            .bind(&values)?
+            .first::<Sum>(None)
+            .await?
+            .and_then(|sum| sum.micros)
+            .unwrap_or_default();
+        let reason = if rfc3339(now_ms()) >= config.until {
+            Some("ended")
+        } else if used >= config.per_workspace_micros {
+            Some("used")
+        } else if pooled >= config.total_micros {
+            Some("pool")
+        } else {
+            None
+        };
+        Ok(Trial {
+            open: reason.is_none(),
+            used_micros: used,
+            limit_micros: config.per_workspace_micros,
+            ends_at: Some(config.until.clone()),
+            reason: reason.map(str::to_owned),
+        })
+    }
+
     async fn can_start(&self, a: CanStartArgs) -> Result<Outcome<bool>> {
         if self.stripe.is_none() {
             return Ok(Outcome::Ok(true));
@@ -610,6 +685,25 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
             .and_then(|fee| fee.to_string().parse().ok())
             .unwrap_or(100_000),
         free: env.var("FREE_WHILE_BUILDING").is_ok_and(|v| v.to_string() == "true"),
+        trial: {
+            let number = |name: &str| env.var(name).ok().and_then(|v| v.to_string().parse::<i64>().ok());
+            match (
+                number("TRIAL_WORKSPACE_MICROS"),
+                number("TRIAL_TOTAL_MICROS"),
+                env.var("TRIAL_UNTIL").ok().map(|v| v.to_string()),
+            ) {
+                (Some(per_workspace_micros), Some(total_micros), Some(until))
+                    if per_workspace_micros > 0 && !until.is_empty() =>
+                {
+                    Some(TrialConfig {
+                        per_workspace_micros,
+                        total_micros,
+                        until,
+                    })
+                }
+                _ => None,
+            }
+        },
     };
     match method.as_str() {
         "status" => reply(&billing.status()),
@@ -619,6 +713,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "checkout" => reply(&billing.checkout(args(body)?).await?),
         "confirm" => reply(&billing.confirm(args(body)?).await?),
         "can_start" => reply(&billing.can_start(args(body)?).await?),
+        "trial" => reply(&billing.trial(args(body)?).await?),
         "start_run" => reply(&billing.start_run(args(body)?).await?),
         "finish_run" => reply(&billing.finish_run(args(body)?).await?),
         _ => Response::error("Unknown method", 404),

@@ -9,6 +9,9 @@ import { ProviderMark } from "./model-providers";
 import { RepoList } from "./repo-list";
 import { ButtonLink, CopyLine } from "./ui";
 
+/** When the free allowance on g1t's models ends (billing's TRIAL_UNTIL). */
+const TRIAL_ENDS = Date.parse("2026-10-23T06:59:59Z");
+
 /** A small label above a heading, in the mono face. */
 function Eyebrow({ children }: { children: ReactNode }) {
   return <p className="font-mono text-xs tracking-[0.2em] text-merged uppercase">{children}</p>;
@@ -156,10 +159,16 @@ export function Landing({ repos }: { repos: Repo[] }) {
               Get started
               <ArrowRight size={15} />
             </ButtonLink>
-            <ButtonLink to="https://docs.g1t.sh/quickstart/" variant="quiet" large>
-              Read the docs
+            <ButtonLink to="/syntaqx/hello/pulls?state=closed" variant="quiet" large>
+              Watch agents at work
             </ButtonLink>
           </div>
+          {Date.now() < TRIAL_ENDS && (
+            <p className="mx-auto mt-5 max-w-xl animate-fade-up text-sm text-fg-soft/70 text-balance">
+              Free to try: every new workspace gets $1 of agent time on g1t's models, no key needed, until
+              October 22. Bring your own model for more.
+            </p>
+          )}
         </div>
         <div className="relative mx-auto max-w-5xl px-4 pb-4">
           <ConvergeArt className="w-full" />

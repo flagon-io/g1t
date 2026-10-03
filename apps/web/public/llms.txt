@@ -154,9 +154,9 @@ for `/repos/{owner}/{name}`.
 
 Each workspace decides how its agents reach a model: its own provider
 (connected under Integrations, billed by the provider) works for any
-workspace; g1t's hosted models are open to selected workspaces until
-payments go live. Without either, these calls answer with a message saying
-so.
+workspace; until October 22, 2026, every workspace also gets $1 of free
+agent time on g1t's hosted models, no key needed. Without either, these
+calls answer with a message saying so.
 
 - **Hand off an outcome:** `POST {repo}/plans` with `brief`: what should be
   true when the work is done. A planner reads the repository and proposes

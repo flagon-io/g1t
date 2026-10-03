@@ -118,10 +118,12 @@ from people outside the workspace run without secrets, and with a
 
 ## Who may run workflows
 
-Workflows run in every workspace that uses g1t's agents: one with its own
-[model provider](/guides/models/) connected, or one g1t has opened its
-hosted models to. They are free while g1t is being built out. Elsewhere a
-run is recorded with its jobs failed and the reason.
+Workflows run in every workspace that can use g1t's agents: one with its
+own [model provider](/guides/models/) connected, or one on
+[the free allowance](/guides/usage-and-billing/#the-free-allowance) while
+it lasts. They are free while g1t is being built out. Elsewhere a run is
+recorded with its jobs failed and the reason, and the Actions page says so
+before the first run.
 
 ## From the API
 

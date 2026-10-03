@@ -66,6 +66,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     repos: listed.map((repo) => `${repo.namespace}/${repo.name}`),
     adding: isProvider(adding) ? adding : null,
     hostedOpen: access.hosted,
+    trial: access.trial,
     routes: routes.ok ? routes.value : [],
     feeMicros: account.ok ? account.value.orchestrationFeeMicros : 100_000,
     free: account.ok ? Boolean(account.value.status.free) : false,
@@ -175,7 +176,7 @@ function dollars(micros: number): string {
 }
 
 export default function WorkspaceIntegrations({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, connections, deliveries, repos: repoNames, adding, feeMicros, free, marginPercent, hostedOpen, routes } =
+  const { slug, role, connections, deliveries, repos: repoNames, adding, feeMicros, free, marginPercent, hostedOpen, trial, routes } =
     loaderData;
   const owner = role === "owner";
   const busy = useNavigation().state === "submitting";
@@ -199,9 +200,13 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
               <AlertTriangle size={16} />
             </span>
             <p className="text-sm text-muted">
-              <span className="font-medium text-fg">Choose how your agents reach a model.</span> g1t's hosted models
-              are not open to {slug} yet. Connect a provider of your own below and your agents start at once,
-              billed by that provider.
+              <span className="font-medium text-fg">Choose how your agents reach a model.</span>{" "}
+              {trial?.reason === "used"
+                ? `${slug} has used its free allowance on g1t's models.`
+                : trial?.reason === "pool" || trial?.reason === "ended"
+                  ? "The free allowance on g1t's models has ended."
+                  : `g1t's hosted models are not open to ${slug}.`}{" "}
+              Connect a provider of your own below and your agents start at once, billed by that provider.
             </p>
           </div>
         )}
@@ -209,8 +214,11 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
         {modelConnections.length === 0 && hostedOpen && (
           <p className="flex items-center gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-sm text-muted">
             <CheckCircle2 size={15} className="shrink-0 text-merged" />
-            All work runs on g1t's models, charged to your credit at cost plus {marginPercent}%. Connect a provider of
-            your own to choose models and pay for them there.
+            {trial?.open
+              ? `All work runs on g1t's models, free: ${slug} has ${dollars(Math.max(0, trial.limitMicros - trial.usedMicros))} of its ${dollars(trial.limitMicros)} allowance left${trial.endsAt ? `, until ${new Date(trial.endsAt).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "America/Los_Angeles" })}` : ""}. Connect a provider of your own for more, or to choose models.`
+              : free
+                ? "All work runs on g1t's models, free while g1t is being built out. Connect a provider of your own to choose models and pay for them there."
+                : `All work runs on g1t's models, charged to your credit at cost plus ${marginPercent}%. Connect a provider of your own to choose models and pay for them there.`}
           </p>
         )}
         {modelConnections.length > 0 && (

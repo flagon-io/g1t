@@ -34,6 +34,35 @@ pub struct Status {
     pub free: bool,
 }
 
+/// `trial`: the free allowance on g1t's hosted models for a workspace that
+/// is not otherwise open to them, so people can try g1t's agents without a
+/// key of their own. Each workspace gets a few dollars of model cost, out
+/// of one pool, until an end date. Returns `Trial`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrialArgs {
+    pub workspace: String,
+    /// Workspaces open to hosted models anyway, whose use is not counted
+    /// against the pool.
+    #[serde(default)]
+    pub exempt: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Trial {
+    /// Whether its agents may use g1t's hosted models on the allowance now.
+    pub open: bool,
+    /// What its runs on g1t's models have cost, in millionths of a dollar.
+    pub used_micros: i64,
+    pub limit_micros: i64,
+    /// RFC 3339; when the allowance ends for everyone.
+    pub ends_at: Option<String>,
+    /// Why it is closed: `off` (no allowance), `ended`, `used` (this
+    /// workspace's is spent) or `pool` (everyone's is).
+    pub reason: Option<String>,
+}
+
 /// A workspace's standing.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
