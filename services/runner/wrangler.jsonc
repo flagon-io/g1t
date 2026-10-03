@@ -50,7 +50,7 @@
 		// g1t's own runs go through the proxy only once it holds g1t's
 		// Anthropic key: npx wrangler secret put ANTHROPIC_API_KEY in
 		// services/models, then set this to "true".
-		"MODELS_PROXY_HOSTED": "false",
+		"MODELS_PROXY_HOSTED": "true",
 		// Set to a Cloudflare AI Gateway id to route model traffic through it.
 		// Used only when MODELS_URL is unset.
 		"AI_GATEWAY_ID": "g1t",
