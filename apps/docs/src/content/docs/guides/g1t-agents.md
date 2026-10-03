@@ -116,6 +116,16 @@ A g1t agent's pull request follows the same rules as anyone's. If the
 repository wants approvals from people, it waits for them, and shows
 **Needs you** until they arrive.
 
+### Talking to an agent while it works
+
+While a g1t agent is making or revising a change, its pull request shows
+**Message the agent**. Write a correction, a hint or a change of plan; the
+agent reads it at its next step, without starting over, and it is
+recorded in the session. A message sent as the agent is finishing still
+reaches it: the agent keeps going to act on it. Your own agent can send
+one through the `message_agent` tool or `POST
+/repos/{owner}/{name}/pulls/{number}/messages`.
+
 ### Asking the agent for changes
 
 Review a g1t agent's pull request the way you would anyone's: comment on
@@ -217,6 +227,14 @@ credit it buys in advance.
 
 There is no subscription and no seat price. A small change costs a few
 cents.
+
+## Seeing what agents cost
+
+A workspace's **Usage** page shows what its agents have cost over a period:
+spend per day by kind of work (making changes, reviews, revisions,
+catching up, planning), and by repository, model and pull request, with
+the credit left and how long it lasts at the current rate. The sidebar
+shows this month's usage.
 
 ## What a sandbox has
 
