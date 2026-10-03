@@ -8,25 +8,26 @@
 		'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 	--g1t-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-	/* Warm near-black, three elevations. */
-	--g1t-bg: #0e0d0a;
-	--g1t-surface: #16150f;
-	--g1t-raised: #1e1c15;
-	--g1t-line: #2a2820;
-	--g1t-line-strong: #3a372d;
+	/* Indigo night, three elevations: the sky after dusk. */
+	--g1t-bg: #0b0c18;
+	--g1t-surface: #121327;
+	--g1t-raised: #1a1b33;
+	--g1t-line: #252743;
+	--g1t-line-strong: #363960;
 
-	--g1t-fg: #f0eee6;
-	--g1t-fg-soft: #e2dfd4;
-	--g1t-muted: #a09c8f;
-	--g1t-faint: #6e6a5e;
+	--g1t-fg: #eeedf8;
+	--g1t-fg-soft: #dddcf0;
+	--g1t-muted: #a3a2c3;
+	--g1t-faint: #6c6c90;
 
-	--g1t-accent: #b6f24a;
-	--g1t-accent-dim: #7fae2c;
-	--g1t-accent-low: #26330f;
+	/* Mint: what is live, what passed, what was added. */
+	--g1t-accent: #86efc4;
+	--g1t-accent-dim: #4fb38e;
+	--g1t-accent-low: #10302a;
 
-	/* Status colours, used sparingly. */
-	--g1t-info: #7cc4ff;
-	--g1t-merged: #b9a2ff;
-	--g1t-warn: #f2c14a;
-	--g1t-danger: #ff7a6b;
+	/* The dusk: lavender and peach, for art and for status. */
+	--g1t-info: #8ab4ff;
+	--g1t-merged: #b6a8ff;
+	--g1t-warn: #ffbd8c;
+	--g1t-danger: #ff8394;
 }

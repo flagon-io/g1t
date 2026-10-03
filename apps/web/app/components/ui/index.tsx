@@ -105,7 +105,7 @@ const BUTTON_BASE =
 
 const BUTTON_VARIANTS: Record<Variant, string> = {
   primary: "bg-fg text-bg hover:bg-white",
-  accent: "bg-accent text-bg hover:bg-[#c6ff5c]",
+  accent: "bg-accent text-bg hover:bg-[#aaf5d6]",
   quiet:
     "border border-line text-fg/80 hover:border-line-strong hover:bg-surface hover:text-fg",
 };
