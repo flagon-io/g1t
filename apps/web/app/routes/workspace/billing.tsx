@@ -108,7 +108,12 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
           {added && (
             <p className="mt-2 text-sm text-accent">Payment received. Credit added.</p>
           )}
-          {!status.enabled ? (
+          {status.free ? (
+            <p className="mt-3 text-sm text-muted">
+              Nothing to add for now: runs are free while g1t is being built out. Credit already here stays for when
+              pricing starts.
+            </p>
+          ) : !status.enabled ? (
             <p className="mt-3 text-sm text-muted">
               Payments are not set up on this g1t yet, so nothing is charged and
               agents are limited to selected accounts.
