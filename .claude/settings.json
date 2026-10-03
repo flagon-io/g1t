@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx wrangler deploy:*)",
+      "Bash(npx wrangler d1 migrations apply:*)",
+      "Bash(npx wrangler d1 migrations list:*)",
+      "Bash(npx wrangler secret put:*)",
+      "Bash(npx wrangler tail:*)",
+      "Bash(npm run deploy:*)"
+    ]
+  }
+}
