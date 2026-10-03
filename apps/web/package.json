@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "react-router build",
+    "test": "node --test app/**/*.test.ts",
     "dev": "react-router dev",
     "typecheck": "wrangler types --include-env=false && react-router typegen && tsc -b --force",
     "deploy": "npm run build && wrangler deploy",

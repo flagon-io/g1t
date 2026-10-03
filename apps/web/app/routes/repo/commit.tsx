@@ -4,6 +4,7 @@ import { Await, Link, data, redirect } from "react-router";
 
 import type { Comparison, Pull } from "@g1t/contracts";
 
+import { parseCommitMessage } from "../../lib/commit-message";
 import type { Route } from "./+types/commit";
 import { DiffView } from "../../components/diff-view";
 import { Avatar, TimeAgo } from "../../components/ui";
@@ -121,8 +122,7 @@ function MergedIn({ base, pull }: { base: string; pull: Pull }) {
 export default function CommitPage({ loaderData, params }: Route.ComponentProps) {
   const { commit, pull, comparison } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
-  const [subject, ...rest] = commit.message.split("\n");
-  const body = rest.join("\n").trim();
+  const { subject, body, coAuthors, trailers } = parseCommitMessage(commit.message);
   return (
     <div>
       <section className="overflow-hidden rounded-xl border border-line bg-surface">
@@ -135,11 +135,25 @@ export default function CommitPage({ loaderData, params }: Route.ComponentProps)
           </p>
           <h2 className="mt-2 text-xl font-semibold tracking-tight text-balance">{subject}</h2>
           {body && <p className="mt-3 max-w-3xl text-sm whitespace-pre-wrap text-muted">{body}</p>}
+          {trailers.length > 0 && (
+            <dl className="mt-3 space-y-0.5 font-mono text-xs text-faint">
+              {trailers.map((trailer) => (
+                <div key={`${trailer.key}:${trailer.value}`}>
+                  <dt className="inline">{trailer.key}:</dt> <dd className="inline text-muted">{trailer.value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-line bg-bg/40 px-5 py-3 text-sm">
           <span className="flex items-center gap-2">
             <Avatar name={commit.author.name} size={20} />
             <span className="font-medium">{commit.author.name}</span>
+            {coAuthors.length > 0 && (
+              <span className="text-muted">
+                and <span className="font-medium text-fg">{coAuthors.join(", ")}</span>
+              </span>
+            )}
             <span className="text-muted">
               committed <TimeAgo at={commit.authoredAt} />
             </span>
