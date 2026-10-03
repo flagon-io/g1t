@@ -1,13 +1,10 @@
 import {
   AlertTriangle,
-  Bot,
   CheckCircle2,
   ChevronRight,
   Cpu,
-  Plug,
   Siren,
   Ticket,
-  Webhook,
   X,
 } from "lucide-react";
 import { env } from "cloudflare:workers";
@@ -20,14 +17,14 @@ import {
   type Delivery,
   MODEL_TASKS,
   type ModelRoute,
-  type ModelTask,
   type Provider,
   type ProviderKind,
   PROVIDERS,
 } from "@g1t/contracts";
 
 import type { Route } from "./+types/integrations";
-import { Button, CopyLine, ErrorText, Field, Input, Pill, TimeAgo } from "../../components/ui";
+import { MODEL_CATALOG, ModelCatalog, ModelProviderFields, ProviderMark, ProviderTiles, Routing } from "../../components/model-providers";
+import { Button, CopyLine, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
 import { billing, integrations, repos } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
@@ -164,56 +161,13 @@ const KIND_INFO: Record<ProviderKind, { title: string; icon: ReactNode; blurb: s
   },
 };
 
-const PROVIDER_BLURB: Record<Provider, string> = {
-  anthropic: "Claude models on your own Anthropic key. Anthropic bills you.",
-  openai: "GPT models on your own OpenAI key. OpenAI bills you.",
-  gemini: "Gemini models on your own Google AI key. Google bills you.",
-  anthropic_endpoint: "Your own AI Gateway, LiteLLM, Bedrock or Vertex behind a proxy: anything that speaks Anthropic's API.",
-  openai_endpoint: "Azure OpenAI, OpenRouter, Groq, Together, vLLM, Ollama: anything that speaks OpenAI's API.",
+const PROVIDER_BLURB: Partial<Record<Provider, string>> = {
   sentry: "New errors open issues, with the stack trace. Resolved in Sentry when the fix merges.",
   datadog: "Monitors that trigger open issues. Recoveries are noted on them.",
   webhook: "Anything that can send signed JSON: PagerDuty, Grafana, your own scripts.",
   jira: "Agents read TECH-1234 when work mentions it. Import tickets; they hear back.",
   linear: "Agents read ENG-42 when work mentions it. Import issues; they hear back.",
 };
-
-/** A small mark for each provider: its initial, in a tile. */
-function ProviderMark({ provider, size = 32 }: { provider: Provider; size?: number }) {
-  const hue: Record<Provider, number> = {
-    anthropic: 40,
-    openai: 160,
-    gemini: 230,
-    anthropic_endpoint: 280,
-    openai_endpoint: 140,
-    sentry: 300,
-    datadog: 290,
-    webhook: 200,
-    jira: 250,
-    linear: 265,
-  };
-  const icon =
-    provider === "webhook" ? (
-      <Webhook size={size * 0.5} />
-    ) : provider === "anthropic_endpoint" || provider === "openai_endpoint" ? (
-      <Bot size={size * 0.5} />
-    ) : null;
-  return (
-    <span
-      aria-hidden="true"
-      className="inline-flex shrink-0 items-center justify-center font-semibold"
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size * 0.28,
-        fontSize: size * 0.42,
-        background: `oklch(0.3 0.06 ${hue[provider]})`,
-        color: `oklch(0.9 0.08 ${hue[provider]})`,
-      }}
-    >
-      {icon ?? PROVIDERS[provider].label[0]}
-    </span>
-  );
-}
 
 function dollars(micros: number): string {
   return `$${(micros / 1_000_000).toFixed(2)}`;
@@ -230,27 +184,14 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
   const error = (actionData && "error" in actionData ? actionData.error : null) ?? null;
 
   return (
-    <div className="max-w-4xl">
-      <div className="flex items-start gap-3">
-        <span className="mt-0.5 rounded-lg bg-surface p-2 text-muted ring-1 ring-line">
-          <Plug size={18} />
-        </span>
-        <div>
-          <h2 className="text-lg font-semibold tracking-tight">Integrations</h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted">
-            Connect {slug} to the systems your work already lives in. g1t keeps secrets sealed and never
-            shows them again; agents never see them at all.
-          </p>
-        </div>
-      </div>
-
+    <div>
       {justConnected && <Connected connected={justConnected} />}
       <div className="mt-4">
         <ErrorText>{error}</ErrorText>
       </div>
 
       {/* Models -------------------------------------------------------------- */}
-      <Section kind="models">
+      <Section kind="models" first>
         {!hostedOpen && modelConnections.length === 0 && (
           <div className="mb-4 flex items-center gap-3 rounded-xl border border-warn/30 bg-warn/5 p-4">
             <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-warn/10 text-warn ring-1 ring-warn/30">
@@ -264,6 +205,14 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
           </div>
         )}
         <Connections list={modelConnections} owner={owner} busy={busy} tested={tested} deliveries={deliveries} />
+        {modelConnections.length === 0 && hostedOpen && (
+          <p className="flex items-center gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-sm text-muted">
+            <CheckCircle2 size={15} className="shrink-0 text-merged" />
+            All work runs on g1t's models, charged to your credit at cost plus {marginPercent}%. Connect a provider of
+            your own to choose models and pay for them there.
+          </p>
+        )}
+        {modelConnections.length > 0 && (
         <Routing
           connections={modelConnections}
           routes={routes}
@@ -273,12 +222,13 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
           busy={busy}
           saved={actionData != null && "routed" in actionData}
         />
+        )}
         <p className="mt-3 text-xs text-faint">
           On your own providers, their bills are yours and g1t charges {dollars(feeMicros)} a run for the
           sandbox and orchestration. Keys go only from g1t's model proxy to the provider: the agent's
           sandbox holds a token that dies with the run.
         </p>
-        {owner && <Choices kind="models" slug={slug} adding={adding} />}
+        {owner && <ModelCatalog slug={slug} adding={adding} />}
         {adding && PROVIDERS[adding].kind === "models" && owner && (
           <AddForm
             provider={adding}
@@ -337,109 +287,10 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
   );
 }
 
-const TASK_LABELS: Record<ModelTask, { label: string; hint: string }> = {
-  default: { label: "Everything", hint: "Unless a kind of work below says otherwise." },
-  implement: { label: "Making changes", hint: "Writing the change for an issue, and revising it." },
-  review: { label: "Reviewing", hint: "The second agent that reviews each change." },
-  plan: { label: "Planning", hint: "Turning an outcome into issues." },
-  update: { label: "Catching up", hint: "Bringing a change up to date with main." },
-};
-
-/** What a route is, as the value of a select. */
-function routeValue(route: ModelRoute | undefined): string {
-  if (!route) return "";
-  return route.connectionId == null ? "g1t" : `${route.connectionId}::${route.model ?? ""}`;
-}
-
-/** Each kind of work, and the provider and model it goes to. */
-function Routing({
-  connections,
-  routes,
-  hostedOpen,
-  marginPercent,
-  owner,
-  busy,
-  saved,
-}: {
-  connections: Connection[];
-  routes: ModelRoute[];
-  hostedOpen: boolean;
-  marginPercent: number;
-  owner: boolean;
-  busy: boolean;
-  saved: boolean;
-}) {
-  const options = (
-    <>
-      <option value="g1t" disabled={!hostedOpen}>
-        g1t's models{hostedOpen ? ` (g1t's choice, your credit at cost + ${marginPercent}%)` : " (not open to this workspace yet)"}
-      </option>
-      {connections.map((connection) => {
-        const models = [...new Set([...(connection.config.model ? [connection.config.model] : []), ...connection.models])];
-        return (
-          <optgroup key={connection.id} label={connection.name}>
-            {PROVIDERS[connection.provider].kind === "models" &&
-              (connection.provider === "anthropic" || connection.provider === "anthropic_endpoint") && (
-                <option value={`${connection.id}::`}>{connection.name}: g1t's choice of Claude model</option>
-              )}
-            {models.map((model) => (
-              <option key={model} value={`${connection.id}::${model}`}>
-                {connection.name}: {model}
-              </option>
-            ))}
-          </optgroup>
-        );
-      })}
-    </>
-  );
-  const fallback = hostedOpen ? "g1t" : connections[0] ? `${connections[0].id}::${connections[0].config.model ?? ""}` : "g1t";
-  return (
-    <Form method="post" className="rounded-xl border border-line bg-surface">
-      <input type="hidden" name="intent" value="routes" />
-      <div className="border-b border-line px-4 py-3">
-        <p className="text-sm font-medium">Which model does which work</p>
-        <p className="text-xs text-muted">
-          Each kind of work can go to g1t's models or to any of your providers, on the model you choose.
-        </p>
-      </div>
-      <ul className="divide-y divide-line">
-        {MODEL_TASKS.map((task) => {
-          const route = routes.find((r) => r.task === task);
-          return (
-            <li key={task} className="grid items-center gap-2 px-4 py-3 sm:grid-cols-[12rem_1fr]">
-              <div>
-                <p className="text-sm font-medium">{TASK_LABELS[task].label}</p>
-                <p className="text-xs text-faint">{TASK_LABELS[task].hint}</p>
-              </div>
-              <select
-                name={`route-${task}`}
-                disabled={!owner}
-                defaultValue={task === "default" ? routeValue(route) || fallback : routeValue(route)}
-                className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none hover:border-line-strong focus:border-accent-dim disabled:opacity-70"
-              >
-                {task !== "default" && <option value="">Same as everything</option>}
-                {options}
-              </select>
-            </li>
-          );
-        })}
-      </ul>
-      {owner && (
-        <div className="flex items-center gap-3 border-t border-line px-4 py-3">
-          <Button type="submit" variant="quiet" disabled={busy}>
-            Save routing
-          </Button>
-          {saved && <span className="text-sm text-accent">Saved. The next runs use it.</span>}
-        </div>
-      )}
-    </Form>
-  );
-}
-
-function Section({ kind, children }: { kind: ProviderKind; children: ReactNode }) {
+function Section({ kind, first, children }: { kind: ProviderKind; first?: boolean; children: ReactNode }) {
   const info = KIND_INFO[kind];
   return (
-    <section className="mt-10">
+    <section className={first ? "" : "mt-12"}>
       <h3 className="flex items-center gap-2 text-sm font-medium">
         <span className="text-muted">{info.icon}</span>
         {info.title}
@@ -606,29 +457,16 @@ function ConnectionRow({
   );
 }
 
+/** What a provider is for, in a line. */
+function blurb(provider: Provider): string {
+  return PROVIDER_BLURB[provider] ?? MODEL_CATALOG[provider]?.blurb ?? "";
+}
+
 function Choices({ kind, slug, adding }: { kind: ProviderKind; slug: string; adding: Provider | null }) {
   const providers = (Object.keys(PROVIDERS) as Provider[]).filter((p) => PROVIDERS[p].kind === kind);
   return (
-    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-      {providers.map((provider) => (
-        <Link
-          key={provider}
-          to={`/${slug}/-/integrations?add=${provider}#add`}
-          preventScrollReset
-          className={`group flex items-start gap-3 rounded-xl border p-3.5 transition-colors ${
-            adding === provider ? "border-accent-dim bg-surface" : "border-line hover:border-line-strong hover:bg-surface"
-          }`}
-        >
-          <ProviderMark provider={provider} size={28} />
-          <span className="min-w-0 grow">
-            <span className="flex items-center gap-1 text-sm font-medium">
-              {PROVIDERS[provider].label}
-              <ChevronRight size={13} className="text-faint transition-transform group-hover:translate-x-0.5" />
-            </span>
-            <span className="mt-0.5 block text-xs leading-relaxed text-muted">{PROVIDER_BLURB[provider]}</span>
-          </span>
-        </Link>
-      ))}
+    <div className="mt-3">
+      <ProviderTiles providers={providers} slug={slug} adding={adding} blurb={blurb} />
     </div>
   );
 }
@@ -681,76 +519,7 @@ function AddForm({
   busy: boolean;
   error: string | null;
 }) {
-  const fields: Record<Provider, ReactNode> = {
-    anthropic: (
-      <Field label="API key" hint="From console.anthropic.com. Sealed when saved; nobody sees it again.">
-        <Input name="secret" type="password" required placeholder="sk-ant-…" />
-      </Field>
-    ),
-    openai: (
-      <>
-        <Field label="API key" hint="From platform.openai.com → API keys. Sealed when saved; nobody sees it again.">
-          <Input name="secret" type="password" required placeholder="sk-…" />
-        </Field>
-        <Field label="Default model" hint="Optional. g1t lists the key's models when you connect, and you choose per kind of work below.">
-          <Input name="model" placeholder="gpt-5" />
-        </Field>
-      </>
-    ),
-    gemini: (
-      <>
-        <Field label="API key" hint="From aistudio.google.com → Get API key.">
-          <Input name="secret" type="password" required />
-        </Field>
-        <Field label="Default model" hint="Optional. g1t lists the key's models when you connect.">
-          <Input name="model" placeholder="gemini-2.5-pro" />
-        </Field>
-      </>
-    ),
-    openai_endpoint: (
-      <>
-        <Field label="Base URL" hint="Up to and including the version, such as https://openrouter.ai/api/v1. g1t calls /chat/completions under it.">
-          <Input name="baseUrl" type="url" required placeholder="https://openrouter.ai/api/v1" />
-        </Field>
-        <Field label="Key" hint="Optional, if the endpoint needs one.">
-          <Input name="secret" type="password" />
-        </Field>
-        <Field label="Send the key as">
-          <select name="authHeader" className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm">
-            <option value="authorization">Authorization: Bearer</option>
-            <option value="x-api-key">x-api-key</option>
-          </select>
-        </Field>
-        <Field label="Cloudflare AI Gateway token" hint="Only for an authenticated AI Gateway: sent as cf-aig-authorization.">
-          <Input name="signingSecret" type="password" />
-        </Field>
-        <Field label="Default model" hint="The model to use. g1t also lists the endpoint's models if it offers a list.">
-          <Input name="model" placeholder="anthropic/claude-sonnet-4.5" />
-        </Field>
-      </>
-    ),
-    anthropic_endpoint: (
-      <>
-        <Field label="Base URL" hint="Without /v1. For a Cloudflare AI Gateway: https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/anthropic">
-          <Input name="baseUrl" type="url" required placeholder="https://llm.example.com" />
-        </Field>
-        <Field label="Key" hint="Optional, if the endpoint needs one.">
-          <Input name="secret" type="password" />
-        </Field>
-        <Field label="Send the key as">
-          <select name="authHeader" className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm">
-            <option value="x-api-key">x-api-key</option>
-            <option value="authorization">Authorization: Bearer</option>
-          </select>
-        </Field>
-        <Field label="Cloudflare AI Gateway token" hint="Only for an authenticated AI Gateway: sent as cf-aig-authorization.">
-          <Input name="signingSecret" type="password" />
-        </Field>
-        <Field label="Model" hint="Optional. Leave empty to use g1t's choice for each kind of work; set it if your endpoint names models its own way.">
-          <Input name="model" placeholder="claude-sonnet-5-5" />
-        </Field>
-      </>
-    ),
+  const fields: Partial<Record<Provider, ReactNode>> = {
     sentry: (
       <>
         <Field label="Organization" hint="Its slug, as in acme.sentry.io.">
@@ -813,7 +582,7 @@ function AddForm({
           <h3 className="font-medium">
             Connect {provider.endsWith("_endpoint") ? `an ${PROVIDERS[provider].label}` : PROVIDERS[provider].label}
           </h3>
-          <p className="text-xs text-muted">{PROVIDER_BLURB[provider]}</p>
+          <p className="text-xs text-muted">{blurb(provider)}</p>
         </div>
         <Link to={`/${slug}/-/integrations`} className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-fg" aria-label="Close">
           <X size={16} />
@@ -821,7 +590,7 @@ function AddForm({
       </div>
       <Form method="post" className="mt-5 grid max-w-xl gap-4">
         <input type="hidden" name="provider" value={provider} />
-        {fields[provider]}
+        {fields[provider] ?? <ModelProviderFields provider={provider} />}
         <ErrorText>{error}</ErrorText>
         <div>
           <Button type="submit" disabled={busy}>

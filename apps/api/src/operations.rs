@@ -423,7 +423,7 @@ impl Op {
                 "A workspace's integrations: its own model provider, the alert sources that open issues (Sentry, Datadog, webhooks), and the trackers whose tickets agents can read (Jira, Linear). Secrets are never returned. Members only."
             }
             Op::ConnectIntegration => {
-                "Connect a workspace to an outside system. provider is a model provider (anthropic, openai, gemini, anthropic_endpoint or openai_endpoint: your own key, billed by that provider, with g1t charging a flat orchestration fee per run; a workspace can connect several and route each kind of work with set_model_routes), or sentry, datadog, webhook, jira or linear. config holds the settings each needs; secret is the API key or token. For datadog and webhook, g1t makes the signing secret and returns it once. Owners only."
+                "Connect a workspace to an outside system. provider is a model provider (anthropic, openai, gemini, xai, mistral, deepseek, azure_openai, openrouter, groq, together, fireworks, cerebras, anthropic_endpoint or openai_endpoint: your own key, billed by that provider, with g1t charging a flat orchestration fee per run; a workspace can connect several and route each kind of work with set_model_routes), or sentry, datadog, webhook, jira or linear. config holds the settings each needs; secret is the API key or token. For datadog and webhook, g1t makes the signing secret and returns it once. Owners only."
             }
             Op::DisconnectIntegration => {
                 "Remove an integration and its secrets. Agents already running on a model provider being removed stop reaching it. Owners only."
@@ -768,7 +768,7 @@ impl Op {
                     "workspace": workspace_schema(),
                     "provider": {
                         "type": "string",
-                        "enum": ["anthropic", "openai", "gemini", "anthropic_endpoint", "openai_endpoint", "sentry", "datadog", "webhook", "jira", "linear"],
+                        "enum": g1t_contracts::integrations::Provider::all().map(|provider| provider.name()).collect::<Vec<_>>(),
                     },
                     "name": { "type": "string", "description": "What to call it. The provider's name if left out." },
                     "config": {
@@ -1335,10 +1335,8 @@ impl Op {
             Op::ConnectIntegration => {
                 let provider = text(input, "provider");
                 if g1t_contracts::integrations::Provider::parse(&provider).is_none() {
-                    return failed(
-                        FailureCode::Invalid,
-                        "provider must be anthropic, openai, gemini, anthropic_endpoint, openai_endpoint, sentry, datadog, webhook, jira or linear.",
-                    );
+                    let names: Vec<&str> = g1t_contracts::integrations::Provider::all().map(|provider| provider.name()).collect();
+                    return failed(FailureCode::Invalid, &format!("provider must be one of: {}.", names.join(", ")));
                 }
                 pass(
                     integrations,

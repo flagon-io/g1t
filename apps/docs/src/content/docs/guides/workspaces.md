@@ -45,21 +45,26 @@ is already a workspace.
 | Owner | Everything a member can, and manage members, the workspace's access tokens, its details, and add credit. |
 
 Whoever creates a workspace is its owner. An owner adds people on the
-workspace's **People** page by their g1t username; they join as members. An
-owner can also remove a member there.
+workspace's **Settings → Members** page by their g1t username; they join as
+members. An owner can also remove a member there.
 
 ## The workspace's pages
 
 A workspace's page, `g1t.sh/<workspace>`, shows its repositories and the
-pull requests in progress across them. Its members also have:
+pull requests in progress across them. In the sidebar, its members also
+have **Usage**, what g1t agents have cost (see
+[usage and billing](/guides/usage-and-billing/)), and **Settings**, which
+slides the sidebar over to the workspace's settings:
 
-| Page | Who | |
+| Settings | Who | |
 | --- | --- | --- |
-| **People** | Members | Who belongs, and their roles. Owners add and remove people. |
-| **Access tokens** | Members | The workspace's own tokens. Owners create and delete them. |
-| **Usage** | Members | What g1t agents have cost. See [usage and billing](/guides/usage-and-billing/). |
+| **General** | Owners | The display name and a one-line description. |
+| **Members** | Members | Who belongs, and their roles. Owners add and remove people. |
 | **Billing** | Members | The balance and statement. Owners add credit. |
-| **Settings** | Owners | The display name and a one-line description. |
+| **Integrations** | Members | [Model providers, alerts and trackers](/guides/integrations/). Owners connect and remove them. |
+| **Access tokens** | Members | The workspace's own tokens. Owners create and delete them. |
+
+The arrow at the top of the settings goes back.
 
 ## Workspace access tokens
 
@@ -75,7 +80,7 @@ password to.
 | Can reach | Every workspace you belong to | That workspace only |
 | Can do | Everything you can | What a member can; it cannot manage people, tokens or workspaces |
 | When its creator leaves | Stops working | Keeps working |
-| Created by | You, in [Settings](https://g1t.sh/settings) | An owner, under **Access tokens** on the workspace's page |
+| Created by | You, in [Settings](https://g1t.sh/settings) | An owner, under the workspace's **Settings → Access tokens** |
 
 They are the same kind of token and are sent the same way; see
 [access tokens](/guides/authentication/#access-tokens). With git, any

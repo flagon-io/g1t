@@ -1,5 +1,5 @@
 import { CreditCard, KeyRound, LayoutGrid, Plug, Plus, Settings, Users } from "lucide-react";
-import { Outlet, data, useRouteLoaderData } from "react-router";
+import { Outlet, data, useLocation, useRouteLoaderData } from "react-router";
 
 import type { Route } from "./+types/layout";
 import { Avatar, ButtonLink, Pill, TabLink } from "../../components/ui";
@@ -16,10 +16,43 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   return { workspace, role: roleIn(getViewer(context), workspace.slug) };
 }
 
+/** A workspace's own pages, each with its title and what it is for. */
+const PAGES: Record<string, { title: string; about: string }> = {
+  settings: { title: "General", about: "The workspace's name, address and description." },
+  people: {
+    title: "Members",
+    about: "Members create repositories, push, manage issues and merge pull requests. Owners also manage members, tokens, billing and integrations.",
+  },
+  tokens: {
+    title: "Access tokens",
+    about: "Tokens that belong to the workspace, not a person: for CI, integrations and agents that work for the whole team.",
+  },
+  usage: { title: "Usage", about: "What the workspace's agents cost, run by run, by repository, pull request and model." },
+  billing: { title: "Billing", about: "Agent credit, and every charge against it." },
+  integrations: {
+    title: "Integrations",
+    about: "Model providers, alerts and trackers. Secrets are sealed when saved, and agents never see them.",
+  },
+};
+
 export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
   const { workspace, role } = loaderData;
   const base = `/${workspace.slug}`;
   const signedIn = useRouteLoaderData("root")?.user != null;
+  // The sidebar finds the workspace's pages for someone signed in, so its
+  // pages need a title, not the workspace's whole header again.
+  const page = PAGES[useLocation().pathname.split("/-/")[1]?.split("/")[0] ?? ""];
+  if (signedIn && page) {
+    return (
+      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
+        <header className="mb-8 border-b border-line pb-6">
+          <h1 className="text-2xl font-semibold tracking-tight">{page.title}</h1>
+          <p className="mt-1.5 text-sm text-muted">{page.about}</p>
+        </header>
+        <Outlet />
+      </div>
+    );
+  }
   return (
     <>
       {/* The workspace's own header band, under the site header. */}

@@ -55,13 +55,14 @@ async function viaChat(upstream: ModelUpstream, path: string, request: Request):
   const headers = new Headers({ "content-type": "application/json" });
   if (upstream.gatewayToken) headers.set("cf-aig-authorization", `Bearer ${upstream.gatewayToken}`);
   if (upstream.apiKey) {
-    if (upstream.authHeader === "x-api-key") headers.set("x-api-key", upstream.apiKey);
-    else headers.set("authorization", `Bearer ${upstream.apiKey}`);
+    // `authorization` means a bearer token; any other header takes the key as it is.
+    const header = upstream.authHeader ?? "authorization";
+    headers.set(header, header === "authorization" ? `Bearer ${upstream.apiKey}` : upstream.apiKey);
   }
   const answer = await fetch(`${(upstream.baseUrl ?? "").replace(/\/+$/, "")}/chat/completions`, {
     method: "POST",
     headers,
-    body: JSON.stringify(toChat(body, model, { official: upstream.official })),
+    body: JSON.stringify(toChat(body, model, { official: upstream.official, provider: upstream.provider })),
   });
   if (!answer.ok) {
     return Response.json(errorFromChat(answer.status, await answer.text()), { status: answer.status });

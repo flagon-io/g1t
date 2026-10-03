@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   BarChart3,
   BookMarked,
   BookOpen,
@@ -240,8 +241,57 @@ function AccountMenu({ user }: { user: User }) {
   );
 }
 
+/** A workspace's settings pages, which the sidebar slides over to. */
+const SETTINGS_PAGE = /^\/([^/]+)\/-\/(settings|people|tokens|billing|integrations)(\/|$)/;
+
+/** How the sidebar's two menus slide past each other. */
+const SLIDE = "absolute inset-0 overflow-y-auto px-2 pb-4 transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none";
+
+/** A workspace's settings, as the sidebar shows them in place of everything else. */
+function SettingsMenu({ slug, owner, open }: { slug: string; owner: boolean; open: boolean }) {
+  return (
+    <nav
+      aria-label="Workspace settings"
+      inert={!open}
+      className={`${SLIDE} ${open ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-full opacity-0"}`}
+    >
+      <Link
+        to={`/${slug}`}
+        className="group mt-3 flex h-8 items-center gap-2 rounded-md px-2 text-[0.8125rem] text-muted transition-colors hover:bg-raised/60 hover:text-fg"
+      >
+        <ArrowLeft size={15} className="text-faint transition-transform group-hover:-translate-x-0.5 group-hover:text-muted" />
+        <span className="truncate">{slug}</span>
+      </Link>
+      <SidebarGroup title="Settings">
+        {owner && (
+          <SidebarLink to={`/${slug}/-/settings`} icon={<Settings size={15} />}>
+            General
+          </SidebarLink>
+        )}
+        <SidebarLink to={`/${slug}/-/people`} icon={<Users size={15} />}>
+          Members
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/billing`} icon={<CreditCard size={15} />}>
+          Billing
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/integrations`} icon={<Plug size={15} />}>
+          Integrations
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/tokens`} icon={<KeyRound size={15} />}>
+          Access tokens
+        </SidebarLink>
+      </SidebarGroup>
+    </nav>
+  );
+}
+
 function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind: () => void }) {
   const ws = shell.workspace;
+  const { pathname } = useLocation();
+  const going = useNavigation().location?.pathname;
+  // On a workspace's settings page, or on the way to one, its settings take
+  // the sidebar over.
+  const inSettings = ws != null && SETTINGS_PAGE.exec(going ?? pathname)?.[1]?.toLowerCase() === ws.slug;
   const active = shell.repo;
   const repoBase = active ? `/${active.namespace}/${active.name}` : null;
   // The repository being looked at is listed even when it is someone else's.
@@ -272,7 +322,12 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
           <kbd className="rounded bg-raised px-1.5 font-mono text-[0.625rem] text-muted ring-1 ring-line">⌘K</kbd>
         </button>
       </div>
-      <nav className="min-h-0 grow overflow-y-auto px-2 pb-4">
+      <div className="relative min-h-0 grow overflow-hidden">
+      <nav
+        aria-label="g1t"
+        inert={inSettings}
+        className={`${SLIDE} ${inSettings ? "pointer-events-none -translate-x-1/3 opacity-0" : "translate-x-0 opacity-100"}`}
+      >
         <div className="mt-3 space-y-px">
           <SidebarLink to="/" end icon={<LayoutDashboard size={15} />}>
             Mission control
@@ -287,26 +342,16 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
             <SidebarLink to={`/${ws.slug}`} end icon={<LayoutDashboard size={15} />}>
               Overview
             </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/people`} icon={<Users size={15} />}>
-              People
-            </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/tokens`} icon={<KeyRound size={15} />}>
-              Access tokens
-            </SidebarLink>
             <SidebarLink to={`/${ws.slug}/-/usage`} icon={<BarChart3 size={15} />}>
               Usage
             </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/billing`} icon={<CreditCard size={15} />}>
-              Billing
+            {/* Everything else about the workspace lives in its settings, and only there. */}
+            <SidebarLink
+              to={ws.role === "owner" ? `/${ws.slug}/-/settings` : `/${ws.slug}/-/people`}
+              icon={<Settings size={15} />}
+            >
+              Settings
             </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/integrations`} icon={<Plug size={15} />}>
-              Integrations
-            </SidebarLink>
-            {ws.role === "owner" && (
-              <SidebarLink to={`/${ws.slug}/-/settings`} icon={<Settings size={15} />}>
-                Settings
-              </SidebarLink>
-            )}
           </SidebarGroup>
         )}
 
@@ -392,6 +437,8 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
           })}
         </SidebarGroup>
       </nav>
+      {ws && <SettingsMenu slug={ws.slug} owner={ws.role === "owner"} open={inSettings} />}
+      </div>
 
       <div className="space-y-2 p-2">
         {ws && <UsageCard slug={ws.slug} shell={shell} />}
@@ -409,10 +456,11 @@ const SECTIONS: Record<string, string> = {
   commits: "Commits",
   plans: "Plan",
   settings: "Settings",
-  people: "People",
+  people: "Members",
   tokens: "Access tokens",
   usage: "Usage",
   billing: "Billing",
+  integrations: "Integrations",
   tree: "Code",
   blob: "Code",
 };
@@ -435,7 +483,11 @@ function Breadcrumbs({ pathname }: { pathname: string }) {
   const [owner, second, third, fourth] = parts;
   const trail: { label: string; to: string; mono?: boolean }[] = [{ label: owner!, to: `/${owner}`, mono: true }];
   if (second === "-") {
-    if (third) trail.push({ label: SECTIONS[third] ?? third, to: `/${owner}/-/${third}` });
+    const page = `/${owner}/-/${third}`;
+    if (third && SETTINGS_PAGE.test(page)) {
+      trail.push({ label: "Settings", to: `/${owner}/-/settings` });
+      trail.push({ label: third === "settings" ? "General" : (SECTIONS[third] ?? third), to: page });
+    } else if (third) trail.push({ label: SECTIONS[third] ?? third, to: page });
   } else if (second) {
     const repo = `/${owner}/${second}`;
     trail.push({ label: second, to: repo, mono: true });
@@ -495,9 +547,9 @@ function commandsFor(user: User, shell: ShellData): Command[] {
     commands.push(
       { label: membership.slug, hint: "Workspace", to: `/${membership.slug}`, icon: <Avatar name={membership.slug} size={15} square /> },
       { label: "Usage", hint: membership.slug, to: `/${membership.slug}/-/usage`, icon: <BarChart3 size={15} /> },
-      { label: "Billing", hint: membership.slug, to: `/${membership.slug}/-/billing`, icon: <CreditCard size={15} /> },
-      { label: "Access tokens", hint: membership.slug, to: `/${membership.slug}/-/tokens`, icon: <KeyRound size={15} /> },
-      { label: "Integrations", hint: membership.slug, to: `/${membership.slug}/-/integrations`, icon: <Plug size={15} /> },
+      { label: "Billing", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/billing`, icon: <CreditCard size={15} /> },
+      { label: "Access tokens", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/tokens`, icon: <KeyRound size={15} /> },
+      { label: "Integrations", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/integrations`, icon: <Plug size={15} /> },
     );
   }
   for (const listed of shell.repos) {

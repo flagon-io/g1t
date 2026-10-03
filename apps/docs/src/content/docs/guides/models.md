@@ -16,26 +16,40 @@ g1t's own routing is fixed; yours is not.
 
 ## Providers
 
-| Provider | What you give | Speaks |
+Labs and platforms need only a key; g1t knows where they are.
+
+| | Provider | What you give |
 | --- | --- | --- |
-| **Anthropic** | An API key | Anthropic's API |
-| **OpenAI** | An API key | OpenAI's API |
-| **Google Gemini** | An API key from Google AI Studio | OpenAI's API, through Gemini's compatible endpoint |
-| **Anthropic-compatible endpoint** | A base URL, a key if it needs one | Anthropic's API: your own Cloudflare AI Gateway, LiteLLM, Bedrock or Vertex behind a proxy |
-| **OpenAI-compatible endpoint** | A base URL including its version, a key if it needs one | OpenAI's API: Azure OpenAI, OpenRouter, Groq, Together, vLLM, Ollama |
+| Labs | **Anthropic** | An API key |
+| | **OpenAI** | An API key |
+| | **Google Gemini** | An API key from Google AI Studio |
+| | **xAI** (Grok) | An API key |
+| | **Mistral** | An API key |
+| | **DeepSeek** | An API key |
+| Platforms | **Azure OpenAI** | Your resource's endpoint, its key, and a deployment name |
+| | **OpenRouter** | An API key: hundreds of models from every lab |
+| | **Groq** | An API key |
+| | **Together AI** | An API key |
+| | **Fireworks AI** | An API key |
+| | **Cerebras** | An API key |
+| Any endpoint | **Anthropic-compatible** | A base URL, and a key if it needs one: your own Cloudflare AI Gateway, LiteLLM, Bedrock or Vertex behind a proxy |
+| | **OpenAI-compatible** | A base URL including its version, a model, and a key if it needs one: vLLM, Ollama behind a tunnel, LiteLLM |
 
 An endpoint behind an authenticated Cloudflare AI Gateway also takes the
 gateway's token, sent as `cf-aig-authorization`.
 
-g1t's agents run Claude Code, which speaks Anthropic's API. For a provider
-that speaks OpenAI's, g1t's model proxy translates each request, and the
-streamed answer back, tool calls included. Agents work the same either way.
+g1t's agents run Claude Code, which speaks Anthropic's API. Every provider
+but Anthropic speaks OpenAI's, so g1t's model proxy translates each
+request, and the streamed answer back, tool calls included, and meets each
+provider's quirks: the token limits DeepSeek and Groq set, how Mistral
+names a required tool, Azure's `api-key` header, and the thought signatures
+Gemini needs back with each tool call. Agents work the same either way.
 How well they work depends on the model: it has to be good at using tools
 over many steps.
 
 ## Connect a provider
 
-1. Open the workspace's **Integrations** page. You need to be an owner.
+1. Open the workspace's **Settings → Integrations**. You need to be an owner.
 2. Under **Model providers**, choose one, and give its key (and address, for
    an endpoint).
 3. **Connect**. g1t checks the key at once and lists the provider's models.
@@ -100,7 +114,7 @@ only by the proxy. g1t's own runs work the same way, with g1t's key.
 
 | Tool | Route |
 | --- | --- |
-| `connect_integration` | `POST /workspaces/{workspace}/integrations` with `provider` `anthropic`, `openai`, `gemini`, `anthropic_endpoint` or `openai_endpoint` |
+| `connect_integration` | `POST /workspaces/{workspace}/integrations` with `provider` one of `anthropic`, `openai`, `gemini`, `xai`, `mistral`, `deepseek`, `azure_openai`, `openrouter`, `groq`, `together`, `fireworks`, `cerebras`, `anthropic_endpoint`, `openai_endpoint` |
 | `get_model_routes` | `GET /workspaces/{workspace}/model-routes` |
 | `set_model_routes` | `PUT /workspaces/{workspace}/model-routes` |
 

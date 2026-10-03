@@ -25,100 +25,145 @@ use crate::{User, Viewer};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Provider {
-    /// The workspace's own Anthropic API key.
+    // Model providers: the labs.
     Anthropic,
+    Openai,
+    /// Through Gemini's OpenAI-compatible endpoint.
+    Gemini,
+    Xai,
+    Mistral,
+    Deepseek,
+    // Model providers: platforms that serve many labs' models.
+    /// A deployment on the workspace's own Azure OpenAI resource.
+    AzureOpenai,
+    Openrouter,
+    Groq,
+    Together,
+    Fireworks,
+    Cerebras,
+    // Model providers: anything else.
     /// Any endpoint that speaks Anthropic's Messages API: the workspace's
     /// own Cloudflare AI Gateway, LiteLLM, a proxy in front of Bedrock or
     /// Vertex, or a self-hosted model.
     AnthropicEndpoint,
-    /// The workspace's own OpenAI API key.
-    Openai,
-    /// The workspace's own Google Gemini API key, through Gemini's
-    /// OpenAI-compatible endpoint.
-    Gemini,
-    /// Any endpoint that speaks OpenAI's Chat Completions API: Azure
-    /// OpenAI, OpenRouter, Groq, Together, vLLM, Ollama.
+    /// Any endpoint that speaks OpenAI's Chat Completions API: vLLM,
+    /// Ollama behind a tunnel, LiteLLM, a gateway.
     OpenaiEndpoint,
+    // Alerts.
     Sentry,
     Datadog,
     /// Anything that can send a signed JSON request.
     Webhook,
+    // Trackers.
     Jira,
     Linear,
 }
 
+/// What g1t knows about a provider.
+pub struct Spec {
+    pub provider: Provider,
+    pub name: &'static str,
+    pub label: &'static str,
+    pub kind: ProviderKind,
+    /// For a model provider: the API it speaks, `anthropic` or `openai`.
+    pub api: &'static str,
+    /// For a model provider with a fixed address: where its API is, with
+    /// the version for OpenAI's API and without it for Anthropic's. Empty
+    /// when the connection gives its own.
+    pub base_url: &'static str,
+    /// The header the key goes in; `authorization` means `Bearer <key>`.
+    pub auth_header: &'static str,
+}
+
+const fn model(provider: Provider, name: &'static str, label: &'static str, api: &'static str, base_url: &'static str, auth_header: &'static str) -> Spec {
+    Spec {
+        provider,
+        name,
+        label,
+        kind: ProviderKind::Models,
+        api,
+        base_url,
+        auth_header,
+    }
+}
+
+const fn other(provider: Provider, name: &'static str, label: &'static str, kind: ProviderKind) -> Spec {
+    Spec {
+        provider,
+        name,
+        label,
+        kind,
+        api: "",
+        base_url: "",
+        auth_header: "",
+    }
+}
+
+/// Every provider, in the order people are shown them.
+pub const PROVIDERS: [Spec; 19] = [
+    model(Provider::Anthropic, "anthropic", "Anthropic", "anthropic", "https://api.anthropic.com", "x-api-key"),
+    model(Provider::Openai, "openai", "OpenAI", "openai", "https://api.openai.com/v1", "authorization"),
+    model(Provider::Gemini, "gemini", "Google Gemini", "openai", "https://generativelanguage.googleapis.com/v1beta/openai", "authorization"),
+    model(Provider::Xai, "xai", "xAI", "openai", "https://api.x.ai/v1", "authorization"),
+    model(Provider::Mistral, "mistral", "Mistral", "openai", "https://api.mistral.ai/v1", "authorization"),
+    model(Provider::Deepseek, "deepseek", "DeepSeek", "openai", "https://api.deepseek.com/v1", "authorization"),
+    model(Provider::AzureOpenai, "azure_openai", "Azure OpenAI", "openai", "", "api-key"),
+    model(Provider::Openrouter, "openrouter", "OpenRouter", "openai", "https://openrouter.ai/api/v1", "authorization"),
+    model(Provider::Groq, "groq", "Groq", "openai", "https://api.groq.com/openai/v1", "authorization"),
+    model(Provider::Together, "together", "Together AI", "openai", "https://api.together.xyz/v1", "authorization"),
+    model(Provider::Fireworks, "fireworks", "Fireworks AI", "openai", "https://api.fireworks.ai/inference/v1", "authorization"),
+    model(Provider::Cerebras, "cerebras", "Cerebras", "openai", "https://api.cerebras.ai/v1", "authorization"),
+    model(Provider::AnthropicEndpoint, "anthropic_endpoint", "Anthropic-compatible endpoint", "anthropic", "", "x-api-key"),
+    model(Provider::OpenaiEndpoint, "openai_endpoint", "OpenAI-compatible endpoint", "openai", "", "authorization"),
+    other(Provider::Sentry, "sentry", "Sentry", ProviderKind::Alerts),
+    other(Provider::Datadog, "datadog", "Datadog", ProviderKind::Alerts),
+    other(Provider::Webhook, "webhook", "Webhook", ProviderKind::Alerts),
+    other(Provider::Jira, "jira", "Jira", ProviderKind::Tracker),
+    other(Provider::Linear, "linear", "Linear", ProviderKind::Tracker),
+];
+
 impl Provider {
-    pub const ALL: [Provider; 10] = [
-        Provider::Anthropic,
-        Provider::AnthropicEndpoint,
-        Provider::Openai,
-        Provider::Gemini,
-        Provider::OpenaiEndpoint,
-        Provider::Sentry,
-        Provider::Datadog,
-        Provider::Webhook,
-        Provider::Jira,
-        Provider::Linear,
-    ];
+    pub fn spec(self) -> &'static Spec {
+        PROVIDERS
+            .iter()
+            .find(|spec| spec.provider == self)
+            .expect("every provider is in the catalogue")
+    }
+
+    pub fn all() -> impl Iterator<Item = Provider> {
+        PROVIDERS.iter().map(|spec| spec.provider)
+    }
 
     pub fn name(self) -> &'static str {
-        match self {
-            Provider::Anthropic => "anthropic",
-            Provider::AnthropicEndpoint => "anthropic_endpoint",
-            Provider::Openai => "openai",
-            Provider::Gemini => "gemini",
-            Provider::OpenaiEndpoint => "openai_endpoint",
-            Provider::Sentry => "sentry",
-            Provider::Datadog => "datadog",
-            Provider::Webhook => "webhook",
-            Provider::Jira => "jira",
-            Provider::Linear => "linear",
-        }
+        self.spec().name
     }
 
     pub fn parse(name: &str) -> Option<Provider> {
-        Provider::ALL.into_iter().find(|provider| provider.name() == name)
+        PROVIDERS.iter().find(|spec| spec.name == name).map(|spec| spec.provider)
     }
 
     /// What people call it.
     pub fn label(self) -> &'static str {
-        match self {
-            Provider::Anthropic => "Anthropic",
-            Provider::AnthropicEndpoint => "Anthropic-compatible endpoint",
-            Provider::Openai => "OpenAI",
-            Provider::Gemini => "Google Gemini",
-            Provider::OpenaiEndpoint => "OpenAI-compatible endpoint",
-            Provider::Sentry => "Sentry",
-            Provider::Datadog => "Datadog",
-            Provider::Webhook => "Webhook",
-            Provider::Jira => "Jira",
-            Provider::Linear => "Linear",
-        }
+        self.spec().label
     }
 
     pub fn kind(self) -> ProviderKind {
-        match self {
-            Provider::Anthropic
-            | Provider::AnthropicEndpoint
-            | Provider::Openai
-            | Provider::Gemini
-            | Provider::OpenaiEndpoint => ProviderKind::Models,
-            Provider::Sentry | Provider::Datadog | Provider::Webhook => ProviderKind::Alerts,
-            Provider::Jira | Provider::Linear => ProviderKind::Tracker,
-        }
+        self.spec().kind
     }
 
     /// Whether it sends g1t requests, at the connection's own address.
     pub fn receives(self) -> bool {
-        matches!(self, Provider::Sentry | Provider::Datadog | Provider::Webhook)
+        self.kind() == ProviderKind::Alerts
     }
 
     /// For a model provider, the API it speaks: `anthropic` or `openai`.
     pub fn api(self) -> &'static str {
-        match self {
-            Provider::Anthropic | Provider::AnthropicEndpoint => "anthropic",
-            _ => "openai",
-        }
+        self.spec().api
+    }
+
+    /// Whether the connection gives the address, rather than g1t knowing it.
+    pub fn own_address(self) -> bool {
+        self.kind() == ProviderKind::Models && self.spec().base_url.is_empty()
     }
 }
 
@@ -324,6 +369,9 @@ pub struct ModelUpstream {
     pub model: Option<String>,
     /// For `openai`: OpenAI's own API, which shapes requests its own way.
     pub official: bool,
+    /// Which provider it is, by name, so the proxy can meet its quirks.
+    #[serde(default)]
+    pub provider: String,
     pub workspace: String,
     pub repo: String,
     pub number: u32,
@@ -534,4 +582,29 @@ pub struct ModelUpstreamArgs {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ModelProviderArgs {
     pub workspace: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_provider_is_named_once_and_found_again() {
+        let mut names: Vec<&str> = PROVIDERS.iter().map(|spec| spec.name).collect();
+        for provider in Provider::all() {
+            assert_eq!(Provider::parse(provider.name()), Some(provider));
+        }
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), PROVIDERS.len());
+    }
+
+    #[test]
+    fn model_providers_say_how_to_reach_them() {
+        for spec in PROVIDERS.iter().filter(|spec| spec.kind == ProviderKind::Models) {
+            assert!(spec.api == "anthropic" || spec.api == "openai", "{}", spec.name);
+            assert!(!spec.auth_header.is_empty(), "{}", spec.name);
+            assert!(spec.base_url.is_empty() || spec.base_url.starts_with("https://"), "{}", spec.name);
+        }
+    }
 }

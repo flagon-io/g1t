@@ -193,14 +193,7 @@ export default function UsagePage({ loaderData, params }: Route.ComponentProps) 
   const runway = perDay > 0 ? Math.floor(account.balanceMicros / perDay) : null;
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight">Usage</h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted">
-            What this workspace's agents cost: every run, charged at what the model provider charges
-            plus {account.marginPercent}%, from the workspace's credit.
-          </p>
-        </div>
+      <div className="flex flex-wrap items-end justify-end gap-4">
         <nav className="flex rounded-lg bg-surface p-1 ring-1 ring-line">
           {(Object.keys(PERIODS) as Period[]).map((key) => (
             <Link

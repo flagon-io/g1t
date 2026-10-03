@@ -8,9 +8,18 @@ import type { Result } from "./result";
  */
 export type Provider =
   | "anthropic"
-  | "anthropic_endpoint"
   | "openai"
   | "gemini"
+  | "xai"
+  | "mistral"
+  | "deepseek"
+  | "azure_openai"
+  | "openrouter"
+  | "groq"
+  | "together"
+  | "fireworks"
+  | "cerebras"
+  | "anthropic_endpoint"
   | "openai_endpoint"
   | "sentry"
   | "datadog"
@@ -123,6 +132,8 @@ export type ModelUpstream = {
   model: string | null;
   /** OpenAI's own API. */
   official: boolean;
+  /** Which provider, by name, for its quirks. */
+  provider: string;
   workspace: string;
   repo: string;
   number: number;
@@ -177,9 +188,18 @@ export interface IntegrationsApi {
 /** What each provider is for, as people choose between them. */
 export const PROVIDERS: Record<Provider, { label: string; kind: ProviderKind }> = {
   anthropic: { label: "Anthropic", kind: "models" },
-  anthropic_endpoint: { label: "Anthropic-compatible endpoint", kind: "models" },
   openai: { label: "OpenAI", kind: "models" },
   gemini: { label: "Google Gemini", kind: "models" },
+  xai: { label: "xAI", kind: "models" },
+  mistral: { label: "Mistral", kind: "models" },
+  deepseek: { label: "DeepSeek", kind: "models" },
+  azure_openai: { label: "Azure OpenAI", kind: "models" },
+  openrouter: { label: "OpenRouter", kind: "models" },
+  groq: { label: "Groq", kind: "models" },
+  together: { label: "Together AI", kind: "models" },
+  fireworks: { label: "Fireworks AI", kind: "models" },
+  cerebras: { label: "Cerebras", kind: "models" },
+  anthropic_endpoint: { label: "Anthropic-compatible endpoint", kind: "models" },
   openai_endpoint: { label: "OpenAI-compatible endpoint", kind: "models" },
   sentry: { label: "Sentry", kind: "alerts" },
   datadog: { label: "Datadog", kind: "alerts" },

@@ -39,13 +39,7 @@ export default function WorkspacePeople({ loaderData, actionData }: Route.Compon
   const { role, members } = loaderData;
   return (
     <div className="max-w-2xl">
-      <h2 className="font-medium">People</h2>
-      <p className="mt-1 text-sm text-muted">
-        Members create repositories, push, manage issues and merge pull
-        requests. Owners also manage people, access tokens and the
-        workspace's details.
-      </p>
-      <ul className="mt-5 divide-y divide-line rounded-xl border border-line">
+      <ul className="divide-y divide-line rounded-xl border border-line">
         {members.map((member) => (
           <li key={member.username} className="flex items-center gap-3 px-4 py-3">
             <Avatar name={member.username} size={28} />

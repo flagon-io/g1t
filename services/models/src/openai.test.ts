@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { StreamTranslator, errorFromChat, fromChat, toChat } from "./openai.ts";
+import { StreamTranslator, carryId, errorFromChat, fromChat, toChat, uncarryId } from "./openai.ts";
 
 test("a conversation with tool calls becomes a chat completion", () => {
   const body = toChat(
@@ -137,4 +137,38 @@ test("a streamed answer becomes Anthropic's stream, text then a tool call", () =
 test("a provider's error keeps its status and says what it said", () => {
   const error = errorFromChat(429, JSON.stringify({ error: { message: "Rate limit reached" } }));
   assert.deepEqual(error, { type: "error", error: { type: "rate_limit_error", message: "The provider said: Rate limit reached" } });
+});
+
+test("each provider's quirks are met", () => {
+  const ask = { messages: [{ role: "user" as const, content: "hi" }], max_tokens: 32000, stream: true, tool_choice: { type: "any" as const }, tools: [{ name: "Bash", input_schema: { type: "object" } }] };
+  const deepseek = toChat(ask, "deepseek-chat", { official: false, provider: "deepseek" });
+  assert.equal(deepseek.max_tokens, 8192);
+  assert.equal(deepseek.tool_choice, "required");
+  const mistral = toChat(ask, "mistral-large-latest", { official: false, provider: "mistral" });
+  assert.equal(mistral.tool_choice, "any");
+  assert.equal(mistral.stream_options, undefined);
+});
+
+test("what a provider attaches to a tool call comes back with it", () => {
+  const signature = { google: { thought_signature: "c2lnbmF0dXJl+/==" } };
+  const id = carryId("call_1", signature);
+  assert.match(id, /^call_1__g1t_[A-Za-z0-9_-]+$/);
+  assert.deepEqual(uncarryId(id), { id: "call_1", extra: signature });
+  assert.deepEqual(uncarryId("toolu_plain"), { id: "toolu_plain", extra: undefined });
+
+  const body = toChat(
+    {
+      messages: [
+        { role: "user", content: "go" },
+        { role: "assistant", content: [{ type: "tool_use", id, name: "Bash", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: "ok" }] },
+      ],
+    },
+    "gemini-3-pro",
+    { official: false, provider: "gemini" },
+  );
+  const messages = body.messages as Record<string, unknown>[];
+  assert.deepEqual((messages[1].tool_calls as Record<string, unknown>[])[0].extra_content, signature);
+  assert.equal((messages[1].tool_calls as Record<string, unknown>[])[0].id, "call_1");
+  assert.equal(messages[2].tool_call_id, "call_1");
 });

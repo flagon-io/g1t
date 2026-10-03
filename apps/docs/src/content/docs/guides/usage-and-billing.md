@@ -36,7 +36,7 @@ agents to work on its repositories.
 
 Only an owner of the workspace can add credit.
 
-1. Open the workspace's **Billing** page, `g1t.sh/<workspace>/-/billing`.
+1. Open the workspace's **Settings → Billing**, `g1t.sh/<workspace>/-/billing`.
 2. Under **Add credit by card**, choose an amount: $10, $25, $50 or $100.
 3. Pay on the card page you are sent to.
 

@@ -66,8 +66,8 @@ export function upstreamRequest(
   }
   const key = upstream.apiKey;
   if (key) {
-    if (upstream.authHeader === "authorization") headers.set("authorization", `Bearer ${key}`);
-    else headers.set("x-api-key", key);
+    const header = upstream.authHeader ?? "x-api-key";
+    headers.set(header, header === "authorization" ? `Bearer ${key}` : key);
   }
   if (upstream.gatewayToken) headers.set("cf-aig-authorization", `Bearer ${upstream.gatewayToken}`);
   const base = (upstream.baseUrl ?? "https://api.anthropic.com").replace(/\/+$/, "");

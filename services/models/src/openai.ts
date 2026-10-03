@@ -44,7 +44,46 @@ type ChatMessage =
 export type Dialect = {
   /** OpenAI's own API: `max_completion_tokens`, and no temperature for its reasoning models. */
   official: boolean;
+  /** Which provider, by name, for the quirks of each. */
+  provider?: string;
 };
+
+/** The most output tokens a provider accepts in one answer, where it caps them below what the harness asks. */
+const MAX_OUTPUT: Record<string, number> = { deepseek: 8192, groq: 32768, cerebras: 32768 };
+
+/**
+ * Some providers attach data to a tool call that has to come back with it
+ * on the next turn, such as Gemini's thought signatures. The harness keeps
+ * nothing but the call's id, so the data rides in the id.
+ */
+const CARRIED = "__g1t_";
+
+function toBase64Url(text: string): string {
+  let binary = "";
+  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function fromBase64Url(encoded: string): string {
+  const binary = atob(encoded.replace(/-/g, "+").replace(/_/g, "/"));
+  return new TextDecoder().decode(Uint8Array.from(binary, (c) => c.charCodeAt(0)));
+}
+
+/** A tool call's id, carrying whatever the provider attached to the call. */
+export function carryId(id: string, extra: unknown): string {
+  return extra == null ? id : `${id}${CARRIED}${toBase64Url(JSON.stringify(extra))}`;
+}
+
+/** The provider's own id, and what it attached, from a carried id. */
+export function uncarryId(id: string): { id: string; extra: unknown } {
+  const at = id.indexOf(CARRIED);
+  if (at < 0) return { id, extra: undefined };
+  try {
+    return { id: id.slice(0, at), extra: JSON.parse(fromBase64Url(id.slice(at + CARRIED.length))) };
+  } catch {
+    return { id: id.slice(0, at), extra: undefined };
+  }
+}
 
 function text(content: string | AnthropicBlock[] | undefined): string {
   if (content == null) return "";
@@ -68,7 +107,15 @@ export function toChat(request: AnthropicRequest, model: string, dialect: Dialec
       const said = blocks.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("");
       const calls = blocks
         .filter((b): b is Extract<AnthropicBlock, { type: "tool_use" }> => b.type === "tool_use")
-        .map((b) => ({ id: b.id, type: "function", function: { name: b.name, arguments: JSON.stringify(b.input ?? {}) } }));
+        .map((b) => {
+          const { id, extra } = uncarryId(b.id);
+          return {
+            id,
+            type: "function",
+            function: { name: b.name, arguments: JSON.stringify(b.input ?? {}) },
+            ...(extra === undefined ? {} : { extra_content: extra }),
+          };
+        });
       messages.push({ role: "assistant", content: said || null, ...(calls.length ? { tool_calls: calls } : {}) });
       continue;
     }
@@ -77,7 +124,11 @@ export function toChat(request: AnthropicRequest, model: string, dialect: Dialec
     for (const block of blocks) {
       if (block.type !== "tool_result") continue;
       const result = text(block.content);
-      messages.push({ role: "tool", tool_call_id: block.tool_use_id, content: block.is_error ? `Error: ${result}` : result });
+      messages.push({
+        role: "tool",
+        tool_call_id: uncarryId(block.tool_use_id).id,
+        content: block.is_error ? `Error: ${result}` : result,
+      });
     }
     const parts: Json[] = [];
     for (const block of blocks) {
@@ -92,8 +143,11 @@ export function toChat(request: AnthropicRequest, model: string, dialect: Dialec
   }
 
   const body: Json = { model, messages, stream: request.stream === true };
-  if (request.stream) body.stream_options = { include_usage: true };
-  if (request.max_tokens) body[dialect.official ? "max_completion_tokens" : "max_tokens"] = request.max_tokens;
+  // Usage at the end of a stream; Mistral refuses the option.
+  if (request.stream && dialect.provider !== "mistral") body.stream_options = { include_usage: true };
+  const cap = MAX_OUTPUT[dialect.provider ?? ""];
+  const maxTokens = request.max_tokens && cap ? Math.min(request.max_tokens, cap) : request.max_tokens;
+  if (maxTokens) body[dialect.official ? "max_completion_tokens" : "max_tokens"] = maxTokens;
   if (!dialect.official && request.temperature != null) body.temperature = request.temperature;
   if (!dialect.official && request.top_p != null) body.top_p = request.top_p;
   if (request.stop_sequences?.length) body.stop = request.stop_sequences.slice(0, 4);
@@ -106,7 +160,7 @@ export function toChat(request: AnthropicRequest, model: string, dialect: Dialec
       function: { name: tool.name, description: tool.description ?? "", parameters: tool.input_schema },
     }));
     const choice = request.tool_choice;
-    if (choice?.type === "any") body.tool_choice = "required";
+    if (choice?.type === "any") body.tool_choice = dialect.provider === "mistral" ? "any" : "required";
     else if (choice?.type === "tool" && choice.name) body.tool_choice = { type: "function", function: { name: choice.name } };
     else if (choice?.type === "none") body.tool_choice = "none";
   }
@@ -137,7 +191,12 @@ export function fromChat(completion: Json, model: string): Json {
   if (typeof message.content === "string" && message.content) content.push({ type: "text", text: message.content });
   for (const call of (message.tool_calls as Json[] | undefined) ?? []) {
     const fn = call.function as Json;
-    content.push({ type: "tool_use", id: call.id, name: fn.name, input: parseArguments(String(fn.arguments ?? "")) });
+    content.push({
+      type: "tool_use",
+      id: carryId(String(call.id), call.extra_content),
+      name: fn.name,
+      input: parseArguments(String(fn.arguments ?? "")),
+    });
   }
   const usage = (completion.usage as Json | undefined) ?? {};
   return {
@@ -227,7 +286,12 @@ export class StreamTranslator {
           this.open = { kind: "tool", slot };
           out += event("content_block_start", {
             index: this.index,
-            content_block: { type: "tool_use", id: String(call.id ?? `call_${this.index}`), name: String(fn.name ?? ""), input: {} },
+            content_block: {
+              type: "tool_use",
+              id: carryId(String(call.id ?? `call_${this.index}`), call.extra_content),
+              name: String(fn.name ?? ""),
+              input: {},
+            },
           });
         }
         if (typeof fn.arguments === "string" && fn.arguments) {

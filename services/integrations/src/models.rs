@@ -10,22 +10,24 @@ use crate::http;
 /// Where requests go: without `/v1` for Anthropic's API, with the version
 /// for OpenAI's (`…/v1`, or Gemini's `…/v1beta/openai`).
 pub fn base_url(provider: Provider, config: &ConnectionConfig) -> String {
-    let given = || config.base_url.as_deref().unwrap_or_default().trim_end_matches('/').to_owned();
+    let given = config.base_url.as_deref().unwrap_or_default().trim_end_matches('/');
     match provider {
-        Provider::AnthropicEndpoint => given().trim_end_matches("/v1").to_owned(),
-        Provider::Openai => "https://api.openai.com/v1".to_owned(),
-        Provider::Gemini => "https://generativelanguage.googleapis.com/v1beta/openai".to_owned(),
-        Provider::OpenaiEndpoint => given(),
-        _ => "https://api.anthropic.com".to_owned(),
+        Provider::AnthropicEndpoint => given.trim_end_matches("/v1").to_owned(),
+        Provider::OpenaiEndpoint => given.to_owned(),
+        // Azure's v1 API, on the workspace's own resource.
+        Provider::AzureOpenai => format!("{}/openai/v1", given.trim_end_matches("/openai/v1").trim_end_matches("/openai")),
+        _ => provider.spec().base_url.to_owned(),
     }
 }
 
-/// The header the key goes in.
+/// The header the key goes in; `authorization` means `Bearer <key>`.
 pub fn auth_header(provider: Provider, config: &ConnectionConfig) -> String {
     match provider {
-        Provider::Anthropic => "x-api-key".to_owned(),
-        Provider::AnthropicEndpoint => config.auth_header.clone().unwrap_or_else(|| "x-api-key".to_owned()),
-        _ => config.auth_header.clone().unwrap_or_else(|| "authorization".to_owned()),
+        Provider::AnthropicEndpoint | Provider::OpenaiEndpoint => config
+            .auth_header
+            .clone()
+            .unwrap_or_else(|| provider.spec().auth_header.to_owned()),
+        _ => provider.spec().auth_header.to_owned(),
     }
 }
 
@@ -58,7 +60,7 @@ pub async fn test(
         if header == "authorization" {
             headers.push(("authorization", bearer.as_deref().unwrap_or_default()));
         } else {
-            headers.push(("x-api-key", key));
+            headers.push((header.as_str(), key));
         }
     }
     let gateway = gateway_token.map(|token| format!("Bearer {token}"));
@@ -80,7 +82,7 @@ pub async fn test(
             })
             .unwrap_or_default();
         models.sort();
-        models.truncate(200);
+        models.truncate(1000);
         let message = match models.len() {
             0 => format!("{system} accepted the key."),
             count => format!("{system} accepted the key and offers {count} models."),
@@ -113,6 +115,13 @@ mod tests {
         assert_eq!(base_url(Provider::AnthropicEndpoint, &config), "https://llm.acme.dev");
         assert_eq!(auth_header(Provider::Gemini, &config), "authorization");
         assert_eq!(auth_header(Provider::Anthropic, &config), "x-api-key");
+        assert_eq!(auth_header(Provider::AzureOpenai, &config), "api-key");
+        assert_eq!(base_url(Provider::Groq, &config), "https://api.groq.com/openai/v1");
+        let azure = ConnectionConfig {
+            base_url: Some("https://acme.openai.azure.com/".to_owned()),
+            ..ConnectionConfig::default()
+        };
+        assert_eq!(base_url(Provider::AzureOpenai, &azure), "https://acme.openai.azure.com/openai/v1");
     }
 
     #[test]

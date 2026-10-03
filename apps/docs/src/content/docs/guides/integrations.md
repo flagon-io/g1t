@@ -12,7 +12,7 @@ three kinds of connection:
 | [Alerts](#alerts) | Sentry, Datadog, a signed webhook | A problem opens an issue, once however often it fires, and an agent can start on it at once. |
 | [Trackers](#trackers) | Jira, Linear | Agents read the tickets that work mentions, people import tickets as issues, and tickets hear back when the work lands. |
 
-Open the workspace's **Integrations** page from the sidebar. Every member
+Open the workspace's **Settings → Integrations**. Every member
 can see the connections; only owners can add, test or remove them.
 
 Secrets are sealed when they are saved and never shown again, to anyone.

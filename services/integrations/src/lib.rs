@@ -185,9 +185,11 @@ fn check_config(provider: Provider, workspace: &str, config: &mut ConnectionConf
     }
     let needs = |present: bool, what: &str| if present { Ok(()) } else { Err(what.to_owned()) };
     match provider {
-        Provider::Anthropic => needs(secrets.secret.is_some(), "Paste an Anthropic API key."),
-        Provider::Openai => needs(secrets.secret.is_some(), "Paste an OpenAI API key."),
-        Provider::Gemini => needs(secrets.secret.is_some(), "Paste a Gemini API key."),
+        Provider::AzureOpenai => {
+            needs(config.base_url.is_some(), "Give your Azure OpenAI resource's endpoint, such as https://acme.openai.azure.com.")?;
+            needs(config.model.is_some(), "Give the name of the deployment to use.")?;
+            needs(secrets.secret.is_some(), "Paste the resource's key.")
+        }
         Provider::AnthropicEndpoint | Provider::OpenaiEndpoint => {
             needs(config.base_url.is_some(), "Give the endpoint's address.")?;
             if let Some(header) = &config.auth_header
@@ -212,6 +214,8 @@ fn check_config(provider: Provider, workspace: &str, config: &mut ConnectionConf
             needs(secrets.secret.is_some(), "Paste a Jira API token.")
         }
         Provider::Linear => needs(secrets.secret.is_some(), "Paste a Linear API key."),
+        // Every other model provider is at a known address and needs only a key.
+        _ => needs(secrets.secret.is_some(), &format!("Paste a {} API key.", provider.label())),
     }
 }
 
@@ -503,18 +507,13 @@ impl Integrations {
             }));
         }
         let tested = match provider {
-            Provider::Anthropic
-            | Provider::AnthropicEndpoint
-            | Provider::Openai
-            | Provider::Gemini
-            | Provider::OpenaiEndpoint => unreachable!("checked above"),
             Provider::Sentry => match key {
                 Some(token) => sentry::test(&config, token).await?,
                 None => Ok("Sentry can send alerts. Add an auth token so g1t can read stack traces and resolve issues.".to_owned()),
             },
             Provider::Jira => trackers::jira_test(&config, key.unwrap_or_default()).await?,
             Provider::Linear => trackers::linear_test(key.unwrap_or_default()).await?,
-            Provider::Datadog | Provider::Webhook => Ok(format!(
+            _ => Ok(format!(
                 "Ready. Requests to its address that carry the secret open issues in {}.",
                 config.repo.as_deref().unwrap_or("its repository")
             )),
@@ -1244,6 +1243,7 @@ impl Integrations {
             api: "anthropic".to_owned(),
             model: None,
             official: false,
+            provider: "g1t".to_owned(),
             workspace: session.workspace,
             repo: session.repo,
             number: session.number,
@@ -1266,7 +1266,8 @@ impl Integrations {
             route: if provider == Provider::Anthropic { "anthropic" } else { "endpoint" }.to_owned(),
             api: provider.api().to_owned(),
             model: session.model,
-            official: provider == Provider::Openai,
+            official: matches!(provider, Provider::Openai | Provider::AzureOpenai),
+            provider: provider.name().to_owned(),
             base_url: Some(models::base_url(provider, &config)),
             api_key: self.secrets(&row).secret,
             auth_header: Some(models::auth_header(provider, &config)),

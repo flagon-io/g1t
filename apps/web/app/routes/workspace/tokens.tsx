@@ -60,12 +60,6 @@ export default function WorkspaceTokens({ loaderData, actionData }: Route.Compon
   return (
     <div className="grid gap-10 lg:grid-cols-[1fr_20rem]">
       <div className="min-w-0">
-        <h2 className="font-medium">Access tokens</h2>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          These belong to <span className="font-mono text-fg">{slug}</span>,
-          not to a person. Use them for CI, integrations and agents that work
-          for the whole team, instead of creating an account to share.
-        </p>
 
         {created && (
           <div className="mt-5 rounded-xl border border-accent/40 bg-surface p-4">
