@@ -563,8 +563,10 @@ impl Automations {
                 .await?
                 .is_some_and(|count| count.n > 0);
             if recent {
-                self.finish(&run_id, "skipped", Some("This came from its own last run, so it did not answer it."), &[], actor_name.as_deref())
-                    .await?;
+                let reason = format!(
+                    "An automation made this change, and this one changed #{number} in the last 10 minutes, so it did not answer: that could loop."
+                );
+                self.finish(&run_id, "skipped", Some(&reason), &[], actor_name.as_deref()).await?;
                 return Ok(Some(run_id));
             }
         }

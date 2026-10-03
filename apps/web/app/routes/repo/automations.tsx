@@ -234,7 +234,7 @@ function Templates({ repo }: { repo: string }) {
             <p className="font-medium">{template.title}</p>
             <p className="mt-1 text-xs text-muted">{template.about}</p>
             <p className="mt-3 font-mono text-xs text-faint">.g1t/automations/{template.file}</p>
-            <pre className="mt-1.5 overflow-x-auto rounded-lg bg-bg p-3 font-mono text-xs leading-relaxed ring-1 ring-line">
+            <pre className="mt-1.5 rounded-lg bg-bg p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap ring-1 ring-line">
               <code>{template.yaml}</code>
             </pre>
           </div>

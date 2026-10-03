@@ -167,10 +167,12 @@ workspace's [model providers](/guides/models/).
 
 - **Once per event.** An event runs each automation at most once, even if
   it is delivered again.
-- **No loops.** An automation does not answer an event that its own run
-  caused on the same issue or pull request in the last 10 minutes. An
-  automation that labels issues on `issue.updated` does not keep running
-  because it labelled one.
+- **No loops.** An automation that changed an issue or pull request in
+  the last 10 minutes does not answer a change to it that an automation
+  made, whether itself or another. An automation that labels issues on
+  `issue.updated` does not keep running because it labelled one, and two
+  automations cannot set each other off. Changes people and agents make
+  are answered as usual.
 - **A limit per hour.** An automation makes at most 30 runs an hour.
   Runs past the limit are skipped and recorded. Change the limit, up to
   200, with:
