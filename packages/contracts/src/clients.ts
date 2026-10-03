@@ -211,5 +211,7 @@ export function integrationsClient(service: ServiceBinding): IntegrationsApi {
     modelProvider: (workspace) => call("model_provider", { workspace }),
     openModelSession: (run) => call("open_model_session", run),
     modelUpstream: (token) => call("model_upstream", { token }),
+    routes: (workspace, viewer) => call("routes", { workspace, viewer }),
+    setRoutes: (actor, workspace, routes) => call("set_routes", { actor, workspace, routes }),
   };
 }

@@ -35,9 +35,9 @@ one issue:
 Turn on **Put a g1t agent on each new issue** and an agent starts on the
 issue as soon as it opens: it makes the change, is reviewed, revises, and
 lands through your repository's rules, often before anyone has looked. A
-reopened issue gets an agent again. Agents run only in workspaces
-[g1t agents](/guides/g1t-agents/) are enabled for; elsewhere the issue says
-why none started.
+reopened issue gets an agent again. Agents need a way to reach a model:
+[your own provider](/guides/models/), or g1t's hosted models where they are
+open. Without one, the issue says why no agent started.
 
 Text in an alert can include what your users typed, such as an error
 message built from a request. Issues opened from alerts say so, and agents

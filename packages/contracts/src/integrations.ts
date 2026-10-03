@@ -9,6 +9,9 @@ import type { Result } from "./result";
 export type Provider =
   | "anthropic"
   | "anthropic_endpoint"
+  | "openai"
+  | "gemini"
+  | "openai_endpoint"
   | "sentry"
   | "datadog"
   | "webhook"
@@ -38,7 +41,7 @@ export type ConnectionConfig = {
   baseUrl?: string;
   /** Your own endpoint: `x-api-key` (default) or `authorization`. */
   authHeader?: string;
-  /** Models: use this model for every kind of work. */
+  /** Models: the model used when a route to this connection names none. */
   model?: string;
 };
 
@@ -57,7 +60,16 @@ export type Connection = {
   createdAt: string;
   lastUsedAt: string | null;
   lastError: string | null;
+  /** For a model provider: the models it offered when last checked. */
+  models: string[];
 };
+
+/** The kinds of work a model is chosen for, and `default` for the rest. */
+export const MODEL_TASKS = ["default", "implement", "review", "plan", "update"] as const;
+export type ModelTask = (typeof MODEL_TASKS)[number];
+
+/** Where one kind of work's model requests go: g1t's hosted models when `connectionId` is null. */
+export type ModelRoute = { task: ModelTask; connectionId: string | null; model: string | null };
 
 export type Connected = {
   connection: Connection;
@@ -105,6 +117,12 @@ export type ModelSession = {
 
 export type ModelUpstream = {
   route: "g1t" | "anthropic" | "endpoint";
+  /** The API the provider speaks, which the proxy translates to. */
+  api: "anthropic" | "openai";
+  /** The model every request of the run goes to, when the route names one. */
+  model: string | null;
+  /** OpenAI's own API. */
+  official: boolean;
   workspace: string;
   repo: string;
   number: number;
@@ -142,14 +160,25 @@ export interface IntegrationsApi {
   import(actor: User, repo: RepoPath, reference: string, assign: boolean): Promise<Result<{ number: number; item: ContextItem; created: boolean }>>;
   links(repo: RepoPath, number: number): Promise<Link[]>;
   modelProvider(workspace: string): Promise<Connection | null>;
-  openModelSession(run: { workspace: string; repo: RepoPath; number: number; task: string }): Promise<ModelSession>;
+  openModelSession(run: {
+    workspace: string;
+    repo: RepoPath;
+    number: number;
+    task: string;
+    hostedOpen: boolean;
+  }): Promise<Result<ModelSession>>;
+  routes(workspace: string, viewer: Viewer): Promise<Result<ModelRoute[]>>;
+  setRoutes(actor: User, workspace: string, routes: ModelRoute[]): Promise<Result<ModelRoute[]>>;
   modelUpstream(token: string): Promise<ModelUpstream | null>;
 }
 
 /** What each provider is for, as people choose between them. */
 export const PROVIDERS: Record<Provider, { label: string; kind: ProviderKind }> = {
   anthropic: { label: "Anthropic", kind: "models" },
-  anthropic_endpoint: { label: "Your own endpoint", kind: "models" },
+  anthropic_endpoint: { label: "Anthropic-compatible endpoint", kind: "models" },
+  openai: { label: "OpenAI", kind: "models" },
+  gemini: { label: "Google Gemini", kind: "models" },
+  openai_endpoint: { label: "OpenAI-compatible endpoint", kind: "models" },
   sentry: { label: "Sentry", kind: "alerts" },
   datadog: { label: "Datadog", kind: "alerts" },
   webhook: { label: "Webhook", kind: "alerts" },

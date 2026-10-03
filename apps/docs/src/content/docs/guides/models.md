@@ -3,9 +3,15 @@ title: Your own model provider
 description: Send your agents' model requests to your own Anthropic account or endpoint, and pay for the models there.
 ---
 
-By default, g1t chooses the model for each kind of work, pays the provider,
-and charges your workspace's credit what it cost plus a margin. A workspace
-can instead send its agents' model requests to its own account:
+Each workspace decides where its agents' model spend goes:
+
+- **g1t's hosted models.** g1t chooses the model for each kind of work, pays
+  the provider, and charges your workspace's credit what it cost plus a
+  margin. Open to selected workspaces until payments go live, then to all.
+- **Your own provider.** Your agents' model requests go to your own
+  account, which bills you. Open to every workspace now.
+
+Your own provider can be:
 
 | Provider | What you give | Fits |
 | --- | --- | --- |

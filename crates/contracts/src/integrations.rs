@@ -1,10 +1,12 @@
 //! The integrations service: a workspace's connections to systems outside
 //! g1t, and everything that crosses between them.
 //!
-//! - **Models.** A workspace can send its agents' model traffic to its own
-//!   Anthropic account or to any Anthropic-compatible endpoint, and pay for
-//!   it there. Sandboxes never hold the key: they hold a token for one run,
-//!   and the model proxy puts the credentials on each request.
+//! - **Models.** A workspace connects as many model providers as it uses
+//!   (Anthropic, OpenAI, Gemini, and anything compatible with either API)
+//!   and routes each kind of work to one of them, or to g1t's hosted models.
+//!   Sandboxes never hold a key: they hold a token for one run, and the
+//!   model proxy puts the credentials on each request, translating to
+//!   OpenAI's API where the provider speaks it.
 //! - **Alerts.** Sentry, Datadog or any signed webhook opens an issue in a
 //!   repository, once per problem however often it fires, and can put an
 //!   agent on it.
@@ -29,6 +31,14 @@ pub enum Provider {
     /// own Cloudflare AI Gateway, LiteLLM, a proxy in front of Bedrock or
     /// Vertex, or a self-hosted model.
     AnthropicEndpoint,
+    /// The workspace's own OpenAI API key.
+    Openai,
+    /// The workspace's own Google Gemini API key, through Gemini's
+    /// OpenAI-compatible endpoint.
+    Gemini,
+    /// Any endpoint that speaks OpenAI's Chat Completions API: Azure
+    /// OpenAI, OpenRouter, Groq, Together, vLLM, Ollama.
+    OpenaiEndpoint,
     Sentry,
     Datadog,
     /// Anything that can send a signed JSON request.
@@ -38,9 +48,12 @@ pub enum Provider {
 }
 
 impl Provider {
-    pub const ALL: [Provider; 7] = [
+    pub const ALL: [Provider; 10] = [
         Provider::Anthropic,
         Provider::AnthropicEndpoint,
+        Provider::Openai,
+        Provider::Gemini,
+        Provider::OpenaiEndpoint,
         Provider::Sentry,
         Provider::Datadog,
         Provider::Webhook,
@@ -52,6 +65,9 @@ impl Provider {
         match self {
             Provider::Anthropic => "anthropic",
             Provider::AnthropicEndpoint => "anthropic_endpoint",
+            Provider::Openai => "openai",
+            Provider::Gemini => "gemini",
+            Provider::OpenaiEndpoint => "openai_endpoint",
             Provider::Sentry => "sentry",
             Provider::Datadog => "datadog",
             Provider::Webhook => "webhook",
@@ -68,7 +84,10 @@ impl Provider {
     pub fn label(self) -> &'static str {
         match self {
             Provider::Anthropic => "Anthropic",
-            Provider::AnthropicEndpoint => "Your own endpoint",
+            Provider::AnthropicEndpoint => "Anthropic-compatible endpoint",
+            Provider::Openai => "OpenAI",
+            Provider::Gemini => "Google Gemini",
+            Provider::OpenaiEndpoint => "OpenAI-compatible endpoint",
             Provider::Sentry => "Sentry",
             Provider::Datadog => "Datadog",
             Provider::Webhook => "Webhook",
@@ -79,7 +98,11 @@ impl Provider {
 
     pub fn kind(self) -> ProviderKind {
         match self {
-            Provider::Anthropic | Provider::AnthropicEndpoint => ProviderKind::Models,
+            Provider::Anthropic
+            | Provider::AnthropicEndpoint
+            | Provider::Openai
+            | Provider::Gemini
+            | Provider::OpenaiEndpoint => ProviderKind::Models,
             Provider::Sentry | Provider::Datadog | Provider::Webhook => ProviderKind::Alerts,
             Provider::Jira | Provider::Linear => ProviderKind::Tracker,
         }
@@ -89,12 +112,24 @@ impl Provider {
     pub fn receives(self) -> bool {
         matches!(self, Provider::Sentry | Provider::Datadog | Provider::Webhook)
     }
+
+    /// For a model provider, the API it speaks: `anthropic` or `openai`.
+    pub fn api(self) -> &'static str {
+        match self {
+            Provider::Anthropic | Provider::AnthropicEndpoint => "anthropic",
+            _ => "openai",
+        }
+    }
 }
+
+/// The kinds of work a model is chosen for, and `default` for the rest.
+pub const MODEL_TASKS: [&str; 5] = ["default", "implement", "review", "plan", "update"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
-    /// Where agents' model requests go. A workspace has at most one.
+    /// Where agents' model requests go. A workspace can have several and
+    /// routes each kind of work to one.
     Models,
     /// Problems that become issues.
     Alerts,
@@ -142,8 +177,9 @@ pub struct ConnectionConfig {
     /// `authorization: Bearer`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth_header: Option<String>,
-    /// Models: the model to use for every kind of work instead of g1t's
-    /// choice, for an endpoint that names models its own way.
+    /// Models: the model used when a route to this connection names none.
+    /// Required for providers that speak OpenAI's API; for Anthropic, g1t's
+    /// choice for the kind of work when unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
 }
@@ -191,6 +227,22 @@ pub struct Connection {
     pub last_used_at: Option<String>,
     /// The last thing that went wrong talking to it, until it next works.
     pub last_error: Option<String>,
+    /// For a model provider: the models it offered when last checked.
+    #[serde(default)]
+    pub models: Vec<String>,
+}
+
+/// Where one kind of work's model requests go in a workspace.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelRoute {
+    /// One of [`MODEL_TASKS`].
+    pub task: String,
+    /// The workspace's own model connection, or `None` for g1t's hosted
+    /// models.
+    pub connection_id: Option<String>,
+    /// The model at that connection; its default model when `None`.
+    pub model: Option<String>,
 }
 
 /// One request an outside system sent, and what g1t did with it.
@@ -264,6 +316,14 @@ pub struct ModelSession {
 pub struct ModelUpstream {
     /// `g1t`, `anthropic` or `endpoint`.
     pub route: String,
+    /// The API the provider speaks: `anthropic` or `openai`, which the proxy
+    /// translates to.
+    pub api: String,
+    /// The model every request of the run is sent to, when the route names
+    /// one.
+    pub model: Option<String>,
+    /// For `openai`: OpenAI's own API, which shapes requests its own way.
+    pub official: bool,
     pub workspace: String,
     pub repo: String,
     pub number: u32,
@@ -422,14 +482,38 @@ pub struct LinksArgs {
     pub number: u32,
 }
 
-/// `open_model_session`: where one run's model requests go. Returns
-/// `ModelSession`.
+/// `open_model_session`: where one run's model requests go, by the
+/// workspace's routes. Returns `Outcome<ModelSession>`: a failure, with the
+/// reason to show, when the route goes nowhere it can use.
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OpenModelSessionArgs {
     pub workspace: String,
     pub repo: RepoPath,
     pub number: u32,
     pub task: String,
+    /// Whether g1t's hosted models are open to the workspace. The runner
+    /// decides that; this service only follows the routes.
+    #[serde(default = "yes")]
+    pub hosted_open: bool,
+}
+
+/// `routes`: a workspace's model routes, one per kind of work that has its
+/// own. Returns `Outcome<Vec<ModelRoute>>`. Members only.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RoutesArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+}
+
+/// `set_routes`: replaces a workspace's model routes. A kind of work left
+/// out follows `default`; with no `default`, g1t's hosted models where they
+/// are open. Returns `Outcome<Vec<ModelRoute>>`. Owners only.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetRoutesArgs {
+    pub actor: User,
+    pub workspace: String,
+    pub routes: Vec<ModelRoute>,
 }
 
 /// `model_upstream`: what a model session's token stands for, or null when

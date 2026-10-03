@@ -134,6 +134,18 @@ pub const ROUTES: &[Route] = &[
         &[],
     ),
     route(
+        "GET",
+        "/workspaces/:workspace/model-routes",
+        Op::GetModelRoutes,
+        &[],
+    ),
+    route(
+        "PUT",
+        "/workspaces/:workspace/model-routes",
+        Op::SetModelRoutes,
+        &[],
+    ),
+    route(
         "DELETE",
         "/workspaces/:workspace/integrations/:id",
         Op::DisconnectIntegration,

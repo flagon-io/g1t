@@ -54,6 +54,7 @@ struct Row {
     created_at: String,
     last_used_at: Option<String>,
     last_error: Option<String>,
+    models: Option<String>,
 }
 
 impl Row {
@@ -111,6 +112,24 @@ struct SessionRow {
     repo: String,
     number: u32,
     task: String,
+    model: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RouteRow {
+    task: String,
+    connection_id: Option<String>,
+    model: Option<String>,
+}
+
+impl From<RouteRow> for ModelRoute {
+    fn from(row: RouteRow) -> Self {
+        ModelRoute {
+            task: row.task,
+            connection_id: row.connection_id,
+            model: row.model,
+        }
+    }
 }
 
 /// Something outside g1t that a reference named, and the connection that
@@ -167,7 +186,9 @@ fn check_config(provider: Provider, workspace: &str, config: &mut ConnectionConf
     let needs = |present: bool, what: &str| if present { Ok(()) } else { Err(what.to_owned()) };
     match provider {
         Provider::Anthropic => needs(secrets.secret.is_some(), "Paste an Anthropic API key."),
-        Provider::AnthropicEndpoint => {
+        Provider::Openai => needs(secrets.secret.is_some(), "Paste an OpenAI API key."),
+        Provider::Gemini => needs(secrets.secret.is_some(), "Paste a Gemini API key."),
+        Provider::AnthropicEndpoint | Provider::OpenaiEndpoint => {
             needs(config.base_url.is_some(), "Give the endpoint's address.")?;
             if let Some(header) = &config.auth_header
                 && header != "x-api-key"
@@ -235,6 +256,11 @@ impl Integrations {
             created_at: row.created_at.clone(),
             last_used_at: row.last_used_at.clone(),
             last_error: row.last_error.clone(),
+            models: row
+                .models
+                .as_deref()
+                .and_then(|models| serde_json::from_str(models).ok())
+                .unwrap_or_default(),
         }
     }
 
@@ -356,14 +382,6 @@ impl Integrations {
         {
             return Ok(fail(FailureCode::NotFound, format!("There is no repository {repo}.")));
         }
-        if provider.kind() == ProviderKind::Models
-            && let Some(existing) = self.rows(&workspace).await?.into_iter().find(|row| row.provider().kind() == ProviderKind::Models)
-        {
-            return Ok(fail(
-                FailureCode::Conflict,
-                format!("Agents here already use {}. Disconnect it first: a workspace's agents use one model provider.", existing.name),
-            ));
-        }
         let now = now_ms();
         let id = new_id("con", now);
         let name = tidy(a.name).unwrap_or_else(|| provider.label().to_owned());
@@ -386,6 +404,11 @@ impl Integrations {
             ])?
             .run()
             .await?;
+        // A model provider is checked at once, which also learns its models.
+        if provider.kind() == ProviderKind::Models {
+            let checked = models::test(provider, &config, secrets.secret.as_deref()).await?;
+            self.after_check(&id, &checked).await?;
+        }
         let Some(row) = self.row(&id).await? else {
             return Ok(fail(FailureCode::NotFound, "The connection was not saved."));
         };
@@ -471,8 +494,20 @@ impl Integrations {
         let config = row.config();
         let secrets = self.secrets(&row);
         let key = secrets.secret.as_deref();
+        if provider.kind() == ProviderKind::Models {
+            let checked = models::test(provider, &config, key).await?;
+            self.after_check(&row.id, &checked).await?;
+            return Ok(Outcome::Ok(match checked {
+                Ok((message, _)) => Tested { ok: true, message },
+                Err(message) => Tested { ok: false, message },
+            }));
+        }
         let tested = match provider {
-            Provider::Anthropic | Provider::AnthropicEndpoint => models::test(provider, &config, key).await?,
+            Provider::Anthropic
+            | Provider::AnthropicEndpoint
+            | Provider::Openai
+            | Provider::Gemini
+            | Provider::OpenaiEndpoint => unreachable!("checked above"),
             Provider::Sentry => match key {
                 Some(token) => sentry::test(&config, token).await?,
                 None => Ok("Sentry can send alerts. Add an auth token so g1t can read stack traces and resolve issues.".to_owned()),
@@ -1041,11 +1076,129 @@ impl Integrations {
         Ok(self.model_connection(&a.workspace).await?.map(|row| self.to_connection(&row)))
     }
 
-    async fn open_model_session(&self, a: OpenModelSessionArgs) -> Result<ModelSession> {
+    /// Keeps what a model provider's check found: its models, or what went wrong.
+    async fn after_check(&self, id: &str, checked: &std::result::Result<(String, Vec<String>), String>) -> Result<()> {
+        if let Ok((_, models)) = checked
+            && !models.is_empty()
+        {
+            self.db
+                .prepare("UPDATE connections SET models = ? WHERE id = ?")
+                .bind(&[serde_json::to_string(models)?.into(), id.into()])?
+                .run()
+                .await?;
+        }
+        self.note(id, checked.as_ref().err().map(String::as_str)).await
+    }
+
+    async fn route_rows(&self, workspace: &str) -> Result<Vec<RouteRow>> {
+        self.db
+            .prepare("SELECT task, connection_id, model FROM model_routes WHERE workspace = ? ORDER BY task")
+            .bind(&[workspace.into()])?
+            .all()
+            .await?
+            .results::<RouteRow>()
+    }
+
+    async fn routes(&self, a: RoutesArgs) -> Result<Outcome<Vec<ModelRoute>>> {
         let workspace = a.workspace.to_lowercase();
-        let connection = self.model_connection(&workspace).await?;
+        if !a.viewer.is_some_and(|viewer| viewer.is_member(&workspace)) {
+            return Ok(fail(FailureCode::Forbidden, "Only members can see a workspace's integrations."));
+        }
+        Ok(Outcome::Ok(self.route_rows(&workspace).await?.into_iter().map(ModelRoute::from).collect()))
+    }
+
+    async fn set_routes(&self, a: SetRoutesArgs) -> Result<Outcome<Vec<ModelRoute>>> {
+        let workspace = a.workspace.to_lowercase();
+        if let Some(refused) = Self::owner_only(&a.actor, &workspace) {
+            return Ok(refused);
+        }
+        let rows = self.rows(&workspace).await?;
+        let mut statements = vec![
+            self.db
+                .prepare("DELETE FROM model_routes WHERE workspace = ?")
+                .bind(&[workspace.as_str().into()])?,
+        ];
+        let mut seen = Vec::new();
+        for route in &a.routes {
+            if !MODEL_TASKS.contains(&route.task.as_str()) || seen.contains(&route.task) {
+                return Ok(fail(FailureCode::Invalid, format!("Routes are for {}, each once.", MODEL_TASKS.join(", "))));
+            }
+            seen.push(route.task.clone());
+            let model = route.model.as_deref().map(str::trim).filter(|model| !model.is_empty());
+            if let Some(id) = &route.connection_id {
+                let Some(row) = rows.iter().find(|row| &row.id == id && row.provider().kind() == ProviderKind::Models) else {
+                    return Ok(fail(FailureCode::NotFound, "A route names a model provider this workspace does not have."));
+                };
+                if row.provider().api() == "openai" && model.is_none() && row.config().model.is_none() {
+                    return Ok(fail(
+                        FailureCode::Invalid,
+                        format!("Choose which of {}'s models to use.", row.name),
+                    ));
+                }
+            }
+            statements.push(
+                self.db
+                    .prepare("INSERT INTO model_routes (workspace, task, connection_id, model) VALUES (?, ?, ?, ?)")
+                    .bind(&[
+                        workspace.as_str().into(),
+                        route.task.as_str().into(),
+                        optional(route.connection_id.as_deref()),
+                        optional(model),
+                    ])?,
+            );
+        }
+        self.db.batch(statements).await?;
+        Ok(Outcome::Ok(self.route_rows(&workspace).await?.into_iter().map(ModelRoute::from).collect()))
+    }
+
+    /// Where a kind of work's requests go: its own route, else `default`,
+    /// else g1t's hosted models where they are open, else the workspace's
+    /// first model provider. `None` for g1t's hosted models.
+    async fn resolve_route(&self, workspace: &str, task: &str, hosted_open: bool) -> Result<std::result::Result<Option<(Row, Option<String>)>, String>> {
+        let routes = self.route_rows(workspace).await?;
+        let rows = self.rows(workspace).await?;
+        let own: Vec<&Row> = rows.iter().filter(|row| row.provider().kind() == ProviderKind::Models).collect();
+        let chosen = routes
+            .iter()
+            .find(|route| route.task == task)
+            .or_else(|| routes.iter().find(|route| route.task == "default"));
+        let pick = |row: &Row, model: Option<String>| Some((clone_row(row), model.or_else(|| row.config().model)));
+        let target = match chosen {
+            Some(route) => match &route.connection_id {
+                Some(id) => match own.iter().find(|row| &row.id == id) {
+                    Some(row) => pick(row, route.model.clone()),
+                    None => return Ok(Err("A model route names a provider that was disconnected. An owner can choose another under Integrations.".to_owned())),
+                },
+                None => None,
+            },
+            None if hosted_open || own.is_empty() => None,
+            None => pick(own[0], None),
+        };
+        if target.is_none() && !hosted_open {
+            return Ok(Err(format!(
+                "g1t's hosted models are not open to the {workspace} workspace yet. An owner can connect the workspace's own model provider under Integrations, and route its work there."
+            )));
+        }
+        if let Some((row, None)) = &target
+            && row.provider().api() == "openai"
+        {
+            return Ok(Err(format!("Choose which of {}'s models to use, under Integrations.", row.name)));
+        }
+        Ok(Ok(target))
+    }
+
+    async fn open_model_session(&self, a: OpenModelSessionArgs) -> Result<Outcome<ModelSession>> {
+        let workspace = a.workspace.to_lowercase();
+        let target = match self.resolve_route(&workspace, &a.task, a.hosted_open).await? {
+            Ok(target) => target,
+            Err(problem) => return Ok(fail(FailureCode::Forbidden, problem)),
+        };
         let token = format!("g1tm_{}", crypto::random_hex(24));
         let now = now_ms();
+        let (connection, model) = match &target {
+            Some((row, model)) => (Some(row), model.clone()),
+            None => (None, None),
+        };
         self.db
             .batch(vec![
                 self.db
@@ -1053,26 +1206,27 @@ impl Integrations {
                     .bind(&[rfc3339(now).into()])?,
                 self.db
                     .prepare(
-                        "INSERT INTO model_sessions (token_hash, workspace, connection_id, repo, number, task, expires_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        "INSERT INTO model_sessions (token_hash, workspace, connection_id, repo, number, task, expires_at, model)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     )
                     .bind(&[
                         crypto::sha256_hex(&token).into(),
                         workspace.as_str().into(),
-                        optional(connection.as_ref().map(|row| row.id.as_str())),
+                        optional(connection.map(|row| row.id.as_str())),
                         format!("{}/{}", a.repo.namespace, a.repo.name).into(),
                         a.number.into(),
                         a.task.as_str().into(),
                         rfc3339(now + MODEL_SESSION_SECONDS * 1000).into(),
+                        optional(model.as_deref()),
                     ])?,
             ])
             .await?;
-        Ok(ModelSession {
+        Ok(Outcome::Ok(ModelSession {
             token,
             billed_to: if connection.is_some() { "workspace" } else { "g1t" }.to_owned(),
-            provider_name: connection.as_ref().map(|row| row.name.clone()),
-            model: connection.and_then(|row| row.config().model),
-        })
+            provider_name: connection.map(|row| row.name.clone()),
+            model,
+        }))
     }
 
     async fn model_upstream(&self, a: ModelUpstreamArgs) -> Result<Option<ModelUpstream>> {
@@ -1087,6 +1241,9 @@ impl Integrations {
         };
         let base = ModelUpstream {
             route: "g1t".to_owned(),
+            api: "anthropic".to_owned(),
+            model: None,
+            official: false,
             workspace: session.workspace,
             repo: session.repo,
             number: session.number,
@@ -1106,9 +1263,12 @@ impl Integrations {
         let config = row.config();
         Ok(Some(ModelUpstream {
             route: if provider == Provider::Anthropic { "anthropic" } else { "endpoint" }.to_owned(),
+            api: provider.api().to_owned(),
+            model: session.model,
+            official: provider == Provider::Openai,
             base_url: Some(models::base_url(provider, &config)),
             api_key: self.secrets(&row).secret,
-            auth_header: Some(config.auth_header.unwrap_or_else(|| "x-api-key".to_owned())),
+            auth_header: Some(models::auth_header(provider, &config)),
             ..base
         }))
     }
@@ -1191,6 +1351,7 @@ fn clone_row(row: &Row) -> Row {
         created_at: row.created_at.clone(),
         last_used_at: row.last_used_at.clone(),
         last_error: row.last_error.clone(),
+        models: row.models.clone(),
     }
 }
 
@@ -1228,6 +1389,8 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "model_provider" => reply(&service.model_provider(args(body)?).await?),
         "open_model_session" => reply(&service.open_model_session(args(body)?).await?),
         "model_upstream" => reply(&service.model_upstream(args(body)?).await?),
+        "routes" => reply(&service.routes(args(body)?).await?),
+        "set_routes" => reply(&service.set_routes(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }

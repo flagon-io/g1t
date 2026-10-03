@@ -18,6 +18,8 @@ import {
   type User,
   type Viewer,
   type ContextItem,
+  type ModelAccess,
+  type ModelSession,
   billingClient,
   fail,
   identityClient,
@@ -43,25 +45,15 @@ export interface RunnerEnv {
    */
   MODELS_URL?: string;
   /**
-   * `true` to send g1t's own runs through the proxy too. Needs the proxy to
-   * hold what reaches the provider for g1t (ANTHROPIC_API_KEY); until it
-   * does, only runs on a workspace's own provider go through it.
-   */
-  MODELS_PROXY_HOSTED?: string;
-  /**
    * Secret. The provider's key. Leave it unset when the gateway holds the
    * key, so that no sandbox ever does.
    */
   ANTHROPIC_API_KEY?: string;
   /**
-   * Comma-separated usernames who may start agents while workspaces are not
-   * paying with real money: when billing is off, or its cards are pretend.
-   * Once billing is live, anyone may, and the workspace is charged.
-   */
-  /**
-   * The workspaces whose repositories may use g1t's agents and sandboxes,
-   * comma-separated, or `*` for all. Everything else on g1t works for
-   * everyone; this is what costs money.
+   * Workspaces g1t's hosted models are open to while billing takes no real
+   * money (test mode, or none), comma-separated, or `*`. Once billing is
+   * live, any workspace can use them and its credit pays. A workspace with
+   * its own model provider never needs to be listed.
    */
   HOSTED_AGENT_WORKSPACES: string;
   /**
@@ -399,15 +391,20 @@ export default class RunnerService
   ): Promise<Result<Record<string, string>>> {
     const routes: AgentRoutes = JSON.parse(this.env.AGENT_ROUTES);
     const tags = { repo: `${repo.namespace}/${repo.name}`, pull };
-    // Where the run's model requests go: g1t's account, or the workspace's own.
-    const session = this.env.MODELS_URL
-      ? await integrationsClient(this.env.INTEGRATIONS).openModelSession({
-          workspace: repo.namespace,
-          repo,
-          number: pull,
-          task,
-        })
-      : null;
+    // Where the run's model requests go, by the workspace's routes: g1t's
+    // hosted models, or one of its own providers.
+    let session: ModelSession | null = null;
+    if (this.env.MODELS_URL) {
+      const opened = await integrationsClient(this.env.INTEGRATIONS).openModelSession({
+        workspace: repo.namespace,
+        repo,
+        number: pull,
+        task,
+        hostedOpen: (await this.modelAccess(repo.namespace)).hosted,
+      });
+      if (!opened.ok) return opened;
+      session = opened.value;
+    }
     const own = session?.billedTo === "workspace";
     const model = session?.model ?? routes[task].model;
     const modelName = session?.model ?? routes[task].modelName;
@@ -420,19 +417,16 @@ export default class RunnerService
       billedTo: own ? "workspace" : "g1t",
     });
     if (!ticket.ok) return ticket;
-    // g1t's own runs use the proxy once it holds g1t's key; until then
-    // they reach the gateway as they always have.
-    const proxied = session != null && (own || this.env.MODELS_PROXY_HOSTED === "true");
-    const vars: Record<string, string> = proxied
+    const vars: Record<string, string> = session
       ? {
           ANTHROPIC_MODEL: model,
-          AGENT_MODEL_NAME: own ? `${modelName}, through ${session!.providerName}` : modelName,
+          AGENT_MODEL_NAME: own ? `${modelName}, through ${session.providerName}` : modelName,
           ANTHROPIC_BASE_URL: `${this.env.MODELS_URL!.replace(/\/+$/, "")}/anthropic`,
           // Not a key: a token for this run, which the proxy swaps for one.
-          ANTHROPIC_API_KEY: session!.token,
+          ANTHROPIC_API_KEY: session.token,
           // An endpoint that names models its own way gets its model for
           // the harness's small tasks too.
-          ...(session!.model ? { ANTHROPIC_SMALL_FAST_MODEL: session!.model } : {}),
+          ...(session.model ? { ANTHROPIC_SMALL_FAST_MODEL: session.model } : {}),
         }
       : modelEnv(this.env, routes, task, tags);
     if (ticket.value) {
@@ -485,14 +479,37 @@ export default class RunnerService
     return Boolean(this.env.MODELS_URL) || canReachModel(this.env);
   }
 
-  /**
-   * Whether a workspace's repositories may use g1t's agents and sandboxes.
-   * Only those listed, whatever the state of billing: in the preview g1t
-   * pays for the models, so nobody else can spend on them.
-   */
-  private workspaceAllowed(namespace: string): boolean {
+  /** Whether g1t's hosted models are open to a workspace in the preview. */
+  private previewListed(namespace: string): boolean {
     const listed = this.env.HOSTED_AGENT_WORKSPACES.split(",").map((name) => name.trim().toLowerCase());
     return listed.includes("*") || listed.includes(namespace.toLowerCase());
+  }
+
+  /**
+   * How a workspace's agents reach a model, as the workspace decided: its
+   * own provider, which it pays, or g1t's hosted models, which its credit
+   * pays for. Hosted models are open to every workspace once billing takes
+   * real money, and before that to those listed. Null when it can use
+   * neither yet.
+   */
+  async modelAccess(namespace: string): Promise<ModelAccess> {
+    if (!this.modelsReachable()) return { own: null, hosted: false };
+    const [own, status] = await Promise.all([
+      integrationsClient(this.env.INTEGRATIONS)
+        .modelProvider(namespace)
+        .catch(() => null),
+      billingClient(this.env.BILLING).status(),
+    ]);
+    return {
+      own: own?.name ?? null,
+      hosted: this.previewListed(namespace) || (status.enabled && status.live),
+    };
+  }
+
+  /** Whether a workspace's repositories may use g1t's agents and sandboxes at all. */
+  private async workspaceAllowed(namespace: string): Promise<boolean> {
+    const access = await this.modelAccess(namespace);
+    return access.own != null || access.hosted;
   }
 
   /**
@@ -500,13 +517,14 @@ export default class RunnerService
    * must be allowed and theirs, or with no repo named, in any workspace of
    * theirs that is allowed.
    */
-  private allowed(viewer: Viewer, repo?: RepoPath): boolean {
+  private async allowed(viewer: Viewer, repo?: RepoPath): Promise<boolean> {
     if (!viewer || !this.modelsReachable()) return false;
     const theirs = (viewer.workspaces ?? []).map((membership) => membership.slug.toLowerCase());
     if (repo) {
-      return this.workspaceAllowed(repo.namespace) && theirs.includes(repo.namespace.toLowerCase());
+      return theirs.includes(repo.namespace.toLowerCase()) && (await this.workspaceAllowed(repo.namespace));
     }
-    return theirs.some((slug) => this.workspaceAllowed(slug));
+    for (const slug of theirs) if (await this.workspaceAllowed(slug)) return true;
+    return false;
   }
 
   /**
@@ -599,7 +617,7 @@ export default class RunnerService
     if (next.action === "none") return;
     const { job } = next;
     try {
-      if (!this.modelsReachable() || !this.workspaceAllowed(job.repo.namespace)) {
+      if (!this.modelsReachable() || !(await this.workspaceAllowed(job.repo.namespace))) {
         throw new Error("g1t agents are not enabled for this workspace yet.");
       }
       if (next.action === "review") {
@@ -676,14 +694,15 @@ export default class RunnerService
     const work = workClient(this.env.WORK);
     const jobs = await work.queueBuild(repoId);
     // Merge queue sandboxes, like any other, only where they are enabled.
-    const blocked = jobs.filter((job) => !this.workspaceAllowed(job.repo.namespace));
+    const open = await Promise.all(jobs.map((job) => this.workspaceAllowed(job.repo.namespace)));
+    const blocked = jobs.filter((_, at) => !open[at]);
     if (blocked.length > 0) {
       await Promise.all(
         blocked.map((job) =>
           work.failQueue(
             job.entryId,
             job.token,
-            "The merge queue runs in g1t's sandboxes, which are not enabled for this workspace yet. Turn the queue off to merge directly.",
+            "The merge queue runs in g1t's sandboxes, which need g1t's hosted models or the workspace's own model provider. An owner can connect one under Integrations, or turn the queue off to merge directly.",
           ),
         ),
       );
@@ -799,9 +818,8 @@ export default class RunnerService
     if (!started.ok) return false;
     const job: CheckJob = started.value;
     // Checks are commands one person wrote, run against code another
-    // pushed, on g1t's machines: in the preview, only for the workspaces
-    // sandboxes are enabled for.
-    if (!this.workspaceAllowed(job.repo.namespace)) {
+    // pushed, on g1t's machines: only for workspaces that can use agents.
+    if (!(await this.workspaceAllowed(job.repo.namespace))) {
       await work.reportChecks(job.runId, job.token, { skip: true });
       return false;
     }
@@ -837,13 +855,13 @@ export default class RunnerService
    * they do not belong to or that has no credit.
    */
   private async refusal(actor: User, repo: RepoPath): Promise<Result<never> | null> {
-    if (!this.workspaceAllowed(repo.namespace)) {
+    if (!(await this.workspaceAllowed(repo.namespace))) {
       return fail(
         "forbidden",
-        `g1t agents are in preview and not enabled for the ${repo.namespace} workspace yet. Everything else works, and you can bring your own agent.`,
+        `g1t's hosted models are not open to the ${repo.namespace} workspace yet. An owner can connect the workspace's own model provider under Integrations, and its agents start at once.`,
       );
     }
-    if (!this.allowed(actor, repo)) {
+    if (!(await this.allowed(actor, repo))) {
       return fail("forbidden", `Only members of ${repo.namespace} can put g1t agents to work there.`);
     }
     const billing = billingClient(this.env.BILLING);

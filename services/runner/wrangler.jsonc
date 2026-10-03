@@ -39,6 +39,10 @@
 		"consumers": [{ "queue": "g1t-events-runner", "max_batch_size": 20, "max_batch_timeout": 1 }]
 	},
 	"vars": {
+		// Each workspace chooses where its agents' model spend goes: its own
+		// provider (under Integrations) or g1t's hosted models, paid from its
+		// credit. While billing takes no real money, hosted models are open
+		// only to these workspaces; once it does, to every workspace.
 		"HOSTED_AGENT_WORKSPACES": "syntaqx",
 		// Which model each kind of work runs on. Nobody assigning an agent
 		// chooses; this is g1t's policy. "modelName" is shown to people in the
@@ -47,10 +51,6 @@
 		// Where sandboxes send model requests, with a token for their run.
 		// The proxy holds the keys: g1t's gateway's, or the workspace's own.
 		"MODELS_URL": "https://models.g1t.sh",
-		// g1t's own runs go through the proxy only once it holds g1t's
-		// Anthropic key: npx wrangler secret put ANTHROPIC_API_KEY in
-		// services/models, then set this to "true".
-		"MODELS_PROXY_HOSTED": "true",
 		// Set to a Cloudflare AI Gateway id to route model traffic through it.
 		// Used only when MODELS_URL is unset.
 		"AI_GATEWAY_ID": "g1t",

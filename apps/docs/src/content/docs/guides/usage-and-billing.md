@@ -103,10 +103,14 @@ g1t is in preview.
 
 - **Open to everyone:** accounts, workspaces, repositories, git, issues,
   pull requests, review, the API, and your own agent through MCP.
-- **Enabled for selected workspaces only:** g1t's own agents, and the
-  sandboxes that run acceptance checks and the merge queue. Elsewhere,
-  assigning an issue or planning is refused with a message saying so, and
-  checks do not run.
+- **g1t's agents, for any workspace with its own model provider:** connect
+  an Anthropic key or endpoint under [Integrations](/guides/models/) and the
+  workspace's agents, acceptance checks and merge queue work at once. Your
+  provider bills you for the models; g1t charges $0.10 a run.
+- **g1t's hosted models, for selected workspaces:** while payments are in
+  test mode, g1t's own models are open only to workspaces it has opened
+  them to. When payments go live, every workspace can use them, paid from
+  its credit.
 
-This holds whatever a workspace's credit: adding credit does not enable g1t
-agents for a workspace.
+Each workspace decides where its model spend goes. A workspace that can use
+neither sees a message saying so, with the way to connect its own provider.

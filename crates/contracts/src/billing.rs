@@ -144,7 +144,8 @@ pub struct StartRunArgs {
     /// The model, by its public name.
     pub model: String,
     /// `workspace` when the run uses the workspace's own model provider.
-    #[serde(default = "g1t")]
+    /// The runner, which is TypeScript, sends it as `billedTo`.
+    #[serde(default = "g1t", alias = "billedTo")]
     pub billed_to: String,
 }
 
@@ -214,4 +215,23 @@ pub struct Usage {
     pub by_model: Vec<UsageSlice>,
     /// Credit bought in the period.
     pub added_micros: i64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn who_pays_is_read_as_the_runner_sends_it() {
+        let run: StartRunArgs = serde_json::from_value(serde_json::json!({
+            "workspace": "acme",
+            "repo": { "namespace": "acme", "name": "web" },
+            "number": 7,
+            "task": "implement",
+            "model": "Claude Sonnet 5.5",
+            "billedTo": "workspace",
+        }))
+        .unwrap();
+        assert_eq!(run.billed_to, "workspace");
+    }
 }

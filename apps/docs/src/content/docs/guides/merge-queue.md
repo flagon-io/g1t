@@ -9,9 +9,10 @@ merge without a conflict and still break each other. With the merge queue
 on, a pull request is tested together with everything ahead of it before it
 lands, and `main` only ever moves to a state whose checks passed.
 
-The merge queue runs in g1t's sandboxes, which are in preview and enabled
-for selected workspaces. Elsewhere, an entry fails at once with a message
-saying so; turn the queue off to merge directly.
+The merge queue runs in g1t's sandboxes, which work in any workspace with
+[its own model provider](/guides/models/) and in those g1t's hosted models
+are open to. Elsewhere, an entry fails at once with a message saying so;
+turn the queue off to merge directly.
 
 ## Turn it on
 

@@ -14,8 +14,20 @@ export type RunHostedInput = {
  * Nobody who assigns a g1t agent picks a model. g1t routes each kind of
  * work itself, and says in the session which model ran.
  */
+/**
+ * How a workspace's agents reach a model. The workspace decides: its own
+ * provider (`own` names it), or g1t's hosted models paid from its credit.
+ */
+export type ModelAccess = {
+  /** The workspace's own model connection, by name, if it has one. */
+  own: string | null;
+  /** Whether g1t's hosted models are open to it. */
+  hosted: boolean;
+};
+
 export interface RunnerApi {
-  /** Whether this viewer may put g1t agents to work. */
+  /** How `workspace`'s agents would reach a model now. */
+  modelAccess(workspace: string): Promise<ModelAccess>;
   /**
    * Whether `viewer` may put g1t's agents to work: in `repo`'s workspace,
    * or with none named, in any of theirs.

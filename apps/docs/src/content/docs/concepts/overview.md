@@ -139,8 +139,9 @@ printed. Pushing to the pull request runs them again.
 A pull request whose checks have not passed cannot be merged, unless a
 member of the workspace chooses to merge anyway.
 
-Running checks is in preview: they run in repositories of the workspaces
-g1t's sandboxes are enabled for. See [the preview](/guides/usage-and-billing/#the-preview).
+Checks run in repositories of workspaces that can use g1t's agents: those
+with [their own model provider](/guides/models/), and those g1t's hosted
+models are open to. See [the preview](/guides/usage-and-billing/#the-preview).
 
 ## Review
 
@@ -229,6 +230,7 @@ g1t is under active development. These are designed but not available yet:
 
 - **Milestones.**
 - **g1t agents for everyone.** g1t can put its own agents on an issue, each
-  in a sandbox. This is in preview and enabled for selected workspaces;
-  anyone can sign up, host repositories and bring their own agent today.
+  in a sandbox. A workspace that connects its own model provider can use
+  them today; g1t's hosted models are open to selected workspaces until
+  payments go live.
   See [the preview](/guides/usage-and-billing/#the-preview).

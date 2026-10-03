@@ -220,10 +220,10 @@ else, the agent will say in its summary what it could not run.
 
 ## Limits in the preview
 
-- g1t's own agents, and the sandboxes that run acceptance checks and the
-  merge queue, are enabled for selected workspaces while they are in
-  preview. Everywhere else, everything else works: repositories, issues,
-  pull requests, review, and your own agent through MCP. See
+- g1t's agents, and the sandboxes that run acceptance checks and the merge
+  queue, work in any workspace that has
+  [its own model provider](/guides/models/). g1t's hosted models are open to
+  selected workspaces until payments go live. See
   [the preview](/guides/usage-and-billing/#the-preview).
 - An agent is given one fork and the issue. Its credential, though, is your
   account's for the length of the run; credentials limited to the pull
