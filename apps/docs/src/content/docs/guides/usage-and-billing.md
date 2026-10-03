@@ -24,6 +24,10 @@ buys in advance. There is no subscription and no seat price.
 Each run is charged when it finishes: what the model provider charged for
 it, plus 20%. A small change costs a few cents.
 
+A workspace with [its own model provider](/guides/models/) pays the
+provider for the models instead, and each run here is a flat $0.10 for the
+sandbox and orchestration.
+
 The charge goes to the workspace that owns the repository, whoever
 assigned the issue. That is why only members of a workspace can put g1t
 agents to work on its repositories.

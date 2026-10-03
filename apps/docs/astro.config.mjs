@@ -72,6 +72,13 @@ export default defineConfig({
 					],
 				},
 				{
+					label: 'Connect your tools',
+					items: [
+						{ label: 'Integrations', slug: 'guides/integrations' },
+						{ label: 'Your own model provider', slug: 'guides/models' },
+					],
+				},
+				{
 					label: 'Landing changes',
 					items: [
 						{ label: 'The merge queue', slug: 'guides/merge-queue' },
