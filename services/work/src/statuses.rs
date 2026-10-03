@@ -129,6 +129,29 @@ impl Work {
             .await?
             .results::<HeadRow>()?;
         for head in heads {
+            // A pull request g1t stopped on picks back up once what stopped
+            // it passes: its workflows, and its checks if it has any. The
+            // lifecycle then decides again, within its usual limits.
+            if facts.failed.is_empty() {
+                let resumed = self
+                    .db
+                    .prepare(
+                        "UPDATE pulls SET stalled = NULL WHERE id = ? AND managed = 1 AND stalled IS NOT NULL
+                           AND (check_status IS NULL OR check_status = 'passed') RETURNING id AS value",
+                    )
+                    .bind(&[head.id.as_str().into()])?
+                    .first::<crate::rows::ValueRow>(None)
+                    .await?;
+                if resumed.is_some() {
+                    self.note(
+                        &a.repo_id,
+                        head.number,
+                        (crate::lifecycle::POLICY_ACTOR_ID, crate::lifecycle::POLICY_ACTOR_NAME),
+                        "picked this back up: its workflows pass now",
+                    )
+                    .await?;
+                }
+            }
             self.publish_as(
                 "checks.completed",
                 &a.repo_id,

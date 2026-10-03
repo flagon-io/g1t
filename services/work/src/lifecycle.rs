@@ -33,8 +33,8 @@ const CATCH_UP_MINUTES: u64 = 30;
 const MERGE_MINUTES: u64 = 2;
 /// Who a merge made by a repository's settings is attributed to. Not an
 /// account: `g1t` cannot be registered.
-const POLICY_ACTOR_ID: &str = "g1t_policy";
-const POLICY_ACTOR_NAME: &str = "g1t";
+pub(crate) const POLICY_ACTOR_ID: &str = "g1t_policy";
+pub(crate) const POLICY_ACTOR_NAME: &str = "g1t";
 /// How much of a failed check's output the author is shown.
 const MAX_CHECK_OUTPUT_CHARS: usize = 4_000;
 const MANAGED_PAGE: u32 = 200;
