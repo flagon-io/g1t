@@ -40,7 +40,12 @@ fn for_chat(id: &str) -> bool {
 
 /// Asks the provider for its models with the key. `Ok` with what to say and
 /// the models it offers; `Err` with what went wrong.
-pub async fn test(provider: Provider, config: &ConnectionConfig, key: Option<&str>) -> Result<std::result::Result<(String, Vec<String>), String>> {
+pub async fn test(
+    provider: Provider,
+    config: &ConnectionConfig,
+    key: Option<&str>,
+    gateway_token: Option<&str>,
+) -> Result<std::result::Result<(String, Vec<String>), String>> {
     let base = base_url(provider, config);
     let url = match provider.api() {
         "anthropic" => format!("{base}/v1/models?limit=100"),
@@ -55,6 +60,10 @@ pub async fn test(provider: Provider, config: &ConnectionConfig, key: Option<&st
         } else {
             headers.push(("x-api-key", key));
         }
+    }
+    let gateway = gateway_token.map(|token| format!("Bearer {token}"));
+    if let Some(gateway) = gateway.as_deref() {
+        headers.push(("cf-aig-authorization", gateway));
     }
     let answer = http::send(Method::Get, &url, &headers, None).await?;
     let system = provider.label();

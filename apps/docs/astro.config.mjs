@@ -75,7 +75,7 @@ export default defineConfig({
 					label: 'Connect your tools',
 					items: [
 						{ label: 'Integrations', slug: 'guides/integrations' },
-						{ label: 'Your own model provider', slug: 'guides/models' },
+						{ label: 'Model providers', slug: 'guides/models' },
 					],
 				},
 				{

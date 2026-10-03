@@ -53,6 +53,7 @@ async function viaChat(upstream: ModelUpstream, path: string, request: Request):
   if (!path.startsWith("/v1/messages")) return refuse(404, `${path} has no counterpart at this provider.`);
 
   const headers = new Headers({ "content-type": "application/json" });
+  if (upstream.gatewayToken) headers.set("cf-aig-authorization", `Bearer ${upstream.gatewayToken}`);
   if (upstream.apiKey) {
     if (upstream.authHeader === "x-api-key") headers.set("x-api-key", upstream.apiKey);
     else headers.set("authorization", `Bearer ${upstream.apiKey}`);

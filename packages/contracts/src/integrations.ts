@@ -130,6 +130,8 @@ export type ModelUpstream = {
   baseUrl: string | null;
   apiKey: string | null;
   authHeader: string | null;
+  /** For an endpoint behind an authenticated Cloudflare AI Gateway: its token. */
+  gatewayToken?: string | null;
 };
 
 export type ConnectInput = {

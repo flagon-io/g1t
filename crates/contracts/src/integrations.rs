@@ -334,6 +334,10 @@ pub struct ModelUpstream {
     pub api_key: Option<String>,
     /// `x-api-key` or `authorization`.
     pub auth_header: Option<String>,
+    /// For an endpoint behind an authenticated Cloudflare AI Gateway: the
+    /// gateway's own token, sent as `cf-aig-authorization`.
+    #[serde(default)]
+    pub gateway_token: Option<String>,
 }
 
 // --- Methods -----------------------------------------------------------------
@@ -360,7 +364,9 @@ pub struct ConnectArgs {
     #[serde(default)]
     pub secret: Option<String>,
     /// What it signs its requests to g1t with: Sentry's client secret.
-    /// Made by g1t for Datadog and webhooks, and shown once.
+    /// Made by g1t for Datadog and webhooks, and shown once. For a model
+    /// endpoint behind an authenticated Cloudflare AI Gateway, the gateway's
+    /// token.
     #[serde(default)]
     pub signing_secret: Option<String>,
 }

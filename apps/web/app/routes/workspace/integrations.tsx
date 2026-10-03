@@ -148,9 +148,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 const KIND_INFO: Record<ProviderKind, { title: string; icon: ReactNode; blurb: string }> = {
   models: {
-    title: "Model provider",
+    title: "Model providers",
     icon: <Cpu size={16} />,
-    blurb: "Where your agents' model requests go, and who pays for them.",
+    blurb: "Connect as many as you use, then choose which model does which work, and so who pays for it.",
   },
   alerts: {
     title: "Alerts",
@@ -481,6 +481,16 @@ function Connections({
   );
 }
 
+/** Just the host of an address, which is what tells connections apart. */
+function host(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 function ConnectionRow({
   connection,
   owner,
@@ -500,8 +510,8 @@ function ConnectionRow({
     config.repo && `issues in ${config.repo}`,
     config.assign && "agents start at once",
     config.organization,
-    config.site?.replace(/^https:\/\//, ""),
-    config.baseUrl?.replace(/^https:\/\//, ""),
+    host(config.site),
+    host(config.baseUrl),
     config.model && `default ${config.model}`,
     connection.models.length > 0 && `${connection.models.length} models`,
     config.keys?.length ? config.keys.join(", ") : null,
@@ -510,19 +520,19 @@ function ConnectionRow({
   const waitingForSecret = connection.provider === "sentry" && !deliveries.length && !connection.lastUsedAt;
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex items-center gap-3">
         <ProviderMark provider={connection.provider} />
         <div className="min-w-0 grow">
           <p className="truncate text-sm font-medium">{connection.name}</p>
           <p className="truncate text-xs text-muted">{facts.join(" · ")}</p>
         </div>
         {connection.lastUsedAt && (
-          <span className="text-xs text-faint">
+          <span className="hidden shrink-0 text-xs text-faint sm:inline">
             Used <TimeAgo at={connection.lastUsedAt} />
           </span>
         )}
         {owner && (
-          <Form method="post" className="flex gap-2">
+          <Form method="post" className="flex shrink-0 gap-2">
             <input type="hidden" name="id" value={connection.id} />
             <Button variant="quiet" type="submit" name="intent" value="test" disabled={busy}>
               Test
@@ -711,6 +721,9 @@ function AddForm({
             <option value="x-api-key">x-api-key</option>
           </select>
         </Field>
+        <Field label="Cloudflare AI Gateway token" hint="Only for an authenticated AI Gateway: sent as cf-aig-authorization.">
+          <Input name="signingSecret" type="password" />
+        </Field>
         <Field label="Default model" hint="The model to use. g1t also lists the endpoint's models if it offers a list.">
           <Input name="model" placeholder="anthropic/claude-sonnet-4.5" />
         </Field>
@@ -729,6 +742,9 @@ function AddForm({
             <option value="x-api-key">x-api-key</option>
             <option value="authorization">Authorization: Bearer</option>
           </select>
+        </Field>
+        <Field label="Cloudflare AI Gateway token" hint="Only for an authenticated AI Gateway: sent as cf-aig-authorization.">
+          <Input name="signingSecret" type="password" />
         </Field>
         <Field label="Model" hint="Optional. Leave empty to use g1t's choice for each kind of work; set it if your endpoint names models its own way.">
           <Input name="model" placeholder="claude-sonnet-5-5" />

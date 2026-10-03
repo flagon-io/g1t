@@ -406,7 +406,7 @@ impl Integrations {
             .await?;
         // A model provider is checked at once, which also learns its models.
         if provider.kind() == ProviderKind::Models {
-            let checked = models::test(provider, &config, secrets.secret.as_deref()).await?;
+            let checked = models::test(provider, &config, secrets.secret.as_deref(), secrets.signing_secret.as_deref()).await?;
             self.after_check(&id, &checked).await?;
         }
         let Some(row) = self.row(&id).await? else {
@@ -495,7 +495,7 @@ impl Integrations {
         let secrets = self.secrets(&row);
         let key = secrets.secret.as_deref();
         if provider.kind() == ProviderKind::Models {
-            let checked = models::test(provider, &config, key).await?;
+            let checked = models::test(provider, &config, key, secrets.signing_secret.as_deref()).await?;
             self.after_check(&row.id, &checked).await?;
             return Ok(Outcome::Ok(match checked {
                 Ok((message, _)) => Tested { ok: true, message },
@@ -1251,6 +1251,7 @@ impl Integrations {
             base_url: None,
             api_key: None,
             auth_header: None,
+            gateway_token: None,
         };
         let Some(connection_id) = session.connection_id else {
             return Ok(Some(base));
@@ -1269,6 +1270,9 @@ impl Integrations {
             base_url: Some(models::base_url(provider, &config)),
             api_key: self.secrets(&row).secret,
             auth_header: Some(models::auth_header(provider, &config)),
+            gateway_token: matches!(provider, Provider::AnthropicEndpoint | Provider::OpenaiEndpoint)
+                .then(|| self.secrets(&row).signing_secret)
+                .flatten(),
             ..base
         }))
     }

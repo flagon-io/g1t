@@ -189,7 +189,8 @@ Every one of these is also an MCP tool: `list_issues`, `get_issue`,
 `get_pull_request_changes`, `review_pull_request`, `merge_pull_request`,
 `get_merge_queue`, `message_agent`, `answer_message`, `take_messages`,
 `list_integrations`, `connect_integration`, `test_integration`,
-`disconnect_integration`, `get_context`, `import_issue`,
+`disconnect_integration`, `get_model_routes`, `set_model_routes`,
+`get_context`, `import_issue`,
 `list_repos`, `get_repo`, `create_repo`, `update_repo`,
 `get_repo_settings`, `update_repo_settings`, `list_events`,
 `create_workspace`, and `whoami`. MCP tools take the repository as `repo`,
@@ -200,9 +201,11 @@ written `owner/name`.
 A workspace's owners connect it to outside systems on its **Integrations**
 page, or with `POST /workspaces/{workspace}/integrations`:
 
-- **Its own model provider** (`anthropic`, or `anthropic_endpoint` for any
-  Anthropic-compatible URL): agents' model costs are billed there, and g1t
-  charges $0.10 a run. Sandboxes never hold the key.
+- **Its own model providers** (`anthropic`, `openai`, `gemini`,
+  `anthropic_endpoint`, `openai_endpoint`), as many as it uses, with each
+  kind of work routed to one of them or to g1t's hosted models
+  (`PUT /workspaces/{workspace}/model-routes`). Those providers bill the
+  workspace and g1t charges $0.10 a run. Sandboxes never hold a key.
 - **Alerts** (`sentry`, `datadog`, `webhook`): each problem opens one issue
   in a chosen repository, optionally with an agent put on it at once.
   Senders sign requests to `https://api.g1t.sh/hooks/{integration}`.
@@ -247,7 +250,7 @@ page, or with `POST /workspaces/{workspace}/integrations`:
 - [Accounts and sign-in](https://docs.g1t.sh/guides/authentication/)
 - [Workspaces and tokens](https://docs.g1t.sh/guides/workspaces/)
 - [Integrations](https://docs.g1t.sh/guides/integrations/)
-- [Your own model provider](https://docs.g1t.sh/guides/models/)
+- [Model providers](https://docs.g1t.sh/guides/models/)
 - [Usage and billing](https://docs.g1t.sh/guides/usage-and-billing/)
 - [Git](https://docs.g1t.sh/guides/git/)
 - [MCP tools](https://docs.g1t.sh/reference/mcp/)
