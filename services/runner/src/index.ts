@@ -38,6 +38,8 @@ export interface RunnerEnv {
   WORK: ServiceBinding;
   BILLING: ServiceBinding;
   INTEGRATIONS: ServiceBinding;
+  /** GitHub Actions jobs: told when a job's sandbox dies without reporting. */
+  ACTIONS: ServiceBinding;
   /**
    * The model proxy, which every sandbox's model requests go through with a
    * token for their run, so that no sandbox holds a key. When unset,
@@ -98,7 +100,9 @@ type Run =
   /** An agent turning an outcome into a plan. */
   | { kind: "plan"; planId: string; token: string }
   /** One combined state of a merge queue, being built and checked. */
-  | { kind: "queue"; entryId: string; token: string };
+  | { kind: "queue"; entryId: string; token: string }
+  /** One job of a GitHub Actions workflow. */
+  | { kind: "actions"; jobId: string; token: string };
 type RunRequest = Run & { envVars: Record<string, string> };
 
 /** Long enough to clone, install and test; then the token stops working. */
@@ -122,6 +126,19 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     if (exitCode === 0) return;
     const run = await this.ctx.storage.get<Run>("run");
     if (!run) return;
+    if (run.kind === "actions") {
+      // Refused harmlessly if the job reported its end before it stopped.
+      await this.env.ACTIONS.fetch("https://actions/rpc/job_report", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          job: run.jobId,
+          token: run.token,
+          report: { kind: "done", conclusion: "failure", reason: "The runner stopped before the job finished." },
+        }),
+      });
+      return;
+    }
     const work = workClient(this.env.WORK);
     if (run.kind === "checks") {
       // Refused harmlessly if the run did report before it stopped.
@@ -226,11 +243,16 @@ const AGENT_OPERATIONS = [
   "answer_message",
   // Tickets and alerts outside g1t, through the workspace's integrations.
   "get_context",
+  // GitHub Actions: how the workflows went on its change, and why.
+  "list_workflows",
+  "list_workflow_runs",
+  "get_workflow_run",
+  "get_job_logs",
 ];
 
 /** How an agent is told to use g1t's tools to work with the others. */
 const WORKING_WITH_OTHERS =
-  "You have g1t's own tools (mcp__g1t__…) for this repository. Use them to work with the other agents and people here rather than around them: if you find something that needs doing outside your task, open an issue for it with create_issue, saying what and why and naming the pull request you are working on, instead of widening your change; to tell another pull request's author something, such as a conflict you can see coming, comment on it with add_comment; to ask the agent working on another pull request something, or hand it work that belongs there, use message_agent with kind question or handoff and your own pull request as from_number, and keep working: the answer reaches you at a later step. Answer what other agents send you with answer_message. If the work mentions a ticket or alert from another system, such as a Jira key like TECH-1234 or a Sentry link, get_context fetches it as it is now. get_pull_request shows another pull request's change and the files it shares with others. Mention anything you opened, asked or answered in your summary.";
+  "You have g1t's own tools (mcp__g1t__…) for this repository. Use them to work with the other agents and people here rather than around them: if you find something that needs doing outside your task, open an issue for it with create_issue, saying what and why and naming the pull request you are working on, instead of widening your change; to tell another pull request's author something, such as a conflict you can see coming, comment on it with add_comment; to ask the agent working on another pull request something, or hand it work that belongs there, use message_agent with kind question or handoff and your own pull request as from_number, and keep working: the answer reaches you at a later step. Answer what other agents send you with answer_message. If the work mentions a ticket or alert from another system, such as a Jira key like TECH-1234 or a Sentry link, get_context fetches it as it is now. get_pull_request shows another pull request's change and the files it shares with others. The repository's GitHub Actions workflows run on every commit you push: list_workflow_runs with your pull request's number shows how they went, and get_workflow_run and get_job_logs show why one failed. Mention anything you opened, asked or answered in your summary.";
 
 /** Longest that what people said on a pull request is passed on. */
 const MAX_PEOPLE_SAID_CHARS = 6000;
@@ -356,6 +378,21 @@ export default class RunnerService
       return Response.json(
         await this.run(args.actor, args.repo, args.issue, { instructions: args.instructions }),
       );
+    }
+    if (request.method === "POST" && pathname === "/rpc/start_actions_job") {
+      const args = (await request.json()) as {
+        job: string;
+        token: string;
+        repo: RepoPath;
+        timeoutMinutes: number;
+      };
+      return Response.json(await this.startActionsJob(args));
+    }
+    if (request.method === "POST" && pathname === "/rpc/stop_actions_job") {
+      const args = (await request.json()) as { job: string };
+      const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`actions:${args.job}`));
+      await sandbox.destroy().catch(() => undefined);
+      return Response.json(ok(null));
     }
     if (request.method === "POST" && pathname === "/rpc/plan") {
       const args = (await request.json()) as { actor: User; repo: RepoPath; brief: string };
@@ -504,6 +541,43 @@ export default class RunnerService
       own: own?.name ?? null,
       hosted: this.previewListed(namespace) || (status.enabled && status.live),
     };
+  }
+
+  /**
+   * Starts one job of a GitHub Actions workflow in a sandbox of its own.
+   * The sandbox fetches the job, its contexts and its secrets with the
+   * job's token, and reports back to the actions service through the API.
+   * Jobs run on g1t's machines, so only for workspaces that may use them.
+   */
+  private async startActionsJob(args: {
+    job: string;
+    token: string;
+    repo: RepoPath;
+    timeoutMinutes: number;
+  }): Promise<Result<null>> {
+    const status = await billingClient(this.env.BILLING).status();
+    if (!(this.previewListed(args.repo.namespace) || (status.enabled && status.live))) {
+      return {
+        ok: false,
+        error: {
+          code: "forbidden",
+          message: "Workflows run on g1t's hosted runners, which are not open to this workspace yet.",
+        },
+      };
+    }
+    const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`actions:${args.job}`));
+    await sandbox.run({
+      kind: "actions",
+      jobId: args.job,
+      token: args.token,
+      envVars: {
+        MODE: "actions",
+        G1T_API: "https://api.g1t.sh",
+        ACTIONS_JOB: args.job,
+        ACTIONS_TOKEN: args.token,
+      },
+    });
+    return ok(null);
   }
 
   /** Whether a workspace's repositories may use g1t's agents and sandboxes at all. */

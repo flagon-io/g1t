@@ -8,6 +8,7 @@
 //! (in a container) share it: the service decides what runs, the sandbox
 //! runs the steps, and both read workflows and expressions the same way.
 
+pub mod cron;
 pub mod events;
 pub mod expr;
 pub mod filter;

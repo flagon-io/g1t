@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use g1t_contracts::webhooks::EVENT_TYPES;
 use serde_yaml::Value;
 
-use crate::cron::Schedule;
+use g1t_actions::cron::Schedule;
 
 /// What starts an automation.
 #[derive(Clone, Debug)]

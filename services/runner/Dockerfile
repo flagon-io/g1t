@@ -1,5 +1,6 @@
-# The sandbox a g1t agent works in: git, the agent, the g1t runner, and
-# the toolchains an agent needs to build and test what it changes.
+# The sandbox a g1t agent works in, and where GitHub Actions jobs run:
+# git, the agent, the g1t runner, and the toolchains an agent or a
+# workflow needs to build and test a change.
 # Build context: the repository root.
 
 # The same Debian release as the runtime image, so glibc matches.
@@ -13,13 +14,20 @@ COPY services services
 RUN cargo build --release --package g1t-runner
 
 FROM node:22-bookworm-slim
+# Workflows expect GitHub's runner layout under /home/runner, and sudo
+# without a password.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       git ca-certificates curl build-essential pkg-config libssl-dev \
       python3 python3-pip python3-venv golang-go ripgrep jq \
+      sudo unzip zip xz-utils wget file gnupg lsb-release \
  && rm -rf /var/lib/apt/lists/* \
  && npm install --global @anthropic-ai/claude-code \
- && mkdir /work && chown node:node /work
+ && mkdir /work && chown node:node /work \
+ && mkdir -p /home/runner/work /home/runner/_temp /home/runner/_tool /home/runner/_actions \
+ && chown -R node:node /home/runner \
+ && echo 'node ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/node \
+ && chmod 0440 /etc/sudoers.d/node
 COPY --from=build /src/target/release/g1t-runner /usr/local/bin/g1t-runner
 # Claude Code refuses to skip permission prompts as root.
 USER node

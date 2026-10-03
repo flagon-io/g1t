@@ -1,7 +1,8 @@
 //! Five-field cron schedules, in UTC: minute, hour, day of month, month,
 //! day of week. Each field takes `*`, a number, a range `a-b`, a list
 //! `a,b`, and a step `*/n` or `a-b/n`; days of the week also take `mon` to
-//! `sun`.
+//! `sun`, and months `jan` to `dec`. Shared by automations' schedules and
+//! workflows' `on.schedule`.
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Schedule {
@@ -17,11 +18,13 @@ pub struct Schedule {
 }
 
 const WEEKDAYS: [&str; 7] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+/// Months by name, from 1: the empty first entry stands for 0.
+const MONTHS: [&str; 13] = ["", "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 fn field(text: &str, low: u32, high: u32, names: &[&str]) -> Result<(Vec<bool>, bool), String> {
     let mut set = vec![false; (high + 1) as usize];
     let value = |part: &str| -> Result<u32, String> {
-        if let Some(at) = names.iter().position(|name| part.eq_ignore_ascii_case(name)) {
+        if let Some(at) = names.iter().position(|name| !name.is_empty() && part.eq_ignore_ascii_case(name)) {
             return Ok(at as u32);
         }
         part.parse::<u32>().map_err(|_| format!("`{part}` is not a number"))
@@ -68,7 +71,7 @@ impl Schedule {
         let (minutes, _) = field(minute, 0, 59, &[])?;
         let (hours, _) = field(hour, 0, 23, &[])?;
         let (days, days_restricted) = field(day, 1, 31, &[])?;
-        let (months, _) = field(month, 1, 12, &[])?;
+        let (months, _) = field(month, 1, 12, &MONTHS)?;
         let (weekdays, weekdays_restricted) = field(weekday, 0, 6, &WEEKDAYS)?;
         Ok(Schedule {
             minutes,
@@ -151,6 +154,10 @@ mod tests {
         assert!(!weekdays.fires_at(at(MONDAY + 5, 14, 30)));
         let sunday = Schedule::parse("0 0 * * 7").unwrap();
         assert!(sunday.fires_at(at(MONDAY + 6, 0, 0)));
+        // MONDAY is in October.
+        assert!(Schedule::parse("0 9 * oct mon").unwrap().fires_at(at(MONDAY, 9, 0)));
+        assert!(!Schedule::parse("0 9 * jan-sep *").unwrap().fires_at(at(MONDAY, 9, 0)));
+        assert!(Schedule::parse("0 9 * * *").unwrap().fires_at(at(MONDAY, 9, 0)));
     }
 
     #[test]

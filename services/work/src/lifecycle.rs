@@ -23,6 +23,7 @@ use worker::wasm_bindgen::JsValue;
 
 use crate::Work;
 use crate::reviews::{AGENT_ID, AGENT_NAME};
+use crate::statuses::{self, WorkflowFacts};
 use crate::rows::ValueRow;
 
 /// How long a claimed step is waited for before it may be taken again.
@@ -80,6 +81,8 @@ struct ReviewNote {
 /// What the author is being sent back to address.
 pub(crate) enum Feedback {
     FailedChecks,
+    /// Workflows that failed on its head.
+    FailedWorkflows,
     /// The review that finished at this time.
     Review(String),
     /// What a person who asked for changes wrote since the last revision.
@@ -159,6 +162,8 @@ struct Facts {
     person_request: Option<PersonRequest>,
     /// Its place in the merge queue, and what is ahead of it there.
     queued: Option<(QueueState, Vec<u32>)>,
+    /// What the workflows run on its head say.
+    workflows: WorkflowFacts,
 }
 
 /// Where a pull request stands, and the step to take if it is g1t's turn.
@@ -278,6 +283,31 @@ fn decide(facts: Facts) -> (Lifecycle, Next) {
                 );
             }
         }
+    }
+
+    // Its workflows, like its checks, must pass.
+    if !facts.workflows.failed.is_empty() {
+        let failed = statuses::list(&facts.workflows.failed);
+        if exhausted {
+            return wait(
+                Stage::NeedsYou,
+                &format!("{failed} still fails after the agent revised {}.", times(revisions)),
+            );
+        }
+        return (
+            at(
+                Stage::Revising,
+                format!("{failed} failed. The agent is being sent back to fix it."),
+                revisions,
+            ),
+            Next::Revise(Feedback::FailedWorkflows),
+        );
+    }
+    if !facts.workflows.pending.is_empty() {
+        return wait(
+            Stage::Checking,
+            &format!("Waiting for {} to finish.", statuses::list(&facts.workflows.pending)),
+        );
     }
 
     // A second agent reviews it, unless the repository leaves review to people.
@@ -462,6 +492,7 @@ impl Work {
                 .person_request(pull, progress.revised_at.as_deref())
                 .await?,
             queued: self.queued_entry(&pull.id).await?,
+            workflows: WorkflowFacts::of(&self.statuses(&pull.repo_id, pull.head_commit.as_deref()).await?),
         })))
     }
 
@@ -586,6 +617,28 @@ impl Work {
                 Ok(format!(
                     "These acceptance checks were run against your change in a clean sandbox and failed.\n\n{}",
                     failed.join("\n\n")
+                ))
+            }
+            Feedback::FailedWorkflows => {
+                let statuses = self.statuses(&pull.repo_id, pull.head_commit.as_deref()).await?;
+                let failed: Vec<String> = statuses
+                    .iter()
+                    .filter(|s| s.state == "failure" || s.state == "error")
+                    .map(|s| {
+                        let run = s.target_url.as_deref().and_then(|url| url.rsplit('/').next()).unwrap_or_default();
+                        format!(
+                            "- {} ({}): run `{run}`",
+                            s.context,
+                            s.description.as_deref().unwrap_or("failed")
+                        )
+                    })
+                    .collect();
+                Ok(format!(
+                    "These GitHub Actions workflows failed on your latest commit:\n\n{}\n\n\
+                     Read why with the `get_workflow_run` tool (this repository, and the run's id), \
+                     then `get_job_logs` for the job that failed. Fix the cause in the code, not the workflow, \
+                     unless the workflow itself is wrong.",
+                    failed.join("\n")
                 ))
             }
             Feedback::Review(finished_at) => {
@@ -746,6 +799,9 @@ impl Work {
             }
             Next::Revise(Feedback::FailedChecks) => {
                 "sent g1t-agent back to fix the failed checks".to_owned()
+            }
+            Next::Revise(Feedback::FailedWorkflows) => {
+                "sent g1t-agent back to fix the failed workflows".to_owned()
             }
             Next::Revise(Feedback::Review(_)) => {
                 "sent g1t-agent back to address the review".to_owned()
@@ -1139,7 +1195,26 @@ mod tests {
             approvals_missing: None,
             person_request: None,
             queued: None,
+            workflows: WorkflowFacts::default(),
         }
+    }
+
+    #[test]
+    fn failed_workflows_send_the_agent_back_and_running_ones_wait() {
+        let failed = Facts {
+            workflows: WorkflowFacts { pending: vec![], failed: vec!["CI / pull_request".into()] },
+            ..facts()
+        };
+        let (lifecycle, next) = decide(failed);
+        assert!(matches!(next, Next::Revise(Feedback::FailedWorkflows)));
+        assert!(lifecycle.detail.contains("CI / pull_request failed"));
+        let running = Facts {
+            workflows: WorkflowFacts { pending: vec!["CI / pull_request".into()], failed: vec![] },
+            ..facts()
+        };
+        let (lifecycle, next) = decide(running);
+        assert!(matches!(next, Next::Wait));
+        assert!(lifecycle.detail.contains("Waiting for CI / pull_request"));
     }
 
     #[test]
@@ -1204,6 +1279,7 @@ mod tests {
             Next::Wait => "wait",
             Next::Review => "review",
             Next::Revise(Feedback::FailedChecks) => "revise for checks",
+            Next::Revise(Feedback::FailedWorkflows) => "revise for workflows",
             Next::Revise(Feedback::Review(_)) => "revise for review",
             Next::Revise(Feedback::Person(_)) => "revise for a person",
             Next::CatchUp => "catch up",

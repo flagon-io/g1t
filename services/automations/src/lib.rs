@@ -13,7 +13,6 @@
 //! Automations act as their workspace: what they write is the workspace's,
 //! and says which automation wrote it.
 
-mod cron;
 mod definition;
 
 use g1t_contracts::automations::*;

@@ -880,6 +880,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "g1t-actions-service"
+version = "0.1.0"
+dependencies = [
+ "g1t-actions",
+ "g1t-contracts",
+ "g1t-kit",
+ "g1t-secrets",
+ "serde",
+ "serde_json",
+ "worker",
+]
+
+[[package]]
 name = "g1t-api"
 version = "0.1.0"
 dependencies = [
@@ -896,6 +909,7 @@ dependencies = [
 name = "g1t-automations"
 version = "0.1.0"
 dependencies = [
+ "g1t-actions",
  "g1t-contracts",
  "g1t-kit",
  "serde",
@@ -999,8 +1013,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "g1t-actions",
+ "hex",
  "serde",
  "serde_json",
+ "serde_yaml",
+ "sha2 0.10.9",
  "ureq",
 ]
 

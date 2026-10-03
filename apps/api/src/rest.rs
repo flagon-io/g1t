@@ -265,6 +265,162 @@ pub const ROUTES: &[Route] = &[
         Op::UpdateAutomation,
         &[],
     ),
+    route(
+        "GET",
+        "/repos/:owner/:name/actions/workflows",
+        Op::ListWorkflows,
+        &[],
+    ),
+    route(
+        "GET",
+        "/repos/:owner/:name/actions/workflows/:workflow/runs",
+        Op::ListWorkflowRuns,
+        &[("branch", "branch"), ("event", "event"), ("per_page", "limit")],
+    ),
+    route(
+        "POST",
+        "/repos/:owner/:name/actions/workflows/:workflow/dispatches",
+        Op::DispatchWorkflow,
+        &[],
+    ),
+    route(
+        "PATCH",
+        "/repos/:owner/:name/actions/workflows/:workflow",
+        Op::UpdateWorkflow,
+        &[],
+    ),
+    route(
+        "PUT",
+        "/repos/:owner/:name/actions/workflows/:workflow/enable",
+        Op::UpdateWorkflow,
+        &[],
+    ),
+    route(
+        "PUT",
+        "/repos/:owner/:name/actions/workflows/:workflow/disable",
+        Op::UpdateWorkflow,
+        &[],
+    ),
+    route(
+        "GET",
+        "/repos/:owner/:name/actions/runs",
+        Op::ListWorkflowRuns,
+        &[("workflow", "workflow"), ("branch", "branch"), ("event", "event"), ("pull", "pull"), ("head_sha", "sha"), ("per_page", "limit")],
+    ),
+    route(
+        "GET",
+        "/repos/:owner/:name/actions/runs/:id",
+        Op::GetWorkflowRun,
+        &[],
+    ),
+    route(
+        "POST",
+        "/repos/:owner/:name/actions/runs/:id/cancel",
+        Op::CancelWorkflowRun,
+        &[],
+    ),
+    route(
+        "POST",
+        "/repos/:owner/:name/actions/runs/:id/rerun",
+        Op::RerunWorkflowRun,
+        &[],
+    ),
+    route(
+        "POST",
+        "/repos/:owner/:name/actions/runs/:id/rerun-failed-jobs",
+        Op::RerunWorkflowRun,
+        &[],
+    ),
+    route(
+        "GET",
+        "/repos/:owner/:name/actions/jobs/:job/logs",
+        Op::GetJobLogs,
+        &[("after", "after")],
+    ),
+    route(
+        "GET",
+        "/repos/:owner/:name/actions/secrets",
+        Op::ListActionsSecrets,
+        &[],
+    ),
+    route(
+        "PUT",
+        "/repos/:owner/:name/actions/secrets/:setting",
+        Op::SetActionsSecret,
+        &[],
+    ),
+    route(
+        "DELETE",
+        "/repos/:owner/:name/actions/secrets/:setting",
+        Op::DeleteActionsSecret,
+        &[],
+    ),
+    route(
+        "GET",
+        "/repos/:owner/:name/actions/variables",
+        Op::ListActionsVariables,
+        &[],
+    ),
+    route(
+        "POST",
+        "/repos/:owner/:name/actions/variables",
+        Op::SetActionsVariable,
+        &[],
+    ),
+    route(
+        "PATCH",
+        "/repos/:owner/:name/actions/variables/:setting",
+        Op::SetActionsVariable,
+        &[],
+    ),
+    route(
+        "DELETE",
+        "/repos/:owner/:name/actions/variables/:setting",
+        Op::DeleteActionsVariable,
+        &[],
+    ),
+    route(
+        "GET",
+        "/workspaces/:workspace/actions/secrets",
+        Op::ListActionsSecrets,
+        &[],
+    ),
+    route(
+        "PUT",
+        "/workspaces/:workspace/actions/secrets/:setting",
+        Op::SetActionsSecret,
+        &[],
+    ),
+    route(
+        "DELETE",
+        "/workspaces/:workspace/actions/secrets/:setting",
+        Op::DeleteActionsSecret,
+        &[],
+    ),
+    route(
+        "GET",
+        "/workspaces/:workspace/actions/variables",
+        Op::ListActionsVariables,
+        &[],
+    ),
+    route(
+        "POST",
+        "/workspaces/:workspace/actions/variables",
+        Op::SetActionsVariable,
+        &[],
+    ),
+    route(
+        "PATCH",
+        "/workspaces/:workspace/actions/variables/:setting",
+        Op::SetActionsVariable,
+        &[],
+    ),
+    route(
+        "DELETE",
+        "/workspaces/:workspace/actions/variables/:setting",
+        Op::DeleteActionsVariable,
+        &[],
+    ),
     route("POST", "/repos/:owner/:name/plans", Op::PlanWork, &[]),
     route("GET", "/repos/:owner/:name/plans/:plan", Op::GetPlan, &[]),
     route(
@@ -400,10 +556,17 @@ pub fn resolve(
     if let (Some(owner), Some(name)) = (param("owner"), param("name")) {
         input.insert("repo".to_owned(), Value::String(format!("{owner}/{name}")));
     }
-    for key in ["plan", "id", "workspace", "delivery"] {
+    for key in ["plan", "id", "workspace", "delivery", "workflow", "job", "setting"] {
         if let Some(value) = param(key) {
             input.insert(key.to_owned(), Value::String(value.to_owned()));
         }
+    }
+    // GitHub says some things with the path alone.
+    if route.path.ends_with("/enable") || route.path.ends_with("/disable") {
+        input.insert("enabled".to_owned(), Value::Bool(route.path.ends_with("/enable")));
+    }
+    if route.path.ends_with("/rerun-failed-jobs") {
+        input.insert("failed_only".to_owned(), Value::Bool(true));
     }
     if let Some(number) = param("number") {
         // Not a number: zero, which no issue or pull request has.

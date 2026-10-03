@@ -29,7 +29,8 @@
 		{ "binding": "REPOS", "service": "g1t-repos" },
 		{ "binding": "WORK", "service": "g1t-work" },
 		{ "binding": "BILLING", "service": "g1t-billing" },
-		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" }
+		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" },
+		{ "binding": "ACTIONS", "service": "g1t-actions" }
 	],
 	// A sweep for lifecycle steps whose trigger was missed or whose sandbox
 	// died before reporting.

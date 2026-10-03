@@ -10,7 +10,8 @@
 //! `update` brings a pull request up to date with its target branch,
 //! `review` has an agent review one, and `revise` sends the author back to
 //! address what the checks or a review found, `plan` turns an outcome
-//! into issues, and `queue` builds and checks a state of the merge queue.
+//! into issues, `queue` builds and checks a state of the merge queue, and
+//! `actions` runs one job of a GitHub Actions workflow.
 //! See the modules of those names.
 //!
 //! Configuration comes from the environment:
@@ -21,6 +22,7 @@
 //! - `COMMIT_MESSAGE`: used if the agent leaves changes uncommitted.
 //! - `ANTHROPIC_API_KEY`: read by the harness itself.
 
+mod actions;
 mod checks;
 mod harness;
 mod plan;
@@ -174,6 +176,7 @@ pub(crate) fn run(reporter: &mut Reporter) -> Result<String> {
 fn main() {
     // The same image does the other jobs a sandbox is started for.
     match std::env::var("MODE").as_deref() {
+        Ok("actions") => std::process::exit(actions::main()),
         Ok("checks") => std::process::exit(checks::main()),
         Ok("update") => std::process::exit(update::main()),
         Ok("review") => std::process::exit(review::main()),

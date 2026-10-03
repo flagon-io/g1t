@@ -3,9 +3,13 @@ name = "g1t-runner"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
-description = "The program inside a g1t sandbox: runs an agent, checks, a catch-up merge or a review, and reports back."
+description = "The program inside a g1t sandbox: runs an agent, checks, a catch-up merge, a review or a GitHub Actions job, and reports back."
 
 [dependencies]
+g1t-actions = { path = "../actions" }
+sha2 = "0.10"
+serde_yaml = "0.9"
+hex = "0.4"
 anyhow = "1"
 base64 = "0.22"
 serde = { workspace = true }

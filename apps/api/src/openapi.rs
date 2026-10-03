@@ -12,6 +12,8 @@ fn tag(op: Op) -> &'static str {
         "Webhooks"
     } else if name.contains("automation") {
         "Automations"
+    } else if name.contains("workflow") || name.contains("actions_") || name == "get_job_logs" {
+        "Actions"
     } else if name.contains("integration") || name.contains("model_routes") || op == Op::GetContext {
         "Integrations"
     } else if op == Op::Whoami || name.contains("workspace") {
@@ -110,10 +112,19 @@ fn operation(route: &Route) -> Value {
 
     // An operation reached at a workspace's address as well as a
     // repository's is documented once for each, with its own id.
+    // GitHub's alternative addresses for one operation keep GitHub's names.
+    let base = match (route.method, route.path.rsplit('/').next().unwrap_or_default()) {
+        ("PUT", "enable") => "enable_workflow".to_owned(),
+        ("PUT", "disable") => "disable_workflow".to_owned(),
+        ("POST", "rerun-failed-jobs") => "rerun_failed_jobs".to_owned(),
+        ("PATCH", ":setting") => "update_actions_variable".to_owned(),
+        ("GET", "runs") if route.path.contains("/workflows/:workflow/") => "list_runs_of_workflow".to_owned(),
+        _ => op.name().to_owned(),
+    };
     let id = if route.path.starts_with("/workspaces/") && ROUTES.iter().any(|other| other.op == op && other.path.starts_with("/repos/")) {
-        format!("{}_for_workspace", op.name())
+        format!("{base}_for_workspace")
     } else {
-        op.name().to_owned()
+        base
     };
     let mut described = json!({
         "operationId": id,

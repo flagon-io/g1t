@@ -397,6 +397,26 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
             let entry_id = path.trim_start_matches("/queue/").to_owned();
             return report_queue(&mut request, &services, &entry_id).await;
         }
+        // A sandbox running a GitHub Actions job: fetching the job, and
+        // reporting how it goes. The job's own token is the credential.
+        ("POST", path) if path.starts_with("/actions/jobs/") => {
+            let rest = path.trim_start_matches("/actions/jobs/");
+            let (job, method) = match rest.strip_suffix("/spec") {
+                Some(job) => (job.to_owned(), "job_spec"),
+                None => (rest.to_owned(), "job_report"),
+            };
+            let body = json_body(&mut request).await;
+            let answered: Outcome<Value> = g1t_kit::call(
+                &services.actions,
+                method,
+                &json!({ "job": job, "token": body["token"], "report": body["report"] }),
+            )
+            .await?;
+            return match answered {
+                Outcome::Ok(value) => Response::from_json(&value),
+                Outcome::Fail(refused) => failure(&refused),
+            };
+        }
         ("POST", path) if path.starts_with("/checks/") => {
             let run_id = path.trim_start_matches("/checks/").to_owned();
             return report_checks(&mut request, &services, &run_id).await;

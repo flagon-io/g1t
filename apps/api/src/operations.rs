@@ -26,6 +26,7 @@ pub struct Services {
     pub integrations: Fetcher,
     pub webhooks: Fetcher,
     pub automations: Fetcher,
+    pub actions: Fetcher,
     /// Set for a request made with an agent's token: all it may do.
     pub scope: Option<AgentScope>,
 }
@@ -42,6 +43,7 @@ impl Services {
             integrations: env.service("INTEGRATIONS")?,
             webhooks: env.service("WEBHOOKS")?,
             automations: env.service("AUTOMATIONS")?,
+            actions: env.service("ACTIONS")?,
             scope: None,
         })
     }
@@ -103,6 +105,20 @@ pub enum Op {
     ListAutomationRuns,
     RunAutomation,
     UpdateAutomation,
+    ListWorkflows,
+    ListWorkflowRuns,
+    GetWorkflowRun,
+    GetJobLogs,
+    DispatchWorkflow,
+    CancelWorkflowRun,
+    RerunWorkflowRun,
+    UpdateWorkflow,
+    ListActionsSecrets,
+    SetActionsSecret,
+    DeleteActionsSecret,
+    ListActionsVariables,
+    SetActionsVariable,
+    DeleteActionsVariable,
 }
 
 fn failed(code: FailureCode, message: &str) -> Result<Outcome<Value>> {
@@ -234,6 +250,21 @@ fn camel_keys(value: &Value) -> Value {
     Value::Object(out)
 }
 
+/// The inputs that say whose secrets or variables: a repository's, or a
+/// workspace's own.
+fn settings_owner(properties: Value) -> Value {
+    let mut properties = properties;
+    properties["repo"] = json!({
+        "type": "string",
+        "description": "Repository as \"owner/name\", for its own.",
+    });
+    properties["workspace"] = json!({
+        "type": "string",
+        "description": "Instead of repo: the workspace, for the ones every repository in it reads.",
+    });
+    properties
+}
+
 /// The inputs that say whose webhooks: a repository's, or a workspace's own.
 fn hook_owner(properties: Value) -> Value {
     let mut properties = properties;
@@ -260,7 +291,7 @@ fn repo_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 54] = [
+    pub const ALL: [Op; 68] = [
         Op::Whoami,
         Op::CreateWorkspace,
         Op::ListRepos,
@@ -315,6 +346,20 @@ impl Op {
         Op::ListAutomationRuns,
         Op::RunAutomation,
         Op::UpdateAutomation,
+        Op::ListWorkflows,
+        Op::ListWorkflowRuns,
+        Op::GetWorkflowRun,
+        Op::GetJobLogs,
+        Op::DispatchWorkflow,
+        Op::CancelWorkflowRun,
+        Op::RerunWorkflowRun,
+        Op::UpdateWorkflow,
+        Op::ListActionsSecrets,
+        Op::SetActionsSecret,
+        Op::DeleteActionsSecret,
+        Op::ListActionsVariables,
+        Op::SetActionsVariable,
+        Op::DeleteActionsVariable,
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -378,6 +423,20 @@ impl Op {
             Op::ListAutomationRuns => "list_automation_runs",
             Op::RunAutomation => "run_automation",
             Op::UpdateAutomation => "update_automation",
+            Op::ListWorkflows => "list_workflows",
+            Op::ListWorkflowRuns => "list_workflow_runs",
+            Op::GetWorkflowRun => "get_workflow_run",
+            Op::GetJobLogs => "get_job_logs",
+            Op::DispatchWorkflow => "dispatch_workflow",
+            Op::CancelWorkflowRun => "cancel_workflow_run",
+            Op::RerunWorkflowRun => "rerun_workflow_run",
+            Op::UpdateWorkflow => "update_workflow",
+            Op::ListActionsSecrets => "list_actions_secrets",
+            Op::SetActionsSecret => "set_actions_secret",
+            Op::DeleteActionsSecret => "delete_actions_secret",
+            Op::ListActionsVariables => "list_actions_variables",
+            Op::SetActionsVariable => "set_actions_variable",
+            Op::DeleteActionsVariable => "delete_actions_variable",
         }
     }
 
@@ -520,6 +579,38 @@ impl Op {
                 "Run an automation now, on an issue or pull request if number is given. Members only."
             }
             Op::UpdateAutomation => "Turn an automation on or off without changing its file. Members only.",
+            Op::ListWorkflows => {
+                "A repository's GitHub Actions workflows, read from .github/workflows on its default branch: the events that start each, whether it is on, any problem with its file, notes on anything that runs differently on g1t, its manual-run inputs, and its last run."
+            }
+            Op::ListWorkflowRuns => {
+                "A repository's workflow runs, newest first: of one workflow (its id or file name), a branch, an event, a pull request's number, or a commit."
+            }
+            Op::GetWorkflowRun => {
+                "One workflow run with its jobs: each job's steps and how they went, its annotations (::error:: and the like), and why it stopped. Read a job's log with get_job_logs."
+            }
+            Op::GetJobLogs => {
+                "A job's log, in order, after `after` (a sequence number from an earlier call). `done` says whether more will come. Lines starting ##[group], ##[endgroup], ##[error] and ##[warning] mark groups and messages."
+            }
+            Op::DispatchWorkflow => {
+                "Run a workflow that has `on: workflow_dispatch`, on a branch or tag (the default branch if none), with its inputs. Members only."
+            }
+            Op::CancelWorkflowRun => "Cancel a run that is still going: its waiting jobs are cancelled and its running ones stopped. Members only.",
+            Op::RerunWorkflowRun => {
+                "Run a finished workflow run again: every job, or with failed_only the jobs that did not succeed and the jobs that need them. Members only."
+            }
+            Op::UpdateWorkflow => "Turn a workflow on or off without changing its file. Members only.",
+            Op::ListActionsSecrets => {
+                "The names of the secrets workflows read as `secrets.NAME`: a repository's, with the ones it inherits from its workspace, or a workspace's. Values are never returned. Members only."
+            }
+            Op::SetActionsSecret => {
+                "Add or replace a secret. A repository's need a member; a workspace's, which every repository in it reads, an owner. Names are letters, digits and underscores, upper-cased."
+            }
+            Op::DeleteActionsSecret => "Remove a secret.",
+            Op::ListActionsVariables => {
+                "The variables workflows read as `vars.NAME`, with their values: a repository's, with the ones it inherits from its workspace, or a workspace's. Members only."
+            }
+            Op::SetActionsVariable => "Add or replace a variable, as for secrets.",
+            Op::DeleteActionsVariable => "Remove a variable.",
             Op::ImportIssue => {
                 "Open an issue from a ticket in Jira or Linear, or from a Sentry issue, by its key or address. The issue is linked to it: agents read the original, and when the work lands the ticket is told. Importing the same ticket again returns the issue already made. With assign, a g1t agent starts on it."
             }
@@ -863,6 +954,72 @@ impl Op {
             Op::GetModelRoutes => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
             Op::ListWebhooks => object(hook_owner(json!({})), &[]),
             Op::ListAutomations => repo_only(),
+            Op::ListWorkflows => repo_only(),
+            Op::ListWorkflowRuns => object(
+                json!({
+                    "repo": repo_schema(),
+                    "workflow": { "type": "string", "description": "A workflow's id or file name, such as ci.yml." },
+                    "branch": { "type": "string" },
+                    "event": { "type": "string", "description": "push, pull_request, schedule, workflow_dispatch…" },
+                    "pull": { "type": "integer", "description": "A pull request's number." },
+                    "sha": { "type": "string", "description": "A commit." },
+                    "limit": { "type": "integer", "description": "At most 100; 50 if not given." },
+                }),
+                &["repo"],
+            ),
+            Op::GetWorkflowRun => object(
+                json!({ "repo": repo_schema(), "id": { "type": "string", "description": "The run's id." } }),
+                &["repo", "id"],
+            ),
+            Op::GetJobLogs => object(
+                json!({
+                    "repo": repo_schema(),
+                    "job": { "type": "string", "description": "The job's id, from get_workflow_run." },
+                    "after": { "type": "integer", "description": "Only chunks after this sequence number." },
+                }),
+                &["repo", "job"],
+            ),
+            Op::DispatchWorkflow => object(
+                json!({
+                    "repo": repo_schema(),
+                    "workflow": { "type": "string", "description": "The workflow's id or file name." },
+                    "ref": { "type": "string", "description": "A branch or tag. The default branch if not given." },
+                    "inputs": { "type": "object", "description": "The workflow_dispatch inputs, by name." },
+                }),
+                &["repo", "workflow"],
+            ),
+            Op::CancelWorkflowRun => object(
+                json!({ "repo": repo_schema(), "id": { "type": "string", "description": "The run's id." } }),
+                &["repo", "id"],
+            ),
+            Op::RerunWorkflowRun => object(
+                json!({
+                    "repo": repo_schema(),
+                    "id": { "type": "string", "description": "The run's id." },
+                    "failed_only": { "type": "boolean", "description": "Only the jobs that did not succeed, and those that need them." },
+                }),
+                &["repo", "id"],
+            ),
+            Op::UpdateWorkflow => object(
+                json!({
+                    "repo": repo_schema(),
+                    "workflow": { "type": "string", "description": "The workflow's id or file name." },
+                    "enabled": { "type": "boolean" },
+                }),
+                &["repo", "workflow", "enabled"],
+            ),
+            Op::ListActionsSecrets | Op::ListActionsVariables => object(settings_owner(json!({})), &[]),
+            Op::SetActionsSecret | Op::SetActionsVariable => object(
+                settings_owner(json!({
+                    "setting": { "type": "string", "description": "The name, such as NPM_TOKEN." },
+                    "value": { "type": "string" },
+                })),
+                &["setting", "value"],
+            ),
+            Op::DeleteActionsSecret | Op::DeleteActionsVariable => object(
+                settings_owner(json!({ "setting": { "type": "string", "description": "The name." } })),
+                &["setting"],
+            ),
             Op::ListAutomationRuns => object(
                 json!({
                     "repo": repo_schema(),
@@ -1006,6 +1163,12 @@ impl Op {
                 | Op::PingWebhook
                 | Op::ListWebhookDeliveries
                 | Op::RedeliverWebhook
+                | Op::ListActionsSecrets
+                | Op::SetActionsSecret
+                | Op::DeleteActionsSecret
+                | Op::ListActionsVariables
+                | Op::SetActionsVariable
+                | Op::DeleteActionsVariable
         )
     }
 
@@ -1084,6 +1247,7 @@ impl Op {
             integrations,
             webhooks,
             automations,
+            actions,
             ..
         } = services;
         let workspace = || text(input, "workspace").to_lowercase();
@@ -1531,6 +1695,101 @@ impl Op {
                     &json!({ "actor": actor(), "repo": repo, "id": text(input, "id"), "enabled": input["enabled"].as_bool() == Some(true) }),
                 )
                 .await
+            }
+            Op::ListWorkflows => pass(actions, "workflows", &json!({ "repo": repo, "viewer": viewer })).await,
+            Op::ListWorkflowRuns => {
+                pass(
+                    actions,
+                    "runs",
+                    &json!({
+                        "repo": repo,
+                        "viewer": viewer,
+                        "workflow": optional_text(input, "workflow"),
+                        "branch": optional_text(input, "branch"),
+                        "event": optional_text(input, "event"),
+                        "pull": integer(input, "pull"),
+                        "sha": optional_text(input, "sha"),
+                        "limit": integer(input, "limit"),
+                    }),
+                )
+                .await
+            }
+            Op::GetWorkflowRun => pass(actions, "run", &json!({ "repo": repo, "viewer": viewer, "id": text(input, "id") })).await,
+            Op::GetJobLogs => {
+                pass(
+                    actions,
+                    "logs",
+                    &json!({ "repo": repo, "viewer": viewer, "job": text(input, "job"), "after": integer(input, "after").unwrap_or(0) }),
+                )
+                .await
+            }
+            Op::DispatchWorkflow => {
+                pass(
+                    actions,
+                    "dispatch",
+                    &json!({
+                        "actor": actor(),
+                        "repo": repo,
+                        "workflow": text(input, "workflow"),
+                        "ref": optional_text(input, "ref"),
+                        "inputs": if input["inputs"].is_object() { input["inputs"].clone() } else { json!({}) },
+                    }),
+                )
+                .await
+            }
+            Op::CancelWorkflowRun | Op::RerunWorkflowRun => {
+                pass(
+                    actions,
+                    if self == Op::CancelWorkflowRun { "cancel" } else { "rerun" },
+                    &json!({
+                        "actor": actor(),
+                        "repo": repo,
+                        "id": text(input, "id"),
+                        "failed_only": input["failed_only"].as_bool() == Some(true),
+                    }),
+                )
+                .await
+            }
+            Op::UpdateWorkflow => {
+                pass(
+                    actions,
+                    "set_workflow_enabled",
+                    &json!({
+                        "actor": actor(),
+                        "repo": repo,
+                        "workflow": text(input, "workflow"),
+                        "enabled": input["enabled"].as_bool() == Some(true),
+                    }),
+                )
+                .await
+            }
+            Op::ListActionsSecrets
+            | Op::SetActionsSecret
+            | Op::DeleteActionsSecret
+            | Op::ListActionsVariables
+            | Op::SetActionsVariable
+            | Op::DeleteActionsVariable => {
+                let mut args = match repo_path(input) {
+                    Some(repo) => json!({ "repo": repo }),
+                    None if !workspace().is_empty() => json!({ "workspace": workspace() }),
+                    None => return failed(FailureCode::Invalid, "Name the repository as repo, or the workspace as workspace."),
+                };
+                let kind = if matches!(self, Op::ListActionsSecrets | Op::SetActionsSecret | Op::DeleteActionsSecret) {
+                    "secret"
+                } else {
+                    "variable"
+                };
+                args["actor"] = json!(actor());
+                args["kind"] = json!(kind);
+                // GitHub's variables API names the variable in the body as `name`.
+                args["name"] = json!(optional_text(input, "setting").or_else(|| optional_text(input, "name")).unwrap_or_default());
+                args["value"] = json!(text(input, "value"));
+                let method = match self {
+                    Op::ListActionsSecrets | Op::ListActionsVariables => "settings",
+                    Op::SetActionsSecret | Op::SetActionsVariable => "set_setting",
+                    _ => "delete_setting",
+                };
+                pass(actions, method, &args).await
             }
             Op::ListWebhooks
             | Op::CreateWebhook

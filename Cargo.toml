@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["apps/api", "crates/*", "services/automations", "services/billing", "services/events", "services/identity", "services/integrations", "services/webhooks", "services/repos", "services/work"]
+members = ["apps/api", "crates/*", "services/actions", "services/automations", "services/billing", "services/events", "services/identity", "services/integrations", "services/webhooks", "services/repos", "services/work"]
 
 [workspace.package]
 edition = "2024"
@@ -8,6 +8,7 @@ license = "MIT"
 repository = "https://g1t.sh/syntaqx/g1t"
 
 [workspace.dependencies]
+g1t-actions = { path = "crates/actions" }
 g1t-contracts = { path = "crates/contracts" }
 g1t-kit = { path = "crates/kit" }
 g1t-secrets = { path = "crates/secrets" }

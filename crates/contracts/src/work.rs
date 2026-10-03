@@ -415,6 +415,37 @@ pub struct PullDetail {
     /// Messages people sent the agent while it worked, oldest first.
     #[serde(default)]
     pub messages: Vec<AgentMessage>,
+    /// What workflow runs said about its head commit, one per workflow.
+    #[serde(default)]
+    pub statuses: Vec<CommitStatus>,
+}
+
+/// What a workflow run (or another tool) says about a commit.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitStatus {
+    /// What reported it, such as `CI / push`.
+    pub context: String,
+    /// `pending`, `success`, `failure` or `error`.
+    pub state: String,
+    pub description: Option<String>,
+    /// Where to see more, such as the run's page.
+    pub target_url: Option<String>,
+    pub updated_at: String,
+}
+
+/// `set_commit_status`: for services only. Returns `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetCommitStatusArgs {
+    pub repo_id: String,
+    pub sha: String,
+    pub context: String,
+    pub state: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub target_url: Option<String>,
 }
 
 /// A message a person sent an agent at work on a pull request. The agent

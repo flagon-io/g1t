@@ -12,6 +12,7 @@ mod queue;
 mod reviews;
 mod rows;
 mod settings;
+mod statuses;
 
 use g1t_contracts::events::{
     CommentCreated, Event, IssueEvent, NewEvent, Publish, PullEvent, SessionAppended,
@@ -1063,6 +1064,7 @@ impl Work {
             landing,
             stalled,
             messages: self.messages(&pull.id).await?,
+            statuses: self.statuses(&repo.id, pull.head_commit.as_deref()).await?,
             issue,
             pull,
         }))
@@ -1281,6 +1283,9 @@ impl Work {
                 Some(CheckStatus::Errored) => Some("The acceptance checks could not be run."),
                 Some(CheckStatus::Passed) | None => None,
             };
+            // Workflows run on its head count as checks too.
+            let workflows = statuses::WorkflowFacts::of(&self.statuses(&repo.id, pull.head_commit.as_deref()).await?).refusal();
+            let waiting = waiting.map(str::to_owned).or(workflows);
             if let Some(reason) = waiting {
                 let remedy = if settings.allow_ignoring_checks {
                     "Wait or fix them, or merge anyway by ignoring the checks."
@@ -1752,6 +1757,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "add_comment" => reply(&work.add_comment(args(body)?).await?),
         "start_checks" => reply(&work.start_checks(args(body)?).await?),
         "report_checks" => reply(&work.report_checks(args(body)?).await?),
+        "set_commit_status" => reply(&work.set_commit_status(args(body)?).await?),
         "start_review" => reply(&work.start_review(args(body)?).await?),
         "advance" => reply(&work.advance(args(body)?).await?),
         "stall" => reply(&work.stall(args(body)?).await?),
