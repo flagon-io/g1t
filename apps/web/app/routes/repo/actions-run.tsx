@@ -1,4 +1,4 @@
-import { AlertTriangle, ChevronRight, GitBranch, GitCommitHorizontal, Info, RotateCw, Square, XCircle } from "lucide-react";
+import { AlertTriangle, ChevronRight, Download, GitBranch, GitCommitHorizontal, Info, Package, RotateCw, Square, XCircle } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { Form, Link, useNavigation, useRevalidator, useSearchParams } from "react-router";
 
@@ -7,6 +7,7 @@ import type { Annotation, Job, StepState } from "@g1t/contracts";
 import type { Route } from "./+types/actions-run";
 import { LogText, Notes, StatusIcon, duration, shortRef, standingWord, useJobLog } from "../../components/actions";
 import { Button, ErrorText, TimeAgo } from "../../components/ui";
+import { listArtifacts } from "../../lib/artifacts.server";
 import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
@@ -18,7 +19,8 @@ export function meta({ loaderData, params }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const detail = unwrap(await actions.run({ namespace: params.owner, name: params.repo }, viewer, params.id));
-  return { detail, member: roleIn(viewer, params.owner) != null };
+  const artifacts = await listArtifacts(params.id).catch(() => []);
+  return { detail, artifacts, member: roleIn(viewer, params.owner) != null };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -114,7 +116,7 @@ function JobView({ job, base }: { job: Job; base: string }) {
 }
 
 export default function ActionsRun({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { detail, member } = loaderData;
+  const { detail, artifacts, member } = loaderData;
   const { run, jobs, notes } = detail;
   const base = `/${params.owner}/${params.repo}`;
   const [search] = useSearchParams();
@@ -205,6 +207,30 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
         </div>
       )}
       <Notes notes={notes} />
+      {artifacts.length > 0 && (
+        <section className="rounded-xl border border-line bg-surface p-4">
+          <h3 className="flex items-center gap-2 text-sm font-medium">
+            <Package size={14} className="text-muted" />
+            Artifacts
+            <span className="font-normal text-faint">· kept for 14 days</span>
+          </h3>
+          <ul className="mt-3 divide-y divide-line text-sm">
+            {artifacts.map((artifact) => (
+              <li key={artifact.name} className="flex items-center gap-3 py-2">
+                <span className="min-w-0 grow truncate font-mono text-[0.8125rem]">{artifact.name}</span>
+                <span className="shrink-0 text-xs text-faint">{Math.max(1, Math.round(artifact.size / 1024))} KB</span>
+                <a
+                  href={`${base}/actions/runs/${run.id}/artifacts/${encodeURIComponent(artifact.name)}`}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-muted ring-1 ring-line hover:text-fg"
+                >
+                  <Download size={12} />
+                  Download
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {jobs.length > 0 && (
         <div className="grid gap-6 lg:grid-cols-[15rem_1fr]">

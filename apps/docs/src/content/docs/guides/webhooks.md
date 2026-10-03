@@ -67,6 +67,7 @@ With these headers:
 | `pull.opened`, `pull.ready`, `pull.updated`, `pull.merge_requested`, `pull.merged`, `pull.closed` | A pull request changed. `data.number`, `data.issue`; on merge, `data.commit`. |
 | `checks.completed` | An issue's acceptance checks finished on a pull request. `data.status` is `passed`, `failed` or `errored`. |
 | `review.completed` | A g1t agent reviewed a pull request. `data.verdict`. |
+| `workflow.completed` | A GitHub Actions run finished. `data.workflow`, `data.conclusion`, `data.runId`, `data.sha`, `data.pull`. |
 | `queue.changed` | The merge queue gained, lost or settled an entry. |
 | `session.appended` | An agent's session grew. Busy: choose it only if you need it. |
 

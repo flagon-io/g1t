@@ -72,6 +72,7 @@ pub struct Actions {
     work: Fetcher,
     identity: Fetcher,
     runner: Fetcher,
+    events: Fetcher,
     /// Seals secrets; absent until `ACTIONS_KEY` is set, when secrets
     /// cannot be saved.
     sealer: Option<Sealer>,
@@ -85,6 +86,7 @@ impl Actions {
             work: env.service("WORK")?,
             identity: env.service("IDENTITY")?,
             runner: env.service("RUNNER")?,
+            events: env.service("EVENTS")?,
             sealer: env.secret("ACTIONS_KEY").ok().and_then(|key| Sealer::new(&key.to_string())),
         })
     }

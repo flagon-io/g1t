@@ -26,6 +26,7 @@ export const EVENT_TYPES = [
   "pull.closed",
   "checks.completed",
   "review.completed",
+  "workflow.completed",
   "queue.changed",
   "session.appended",
 ] as const;

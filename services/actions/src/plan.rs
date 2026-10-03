@@ -779,6 +779,34 @@ impl Actions {
             return Ok(());
         }
         self.report_status(run, conclusion).await?;
+        let published: Result<()> = g1t_kit::call(
+            &self.events,
+            "publish",
+            &g1t_contracts::events::Publish {
+                events: vec![g1t_contracts::events::NewEvent {
+                    kind: "workflow.completed",
+                    source: "actions",
+                    repo_id: Some(run.repo_id.clone()),
+                    actor: run.actor_id.clone(),
+                    data: g1t_contracts::events::WorkflowEvent {
+                        run_id: run.id.clone(),
+                        repo_id: run.repo_id.clone(),
+                        workflow: run.name.clone(),
+                        path: run.path.clone(),
+                        number: run.number,
+                        event: run.event.clone(),
+                        conclusion: conclusion.to_owned(),
+                        git_ref: run.git_ref.clone(),
+                        sha: run.sha.clone(),
+                        pull: run.pull,
+                    },
+                }],
+            },
+        )
+        .await;
+        if let Err(error) = published {
+            worker::console_error!("actions: could not publish workflow.completed: {error}");
+        }
         // The next run waiting in its concurrency group.
         if let Some(group) = &run.concurrency_group {
             let next = self

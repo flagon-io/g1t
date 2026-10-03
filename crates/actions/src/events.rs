@@ -22,6 +22,7 @@ pub fn github_events(kind: &str) -> Vec<(&'static str, Option<&'static str>)> {
         "issue.assigned" => vec![("issues", Some("assigned"))],
         "comment.created" => vec![("issue_comment", Some("created"))],
         "review.completed" => vec![("pull_request_review", Some("submitted"))],
+        "workflow.completed" => vec![("workflow_run", Some("completed"))],
         _ => Vec::new(),
     }
 }

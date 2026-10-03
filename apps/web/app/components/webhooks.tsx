@@ -22,7 +22,7 @@ const GROUPS: { title: string; events: string[] }[] = [
     title: "Pull requests",
     events: ["pull.opened", "pull.ready", "pull.updated", "pull.merge_requested", "pull.merged", "pull.closed"],
   },
-  { title: "Checks, reviews and the queue", events: ["checks.completed", "review.completed", "queue.changed"] },
+  { title: "Checks, reviews and the queue", events: ["checks.completed", "workflow.completed", "review.completed", "queue.changed"] },
   { title: "Agents", events: ["session.appended"] },
 ];
 

@@ -14,6 +14,7 @@ declare global {
       WEBHOOKS: ServiceBinding;
       AUTOMATIONS: ServiceBinding;
       ACTIONS: ServiceBinding;
+      BLOBS: KVNamespace;
     }
   }
   interface Env extends Cloudflare.Env {}

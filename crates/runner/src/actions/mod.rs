@@ -512,7 +512,7 @@ fn run_job(job: &mut Job) {
 
     job.log.step(0);
     job.log.line(&format!("Job: {}", job.spec["name"].as_str().unwrap_or_default()));
-    job.log.line("Runner: g1t, Linux X64 (Debian bookworm, Node 22, Python 3, Go, Rust)");
+    job.log.line("Runner: g1t, Linux X64 (Debian bookworm, Node 24, Python 3, Go, Rust)");
     if let Some(Value::Object(matrix)) = job.contexts.get("matrix")
         && !matrix.is_empty()
     {

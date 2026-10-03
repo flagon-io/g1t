@@ -44,6 +44,7 @@ export default [
     route("queue", "routes/repo/queue.tsx"),
     route("actions", "routes/repo/actions.tsx"),
     route("actions/runs/:id", "routes/repo/actions-run.tsx"),
+    route("actions/runs/:id/artifacts/:name", "routes/repo/actions-artifact.ts"),
     route("actions/jobs/:job/log", "routes/repo/actions-log.ts"),
     route("automations", "routes/repo/automations.tsx"),
     route("plans", "routes/repo/plans.tsx"),

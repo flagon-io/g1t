@@ -13,7 +13,7 @@ COPY crates crates
 COPY services services
 RUN cargo build --release --package g1t-runner
 
-FROM node:22-bookworm-slim
+FROM node:24-bookworm-slim
 # Workflows expect GitHub's runner layout under /home/runner, and sudo
 # without a password.
 RUN apt-get update \

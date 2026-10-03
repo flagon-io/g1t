@@ -107,6 +107,29 @@ pub struct ChecksEvent {
     pub commit: String,
 }
 
+/// `workflow.completed`: a GitHub Actions run finished.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowEvent {
+    pub run_id: String,
+    pub repo_id: String,
+    /// The workflow's name, and its file.
+    pub workflow: String,
+    pub path: String,
+    /// The run's number among the workflow's runs.
+    pub number: u64,
+    /// The GitHub event that started it, such as `push`.
+    pub event: String,
+    /// `success`, `failure`, `cancelled` or `skipped`.
+    pub conclusion: String,
+    #[serde(rename = "ref")]
+    pub git_ref: String,
+    pub sha: String,
+    /// The pull request it ran for, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pull: Option<u32>,
+}
+
 /// `review.completed`: a g1t agent finished reviewing a pull request, or
 /// could not.
 #[derive(Debug, Serialize)]

@@ -24,6 +24,7 @@ pub const SUPPORTED_EVENTS: &[&str] = &[
     "workflow_dispatch",
     "repository_dispatch",
     "workflow_call",
+    "workflow_run",
     "merge_group",
     "create",
     "delete",
@@ -72,6 +73,8 @@ pub struct Trigger {
     pub crons: Vec<String>,
     /// For `workflow_dispatch` and `workflow_call`: the inputs, as written.
     pub inputs: Map<String, Value>,
+    /// For `workflow_run`: the names of the workflows it follows.
+    pub workflows: Vec<String>,
 }
 
 impl Trigger {
@@ -258,6 +261,7 @@ fn trigger(event: &str, spec: &Value) -> Trigger {
             if let Some(Value::Object(inputs)) = spec.get("inputs") {
                 trigger.inputs = inputs.clone();
             }
+            trigger.workflows = texts(spec.get("workflows"));
         }
         Value::Array(entries) if event == "schedule" => {
             trigger.crons = entries.iter().filter_map(|entry| text(entry.get("cron"))).collect();
@@ -497,10 +501,10 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        node: [18, 20]
+        node: [22, 24]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
       - run: npm ci
@@ -528,7 +532,7 @@ jobs:
         assert_eq!(workflow.concurrency.as_ref().unwrap().group, "ci-${{ github.ref }}");
         assert_eq!(workflow.jobs.len(), 2);
         assert_eq!(workflow.jobs[1].needs, ["test"]);
-        assert_eq!(workflow.jobs[0].steps[0].title(), "Run actions/checkout@v4");
+        assert_eq!(workflow.jobs[0].steps[0].title(), "Run actions/checkout@v7");
         assert_eq!(workflow.jobs[0].steps[2].title(), "Run npm ci");
         assert_eq!(workflow.jobs[0].steps[3].title(), "Test");
         assert_eq!(workflow.job_order(), ["test", "deploy"]);
@@ -554,7 +558,7 @@ jobs:
     #[test]
     fn notes_say_what_runs_differently() {
         let workflow = parse(
-            "on: [push, release]\njobs:\n  win:\n    runs-on: windows-latest\n    services:\n      db: { image: postgres }\n    steps:\n      - uses: actions/cache@v4\n      - uses: docker://alpine\n      - run: dir\n        shell: pwsh",
+            "on: [push, release]\njobs:\n  win:\n    runs-on: windows-latest\n    services:\n      db: { image: postgres }\n    steps:\n      - uses: actions/cache@v6\n      - uses: docker://alpine\n      - run: dir\n        shell: pwsh",
         )
         .unwrap();
         let unsupported: Vec<&str> =

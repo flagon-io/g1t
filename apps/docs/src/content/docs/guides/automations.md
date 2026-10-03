@@ -61,6 +61,7 @@ The events are the same as [webhooks'](/guides/webhooks/#events):
 | `pull.opened`, `pull.ready`, `pull.updated`, `pull.merge_requested`, `pull.merged`, `pull.closed` | A pull request changed. |
 | `checks.completed` | An issue's acceptance checks finished on a pull request. |
 | `review.completed` | A g1t agent reviewed a pull request. |
+| `workflow.completed` | A GitHub Actions run finished: `if: { conclusion: failure }` to act on failures. |
 | `queue.changed` | The merge queue changed. |
 
 A schedule has five fields: minute, hour, day of the month, month and day

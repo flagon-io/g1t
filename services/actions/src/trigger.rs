@@ -238,6 +238,39 @@ impl Actions {
                     trusted,
                 })
             }
+            "workflow_run" => {
+                // A run of a workflow_run workflow does not start another,
+                // so two such workflows cannot set each other off.
+                if data["event"].as_str() == Some("workflow_run") {
+                    return Ok(None);
+                }
+                let Some(sha) = self.default_head(repo).await? else { return Ok(None) };
+                let head_branch = data["ref"].as_str().unwrap_or_default().trim_start_matches("refs/heads/").to_owned();
+                let name = data["workflow"].as_str().unwrap_or_default();
+                let payload = json!({
+                    "action": "completed",
+                    "workflow_run": {
+                        "id": data["runId"],
+                        "name": name,
+                        "path": data["path"],
+                        "event": data["event"],
+                        "status": "completed",
+                        "conclusion": data["conclusion"],
+                        "head_sha": data["sha"],
+                        "head_branch": head_branch,
+                        "run_number": data["number"],
+                        "html_url": format!("{SITE}/{}/{}/actions/runs/{}", repo.namespace, repo.name, data["runId"].as_str().unwrap_or_default()),
+                        "pull_requests": data["pull"].as_u64().map(|n| vec![json!({ "number": n })]).unwrap_or_default(),
+                    },
+                    "workflow": { "name": name, "path": data["path"] },
+                    "repository": payload::repository(repo),
+                    "sender": payload::user(sender),
+                });
+                let mut subject = on_default(sha, payload, format!("After {name}"), None);
+                // Branch filters apply to the branch the followed run was on.
+                subject.filter_ref = format!("refs/heads/{head_branch}");
+                Some(subject)
+            }
             "issues" | "issue_comment" => {
                 let Some(number) = data["number"].as_u64().map(|n| n as u32) else { return Ok(None) };
                 let Some(sha) = self.default_head(repo).await? else { return Ok(None) };
@@ -330,6 +363,13 @@ impl Actions {
                 }
             };
             let Some(trigger) = workflow.trigger(event_name) else { continue };
+            // workflow_run follows the workflows it names.
+            if event_name == "workflow_run" {
+                let followed = subject.payload["workflow_run"]["name"].as_str().unwrap_or_default();
+                if !trigger.workflows.iter().any(|name| name == followed) {
+                    continue;
+                }
+            }
             if !trigger.wants_type(action) || !self.passes(repo, ws, trigger, subject, event_name).await? {
                 continue;
             }

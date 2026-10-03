@@ -29,18 +29,20 @@ gives their values out, so they cannot be copied across.
 
 | On GitHub | On g1t |
 | --- | --- |
-| `on:` `push` (branches, tags, paths), `pull_request`, `pull_request_target`, `issues`, `issue_comment`, `pull_request_review`, `schedule`, `workflow_dispatch` | The same, from g1t's own pushes, pull requests, issues and comments. |
+| `on:` `push` (branches, tags, paths), `pull_request`, `pull_request_target`, `issues`, `issue_comment`, `pull_request_review`, `schedule`, `workflow_dispatch`, `workflow_run` | The same, from g1t's own pushes, pull requests, issues and comments. |
 | `jobs`, `needs`, `if`, `outputs`, `env`, `defaults`, `timeout-minutes`, `continue-on-error` | The same. |
 | `strategy.matrix` with `include` and `exclude`, `fail-fast`, `max-parallel`, a matrix from `fromJSON(needs.…)` | The same. |
 | `concurrency` with `cancel-in-progress` | The same. |
 | `${{ }}` expressions: every operator, function and context | The same, including `hashFiles`, `success()`, `failure()`, `always()` and `cancelled()`. |
 | `run:` with `bash`, `sh`, `python` or a custom shell | The same. |
-| JavaScript actions (`uses: owner/repo@v4`) | Fetched from GitHub and run as they are, with Node 22. |
+| JavaScript actions (`uses: owner/repo@v7`) | Fetched from GitHub and run as they are, on Node 24, the runtime current actions declare. |
 | Composite actions | The same. |
 | `actions/checkout` | Checks out from g1t, with `ref`, `fetch-depth`, `path`, `repository`, `token` and `submodules`. |
 | `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY` | The same. |
 | `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::` | The same: errors and warnings become annotations on the run. |
 | `secrets.*`, `vars.*`, `secrets.GITHUB_TOKEN` | The same; `GITHUB_TOKEN` is a token for g1t. |
+| `actions/upload-artifact`, `actions/download-artifact` | Kept with the run for 14 days, passed between its jobs, and downloadable from the run's page. Up to 60 MB each. |
+| `actions/cache`, `actions/cache/restore`, `actions/cache/save` | Kept per repository for 7 days, found by `key` or the newest under a `restore-keys` prefix. Up to 60 MB each. |
 
 The **Actions** page of a workflow says, under *How this runs on g1t*,
 anything in it that runs differently.
@@ -51,14 +53,15 @@ anything in it that runs differently.
   `runs-on: windows-latest` or `macos-latest` fails, and says so.
 - **Docker** container actions, `services:` containers and `container:`.
 - **Reusable workflows** (`uses:` on a job).
-- **Artifacts and the cache.** `actions/upload-artifact` does nothing and
-  says so; `download-artifact` fails. `actions/cache` always misses.
+- **The toolkit's own cache.** Actions that cache through GitHub's service
+  themselves, such as `actions/setup-node` with `cache: npm`, run without
+  it. Use `actions/cache` for the same effect.
 - **Environments' protection rules**. A job with `environment:` runs with
   the repository's secrets.
 
 ## The runner
 
-Jobs run in a fresh sandbox each: Debian with Node 22, Python 3, Go, Rust,
+Jobs run in a fresh sandbox each: Debian with Node 24, Python 3, Go, Rust,
 `build-essential`, `git`, `curl`, `jq` and passwordless `sudo`, in GitHub's
 layout (`/home/runner/work`, `RUNNER_TEMP`, `RUNNER_TOOL_CACHE`).
 `runner.os` is `Linux`. `ubuntu-latest`, `ubuntu-24.04`, `self-hosted` and
@@ -80,6 +83,11 @@ replaced with `***`. **Cancel**, **Re-run all jobs** and **Re-run failed
 jobs** do what they say.
 
 ## Pull requests
+
+A pull request's workflows run on each new head: when it is opened, when
+a commit is pushed to it, and, for one a g1t agent makes, when the agent
+marks it ready, which on g1t is when it first has code. Each head runs
+each workflow once.
 
 A run on a pull request's latest commit is a check on it:
 
