@@ -16,7 +16,11 @@ export type RunHostedInput = {
  */
 export interface RunnerApi {
   /** Whether this viewer may put g1t agents to work. */
-  enabled(viewer: Viewer): Promise<boolean>;
+  /**
+   * Whether `viewer` may put g1t's agents to work: in `repo`'s workspace,
+   * or with none named, in any of theirs.
+   */
+  enabled(viewer: Viewer, repo?: RepoPath): Promise<boolean>;
   /**
    * Assigns the issue to a g1t agent: opens a draft pull request for it,
    * made by an agent in a sandbox of its own. Returns as soon as the

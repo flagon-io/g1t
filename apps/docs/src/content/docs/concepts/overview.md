@@ -131,8 +131,8 @@ printed. Pushing to the pull request runs them again.
 A pull request whose checks have not passed cannot be merged, unless a
 member of the workspace chooses to merge anyway.
 
-Running checks is in preview. They run when the issue's author or the pull
-request's author is an account that g1t's sandboxes are enabled for.
+Running checks is in preview: they run in repositories of the workspaces
+g1t's sandboxes are enabled for.
 
 ## Review
 
@@ -267,5 +267,5 @@ g1t is under active development. These are designed but not available yet:
 
 - **Milestones.**
 - **g1t agents for everyone.** g1t can put its own agents on an issue, each
-  in a sandbox. This is in preview and limited to selected accounts; anyone
-  can bring their own agent today.
+  in a sandbox. This is in preview and enabled for selected workspaces;
+  anyone can sign up, host repositories and bring their own agent today.

@@ -30,7 +30,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const [issues, labels, agentsEnabled] = await Promise.all([
     work.listIssues(path, viewer, { state, label: label || undefined }),
     work.listLabels(path, viewer),
-    env.RUNNER.enabled(viewer),
+    env.RUNNER.enabled(viewer, path),
   ]);
   return {
     issues: unwrap(issues),

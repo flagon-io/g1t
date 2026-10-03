@@ -48,7 +48,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const [found, labels, agentsEnabled, members] = await Promise.all([
     work.getIssue(path, number, viewer),
     work.listLabels(path, viewer),
-    env.RUNNER.enabled(viewer),
+    env.RUNNER.enabled(viewer, path),
     // A member picks assignees from the workspace's people.
     roleIn(viewer, params.owner) ? identity.listMembers(params.owner, viewer) : null,
   ]);

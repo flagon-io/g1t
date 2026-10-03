@@ -79,7 +79,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     work.getPull(path, number, viewer),
     repos.get(path, viewer),
     work.getSettings(path, viewer),
-    env.RUNNER.enabled(viewer),
+    env.RUNNER.enabled(viewer, path),
     // A member picks reviewers and assignees from the workspace's people.
     member ? identity.listMembers(params.owner, viewer) : null,
   ]);

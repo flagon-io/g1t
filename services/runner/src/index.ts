@@ -43,7 +43,12 @@ export interface RunnerEnv {
    * paying with real money: when billing is off, or its cards are pretend.
    * Once billing is live, anyone may, and the workspace is charged.
    */
-  HOSTED_AGENT_USERS: string;
+  /**
+   * The workspaces whose repositories may use g1t's agents and sandboxes,
+   * comma-separated, or `*` for all. Everything else on g1t works for
+   * everyone; this is what costs money.
+   */
+  HOSTED_AGENT_WORKSPACES: string;
   /**
    * Which model each kind of work runs on, as JSON:
    * `{ implement, review, update }`, each `{ modelName, model }`.
@@ -375,21 +380,27 @@ export default class RunnerService
   }
 
   /**
-   * Whether sandboxes may be started on this person's say-so. Where
-   * workspaces pay with real money, anyone's. Until then g1t is paying, or
-   * the cards are pretend, so only the people listed.
+   * Whether a workspace's repositories may use g1t's agents and sandboxes.
+   * Only those listed, whatever the state of billing: in the preview g1t
+   * pays for the models, so nobody else can spend on them.
    */
-  private async enabledFor(username: string): Promise<boolean> {
-    const billing = await billingClient(this.env.BILLING).status();
-    if (billing.enabled && billing.live) return true;
-    return this.env.HOSTED_AGENT_USERS.split(",")
-      .map((name) => name.trim())
-      .includes(username);
+  private workspaceAllowed(namespace: string): boolean {
+    const listed = this.env.HOSTED_AGENT_WORKSPACES.split(",").map((name) => name.trim().toLowerCase());
+    return listed.includes("*") || listed.includes(namespace.toLowerCase());
   }
 
-  private async allowed(viewer: Viewer): Promise<boolean> {
+  /**
+   * Whether `viewer` may put agents to work: in `repo`'s workspace, which
+   * must be allowed and theirs, or with no repo named, in any workspace of
+   * theirs that is allowed.
+   */
+  private allowed(viewer: Viewer, repo?: RepoPath): boolean {
     if (!viewer || !canReachModel(this.env)) return false;
-    return this.enabledFor(viewer.username);
+    const theirs = (viewer.workspaces ?? []).map((membership) => membership.slug.toLowerCase());
+    if (repo) {
+      return this.workspaceAllowed(repo.namespace) && theirs.includes(repo.namespace.toLowerCase());
+    }
+    return theirs.some((slug) => this.workspaceAllowed(slug));
   }
 
   /**
@@ -482,8 +493,8 @@ export default class RunnerService
     if (next.action === "none") return;
     const { job } = next;
     try {
-      if (!canReachModel(this.env) || !(await this.enabledFor(job.author.username))) {
-        throw new Error("g1t agents are not enabled for this pull request's author.");
+      if (!canReachModel(this.env) || !this.workspaceAllowed(job.repo.namespace)) {
+        throw new Error("g1t agents are not enabled for this workspace yet.");
       }
       if (next.action === "review") {
         const started = await this.startReview(pullId);
@@ -558,6 +569,20 @@ export default class RunnerService
   private async buildQueue(repoId: string): Promise<void> {
     const work = workClient(this.env.WORK);
     const jobs = await work.queueBuild(repoId);
+    // Merge queue sandboxes, like any other, only where they are enabled.
+    const blocked = jobs.filter((job) => !this.workspaceAllowed(job.repo.namespace));
+    if (blocked.length > 0) {
+      await Promise.all(
+        blocked.map((job) =>
+          work.failQueue(
+            job.entryId,
+            job.token,
+            "The merge queue runs in g1t's sandboxes, which are not enabled for this workspace yet. Turn the queue off to merge directly.",
+          ),
+        ),
+      );
+      return;
+    }
     // A state whose sandbox could not start fails at once, rather than
     // holding the queue until it times out.
     await Promise.all(
@@ -668,12 +693,9 @@ export default class RunnerService
     if (!started.ok) return false;
     const job: CheckJob = started.value;
     // Checks are commands one person wrote, run against code another
-    // pushed, on g1t's machines. In the preview they run only when one of
-    // the two is someone sandboxes are enabled for.
-    if (
-      !(await this.enabledFor(job.requestedBy)) &&
-      !(await this.enabledFor(job.author.username))
-    ) {
+    // pushed, on g1t's machines: in the preview, only for the workspaces
+    // sandboxes are enabled for.
+    if (!this.workspaceAllowed(job.repo.namespace)) {
       await work.reportChecks(job.runId, job.token, { skip: true });
       return false;
     }
@@ -709,8 +731,14 @@ export default class RunnerService
    * they do not belong to or that has no credit.
    */
   private async refusal(actor: User, repo: RepoPath): Promise<Result<never> | null> {
-    if (!(await this.allowed(actor))) {
-      return fail("forbidden", "g1t agents are not enabled for your account.");
+    if (!this.workspaceAllowed(repo.namespace)) {
+      return fail(
+        "forbidden",
+        `g1t agents are in preview and not enabled for the ${repo.namespace} workspace yet. Everything else works, and you can bring your own agent.`,
+      );
+    }
+    if (!this.allowed(actor, repo)) {
+      return fail("forbidden", `Only members of ${repo.namespace} can put g1t agents to work there.`);
     }
     const billing = billingClient(this.env.BILLING);
     if (!(await billing.status()).enabled) return null;
@@ -949,8 +977,8 @@ export default class RunnerService
     return applied;
   }
 
-  async enabled(viewer: Viewer): Promise<boolean> {
-    return await this.allowed(viewer);
+  async enabled(viewer: Viewer, repo?: RepoPath): Promise<boolean> {
+    return this.allowed(viewer, repo);
   }
 
   async run(

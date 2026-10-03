@@ -38,7 +38,7 @@
 		"consumers": [{ "queue": "g1t-events-runner", "max_batch_size": 20, "max_batch_timeout": 1 }]
 	},
 	"vars": {
-		"HOSTED_AGENT_USERS": "syntaqx",
+		"HOSTED_AGENT_WORKSPACES": "syntaqx",
 		// Which model each kind of work runs on. Nobody assigning an agent
 		// chooses; this is g1t's policy. "modelName" is shown to people in the
 		// session; "model" is sent to the provider.
