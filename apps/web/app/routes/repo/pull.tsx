@@ -238,7 +238,7 @@ function Entry({ entry, agent }: { entry: SessionEntry; agent: string }) {
             </span>
           </summary>
           <pre className="overflow-x-auto border-t border-line p-3 font-mono text-xs whitespace-pre-wrap text-muted">
-            {entry.text}
+            <code>{entry.text}</code>
           </pre>
         </details>
       ) : (

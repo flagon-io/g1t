@@ -138,7 +138,7 @@ export function TreeView({ tree }: { tree: Tree }) {
                   base={`/${repo.namespace}/${repo.name}/blob/${ref}${path ? `/${path}` : ""}`}
                 />
               ) : (
-                <pre className="whitespace-pre-wrap text-sm">{readme.text}</pre>
+                <pre className="whitespace-pre-wrap text-sm"><code>{readme.text}</code></pre>
               )}
             </div>
           </section>
@@ -226,7 +226,7 @@ export function BlobView({
             >
               {lines.map((_, i) => i + 1).join("\n")}
             </pre>
-            <pre className="pr-4 pl-5">{lines.join("\n")}</pre>
+            <pre className="pr-4 pl-5"><code>{lines.join("\n")}</code></pre>
           </div>
         ) : (
           <p className="p-6 text-sm text-muted">

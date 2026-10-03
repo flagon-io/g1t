@@ -135,7 +135,7 @@ function Entry({ entry, base, branch, position }: { entry: QueueEntry; base: str
             .map((result) => (
               <details key={result.command} className="mt-2">
                 <summary className="cursor-pointer font-mono text-xs text-danger">{result.command}</summary>
-                <pre className="mt-1.5 max-h-48 overflow-auto rounded-lg bg-bg p-3 text-xs text-muted">{result.output}</pre>
+                <pre className="mt-1.5 max-h-48 overflow-auto rounded-lg bg-bg p-3 text-xs text-muted"><code>{result.output}</code></pre>
               </details>
             ))}
       </div>

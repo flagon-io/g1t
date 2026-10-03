@@ -102,8 +102,12 @@ export function ChecksPanel({
                     )}
                   </summary>
                   <pre className="max-h-72 overflow-auto border-t border-line p-2.5 font-mono text-[0.6875rem] leading-relaxed whitespace-pre-wrap text-muted">
-                    {result.output || "No output."}
-                    {result.exitCode != null && result.exitCode !== 0 && `\n\nExit code ${result.exitCode}.`}
+                    {/* In a <code>: a newline right after <pre> is dropped by
+                        the HTML parser, and the page would differ from React's. */}
+                    <code>
+                      {result.output || "No output."}
+                      {result.exitCode != null && result.exitCode !== 0 && `\n\nExit code ${result.exitCode}.`}
+                    </code>
                   </pre>
                 </details>
               </li>
