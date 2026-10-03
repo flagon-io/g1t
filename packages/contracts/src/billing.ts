@@ -64,6 +64,8 @@ export interface BillingApi {
   account(workspace: string, viewer: Viewer): Promise<Result<BillingAccount>>;
   /** Newest first. Members of the workspace only. */
   ledger(workspace: string, viewer: Viewer): Promise<Result<LedgerEntry[]>>;
+  /** What the workspace's agents cost since `since`, broken down. Members only. */
+  usage(workspace: string, viewer: Viewer, since: string): Promise<Result<Usage>>;
   /**
    * Starts a card payment for credit and returns the page to send the
    * person to. Owners only. The payment's id comes back to `returnUrl` as
@@ -89,3 +91,26 @@ export interface BillingApi {
     model: string;
   }): Promise<Result<RunTicket | null>>;
 }
+
+
+/** One slice of usage: what it was for, what it cost, how many runs. */
+export type UsageSlice = { key: string; micros: number; runs: number };
+
+/** What a workspace's agents cost over a period. */
+export type Usage = {
+  since: string;
+  /** Charged, including g1t's margin. */
+  spentMicros: number;
+  /** What the model provider charged, before the margin. */
+  costMicros: number;
+  runs: number;
+  /** Spend per day and task, keyed `YYYY-MM-DD/task`. */
+  byDay: UsageSlice[];
+  byTask: UsageSlice[];
+  byRepo: UsageSlice[];
+  /** Keyed `namespace/name#number`. */
+  byPull: UsageSlice[];
+  byModel: UsageSlice[];
+  /** Credit bought in the period. */
+  addedMicros: number;
+};

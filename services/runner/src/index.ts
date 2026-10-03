@@ -207,6 +207,8 @@ const AGENT_OPERATIONS = [
   "read_session",
   "get_merge_queue",
   "list_events",
+  // Messages people send it while it works, picked up between steps.
+  "take_messages",
 ];
 
 /** How an agent is told to use g1t's tools to work with the others. */

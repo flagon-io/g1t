@@ -154,3 +154,47 @@ pub struct FinishRunArgs {
     #[serde(default)]
     pub turns: u32,
 }
+
+
+/// `usage`: what a workspace's agents cost over a period, broken down.
+/// Members only. Returns `Outcome<Usage>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UsageArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+    /// RFC 3339: the start of the period. The period runs to now.
+    pub since: String,
+}
+
+/// One slice of usage: what it was for, what it cost, how many runs.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageSlice {
+    pub key: String,
+    pub micros: i64,
+    pub runs: u32,
+}
+
+/// What a workspace's agents cost over a period.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Usage {
+    pub since: String,
+    /// Charged, including g1t's margin.
+    pub spent_micros: i64,
+    /// What the model provider charged, before the margin.
+    pub cost_micros: i64,
+    pub runs: u32,
+    /// Spend per day (`YYYY-MM-DD`) and task, as `day/task` keys.
+    pub by_day: Vec<UsageSlice>,
+    /// Per task: implement, review, revise, update, plan.
+    pub by_task: Vec<UsageSlice>,
+    /// Per repository, `namespace/name`.
+    pub by_repo: Vec<UsageSlice>,
+    /// The pull requests that cost most, as `namespace/name#number`.
+    pub by_pull: Vec<UsageSlice>,
+    /// Per model, by its public name.
+    pub by_model: Vec<UsageSlice>,
+    /// Credit bought in the period.
+    pub added_micros: i64,
+}

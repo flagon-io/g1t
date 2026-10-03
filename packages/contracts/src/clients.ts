@@ -138,6 +138,7 @@ export function workClient(service: ServiceBinding): WorkApi {
     queueBuild: (repoId) => call("queue_build", { repoId }),
     failQueue: (entryId, token, error) => call("report_queue", { entryId, token, error }),
     removeFromQueue: (actor, repo, number) => call("remove_from_queue", { actor, repo, number }),
+    messageAgent: (actor, repo, number, body) => call("message_agent", { actor, repo, number, body }),
     catchUpJob: (pullId) => call("catch_up_job", { pullId }),
     getSettings: (repo, viewer) => call("get_settings", { repo, viewer }),
     updateSettings: (actor, repo, settings) =>
@@ -176,6 +177,7 @@ export function billingClient(service: ServiceBinding): BillingApi {
     status: () => call("status", {}),
     account: (workspace, viewer) => call("account", { workspace, viewer }),
     ledger: (workspace, viewer) => call("ledger", { workspace, viewer }),
+    usage: (workspace, viewer, since) => call("usage", { workspace, viewer, since }),
     checkout: (actor, workspace, amountCents, returnUrl) =>
       call("checkout", { actor, workspace, amountCents, returnUrl }),
     confirm: (workspace, viewer, session) => call("confirm", { workspace, viewer, session }),

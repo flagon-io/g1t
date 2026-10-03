@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   BookMarked,
   BookOpen,
   Check,
@@ -56,6 +57,8 @@ export type ShellData = {
   } | null;
   /** The workspace's agent credit, if billing is on and they may see it. */
   creditMicros: number | null;
+  /** What its agents have cost since the start of the month. */
+  monthSpentMicros: number | null;
 };
 
 function SidebarLink({
@@ -197,6 +200,9 @@ function Sidebar({ user, shell }: { user: User; shell: ShellData }) {
             <SidebarLink to={`/${ws.slug}/-/tokens`} icon={<KeyRound size={15} />}>
               Access tokens
             </SidebarLink>
+            <SidebarLink to={`/${ws.slug}/-/usage`} icon={<BarChart3 size={15} />}>
+              Usage
+            </SidebarLink>
             <SidebarLink to={`/${ws.slug}/-/billing`} icon={<CreditCard size={15} />}>
               Billing
             </SidebarLink>
@@ -292,18 +298,25 @@ function Sidebar({ user, shell }: { user: User; shell: ShellData }) {
       </nav>
 
       <div className="border-t border-line p-2">
-        {ws && shell.creditMicros != null && (
+        {ws && shell.monthSpentMicros != null && (
           <Link
-            to={`/${ws.slug}/-/billing`}
-            className={`mb-1 flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-raised ${
-              shell.creditMicros <= 0 ? "text-warn" : "text-muted"
-            }`}
+            to={`/${ws.slug}/-/usage`}
+            className="mb-1 block rounded-md px-2 py-1.5 text-sm text-muted transition-colors hover:bg-raised hover:text-fg"
           >
-            <CreditCard size={15} className="shrink-0" />
-            <span className="grow">Agent credit</span>
-            <span className="font-mono text-xs tabular-nums">
-              ${(shell.creditMicros / MICROS_PER_DOLLAR).toFixed(2)}
+            <span className="flex items-center gap-2.5">
+              <BarChart3 size={15} className="shrink-0 text-faint" />
+              <span className="grow">Usage this month</span>
+              <span className="font-mono text-xs text-fg tabular-nums">
+                ${(shell.monthSpentMicros / MICROS_PER_DOLLAR).toFixed(2)}
+              </span>
             </span>
+            {shell.creditMicros != null && (
+              <span
+                className={`mt-0.5 block pl-6.5 text-xs ${shell.creditMicros <= 0 ? "text-warn" : "text-faint"}`}
+              >
+                ${(shell.creditMicros / MICROS_PER_DOLLAR).toFixed(2)} of credit left
+              </span>
+            )}
           </Link>
         )}
         <a
@@ -349,6 +362,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
   for (const membership of user.workspaces ?? []) {
     commands.push(
       { label: membership.slug, hint: "Workspace", to: `/${membership.slug}`, icon: <Avatar name={membership.slug} size={15} square /> },
+      { label: "Usage", hint: membership.slug, to: `/${membership.slug}/-/usage`, icon: <BarChart3 size={15} /> },
       { label: "Billing", hint: membership.slug, to: `/${membership.slug}/-/billing`, icon: <CreditCard size={15} /> },
       { label: "Access tokens", hint: membership.slug, to: `/${membership.slug}/-/tokens`, icon: <KeyRound size={15} /> },
     );

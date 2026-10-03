@@ -7,6 +7,7 @@
 mod checks;
 mod lifecycle;
 mod plans;
+mod messages;
 mod queue;
 mod reviews;
 mod rows;
@@ -1061,6 +1062,7 @@ impl Work {
             lifecycle,
             landing,
             stalled,
+            messages: self.messages(&pull.id).await?,
             issue,
             pull,
         }))
@@ -1582,6 +1584,36 @@ impl Work {
         Ok(Outcome::Ok(Appended { count }))
     }
 
+    /// Adds entries to a pull request's session, each taking the next
+    /// sequence number, without announcing it.
+    pub(crate) async fn append_entries(&self, pull: &Pull, entries: &[NewSessionEntry]) -> Result<()> {
+        let now = rfc3339(now_ms());
+        let mut statements = Vec::with_capacity(entries.len());
+        for entry in entries {
+            let kind = serde_json::to_value(entry.kind)?;
+            let text: String = entry.text.chars().take(MAX_ENTRY_CHARS).collect();
+            statements.push(
+                self.db
+                    .prepare(
+                        "INSERT INTO session_entries (pull_id, seq, kind, text, tool, \"commit\", at)
+                         SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ?
+                         FROM session_entries WHERE pull_id = ?",
+                    )
+                    .bind(&[
+                        pull.id.as_str().into(),
+                        kind.as_str().unwrap_or("note").into(),
+                        text.into(),
+                        optional(&entry.tool),
+                        optional(&entry.commit.clone().or_else(|| pull.head_commit.clone())),
+                        now.as_str().into(),
+                        pull.id.as_str().into(),
+                    ])?,
+            );
+        }
+        self.db.batch(statements).await?;
+        Ok(())
+    }
+
     async fn read_session(&self, a: ViewArgs) -> Result<Outcome<Vec<SessionEntry>>> {
         let (_, pull) = check!(self.pull_at(&a.repo, a.number, &a.viewer).await?);
         let rows = self
@@ -1728,6 +1760,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "queue_build" => reply(&work.queue_build(args(body)?).await?),
         "report_queue" => reply(&work.report_queue(args(body)?).await?),
         "remove_from_queue" => reply(&work.remove_from_queue(args(body)?).await?),
+        "message_agent" => reply(&work.message_agent(args(body)?).await?),
+        "take_messages" => reply(&work.take_messages(args(body)?).await?),
         "catch_up_job" => reply(&work.catch_up_job(args(body)?).await?),
         "get_settings" => reply(&work.get_settings(args(body)?).await?),
         "update_settings" => reply(&work.update_settings(args(body)?).await?),

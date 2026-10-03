@@ -285,6 +285,8 @@ export type PullDetail = {
   landing: boolean;
   /** Why g1t stopped working on it, if it did. */
   stalled: string | null;
+  /** Messages people sent the agent while it worked, oldest first. */
+  messages: AgentMessage[];
 };
 
 /**
@@ -560,6 +562,8 @@ export interface WorkApi {
   queueBuild(repoId: string): Promise<QueueJob[]>;
   /** Reports that a combined state could not be built or checked. */
   failQueue(entryId: string, token: string, error: string): Promise<Result<QueueState>>;
+  /** Sends the agent working on a pull request a message, for its next step. */
+  messageAgent(actor: User, repo: RepoPath, number: number, body: string): Promise<Result<AgentMessage>>;
   /** Takes a pull request out of the merge queue. Members only. */
   removeFromQueue(actor: User, repo: RepoPath, number: number): Promise<Result<Pull>>;
 
@@ -694,6 +698,16 @@ export type IssueProgress = {
   blockedBy: number[];
   pull: number | null;
   agent: string | null;
+};
+
+/** A message a person sent an agent at work on a pull request. */
+export type AgentMessage = {
+  id: string;
+  author: string;
+  body: string;
+  createdAt: string;
+  /** When the agent received it; null until then. */
+  deliveredAt: string | null;
 };
 
 export type QueueState = "waiting" | "testing" | "passed" | "failed" | "landed" | "removed";

@@ -146,6 +146,31 @@ pub fn run_claude(workdir: &Path, prompt: &str, reporter: &mut Reporter) -> Resu
         if std::fs::write(path, config.to_string()).is_ok() {
             tools = vec!["--mcp-config".to_owned(), path.to_owned()];
         }
+        // People can message the agent while it works: after each tool call
+        // a hook asks g1t for messages and hands any to the agent.
+        if let (Ok(repo), Ok(number)) = (std::env::var("G1T_REPO"), std::env::var("PULL_NUMBER")) {
+            let steer = serde_json::json!({
+                "api": std::env::var("G1T_API").unwrap_or_else(|_| "https://api.g1t.sh".to_owned()),
+                "token": token,
+                "repo": repo,
+                "number": number.parse::<u32>().unwrap_or_default(),
+            });
+            let hooks = serde_json::json!({
+                "hooks": {
+                    "PostToolUse": [{
+                        "matcher": "*",
+                        "hooks": [{ "type": "command", "command": "MODE=steer /usr/local/bin/g1t-runner", "timeout": 15 }],
+                    }],
+                }
+            });
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/home/node".to_owned());
+            let settings = format!("{home}/.claude/settings.json");
+            if std::fs::write(crate::steer::CONFIG, steer.to_string()).is_ok()
+                && std::fs::create_dir_all(format!("{home}/.claude")).is_ok()
+            {
+                let _ = std::fs::write(settings, hooks.to_string());
+            }
+        }
     }
     let mut child = Command::new("claude")
         .current_dir(workdir)

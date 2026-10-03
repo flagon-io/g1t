@@ -149,6 +149,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         })
       : action === "unqueue"
         ? await work.removeFromQueue(user, path, number)
+      : action === "message"
+        ? await work.messageAgent(user, path, number, String(form.get("body") ?? ""))
       : action === "close"
         ? await work.closePull(user, path, number)
         : action === "recheck"
@@ -315,6 +317,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     behind,
     reviewPending,
     lifecycle,
+    messages,
     landing,
     stalled,
     requireUpToDate,
@@ -427,6 +430,50 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
         )}
 
         {lifecycle && <LifecyclePanel lifecycle={lifecycle} />}
+
+        {/* Steering: while its agent works, people can tell it things. */}
+        {canManage &&
+          pull.runtime === "hosted" &&
+          (working || ["working", "revising", "catching_up"].includes(lifecycle?.stage ?? "")) && (
+            <Form method="post" className="mt-4 rounded-2xl bg-surface p-4 ring-1 ring-merged/30">
+              <p className="flex items-center gap-2 text-sm font-medium">
+                <Sparkles size={15} className="text-merged" />
+                Message the agent
+              </p>
+              <p className="mt-1 text-xs text-muted">
+                A correction, a hint, a change of plan. It reads it at its next step, without
+                starting over.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <input type="hidden" name="action" value="message" />
+                <input
+                  name="body"
+                  required
+                  autoComplete="off"
+                  data-1p-ignore
+                  placeholder="Keep the old flag working too…"
+                  className="h-9 min-w-0 grow rounded-md bg-bg px-3 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-merged/60"
+                />
+                <Button type="submit">Send</Button>
+              </div>
+            </Form>
+          )}
+        {messages.length > 0 && (
+          <ul className="mt-3 space-y-1.5">
+            {messages.map((message) => (
+              <li key={message.id} className="flex items-start gap-2 text-sm">
+                <Avatar name={message.author} size={18} />
+                <span className="min-w-0 grow">
+                  <span className="font-medium">{message.author}</span>{" "}
+                  <span className="text-muted">to the agent:</span> {message.body}
+                </span>
+                <span className={`shrink-0 text-xs ${message.deliveredAt ? "text-accent" : "text-faint"}`}>
+                  {message.deliveredAt ? "read by the agent" : "waiting for its next step"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
 
         {issue && (
           <Link

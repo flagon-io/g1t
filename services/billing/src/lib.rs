@@ -234,6 +234,86 @@ impl Billing {
         ))
     }
 
+    async fn usage(&self, a: UsageArgs) -> Result<Outcome<Usage>> {
+        let workspace = a.workspace.to_lowercase();
+        if !a.viewer.is_some_and(|viewer| viewer.is_member(&workspace)) {
+            return Ok(members_only());
+        }
+        #[derive(serde::Deserialize)]
+        struct SliceRow {
+            key: Option<String>,
+            micros: Option<i64>,
+            runs: Option<u32>,
+        }
+        let slices = |key: &str, limit: u32| {
+            format!(
+                "SELECT {key} AS key, -SUM(amount_micros) AS micros, COUNT(*) AS runs FROM ledger
+                 WHERE workspace = ?1 AND kind = 'usage' AND created_at >= ?2
+                 GROUP BY 1 ORDER BY micros DESC LIMIT {limit}"
+            )
+        };
+        let query = |sql: String| {
+            let db = &self.db;
+            let workspace = workspace.clone();
+            let since = a.since.clone();
+            async move {
+                let rows = db
+                    .prepare(sql)
+                    .bind(&[workspace.into(), since.into()])?
+                    .all()
+                    .await?
+                    .results::<SliceRow>()?;
+                Ok::<Vec<UsageSlice>, worker::Error>(
+                    rows.into_iter()
+                        .map(|row| UsageSlice {
+                            key: row.key.unwrap_or_else(|| "other".to_owned()),
+                            micros: row.micros.unwrap_or_default(),
+                            runs: row.runs.unwrap_or_default(),
+                        })
+                        .collect(),
+                )
+            }
+        };
+        #[derive(serde::Deserialize)]
+        struct Totals {
+            spent: Option<i64>,
+            cost: Option<i64>,
+            runs: Option<u32>,
+            added: Option<i64>,
+        }
+        let totals = self
+            .db
+            .prepare(
+                "SELECT
+                   -SUM(CASE WHEN kind = 'usage' THEN amount_micros END) AS spent,
+                   SUM(CASE WHEN kind = 'usage' THEN cost_micros END) AS cost,
+                   SUM(CASE WHEN kind = 'usage' THEN 1 ELSE 0 END) AS runs,
+                   SUM(CASE WHEN kind = 'top_up' THEN amount_micros END) AS added
+                 FROM ledger WHERE workspace = ?1 AND created_at >= ?2",
+            )
+            .bind(&[workspace.as_str().into(), a.since.as_str().into()])?
+            .first::<Totals>(None)
+            .await?;
+        let totals = totals.unwrap_or(Totals {
+            spent: None,
+            cost: None,
+            runs: None,
+            added: None,
+        });
+        Ok(Outcome::Ok(Usage {
+            spent_micros: totals.spent.unwrap_or_default(),
+            cost_micros: totals.cost.unwrap_or_default(),
+            runs: totals.runs.unwrap_or_default(),
+            added_micros: totals.added.unwrap_or_default(),
+            by_day: query(slices("substr(created_at, 1, 10) || '/' || COALESCE(task, 'other')", 400)).await?,
+            by_task: query(slices("task", 20)).await?,
+            by_repo: query(slices("repo", 20)).await?,
+            by_pull: query(slices("repo || '#' || number", 10)).await?,
+            by_model: query(slices("model", 10)).await?,
+            since: a.since,
+        }))
+    }
+
     async fn checkout(&self, a: CheckoutArgs) -> Result<Outcome<Checkout>> {
         let workspace = a.workspace.to_lowercase();
         if a.actor.role_in(&workspace) != Some(Role::Owner) {
@@ -485,6 +565,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "status" => reply(&billing.status()),
         "account" => reply(&billing.account(args(body)?).await?),
         "ledger" => reply(&billing.ledger(args(body)?).await?),
+        "usage" => reply(&billing.usage(args(body)?).await?),
         "checkout" => reply(&billing.checkout(args(body)?).await?),
         "confirm" => reply(&billing.confirm(args(body)?).await?),
         "can_start" => reply(&billing.can_start(args(body)?).await?),

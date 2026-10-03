@@ -87,10 +87,13 @@ async function shellFor(
   const here = params.owner ? memberships.find((m) => m.slug === params.owner?.toLowerCase()) : undefined;
   const workspace = here ?? memberships[0] ?? null;
   const path = params.owner && params.repo ? { namespace: params.owner, name: params.repo } : null;
-  const [listed, counts, account] = await Promise.all([
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+  const [listed, counts, account, usage] = await Promise.all([
     workspace ? repos.list(user, { namespace: workspace.slug }) : Promise.resolve([]),
     path ? work.counts(path, user) : Promise.resolve(null),
     workspace ? billing.account(workspace.slug, user) : Promise.resolve(null),
+    workspace ? billing.usage(workspace.slug, user, monthStart) : Promise.resolve(null),
   ]);
   return {
     workspace,
@@ -108,6 +111,7 @@ async function shellFor(
         : null,
     creditMicros:
       account?.ok && account.value.status.enabled ? account.value.balanceMicros : null,
+    monthSpentMicros: usage?.ok ? usage.value.spentMicros : null,
   };
 }
 

@@ -28,6 +28,7 @@ mod queue;
 mod report;
 mod review;
 mod revise;
+mod steer;
 mod update;
 
 use std::path::Path;
@@ -179,6 +180,7 @@ fn main() {
         Ok("revise") => std::process::exit(revise::main()),
         Ok("plan") => std::process::exit(plan::main()),
         Ok("queue") => std::process::exit(queue::main()),
+        Ok("steer") => std::process::exit(steer::main()),
         _ => {}
     }
     let mut reporter = match Reporter::from_env() {

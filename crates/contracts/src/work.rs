@@ -412,6 +412,44 @@ pub struct PullDetail {
     /// be completed, for example.
     #[serde(default)]
     pub stalled: Option<String>,
+    /// Messages people sent the agent while it worked, oldest first.
+    #[serde(default)]
+    pub messages: Vec<AgentMessage>,
+}
+
+/// A message a person sent an agent at work on a pull request. The agent
+/// receives it at its next step.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentMessage {
+    pub id: String,
+    pub author: String,
+    pub body: String,
+    /// RFC 3339.
+    pub created_at: String,
+    /// RFC 3339. When the agent received it; null until then.
+    pub delivered_at: Option<String>,
+}
+
+/// `message_agent`: sends the agent working on a pull request a message.
+/// The pull request's author and members of the workspace may. Returns
+/// `Outcome<AgentMessage>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MessageAgentArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    pub number: u32,
+    pub body: String,
+}
+
+/// `take_messages`: the messages not yet delivered to the agent working on
+/// a pull request, marked delivered. Only g1t's agents may. Returns
+/// `Outcome<Vec<AgentMessage>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TakeMessagesArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    pub number: u32,
 }
 
 /// A step on the way from an assigned issue to a pull request that is ready

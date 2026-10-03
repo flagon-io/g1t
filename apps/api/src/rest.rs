@@ -48,6 +48,18 @@ pub const ROUTES: &[Route] = &[
     ),
     route("GET", "/repos/:owner/:name/queue", Op::GetMergeQueue, &[]),
     route(
+        "POST",
+        "/repos/:owner/:name/pulls/:number/messages",
+        Op::MessageAgent,
+        &[],
+    ),
+    route(
+        "POST",
+        "/repos/:owner/:name/pulls/:number/messages/take",
+        Op::TakeMessages,
+        &[],
+    ),
+    route(
         "GET",
         "/repos/:owner/:name/events",
         Op::ListEvents,

@@ -20,6 +20,7 @@ export default [
     index("routes/workspace/overview.tsx"),
     route("-/people", "routes/workspace/people.tsx"),
     route("-/tokens", "routes/workspace/tokens.tsx"),
+    route("-/usage", "routes/workspace/usage.tsx"),
     route("-/billing", "routes/workspace/billing.tsx"),
     route("-/settings", "routes/workspace/settings.tsx"),
   ]),
