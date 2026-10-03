@@ -80,12 +80,20 @@ A workspace's **Usage** page, `g1t.sh/<workspace>/-/usage`, shows what its
 agents have cost. Every member can see it. The sidebar shows this month's
 spend.
 
+While g1t is free, nothing is charged, so the page and the sidebar show
+what runs **used**, at what they cost: g1t's models and your own provider's
+together. Credit is not drawn down.
+
+These figures are what the agent harness reports for each run. Your model
+provider's or gateway's own figures can differ by a few percent, because
+each prices the same tokens itself; the provider's invoice is what counts.
+
 Pick a period: **This month**, **Last 7 days**, **Last 30 days** or **Last
 90 days**. The page then shows:
 
 | | |
 | --- | --- |
-| Spent | What the period cost, and how much of it was the model provider's. |
+| Spent | What the period cost, and how much of it was the model provider's. **Used**, at cost, while g1t is free. |
 | Agent runs | How many runs there were. |
 | Average run | What a run cost on average. |
 | Credit left | The balance, and about how many days it lasts at the period's rate. |
