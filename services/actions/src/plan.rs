@@ -1130,8 +1130,8 @@ impl Actions {
                 }
                 #[derive(Deserialize)]
                 struct Size {
-                    n: Option<u64>,
-                    seq: Option<u64>,
+                    n: Option<f64>,
+                    seq: Option<f64>,
                 }
                 let size = self
                     .db
@@ -1139,14 +1139,15 @@ impl Actions {
                     .bind(&[job.id.as_str().into()])?
                     .first::<Size>(None)
                     .await?;
-                let (used, seq) = size.map_or((0, 0), |s| (s.n.unwrap_or(0) as usize, s.seq.unwrap_or(0)));
+                let (used, seq) = size.map_or((0, 0.0), |s| (s.n.unwrap_or(0.0) as usize, s.seq.unwrap_or(0.0)));
                 if used < MAX_LOG_BYTES {
                     if used + text.len() >= MAX_LOG_BYTES {
                         text.push_str("\n… The log reached its limit of 4 MB; the rest is not kept.\n");
                     }
                     self.db
                         .prepare("INSERT INTO logs (job_id, seq, step, text) VALUES (?, ?, ?, ?)")
-                        .bind(&[job.id.as_str().into(), (seq + 1).into(), (report["step"].as_u64().unwrap_or(0) as u32).into(), text.into()])?
+                        .bind(&[job.id.as_str().into(), // Numbers go to D1 as f64: a u64 would be a BigInt, which it refuses.
+                            (seq + 1.0).into(), (report["step"].as_u64().unwrap_or(0) as u32).into(), text.into()])?
                         .run()
                         .await?;
                 }

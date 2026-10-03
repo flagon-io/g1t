@@ -7,8 +7,10 @@ use serde_json::{Map, Value};
 
 use crate::filter::{Filter, Patterns};
 
-/// Where workflows live.
-pub const FOLDER: &str = ".github/workflows";
+/// Where workflows live: GitHub's `.github/workflows`, under g1t's own
+/// folder, so moving a repository to g1t is renaming `.github` to `.g1t`.
+/// g1t never reads `.github`, which stays GitHub's.
+pub const FOLDER: &str = ".g1t/workflows";
 
 /// The events a workflow can name that g1t starts runs for.
 pub const SUPPORTED_EVENTS: &[&str] = &[

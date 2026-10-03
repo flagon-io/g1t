@@ -33,6 +33,10 @@ const PAGES: Record<string, { title: string; about: string }> = {
     title: "Webhooks",
     about: "Every repository's events, sent to your own addresses as they happen. A repository can also have its own, under its settings.",
   },
+  secrets: {
+    title: "Secrets and variables",
+    about: "What every repository's GitHub Actions workflows read as secrets and vars. A repository's own, under its settings, replace these by name.",
+  },
   integrations: {
     title: "Integrations",
     about: "Model providers, alerts and trackers. Secrets are sealed when saved, and agents never see them.",

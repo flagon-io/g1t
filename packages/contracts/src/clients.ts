@@ -1,3 +1,4 @@
+import type { ActionsApi } from "./actions";
 import type { AutomationsApi } from "./automations";
 import type { BillingApi } from "./billing";
 import type { EventsApi } from "./events";
@@ -228,6 +229,24 @@ export function webhooksClient(service: ServiceBinding): WebhooksApi {
     ping: (actor, owner, id) => call("ping", { actor, ...owner, id }),
     deliveries: (viewer, owner, id) => call("deliveries", { viewer, ...owner, id }),
     redeliver: (actor, owner, deliveryId) => call("redeliver", { actor, ...owner, deliveryId }),
+  };
+}
+
+export function actionsClient(service: ServiceBinding): ActionsApi {
+  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
+  return {
+    workflows: (repo, viewer) => call("workflows", { repo, viewer }),
+    runs: (repo, viewer, filter = {}) => call("runs", { repo, viewer, ...filter }),
+    run: (repo, viewer, id) => call("run", { repo, viewer, id }),
+    logs: (repo, viewer, job, after = 0) => call("logs", { repo, viewer, job, after }),
+    dispatch: (actor, repo, workflow, ref, inputs) => call("dispatch", { actor, repo, workflow, ref, inputs }),
+    cancel: (actor, repo, id) => call("cancel", { actor, repo, id }),
+    rerun: (actor, repo, id, failedOnly = false) => call("rerun", { actor, repo, id, failed_only: failedOnly }),
+    setWorkflowEnabled: (actor, repo, workflow, enabled) =>
+      call("set_workflow_enabled", { actor, repo, workflow, enabled }),
+    settings: (actor, owner, kind) => call("settings", { actor, ...owner, kind }),
+    setSetting: (actor, owner, kind, name, value) => call("set_setting", { actor, ...owner, kind, name, value }),
+    deleteSetting: (actor, owner, kind, name) => call("delete_setting", { actor, ...owner, kind, name }),
   };
 }
 

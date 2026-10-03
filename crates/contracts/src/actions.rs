@@ -1,6 +1,7 @@
 //! The actions service: GitHub Actions workflows, run on g1t as they are.
 //!
-//! A repository's `.github/workflows/*.yml` are read from the commit an
+//! A repository's `.g1t/workflows/*.yml`, in GitHub's format, are read
+//! from the commit an
 //! event is about (the default branch for issues, schedules and manual
 //! runs). Each workflow an event starts becomes a run; each job of the run
 //! (one per matrix combination) runs in a sandbox once the jobs it needs
@@ -33,7 +34,7 @@ pub struct WorkflowNote {
 #[serde(rename_all = "camelCase")]
 pub struct Workflow {
     pub id: String,
-    /// `.github/workflows/ci.yml`.
+    /// `.g1t/workflows/ci.yml`.
     pub path: String,
     pub name: String,
     /// The events that start it, such as `push` and `pull_request`.

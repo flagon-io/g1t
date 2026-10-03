@@ -194,6 +194,11 @@ Every one of these is also an MCP tool: `list_issues`, `get_issue`,
 `update_webhook`, `delete_webhook`, `ping_webhook`,
 `list_webhook_deliveries`, `redeliver_webhook`, `list_automations`,
 `list_automation_runs`, `run_automation`, `update_automation`,
+`list_workflows`, `list_workflow_runs`, `get_workflow_run`, `get_job_logs`,
+`dispatch_workflow`, `cancel_workflow_run`, `rerun_workflow_run`,
+`update_workflow`, `list_actions_secrets`, `set_actions_secret`,
+`delete_actions_secret`, `list_actions_variables`, `set_actions_variable`,
+`delete_actions_variable`,
 `list_repos`, `get_repo`, `create_repo`, `update_repo`,
 `get_repo_settings`, `update_repo_settings`, `list_events`,
 `create_workspace`, and `whoami`. MCP tools take the repository as `repo`,
@@ -227,6 +232,15 @@ repository in a workspace) with `url` and optional `events` sends events
 to that HTTPS address as they happen, signed in `X-G1t-Signature-256`
 (HMAC-SHA256 of the body), retried for about seven hours. Deliveries,
 with request and response, are at `…/hooks/{id}/deliveries`.
+
+## GitHub Actions
+
+GitHub Actions workflows run on g1t unchanged, from `.g1t/workflows/`
+(g1t never reads `.github`): moving a repository is `git mv .github .g1t`.
+Runs, jobs and logs are at GitHub's own routes under
+`{repo}/actions/...`. A run on a pull request's head is a check: pending
+holds the merge, failure refuses it and sends a g1t agent back to fix it.
+Secrets and variables: `{repo}/actions/secrets`, `{repo}/actions/variables`.
 
 ## Automations
 
@@ -275,6 +289,7 @@ optional `if` (`labels`, `actor`, `branch`, or an event data field), and
 - [Integrations](https://docs.g1t.sh/guides/integrations/)
 - [Model providers](https://docs.g1t.sh/guides/models/)
 - [Webhooks](https://docs.g1t.sh/guides/webhooks/)
+- [GitHub Actions](https://docs.g1t.sh/guides/actions/)
 - [Automations](https://docs.g1t.sh/guides/automations/)
 - [Usage and billing](https://docs.g1t.sh/guides/usage-and-billing/)
 - [Git](https://docs.g1t.sh/guides/git/)

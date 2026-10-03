@@ -24,6 +24,7 @@ export default [
     route("-/billing", "routes/workspace/billing.tsx"),
     route("-/integrations", "routes/workspace/integrations.tsx"),
     route("-/webhooks", "routes/workspace/webhooks.tsx"),
+    route("-/secrets", "routes/workspace/secrets.tsx"),
     route("-/settings", "routes/workspace/settings.tsx"),
   ]),
   // Why a line is the way it is, fetched by the blame view.
@@ -41,11 +42,15 @@ export default [
     route("pulls/new", "routes/repo/pull-new.tsx"),
     route("pull/:number", "routes/repo/pull.tsx"),
     route("queue", "routes/repo/queue.tsx"),
+    route("actions", "routes/repo/actions.tsx"),
+    route("actions/runs/:id", "routes/repo/actions-run.tsx"),
+    route("actions/jobs/:job/log", "routes/repo/actions-log.ts"),
     route("automations", "routes/repo/automations.tsx"),
     route("plans", "routes/repo/plans.tsx"),
     route("plans/:id", "routes/repo/plan.tsx"),
     route("settings", "routes/repo/settings.tsx"),
     route("settings/webhooks", "routes/repo/webhooks.tsx"),
+    route("settings/secrets", "routes/repo/secrets.tsx"),
   ]),
   // Anything else: a 404 that still knows who is signed in.
   route("*", "routes/not-found.tsx"),

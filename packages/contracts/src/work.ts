@@ -287,6 +287,18 @@ export type PullDetail = {
   stalled: string | null;
   /** Messages people sent the agent while it worked, oldest first. */
   messages: AgentMessage[];
+  /** What workflow runs said about its head commit, one per workflow. */
+  statuses?: CommitStatus[];
+};
+
+/** What a workflow run (or another tool) says about a commit. */
+export type CommitStatus = {
+  /** What reported it, such as `CI / push`. */
+  context: string;
+  state: "pending" | "success" | "failure" | "error";
+  description: string | null;
+  targetUrl: string | null;
+  updatedAt: string;
 };
 
 /**

@@ -225,7 +225,15 @@ impl Job {
             _ => {}
         }
         let source = if let Some(local) = name.strip_prefix("./") {
-            Source::Local(self.workspace.join(local))
+            // A repository moved from GitHub renamed `.github` to `.g1t`, but
+            // its workflows still say `./.github/actions/…`.
+            let mut dir = self.workspace.join(local);
+            if let Some(rest) = local.strip_prefix(".github/")
+                && !dir.exists()
+            {
+                dir = self.workspace.join(".g1t").join(rest);
+            }
+            Source::Local(dir)
         } else {
             let mut parts = name.splitn(3, '/');
             let (Some(owner), Some(repo)) = (parts.next(), parts.next()) else {

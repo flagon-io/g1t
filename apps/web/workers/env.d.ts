@@ -13,6 +13,7 @@ declare global {
       INTEGRATIONS: ServiceBinding;
       WEBHOOKS: ServiceBinding;
       AUTOMATIONS: ServiceBinding;
+      ACTIONS: ServiceBinding;
     }
   }
   interface Env extends Cloudflare.Env {}

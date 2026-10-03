@@ -1,4 +1,5 @@
-//! GitHub Actions on g1t. A repository's `.github/workflows/*.yml` run on
+//! GitHub Actions on g1t. A repository's `.g1t/workflows/*.yml`, written
+//! exactly as GitHub's `.github/workflows`, run on
 //! g1t as they are: this crate reads them ([`workflow`]), evaluates their
 //! `${{ }}` expressions ([`expr`]), matches their branch and path filters
 //! ([`filter`]), expands their matrices ([`matrix`]), and says which g1t

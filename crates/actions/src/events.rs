@@ -51,7 +51,7 @@ pub struct RunInfo {
     pub run_attempt: u64,
     /// The workflow's name.
     pub workflow: String,
-    /// `.github/workflows/ci.yml`.
+    /// `.g1t/workflows/ci.yml`.
     pub workflow_path: String,
     pub server_url: String,
     pub api_url: String,

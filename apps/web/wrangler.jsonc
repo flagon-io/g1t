@@ -18,7 +18,8 @@
 		{ "binding": "EVENTS", "service": "g1t-events" },
 		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" },
 		{ "binding": "WEBHOOKS", "service": "g1t-webhooks" },
-		{ "binding": "AUTOMATIONS", "service": "g1t-automations" }
+		{ "binding": "AUTOMATIONS", "service": "g1t-automations" },
+		{ "binding": "ACTIONS", "service": "g1t-actions" }
 	],
 	"observability": { "enabled": true },
 	"upload_source_maps": true

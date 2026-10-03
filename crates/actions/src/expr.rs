@@ -1,7 +1,7 @@
 //! The GitHub Actions expression language: the `${{ }}` language.
 //!
 //! This follows GitHub's "Evaluate expressions in workflows and actions"
-//! precisely, so a real `.github/workflows/*.yml` evaluates here the way it
+//! precisely, so a real GitHub workflow evaluates here the way it
 //! does on GitHub: the same literals, the same operator precedence, the same
 //! loose equality (with its coercions to number), the same case-insensitive
 //! string handling, the same object filters (`labels.*.name`) and the same

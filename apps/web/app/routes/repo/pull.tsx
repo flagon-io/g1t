@@ -39,6 +39,7 @@ import {
   Textarea,
   TimeAgo,
 } from "../../components/ui";
+import { WorkflowStatuses } from "../../components/actions";
 import { ChecksPanel } from "../../components/checks";
 import {
   CommentForm,
@@ -318,6 +319,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     reviewPending,
     lifecycle,
     messages,
+    statuses = [],
     landing,
     stalled,
     requireUpToDate,
@@ -345,7 +347,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   // Follow an agent at work, or checks in progress, without a manual reload.
   const revalidator = useRevalidator();
   const working = pull.status === "draft";
-  const checking = checks?.status === "queued" || checks?.status === "running";
+  const checking =
+    checks?.status === "queued" || checks?.status === "running" || statuses.some((status) => status.state === "pending");
   const reviews = verdicts(comments);
   // What stands between this pull request and a merge, if anything.
   const unchecked = checks && checks.status !== "passed";
@@ -858,6 +861,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
           canRerun={canManage && pull.status === "open"}
         />
         {actionData?.action === "recheck" && <ErrorText>{actionData.error}</ErrorText>}
+        <WorkflowStatuses statuses={statuses} />
 
         <section>
           <h3 className="text-sm font-medium">Reviewers</h3>

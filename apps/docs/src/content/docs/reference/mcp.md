@@ -132,6 +132,27 @@ See [Webhooks](/guides/webhooks/). Give `repo` for a repository's webhooks, or `
 
 Each has a workspace route too, under `/workspaces/{workspace}/hooks`.
 
+## GitHub Actions
+
+See [GitHub Actions](/guides/actions/). Workflows are GitHub's, kept in `.g1t/workflows/`. Routes are GitHub's own.
+
+| Tool | Required | What it does | Route |
+| --- | --- | --- | --- |
+| `list_workflows` | `repo` | The workflows, with their events, state, problems, notes on what runs differently, manual-run inputs and last run. | `GET /repos/{owner}/{name}/actions/workflows` |
+| `list_workflow_runs` | `repo` | Runs, newest first; filter by `workflow`, `branch`, `event`, `pull` or `sha`. | `GET /repos/{owner}/{name}/actions/runs` |
+| `get_workflow_run` | `repo`, `id` | A run with its jobs, their steps and annotations. | `GET /repos/{owner}/{name}/actions/runs/{id}` |
+| `get_job_logs` | `repo`, `job` | A job's log after `after`; `done` says if more will come. | `GET /repos/{owner}/{name}/actions/jobs/{job}/logs` |
+| `dispatch_workflow` | `repo`, `workflow` | Run a `workflow_dispatch` workflow on `ref` with `inputs`. Members only. | `POST /repos/{owner}/{name}/actions/workflows/{workflow}/dispatches` |
+| `cancel_workflow_run` | `repo`, `id` | Cancel a run. Members only. | `POST /repos/{owner}/{name}/actions/runs/{id}/cancel` |
+| `rerun_workflow_run` | `repo`, `id` | Run it again; `failed_only` for the jobs that did not succeed. Members only. | `POST /repos/{owner}/{name}/actions/runs/{id}/rerun` |
+| `update_workflow` | `repo`, `workflow`, `enabled` | Turn a workflow on or off. Members only. | `PATCH /repos/{owner}/{name}/actions/workflows/{workflow}` |
+| `list_actions_secrets` | `repo` or `workspace` | Secret names, never values. | `GET /repos/{owner}/{name}/actions/secrets` |
+| `set_actions_secret` | `setting`, `value` | Add or replace a secret. | `PUT /repos/{owner}/{name}/actions/secrets/{name}` |
+| `delete_actions_secret` | `setting` | Remove a secret. | `DELETE /repos/{owner}/{name}/actions/secrets/{name}` |
+| `list_actions_variables` | `repo` or `workspace` | Variables with their values. | `GET /repos/{owner}/{name}/actions/variables` |
+| `set_actions_variable` | `setting`, `value` | Add or replace a variable. | `POST /repos/{owner}/{name}/actions/variables` |
+| `delete_actions_variable` | `setting` | Remove a variable. | `DELETE /repos/{owner}/{name}/actions/variables/{name}` |
+
 ## Automations
 
 See [Automations](/guides/automations/). An automation is a file in `.g1t/automations/` on the default branch: to add or change one, commit it.

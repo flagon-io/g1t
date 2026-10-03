@@ -512,7 +512,7 @@ impl Actions {
         let Some(sha) = read.head.clone() else {
             return Ok(fail(FailureCode::NotFound, format!("There is no branch or tag called {short}.")));
         };
-        let wanted = a.workflow.trim_start_matches(".github/workflows/");
+        let wanted = a.workflow.trim_start_matches(".g1t/workflows/");
         let Some(file) = read.files.iter().find(|file| {
             file.path.rsplit('/').next() == Some(wanted) || file.path == a.workflow
         }) else {

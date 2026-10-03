@@ -194,7 +194,7 @@ impl Actions {
         if let Some(Outcome::Fail(refused)) = Self::member(&a.actor, &a.repo) {
             return Ok(Outcome::Fail(refused));
         }
-        let wanted = a.workflow.trim_start_matches(".github/workflows/");
+        let wanted = a.workflow.trim_start_matches(".g1t/workflows/");
         let row = self
             .db
             .prepare("SELECT * FROM workflows WHERE lower(repo) = lower(?) AND (id = ? OR path = ?)")

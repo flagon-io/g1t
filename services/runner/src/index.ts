@@ -392,7 +392,7 @@ export default class RunnerService
       const args = (await request.json()) as { job: string };
       const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`actions:${args.job}`));
       await sandbox.destroy().catch(() => undefined);
-      return Response.json(ok(null));
+      return Response.json(ok(true));
     }
     if (request.method === "POST" && pathname === "/rpc/plan") {
       const args = (await request.json()) as { actor: User; repo: RepoPath; brief: string };
@@ -554,7 +554,7 @@ export default class RunnerService
     token: string;
     repo: RepoPath;
     timeoutMinutes: number;
-  }): Promise<Result<null>> {
+  }): Promise<Result<true>> {
     const status = await billingClient(this.env.BILLING).status();
     if (!(this.previewListed(args.repo.namespace) || (status.enabled && status.live))) {
       return {
@@ -566,18 +566,28 @@ export default class RunnerService
       };
     }
     const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`actions:${args.job}`));
-    await sandbox.run({
-      kind: "actions",
-      jobId: args.job,
-      token: args.token,
-      envVars: {
-        MODE: "actions",
-        G1T_API: "https://api.g1t.sh",
-        ACTIONS_JOB: args.job,
-        ACTIONS_TOKEN: args.token,
-      },
-    });
-    return ok(null);
+    try {
+      await sandbox.run({
+        kind: "actions",
+        jobId: args.job,
+        token: args.token,
+        envVars: {
+          MODE: "actions",
+          G1T_API: "https://api.g1t.sh",
+          ACTIONS_JOB: args.job,
+          ACTIONS_TOKEN: args.token,
+        },
+      });
+    } catch (error) {
+      // A sandbox that could not start, or stopped at once: the job fails
+      // with why, rather than waiting to be noticed.
+      return {
+        ok: false,
+        error: { code: "conflict", message: `The runner could not start the job: ${String(error).replace(/^Error: /, "")}` },
+      };
+    }
+    // `true`, not null: an outcome needs a value.
+    return ok(true);
   }
 
   /** Whether a workspace's repositories may use g1t's agents and sandboxes at all. */

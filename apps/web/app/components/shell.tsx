@@ -26,6 +26,7 @@ import {
   Settings,
   Users,
   Webhook,
+  PlayCircle,
   Zap,
   X,
 } from "lucide-react";
@@ -244,7 +245,7 @@ function AccountMenu({ user }: { user: User }) {
 }
 
 /** A workspace's settings pages, which the sidebar slides over to. */
-const SETTINGS_PAGE = /^\/([^/]+)\/-\/(settings|people|tokens|billing|integrations|webhooks)(\/|$)/;
+const SETTINGS_PAGE = /^\/([^/]+)\/-\/(settings|people|tokens|billing|integrations|webhooks|secrets)(\/|$)/;
 
 /**
  * The sidebar's menus sit side by side on one track, and the track slides:
@@ -287,6 +288,9 @@ function SettingsMenu({ slug, owner, open }: { slug: string; owner: boolean; ope
         </SidebarLink>
         <SidebarLink to={`/${slug}/-/webhooks`} icon={<Webhook size={15} />}>
           Webhooks
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/secrets`} icon={<Lock size={15} />}>
+          Secrets and variables
         </SidebarLink>
         <SidebarLink to={`/${slug}/-/tokens`} icon={<KeyRound size={15} />}>
           Access tokens
@@ -461,6 +465,9 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
                     >
                       Pull requests
                     </SidebarLink>
+                    <SidebarLink to={`${repoBase}/actions`} icon={<PlayCircle size={14} />}>
+                      Actions
+                    </SidebarLink>
                     <SidebarLink to={`${repoBase}/queue`} icon={<Layers size={14} />}>
                       Merge queue
                     </SidebarLink>
@@ -515,6 +522,8 @@ const SECTIONS: Record<string, string> = {
   commits: "Commits",
   plans: "Plan",
   automations: "Automations",
+  actions: "Actions",
+  secrets: "Secrets and variables",
   settings: "Settings",
   people: "Members",
   tokens: "Access tokens",

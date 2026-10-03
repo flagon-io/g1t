@@ -580,7 +580,7 @@ impl Op {
             }
             Op::UpdateAutomation => "Turn an automation on or off without changing its file. Members only.",
             Op::ListWorkflows => {
-                "A repository's GitHub Actions workflows, read from .github/workflows on its default branch: the events that start each, whether it is on, any problem with its file, notes on anything that runs differently on g1t, its manual-run inputs, and its last run."
+                "A repository's GitHub Actions workflows, read from .g1t/workflows (GitHub's format, so a repository moves by renaming .github to .g1t) on its default branch: the events that start each, whether it is on, any problem with its file, notes on anything that runs differently on g1t, its manual-run inputs, and its last run."
             }
             Op::ListWorkflowRuns => {
                 "A repository's workflow runs, newest first: of one workflow (its id or file name), a branch, an event, a pull request's number, or a commit."
