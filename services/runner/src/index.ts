@@ -555,13 +555,14 @@ export default class RunnerService
     repo: RepoPath;
     timeoutMinutes: number;
   }): Promise<Result<true>> {
-    const status = await billingClient(this.env.BILLING).status();
-    if (!(this.previewListed(args.repo.namespace) || (status.enabled && status.live))) {
+    // The same workspaces that may use g1t's sandboxes for agents.
+    if (!(await this.workspaceAllowed(args.repo.namespace))) {
       return {
         ok: false,
         error: {
           code: "forbidden",
-          message: "Workflows run on g1t's hosted runners, which are not open to this workspace yet.",
+          message:
+            "Workflows run on g1t's runners for workspaces that use g1t's agents: connect your own model provider under Integrations, free while g1t is being built out.",
         },
       };
     }

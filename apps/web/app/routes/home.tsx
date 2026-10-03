@@ -281,7 +281,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       action: "Add",
     },
     {
-      done: shell?.creditMicros == null || shell.creditMicros > 0,
+      // Nothing to pay while g1t is being built out.
+      done: Boolean(shell?.free) || shell?.creditMicros == null || shell.creditMicros > 0,
       title: "Add agent credit",
       about: "g1t's agents are paid for from the workspace's credit, at what the model costs plus 20%.",
       to: workspace ? `/${workspace}/-/billing` : null,

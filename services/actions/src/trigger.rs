@@ -6,10 +6,10 @@ use g1t_actions::events::{RunInfo, github_events};
 use g1t_actions::workflow::{self, Trigger, Workflow};
 use g1t_contracts::actions::{DispatchArgs, WorkflowRun};
 use g1t_contracts::events::Event;
-use g1t_contracts::identity::{AGENT_ID, AGENT_NAME, UsernameArgs, UsernamesArgs};
+use g1t_contracts::identity::{AGENT_ID, AGENT_NAME, UsernamesArgs};
 use g1t_contracts::repos::{Commit, CompareArgs, Comparison, LogArgs, Repo, RepoPath};
 use g1t_contracts::work::{IssueDetail, PullDetail, ViewArgs};
-use g1t_contracts::{FailureCode, Outcome, User, Viewer, new_id};
+use g1t_contracts::{FailureCode, Outcome, User, new_id};
 use g1t_kit::now_ms;
 use serde_json::{Map, Value, json};
 use worker::Result;
@@ -51,14 +51,22 @@ impl Actions {
         Ok(names.get(id).cloned())
     }
 
-    /// Whether someone belongs to the workspace, so their pull requests'
-    /// runs get the secrets.
-    async fn insider(&self, author: &User, namespace: &str) -> Result<bool> {
-        if author.id == AGENT_ID || author.is_member(&namespace.to_lowercase()) {
+    /// Whether a pull request's author belongs to the workspace, so its
+    /// runs get the secrets and a token. On a private repository only
+    /// members can open one at all.
+    async fn insider(&self, author: &User, repo: &Repo, ws: &User) -> Result<bool> {
+        let slug = repo.namespace.to_lowercase();
+        if repo.is_private || author.id == AGENT_ID || author.is_member(&slug) {
             return Ok(true);
         }
-        let found: Viewer = g1t_kit::call(&self.identity, "user_by_username", &UsernameArgs { username: author.username.clone() }).await?;
-        Ok(found.is_some_and(|user| user.is_member(&namespace.to_lowercase())))
+        // Stored authors carry no memberships: ask the workspace.
+        let members: Outcome<Vec<g1t_contracts::identity::Member>> = g1t_kit::call(
+            &self.identity,
+            "list_members",
+            &g1t_contracts::identity::ListMembersArgs { slug, viewer: Some(ws.clone()) },
+        )
+        .await?;
+        Ok(members.into_result().unwrap_or_default().iter().any(|m| m.username.eq_ignore_ascii_case(&author.username)))
     }
 
     async fn commits(&self, repo: &Repo, actor: &User, after: &str, before: Option<&str>) -> Result<Vec<Commit>> {
@@ -195,7 +203,7 @@ impl Actions {
                         "user": review.map(|r| payload::user(&r.author.username)),
                     });
                 }
-                let trusted = self.insider(&pull.author, &repo.namespace).await?;
+                let trusted = self.insider(&pull.author, repo, ws).await?;
                 let head_ref = payload::head_ref(pull);
                 if event_name == "pull_request_target" {
                     // In the base's context: its workflows, its head.

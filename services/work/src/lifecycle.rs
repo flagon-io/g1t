@@ -627,15 +627,25 @@ impl Work {
                     .map(|s| {
                         let run = s.target_url.as_deref().and_then(|url| url.rsplit('/').next()).unwrap_or_default();
                         format!(
-                            "- {} ({}): run `{run}`",
+                            "- {} ({}): run `{run}`, {}",
                             s.context,
-                            s.description.as_deref().unwrap_or("failed")
+                            s.description.as_deref().unwrap_or("failed"),
+                            s.target_url.as_deref().unwrap_or_default()
                         )
                     })
                     .collect();
+                // Named outright: the agent cannot guess it from its fork.
+                let repo = g1t_kit::call::<_, Option<RepoPath>>(
+                    &self.repos,
+                    "path_by_id",
+                    &g1t_contracts::repos::PathByIdArgs { id: pull.repo_id.clone() },
+                )
+                .await?
+                .map(|path| format!("{}/{}", path.namespace, path.name))
+                .unwrap_or_default();
                 Ok(format!(
-                    "These GitHub Actions workflows failed on your latest commit:\n\n{}\n\n\
-                     Read why with the `get_workflow_run` tool (this repository, and the run's id), \
+                    "These GitHub Actions workflows failed on your latest commit to {repo}:\n\n{}\n\n\
+                     Read why with the `get_workflow_run` tool (repo `{repo}` and the run's id), \
                      then `get_job_logs` for the job that failed. Fix the cause in the code, not the workflow, \
                      unless the workflow itself is wrong.",
                     failed.join("\n")

@@ -109,8 +109,10 @@ async function shellFor(
             pulls: counts.value.pulls,
           }
         : null,
+    // While g1t is being built out nothing is charged, so no credit is shown.
     creditMicros:
-      account?.ok && account.value.status.enabled ? account.value.balanceMicros : null,
+      account?.ok && account.value.status.enabled && !account.value.status.free ? account.value.balanceMicros : null,
+    free: account?.ok ? Boolean(account.value.status.free) : false,
     monthSpentMicros: usage?.ok ? usage.value.spentMicros : null,
   };
 }

@@ -537,7 +537,7 @@ impl Op {
                 "A workspace's integrations: its own model provider, the alert sources that open issues (Sentry, Datadog, webhooks), and the trackers whose tickets agents can read (Jira, Linear). Secrets are never returned. Members only."
             }
             Op::ConnectIntegration => {
-                "Connect a workspace to an outside system. provider is a model provider (anthropic, openai, gemini, xai, mistral, deepseek, azure_openai, openrouter, groq, together, fireworks, cerebras, anthropic_endpoint or openai_endpoint: your own key, billed by that provider, with g1t charging a flat orchestration fee per run; a workspace can connect several and route each kind of work with set_model_routes), or sentry, datadog, webhook, jira or linear. config holds the settings each needs; secret is the API key or token. For datadog and webhook, g1t makes the signing secret and returns it once. Owners only."
+                "Connect a workspace to an outside system. provider is a model provider (anthropic, openai, gemini, xai, mistral, deepseek, azure_openai, openrouter, groq, together, fireworks, cerebras, anthropic_endpoint or openai_endpoint: your own key, billed by that provider, and free on g1t while it is being built out; a workspace can connect several and route each kind of work with set_model_routes), or sentry, datadog, webhook, jira or linear. config holds the settings each needs; secret is the API key or token. For datadog and webhook, g1t makes the signing secret and returns it once. Owners only."
             }
             Op::DisconnectIntegration => {
                 "Remove an integration and its secrets. Agents already running on a model provider being removed stop reaching it. Owners only."

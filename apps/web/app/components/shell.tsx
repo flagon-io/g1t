@@ -63,6 +63,8 @@ export type ShellData = {
   } | null;
   /** The workspace's agent credit, if billing is on and they may see it. */
   creditMicros: number | null;
+  /** Whether g1t charges nothing for now, while it is being built out. */
+  free?: boolean;
   /** What its agents have cost since the start of the month. */
   monthSpentMicros: number | null;
 };
@@ -190,10 +192,14 @@ function UsageCard({ slug, shell }: { slug: string; shell: ShellData }) {
       </span>
       <span className="mt-2 flex items-baseline justify-between">
         <span className="font-mono text-sm tabular-nums">${(spent / MICROS_PER_DOLLAR).toFixed(2)}</span>
-        {left != null && (
-          <span className={`text-xs ${left <= 0 ? "text-warn" : "text-faint"}`}>
-            ${(left / MICROS_PER_DOLLAR).toFixed(2)} left
-          </span>
+        {shell.free ? (
+          <span className="text-xs text-accent">Free for now</span>
+        ) : (
+          left != null && (
+            <span className={`text-xs ${left <= 0 ? "text-warn" : "text-faint"}`}>
+              ${(left / MICROS_PER_DOLLAR).toFixed(2)} left
+            </span>
+          )
         )}
       </span>
       <span className="mt-2 block h-1 overflow-hidden rounded-full bg-raised">

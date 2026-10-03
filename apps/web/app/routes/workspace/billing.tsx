@@ -78,6 +78,17 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
   return (
     <div className="grid gap-10 lg:grid-cols-[1fr_20rem]">
       <div className="min-w-0">
+        {status.free && (
+          <div className="mb-8 rounded-xl border border-accent/30 bg-accent/5 p-5">
+            <h2 className="font-medium">Free while g1t is being built out</h2>
+            <p className="mt-1.5 max-w-2xl text-sm text-muted">
+              While we build g1t out, using it costs nothing: agents, reviews, checks and workflows. Bring your own
+              model provider under Integrations and its usage is billed by that provider, not by g1t. Runs are still
+              recorded with what they cost, so Usage shows what you are using. This is for now, not forever: pricing
+              will come later, and we will say so well before anything is charged.
+            </p>
+          </div>
+        )}
         <h2 className="font-medium">Agent credit</h2>
         <p className="mt-1 max-w-2xl text-sm text-muted">
           g1t agents that work on this workspace's repositories are paid for from

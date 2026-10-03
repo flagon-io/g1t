@@ -205,9 +205,11 @@ If you run your own copy of g1t, these settings on the runner control it:
 
 ## What it costs
 
-A workspace pays for the g1t agents that work on its repositories, from
-credit an owner buys in advance: each run is charged what the model cost,
-plus 20%. Acceptance checks are free. With no credit, agents do not start.
+While g1t is being built out, its agents cost nothing: runs are recorded
+with what they cost, and nothing is charged. Once pricing starts, a
+workspace will pay for the g1t agents that work on its repositories from
+credit an owner buys in advance: each run charged what the model cost, plus
+20%, and acceptance checks free.
 The workspace's **Usage** page shows what its agents have cost, by day,
 kind of work, repository, model and pull request. See
 [usage and billing](/guides/usage-and-billing/).

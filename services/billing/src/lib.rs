@@ -124,6 +124,8 @@ struct Billing {
     margin_percent: u32,
     /// Charged for a run on the workspace's own model provider.
     orchestration_fee_micros: i64,
+    /// While g1t is being built out, nothing is charged (`FREE_WHILE_BUILDING`).
+    free: bool,
 }
 
 impl Billing {
@@ -131,6 +133,7 @@ impl Billing {
         Status {
             enabled: self.stripe.is_some(),
             live: self.stripe.as_ref().is_some_and(Stripe::live),
+            free: self.free,
         }
     }
 
@@ -443,6 +446,10 @@ impl Billing {
 
     /// A refusal if the workspace has no credit to start an agent with.
     async fn out_of_credit<T>(&self, workspace: &str) -> Result<Option<Outcome<T>>> {
+        // While g1t is being built out, no one needs credit.
+        if self.free {
+            return Ok(None);
+        }
         let balance = self
             .row(workspace)
             .await?
@@ -531,7 +538,10 @@ impl Billing {
         }
         // On the workspace's own provider, the model was paid for there:
         // g1t charges its fee, and keeps the provider's cost to show.
-        let charge = if run.own_provider() {
+        let charge = if self.free {
+            // Recorded, with what it cost, but not charged.
+            0
+        } else if run.own_provider() {
             self.orchestration_fee_micros
         } else {
             charge_micros(a.cost_usd, self.margin_percent)
@@ -544,6 +554,9 @@ impl Billing {
         };
         if run.own_provider() {
             description.push_str(", on your own model provider");
+        }
+        if self.free {
+            description.push_str(" (free while g1t is being built out)");
         }
         self.enter(
             &run.workspace,
@@ -592,6 +605,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
             .ok()
             .and_then(|fee| fee.to_string().parse().ok())
             .unwrap_or(100_000),
+        free: env.var("FREE_WHILE_BUILDING").is_ok_and(|v| v.to_string() == "true"),
     };
     match method.as_str() {
         "status" => reply(&billing.status()),

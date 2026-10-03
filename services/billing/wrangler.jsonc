@@ -25,7 +25,11 @@
 		// What a run on a workspace's own model provider is charged, in
 		// millionths of a dollar: the sandbox and the orchestration around
 		// it, with the model paid for at the provider. $0.10.
-		"ORCHESTRATION_FEE_MICROS": "100000"
+		"ORCHESTRATION_FEE_MICROS": "100000",
+		// While g1t is being built out, workspaces pay nothing: runs are
+		// recorded with what they cost, and nothing is charged. Set to
+		// "false" when pricing starts.
+		"FREE_WHILE_BUILDING": "true"
 	},
 	// Secret: STRIPE_SECRET_KEY. Without it nothing is charged and the
 	// runner decides who may start agents some other way.

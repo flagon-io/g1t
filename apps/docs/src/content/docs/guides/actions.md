@@ -114,8 +114,10 @@ from people outside the workspace run without secrets, and with a
 
 ## Who may run workflows
 
-While g1t is in preview, workflows run in the workspaces g1t has opened
-them to. Elsewhere a run is recorded with its jobs failed and the reason.
+Workflows run in every workspace that uses g1t's agents: one with its own
+[model provider](/guides/models/) connected, or one g1t has opened its
+hosted models to. They are free while g1t is being built out. Elsewhere a
+run is recorded with its jobs failed and the reason.
 
 ## From the API
 

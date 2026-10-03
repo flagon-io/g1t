@@ -27,6 +27,11 @@ pub struct Status {
     /// False while the payment provider is in its test mode, where cards
     /// are not real.
     pub live: bool,
+    /// True while g1t is being built out: runs are recorded, with what
+    /// they cost, but nothing is charged and no credit is needed. Not a
+    /// promise that it stays free.
+    #[serde(default)]
+    pub free: bool,
 }
 
 /// A workspace's standing.

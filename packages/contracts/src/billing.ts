@@ -14,6 +14,11 @@ export type BillingStatus = {
   enabled: boolean;
   /** False while the card processor is in its test mode, where cards are not real. */
   live: boolean;
+  /**
+   * True while g1t is being built out: runs are recorded with what they
+   * cost, but nothing is charged and no credit is needed. Not forever.
+   */
+  free?: boolean;
 };
 
 /** A workspace's standing. */

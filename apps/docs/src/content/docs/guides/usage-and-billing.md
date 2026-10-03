@@ -3,6 +3,13 @@ title: Usage and billing
 description: What g1t agents cost, how a workspace pays for them, and what is free.
 ---
 
+> **Free while g1t is being built out.** For now, using g1t costs nothing:
+> agents, reviews, checks and workflows. Bring your own model provider and
+> its usage is billed by that provider, not by g1t. Runs are still recorded
+> with what they cost, so the Usage page shows what you are using. This is
+> for now, not forever: the pricing below is how g1t will charge once it
+> starts, and we will say so well before anything is charged.
+
 Hosting repositories, issues, pull requests, review and your own agent cost
 nothing on g1t. What costs money is g1t's own agents: each run uses a
 model, and a workspace pays for the runs on its repositories from credit it
