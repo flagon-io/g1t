@@ -161,6 +161,9 @@ pub fn run_claude(workdir: &Path, prompt: &str, reporter: &mut Reporter) -> Resu
                         "matcher": "*",
                         "hooks": [{ "type": "command", "command": "MODE=steer /usr/local/bin/g1t-runner", "timeout": 15 }],
                     }],
+                    "Stop": [{
+                        "hooks": [{ "type": "command", "command": "MODE=steer G1T_HOOK=stop /usr/local/bin/g1t-runner", "timeout": 15 }],
+                    }],
                 }
             });
             let home = std::env::var("HOME").unwrap_or_else(|_| "/home/node".to_owned());

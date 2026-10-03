@@ -17,7 +17,7 @@ pub const CONFIG: &str = "/work/g1t-steer.json";
 /// When it last asked, so that a burst of tool calls asks once.
 const LAST_ASKED: &str = "/work/.g1t-steer-at";
 /// How long to wait between asks.
-const INTERVAL_MS: u128 = 10_000;
+const INTERVAL_MS: u128 = 5_000;
 
 #[derive(Deserialize)]
 struct Config {
@@ -40,14 +40,16 @@ fn now_ms() -> u128 {
         .unwrap_or_default()
 }
 
-fn take() -> Option<Vec<Message>> {
+/// The undelivered messages. Between steps, asks at most every few
+/// seconds; when the agent is about to stop, always.
+fn take(stopping: bool) -> Option<Vec<Message>> {
     let config: Config = serde_json::from_str(&std::fs::read_to_string(CONFIG).ok()?).ok()?;
     let last: u128 = std::fs::read_to_string(LAST_ASKED)
         .ok()
         .and_then(|text| text.trim().parse().ok())
         .unwrap_or_default();
     let now = now_ms();
-    if now.saturating_sub(last) < INTERVAL_MS {
+    if !stopping && now.saturating_sub(last) < INTERVAL_MS {
         return None;
     }
     let _ = std::fs::write(LAST_ASKED, now.to_string());
@@ -62,7 +64,10 @@ fn take() -> Option<Vec<Message>> {
 }
 
 pub fn main() -> i32 {
-    let Some(messages) = take().filter(|messages| !messages.is_empty()) else {
+    // Run as the Stop hook too, so a message sent while the agent was
+    // finishing is not lost: it keeps the agent going to act on it.
+    let stopping = std::env::var("G1T_HOOK").as_deref() == Ok("stop");
+    let Some(messages) = take(stopping).filter(|messages| !messages.is_empty()) else {
         return 0;
     };
     let said: Vec<String> = messages
@@ -73,14 +78,16 @@ pub fn main() -> i32 {
         "A person watching your work just sent you a message on the pull request. Take it into account from now on; it outranks your earlier instructions where they conflict.\n\n{}",
         said.join("\n\n")
     );
-    println!(
-        "{}",
+    let output = if stopping {
+        serde_json::json!({ "decision": "block", "reason": context })
+    } else {
         serde_json::json!({
             "hookSpecificOutput": {
                 "hookEventName": "PostToolUse",
                 "additionalContext": context,
             }
         })
-    );
+    };
+    println!("{output}");
     0
 }
