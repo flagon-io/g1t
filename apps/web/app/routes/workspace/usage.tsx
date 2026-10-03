@@ -189,7 +189,10 @@ export default function UsagePage({ loaderData, params }: Route.ComponentProps) 
   const { period, since, usage, account } = loaderData;
   const base = `/${params.owner}`;
   const days = Math.max(1, Math.ceil((Date.now() - new Date(since).getTime()) / 86_400_000));
-  const perDay = usage.spentMicros / days;
+  // While g1t is free nothing is charged, so usage is measured at cost
+  // and credit is not drawn down.
+  const total = usage.free ? usage.usedMicros : usage.spentMicros;
+  const perDay = usage.free ? 0 : total / days;
   const runway = perDay > 0 ? Math.floor(account.balanceMicros / perDay) : null;
   return (
     <div className="space-y-8">
@@ -211,40 +214,54 @@ export default function UsagePage({ loaderData, params }: Route.ComponentProps) 
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat
-          label="Spent"
-          value={dollars(usage.spentMicros)}
-          note={
-            usage.providerMicros > 0
-              ? `Plus about ${dollars(usage.providerMicros)} billed by your own model provider`
-              : `${dollars(usage.costMicros)} of it the model provider's`
-          }
-        />
+        {usage.free ? (
+          <Stat
+            label="Used"
+            value={dollars(total)}
+            note="At cost. Nothing is charged while g1t is being built out."
+          />
+        ) : (
+          <Stat
+            label="Spent"
+            value={dollars(usage.spentMicros)}
+            note={
+              usage.providerMicros > 0
+                ? `Plus about ${dollars(usage.providerMicros)} billed by your own model provider`
+                : `${dollars(usage.costMicros)} of it the model provider's`
+            }
+          />
+        )}
         <Stat label="Agent runs" value={String(usage.runs)} note={PERIODS[period]} />
         <Stat
           label="Average run"
-          value={usage.runs ? dollars(usage.spentMicros / usage.runs, 3) : "—"}
+          value={usage.runs ? dollars(total / usage.runs, 3) : "—"}
           note="Making a change, reviewing, revising…"
         />
         <div className="rounded-2xl bg-surface p-5 ring-1 ring-line">
           <p className="flex items-center justify-between text-sm text-muted">
             Credit left
-            <Link to={`${base}/-/billing`} className="text-xs text-accent hover:underline">
-              Add credit
-            </Link>
+            {!usage.free && (
+              <Link to={`${base}/-/billing`} className="text-xs text-accent hover:underline">
+                Add credit
+              </Link>
+            )}
           </p>
           <p className={`mt-2 text-3xl font-semibold tracking-tight tabular-nums ${account.balanceMicros <= 0 ? "text-warn" : ""}`}>
             {dollars(account.balanceMicros)}
           </p>
           <p className="mt-1 text-xs text-faint">
-            {runway == null ? "Nothing spent in this period." : `About ${runway} ${runway === 1 ? "day" : "days"} at this rate.`}
+            {usage.free
+              ? "Not drawn down while g1t is free."
+              : runway == null
+                ? "Nothing spent in this period."
+                : `About ${runway} ${runway === 1 ? "day" : "days"} at this rate.`}
           </p>
         </div>
       </div>
 
       <section className="rounded-2xl bg-surface p-5 ring-1 ring-line">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h3 className="text-sm font-medium">Spend per day</h3>
+          <h3 className="text-sm font-medium">{usage.free ? "Usage per day" : "Spend per day"}</h3>
           <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
             {usage.byTask.map((slice) => (
               <li key={slice.key} className="flex items-center gap-1.5">
@@ -263,11 +280,11 @@ export default function UsagePage({ loaderData, params }: Route.ComponentProps) 
         <Breakdown
           title="By kind of work"
           slices={usage.byTask}
-          total={usage.spentMicros}
+          total={total}
           label={(key) => task(key).label}
           color={(key) => task(key).color}
         />
-        <Breakdown title="By repository" slices={usage.byRepo} total={usage.spentMicros} link={(key) => `/${key}`} />
+        <Breakdown title="By repository" slices={usage.byRepo} total={total} link={(key) => `/${key}`} />
         <Breakdown
           title="Pull requests that cost most"
           slices={usage.byPull}
@@ -280,7 +297,7 @@ export default function UsagePage({ loaderData, params }: Route.ComponentProps) 
             return number && number !== "0" ? `/${repo}/pull/${number}` : `/${repo}/plans`;
           }}
         />
-        <Breakdown title="By model" slices={usage.byModel} total={usage.spentMicros} color={() => "var(--color-info)"} />
+        <Breakdown title="By model" slices={usage.byModel} total={total} color={() => "var(--color-info)"} />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-surface px-5 py-4 text-sm ring-1 ring-line">

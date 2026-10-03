@@ -116,6 +116,10 @@ export type Usage = {
   costMicros: number;
   /** What runs on the workspace's own provider cost there, estimated. Not charged by g1t. */
   providerMicros: number;
+  /** What the runs used, at cost: g1t's models and the workspace's own provider together. */
+  usedMicros: number;
+  /** g1t charges nothing for now; the slices then measure usage at cost. */
+  free: boolean;
   runs: number;
   /** Spend per day and task, keyed `YYYY-MM-DD/task`. */
   byDay: UsageSlice[];

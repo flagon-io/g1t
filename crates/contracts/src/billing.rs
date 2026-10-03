@@ -207,6 +207,12 @@ pub struct Usage {
     /// What runs on the workspace's own provider cost there, as the harness
     /// estimated it. Not charged by g1t.
     pub provider_micros: i64,
+    /// What the runs used, at cost: g1t's models and the workspace's own
+    /// provider together, whatever was charged for them.
+    pub used_micros: i64,
+    /// g1t charges nothing for now. The slices then measure usage at cost,
+    /// since every charge is zero.
+    pub free: bool,
     pub runs: u32,
     /// Spend per day (`YYYY-MM-DD`) and task, as `day/task` keys.
     pub by_day: Vec<UsageSlice>,

@@ -65,7 +65,8 @@ export type ShellData = {
   /** Whether g1t charges nothing for now, while it is being built out. */
   free?: boolean;
   /** What its agents have cost since the start of the month. */
-  monthSpentMicros: number | null;
+  /** This month's usage: charged, or at cost while g1t is free. */
+  monthUsageMicros: number | null;
 };
 
 function SidebarLink({
@@ -176,8 +177,8 @@ function WorkspaceSwitcher({ user, shell }: { user: User; shell: ShellData }) {
 
 /** This month's spend against what is left, as Vercel shows a plan's usage. */
 function UsageCard({ slug, shell }: { slug: string; shell: ShellData }) {
-  if (shell.monthSpentMicros == null) return null;
-  const spent = shell.monthSpentMicros;
+  if (shell.monthUsageMicros == null) return null;
+  const spent = shell.monthUsageMicros;
   const left = shell.creditMicros;
   const share = left != null && spent + left > 0 ? Math.min(1, spent / (spent + Math.max(left, 0))) : 0;
   return (

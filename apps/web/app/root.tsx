@@ -113,7 +113,8 @@ async function shellFor(
     creditMicros:
       account?.ok && account.value.status.enabled && !account.value.status.free ? account.value.balanceMicros : null,
     free: account?.ok ? Boolean(account.value.status.free) : false,
-    monthSpentMicros: usage?.ok ? usage.value.spentMicros : null,
+    // While g1t is free every charge is zero, so usage is shown at cost.
+    monthUsageMicros: usage?.ok ? (usage.value.free ? usage.value.usedMicros : usage.value.spentMicros) : null,
   };
 }
 

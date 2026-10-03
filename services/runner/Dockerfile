@@ -32,9 +32,12 @@ COPY --from=build /src/target/release/g1t-runner /usr/local/bin/g1t-runner
 # Claude Code refuses to skip permission prompts as root.
 USER node
 ENV HOME=/home/node
-# Rust, for the agent's own use, installed for the user it runs as.
+# Rust, for the agent's own use, installed for the user it runs as, with
+# the formatter and linter that CI so often checks with: an agent that
+# cannot run them only finds out from a failed workflow.
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-  | sh -s -- -y --profile minimal --default-toolchain stable
+  | sh -s -- -y --profile minimal --default-toolchain stable \
+      --component rustfmt --component clippy
 ENV PATH=/home/node/.cargo/bin:$PATH
 # Commits are the g1t agent's; the harness does not sign them as its own.
 RUN mkdir -p /home/node/.claude \

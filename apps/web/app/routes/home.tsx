@@ -264,7 +264,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
   const workspace = shell?.workspace?.slug;
   const first = repos[0];
-  const handedOff = active.length > 0 || (shell?.monthSpentMicros ?? 0) > 0;
+  const handedOff = active.length > 0 || (shell?.monthUsageMicros ?? 0) > 0;
   const steps: Step[] = [
     {
       done: Boolean(workspace),

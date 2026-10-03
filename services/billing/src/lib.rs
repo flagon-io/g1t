@@ -261,9 +261,11 @@ impl Billing {
             micros: Option<i64>,
             runs: Option<u32>,
         }
+        // While nothing is charged, what was used is what there is to show.
+        let measure = if self.free { "COALESCE(cost_micros, 0)" } else { "-amount_micros" };
         let slices = |key: &str, limit: u32| {
             format!(
-                "SELECT {key} AS key, -SUM(amount_micros) AS micros, COUNT(*) AS runs FROM ledger
+                "SELECT {key} AS key, SUM({measure}) AS micros, COUNT(*) AS runs FROM ledger
                  WHERE workspace = ?1 AND kind = 'usage' AND created_at >= ?2
                  GROUP BY 1 ORDER BY micros DESC LIMIT {limit}"
             )
@@ -323,6 +325,8 @@ impl Billing {
             spent_micros: totals.spent.unwrap_or_default(),
             cost_micros: totals.cost.unwrap_or_default(),
             provider_micros: totals.provider.unwrap_or_default(),
+            used_micros: totals.cost.unwrap_or_default() + totals.provider.unwrap_or_default(),
+            free: self.free,
             runs: totals.runs.unwrap_or_default(),
             added_micros: totals.added.unwrap_or_default(),
             by_day: query(slices("substr(created_at, 1, 10) || '/' || COALESCE(task, 'other')", 400)).await?,
