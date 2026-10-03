@@ -61,6 +61,26 @@ function StepRow({ step, text, defaultOpen }: { step: StepState; text: string | 
   );
 }
 
+/** Why a job did not run as asked, with "Integrations" linked where it says so. */
+function Reason({ text, workspace }: { text: string; workspace: string }) {
+  const [before, after] = text.split("Integrations");
+  return (
+    <p className="rounded-lg bg-raised px-3 py-2 text-sm text-muted">
+      {after === undefined ? (
+        text
+      ) : (
+        <>
+          {before}
+          <Link to={`/${workspace}/-/integrations`} className="text-accent hover:underline">
+            Integrations
+          </Link>
+          {after}
+        </>
+      )}
+    </p>
+  );
+}
+
 function JobView({ job, base }: { job: Job; base: string }) {
   const live = job.status !== "completed";
   const log = useJobLog(`${base}/actions/jobs/${job.id}/log`, live);
@@ -76,7 +96,7 @@ function JobView({ job, base }: { job: Job; base: string }) {
           {job.startedAt && ` · ${duration(job.startedAt, job.finishedAt)}`}
         </span>
       </div>
-      {job.reason && <p className="rounded-lg bg-raised px-3 py-2 text-sm text-muted">{job.reason}</p>}
+      {job.reason && <Reason text={job.reason} workspace={base.split("/")[1]} />}
       {job.annotations.length > 0 && (
         <ul className="space-y-2 rounded-xl border border-line bg-surface p-4 text-sm">
           {job.annotations.map((note, index) => (

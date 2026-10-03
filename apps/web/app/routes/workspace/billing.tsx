@@ -214,7 +214,8 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
                 Integrations
               </Link>
               , the provider bills you for the model and each run here is a flat{" "}
-              {dollars(account.orchestrationFeeMicros)}.
+              {dollars(account.orchestrationFeeMicros)}
+              {status.free && " once pricing starts; nothing while g1t is being built out"}.
             </li>
             <li>
               Only members of <span className="font-mono text-fg">{slug}</span> can

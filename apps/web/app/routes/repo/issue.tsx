@@ -478,6 +478,26 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
             </Form>
           )}
 
+          {open && !agentsEnabled && canManage && !assigned && !issue.queued && (
+            // Where g1t's agent would be, and what makes it appear.
+            <div className="mt-3 rounded-lg border border-dashed border-line p-3 text-sm">
+              <p className="flex items-center gap-1.5 font-medium">
+                <Sparkles size={14} className="text-accent" />
+                g1t agent
+              </p>
+              <p className="mt-1 text-xs text-muted">
+                Connect a model provider and g1t's agent can take this issue: it opens a pull request and sees it
+                through checks, review and fixes. g1t costs nothing while it is being built out.
+              </p>
+              <Link
+                to={`/${params.owner}/-/integrations`}
+                className="mt-2 inline-block text-xs text-accent hover:underline"
+              >
+                Connect a model
+              </Link>
+            </div>
+          )}
+
           {viewer && canManage && open && (
             <div className="mt-3 space-y-2">
               {!issue.assignees.includes(viewer.username) && (

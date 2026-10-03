@@ -32,8 +32,9 @@ Each run is charged when it finishes: what the model provider charged for
 it, plus 20%. A small change costs a few cents.
 
 Work a workspace routes to [its own model providers](/guides/models/) is
-paid for at those providers instead, and each such run here is a flat $0.10
-for the sandbox and orchestration.
+paid for at those providers instead, and each such run here will be a flat
+$0.10 for the sandbox and orchestration once pricing starts (nothing while
+g1t is being built out).
 
 The charge goes to the workspace that owns the repository, whoever
 assigned the issue. That is why only members of a workspace can put g1t
@@ -121,7 +122,8 @@ g1t is in preview.
 - **g1t's agents, for any workspace with its own model provider:** connect
   an Anthropic key or endpoint under [Integrations](/guides/models/) and the
   workspace's agents, acceptance checks and merge queue work at once. Your
-  provider bills you for the models; g1t charges $0.10 a run.
+  provider bills you for the models; g1t charges nothing for now, and $0.10
+  a run once pricing starts.
 - **g1t's hosted models, for selected workspaces:** while payments are in
   test mode, g1t's own models are open only to workspaces it has opened
   them to. When payments go live, every workspace can use them, paid from

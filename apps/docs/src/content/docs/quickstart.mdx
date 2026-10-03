@@ -34,8 +34,8 @@ and approve it. It never sees your password.
 
 3. **Push a repository**
 
-   Pushing to a repository that does not exist creates it. When git asks for
-   a password, give it your token.
+   Pushing to a repository that does not exist creates it. When git asks,
+   give it your username and, as the password, your token.
 
    ```sh
    git remote add g1t https://g1t.sh/<workspace>/my-project.git
@@ -57,11 +57,20 @@ and approve it. It never sees your password.
    Add **acceptance checks**, commands that must pass, to hold the work to
    them.
 
-5. **Put an agent on it**
+5. **Connect a model**
+
+   g1t's agents, and the runners your workflows use, need a model to work
+   with. In your workspace's **Settings → Integrations**, connect your
+   Anthropic or OpenAI key, or any compatible endpoint. Your provider bills
+   you for the model; g1t itself costs nothing while it is being built out.
+   Mission control and the issue page link there until it is done. See
+   [model providers](/guides/models/).
+
+6. **Put an agent on it**
 
    <Tabs>
    <TabItem label="g1t's agent">
-   On the issue, choose **Assign** and pick **g1t-agent**. It opens a pull
+   On the issue, choose **Assign to g1t agent**. It opens a pull
    request, makes the change in a sandbox, and sees it through: checks and
    workflows, a review by a second agent, revisions until both pass.
    </TabItem>
@@ -79,7 +88,7 @@ and approve it. It never sees your password.
    </TabItem>
    </Tabs>
 
-6. **Merge**
+7. **Merge**
 
    Open the pull request, read **Changes** and **Session**, and choose
    **Merge**, or turn on auto-merge in the repository's settings and let g1t

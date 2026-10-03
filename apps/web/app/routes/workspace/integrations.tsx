@@ -68,6 +68,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     hostedOpen: access.hosted,
     routes: routes.ok ? routes.value : [],
     feeMicros: account.ok ? account.value.orchestrationFeeMicros : 100_000,
+    free: account.ok ? Boolean(account.value.status.free) : false,
     marginPercent: account.ok ? account.value.marginPercent : 20,
   };
 }
@@ -174,7 +175,7 @@ function dollars(micros: number): string {
 }
 
 export default function WorkspaceIntegrations({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, connections, deliveries, repos: repoNames, adding, feeMicros, marginPercent, hostedOpen, routes } =
+  const { slug, role, connections, deliveries, repos: repoNames, adding, feeMicros, free, marginPercent, hostedOpen, routes } =
     loaderData;
   const owner = role === "owner";
   const busy = useNavigation().state === "submitting";
@@ -224,8 +225,11 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
         />
         )}
         <p className="mt-3 text-xs text-faint">
-          On your own providers, their bills are yours and g1t charges {dollars(feeMicros)} a run for the
-          sandbox and orchestration. Keys go only from g1t's model proxy to the provider: the agent's
+          On your own providers, their bills are yours.{" "}
+          {free
+            ? `g1t charges nothing while it is being built out; once pricing starts, ${dollars(feeMicros)} a run for the sandbox and orchestration.`
+            : `g1t charges ${dollars(feeMicros)} a run for the sandbox and orchestration.`}{" "}
+          Keys go only from g1t's model proxy to the provider: the agent's
           sandbox holds a token that dies with the run.
         </p>
         {owner && <ModelCatalog slug={slug} adding={adding} />}

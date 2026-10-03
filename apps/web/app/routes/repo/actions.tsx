@@ -1,4 +1,5 @@
 import { AlertTriangle, FileCode2, GitBranch, Play, PlayCircle } from "lucide-react";
+import { env } from "cloudflare:workers";
 import { useEffect, useState } from "react";
 import { Form, Link, useNavigation, useRevalidator, useSearchParams } from "react-router";
 
@@ -18,14 +19,19 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const repo = { namespace: params.owner, name: params.repo };
   const selected = new URL(request.url).searchParams.get("workflow") ?? undefined;
-  const [workflows, runs] = await Promise.all([
+  const member = roleIn(viewer, params.owner) != null;
+  const [workflows, runs, models] = await Promise.all([
     actions.workflows(repo, viewer),
     actions.runs(repo, viewer, { workflow: selected, limit: 50 }),
+    // Jobs run on g1t's machines for workspaces whose agents can reach a
+    // model; members are told before a run fails for it.
+    member ? env.RUNNER.modelAccess(params.owner).catch(() => null) : Promise.resolve(null),
   ]);
   return {
     workflows: unwrap(workflows),
     runs: runs.ok ? runs.value : [],
-    member: roleIn(viewer, params.owner) != null,
+    member,
+    runnable: models == null || models.hosted || models.own != null,
     selected: selected ?? null,
   };
 }
@@ -246,7 +252,7 @@ jobs:
       - run: npm test`;
 
 export default function Actions({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { workflows, runs, member, selected } = loaderData;
+  const { workflows, runs, member, runnable, selected } = loaderData;
   const [search] = useSearchParams();
   const base = `/${params.owner}/${params.repo}`;
   const workflow = workflows.find((w) => w.id === selected || w.path.endsWith(`/${selected}`)) ?? null;
@@ -269,6 +275,19 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
           How Actions run on g1t
         </a>
       </header>
+
+      {member && !runnable && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-surface px-4 py-3 text-sm ring-1 ring-line">
+          <span className="flex items-center gap-2 text-muted">
+            <AlertTriangle size={15} className="shrink-0 text-warn" />
+            Workflows run on g1t's runners once this workspace connects a model provider for its agents. Free while g1t is
+            being built out.
+          </span>
+          <Link to={`/${params.owner}/-/integrations`} className="text-accent hover:underline">
+            Connect a model
+          </Link>
+        </div>
+      )}
 
       {workflows.length === 0 ? (
         <div className="grid gap-6 lg:grid-cols-2">

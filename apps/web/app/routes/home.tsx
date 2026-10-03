@@ -1,4 +1,5 @@
 import { ArrowRight, Hand, Plus, Settings, Users } from "lucide-react";
+import { env } from "cloudflare:workers";
 import { type ReactNode, useEffect } from "react";
 import { Link, data, useRevalidator, useRouteLoaderData } from "react-router";
 
@@ -43,10 +44,14 @@ export async function loader({ context }: Route.LoaderArgs) {
   const times: Record<string, number> = {};
   const timed = <T,>(name: string, promise: Promise<T>) =>
     promise.then((value) => ((times[name] = Date.now() - started), value));
-  const [repos, pulls, assigned] = await Promise.all([
+  // The workspace the sidebar shows, as the shell picks it.
+  const workspace = viewer?.workspaces?.[0]?.slug ?? null;
+  const [repos, pulls, assigned, models] = await Promise.all([
     timed("repos", reposApi.list(viewer, { memberOnly: Boolean(viewer) })),
     timed("pulls", work.listActivePulls(viewer)),
     timed("assigned", work.listAssignedIssues(viewer)),
+    // Whether its agents can reach a model: g1t's, or one it connected.
+    workspace ? timed("models", env.RUNNER.modelAccess(workspace).catch(() => null)) : Promise.resolve(null),
   ]);
   // Each issue and pull request is shown under its repository. Most are in
   // the viewer's own, already listed; the rest are looked up once each, all
@@ -64,6 +69,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   return data({
     viewer,
     repos,
+    canRunAgents: models == null || models.hosted || models.own != null,
     assigned: assigned.flatMap((issue) => {
       const repo = known.get(issue.repoId);
       return repo ? [{ issue, repo }] : [];
@@ -241,7 +247,7 @@ function GetStarted({ steps }: { steps: Step[] }) {
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { viewer, repos, active, assigned } = loaderData;
+  const { viewer, repos, active, assigned, canRunAgents } = loaderData;
 
   const needsYou = active.filter((item) => item.lifecycle?.stage === "needs_you");
   const ready = active.filter((item) => item.lifecycle?.stage === "ready");
@@ -280,14 +286,23 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       to: workspace ? `/new?workspace=${workspace}` : "/new",
       action: "Add",
     },
-    {
-      // Nothing to pay while g1t is being built out.
-      done: Boolean(shell?.free) || shell?.creditMicros == null || shell.creditMicros > 0,
-      title: "Add agent credit",
-      about: "g1t's agents are paid for from the workspace's credit, at what the model costs plus 20%.",
-      to: workspace ? `/${workspace}/-/billing` : null,
-      action: "Add credit",
-    },
+    canRunAgents
+      ? {
+          // Nothing to pay while g1t is being built out.
+          done: Boolean(shell?.free) || shell?.creditMicros == null || shell.creditMicros > 0,
+          title: "Add agent credit",
+          about: "g1t's agents are paid for from the workspace's credit, at what the model costs plus 20%.",
+          to: workspace ? `/${workspace}/-/billing` : null,
+          action: "Add credit",
+        }
+      : {
+          done: false,
+          title: "Connect a model",
+          about:
+            "Agents need a model to think with. Connect your Anthropic or OpenAI key, or any compatible endpoint; g1t itself costs nothing while it is being built out.",
+          to: workspace ? `/${workspace}/-/integrations` : null,
+          action: "Connect",
+        },
     {
       done: handedOff,
       title: "Hand off an outcome",
