@@ -377,6 +377,8 @@ export type Plan = {
   createdAt: string;
   /** RFC 3339. */
   finishedAt: string | null;
+  /** Once applied: where each issue it opened stands now, in plan order. */
+  progress: IssueProgress[];
 };
 
 /** What a sandbox needs to write a plan. */
@@ -678,6 +680,22 @@ export function pullComparison(pull: Pull): {
 
 
 /** Where a pull request in a merge queue stands. */
+/** Where one issue of an applied plan stands. */
+export type IssueProgress = {
+  number: number;
+  title: string;
+  /**
+   * `blocked`, `waiting` (for an agent), `open`, a lifecycle stage,
+   * `landed` or `closed`.
+   */
+  state: string;
+  detail: string;
+  /** The issues it is waiting on that are still open. */
+  blockedBy: number[];
+  pull: number | null;
+  agent: string | null;
+};
+
 export type QueueState = "waiting" | "testing" | "passed" | "failed" | "landed" | "removed";
 
 /** One pull request's place in a merge queue. */

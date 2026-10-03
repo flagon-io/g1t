@@ -5,9 +5,10 @@ import { Form, Link, data, useNavigation, useRevalidator } from "react-router";
 
 import type { Route } from "./+types/plan";
 import { Markdown } from "../../components/markdown";
+import { Outcome } from "../../components/outcome";
 import { Button, ErrorText, TimeAgo } from "../../components/ui";
 import { Label } from "../../components/work";
-import { work } from "../../lib/services.server";
+import { billing, work } from "../../lib/services.server";
 import {
   assertSameOrigin,
   getViewer,
@@ -27,7 +28,20 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // Members only; to anyone else the page does not exist.
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
   const path = { namespace: params.owner, name: params.repo };
-  return { plan: unwrap(await work.getPlan(path, viewer, params.id)) };
+  const [plan, ledger] = await Promise.all([
+    work.getPlan(path, viewer, params.id),
+    billing.ledger(params.owner, viewer),
+  ]);
+  const found = unwrap(plan);
+  // What the agents working on this outcome have cost so far.
+  const pulls = new Set(found.progress.flatMap((item) => (item.pull != null ? [item.pull] : [])));
+  const repo = `${params.owner}/${params.repo}`;
+  const costMicros = ledger.ok
+    ? ledger.value
+        .filter((entry) => entry.kind === "usage" && entry.repo === repo && entry.number != null && pulls.has(entry.number))
+        .reduce((sum, entry) => sum - entry.amountMicros, 0)
+    : null;
+  return { plan: found, costMicros };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -43,24 +57,28 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function PlanPage({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { plan } = loaderData;
+  const { plan, costMicros } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const applying = useNavigation().state === "submitting";
 
   // The agent is still writing it.
   const revalidator = useRevalidator();
   const planning = plan.status === "planning";
+  // Planning, or agents still converging what was applied.
+  const moving =
+    planning || plan.progress.some((item) => item.state !== "landed" && item.state !== "closed");
   useEffect(() => {
-    if (!planning) return;
+    if (!moving) return;
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") revalidator.revalidate();
     }, REFRESH_MS);
     return () => clearInterval(timer);
-  }, [planning, revalidator]);
+  }, [moving, revalidator]);
+  const converging = plan.status === "applied" && plan.progress.length > 0;
 
   const independent = plan.issues.filter((issue) => issue.dependsOn.length === 0).length;
   return (
-    <div className="max-w-4xl">
+    <div className={converging ? "" : "max-w-4xl"}>
       <p className="text-sm">
         <Link to={`${base}/plans`} className="text-muted hover:text-fg">
           Plans
@@ -73,6 +91,12 @@ export default function PlanPage({ loaderData, actionData, params }: Route.Compo
       <p className="mt-2 text-xs text-faint">
         Asked for by {plan.author.username} <TimeAgo at={plan.createdAt} />
       </p>
+
+      {converging && (
+        <section className="mt-8">
+          <Outcome plan={plan} base={base} costMicros={costMicros} />
+        </section>
+      )}
 
       {planning && (
         <div className="mt-8 flex items-center gap-3 rounded-xl border border-accent/30 bg-accent/5 px-4 py-4 text-sm">

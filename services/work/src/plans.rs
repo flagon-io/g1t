@@ -73,8 +73,18 @@ impl From<PlanRow> for Plan {
             author: user(row.author_id, row.author_name),
             created_at: row.created_at,
             finished_at: row.finished_at,
+            progress: Vec::new(),
         }
     }
+}
+
+#[derive(Deserialize)]
+struct LatestPull {
+    number: u32,
+    agent: String,
+    status: String,
+    stage: Option<String>,
+    stage_detail: Option<String>,
 }
 
 /// An issue waiting for a g1t agent, as selected.
@@ -248,10 +258,87 @@ impl Work {
                 .await?
                 .filter(|row| row.repo_id == repo.id)
             {
-                Some(row) => Outcome::Ok(row.into()),
+                Some(row) => {
+                    let mut plan: Plan = row.into();
+                    if plan.status == PlanStatus::Applied {
+                        plan.progress = self.progress(&repo.id, &plan).await?;
+                    }
+                    Outcome::Ok(plan)
+                }
                 None => Outcome::fail(FailureCode::NotFound, "Plan not found."),
             },
         )
+    }
+
+    /// Where each issue an applied plan opened stands now, all at once.
+    async fn progress(&self, repo_id: &str, plan: &Plan) -> Result<Vec<IssueProgress>> {
+        let numbers: Vec<u32> = plan.issues.iter().filter_map(|issue| issue.number).collect();
+        let issues = futures_util::future::try_join_all(
+            numbers.iter().map(|number| self.issue(repo_id, *number)),
+        )
+        .await?;
+        let pulls = futures_util::future::try_join_all(numbers.iter().map(|number| async move {
+            self.db
+                .prepare(
+                    "SELECT number, agent, status, stage, stage_detail FROM pulls
+                     WHERE repo_id = ? AND issue_number = ? AND status != 'closed'
+                     ORDER BY number DESC LIMIT 1",
+                )
+                .bind(&[repo_id.into(), (*number).into()])?
+                .first::<LatestPull>(None)
+                .await
+        }))
+        .await?;
+        let open: std::collections::HashSet<u32> = issues
+            .iter()
+            .flatten()
+            .filter(|issue| issue.state == State::Open)
+            .map(|issue| issue.number)
+            .collect();
+        Ok(issues
+            .into_iter()
+            .zip(pulls)
+            .filter_map(|(issue, pull)| {
+                let issue = issue?;
+                let blocked_by: Vec<u32> = issue
+                    .blocked_by
+                    .iter()
+                    .copied()
+                    .filter(|number| open.contains(number))
+                    .collect();
+                let (state, detail) = if issue.state == State::Closed {
+                    match (issue.reason, issue.resolved_by) {
+                        (Some(IssueReason::Completed), Some(by)) => {
+                            ("landed".to_owned(), format!("Landed with #{by}."))
+                        }
+                        _ => ("closed".to_owned(), "Closed without landing.".to_owned()),
+                    }
+                } else if let Some(pull) = pull.as_ref().filter(|pull| pull.status != "merged") {
+                    (
+                        pull.stage.clone().unwrap_or_else(|| {
+                            if pull.status == "draft" { "working" } else { "ready" }.to_owned()
+                        }),
+                        pull.stage_detail.clone().unwrap_or_default(),
+                    )
+                } else if !blocked_by.is_empty() {
+                    let named: Vec<String> = blocked_by.iter().map(|n| format!("#{n}")).collect();
+                    ("blocked".to_owned(), format!("Waiting for {} to land.", named.join(", ")))
+                } else if issue.queued {
+                    ("waiting".to_owned(), "Waiting for an agent to be free.".to_owned())
+                } else {
+                    ("open".to_owned(), "Nobody is working on it.".to_owned())
+                };
+                Some(IssueProgress {
+                    number: issue.number,
+                    title: issue.title,
+                    state,
+                    detail,
+                    blocked_by,
+                    pull: pull.as_ref().map(|pull| pull.number),
+                    agent: pull.map(|pull| pull.agent).or(issue.agent),
+                })
+            })
+            .collect())
     }
 
     pub(crate) async fn list_plans(&self, a: ViewArgs) -> Result<Outcome<Vec<Plan>>> {

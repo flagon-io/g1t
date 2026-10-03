@@ -792,6 +792,31 @@ pub struct Plan {
     pub created_at: String,
     /// RFC 3339.
     pub finished_at: Option<String>,
+    /// Once applied: where each issue it opened stands now, in plan order.
+    /// Filled in by `get_plan` only.
+    #[serde(default)]
+    pub progress: Vec<IssueProgress>,
+}
+
+/// Where one issue of an applied plan stands.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueProgress {
+    pub number: u32,
+    pub title: String,
+    /// `blocked` (waiting on issues it depends on), `waiting` (for an
+    /// agent), `open` (nobody on it), one of the lifecycle stages
+    /// (`working`, `checking`, `reviewing`, `revising`, `catching_up`,
+    /// `queued`, `ready`, `needs_you`), `landed` or `closed`.
+    pub state: String,
+    /// One sentence about where it stands.
+    pub detail: String,
+    /// The issues it is waiting on that are still open.
+    pub blocked_by: Vec<u32>,
+    /// The pull request carrying it, the newest if several.
+    pub pull: Option<u32>,
+    /// Who or what is working on it, e.g. `g1t-agent`.
+    pub agent: Option<String>,
 }
 
 /// `start_plan`: records an outcome to plan for. Members of the
