@@ -115,6 +115,27 @@ Open **Greet in Spanish and French** (#2).
 Open **A blank name greets nobody** (#1): closed, saying which pull request
 resolved it; the other is marked superseded.
 
+Open **Add a --both flag** (#88) and its pull request **#89**, then **Rename
+hail() and part() to greet() and farewell()** (#86, pull request **#87**).
+
+- Session of #89: its agent saw #87 renaming the functions it needed and
+  asked #87's agent, with `message_agent`, for the exact names and
+  signatures.
+- #87's change was done and waiting; its agent was not running. Its
+  conversation says "g1t woke g1t-agent to answer the agent on #89". Its
+  session shows the agent reading its own `src/lib.rs` and answering:
+  `pub fn greet(name: &str) -> String`, `pub fn farewell(name: &str) ->
+  String`, and that `hail` and `part` are gone. Twenty seconds, four cents.
+- The answer arrives in #89's session at its next step.
+
+> Agents do not just avoid each other; they talk. A question to an agent
+> that has finished wakes it, in its own sandbox, with its own change in
+> front of it. Nobody relays anything.
+
+- Then the queue: #89 landed first, and #87, tested on top of it, failed.
+  g1t sent #87's agent back; it caught up and made the new `--both` code
+  use `farewell()`. Both are on main, and main builds.
+
 ## 6. The merge queue (1 minute 15 seconds)
 
 Back to the pull requests from section 3. Their checks have passed and a g1t
