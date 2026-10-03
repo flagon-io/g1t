@@ -1,5 +1,4 @@
 import type { ActionsApi } from "./actions";
-import type { AutomationsApi } from "./automations";
 import type { BillingApi } from "./billing";
 import type { EventsApi } from "./events";
 import type { IdentityApi } from "./identity";
@@ -250,12 +249,3 @@ export function actionsClient(service: ServiceBinding): ActionsApi {
   };
 }
 
-export function automationsClient(service: ServiceBinding): AutomationsApi {
-  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
-  return {
-    list: (repo, viewer) => call("list", { repo, viewer }),
-    runs: (repo, viewer, automation) => call("runs", { repo, viewer, automation }),
-    run: (actor, repo, id, number) => call("run", { actor, repo, id, number }),
-    setEnabled: (actor, repo, id, enabled) => call("set_enabled", { actor, repo, id, enabled }),
-  };
-}

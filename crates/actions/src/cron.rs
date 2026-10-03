@@ -1,8 +1,7 @@
 //! Five-field cron schedules, in UTC: minute, hour, day of month, month,
 //! day of week. Each field takes `*`, a number, a range `a-b`, a list
 //! `a,b`, and a step `*/n` or `a-b/n`; days of the week also take `mon` to
-//! `sun`, and months `jan` to `dec`. Shared by automations' schedules and
-//! workflows' `on.schedule`.
+//! `sun`, and months `jan` to `dec`. For workflows' `on.schedule`.
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Schedule {

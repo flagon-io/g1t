@@ -102,6 +102,8 @@ struct Work {
     identity: Fetcher,
     repos: Fetcher,
     events: Fetcher,
+    /// GitHub Actions: runs a merge queue's `merge_group` workflows.
+    actions: Fetcher,
 }
 
 impl Work {
@@ -1756,6 +1758,7 @@ fn service(env: &Env) -> Result<Work> {
         identity: env.service("IDENTITY")?,
         repos: env.service("REPOS")?,
         events: env.service("EVENTS")?,
+        actions: env.service("ACTIONS")?,
     })
 }
 

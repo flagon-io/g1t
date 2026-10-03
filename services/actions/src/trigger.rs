@@ -159,6 +159,10 @@ impl Actions {
                 let (Some(git_ref), Some(after)) = (data["ref"].as_str(), data["after"].as_str()) else {
                     return Ok(None);
                 };
+                // The merge queue's states run merge_group workflows, not push ones.
+                if git_ref.starts_with("refs/heads/g1t-queue/") {
+                    return Ok(None);
+                }
                 let before = data["before"].as_str();
                 let commits = self.commits(repo, ws, after, before).await?;
                 let title = commits.last().map(|c| c.message.lines().next().unwrap_or_default().to_owned()).unwrap_or_default();
@@ -634,6 +638,100 @@ impl Actions {
             Some(id) => self.run_summary(&id).await,
             None => Ok(fail(FailureCode::Conflict, "It did not start.")),
         }
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeGroupArgs {
+    pub repo_id: String,
+    pub entry: String,
+    pub sha: String,
+    pub head_ref: String,
+    #[serde(default)]
+    pub base_sha: Option<String>,
+    pub number: u32,
+    #[serde(default)]
+    pub ahead: Vec<u32>,
+}
+
+impl Actions {
+    /// `merge_group`: the merge queue built a state and its checks passed.
+    /// Starts the workflows that run `on: merge_group` on it, as GitHub's
+    /// queue does, and says how many started; the queue waits for their
+    /// statuses on that commit.
+    pub async fn merge_group(&self, a: MergeGroupArgs) -> Result<Outcome<Value>> {
+        let Some((repo, ws)) = self.repo_by_id(&a.repo_id).await? else {
+            return Ok(Outcome::Ok(json!({ "runs": 0 })));
+        };
+        let read = self.read_workflows(&Self::repo_path(&repo), &ws, Some(&a.sha)).await?;
+        let head_commit = self.commits(&repo, &ws, &a.sha, None).await?.pop();
+        let payload = json!({
+            "action": "checks_requested",
+            "merge_group": {
+                "head_sha": a.sha,
+                "head_ref": a.head_ref,
+                "base_sha": a.base_sha,
+                "base_ref": format!("refs/heads/{}", repo.default_branch),
+                "head_commit": head_commit.as_ref().map(|c| payload::commit(&repo, c)),
+            },
+            "repository": payload::repository(&repo),
+            "sender": payload::user(&repo.namespace),
+        });
+        let mut started = 0u32;
+        for file in read.files {
+            let Ok(workflow) = workflow::parse(&file.source) else { continue };
+            let Some(trigger) = workflow.trigger("merge_group") else { continue };
+            if !trigger.wants_type(Some("checks_requested")) || self.disabled(&repo.id, &file.path).await? {
+                continue;
+            }
+            // Branch filters on merge_group name the branch it merges into.
+            if trigger.branches.is_set() && !trigger.branches.allows(&repo.default_branch) {
+                continue;
+            }
+            let ahead = if a.ahead.is_empty() {
+                String::new()
+            } else {
+                format!(" after {}", a.ahead.iter().map(|n| format!("#{n}")).collect::<Vec<_>>().join(", "))
+            };
+            let subject = Subject {
+                source: Self::repo_path(&repo),
+                source_ref: Some(a.sha.clone()),
+                git_ref: a.head_ref.clone(),
+                sha: a.sha.clone(),
+                head_ref: None,
+                base_ref: Some(repo.default_branch.clone()),
+                pull: Some(a.number),
+                filter_ref: format!("refs/heads/{}", repo.default_branch),
+                paths: None,
+                compare: None,
+                payload: payload.clone(),
+                title: format!("Merge queue: #{}{ahead}", a.number),
+                trusted: true,
+            };
+            let info = self.run_info(&repo, &workflow, "merge_group", &subject, &repo.namespace, None);
+            let created = self
+                .create_run(NewRun {
+                    repo: repo.clone(),
+                    path: file.path.clone(),
+                    source: file.source.clone(),
+                    workflow,
+                    info,
+                    action: Some("checks_requested".to_owned()),
+                    pull: Some(a.number),
+                    title: subject.title.clone(),
+                    inputs: Map::new(),
+                    event_key: format!("merge_group:{}:{}", a.entry, a.sha),
+                    actor_id: None,
+                    actor: None,
+                    trusted: true,
+                })
+                .await?;
+            if created.is_some() {
+                started += 1;
+            }
+        }
+        Ok(Outcome::Ok(json!({ "runs": started })))
     }
 }
 

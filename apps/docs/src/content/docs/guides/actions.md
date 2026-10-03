@@ -148,9 +148,3 @@ curl -X POST https://api.g1t.sh/repos/acme/web/actions/workflows/ci.yml/dispatch
   -d '{"ref": "main", "inputs": {"environment": "staging"}}'
 ```
 
-## Automations
-
-Workflows run code. For rules that act on g1t itself, such as labelling an
-issue, putting an agent on it, or posting to chat, without a runner, see
-[Automations](/guides/automations/), which live beside workflows in
-`.g1t/automations/`.

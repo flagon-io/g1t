@@ -27,7 +27,6 @@ import {
   Users,
   Webhook,
   PlayCircle,
-  Zap,
   X,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
@@ -387,9 +386,6 @@ function RepoMenu({ repo, isPrivate, open }: { repo: MenuRepo; isPrivate: boolea
         <SidebarLink to={`${base}/actions`} icon={<PlayCircle size={15} />}>
           Actions
         </SidebarLink>
-        <SidebarLink to={`${base}/automations`} icon={<Zap size={15} />}>
-          Automations
-        </SidebarLink>
       </SidebarGroup>
       {repo.member && (
         <SidebarGroup title="Repository">
@@ -609,7 +605,6 @@ const SECTIONS: Record<string, string> = {
   queue: "Merge queue",
   commits: "Commits",
   plans: "Plan",
-  automations: "Automations",
   actions: "Actions",
   secrets: "Secrets and variables",
   settings: "Settings",

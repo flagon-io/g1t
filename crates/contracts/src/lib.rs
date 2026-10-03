@@ -5,7 +5,6 @@
 //! this crate, never on each other's code.
 
 pub mod actions;
-pub mod automations;
 pub mod billing;
 pub mod events;
 pub mod identity;

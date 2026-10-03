@@ -192,8 +192,7 @@ Every one of these is also an MCP tool: `list_issues`, `get_issue`,
 `disconnect_integration`, `get_model_routes`, `set_model_routes`,
 `get_context`, `import_issue`, `list_webhooks`, `create_webhook`,
 `update_webhook`, `delete_webhook`, `ping_webhook`,
-`list_webhook_deliveries`, `redeliver_webhook`, `list_automations`,
-`list_automation_runs`, `run_automation`, `update_automation`,
+`list_webhook_deliveries`, `redeliver_webhook`,
 `list_workflows`, `list_workflow_runs`, `get_workflow_run`, `get_job_logs`,
 `dispatch_workflow`, `cancel_workflow_run`, `rerun_workflow_run`,
 `update_workflow`, `list_actions_secrets`, `set_actions_secret`,
@@ -243,16 +242,6 @@ Runs, jobs and logs are at GitHub's own routes under
 holds the merge, failure refuses it and sends a g1t agent back to fix it.
 Secrets and variables: `{repo}/actions/secrets`, `{repo}/actions/variables`.
 
-## Automations
-
-A YAML file in `.g1t/automations/` on the default branch is a rule: `on`
-(an event such as `issue.opened`, `schedule: "0 9 * * mon"`, or `manual`),
-optional `if` (`labels`, `actor`, `branch`, or an event data field), and
-`do` steps: `comment`, `label`, `unlabel`, `assign_agent`, `message_agent`,
-`open_issue`, `close_issue`, `reopen_issue`, `notify`. Text takes
-`{{repo}}`, `{{number}}`, `{{title}}`, `{{url}}`, `{{actor}}`. Runs are at
-`GET {repo}/automations/runs`; `POST {repo}/automations/{id}/runs` runs one.
-
 ## Facts
 
 - API base: `https://api.g1t.sh`. `GET /` lists every URL as a template.
@@ -291,7 +280,6 @@ optional `if` (`labels`, `actor`, `branch`, or an event data field), and
 - [Model providers](https://docs.g1t.sh/guides/models/)
 - [Webhooks](https://docs.g1t.sh/guides/webhooks/)
 - [GitHub Actions](https://docs.g1t.sh/guides/actions/)
-- [Automations](https://docs.g1t.sh/guides/automations/)
 - [Usage and billing](https://docs.g1t.sh/guides/usage-and-billing/)
 - [Git](https://docs.g1t.sh/guides/git/)
 - [MCP tools](https://docs.g1t.sh/reference/mcp/)

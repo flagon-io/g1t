@@ -21,7 +21,6 @@
 		{ "binding": "BILLING", "service": "g1t-billing" },
 		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" },
 		{ "binding": "WEBHOOKS", "service": "g1t-webhooks" },
-		{ "binding": "AUTOMATIONS", "service": "g1t-automations" },
 		{ "binding": "ACTIONS", "service": "g1t-actions" }
 	],
 	// GitHub Actions artifacts and cache, in chunks, with KV's own expiry.

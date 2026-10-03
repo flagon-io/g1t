@@ -2,7 +2,6 @@ import { env } from "cloudflare:workers";
 
 import {
   actionsClient,
-  automationsClient,
   billingClient,
   eventsClient,
   identityClient,
@@ -19,5 +18,4 @@ export const billing = billingClient(env.BILLING);
 export const events = eventsClient(env.EVENTS);
 export const integrations = integrationsClient(env.INTEGRATIONS);
 export const webhooks = webhooksClient(env.WEBHOOKS);
-export const automations = automationsClient(env.AUTOMATIONS);
 export const actions = actionsClient(env.ACTIONS);

@@ -10,8 +10,6 @@ fn tag(op: Op) -> &'static str {
     let name = op.name();
     if name.contains("webhook") {
         "Webhooks"
-    } else if name.contains("automation") {
-        "Automations"
     } else if name.contains("workflow") || name.contains("actions_") || name == "get_job_logs" {
         "Actions"
     } else if name.contains("integration") || name.contains("model_routes") || op == Op::GetContext {

@@ -171,6 +171,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "run" => reply(&service.run(args(body)?).await?),
         "logs" => reply(&service.logs(args(body)?).await?),
         "dispatch" => reply(&service.dispatch(args(body)?).await?),
+        "merge_group" => reply(&service.merge_group(args(body)?).await?),
         "cancel" => reply(&service.cancel(args(body)?).await?),
         "rerun" => reply(&service.rerun(args(body)?).await?),
         "set_workflow_enabled" => reply(&service.set_workflow_enabled(args(body)?).await?),

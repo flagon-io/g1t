@@ -1,7 +1,7 @@
 /**
  * Every state change in g1t is published as an event. Services react to
  * each other through events rather than direct calls, and the same stream
- * feeds timelines, webhooks and automations.
+ * feeds timelines, webhooks and workflows.
  *
  * The envelope follows CloudEvents: `type` says what happened, `subject`
  * says to what, `data` is the type-specific payload.

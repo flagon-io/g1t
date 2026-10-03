@@ -243,30 +243,6 @@ pub const ROUTES: &[Route] = &[
     ),
     route(
         "GET",
-        "/repos/:owner/:name/automations/runs",
-        Op::ListAutomationRuns,
-        &[("automation", "automation")],
-    ),
-    route(
-        "GET",
-        "/repos/:owner/:name/automations",
-        Op::ListAutomations,
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/automations/:id/runs",
-        Op::RunAutomation,
-        &[],
-    ),
-    route(
-        "PATCH",
-        "/repos/:owner/:name/automations/:id",
-        Op::UpdateAutomation,
-        &[],
-    ),
-    route(
-        "GET",
         "/repos/:owner/:name/actions/workflows",
         Op::ListWorkflows,
         &[],

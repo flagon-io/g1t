@@ -251,7 +251,9 @@ fn decide(facts: Facts) -> (Lifecycle, Next) {
         );
     }
 
-    if facts.has_checks {
+    // An issue's checks, and any failure recorded as one, such as the merge
+    // queue taking the pull request out.
+    if facts.has_checks || matches!(facts.check_status, Some(CheckStatus::Failed | CheckStatus::Errored)) {
         match facts.check_status {
             Some(CheckStatus::Passed) => {}
             Some(CheckStatus::Failed) if exhausted => {
@@ -592,9 +594,11 @@ impl Work {
     async fn feedback(&self, pull: &Pull, feedback: &Feedback) -> Result<String> {
         match feedback {
             Feedback::FailedChecks => {
-                let failed: Vec<String> = self
-                    .latest_checks(&pull.id)
-                    .await?
+                let run = self.latest_checks(&pull.id).await?;
+                // Why it failed, when that is more than a list of commands:
+                // the merge queue saying what broke in the combined state.
+                let why = run.as_ref().and_then(|run| run.error.clone()).map(|error| format!("{error}\n\n")).unwrap_or_default();
+                let failed: Vec<String> = run
                     .map(|run| run.results)
                     .unwrap_or_default()
                     .into_iter()
@@ -614,8 +618,13 @@ impl Work {
                         format!("`{}` failed ({exit}):\n\n{}", result.command, output.trim())
                     })
                     .collect();
+                if failed.is_empty() {
+                    return Ok(format!(
+                        "{why}Find the cause, fix it in your change, and push. Use get_workflow_run and get_job_logs for any workflow named above."
+                    ));
+                }
                 Ok(format!(
-                    "These acceptance checks were run against your change in a clean sandbox and failed.\n\n{}",
+                    "{why}These acceptance checks were run against your change in a clean sandbox and failed.\n\n{}",
                     failed.join("\n\n")
                 ))
             }

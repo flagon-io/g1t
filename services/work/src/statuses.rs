@@ -121,6 +121,8 @@ impl Work {
         if !facts.pending.is_empty() {
             return Ok(Outcome::Ok(true));
         }
+        // A merge queue state waiting on its merge_group workflows.
+        self.merge_group_finished(&a.repo_id, &a.sha, &facts.failed).await?;
         let heads = self
             .db
             .prepare("SELECT id, number FROM pulls WHERE repo_id = ? AND head_commit = ? AND status IN ('draft', 'open')")

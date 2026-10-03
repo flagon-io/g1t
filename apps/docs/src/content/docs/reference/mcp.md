@@ -153,17 +153,6 @@ See [GitHub Actions](/guides/actions/). Workflows are GitHub's, kept in `.g1t/wo
 | `set_actions_variable` | `setting`, `value` | Add or replace a variable. | `POST /repos/{owner}/{name}/actions/variables` |
 | `delete_actions_variable` | `setting` | Remove a variable. | `DELETE /repos/{owner}/{name}/actions/variables/{name}` |
 
-## Automations
-
-See [Automations](/guides/automations/). An automation is a file in `.g1t/automations/` on the default branch: to add or change one, commit it.
-
-| Tool | Required | What it does | Route |
-| --- | --- | --- | --- |
-| `list_automations` | `repo` | The automations: what starts each, its conditions and steps, whether it is on, any problem with its file, and its last run. | `GET /repos/{owner}/{name}/automations` |
-| `list_automation_runs` | `repo` | The latest runs, newest first, with each step's result or why the run was skipped. `automation` for one automation's. | `GET /repos/{owner}/{name}/automations/runs` |
-| `run_automation` | `repo`, `id` | Run it now, on issue or pull request `number` if given. Members only. | `POST /repos/{owner}/{name}/automations/{id}/runs` |
-| `update_automation` | `repo`, `id`, `enabled` | Turn it on or off without changing its file. Members only. | `PATCH /repos/{owner}/{name}/automations/{id}` |
-
 ## Messages
 
 | Tool | Required | What it does | Route |

@@ -906,19 +906,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "g1t-automations"
-version = "0.1.0"
-dependencies = [
- "g1t-actions",
- "g1t-contracts",
- "g1t-kit",
- "serde",
- "serde_json",
- "serde_yaml",
- "worker",
-]
-
-[[package]]
 name = "g1t-billing"
 version = "0.1.0"
 dependencies = [

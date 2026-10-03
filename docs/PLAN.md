@@ -444,6 +444,11 @@ Memory is the part of the hub that g1t owns and agents write to:
 
 ## Automations and integrations
 
+> **2026-10-03:** g1t's own `.g1t/automations` format was built and then set
+> aside at the user's request ("let's just copy GitHub Actions on that for the
+> time being"). Automation on g1t is GitHub Actions workflows in
+> `.g1t/workflows/`; the format below is kept for later.
+
 An automation is **when** an event happens, **if** conditions hold, **do**
 something. They are defined as files in the repo (`.g1t/automations/`), the
 way GitHub Actions workflows are, and can also be built in the UI.

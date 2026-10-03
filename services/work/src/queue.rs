@@ -36,7 +36,7 @@ const CONTRACT_ISSUES: u32 = 30;
 const BRANCH_PREFIX: &str = "g1t-queue/";
 
 #[derive(Clone, Deserialize)]
-struct EntryRow {
+pub(crate) struct EntryRow {
     id: String,
     repo_id: String,
     pull_id: String,
@@ -483,7 +483,20 @@ impl Work {
             ));
         }
         let passed = a.error.is_none() && a.results.iter().all(|result| result.passed);
-        let state = if passed { QueueState::Passed } else { QueueState::Failed };
+        // A state that passed its checks still runs the repository's
+        // `merge_group` workflows, as GitHub's merge queue does; it stays in
+        // testing until they finish (see `statuses`).
+        let workflows = match (&a.combined_commit, passed) {
+            (Some(commit), true) => self.start_merge_group(&row, commit).await.unwrap_or(0),
+            _ => 0,
+        };
+        let state = if !passed {
+            QueueState::Failed
+        } else if workflows > 0 {
+            QueueState::Testing
+        } else {
+            QueueState::Passed
+        };
         self.db
             .prepare(
                 "UPDATE queue_entries
@@ -508,6 +521,75 @@ impl Work {
         self.settle(&row.repo_id).await?;
         self.changed(&row.repo_id).await?;
         Ok(Outcome::Ok(state))
+    }
+
+    /// Asks the actions service to run the repository's `merge_group`
+    /// workflows on a combined state. Returns how many runs started.
+    async fn start_merge_group(&self, row: &EntryRow, commit: &str) -> Result<u32> {
+        #[derive(serde::Deserialize)]
+        struct Started {
+            runs: u32,
+        }
+        let started: Outcome<Started> = g1t_kit::call(
+            &self.actions,
+            "merge_group",
+            &serde_json::json!({
+                "repoId": row.repo_id,
+                "entry": row.id,
+                "sha": commit,
+                "headRef": format!("refs/heads/{}", row.branch()),
+                "baseSha": row.base_commit,
+                "number": row.number,
+                "ahead": row.ahead(),
+            }),
+        )
+        .await?;
+        Ok(match started {
+            Outcome::Ok(started) => started.runs,
+            Outcome::Fail(_) => 0,
+        })
+    }
+
+    /// Workflows on a combined state finished: it passes and lands in turn,
+    /// or fails and leaves the queue as for failed checks.
+    pub(crate) async fn merge_group_finished(&self, repo_id: &str, commit: &str, failed: &[String]) -> Result<()> {
+        let row = self
+            .db
+            .prepare(
+                "SELECT * FROM queue_entries WHERE repo_id = ? AND combined_commit = ? AND state = 'testing' AND token_hash IS NULL",
+            )
+            .bind(&[repo_id.into(), commit.into()])?
+            .first::<EntryRow>(None)
+            .await?;
+        let Some(row) = row else { return Ok(()) };
+        let passed = failed.is_empty();
+        self.db
+            .prepare("UPDATE queue_entries SET state = ?, finished_at = CASE WHEN ? = 'failed' THEN ? ELSE NULL END WHERE id = ?")
+            .bind(&[
+                (if passed { "passed" } else { "failed" }).into(),
+                (if passed { "passed" } else { "failed" }).into(),
+                rfc3339(now_ms()).into(),
+                row.id.as_str().into(),
+            ])?
+            .run()
+            .await?;
+        if !passed {
+            let report = ReportQueueArgs {
+                entry_id: row.id.clone(),
+                token: String::new(),
+                combined_commit: Some(commit.to_owned()),
+                results: Vec::new(),
+                error: Some(format!(
+                    "the workflow {} failed on it",
+                    crate::statuses::list(failed)
+                )),
+                conflict_with: None,
+            };
+            self.eject(&row, &report).await?;
+        }
+        self.settle(repo_id).await?;
+        self.changed(repo_id).await?;
+        Ok(())
     }
 
     /// An entry whose combined state failed: the entries tested on top of
@@ -537,6 +619,9 @@ impl Work {
             (_, Some(other)) if other != row.number => format!(
                 "Its change conflicts with #{other}, which is ahead of it in the merge queue. Bring it up to date with the default branch once #{other} lands, and merge it again."
             ),
+            (Some(error), _) if error.starts_with("the workflow ") => {
+                format!("{} when it was combined with {state}.", error.replacen("the workflow", "The workflow", 1).trim_end_matches(" on it"))
+            }
             (Some(error), _) => format!("Its combined state could not be built or checked: {error}"),
             (None, _) => format!(
                 "The acceptance checks failed when it was combined with {state}, though it may pass on its own."

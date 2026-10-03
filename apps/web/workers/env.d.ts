@@ -12,7 +12,6 @@ declare global {
       EVENTS: ServiceBinding;
       INTEGRATIONS: ServiceBinding;
       WEBHOOKS: ServiceBinding;
-      AUTOMATIONS: ServiceBinding;
       ACTIONS: ServiceBinding;
       BLOBS: KVNamespace;
     }
