@@ -209,11 +209,14 @@ const AGENT_OPERATIONS = [
   "list_events",
   // Messages people send it while it works, picked up between steps.
   "take_messages",
+  // Asking the agents on other pull requests, and answering them.
+  "message_agent",
+  "answer_message",
 ];
 
 /** How an agent is told to use g1t's tools to work with the others. */
 const WORKING_WITH_OTHERS =
-  "You have g1t's own tools (mcp__g1t__…) for this repository. Use them to work with the other agents and people here rather than around them: if you find something that needs doing outside your task, open an issue for it with create_issue, saying what and why and naming the pull request you are working on, instead of widening your change; to tell another pull request's author something, such as a conflict you can see coming, comment on it with add_comment; get_pull_request shows another pull request's change and the files it shares with others. Mention anything you opened or said in your summary.";
+  "You have g1t's own tools (mcp__g1t__…) for this repository. Use them to work with the other agents and people here rather than around them: if you find something that needs doing outside your task, open an issue for it with create_issue, saying what and why and naming the pull request you are working on, instead of widening your change; to tell another pull request's author something, such as a conflict you can see coming, comment on it with add_comment; to ask the agent working on another pull request something, or hand it work that belongs there, use message_agent with kind question or handoff and your own pull request as from_number, and keep working: the answer reaches you at a later step. Answer what other agents send you with answer_message. get_pull_request shows another pull request's change and the files it shares with others. Mention anything you opened, asked or answered in your summary.";
 
 /** Longest that what people said on a pull request is passed on. */
 const MAX_PEOPLE_SAID_CHARS = 6000;
@@ -249,7 +252,7 @@ function describePeopleSaid(comments: Comment[]): string | null {
 /** What the author is told when sent back to a pull request it made. */
 function buildRevisionPrompt(job: LifecycleJob, inFlight: string | null, peopleSaid: string | null): string {
   const parts = [
-    "You are a coding agent working in the git repository checked out in the current directory. It holds a change you made earlier, which is open as a pull request.",
+    `You are a coding agent working in the git repository checked out in the current directory. It holds a change you made earlier, which is open as pull request #${job.number}.`,
     job.issue
       ? `It is for issue #${job.issue.number}: ${job.issue.title}\n\n${job.issue.body}`
       : `The pull request: ${job.title}`,
@@ -265,9 +268,9 @@ function buildRevisionPrompt(job: LifecycleJob, inFlight: string | null, peopleS
   return parts.filter(Boolean).join("\n\n");
 }
 
-function buildPrompt(issue: Issue, instructions: string, inFlight: string | null): string {
+function buildPrompt(issue: Issue, instructions: string, inFlight: string | null, pullNumber: number): string {
   const parts = [
-    "You are a coding agent working in the git repository checked out in the current directory.",
+    `You are a coding agent working in the git repository checked out in the current directory, on pull request #${pullNumber} of this repository.`,
     `Issue #${issue.number}: ${issue.title}`,
     issue.body,
   ];
@@ -1006,6 +1009,7 @@ export default class RunnerService
           issue,
           input.instructions?.trim() ?? "",
           await this.inFlight(actor, repo, pull.number),
+          pull.number,
         ),
         ...model.value,
       },

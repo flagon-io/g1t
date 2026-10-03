@@ -6,7 +6,7 @@ import { Form, Link, data, useNavigation, useRevalidator } from "react-router";
 
 import type { Route } from "./+types/plan";
 import { Markdown } from "../../components/markdown";
-import { Activity } from "../../components/activity";
+import { Activity, Exchanges } from "../../components/activity";
 import { Outcome } from "../../components/outcome";
 import { Button, ErrorText, TimeAgo } from "../../components/ui";
 import { Label } from "../../components/work";
@@ -122,6 +122,14 @@ export default function PlanPage({ loaderData, actionData, params }: Route.Compo
       {converging && (
         <section className="mt-8">
           <Outcome plan={plan} base={base} costMicros={costMicros} />
+          {plan.exchanges.length > 0 && (
+            <div className="mt-10">
+              <h3 className="font-mono text-[0.6875rem] tracking-[0.2em] text-faint uppercase">Agents talking</h3>
+              <div className="mt-3 max-w-3xl">
+                <Exchanges exchanges={plan.exchanges} base={base} />
+              </div>
+            </div>
+          )}
           {activity.length > 0 && (
             <div className="mt-10">
               <h3 className="font-mono text-[0.6875rem] tracking-[0.2em] text-faint uppercase">What happened</h3>

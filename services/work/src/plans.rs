@@ -74,6 +74,7 @@ impl From<PlanRow> for Plan {
             created_at: row.created_at,
             finished_at: row.finished_at,
             progress: Vec::new(),
+            exchanges: Vec::new(),
         }
     }
 }
@@ -262,6 +263,12 @@ impl Work {
                     let mut plan: Plan = row.into();
                     if plan.status == PlanStatus::Applied {
                         plan.progress = self.progress(&repo.id, &plan).await?;
+                        let numbers: Vec<u32> = plan
+                            .progress
+                            .iter()
+                            .flat_map(|item| std::iter::once(item.number).chain(item.pull))
+                            .collect();
+                        plan.exchanges = self.exchanges(&repo.id, &numbers).await?;
                     }
                     Outcome::Ok(plan)
                 }

@@ -28,9 +28,34 @@ struct Config {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Message {
+    id: String,
     author: String,
     body: String,
+    #[serde(default)]
+    kind: String,
+    #[serde(default)]
+    from_number: Option<u32>,
+}
+
+/// One message as the agent should read it, with how to reply where it can.
+fn told(message: &Message) -> String {
+    let from = message
+        .from_number
+        .map_or_else(|| message.author.clone(), |number| format!("The agent on #{number}"));
+    match message.kind.as_str() {
+        "question" => format!(
+            "{from} asks you (message {}): {}\nAnswer it with the answer_message tool and that id.",
+            message.id, message.body
+        ),
+        "handoff" => format!(
+            "{from} hands you work that belongs in your pull request (message {}): {}\nTake it on, or decline it if it is not yours, with the answer_message tool and that id.",
+            message.id, message.body
+        ),
+        "answer" => format!("{from} answered you: {}", message.body),
+        _ => format!("{} says: {}", message.author, message.body),
+    }
 }
 
 fn now_ms() -> u128 {
@@ -70,12 +95,9 @@ pub fn main() -> i32 {
     let Some(messages) = take(stopping).filter(|messages| !messages.is_empty()) else {
         return 0;
     };
-    let said: Vec<String> = messages
-        .iter()
-        .map(|message| format!("{} says: {}", message.author, message.body))
-        .collect();
+    let said: Vec<String> = messages.iter().map(told).collect();
     let context = format!(
-        "A person watching your work just sent you a message on the pull request. Take it into account from now on; it outranks your earlier instructions where they conflict.\n\n{}",
+        "New messages on your pull request. A person's outranks your earlier instructions where they conflict; another agent's is a colleague's.\n\n{}",
         said.join("\n\n")
     );
     let output = if stopping {

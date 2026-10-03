@@ -464,8 +464,25 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               <li key={message.id} className="flex items-start gap-2 text-sm">
                 <Avatar name={message.author} size={18} />
                 <span className="min-w-0 grow">
-                  <span className="font-medium">{message.author}</span>{" "}
-                  <span className="text-muted">to the agent:</span> {message.body}
+                  <span className="font-medium">
+                    {message.fromNumber != null ? `The agent on #${message.fromNumber}` : message.author}
+                  </span>{" "}
+                  <span className="text-muted">
+                    {message.kind === "question"
+                      ? "asked:"
+                      : message.kind === "handoff"
+                        ? "handed over:"
+                        : message.kind === "answer"
+                          ? "answered:"
+                          : "to the agent:"}
+                  </span>{" "}
+                  {message.body}
+                  {message.answer && (
+                    <span className="mt-1 block border-l-2 border-merged/40 pl-2 text-muted">
+                      {message.declined ? "Declined: " : "Answer: "}
+                      {message.answer}
+                    </span>
+                  )}
                 </span>
                 <span className={`shrink-0 text-xs ${message.deliveredAt ? "text-accent" : "text-faint"}`}>
                   {message.deliveredAt ? "read by the agent" : "waiting for its next step"}

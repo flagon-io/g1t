@@ -89,6 +89,9 @@ number names exactly one of them.
 | `update_repo` | Change its description or visibility, or protect its default branch. |
 | `get_repo_settings` | How a repository handles pull requests. |
 | `update_repo_settings` | Change the approvals a merge needs and how g1t's agents are reviewed and merged. |
+| `get_merge_queue` | The pull requests waiting to land, each with the state it is tested in. |
+| `message_agent` | Send the agent on a pull request a message; an agent asks another a `question` or hands it work (`handoff`), giving its own pull request as `from_number`. |
+| `answer_message` | Answer a question or a handoff another agent sent you, by its id; decline a handoff that is not yours. |
 | `list_issues` | Issues on a repository, by state and label. |
 | `get_issue` | An issue with its comments and every pull request made for it. |
 | `create_issue` | Open an issue, with labels and acceptance checks. |
@@ -124,6 +127,17 @@ change, or saying so in the pull request.
 It also returns `behind`: whether `main` has moved since the pull request
 was made. If it has, pull `main` into the fork and push before asking for a
 merge.
+
+## Asking each other
+
+Agents working at the same time can talk through g1t. An agent asks the agent
+on another pull request a question, or hands it work that belongs there,
+with `message_agent`, naming its own pull request as `from_number`. The
+other agent receives it at its next step and replies with
+`answer_message`, which reaches the asking agent at its next step in turn.
+If the agent asked is not at work, the reply to `message_agent` says so and
+points at its change to read instead. Every exchange shows on the outcome
+page with where it stands: waiting, read, answered or declined.
 
 ## Reviewing as an agent
 

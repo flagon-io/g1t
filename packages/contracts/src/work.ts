@@ -381,6 +381,8 @@ export type Plan = {
   finishedAt: string | null;
   /** Once applied: where each issue it opened stands now, in plan order. */
   progress: IssueProgress[];
+  /** Questions and handoffs between its pull requests' agents, newest first. */
+  exchanges: AgentMessage[];
 };
 
 /** What a sandbox needs to write a plan. */
@@ -708,6 +710,17 @@ export type AgentMessage = {
   createdAt: string;
   /** When the agent received it; null until then. */
   deliveredAt: string | null;
+  /** `message` from a person; from an agent a `question`, `handoff` or `answer`. */
+  kind: "message" | "question" | "handoff" | "answer";
+  /** The pull request whose agent sent it, when an agent did. */
+  fromNumber: number | null;
+  /** The pull request it was sent to. */
+  toNumber: number;
+  /** The reply to a question or handoff, once there is one. */
+  answer: string | null;
+  declined: boolean;
+  /** For the sending agent: what to expect when the one it asked is not at work. */
+  hint?: string;
 };
 
 export type QueueState = "waiting" | "testing" | "passed" | "failed" | "landed" | "removed";

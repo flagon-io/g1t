@@ -11,7 +11,7 @@ import {
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
-import type { G1tEvent } from "@g1t/contracts";
+import type { AgentMessage, G1tEvent } from "@g1t/contracts";
 
 import { Avatar, TimeAgo } from "./ui";
 
@@ -131,5 +131,47 @@ export function Activity({ events, base }: { events: G1tEvent[]; base: string })
         </li>
       ))}
     </ol>
+  );
+}
+
+/**
+ * Questions and handoffs between the agents on an outcome's pull requests,
+ * each with where it stands: asked, read, answered or declined.
+ */
+export function Exchanges({ exchanges, base }: { exchanges: AgentMessage[]; base: string }) {
+  if (exchanges.length === 0) return null;
+  const pull = (number: number) => (
+    <Link to={`${base}/pull/${number}`} prefetch="intent" className="font-mono text-fg hover:underline">
+      #{number}
+    </Link>
+  );
+  return (
+    <ul className="space-y-3">
+      {exchanges.map((exchange) => {
+        const state = exchange.answer
+          ? exchange.declined
+            ? { label: "Declined", tone: "text-warn ring-warn/40" }
+            : { label: exchange.kind === "handoff" ? "Taken on" : "Answered", tone: "text-accent ring-accent/40" }
+          : exchange.deliveredAt
+            ? { label: "Read", tone: "text-info ring-info/40" }
+            : { label: "Waiting to be read", tone: "text-faint ring-line" };
+        return (
+          <li key={exchange.id} className="rounded-2xl bg-merged/[0.05] p-4 ring-1 ring-merged/25">
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+              <Avatar name="g1t-agent" size={14} />
+              <span>
+                The agent on {exchange.fromNumber != null ? pull(exchange.fromNumber) : exchange.author}{" "}
+                {exchange.kind === "handoff" ? "handed work to" : "asked"} the agent on {pull(exchange.toNumber)}
+              </span>
+              <span className={`ml-auto rounded-full px-2 py-0.5 ring-1 ${state.tone}`}>{state.label}</span>
+            </p>
+            <p className="mt-2 text-sm">{exchange.body}</p>
+            {exchange.answer && (
+              <p className="mt-2 border-l-2 border-merged/40 pl-3 text-sm text-fg-soft">{exchange.answer}</p>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }

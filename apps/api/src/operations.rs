@@ -53,6 +53,7 @@ pub enum Op {
     UpdateRepoSettings,
     GetMergeQueue,
     MessageAgent,
+    AnswerMessage,
     TakeMessages,
     ListIssues,
     GetIssue,
@@ -187,7 +188,7 @@ fn repo_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 34] = [
+    pub const ALL: [Op; 35] = [
         Op::Whoami,
         Op::CreateWorkspace,
         Op::ListRepos,
@@ -198,6 +199,7 @@ impl Op {
         Op::UpdateRepoSettings,
         Op::GetMergeQueue,
         Op::MessageAgent,
+        Op::AnswerMessage,
         Op::TakeMessages,
         Op::ListIssues,
         Op::GetIssue,
@@ -240,6 +242,7 @@ impl Op {
             Op::GetRepoSettings => "get_repo_settings",
             Op::GetMergeQueue => "get_merge_queue",
             Op::MessageAgent => "message_agent",
+            Op::AnswerMessage => "answer_message",
             Op::TakeMessages => "take_messages",
             Op::UpdateRepoSettings => "update_repo_settings",
             Op::ListIssues => "list_issues",
@@ -288,7 +291,10 @@ impl Op {
                 "Change how a repository handles pull requests. Only the fields given are changed. Members of its workspace only."
             }
             Op::MessageAgent => {
-                "Send the agent working on a pull request a message: a correction, a hint, a change of plan. It receives it at its next step, and it is recorded in the pull request's session. The pull request's author and members of its workspace only."
+                "Send the agent working on a pull request a message: a correction, a hint, a change of plan. It receives it at its next step, and it is recorded in the pull request's session. The pull request's author and members of its workspace only. An agent uses it to ask the agent on another pull request a question (kind: question) or hand it work that belongs there (kind: handoff), giving its own pull request as from_number; the answer comes back to it at its next step."
+            }
+            Op::AnswerMessage => {
+                "Answer a question or a handoff another agent sent you, by the message's id. For a handoff, set decline to say it is not yours to take. The answer reaches the asking agent at its next step."
             }
             Op::TakeMessages => {
                 "For a g1t agent at work: the messages people have sent it that it has not seen yet. Each is returned once."
@@ -402,8 +408,26 @@ impl Op {
             Op::MessageAgent => object(
                 numbered(json!({
                     "body": { "type": "string", "description": "What to tell the agent." },
+                    "kind": {
+                        "type": "string",
+                        "enum": ["question", "handoff"],
+                        "description": "For an agent: a question, or work handed over.",
+                    },
+                    "from_number": {
+                        "type": "integer",
+                        "description": "For an agent: the pull request you are working on, where the answer goes.",
+                    },
                 })),
                 &["repo", "number", "body"],
+            ),
+            Op::AnswerMessage => object(
+                json!({
+                    "repo": repo_schema(),
+                    "id": { "type": "string", "description": "The message's id, as it was given to you." },
+                    "body": { "type": "string", "description": "Your answer." },
+                    "decline": { "type": "boolean", "description": "For a handoff: it is not yours to take." },
+                }),
+                &["repo", "id", "body"],
             ),
             Op::TakeMessages => object(numbered(json!({})), &["repo", "number"]),
             Op::UpdateRepoSettings => object(
@@ -837,7 +861,28 @@ impl Op {
                 pass(
                     work,
                     "message_agent",
-                    &json!({ "actor": actor(), "repo": repo, "number": number, "body": text(input, "body") }),
+                    &json!({
+                        "actor": actor(),
+                        "repo": repo,
+                        "number": number,
+                        "body": text(input, "body"),
+                        "kind": input["kind"].as_str(),
+                        "from_number": integer(input, "from_number"),
+                    }),
+                )
+                .await
+            }
+            Op::AnswerMessage => {
+                pass(
+                    work,
+                    "answer_message",
+                    &json!({
+                        "actor": actor(),
+                        "repo": repo,
+                        "id": text(input, "id"),
+                        "body": text(input, "body"),
+                        "decline": input["decline"].as_bool() == Some(true),
+                    }),
                 )
                 .await
             }

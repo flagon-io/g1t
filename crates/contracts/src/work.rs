@@ -429,6 +429,30 @@ pub struct AgentMessage {
     pub created_at: String,
     /// RFC 3339. When the agent received it; null until then.
     pub delivered_at: Option<String>,
+    /// `message` from a person, or from another pull request's agent a
+    /// `question`, a `handoff` of work, or the `answer` to one.
+    #[serde(default = "message_kind")]
+    pub kind: String,
+    /// The pull request whose agent sent it, when an agent did.
+    #[serde(default)]
+    pub from_number: Option<u32>,
+    /// The pull request it was sent to.
+    #[serde(default)]
+    pub to_number: u32,
+    /// For a question or handoff: the reply, once there is one.
+    #[serde(default)]
+    pub answer: Option<String>,
+    /// For a handoff: whether it was declined.
+    #[serde(default)]
+    pub declined: bool,
+    /// For the agent that sent it: what to expect, when the agent it asked
+    /// is not at work and will not answer soon.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
+}
+
+fn message_kind() -> String {
+    "message".to_owned()
 }
 
 /// `message_agent`: sends the agent working on a pull request a message.
@@ -440,6 +464,26 @@ pub struct MessageAgentArgs {
     pub repo: RepoPath,
     pub number: u32,
     pub body: String,
+    /// For an agent: `question` or `handoff`; a person's is a `message`.
+    #[serde(default)]
+    pub kind: Option<String>,
+    /// For an agent: the pull request it is working on, which the reply
+    /// goes back to.
+    #[serde(default)]
+    pub from_number: Option<u32>,
+}
+
+/// `answer_message`: replies to a question or a handoff an agent received,
+/// accepting or declining a handoff. The reply reaches the asking agent at
+/// its next step. Returns `Outcome<AgentMessage>`, the message answered.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AnswerMessageArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    pub id: String,
+    pub body: String,
+    #[serde(default)]
+    pub decline: bool,
 }
 
 /// `take_messages`: the messages not yet delivered to the agent working on
@@ -834,6 +878,10 @@ pub struct Plan {
     /// Filled in by `get_plan` only.
     #[serde(default)]
     pub progress: Vec<IssueProgress>,
+    /// Questions and handoffs between the agents on its pull requests,
+    /// newest first. Filled in by `get_plan` only.
+    #[serde(default)]
+    pub exchanges: Vec<AgentMessage>,
 }
 
 /// Where one issue of an applied plan stands.
