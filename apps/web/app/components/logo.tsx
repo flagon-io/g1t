@@ -1,29 +1,26 @@
-/** Three lanes converging on one node: many pull requests, one merged. */
+/**
+ * g1t's mark: an isometric cube, the unit of work in its artwork. Three
+ * faces in three tones of the text colour, split by hairline gaps, so it
+ * holds at any size and on any background.
+ */
 export function Mark({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 32 32"
-      fill="none"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <path d="M4 7h6c7 0 7 9 14 9" className="stroke-muted" />
-      <path d="M4 25h6c7 0 7-9 14-9" className="stroke-muted" />
-      <path d="M4 16h20" className="stroke-accent" />
-      <circle cx="25" cy="16" r="3.5" className="fill-accent" stroke="none" />
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+      {/* Top face */}
+      <path d="M16 2.5 28 9.4 16 16.3 4 9.4Z" fill="currentColor" />
+      {/* Left face */}
+      <path d="M4 10.9 15.3 17.4V30.2L4 23.7Z" fill="currentColor" fillOpacity="0.55" />
+      {/* Right face */}
+      <path d="M28 10.9 16.7 17.4V30.2L28 23.7Z" fill="currentColor" fillOpacity="0.25" />
     </svg>
   );
 }
 
 export function Logo() {
   return (
-    <span className="inline-flex items-center gap-2">
+    <span className="inline-flex items-center gap-2 text-fg">
       <Mark className="size-6" />
-      <span className="font-mono text-lg font-semibold tracking-tight">
-        g<span className="text-accent">1</span>t
-      </span>
+      <span className="text-[1.15rem] leading-none font-bold tracking-[-0.035em]">g1t</span>
     </span>
   );
 }

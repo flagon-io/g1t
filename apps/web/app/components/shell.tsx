@@ -4,6 +4,7 @@ import {
   BookOpen,
   Check,
   ChevronsUpDown,
+  Ellipsis,
   CircleDot,
   Code2,
   Compass,
@@ -30,7 +31,7 @@ import { Form, Link, NavLink, useLocation, useNavigate, useNavigation, useSubmit
 import type { User } from "@g1t/contracts";
 import { MICROS_PER_DOLLAR } from "@g1t/contracts";
 
-import { Logo } from "./logo";
+import { Mark } from "./logo";
 import { Avatar } from "./ui";
 import {
   DropdownMenu,
@@ -85,7 +86,7 @@ function SidebarLink({
       prefetch="intent"
       className={({ isActive, isPending }) => {
         const current = isActive || (also != null && pathname.startsWith(also + "/"));
-        return `group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors ${
+        return `group flex h-8 items-center gap-2.5 rounded-md px-2 text-[0.8125rem] transition-colors ${
           current
             ? "bg-raised font-medium text-fg"
             : isPending
@@ -107,11 +108,9 @@ function SidebarLink({
 
 function SidebarGroup({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
-    <section className="mt-5">
-      <div className="mb-1 flex items-center justify-between px-2">
-        <h2 className="text-[0.6875rem] font-medium tracking-wider text-faint uppercase">
-          {title}
-        </h2>
+    <section className="mt-6">
+      <div className="mb-1 flex h-6 items-center justify-between px-2">
+        <h2 className="text-xs font-medium text-faint">{title}</h2>
         {action}
       </div>
       <div className="space-y-px">{children}</div>
@@ -123,19 +122,28 @@ function WorkspaceSwitcher({ user, shell }: { user: User; shell: ShellData }) {
   const current = shell.workspace?.slug;
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left outline-none transition-colors hover:bg-raised data-[state=open]:bg-raised">
+      {/* The name goes to the workspace; only the arrows switch it. */}
+      <Link
+        to={current ? `/${current}` : "/workspaces/new"}
+        className="flex h-8 min-w-0 items-center gap-2 rounded-md px-1.5 transition-colors hover:bg-raised"
+      >
         {current ? (
-          <Avatar name={current} size={26} square />
+          <Avatar name={current} size={20} square />
         ) : (
-          <span className="size-6.5 rounded-md border border-dashed border-line-strong" />
+          <span className="size-5 rounded-md border border-dashed border-line-strong" />
         )}
-        <span className="min-w-0 grow">
-          <span className="block truncate text-sm font-semibold">{current ?? "No workspace"}</span>
-          <span className="block truncate text-xs text-faint">
-            {shell.workspace?.role ?? "Create one to start"}
+        <span className="min-w-0 truncate text-sm font-medium">{current ?? "Choose a workspace"}</span>
+        {shell.workspace && (
+          <span className="shrink-0 rounded-full bg-raised px-1.5 py-px text-[0.625rem] font-medium text-muted ring-1 ring-line capitalize">
+            {shell.workspace.role}
           </span>
-        </span>
-        <ChevronsUpDown size={14} className="shrink-0 text-faint" />
+        )}
+      </Link>
+      <DropdownMenuTrigger
+        aria-label="Switch workspace"
+        className="ml-auto flex h-8 w-6 shrink-0 items-center justify-center rounded-md text-faint outline-none transition-colors hover:bg-raised hover:text-fg data-[state=open]:bg-raised data-[state=open]:text-fg"
+      >
+        <ChevronsUpDown size={14} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-60">
         <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
@@ -160,7 +168,78 @@ function WorkspaceSwitcher({ user, shell }: { user: User; shell: ShellData }) {
   );
 }
 
-function Sidebar({ user, shell }: { user: User; shell: ShellData }) {
+/** This month's spend against what is left, as Vercel shows a plan's usage. */
+function UsageCard({ slug, shell }: { slug: string; shell: ShellData }) {
+  if (shell.monthSpentMicros == null) return null;
+  const spent = shell.monthSpentMicros;
+  const left = shell.creditMicros;
+  const share = left != null && spent + left > 0 ? Math.min(1, spent / (spent + Math.max(left, 0))) : 0;
+  return (
+    <Link
+      to={`/${slug}/-/usage`}
+      className="block rounded-lg bg-surface p-3 ring-1 ring-line transition-colors hover:ring-line-strong"
+    >
+      <span className="flex items-baseline justify-between text-xs">
+        <span className="font-medium text-fg">Usage</span>
+        <span className="text-faint">this month</span>
+      </span>
+      <span className="mt-2 flex items-baseline justify-between">
+        <span className="font-mono text-sm tabular-nums">${(spent / MICROS_PER_DOLLAR).toFixed(2)}</span>
+        {left != null && (
+          <span className={`text-xs ${left <= 0 ? "text-warn" : "text-faint"}`}>
+            ${(left / MICROS_PER_DOLLAR).toFixed(2)} left
+          </span>
+        )}
+      </span>
+      <span className="mt-2 block h-1 overflow-hidden rounded-full bg-raised">
+        <span
+          className={`block h-full rounded-full ${left != null && left <= 0 ? "bg-warn" : "bg-accent"}`}
+          style={{ width: `${Math.max(share * 100, spent > 0 ? 3 : 0)}%` }}
+        />
+      </span>
+    </Link>
+  );
+}
+
+function AccountMenu({ user }: { user: User }) {
+  const submit = useSubmit();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger className="flex h-10 w-full items-center gap-2.5 rounded-md px-2 text-left outline-none transition-colors hover:bg-raised data-[state=open]:bg-raised">
+        <Avatar name={user.username} size={22} />
+        <span className="min-w-0 grow truncate text-[0.8125rem] font-medium">{user.username}</span>
+        <Ellipsis size={15} className="shrink-0 text-faint" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" side="top" className="w-56">
+        <DropdownMenuLabel>
+          Signed in as <span className="font-mono font-medium text-fg">{user.username}</span>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/settings">
+            <Settings />
+            Your settings
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <a href="https://docs.g1t.sh/">
+            <BookOpen />
+            Documentation
+          </a>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {/* Submitted from here: the menu closes on select, and a button
+            that has left the page cannot submit a form. */}
+        <DropdownMenuItem onSelect={() => submit(null, { method: "post", action: "/logout" })}>
+          <LogOut />
+          Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind: () => void }) {
   const ws = shell.workspace;
   const active = shell.repo;
   const repoBase = active ? `/${active.namespace}/${active.name}` : null;
@@ -171,13 +250,26 @@ function Sidebar({ user, shell }: { user: User; shell: ShellData }) {
       : shell.repos;
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-12 items-center gap-2 px-4">
-        <Link to="/" aria-label="g1t home">
-          <Logo />
+      {/* The same height and rule as the top bar, so the two read as one line. */}
+      <div className="flex h-12 shrink-0 items-center gap-1 border-b border-line px-2">
+        <Link to="/" aria-label="g1t home" className="shrink-0 rounded-md p-1.5 hover:bg-raised">
+          <Mark className="size-5" />
         </Link>
-      </div>
-      <div className="px-2">
+        <span className="shrink-0 text-line-strong" aria-hidden="true">
+          /
+        </span>
         <WorkspaceSwitcher user={user} shell={shell} />
+      </div>
+      <div className="px-2 pt-3">
+        <button
+          type="button"
+          onClick={onFind}
+          className="flex h-8 w-full items-center gap-2 rounded-md bg-surface px-2.5 text-[0.8125rem] text-faint ring-1 ring-line transition-colors hover:text-muted hover:ring-line-strong"
+        >
+          <Search size={14} />
+          <span className="grow text-left">Find…</span>
+          <kbd className="rounded bg-raised px-1.5 font-mono text-[0.625rem] text-muted ring-1 ring-line">⌘K</kbd>
+        </button>
       </div>
       <nav className="min-h-0 grow overflow-y-auto px-2 pb-4">
         <div className="mt-3 space-y-px">
@@ -297,37 +389,73 @@ function Sidebar({ user, shell }: { user: User; shell: ShellData }) {
         </SidebarGroup>
       </nav>
 
-      <div className="border-t border-line p-2">
-        {ws && shell.monthSpentMicros != null && (
-          <Link
-            to={`/${ws.slug}/-/usage`}
-            className="mb-1 block rounded-md px-2 py-1.5 text-sm text-muted transition-colors hover:bg-raised hover:text-fg"
-          >
-            <span className="flex items-center gap-2.5">
-              <BarChart3 size={15} className="shrink-0 text-faint" />
-              <span className="grow">Usage this month</span>
-              <span className="font-mono text-xs text-fg tabular-nums">
-                ${(shell.monthSpentMicros / MICROS_PER_DOLLAR).toFixed(2)}
-              </span>
-            </span>
-            {shell.creditMicros != null && (
-              <span
-                className={`mt-0.5 block pl-6.5 text-xs ${shell.creditMicros <= 0 ? "text-warn" : "text-faint"}`}
-              >
-                ${(shell.creditMicros / MICROS_PER_DOLLAR).toFixed(2)} of credit left
-              </span>
-            )}
-          </Link>
-        )}
-        <a
-          href="https://docs.g1t.sh/"
-          className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-muted transition-colors hover:bg-raised hover:text-fg"
-        >
-          <BookOpen size={15} className="shrink-0 text-faint" />
-          Documentation
-        </a>
+      <div className="space-y-2 p-2">
+        {ws && <UsageCard slug={ws.slug} shell={shell} />}
+        <AccountMenu user={user} />
       </div>
     </div>
+  );
+}
+
+/** Words for the sections a path can end in. */
+const SECTIONS: Record<string, string> = {
+  issues: "Issues",
+  pulls: "Pull requests",
+  queue: "Merge queue",
+  commits: "Commits",
+  plans: "Plan",
+  settings: "Settings",
+  people: "People",
+  tokens: "Access tokens",
+  usage: "Usage",
+  billing: "Billing",
+  tree: "Code",
+  blob: "Code",
+};
+
+/** Where the page is, as a trail of links: workspace / repository / section. */
+function Breadcrumbs({ pathname }: { pathname: string }) {
+  const parts = pathname.split("/").filter(Boolean);
+  const reserved = ["settings", "explore", "new", "search", "workspaces"];
+  if (parts.length === 0) return <span className="text-sm font-medium">Mission control</span>;
+  if (reserved.includes(parts[0]!)) {
+    const words: Record<string, string> = {
+      settings: "Your settings",
+      explore: "Explore",
+      new: "New repository",
+      search: "Search",
+      workspaces: "New workspace",
+    };
+    return <span className="text-sm font-medium">{words[parts[0]!]}</span>;
+  }
+  const [owner, second, third, fourth] = parts;
+  const trail: { label: string; to: string; mono?: boolean }[] = [{ label: owner!, to: `/${owner}`, mono: true }];
+  if (second === "-") {
+    if (third) trail.push({ label: SECTIONS[third] ?? third, to: `/${owner}/-/${third}` });
+  } else if (second) {
+    const repo = `/${owner}/${second}`;
+    trail.push({ label: second, to: repo, mono: true });
+    if (third === "pull" && fourth) trail.push({ label: `Pull request #${fourth}`, to: `${repo}/pull/${fourth}` });
+    else if (third === "issues" && fourth && fourth !== "new") trail.push({ label: `Issue #${fourth}`, to: `${repo}/issues/${fourth}` });
+    else if (third === "commit" && fourth) trail.push({ label: fourth.slice(0, 7), to: `${repo}/commit/${fourth}`, mono: true });
+    else if (third && SECTIONS[third]) trail.push({ label: SECTIONS[third]!, to: `${repo}/${third}` });
+  }
+  return (
+    <nav aria-label="Where you are" className="flex min-w-0 items-center gap-1.5 text-sm">
+      {trail.map((crumb, index) => (
+        <span key={crumb.to} className="flex min-w-0 items-center gap-1.5">
+          {index > 0 && <span className="text-line-strong">/</span>}
+          <Link
+            to={crumb.to}
+            className={`truncate rounded px-1 py-0.5 transition-colors hover:bg-raised ${
+              index === trail.length - 1 ? "font-medium text-fg" : "text-muted hover:text-fg"
+            } ${crumb.mono ? "font-mono text-[0.8125rem]" : ""}`}
+          >
+            {crumb.label}
+          </Link>
+        </span>
+      ))}
+    </nav>
   );
 }
 
@@ -557,7 +685,7 @@ export function AppShell({
     <div className="min-h-screen">
       <Progress />
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-line bg-[color-mix(in_srgb,var(--color-surface)_70%,var(--color-bg))] lg:block">
-        <Sidebar user={user} shell={shell} />
+        <Sidebar user={user} shell={shell} onFind={() => setPalette(true)} />
       </aside>
       {drawer && (
         <div className="fixed inset-0 z-50 lg:hidden">
@@ -576,7 +704,7 @@ export function AppShell({
             >
               <X size={16} />
             </button>
-            <Sidebar user={user} shell={shell} />
+            <Sidebar user={user} shell={shell} onFind={() => setPalette(true)} />
           </aside>
         </div>
       )}
@@ -591,23 +719,21 @@ export function AppShell({
           >
             <Menu size={18} />
           </button>
-          <button
-            type="button"
-            onClick={() => setPalette(true)}
-            className="flex h-8 w-full max-w-md items-center gap-2 rounded-md border border-line bg-surface/60 px-2.5 text-sm text-faint transition-colors hover:border-line-strong hover:text-muted"
-          >
-            <Search size={14} />
-            <span className="grow text-left">Search or jump to…</span>
-            <kbd className="hidden rounded border border-line px-1.5 font-mono text-[0.6875rem] sm:inline">⌘K</kbd>
-          </button>
-          <Form action="/search" className="hidden" />
+          <Breadcrumbs pathname={pathname} />
           <div className="ml-auto flex items-center gap-1.5">
+            <a
+              href="https://docs.g1t.sh/"
+              className="hidden rounded-md px-2 py-1 text-[0.8125rem] text-muted transition-colors hover:bg-raised hover:text-fg sm:block"
+            >
+              Docs
+            </a>
             <DropdownMenu>
               <DropdownMenuTrigger
                 aria-label="Create"
-                className="rounded-md border border-line p-1.5 text-muted outline-none transition-colors hover:border-line-strong hover:text-fg data-[state=open]:bg-raised"
+                className="flex h-8 items-center gap-1.5 rounded-md bg-fg px-2.5 text-[0.8125rem] font-medium text-bg outline-none transition-colors hover:bg-white"
               >
-                <Plus size={15} />
+                <Plus size={14} />
+                New
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 {shell.repo && (
@@ -637,39 +763,6 @@ export function AppShell({
                     <Users />
                     New workspace
                   </Link>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                aria-label="Account menu"
-                className="rounded-md p-1 outline-none transition-colors hover:bg-raised data-[state=open]:bg-raised"
-              >
-                <Avatar name={user.username} size={24} />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>
-                  Signed in as <span className="font-mono font-medium text-fg">{user.username}</span>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link to="/settings">
-                    <Settings />
-                    Your settings
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <a href="https://docs.g1t.sh/">
-                    <BookOpen />
-                    Documentation
-                  </a>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {/* Submitted from here: the menu closes on select, and a button
-                    that has left the page cannot submit a form. */}
-                <DropdownMenuItem onSelect={() => submit(null, { method: "post", action: "/logout" })}>
-                  <LogOut />
-                  Sign out
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
