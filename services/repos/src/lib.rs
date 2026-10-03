@@ -879,6 +879,20 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     match method.as_str() {
         "get" => reply(&repos.get(args(body)?).await?),
         "get_by_id" => reply(&repos.get_by_id(args(body)?).await?),
+        "path_by_id" => {
+            let a: PathByIdArgs = args(body)?;
+            reply(
+                &repos
+                    .registry
+                    .by_id(&a.id)
+                    .await?
+                    .filter(|repo| repo.fork_of.is_none())
+                    .map(|repo| RepoPath {
+                        namespace: repo.namespace,
+                        name: repo.name,
+                    }),
+            )
+        }
         "list" => {
             let a: ListArgs = args(body)?;
             reply(

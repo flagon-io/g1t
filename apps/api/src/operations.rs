@@ -25,6 +25,7 @@ pub struct Services {
     pub billing: Fetcher,
     pub integrations: Fetcher,
     pub webhooks: Fetcher,
+    pub automations: Fetcher,
     /// Set for a request made with an agent's token: all it may do.
     pub scope: Option<AgentScope>,
 }
@@ -40,6 +41,7 @@ impl Services {
             billing: env.service("BILLING")?,
             integrations: env.service("INTEGRATIONS")?,
             webhooks: env.service("WEBHOOKS")?,
+            automations: env.service("AUTOMATIONS")?,
             scope: None,
         })
     }
@@ -97,6 +99,10 @@ pub enum Op {
     PingWebhook,
     ListWebhookDeliveries,
     RedeliverWebhook,
+    ListAutomations,
+    ListAutomationRuns,
+    RunAutomation,
+    UpdateAutomation,
 }
 
 fn failed(code: FailureCode, message: &str) -> Result<Outcome<Value>> {
@@ -254,7 +260,7 @@ fn repo_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 50] = [
+    pub const ALL: [Op; 54] = [
         Op::Whoami,
         Op::CreateWorkspace,
         Op::ListRepos,
@@ -305,6 +311,10 @@ impl Op {
         Op::PingWebhook,
         Op::ListWebhookDeliveries,
         Op::RedeliverWebhook,
+        Op::ListAutomations,
+        Op::ListAutomationRuns,
+        Op::RunAutomation,
+        Op::UpdateAutomation,
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -364,6 +374,10 @@ impl Op {
             Op::PingWebhook => "ping_webhook",
             Op::ListWebhookDeliveries => "list_webhook_deliveries",
             Op::RedeliverWebhook => "redeliver_webhook",
+            Op::ListAutomations => "list_automations",
+            Op::ListAutomationRuns => "list_automation_runs",
+            Op::RunAutomation => "run_automation",
+            Op::UpdateAutomation => "update_automation",
         }
     }
 
@@ -496,6 +510,16 @@ impl Op {
                 "A webhook's latest deliveries, newest first: what was sent, how the receiver answered, and when it will be tried again."
             }
             Op::RedeliverWebhook => "Send a delivery's payload again, as a new delivery.",
+            Op::ListAutomations => {
+                "A repository's automations, read from .g1t/automations/*.yml on its default branch: what starts each, its conditions and steps, whether it is on, any problem with its file, and its last run. To add or change one, commit its file."
+            }
+            Op::ListAutomationRuns => {
+                "A repository's latest automation runs, newest first, of one automation or all: what started each, and how each step went or why it was skipped."
+            }
+            Op::RunAutomation => {
+                "Run an automation now, on an issue or pull request if number is given. Members only."
+            }
+            Op::UpdateAutomation => "Turn an automation on or off without changing its file. Members only.",
             Op::ImportIssue => {
                 "Open an issue from a ticket in Jira or Linear, or from a Sentry issue, by its key or address. The issue is linked to it: agents read the original, and when the work lands the ticket is told. Importing the same ticket again returns the issue already made. With assign, a g1t agent starts on it."
             }
@@ -838,6 +862,30 @@ impl Op {
             ),
             Op::GetModelRoutes => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
             Op::ListWebhooks => object(hook_owner(json!({})), &[]),
+            Op::ListAutomations => repo_only(),
+            Op::ListAutomationRuns => object(
+                json!({
+                    "repo": repo_schema(),
+                    "automation": { "type": "string", "description": "One automation's id, for its runs only." },
+                }),
+                &["repo"],
+            ),
+            Op::RunAutomation => object(
+                json!({
+                    "repo": repo_schema(),
+                    "id": { "type": "string", "description": "The automation's id." },
+                    "number": { "type": "integer", "description": "The issue or pull request to run it on." },
+                }),
+                &["repo", "id"],
+            ),
+            Op::UpdateAutomation => object(
+                json!({
+                    "repo": repo_schema(),
+                    "id": { "type": "string", "description": "The automation's id." },
+                    "enabled": { "type": "boolean" },
+                }),
+                &["repo", "id", "enabled"],
+            ),
             Op::CreateWebhook => object(
                 hook_owner(json!({
                     "url": { "type": "string", "description": "An HTTPS address on the public internet." },
@@ -1035,6 +1083,7 @@ impl Op {
             runner,
             integrations,
             webhooks,
+            automations,
             ..
         } = services;
         let workspace = || text(input, "workspace").to_lowercase();
@@ -1455,6 +1504,31 @@ impl Op {
                     integrations,
                     if self == Op::TestIntegration { "test" } else { "disconnect" },
                     &json!({ "actor": actor(), "workspace": workspace(), "id": text(input, "id") }),
+                )
+                .await
+            }
+            Op::ListAutomations => pass(automations, "list", &json!({ "repo": repo, "viewer": viewer })).await,
+            Op::ListAutomationRuns => {
+                pass(
+                    automations,
+                    "runs",
+                    &json!({ "repo": repo, "viewer": viewer, "automation": optional_text(input, "automation") }),
+                )
+                .await
+            }
+            Op::RunAutomation => {
+                pass(
+                    automations,
+                    "run",
+                    &json!({ "actor": actor(), "repo": repo, "id": text(input, "id"), "number": integer(input, "number") }),
+                )
+                .await
+            }
+            Op::UpdateAutomation => {
+                pass(
+                    automations,
+                    "set_enabled",
+                    &json!({ "actor": actor(), "repo": repo, "id": text(input, "id"), "enabled": input["enabled"].as_bool() == Some(true) }),
                 )
                 .await
             }

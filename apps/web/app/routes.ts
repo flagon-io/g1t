@@ -41,6 +41,7 @@ export default [
     route("pulls/new", "routes/repo/pull-new.tsx"),
     route("pull/:number", "routes/repo/pull.tsx"),
     route("queue", "routes/repo/queue.tsx"),
+    route("automations", "routes/repo/automations.tsx"),
     route("plans", "routes/repo/plans.tsx"),
     route("plans/:id", "routes/repo/plan.tsx"),
     route("settings", "routes/repo/settings.tsx"),

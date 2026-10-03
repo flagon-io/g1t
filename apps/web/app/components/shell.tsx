@@ -26,6 +26,7 @@ import {
   Settings,
   Users,
   Webhook,
+  Zap,
   X,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
@@ -475,6 +476,9 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
                         Plan
                       </SidebarLink>
                     )}
+                    <SidebarLink to={`${repoBase}/automations`} icon={<Zap size={14} />}>
+                      Automations
+                    </SidebarLink>
                     {active.member && (
                       <SidebarLink to={`${repoBase}/settings`} icon={<Settings size={14} />}>
                         Settings
@@ -510,6 +514,7 @@ const SECTIONS: Record<string, string> = {
   queue: "Merge queue",
   commits: "Commits",
   plans: "Plan",
+  automations: "Automations",
   settings: "Settings",
   people: "Members",
   tokens: "Access tokens",

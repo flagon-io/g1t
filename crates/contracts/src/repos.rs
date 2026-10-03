@@ -131,6 +131,15 @@ pub struct GetArgs {
     pub viewer: Viewer,
 }
 
+/// `path_by_id`: where a repository is, whoever may see it. For g1t's own
+/// services, which hold a repository's id from an event and act for its
+/// workspace; nothing outside reaches it. Returns `Option<RepoPath>`, null
+/// for a fork or an unknown id.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PathByIdArgs {
+    pub id: String,
+}
+
 /// `get_by_id`. Returns `Outcome<Repo>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetByIdArgs {

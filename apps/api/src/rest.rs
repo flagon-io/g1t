@@ -241,6 +241,30 @@ pub const ROUTES: &[Route] = &[
         Op::TestIntegration,
         &[],
     ),
+    route(
+        "GET",
+        "/repos/:owner/:name/automations/runs",
+        Op::ListAutomationRuns,
+        &[("automation", "automation")],
+    ),
+    route(
+        "GET",
+        "/repos/:owner/:name/automations",
+        Op::ListAutomations,
+        &[],
+    ),
+    route(
+        "POST",
+        "/repos/:owner/:name/automations/:id/runs",
+        Op::RunAutomation,
+        &[],
+    ),
+    route(
+        "PATCH",
+        "/repos/:owner/:name/automations/:id",
+        Op::UpdateAutomation,
+        &[],
+    ),
     route("POST", "/repos/:owner/:name/plans", Op::PlanWork, &[]),
     route("GET", "/repos/:owner/:name/plans/:plan", Op::GetPlan, &[]),
     route(

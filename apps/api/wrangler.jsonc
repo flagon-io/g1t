@@ -20,7 +20,8 @@
 		{ "binding": "RUNNER", "service": "g1t-runner" },
 		{ "binding": "BILLING", "service": "g1t-billing" },
 		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" },
-		{ "binding": "WEBHOOKS", "service": "g1t-webhooks" }
+		{ "binding": "WEBHOOKS", "service": "g1t-webhooks" },
+		{ "binding": "AUTOMATIONS", "service": "g1t-automations" }
 	],
 	"observability": { "enabled": true }
 }

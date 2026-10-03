@@ -1,0 +1,34 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-automations",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	// Runs next to its database: a run makes several queries in turn.
+	"placement": { "mode": "smart" },
+	"main": "build/index.js",
+	"build": { "command": "cargo install -q worker-build@0.8.7 && worker-build --release" },
+	// Reached only through service bindings.
+	"workers_dev": false,
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "g1t-automations",
+			"database_id": "39411186-d3e0-4b8c-8c7f-d6416df64e7a",
+			"migrations_dir": "migrations"
+		}
+	],
+	"services": [
+		{ "binding": "REPOS", "service": "g1t-repos" },
+		{ "binding": "WORK", "service": "g1t-work" },
+		{ "binding": "IDENTITY", "service": "g1t-identity" },
+		{ "binding": "RUNNER", "service": "g1t-runner" }
+	],
+	// Every event on the bus: what starts automations, and pushes that
+	// change their files.
+	"queues": {
+		"consumers": [{ "queue": "g1t-events-automations", "max_batch_size": 20, "max_batch_timeout": 1 }]
+	},
+	// Scheduled automations.
+	"triggers": { "crons": ["* * * * *"] },
+	"observability": { "enabled": true }
+}
