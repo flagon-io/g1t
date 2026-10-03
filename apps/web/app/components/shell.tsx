@@ -257,10 +257,11 @@ const SETTINGS_PAGE = /^\/([^/]+)\/-\/(settings|people|tokens|billing|integratio
  * The sidebar's menus are two layers, the way a phone pushes a screen: the
  * one arriving slides in from the right over the full width, while the one
  * leaving drifts a quarter of the way left and fades, both on one long
- * ease-out. Going back reverses it.
+ * ease-out, the fade quicker than the move so the two never blur together.
+ * Going back reverses it.
  */
 const LAYER =
-  "absolute inset-0 transition-[transform,opacity] duration-[380ms] ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform motion-reduce:transition-none";
+  "absolute inset-0 [transition:translate_380ms_cubic-bezier(0.32,0.72,0,1),opacity_220ms_ease-out] will-change-[translate,opacity] motion-reduce:transition-none";
 /** One menu, filling its layer. */
 const PANEL = "h-full overflow-y-auto px-2 pb-4";
 
