@@ -412,8 +412,12 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
             ),
             _ => (None, true, None),
         };
-        if uses.is_some() {
-            note(Severity::Unsupported, Some(id), "Reusable workflows (`uses:` on a job) are not called on g1t yet, so this job fails.".to_owned());
+        if uses.as_deref().is_some_and(|uses| !uses.starts_with("./")) {
+            note(
+                Severity::Unsupported,
+                Some(id),
+                "Reusable workflows from other repositories are not called on g1t yet, so this job fails; ones in this repository (`./.g1t/workflows/…`) are.".to_owned(),
+            );
         }
         jobs.push(Job {
             id: id.clone(),

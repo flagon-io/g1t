@@ -81,7 +81,8 @@ export type Job = {
   key: string;
   name: string;
   needs: string[];
-  status: "waiting" | "queued" | "in_progress" | "completed";
+  /** `calling`: running the reusable workflow it calls, whose jobs follow it. */
+  status: "waiting" | "queued" | "in_progress" | "calling" | "completed";
   conclusion: Conclusion | null;
   steps: StepState[];
   annotations: Annotation[];

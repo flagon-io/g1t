@@ -40,6 +40,7 @@ export function standingWord({ status, conclusion }: Standing): string {
   if (status === "in_progress") return "Running";
   if (status === "pending") return "Waiting for its concurrency group";
   if (status === "waiting") return "Waiting for the jobs it needs";
+  if (status === "calling") return "Running the workflow it calls";
   if (status !== "completed") return "Queued";
   return { success: "Succeeded", failure: "Failed", cancelled: "Cancelled", skipped: "Skipped" }[conclusion ?? "skipped"];
 }

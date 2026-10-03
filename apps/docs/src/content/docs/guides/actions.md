@@ -37,6 +37,7 @@ gives their values out, so they cannot be copied across.
 | `run:` with `bash`, `sh`, `python` or a custom shell | The same. |
 | JavaScript actions (`uses: owner/repo@v7`) | Fetched from GitHub and run as they are, on Node 24, the runtime current actions declare. |
 | Composite actions | The same. |
+| Reusable workflows in the repository (`jobs.<id>.uses: ./.g1t/workflows/build.yml`) | The same: `with:` inputs, `on.workflow_call` outputs, and nesting up to four deep. `./.github/workflows/…` finds the workflow under `.g1t/` after the move. Their jobs run with the repository's secrets. |
 | `actions/checkout` | Checks out from g1t, with `ref`, `fetch-depth`, `path`, `repository`, `token` and `submodules`. |
 | `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY` | The same. |
 | `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::` | The same: errors and warnings become annotations on the run. |
@@ -52,7 +53,7 @@ anything in it that runs differently.
 - **Windows and macOS runners.** Jobs run on Linux; a job with
   `runs-on: windows-latest` or `macos-latest` fails, and says so.
 - **Docker** container actions, `services:` containers and `container:`.
-- **Reusable workflows** (`uses:` on a job).
+- **Reusable workflows from other repositories** (`uses: owner/repo/.github/workflows/x.yml@v1`); ones in the same repository work.
 - **The toolkit's own cache.** Actions that cache through GitHub's service
   themselves, such as `actions/setup-node` with `cache: npm`, run without
   it. Use `actions/cache` for the same effect.

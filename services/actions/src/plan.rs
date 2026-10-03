@@ -136,6 +136,9 @@ pub struct JobRow {
     pub timeout_minutes: u32,
     pub continue_on_error: u32,
     pub max_parallel: Option<u32>,
+    /// Set for a job that calls a reusable workflow, and for that
+    /// workflow's jobs (see migration 0002).
+    pub call: Option<String>,
     pub seen_at: Option<String>,
     pub started_at: Option<String>,
     pub finished_at: Option<String>,
@@ -145,7 +148,27 @@ impl JobRow {
     pub fn needs(&self) -> Vec<String> {
         serde_json::from_str(&self.needs).unwrap_or_default()
     }
+
+    pub fn call(&self) -> Option<Value> {
+        self.call.as_deref().and_then(|call| serde_json::from_str(call).ok())
+    }
+
+    /// For a job of a called workflow: that workflow, the job's own id in
+    /// it, and the job.
+    pub fn callee(&self) -> Option<(Workflow, workflow::Job, Value)> {
+        let call = self.call().filter(|call| call["role"] == "callee")?;
+        let called = workflow::parse(call["source"].as_str()?).ok()?;
+        let job = called.jobs.iter().find(|job| call["job"].as_str() == Some(job.id.as_str()))?.clone();
+        Some((called, job, call))
+    }
 }
+
+/// A job to decide on: its key, its definition, and what it needs, as
+/// (name in `needs`, key of the jobs).
+type Unit = (String, workflow::Job, Vec<(String, String)>);
+
+/// How deep reusable workflows may call one another, as on GitHub.
+const MAX_CALL_DEPTH: u64 = 4;
 
 /// What the jobs of one key came to, for `needs.<key>`.
 fn key_result(rows: &[&JobRow]) -> &'static str {
@@ -398,18 +421,47 @@ impl Actions {
             };
             let jobs = self.job_rows(run_id).await?;
             let mut changed = false;
-            for job in &workflow.jobs {
-                let rows: Vec<&JobRow> = jobs.iter().filter(|row| row.key == job.id).collect();
+            // What to decide on: the workflow's jobs, and the jobs of the
+            // workflows they call, each with its needs as (name, key).
+            let mut units: Vec<Unit> = workflow
+                .jobs
+                .iter()
+                .map(|job| (job.id.clone(), job.clone(), job.needs.iter().map(|n| (n.clone(), n.clone())).collect()))
+                .collect();
+            let mut seen = std::collections::HashSet::new();
+            for row in &jobs {
+                if !seen.insert(row.key.clone()) {
+                    continue;
+                }
+                if let Some((_, job, call)) = row.callee() {
+                    let parent = call["parent"].as_str().unwrap_or_default().to_owned();
+                    let needs = job.needs.iter().map(|n| (n.clone(), format!("{parent}/{n}"))).collect();
+                    units.push((row.key.clone(), job, needs));
+                }
+            }
+            for (key, job, needs) in &units {
+                let rows: Vec<&JobRow> = jobs.iter().filter(|row| &row.key == key).collect();
                 if rows.is_empty() || !rows.iter().all(|row| row.status == "waiting") {
                     continue;
                 }
                 let needed: Vec<(&String, Vec<&JobRow>)> =
-                    job.needs.iter().map(|need| (need, jobs.iter().filter(|row| &row.key == need).collect())).collect();
+                    needs.iter().map(|(name, need)| (name, jobs.iter().filter(|row| &row.key == need).collect())).collect();
                 if !needed.iter().all(|(_, rows)| rows.iter().all(|row| row.status == "completed")) {
                     continue;
                 }
                 self.decide(&run, job, rows[0], &needed).await?;
                 changed = true;
+            }
+            // A job that called a workflow finishes with that workflow's jobs.
+            for row in jobs.iter().filter(|row| row.status == "calling") {
+                let children: Vec<&JobRow> = jobs
+                    .iter()
+                    .filter(|child| child.call().is_some_and(|call| call["role"] == "callee" && call["parent"].as_str() == Some(row.key.as_str())))
+                    .collect();
+                if !children.is_empty() && children.iter().all(|child| child.status == "completed") {
+                    self.finish_call(row, &children).await?;
+                    changed = true;
+                }
             }
             if !changed {
                 break;
@@ -424,6 +476,12 @@ impl Actions {
     async fn decide(&self, run: &RunRow, job: &workflow::Job, row: &JobRow, needed: &[(&String, Vec<&JobRow>)]) -> Result<()> {
         let vars = self.variables_for(&run.repo_id, &repo_path(&run.repo).namespace).await?;
         let mut contexts = Self::base_contexts(run, &vars, &job.id);
+        // A called workflow's jobs read the inputs they were called with.
+        let call = row.call();
+        let parent = call.as_ref().filter(|c| c["role"] == "callee").and_then(|c| c["parent"].as_str().map(str::to_owned));
+        if let Some(call) = call.as_ref().filter(|c| c["role"] == "callee") {
+            contexts.insert("inputs".into(), call["inputs"].clone());
+        }
         let mut needs = Map::new();
         let mut status = if run.conclusion.as_deref() == Some("cancelled") { Status::Cancelled } else { Status::Success };
         for (key, rows) in needed {
@@ -451,8 +509,8 @@ impl Actions {
             Ok(false) => return self.skip_job(row, None).await,
             Err(problem) => return self.fail_job(row, &format!("Its `if` does not read: {problem}")).await,
         }
-        if job.uses.is_some() {
-            return self.fail_job(row, "Reusable workflows (`uses:` on a job) are not called on g1t yet.").await;
+        if let Some(uses) = &job.uses {
+            return self.call_workflow(run, job, row, uses, &scope).await;
         }
 
         // Its matrix, which may come from a needed job's outputs.
@@ -486,6 +544,11 @@ impl Actions {
                 hash_files: None,
             };
             let base_name = job.name.clone().unwrap_or(job.id.clone());
+            // A called workflow's job is shown under the job that called it.
+            let base_name = match &parent {
+                Some(parent) => format!("{} / {base_name}", parent.replace('/', " / ")),
+                None => base_name,
+            };
             let name = if expr::has_expression(&base_name) {
                 expr::interpolate(&base_name, &scope).unwrap_or(base_name)
             } else if job.matrix.is_some() {
@@ -554,14 +617,15 @@ impl Actions {
                     row.key.as_str().into(),
                     (index as u32).into(),
                     row.needs.as_str().into(),
+                    optional(row.call.as_deref()),
                 ];
                 bound.extend(values);
                 statements.push(
                     self.db
                         .prepare(
-                            "INSERT INTO jobs (id, run_id, repo_id, namespace, key, ordinal, needs, name, matrix, status, conclusion, reason,
+                            "INSERT INTO jobs (id, run_id, repo_id, namespace, key, ordinal, needs, call, name, matrix, status, conclusion, reason,
                                timeout_minutes, continue_on_error, max_parallel, finished_at)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         )
                         .bind(&bound)?,
                 );
@@ -569,6 +633,162 @@ impl Actions {
         }
         self.db.batch(statements).await?;
         Ok(())
+    }
+
+    /// A job that calls a reusable workflow in the repository: that
+    /// workflow's jobs join the run under it, with the inputs it passes.
+    async fn call_workflow(&self, run: &RunRow, job: &workflow::Job, row: &JobRow, uses: &str, scope: &Scope<'_>) -> Result<()> {
+        let Some(local) = uses.strip_prefix("./") else {
+            return self
+                .fail_job(row, "Reusable workflows from other repositories are not called on g1t yet; ones in this repository (`./.g1t/workflows/…`) are.")
+                .await;
+        };
+        let depth = row.call().and_then(|c| c["depth"].as_u64()).unwrap_or(0) + 1;
+        if depth > MAX_CALL_DEPTH {
+            return self.fail_job(row, &format!("Reusable workflows call each other more than {MAX_CALL_DEPTH} deep.")).await;
+        }
+        let local = local.split('@').next().unwrap_or(local).to_owned();
+        let path = repo_path(&run.repo);
+        let Some(ws) = self.workspace_actor(&path.namespace).await? else {
+            return self.fail_job(row, "The workspace is gone.").await;
+        };
+        // A repository moved from GitHub keeps saying `.github/…`.
+        let mut found = self.read_file(&path, &ws, &run.sha, &local).await?.map(|text| (local.clone(), text));
+        if found.is_none()
+            && let Some(rest) = local.strip_prefix(".github/")
+        {
+            let moved = format!(".g1t/{rest}");
+            found = self.read_file(&path, &ws, &run.sha, &moved).await?.map(|text| (moved, text));
+        }
+        let Some((file, source)) = found else {
+            return self.fail_job(row, &format!("`{uses}` is not in the repository at this commit.")).await;
+        };
+        let called = match workflow::parse(&source) {
+            Ok(called) => called,
+            Err(problem) => return self.fail_job(row, &format!("`{file}` does not read: {problem}")).await,
+        };
+        let Some(trigger) = called.trigger("workflow_call") else {
+            return self.fail_job(row, &format!("`{file}` cannot be called: it has no `on: workflow_call`.")).await;
+        };
+        // Inputs: what the caller passes, else the called workflow's defaults.
+        let given = match job.raw.get("with") {
+            Some(with) => match expr::interpolate_value(with, scope) {
+                Ok(Value::Object(given)) => given,
+                Ok(_) => Map::new(),
+                Err(problem) => return self.fail_job(row, &format!("Its `with` does not read: {problem}")).await,
+            },
+            None => Map::new(),
+        };
+        let mut inputs = Map::new();
+        for (name, spec) in &trigger.inputs {
+            let value = given.get(name).cloned().or_else(|| spec.get("default").cloned()).unwrap_or(Value::Null);
+            if value.is_null() && spec.get("required").and_then(Value::as_bool) == Some(true) {
+                return self.fail_job(row, &format!("`{file}` needs the input `{name}`.")).await;
+            }
+            inputs.insert(name.clone(), value);
+        }
+        for (name, value) in given {
+            inputs.entry(name).or_insert(value);
+        }
+        let mut statements = Vec::new();
+        for called_job in &called.jobs {
+            let needs: Vec<String> = called_job.needs.iter().map(|n| format!("{}/{n}", row.key)).collect();
+            let call = json!({
+                "role": "callee", "parent": row.key, "job": called_job.id, "path": file,
+                "source": source, "inputs": inputs, "depth": depth,
+            });
+            statements.push(
+                self.db
+                    .prepare("INSERT INTO jobs (id, run_id, repo_id, namespace, key, name, needs, status, call) VALUES (?, ?, ?, ?, ?, ?, ?, 'waiting', ?)")
+                    .bind(&[
+                        new_id("job", now_ms()).into(),
+                        row.run_id.as_str().into(),
+                        row.repo_id.as_str().into(),
+                        row.namespace.as_str().into(),
+                        format!("{}/{}", row.key, called_job.id).into(),
+                        format!("{} / {}", row.name, called_job.name.clone().unwrap_or(called_job.id.clone())).into(),
+                        serde_json::to_string(&needs)?.into(),
+                        serde_json::to_string(&call)?.into(),
+                    ])?,
+            );
+        }
+        statements.push(
+            self.db
+                .prepare("UPDATE jobs SET status = 'calling', call = ?, reason = ?, started_at = ? WHERE id = ?")
+                .bind(&[
+                    serde_json::to_string(&json!({ "role": "caller", "path": file, "source": source }))?.into(),
+                    format!("Calls `{file}`.").into(),
+                    now().into(),
+                    row.id.as_str().into(),
+                ])?,
+        );
+        self.db.batch(statements).await?;
+        Ok(())
+    }
+
+    /// A job that called a workflow, finished with its jobs: their result,
+    /// and the outputs the workflow declares.
+    async fn finish_call(&self, row: &JobRow, children: &[&JobRow]) -> Result<()> {
+        let call = row.call().unwrap_or_default();
+        let called = call["source"].as_str().and_then(|s| workflow::parse(s).ok());
+        let mut jobs_context = Map::new();
+        let mut by_key: std::collections::BTreeMap<String, Vec<&JobRow>> = std::collections::BTreeMap::new();
+        for child in children {
+            by_key.entry(child.key.clone()).or_default().push(child);
+        }
+        for (key, rows) in &by_key {
+            let mut outputs = Map::new();
+            for child in rows {
+                if let Ok(Value::Object(more)) = serde_json::from_str::<Value>(&child.outputs) {
+                    outputs.extend(more);
+                }
+            }
+            let id = key.rsplit('/').next().unwrap_or(key);
+            jobs_context.insert(id.to_owned(), json!({ "result": key_result(rows), "outputs": outputs }));
+        }
+        let inputs = children.first().and_then(|c| c.call()).map(|c| c["inputs"].clone()).unwrap_or(json!({}));
+        let mut contexts = Map::new();
+        contexts.insert("jobs".into(), Value::Object(jobs_context));
+        contexts.insert("inputs".into(), inputs);
+        let scope = Scope { contexts: &contexts, status: Status::Success, hash_files: None };
+        let mut outputs = Map::new();
+        if let Some(Value::Object(declared)) = called.as_ref().map(|w| {
+            let on = w.raw.get("on").or_else(|| w.raw.get("true")).cloned().unwrap_or(Value::Null);
+            on.get("workflow_call").and_then(|c| c.get("outputs")).cloned().unwrap_or(Value::Null)
+        }) {
+            for (name, spec) in declared {
+                if let Some(value) = spec.get("value") {
+                    let value = expr::interpolate_value(value, &scope).unwrap_or(Value::Null);
+                    outputs.insert(name, Value::String(expr::to_text(&value)));
+                }
+            }
+        }
+        let conclusion = key_result(children);
+        self.db
+            .prepare("UPDATE jobs SET status = 'completed', conclusion = ?, outputs = ?, finished_at = ? WHERE id = ? AND status = 'calling'")
+            .bind(&[conclusion.into(), serde_json::to_string(&outputs)?.into(), now().into(), row.id.as_str().into()])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    /// A file's text at a commit, if it is there.
+    async fn read_file(&self, path: &RepoPath, ws: &g1t_contracts::User, sha: &str, file: &str) -> Result<Option<String>> {
+        let blob: Outcome<g1t_contracts::repos::BlobView> = g1t_kit::call(
+            &self.repos,
+            "blob",
+            &g1t_contracts::repos::BlobArgs {
+                path: path.clone(),
+                viewer: Some(ws.clone()),
+                git_ref: sha.to_owned(),
+                file_path: file.to_owned(),
+            },
+        )
+        .await?;
+        Ok(match blob {
+            Outcome::Ok(view) => view.text,
+            Outcome::Fail(_) => None,
+        })
     }
 
     async fn skip_job(&self, row: &JobRow, reason: Option<&str>) -> Result<()> {
@@ -929,11 +1149,22 @@ impl Actions {
         for key in &again {
             statements.push(self.db.prepare("DELETE FROM logs WHERE job_id IN (SELECT id FROM jobs WHERE run_id = ? AND key = ?)").bind(&[run.id.as_str().into(), key.as_str().into()])?);
             statements.push(self.db.prepare("DELETE FROM jobs WHERE run_id = ? AND key = ? AND ordinal > 0").bind(&[run.id.as_str().into(), key.as_str().into()])?);
+            // The jobs of a workflow it called are made again when it calls it again.
+            statements.push(
+                self.db
+                    .prepare("DELETE FROM logs WHERE job_id IN (SELECT id FROM jobs WHERE run_id = ? AND key LIKE ?)")
+                    .bind(&[run.id.as_str().into(), format!("{key}/%").into()])?,
+            );
+            statements.push(
+                self.db
+                    .prepare("DELETE FROM jobs WHERE run_id = ? AND key LIKE ?")
+                    .bind(&[run.id.as_str().into(), format!("{key}/%").into()])?,
+            );
             statements.push(
                 self.db
                     .prepare(
                         "UPDATE jobs SET status = 'waiting', conclusion = NULL, steps = '[]', annotations = '[]', outputs = '{}', reason = NULL,
-                           matrix = NULL, token_hash = NULL, seen_at = NULL, started_at = NULL, finished_at = NULL WHERE run_id = ? AND key = ?",
+                           matrix = NULL, call = NULL, token_hash = NULL, seen_at = NULL, started_at = NULL, finished_at = NULL WHERE run_id = ? AND key = ?",
                     )
                     .bind(&[run.id.as_str().into(), key.as_str().into()])?,
             );
@@ -986,12 +1217,19 @@ impl Actions {
         let Some(run) = self.run_row(&job.run_id).await? else {
             return Ok(fail(FailureCode::NotFound, "No such run."));
         };
-        let Ok(workflow) = workflow::parse(&run.source) else {
+        let Ok(caller) = workflow::parse(&run.source) else {
             return Ok(fail(FailureCode::Invalid, "The workflow no longer reads."));
         };
-        let Some(spec) = workflow.jobs.iter().find(|j| j.id == job.key) else {
-            return Ok(fail(FailureCode::NotFound, "The job is not in the workflow."));
+        // A called workflow's job runs as that workflow defines it.
+        let callee = job.callee();
+        let (workflow, spec, call_inputs) = match callee {
+            Some((called, spec, call)) => (called, spec, Some(call["inputs"].clone())),
+            None => match caller.jobs.iter().find(|j| j.id == job.key) {
+                Some(spec) => (caller.clone(), spec.clone(), None),
+                None => return Ok(fail(FailureCode::NotFound, "The job is not in the workflow.")),
+            },
         };
+        let spec = &spec;
         let repo = repo_path(&run.repo);
         let trusted = run.trusted != 0;
         // GITHUB_TOKEN: the workspace's, for as long as the job may run.
@@ -1022,8 +1260,14 @@ impl Actions {
 
         let jobs = self.job_rows(&run.id).await?;
         let mut needs = Map::new();
+        // In a called workflow, its jobs' keys sit under the job that called it.
+        let parent = job.call().filter(|c| c["role"] == "callee").and_then(|c| c["parent"].as_str().map(str::to_owned));
         for need in &spec.needs {
-            let rows: Vec<&JobRow> = jobs.iter().filter(|row| &row.key == need).collect();
+            let key = match &parent {
+                Some(parent) => format!("{parent}/{need}"),
+                None => need.clone(),
+            };
+            let rows: Vec<&JobRow> = jobs.iter().filter(|row| row.key == key).collect();
             let mut outputs = Map::new();
             for row in &rows {
                 if let Ok(Value::Object(more)) = serde_json::from_str::<Value>(&row.outputs) {
@@ -1079,7 +1323,7 @@ impl Actions {
             "contexts": {
                 "vars": vars,
                 "secrets": secrets,
-                "inputs": run.inputs(),
+                "inputs": call_inputs.unwrap_or_else(|| Value::Object(run.inputs())),
                 "matrix": matrix,
                 "needs": needs,
                 "strategy": {
