@@ -29,7 +29,7 @@ gives their values out, so they cannot be copied across.
 
 | On GitHub | On g1t |
 | --- | --- |
-| `on:` `push` (branches, tags, paths), `pull_request`, `pull_request_target`, `issues`, `issue_comment`, `pull_request_review`, `schedule`, `workflow_dispatch`, `workflow_run` | The same, from g1t's own pushes, pull requests, issues and comments. |
+| `on:` `push` (branches, tags, paths), `pull_request`, `pull_request_target`, `issues`, `issue_comment`, `pull_request_review`, `schedule`, `workflow_dispatch`, `workflow_run`, `merge_group` | The same, from g1t's own pushes, pull requests, issues, comments and [merge queue](/guides/merge-queue/). |
 | `jobs`, `needs`, `if`, `outputs`, `env`, `defaults`, `timeout-minutes`, `continue-on-error` | The same. |
 | `strategy.matrix` with `include` and `exclude`, `fail-fast`, `max-parallel`, a matrix from `fromJSON(needs.…)` | The same. |
 | `concurrency` with `cancel-in-progress` | The same. |
@@ -94,6 +94,9 @@ A run on a pull request's latest commit is a check on it:
 - While a workflow runs, the pull request waits for it before merging.
 - When one fails, merging is refused, as for failed acceptance checks.
   Where the repository allows ignoring checks, a member can merge anyway.
+- In a repository that merges through the [merge queue](/guides/merge-queue/),
+  workflows with `on: merge_group` run on each combined state the queue
+  builds, as on GitHub, and the state lands only if they pass.
 - A pull request a **g1t agent** is working on goes back to the agent
   when a workflow fails. The agent reads the run and its logs with the
   same tools you have, fixes the cause, and pushes; the workflows run

@@ -75,6 +75,17 @@ Each tested state runs:
 So a change that breaks something that landed before it is caught here,
 even when it merges without a conflict and its own checks pass.
 
+Once those pass, the repository's [GitHub Actions](/guides/actions/)
+workflows that run `on: merge_group` run on the state too, with the same
+`merge_group` event GitHub sends, on the branch `g1t-queue/<entry>`. The
+entry waits for them, and lands only if they pass:
+
+```yaml
+on:
+  pull_request:
+  merge_group:
+```
+
 A contract check that fails is run again on `main` alone. If it fails there
 too, it was broken already: it is marked as passing with a note, "already
 failing on the default branch; not held against this", and does not hold
@@ -96,8 +107,9 @@ Before landing, g1t checks that nothing has changed underneath:
 
 ## When an entry fails
 
-An entry fails when its checks fail in the combined state, when it does not
-merge cleanly with what is ahead of it, or when the state cannot be built.
+An entry fails when its checks or its `merge_group` workflows fail in the
+combined state, when it does not merge cleanly with what is ahead of it, or
+when the state cannot be built.
 It leaves the queue, and:
 
 1. Its pull request gets a failed check run. Each command is named with the
