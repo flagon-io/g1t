@@ -4,6 +4,7 @@
 //! operations (see [`operations::Op`]), which call the services that own
 //! the data. This Worker holds none.
 
+mod blobs;
 mod mcp;
 mod oauth;
 mod openapi;
@@ -346,6 +347,16 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
             return receive_hook(&mut request, &services, id).await;
         }
 
+    // A sandbox's artifacts and cache, with its job's token, which is not a
+    // g1t token either.
+    if !on_mcp
+        && let Some(rest) = path.strip_prefix("/actions/jobs/")
+        && (rest.contains("/artifacts") || rest.ends_with("/cache"))
+    {
+        let rest = rest.to_owned();
+        return blobs::for_job(request, env, &services, method, &rest).await;
+    }
+
     let viewer = match authenticate(&request, &services).await? {
         Ok(viewer) => viewer,
         Err(refused) => return Ok(refused),
@@ -378,6 +389,28 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     match (method, path.trim_end_matches('/')) {
         ("GET", "") => return Response::from_json(&index()),
         ("GET", "/openapi.json") => return Response::from_json(&openapi::document()),
+        // A run's artifacts: listed, or one downloaded.
+        ("GET", path) if path.starts_with("/repos/") && path.contains("/actions/runs/") && path.contains("/artifacts") => {
+            let parts: Vec<&str> = path.trim_start_matches("/repos/").split('/').collect();
+            if let [owner, repo, "actions", "runs", run, "artifacts", rest @ ..] = parts.as_slice() {
+                return match rest {
+                    [] => {
+                        let seen: Outcome<Value> = g1t_kit::call(
+                            &services.actions,
+                            "run",
+                            &json!({ "repo": { "namespace": owner, "name": repo }, "viewer": viewer, "id": run }),
+                        )
+                        .await?;
+                        match seen {
+                            Outcome::Ok(_) => Response::from_json(&blobs::of_run(env, run).await?),
+                            Outcome::Fail(refused) => failure(&refused),
+                        }
+                    }
+                    [name] => blobs::download(env, &services, &viewer, owner, repo, run, name).await,
+                    _ => fail(FailureCode::NotFound, "No such endpoint."),
+                };
+            }
+        }
         ("POST", "/device/code") => return device_code(&mut request, &services).await,
         ("POST", "/device/token") => return device_token(&mut request, &services).await,
         // Where a pull request lives, for a tool that knows only its fork.

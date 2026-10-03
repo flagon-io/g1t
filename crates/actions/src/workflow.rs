@@ -79,6 +79,12 @@ impl Trigger {
     pub fn wants_type(&self, action: Option<&str>) -> bool {
         let Some(action) = action else { return true };
         if self.types.is_empty() {
+            // A g1t agent's pull request has no code until it is marked
+            // ready, so that is when its default runs start, as `opened`
+            // would on GitHub.
+            if action == "ready_for_review" && self.event.starts_with("pull_request") && self.event != "pull_request_review" {
+                return true;
+            }
             let defaults = default_types(&self.event);
             return defaults.is_empty() || defaults.contains(&action);
         }
@@ -539,6 +545,7 @@ jobs:
         assert!(pr.wants_type(Some("opened")));
         assert!(pr.wants_type(Some("synchronize")));
         assert!(!pr.wants_type(Some("closed")));
+        assert!(pr.wants_type(Some("ready_for_review")));
         let typed = parse("on:\n  pull_request:\n    types: [closed]\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps: [{ run: 'true' }]").unwrap();
         assert!(typed.trigger("pull_request").unwrap().wants_type(Some("closed")));
         assert!(!typed.trigger("pull_request").unwrap().wants_type(Some("opened")));

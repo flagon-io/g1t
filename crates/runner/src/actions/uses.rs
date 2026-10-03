@@ -15,7 +15,7 @@ use serde_json::{Map, Value, json};
 
 use super::files::StepFiles;
 use super::process::{self, Commands, Ended};
-use super::{Frame, Job, Post};
+use super::{Frame, Job, Post, PostRun};
 
 const ACTIONS_DIR: &str = "/home/runner/_actions";
 
@@ -214,14 +214,11 @@ impl Job {
         let lower = name.to_ascii_lowercase();
         match lower.as_str() {
             "actions/checkout" => return self.checkout(with),
-            "actions/upload-artifact" => {
-                self.log.line("##[warning]Artifacts are not kept on g1t yet: nothing was uploaded, and the job goes on.");
-                return (true, BTreeMap::new());
-            }
-            "actions/download-artifact" => {
-                self.log.line("##[error]Artifacts are not kept on g1t yet, so there is nothing to download.");
-                return (false, BTreeMap::new());
-            }
+            "actions/upload-artifact" => return self.upload_artifact(with),
+            "actions/download-artifact" => return self.download_artifact(with),
+            "actions/cache" => return self.cache(with, true, title),
+            "actions/cache/restore" => return self.cache(with, false, title),
+            "actions/cache/save" => return self.cache_save_now(with),
             _ => {}
         }
         let source = if let Some(local) = name.strip_prefix("./") {
@@ -330,10 +327,9 @@ impl Job {
                 }
                 self.posts.push(Post {
                     name: format!("Post {title}"),
-                    action_dir: dir.clone(),
-                    script: post,
                     condition: condition_of("post-if"),
                     env: post_env,
+                    run: PostRun::Node { action_dir: dir.clone(), script: post },
                 });
             }
             return (ok, outputs);

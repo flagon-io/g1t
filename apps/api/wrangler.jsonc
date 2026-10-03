@@ -24,5 +24,8 @@
 		{ "binding": "AUTOMATIONS", "service": "g1t-automations" },
 		{ "binding": "ACTIONS", "service": "g1t-actions" }
 	],
+	// GitHub Actions artifacts and cache, in chunks, with KV's own expiry.
+	// (Moves to R2 once R2 is enabled on the account.)
+	"kv_namespaces": [{ "binding": "BLOBS", "id": "16a4232cb746418db53782aa068be693" }],
 	"observability": { "enabled": true }
 }

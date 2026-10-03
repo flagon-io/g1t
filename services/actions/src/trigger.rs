@@ -206,17 +206,24 @@ impl Actions {
                     subject.paths = Some(pull.files.iter().map(|f| f.path.clone()).collect());
                     return Ok(Some(subject));
                 }
-                // A merged pull request's run is on the commit it landed as.
-                let sha = match (action, data["commit"].as_str()) {
-                    (Some("closed"), Some(commit)) => commit.to_owned(),
-                    _ => match &pull.head_commit {
-                        Some(head) => head.clone(),
-                        None => return Ok(None),
-                    },
+                // A merged pull request's run is on the commit it landed as,
+                // in the repository; otherwise on its head, where that is.
+                let landed = match (action, data["commit"].as_str()) {
+                    (Some("closed"), Some(commit)) => Some(commit.to_owned()),
+                    _ => None,
                 };
-                let source = pull.fork.clone().unwrap_or_else(|| path.clone());
+                let sha = match (&landed, data["commit"].as_str(), &pull.head_commit) {
+                    (Some(commit), _, _) => commit.clone(),
+                    (None, Some(commit), _) => commit.to_owned(),
+                    (None, None, Some(head)) => head.clone(),
+                    (None, None, None) => return Ok(None),
+                };
+                let source = match landed {
+                    Some(_) => path.clone(),
+                    None => pull.fork.clone().unwrap_or_else(|| path.clone()),
+                };
                 Some(Subject {
-                    source: if data["commit"].is_string() { path.clone() } else { source },
+                    source,
                     source_ref: Some(sha.clone()),
                     git_ref: format!("refs/pull/{}/merge", pull.number),
                     sha,
@@ -281,7 +288,16 @@ impl Actions {
                 continue;
             };
             let read = self.read_workflows(&subject.source, &ws, subject.source_ref.as_deref()).await?;
-            self.start_matching(&repo, &ws, read, &mut subject, event_name, action, &event.id, event.actor.as_deref(), &sender)
+            // A pull request's head runs each workflow once, however many
+            // events say it is there (marked ready, and pushed).
+            let key = match subject.pull {
+                Some(number) if event_name.starts_with("pull_request") && event_name != "pull_request_review" => {
+                    let phase = if action == Some("closed") { "closed" } else { "open" };
+                    format!("{event_name}:{number}:{}:{phase}", subject.sha)
+                }
+                _ => event.id.clone(),
+            };
+            self.start_matching(&repo, &ws, read, &mut subject, event_name, action, &key, event.actor.as_deref(), &sender)
                 .await?;
         }
         Ok(())

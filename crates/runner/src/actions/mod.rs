@@ -8,6 +8,7 @@
 //! and `ACTIONS_TOKEN`, the job and its own token. Everything else, the
 //! job's definition, its contexts and its secrets, is fetched with them.
 
+mod blobs;
 mod files;
 mod process;
 mod report;
@@ -42,13 +43,18 @@ pub(crate) struct Frame {
     pub(crate) env: BTreeMap<String, String>,
 }
 
-/// An action's `post` step, run when the job's steps are done.
+/// A step run when the job's steps are done: an action's `post`, or
+/// saving the cache.
 pub(crate) struct Post {
     pub(crate) name: String,
-    pub(crate) action_dir: PathBuf,
-    pub(crate) script: String,
     pub(crate) condition: String,
     pub(crate) env: BTreeMap<String, String>,
+    pub(crate) run: PostRun,
+}
+
+pub(crate) enum PostRun {
+    Node { action_dir: PathBuf, script: String },
+    CacheSave { key: String, paths: Vec<String> },
 }
 
 pub(crate) struct Job {
@@ -94,6 +100,10 @@ fn default_title(step: &Map<String, Value>) -> String {
 }
 
 impl Job {
+    pub(crate) fn base_env_value(&self, name: &str) -> Option<String> {
+        self.base_env.get(name).cloned()
+    }
+
     fn status(&self) -> Status {
         if self.failed { Status::Failure } else { Status::Success }
     }
@@ -534,7 +544,10 @@ fn run_job(job: &mut Job) {
         }
         job.log.step(number);
         job.log.step_state(number, &post.name, "in_progress", None);
-        let ok = job.run_node(&post.action_dir, &post.script, &post.env);
+        let ok = match &post.run {
+            PostRun::Node { action_dir, script } => job.run_node(action_dir, script, &post.env),
+            PostRun::CacheSave { key, paths } => job.cache_save(key, paths),
+        };
         job.log.step_state(number, &post.name, "completed", Some(if ok { "success" } else { "failure" }));
         if !ok {
             job.failed = true;

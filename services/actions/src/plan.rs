@@ -945,6 +945,13 @@ impl Actions {
         })
     }
 
+    /// `job_auth`: which run and repository a running job's token is for,
+    /// so the API can keep its artifacts and cache.
+    pub async fn job_auth(&self, a: JobCallArgs) -> Result<Outcome<Value>> {
+        let job = check!(self.job_for_token(&a).await?);
+        Ok(Outcome::Ok(json!({ "run": job.run_id, "repoId": job.repo_id })))
+    }
+
     /// `job_spec`: everything the sandbox needs to run the job.
     pub async fn job_spec(&self, a: JobCallArgs) -> Result<Outcome<Value>> {
         let job = check!(self.job_for_token(&a).await?);

@@ -300,6 +300,79 @@ function SettingsMenu({ slug, owner, open }: { slug: string; owner: boolean; ope
   );
 }
 
+type ActiveRepo = NonNullable<ShellData["repo"]>;
+
+/**
+ * A repository's own menu, which the sidebar slides to while you are in
+ * it, as it does for settings: everything about the repository and nothing
+ * else, with the way back to everything.
+ */
+function RepoMenu({ repo, isPrivate, open }: { repo: ActiveRepo; isPrivate: boolean; open: boolean }) {
+  const base = `/${repo.namespace}/${repo.name}`;
+  return (
+    <nav aria-label={`${repo.namespace}/${repo.name}`} inert={!open} className={PANEL}>
+      <Link
+        to="/"
+        className="group mt-3 flex h-8 items-center gap-2 rounded-md px-2 text-[0.8125rem] text-muted transition-colors hover:bg-raised/60 hover:text-fg"
+      >
+        <ArrowLeft size={15} className="text-faint transition-transform group-hover:-translate-x-0.5 group-hover:text-muted" />
+        Mission control
+      </Link>
+      <Link
+        to={base}
+        className="mt-3 flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-raised/60"
+      >
+        <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-raised text-muted ring-1 ring-line">
+          {isPrivate ? <Lock size={13} /> : <BookMarked size={13} />}
+        </span>
+        <span className="min-w-0 truncate font-mono text-[0.8125rem]">
+          <span className="text-faint">{repo.namespace}/</span>
+          <span className="font-semibold text-fg">{repo.name}</span>
+        </span>
+      </Link>
+      <SidebarGroup title="Code">
+        <SidebarLink to={base} end icon={<Code2 size={15} />} also={`${base}/tree`}>
+          Code
+        </SidebarLink>
+        <SidebarLink to={`${base}/commits`} also={`${base}/commit`} icon={<History size={15} />}>
+          Commits
+        </SidebarLink>
+      </SidebarGroup>
+      <SidebarGroup title="Work">
+        <SidebarLink to={`${base}/issues`} icon={<CircleDot size={15} />} count={repo.issues}>
+          Issues
+        </SidebarLink>
+        <SidebarLink to={`${base}/pulls`} also={`${base}/pull`} icon={<GitPullRequest size={15} />} count={repo.pulls}>
+          Pull requests
+        </SidebarLink>
+        {repo.member && (
+          <SidebarLink to={`${base}/plans`} icon={<ListTree size={15} />}>
+            Plan
+          </SidebarLink>
+        )}
+        <SidebarLink to={`${base}/queue`} icon={<Layers size={15} />}>
+          Merge queue
+        </SidebarLink>
+      </SidebarGroup>
+      <SidebarGroup title="Automate">
+        <SidebarLink to={`${base}/actions`} icon={<PlayCircle size={15} />}>
+          Actions
+        </SidebarLink>
+        <SidebarLink to={`${base}/automations`} icon={<Zap size={15} />}>
+          Automations
+        </SidebarLink>
+      </SidebarGroup>
+      {repo.member && (
+        <SidebarGroup title="Repository">
+          <SidebarLink to={`${base}/settings`} icon={<Settings size={15} />}>
+            Settings
+          </SidebarLink>
+        </SidebarGroup>
+      )}
+    </nav>
+  );
+}
+
 /** Your own settings, as the sidebar shows them on the settings page. */
 function AccountSettingsMenu({ open }: { open: boolean }) {
   const { hash } = useLocation();
@@ -344,14 +417,22 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
   // the sidebar over.
   const inSettings = ws != null && SETTINGS_PAGE.exec(going ?? pathname)?.[1]?.toLowerCase() === ws.slug;
   const inAccount = (going ?? pathname) === "/settings";
-  const away = inSettings || inAccount;
-  // Which settings sit on the far side of the track. Kept while sliding back,
-  // so they do not vanish on the way out.
-  const side = useRef<"workspace" | "account">("workspace");
+  const active = shell.repo;
+  // In a repository, or on the way into one, its own menu takes the sidebar.
+  const target = going ?? pathname;
+  const repoPath = /^\/([^/]+)\/([^/-][^/]*)(\/|$)/.exec(target);
+  const reserved = new Set(["settings", "explore", "search", "new", "workspaces", "login", "logout", "register", "verify", "forgot", "reset", "device", "oauth"]);
+  const inRepo = repoPath != null && !reserved.has(repoPath[1]) && repoPath[2] !== "-";
+  const away = inSettings || inAccount || inRepo;
+  // What sits on the far side of the track. Kept while sliding back, so it
+  // does not vanish on the way out.
+  const side = useRef<"workspace" | "account" | "repo">("workspace");
   if (inAccount) side.current = "account";
   else if (inSettings) side.current = "workspace";
-  const active = shell.repo;
-  const repoBase = active ? `/${active.namespace}/${active.name}` : null;
+  else if (inRepo) side.current = "repo";
+  // The repository last shown, kept for the slide back.
+  const shown = useRef(active);
+  if (active) shown.current = active;
   // The repository being looked at is listed even when it is someone else's.
   const listed =
     active && !shell.repos.some((repo) => repo.namespace === active.namespace && repo.name === active.name)
@@ -410,14 +491,11 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
             <p className="px-2 py-1 text-xs text-faint">None yet.</p>
           )}
           {listed.map((repo) => {
-            const open =
-              active && repo.namespace === active.namespace && repo.name === active.name;
             const base = `/${repo.namespace}/${repo.name}`;
             return (
               <div key={base}>
                 <SidebarLink
                   to={base}
-                  end={!open}
                   icon={repo.isPrivate ? <Lock size={15} /> : <BookMarked size={15} />}
                 >
                   <span className="font-mono text-[0.8125rem]">
@@ -427,60 +505,18 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
                     {repo.name}
                   </span>
                 </SidebarLink>
-                {open && repoBase && (
-                  <div className="my-0.5 ml-4 space-y-px border-l border-line pl-2">
-                    <SidebarLink to={repoBase} end icon={<Code2 size={14} />} also={`${repoBase}/tree`}>
-                      Code
-                    </SidebarLink>
-                    <SidebarLink
-                      to={`${repoBase}/issues`}
-                      icon={<CircleDot size={14} />}
-                      count={active.issues}
-                    >
-                      Issues
-                    </SidebarLink>
-                    <SidebarLink
-                      to={`${repoBase}/pulls`}
-                      also={`${repoBase}/pull`}
-                      icon={<GitPullRequest size={14} />}
-                      count={active.pulls}
-                    >
-                      Pull requests
-                    </SidebarLink>
-                    <SidebarLink to={`${repoBase}/actions`} icon={<PlayCircle size={14} />}>
-                      Actions
-                    </SidebarLink>
-                    <SidebarLink to={`${repoBase}/queue`} icon={<Layers size={14} />}>
-                      Merge queue
-                    </SidebarLink>
-                    <SidebarLink
-                      to={`${repoBase}/commits`}
-                      also={`${repoBase}/commit`}
-                      icon={<History size={14} />}
-                    >
-                      Commits
-                    </SidebarLink>
-                    {active.member && (
-                      <SidebarLink to={`${repoBase}/plans`} icon={<ListTree size={14} />}>
-                        Plan
-                      </SidebarLink>
-                    )}
-                    <SidebarLink to={`${repoBase}/automations`} icon={<Zap size={14} />}>
-                      Automations
-                    </SidebarLink>
-                    {active.member && (
-                      <SidebarLink to={`${repoBase}/settings`} icon={<Settings size={14} />}>
-                        Settings
-                      </SidebarLink>
-                    )}
-                  </div>
-                )}
               </div>
             );
           })}
         </SidebarGroup>
       </nav>
-      {side.current === "account" || !ws ? (
+      {side.current === "repo" && shown.current ? (
+        <RepoMenu
+          repo={shown.current}
+          isPrivate={shell.repos.some((repo) => repo.namespace === shown.current!.namespace && repo.name === shown.current!.name && repo.isPrivate)}
+          open={inRepo}
+        />
+      ) : side.current === "account" || !ws ? (
         <AccountSettingsMenu open={inAccount} />
       ) : (
         <SettingsMenu slug={ws.slug} owner={ws.role === "owner"} open={inSettings} />
@@ -492,6 +528,7 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
       <div className="space-y-2 p-2">
         {ws && (
           <div className="space-y-px">
+            <p className="px-2 pb-1 text-[0.6875rem] font-medium uppercase tracking-wider text-faint">{ws.slug}</p>
             <SidebarLink to={`/${ws.slug}/-/usage`} icon={<BarChart3 size={15} />}>
               Usage
             </SidebarLink>
