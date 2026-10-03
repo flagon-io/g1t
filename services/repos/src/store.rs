@@ -235,11 +235,10 @@ impl GitRepo for ArtifactsRepo {
     }
 
     async fn read_tree(&self, tree_hash: &str) -> Result<Option<Vec<TreeEntry>>> {
-        if let Some(bytes) = self.cached("tree", tree_hash).await {
-            if let Ok(entries) = serde_json::from_slice::<Vec<TreeEntry>>(&bytes) {
+        if let Some(bytes) = self.cached("tree", tree_hash).await
+            && let Ok(entries) = serde_json::from_slice::<Vec<TreeEntry>>(&bytes) {
                 return Ok(Some(entries));
             }
-        }
         let entries: Option<Vec<RawEntry>> =
             js::from_js(&js::call(&self.handle, "readTree", &[tree_hash.into()]).await?)?;
         let entries: Option<Vec<TreeEntry>> = entries.map(|entries| {
@@ -252,11 +251,10 @@ impl GitRepo for ArtifactsRepo {
                 })
                 .collect()
         });
-        if let Some(entries) = &entries {
-            if let Ok(bytes) = serde_json::to_vec(entries) {
+        if let Some(entries) = &entries
+            && let Ok(bytes) = serde_json::to_vec(entries) {
                 self.keep("tree", tree_hash, bytes).await;
             }
-        }
         Ok(entries)
     }
 

@@ -2,9 +2,10 @@ import { ArrowRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
-import type { Repo } from "@g1t/contracts";
+import { type Provider, PROVIDERS, type Repo } from "@g1t/contracts";
 
 import { ConvergeArt, PlanArt, QueueArt, TeamArt, WhyArt } from "./art";
+import { ProviderMark } from "./model-providers";
 import { RepoList } from "./repo-list";
 import { ButtonLink, CopyLine } from "./ui";
 
@@ -79,6 +80,8 @@ const BASICS = [
   "REST API",
   "MCP server",
   "OAuth sign-in",
+  "Any model provider",
+  "Sentry, Jira, Linear",
 ];
 
 const COMPARISON: [string, string, string][] = [
@@ -89,6 +92,31 @@ const COMPARISON: [string, string, string][] = [
   ["What main promises", "Whatever passed when each change merged", "Every check of every issue that ever landed, on every change since"],
   ["Why is this line here?", "A commit message, if you are lucky", "The commit, the pull request, the issue and the agent's own account"],
   ["You in the loop", "Reading every diff", "Asking for changes, approving, steering; the agents do the rest"],
+];
+
+/** The systems g1t connects to, shown on the landing page. */
+const STACK: Provider[] = [
+  "anthropic",
+  "openai",
+  "gemini",
+  "xai",
+  "mistral",
+  "deepseek",
+  "azure_openai",
+  "openrouter",
+  "groq",
+  "sentry",
+  "jira",
+  "linear",
+];
+
+/** What happens to a production error once Sentry is connected. */
+const LOOP = [
+  "Sentry: TypeError in checkout",
+  "g1t opens an issue, with the stack trace",
+  "An agent fixes it; another reviews it",
+  "The merge queue lands it on main",
+  "Sentry marks the error resolved",
 ];
 
 const PLATFORM = ["Workers", "Artifacts", "Containers", "D1", "Queues", "AI Gateway", "Rust"];
@@ -228,6 +256,56 @@ export function Landing({ repos }: { repos: Repo[] }) {
           <CopyLine prompt text="curl -fsSL https://g1t.sh/install/claude.sh | sh" />
           <CopyLine prompt text="git clone https://g1t.sh/syntaqx/g1t.git" />
           <CopyLine prompt text="curl https://api.g1t.sh/repos/syntaqx/g1t/queue" />
+        </div>
+      </section>
+
+      {/* Your stack */}
+      <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 pb-24 lg:grid-cols-2">
+        <div className="lg:order-2">
+          <Eyebrow>Your stack</Eyebrow>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance">
+            Your models. Your alerts. Your tickets.
+          </h2>
+          <p className="mt-4 max-w-md leading-7 text-muted">
+            Run g1t's agents on g1t's models, or on your own accounts with any of the labs and
+            platforms, and choose which model does which work. Keys stay with g1t: an agent's
+            sandbox only ever holds a token for its own run.
+          </p>
+          <p className="mt-4 max-w-md leading-7 text-muted">
+            Connect Sentry and a new error becomes an issue, an agent fixes it, and Sentry hears
+            it was resolved, before anyone was paged. Mention TECH-1234 and the agent reads the
+            Jira ticket.
+          </p>
+          <div className="mt-6">
+            <ButtonLink to="https://docs.g1t.sh/guides/integrations/" variant="quiet">
+              See the integrations
+              <ArrowRight size={14} />
+            </ButtonLink>
+          </div>
+        </div>
+        <div className="space-y-6 lg:order-1">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {STACK.map((provider) => (
+              <div
+                key={provider}
+                className="flex flex-col items-center gap-2 rounded-xl bg-surface px-2 py-3 ring-1 ring-line"
+                title={PROVIDERS[provider].label}
+              >
+                <ProviderMark provider={provider} size={30} />
+                <span className="w-full text-center text-xs leading-tight text-muted">{PROVIDERS[provider].label}</span>
+              </div>
+            ))}
+          </div>
+          <ol className="space-y-2 font-mono text-[0.8125rem]">
+            {LOOP.map((step, index) => (
+              <li key={step} className="flex items-center gap-3 text-fg-soft">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface text-xs text-faint ring-1 ring-line">
+                  {index + 1}
+                </span>
+                {step}
+              </li>
+            ))}
+          </ol>
         </div>
       </section>
 

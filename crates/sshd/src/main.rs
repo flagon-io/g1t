@@ -95,11 +95,10 @@ where
     let (mut from_ssh, mut to_ssh) = tokio::io::split(theirs);
     tokio::spawn(async move {
         while let Some(Ok(message)) = source.next().await {
-            if let Message::Binary(bytes) = message {
-                if to_ssh.write_all(&bytes).await.is_err() {
+            if let Message::Binary(bytes) = message
+                && to_ssh.write_all(&bytes).await.is_err() {
                     break;
                 }
-            }
         }
         let _ = to_ssh.shutdown().await;
     });

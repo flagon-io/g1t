@@ -112,8 +112,8 @@ export default function PlanPage({ loaderData, actionData, params }: Route.Compo
         </Link>
       </p>
       <h2 className="mt-2 text-xl font-semibold tracking-tight">The outcome</h2>
-      <div className="mt-3 rounded-xl border border-line bg-surface p-5 text-sm whitespace-pre-wrap">
-        {plan.brief}
+      <div className="mt-3 rounded-xl border border-line bg-surface p-5 text-sm">
+        <Markdown source={plan.brief} repo={{ namespace: params.owner, name: params.repo }} />
       </div>
       <p className="mt-2 text-xs text-faint">
         Asked for by {plan.author.username} <TimeAgo at={plan.createdAt} />
@@ -278,9 +278,12 @@ export default function PlanPage({ loaderData, actionData, params }: Route.Compo
               </span>
             </div>
           )}
-          {plan.status === "applied" && (
+          {plan.status === "applied" && !moving && (
+            <p className="mt-6 text-sm text-muted">Everything in this plan has landed.</p>
+          )}
+          {plan.status === "applied" && moving && (
             <p className="mt-6 text-sm text-muted">
-              These are open. Follow them under{" "}
+              Some are still open. Follow them under{" "}
               <Link to={`${base}/issues`} className="text-fg underline underline-offset-4">
                 Issues
               </Link>{" "}

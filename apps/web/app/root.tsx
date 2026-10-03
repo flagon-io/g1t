@@ -252,6 +252,8 @@ const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
       ["Explore repositories", "/explore"],
       ["g1t agents", "https://docs.g1t.sh/guides/g1t-agents/"],
       ["Bring your own agent", "https://docs.g1t.sh/guides/bring-your-own-agent/"],
+      ["Integrations", "https://docs.g1t.sh/guides/integrations/"],
+      ["Model providers", "https://docs.g1t.sh/guides/models/"],
       ["Sign up", "/register"],
     ],
   },
@@ -259,7 +261,7 @@ const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
     title: "Developers",
     links: [
       ["Quickstart", "https://docs.g1t.sh/quickstart/"],
-      ["Concepts", "https://docs.g1t.sh/concepts/overview/"],
+      ["How g1t works", "https://docs.g1t.sh/concepts/overview/"],
       ["API reference", "https://docs.g1t.sh/api/reference/"],
       ["OpenAPI", "https://api.g1t.sh/openapi.json"],
       ["llms.txt", "/llms.txt"],

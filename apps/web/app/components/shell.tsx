@@ -244,8 +244,14 @@ function AccountMenu({ user }: { user: User }) {
 /** A workspace's settings pages, which the sidebar slides over to. */
 const SETTINGS_PAGE = /^\/([^/]+)\/-\/(settings|people|tokens|billing|integrations)(\/|$)/;
 
-/** How the sidebar's two menus slide past each other. */
-const SLIDE = "absolute inset-0 overflow-y-auto px-2 pb-4 transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none";
+/**
+ * The sidebar's menus sit side by side on one track, and the track slides:
+ * the main menu leaves to the left as the settings arrive from the right,
+ * together, with a long ease-out, the way a phone pushes a screen.
+ */
+const TRACK = "flex h-full w-[200%] transition-transform duration-[550ms] ease-[cubic-bezier(0.45,0,0.15,1)] will-change-transform motion-reduce:transition-none";
+/** One menu on the track. */
+const PANEL = "h-full w-1/2 shrink-0 overflow-y-auto px-2 pb-4";
 
 /** A workspace's settings, as the sidebar shows them in place of everything else. */
 function SettingsMenu({ slug, owner, open }: { slug: string; owner: boolean; open: boolean }) {
@@ -253,7 +259,7 @@ function SettingsMenu({ slug, owner, open }: { slug: string; owner: boolean; ope
     <nav
       aria-label="Workspace settings"
       inert={!open}
-      className={`${SLIDE} ${open ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-full opacity-0"}`}
+      className={PANEL}
     >
       <Link
         to={`/${slug}`}
@@ -303,7 +309,7 @@ function AccountSettingsMenu({ open }: { open: boolean }) {
     <nav
       aria-label="Your settings"
       inert={!open}
-      className={`${SLIDE} ${open ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-full opacity-0"}`}
+      className={PANEL}
     >
       <Link
         to="/"
@@ -330,6 +336,11 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
   const inSettings = ws != null && SETTINGS_PAGE.exec(going ?? pathname)?.[1]?.toLowerCase() === ws.slug;
   const inAccount = (going ?? pathname) === "/settings";
   const away = inSettings || inAccount;
+  // Which settings sit on the far side of the track. Kept while sliding back,
+  // so they do not vanish on the way out.
+  const side = useRef<"workspace" | "account">("workspace");
+  if (inAccount) side.current = "account";
+  else if (inSettings) side.current = "workspace";
   const active = shell.repo;
   const repoBase = active ? `/${active.namespace}/${active.name}` : null;
   // The repository being looked at is listed even when it is someone else's.
@@ -360,12 +371,9 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
           <kbd className="rounded bg-raised px-1.5 font-mono text-[0.625rem] text-muted ring-1 ring-line">⌘K</kbd>
         </button>
       </div>
-      <div className="relative min-h-0 grow overflow-hidden">
-      <nav
-        aria-label="g1t"
-        inert={away}
-        className={`${SLIDE} ${away ? "pointer-events-none -translate-x-1/3 opacity-0" : "translate-x-0 opacity-100"}`}
-      >
+      <div className="min-h-0 grow overflow-hidden">
+      <div className={`${TRACK} ${away ? "-translate-x-1/2" : "translate-x-0"}`}>
+      <nav aria-label="g1t" inert={away} className={PANEL}>
         <div className="mt-3 space-y-px">
           <SidebarLink to="/" end icon={<LayoutDashboard size={15} />}>
             Mission control
@@ -475,8 +483,12 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
           })}
         </SidebarGroup>
       </nav>
-      {ws && <SettingsMenu slug={ws.slug} owner={ws.role === "owner"} open={inSettings} />}
-      <AccountSettingsMenu open={inAccount} />
+      {side.current === "account" || !ws ? (
+        <AccountSettingsMenu open={inAccount} />
+      ) : (
+        <SettingsMenu slug={ws.slug} owner={ws.role === "owner"} open={inSettings} />
+      )}
+      </div>
       </div>
 
       <div className="space-y-2 p-2">
@@ -805,7 +817,7 @@ export function AppShell({
         </div>
       )}
 
-      <div className="flex min-h-screen flex-col lg:pl-64">
+      <div className="flex min-h-screen min-w-0 flex-col lg:pl-64">
         <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-line bg-bg/85 px-3 backdrop-blur sm:px-4">
           <button
             type="button"
@@ -865,7 +877,7 @@ export function AppShell({
           </div>
         </header>
         {banner}
-        <main className="grow">{children}</main>
+        <main className="min-w-0 grow">{children}</main>
       </div>
       <CommandPalette open={palette} onClose={() => setPalette(false)} commands={commands} />
     </div>

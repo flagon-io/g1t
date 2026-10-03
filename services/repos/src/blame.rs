@@ -76,13 +76,11 @@ fn carried(old: &[String], new: &[String]) -> Vec<Option<usize>> {
     let diff = TextDiff::from_lines(&before, &after);
     let mut map = vec![None; new.len()];
     for change in diff.iter_all_changes() {
-        if change.tag() == ChangeTag::Equal {
-            if let (Some(o), Some(n)) = (change.old_index(), change.new_index()) {
-                if let Some(slot) = map.get_mut(n) {
+        if change.tag() == ChangeTag::Equal
+            && let (Some(o), Some(n)) = (change.old_index(), change.new_index())
+                && let Some(slot) = map.get_mut(n) {
                     *slot = Some(o);
                 }
-            }
-        }
     }
     map
 }
@@ -189,11 +187,10 @@ pub async fn blame<R: GitRepo>(
     }
     let mut commits: Vec<Commit> = Vec::new();
     for range in &ranges {
-        if !commits.iter().any(|commit| commit.hash == range.commit) {
-            if let Some(commit) = by_hash.get(range.commit.as_str()) {
+        if !commits.iter().any(|commit| commit.hash == range.commit)
+            && let Some(commit) = by_hash.get(range.commit.as_str()) {
                 commits.push((*commit).clone());
             }
-        }
     }
     Ok(Some(Blame {
         head: first.hash.clone(),

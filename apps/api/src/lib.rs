@@ -341,11 +341,10 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     // Outside systems reporting to a connection. They sign what they send
     // with the connection's own secret, which is not a g1t token, so this
     // comes before anything that would read one.
-    if method == "POST" && !on_mcp {
-        if let Some(id) = path.strip_prefix("/hooks/").filter(|id| !id.is_empty() && !id.contains('/')) {
+    if method == "POST" && !on_mcp
+        && let Some(id) = path.strip_prefix("/hooks/").filter(|id| !id.is_empty() && !id.contains('/')) {
             return receive_hook(&mut request, &services, id).await;
         }
-    }
 
     let viewer = match authenticate(&request, &services).await? {
         Ok(viewer) => viewer,

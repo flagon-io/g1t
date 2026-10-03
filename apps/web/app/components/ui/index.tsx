@@ -210,9 +210,20 @@ export function CopyLine({
   const [copied, setCopied] = useState(false);
   return (
     <div className="group flex items-center gap-3 rounded-lg border border-line bg-surface py-2 pr-2 pl-3.5 font-mono text-[0.8125rem]">
-      <code className="min-w-0 grow overflow-x-auto whitespace-nowrap">
+      {/* Wraps rather than hides: a command or an address is no use half seen. */}
+      <code className="min-w-0 grow whitespace-pre-wrap [overflow-wrap:anywhere]">
         {prompt && <span className="mr-2 text-faint select-none">$</span>}
-        {text}
+        {/* Short words with hyphens, such as `--transport`, stay whole when
+            the line wraps; long ones, such as addresses, may still break. */}
+        {text.split(/(\s+)/).map((part, index) =>
+          part.includes("-") && part.length <= 24 ? (
+            <span key={index} className="whitespace-nowrap">
+              {part}
+            </span>
+          ) : (
+            part
+          ),
+        )}
       </code>
       <button
         type="button"
