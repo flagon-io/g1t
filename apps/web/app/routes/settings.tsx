@@ -80,12 +80,15 @@ export default function Settings({
 }: Route.ComponentProps) {
   const { user, keys, tokens, applications } = loaderData;
   return (
-    <main className="mx-auto max-w-2xl space-y-12 px-4 py-12">
-      <h1 className="text-xl font-semibold">
-        Settings <span className="font-mono text-muted">{user.username}</span>
-      </h1>
-
-      <section>
+    <main className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
+      <header className="mb-8 border-b border-line pb-6">
+        <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
+        <p className="mt-1.5 text-sm text-muted">
+          How <span className="font-mono text-fg">{user.username}</span> signs in from git, tools and agents.
+        </p>
+      </header>
+      <div className="max-w-2xl space-y-12">
+      <section id="ssh-keys" className="scroll-mt-20">
         <h2 className="font-medium">SSH keys</h2>
         <ul className="mt-4 divide-y divide-line rounded-md border border-line empty:hidden">
           {keys.map((key) => (
@@ -113,7 +116,7 @@ export default function Settings({
         </Form>
       </section>
 
-      <section>
+      <section id="tokens" className="scroll-mt-20">
         <h2 className="font-medium">Access tokens</h2>
         <p className="mt-1 text-sm text-muted">
           Use a token as the password when git asks for one over HTTPS, and to
@@ -176,7 +179,7 @@ export default function Settings({
         </Form>
       </section>
 
-      <section>
+      <section id="applications" className="scroll-mt-20">
         <h2 className="font-medium">Connected applications</h2>
         <p className="mt-1 text-sm text-muted">
           Applications you signed in to through your browser, such as an agent
@@ -206,6 +209,7 @@ export default function Settings({
           </ul>
         )}
       </section>
+      </div>
     </main>
   );
 }

@@ -285,6 +285,42 @@ function SettingsMenu({ slug, owner, open }: { slug: string; owner: boolean; ope
   );
 }
 
+/** Your own settings, as the sidebar shows them on the settings page. */
+function AccountSettingsMenu({ open }: { open: boolean }) {
+  const { hash } = useLocation();
+  const item = (id: string, icon: ReactNode, label: string) => (
+    <Link
+      to={`/settings#${id}`}
+      className={`group flex h-8 items-center gap-2.5 rounded-md px-2 text-[0.8125rem] transition-colors ${
+        hash === `#${id}` ? "bg-raised font-medium text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"
+      }`}
+    >
+      <span className="shrink-0 text-faint group-hover:text-muted">{icon}</span>
+      {label}
+    </Link>
+  );
+  return (
+    <nav
+      aria-label="Your settings"
+      inert={!open}
+      className={`${SLIDE} ${open ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-full opacity-0"}`}
+    >
+      <Link
+        to="/"
+        className="group mt-3 flex h-8 items-center gap-2 rounded-md px-2 text-[0.8125rem] text-muted transition-colors hover:bg-raised/60 hover:text-fg"
+      >
+        <ArrowLeft size={15} className="text-faint transition-transform group-hover:-translate-x-0.5 group-hover:text-muted" />
+        Mission control
+      </Link>
+      <SidebarGroup title="Account">
+        {item("ssh-keys", <KeyRound size={15} />, "SSH keys")}
+        {item("tokens", <Lock size={15} />, "Access tokens")}
+        {item("applications", <Plug size={15} />, "Connected applications")}
+      </SidebarGroup>
+    </nav>
+  );
+}
+
 function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind: () => void }) {
   const ws = shell.workspace;
   const { pathname } = useLocation();
@@ -292,6 +328,8 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
   // On a workspace's settings page, or on the way to one, its settings take
   // the sidebar over.
   const inSettings = ws != null && SETTINGS_PAGE.exec(going ?? pathname)?.[1]?.toLowerCase() === ws.slug;
+  const inAccount = (going ?? pathname) === "/settings";
+  const away = inSettings || inAccount;
   const active = shell.repo;
   const repoBase = active ? `/${active.namespace}/${active.name}` : null;
   // The repository being looked at is listed even when it is someone else's.
@@ -325,8 +363,8 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
       <div className="relative min-h-0 grow overflow-hidden">
       <nav
         aria-label="g1t"
-        inert={inSettings}
-        className={`${SLIDE} ${inSettings ? "pointer-events-none -translate-x-1/3 opacity-0" : "translate-x-0 opacity-100"}`}
+        inert={away}
+        className={`${SLIDE} ${away ? "pointer-events-none -translate-x-1/3 opacity-0" : "translate-x-0 opacity-100"}`}
       >
         <div className="mt-3 space-y-px">
           <SidebarLink to="/" end icon={<LayoutDashboard size={15} />}>
@@ -438,6 +476,7 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
         </SidebarGroup>
       </nav>
       {ws && <SettingsMenu slug={ws.slug} owner={ws.role === "owner"} open={inSettings} />}
+      <AccountSettingsMenu open={inAccount} />
       </div>
 
       <div className="space-y-2 p-2">
@@ -472,7 +511,7 @@ function Breadcrumbs({ pathname }: { pathname: string }) {
   if (parts.length === 0) return <span className="text-sm font-medium">Mission control</span>;
   if (reserved.includes(parts[0]!)) {
     const words: Record<string, string> = {
-      settings: "Your settings",
+      settings: "Account",
       explore: "Explore",
       new: "New repository",
       search: "Search",
