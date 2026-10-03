@@ -766,52 +766,21 @@ What is left is ordered by how much it shows the point above, not by forge
 parity. Forge basics are done well enough; each item below should make the
 demo's story stronger.
 
-1. **The outcome page.** One live view of a brief being converged: the issue
-   graph lighting up as agents take, finish, revise and land work; who is
-   blocked on whom; the queue draining into `main`; cost so far. The demo's
-   centrepiece.
-2. **Coordination you can see.** Agents use g1t's tools (opening issues for
-   out-of-scope work, commenting on each other's pull requests); show those
-   exchanges as first-class cards on the outcome page and in timelines, with
-   handoff and question states.
-3. **Steering a running agent.** Send a message to a working agent, pause it,
-   or answer its question from the page; it picks it up at its next turn.
-4. **Racing and comparing.** Several agents on one issue, compared side by side
-   with checks and review, the winner merged and the rest superseded.
-5. **Bring your own agent, recorded.** A CLI with Claude Code hooks so sessions
-   from anyone's machine land on the pull request automatically.
-6. **A visual identity that says "agents".** Isometric line-art of lanes,
-   branches converging and agents at work; a palette and type system to match.
-7. **The large run.** Dozens of agents on a real repository, end to end, for
+Done from this list: the outcome page (a plan's issues as a live graph with
+cost and a feed of what happened), coordination you can see (agents' issues
+and comments stand out in the feed; agents hold g1t's tools through a token
+scoped to one repository), steering a running agent (messages delivered
+between steps, and at the end), and recording sessions from anyone's own
+Claude Code (`curl -fsSL https://g1t.sh/install/claude.sh | sh`). Racing a
+set number of agents on one issue is dropped: choosing how many agents to
+use is not something people should have to do.
+
+1. **Handoffs and questions between agents** as states (offered, accepted,
+   declined, done) on the outcome page, not only comments.
+2. **The large run.** Dozens of agents on a real repository, end to end, for
    the video; g1t hosted on g1t.
-
-
-Done: site with marketing page; separate docs site with API explorer; git
-over HTTPS; accounts with registration, email verification, password reset
-and device sign-in; an OAuth 2.1 server, so MCP clients sign in through the
-browser with no token to paste; workspaces with members, required before
-anything else, sharing one namespace with usernames, each with a page that
-rolls up its repositories and work in progress; access tokens owned by a
-workspace; issues with labels, checks and
-comments; pull requests in forks or from branches, with diffs and sessions,
-several per issue; acceptance checks run in clean sandboxes, gating the
-merge; a g1t agent's pull request seen through automatically, from checks
-and review to revision and catching up, to ready to merge, and merged by
-itself where the repository's settings say so; mission control showing
-every pull request in flight by where it stands; issues and pull requests assigned to people as well as to agents,
-reviewers requested, and every such step told in the conversation; agent
-usage charged to the workspace from prepaid credit; repository settings for branch protection, required
-approvals and how g1t's agents are reviewed and merged; line comments and review verdicts, including reviews written by a
-g1t agent; overlap between pull requests flagged from every push; catching
-up with `main` by a g1t agent that resolves conflicts; importing from
-GitHub; merging with a behind check, which resolves the issue and supersedes
-the rest; g1t agents in sandboxes, with the model routed by g1t rather than chosen; REST API, OpenAPI
-and MCP server; event bus; a speculative merge queue that tests each pull request together with those
-ahead of it and lands only states that passed, ejecting a failure back to its agent; agents told about
-the other work in flight, and a person's review outranking an agent's; a person asking for changes
-sending the agent back; why-blame from any line to the commit, pull request, issue and the agent's own
-account; commit pages and a diff view with a file tree, split view and viewed state; a sidebar app
-shell with a command palette. Every service and the API are in Rust.
+3. **Polish for judges trying it in a minute:** a seeded demo workspace, the
+   empty states, and the first-run path from sign-up to an outcome landing.
 
 Earlier items still open, after those:
 
