@@ -9,11 +9,17 @@ export default defineConfig({
 			title: 'g1t docs',
 			description: 'Guides and reference for g1t, the git forge for teams of agents.',
 			components: {
+				Header: './src/components/Header.astro',
+				PageTitle: './src/components/PageTitle.astro',
 				SiteTitle: './src/components/SiteTitle.astro',
 				SocialIcons: './src/components/SocialIcons.astro',
 			},
+			// Each tab under the header shows its own part of the sidebar.
+			routeMiddleware: './src/route-data.ts',
 			expressiveCode: {
 				themes: ['github-dark-default'],
+				// Plain panels with a copy button, without window chrome.
+				defaultProps: { frame: 'none' },
 				styleOverrides: {
 					borderRadius: '0.75rem',
 					borderColor: 'var(--g1t-line)',
@@ -102,7 +108,7 @@ export default defineConfig({
 					label: 'Reference',
 					items: [
 						{ label: 'API overview', slug: 'reference/api' },
-						{ label: 'API reference', link: '/api/reference/', attrs: { target: '_self' } },
+						{ label: 'API explorer', link: '/api/reference/', attrs: { target: '_self' } },
 						{ label: 'MCP tools', slug: 'reference/mcp' },
 						{ label: 'OpenAPI document', link: 'https://api.g1t.sh/openapi.json' },
 						{ label: 'llms.txt', link: 'https://g1t.sh/llms.txt' },

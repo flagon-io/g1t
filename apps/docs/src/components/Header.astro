@@ -1,0 +1,65 @@
+---
+// Starlight's header, with the tabs that divide the docs beneath it.
+import Default from '@astrojs/starlight/components/Header.astro';
+
+import { TABS, tabFor } from '../tabs';
+
+const current = tabFor(Astro.locals.starlightRoute.id);
+---
+
+<div class="g1t-header">
+	<div class="g1t-header-top"><Default /></div>
+	<nav class="g1t-tabs" aria-label="Sections">
+		{
+			TABS.map((tab) => (
+				<a href={tab.href} aria-current={tab === current ? 'page' : undefined}>
+					{tab.label}
+				</a>
+			))
+		}
+	</nav>
+</div>
+
+<style>
+	.g1t-header {
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+	}
+	.g1t-header-top {
+		height: 3.5rem;
+		padding: 0 var(--sl-nav-pad-x);
+	}
+	/* On phones the menu button sits at the top row's end: leave it room. */
+	@media (max-width: 49.99rem) {
+		:global([data-has-sidebar]) .g1t-header-top {
+			padding-inline-end: calc(var(--sl-nav-pad-x) + var(--sl-menu-button-size) + var(--sl-nav-gap));
+		}
+	}
+	.g1t-tabs {
+		display: flex;
+		gap: 1.5rem;
+		height: 2.75rem;
+		padding: 0 var(--sl-nav-pad-x);
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+	.g1t-tabs a {
+		display: flex;
+		align-items: center;
+		border-bottom: 1.5px solid transparent;
+		font-size: 0.875rem;
+		font-weight: 500;
+		white-space: nowrap;
+		color: var(--g1t-muted);
+		text-decoration: none;
+		transition: color 0.15s;
+	}
+	.g1t-tabs a:hover {
+		color: var(--g1t-fg);
+	}
+	.g1t-tabs a[aria-current='page'] {
+		border-color: var(--g1t-fg);
+		color: var(--g1t-fg);
+	}
+</style>

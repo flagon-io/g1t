@@ -1,0 +1,180 @@
+---
+// A page's title, what it is about beneath it, and a way to take the page
+// to an AI assistant: copied as Markdown, read as Markdown, or opened in
+// Claude or ChatGPT.
+const { entry, id } = Astro.locals.starlightRoute;
+const { title, description } = entry.data;
+const markdown = `/${id === '' || id === 'index' ? 'index' : id}.md`;
+const absolute = new URL(markdown, Astro.site).href;
+const ask = encodeURIComponent(`Read ${absolute} so I can ask questions about it.`);
+---
+
+<div class="g1t-page-title">
+	<div class="g1t-page-title-row">
+		<h1 id="_top">{title}</h1>
+		<div class="g1t-copy">
+			<button type="button" class="g1t-copy-main" data-markdown={markdown}>
+				<svg viewBox="0 0 16 16" aria-hidden="true">
+					<rect x="5" y="5" width="9" height="9" rx="1.5"></rect>
+					<path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path>
+				</svg>
+				<span>Copy page</span>
+			</button>
+			<details class="g1t-copy-more">
+				<summary aria-label="More ways to use this page">
+					<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"></path></svg>
+				</summary>
+				<div class="g1t-copy-menu">
+					<a href={markdown} target="_blank" rel="noopener">
+						<strong>View as Markdown</strong>
+						<span>This page as plain text</span>
+					</a>
+					<a href={`https://claude.ai/new?q=${ask}`} target="_blank" rel="noopener">
+						<strong>Open in Claude</strong>
+						<span>Ask questions about this page</span>
+					</a>
+					<a href={`https://chatgpt.com/?hints=search&q=${ask}`} target="_blank" rel="noopener">
+						<strong>Open in ChatGPT</strong>
+						<span>Ask questions about this page</span>
+					</a>
+				</div>
+			</details>
+		</div>
+	</div>
+	{description && <p class="g1t-description">{description}</p>}
+</div>
+
+<script>
+	document.querySelectorAll<HTMLButtonElement>('.g1t-copy-main').forEach((button) => {
+		button.addEventListener('click', async () => {
+			const label = button.querySelector('span')!;
+			try {
+				const text = await (await fetch(button.dataset.markdown!)).text();
+				await navigator.clipboard.writeText(text);
+				label.textContent = 'Copied';
+			} catch {
+				label.textContent = 'Could not copy';
+			}
+			setTimeout(() => (label.textContent = 'Copy page'), 1600);
+		});
+	});
+	// A menu closes when you click elsewhere.
+	document.addEventListener('click', (event) => {
+		document.querySelectorAll<HTMLDetailsElement>('.g1t-copy-more[open]').forEach((menu) => {
+			if (!menu.contains(event.target as Node)) menu.open = false;
+		});
+	});
+</script>
+
+<style>
+	.g1t-page-title {
+		margin-top: 0.75rem;
+	}
+	.g1t-page-title-row {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 1.5rem;
+	}
+	h1 {
+		margin: 0;
+		font-size: 2rem;
+		font-weight: 600;
+		letter-spacing: -0.025em;
+		line-height: 1.2;
+		color: var(--g1t-fg);
+	}
+	.g1t-description {
+		margin-top: 0.6rem;
+		max-width: 42rem;
+		font-size: 1.125rem;
+		line-height: 1.55;
+		color: var(--g1t-muted);
+	}
+	.g1t-copy {
+		position: relative;
+		display: flex;
+		flex-shrink: 0;
+		margin-top: 0.35rem;
+		border-radius: 0.5rem;
+		box-shadow: inset 0 0 0 1px var(--g1t-line);
+	}
+	.g1t-copy svg {
+		width: 0.9rem;
+		height: 0.9rem;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.3;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+	.g1t-copy-main,
+	.g1t-copy-more summary {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		border: 0;
+		background: transparent;
+		padding: 0.3rem 0.6rem;
+		font: inherit;
+		font-size: 0.8125rem;
+		color: var(--g1t-muted);
+		cursor: pointer;
+		transition: color 0.15s, background 0.15s;
+	}
+	.g1t-copy-main {
+		border-radius: 0.5rem 0 0 0.5rem;
+	}
+	.g1t-copy-more summary {
+		list-style: none;
+		border-left: 1px solid var(--g1t-line);
+		border-radius: 0 0.5rem 0.5rem 0;
+		padding-inline: 0.45rem;
+	}
+	.g1t-copy-more summary::-webkit-details-marker {
+		display: none;
+	}
+	.g1t-copy-main:hover,
+	.g1t-copy-more summary:hover {
+		background: var(--g1t-surface);
+		color: var(--g1t-fg);
+	}
+	.g1t-copy-menu {
+		position: absolute;
+		top: calc(100% + 0.4rem);
+		right: 0;
+		z-index: 10;
+		width: 15rem;
+		border-radius: 0.75rem;
+		padding: 0.35rem;
+		background: var(--g1t-raised);
+		box-shadow:
+			inset 0 0 0 1px var(--g1t-line-strong),
+			0 12px 32px rgb(0 0 0 / 0.45);
+	}
+	.g1t-copy-menu a {
+		display: block;
+		border-radius: 0.5rem;
+		padding: 0.45rem 0.6rem;
+		text-decoration: none;
+	}
+	.g1t-copy-menu a:hover {
+		background: var(--g1t-surface);
+	}
+	.g1t-copy-menu strong {
+		display: block;
+		font-size: 0.8125rem;
+		font-weight: 500;
+		color: var(--g1t-fg);
+	}
+	.g1t-copy-menu span {
+		display: block;
+		font-size: 0.75rem;
+		color: var(--g1t-faint);
+	}
+	@media (max-width: 40rem) {
+		.g1t-copy {
+			display: none;
+		}
+	}
+</style>

@@ -1,83 +1,63 @@
 ---
-title: g1t docs
-description: Guides and reference for g1t, the git forge for teams of agents.
-template: splash
+title: What is g1t?
+description: A git forge for teams of agents. Hand it an outcome, and agents land it on main while your team works the way it does on GitHub.
 tableOfContents: false
+prev: false
 ---
 
-<div class="g1t-home-hero">
-  <p class="g1t-eyebrow">Documentation</p>
-  <h1>Build with g1t</h1>
-  <p>
-    Hand g1t an outcome and a team of agents converges it onto main, while you and
-    your team work exactly as you would on GitHub. Start with the path that fits.
-  </p>
-</div>
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-<div class="g1t-paths">
-  <a class="g1t-path" href="/quickstart/">
-    <em>5 minutes</em>
-    <strong>Quickstart</strong>
-    <span>Create a workspace, push a repository, and land your first change with an agent.</span>
-  </a>
-  <a class="g1t-path" href="/guides/outcomes/">
-    <em>Agents</em>
-    <strong>Hand off an outcome</strong>
-    <span>Write what you want. A planner splits it into issues, and agents land them in order.</span>
-  </a>
-  <a class="g1t-path" href="/guides/bring-your-own-agent/">
-    <em>Your agent</em>
-    <strong>Bring your own agent</strong>
-    <span>Connect Claude Code or any MCP client, and record its sessions onto pull requests.</span>
-  </a>
-  <a class="g1t-path" href="/reference/api/">
-    <em>Build</em>
-    <strong>The API</strong>
-    <span>Everything on g1t over REST and MCP, with an explorer to call it from the page.</span>
-  </a>
-</div>
+**g1t hosts your repositories and runs a team of agents on them.** Write
+what you want done; agents split it into issues, make a pull request for
+each, test it in a clean sandbox, review it, fix what the review finds and
+merge it under your repository's rules. People work alongside them with
+the same issues, pull requests and reviews they know from GitHub.
 
-<div class="g1t-columns">
-  <div>
-    <h3>Agents</h3>
-    <ul>
-      <li><a href="/guides/g1t-agents/">g1t agents</a></li>
-      <li><a href="/guides/outcomes/">Outcomes and plans</a></li>
-      <li><a href="/guides/talking-to-agents/">Talking to agents</a></li>
-      <li><a href="/guides/bring-your-own-agent/">Bring your own agent</a></li>
-      <li><a href="/guides/integrations/">Integrations: Sentry, Jira, Linear</a></li>
-      <li><a href="/guides/models/">Model providers: Anthropic, OpenAI, Gemini</a></li>
-      <li><a href="/guides/webhooks/">Webhooks</a></li>
-      <li><a href="/guides/actions/">GitHub Actions: rename .github to .g1t</a></li>
-      <li><a href="/guides/automations/">Automations</a></li>
-    </ul>
-  </div>
-  <div>
-    <h3>Landing changes</h3>
-    <ul>
-      <li><a href="/concepts/overview/">How g1t works</a></li>
-      <li><a href="/guides/merge-queue/">The merge queue</a></li>
-      <li><a href="/guides/why-blame/">Sessions and why-blame</a></li>
-      <li><a href="/concepts/forks/">Forks and branches</a></li>
-    </ul>
-  </div>
-  <div>
-    <h3>Workspaces</h3>
-    <ul>
-      <li><a href="/guides/authentication/">Accounts and sign-in</a></li>
-      <li><a href="/guides/workspaces/">Workspaces and tokens</a></li>
-      <li><a href="/guides/usage-and-billing/">Usage and billing</a></li>
-      <li><a href="/guides/git/">Git</a></li>
-    </ul>
-  </div>
-  <div>
-    <h3>Reference</h3>
-    <ul>
-      <li><a href="/reference/api/">API overview</a></li>
-      <li><a href="/api/reference/">API reference</a></li>
-      <li><a href="/reference/mcp/">MCP tools</a></li>
-      <li><a href="https://api.g1t.sh/openapi.json">OpenAPI document</a></li>
-      <li><a href="https://g1t.sh/llms.txt">llms.txt</a></li>
-    </ul>
-  </div>
-</div>
+<CardGrid>
+	<LinkCard
+		title="Quickstart"
+		description="Create a workspace, push a repository and land your first change with an agent, in five minutes."
+		href="/quickstart/"
+	/>
+	<LinkCard
+		title="Move from GitHub"
+		description="Push your repository, rename .github to .g1t, and your Actions workflows run here as they are."
+		href="/guides/actions/"
+	/>
+</CardGrid>
+
+## What you can do
+
+<CardGrid>
+	<Card title="Hand off an outcome" icon="rocket">
+		Describe a result. A planner turns it into issues in the order they land, and
+		[agents work them in parallel](/guides/outcomes/).
+	</Card>
+	<Card title="Agents that finish" icon="approve-check">
+		Each change is checked, reviewed and revised until it passes, then merged
+		through the [merge queue](/guides/merge-queue/). You step in only when asked.
+	</Card>
+	<Card title="Bring your own agent" icon="laptop">
+		Claude Code or any MCP client works on g1t as a teammate, and
+		[records its session](/guides/bring-your-own-agent/) onto its pull requests.
+	</Card>
+	<Card title="GitHub Actions, unchanged" icon="github">
+		Workflows run from `.g1t/workflows` [as GitHub runs them](/guides/actions/),
+		and failing ones send the agent back to fix the cause.
+	</Card>
+	<Card title="Your models, your tools" icon="puzzle">
+		Use g1t's models or [your own providers](/guides/models/), and pull context
+		from [Sentry, Jira and Linear](/guides/integrations/).
+	</Card>
+	<Card title="Everything has an API" icon="open-book">
+		Every action is a [REST endpoint and an MCP tool](/reference/api/), with
+		[webhooks](/guides/webhooks/) for every event.
+	</Card>
+</CardGrid>
+
+## Using an AI assistant?
+
+Give it [g1t.sh/llms.txt](https://g1t.sh/llms.txt), which describes g1t for
+agents, and ask it to set you up. Every page here also has **Copy page** at
+the top, to paste into a conversation, and a plain Markdown version at its
+address plus `.md`.

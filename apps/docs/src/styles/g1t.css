@@ -37,7 +37,8 @@
 	--sl-text-body: 0.9375rem;
 	--sl-line-height: 1.75;
 	--sl-content-width: 46rem;
-	--sl-nav-height: 3.5rem;
+	/* The header's row, and the tabs beneath it. */
+	--sl-nav-height: 6.25rem;
 	--sl-sidebar-width: 17rem;
 
 	color-scheme: dark;
@@ -51,8 +52,17 @@ starlight-theme-select {
 /* --- Header --------------------------------------------------------------- */
 
 header.header {
+	padding: 0 !important;
 	backdrop-filter: blur(10px);
 	border-bottom: 1px solid var(--g1t-line);
+}
+site-search {
+	width: 100%;
+	max-width: 30rem;
+}
+/* On phones the menu button sits in the header's top row, not its middle. */
+.sl-menu-button {
+	top: calc((3.5rem - var(--sl-menu-button-size)) / 2) !important;
 }
 site-search button[data-open-modal] {
 	border-radius: 0.5rem;
@@ -69,6 +79,17 @@ site-search button[data-open-modal]:hover {
 
 .sidebar-content {
 	padding-top: 1.25rem;
+}
+/* Groups always show their pages: no caret, no folding. */
+.sidebar-content details > summary {
+	pointer-events: none;
+	padding-top: 0.25rem;
+}
+.sidebar-content details > summary .caret {
+	display: none;
+}
+.sidebar-content .top-level > li + li {
+	margin-top: 1rem;
 }
 /* Group labels: small and quiet, like section names, not links. */
 .sidebar-content details > summary .group-label .large,
@@ -109,23 +130,25 @@ site-search button[data-open-modal]:hover {
 .content-panel {
 	padding-top: 2rem;
 }
-.sl-markdown-content h1,
-h1#_top {
+/* The title and the page read as one, without a rule between them. */
+.content-panel + .content-panel {
+	border-top: 0;
+	padding-top: 0.5rem;
+}
+.sl-markdown-content h1 {
 	font-size: 2.25rem;
 	font-weight: 650;
 	letter-spacing: -0.03em;
 	line-height: 1.15;
 	color: var(--g1t-fg);
 }
-/* Each section opens with a rule across the full column. */
+/* Sections open with space, not rules. */
 .sl-markdown-content .sl-heading-wrapper.level-h2 {
 	margin-top: 3rem;
-	padding-top: 1.75rem;
-	border-top: 1px solid var(--g1t-line);
 }
 .sl-markdown-content h2 {
-	font-size: 1.4rem;
-	font-weight: 650;
+	font-size: 1.5rem;
+	font-weight: 600;
 	letter-spacing: -0.02em;
 	color: var(--g1t-fg);
 }
@@ -150,10 +173,10 @@ h1#_top {
 }
 .sl-markdown-content :not(pre) > code {
 	border-radius: 0.3rem;
-	padding: 0.1rem 0.35rem;
+	padding: 0.1rem 0.3rem;
 	font-size: 0.85em;
 	color: var(--g1t-fg);
-	box-shadow: inset 0 0 0 1px var(--g1t-line);
+	background: var(--g1t-raised);
 }
 
 /* Tables: ruled, not boxed. */
@@ -277,113 +300,47 @@ h1#_top {
 	color: var(--g1t-faint);
 }
 
-/* --- The home page -------------------------------------------------------- */
+/* --- Cards ---------------------------------------------------------------- */
 
-/* The home page brings its own heading, so Starlight's title bar goes. */
-main:has(.g1t-home-hero) > .content-panel:first-child {
-	display: none;
-}
-main:has(.g1t-home-hero) > .content-panel {
-	border-top: 0;
-}
-.g1t-home-hero {
-	padding: 1rem 0 0.5rem;
-}
-.sl-markdown-content .g1t-eyebrow {
-	font-family: var(--g1t-font-mono);
-	font-size: 0.72rem;
-	letter-spacing: 0.2em;
-	text-transform: uppercase;
-	color: var(--g1t-merged);
-}
-.g1t-home-hero h1 {
-	margin: 0.75rem 0 0;
-	font-size: clamp(2.25rem, 5vw, 3.25rem);
-	font-weight: 650;
-	letter-spacing: -0.035em;
-	line-height: 1.05;
-	color: var(--g1t-fg);
-	border: 0;
-	padding: 0;
-}
-.g1t-home-hero p {
-	max-width: 38rem;
-	margin-top: 1rem;
-	font-size: 1.05rem;
-	color: var(--g1t-muted);
-}
-.g1t-paths {
-	display: grid;
+.sl-markdown-content .card-grid {
 	gap: 0.75rem;
-	grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-	margin-top: 2rem;
 }
-.g1t-path {
-	display: block;
-	border-radius: 1rem;
+.sl-markdown-content .card {
 	padding: 1.1rem 1.2rem;
-	background: var(--g1t-surface);
-	border: 1px solid var(--g1t-line);
-	text-decoration: none !important;
-	transition: border-color 0.15s, transform 0.15s;
 }
-.g1t-path:hover {
-	border-color: var(--g1t-line-strong);
-	transform: translateY(-1px);
-}
-.g1t-path strong {
-	display: block;
-	font-size: 0.95rem;
+.sl-markdown-content .card .title {
+	font-size: 1rem;
+	font-weight: 600;
 	color: var(--g1t-fg);
 }
-.g1t-path span {
-	display: block;
-	margin-top: 0.35rem;
+.sl-markdown-content .card .icon {
+	color: var(--g1t-merged);
+	background: color-mix(in srgb, var(--g1t-merged) 12%, transparent);
+	border: 0;
+	border-radius: 0.5rem;
+	padding: 0.3rem;
+}
+.sl-link-card {
+	padding: 1rem 1.2rem;
+}
+.sl-link-card .title {
+	font-size: 0.95rem;
+	font-weight: 600;
+	color: var(--g1t-fg);
+}
+.sl-link-card .description {
 	font-size: 0.85rem;
-	line-height: 1.55;
 	color: var(--g1t-muted);
 }
-.g1t-path em {
-	display: inline-block;
-	margin-bottom: 0.6rem;
+
+/* Steps: numbered, on a quiet rail. */
+.sl-steps > li::before {
+	background: var(--g1t-raised) !important;
+	color: var(--g1t-fg) !important;
+	box-shadow: inset 0 0 0 1px var(--g1t-line-strong);
 	font-family: var(--g1t-font-mono);
-	font-size: 0.68rem;
-	font-style: normal;
-	letter-spacing: 0.14em;
-	text-transform: uppercase;
-	color: var(--g1t-merged);
-}
-.g1t-columns {
-	display: grid;
-	gap: 2rem;
-	grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-	margin-top: 3rem !important;
-}
-.g1t-columns > div,
-.g1t-paths > a {
-	margin-top: 0 !important;
-}
-.g1t-columns h3 {
-	margin: 0 0 0.5rem;
 	font-size: 0.8rem;
-	font-weight: 600;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
-	color: var(--g1t-faint);
 }
-.g1t-columns ul {
-	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-.g1t-columns li {
-	margin: 0.3rem 0;
-}
-.g1t-columns a {
-	font-size: 0.9rem;
-	color: var(--g1t-fg-soft) !important;
-	text-decoration: none !important;
-}
-.g1t-columns a:hover {
-	color: #cfc6ff !important;
+.sl-steps > li::after {
+	background: var(--g1t-line) !important;
 }
