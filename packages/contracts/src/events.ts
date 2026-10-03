@@ -53,9 +53,9 @@ export type EventPayloads = {
     number: number;
     verdict?: "approve" | "request_changes";
   };
-  /** `number` is the issue or pull request commented on. */
   /** A repository's merge queue gained, lost or settled an entry. */
   "queue.changed": { repoId: string };
+  /** `number` is the issue or pull request commented on. */
   "comment.created": {
     commentId: string;
     repoId: string;

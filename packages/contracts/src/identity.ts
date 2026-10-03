@@ -186,6 +186,8 @@ export interface IdentityApi {
   userForAccessToken(token: string): Promise<Viewer>;
   userForSshKey(fingerprint: string): Promise<Viewer>;
   userByUsername(username: string): Promise<Viewer>;
+  /** The names behind account and workspace ids; unknown ids are left out. */
+  usernames(ids: string[]): Promise<Record<string, string>>;
 
   listSshKeys(user: User): Promise<SshKey[]>;
   /** Takes one line in OpenSSH public key format. */

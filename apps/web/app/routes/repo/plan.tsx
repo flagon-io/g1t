@@ -1,14 +1,16 @@
 import { env } from "cloudflare:workers";
+import type { G1tEvent } from "@g1t/contracts";
 import { ArrowRight, FileCode2, Sparkles, Terminal } from "lucide-react";
 import { useEffect } from "react";
 import { Form, Link, data, useNavigation, useRevalidator } from "react-router";
 
 import type { Route } from "./+types/plan";
 import { Markdown } from "../../components/markdown";
+import { Activity } from "../../components/activity";
 import { Outcome } from "../../components/outcome";
 import { Button, ErrorText, TimeAgo } from "../../components/ui";
 import { Label } from "../../components/work";
-import { billing, work } from "../../lib/services.server";
+import { billing, events, identity, work } from "../../lib/services.server";
 import {
   assertSameOrigin,
   getViewer,
@@ -41,7 +43,32 @@ export async function loader({ params, context }: Route.LoaderArgs) {
         .filter((entry) => entry.kind === "usage" && entry.repo === repo && entry.number != null && pulls.has(entry.number))
         .reduce((sum, entry) => sum - entry.amountMicros, 0)
     : null;
-  return { plan: found, costMicros };
+  // What happened across the outcome's issues and pull requests.
+  let activity: G1tEvent[] = [];
+  if (found.status === "applied" && found.progress.length > 0) {
+    const numbers = new Set([
+      ...found.progress.map((item) => item.number),
+      ...found.progress.flatMap((item) => (item.pull != null ? [item.pull] : [])),
+    ]);
+    const since = found.finishedAt ?? found.createdAt;
+    const recent = await events.list({ repoId: found.repoId, limit: 200 }).catch(() => []);
+    activity = recent
+      .filter((event) => event.time >= since)
+      .filter((event) => {
+        const data = event.data as { number?: number; issue?: number };
+        // Issues an agent filed while working on this outcome belong to it too.
+        if (event.type === "issue.opened" && event.actor === "usr_g1t_agent") return true;
+        return (data.number != null && numbers.has(data.number)) || (data.issue != null && numbers.has(data.issue));
+      })
+      .slice(0, 40);
+    // Events name accounts by id; show names.
+    const named = await identity
+      .usernames([...new Set(activity.flatMap((event) => (event.actor ? [event.actor] : [])))])
+      .catch(() => ({}) as Record<string, string>);
+    const known: Record<string, string> = { ...named, usr_g1t_agent: "g1t-agent", g1t_policy: "g1t" };
+    activity = activity.map((event) => ({ ...event, actor: event.actor ? (known[event.actor] ?? event.actor) : null }));
+  }
+  return { plan: found, costMicros, activity };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -57,7 +84,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function PlanPage({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { plan, costMicros } = loaderData;
+  const { plan, costMicros, activity } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const applying = useNavigation().state === "submitting";
 
@@ -95,6 +122,14 @@ export default function PlanPage({ loaderData, actionData, params }: Route.Compo
       {converging && (
         <section className="mt-8">
           <Outcome plan={plan} base={base} costMicros={costMicros} />
+          {activity.length > 0 && (
+            <div className="mt-10">
+              <h3 className="font-mono text-[0.6875rem] tracking-[0.2em] text-faint uppercase">What happened</h3>
+              <div className="mt-3 max-w-3xl">
+                <Activity events={activity} base={base} />
+              </div>
+            </div>
+          )}
         </section>
       )}
 

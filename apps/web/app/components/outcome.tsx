@@ -10,7 +10,7 @@ import {
   Terminal,
   X,
 } from "lucide-react";
-import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import type { IssueProgress, Plan } from "@g1t/contracts";
@@ -150,7 +150,9 @@ function Node({ item, base }: { item: IssueProgress; base: string }) {
 /** Lines from each issue to the ones that depend on it, measured from the page. */
 function Edges({ plan, container }: { plan: Plan; container: React.RefObject<HTMLDivElement | null> }) {
   const [paths, setPaths] = useState<{ d: string; done: boolean }[]>([]);
-  useLayoutEffect(() => {
+  // After commit, when the graph's own ref is attached: a child's layout
+  // effect runs before its parent's ref is set.
+  useEffect(() => {
     const element = container.current;
     if (!element) return;
     const draw = () => {

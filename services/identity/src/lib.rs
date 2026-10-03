@@ -424,6 +424,30 @@ impl Identity {
         .await
     }
 
+    async fn usernames(&self, a: UsernamesArgs) -> Result<std::collections::HashMap<String, String>> {
+        #[derive(serde::Deserialize)]
+        struct Named {
+            id: String,
+            name: String,
+        }
+        let ids: Vec<String> = a.ids.into_iter().take(200).collect();
+        let mut names = std::collections::HashMap::new();
+        if ids.is_empty() {
+            return Ok(names);
+        }
+        let marks = vec!["?"; ids.len()].join(", ");
+        let bind: Vec<worker::wasm_bindgen::JsValue> = ids.iter().map(|id| id.as_str().into()).collect();
+        for sql in [
+            format!("SELECT id, username AS name FROM users WHERE id IN ({marks})"),
+            format!("SELECT id, slug AS name FROM workspaces WHERE id IN ({marks})"),
+        ] {
+            for row in self.db.prepare(sql).bind(&bind)?.all().await?.results::<Named>()? {
+                names.insert(row.id, row.name);
+            }
+        }
+        Ok(names)
+    }
+
     async fn list_ssh_keys(&self, a: UserArgs) -> Result<Vec<SshKey>> {
         let rows = self
             .db
@@ -540,6 +564,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         }
         "user_for_ssh_key" => reply(&identity.user_for_ssh_key(args(body)?).await?),
         "user_by_username" => reply(&identity.user_by_username(args(body)?).await?),
+        "usernames" => reply(&identity.usernames(args(body)?).await?),
         "list_ssh_keys" => reply(&identity.list_ssh_keys(args(body)?).await?),
         "add_ssh_key" => reply(&identity.add_ssh_key(args(body)?).await?),
         "remove_ssh_key" => reply(&identity.remove("ssh_keys", args(body)?).await?),

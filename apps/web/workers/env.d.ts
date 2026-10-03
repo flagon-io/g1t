@@ -9,6 +9,7 @@ declare global {
       WORK: ServiceBinding;
       RUNNER: RunnerApi;
       BILLING: ServiceBinding;
+      EVENTS: ServiceBinding;
     }
   }
   interface Env extends Cloudflare.Env {}

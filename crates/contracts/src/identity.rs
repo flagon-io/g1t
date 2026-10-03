@@ -78,6 +78,14 @@ pub struct UsernameArgs {
     pub username: String,
 }
 
+/// `usernames`: the names behind account and workspace ids, as events and
+/// other records store them. Returns a map from id to name; ids it does
+/// not know are left out.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UsernamesArgs {
+    pub ids: Vec<String>,
+}
+
 /// `list_ssh_keys` and `list_access_tokens`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserArgs {

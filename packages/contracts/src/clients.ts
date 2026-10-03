@@ -73,6 +73,7 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     userForAccessToken: (token) => call("user_for_access_token", { token }),
     userForSshKey: (fingerprint) => call("user_for_ssh_key", { fingerprint }),
     userByUsername: (username) => call("user_by_username", { username }),
+    usernames: (ids) => call("usernames", { ids }),
     listSshKeys: (user) => call("list_ssh_keys", { user }),
     addSshKey: (user, title, publicKey) =>
       call("add_ssh_key", { user, title, publicKey }),
