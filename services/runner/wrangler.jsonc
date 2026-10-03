@@ -47,6 +47,10 @@
 		// Where sandboxes send model requests, with a token for their run.
 		// The proxy holds the keys: g1t's gateway's, or the workspace's own.
 		"MODELS_URL": "https://models.g1t.sh",
+		// g1t's own runs go through the proxy only once it holds g1t's
+		// Anthropic key: npx wrangler secret put ANTHROPIC_API_KEY in
+		// services/models, then set this to "true".
+		"MODELS_PROXY_HOSTED": "false",
 		// Set to a Cloudflare AI Gateway id to route model traffic through it.
 		// Used only when MODELS_URL is unset.
 		"AI_GATEWAY_ID": "g1t",

@@ -43,6 +43,12 @@ export interface RunnerEnv {
    */
   MODELS_URL?: string;
   /**
+   * `true` to send g1t's own runs through the proxy too. Needs the proxy to
+   * hold what reaches the provider for g1t (ANTHROPIC_API_KEY); until it
+   * does, only runs on a workspace's own provider go through it.
+   */
+  MODELS_PROXY_HOSTED?: string;
+  /**
    * Secret. The provider's key. Leave it unset when the gateway holds the
    * key, so that no sandbox ever does.
    */
@@ -414,16 +420,19 @@ export default class RunnerService
       billedTo: own ? "workspace" : "g1t",
     });
     if (!ticket.ok) return ticket;
-    const vars: Record<string, string> = session
+    // g1t's own runs use the proxy once it holds g1t's key; until then
+    // they reach the gateway as they always have.
+    const proxied = session != null && (own || this.env.MODELS_PROXY_HOSTED === "true");
+    const vars: Record<string, string> = proxied
       ? {
           ANTHROPIC_MODEL: model,
-          AGENT_MODEL_NAME: own ? `${modelName}, through ${session.providerName}` : modelName,
+          AGENT_MODEL_NAME: own ? `${modelName}, through ${session!.providerName}` : modelName,
           ANTHROPIC_BASE_URL: `${this.env.MODELS_URL!.replace(/\/+$/, "")}/anthropic`,
           // Not a key: a token for this run, which the proxy swaps for one.
-          ANTHROPIC_API_KEY: session.token,
+          ANTHROPIC_API_KEY: session!.token,
           // An endpoint that names models its own way gets its model for
           // the harness's small tasks too.
-          ...(session.model ? { ANTHROPIC_SMALL_FAST_MODEL: session.model } : {}),
+          ...(session!.model ? { ANTHROPIC_SMALL_FAST_MODEL: session!.model } : {}),
         }
       : modelEnv(this.env, routes, task, tags);
     if (ticket.value) {
