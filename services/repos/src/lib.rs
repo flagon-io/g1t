@@ -339,7 +339,13 @@ impl<S: GitStore> Repos<S> {
         })
         .await?;
         if let Some(head) = pushed {
-            self.publish_push(&repo, &repo.default_branch, &head, None)
+            self.publish_push(
+                &repo,
+                &format!("refs/heads/{}", repo.default_branch),
+                None,
+                &head,
+                None,
+            )
                 .await?;
         }
         Ok(Outcome::Ok(repo))
@@ -719,7 +725,13 @@ impl<S: GitStore> Repos<S> {
                 format!("{branch} could not be updated: {reason}"),
             ));
         }
-        self.publish_push(&target, branch, &new, Some(a.actor.id))
+        self.publish_push(
+            &target,
+            &format!("refs/heads/{branch}"),
+            old.as_deref(),
+            &new,
+            Some(a.actor.id),
+        )
             .await?;
         Ok(Outcome::Ok(Landed {
             commit: new,
@@ -791,11 +803,12 @@ impl<S: GitStore> Repos<S> {
         }))
     }
 
-    /// Reports that `branch` of `repo` now points to `after`.
+    /// Reports that `git_ref` of `repo` (a full ref) now points to `after`.
     async fn publish_push(
         &self,
         repo: &Repo,
-        branch: &str,
+        git_ref: &str,
+        before: Option<&str>,
         after: &str,
         actor: Option<String>,
     ) -> Result<()> {
@@ -806,9 +819,11 @@ impl<S: GitStore> Repos<S> {
             actor,
             data: GitPush {
                 repo_id: repo.id.clone(),
-                git_ref: format!("refs/heads/{branch}"),
+                git_ref: git_ref.to_owned(),
+                before: before.map(str::to_owned),
                 after: after.to_owned(),
-                default_branch: branch == repo.default_branch,
+                default_branch: git_ref.strip_prefix("refs/heads/")
+                    == Some(repo.default_branch.as_str()),
             },
         })
         .await
@@ -850,13 +865,29 @@ impl<S: GitStore> Repos<S> {
         if accepted && let Some(repo) = self.registry.by_path(&git.path).await? {
             let stored = self.store.open(&store_key(&repo)).await?;
             let actor = viewer.map(|user: User| user.id);
-            for (branch, pushed) in &forwarded.pushed {
+            for pushed in &forwarded.pushed {
                 // The store can refuse one ref and accept another, so each
-                // is checked against where the branch actually is.
-                let head = stored.log(branch, 1).await?;
-                if head.first().is_some_and(|commit| commit.hash == *pushed) {
-                    self.publish_push(&repo, branch, pushed, actor.clone())
-                        .await?;
+                // branch is checked against where it actually is. A tag the
+                // store cannot read back is taken as pushed.
+                let moved = match pushed.branch() {
+                    Some(branch) => stored
+                        .log(branch, 1)
+                        .await?
+                        .first()
+                        .is_some_and(|commit| commit.hash == pushed.after),
+                    None => stored.log(&pushed.git_ref, 1).await.map_or(true, |head| {
+                        head.first().is_none_or(|commit| commit.hash == pushed.after)
+                    }),
+                };
+                if moved {
+                    self.publish_push(
+                        &repo,
+                        &pushed.git_ref,
+                        pushed.before.as_deref(),
+                        &pushed.after,
+                        actor.clone(),
+                    )
+                    .await?;
                 }
             }
         }

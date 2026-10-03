@@ -35,7 +35,7 @@ pub struct RepoForked {
     pub pull_id: String,
 }
 
-/// One branch moved by a push. `after` is the commit it points to now.
+/// One branch or tag moved by a push. `after` is the commit it points to now.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitPush {
@@ -43,6 +43,9 @@ pub struct GitPush {
     /// The full ref, such as `refs/heads/main`.
     #[serde(rename = "ref")]
     pub git_ref: String,
+    /// Where it pointed before; absent for a new branch or tag.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub before: Option<String>,
     pub after: String,
     /// Whether the ref is the repository's default branch.
     pub default_branch: bool,

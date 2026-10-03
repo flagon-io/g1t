@@ -127,6 +127,7 @@ pub fn refuse<T>(outcome: Outcome<T>) -> Result<Response> {
 
 const ZERO_ID: &str = "0000000000000000000000000000000000000000";
 const HEADS: &str = "refs/heads/";
+const TAGS: &str = "refs/tags/";
 
 /// One ref a push asks to change.
 struct Command {
@@ -219,17 +220,34 @@ fn refusal(body: &[u8], protected: &str) -> Option<Vec<u8>> {
     })
 }
 
-/// The branches a push asks to move, as `(branch, new commit)`, read from
-/// the commands at the start of a receive-pack request. Deletions and refs
-/// that are not branches are left out.
-fn pushed_branches(body: &[u8]) -> Vec<(String, String)> {
+/// A branch or tag a push asks to move.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Pushed {
+    /// The full ref: `refs/heads/main`, `refs/tags/v1`.
+    pub git_ref: String,
+    /// Where it pointed before; `None` for a new ref.
+    pub before: Option<String>,
+    pub after: String,
+}
+
+impl Pushed {
+    pub fn branch(&self) -> Option<&str> {
+        self.git_ref.strip_prefix(HEADS)
+    }
+}
+
+/// The branches and tags a push asks to move, read from the commands at the
+/// start of a receive-pack request. Deletions and other refs are left out.
+fn pushed_branches(body: &[u8]) -> Vec<Pushed> {
     commands(body)
         .0
         .into_iter()
         .filter(|command| command.new != ZERO_ID)
-        .filter_map(|Command { new, name, .. }| {
-            name.strip_prefix(HEADS)
-                .map(|branch| (branch.to_owned(), new))
+        .filter(|command| command.name.starts_with(HEADS) || command.name.starts_with(TAGS))
+        .map(|Command { old, new, name }| Pushed {
+            git_ref: name,
+            before: (old != ZERO_ID).then_some(old),
+            after: new,
         })
         .collect()
 }
@@ -237,9 +255,9 @@ fn pushed_branches(body: &[u8]) -> Vec<(String, String)> {
 /// The git store's answer, and what the request asked it to change.
 pub struct Forwarded {
     pub response: Response,
-    /// For a push: the branches it asks to move and the commits to move
-    /// them to. Whether each moved is for the caller to confirm.
-    pub pushed: Vec<(String, String)>,
+    /// For a push: the branches and tags it asks to move, and the commits
+    /// to move them to. Whether each moved is for the caller to confirm.
+    pub pushed: Vec<Pushed>,
 }
 
 /// What became of a git request.
@@ -298,7 +316,7 @@ pub async fn forward(
 
 #[cfg(test)]
 mod tests {
-    use super::{ZERO_ID, pushed_branches, refusal};
+    use super::{Pushed, ZERO_ID, pushed_branches, refusal};
 
     fn pkt(payload: &str) -> Vec<u8> {
         format!("{:04x}{payload}", payload.len() + 4).into_bytes()
@@ -322,8 +340,21 @@ mod tests {
         assert_eq!(
             pushed_branches(&body),
             [
-                ("main".to_owned(), new.to_owned()),
-                ("feature/x".to_owned(), new.to_owned()),
+                Pushed {
+                    git_ref: "refs/heads/main".to_owned(),
+                    before: Some(old.to_owned()),
+                    after: new.to_owned()
+                },
+                Pushed {
+                    git_ref: "refs/heads/feature/x".to_owned(),
+                    before: None,
+                    after: new.to_owned()
+                },
+                Pushed {
+                    git_ref: "refs/tags/v1".to_owned(),
+                    before: None,
+                    after: new.to_owned()
+                },
             ]
         );
     }

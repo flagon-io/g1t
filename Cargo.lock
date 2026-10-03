@@ -871,6 +871,15 @@ name = "g1t"
 version = "0.1.0"
 
 [[package]]
+name = "g1t-actions"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_yaml",
+]
+
+[[package]]
 name = "g1t-api"
 version = "0.1.0"
 dependencies = [
