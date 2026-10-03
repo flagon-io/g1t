@@ -12,7 +12,7 @@
 
 use futures_util::future::try_join_all;
 use g1t_contracts::events::{ChecksEvent, QueueChanged};
-use g1t_contracts::repos::{GetByIdArgs, HeadArgs, LandArgs, Landed, Repo, RepoPath};
+use g1t_contracts::repos::{DeleteBranchArgs, GetByIdArgs, HeadArgs, LandArgs, Landed, Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome, User, new_id};
@@ -260,12 +260,33 @@ impl Work {
             ])?
             .run()
             .await?;
+        self.drop_branch(entry).await;
         let behind: Vec<&EntryRow> = active
             .iter()
             .filter(|row| row.state() != QueueState::Waiting && row.ahead().contains(&pull.number))
             .collect();
         self.retest(&behind).await?;
         Ok(true)
+    }
+
+    /// Removes an entry's tested state from the repository once it has
+    /// left the queue, as GitHub does with its queue's branches. A branch
+    /// left behind is untidy, not wrong, so a failure only logs.
+    async fn drop_branch(&self, row: &EntryRow) {
+        let deleted: Result<Outcome<bool>> = g1t_kit::call(
+            &self.repos,
+            "delete_branch",
+            &DeleteBranchArgs {
+                repo_id: row.repo_id.clone(),
+                branch: row.branch(),
+            },
+        )
+        .await;
+        match deleted {
+            Ok(Outcome::Ok(_)) => {}
+            Ok(Outcome::Fail(failure)) => worker::console_warn!("{}: {}", row.branch(), failure.message),
+            Err(error) => worker::console_warn!("{}: {error}", row.branch()),
+        }
     }
 
     /// Sends entries back to waiting, to be tested again.
@@ -596,6 +617,7 @@ impl Work {
     /// it are tested again without it, and the failure is recorded as a
     /// failed check run of its pull request, so a g1t agent is sent back.
     async fn eject(&self, row: &EntryRow, report: &ReportQueueArgs) -> Result<()> {
+        self.drop_branch(row).await;
         let active = self.entries(&row.repo_id, true).await?;
         let behind: Vec<&EntryRow> = active
             .iter()
@@ -762,6 +784,7 @@ impl Work {
                 .bind(&[rfc3339(now_ms()).into(), row.id.as_str().into()])?
                 .run()
                 .await?;
+            self.drop_branch(&row).await;
             self.record_merge(&repo, pull, &actor, row.keep_issue_open != 0, landed)
                 .await?;
         }

@@ -78,7 +78,8 @@ even when it merges without a conflict and its own checks pass.
 Once those pass, the repository's [GitHub Actions](/guides/actions/)
 workflows that run `on: merge_group` run on the state too, with the same
 `merge_group` event GitHub sends, on the branch `g1t-queue/<entry>`. The
-entry waits for them, and lands only if they pass:
+entry waits for them, and lands only if they pass. The branch is deleted
+once the entry lands or leaves the queue. A workflow opts in like this:
 
 ```yaml
 on:

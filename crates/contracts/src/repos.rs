@@ -414,3 +414,18 @@ pub struct HeadArgs {
     pub repo_id: String,
     pub branch: String,
 }
+
+/// Where g1t keeps branches of its own in a repository, such as the merge
+/// queue's tested states. Only these can be removed with `delete_branch`.
+pub const G1T_BRANCH_PREFIX: &str = "g1t-";
+
+/// `delete_branch`: removes a branch g1t made for itself once it is done
+/// with it, never one of people's: the name must start with
+/// [`G1T_BRANCH_PREFIX`]. For services, which have no viewer. Returns
+/// `Outcome<bool>`: whether there was such a branch.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteBranchArgs {
+    pub repo_id: String,
+    pub branch: String,
+}

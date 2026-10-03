@@ -522,6 +522,36 @@ impl<S: GitStore> Repos<S> {
             .map(|commit| commit.hash))
     }
 
+    async fn delete_branch(&self, a: DeleteBranchArgs) -> Result<Outcome<bool>> {
+        if !a.branch.starts_with(G1T_BRANCH_PREFIX) {
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                "Only branches g1t made for itself can be deleted this way.",
+            ));
+        }
+        let Some(repo) = self.registry.by_id(&a.repo_id).await? else {
+            return Ok(not_found());
+        };
+        let git = self.store.open(&store_key(&repo)).await?;
+        let Some(old) = git
+            .branches()
+            .await?
+            .into_iter()
+            .find(|branch| branch.name == a.branch)
+            .map(|branch| branch.hash)
+        else {
+            return Ok(Outcome::Ok(false));
+        };
+        let access = git.access(Scope::Write).await?;
+        if let Err(reason) = land::delete_ref(&access, &a.branch, &old).await? {
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                format!("{} could not be deleted: {reason}", a.branch),
+            ));
+        }
+        Ok(Outcome::Ok(true))
+    }
+
     async fn fork_for_pull(&self, a: ForkArgs) -> Result<Outcome<Repo>> {
         let viewer = Some(a.actor.clone());
         let Some(source) = self
@@ -950,6 +980,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "head" => reply(&repos.head(args(body)?).await?),
         "behind" => reply(&repos.behind(args(body)?).await?),
         "land" => reply(&repos.land(args(body)?).await?),
+        "delete_branch" => reply(&repos.delete_branch(args(body)?).await?),
         "compare" => reply(&repos.compare(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }

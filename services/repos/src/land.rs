@@ -118,13 +118,37 @@ pub(crate) async fn push_pack(
     new: &str,
     pack: Vec<u8>,
 ) -> Result<std::result::Result<(), String>> {
+    update_ref(target, branch, old, new, Some(pack)).await
+}
+
+/// Removes `branch` from the target, if it is still at `old`.
+pub(crate) async fn delete_ref(
+    target: &GitAccess,
+    branch: &str,
+    old: &str,
+) -> Result<std::result::Result<(), String>> {
+    update_ref(target, branch, Some(old), ZERO_ID, None).await
+}
+
+/// One receive-pack command; a deletion sends no pack.
+async fn update_ref(
+    target: &GitAccess,
+    branch: &str,
+    old: Option<&str>,
+    new: &str,
+    pack: Option<Vec<u8>>,
+) -> Result<std::result::Result<(), String>> {
     let reference = format!("refs/heads/{branch}");
+    let sends_pack = pack.is_some();
+    let capabilities = if sends_pack { "report-status" } else { "report-status delete-refs" };
     let mut body = pkt_line(&format!(
-        "{} {new} {reference}\0 report-status\n",
+        "{} {new} {reference}\0 {capabilities}\n",
         old.unwrap_or(ZERO_ID)
     ));
     body.extend_from_slice(FLUSH);
-    body.extend(pack);
+    if let Some(pack) = pack {
+        body.extend(pack);
+    }
 
     let response = post(target, "git-receive-pack", body).await?;
     let (lines, _) = read_pkt_lines(&response);
@@ -132,7 +156,8 @@ pub(crate) async fn push_pack(
         .into_iter()
         .map(|line| String::from_utf8_lossy(line).trim_end().to_owned())
         .collect();
-    let unpacked = lines.iter().any(|line| line == "unpack ok");
+    // With nothing to unpack a server may not say so.
+    let unpacked = !sends_pack || lines.iter().any(|line| line == "unpack ok");
     let updated = lines.iter().any(|line| *line == format!("ok {reference}"));
     Ok(if unpacked && updated {
         Ok(())
