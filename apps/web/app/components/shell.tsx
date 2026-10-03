@@ -392,24 +392,6 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
           </SidebarLink>
         </div>
 
-        {ws && (
-          <SidebarGroup title="Workspace">
-            <SidebarLink to={`/${ws.slug}`} end icon={<LayoutDashboard size={15} />}>
-              Overview
-            </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/usage`} icon={<BarChart3 size={15} />}>
-              Usage
-            </SidebarLink>
-            {/* Everything else about the workspace lives in its settings, and only there. */}
-            <SidebarLink
-              to={ws.role === "owner" ? `/${ws.slug}/-/settings` : `/${ws.slug}/-/people`}
-              icon={<Settings size={15} />}
-            >
-              Settings
-            </SidebarLink>
-          </SidebarGroup>
-        )}
-
         <SidebarGroup
           title="Repositories"
           action={
@@ -506,7 +488,22 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
       </div>
       </div>
 
+      {/* The workspace's own things sit at the bottom, by its usage and the account. */}
       <div className="space-y-2 p-2">
+        {ws && (
+          <div className="space-y-px">
+            <SidebarLink to={`/${ws.slug}/-/usage`} icon={<BarChart3 size={15} />}>
+              Usage
+            </SidebarLink>
+            {/* Everything else about the workspace lives in its settings, and only there. */}
+            <SidebarLink
+              to={ws.role === "owner" ? `/${ws.slug}/-/settings` : `/${ws.slug}/-/people`}
+              icon={<Settings size={15} />}
+            >
+              Settings
+            </SidebarLink>
+          </div>
+        )}
         {ws && <UsageCard slug={ws.slug} shell={shell} />}
         <AccountMenu user={user} />
       </div>

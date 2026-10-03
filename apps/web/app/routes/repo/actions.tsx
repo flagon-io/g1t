@@ -300,7 +300,13 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
                   w.id === workflow?.id ? "bg-raised text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"
                 }`}
               >
-                <span className="min-w-0 truncate">{w.name}</span>
+                <span className="min-w-0 truncate">
+                  {w.name}
+                  {/* Two workflows of one name are told apart by their files. */}
+                  {workflows.some((other) => other.id !== w.id && other.name === w.name) && (
+                    <span className="block truncate font-mono text-[0.6875rem] text-faint">{w.path}</span>
+                  )}
+                </span>
                 {w.error && <AlertTriangle size={12} className="shrink-0 text-danger" aria-label="Its file has a problem" />}
                 {w.state === "disabled" && <span className="ml-auto shrink-0 text-xs text-faint">off</span>}
               </Link>

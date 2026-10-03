@@ -1,4 +1,4 @@
-import { ArrowRight, Hand, Plus } from "lucide-react";
+import { ArrowRight, Hand, Plus, Settings, Users } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { Link, data, useRevalidator, useRouteLoaderData } from "react-router";
 
@@ -139,6 +139,58 @@ function plural(count: number, one: string, many: string): string {
 }
 
 type Step = { done: boolean; title: string; about: string; to: string | null; action: string };
+
+/**
+ * The workspace being looked at, from mission control: what it holds and
+ * what is moving in it, and the way to its people and settings. The rest of
+ * the page stays the viewer's own, across every workspace.
+ */
+function WorkspaceCard({ slug, role, repos, active }: { slug: string; role: string; repos: Repo[]; active: Active[] }) {
+  const mine = active.filter((item) => item.repo.namespace.toLowerCase() === slug);
+  const stats = [
+    { value: repos.filter((repo) => repo.namespace.toLowerCase() === slug).length, label: "repositories" },
+    { value: mine.length, label: "pull requests open" },
+    { value: mine.filter((item) => item.lifecycle?.stage === "needs_you").length, label: "need you" },
+  ];
+  return (
+    <div className="rounded-xl border border-line bg-surface p-5">
+      <div className="flex items-center gap-3">
+        <Avatar name={slug} size={32} square />
+        <div className="min-w-0">
+          <Link to={`/${slug}`} className="block truncate font-medium hover:underline">
+            {slug}
+          </Link>
+          <p className="text-xs text-muted">Workspace · {role}</p>
+        </div>
+      </div>
+      <dl className="mt-4 grid grid-cols-3 gap-2">
+        {stats.map((stat) => (
+          <div key={stat.label} className="rounded-lg bg-bg/60 px-2.5 py-2 ring-1 ring-line">
+            <dt className="sr-only">{stat.label}</dt>
+            <dd className="text-lg font-semibold tabular-nums tracking-tight">{stat.value}</dd>
+            <dd className="text-[0.6875rem] leading-tight text-muted">{stat.label}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        <Link to={`/${slug}/-/people`} className="inline-flex items-center gap-1.5 text-muted hover:text-fg">
+          <Users size={13} />
+          Members
+        </Link>
+        <Link
+          to={role === "owner" ? `/${slug}/-/settings` : `/${slug}/-/people`}
+          className="inline-flex items-center gap-1.5 text-muted hover:text-fg"
+        >
+          <Settings size={13} />
+          Settings
+        </Link>
+        <Link to={`/${slug}`} className="inline-flex items-center gap-1 text-accent hover:underline">
+          Its page <ArrowRight size={13} />
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 /**
  * The first things to do, ticked off as they are done, until an outcome has
@@ -343,6 +395,14 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       </div>
 
       <aside className="space-y-4">
+        {shell?.workspace && (
+          <WorkspaceCard
+            slug={shell.workspace.slug.toLowerCase()}
+            role={shell.workspace.role}
+            repos={repos}
+            active={active}
+          />
+        )}
         <div className="rounded-xl border border-line bg-surface p-5">
           <h2 className="font-medium">Connect an agent</h2>
           <p className="mt-1.5 text-sm text-muted">
