@@ -254,13 +254,15 @@ function AccountMenu({ user }: { user: User }) {
 const SETTINGS_PAGE = /^\/([^/]+)\/-\/(settings|people|tokens|billing|integrations|webhooks|secrets)(\/|$)/;
 
 /**
- * The sidebar's menus sit side by side on one track, and the track slides:
- * the main menu leaves to the left as the settings arrive from the right,
- * together, with a long ease-out, the way a phone pushes a screen.
+ * The sidebar's menus are two layers, the way a phone pushes a screen: the
+ * one arriving slides in from the right over the full width, while the one
+ * leaving drifts a quarter of the way left and fades, both on one long
+ * ease-out. Going back reverses it.
  */
-const TRACK = "flex h-full w-[200%] transition-transform duration-[380ms] ease-[cubic-bezier(0.45,0,0.15,1)] will-change-transform motion-reduce:transition-none";
-/** One menu on the track. */
-const PANEL = "h-full w-1/2 shrink-0 overflow-y-auto px-2 pb-4";
+const LAYER =
+  "absolute inset-0 transition-[transform,opacity] duration-[380ms] ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform motion-reduce:transition-none";
+/** One menu, filling its layer. */
+const PANEL = "h-full overflow-y-auto px-2 pb-4";
 
 /** A workspace's settings, as the sidebar shows them in place of everything else. */
 function SettingsMenu({ slug, owner, open }: { slug: string; owner: boolean; open: boolean }) {
@@ -306,14 +308,34 @@ function SettingsMenu({ slug, owner, open }: { slug: string; owner: boolean; ope
   );
 }
 
-type ActiveRepo = NonNullable<ShellData["repo"]>;
+/**
+ * What the repository menu needs. Known from the address before the page's
+ * data arrives, so the menu is right from the first frame; the counts fill
+ * in once it does.
+ */
+type MenuRepo = {
+  namespace: string;
+  name: string;
+  member: boolean;
+  issues?: number;
+  pulls?: number;
+};
+
+function sameRepo(a: { namespace: string; name: string } | null, b: { namespace: string; name: string } | null) {
+  return (
+    a != null &&
+    b != null &&
+    a.namespace.toLowerCase() === b.namespace.toLowerCase() &&
+    a.name.toLowerCase() === b.name.toLowerCase()
+  );
+}
 
 /**
  * A repository's own menu, which the sidebar slides to while you are in
  * it, as it does for settings: everything about the repository and nothing
  * else, with the way back to everything.
  */
-function RepoMenu({ repo, isPrivate, open }: { repo: ActiveRepo; isPrivate: boolean; open: boolean }) {
+function RepoMenu({ repo, isPrivate, open }: { repo: MenuRepo; isPrivate: boolean; open: boolean }) {
   const base = `/${repo.namespace}/${repo.name}`;
   return (
     <nav aria-label={`${repo.namespace}/${repo.name}`} inert={!open} className={PANEL}>
@@ -430,6 +452,17 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
   const reserved = new Set(["settings", "explore", "search", "new", "workspaces", "login", "logout", "register", "verify", "forgot", "reset", "device", "oauth"]);
   const inRepo = repoPath != null && !reserved.has(repoPath[1]) && repoPath[2] !== "-";
   const away = inSettings || inAccount || inRepo;
+  // The repository the menu is for: the one loaded if it is the one being
+  // gone to, else what the address says, at once.
+  const targetRepo = inRepo && repoPath ? { namespace: repoPath[1], name: repoPath[2] } : null;
+  const menuRepo: MenuRepo | null = targetRepo
+    ? sameRepo(active, targetRepo)
+      ? active
+      : {
+          ...targetRepo,
+          member: (user.workspaces ?? []).some((m) => m.slug === targetRepo.namespace.toLowerCase()),
+        }
+    : null;
   // What sits on the far side of the track. Kept while sliding back, so it
   // does not vanish on the way out.
   const side = useRef<"workspace" | "account" | "repo">("workspace");
@@ -437,8 +470,18 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
   else if (inSettings) side.current = "workspace";
   else if (inRepo) side.current = "repo";
   // The repository last shown, kept for the slide back.
-  const shown = useRef(active);
-  if (active) shown.current = active;
+  const shown = useRef<MenuRepo | null>(menuRepo);
+  if (menuRepo) shown.current = menuRepo;
+  // Moving between two of the far-side menus (settings to a repository,
+  // one repository to another) crossfades in place instead of sliding.
+  const detailKey = side.current === "repo" ? `repo:${shown.current?.namespace}/${shown.current?.name}` : side.current;
+  const lastAway = useRef(away);
+  const lastKey = useRef(detailKey);
+  const swapped = lastAway.current && away && lastKey.current !== detailKey;
+  useEffect(() => {
+    lastAway.current = away;
+    lastKey.current = detailKey;
+  });
   // The repository being looked at is listed even when it is someone else's.
   const listed =
     active && !shell.repos.some((repo) => repo.namespace === active.namespace && repo.name === active.name)
@@ -467,8 +510,8 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
           <kbd className="rounded bg-raised px-1.5 font-mono text-[0.625rem] text-muted ring-1 ring-line">⌘K</kbd>
         </button>
       </div>
-      <div className="min-h-0 grow overflow-hidden">
-      <div className={`${TRACK} ${away ? "-translate-x-1/2" : "translate-x-0"}`}>
+      <div className="relative min-h-0 grow overflow-hidden">
+      <div className={`${LAYER} ${away ? "pointer-events-none -translate-x-1/4 opacity-0" : "translate-x-0 opacity-100"}`}>
       <nav aria-label="g1t" inert={away} className={PANEL}>
         <div className="mt-3 space-y-px">
           <SidebarLink to="/" end icon={<LayoutDashboard size={15} />}>
@@ -516,17 +559,21 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
           })}
         </SidebarGroup>
       </nav>
-      {side.current === "repo" && shown.current ? (
-        <RepoMenu
-          repo={shown.current}
-          isPrivate={shell.repos.some((repo) => repo.namespace === shown.current!.namespace && repo.name === shown.current!.name && repo.isPrivate)}
-          open={inRepo}
-        />
-      ) : side.current === "account" || !ws ? (
-        <AccountSettingsMenu open={inAccount} />
-      ) : (
-        <SettingsMenu slug={ws.slug} owner={ws.role === "owner"} open={inSettings} />
-      )}
+      </div>
+      <div className={`${LAYER} ${away ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-full opacity-0"}`}>
+        <div key={detailKey} className={`h-full ${swapped ? "animate-[g1t-swap_220ms_ease-out]" : ""}`}>
+          {side.current === "repo" && shown.current ? (
+            <RepoMenu
+              repo={shown.current}
+              isPrivate={shell.repos.some((repo) => sameRepo(repo, shown.current) && repo.isPrivate)}
+              open={inRepo}
+            />
+          ) : side.current === "account" || !ws ? (
+            <AccountSettingsMenu open={inAccount} />
+          ) : (
+            <SettingsMenu slug={ws.slug} owner={ws.role === "owner"} open={inSettings} />
+          )}
+        </div>
       </div>
       </div>
 

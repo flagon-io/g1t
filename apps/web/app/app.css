@@ -218,3 +218,15 @@ body {
   background: radial-gradient(circle at 70% 30%, rgb(182 168 255 / 0.12), rgb(255 189 140 / 0.04) 45%, transparent 70%);
   box-shadow: inset 14px -8px 50px rgb(255 214 186 / 0.07);
 }
+
+/* The sidebar trading one far-side menu for another, in place. */
+@keyframes g1t-swap {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
