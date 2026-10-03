@@ -24,6 +24,7 @@ pub struct Services {
     pub runner: Fetcher,
     pub billing: Fetcher,
     pub integrations: Fetcher,
+    pub webhooks: Fetcher,
     /// Set for a request made with an agent's token: all it may do.
     pub scope: Option<AgentScope>,
 }
@@ -38,6 +39,7 @@ impl Services {
             runner: env.service("RUNNER")?,
             billing: env.service("BILLING")?,
             integrations: env.service("INTEGRATIONS")?,
+            webhooks: env.service("WEBHOOKS")?,
             scope: None,
         })
     }
@@ -88,6 +90,13 @@ pub enum Op {
     ImportIssue,
     GetModelRoutes,
     SetModelRoutes,
+    ListWebhooks,
+    CreateWebhook,
+    UpdateWebhook,
+    DeleteWebhook,
+    PingWebhook,
+    ListWebhookDeliveries,
+    RedeliverWebhook,
 }
 
 fn failed(code: FailureCode, message: &str) -> Result<Outcome<Value>> {
@@ -219,6 +228,24 @@ fn camel_keys(value: &Value) -> Value {
     Value::Object(out)
 }
 
+/// The inputs that say whose webhooks: a repository's, or a workspace's own.
+fn hook_owner(properties: Value) -> Value {
+    let mut properties = properties;
+    properties["repo"] = json!({
+        "type": "string",
+        "description": "Repository as \"owner/name\", for its webhooks.",
+    });
+    properties["workspace"] = json!({
+        "type": "string",
+        "description": "Instead of repo: the workspace, for its own webhooks.",
+    });
+    properties
+}
+
+fn webhook_events() -> Vec<&'static str> {
+    g1t_contracts::webhooks::EVENT_TYPES.to_vec()
+}
+
 fn repo_schema() -> Value {
     json!({
         "type": "string",
@@ -227,7 +254,7 @@ fn repo_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 43] = [
+    pub const ALL: [Op; 50] = [
         Op::Whoami,
         Op::CreateWorkspace,
         Op::ListRepos,
@@ -271,6 +298,13 @@ impl Op {
         Op::ImportIssue,
         Op::GetModelRoutes,
         Op::SetModelRoutes,
+        Op::ListWebhooks,
+        Op::CreateWebhook,
+        Op::UpdateWebhook,
+        Op::DeleteWebhook,
+        Op::PingWebhook,
+        Op::ListWebhookDeliveries,
+        Op::RedeliverWebhook,
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -323,6 +357,13 @@ impl Op {
             Op::ImportIssue => "import_issue",
             Op::GetModelRoutes => "get_model_routes",
             Op::SetModelRoutes => "set_model_routes",
+            Op::ListWebhooks => "list_webhooks",
+            Op::CreateWebhook => "create_webhook",
+            Op::UpdateWebhook => "update_webhook",
+            Op::DeleteWebhook => "delete_webhook",
+            Op::PingWebhook => "ping_webhook",
+            Op::ListWebhookDeliveries => "list_webhook_deliveries",
+            Op::RedeliverWebhook => "redeliver_webhook",
         }
     }
 
@@ -440,6 +481,21 @@ impl Op {
             Op::SetModelRoutes => {
                 "Replace a workspace's model routes. Each route names a task (default, implement, review, plan or update), a connection_id (null for g1t's hosted models) and a model at that provider. Providers that speak OpenAI's API need a model. Owners only."
             }
+            Op::ListWebhooks => {
+                "A repository's webhooks, or with workspace instead of repo, the workspace's own, which are sent the events of all its repositories. Secrets are never returned. Members only."
+            }
+            Op::CreateWebhook => {
+                "Register an HTTPS address to be sent events as they happen: a signed JSON POST for each, retried for hours if the receiver does not answer with a 2xx. events lists the event types, or leave it out for all. Without a secret, g1t makes one and returns it once. A ping is sent at once. Members, for a repository; owners, for a workspace."
+            }
+            Op::UpdateWebhook => {
+                "Change a webhook's address, its events, or whether it is active. Only the fields given change."
+            }
+            Op::DeleteWebhook => "Remove a webhook and its delivery log.",
+            Op::PingWebhook => "Send a webhook a ping, to check that its receiver answers.",
+            Op::ListWebhookDeliveries => {
+                "A webhook's latest deliveries, newest first: what was sent, how the receiver answered, and when it will be tried again."
+            }
+            Op::RedeliverWebhook => "Send a delivery's payload again, as a new delivery.",
             Op::ImportIssue => {
                 "Open an issue from a ticket in Jira or Linear, or from a Sentry issue, by its key or address. The issue is linked to it: agents read the original, and when the work lands the ticket is told. Importing the same ticket again returns the issue already made. With assign, a g1t agent starts on it."
             }
@@ -781,6 +837,39 @@ impl Op {
                 &["workspace", "provider"],
             ),
             Op::GetModelRoutes => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
+            Op::ListWebhooks => object(hook_owner(json!({})), &[]),
+            Op::CreateWebhook => object(
+                hook_owner(json!({
+                    "url": { "type": "string", "description": "An HTTPS address on the public internet." },
+                    "events": {
+                        "type": "array",
+                        "items": { "type": "string", "enum": webhook_events() },
+                        "description": "Event types to send. All of them if left out.",
+                    },
+                    "secret": { "type": "string", "description": "What deliveries are signed with. g1t makes one if left out." },
+                })),
+                &["url"],
+            ),
+            Op::UpdateWebhook => object(
+                hook_owner(json!({
+                    "id": { "type": "string", "description": "The webhook's id." },
+                    "url": { "type": "string" },
+                    "events": { "type": "array", "items": { "type": "string", "enum": webhook_events() } },
+                    "active": { "type": "boolean" },
+                })),
+                &["id"],
+            ),
+            Op::DeleteWebhook | Op::PingWebhook | Op::ListWebhookDeliveries => object(
+                hook_owner(json!({ "id": { "type": "string", "description": "The webhook's id." } })),
+                &["id"],
+            ),
+            Op::RedeliverWebhook => object(
+                hook_owner(json!({
+                    "id": { "type": "string", "description": "The webhook's id." },
+                    "delivery": { "type": "string", "description": "The delivery's id." },
+                })),
+                &["delivery"],
+            ),
             Op::SetModelRoutes => object(
                 json!({
                     "workspace": workspace_schema(),
@@ -862,6 +951,13 @@ impl Op {
                 | Op::TestIntegration
                 | Op::GetModelRoutes
                 | Op::SetModelRoutes
+                | Op::ListWebhooks
+                | Op::CreateWebhook
+                | Op::UpdateWebhook
+                | Op::DeleteWebhook
+                | Op::PingWebhook
+                | Op::ListWebhookDeliveries
+                | Op::RedeliverWebhook
         )
     }
 
@@ -938,6 +1034,7 @@ impl Op {
             events,
             runner,
             integrations,
+            webhooks,
             ..
         } = services;
         let workspace = || text(input, "workspace").to_lowercase();
@@ -1360,6 +1457,52 @@ impl Op {
                     &json!({ "actor": actor(), "workspace": workspace(), "id": text(input, "id") }),
                 )
                 .await
+            }
+            Op::ListWebhooks
+            | Op::CreateWebhook
+            | Op::UpdateWebhook
+            | Op::DeleteWebhook
+            | Op::PingWebhook
+            | Op::ListWebhookDeliveries
+            | Op::RedeliverWebhook => {
+                // A repository's webhooks, or with no repository named, the
+                // workspace's own.
+                let owner = match repo_path(input) {
+                    Some(repo) => json!({ "workspace": repo.namespace.to_lowercase(), "repo": repo }),
+                    None if !workspace().is_empty() => json!({ "workspace": workspace() }),
+                    None => return failed(FailureCode::Invalid, "Name the repository as repo, or the workspace as workspace."),
+                };
+                let mut args = owner.as_object().cloned().unwrap_or_default();
+                let mut put = |key: &str, value: Value| {
+                    args.insert(key.to_owned(), value);
+                };
+                let (method, who) = match self {
+                    Op::ListWebhooks => ("list", "viewer"),
+                    Op::CreateWebhook => ("create", "actor"),
+                    Op::UpdateWebhook => ("update", "actor"),
+                    Op::DeleteWebhook => ("delete", "actor"),
+                    Op::PingWebhook => ("ping", "actor"),
+                    Op::ListWebhookDeliveries => ("deliveries", "viewer"),
+                    _ => ("redeliver", "actor"),
+                };
+                put(who, if who == "viewer" { json!(viewer) } else { json!(actor()) });
+                put("id", json!(text(input, "id")));
+                put("deliveryId", json!(text(input, "delivery")));
+                if self == Op::CreateWebhook || self == Op::UpdateWebhook {
+                    if let Some(url) = optional_text(input, "url") {
+                        put("url", json!(url));
+                    }
+                    if input["events"].is_array() {
+                        put("events", input["events"].clone());
+                    }
+                    if let Some(secret) = optional_text(input, "secret") {
+                        put("secret", json!(secret));
+                    }
+                    if let Some(active) = input["active"].as_bool() {
+                        put("active", json!(active));
+                    }
+                }
+                pass(webhooks, method, &Value::Object(args)).await
             }
             Op::GetModelRoutes => {
                 pass(integrations, "routes", &json!({ "workspace": workspace(), "viewer": viewer })).await

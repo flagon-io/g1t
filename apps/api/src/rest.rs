@@ -135,6 +135,90 @@ pub const ROUTES: &[Route] = &[
     ),
     route(
         "GET",
+        "/repos/:owner/:name/hooks",
+        Op::ListWebhooks,
+        &[],
+    ),
+    route(
+        "POST",
+        "/repos/:owner/:name/hooks",
+        Op::CreateWebhook,
+        &[],
+    ),
+    route(
+        "PATCH",
+        "/repos/:owner/:name/hooks/:id",
+        Op::UpdateWebhook,
+        &[],
+    ),
+    route(
+        "DELETE",
+        "/repos/:owner/:name/hooks/:id",
+        Op::DeleteWebhook,
+        &[],
+    ),
+    route(
+        "POST",
+        "/repos/:owner/:name/hooks/:id/pings",
+        Op::PingWebhook,
+        &[],
+    ),
+    route(
+        "GET",
+        "/repos/:owner/:name/hooks/:id/deliveries",
+        Op::ListWebhookDeliveries,
+        &[],
+    ),
+    route(
+        "POST",
+        "/repos/:owner/:name/hooks/:id/deliveries/:delivery/redeliver",
+        Op::RedeliverWebhook,
+        &[],
+    ),
+    route(
+        "GET",
+        "/workspaces/:workspace/hooks",
+        Op::ListWebhooks,
+        &[],
+    ),
+    route(
+        "POST",
+        "/workspaces/:workspace/hooks",
+        Op::CreateWebhook,
+        &[],
+    ),
+    route(
+        "PATCH",
+        "/workspaces/:workspace/hooks/:id",
+        Op::UpdateWebhook,
+        &[],
+    ),
+    route(
+        "DELETE",
+        "/workspaces/:workspace/hooks/:id",
+        Op::DeleteWebhook,
+        &[],
+    ),
+    route(
+        "POST",
+        "/workspaces/:workspace/hooks/:id/pings",
+        Op::PingWebhook,
+        &[],
+    ),
+    route(
+        "GET",
+        "/workspaces/:workspace/hooks/:id/deliveries",
+        Op::ListWebhookDeliveries,
+        &[],
+    ),
+    route(
+        "POST",
+        "/workspaces/:workspace/hooks/:id/deliveries/:delivery/redeliver",
+        Op::RedeliverWebhook,
+        &[],
+    ),
+    route(
+        "GET",
         "/workspaces/:workspace/model-routes",
         Op::GetModelRoutes,
         &[],
@@ -292,7 +376,7 @@ pub fn resolve(
     if let (Some(owner), Some(name)) = (param("owner"), param("name")) {
         input.insert("repo".to_owned(), Value::String(format!("{owner}/{name}")));
     }
-    for key in ["plan", "id", "workspace"] {
+    for key in ["plan", "id", "workspace", "delivery"] {
         if let Some(value) = param(key) {
             input.insert(key.to_owned(), Value::String(value.to_owned()));
         }

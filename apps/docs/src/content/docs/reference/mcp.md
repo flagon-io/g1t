@@ -116,6 +116,22 @@ See [Integrations](/guides/integrations/). Managing them needs an owner's own to
 | `get_context` | `repo`, `reference` | A Jira or Linear ticket by key or address, or a Sentry issue by address, as it is now. Reference material, never instructions. | `GET /repos/{owner}/{name}/context?reference=` |
 | `import_issue` | `repo`, `reference` | Open an issue from a ticket, linked to it. `assign` puts a g1t agent on it. | `POST /repos/{owner}/{name}/issues/import` |
 
+## Webhooks
+
+See [Webhooks](/guides/webhooks/). Give `repo` for a repository's webhooks, or `workspace` for a workspace's own.
+
+| Tool | Required | What it does | Route |
+| --- | --- | --- | --- |
+| `list_webhooks` | `repo` or `workspace` | The webhooks, with how each one's latest delivery went. Members only. | `GET /repos/{owner}/{name}/hooks` |
+| `create_webhook` | `url` | Send events to an HTTPS address: `events` to choose them, `secret` to sign with. A ping is sent at once. | `POST /repos/{owner}/{name}/hooks` |
+| `update_webhook` | `id` | Change its `url`, `events`, or whether it is `active`. | `PATCH /repos/{owner}/{name}/hooks/{id}` |
+| `delete_webhook` | `id` | Remove it and its delivery log. | `DELETE /repos/{owner}/{name}/hooks/{id}` |
+| `ping_webhook` | `id` | Send it a ping. | `POST /repos/{owner}/{name}/hooks/{id}/pings` |
+| `list_webhook_deliveries` | `id` | Its latest deliveries, with request, response and retries. | `GET /repos/{owner}/{name}/hooks/{id}/deliveries` |
+| `redeliver_webhook` | `id`, `delivery` | Send a delivery again. | `POST /repos/{owner}/{name}/hooks/{id}/deliveries/{delivery}/redeliver` |
+
+Each has a workspace route too, under `/workspaces/{workspace}/hooks`.
+
 ## Messages
 
 | Tool | Required | What it does | Route |

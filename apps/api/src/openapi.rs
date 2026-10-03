@@ -8,7 +8,9 @@ use crate::rest::{ROUTES, Route};
 /// The section of the API reference an operation is listed under.
 fn tag(op: Op) -> &'static str {
     let name = op.name();
-    if name.contains("integration") || name.contains("model_routes") || op == Op::GetContext {
+    if name.contains("webhook") {
+        "Webhooks"
+    } else if name.contains("integration") || name.contains("model_routes") || op == Op::GetContext {
         "Integrations"
     } else if op == Op::Whoami || name.contains("workspace") {
         "Accounts"
@@ -104,8 +106,15 @@ fn operation(route: &Route) -> Value {
         });
     }
 
+    // An operation reached at a workspace's address as well as a
+    // repository's is documented once for each, with its own id.
+    let id = if route.path.starts_with("/workspaces/") && ROUTES.iter().any(|other| other.op == op && other.path.starts_with("/repos/")) {
+        format!("{}_for_workspace", op.name())
+    } else {
+        op.name().to_owned()
+    };
     let mut described = json!({
-        "operationId": op.name(),
+        "operationId": id,
         "tags": [tag(op)],
         "summary": title(op),
         "description": op.description(),
@@ -292,6 +301,10 @@ mod tests {
                 op.name()
             );
         }
+        let mut unique = ids.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), ids.len(), "operation ids repeat");
     }
 
     #[test]

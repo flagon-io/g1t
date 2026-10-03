@@ -1,9 +1,9 @@
 [package]
-name = "g1t-integrations"
+name = "g1t-webhooks"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
-description = "A workspace's connections to systems outside g1t: model providers, alerts and trackers."
+description = "Events, delivered to the addresses repositories and workspaces register."
 
 [lib]
 crate-type = ["cdylib"]
@@ -15,7 +15,4 @@ g1t-secrets.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 worker.workspace = true
-base64 = "0.22"
-getrandom = { version = "0.2", features = ["js"] }
-hex = "0.4"
-sha2 = "0.10"
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }

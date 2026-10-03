@@ -76,6 +76,7 @@ export default defineConfig({
 					items: [
 						{ label: 'Integrations', slug: 'guides/integrations' },
 						{ label: 'Model providers', slug: 'guides/models' },
+						{ label: 'Webhooks', slug: 'guides/webhooks' },
 					],
 				},
 				{

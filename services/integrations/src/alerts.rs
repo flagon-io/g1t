@@ -4,7 +4,7 @@
 
 use serde_json::Value;
 
-use crate::crypto;
+use g1t_secrets as crypto;
 
 /// What an alert asks g1t to do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

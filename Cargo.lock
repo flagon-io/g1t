@@ -937,13 +937,12 @@ dependencies = [
 name = "g1t-integrations"
 version = "0.1.0"
 dependencies = [
- "aes-gcm 0.10.3",
  "base64 0.22.1",
  "g1t-contracts",
  "g1t-kit",
+ "g1t-secrets",
  "getrandom 0.2.17",
  "hex",
- "hmac 0.12.1",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -985,6 +984,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "g1t-secrets"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm 0.10.3",
+ "base64 0.22.1",
+ "getrandom 0.2.17",
+ "hex",
+ "hmac 0.12.1",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "g1t-sshd"
 version = "0.1.0"
 dependencies = [
@@ -997,6 +1008,19 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-tungstenite",
+]
+
+[[package]]
+name = "g1t-webhooks"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "g1t-contracts",
+ "g1t-kit",
+ "g1t-secrets",
+ "serde",
+ "serde_json",
+ "worker",
 ]
 
 [[package]]

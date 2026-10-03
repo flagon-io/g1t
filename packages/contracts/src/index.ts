@@ -9,4 +9,5 @@ export * from "./oauth";
 export * from "./repos";
 export * from "./result";
 export * from "./runner";
+export * from "./webhooks";
 export * from "./work";

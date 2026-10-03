@@ -1,0 +1,32 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-webhooks",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	"main": "build/index.js",
+	"build": { "command": "cargo install -q worker-build@0.8.7 && worker-build --release" },
+	// Reached only through service bindings; it reaches out to the
+	// addresses webhooks are registered at.
+	"workers_dev": false,
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "g1t-webhooks",
+			"database_id": "7da97a7e-b4a7-40e3-a129-3b78d654e9bb",
+			"migrations_dir": "migrations"
+		}
+	],
+	"services": [
+		{ "binding": "REPOS", "service": "g1t-repos" },
+		{ "binding": "IDENTITY", "service": "g1t-identity" }
+	],
+	// Every event on the bus, to deliver to the webhooks that want it.
+	"queues": {
+		"consumers": [{ "queue": "g1t-events-webhooks", "max_batch_size": 20, "max_batch_timeout": 1 }]
+	},
+	// Retries that are due, and deliveries old enough to forget.
+	"triggers": { "crons": ["* * * * *"] },
+	// Secret: WEBHOOKS_KEY, 64 hex characters. Webhooks' signing secrets are
+	// sealed with it; without it none can be made.
+	"observability": { "enabled": true }
+}

@@ -2,6 +2,7 @@ import type { BillingApi } from "./billing";
 import type { EventsApi } from "./events";
 import type { IdentityApi } from "./identity";
 import type { IntegrationsApi } from "./integrations";
+import type { WebhooksApi } from "./webhooks";
 import type { ReposApi } from "./repos";
 import type { WorkApi } from "./work";
 
@@ -213,5 +214,18 @@ export function integrationsClient(service: ServiceBinding): IntegrationsApi {
     modelUpstream: (token) => call("model_upstream", { token }),
     routes: (workspace, viewer) => call("routes", { workspace, viewer }),
     setRoutes: (actor, workspace, routes) => call("set_routes", { actor, workspace, routes }),
+  };
+}
+
+export function webhooksClient(service: ServiceBinding): WebhooksApi {
+  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
+  return {
+    list: (viewer, owner) => call("list", { viewer, ...owner }),
+    create: (actor, owner, input) => call("create", { actor, ...owner, ...input }),
+    update: (actor, owner, id, input) => call("update", { actor, ...owner, id, ...input }),
+    delete: (actor, owner, id) => call("delete", { actor, ...owner, id }),
+    ping: (actor, owner, id) => call("ping", { actor, ...owner, id }),
+    deliveries: (viewer, owner, id) => call("deliveries", { viewer, ...owner, id }),
+    redeliver: (actor, owner, deliveryId) => call("redeliver", { actor, ...owner, deliveryId }),
   };
 }

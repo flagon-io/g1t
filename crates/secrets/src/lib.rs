@@ -1,9 +1,9 @@
-//! Secrets at rest, and the signatures outside systems put on what they
-//! send.
+//! Secrets at rest, and the signatures put on what crosses between g1t
+//! and outside systems.
 //!
-//! A connection's secrets are sealed with AES-256-GCM under the service's
-//! own key, with the connection's id as associated data, so a sealed value
-//! copied onto another row does not open.
+//! A secret is sealed with AES-256-GCM under its service's own key, with the
+//! id of the row it belongs to as associated data, so a sealed value copied
+//! onto another row does not open.
 
 use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};

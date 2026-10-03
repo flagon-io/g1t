@@ -6,6 +6,7 @@ import {
   identityClient,
   integrationsClient,
   reposClient,
+  webhooksClient,
   workClient,
 } from "@g1t/contracts";
 
@@ -15,3 +16,4 @@ export const work = workClient(env.WORK);
 export const billing = billingClient(env.BILLING);
 export const events = eventsClient(env.EVENTS);
 export const integrations = integrationsClient(env.INTEGRATIONS);
+export const webhooks = webhooksClient(env.WEBHOOKS);

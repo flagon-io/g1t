@@ -9,7 +9,6 @@
 //! the sender give up and send it again.
 
 mod alerts;
-mod crypto;
 mod http;
 mod models;
 mod refs;
@@ -30,7 +29,7 @@ use worker::wasm_bindgen::JsValue;
 use worker::{Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, Request, Response, Result, event};
 
 use alerts::{Action, Signal};
-use crypto::Sealer;
+use g1t_secrets::{self as crypto, Sealer};
 use refs::Reference;
 
 /// How long a run's model token works.

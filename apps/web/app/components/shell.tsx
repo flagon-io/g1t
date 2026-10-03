@@ -25,6 +25,7 @@ import {
   Plug,
   Settings,
   Users,
+  Webhook,
   X,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
@@ -242,7 +243,7 @@ function AccountMenu({ user }: { user: User }) {
 }
 
 /** A workspace's settings pages, which the sidebar slides over to. */
-const SETTINGS_PAGE = /^\/([^/]+)\/-\/(settings|people|tokens|billing|integrations)(\/|$)/;
+const SETTINGS_PAGE = /^\/([^/]+)\/-\/(settings|people|tokens|billing|integrations|webhooks)(\/|$)/;
 
 /**
  * The sidebar's menus sit side by side on one track, and the track slides:
@@ -282,6 +283,9 @@ function SettingsMenu({ slug, owner, open }: { slug: string; owner: boolean; ope
         </SidebarLink>
         <SidebarLink to={`/${slug}/-/integrations`} icon={<Plug size={15} />}>
           Integrations
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/webhooks`} icon={<Webhook size={15} />}>
+          Webhooks
         </SidebarLink>
         <SidebarLink to={`/${slug}/-/tokens`} icon={<KeyRound size={15} />}>
           Access tokens
@@ -512,6 +516,7 @@ const SECTIONS: Record<string, string> = {
   usage: "Usage",
   billing: "Billing",
   integrations: "Integrations",
+  webhooks: "Webhooks",
   tree: "Code",
   blob: "Code",
 };

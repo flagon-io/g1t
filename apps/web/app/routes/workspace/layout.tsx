@@ -29,6 +29,10 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   usage: { title: "Usage", about: "What the workspace's agents cost, run by run, by repository, pull request and model." },
   billing: { title: "Billing", about: "Agent credit, and every charge against it." },
+  webhooks: {
+    title: "Webhooks",
+    about: "Every repository's events, sent to your own addresses as they happen. A repository can also have its own, under its settings.",
+  },
   integrations: {
     title: "Integrations",
     about: "Model providers, alerts and trackers. Secrets are sealed when saved, and agents never see them.",

@@ -25,7 +25,8 @@
 			// every event.
 			{ "binding": "SUBSCRIBER_WORK", "queue": "g1t-events-work" },
 			{ "binding": "SUBSCRIBER_RUNNER", "queue": "g1t-events-runner" },
-			{ "binding": "SUBSCRIBER_INTEGRATIONS", "queue": "g1t-events-integrations" }
+			{ "binding": "SUBSCRIBER_INTEGRATIONS", "queue": "g1t-events-integrations" },
+			{ "binding": "SUBSCRIBER_WEBHOOKS", "queue": "g1t-events-webhooks" }
 		],
 		"consumers": [{ "queue": "g1t-events", "max_batch_size": 100, "max_batch_timeout": 1 }]
 	},
