@@ -340,6 +340,20 @@ impl Work {
         }
     }
 
+    /// The commit a pull request's change is at in git right now: its
+    /// fork's default branch, or its branch.
+    async fn live_head(&self, pull: &Pull) -> Result<Option<String>> {
+        g1t_kit::call(
+            &self.repos,
+            "head",
+            &HeadArgs {
+                repo_id: pull.fork_repo_id.clone().unwrap_or_else(|| pull.repo_id.clone()),
+                branch: pull.branch.clone().unwrap_or_default(),
+            },
+        )
+        .await
+    }
+
     fn pull_event(pull: &Pull) -> PullEvent {
         PullEvent {
             pull_id: pull.id.clone(),
@@ -1208,11 +1222,17 @@ impl Work {
             .run()
             .await?;
         if pull.status == PullStatus::Draft {
+            // The head as it is now: the push that came just before may not
+            // have reached `head_commit` yet, and workflows run on it.
+            let commit = self.live_head(&pull).await?.or_else(|| pull.head_commit.clone());
             self.publish(
                 "pull.ready",
                 &pull.repo_id,
                 &a.actor,
-                Self::pull_event(&pull),
+                PullEvent {
+                    commit,
+                    ..Self::pull_event(&pull)
+                },
             )
             .await?;
         }

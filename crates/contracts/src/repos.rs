@@ -412,6 +412,7 @@ pub struct BehindArgs {
 #[serde(rename_all = "camelCase")]
 pub struct HeadArgs {
     pub repo_id: String,
+    /// Empty for the repository's default branch.
     pub branch: String,
 }
 

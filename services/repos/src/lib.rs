@@ -513,9 +513,10 @@ impl<S: GitStore> Repos<S> {
         let Some(repo) = self.registry.by_id(&a.repo_id).await? else {
             return Ok(None);
         };
+        let branch = if a.branch.is_empty() { &repo.default_branch } else { &a.branch };
         let git = self.store.open(&store_key(&repo)).await?;
         Ok(git
-            .log(&a.branch, 1)
+            .log(branch, 1)
             .await?
             .into_iter()
             .next()

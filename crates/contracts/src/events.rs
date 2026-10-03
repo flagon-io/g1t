@@ -85,7 +85,8 @@ pub struct PullEvent {
     pub issue: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent: Option<String>,
-    /// On merge: the commit the branch now points to.
+    /// On merge: the commit the branch now points to. On update and when
+    /// marked ready: the head of the change.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit: Option<String>,
     /// On close: the pull request that was merged instead.
