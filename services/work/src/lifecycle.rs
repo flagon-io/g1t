@@ -739,8 +739,9 @@ impl Work {
         if pull.status != PullStatus::Open {
             return Ok(Advance::None);
         }
-        // Its author can read both the repository and the fork.
-        let viewer: Viewer = Some(pull.author.clone());
+        // As a member: a private repository would look missing otherwise,
+        // and the pull request would never move.
+        let viewer: Viewer = self.author_viewer(&pull).await?;
         let repo: Outcome<Repo> = g1t_kit::call(
             &self.repos,
             "get_by_id",
@@ -1052,7 +1053,7 @@ impl Work {
             "get_by_id",
             &GetByIdArgs {
                 id: pull.repo_id.clone(),
-                viewer: Some(pull.author.clone()),
+                viewer: self.author_viewer(&pull).await?,
             },
         )
         .await?;

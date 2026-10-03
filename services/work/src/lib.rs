@@ -116,6 +116,28 @@ impl Work {
             .await
     }
 
+    /// A pull request's author as a viewer who can read its repository and
+    /// source. Stored authors carry no memberships, so a private repository
+    /// would otherwise look missing to them.
+    pub(crate) async fn author_viewer(&self, pull: &Pull) -> Result<Viewer> {
+        let path: Option<RepoPath> = g1t_kit::call(
+            &self.repos,
+            "path_by_id",
+            &g1t_contracts::repos::PathByIdArgs { id: pull.repo_id.clone() },
+        )
+        .await?;
+        let mut author = pull.author.clone();
+        if let Some(path) = path
+            && !author.is_member(&path.namespace.to_lowercase())
+        {
+            author.workspaces.push(g1t_contracts::Membership {
+                slug: path.namespace.to_lowercase(),
+                role: g1t_contracts::Role::Member,
+            });
+        }
+        Ok(Some(author))
+    }
+
     /// Publishes an event caused by `actor`, or by g1t itself.
     async fn publish_as<T: Serialize>(
         &self,

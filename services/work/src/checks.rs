@@ -110,7 +110,7 @@ impl Work {
         };
 
         // The author can read both the repository and the pull request's source.
-        let viewer = Some(pull.author.clone());
+        let viewer = self.author_viewer(&pull).await?;
         let repo: Outcome<Repo> = g1t_kit::call(
             &self.repos,
             "get_by_id",
