@@ -192,7 +192,8 @@ Every one of these is also an MCP tool: `list_issues`, `get_issue`,
 `disconnect_integration`, `get_model_routes`, `set_model_routes`,
 `get_context`, `import_issue`, `list_webhooks`, `create_webhook`,
 `update_webhook`, `delete_webhook`, `ping_webhook`,
-`list_webhook_deliveries`, `redeliver_webhook`,
+`list_webhook_deliveries`, `redeliver_webhook`, `list_automations`,
+`list_automation_runs`, `run_automation`, `update_automation`,
 `list_repos`, `get_repo`, `create_repo`, `update_repo`,
 `get_repo_settings`, `update_repo_settings`, `list_events`,
 `create_workspace`, and `whoami`. MCP tools take the repository as `repo`,
@@ -226,6 +227,16 @@ repository in a workspace) with `url` and optional `events` sends events
 to that HTTPS address as they happen, signed in `X-G1t-Signature-256`
 (HMAC-SHA256 of the body), retried for about seven hours. Deliveries,
 with request and response, are at `…/hooks/{id}/deliveries`.
+
+## Automations
+
+A YAML file in `.g1t/automations/` on the default branch is a rule: `on`
+(an event such as `issue.opened`, `schedule: "0 9 * * mon"`, or `manual`),
+optional `if` (`labels`, `actor`, `branch`, or an event data field), and
+`do` steps: `comment`, `label`, `unlabel`, `assign_agent`, `message_agent`,
+`open_issue`, `close_issue`, `reopen_issue`, `notify`. Text takes
+`{{repo}}`, `{{number}}`, `{{title}}`, `{{url}}`, `{{actor}}`. Runs are at
+`GET {repo}/automations/runs`; `POST {repo}/automations/{id}/runs` runs one.
 
 ## Facts
 
@@ -264,6 +275,7 @@ with request and response, are at `…/hooks/{id}/deliveries`.
 - [Integrations](https://docs.g1t.sh/guides/integrations/)
 - [Model providers](https://docs.g1t.sh/guides/models/)
 - [Webhooks](https://docs.g1t.sh/guides/webhooks/)
+- [Automations](https://docs.g1t.sh/guides/automations/)
 - [Usage and billing](https://docs.g1t.sh/guides/usage-and-billing/)
 - [Git](https://docs.g1t.sh/guides/git/)
 - [MCP tools](https://docs.g1t.sh/reference/mcp/)
