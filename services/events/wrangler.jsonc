@@ -24,7 +24,8 @@
 			// and scales on its own. Bindings named SUBSCRIBER_* receive
 			// every event.
 			{ "binding": "SUBSCRIBER_WORK", "queue": "g1t-events-work" },
-			{ "binding": "SUBSCRIBER_RUNNER", "queue": "g1t-events-runner" }
+			{ "binding": "SUBSCRIBER_RUNNER", "queue": "g1t-events-runner" },
+			{ "binding": "SUBSCRIBER_INTEGRATIONS", "queue": "g1t-events-integrations" }
 		],
 		"consumers": [{ "queue": "g1t-events", "max_batch_size": 100, "max_batch_timeout": 1 }]
 	},

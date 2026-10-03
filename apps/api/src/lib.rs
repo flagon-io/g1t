@@ -115,11 +115,36 @@ fn index() -> Value {
         "device_token_url": format!("{API}/device/token"),
         "oauth_metadata_url": format!("{API}/.well-known/oauth-authorization-server"),
         "git_url": "https://g1t.sh/{owner}/{name}.git",
+        "integrations_url": format!("{API}/workspaces/{{workspace}}/integrations"),
+        "context_url": format!("{repo}/context{{?reference}}"),
+        "import_issue_url": format!("{repo}/issues/import"),
+        "hooks_url": format!("{API}/hooks/{{integration}}"),
     })
 }
 
 // Signing in from a tool. Accounts are created, and passwords typed, only
 // in a browser; a tool gets its token by having a person approve a code.
+
+/// Passes a request from an outside system to its connection, as it came:
+/// its signature covers the exact bytes of the body.
+async fn receive_hook(request: &mut Request, services: &Services, id: &str) -> Result<Response> {
+    let headers: std::collections::HashMap<String, String> = request
+        .headers()
+        .entries()
+        .map(|(name, value)| (name.to_lowercase(), value))
+        .collect();
+    let body = request.text().await.unwrap_or_default();
+    if body.len() > 1_000_000 {
+        return Ok(Response::from_json(&json!({ "message": "The body is too large." }))?.with_status(413));
+    }
+    let received: g1t_contracts::integrations::Received = g1t_kit::call(
+        &services.integrations,
+        "receive",
+        &json!({ "id": id, "headers": headers, "body": body }),
+    )
+    .await?;
+    Ok(Response::from_json(&json!({ "message": received.message }))?.with_status(received.status))
+}
 
 async fn device_code(request: &mut Request, services: &Services) -> Result<Response> {
     let body = json_body(request).await;
@@ -312,6 +337,15 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     };
     let on_mcp = url.host_str().is_some_and(|host| host.starts_with("mcp."));
     let mut services = Services::new(env)?;
+
+    // Outside systems reporting to a connection. They sign what they send
+    // with the connection's own secret, which is not a g1t token, so this
+    // comes before anything that would read one.
+    if method == "POST" && !on_mcp {
+        if let Some(id) = path.strip_prefix("/hooks/").filter(|id| !id.is_empty() && !id.contains('/')) {
+            return receive_hook(&mut request, &services, id).await;
+        }
+    }
 
     let viewer = match authenticate(&request, &services).await? {
         Ok(viewer) => viewer,

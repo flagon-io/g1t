@@ -66,6 +66,7 @@ struct LedgerRow {
     model: Option<String>,
     created_by: Option<String>,
     created_at: String,
+    billed_to: Option<String>,
 }
 
 impl From<LedgerRow> for LedgerEntry {
@@ -79,6 +80,7 @@ impl From<LedgerRow> for LedgerEntry {
             number: row.number,
             task: row.task,
             model: row.model,
+            billed_to: row.billed_to.unwrap_or_else(|| "g1t".to_owned()),
             created_by: row.created_by,
             created_at: row.created_at,
         }
@@ -93,6 +95,13 @@ struct RunRow {
     task: String,
     model: String,
     token_hash: String,
+    billed_to: Option<String>,
+}
+
+impl RunRow {
+    fn own_provider(&self) -> bool {
+        self.billed_to.as_deref() == Some("workspace")
+    }
 }
 
 #[derive(Deserialize)]
@@ -113,6 +122,8 @@ struct Billing {
     /// Absent when no card processor is configured.
     stripe: Option<Stripe>,
     margin_percent: u32,
+    /// Charged for a run on the workspace's own model provider.
+    orchestration_fee_micros: i64,
 }
 
 impl Billing {
@@ -140,6 +151,7 @@ impl Billing {
                 .map_or(0, |row| row.balance_micros),
             status: self.status(),
             margin_percent: self.margin_percent,
+            orchestration_fee_micros: self.orchestration_fee_micros,
         })
     }
 
@@ -170,8 +182,8 @@ impl Billing {
                     .prepare(
                         "INSERT INTO ledger
                            (id, workspace, kind, amount_micros, description, repo, number, task,
-                            model, cost_micros, reference, created_by, created_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            model, cost_micros, reference, created_by, created_at, billed_to)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     )
                     .bind(&[
                         new_id("led", now).into(),
@@ -189,6 +201,7 @@ impl Billing {
                         reference.into(),
                         optional(created_by),
                         timestamp.as_str().into(),
+                        run.map_or("g1t", |run| if run.own_provider() { "workspace" } else { "g1t" }).into(),
                     ])?,
                 self.db
                     .prepare(
@@ -278,6 +291,7 @@ impl Billing {
         struct Totals {
             spent: Option<i64>,
             cost: Option<i64>,
+            provider: Option<i64>,
             runs: Option<u32>,
             added: Option<i64>,
         }
@@ -286,7 +300,8 @@ impl Billing {
             .prepare(
                 "SELECT
                    -SUM(CASE WHEN kind = 'usage' THEN amount_micros END) AS spent,
-                   SUM(CASE WHEN kind = 'usage' THEN cost_micros END) AS cost,
+                   SUM(CASE WHEN kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' THEN cost_micros END) AS cost,
+                   SUM(CASE WHEN kind = 'usage' AND billed_to = 'workspace' THEN cost_micros END) AS provider,
                    SUM(CASE WHEN kind = 'usage' THEN 1 ELSE 0 END) AS runs,
                    SUM(CASE WHEN kind = 'top_up' THEN amount_micros END) AS added
                  FROM ledger WHERE workspace = ?1 AND created_at >= ?2",
@@ -297,12 +312,14 @@ impl Billing {
         let totals = totals.unwrap_or(Totals {
             spent: None,
             cost: None,
+            provider: None,
             runs: None,
             added: None,
         });
         Ok(Outcome::Ok(Usage {
             spent_micros: totals.spent.unwrap_or_default(),
             cost_micros: totals.cost.unwrap_or_default(),
+            provider_micros: totals.provider.unwrap_or_default(),
             runs: totals.runs.unwrap_or_default(),
             added_micros: totals.added.unwrap_or_default(),
             by_day: query(slices("substr(created_at, 1, 10) || '/' || COALESCE(task, 'other')", 400)).await?,
@@ -465,8 +482,8 @@ impl Billing {
         let token = hex::encode(bytes);
         self.db
             .prepare(
-                "INSERT INTO runs (id, workspace, repo, number, task, model, token_hash, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO runs (id, workspace, repo, number, task, model, token_hash, created_at, billed_to)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 run_id.as_str().into(),
@@ -477,6 +494,7 @@ impl Billing {
                 a.model.into(),
                 hash(&token).into(),
                 rfc3339(now).into(),
+                if a.billed_to == "workspace" { "workspace" } else { "g1t" }.into(),
             ])?
             .run()
             .await?;
@@ -487,7 +505,7 @@ impl Billing {
         let run = self
             .db
             .prepare(
-                "SELECT workspace, repo, number, task, model, token_hash FROM runs
+                "SELECT workspace, repo, number, task, model, token_hash, billed_to FROM runs
                  WHERE id = ? AND finished_at IS NULL",
             )
             .bind(&[a.run_id.as_str().into()])?
@@ -511,13 +529,22 @@ impl Billing {
         if claimed.is_none() {
             return Ok(Outcome::Ok(false));
         }
-        let charge = charge_micros(a.cost_usd, self.margin_percent);
-        let description = match run.task.as_str() {
+        // On the workspace's own provider, the model was paid for there:
+        // g1t charges its fee, and keeps the provider's cost to show.
+        let charge = if run.own_provider() {
+            self.orchestration_fee_micros
+        } else {
+            charge_micros(a.cost_usd, self.margin_percent)
+        };
+        let mut description = match run.task.as_str() {
             "plan" => format!("Planning for {}", run.repo),
             "review" => format!("Review of {}#{}", run.repo, run.number),
             "update" => format!("Catching up {}#{}", run.repo, run.number),
             _ => format!("Work on {}#{}", run.repo, run.number),
         };
+        if run.own_provider() {
+            description.push_str(", on your own model provider");
+        }
         self.enter(
             &run.workspace,
             EntryKind::Usage,
@@ -560,6 +587,11 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
             .ok()
             .and_then(|percent| percent.to_string().parse().ok())
             .unwrap_or(20),
+        orchestration_fee_micros: env
+            .var("ORCHESTRATION_FEE_MICROS")
+            .ok()
+            .and_then(|fee| fee.to_string().parse().ok())
+            .unwrap_or(100_000),
     };
     match method.as_str() {
         "status" => reply(&billing.status()),

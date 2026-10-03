@@ -8,7 +8,9 @@ use crate::rest::{ROUTES, Route};
 /// The section of the API reference an operation is listed under.
 fn tag(op: Op) -> &'static str {
     let name = op.name();
-    if op == Op::Whoami || name.contains("workspace") {
+    if name.contains("integration") || op == Op::GetContext {
+        "Integrations"
+    } else if op == Op::Whoami || name.contains("workspace") {
         "Accounts"
     } else if name.contains("session") {
         "Sessions"

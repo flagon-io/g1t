@@ -1,9 +1,9 @@
 import { env } from "cloudflare:workers";
-import { Bot, GitCommitHorizontal, GitMerge, Play, Sparkles, Terminal } from "lucide-react";
+import { Bot, ExternalLink, GitCommitHorizontal, GitMerge, Play, Sparkles, Terminal } from "lucide-react";
 import { useEffect } from "react";
 import { Form, Link, redirect, useNavigation, useRevalidator } from "react-router";
 
-import type { Pull } from "@g1t/contracts";
+import { type Pull, PROVIDERS } from "@g1t/contracts";
 
 import type { Route } from "./+types/issue";
 import { Markdown } from "../../components/markdown";
@@ -30,7 +30,7 @@ import {
   PullIcon,
   plainText,
 } from "../../components/work";
-import { identity, work } from "../../lib/services.server";
+import { identity, integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 
 const REFRESH_MS = 4000;
@@ -45,12 +45,14 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const number = Number(params.number);
   // At once: none of these depends on another.
-  const [found, labels, agentsEnabled, members] = await Promise.all([
+  const [found, labels, agentsEnabled, members, links] = await Promise.all([
     work.getIssue(path, number, viewer),
     work.listLabels(path, viewer),
     env.RUNNER.enabled(viewer, path),
     // A member picks assignees from the workspace's people.
     roleIn(viewer, params.owner) ? identity.listMembers(params.owner, viewer) : null,
+    // What it is tied to outside g1t. Shown only once the issue is known visible.
+    integrations.links(path, number).catch(() => []),
   ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be a pull request.
@@ -64,6 +66,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     viewer,
     labels: labels.ok ? labels.value : [],
     agentsEnabled,
+    links,
     members: members?.ok ? members.value.map((member) => member.username) : [],
     // The author and members of the workspace can change an issue.
     canManage:
@@ -337,6 +340,34 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
       </div>
 
       <aside className="space-y-6">
+        {loaderData.links.length > 0 && (
+          <section>
+            <h3 className="text-sm font-medium">From outside g1t</h3>
+            <ul className="mt-2 space-y-1.5 text-sm">
+              {loaderData.links.map((link) => (
+                <li key={`${link.connectionId}-${link.key}`}>
+                  <a
+                    href={link.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group flex items-center gap-2 rounded-lg border border-line px-2.5 py-2 transition-colors hover:border-line-strong"
+                  >
+                    <span className="min-w-0 grow">
+                      <span className="block truncate font-medium">
+                        {PROVIDERS[link.provider].label} <span className="font-mono text-muted">{link.key}</span>
+                      </span>
+                      <span className="block text-xs text-faint">
+                        {link.count > 1 ? `Seen ${link.count} times, last ` : "Linked "}
+                        <TimeAgo at={link.count > 1 ? link.lastSeen : link.firstSeen} />
+                      </span>
+                    </span>
+                    <ExternalLink size={13} className="shrink-0 text-faint group-hover:text-fg" />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         <section>
           <h3 className="text-sm font-medium">Assignees</h3>
           <ul className="mt-2 space-y-1.5 text-sm">

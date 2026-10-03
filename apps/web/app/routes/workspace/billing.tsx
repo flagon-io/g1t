@@ -193,6 +193,14 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
               the margin.
             </li>
             <li>
+              With your own model provider, connected under{" "}
+              <Link to={`/${slug}/-/integrations`} className="text-fg hover:underline">
+                Integrations
+              </Link>
+              , the provider bills you for the model and each run here is a flat{" "}
+              {dollars(account.orchestrationFeeMicros)}.
+            </li>
+            <li>
               Only members of <span className="font-mono text-fg">{slug}</span> can
               put agents to work on its repositories.
             </li>

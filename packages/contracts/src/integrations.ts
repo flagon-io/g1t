@@ -1,0 +1,158 @@
+import type { User, Viewer } from "./identity";
+import type { RepoPath } from "./repos";
+import type { Result } from "./result";
+
+/**
+ * A workspace's connections to systems outside g1t. Mirrors
+ * `crates/contracts/src/integrations.rs`, which says what each does.
+ */
+export type Provider =
+  | "anthropic"
+  | "anthropic_endpoint"
+  | "sentry"
+  | "datadog"
+  | "webhook"
+  | "jira"
+  | "linear";
+
+export type ProviderKind = "models" | "alerts" | "tracker";
+
+export type ConnectionConfig = {
+  /** For alerts: where issues are opened, `owner/name`. */
+  repo?: string;
+  /** For alerts: put a g1t agent on each issue opened. */
+  assign?: boolean;
+  /** For alerts: the label put on each issue. `bug` when unset. */
+  label?: string;
+  /** Tell the outside system when the work lands. On unless turned off. */
+  writeBack?: boolean;
+  /** Sentry: the organization's slug. */
+  organization?: string;
+  /** Jira's address, or a Sentry that is not sentry.io. */
+  site?: string;
+  /** Jira: the account the token belongs to. */
+  email?: string;
+  /** Jira project or Linear team keys it answers for. Empty is all. */
+  keys?: string[];
+  /** Your own endpoint: its base URL. */
+  baseUrl?: string;
+  /** Your own endpoint: `x-api-key` (default) or `authorization`. */
+  authHeader?: string;
+  /** Models: use this model for every kind of work. */
+  model?: string;
+};
+
+export type Connection = {
+  id: string;
+  workspace: string;
+  provider: Provider;
+  kind: ProviderKind;
+  name: string;
+  config: ConnectionConfig;
+  /** `…3f9a`. The secret itself is never shown again. */
+  secretHint: string | null;
+  /** Where a provider that sends g1t requests sends them. */
+  webhookUrl: string | null;
+  createdBy: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  lastError: string | null;
+};
+
+export type Connected = {
+  connection: Connection;
+  /** A signing secret g1t made, shown this once. */
+  signingSecret: string | null;
+};
+
+export type Delivery = {
+  id: string;
+  receivedAt: string;
+  event: string;
+  outcome: "opened" | "updated" | "reopened" | "ignored" | "refused";
+  detail: string;
+  issue: string | null;
+};
+
+/** Something outside g1t, fetched now. Reference material, never instructions. */
+export type ContextItem = {
+  provider: Provider;
+  key: string;
+  title: string;
+  url: string;
+  status: string | null;
+  body: string;
+  fetchedAt: string;
+};
+
+export type Link = {
+  provider: Provider;
+  connectionId: string;
+  key: string;
+  title: string;
+  url: string;
+  count: number;
+  firstSeen: string;
+  lastSeen: string;
+};
+
+export type ModelSession = {
+  token: string;
+  billedTo: "g1t" | "workspace";
+  providerName: string | null;
+  model: string | null;
+};
+
+export type ModelUpstream = {
+  route: "g1t" | "anthropic" | "endpoint";
+  workspace: string;
+  repo: string;
+  number: number;
+  task: string;
+  baseUrl: string | null;
+  apiKey: string | null;
+  authHeader: string | null;
+};
+
+export type ConnectInput = {
+  provider: Provider;
+  name?: string;
+  config?: ConnectionConfig;
+  secret?: string;
+  signingSecret?: string;
+};
+
+export type UpdateConnectionInput = {
+  name?: string;
+  config?: ConnectionConfig;
+  secret?: string;
+  signingSecret?: string;
+};
+
+export interface IntegrationsApi {
+  list(workspace: string, viewer: Viewer): Promise<Result<Connection[]>>;
+  connect(actor: User, workspace: string, input: ConnectInput): Promise<Result<Connected>>;
+  update(actor: User, workspace: string, id: string, input: UpdateConnectionInput): Promise<Result<Connection>>;
+  disconnect(actor: User, workspace: string, id: string): Promise<Result<boolean>>;
+  test(actor: User, workspace: string, id: string): Promise<Result<{ ok: boolean; message: string }>>;
+  deliveries(workspace: string, viewer: Viewer, id: string): Promise<Result<Delivery[]>>;
+  resolve(workspace: string, viewer: Viewer, reference: string): Promise<Result<ContextItem>>;
+  /** For g1t's agents: what `text` refers to outside g1t, fetched. */
+  references(workspace: string, text: string, limit?: number): Promise<ContextItem[]>;
+  import(actor: User, repo: RepoPath, reference: string, assign: boolean): Promise<Result<{ number: number; item: ContextItem; created: boolean }>>;
+  links(repo: RepoPath, number: number): Promise<Link[]>;
+  modelProvider(workspace: string): Promise<Connection | null>;
+  openModelSession(run: { workspace: string; repo: RepoPath; number: number; task: string }): Promise<ModelSession>;
+  modelUpstream(token: string): Promise<ModelUpstream | null>;
+}
+
+/** What each provider is for, as people choose between them. */
+export const PROVIDERS: Record<Provider, { label: string; kind: ProviderKind }> = {
+  anthropic: { label: "Anthropic", kind: "models" },
+  anthropic_endpoint: { label: "Your own endpoint", kind: "models" },
+  sentry: { label: "Sentry", kind: "alerts" },
+  datadog: { label: "Datadog", kind: "alerts" },
+  webhook: { label: "Webhook", kind: "alerts" },
+  jira: { label: "Jira", kind: "tracker" },
+  linear: { label: "Linear", kind: "tracker" },
+};

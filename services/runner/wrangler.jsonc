@@ -28,7 +28,8 @@
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "REPOS", "service": "g1t-repos" },
 		{ "binding": "WORK", "service": "g1t-work" },
-		{ "binding": "BILLING", "service": "g1t-billing" }
+		{ "binding": "BILLING", "service": "g1t-billing" },
+		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" }
 	],
 	// A sweep for lifecycle steps whose trigger was missed or whose sandbox
 	// died before reporting.
@@ -43,7 +44,11 @@
 		// chooses; this is g1t's policy. "modelName" is shown to people in the
 		// session; "model" is sent to the provider.
 		"AGENT_ROUTES": "{\"implement\":{\"modelName\":\"Claude Sonnet 5.5\",\"model\":\"claude-sonnet-5-5\"},\"review\":{\"modelName\":\"Claude Sonnet 5.5\",\"model\":\"claude-sonnet-5-5\"},\"update\":{\"modelName\":\"Claude Sonnet 5.5\",\"model\":\"claude-sonnet-5-5\"},\"plan\":{\"modelName\":\"Claude Sonnet 5.5\",\"model\":\"claude-sonnet-5-5\"}}",
+		// Where sandboxes send model requests, with a token for their run.
+		// The proxy holds the keys: g1t's gateway's, or the workspace's own.
+		"MODELS_URL": "https://models.g1t.sh",
 		// Set to a Cloudflare AI Gateway id to route model traffic through it.
+		// Used only when MODELS_URL is unset.
 		"AI_GATEWAY_ID": "g1t",
 		"CLOUDFLARE_ACCOUNT_ID": "1e6f2cffa3f445920836e8ebe446bb58"
 	},

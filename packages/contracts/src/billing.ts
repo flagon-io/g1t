@@ -27,6 +27,8 @@ export type BillingAccount = {
   status: BillingStatus;
   /** What is added to a run's cost, in percent. */
   marginPercent: number;
+  /** What a run on the workspace's own model provider is charged instead. */
+  orchestrationFeeMicros: number;
 };
 
 /** One line of a workspace's statement. */
@@ -44,6 +46,8 @@ export type LedgerEntry = {
   task: string | null;
   /** For usage: the model, by its public name. */
   model: string | null;
+  /** For usage: who paid the model provider. */
+  billedTo: "g1t" | "workspace";
   /** For a top-up: the username of whoever paid. */
   createdBy: string | null;
   /** RFC 3339. */
@@ -89,6 +93,8 @@ export interface BillingApi {
     number: number;
     task: string;
     model: string;
+    /** `workspace` when the run uses the workspace's own model provider. */
+    billedTo?: "g1t" | "workspace";
   }): Promise<Result<RunTicket | null>>;
 }
 
@@ -101,8 +107,10 @@ export type Usage = {
   since: string;
   /** Charged, including g1t's margin. */
   spentMicros: number;
-  /** What the model provider charged, before the margin. */
+  /** What g1t's model provider charged, before the margin. */
   costMicros: number;
+  /** What runs on the workspace's own provider cost there, estimated. Not charged by g1t. */
+  providerMicros: number;
   runs: number;
   /** Spend per day and task, keyed `YYYY-MM-DD/task`. */
   byDay: UsageSlice[];

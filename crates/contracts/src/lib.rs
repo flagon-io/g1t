@@ -7,6 +7,7 @@
 pub mod billing;
 pub mod events;
 pub mod identity;
+pub mod integrations;
 mod ids;
 mod names;
 mod outcome;

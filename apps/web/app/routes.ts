@@ -22,6 +22,7 @@ export default [
     route("-/tokens", "routes/workspace/tokens.tsx"),
     route("-/usage", "routes/workspace/usage.tsx"),
     route("-/billing", "routes/workspace/billing.tsx"),
+    route("-/integrations", "routes/workspace/integrations.tsx"),
     route("-/settings", "routes/workspace/settings.tsx"),
   ]),
   // Why a line is the way it is, fetched by the blame view.

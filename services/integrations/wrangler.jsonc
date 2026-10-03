@@ -1,0 +1,38 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-integrations",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	// Runs next to its database: a request makes several queries in turn,
+	// and each would otherwise cross the distance to it.
+	"placement": { "mode": "smart" },
+	"main": "build/index.js",
+	"build": { "command": "cargo install -q worker-build@0.8.7 && worker-build --release" },
+	// Reached only through service bindings. Outside systems reach it
+	// through the API, at https://api.g1t.sh/hooks/<connection>.
+	"workers_dev": false,
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "g1t-integrations",
+			"database_id": "86c6c1a9-4192-42d8-8c59-8da8d4f99c5e",
+			"migrations_dir": "migrations"
+		}
+	],
+	"services": [
+		{ "binding": "IDENTITY", "service": "g1t-identity" },
+		{ "binding": "WORK", "service": "g1t-work" },
+		{ "binding": "RUNNER", "service": "g1t-runner" }
+	],
+	// Work starting on, and finishing, what an outside system is waiting on.
+	"queues": {
+		"consumers": [{ "queue": "g1t-events-integrations", "max_batch_size": 20, "max_batch_timeout": 1 }]
+	},
+	"vars": {
+		"API_URL": "https://api.g1t.sh",
+		"SITE_URL": "https://g1t.sh"
+	},
+	// Secret: INTEGRATIONS_KEY, 64 hex characters. Connections' secrets are
+	// sealed with it; without it nothing can be connected.
+	"observability": { "enabled": true }
+}

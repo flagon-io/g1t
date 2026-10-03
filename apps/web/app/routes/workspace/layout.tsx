@@ -1,4 +1,4 @@
-import { CreditCard, KeyRound, LayoutGrid, Plus, Settings, Users } from "lucide-react";
+import { CreditCard, KeyRound, LayoutGrid, Plug, Plus, Settings, Users } from "lucide-react";
 import { Outlet, data, useRouteLoaderData } from "react-router";
 
 import type { Route } from "./+types/layout";
@@ -67,6 +67,9 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
                 </TabLink>
                 <TabLink to={`${base}/-/billing`} icon={<CreditCard size={15} />}>
                   Billing
+                </TabLink>
+                <TabLink to={`${base}/-/integrations`} icon={<Plug size={15} />}>
+                  Integrations
                 </TabLink>
               </>
             )}

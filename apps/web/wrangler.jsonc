@@ -15,7 +15,8 @@
 		{ "binding": "WORK", "service": "g1t-work" },
 		{ "binding": "RUNNER", "service": "g1t-runner" },
 		{ "binding": "BILLING", "service": "g1t-billing" },
-		{ "binding": "EVENTS", "service": "g1t-events" }
+		{ "binding": "EVENTS", "service": "g1t-events" },
+		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" }
 	],
 	"observability": { "enabled": true },
 	"upload_source_maps": true

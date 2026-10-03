@@ -40,6 +40,9 @@ pub struct Account {
     pub status: Status,
     /// What is added to a run's cost, in percent.
     pub margin_percent: u32,
+    /// What a run on the workspace's own model provider is charged: g1t's
+    /// sandbox and orchestration, with the model paid for elsewhere.
+    pub orchestration_fee_micros: i64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,10 +70,18 @@ pub struct LedgerEntry {
     pub task: Option<String>,
     /// For usage: the model, by its public name.
     pub model: Option<String>,
+    /// For usage: `g1t` when g1t paid the model provider, `workspace` when
+    /// the workspace's own account did and only orchestration is charged.
+    #[serde(default = "g1t")]
+    pub billed_to: String,
     /// For a top-up: the username of whoever paid.
     pub created_by: Option<String>,
     /// RFC 3339.
     pub created_at: String,
+}
+
+fn g1t() -> String {
+    "g1t".to_owned()
 }
 
 /// `account` (`Outcome<Account>`) and `ledger` (`Outcome<Vec<LedgerEntry>>`,
@@ -132,6 +143,9 @@ pub struct StartRunArgs {
     pub task: String,
     /// The model, by its public name.
     pub model: String,
+    /// `workspace` when the run uses the workspace's own model provider.
+    #[serde(default = "g1t")]
+    pub billed_to: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -182,8 +196,11 @@ pub struct Usage {
     pub since: String,
     /// Charged, including g1t's margin.
     pub spent_micros: i64,
-    /// What the model provider charged, before the margin.
+    /// What g1t's model provider charged, before the margin.
     pub cost_micros: i64,
+    /// What runs on the workspace's own provider cost there, as the harness
+    /// estimated it. Not charged by g1t.
+    pub provider_micros: i64,
     pub runs: u32,
     /// Spend per day (`YYYY-MM-DD`) and task, as `day/task` keys.
     pub by_day: Vec<UsageSlice>,

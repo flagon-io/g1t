@@ -109,6 +109,42 @@ pub const ROUTES: &[Route] = &[
         Op::AssignIssue,
         &[],
     ),
+    route(
+        "POST",
+        "/repos/:owner/:name/issues/import",
+        Op::ImportIssue,
+        &[],
+    ),
+    route(
+        "GET",
+        "/repos/:owner/:name/context",
+        Op::GetContext,
+        &[("reference", "reference")],
+    ),
+    route(
+        "GET",
+        "/workspaces/:workspace/integrations",
+        Op::ListIntegrations,
+        &[],
+    ),
+    route(
+        "POST",
+        "/workspaces/:workspace/integrations",
+        Op::ConnectIntegration,
+        &[],
+    ),
+    route(
+        "DELETE",
+        "/workspaces/:workspace/integrations/:id",
+        Op::DisconnectIntegration,
+        &[],
+    ),
+    route(
+        "POST",
+        "/workspaces/:workspace/integrations/:id/test",
+        Op::TestIntegration,
+        &[],
+    ),
     route("POST", "/repos/:owner/:name/plans", Op::PlanWork, &[]),
     route("GET", "/repos/:owner/:name/plans/:plan", Op::GetPlan, &[]),
     route(
@@ -244,7 +280,7 @@ pub fn resolve(
     if let (Some(owner), Some(name)) = (param("owner"), param("name")) {
         input.insert("repo".to_owned(), Value::String(format!("{owner}/{name}")));
     }
-    for key in ["plan", "id"] {
+    for key in ["plan", "id", "workspace"] {
         if let Some(value) = param(key) {
             input.insert(key.to_owned(), Value::String(value.to_owned()));
         }

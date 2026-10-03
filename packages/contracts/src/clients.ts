@@ -1,6 +1,7 @@
 import type { BillingApi } from "./billing";
 import type { EventsApi } from "./events";
 import type { IdentityApi } from "./identity";
+import type { IntegrationsApi } from "./integrations";
 import type { ReposApi } from "./repos";
 import type { WorkApi } from "./work";
 
@@ -191,5 +192,24 @@ export function eventsClient(service: ServiceBinding): EventsApi {
   return {
     publish: (events) => call("publish", { events }),
     list: (query) => call("list", query),
+  };
+}
+
+export function integrationsClient(service: ServiceBinding): IntegrationsApi {
+  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
+  return {
+    list: (workspace, viewer) => call("list", { workspace, viewer }),
+    connect: (actor, workspace, input) => call("connect", { actor, workspace, ...input }),
+    update: (actor, workspace, id, input) => call("update", { actor, workspace, id, ...input }),
+    disconnect: (actor, workspace, id) => call("disconnect", { actor, workspace, id }),
+    test: (actor, workspace, id) => call("test", { actor, workspace, id }),
+    deliveries: (workspace, viewer, id) => call("deliveries", { workspace, viewer, id }),
+    resolve: (workspace, viewer, reference) => call("resolve", { workspace, viewer, reference }),
+    references: (workspace, text, limit) => call("references", { workspace, text, limit }),
+    import: (actor, repo, reference, assign) => call("import", { actor, repo, reference, assign }),
+    links: (repo, number) => call("links", { repo, number }),
+    modelProvider: (workspace) => call("model_provider", { workspace }),
+    openModelSession: (run) => call("open_model_session", run),
+    modelUpstream: (token) => call("model_upstream", { token }),
   };
 }

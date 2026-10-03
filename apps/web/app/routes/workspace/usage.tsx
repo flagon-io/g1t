@@ -218,7 +218,15 @@ export default function UsagePage({ loaderData, params }: Route.ComponentProps) 
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Spent" value={dollars(usage.spentMicros)} note={`${dollars(usage.costMicros)} of it the model provider's`} />
+        <Stat
+          label="Spent"
+          value={dollars(usage.spentMicros)}
+          note={
+            usage.providerMicros > 0
+              ? `Plus about ${dollars(usage.providerMicros)} billed by your own model provider`
+              : `${dollars(usage.costMicros)} of it the model provider's`
+          }
+        />
         <Stat label="Agent runs" value={String(usage.runs)} note={PERIODS[period]} />
         <Stat
           label="Average run"

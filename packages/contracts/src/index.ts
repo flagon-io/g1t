@@ -3,6 +3,7 @@ export * from "./clients";
 export * from "./events";
 export * from "./identity";
 export * from "./ids";
+export * from "./integrations";
 export * from "./names";
 export * from "./oauth";
 export * from "./repos";

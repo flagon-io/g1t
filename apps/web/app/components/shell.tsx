@@ -21,6 +21,7 @@ import {
   Menu,
   Plus,
   Search,
+  Plug,
   Settings,
   Users,
   X,
@@ -298,6 +299,9 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
             <SidebarLink to={`/${ws.slug}/-/billing`} icon={<CreditCard size={15} />}>
               Billing
             </SidebarLink>
+            <SidebarLink to={`/${ws.slug}/-/integrations`} icon={<Plug size={15} />}>
+              Integrations
+            </SidebarLink>
             {ws.role === "owner" && (
               <SidebarLink to={`/${ws.slug}/-/settings`} icon={<Settings size={15} />}>
                 Settings
@@ -493,6 +497,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
       { label: "Usage", hint: membership.slug, to: `/${membership.slug}/-/usage`, icon: <BarChart3 size={15} /> },
       { label: "Billing", hint: membership.slug, to: `/${membership.slug}/-/billing`, icon: <CreditCard size={15} /> },
       { label: "Access tokens", hint: membership.slug, to: `/${membership.slug}/-/tokens`, icon: <KeyRound size={15} /> },
+      { label: "Integrations", hint: membership.slug, to: `/${membership.slug}/-/integrations`, icon: <Plug size={15} /> },
     );
   }
   for (const listed of shell.repos) {
