@@ -243,6 +243,15 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
           agent's sandbox holds a token that dies with the run.
         </p>
         {!model && owner && <Choices kind="models" slug={slug} adding={adding} />}
+        {adding && PROVIDERS[adding].kind === "models" && owner && (
+          <AddForm
+            provider={adding}
+            slug={slug}
+            repos={repoNames}
+            busy={busy}
+            error={actionData && "provider" in actionData ? error : null}
+          />
+        )}
       </Section>
 
       {/* Alerts -------------------------------------------------------------- */}
@@ -255,6 +264,15 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
           deliveries={deliveries}
         />
         {owner && <Choices kind="alerts" slug={slug} adding={adding} />}
+        {adding && PROVIDERS[adding].kind === "alerts" && owner && (
+          <AddForm
+            provider={adding}
+            slug={slug}
+            repos={repoNames}
+            busy={busy}
+            error={actionData && "provider" in actionData ? error : null}
+          />
+        )}
       </Section>
 
       {/* Trackers ------------------------------------------------------------ */}
@@ -267,17 +285,17 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
           deliveries={deliveries}
         />
         {owner && <Choices kind="tracker" slug={slug} adding={adding} />}
+        {adding && PROVIDERS[adding].kind === "tracker" && owner && (
+          <AddForm
+            provider={adding}
+            slug={slug}
+            repos={repoNames}
+            busy={busy}
+            error={actionData && "provider" in actionData ? error : null}
+          />
+        )}
       </Section>
 
-      {adding && owner && (
-        <AddForm
-          provider={adding}
-          slug={slug}
-          repos={repoNames}
-          busy={busy}
-          error={actionData && "provider" in actionData ? error : null}
-        />
-      )}
       {!owner && <p className="mt-8 text-sm text-muted">An owner of {slug} can add and remove integrations.</p>}
     </div>
   );
@@ -597,11 +615,13 @@ function AddForm({
     ),
   };
   return (
-    <section id="add" className="mt-10 rounded-xl border border-line bg-surface p-5">
+    <section id="add" className="mt-4 scroll-mt-20 rounded-xl border border-line bg-surface p-5">
       <div className="flex items-center gap-3">
         <ProviderMark provider={provider} />
         <div className="grow">
-          <h3 className="font-medium">Connect {PROVIDERS[provider].label}</h3>
+          <h3 className="font-medium">
+            Connect {provider === "anthropic_endpoint" ? "your own endpoint" : PROVIDERS[provider].label}
+          </h3>
           <p className="text-xs text-muted">{PROVIDER_BLURB[provider]}</p>
         </div>
         <Link to={`/${slug}/-/integrations`} className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-fg" aria-label="Close">
