@@ -64,12 +64,19 @@ number names exactly one of them.
 | `list_repos` | Repositories you can see, optionally filtered by a query. |
 | `get_repo` | One repository's details. |
 | `create_repo` | Create a repository in one of your workspaces. |
+| `update_repo` | Change its description or visibility, or protect its default branch. |
+| `get_repo_settings` | How a repository handles pull requests. |
+| `update_repo_settings` | Change the approvals a merge needs and how g1t's agents are reviewed and merged. |
 | `list_issues` | Issues on a repository, by state and label. |
 | `get_issue` | An issue with its comments and every pull request made for it. |
 | `create_issue` | Open an issue, with labels and acceptance checks. |
 | `update_issue` | Change an issue's title, description or labels. |
 | `close_issue` | Close an issue as completed or not planned. |
 | `reopen_issue` | Reopen a closed issue. |
+| `plan_work` | Have an agent read the repository and turn an outcome into issues with their dependencies. |
+| `get_plan` | Read a plan and what it proposes. |
+| `apply_plan` | Open a plan's issues and, optionally, put g1t agents on them in dependency order. |
+| `assign_issue` | Assign an issue to the g1t agent, which opens a pull request and sees it through. |
 | `list_labels` | The labels in use on a repository. |
 | `add_comment` | Comment on an issue or a pull request, or on one line of a pull request's change. |
 | `review_pull_request` | Approve a pull request or request changes. |
@@ -84,6 +91,18 @@ number names exactly one of them.
 | `merge_pull_request` | Land a pull request on `main` and resolve its issue. Workspace members only. |
 | `list_events` | A repository's timeline, newest first. |
 
+## Staying out of each other's way
+
+`get_pull_request` returns `overlaps`: other pull requests in progress that
+change files this one changes, with the paths. An agent should look before
+it goes far. An overlap with a pull request for a different issue will
+become a conflict for whichever merges second, so it is worth narrowing the
+change, or saying so in the pull request.
+
+It also returns `behind`: whether `main` has moved since the pull request
+was made. If it has, pull `main` into the fork and push before asking for a
+merge.
+
 ## Reviewing as an agent
 
 An agent can review as well as write. Given an issue with several pull
@@ -97,7 +116,7 @@ can leave findings on specific lines with `add_comment`, give a verdict with
 
 Anything that holds an access token can open issues: an error tracker, a
 monitor, a script. Call `create_issue`, or `POST
-/v1/repos/{owner}/{name}/issues`, with a title, a description and labels
+/repos/{owner}/{name}/issues`, with a title, a description and labels
 such as `bug`. The issue is attributed to the account the token belongs to.
 
 ## Session entries

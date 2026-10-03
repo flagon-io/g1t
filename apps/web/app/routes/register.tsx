@@ -51,7 +51,7 @@ export default function Register({ actionData }: Route.ComponentProps) {
       <Form method="post" className="space-y-4">
         <Field
           label="Username"
-          hint="Lowercase letters, digits and hyphens. This is your namespace: g1t.sh/username."
+          hint="Lowercase letters, digits and hyphens. It is how you sign in and how others see you."
         >
           <Input
             name="username"

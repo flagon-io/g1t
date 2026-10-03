@@ -20,6 +20,10 @@ pub struct Repo {
     pub default_branch: String,
     /// Set when this repo is a pull request's working copy of another repo.
     pub fork_of: Option<String>,
+    /// Whether the default branch is protected: it changes only by merging
+    /// a pull request, and pushes to it are refused.
+    #[serde(default)]
+    pub protected: bool,
     /// RFC 3339.
     pub created_at: String,
 }
@@ -162,6 +166,26 @@ pub struct CreateArgs {
     pub description: Option<String>,
     #[serde(default)]
     pub is_private: bool,
+    /// The https address of a public git repository to copy the default
+    /// branch of, such as `https://github.com/owner/repo`.
+    #[serde(default)]
+    pub import_url: Option<String>,
+}
+
+/// `update`: changes whichever of a repository's details are given.
+/// Members of its workspace only. Returns `Outcome<Repo>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateArgs {
+    pub actor: User,
+    pub path: RepoPath,
+    /// An empty description clears it.
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub is_private: Option<bool>,
+    #[serde(default)]
+    pub protected: Option<bool>,
 }
 
 /// `tree`. Returns `Outcome<TreeView>`.
@@ -307,6 +331,42 @@ pub struct CompareArgs {
     pub head: Option<String>,
 }
 
+/// Lines `start` to `end` of a file, inclusive and counted from 1, last
+/// changed by `commit`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlameRange {
+    pub start: u32,
+    pub end: u32,
+    pub commit: String,
+}
+
+/// Who last changed each line of a file.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Blame {
+    /// The commit the file was read at.
+    pub head: String,
+    /// Every line, in order, in runs that share a commit.
+    pub ranges: Vec<BlameRange>,
+    /// The commits the ranges name, each once.
+    pub commits: Vec<Commit>,
+    /// True when the history was too long to read in full, so the oldest
+    /// lines are given to the oldest commit read.
+    pub partial: bool,
+}
+
+/// `blame`: who last changed each line of `path` as of `ref` (the default
+/// branch if absent). Returns `Outcome<Blame>`; not found when the file is
+/// missing or is not text.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BlameArgs {
+    pub path: RepoPath,
+    pub viewer: Viewer,
+    #[serde(default, rename = "ref")]
+    pub git_ref: Option<String>,
+    #[serde(rename = "filePath")]
+    pub file_path: String,
+}
+
 /// A branch and the commit it points to.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Branch {
@@ -320,6 +380,20 @@ pub struct Branch {
 pub struct BranchesArgs {
     pub path: RepoPath,
     pub viewer: Viewer,
+}
+
+/// `behind`: whether the default branch of the repository a pull request
+/// would merge into has commits its source does not. For services that
+/// have already decided the caller may see the pull request; it reveals
+/// one bit. Returns `bool`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BehindArgs {
+    /// The pull request's fork, or the repository itself for a branch.
+    pub source_id: String,
+    /// The branch of the source. A fork is compared on its default branch.
+    #[serde(default)]
+    pub branch: Option<String>,
 }
 
 /// `head`: the commit a branch points to, or null. For services reacting

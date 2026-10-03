@@ -8,23 +8,31 @@ import {
   CircleCheck,
   CircleSlash,
   GitMerge,
+  Layers,
+  GitPullRequestArrow,
+  Hand,
+  Loader,
+  Radar,
+  Sparkles,
   MessageSquare,
   MessagesSquare,
   StickyNote,
   User,
   Wrench,
 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Form, Link, redirect, useRevalidator } from "react-router";
 
 import { type Comparison, type SessionEntry, pullComparison } from "@g1t/contracts";
 
 import type { Route } from "./+types/pull";
 import { DiffView } from "../../components/diff-view";
+import { LifecyclePanel } from "../../components/lifecycle";
 import { Markdown } from "../../components/markdown";
 import {
   Avatar,
   Button,
+  ButtonLink,
   CopyLine,
   EmptyState,
   ErrorText,
@@ -32,8 +40,16 @@ import {
   TimeAgo,
 } from "../../components/ui";
 import { ChecksPanel } from "../../components/checks";
-import { Comments, IssueIcon, PullState, verdicts } from "../../components/work";
-import { repos, work } from "../../lib/services.server";
+import {
+  CommentForm,
+  CommentList,
+  IssueIcon,
+  PeoplePicker,
+  PullState,
+  TimelineItem,
+  verdicts,
+} from "../../components/work";
+import { identity, repos, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 
 const REFRESH_MS = 4000;
@@ -55,9 +71,17 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const asked = new URL(request.url).searchParams.get("tab");
   const tab: Tab = TABS.find((name) => name === asked) ?? "conversation";
 
-  const [found, repo] = await Promise.all([
+  const member = (viewer?.workspaces ?? []).some(
+    (membership) => membership.slug === params.owner,
+  );
+  // At once: none of these depends on another.
+  const [found, repo, settings, agentsEnabled, members] = await Promise.all([
     work.getPull(path, number, viewer),
     repos.get(path, viewer),
+    work.getSettings(path, viewer),
+    env.RUNNER.enabled(viewer),
+    // A member picks reviewers and assignees from the workspace's people.
+    member ? identity.listMembers(params.owner, viewer) : null,
   ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be an issue.
@@ -73,9 +97,6 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       ? repos.compare(range.repoId, viewer, range.base, range.head)
       : null,
   ]);
-  const member = (viewer?.workspaces ?? []).some(
-    (membership) => membership.slug === params.owner,
-  );
   return {
     ...found.value,
     tab,
@@ -86,6 +107,15 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // Members of the repository's workspace can merge.
     canMerge: member,
     canManage: member || viewer?.id === pull.author.id,
+    // A catch-up is pushed as the viewer: a fork takes pushes only from
+    // whoever opened it, a branch from any member.
+    canUpdate: pull.fork ? viewer?.id === pull.author.id : member,
+    agentsEnabled,
+    members: members?.ok ? members.value.map((person) => person.username) : [],
+    requireUpToDate: settings.ok && settings.value.requireUpToDate,
+    mergeQueue: settings.ok && settings.value.mergeQueue,
+    requiredApprovals: settings.ok ? settings.value.requiredApprovals : 0,
+    canIgnoreChecks: !settings.ok || settings.value.allowIgnoringChecks,
     defaultBranch: repo.ok ? repo.value.defaultBranch : "main",
   };
 }
@@ -99,16 +129,38 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const action = form.get("action");
   const verdict = form.get("verdict");
   const line = Number(form.get("line"));
+  /** Names ticked in a people picker, plus those typed beside it. */
+  const picked = (field: string) => [
+    ...form.getAll(field).map(String),
+    ...String(form.get("others") ?? "").split(/[\s,]+/),
+  ];
+  // Asking a g1t agent for its review records the request, then starts it.
+  if (action === "agent-review") {
+    const asked = await work.updatePull(user, path, number, {
+      reviewers: [...form.getAll("reviewer").map(String), "g1t-agent"],
+    });
+    if (!asked.ok) return { error: asked.error.message, action };
+  }
   const result =
     action === "merge"
       ? await work.mergePull(user, path, number, {
           keepIssueOpen: form.get("keepIssueOpen") === "on",
           ignoreChecks: form.get("ignoreChecks") === "on",
         })
+      : action === "unqueue"
+        ? await work.removeFromQueue(user, path, number)
       : action === "close"
         ? await work.closePull(user, path, number)
         : action === "recheck"
           ? await env.RUNNER.recheck(user, path, number)
+          : action === "update"
+            ? await env.RUNNER.update(user, path, number)
+          : action === "agent-review"
+            ? await env.RUNNER.review(user, path, number)
+          : action === "reviewers"
+            ? await work.updatePull(user, path, number, { reviewers: picked("reviewer") })
+          : action === "assign"
+            ? await work.updatePull(user, path, number, { assignees: picked("assignee") })
           : action === "comment"
             ? await work.addComment(user, path, number, {
                 body: String(form.get("body") ?? ""),
@@ -200,12 +252,12 @@ function Entry({ entry, agent }: { entry: SessionEntry; agent: string }) {
             <div className="mt-1">
               <Markdown source={entry.text} />
             </div>
+          ) : entry.kind === "prompt" ? (
+            <div className="mt-1.5 max-h-[32rem] overflow-y-auto rounded-xl border border-line bg-surface p-4">
+              <Markdown source={entry.text} />
+            </div>
           ) : (
-            <p
-              className={`mt-1 text-[0.9375rem] leading-relaxed wrap-break-word whitespace-pre-wrap ${
-                entry.kind === "prompt" ? "font-medium" : ""
-              }`}
-            >
+            <p className="mt-1 text-[0.9375rem] leading-relaxed wrap-break-word whitespace-pre-wrap">
               {entry.text}
             </p>
           )}
@@ -221,12 +273,57 @@ function Entry({ entry, agent }: { entry: SessionEntry; agent: string }) {
   );
 }
 
+/** The box at the foot of the conversation saying what stands before a merge. */
+function StatusBox({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex gap-3">
+      <span className="hidden w-8 shrink-0 sm:block" />
+      <section className="min-w-0 grow divide-y divide-line overflow-hidden rounded-xl border border-line-strong bg-surface">
+        {children}
+      </section>
+    </div>
+  );
+}
+
+function StatusRow({
+  icon,
+  title,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex gap-3 px-4 py-3 text-sm">
+      <span className="mt-0.5 shrink-0">{icon}</span>
+      <div className="min-w-0">
+        <p className="font-medium">{title}</p>
+        {children && <div className="mt-0.5 text-muted">{children}</div>}
+      </div>
+    </div>
+  );
+}
+
 export default function PullPage({ loaderData, actionData, params }: Route.ComponentProps) {
   const {
     pull,
     issue,
     comments,
     checks,
+    overlaps,
+    behind,
+    reviewPending,
+    lifecycle,
+    landing,
+    stalled,
+    requireUpToDate,
+    mergeQueue,
+    requiredApprovals,
+    canIgnoreChecks,
+    canUpdate,
+    agentsEnabled,
+    members,
     tab,
     session,
     comparison,
@@ -249,16 +346,34 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   const reviews = verdicts(comments);
   // What stands between this pull request and a merge, if anything.
   const unchecked = checks && checks.status !== "passed";
+  // Pull requests for other issues changing the same files will conflict;
+  // ones for the same issue are alternatives, and expected to.
+  const collisions = overlaps.filter((other) => other.issue == null || other.issue !== pull.issue);
+  const review = {
+    changesUrl: here + "?tab=changes",
+    // Nobody reviews their own pull request.
+    canJudge: active && viewer != null && viewer.id !== pull.author.id,
+  };
+  // Everyone whose review was asked for, then anyone who reviewed unasked.
+  const reviewerNames = [
+    ...new Set([...pull.reviewers, ...reviews.map(({ reviewer }) => reviewer)]),
+  ];
+  const [submitted, setSubmitted] = useState<string | null>(null);
+  const catchingUp = submitted === "update" && behind;
+  // g1t is taking a step of its own accord, so the page will change.
+  const moving =
+    lifecycle != null && lifecycle.stage !== "ready" && lifecycle.stage !== "needs_you";
   useEffect(() => {
-    if (!working && !checking) return;
+    if (!working && !checking && !reviewPending && !catchingUp && !moving && !landing) return;
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") revalidator.revalidate();
     }, REFRESH_MS);
     return () => clearInterval(timer);
-  }, [working, checking, revalidator]);
+  }, [working, checking, reviewPending, catchingUp, moving, landing, revalidator]);
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[1fr_19rem]">
+    // The changes get the whole width; people and settings are a tab away.
+    <div className={`grid gap-8 ${tab === "changes" ? "" : "lg:grid-cols-[1fr_19rem]"}`}>
       <div className="min-w-0">
         <h2 className="text-2xl font-semibold tracking-tight text-balance">
           {pull.title} <span className="font-normal text-faint">#{pull.number}</span>
@@ -266,9 +381,14 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted">
           <PullState status={pull.status} />
           <span className="flex items-center gap-2">
-            <Avatar name={pull.author.username} size={18} />
+            <Avatar
+              name={(pull.status === "merged" && pull.mergedBy) || pull.author.username}
+              size={18}
+            />
             <span>
-              <span className="font-medium text-fg">{pull.author.username}</span>{" "}
+              <span className="font-medium text-fg">
+                {(pull.status === "merged" && pull.mergedBy) || pull.author.username}
+              </span>{" "}
               {pull.status === "merged" ? "merged" : "wants to merge"}
               {pull.branch && (
                 <>
@@ -306,6 +426,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
           </p>
         )}
 
+        {lifecycle && <LifecyclePanel lifecycle={lifecycle} />}
+
         {issue && (
           <Link
             to={`${base}/issues/${issue.number}`}
@@ -333,6 +455,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             <span>
               Merged into <span className="font-mono">{defaultBranch}</span> by{" "}
               <span className="font-medium">{pull.mergedBy}</span>{" "}
+              {/* Not an account: the repository's settings said to merge it. */}
+              {pull.mergedBy === "g1t" && "automatically, once it was ready, "}
               {pull.mergedAt && <TimeAgo at={pull.mergedAt} />}
               {pull.headCommit && (
                 <span className="font-mono text-muted"> · {pull.headCommit.slice(0, 7)}</span>
@@ -351,6 +475,31 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             </Link>{" "}
             was merged for this issue instead.
           </p>
+        )}
+
+        {collisions.length > 0 && active && (
+          <div className="mt-4 rounded-xl border border-line bg-surface px-4 py-3 text-sm">
+            <p className="flex items-center gap-2.5 font-medium">
+              <Radar size={16} className="shrink-0 text-info" />
+              Other work is changing the same files
+            </p>
+            <ul className="mt-2 space-y-1.5">
+              {collisions.map((other) => (
+                <li key={other.number} className="flex flex-wrap items-baseline gap-x-2 text-muted">
+                  <Link
+                    to={`${base}/pull/${other.number}`}
+                    className="font-medium text-fg hover:underline"
+                  >
+                    {other.title} <span className="font-normal text-faint">#{other.number}</span>
+                  </Link>
+                  <span className="font-mono text-xs">{other.paths.join(", ")}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-faint">
+              Whichever merges second will have to catch up, and may conflict.
+            </p>
+          </div>
         )}
 
         <nav className="mt-8 flex gap-6 border-b border-line">
@@ -391,26 +540,243 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             )
           ) : (
             <div className="space-y-4">
-              {pull.body ? (
-                <section className="rounded-xl border border-line bg-surface p-5">
-                  <Markdown source={pull.body} />
-                </section>
-              ) : (
-                <p className="rounded-xl border border-dashed border-line px-5 py-4 text-sm text-muted">
-                  {working
-                    ? "No description yet. It is written when the pull request is marked ready for review."
-                    : "No description."}
-                </p>
+              <TimelineItem
+                author={pull.author.username}
+                at={pull.createdAt}
+                action={
+                  <span>
+                    opened this pull request
+                    {!pull.branch && (
+                      <>
+                        {" "}
+                        with <span className="font-mono text-xs">{pull.agent}</span>
+                      </>
+                    )}
+                  </span>
+                }
+              >
+                {pull.body ? (
+                  <Markdown source={pull.body} repo={{ namespace: params.owner, name: params.repo }} />
+                ) : (
+                  <p className="text-sm text-muted">
+                    {working
+                      ? "No description yet. It is written when the pull request is marked ready for review."
+                      : "No description."}
+                  </p>
+                )}
+                {canManage && pull.status === "open" && (
+                  <details className="mt-3 border-t border-line pt-3 text-sm">
+                    <summary className="cursor-pointer text-xs text-faint hover:text-fg">
+                      Edit description
+                    </summary>
+                    <Form method="post" className="mt-3 space-y-2">
+                      <Textarea
+                        name="summary"
+                        rows={6}
+                        placeholder="What changed and why"
+                        defaultValue={pull.body ?? ""}
+                      />
+                      <Button type="submit">Save</Button>
+                    </Form>
+                  </details>
+                )}
+              </TimelineItem>
+
+              <CommentList comments={comments} review={review} base={base} />
+
+              {pull.status === "draft" && (
+                <StatusBox>
+                  <StatusRow icon={<Loader size={16} className="text-faint" />} title="This is a draft">
+                    It is still being worked on. It can be reviewed and merged once it is
+                    marked ready.
+                  </StatusRow>
+                  {canManage && (
+                    <Form method="post" className="space-y-2 px-4 py-3">
+                      <Textarea name="summary" rows={3} placeholder="What changed and why" />
+                      <Button type="submit">Mark ready for review</Button>
+                    </Form>
+                  )}
+                </StatusBox>
               )}
-              <Comments
-                comments={comments}
-                canComment={Boolean(viewer)}
-                review={{
-                  changesUrl: here + "?tab=changes",
-                  // Nobody reviews their own pull request.
-                  canJudge: active && viewer != null && viewer.id !== pull.author.id,
-                }}
+
+              {pull.status === "open" && (
+                <StatusBox>
+                  {checks && (
+                    <StatusRow
+                      icon={
+                        checks.status === "passed" ? (
+                          <CircleCheck size={16} className="text-accent" />
+                        ) : checking ? (
+                          <Loader size={16} className="animate-spin text-faint" />
+                        ) : (
+                          <CircleSlash size={16} className="text-danger" />
+                        )
+                      }
+                      title={
+                        checks.status === "passed"
+                          ? "Acceptance checks passed"
+                          : checking
+                            ? "Acceptance checks are running"
+                            : checks.status === "failed"
+                              ? "Acceptance checks failed"
+                              : "Acceptance checks could not be run"
+                      }
+                    >
+                      {checks.results.length > 0 &&
+                        `${checks.results.filter((result) => result.passed).length} of ${checks.results.length} passed, in a clean sandbox.`}
+                    </StatusRow>
+                  )}
+                  <StatusRow
+                    icon={
+                      reviews.some(({ verdict }) => verdict === "request_changes") ? (
+                        <CircleSlash size={16} className="text-danger" />
+                      ) : reviews.length > 0 ? (
+                        <CircleCheck size={16} className="text-accent" />
+                      ) : (
+                        <MessageSquare size={16} className="text-faint" />
+                      )
+                    }
+                    title={
+                      reviews.length === 0
+                        ? "No reviews yet"
+                        : reviews
+                            .map(
+                              ({ reviewer, verdict }) =>
+                                `${verdict === "approve" ? "Approved by" : "Changes requested by"} ${reviewer}`,
+                            )
+                            .join(" · ")
+                    }
+                  >
+                    {reviewPending && "A g1t agent is reviewing it now. "}
+                    {requiredApprovals > 0 &&
+                      `This repository requires ${requiredApprovals} approving ${
+                        requiredApprovals === 1 ? "review" : "reviews"
+                      } before merging.`}
+                  </StatusRow>
+                  {landing ? (
+                    <StatusRow
+                      icon={<Loader size={16} className="animate-spin text-accent" />}
+                      title="Merging"
+                    >
+                      {defaultBranch} has moved, so g1t is bringing this up to date first. It
+                      lands as soon as that is done. Watch it in the Session tab.
+                    </StatusRow>
+                  ) : behind ? (
+                    <StatusRow
+                      icon={<GitPullRequestArrow size={16} className="text-info" />}
+                      title={`${defaultBranch} has moved since this was made`}
+                    >
+                      {requireUpToDate
+                        ? "This repository requires pull requests to be up to date, so it has to catch up before it can merge."
+                        : "That does not stop it merging: it is brought up to date as part of the merge."}
+                      {canUpdate && agentsEnabled && (
+                        <Form
+                          method="post"
+                          className="mt-2"
+                          onSubmit={() => setSubmitted("update")}
+                        >
+                          <input type="hidden" name="action" value="update" />
+                          <Button variant="quiet" type="submit" disabled={catchingUp}>
+                            {catchingUp ? "Catching up…" : `Catch up with ${defaultBranch} now`}
+                          </Button>
+                        </Form>
+                      )}
+                      {actionData?.action === "update" && (
+                        <ErrorText>{actionData.error}</ErrorText>
+                      )}
+                    </StatusRow>
+                  ) : (
+                    pull.headCommit && (
+                      <StatusRow
+                        icon={<CircleCheck size={16} className="text-accent" />}
+                        title={`Up to date with ${defaultBranch}`}
+                      />
+                    )
+                  )}
+                  {stalled && !lifecycle && (
+                    <StatusRow icon={<Hand size={16} className="text-warn" />} title="Needs you">
+                      {stalled}
+                    </StatusRow>
+                  )}
+                  {canMerge && lifecycle?.stage === "queued" && (
+                    <Form method="post" className="flex flex-wrap items-center gap-3 px-4 py-3">
+                      <ButtonLink to={`${base}/queue`}>
+                        <Layers size={15} />
+                        See the queue
+                      </ButtonLink>
+                      <Button variant="quiet" type="submit" name="action" value="unqueue">
+                        Remove from the queue
+                      </Button>
+                    </Form>
+                  )}
+                  {canMerge && !landing && lifecycle?.stage !== "queued" && (
+                    <Form method="post" className="space-y-3 px-4 py-3">
+                      {issue?.state === "open" && (
+                        <label className="flex items-start gap-2 text-xs text-muted">
+                          <input
+                            type="checkbox"
+                            name="keepIssueOpen"
+                            className="mt-0.5 accent-accent"
+                          />
+                          <span>Keep #{issue.number} open. This is only part of the work.</span>
+                        </label>
+                      )}
+                      {unchecked && canIgnoreChecks && (
+                        <label className="flex items-start gap-2 text-xs text-muted">
+                          <input
+                            type="checkbox"
+                            name="ignoreChecks"
+                            className="mt-0.5 accent-accent"
+                          />
+                          <span>
+                            Merge although the checks{" "}
+                            {checking ? "have not finished" : "did not pass"}.
+                          </span>
+                        </label>
+                      )}
+                      <div className="flex flex-wrap items-center gap-3">
+                        <Button
+                          variant="accent"
+                          type="submit"
+                          name="action"
+                          value="merge"
+                          disabled={behind && requireUpToDate}
+                        >
+                          {mergeQueue ? <Layers size={15} /> : <GitMerge size={15} />}
+                          {mergeQueue ? "Add to the merge queue" : `Merge into ${defaultBranch}`}
+                        </Button>
+                        <span className="text-xs text-muted">
+                          {mergeQueue
+                            ? `Tested together with everything ahead of it, then lands on ${defaultBranch}.`
+                            : issue?.state === "open"
+                              ? `Closes issue #${issue.number}, and any other pull requests still open for it.`
+                              : `Lands its commits on ${defaultBranch}.`}
+                        </span>
+                      </div>
+                      {actionData?.action === "merge" && (
+                        <ErrorText>{actionData.error}</ErrorText>
+                      )}
+                    </Form>
+                  )}
+                </StatusBox>
+              )}
+
+              <CommentForm
+                author={viewer?.username ?? null}
+                resetKey={comments.length}
+                review={review}
               />
+              {canManage && active && (
+                <Form method="post" className="flex justify-end">
+                  <Button variant="quiet" type="submit" name="action" value="close">
+                    Close pull request
+                  </Button>
+                </Form>
+              )}
+              {actionData &&
+                !["merge", "comment", "recheck", "update", "agent-review", "reviewers", "assign"].includes(
+                  String(actionData.action),
+                ) && <ErrorText>{actionData.error}</ErrorText>}
             </div>
           )}
           {actionData?.action === "comment" && (
@@ -421,7 +787,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
         </div>
       </div>
 
-      <aside className="space-y-6">
+      <aside className={tab === "changes" ? "hidden" : "space-y-6"}>
         <ChecksPanel
           run={checks}
           commands={issue?.checks ?? []}
@@ -429,77 +795,137 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
         />
         {actionData?.action === "recheck" && <ErrorText>{actionData.error}</ErrorText>}
 
-        {canMerge && pull.status === "open" && (
-          <section className="rounded-xl border border-accent/30 bg-accent/5 p-4">
-            <h3 className="text-sm font-medium">Merge this pull request</h3>
-            <p className="mt-1 text-xs text-muted">
-              Lands its commits on {defaultBranch}.
-              {issue?.state === "open" &&
-                ` Closes issue #${issue.number}, and any other pull requests still open for it.`}
-            </p>
-            <Form method="post" className="mt-3 space-y-3">
-              {issue?.state === "open" && (
-                <label className="flex items-start gap-2 text-xs text-muted">
-                  <input type="checkbox" name="keepIssueOpen" className="mt-0.5 accent-accent" />
-                  <span>
-                    Keep #{issue.number} open. This is only part of the work.
-                  </span>
-                </label>
-              )}
-              {unchecked && (
-                <label className="flex items-start gap-2 text-xs text-muted">
-                  <input type="checkbox" name="ignoreChecks" className="mt-0.5 accent-accent" />
-                  <span>
-                    Merge although the checks{" "}
-                    {checking ? "have not finished" : "did not pass"}.
-                  </span>
-                </label>
-              )}
-              <div className="*:w-full">
-                <Button variant="accent" type="submit" name="action" value="merge">
-                  <GitMerge size={15} />
-                  Merge into {defaultBranch}
-                </Button>
-              </div>
-            </Form>
-            {actionData?.action === "merge" && <ErrorText>{actionData.error}</ErrorText>}
-          </section>
-        )}
-
-        {canManage && active && (
-          <section className="rounded-xl border border-line bg-surface p-4">
-            <h3 className="text-sm font-medium">
-              {pull.status === "draft" ? "Ready for review" : "Update description"}
-            </h3>
-            <Form method="post" className="mt-3 space-y-2">
-              <Textarea
-                name="summary"
-                rows={4}
-                placeholder="What changed and why"
-                defaultValue={pull.body ?? ""}
-              />
-              <div className="flex flex-wrap gap-2">
-                <Button type="submit">
-                  {pull.status === "draft" ? "Mark ready" : "Save"}
-                </Button>
-                <Button variant="quiet" type="submit" name="action" value="close">
-                  Close pull request
-                </Button>
-              </div>
-            </Form>
-            {actionData &&
-              !["merge", "comment", "recheck"].includes(String(actionData.action)) && (
-              <ErrorText>{actionData.error}</ErrorText>
+        <section>
+          <h3 className="text-sm font-medium">Reviewers</h3>
+          <ul className="mt-2 space-y-1.5 text-sm">
+            {reviewerNames.map((name) => {
+              const verdict = reviews.find(({ reviewer }) => reviewer === name)?.verdict;
+              const pending = name === "g1t-agent" && reviewPending;
+              return (
+                <li key={name} className="flex items-center gap-2 px-1">
+                  {name === "g1t-agent" ? (
+                    <Sparkles size={16} className="shrink-0 text-accent" />
+                  ) : (
+                    <Avatar name={name} size={20} />
+                  )}
+                  <span className="grow truncate font-mono text-xs">{name}</span>
+                  {pending ? (
+                    <span className="flex items-center gap-1.5 text-xs text-muted">
+                      <span className="size-1.5 animate-pulse rounded-full bg-accent" />
+                      Reviewing
+                    </span>
+                  ) : verdict === "approve" ? (
+                    <span className="flex items-center gap-1 text-xs text-accent">
+                      <CircleCheck size={13} /> Approved
+                    </span>
+                  ) : verdict === "request_changes" ? (
+                    <span className="flex items-center gap-1 text-xs text-danger">
+                      <CircleSlash size={13} /> Changes requested
+                    </span>
+                  ) : (
+                    <span className="text-xs text-faint">Review requested</span>
+                  )}
+                </li>
+              );
+            })}
+            {reviewerNames.length === 0 && (
+              <li className="px-1 text-xs text-faint">No reviews requested yet.</li>
             )}
-          </section>
-        )}
+          </ul>
+          {pull.status === "open" && canManage && (
+            <div className="mt-3 space-y-2">
+              {agentsEnabled && !reviewPending && (
+                <Form method="post">
+                  <input type="hidden" name="action" value="agent-review" />
+                  {pull.reviewers.map((name) => (
+                    <input key={name} type="hidden" name="reviewer" value={name} />
+                  ))}
+                  <div className="*:w-full">
+                    <Button variant="quiet" type="submit">
+                      <Sparkles size={14} className="text-accent" />
+                      Request review from g1t agent
+                    </Button>
+                  </div>
+                </Form>
+              )}
+              <details>
+                <summary className="cursor-pointer text-xs text-faint hover:text-fg">
+                  Request review from people
+                </summary>
+                <Form method="post" className="mt-2 space-y-2" key={pull.reviewers.join()}>
+                  <input type="hidden" name="action" value="reviewers" />
+                  {pull.reviewers.includes("g1t-agent") && (
+                    <input type="hidden" name="reviewer" value="g1t-agent" />
+                  )}
+                  <PeoplePicker
+                    name="reviewer"
+                    members={members.filter((name) => name !== pull.author.username)}
+                    chosen={pull.reviewers.filter((name) => name !== "g1t-agent")}
+                  />
+                  <Button variant="quiet" type="submit">
+                    Save reviewers
+                  </Button>
+                </Form>
+              </details>
+            </div>
+          )}
+          {["agent-review", "reviewers"].includes(String(actionData?.action)) && (
+            <ErrorText>{actionData?.error}</ErrorText>
+          )}
+        </section>
+
+        <section>
+          <h3 className="text-sm font-medium">Assignees</h3>
+          <ul className="mt-2 space-y-1.5 text-sm">
+            {pull.assignees.map((name) => (
+              <li key={name} className="flex items-center gap-2 px-1">
+                <Avatar name={name} size={20} />
+                <span className="grow truncate font-mono text-xs">{name}</span>
+              </li>
+            ))}
+            {pull.assignees.length === 0 && (
+              <li className="px-1 text-xs text-faint">No one yet.</li>
+            )}
+          </ul>
+          {viewer && canManage && active && (
+            <div className="mt-3 space-y-2">
+              {!pull.assignees.includes(viewer.username) && (
+                <Form method="post">
+                  <input type="hidden" name="action" value="assign" />
+                  {pull.assignees.map((name) => (
+                    <input key={name} type="hidden" name="assignee" value={name} />
+                  ))}
+                  <input type="hidden" name="assignee" value={viewer.username} />
+                  <div className="*:w-full">
+                    <Button variant="quiet" type="submit">
+                      Assign yourself
+                    </Button>
+                  </div>
+                </Form>
+              )}
+              <details>
+                <summary className="cursor-pointer text-xs text-faint hover:text-fg">
+                  Assign people
+                </summary>
+                <Form method="post" className="mt-2 space-y-2" key={pull.assignees.join()}>
+                  <input type="hidden" name="action" value="assign" />
+                  <PeoplePicker name="assignee" members={members} chosen={pull.assignees} />
+                  <Button variant="quiet" type="submit">
+                    Save assignees
+                  </Button>
+                </Form>
+              </details>
+            </div>
+          )}
+          {actionData?.action === "assign" && <ErrorText>{actionData.error}</ErrorText>}
+        </section>
 
         <section>
           <h3 className="text-sm font-medium">Working copy</h3>
           {pull.branch ? (
             <>
-              <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
-                <GitBranch size={13} />
+              <p className="mt-1 text-xs text-muted">
+                <GitBranch size={13} className="mr-1 inline align-[-2px]" />
                 Branch <span className="font-mono text-fg">{pull.branch}</span> of this
                 repository. Pushes to it show up here.
               </p>

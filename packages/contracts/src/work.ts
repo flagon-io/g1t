@@ -45,6 +45,20 @@ export type Issue = {
   /** Pull requests made against this issue, in any state. */
   pullCount: number;
   commentCount: number;
+  /** Usernames of the people it is assigned to. */
+  assignees: string[];
+  /** The numbers of the issues that have to be merged before this one is worked on. */
+  blockedBy: number[];
+  /**
+   * Whether a g1t agent takes it as soon as it can: at once, or when what it
+   * is blocked by has merged.
+   */
+  queued: boolean;
+  /**
+   * The agent working on it now: the one behind its newest pull request
+   * that is still in progress in a fork, such as `g1t-agent`.
+   */
+  agent: string | null;
 };
 
 /** `draft` is still being worked on; `open` is ready for review. */
@@ -97,11 +111,37 @@ export type Pull = {
    * has been one against the current head.
    */
   checkStatus: CheckStatus | null;
+  /** The files it changes, as of its latest push. */
+  files: ChangedFile[];
+  /** Usernames of the people it is assigned to. */
+  assignees: string[];
+  /**
+   * Those whose review was asked for: usernames, and `g1t-agent` when a g1t
+   * agent was asked.
+   */
+  reviewers: string[];
   author: User;
   /** RFC 3339. */
   createdAt: string;
   /** RFC 3339. */
   updatedAt: string;
+};
+
+/** One file a pull request changes, and by how much. */
+export type ChangedFile = { path: string; additions: number; deletions: number };
+
+/**
+ * Another pull request in progress that changes some of the same files. Two
+ * for the same issue are alternatives; two for different issues are heading
+ * for a conflict.
+ */
+export type Overlap = {
+  number: number;
+  title: string;
+  /** The number of the issue the other pull request is for. */
+  issue: number | null;
+  /** The files both change. */
+  paths: string[];
 };
 
 /** `queued` waits for a sandbox; `errored` means the checks could not be run. */
@@ -145,8 +185,16 @@ export type Verdict = "approve" | "request_changes";
  */
 export type Comment = {
   id: string;
+  /**
+   * Something a person or an agent wrote, or something that happened: an
+   * assignment, a review asked for, a close.
+   */
+  kind: "comment" | "event";
   author: User;
-  /** Markdown. */
+  /**
+   * Markdown. For an event, what its author did, as the rest of a sentence
+   * that starts with their name: "assigned ana".
+   */
   body: string;
   /** The file commented on, for a comment on a line. */
   path: string | null;
@@ -216,6 +264,207 @@ export type PullDetail = {
   comments: Comment[];
   /** The latest run of the issue's acceptance checks. */
   checks: CheckRun | null;
+  /** Other pull requests in progress that change the same files. */
+  overlaps: Overlap[];
+  /**
+   * Whether the branch it would merge into has moved on without it, so that
+   * it has to catch up before it can merge.
+   */
+  behind: boolean;
+  /** Whether a g1t agent is reviewing it right now. */
+  reviewPending: boolean;
+  /**
+   * Where it stands on its way to being merged, for a pull request g1t is
+   * seeing through. Null on anyone else's.
+   */
+  lifecycle: Lifecycle | null;
+  /**
+   * A merge was asked for while it was behind: g1t is bringing it up to
+   * date and will then land it.
+   */
+  landing: boolean;
+  /** Why g1t stopped working on it, if it did. */
+  stalled: string | null;
+};
+
+/**
+ * A step on the way from an assigned issue to a pull request that is ready
+ * to merge. g1t takes each one without being asked: `working` (the agent is
+ * making the change), `checking`, `reviewing`, `revising` (the agent is
+ * addressing failed checks or a review), `catching_up` (merging in the
+ * branch it would land on), then `ready` for a person to merge. `needs_you`
+ * means g1t has stopped and a person decides what happens next.
+ */
+export type Stage =
+  | "working"
+  | "checking"
+  | "reviewing"
+  | "revising"
+  | "catching_up"
+  | "queued"
+  | "ready"
+  | "needs_you";
+
+export type Lifecycle = {
+  stage: Stage;
+  /** One sentence saying what is happening, or why it stopped. */
+  detail: string;
+  /** How many times the agent has been sent back to revise it. */
+  revisions: number;
+};
+
+/** What the runner needs to carry out a step of a pull request's lifecycle. */
+export type LifecycleJob = {
+  pullId: string;
+  repo: RepoPath;
+  number: number;
+  /** Who the pull request belongs to. Sandboxes act as them. */
+  author: User;
+  /** The repository holding the change: its fork, or the repository itself. */
+  source: RepoPath;
+  /** The branch of the source holding the change; its default branch when null. */
+  branch: string | null;
+  defaultBranch: string;
+  title: string;
+  description: string;
+  issue: Issue | null;
+  /** For a revision: the failed checks or the review to address. */
+  feedback: string;
+  /** For a revision: which one this is, from 1. */
+  round: number;
+};
+
+/**
+ * `planning` while an agent reads the repository and writes it; `ready` for
+ * a person to read and apply; `failed` if it could not be written;
+ * `applied` once its issues are open.
+ */
+export type PlanStatus = "planning" | "ready" | "failed" | "applied";
+
+/** One issue a plan proposes. */
+export type PlannedIssue = {
+  title: string;
+  /** Markdown: what to change, where, and why. */
+  body: string;
+  labels: string[];
+  /** Commands that must pass once the change is made. */
+  checks: string[];
+  /** The files it will most likely change. */
+  files: string[];
+  /**
+   * The positions, counting from 1, of earlier issues in the plan that have
+   * to be merged first.
+   */
+  dependsOn: number[];
+  /** Its number, once the plan has been applied and it was kept. */
+  number: number | null;
+};
+
+/** An outcome someone wrote, and the issues an agent proposes to get there. */
+export type Plan = {
+  id: string;
+  repoId: string;
+  /** The outcome wanted, as written. */
+  brief: string;
+  status: PlanStatus;
+  /** The agent's account of how it split the work. */
+  summary: string;
+  issues: PlannedIssue[];
+  /** Why it could not be written, when `status` is `failed`. */
+  error: string | null;
+  author: User;
+  /** RFC 3339. */
+  createdAt: string;
+  /** RFC 3339. */
+  finishedAt: string | null;
+};
+
+/** What a sandbox needs to write a plan. */
+export type PlanJob = {
+  planId: string;
+  /** Lets the sandbox, and nothing else, report this plan. */
+  token: string;
+  brief: string;
+  repo: RepoPath;
+};
+
+/** An issue waiting for a g1t agent that can be given one now. */
+export type ReadyIssue = {
+  repo: RepoPath;
+  number: number;
+  /** Who queued it, on whose say-so the agent works. */
+  actor: User;
+};
+
+/**
+ * How a repository wants its pull requests handled. A repository that has
+ * changed nothing has the defaults.
+ */
+export type RepoSettings = {
+  /**
+   * Land a g1t agent's pull request without a person once it is ready:
+   * checks passed and approved as the settings below require.
+   */
+  autoMerge: boolean;
+  /**
+   * Refuse to merge a pull request that does not contain the default
+   * branch's latest commits, so that what merges is what was checked. When
+   * off, merging one that is behind brings it up to date first.
+   */
+  requireUpToDate: boolean;
+  /**
+   * How many approving reviews a pull request needs before it may merge. A
+   * reviewer who has since asked for changes blocks it.
+   */
+  requiredApprovals: number;
+  /** Whether a g1t agent's approval counts towards `requiredApprovals`. */
+  countAgentApprovals: boolean;
+  /** Whether a member may merge although the acceptance checks did not pass. */
+  allowIgnoringChecks: boolean;
+  /** Whether a g1t agent's pull request is reviewed by a second agent unasked. */
+  agentReview: boolean;
+  /**
+   * How many times a g1t agent is sent back to its pull request before a
+   * person is asked instead.
+   */
+  maxRevisions: number;
+  /**
+   * Merge through a queue: pull requests are tested together with those
+   * ahead of them, and only a combination that passed reaches the default
+   * branch.
+   */
+  mergeQueue: boolean;
+  /** Username of the member who last changed the settings, if anyone has. */
+  updatedBy: string | null;
+  /** RFC 3339. */
+  updatedAt: string | null;
+};
+
+/** The settings a member can change. */
+export type RepoSettingsInput = Omit<RepoSettings, "updatedBy" | "updatedAt">;
+
+/** The next step for a pull request g1t is seeing through, already claimed. */
+export type Advance =
+  | { action: "none" }
+  | { action: "review" | "revise" | "catch_up"; job: LifecycleJob };
+
+/** What a sandbox needs to review a pull request. */
+export type ReviewJob = {
+  runId: string;
+  /** Lets the sandbox, and nothing else, report this review. */
+  token: string;
+  /** The repository holding the commit: the fork, or the repository itself. */
+  source: RepoPath;
+  commit: string;
+  repo: RepoPath;
+  defaultBranch: string;
+  number: number;
+  title: string;
+  description: string;
+  /** The issue the pull request is for, which says what it should achieve. */
+  issue: Issue | null;
+  /** Who opened the pull request, and so can read its source. */
+  author: User;
 };
 
 export type OpenIssueInput = {
@@ -225,7 +474,13 @@ export type OpenIssueInput = {
   checks?: string[];
 };
 
-export type UpdateIssueInput = { title?: string; body?: string; labels?: string[] };
+export type UpdateIssueInput = {
+  title?: string;
+  body?: string;
+  labels?: string[];
+  /** Usernames of the people it is assigned to; replaces the whole set. */
+  assignees?: string[];
+};
 
 export type OpenPullInput = {
   /** The number of the issue this is for. */
@@ -278,6 +533,42 @@ export interface WorkApi {
    * started; `skip` forgets a run that will not be carried out.
    */
   reportChecks(runId: string, token: string, report: CheckReport): Promise<Result<CheckRun>>;
+  /** Begins a review by a g1t agent. For the runner service. */
+  startReview(pullId: string): Promise<Result<ReviewJob>>;
+  /** Records that a review could not be written. For the runner service. */
+  failReview(runId: string, token: string, error: string): Promise<Result<boolean>>;
+
+  /**
+   * Works out the next step for a pull request g1t is seeing through and,
+   * if there is one to take now, claims it, so that it is taken once
+   * however often this is called. For the runner service.
+   */
+  advance(pullId: string): Promise<Advance>;
+  /** Records that a step could not be carried out, so a person is asked. */
+  stall(pullId: string, reason: string): Promise<boolean>;
+  /** Ids of the open pull requests g1t is seeing through. */
+  managedPulls(repoId?: string): Promise<string[]>;
+
+  /** A repository's merge queue: what is in it, in order, and what recently left. */
+  queue(repo: RepoPath, viewer: Viewer): Promise<Result<QueueView>>;
+  /**
+   * The next batch of combined states to test for a repository, one per
+   * entry; empty while a batch is being tested or nothing waits.
+   */
+  queueBuild(repoId: string): Promise<QueueJob[]>;
+  /** Reports that a combined state could not be built or checked. */
+  failQueue(entryId: string, token: string, error: string): Promise<Result<QueueState>>;
+  /** Takes a pull request out of the merge queue. Members only. */
+  removeFromQueue(actor: User, repo: RepoPath, number: number): Promise<Result<Pull>>;
+
+  getSettings(repo: RepoPath, viewer: Viewer): Promise<Result<RepoSettings>>;
+  /** Members of the repository's workspace only. */
+  updateSettings(actor: User, repo: RepoPath, settings: RepoSettingsInput): Promise<Result<RepoSettings>>;
+  /**
+   * What the runner needs to bring a pull request up to date because a
+   * merge of it was asked for. Null if none was.
+   */
+  catchUpJob(pullId: string): Promise<LifecycleJob | null>;
 
   /**
    * Opens a pull request: a draft with a fork to push to, or, given a
@@ -287,6 +578,17 @@ export interface WorkApi {
   /** Newest first. */
   listPulls(repo: RepoPath, viewer: Viewer, state?: State): Promise<Result<Pull[]>>;
   getPull(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<PullDetail>>;
+  /**
+   * Changes who a pull request is assigned to and whose review is asked
+   * for; each list given replaces the whole set. Asking for `g1t-agent`'s
+   * review does not by itself start one: the runner's `review` does.
+   */
+  updatePull(
+    actor: User,
+    repo: RepoPath,
+    number: number,
+    changes: { assignees?: string[]; reviewers?: string[] },
+  ): Promise<Result<Pull>>;
   /** Marks a draft ready for review and sets its description. */
   readyPull(actor: User, repo: RepoPath, number: number, summary: string): Promise<Result<Pull>>;
   closePull(actor: User, repo: RepoPath, number: number): Promise<Result<Pull>>;
@@ -295,6 +597,11 @@ export interface WorkApi {
    * `keepIssueOpen`, that resolves the issue it was for: the issue closes
    * naming this pull request, and the others still in progress for it close
    * as superseded. Only members of the repository's workspace may merge.
+   *
+   * If the default branch has moved, the pull request is brought up to date
+   * first and lands when that is done; it comes back still open, and
+   * `PullDetail.landing` is true meanwhile. A repository that requires pull
+   * requests to be up to date refuses instead.
    */
   mergePull(
     actor: User,
@@ -306,8 +613,43 @@ export interface WorkApi {
       ignoreChecks?: boolean;
     },
   ): Promise<Result<Pull>>;
-  /** Drafts and open pull requests the viewer started, most recently active first. */
-  listActivePulls(viewer: Viewer): Promise<{ pull: Pull; issue: Issue | null }[]>;
+  /**
+   * Drafts and open pull requests the viewer started, most recently active
+   * first, each with where it stands if g1t is seeing it through.
+   */
+  listActivePulls(
+    viewer: Viewer,
+  ): Promise<{ pull: Pull; issue: Issue | null; lifecycle: Lifecycle | null }[]>;
+
+  /**
+   * Records an outcome to plan for. Members only. For the runner service,
+   * which starts the sandbox in which an agent writes the plan.
+   */
+  startPlan(actor: User, repo: RepoPath, brief: string): Promise<Result<PlanJob>>;
+  /** Records that a plan could not be written. For the runner service. */
+  failPlan(planId: string, token: string, error: string): Promise<Result<boolean>>;
+  /** Members only. */
+  getPlan(repo: RepoPath, viewer: Viewer, id: string): Promise<Result<Plan>>;
+  /** Newest first. Members only. */
+  listPlans(repo: RepoPath, viewer: Viewer): Promise<Result<Plan[]>>;
+  /**
+   * Opens a plan's issues, each blocked by the ones it depends on. With
+   * `assign`, each is queued for a g1t agent. `keep` holds the positions,
+   * from 1, of the issues to open; all of them when absent. Once.
+   */
+  applyPlan(
+    actor: User,
+    repo: RepoPath,
+    id: string,
+    options?: { assign?: boolean; keep?: number[] },
+  ): Promise<Result<Plan>>;
+  /** Asks for a g1t agent to take an issue as soon as it can, or withdraws that. */
+  queueIssue(actor: User, repo: RepoPath, number: number, queued: boolean): Promise<Result<boolean>>;
+  /** Issues waiting for a g1t agent that can be given one now. For the runner. */
+  readyIssues(repoId?: string): Promise<ReadyIssue[]>;
+
+  /** Open issues assigned to the viewer, most recently changed first. */
+  listAssignedIssues(viewer: Viewer): Promise<Issue[]>;
 
   appendSession(actor: User, repo: RepoPath, number: number, entries: NewSessionEntry[]): Promise<Result<{ count: number }>>;
   readSession(repo: RepoPath, number: number, viewer: Viewer, afterSeq?: number): Promise<Result<SessionEntry[]>>;
@@ -333,3 +675,60 @@ export function pullComparison(pull: Pull): {
     head: (settled && pull.headCommit) || pull.branch,
   };
 }
+
+
+/** Where a pull request in a merge queue stands. */
+export type QueueState = "waiting" | "testing" | "passed" | "failed" | "landed" | "removed";
+
+/** One pull request's place in a merge queue. */
+export type QueueEntry = {
+  id: string;
+  number: number;
+  title: string;
+  agent: string;
+  state: QueueState;
+  /** The pull requests merged ahead of it in the state being tested, in order. */
+  ahead: number[];
+  baseCommit: string | null;
+  combinedCommit: string | null;
+  error: string | null;
+  results: CheckResult[];
+  /** Username of whoever merged it into the queue: a person, or `g1t`. */
+  enqueuedBy: string;
+  /** RFC 3339. */
+  createdAt: string;
+  /** RFC 3339. */
+  finishedAt: string | null;
+};
+
+/** A repository's merge queue: what is in it, in order, and what recently left. */
+export type QueueView = {
+  enabled: boolean;
+  active: QueueEntry[];
+  /** Newest first. */
+  recent: QueueEntry[];
+};
+
+export type QueueStackItem = {
+  number: number;
+  title: string;
+  /** The repository holding the change, and its branch. */
+  source: RepoPath;
+  branch: string;
+  commit: string;
+};
+
+/** What a sandbox needs to build and check one combined state. */
+export type QueueJob = {
+  entryId: string;
+  token: string;
+  repo: RepoPath;
+  defaultBranch: string;
+  baseCommit: string;
+  branch: string;
+  stack: QueueStackItem[];
+  checks: string[];
+  /** The checks of issues already completed: the default branch's contract. */
+  contractChecks: string[];
+  actor: User;
+};

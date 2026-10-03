@@ -14,5 +14,11 @@ export function isValidNamespace(value: string): boolean {
 }
 
 export function isValidRepoName(value: string): boolean {
-  return REPO_NAME.test(value) && !value.startsWith(".") && !value.endsWith(".git");
+  return (
+    REPO_NAME.test(value) &&
+    !value.startsWith(".") &&
+    !value.endsWith(".git") &&
+    // `/<workspace>/-/…` holds the workspace's own pages.
+    value !== "-"
+  );
 }

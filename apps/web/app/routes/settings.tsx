@@ -1,5 +1,5 @@
 import { identity } from "../lib/services.server";
-import { Form } from "react-router";
+import { Form, Link } from "react-router";
 
 import type { Route } from "./+types/settings";
 import { Button, ErrorText, Field, Input, TimeAgo } from "../components/ui";
@@ -40,7 +40,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     case "add-token": {
       const created = await identity.createAccessToken(
         user,
-        String(form.get("name") ?? ""),
+        String(form.get("label") ?? ""),
       );
       return { newToken: created.token };
     }
@@ -117,8 +117,26 @@ export default function Settings({
         <h2 className="font-medium">Access tokens</h2>
         <p className="mt-1 text-sm text-muted">
           Use a token as the password when git asks for one over HTTPS, and to
-          authenticate agents and the API.
+          authenticate agents and the API. A token here acts as you.
         </p>
+        {(user.workspaces ?? []).length > 0 && (
+          <p className="mt-1 text-sm text-muted">
+            For CI and integrations that work for a team, use a workspace's
+            own tokens instead:{" "}
+            {(user.workspaces ?? []).map((membership, i) => (
+              <span key={membership.slug}>
+                {i > 0 && ", "}
+                <Link
+                  to={`/${membership.slug}/-/tokens`}
+                  className="font-mono text-fg underline underline-offset-4"
+                >
+                  {membership.slug}
+                </Link>
+              </span>
+            ))}
+            .
+          </p>
+        )}
         {actionData?.newToken && (
           <div className="mt-4 rounded-md border border-accent/40 bg-surface p-4">
             <p className="text-sm">Copy it now. It will not be shown again.</p>
@@ -130,7 +148,19 @@ export default function Settings({
         <ul className="mt-4 divide-y divide-line rounded-md border border-line empty:hidden">
           {tokens.map((token) => (
             <li key={token.id} className="flex items-center gap-4 px-4 py-3">
-              <p className="text-sm">{token.name}</p>
+              <div className="min-w-0">
+                <p className="truncate text-sm">{token.name}</p>
+                <p className="text-xs text-faint">
+                  Created <TimeAgo at={token.createdAt} /> ·{" "}
+                  {token.lastUsedAt ? (
+                    <>
+                      last used <TimeAgo at={token.lastUsedAt} />
+                    </>
+                  ) : (
+                    "never used"
+                  )}
+                </p>
+              </div>
               <DeleteButton intent="delete-token" id={token.id} />
             </li>
           ))}
@@ -139,7 +169,7 @@ export default function Settings({
           <input type="hidden" name="intent" value="add-token" />
           <div className="grow">
             <Field label="Name">
-              <Input name="name" maxLength={100} placeholder="laptop" />
+              <Input name="label" maxLength={100} placeholder="laptop" />
             </Field>
           </div>
           <Button type="submit">Create token</Button>

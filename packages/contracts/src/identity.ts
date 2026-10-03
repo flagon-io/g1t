@@ -1,8 +1,15 @@
+import type { RepoPath } from "./repos";
 import type { Result } from "./result";
 
 export type User = {
   id: string;
   username: string;
+  /**
+   * `workspace` when a workspace is acting through one of its own access
+   * tokens: `id` is then the workspace's and `username` its slug. Absent
+   * means `user`.
+   */
+  kind?: "user" | "workspace" | "agent";
   /**
    * Whether the account's email address is confirmed. Only set on users
    * resolved from credentials; unverified accounts cannot change anything.
@@ -28,6 +35,8 @@ export type Workspace = {
   id: string;
   slug: string;
   name: string;
+  /** One line saying what the workspace is for. */
+  description: string | null;
   /** RFC 3339. */
   createdAt: string;
   memberCount: number;
@@ -46,7 +55,19 @@ export type SshKey = {
   createdAt: string;
 };
 
-export type AccessToken = { id: string; name: string; createdAt: string };
+export type AccessToken = {
+  id: string;
+  name: string;
+  /** RFC 3339. */
+  createdAt: string;
+  /** RFC 3339, to within a few minutes. Null until it is first used. */
+  lastUsedAt: string | null;
+  /**
+   * For a workspace's token, the username of the member who made it. Null
+   * once that account is gone, and on personal tokens.
+   */
+  createdBy: string | null;
+};
 
 export type DeviceStart = {
   /** Secret held by the tool and exchanged for a token once approved. */
@@ -144,6 +165,18 @@ export interface IdentityApi {
   addMember(actor: User, slug: string, username: string): Promise<Result<boolean>>;
   /** Owners only. */
   removeMember(actor: User, slug: string, username: string): Promise<Result<boolean>>;
+  /** Owners only. An empty name falls back to the slug. */
+  updateWorkspace(actor: User, slug: string, details: { name: string; description: string }): Promise<Result<Workspace>>;
+
+  /**
+   * A workspace's own access tokens. They belong to the workspace, act as
+   * it, and keep working when the member who made one leaves. Members only.
+   */
+  listWorkspaceTokens(slug: string, viewer: Viewer): Promise<Result<AccessToken[]>>;
+  /** Owners only. The plaintext token is returned once and never stored. */
+  createWorkspaceToken(actor: User, slug: string, name: string): Promise<Result<{ token: string; info: AccessToken }>>;
+  /** Owners only. */
+  removeWorkspaceToken(actor: User, slug: string, id: string): Promise<Result<boolean>>;
 
   userForSession(sessionToken: string): Promise<Viewer>;
 
@@ -160,11 +193,25 @@ export interface IdentityApi {
   removeSshKey(user: User, id: string): Promise<void>;
 
   listAccessTokens(user: User): Promise<AccessToken[]>;
-  /** The plaintext token is returned once and never stored. */
   /**
-   * With `ttlSeconds` the token expires and is left out of the user's list;
-   * that form is used for hosted attempts.
+   * The plaintext token is returned once and never stored. With
+   * `ttlSeconds` the token expires and is left out of token lists; that
+   * form is used for hosted agents. A token made for a workspace acting
+   * through a token of its own belongs to that workspace too.
    */
   createAccessToken(user: User, name: string, ttlSeconds?: number): Promise<{ token: string; info: AccessToken }>;
+  /**
+   * A token for a g1t agent working for `onBehalfOf`: it acts as
+   * `g1t-agent`, in `scope.repo` only, and only for `scope.operations`.
+   */
+  createAgentToken(
+    onBehalfOf: User,
+    scope: AgentScope,
+    ttlSeconds: number,
+  ): Promise<{ token: string; info: AccessToken }>;
   removeAccessToken(user: User, id: string): Promise<void>;
 }
+
+
+/** What an agent's token may do: these operations, in this repository. */
+export type AgentScope = { repo: RepoPath; operations: string[] };

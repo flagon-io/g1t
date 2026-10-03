@@ -16,6 +16,7 @@ struct RepoRow {
     owner_id: String,
     default_branch: String,
     fork_of: Option<String>,
+    protected: u8,
     created_at: String,
 }
 
@@ -30,6 +31,7 @@ impl From<RepoRow> for Repo {
             owner_id: row.owner_id,
             default_branch: row.default_branch,
             fork_of: row.fork_of,
+            protected: row.protected != 0,
             created_at: row.created_at,
         }
     }
@@ -79,6 +81,26 @@ impl Registry {
             .first::<RepoRow>(None)
             .await?
             .map(Repo::from))
+    }
+
+    pub async fn update(
+        &self,
+        id: &str,
+        description: Option<&str>,
+        is_private: bool,
+        protected: bool,
+    ) -> Result<()> {
+        self.db
+            .prepare("UPDATE repos SET description = ?, is_private = ?, protected = ? WHERE id = ?")
+            .bind(&[
+                description.map_or(JsValue::NULL, JsValue::from),
+                u32::from(is_private).into(),
+                u32::from(protected).into(),
+                id.into(),
+            ])?
+            .run()
+            .await?;
+        Ok(())
     }
 
     pub async fn by_id(&self, id: &str) -> Result<Option<Repo>> {
@@ -152,6 +174,16 @@ impl Registry {
             .await?
             .results::<RepoRow>()?;
         Ok(rows.into_iter().map(Repo::from).collect())
+    }
+
+    /// Forgets a repository that could not be filled.
+    pub async fn remove(&self, id: &str) -> Result<()> {
+        self.db
+            .prepare("DELETE FROM repos WHERE id = ?")
+            .bind(&[id.into()])?
+            .run()
+            .await?;
+        Ok(())
     }
 
     pub async fn insert(&self, repo: &Repo) -> Result<()> {

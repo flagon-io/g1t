@@ -39,6 +39,27 @@ fn result_text(content: &Value) -> String {
     }
 }
 
+/// Tells g1t what the run cost, so that the workspace it was for can be
+/// charged. The run's own token, given to this sandbox and to nothing
+/// else, is the credential. Does nothing where runs are not billed.
+fn report_cost(cost_usd: f64, turns: u64) {
+    let (Ok(api), Ok(run), Ok(token)) = (
+        std::env::var("G1T_API"),
+        std::env::var("BILLING_RUN"),
+        std::env::var("BILLING_TOKEN"),
+    ) else {
+        return;
+    };
+    let sent = ureq::post(&format!("{api}/runs/{run}/usage")).send_json(serde_json::json!({
+        "token": token,
+        "cost_usd": cost_usd,
+        "turns": turns,
+    }));
+    if let Err(error) = sent {
+        eprintln!("g1t-runner: could not report what the run cost: {error}");
+    }
+}
+
 /// Records one line of Claude Code's `stream-json` output. Returns the final
 /// result when the line is the one that ends the run.
 fn handle_event(event: &Value, reporter: &mut Reporter) -> Option<Result<String>> {
@@ -84,6 +105,16 @@ fn handle_event(event: &Value, reporter: &mut Reporter) -> Option<Result<String>
         }
         "result" => {
             let text = event["result"].as_str().unwrap_or_default().to_owned();
+            // What the run cost, as the harness worked it out, kept with
+            // the session so that spend can be read per pull request.
+            if let Some(cost) = event["total_cost_usd"].as_f64() {
+                let turns = event["num_turns"].as_u64().unwrap_or_default();
+                report_cost(cost, turns);
+                reporter.record(Entry::new(
+                    "note",
+                    &format!("This run cost ${cost:.4} over {turns} turns."),
+                ));
+            }
             Some(if event["is_error"].as_bool().unwrap_or(false) {
                 Err(anyhow::anyhow!("the agent reported an error: {text}"))
             } else {
@@ -97,8 +128,28 @@ fn handle_event(event: &Value, reporter: &mut Reporter) -> Option<Result<String>
 /// Runs Claude Code on `prompt` in `workdir` and returns its closing
 /// summary.
 pub fn run_claude(workdir: &Path, prompt: &str, reporter: &mut Reporter) -> Result<String> {
+    // g1t's own tools, through a token that can do a few things in this one
+    // repository: read its issues, pull requests and merge queue, open an
+    // issue, and comment.
+    let mut tools = Vec::new();
+    if let Ok(token) = std::env::var("G1T_AGENT_TOKEN") {
+        let config = serde_json::json!({
+            "mcpServers": {
+                "g1t": {
+                    "type": "http",
+                    "url": std::env::var("G1T_MCP").unwrap_or_else(|_| "https://mcp.g1t.sh".to_owned()),
+                    "headers": { "Authorization": format!("Bearer {token}") },
+                }
+            }
+        });
+        let path = "/work/g1t-mcp.json";
+        if std::fs::write(path, config.to_string()).is_ok() {
+            tools = vec!["--mcp-config".to_owned(), path.to_owned()];
+        }
+    }
     let mut child = Command::new("claude")
         .current_dir(workdir)
+        .args(&tools)
         .args([
             "--print",
             prompt,
@@ -113,6 +164,11 @@ pub fn run_claude(workdir: &Path, prompt: &str, reporter: &mut Reporter) -> Resu
         ])
         // The agent needs the model key and nothing else of ours.
         .env_remove("G1T_TOKEN")
+        .env_remove("REVIEW_TOKEN")
+        .env_remove("CHECK_TOKEN")
+        .env_remove("BILLING_TOKEN")
+        .env_remove("PLAN_TOKEN")
+        .env_remove("G1T_AGENT_TOKEN")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())

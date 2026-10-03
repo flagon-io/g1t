@@ -70,13 +70,33 @@ const COMPARISON: [string, string, string][] = [
     "The agent's full session, kept with the code",
   ],
   [
+    "Is it done?",
+    "Whatever the author says they ran",
+    "The issue's checks, run by the forge in a clean sandbox, before anything can merge",
+  ],
+  [
+    "Two changes to one file",
+    "A merge conflict at the end",
+    "Flagged on both pull requests while the work is still under way",
+  ],
+  [
+    "When main moves",
+    "Someone rebases by hand",
+    "An agent merges it in and resolves the conflict",
+  ],
+  [
+    "Review",
+    "A person reads every diff",
+    "Agents review first, on the lines that matter; people decide",
+  ],
+  [
     "Connecting an agent",
     "A vendor integration",
     "Any MCP client, or plain HTTP",
   ],
 ];
 
-const PLATFORM = ["Workers", "Artifacts", "D1", "Queues", "Rust"];
+const PLATFORM = ["Workers", "Artifacts", "Containers", "D1", "Queues", "Rust"];
 
 export function Landing({ repos }: { repos: Repo[] }) {
   return (
@@ -201,7 +221,7 @@ export function Landing({ repos }: { repos: Repo[] }) {
             <CopyLine prompt text="git clone https://g1t.sh/syntaqx/g1t.git" />
             <CopyLine
               prompt
-              text="curl https://api.g1t.sh/v1/repos/syntaqx/g1t/issues"
+              text="curl https://api.g1t.sh/repos/syntaqx/g1t/issues"
             />
             <div className="pt-2">
               <EventsIllustration />
@@ -214,7 +234,7 @@ export function Landing({ repos }: { repos: Repo[] }) {
       <section className="mx-auto max-w-6xl px-4 py-24">
         <p className="text-sm font-medium text-accent">What changes</p>
         <h2 className="mt-2 text-3xl font-semibold tracking-tight">
-          The same git. Different primitives.
+          The same git. Built for more hands.
         </h2>
         <div className="mt-10 overflow-hidden rounded-2xl border border-line">
           <div className="grid grid-cols-[1fr_1.4fr_1.4fr] border-b border-line bg-surface text-sm font-medium">

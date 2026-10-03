@@ -24,10 +24,10 @@ curl https://api.g1t.sh/
 ```json
 {
   "documentation_url": "https://docs.g1t.sh/api/reference/",
-  "current_user_url": "https://api.g1t.sh/v1/user",
-  "repository_url": "https://api.g1t.sh/v1/repos/{owner}/{name}",
-  "issues_url": "https://api.g1t.sh/v1/repos/{owner}/{name}/issues{?state,label}",
-  "pulls_url": "https://api.g1t.sh/v1/repos/{owner}/{name}/pulls{?state}"
+  "current_user_url": "https://api.g1t.sh/user",
+  "repository_url": "https://api.g1t.sh/repos/{owner}/{name}",
+  "issues_url": "https://api.g1t.sh/repos/{owner}/{name}/issues{?state,label}",
+  "pulls_url": "https://api.g1t.sh/repos/{owner}/{name}/pulls{?state}"
 }
 ```
 
@@ -37,7 +37,7 @@ A token is needed to change anything, and to see what is private. Send an
 [access token](https://g1t.sh/settings) as a bearer token:
 
 ```sh
-curl https://api.g1t.sh/v1/user \
+curl https://api.g1t.sh/user \
   -H "Authorization: Bearer $G1T_TOKEN"
 ```
 
@@ -51,8 +51,8 @@ browser. See [signing in from a tool](/guides/authentication/#signing-in-from-a-
 
 | Method | Path | |
 | --- | --- | --- |
-| `POST` | `/v1/device/code` | Start a sign-in. Body: `client_name`. |
-| `POST` | `/v1/device/token` | Ask whether it was approved. Body: `device_code`. |
+| `POST` | `/device/code` | Start a sign-in. Body: `client_name`. |
+| `POST` | `/device/token` | Ask whether it was approved. Body: `device_code`. |
 
 Applications that can open a browser use OAuth instead. See
 [signing in with OAuth](/guides/authentication/#signing-in-with-oauth).
@@ -88,12 +88,15 @@ In paths, `{owner}` is the workspace that owns the repository.
 
 | Method | Path | |
 | --- | --- | --- |
-| `GET` | `/v1/user` | The account the token belongs to, and its workspaces. |
-| `POST` | `/v1/workspaces` | Create a workspace. Body: `slug`, `name`. |
-| `GET` | `/v1/repos?q=` | Repositories you can see. |
-| `POST` | `/v1/repos` | Create one. Body: `workspace`, `name`, `description`, `private`. |
-| `GET` | `/v1/repos/{owner}/{name}` | One repository. |
-| `GET` | `/v1/repos/{owner}/{name}/events?before=` | Its timeline, newest first. |
+| `GET` | `/user` | Who the token acts as, and the workspaces it can work in. `kind` is `user`, or `workspace` for a [workspace's own token](/guides/authentication/#workspace-access-tokens). |
+| `POST` | `/workspaces` | Create a workspace. Body: `slug`, `name`. |
+| `GET` | `/repos?q=` | Repositories you can see. |
+| `POST` | `/repos` | Create one. Body: `workspace`, `name`, `description`, `private`, and `import_url` to copy a public repository's default branch. |
+| `GET` | `/repos/{owner}/{name}` | One repository. |
+| `PATCH` | `/repos/{owner}/{name}` | Change it. Body: `description`, `private`, and `protected` to refuse pushes to the default branch. Members only. |
+| `GET` | `/repos/{owner}/{name}/settings` | How it handles pull requests. |
+| `PATCH` | `/repos/{owner}/{name}/settings` | Change that. Body, all optional: `required_approvals`, `count_agent_approvals`, `allow_ignoring_checks`, `require_up_to_date`, `agent_review`, `max_revisions`, `auto_merge`. Members only. |
+| `GET` | `/repos/{owner}/{name}/events?before=` | Its timeline, newest first. |
 
 ## Issues
 
@@ -101,17 +104,21 @@ Issues and pull requests share one sequence of numbers per repository.
 
 | Method | Path | |
 | --- | --- | --- |
-| `GET` | `/v1/repos/{owner}/{name}/issues?state=&label=` | Issues, newest first. `state` is `open` or `closed`. |
-| `POST` | `/v1/repos/{owner}/{name}/issues` | Open one. Body: `title`, `body`, `labels`, `checks`. |
-| `GET` | `/v1/repos/{owner}/{name}/issues/{number}` | An issue, its comments and its pull requests. |
-| `PATCH` | `/v1/repos/{owner}/{name}/issues/{number}` | Change `title`, `body` or `labels`. |
-| `POST` | `/v1/repos/{owner}/{name}/issues/{number}/close` | Close. Body: `reason`, `completed` or `not_planned`. |
-| `POST` | `/v1/repos/{owner}/{name}/issues/{number}/reopen` | Reopen. |
-| `POST` | `/v1/repos/{owner}/{name}/issues/{number}/comments` | Comment. Body: `body`. The number may be a pull request's, and then `path` and `line` put the comment on a line of its change. |
-| `GET` | `/v1/repos/{owner}/{name}/labels` | The labels in use. |
+| `GET` | `/repos/{owner}/{name}/issues?state=&label=` | Issues, newest first. `state` is `open` or `closed`. |
+| `POST` | `/repos/{owner}/{name}/issues` | Open one. Body: `title`, `body`, `labels`, `checks`. |
+| `GET` | `/repos/{owner}/{name}/issues/{number}` | An issue, its comments and its pull requests. |
+| `PATCH` | `/repos/{owner}/{name}/issues/{number}` | Change `title`, `body` or `labels`. |
+| `POST` | `/repos/{owner}/{name}/issues/{number}/close` | Close. Body: `reason`, `completed` or `not_planned`. |
+| `POST` | `/repos/{owner}/{name}/issues/{number}/reopen` | Reopen. |
+| `POST` | `/repos/{owner}/{name}/plans` | Turn an outcome into a plan. Body: `brief`. Returns `planId`; the plan takes a minute or two to write. Members only. |
+| `GET` | `/repos/{owner}/{name}/plans/{plan}` | The plan: its `status` and the issues it proposes. |
+| `POST` | `/repos/{owner}/{name}/plans/{plan}/apply` | Open its issues. Body: `assign` to put g1t agents on them in dependency order, `keep` to open only some, by position from 1. |
+| `POST` | `/repos/{owner}/{name}/issues/{number}/assign` | Assign it to the [g1t agent](/guides/g1t-agents/), which opens a pull request and sees it through. Body: `instructions` (optional). Returns the pull request. Preview: enabled accounts only. |
+| `POST` | `/repos/{owner}/{name}/issues/{number}/comments` | Comment. Body: `body`. The number may be a pull request's, and then `path` and `line` put the comment on a line of its change. |
+| `GET` | `/repos/{owner}/{name}/labels` | The labels in use. |
 
 ```sh
-curl -X POST https://api.g1t.sh/v1/repos/syntaqx/hello/issues \
+curl -X POST https://api.g1t.sh/repos/syntaqx/hello/issues \
   -H "Authorization: Bearer $G1T_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -140,14 +147,14 @@ pull request whose merge closed it:
 
 | Method | Path | |
 | --- | --- | --- |
-| `GET` | `/v1/repos/{owner}/{name}/pulls?state=` | Pull requests, newest first. |
-| `POST` | `/v1/repos/{owner}/{name}/pulls` | Open one. Body: `issue`, `title`, `agent`, and for a branch `branch`, `body`. |
-| `GET` | `/v1/repos/{owner}/{name}/pulls/{number}` | A pull request, its comments and its issue. |
-| `GET` | `/v1/repos/{owner}/{name}/pulls/{number}/changes` | The files it changes, with diffs. |
-| `POST` | `/v1/repos/{owner}/{name}/pulls/{number}/ready` | Mark ready for review. Body: `summary`. |
-| `POST` | `/v1/repos/{owner}/{name}/pulls/{number}/close` | Close without merging. |
-| `POST` | `/v1/repos/{owner}/{name}/pulls/{number}/reviews` | Give a verdict. Body: `verdict` (`approve` or `request_changes`), `body`. Not on your own pull request. |
-| `POST` | `/v1/repos/{owner}/{name}/pulls/{number}/merge` | Land it on `main`. Body: `keep_issue_open`, `ignore_checks`. Workspace members only; `409` if it is a draft, its checks have not passed, or `main` has moved. |
+| `GET` | `/repos/{owner}/{name}/pulls?state=` | Pull requests, newest first. |
+| `POST` | `/repos/{owner}/{name}/pulls` | Open one. Body: `issue`, `title`, `agent`, and for a branch `branch`, `body`. |
+| `GET` | `/repos/{owner}/{name}/pulls/{number}` | A pull request, its comments and its issue. |
+| `GET` | `/repos/{owner}/{name}/pulls/{number}/changes` | The files it changes, with diffs. |
+| `POST` | `/repos/{owner}/{name}/pulls/{number}/ready` | Mark ready for review. Body: `summary`. |
+| `POST` | `/repos/{owner}/{name}/pulls/{number}/close` | Close without merging. |
+| `POST` | `/repos/{owner}/{name}/pulls/{number}/reviews` | Give a verdict. Body: `verdict` (`approve` or `request_changes`), `body`. Not on your own pull request. |
+| `POST` | `/repos/{owner}/{name}/pulls/{number}/merge` | Land it on `main`. Body: `keep_issue_open`, `ignore_checks`. Workspace members only; `409` if it is a draft or its checks have not passed. If `main` has moved, the pull request is brought up to date first and lands when that is done: the response is the pull request, still open, and `landing` is true on it until then. A repository that requires pull requests to be up to date answers `409` instead. |
 
 Opening a pull request returns the git remote of its fork:
 
@@ -177,6 +184,16 @@ pull request in the issue's `resolvedBy`. Other pull requests for that issue
 that are still a draft or open are closed with `supersededBy` set. Send
 `"keep_issue_open": true` to merge without any of that.
 
+Fetching one pull request also returns:
+
+| Field | |
+| --- | --- |
+| `pull.files` | The files it changes, with lines added and removed. |
+| `overlaps` | Other pull requests in progress changing the same files. |
+| `behind` | Whether `main` has moved since it was made. |
+| `checks` | The latest run of the acceptance checks. |
+| `comments` | Comments and reviews, with `path`, `line` and `verdict`. |
+
 ### Checks
 
 A pull request carries `checkStatus`: `queued`, `running`, `passed`, `failed`,
@@ -203,11 +220,11 @@ request becomes ready for review and again when its head moves.
 
 | Method | Path | |
 | --- | --- | --- |
-| `GET` | `/v1/repos/{owner}/{name}/pulls/{number}/session?after=` | Entries after a sequence number. |
-| `POST` | `/v1/repos/{owner}/{name}/pulls/{number}/session` | Append. Body: `entries`. |
+| `GET` | `/repos/{owner}/{name}/pulls/{number}/session?after=` | Entries after a sequence number. |
+| `POST` | `/repos/{owner}/{name}/pulls/{number}/session` | Append. Body: `entries`. |
 
 ```sh
-curl -X POST https://api.g1t.sh/v1/repos/syntaqx/hello/pulls/14/session \
+curl -X POST https://api.g1t.sh/repos/syntaqx/hello/pulls/14/session \
   -H "Authorization: Bearer $G1T_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"entries": [{"kind": "message", "text": "Reading src/main.rs."}]}'
@@ -223,3 +240,19 @@ kind of thing, then a UUIDv7 in base32, for example
 `pr_01jb2k7x9hfq0b3zj0f5s2m8ra`. They sort by creation time.
 
 Times are RFC 3339 in UTC, such as `2026-10-01T18:04:11.482Z`.
+
+## Field names
+
+Responses use `camelCase`. Request bodies take the same names as the MCP
+tools, in `snake_case`, and also accept `camelCase`, so you can send back a
+field exactly as you read it:
+
+```sh
+# Both turn off counting agents' approvals.
+curl -X PATCH https://api.g1t.sh/repos/acme/web/settings \
+  -H "Authorization: Bearer g1t_…" -d '{"count_agent_approvals": false}'
+curl -X PATCH https://api.g1t.sh/repos/acme/web/settings \
+  -H "Authorization: Bearer g1t_…" -d '{"countAgentApprovals": false}'
+```
+
+When a body gives a field both ways, the `snake_case` one is used.

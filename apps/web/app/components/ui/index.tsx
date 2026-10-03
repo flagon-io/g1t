@@ -1,6 +1,6 @@
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Sparkles } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
-import { Link, type LinkProps } from "react-router";
+import { Link, type LinkProps, NavLink, useLocation } from "react-router";
 
 export function Field({
   label,
@@ -25,12 +25,77 @@ export function Field({
 const CONTROL =
   "w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim";
 
+/**
+ * Attributes for a field that is not part of signing in. Password managers
+ * guess from names such as "name", "title" and "username" and offer to
+ * fill a login into them; these tell 1Password, LastPass, Bitwarden and
+ * Dashlane to leave the field alone. A field that states what it takes with
+ * `autoComplete` is left to them.
+ */
+export function notACredential(autoComplete?: string) {
+  if (autoComplete) return {};
+  return {
+    autoComplete: "off",
+    "data-1p-ignore": true,
+    "data-lpignore": "true",
+    "data-bwignore": true,
+    "data-form-type": "other",
+  };
+}
+
 export function Input(props: ComponentProps<"input">) {
-  return <input {...props} className={CONTROL} />;
+  return <input {...notACredential(props.autoComplete)} {...props} className={CONTROL} />;
 }
 
 export function Textarea(props: ComponentProps<"textarea">) {
-  return <textarea {...props} className={`${CONTROL} font-mono`} />;
+  return (
+    <textarea
+      {...notACredential(props.autoComplete)}
+      {...props}
+      className={`${CONTROL} font-mono`}
+    />
+  );
+}
+
+/** One tab in the row under a repository's or a workspace's header. */
+export function TabLink({
+  to,
+  also,
+  end,
+  icon,
+  count,
+  children,
+}: {
+  to: string;
+  /** Another path prefix under which this tab is the current one. */
+  also?: string;
+  end?: boolean;
+  icon: ReactNode;
+  count?: number;
+  children: ReactNode;
+}) {
+  const { pathname } = useLocation();
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        `-mb-px flex items-center gap-2 border-b-2 px-1 pb-3 text-sm whitespace-nowrap transition-colors ${
+          isActive || (also && pathname.startsWith(also + "/"))
+            ? "border-accent font-medium text-fg"
+            : "border-transparent text-muted hover:text-fg"
+        }`
+      }
+    >
+      {icon}
+      {children}
+      {count != null && count > 0 && (
+        <span className="rounded-full bg-raised px-1.5 py-px text-xs text-muted">
+          {count}
+        </span>
+      )}
+    </NavLink>
+  );
 }
 
 type Variant = "primary" | "accent" | "quiet";
@@ -85,18 +150,45 @@ export function Pill({ children }: { children: ReactNode }) {
 
 const AVATAR_HUES = [82, 200, 262, 28, 330, 160];
 
-/** A letter avatar whose colour is stable for a given name. */
-export function Avatar({ name, size = 20 }: { name: string; size?: number }) {
+/** How g1t's agents are named: as reviewers and assignees, and as commit authors. */
+const AGENT_NAMES = new Set(["g1t-agent", "g1t agent", "g1t"]);
+
+/**
+ * A letter avatar whose colour is stable for a given name. People are
+ * round; a workspace is `square`.
+ */
+export function Avatar({
+  name,
+  size = 20,
+  square,
+}: {
+  name: string;
+  size?: number;
+  square?: boolean;
+}) {
+  // g1t's own agents wear the agent colour and mark everywhere they appear.
+  if (AGENT_NAMES.has(name)) {
+    return (
+      <span
+        aria-hidden="true"
+        className="inline-flex shrink-0 items-center justify-center bg-merged/20 text-merged ring-1 ring-merged/40 ring-inset"
+        style={{ width: size, height: size, borderRadius: size * 0.3 }}
+      >
+        <Sparkles size={Math.round(size * 0.58)} />
+      </span>
+    );
+  }
   let hash = 0;
   for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) | 0;
   const hue = AVATAR_HUES[Math.abs(hash) % AVATAR_HUES.length];
   return (
     <span
       aria-hidden="true"
-      className="inline-flex shrink-0 items-center justify-center rounded-full font-mono font-semibold uppercase"
+      className="inline-flex shrink-0 items-center justify-center font-mono font-semibold uppercase"
       style={{
         width: size,
         height: size,
+        borderRadius: square ? size * 0.24 : size,
         fontSize: size * 0.5,
         background: `oklch(0.4 0.09 ${hue})`,
         color: `oklch(0.93 0.08 ${hue})`,

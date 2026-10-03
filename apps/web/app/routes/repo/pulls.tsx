@@ -4,7 +4,7 @@ import { Link } from "react-router";
 import type { Route } from "./+types/pulls";
 import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
 import { CheckBadge } from "../../components/checks";
-import { PullIcon, StateTabs } from "../../components/work";
+import { ChangeSize, PullIcon, StateTabs } from "../../components/work";
 import { work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
@@ -51,6 +51,7 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
             {pulls.map((pull) => (
               <li key={pull.id}>
                 <Link
+                  prefetch="intent"
                   to={`${base}/pull/${pull.number}`}
                   className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface"
                 >
@@ -72,6 +73,9 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
                       {pull.issue != null && <> · for #{pull.issue}</>}
                       {pull.supersededBy != null && <> · superseded by #{pull.supersededBy}</>}
                     </span>
+                  </span>
+                  <span className="mt-0.5 hidden sm:block">
+                    <ChangeSize files={pull.files} />
                   </span>
                   <span className="mt-0.5">
                     <CheckBadge status={pull.checkStatus} />

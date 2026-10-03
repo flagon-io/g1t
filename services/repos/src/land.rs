@@ -79,7 +79,12 @@ async fn fetch_pack(source: &GitAccess, want: &str, have: Option<&str>) -> Resul
     body.extend(pkt_line("done\n"));
 
     let response = post(source, "git-upload-pack", body).await?;
-    let (lines, _) = read_pkt_lines(&response);
+    unpack_sideband(&response)
+}
+
+/// The pack in an upload-pack response that used side-band framing.
+pub(crate) fn unpack_sideband(response: &[u8]) -> Result<Vec<u8>> {
+    let (lines, _) = read_pkt_lines(response);
     let mut pack = Vec::new();
     for line in lines {
         match line.first() {
@@ -97,7 +102,7 @@ async fn fetch_pack(source: &GitAccess, want: &str, have: Option<&str>) -> Resul
     if !pack.starts_with(b"PACK") {
         return Err(Error::RustError(format!(
             "the source did not send a pack: {}",
-            String::from_utf8_lossy(&response)
+            String::from_utf8_lossy(response)
         )));
     }
     Ok(pack)
@@ -106,7 +111,7 @@ async fn fetch_pack(source: &GitAccess, want: &str, have: Option<&str>) -> Resul
 /// Updates `branch` on the target from `old` to `new`, sending `pack`.
 /// `Err(reason)` in the inner result means git refused the update, for
 /// example because the branch is no longer at `old`.
-async fn push_pack(
+pub(crate) async fn push_pack(
     target: &GitAccess,
     branch: &str,
     old: Option<&str>,

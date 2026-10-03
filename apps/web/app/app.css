@@ -55,9 +55,12 @@ body {
   background: color-mix(in srgb, var(--color-accent) 35%, transparent);
 }
 
-:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+/* In the base layer, so a component can opt out with a utility. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -70,6 +73,10 @@ body {
 }
 
 /* Rendered markdown: READMEs, briefs and docs. */
+.prose > :first-child {
+  margin-top: 0;
+  padding-top: 0;
+}
 .prose {
   @apply leading-7 text-fg;
 }
@@ -121,6 +128,36 @@ body {
 }
 .prose hr {
   @apply border-line;
+}
+.prose h4 {
+  @apply mt-6 text-sm font-semibold;
+}
+.prose li.task-list-item {
+  @apply list-none;
+}
+.prose ul.contains-task-list {
+  @apply pl-1;
+}
+.prose kbd {
+  @apply rounded border border-line-strong bg-raised px-1.5 py-px font-mono text-[0.8em] shadow-[inset_0_-1px_0_var(--color-line-strong)];
+}
+.prose del {
+  @apply text-muted;
+}
+.prose details {
+  @apply rounded-lg border border-line px-4 py-2;
+}
+.prose summary {
+  @apply cursor-pointer font-medium;
+}
+.prose img {
+  @apply inline max-w-full;
+}
+.prose section[data-footnotes] {
+  @apply mt-10 border-t border-line pt-4 text-sm text-muted;
+}
+.prose a[data-footnote-ref] {
+  @apply no-underline;
 }
 
 /* Syntax-highlighted code from Shiki. */

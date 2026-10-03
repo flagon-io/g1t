@@ -56,4 +56,6 @@ pub fn is_valid_repo_name(value: &str) -> bool {
         })
         && !value.starts_with('.')
         && !value.ends_with(".git")
+        // `/<workspace>/-/…` holds the workspace's own pages.
+        && value != "-"
 }

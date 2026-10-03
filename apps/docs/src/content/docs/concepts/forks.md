@@ -86,7 +86,7 @@ pick it. Or from the API, send `branch` when creating the pull request:
 
 ```sh
 git push origin my-change
-curl -X POST https://api.g1t.sh/v1/repos/<workspace>/<repo>/pulls \
+curl -X POST https://api.g1t.sh/repos/<workspace>/<repo>/pulls \
   -H "Authorization: Bearer $G1T_TOKEN" -H "Content-Type: application/json" \
   -d '{"branch": "my-change", "title": "My change", "issue": 12}'
 ```

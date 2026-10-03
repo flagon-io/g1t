@@ -48,8 +48,8 @@ pub struct GitPush {
     pub default_branch: bool,
 }
 
-/// The payload of `issue.opened`, `issue.updated`, `issue.closed` and
-/// `issue.reopened`; each uses the fields that apply to it.
+/// The payload of `issue.opened`, `issue.updated`, `issue.assigned`,
+/// `issue.closed` and `issue.reopened`; each uses the fields that apply to it.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IssueEvent {
@@ -64,6 +64,9 @@ pub struct IssueEvent {
     /// On close: the number of the pull request whose merge closed it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resolved_by: Option<u32>,
+    /// On `issue.assigned`: the people it is now assigned to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assignees: Option<Vec<String>>,
 }
 
 /// The payload of `pull.opened`, `pull.ready`, `pull.updated` (its head
@@ -101,6 +104,19 @@ pub struct ChecksEvent {
     pub commit: String,
 }
 
+/// `review.completed`: a g1t agent finished reviewing a pull request, or
+/// could not.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewEvent {
+    pub pull_id: String,
+    pub repo_id: String,
+    pub number: u32,
+    /// `approve` or `request_changes`; absent when no review was written.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verdict: Option<&'static str>,
+}
+
 /// `comment.created`. `number` is the issue or pull request commented on.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -108,6 +124,12 @@ pub struct CommentCreated {
     pub comment_id: String,
     pub repo_id: String,
     pub number: u32,
+    /// Set when the comment is on a pull request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pull_id: Option<String>,
+    /// Set when the comment is a review: approve or request changes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verdict: Option<crate::work::Verdict>,
 }
 
 #[derive(Debug, Serialize)]
@@ -179,4 +201,12 @@ pub struct ListArgs {
     pub before: Option<String>,
     #[serde(default)]
     pub limit: Option<u32>,
+}
+
+/// `queue.changed`: a repository's merge queue gained, lost or settled an
+/// entry, so the next batch may be ready to test.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueChanged {
+    pub repo_id: String,
 }

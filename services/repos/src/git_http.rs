@@ -128,11 +128,18 @@ pub fn refuse<T>(outcome: Outcome<T>) -> Result<Response> {
 const ZERO_ID: &str = "0000000000000000000000000000000000000000";
 const HEADS: &str = "refs/heads/";
 
-/// The branches a push asks to move, as `(branch, new commit)`, read from
-/// the commands at the start of a receive-pack request. Deletions and refs
-/// that are not branches are left out.
-fn pushed_branches(body: &[u8]) -> Vec<(String, String)> {
-    let mut branches = Vec::new();
+/// One ref a push asks to change.
+struct Command {
+    old: String,
+    new: String,
+    name: String,
+}
+
+/// The commands at the start of a receive-pack request, and the
+/// capabilities the client sent with the first of them.
+fn commands(body: &[u8]) -> (Vec<Command>, String) {
+    let mut commands = Vec::new();
+    let mut capabilities = String::new();
     let mut position = 0;
     // Commands are pkt-lines; a flush packet ends them and the pack follows.
     while let Some(length) = body
@@ -146,21 +153,85 @@ fn pushed_branches(body: &[u8]) -> Vec<(String, String)> {
         let line = &body[position + 4..position + length];
         position += length;
         // `<old> <new> <ref>`, and on the first command a NUL then capabilities.
-        let line = line.split(|byte| *byte == 0).next().unwrap_or_default();
-        let Ok(line) = std::str::from_utf8(line) else {
+        let mut halves = line.splitn(2, |byte| *byte == 0);
+        let command = halves.next().unwrap_or_default();
+        if let Some(rest) = halves.next() {
+            capabilities = String::from_utf8_lossy(rest).trim().to_owned();
+        }
+        let Ok(command) = std::str::from_utf8(command) else {
             continue;
         };
-        let mut parts = line.trim_end().splitn(3, ' ');
-        let (Some(_old), Some(new), Some(name)) = (parts.next(), parts.next(), parts.next()) else {
-            continue;
-        };
-        if let Some(branch) = name.strip_prefix(HEADS)
-            && new != ZERO_ID
-        {
-            branches.push((branch.to_owned(), new.to_owned()));
+        let mut parts = command.trim_end().splitn(3, ' ');
+        if let (Some(old), Some(new), Some(name)) = (parts.next(), parts.next(), parts.next()) {
+            commands.push(Command {
+                old: old.to_owned(),
+                new: new.to_owned(),
+                name: name.to_owned(),
+            });
         }
     }
-    branches
+    (commands, capabilities)
+}
+
+fn pkt_line(payload: &[u8]) -> Vec<u8> {
+    let mut line = format!("{:04x}", payload.len() + 4).into_bytes();
+    line.extend_from_slice(payload);
+    line
+}
+
+/// What git is told when a push would change a protected branch: every ref
+/// in it is declined, with the reason against the protected one, so that
+/// git prints it beside the branch. `None` if the push leaves the branch
+/// alone, or creates it in a repository that does not have it yet.
+fn refusal(body: &[u8], protected: &str) -> Option<Vec<u8>> {
+    let (commands, capabilities) = commands(body);
+    let reference = format!("{HEADS}{protected}");
+    if !commands
+        .iter()
+        .any(|command| command.name == reference && command.old != ZERO_ID)
+    {
+        return None;
+    }
+    let mut report = pkt_line(b"unpack ok\n");
+    for command in &commands {
+        let reason = if command.name == reference {
+            format!("{protected} is protected: push a branch and open a pull request")
+        } else {
+            format!("not pushed, because the same push would change {protected}")
+        };
+        report.extend(pkt_line(
+            format!("ng {} {reason}\n", command.name).as_bytes(),
+        ));
+    }
+    report.extend_from_slice(b"0000");
+    // With side-band the report travels inside channel 1.
+    let sideband = capabilities
+        .split(' ')
+        .any(|capability| capability.starts_with("side-band"));
+    Some(if sideband {
+        let mut framed = vec![1u8];
+        framed.extend(report);
+        let mut body = pkt_line(&framed);
+        body.extend_from_slice(b"0000");
+        body
+    } else {
+        report
+    })
+}
+
+/// The branches a push asks to move, as `(branch, new commit)`, read from
+/// the commands at the start of a receive-pack request. Deletions and refs
+/// that are not branches are left out.
+fn pushed_branches(body: &[u8]) -> Vec<(String, String)> {
+    commands(body)
+        .0
+        .into_iter()
+        .filter(|command| command.new != ZERO_ID)
+        .filter_map(|Command { new, name, .. }| {
+            name.strip_prefix(HEADS)
+                .map(|branch| (branch.to_owned(), new))
+        })
+        .collect()
 }
 
 /// The git store's answer, and what the request asked it to change.
@@ -171,12 +242,21 @@ pub struct Forwarded {
     pub pushed: Vec<(String, String)>,
 }
 
-/// Sends the request on to the git store and returns its response as is.
+/// What became of a git request.
+pub enum Push {
+    Forwarded(Forwarded),
+    /// A push to a protected branch, answered here without reaching the store.
+    Refused(Response),
+}
+
+/// Sends the request on to the git store and returns its response as is,
+/// unless it is a push that would change the `protected` branch.
 pub async fn forward(
     mut request: Request,
     git: &GitRequest,
     access: &GitAccess,
-) -> Result<Forwarded> {
+    protected: Option<&str>,
+) -> Result<Push> {
     let headers = Headers::new();
     headers.set("authorization", &format!("Bearer {}", access.token))?;
     for name in FORWARDED_HEADERS {
@@ -196,21 +276,29 @@ pub async fn forward(
         // Pushes are capped at 100 MB by the platform, so buffering is safe.
         let body = request.bytes().await?;
         if git.endpoint == "git-receive-pack" {
+            if let Some(report) = protected.and_then(|branch| refusal(&body, branch)) {
+                let headers = Headers::new();
+                headers.set("content-type", "application/x-git-receive-pack-result")?;
+                headers.set("cache-control", "no-cache")?;
+                return Ok(Push::Refused(
+                    Response::from_bytes(report)?.with_headers(headers),
+                ));
+            }
             pushed = pushed_branches(&body);
         }
         init.with_body(Some(Uint8Array::from(body.as_slice()).into()));
     }
     let upstream =
         Request::new_with_init(&format!("{}/{}{query}", access.remote, git.endpoint), &init)?;
-    Ok(Forwarded {
+    Ok(Push::Forwarded(Forwarded {
         response: Fetch::Request(upstream).send().await?,
         pushed,
-    })
+    }))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ZERO_ID, pushed_branches};
+    use super::{ZERO_ID, pushed_branches, refusal};
 
     fn pkt(payload: &str) -> Vec<u8> {
         format!("{:04x}{payload}", payload.len() + 4).into_bytes()
@@ -238,6 +326,61 @@ mod tests {
                 ("feature/x".to_owned(), new.to_owned()),
             ]
         );
+    }
+
+    #[test]
+    fn a_push_to_a_protected_branch_is_declined_with_the_reason() {
+        let old = "c71546fcd893ef8b0f57388b65e620d759705dda";
+        let new = "4807077b296e6edbf410d55e72749d3e1170c291";
+        let body = [
+            pkt(&format!("{old} {new} refs/heads/main\0 report-status\n")),
+            pkt(&format!("{ZERO_ID} {new} refs/heads/feature\n")),
+            b"0000".to_vec(),
+        ]
+        .concat();
+        let report = String::from_utf8(refusal(&body, "main").unwrap()).unwrap();
+        assert!(report.starts_with("000eunpack ok\n"));
+        assert!(report.contains("ng refs/heads/main main is protected"));
+        assert!(report.contains("ng refs/heads/feature not pushed"));
+        assert!(report.ends_with("0000"));
+    }
+
+    #[test]
+    fn the_report_is_framed_for_a_client_that_asked_for_side_band() {
+        let old = "c71546fcd893ef8b0f57388b65e620d759705dda";
+        let body = [
+            pkt(&format!(
+                "{old} {ZERO_ID} refs/heads/main\0 report-status side-band-64k\n"
+            )),
+            b"0000".to_vec(),
+        ]
+        .concat();
+        let report = refusal(&body, "main").unwrap();
+        // A length, then channel 1, then the report itself.
+        assert_eq!(report[4], 1);
+        assert_eq!(&report[5..18], b"000eunpack ok");
+        assert!(report.ends_with(b"00000000"));
+    }
+
+    #[test]
+    fn other_branches_and_a_first_push_are_let_through() {
+        let old = "c71546fcd893ef8b0f57388b65e620d759705dda";
+        let new = "4807077b296e6edbf410d55e72749d3e1170c291";
+        let feature = [
+            pkt(&format!("{old} {new} refs/heads/feature\0 report-status\n")),
+            b"0000".to_vec(),
+        ]
+        .concat();
+        assert!(refusal(&feature, "main").is_none());
+        // An empty repository has to be able to receive its first commits.
+        let first = [
+            pkt(&format!(
+                "{ZERO_ID} {new} refs/heads/main\0 report-status\n"
+            )),
+            b"0000".to_vec(),
+        ]
+        .concat();
+        assert!(refusal(&first, "main").is_none());
     }
 
     #[test]

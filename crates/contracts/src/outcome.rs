@@ -9,6 +9,8 @@ pub enum FailureCode {
     Unauthenticated,
     Conflict,
     Invalid,
+    /// The workspace has to pay before this can happen.
+    PaymentRequired,
 }
 
 impl FailureCode {
@@ -19,6 +21,7 @@ impl FailureCode {
             FailureCode::Unauthenticated => 401,
             FailureCode::Conflict => 409,
             FailureCode::Invalid => 422,
+            FailureCode::PaymentRequired => 402,
         }
     }
 }

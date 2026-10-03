@@ -3,12 +3,12 @@
 use g1t_contracts::User;
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::work::{
-    CheckStatus, Comment, Issue, IssueReason, Pull, PullStatus, Runtime, SessionEntry,
+    CheckStatus, Comment, CommentKind, Issue, IssueReason, Pull, PullStatus, Runtime, SessionEntry,
     SessionEntryKind, State, Verdict,
 };
 use serde::Deserialize;
 
-fn user(id: String, username: String) -> User {
+pub(crate) fn user(id: String, username: String) -> User {
     User {
         id,
         username,
@@ -37,6 +37,13 @@ pub struct IssueRow {
     pub closed_at: Option<String>,
     pub pull_count: u32,
     pub comment_count: u32,
+    /// JSON array of usernames.
+    pub assignees: String,
+    /// JSON array of issue numbers.
+    pub blocked_by: String,
+    /// JSON of who queued it for a g1t agent, if anyone has.
+    pub queued_by: Option<String>,
+    pub agent: Option<String>,
 }
 
 impl From<IssueRow> for Issue {
@@ -58,8 +65,24 @@ impl From<IssueRow> for Issue {
             closed_at: row.closed_at,
             pull_count: row.pull_count,
             comment_count: row.comment_count,
+            assignees: serde_json::from_str(&row.assignees).unwrap_or_default(),
+            blocked_by: serde_json::from_str(&row.blocked_by).unwrap_or_default(),
+            queued: row.queued_by.is_some(),
+            agent: row.agent,
         }
     }
+}
+
+/// The remembered assessment of a pull request, read beside its row.
+#[derive(Deserialize)]
+pub struct Snapshot {
+    pub stage: Option<g1t_contracts::work::Stage>,
+    pub stage_detail: Option<String>,
+    #[serde(default)]
+    pub revisions: u32,
+    /// Whether g1t is seeing it through at all.
+    #[serde(default)]
+    pub managed: u32,
 }
 
 #[derive(Deserialize)]
@@ -83,6 +106,11 @@ pub struct PullRow {
     pub merged_at: Option<String>,
     pub superseded_by: Option<u32>,
     pub check_status: Option<CheckStatus>,
+    /// JSON array of changed files; `None` until first worked out.
+    pub files: Option<String>,
+    /// JSON arrays of usernames.
+    pub assignees: String,
+    pub reviewers: String,
     pub author_id: String,
     pub author_name: String,
     pub created_at: String,
@@ -113,6 +141,13 @@ impl From<PullRow> for Pull {
             merged_at: row.merged_at,
             superseded_by: row.superseded_by,
             check_status: row.check_status,
+            files: row
+                .files
+                .as_deref()
+                .and_then(|files| serde_json::from_str(files).ok())
+                .unwrap_or_default(),
+            assignees: serde_json::from_str(&row.assignees).unwrap_or_default(),
+            reviewers: serde_json::from_str(&row.reviewers).unwrap_or_default(),
             author: user(row.author_id, row.author_name),
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -123,6 +158,7 @@ impl From<PullRow> for Pull {
 #[derive(Deserialize)]
 pub struct CommentRow {
     pub id: String,
+    pub kind: CommentKind,
     pub author_id: String,
     pub author_name: String,
     pub body: String,
@@ -136,6 +172,7 @@ impl From<CommentRow> for Comment {
     fn from(row: CommentRow) -> Self {
         Comment {
             id: row.id,
+            kind: row.kind,
             author: user(row.author_id, row.author_name),
             body: row.body,
             path: row.path,

@@ -36,10 +36,11 @@ export default function Verify({ loaderData }: Route.ComponentProps) {
             Email confirmed
           </h1>
           <p className="mt-2 text-muted">
-            Your account {loaderData.username} is ready to use.
+            Your account {loaderData.username} is ready. Next, create the
+            workspace your repositories will live in.
           </p>
           <div className="mt-8">
-            <ButtonLink to="/">Go to g1t</ButtonLink>
+            <ButtonLink to="/">Continue</ButtonLink>
           </div>
         </>
       ) : (

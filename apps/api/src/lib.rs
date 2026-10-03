@@ -10,11 +10,15 @@ mod openapi;
 mod operations;
 mod rest;
 
+use g1t_contracts::billing::FinishRunArgs;
 use g1t_contracts::identity::{
     DeviceClaim, DeviceClaimArgs, DeviceStart, DeviceStartArgs, TokenArgs,
 };
-use g1t_contracts::work::{CheckRun, ReportChecksArgs};
-use g1t_contracts::{Failure, FailureCode, Outcome, Viewer};
+use g1t_contracts::work::{
+    CheckRun, QueueState, ReportChecksArgs, ReportPlanArgs, ReportQueueArgs, ReportReviewArgs,
+};
+use g1t_contracts::identity::AgentScope;
+use g1t_contracts::{Failure, FailureCode, Outcome, PrincipalKind, Viewer};
 use serde_json::{Value, json};
 use worker::{Context, Env, Method, Request, Response, Result, event};
 
@@ -88,14 +92,14 @@ async fn authenticate(
 
 /// Where everything is, for someone or something exploring the API.
 fn index() -> Value {
-    let repo = format!("{API}/v1/repos/{{owner}}/{{name}}");
+    let repo = format!("{API}/repos/{{owner}}/{{name}}");
     json!({
         "documentation_url": "https://docs.g1t.sh/api/reference/",
         "openapi_url": format!("{API}/openapi.json"),
         "mcp_url": "https://mcp.g1t.sh",
-        "current_user_url": format!("{API}/v1/user"),
-        "workspaces_url": format!("{API}/v1/workspaces"),
-        "repositories_url": format!("{API}/v1/repos{{?q}}"),
+        "current_user_url": format!("{API}/user"),
+        "workspaces_url": format!("{API}/workspaces"),
+        "repositories_url": format!("{API}/repos{{?q}}"),
         "repository_url": repo,
         "repository_events_url": format!("{repo}/events{{?before}}"),
         "labels_url": format!("{repo}/labels"),
@@ -107,8 +111,8 @@ fn index() -> Value {
         "pull_changes_url": format!("{repo}/pulls/{{number}}/changes"),
         "pull_reviews_url": format!("{repo}/pulls/{{number}}/reviews"),
         "pull_session_url": format!("{repo}/pulls/{{number}}/session{{?after}}"),
-        "device_code_url": format!("{API}/v1/device/code"),
-        "device_token_url": format!("{API}/v1/device/token"),
+        "device_code_url": format!("{API}/device/code"),
+        "device_token_url": format!("{API}/device/token"),
         "oauth_metadata_url": format!("{API}/.well-known/oauth-authorization-server"),
         "git_url": "https://g1t.sh/{owner}/{name}.git",
     })
@@ -187,20 +191,150 @@ async fn report_checks(
     }
 }
 
+/// A sandbox reporting one tested state of a merge queue. As with checks,
+/// the entry's own token is the credential.
+async fn report_queue(
+    request: &mut Request,
+    services: &Services,
+    entry_id: &str,
+) -> Result<Response> {
+    let body = json_body(request).await;
+    let reported: Outcome<QueueState> = g1t_kit::call(
+        &services.work,
+        "report_queue",
+        &ReportQueueArgs {
+            entry_id: entry_id.to_owned(),
+            token: body["token"].as_str().unwrap_or_default().to_owned(),
+            combined_commit: body["combinedCommit"].as_str().map(str::to_owned),
+            results: serde_json::from_value(body["results"].clone()).unwrap_or_default(),
+            error: body["error"].as_str().map(str::to_owned),
+            conflict_with: body["conflictWith"].as_u64().map(|n| n as u32),
+        },
+    )
+    .await?;
+    match reported {
+        Outcome::Ok(state) => Response::from_json(&json!({ "state": state })),
+        Outcome::Fail(refused) => failure(&refused),
+    }
+}
+
+/// A sandbox reporting the review its agent wrote. As with checks, the
+/// run's own token is the credential.
+async fn report_review(
+    request: &mut Request,
+    services: &Services,
+    run_id: &str,
+) -> Result<Response> {
+    let body = json_body(request).await;
+    let reported: Outcome<bool> = g1t_kit::call(
+        &services.work,
+        "report_review",
+        &ReportReviewArgs {
+            run_id: run_id.to_owned(),
+            token: body["token"].as_str().unwrap_or_default().to_owned(),
+            verdict: serde_json::from_value(body["verdict"].clone()).unwrap_or(None),
+            body: body["body"].as_str().unwrap_or_default().to_owned(),
+            comments: serde_json::from_value(body["comments"].clone()).unwrap_or_default(),
+            model: body["model"].as_str().map(str::to_owned),
+            error: body["error"].as_str().map(str::to_owned),
+        },
+    )
+    .await?;
+    match reported {
+        Outcome::Ok(_) => Response::from_json(&json!({ "recorded": true })),
+        Outcome::Fail(refused) => failure(&refused),
+    }
+}
+
+/// A sandbox reporting the plan its agent wrote. As with checks, the
+/// plan's own token is the credential.
+async fn report_plan(
+    request: &mut Request,
+    services: &Services,
+    plan_id: &str,
+) -> Result<Response> {
+    let body = json_body(request).await;
+    let reported: Outcome<bool> = g1t_kit::call(
+        &services.work,
+        "report_plan",
+        &ReportPlanArgs {
+            plan_id: plan_id.to_owned(),
+            token: body["token"].as_str().unwrap_or_default().to_owned(),
+            summary: body["summary"].as_str().unwrap_or_default().to_owned(),
+            issues: serde_json::from_value(body["issues"].clone()).unwrap_or_default(),
+            error: body["error"].as_str().map(str::to_owned),
+        },
+    )
+    .await?;
+    match reported {
+        Outcome::Ok(_) => Response::from_json(&json!({ "recorded": true })),
+        Outcome::Fail(refused) => failure(&refused),
+    }
+}
+
+/// A sandbox reporting what its agent's run cost, so that the workspace
+/// it worked for is charged. As with checks, the run's own token is the
+/// credential.
+async fn report_usage(
+    request: &mut Request,
+    services: &Services,
+    run_id: &str,
+) -> Result<Response> {
+    let body = json_body(request).await;
+    let charged: Outcome<bool> = g1t_kit::call(
+        &services.billing,
+        "finish_run",
+        &FinishRunArgs {
+            run_id: run_id.to_owned(),
+            token: body["token"].as_str().unwrap_or_default().to_owned(),
+            cost_usd: body["cost_usd"].as_f64().unwrap_or_default(),
+            turns: body["turns"].as_u64().unwrap_or_default() as u32,
+        },
+    )
+    .await?;
+    match charged {
+        Outcome::Ok(_) => Response::from_json(&json!({ "recorded": true })),
+        Outcome::Fail(refused) => failure(&refused),
+    }
+}
+
 async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     let method = method_name(request.method());
     if method == "OPTIONS" {
         return Ok(Response::empty()?.with_status(204));
     }
     let url = request.url()?;
-    let path = url.path().to_owned();
+    // Paths carry no version. An earlier form began with `/v1`, which is
+    // still accepted so that nothing already written against it breaks.
+    let path = match url.path().strip_prefix("/v1") {
+        Some(rest) if rest.is_empty() || rest.starts_with('/') => rest.to_owned(),
+        _ => url.path().to_owned(),
+    };
     let on_mcp = url.host_str().is_some_and(|host| host.starts_with("mcp."));
-    let services = Services::new(env)?;
+    let mut services = Services::new(env)?;
 
     let viewer = match authenticate(&request, &services).await? {
         Ok(viewer) => viewer,
         Err(refused) => return Ok(refused),
     };
+    // An agent's token: what it may do comes with it.
+    if viewer.as_ref().is_some_and(|viewer| viewer.kind == PrincipalKind::Agent) {
+        let header = request.headers().get("authorization")?.unwrap_or_default();
+        let token = header.split_once(' ').map(|(_, token)| token.trim()).unwrap_or_default();
+        let scope: Option<AgentScope> = g1t_kit::call(
+            &services.identity,
+            "agent_scope",
+            &TokenArgs {
+                token: token.to_owned(),
+            },
+        )
+        .await?;
+        // A scope is what lets an agent's token do anything at all.
+        let Some(scope) = scope else {
+            return fail(FailureCode::Unauthenticated, "Invalid access token.");
+        };
+        services.scope = Some(scope);
+    }
     if let Some(response) = oauth::handle(&mut request, &services, method, &path).await? {
         return Ok(response);
     }
@@ -209,13 +343,32 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     }
 
     match (method, path.trim_end_matches('/')) {
-        ("GET", "" | "/v1") => return Response::from_json(&index()),
+        ("GET", "") => return Response::from_json(&index()),
         ("GET", "/openapi.json") => return Response::from_json(&openapi::document()),
-        ("POST", "/v1/device/code") => return device_code(&mut request, &services).await,
-        ("POST", "/v1/device/token") => return device_token(&mut request, &services).await,
-        ("POST", path) if path.starts_with("/v1/checks/") => {
-            let run_id = path.trim_start_matches("/v1/checks/").to_owned();
+        ("POST", "/device/code") => return device_code(&mut request, &services).await,
+        ("POST", "/device/token") => return device_token(&mut request, &services).await,
+        ("POST", path) if path.starts_with("/queue/") => {
+            let entry_id = path.trim_start_matches("/queue/").to_owned();
+            return report_queue(&mut request, &services, &entry_id).await;
+        }
+        ("POST", path) if path.starts_with("/checks/") => {
+            let run_id = path.trim_start_matches("/checks/").to_owned();
             return report_checks(&mut request, &services, &run_id).await;
+        }
+        ("POST", path) if path.starts_with("/runs/") && path.ends_with("/usage") => {
+            let run_id = path
+                .trim_start_matches("/runs/")
+                .trim_end_matches("/usage")
+                .to_owned();
+            return report_usage(&mut request, &services, &run_id).await;
+        }
+        ("POST", path) if path.starts_with("/plans/") => {
+            let plan_id = path.trim_start_matches("/plans/").to_owned();
+            return report_plan(&mut request, &services, &plan_id).await;
+        }
+        ("POST", path) if path.starts_with("/reviews/") => {
+            let run_id = path.trim_start_matches("/reviews/").to_owned();
+            return report_review(&mut request, &services, &run_id).await;
         }
         _ => {}
     }
@@ -227,7 +380,7 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     let body = if method == "GET" {
         Value::Null
     } else {
-        json_body(&mut request).await
+        snake_case_keys(json_body(&mut request).await)
     };
     let Some((route, input)) = rest::resolve(method, &path, &query, body) else {
         return fail(FailureCode::NotFound, "No such endpoint.");
@@ -235,6 +388,55 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     match route.op.run(&services, &viewer, &input).await? {
         Outcome::Ok(value) => Response::from_json(&value),
         Outcome::Fail(refused) => failure(&refused),
+    }
+}
+
+/// Request bodies take the same keys as the MCP tools, `snake_case`; the
+/// `camelCase` that responses use is accepted too, so a client can send
+/// back what it read.
+fn snake_case_keys(body: Value) -> Value {
+    let Value::Object(fields) = body else {
+        return body;
+    };
+    let mut out = serde_json::Map::new();
+    for (key, value) in fields {
+        let mut snake = String::with_capacity(key.len() + 4);
+        for c in key.chars() {
+            if c.is_ascii_uppercase() {
+                snake.push('_');
+                snake.push(c.to_ascii_lowercase());
+            } else {
+                snake.push(c);
+            }
+        }
+        // A key given in both spellings keeps the snake_case one.
+        if snake != key && out.contains_key(&snake) {
+            continue;
+        }
+        out.insert(snake, value);
+    }
+    Value::Object(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::snake_case_keys;
+    use serde_json::json;
+
+    #[test]
+    fn camel_case_keys_are_accepted() {
+        assert_eq!(
+            snake_case_keys(json!({ "countAgentApprovals": false, "title": "x" })),
+            json!({ "count_agent_approvals": false, "title": "x" })
+        );
+    }
+
+    #[test]
+    fn snake_case_wins_when_both_are_given() {
+        assert_eq!(
+            snake_case_keys(json!({ "keep_issue_open": true, "keepIssueOpen": false })),
+            json!({ "keep_issue_open": true })
+        );
     }
 }
 

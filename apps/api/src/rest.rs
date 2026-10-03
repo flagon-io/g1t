@@ -28,117 +28,140 @@ const fn route(
 }
 
 pub const ROUTES: &[Route] = &[
-    route("GET", "/v1/user", Op::Whoami, &[]),
-    route("POST", "/v1/workspaces", Op::CreateWorkspace, &[]),
-    route("GET", "/v1/repos", Op::ListRepos, &[("q", "query")]),
-    route("POST", "/v1/repos", Op::CreateRepo, &[]),
-    route("GET", "/v1/repos/:owner/:name", Op::GetRepo, &[]),
+    route("GET", "/user", Op::Whoami, &[]),
+    route("POST", "/workspaces", Op::CreateWorkspace, &[]),
+    route("GET", "/repos", Op::ListRepos, &[("q", "query")]),
+    route("POST", "/repos", Op::CreateRepo, &[]),
+    route("GET", "/repos/:owner/:name", Op::GetRepo, &[]),
+    route("PATCH", "/repos/:owner/:name", Op::UpdateRepo, &[]),
     route(
         "GET",
-        "/v1/repos/:owner/:name/events",
-        Op::ListEvents,
-        &[("before", "before")],
-    ),
-    route("GET", "/v1/repos/:owner/:name/labels", Op::ListLabels, &[]),
-    route(
-        "GET",
-        "/v1/repos/:owner/:name/issues",
-        Op::ListIssues,
-        &[("state", "state"), ("label", "label")],
-    ),
-    route(
-        "POST",
-        "/v1/repos/:owner/:name/issues",
-        Op::CreateIssue,
+        "/repos/:owner/:name/settings",
+        Op::GetRepoSettings,
         &[],
     ),
     route(
+        "PATCH",
+        "/repos/:owner/:name/settings",
+        Op::UpdateRepoSettings,
+        &[],
+    ),
+    route("GET", "/repos/:owner/:name/queue", Op::GetMergeQueue, &[]),
+    route(
         "GET",
-        "/v1/repos/:owner/:name/issues/:number",
+        "/repos/:owner/:name/events",
+        Op::ListEvents,
+        &[("before", "before")],
+    ),
+    route("GET", "/repos/:owner/:name/labels", Op::ListLabels, &[]),
+    route(
+        "GET",
+        "/repos/:owner/:name/issues",
+        Op::ListIssues,
+        &[("state", "state"), ("label", "label")],
+    ),
+    route("POST", "/repos/:owner/:name/issues", Op::CreateIssue, &[]),
+    route(
+        "GET",
+        "/repos/:owner/:name/issues/:number",
         Op::GetIssue,
         &[],
     ),
     route(
         "PATCH",
-        "/v1/repos/:owner/:name/issues/:number",
+        "/repos/:owner/:name/issues/:number",
         Op::UpdateIssue,
         &[],
     ),
     route(
         "POST",
-        "/v1/repos/:owner/:name/issues/:number/close",
+        "/repos/:owner/:name/issues/:number/close",
         Op::CloseIssue,
         &[],
     ),
     route(
         "POST",
-        "/v1/repos/:owner/:name/issues/:number/reopen",
+        "/repos/:owner/:name/issues/:number/reopen",
         Op::ReopenIssue,
         &[],
     ),
     route(
         "POST",
-        "/v1/repos/:owner/:name/issues/:number/comments",
+        "/repos/:owner/:name/issues/:number/assign",
+        Op::AssignIssue,
+        &[],
+    ),
+    route("POST", "/repos/:owner/:name/plans", Op::PlanWork, &[]),
+    route("GET", "/repos/:owner/:name/plans/:plan", Op::GetPlan, &[]),
+    route(
+        "POST",
+        "/repos/:owner/:name/plans/:plan/apply",
+        Op::ApplyPlan,
+        &[],
+    ),
+    route(
+        "POST",
+        "/repos/:owner/:name/issues/:number/comments",
         Op::AddComment,
         &[],
     ),
     route(
         "GET",
-        "/v1/repos/:owner/:name/pulls",
+        "/repos/:owner/:name/pulls",
         Op::ListPullRequests,
         &[("state", "state")],
     ),
     route(
         "POST",
-        "/v1/repos/:owner/:name/pulls",
+        "/repos/:owner/:name/pulls",
         Op::CreatePullRequest,
         &[],
     ),
     route(
         "GET",
-        "/v1/repos/:owner/:name/pulls/:number",
+        "/repos/:owner/:name/pulls/:number",
         Op::GetPullRequest,
         &[],
     ),
     route(
         "GET",
-        "/v1/repos/:owner/:name/pulls/:number/changes",
+        "/repos/:owner/:name/pulls/:number/changes",
         Op::GetPullRequestChanges,
         &[],
     ),
     route(
         "POST",
-        "/v1/repos/:owner/:name/pulls/:number/reviews",
+        "/repos/:owner/:name/pulls/:number/reviews",
         Op::ReviewPullRequest,
         &[],
     ),
     route(
         "GET",
-        "/v1/repos/:owner/:name/pulls/:number/session",
+        "/repos/:owner/:name/pulls/:number/session",
         Op::ReadSession,
         &[("after", "after")],
     ),
     route(
         "POST",
-        "/v1/repos/:owner/:name/pulls/:number/session",
+        "/repos/:owner/:name/pulls/:number/session",
         Op::RecordSession,
         &[],
     ),
     route(
         "POST",
-        "/v1/repos/:owner/:name/pulls/:number/ready",
+        "/repos/:owner/:name/pulls/:number/ready",
         Op::MarkPullRequestReady,
         &[],
     ),
     route(
         "POST",
-        "/v1/repos/:owner/:name/pulls/:number/close",
+        "/repos/:owner/:name/pulls/:number/close",
         Op::ClosePullRequest,
         &[],
     ),
     route(
         "POST",
-        "/v1/repos/:owner/:name/pulls/:number/merge",
+        "/repos/:owner/:name/pulls/:number/merge",
         Op::MergePullRequest,
         &[],
     ),
@@ -203,6 +226,9 @@ pub fn resolve(
     if let (Some(owner), Some(name)) = (param("owner"), param("name")) {
         input.insert("repo".to_owned(), Value::String(format!("{owner}/{name}")));
     }
+    if let Some(plan) = param("plan") {
+        input.insert("plan".to_owned(), Value::String(plan.to_owned()));
+    }
     if let Some(number) = param("number") {
         // Not a number: zero, which no issue or pull request has.
         input.insert(
@@ -223,7 +249,7 @@ mod tests {
     fn a_path_resolves_to_its_operation_and_input() {
         let (route, input) = resolve(
             "POST",
-            "/v1/repos/syntaqx/hello/pulls/14/merge",
+            "/repos/syntaqx/hello/pulls/14/merge",
             &[],
             json!({ "keep_issue_open": true, "number": 99, "repo": "someone/else" }),
         )
@@ -242,17 +268,17 @@ mod tests {
             ("q".to_owned(), "parser".to_owned()),
             ("x".to_owned(), "y".to_owned()),
         ];
-        let (route, input) = resolve("GET", "/v1/repos", &query, Value::Null).unwrap();
+        let (route, input) = resolve("GET", "/repos", &query, Value::Null).unwrap();
         assert_eq!(route.op, Op::ListRepos);
         assert_eq!(input, json!({ "query": "parser" }));
     }
 
     #[test]
     fn method_and_shape_must_match() {
-        assert!(resolve("GET", "/v1/repos/a/b/issues/1/close", &[], Value::Null).is_none());
-        assert!(resolve("GET", "/v1/repos/a", &[], Value::Null).is_none());
-        assert!(resolve("GET", "/v1/repos/a/b/issues/1/extra", &[], Value::Null).is_none());
-        assert!(resolve("GET", "/v1/repos/a/b/", &[], Value::Null).is_some());
+        assert!(resolve("GET", "/repos/a/b/issues/1/close", &[], Value::Null).is_none());
+        assert!(resolve("GET", "/repos/a", &[], Value::Null).is_none());
+        assert!(resolve("GET", "/repos/a/b/issues/1/extra", &[], Value::Null).is_none());
+        assert!(resolve("GET", "/repos/a/b/", &[], Value::Null).is_some());
     }
 
     #[test]

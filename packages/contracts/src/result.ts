@@ -8,7 +8,9 @@ export type FailureCode =
   | "forbidden"
   | "unauthenticated"
   | "conflict"
-  | "invalid";
+  | "invalid"
+  /** The workspace has to pay before this can happen. */
+  | "payment_required";
 
 export type Failure = { code: FailureCode; message: string };
 
@@ -28,6 +30,7 @@ const HTTP_STATUS: Record<FailureCode, number> = {
   unauthenticated: 401,
   conflict: 409,
   invalid: 422,
+  payment_required: 402,
 };
 
 export function httpStatus(failure: Failure): number {

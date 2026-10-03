@@ -37,7 +37,7 @@ fn title(op: Op) -> String {
     }
 }
 
-/// `/v1/repos/:owner/:name` as OpenAPI writes it: `/v1/repos/{owner}/{name}`.
+/// `/repos/:owner/:name` as OpenAPI writes it: `/repos/{owner}/{name}`.
 fn openapi_path(route: &Route) -> String {
     route
         .path
@@ -129,12 +129,12 @@ fn operation(route: &Route) -> Value {
 /// Entries for device sign-in, which is not an operation.
 fn onboarding() -> Map<String, Value> {
     let paths = json!({
-        "/v1/device/code": {
+        "/device/code": {
             "post": {
                 "operationId": "device_code",
                 "tags": ["Accounts"],
                 "summary": "Start signing in",
-                "description": "Begins a device sign-in. Show the person `verification_uri_complete` and have them open it in a browser, where they sign in or register and approve the code. Then poll `/v1/device/token`.",
+                "description": "Begins a device sign-in. Show the person `verification_uri_complete` and have them open it in a browser, where they sign in or register and approve the code. Then poll `/device/token`.",
                 "security": [],
                 "requestBody": {
                     "content": { "application/json": { "schema": {
@@ -152,7 +152,7 @@ fn onboarding() -> Map<String, Value> {
                     "content": { "application/json": { "schema": {
                         "type": "object",
                         "properties": {
-                            "device_code": { "type": "string", "description": "Secret. Send it to /v1/device/token." },
+                            "device_code": { "type": "string", "description": "Secret. Send it to /device/token." },
                             "user_code": { "type": "string", "description": "Shown to the person, like WDJB-MJHT." },
                             "verification_uri": { "type": "string" },
                             "verification_uri_complete": {
@@ -166,7 +166,7 @@ fn onboarding() -> Map<String, Value> {
                 } },
             },
         },
-        "/v1/device/token": {
+        "/device/token": {
             "post": {
                 "operationId": "device_token",
                 "tags": ["Accounts"],
@@ -295,11 +295,11 @@ mod tests {
     #[test]
     fn path_and_query_inputs_are_not_repeated_in_the_body() {
         let document = document();
-        let merge = &document["paths"]["/v1/repos/{owner}/{name}/pulls/{number}/merge"]["post"];
+        let merge = &document["paths"]["/repos/{owner}/{name}/pulls/{number}/merge"]["post"];
         let body = &merge["requestBody"]["content"]["application/json"]["schema"]["properties"];
         assert!(body.get("keep_issue_open").is_some());
         assert!(body.get("repo").is_none() && body.get("number").is_none());
-        let list = &document["paths"]["/v1/repos"]["get"];
+        let list = &document["paths"]["/repos"]["get"];
         assert_eq!(list["parameters"][0]["name"], "q");
         assert!(list.get("requestBody").is_none());
     }

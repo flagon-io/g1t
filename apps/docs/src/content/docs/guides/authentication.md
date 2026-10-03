@@ -29,15 +29,22 @@ one for a company are the same thing with a different number of members, so
 there is no separate notion of an organization.
 
 Your account does not own repositories itself. After confirming your email
-you create a workspace, which can have the same name as your username, and
-repositories go in it. You can belong to up to ten.
+the first thing you do is create a workspace, and repositories go in it.
+You can belong to up to ten.
+
+Usernames and workspaces share one set of names, so a name means the same
+thing wherever it appears. Your username is reserved for you: only you can
+create a workspace with that name, and nobody can register a username that
+is already a workspace.
 
 | Role | Can |
 | --- | --- |
 | Member | Create repositories, push, manage issues, merge pull requests. |
-| Owner | Everything a member can, and add or remove members. |
+| Owner | Everything a member can, and manage members, the workspace's access tokens and its details. |
 
-Manage members on the workspace's page, `g1t.sh/<workspace>`.
+A workspace's page, `g1t.sh/<workspace>`, shows its repositories and the
+pull requests in progress across them. Members also see **People** and
+**Access tokens** there, and owners **Settings**.
 
 ## Access tokens
 
@@ -55,6 +62,29 @@ and create another. Delete a token the moment you think someone else has
 seen it.
 
 A token has the full rights of your account. Scoped tokens are planned.
+
+### Workspace access tokens
+
+A workspace has access tokens of its own, for CI, integrations and agents
+that work for a team. They replace the shared "service account" other
+forges need: there is no extra account to create, pay for or lose the
+password to.
+
+| | Personal token | Workspace token |
+| --- | --- | --- |
+| Belongs to | You | The workspace |
+| Acts as | You | The workspace: its name is the author of what it does |
+| Can reach | Every workspace you belong to | That workspace only |
+| Can do | Everything you can | What a member can; it cannot manage people, tokens or workspaces |
+| When its creator leaves | Stops working | Keeps working |
+| Created by | You, in Settings | An owner, under **Access tokens** on the workspace's page |
+
+They are the same kind of token and are sent the same way. With git, any
+username works; the token is the password. `GET /user` answers with
+`"kind": "workspace"` for one, and `"kind": "user"` for a personal token.
+
+Every member can see a workspace's tokens: the name, who created each and
+when it was last used. Only owners can create or delete them.
 
 ## Signing in with OAuth
 
@@ -102,12 +132,12 @@ gets a token without ever handling your password, the same way
 
 ```sh
 # 1. The tool starts a sign-in.
-curl -X POST https://api.g1t.sh/v1/device/code   -H "Content-Type: application/json"   -d '{"client_name": "my-tool"}'
+curl -X POST https://api.g1t.sh/device/code   -H "Content-Type: application/json"   -d '{"client_name": "my-tool"}'
 
 # 2. You open verification_uri_complete from the response and approve.
 
 # 3. The tool polls, no faster than "interval" seconds, until it is approved.
-curl -X POST https://api.g1t.sh/v1/device/token   -H "Content-Type: application/json"   -d '{"device_code": "…"}'
+curl -X POST https://api.g1t.sh/device/token   -H "Content-Type: application/json"   -d '{"device_code": "…"}'
 ```
 
 The poll answers with a `status` of `pending`, `approved`, `denied` or

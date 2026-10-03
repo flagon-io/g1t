@@ -12,6 +12,11 @@ export type Repo = {
   defaultBranch: string;
   /** Set when this repo is a pull request's working copy of another repo. */
   forkOf: string | null;
+  /**
+   * Whether the default branch is protected: it changes only by merging a
+   * pull request, and pushes to it are refused.
+   */
+  protected: boolean;
   /** RFC 3339. */
   createdAt: string;
 };
@@ -64,6 +69,11 @@ export type CreateRepoInput = {
   name: string;
   description?: string | null;
   isPrivate?: boolean;
+  /**
+   * The https address of a public git repository to copy the default branch
+   * of, such as `https://github.com/owner/repo`.
+   */
+  importUrl?: string;
 };
 
 /** Repositories: metadata, contents and git access. */
@@ -82,10 +92,24 @@ export interface ReposApi {
     },
   ): Promise<Repo[]>;
   create(owner: User, input: CreateRepoInput): Promise<Result<Repo>>;
+  /**
+   * Changes whichever details are given. Members of the repository's
+   * workspace only. An empty description clears it.
+   */
+  update(
+    actor: User,
+    path: RepoPath,
+    changes: { description?: string; isPrivate?: boolean; protected?: boolean },
+  ): Promise<Result<Repo>>;
 
   tree(path: RepoPath, viewer: Viewer, ref: string | null, treePath: string): Promise<Result<TreeView>>;
   blob(path: RepoPath, viewer: Viewer, ref: string, filePath: string): Promise<Result<BlobView>>;
   log(path: RepoPath, viewer: Viewer, ref: string | null, limit: number): Promise<Result<Commit[]>>;
+  /**
+   * Who last changed each line of a file as of `ref` (the default branch if
+   * null). Not found when the file is missing or is not text.
+   */
+  blame(path: RepoPath, viewer: Viewer, ref: string | null, filePath: string): Promise<Result<Blame>>;
 
   /**
    * A copy-on-write copy of `source`, hidden from listings, for one pull request
@@ -119,6 +143,21 @@ export interface ReposApi {
    */
   compare(repoId: string, viewer: Viewer, base?: string | null, head?: string | null): Promise<Result<Comparison>>;
 }
+
+/** Lines `start` to `end` (inclusive, from 1) last changed by `commit`. */
+export type BlameRange = { start: number; end: number; commit: string };
+
+/** Who last changed each line of a file. */
+export type Blame = {
+  /** The commit the file was read at. */
+  head: string;
+  /** Every line, in order, in runs that share a commit. */
+  ranges: BlameRange[];
+  /** The commits the ranges name, each once. */
+  commits: Commit[];
+  /** True when the history was too long to read in full. */
+  partial: boolean;
+};
 
 /** A branch and the commit it points to. */
 export type Branch = { name: string; hash: string };

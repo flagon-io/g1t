@@ -1,6 +1,5 @@
 import {
   BookOpen,
-  Building2,
   ChevronDown,
   LayoutDashboard,
   LogOut,
@@ -18,6 +17,7 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  type ShouldRevalidateFunctionArgs,
   useRouteLoaderData,
   useSubmit,
 } from "react-router";
@@ -27,7 +27,7 @@ import type { User } from "@g1t/contracts";
 import type { Route } from "./+types/root";
 import "./app.css";
 import { Logo } from "./components/logo";
-import { Avatar, ButtonLink } from "./components/ui";
+import { Avatar, ButtonLink, notACredential } from "./components/ui";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,7 +36,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./components/ui/dropdown-menu";
-import { getViewer, viewerMiddleware } from "./lib/session.server";
+import { AppShell, Progress, type ShellData } from "./components/shell";
+import { billing, repos, work } from "./lib/services.server";
+import { getViewer, roleIn, viewerMiddleware } from "./lib/session.server";
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
@@ -54,8 +56,59 @@ export const links: Route.LinksFunction = () => [
 
 export const middleware: Route.MiddlewareFunction[] = [viewerMiddleware];
 
-export function loader({ context }: Route.LoaderArgs) {
-  return { user: getViewer(context) };
+export async function loader({ context, params }: Route.LoaderArgs) {
+  const user = getViewer(context);
+  return { user, shell: user ? await shellFor(user, params) : null };
+}
+
+/**
+ * The sidebar only changes with the workspace or repository being looked
+ * at, or after something was submitted: not on every page within them.
+ */
+export function shouldRevalidate({
+  currentParams,
+  nextParams,
+  formMethod,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  if (formMethod && formMethod !== "GET") return defaultShouldRevalidate;
+  return currentParams.owner !== nextParams.owner || currentParams.repo !== nextParams.repo;
+}
+
+/**
+ * The sidebar: the workspace being looked at if they belong to it, else
+ * their first; its repositories; and the repository being looked at.
+ */
+async function shellFor(
+  user: User,
+  params: { owner?: string; repo?: string },
+): Promise<ShellData> {
+  const memberships = user.workspaces ?? [];
+  const here = params.owner ? memberships.find((m) => m.slug === params.owner?.toLowerCase()) : undefined;
+  const workspace = here ?? memberships[0] ?? null;
+  const path = params.owner && params.repo ? { namespace: params.owner, name: params.repo } : null;
+  const [listed, counts, account] = await Promise.all([
+    workspace ? repos.list(user, { namespace: workspace.slug }) : Promise.resolve([]),
+    path ? work.counts(path, user) : Promise.resolve(null),
+    workspace ? billing.account(workspace.slug, user) : Promise.resolve(null),
+  ]);
+  return {
+    workspace,
+    repos: listed
+      .filter((repo) => !repo.forkOf)
+      .map(({ namespace, name, isPrivate }) => ({ namespace, name, isPrivate })),
+    repo:
+      path && counts?.ok
+        ? {
+            ...path,
+            member: roleIn(user, path.namespace) != null,
+            issues: counts.value.issues,
+            pulls: counts.value.pulls,
+          }
+        : null,
+    creditMicros:
+      account?.ok && account.value.status.enabled ? account.value.balanceMicros : null,
+  };
 }
 
 function HeaderLink({ to, children }: { to: string; children: React.ReactNode }) {
@@ -88,6 +141,7 @@ function Header({ user }: { user: User | null | undefined }) {
           />
           <input
             name="q"
+            {...notACredential()}
             placeholder="Search repositories"
             aria-label="Search repositories"
             className="w-full rounded-md border border-line bg-bg py-1.5 pr-3 pl-8 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim"
@@ -126,7 +180,7 @@ function Header({ user }: { user: User | null | undefined }) {
                   {(user.workspaces ?? []).map((membership) => (
                     <DropdownMenuItem asChild key={membership.slug}>
                       <Link to={`/${membership.slug}`}>
-                        <Building2 />
+                        <Avatar name={membership.slug} size={16} square />
                         {membership.slug}
                       </Link>
                     </DropdownMenuItem>
@@ -256,7 +310,23 @@ function Footer() {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   // Undefined when the root loader itself failed.
-  const user = useRouteLoaderData<typeof loader>("root")?.user;
+  const root = useRouteLoaderData<typeof loader>("root");
+  const user = root?.user;
+  const banner = user && !user.verified && (
+    <Form
+      method="post"
+      action="/verify"
+      className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-warn/30 bg-warn/10 px-4 py-2 text-sm"
+    >
+      <span>
+        Confirm your email address to create repositories and push. We
+        sent you a link.
+      </span>
+      <button type="submit" className="font-medium underline underline-offset-4">
+        Send it again
+      </button>
+    </Form>
+  );
   return (
     <html lang="en">
       <head>
@@ -267,24 +337,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body className="flex min-h-screen flex-col">
-        <Header user={user} />
-        {user && !user.verified && (
-          <Form
-            method="post"
-            action="/verify"
-            className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-warn/30 bg-warn/10 px-4 py-2 text-sm"
-          >
-            <span>
-              Confirm your email address to create repositories and push. We
-              sent you a link.
-            </span>
-            <button type="submit" className="font-medium underline underline-offset-4">
-              Send it again
-            </button>
-          </Form>
+        {user && root?.shell ? (
+          <AppShell user={user} shell={root.shell} banner={banner}>
+            {children}
+          </AppShell>
+        ) : (
+          <>
+            <Progress />
+            <Header user={user} />
+            {banner}
+            <div className="grow">{children}</div>
+            <Footer />
+          </>
         )}
-        <div className="grow">{children}</div>
-        <Footer />
         <ScrollRestoration />
         <Scripts />
       </body>

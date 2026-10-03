@@ -56,6 +56,9 @@ CREATE TABLE pulls (
   merged_at TEXT,
   -- The pull request merged instead of this one.
   superseded_by INTEGER,
+  -- JSON array of { path, additions, deletions }: what it changes, as of
+  -- its latest push. NULL until first worked out.
+  files TEXT,
   -- The latest run of the issue's acceptance checks, and where it stands.
   check_run_id TEXT,
   check_status TEXT,
@@ -115,3 +118,14 @@ CREATE TABLE check_runs (
   finished_at TEXT
 );
 CREATE INDEX check_runs_by_pull ON check_runs (pull_id, id);
+
+-- Reviews of a pull request being written by a g1t agent in a sandbox.
+CREATE TABLE review_runs (
+  id TEXT PRIMARY KEY,
+  pull_id TEXT NOT NULL REFERENCES pulls (id),
+  -- SHA-256 of the token the sandbox reports with.
+  token_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  finished_at TEXT
+);
+CREATE INDEX review_runs_by_pull ON review_runs (pull_id, id);

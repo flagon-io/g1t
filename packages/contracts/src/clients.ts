@@ -1,3 +1,4 @@
+import type { BillingApi } from "./billing";
 import type { EventsApi } from "./events";
 import type { IdentityApi } from "./identity";
 import type { ReposApi } from "./repos";
@@ -26,7 +27,7 @@ async function rpc<T>(
   if (!response.ok) {
     throw new Error(`${method} failed with status ${response.status}`);
   }
-  return response.json();
+  return (await response.json()) as T;
 }
 
 export function identityClient(service: ServiceBinding): IdentityApi {
@@ -59,6 +60,13 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     addMember: (actor, slug, username) => call("add_member", { actor, slug, username }),
     removeMember: (actor, slug, username) =>
       call("remove_member", { actor, slug, username }),
+    updateWorkspace: (actor, slug, details) =>
+      call("update_workspace", { actor, slug, ...details }),
+    listWorkspaceTokens: (slug, viewer) => call("list_workspace_tokens", { slug, viewer }),
+    createWorkspaceToken: (actor, slug, name) =>
+      call("create_workspace_token", { actor, slug, name }),
+    removeWorkspaceToken: (actor, slug, id) =>
+      call("remove_workspace_token", { actor, slug, id }),
     userForSession: (sessionToken) => call("user_for_session", { sessionToken }),
     userForGitCredentials: (username, secret) =>
       call("user_for_git_credentials", { username, secret }),
@@ -72,6 +80,8 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     listAccessTokens: (user) => call("list_access_tokens", { user }),
     createAccessToken: (user, name, ttlSeconds) =>
       call("create_access_token", { user, name, ttlSeconds }),
+    createAgentToken: (onBehalfOf, scope, ttlSeconds) =>
+      call("create_agent_token", { onBehalfOf, scope, ttlSeconds }),
     removeAccessToken: (user, id) => call("remove_access_token", { user, id }),
   };
 }
@@ -83,11 +93,13 @@ export function reposClient(service: ServiceBinding): ReposApi {
     getById: (id, viewer) => call("get_by_id", { id, viewer }),
     list: (viewer, options = {}) => call("list", { viewer, ...options }),
     create: (owner, input) => call("create", { owner, ...input }),
+    update: (actor, path, changes) => call("update", { actor, path, ...changes }),
     tree: (path, viewer, ref, treePath) =>
       call("tree", { path, viewer, ref, treePath }),
     blob: (path, viewer, ref, filePath) =>
       call("blob", { path, viewer, ref, filePath }),
     log: (path, viewer, ref, limit) => call("log", { path, viewer, ref, limit }),
+    blame: (path, viewer, ref, filePath) => call("blame", { path, viewer, ref, filePath }),
     forkForPull: (sourceId, pullId, actor) =>
       call("fork_for_pull", { sourceId, pullId, actor }),
     gitAccess: (path, viewer, service) =>
@@ -116,19 +128,58 @@ export function workClient(service: ServiceBinding): WorkApi {
     startChecks: (pullId) => call("start_checks", { pullId }),
     reportChecks: (runId, token, report) =>
       call("report_checks", { runId, token, ...report }),
+    startReview: (pullId) => call("start_review", { pullId }),
+    failReview: (runId, token, error) => call("report_review", { runId, token, error }),
+    advance: (pullId) => call("advance", { pullId }),
+    stall: (pullId, reason) => call("stall", { pullId, reason }),
+    managedPulls: (repoId) => call("managed_pulls", { repoId }),
+    queue: (repo, viewer) => call("queue", { repo, viewer }),
+    queueBuild: (repoId) => call("queue_build", { repoId }),
+    failQueue: (entryId, token, error) => call("report_queue", { entryId, token, error }),
+    removeFromQueue: (actor, repo, number) => call("remove_from_queue", { actor, repo, number }),
+    catchUpJob: (pullId) => call("catch_up_job", { pullId }),
+    getSettings: (repo, viewer) => call("get_settings", { repo, viewer }),
+    updateSettings: (actor, repo, settings) =>
+      call("update_settings", { actor, repo, settings }),
     openPull: (actor, repo, input) => call("open_pull", { actor, repo, ...input }),
     listPulls: (repo, viewer, state) => call("list_pulls", { repo, viewer, state }),
     getPull: (repo, number, viewer) => call("get_pull", { repo, number, viewer }),
+    updatePull: (actor, repo, number, changes) =>
+      call("update_pull", { actor, repo, number, ...changes }),
     readyPull: (actor, repo, number, summary) =>
       call("ready_pull", { actor, repo, number, summary }),
     closePull: (actor, repo, number) => call("close_pull", { actor, repo, number }),
     mergePull: (actor, repo, number, options = {}) =>
       call("merge_pull", { actor, repo, number, ...options }),
     listActivePulls: (viewer) => call("list_active_pulls", { viewer }),
+    startPlan: (actor, repo, brief) => call("start_plan", { actor, repo, brief }),
+    failPlan: (planId, token, error) => call("report_plan", { planId, token, error }),
+    getPlan: (repo, viewer, id) => call("get_plan", { repo, viewer, id }),
+    listPlans: (repo, viewer) => call("list_plans", { repo, viewer }),
+    applyPlan: (actor, repo, id, options = {}) =>
+      call("apply_plan", { actor, repo, id, ...options }),
+    queueIssue: (actor, repo, number, queued) =>
+      call("queue_issue", { actor, repo, number, queued }),
+    readyIssues: (repoId) => call("ready_issues", { repoId }),
+    listAssignedIssues: (viewer) => call("list_assigned_issues", { viewer }),
     appendSession: (actor, repo, number, entries) =>
       call("append_session", { actor, repo, number, entries }),
     readSession: (repo, number, viewer, afterSeq = 0) =>
       call("read_session", { repo, number, viewer, afterSeq }),
+  };
+}
+
+export function billingClient(service: ServiceBinding): BillingApi {
+  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
+  return {
+    status: () => call("status", {}),
+    account: (workspace, viewer) => call("account", { workspace, viewer }),
+    ledger: (workspace, viewer) => call("ledger", { workspace, viewer }),
+    checkout: (actor, workspace, amountCents, returnUrl) =>
+      call("checkout", { actor, workspace, amountCents, returnUrl }),
+    confirm: (workspace, viewer, session) => call("confirm", { workspace, viewer, session }),
+    canStart: (workspace) => call("can_start", { workspace }),
+    startRun: (run) => call("start_run", run),
   };
 }
 

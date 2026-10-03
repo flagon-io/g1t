@@ -14,4 +14,5 @@ g1t-kit.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 worker.workspace = true
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 similar = "2"

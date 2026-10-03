@@ -43,8 +43,9 @@ git remote add g1t https://g1t.sh/<workspace>/my-project.git
 git push -u g1t main
 ```
 
-You can also create an empty repository from the **+** button in the header,
-and choose its workspace and whether it is public or private.
+You can also create a repository from the **+** button in the header:
+empty, or as a copy of a public repository on GitHub or any other git host.
+Paste its address under **Import from**.
 
 ## 4. Open an issue
 

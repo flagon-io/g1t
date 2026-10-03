@@ -1,4 +1,5 @@
 import {
+  Bot,
   CircleCheck,
   CircleDot,
   CircleSlash,
@@ -12,6 +13,7 @@ import { Form, Link } from "react-router";
 
 import type { Comment, Issue, Pull, State } from "@g1t/contracts";
 
+import { repoAt } from "../lib/markdown-plugins";
 import { Markdown } from "./markdown";
 import { Avatar, Button, Textarea, TimeAgo } from "./ui";
 
@@ -44,6 +46,40 @@ export function Label({ name }: { name: string }) {
       className="inline-flex shrink-0 items-center rounded-full border px-2 py-px text-xs font-medium"
     >
       {name}
+    </span>
+  );
+}
+
+/** The people an issue is assigned to, as overlapping avatars. */
+export function AssigneeStack({ people }: { people: string[] }) {
+  if (people.length === 0) return null;
+  const shown = people.slice(0, 3);
+  return (
+    <span
+      className="flex shrink-0 items-center"
+      title={`Assigned to ${people.join(", ")}`}
+    >
+      {shown.map((name, index) => (
+        <span key={name} className={`rounded-full ring-2 ring-bg ${index > 0 ? "-ml-1.5" : ""}`}>
+          <Avatar name={name} size={18} />
+        </span>
+      ))}
+      {people.length > shown.length && (
+        <span className="ml-1 text-xs text-faint">+{people.length - shown.length}</span>
+      )}
+    </span>
+  );
+}
+
+/** The agent working on an issue now. */
+export function Assignee({ agent }: { agent: string }) {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-accent/35 bg-accent/10 px-2 py-px text-xs font-medium text-accent"
+      title={`Assigned to ${agent}`}
+    >
+      <Bot size={12} />
+      {agent}
     </span>
   );
 }
@@ -165,25 +201,120 @@ const VERDICTS = {
  * says where its changes are shown and whether the viewer may give a
  * verdict.
  */
-export function Comments({
-  comments,
-  canComment,
-  review,
+/**
+ * One entry in a conversation: who, what they did and when, then what they
+ * wrote. The author's avatar sits beside it, as on any forge.
+ */
+export function TimelineItem({
+  author,
+  action,
+  at,
+  aside,
+  children,
 }: {
-  comments: Comment[];
-  canComment: boolean;
-  review?: { changesUrl: string; canJudge: boolean };
+  author: string;
+  /** What they did, after their name: "commented", "opened this". */
+  action: ReactNode;
+  at?: string;
+  /** Shown at the right of the header. */
+  aside?: ReactNode;
+  children?: ReactNode;
 }) {
   return (
-    <div className="space-y-4">
+    <div className="flex gap-3">
+      <span className="mt-1 hidden shrink-0 sm:block">
+        <Avatar name={author} size={32} />
+      </span>
+      <article className="min-w-0 grow overflow-hidden rounded-xl border border-line bg-surface">
+        <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-raised/40 px-4 py-2 text-sm text-muted">
+          <span className="sm:hidden">
+            <Avatar name={author} size={18} />
+          </span>
+          <span className="font-medium text-fg">{author}</span>
+          {action}
+          {at && <TimeAgo at={at} />}
+          {aside && <span className="ml-auto min-w-0">{aside}</span>}
+        </header>
+        {children && <div className="px-4 py-3">{children}</div>}
+      </article>
+    </div>
+  );
+}
+
+type Review = { changesUrl: string; canJudge: boolean };
+
+/** Text with each `#12` linked to the issue or pull request of that number. */
+function WithReferences({ text, base }: { text: string; base?: string }) {
+  if (!base) return <>{text}</>;
+  return (
+    <>
+      {text.split(/(#\d+)/).map((part, index) =>
+        /^#\d+$/.test(part) ? (
+          // Issues and pull requests share numbers; the issue page forwards.
+          <Link
+            key={index}
+            to={`${base}/issues/${part.slice(1)}`}
+            className="font-medium text-fg hover:underline"
+          >
+            {part}
+          </Link>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
+/** Something that happened, as one line on the conversation's rail. */
+function TimelineEvent({ comment, base }: { comment: Comment; base?: string }) {
+  return (
+    <div className="flex items-center gap-3 text-sm text-muted">
+      <span className="hidden w-8 shrink-0 justify-center sm:flex">
+        <span className="size-2 rounded-full border border-line-strong bg-bg" />
+      </span>
+      <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+        <Avatar name={comment.author.username} size={16} />
+        <span className="font-medium text-fg">{comment.author.username}</span>
+        <span>
+          <WithReferences text={comment.body} base={base} />
+        </span>
+        <span className="text-faint">
+          · <TimeAgo at={comment.createdAt} />
+        </span>
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The conversation of an issue or a pull request, oldest first: what
+ * people and agents wrote, and between those, what happened.
+ */
+export function CommentList({
+  comments,
+  review,
+  base,
+}: {
+  comments: Comment[];
+  review?: Review;
+  /** The repository's path, so that `#12` in an event can be linked. */
+  base?: string;
+}) {
+  return (
+    <>
       {comments.map((comment) => {
+        if (comment.kind === "event") {
+          return <TimelineEvent key={comment.id} comment={comment} base={base} />;
+        }
         const verdict = comment.verdict && VERDICTS[comment.verdict];
         return (
-          <article key={comment.id} className="rounded-xl border border-line bg-surface">
-            <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2 text-sm text-muted">
-              <Avatar name={comment.author.username} size={18} />
-              <span className="font-medium text-fg">{comment.author.username}</span>
-              {verdict ? (
+          <TimelineItem
+            key={comment.id}
+            author={comment.author.username}
+            at={comment.createdAt}
+            action={
+              verdict ? (
                 <span className={`flex items-center gap-1 font-medium ${verdict.style}`}>
                   {comment.verdict === "approve" ? (
                     <CircleCheck size={14} />
@@ -194,63 +325,129 @@ export function Comments({
                 </span>
               ) : (
                 <span>commented</span>
-              )}
-              <TimeAgo at={comment.createdAt} />
-              {comment.path && review && (
+              )
+            }
+            aside={
+              comment.path &&
+              review && (
                 <Link
                   to={`${review.changesUrl}#file-${comment.path}`}
-                  className="ml-auto truncate font-mono text-xs text-faint hover:text-fg"
+                  className="block truncate font-mono text-xs text-faint hover:text-fg"
                 >
                   {comment.path}
                   {comment.line != null && `:${comment.line}`}
                 </Link>
-              )}
-            </header>
-            {comment.body && (
-              <div className="px-4 py-3">
-                <Markdown source={comment.body} />
-              </div>
-            )}
-          </article>
+              )
+            }
+          >
+            {comment.body && <Markdown source={comment.body} repo={repoAt(base)} />}
+          </TimelineItem>
         );
       })}
-      {canComment ? (
-        <Form method="post" className="space-y-2" key={comments.length}>
-          <input type="hidden" name="action" value="comment" />
-          <Textarea
-            name="body"
-            rows={3}
-            placeholder={
-              review?.canJudge
-                ? "Leave a comment, or a review. Markdown works."
-                : "Leave a comment. Markdown works."
-            }
-          />
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit">Comment</Button>
-            {review?.canJudge && (
-              <>
-                <Button variant="quiet" type="submit" name="verdict" value="approve">
-                  <CircleCheck size={14} className="text-accent" />
-                  Approve
-                </Button>
-                <Button variant="quiet" type="submit" name="verdict" value="request_changes">
-                  <CircleSlash size={14} className="text-danger" />
-                  Request changes
-                </Button>
-              </>
-            )}
-          </div>
-        </Form>
-      ) : (
-        <p className="text-sm text-muted">
-          <Link to="/login" className="text-fg underline underline-offset-4">
-            Sign in
-          </Link>{" "}
-          to comment.
-        </p>
-      )}
+    </>
+  );
+}
+
+/** Where a signed-in person writes a comment, or a review. */
+export function CommentForm({
+  author,
+  resetKey,
+  review,
+}: {
+  /** The viewer's username, or null if they are signed out. */
+  author: string | null;
+  /** Changes when a comment is added, which clears the box. */
+  resetKey: number;
+  review?: Review;
+}) {
+  if (!author) {
+    return (
+      <p className="text-sm text-muted">
+        <Link to="/login" className="text-fg underline underline-offset-4">
+          Sign in
+        </Link>{" "}
+        to comment.
+      </p>
+    );
+  }
+  return (
+    <div className="flex gap-3">
+      <span className="mt-1 hidden shrink-0 sm:block">
+        <Avatar name={author} size={32} />
+      </span>
+      <Form method="post" className="min-w-0 grow space-y-2" key={resetKey}>
+        <input type="hidden" name="action" value="comment" />
+        <Textarea
+          name="body"
+          rows={3}
+          placeholder={
+            review?.canJudge
+              ? "Leave a comment, or a review. Markdown works."
+              : "Leave a comment. Markdown works."
+          }
+        />
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit">Comment</Button>
+          {review?.canJudge && (
+            <>
+              <Button variant="quiet" type="submit" name="verdict" value="approve">
+                <CircleCheck size={14} className="text-accent" />
+                Approve
+              </Button>
+              <Button variant="quiet" type="submit" name="verdict" value="request_changes">
+                <CircleSlash size={14} className="text-danger" />
+                Request changes
+              </Button>
+            </>
+          )}
+        </div>
+      </Form>
     </div>
+  );
+}
+
+/**
+ * Checkboxes for choosing people: the workspace's members, anyone already
+ * chosen, and a box for other usernames. Posts `name` for each ticked and
+ * `others` for the rest.
+ */
+export function PeoplePicker({
+  name,
+  members,
+  chosen,
+}: {
+  name: string;
+  members: string[];
+  chosen: string[];
+}) {
+  const people = [...new Set([...members, ...chosen])];
+  return (
+    <>
+      {people.length > 0 && (
+        <div className="space-y-1.5">
+          {people.map((person) => (
+            <label key={person} className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                name={name}
+                value={person}
+                defaultChecked={chosen.includes(person)}
+                className="accent-accent"
+              />
+              <Avatar name={person} size={18} />
+              <span className="font-mono text-xs">{person}</span>
+            </label>
+          ))}
+        </div>
+      )}
+      <input
+        name="others"
+        placeholder="Other usernames, comma separated"
+        autoComplete="off"
+        data-1p-ignore
+        className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none placeholder:text-faint hover:border-line-strong focus:border-accent-dim"
+      />
+    </>
   );
 }
 
@@ -261,4 +458,31 @@ export function verdicts(comments: Comment[]): { reviewer: string; verdict: NonN
     if (comment.verdict) latest.set(comment.author.username, comment.verdict);
   }
   return [...latest].map(([reviewer, verdict]) => ({ reviewer, verdict }));
+}
+
+/** `2 files  +12 −3`: the size of a pull request's change. */
+export function ChangeSize({ files }: { files: Pull["files"] }) {
+  if (files.length === 0) return null;
+  const additions = files.reduce((sum, file) => sum + file.additions, 0);
+  const deletions = files.reduce((sum, file) => sum + file.deletions, 0);
+  return (
+    <span className="flex shrink-0 items-center gap-1.5 font-mono text-xs text-faint">
+      <span>
+        {files.length} {files.length === 1 ? "file" : "files"}
+      </span>
+      <span className="text-accent">+{additions}</span>
+      <span className="text-danger">−{deletions}</span>
+    </span>
+  );
+}
+
+/** The words of a Markdown text, without its markup, for a one-line preview. */
+export function plainText(markdown: string): string {
+  return markdown
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/^\s{0,3}(#{1,6}|[-*+]|\d+\.)\s+/gm, "")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[*_`~]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }

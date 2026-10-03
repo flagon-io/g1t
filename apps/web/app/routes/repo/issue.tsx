@@ -18,9 +18,20 @@ import {
   TimeAgo,
 } from "../../components/ui";
 import { CheckBadge } from "../../components/checks";
-import { Comments, IssueState, Label, PullIcon } from "../../components/work";
-import { work } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
+import {
+  Assignee,
+  AssigneeStack,
+  ChangeSize,
+  CommentForm,
+  CommentList,
+  PeoplePicker,
+  IssueState,
+  Label,
+  PullIcon,
+  plainText,
+} from "../../components/work";
+import { identity, work } from "../../lib/services.server";
+import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 
 const REFRESH_MS = 4000;
 
@@ -33,23 +44,27 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const path = { namespace: params.owner, name: params.repo };
   const number = Number(params.number);
-  const found = await work.getIssue(path, number, viewer);
+  // At once: none of these depends on another.
+  const [found, labels, agentsEnabled, members] = await Promise.all([
+    work.getIssue(path, number, viewer),
+    work.listLabels(path, viewer),
+    env.RUNNER.enabled(viewer),
+    // A member picks assignees from the workspace's people.
+    roleIn(viewer, params.owner) ? identity.listMembers(params.owner, viewer) : null,
+  ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be a pull request.
     const pull = await work.getPull(path, number, viewer);
     if (pull.ok) throw redirect(`/${params.owner}/${params.repo}/pull/${number}`);
     throw new Response("Issue not found.", { status: 404 });
   }
-  const [labels, agentModels] = await Promise.all([
-    work.listLabels(path, viewer),
-    env.RUNNER.models(viewer),
-  ]);
   const { issue } = found.value;
   return {
     ...found.value,
     viewer,
     labels: labels.ok ? labels.value : [],
-    agentModels,
+    agentsEnabled,
+    members: members?.ok ? members.value.map((member) => member.username) : [],
     // The author and members of the workspace can change an issue.
     canManage:
       viewer != null &&
@@ -68,9 +83,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   switch (form.get("action")) {
     case "run-hosted": {
       const result = await env.RUNNER.run(user, path, number, {
-        count: Number(form.get("count")),
         instructions: String(form.get("instructions") ?? ""),
-        model: String(form.get("model") ?? "") || undefined,
       });
       return result.ok ? null : { error: result.error.message };
     }
@@ -86,6 +99,15 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     case "comment": {
       const result = await work.addComment(user, path, number, {
         body: String(form.get("body") ?? ""),
+      });
+      return result.ok ? null : { error: result.error.message };
+    }
+    case "assign": {
+      const result = await work.updateIssue(user, path, number, {
+        assignees: [
+          ...form.getAll("assignee").map(String),
+          ...String(form.get("others") ?? "").split(/[\s,]+/),
+        ],
       });
       return result.ok ? null : { error: result.error.message };
     }
@@ -144,6 +166,7 @@ function PullRow({ pull, base }: { pull: Pull; base: string }) {
             <span className="size-1.5 animate-pulse rounded-full bg-accent" />
           )}
           <span className="ml-auto flex items-center gap-3 text-xs text-faint">
+            <ChangeSize files={pull.files} />
             <CheckBadge status={pull.checkStatus} />
             <span className="flex items-center gap-1 font-mono">
               <GitCommitHorizontal size={13} />
@@ -162,14 +185,16 @@ function PullRow({ pull, base }: { pull: Pull; base: string }) {
           {pull.runtime === "hosted" && <span className="text-faint">on g1t</span>}
           <span className="text-faint">· opened by {pull.author.username}</span>
         </p>
-        {pull.body && <p className="mt-2 line-clamp-2 text-sm text-muted">{pull.body}</p>}
+        {pull.body && (
+          <p className="mt-2 line-clamp-2 text-sm text-muted">{plainText(pull.body)}</p>
+        )}
       </Link>
     </li>
   );
 }
 
 export default function IssuePage({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { issue, pulls, comments, viewer, labels, agentModels, canManage } = loaderData;
+  const { issue, pulls, comments, viewer, labels, agentsEnabled, members, canManage } = loaderData;
 
   // Follow agents at work without a manual reload.
   const revalidator = useRevalidator();
@@ -180,13 +205,22 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
       pull.checkStatus === "queued" ||
       pull.checkStatus === "running",
   );
+  // The pull request g1t's agent has in progress for this issue, if any.
+  const assigned = [...pulls]
+    .reverse()
+    .find(
+      (pull) =>
+        pull.agent === "g1t-agent" &&
+        pull.runtime === "hosted" &&
+        (pull.status === "draft" || pull.status === "open"),
+    );
   useEffect(() => {
-    if (!running) return;
+    if (!running && !assigned) return;
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") revalidator.revalidate();
     }, REFRESH_MS);
     return () => clearInterval(timer);
-  }, [running, revalidator]);
+  }, [running, assigned, revalidator]);
 
   const starting = navigation.formData?.get("action") === "run-hosted";
   const base = `/${params.owner}/${params.repo}`;
@@ -217,6 +251,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           {issue.labels.map((name) => (
             <Label key={name} name={name} />
           ))}
+          {open && issue.agent && <Assignee agent={issue.agent} />}
         </div>
 
         {issue.resolvedBy != null && (
@@ -242,7 +277,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
 
         {issue.body && (
           <div className="mt-5 rounded-xl border border-line bg-surface p-5">
-            <Markdown source={issue.body} />
+            <Markdown source={issue.body} repo={{ namespace: params.owner, name: params.repo }} />
           </div>
         )}
 
@@ -273,7 +308,28 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
 
         <h3 className="mt-10 font-semibold tracking-tight">Discussion</h3>
         <div className="mt-3">
-          <Comments comments={comments} canComment={Boolean(viewer)} />
+          <div className="space-y-4">
+            <CommentList comments={comments} base={base} />
+            <CommentForm author={viewer?.username ?? null} resetKey={comments.length} />
+            {canManage && (
+              <Form method="post" className="flex flex-wrap justify-end gap-2">
+                {open ? (
+                  <>
+                    <Button variant="quiet" type="submit" name="action" value="close-not-planned">
+                      Close as not planned
+                    </Button>
+                    <Button variant="quiet" type="submit" name="action" value="close-completed">
+                      Close issue
+                    </Button>
+                  </>
+                ) : (
+                  <Button variant="quiet" type="submit" name="action" value="reopen">
+                    Reopen issue
+                  </Button>
+                )}
+              </Form>
+            )}
+          </div>
         </div>
         <div className="mt-2">
           <ErrorText>{actionData?.error}</ErrorText>
@@ -281,55 +337,147 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
       </div>
 
       <aside className="space-y-6">
-        {open && agentModels.length > 0 && (
-          <section className="rounded-xl border border-accent/30 bg-accent/5 p-4">
-            <h3 className="flex items-center gap-2 text-sm font-medium">
-              <Sparkles size={15} className="text-accent" />
-              Assign g1t agents
-            </h3>
-            <p className="mt-1 text-xs text-muted">
-              Each agent opens its own pull request for this issue and works in
-              its own sandbox, in parallel. Merge the one you want.
+        <section>
+          <h3 className="text-sm font-medium">Assignees</h3>
+          <ul className="mt-2 space-y-1.5 text-sm">
+            {open && assigned && (
+              <li>
+                <Link
+                  to={`${base}/pull/${assigned.number}`}
+                  className="flex items-center gap-2 rounded-lg border border-accent/30 bg-accent/5 px-2.5 py-2 transition-colors hover:border-accent/60"
+                >
+                  <Sparkles size={15} className="shrink-0 text-accent" />
+                  <span className="min-w-0 grow">
+                    <span className="block font-mono text-xs font-medium">g1t-agent</span>
+                    <span className="block truncate text-xs text-muted">
+                      {assigned.status === "draft"
+                        ? "Making the change"
+                        : "Seeing it through checks and review"}{" "}
+                      · #{assigned.number}
+                    </span>
+                  </span>
+                  <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-accent" />
+                </Link>
+              </li>
+            )}
+            {issue.assignees.map((name) => (
+              <li key={name} className="flex items-center gap-2 px-1">
+                <Avatar name={name} size={20} />
+                <span className="grow truncate font-mono text-xs">{name}</span>
+              </li>
+            ))}
+            {open && issue.queued && !assigned && (
+              <li className="flex items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-2">
+                <Sparkles size={15} className="shrink-0 text-faint" />
+                <span className="min-w-0 grow">
+                  <span className="block font-mono text-xs font-medium">g1t-agent</span>
+                  <span className="block text-xs text-muted">
+                    {issue.blockedBy.length > 0
+                      ? "Queued. Starts when what this depends on has merged."
+                      : "Queued. Starts as soon as there is room."}
+                  </span>
+                </span>
+              </li>
+            )}
+            {!open && resolver && resolver.agent === "g1t-agent" && (
+              <li>
+                <Link
+                  to={`${base}/pull/${resolver.number}`}
+                  className="flex items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-2 transition-colors hover:border-line-strong"
+                >
+                  <Sparkles size={15} className="shrink-0 text-merged" />
+                  <span className="min-w-0 grow">
+                    <span className="block font-mono text-xs font-medium">g1t-agent</span>
+                    <span className="block truncate text-xs text-muted">
+                      Resolved it with #{resolver.number}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            )}
+            {issue.assignees.length === 0 &&
+              !(open && (assigned || issue.queued)) &&
+              !(!open && resolver?.agent === "g1t-agent") && (
+                <li className="px-1 text-xs text-faint">No one yet.</li>
+              )}
+          </ul>
+          {issue.blockedBy.length > 0 && (
+            <p className="mt-3 text-xs text-muted">
+              Depends on{" "}
+              {issue.blockedBy.map((number, index) => (
+                <span key={number}>
+                  {index > 0 && ", "}
+                  <Link
+                    to={`${base}/issues/${number}`}
+                    className="font-medium text-fg hover:underline"
+                  >
+                    #{number}
+                  </Link>
+                </span>
+              ))}
+              {open ? ", which has to merge first." : "."}
             </p>
+          )}
+
+          {open && agentsEnabled && !assigned && !issue.queued && (
             <Form method="post" className="mt-3 space-y-2">
               <input type="hidden" name="action" value="run-hosted" />
-              <label className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-muted">Agents</span>
-                <select
-                  name="count"
-                  defaultValue="1"
-                  className="rounded-md border border-line bg-bg px-2 py-1 text-sm"
-                >
-                  {[1, 2, 3, 4, 5].map((count) => (
-                    <option key={count} value={count}>
-                      {count}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-muted">Model</span>
-                <select
-                  name="model"
-                  className="rounded-md border border-line bg-bg px-2 py-1 text-sm"
-                >
-                  {agentModels.map((model) => (
-                    <option key={model.id} value={model.id} title={model.description}>
-                      {model.label} · {model.modelName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <Textarea name="instructions" rows={2} placeholder="Extra guidance (optional)" />
               <div className="*:w-full">
                 <Button variant="accent" type="submit" disabled={starting}>
-                  <Play size={14} />
-                  {starting ? "Starting sandboxes…" : "Start"}
+                  <Sparkles size={14} />
+                  {starting ? "Starting a sandbox…" : "Assign to g1t agent"}
                 </Button>
               </div>
+              <details>
+                <summary className="cursor-pointer text-xs text-faint hover:text-fg">
+                  Add guidance for this run
+                </summary>
+                <div className="mt-2">
+                  <Textarea
+                    name="instructions"
+                    rows={2}
+                    placeholder="On top of the issue's description"
+                  />
+                </div>
+              </details>
+              <p className="text-xs text-muted">
+                It opens a pull request and sees it through checks, a review by another
+                agent and fixes. You get it back ready to merge.
+              </p>
             </Form>
-          </section>
-        )}
+          )}
+
+          {viewer && canManage && open && (
+            <div className="mt-3 space-y-2">
+              {!issue.assignees.includes(viewer.username) && (
+                <Form method="post">
+                  <input type="hidden" name="action" value="assign" />
+                  {issue.assignees.map((name) => (
+                    <input key={name} type="hidden" name="assignee" value={name} />
+                  ))}
+                  <input type="hidden" name="assignee" value={viewer.username} />
+                  <div className="*:w-full">
+                    <Button variant="quiet" type="submit">
+                      Assign yourself
+                    </Button>
+                  </div>
+                </Form>
+              )}
+              <details className="group">
+                <summary className="cursor-pointer text-xs text-faint hover:text-fg">
+                  Assign people
+                </summary>
+                <Form method="post" className="mt-2 space-y-2" key={issue.assignees.join()}>
+                  <input type="hidden" name="action" value="assign" />
+                  <PeoplePicker name="assignee" members={members} chosen={issue.assignees} />
+                  <Button variant="quiet" type="submit">
+                    Save assignees
+                  </Button>
+                </Form>
+              </details>
+            </div>
+          )}
+        </section>
 
         {open && (
           <section className="rounded-xl border border-line bg-surface p-4">
@@ -418,24 +566,6 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           </details>
         )}
 
-        {canManage && (
-          <Form method="post" className="flex flex-wrap gap-2 border-t border-line pt-5">
-            {open ? (
-              <>
-                <Button variant="quiet" type="submit" name="action" value="close-completed">
-                  Close issue
-                </Button>
-                <Button variant="quiet" type="submit" name="action" value="close-not-planned">
-                  Close as not planned
-                </Button>
-              </>
-            ) : (
-              <Button variant="quiet" type="submit" name="action" value="reopen">
-                Reopen issue
-              </Button>
-            )}
-          </Form>
-        )}
       </aside>
     </div>
   );

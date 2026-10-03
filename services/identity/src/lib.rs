@@ -7,6 +7,7 @@ mod crypto;
 mod device;
 mod email;
 mod oauth;
+mod tokens;
 mod workspaces;
 
 use g1t_contracts::identity::*;
@@ -14,13 +15,13 @@ use g1t_contracts::time::{SQL_NOW, rfc3339, sql_after};
 use g1t_contracts::{FailureCode, Outcome, User, Viewer, is_valid_namespace, new_id};
 use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::Deserialize;
+use tokens::TOKEN_PREFIX;
 use worker::wasm_bindgen::JsValue;
 use worker::{Context, D1Database, Env, Request, Response, Result, event};
 
 const SESSION_TTL_SECONDS: u64 = 30 * 24 * 60 * 60;
 const VERIFY_TTL_SECONDS: u64 = 24 * 60 * 60;
 const RESET_TTL_SECONDS: u64 = 60 * 60;
-const TOKEN_PREFIX: &str = "g1t_";
 const MIN_PASSWORD_LENGTH: usize = 10;
 const PASSWORD_TOO_SHORT: &str = "Use a password of at least 10 characters.";
 
@@ -38,7 +39,7 @@ impl From<Account> for User {
             id: row.id,
             username: row.username,
             verified: row.verified != 0,
-            workspaces: Vec::new(),
+            ..User::default()
         }
     }
 }
@@ -73,23 +74,6 @@ impl From<KeyRow> for SshKey {
             id: row.id,
             title: row.title,
             fingerprint: row.fingerprint,
-            created_at: row.created_at,
-        }
-    }
-}
-
-#[derive(Deserialize)]
-struct TokenRow {
-    id: String,
-    name: String,
-    created_at: String,
-}
-
-impl From<TokenRow> for AccessToken {
-    fn from(row: TokenRow) -> Self {
-        AccessToken {
-            id: row.id,
-            name: row.name,
             created_at: row.created_at,
         }
     }
@@ -322,8 +306,17 @@ impl Identity {
         }
         let taken = self
             .db
-            .prepare("SELECT username FROM users WHERE username = ? OR email = ?")
-            .bind(&[username.as_str().into(), email.as_str().into()])?
+            // Usernames and workspaces share one namespace, so that a name
+            // means the same thing wherever it appears.
+            .prepare(
+                "SELECT username FROM users WHERE username = ? OR email = ?
+                 UNION ALL SELECT slug FROM workspaces WHERE slug = ?",
+            )
+            .bind(&[
+                username.as_str().into(),
+                email.as_str().into(),
+                username.as_str().into(),
+            ])?
             .first::<serde_json::Value>(None)
             .await?;
         if taken.is_some() {
@@ -400,22 +393,6 @@ impl Identity {
                  WHERE sessions.id = ? AND sessions.expires_at > {SQL_NOW}"
             ),
             &crypto::sha256_hex(&a.session_token),
-        )
-        .await
-    }
-
-    async fn user_for_access_token(&self, token: &str) -> Result<Viewer> {
-        if !token.starts_with(TOKEN_PREFIX) {
-            return Ok(None);
-        }
-        self.find_user(
-            &format!(
-                "SELECT users.id, users.username, users.email_verified_at IS NOT NULL AS verified
-                 FROM access_tokens JOIN users ON users.id = access_tokens.user_id
-                 WHERE token_hash = ?
-                   AND (access_tokens.expires_at IS NULL OR access_tokens.expires_at > {SQL_NOW})"
-            ),
-            &crypto::sha256_hex(token),
         )
         .await
     }
@@ -507,55 +484,6 @@ impl Identity {
         Ok(Outcome::Ok(row.into()))
     }
 
-    async fn list_access_tokens(&self, a: UserArgs) -> Result<Vec<AccessToken>> {
-        let rows = self
-            .db
-            // Expiring tokens belong to hosted attempts, not to the user's list.
-            .prepare(
-                "SELECT id, name, created_at FROM access_tokens
-                 WHERE user_id = ? AND expires_at IS NULL ORDER BY id",
-            )
-            .bind(&[a.user.id.into()])?
-            .all()
-            .await?
-            .results::<TokenRow>()?;
-        Ok(rows.into_iter().map(AccessToken::from).collect())
-    }
-
-    async fn create_access_token(&self, a: CreateAccessTokenArgs) -> Result<CreatedAccessToken> {
-        let token = format!("{TOKEN_PREFIX}{}", crypto::random_hex(20));
-        let now = now_ms();
-        let name = match a.name.trim() {
-            "" => "Access token",
-            name => name,
-        };
-        let row = TokenRow {
-            id: new_id("tok", now),
-            name: name.to_owned(),
-            created_at: rfc3339(now),
-        };
-        self.db
-            .prepare(
-                "INSERT INTO access_tokens (id, user_id, name, token_hash, created_at, expires_at)
-                 VALUES (?, ?, ?, ?, ?, ?)",
-            )
-            .bind(&[
-                row.id.as_str().into(),
-                a.user.id.into(),
-                row.name.as_str().into(),
-                crypto::sha256_hex(&token).into(),
-                row.created_at.as_str().into(),
-                a.ttl_seconds
-                    .map_or(JsValue::NULL, |ttl| rfc3339(now + ttl * 1000).into()),
-            ])?
-            .run()
-            .await?;
-        Ok(CreatedAccessToken {
-            token,
-            info: row.into(),
-        })
-    }
-
     /// Deletes a row the user owns from `table`.
     async fn remove(&self, table: &str, a: RemoveArgs) -> Result<()> {
         self.db
@@ -586,6 +514,10 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "list_members" => reply(&identity.list_members(args(body)?).await?),
         "add_member" => reply(&identity.add_member(args(body)?).await?),
         "remove_member" => reply(&identity.remove_member(args(body)?).await?),
+        "update_workspace" => reply(&identity.update_workspace(args(body)?).await?),
+        "list_workspace_tokens" => reply(&identity.list_workspace_tokens(args(body)?).await?),
+        "create_workspace_token" => reply(&identity.create_workspace_token(args(body)?).await?),
+        "remove_workspace_token" => reply(&identity.remove_workspace_token(args(body)?).await?),
         "oauth_authorize" => reply(&identity.oauth_authorize(args(body)?).await?),
         "oauth_exchange" => reply(&identity.oauth_exchange(args(body)?).await?),
         "oauth_refresh" => reply(&identity.oauth_refresh(args(body)?).await?),
@@ -613,6 +545,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "remove_ssh_key" => reply(&identity.remove("ssh_keys", args(body)?).await?),
         "list_access_tokens" => reply(&identity.list_access_tokens(args(body)?).await?),
         "create_access_token" => reply(&identity.create_access_token(args(body)?).await?),
+        "create_agent_token" => reply(&identity.create_agent_token(args(body)?).await?),
+        "agent_scope" => reply(&identity.agent_scope(args(body)?).await?),
         "remove_access_token" => reply(&identity.remove("access_tokens", args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }

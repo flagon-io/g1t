@@ -24,6 +24,11 @@ pub struct AccessToken {
     pub name: String,
     /// RFC 3339.
     pub created_at: String,
+    /// RFC 3339, to within a few minutes. Null until it is first used.
+    pub last_used_at: Option<String>,
+    /// For a workspace's token, the username of the member who made it.
+    /// Null once that account is gone, and on personal tokens.
+    pub created_by: Option<String>,
 }
 
 /// `sign_in`: verifies a username and password for website sign-in.
@@ -96,7 +101,9 @@ pub struct RemoveArgs {
     pub id: String,
 }
 
-/// `create_access_token`.
+/// `create_access_token`: a token that acts as `user`. For a workspace
+/// acting through a token of its own, the new token belongs to that
+/// workspace too.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateAccessTokenArgs {
@@ -222,6 +229,8 @@ pub struct Workspace {
     pub id: String,
     pub slug: String,
     pub name: String,
+    /// One line saying what the workspace is for.
+    pub description: Option<String>,
     /// RFC 3339.
     pub created_at: String,
     pub member_count: u32,
@@ -262,6 +271,42 @@ pub struct MemberArgs {
     pub actor: User,
     pub slug: String,
     pub username: String,
+}
+
+/// `update_workspace`: owners only. An empty name falls back to the slug;
+/// an empty description clears it. Returns `Outcome<Workspace>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateWorkspaceArgs {
+    pub actor: User,
+    pub slug: String,
+    pub name: String,
+    pub description: String,
+}
+
+/// `list_workspace_tokens`: members only. Returns
+/// `Outcome<Vec<AccessToken>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkspaceTokensArgs {
+    pub slug: String,
+    pub viewer: crate::Viewer,
+}
+
+/// `create_workspace_token`: owners only. The token belongs to the
+/// workspace, acts as it, and keeps working when the member who made it
+/// leaves. Returns `Outcome<CreatedAccessToken>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateWorkspaceTokenArgs {
+    pub actor: User,
+    pub slug: String,
+    pub name: String,
+}
+
+/// `remove_workspace_token`: owners only. Returns `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RemoveWorkspaceTokenArgs {
+    pub actor: User,
+    pub slug: String,
+    pub id: String,
 }
 
 /// `oauth_authorize`: the signed-in person approved an application. The
@@ -326,3 +371,31 @@ pub struct OAuthGrant {
     /// RFC 3339.
     pub last_used_at: String,
 }
+
+
+/// What an agent's token may do: these operations, in this repository.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AgentScope {
+    pub repo: crate::repos::RepoPath,
+    /// API and MCP operation names, such as `create_issue`.
+    pub operations: Vec<String>,
+}
+
+/// `create_agent_token`: a token for a g1t agent working on someone's
+/// behalf. It acts as `g1t-agent`, a member of the repository's workspace,
+/// and only for the operations in `scope`. Returns `CreatedAccessToken`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateAgentTokenArgs {
+    /// The person the agent works for; the token is recorded as theirs.
+    pub on_behalf_of: User,
+    pub scope: AgentScope,
+    pub ttl_seconds: u64,
+}
+
+// `agent_scope` takes `TokenArgs` and returns `Option<AgentScope>`: what an
+// agent's token may do, or null for any other token.
+
+/// The id and name g1t's agents act under.
+pub const AGENT_ID: &str = "usr_g1t_agent";
+pub const AGENT_NAME: &str = "g1t-agent";

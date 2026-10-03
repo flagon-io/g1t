@@ -4,11 +4,10 @@
 //! [`Op`], so the surfaces cannot drift apart: adding a variant without
 //! describing it or running it does not compile.
 
+use g1t_contracts::identity::AgentScope;
 use g1t_contracts::events::{Event, ListArgs as ListEventsArgs};
 use g1t_contracts::identity::CreateWorkspaceArgs;
-use g1t_contracts::repos::{
-    CompareArgs, CreateArgs, GetArgs, ListArgs as ListReposArgs, Repo, RepoPath,
-};
+use g1t_contracts::repos::{CreateArgs, GetArgs, ListArgs as ListReposArgs, Repo, RepoPath};
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome, Viewer};
 use serde::Serialize;
@@ -22,6 +21,10 @@ pub struct Services {
     pub repos: Fetcher,
     pub work: Fetcher,
     pub events: Fetcher,
+    pub runner: Fetcher,
+    pub billing: Fetcher,
+    /// Set for a request made with an agent's token: all it may do.
+    pub scope: Option<AgentScope>,
 }
 
 impl Services {
@@ -31,6 +34,9 @@ impl Services {
             repos: env.service("REPOS")?,
             work: env.service("WORK")?,
             events: env.service("EVENTS")?,
+            runner: env.service("RUNNER")?,
+            billing: env.service("BILLING")?,
+            scope: None,
         })
     }
 }
@@ -42,12 +48,20 @@ pub enum Op {
     ListRepos,
     GetRepo,
     CreateRepo,
+    UpdateRepo,
+    GetRepoSettings,
+    UpdateRepoSettings,
+    GetMergeQueue,
     ListIssues,
     GetIssue,
     CreateIssue,
     UpdateIssue,
     CloseIssue,
     ReopenIssue,
+    AssignIssue,
+    PlanWork,
+    GetPlan,
+    ApplyPlan,
     ListLabels,
     AddComment,
     ReviewPullRequest,
@@ -170,41 +184,27 @@ fn repo_schema() -> Value {
     })
 }
 
-/// What `ReposApi.compare` needs to show what a pull request changes.
-///
-/// A fork is compared as a whole. A branch is compared by name while the
-/// pull request is open, and by the commit it was merged or closed at
-/// afterwards, so later pushes to the branch do not change the record.
-fn comparison(pull: Pull, viewer: &Viewer) -> CompareArgs {
-    let settled = matches!(pull.status, PullStatus::Merged | PullStatus::Closed);
-    let (repo_id, head) = match pull.fork_repo_id {
-        Some(fork) => (fork, None),
-        None => (
-            pull.repo_id,
-            pull.head_commit.filter(|_| settled).or(pull.branch),
-        ),
-    };
-    CompareArgs {
-        repo_id,
-        viewer: viewer.clone(),
-        base: pull.merge_base,
-        head,
-    }
-}
-
 impl Op {
-    pub const ALL: [Op; 24] = [
+    pub const ALL: [Op; 32] = [
         Op::Whoami,
         Op::CreateWorkspace,
         Op::ListRepos,
         Op::GetRepo,
         Op::CreateRepo,
+        Op::UpdateRepo,
+        Op::GetRepoSettings,
+        Op::UpdateRepoSettings,
+        Op::GetMergeQueue,
         Op::ListIssues,
         Op::GetIssue,
         Op::CreateIssue,
         Op::UpdateIssue,
         Op::CloseIssue,
         Op::ReopenIssue,
+        Op::AssignIssue,
+        Op::PlanWork,
+        Op::GetPlan,
+        Op::ApplyPlan,
         Op::ListLabels,
         Op::AddComment,
         Op::ReviewPullRequest,
@@ -232,12 +232,20 @@ impl Op {
             Op::ListRepos => "list_repos",
             Op::GetRepo => "get_repo",
             Op::CreateRepo => "create_repo",
+            Op::UpdateRepo => "update_repo",
+            Op::GetRepoSettings => "get_repo_settings",
+            Op::GetMergeQueue => "get_merge_queue",
+            Op::UpdateRepoSettings => "update_repo_settings",
             Op::ListIssues => "list_issues",
             Op::GetIssue => "get_issue",
             Op::CreateIssue => "create_issue",
             Op::UpdateIssue => "update_issue",
             Op::CloseIssue => "close_issue",
             Op::ReopenIssue => "reopen_issue",
+            Op::AssignIssue => "assign_issue",
+            Op::PlanWork => "plan_work",
+            Op::GetPlan => "get_plan",
+            Op::ApplyPlan => "apply_plan",
             Op::ListLabels => "list_labels",
             Op::AddComment => "add_comment",
             Op::ReviewPullRequest => "review_pull_request",
@@ -256,13 +264,29 @@ impl Op {
 
     pub fn description(self) -> &'static str {
         match self {
-            Op::Whoami => "The account the access token belongs to, and its workspaces.",
+            Op::Whoami => {
+                "Who the access token acts as, and the workspaces it can work in. `kind` is `user` for a person's token and `workspace` for a token that belongs to a workspace."
+            }
             Op::CreateWorkspace => {
                 "Create a workspace. A workspace owns repositories and is the first part of their address, g1t.sh/<workspace>/<repo>. The whoami tool lists the ones you already belong to."
             }
             Op::ListRepos => "Repositories you can see, optionally filtered by a search query.",
             Op::GetRepo => "One repository's details.",
-            Op::CreateRepo => "Create a repository in one of your workspaces.",
+            Op::UpdateRepo => {
+                "Change a repository's description, whether it is private, and whether its default branch is protected. A protected branch refuses pushes and changes only by merging a pull request. Only the fields given are changed. Members of its workspace only."
+            }
+            Op::GetRepoSettings => {
+                "How a repository handles pull requests: the approvals a merge needs, whether failed checks can be overridden, whether a pull request must be up to date, and how g1t's agents are reviewed, revised and merged."
+            }
+            Op::UpdateRepoSettings => {
+                "Change how a repository handles pull requests. Only the fields given are changed. Members of its workspace only."
+            }
+            Op::GetMergeQueue => {
+                "A repository's merge queue: the pull requests waiting to land, in order, each with the state it is being tested in (the default branch with the pull requests ahead of it merged in) and how that went; then those that recently landed or left. With the queue on, merging a pull request adds it here."
+            }
+            Op::CreateRepo => {
+                "Create a repository in one of your workspaces, empty or as a copy of a public git repository elsewhere."
+            }
             Op::ListIssues => {
                 "Issues on a repository, newest first. An issue is something that should change: a bug, a feature, a question. Pull requests are made against it."
             }
@@ -271,12 +295,24 @@ impl Op {
             }
             Op::CreateIssue => "Open an issue on a repository.",
             Op::UpdateIssue => {
-                "Change an issue's title, body or labels. Only the fields given are changed; labels replaces the whole set."
+                "Change an issue's title, body, labels or the people it is assigned to. Only the fields given are changed; labels and assignees each replace the whole set."
             }
             Op::CloseIssue => {
                 "Close an issue without a pull request. Merging a pull request made for an issue closes it for you."
             }
             Op::ReopenIssue => "Reopen a closed issue.",
+            Op::PlanWork => {
+                "Turn an outcome into a plan. An agent reads the repository and proposes the issues that would get there: what each changes, the checks it must pass, the files it will touch, and which must merge before which. Returns the plan's id at once; the plan takes a minute or two to write, so read it with get_plan until its status is ready. Nothing is opened until apply_plan. Members of the repository's workspace only."
+            }
+            Op::GetPlan => {
+                "A plan: the outcome asked for, its status (planning, ready, failed or applied), and the issues it proposes with their dependencies."
+            }
+            Op::ApplyPlan => {
+                "Open a plan's issues, each blocked by the ones it depends on. With assign, g1t agents start at once on every issue that depends on nothing, working in parallel, and on the others as what they depend on merges. keep limits it to some of the proposed issues, by their positions counting from 1. A plan is applied once."
+            }
+            Op::AssignIssue => {
+                "Assign an issue to the g1t agent. It opens a pull request for the issue in a sandbox of its own and sees it through: the issue's acceptance checks, a review by a second agent, revision if either finds something, and catching up when main moves. Returns the pull request at once; follow its progress with get_pull_request. There is no model or agent count to choose. To put many agents to work, assign many issues. In preview: only for accounts g1t agents are enabled for."
+            }
             Op::ListLabels => "The labels available on a repository's issues.",
             Op::AddComment => {
                 "Comment on an issue or a pull request. On a pull request, give path and line to comment on one line of the change."
@@ -288,7 +324,7 @@ impl Op {
                 "Pull requests on a repository, newest first. State open covers drafts and those ready for review; closed covers merged and closed."
             }
             Op::GetPullRequest => {
-                "A pull request's status, head commit, comments and reviews, the issue it is for, and the latest run of that issue's acceptance checks with each command's output."
+                "A pull request's status, head commit, comments and reviews, the issue it is for, the latest run of that issue's acceptance checks with each command's output, whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different issue means the two will conflict; say so, or keep clear of those files."
             }
             Op::CreatePullRequest => {
                 "Start a change. Opens a draft pull request with its own fork of the repository and returns the fork's git remote. Clone it, commit your work there, push, record your session as you go, then call mark_pull_request_ready. Give the issue it is for whenever there is one. If the change is already on a branch pushed to the repository, give that branch instead: no fork is made and the pull request is ready for review at once."
@@ -337,6 +373,58 @@ impl Op {
                 &[],
             ),
             Op::GetRepo | Op::ListLabels => repo_only(),
+            Op::UpdateRepo => object(
+                json!({
+                    "repo": repo_schema(),
+                    "description": { "type": "string", "description": "An empty string clears it." },
+                    "private": { "type": "boolean" },
+                    "protected": {
+                        "type": "boolean",
+                        "description": "Refuse pushes to the default branch, so that it changes only by merging a pull request.",
+                    },
+                }),
+                &["repo"],
+            ),
+            Op::GetRepoSettings => object(json!({ "repo": repo_schema() }), &["repo"]),
+            Op::GetMergeQueue => object(json!({ "repo": repo_schema() }), &["repo"]),
+            Op::UpdateRepoSettings => object(
+                json!({
+                    "repo": repo_schema(),
+                    "auto_merge": {
+                        "type": "boolean",
+                        "description": "Land a g1t agent's pull request without a person once every rule is met.",
+                    },
+                    "require_up_to_date": {
+                        "type": "boolean",
+                        "description": "Refuse to merge a pull request that is behind the default branch. When false, merging brings it up to date first.",
+                    },
+                    "required_approvals": {
+                        "type": "integer",
+                        "description": "How many approving reviews a merge needs.",
+                    },
+                    "count_agent_approvals": {
+                        "type": "boolean",
+                        "description": "Whether a g1t agent's approval counts towards required_approvals.",
+                    },
+                    "allow_ignoring_checks": {
+                        "type": "boolean",
+                        "description": "Whether a member may merge although the acceptance checks did not pass.",
+                    },
+                    "agent_review": {
+                        "type": "boolean",
+                        "description": "Whether a second agent reviews a g1t agent's pull request unasked.",
+                    },
+                    "merge_queue": {
+                        "type": "boolean",
+                        "description": "Merge through a queue: each pull request is tested together with those ahead of it, and only a combination that passed reaches the default branch.",
+                    },
+                    "max_revisions": {
+                        "type": "integer",
+                        "description": "How many times a g1t agent is sent back before a person is asked.",
+                    },
+                }),
+                &["repo"],
+            ),
             Op::CreateRepo => object(
                 json!({
                     "workspace": {
@@ -346,6 +434,10 @@ impl Op {
                     "name": { "type": "string" },
                     "description": { "type": "string" },
                     "private": { "type": "boolean" },
+                    "import_url": {
+                        "type": "string",
+                        "description": "Copy the default branch of a public git repository at this https address, e.g. https://github.com/owner/repo.",
+                    },
                 }),
                 &["name"],
             ),
@@ -388,6 +480,53 @@ impl Op {
                     "title": { "type": "string" },
                     "body": { "type": "string" },
                     "labels": { "type": "array", "items": { "type": "string" } },
+                    "assignees": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Usernames of the people it is assigned to. Replaces the whole set; an empty list unassigns everyone. To assign it to the g1t agent, use assign_issue.",
+                    },
+                })),
+                &["repo", "number"],
+            ),
+            Op::PlanWork => object(
+                json!({
+                    "repo": repo_schema(),
+                    "brief": {
+                        "type": "string",
+                        "description": "What should be true when the work is done, in plain words. Say what you want, not how to split it.",
+                    },
+                }),
+                &["repo", "brief"],
+            ),
+            Op::GetPlan => object(
+                json!({
+                    "repo": repo_schema(),
+                    "plan": { "type": "string", "description": "The plan's id." },
+                }),
+                &["repo", "plan"],
+            ),
+            Op::ApplyPlan => object(
+                json!({
+                    "repo": repo_schema(),
+                    "plan": { "type": "string", "description": "The plan's id." },
+                    "assign": {
+                        "type": "boolean",
+                        "description": "Put g1t agents on the issues, in dependency order.",
+                    },
+                    "keep": {
+                        "type": "array",
+                        "items": { "type": "integer" },
+                        "description": "Positions, counting from 1, of the proposed issues to open. All of them if left out.",
+                    },
+                }),
+                &["repo", "plan"],
+            ),
+            Op::AssignIssue => object(
+                numbered(json!({
+                    "instructions": {
+                        "type": "string",
+                        "description": "Extra guidance for this run, on top of the issue's description.",
+                    },
                 })),
                 &["repo", "number"],
             ),
@@ -518,7 +657,14 @@ impl Op {
                 | Op::ReadSession
                 | Op::GetPullRequestChanges
                 | Op::ListEvents
+                | Op::GetRepoSettings
+                | Op::GetMergeQueue
         )
+    }
+
+    /// Whether an agent's token with `scope` may use the operation.
+    pub fn allowed_by(self, scope: &AgentScope) -> bool {
+        scope.operations.iter().any(|name| name == self.name())
     }
 
     /// Whether the operation is about one repository, named by `repo`.
@@ -540,6 +686,30 @@ impl Op {
                 FailureCode::Unauthenticated,
                 "This needs a g1t access token.",
             );
+        }
+        // An agent's token does only what its scope lists, in its repository.
+        if let Some(scope) = &services.scope {
+            if !self.allowed_by(scope) {
+                return failed(
+                    FailureCode::Forbidden,
+                    &format!("A g1t agent's token cannot use {}.", self.name()),
+                );
+            }
+            let asked = repo_path(input);
+            if self.needs_repo()
+                && !asked.is_some_and(|asked| {
+                    asked.namespace.eq_ignore_ascii_case(&scope.repo.namespace)
+                        && asked.name.eq_ignore_ascii_case(&scope.repo.name)
+                })
+            {
+                return failed(
+                    FailureCode::Forbidden,
+                    &format!(
+                        "A g1t agent's token works in {}/{} only.",
+                        scope.repo.namespace, scope.repo.name
+                    ),
+                );
+            }
         }
         // Checked above for every operation that uses it.
         let actor = || viewer.clone().unwrap_or_default();
@@ -576,6 +746,8 @@ impl Op {
             repos,
             work,
             events,
+            runner,
+            ..
         } = services;
 
         match self {
@@ -617,6 +789,73 @@ impl Op {
                 )
                 .await
             }
+            Op::UpdateRepo => {
+                pass(
+                    repos,
+                    "update",
+                    &json!({
+                        "actor": actor(),
+                        "path": repo,
+                        "description": input["description"].as_str(),
+                        "isPrivate": input["private"].as_bool(),
+                        "protected": input["protected"].as_bool(),
+                    }),
+                )
+                .await
+            }
+            Op::GetRepoSettings => {
+                pass(
+                    work,
+                    "get_settings",
+                    &json!({ "repo": repo, "viewer": viewer }),
+                )
+                .await
+            }
+            Op::GetMergeQueue => {
+                pass(work, "queue", &json!({ "repo": repo, "viewer": viewer })).await
+            }
+            Op::UpdateRepoSettings => {
+                // What is not given stays as it is.
+                let current: Outcome<RepoSettings> = g1t_kit::call(
+                    work,
+                    "get_settings",
+                    &json!({ "repo": repo, "viewer": viewer }),
+                )
+                .await?;
+                let current = match current {
+                    Outcome::Ok(settings) => settings,
+                    Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+                };
+                let flag = |key: &str, now: bool| input[key].as_bool().unwrap_or(now);
+                let settings = RepoSettings {
+                    auto_merge: flag("auto_merge", current.auto_merge),
+                    require_up_to_date: flag("require_up_to_date", current.require_up_to_date),
+                    required_approvals: integer(input, "required_approvals")
+                        .unwrap_or(current.required_approvals),
+                    count_agent_approvals: flag(
+                        "count_agent_approvals",
+                        current.count_agent_approvals,
+                    ),
+                    allow_ignoring_checks: flag(
+                        "allow_ignoring_checks",
+                        current.allow_ignoring_checks,
+                    ),
+                    agent_review: flag("agent_review", current.agent_review),
+                    max_revisions: integer(input, "max_revisions").unwrap_or(current.max_revisions),
+                    merge_queue: flag("merge_queue", current.merge_queue),
+                    ..current
+                };
+                pass(
+                    work,
+                    "update_settings",
+                    &UpdateSettingsArgs {
+                        actor: actor(),
+                        repo,
+                        settings,
+                    },
+                )
+                .await
+            }
             Op::CreateRepo => {
                 let owner = actor();
                 // Someone in exactly one workspace need not name it.
@@ -635,6 +874,7 @@ impl Op {
                         name: text(input, "name"),
                         description: optional_text(input, "description"),
                         is_private: input["private"].as_bool() == Some(true),
+                        import_url: optional_text(input, "import_url"),
                     },
                 )
                 .await
@@ -679,7 +919,55 @@ impl Op {
                         title: input["title"].as_str().map(str::to_owned),
                         body: input["body"].as_str().map(str::to_owned),
                         labels: strings(input, "labels"),
+                        assignees: strings(input, "assignees"),
                     },
+                )
+                .await
+            }
+            Op::PlanWork => {
+                pass(
+                    runner,
+                    "plan",
+                    &json!({ "actor": actor(), "repo": repo, "brief": text(input, "brief") }),
+                )
+                .await
+            }
+            Op::GetPlan => {
+                pass(
+                    work,
+                    "get_plan",
+                    &PlanArgs {
+                        repo,
+                        viewer: viewer.clone(),
+                        id: text(input, "plan"),
+                    },
+                )
+                .await
+            }
+            Op::ApplyPlan => {
+                pass(
+                    runner,
+                    "apply_plan",
+                    &json!({
+                        "actor": actor(),
+                        "repo": repo,
+                        "planId": text(input, "plan"),
+                        "assign": input["assign"].as_bool() == Some(true),
+                        "keep": input["keep"].as_array(),
+                    }),
+                )
+                .await
+            }
+            Op::AssignIssue => {
+                pass(
+                    runner,
+                    "run",
+                    &json!({
+                        "actor": actor(),
+                        "repo": repo,
+                        "issue": number,
+                        "instructions": text(input, "instructions"),
+                    }),
                 )
                 .await
             }
@@ -807,7 +1095,7 @@ impl Op {
                 let found: Outcome<PullDetail> = call(work, "get_pull", &view()).await?;
                 match found {
                     Outcome::Ok(detail) => {
-                        pass(repos, "compare", &comparison(detail.pull, viewer)).await
+                        pass(repos, "compare", &detail.pull.comparison(viewer)).await
                     }
                     Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
                 }

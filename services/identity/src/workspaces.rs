@@ -6,7 +6,9 @@
 
 use g1t_contracts::identity::*;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::{FailureCode, Membership, Outcome, Role, User, is_valid_namespace, new_id};
+use g1t_contracts::{
+    FailureCode, Membership, Outcome, PrincipalKind, Role, User, is_valid_namespace, new_id,
+};
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
@@ -17,8 +19,11 @@ use crate::Identity;
 /// bulk.
 const MAX_WORKSPACES_PER_USER: usize = 10;
 
+const MAX_NAME_LENGTH: usize = 80;
+const MAX_DESCRIPTION_LENGTH: usize = 160;
+
 const WORKSPACE_COLUMNS: &str = "workspaces.id, workspaces.slug, workspaces.name,
-  workspaces.created_at,
+  workspaces.description, workspaces.created_at,
   (SELECT count(*) FROM workspace_members
    WHERE workspace_members.workspace_id = workspaces.id) AS member_count";
 
@@ -27,6 +32,7 @@ struct WorkspaceRow {
     id: String,
     slug: String,
     name: String,
+    description: Option<String>,
     created_at: String,
     member_count: u32,
 }
@@ -37,6 +43,7 @@ impl From<WorkspaceRow> for Workspace {
             id: row.id,
             slug: row.slug,
             name: row.name,
+            description: row.description,
             created_at: row.created_at,
             member_count: row.member_count,
         }
@@ -66,6 +73,12 @@ impl Identity {
     }
 
     pub async fn create_workspace(&self, a: CreateWorkspaceArgs) -> Result<Outcome<Workspace>> {
+        if a.user.kind != PrincipalKind::User {
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                "A workspace's access token cannot create workspaces. Sign in as a person.",
+            ));
+        }
         if !a.user.verified {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
@@ -85,10 +98,20 @@ impl Identity {
                 "You belong to the maximum number of workspaces.",
             ));
         }
-        if self
-            .get_workspace(SlugArgs { slug: slug.clone() })
+        // Usernames and workspaces share one namespace: a person's username
+        // is theirs to use for a workspace, and nobody else's.
+        let someone_elses_username = self
+            .db
+            .prepare("SELECT id FROM users WHERE username = ? AND id != ?")
+            .bind(&[slug.as_str().into(), a.user.id.as_str().into()])?
+            .first::<serde_json::Value>(None)
             .await?
-            .is_some()
+            .is_some();
+        if someone_elses_username
+            || self
+                .get_workspace(SlugArgs { slug: slug.clone() })
+                .await?
+                .is_some()
         {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
@@ -100,8 +123,9 @@ impl Identity {
             id: new_id("wsp", now),
             name: match a.name.trim() {
                 "" => slug.clone(),
-                name => name.chars().take(80).collect(),
+                name => name.chars().take(MAX_NAME_LENGTH).collect(),
             },
+            description: None,
             slug,
             created_at: rfc3339(now),
             member_count: 1,
@@ -147,6 +171,43 @@ impl Identity {
             .map(Workspace::from))
     }
 
+    pub async fn update_workspace(&self, a: UpdateWorkspaceArgs) -> Result<Outcome<Workspace>> {
+        let slug = a.slug.to_lowercase();
+        if a.actor.kind != PrincipalKind::User || a.actor.role_in(&slug) != Some(Role::Owner) {
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                "Only an owner can change a workspace's details.",
+            ));
+        }
+        let name: String = match a.name.trim() {
+            "" => slug.clone(),
+            name => name.chars().take(MAX_NAME_LENGTH).collect(),
+        };
+        let description: String = a
+            .description
+            .trim()
+            .chars()
+            .take(MAX_DESCRIPTION_LENGTH)
+            .collect();
+        self.db
+            .prepare("UPDATE workspaces SET name = ?, description = ? WHERE slug = ?")
+            .bind(&[
+                name.into(),
+                if description.is_empty() {
+                    worker::wasm_bindgen::JsValue::NULL
+                } else {
+                    description.into()
+                },
+                slug.as_str().into(),
+            ])?
+            .run()
+            .await?;
+        Ok(match self.get_workspace(SlugArgs { slug }).await? {
+            Some(workspace) => Outcome::Ok(workspace),
+            None => Outcome::fail(FailureCode::NotFound, "Workspace not found."),
+        })
+    }
+
     pub async fn list_members(&self, a: ListMembersArgs) -> Result<Outcome<Vec<Member>>> {
         let slug = a.slug.to_lowercase();
         if !a.viewer.is_some_and(|viewer| viewer.is_member(&slug)) {
@@ -182,7 +243,7 @@ impl Identity {
     /// and `username` exists.
     async fn member_target(&self, a: &MemberArgs) -> Result<Outcome<(String, User)>> {
         let slug = a.slug.to_lowercase();
-        if a.actor.role_in(&slug) != Some(Role::Owner) {
+        if a.actor.kind != PrincipalKind::User || a.actor.role_in(&slug) != Some(Role::Owner) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
                 "Only an owner can change a workspace's members.",

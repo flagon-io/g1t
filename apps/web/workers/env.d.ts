@@ -8,6 +8,7 @@ declare global {
       REPOS: ServiceBinding & { fetch(request: Request): Promise<Response> };
       WORK: ServiceBinding;
       RUNNER: RunnerApi;
+      BILLING: ServiceBinding;
     }
   }
   interface Env extends Cloudflare.Env {}

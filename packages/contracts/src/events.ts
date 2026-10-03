@@ -6,6 +6,8 @@
  * The envelope follows CloudEvents: `type` says what happened, `subject`
  * says to what, `data` is the type-specific payload.
  */
+
+import type { Verdict } from "./work";
 export type EventPayloads = {
   "repo.created": { repoId: string; namespace: string; name: string; isPrivate: boolean };
   "repo.forked": { repoId: string; sourceRepoId: string; pullId: string };
@@ -16,6 +18,8 @@ export type EventPayloads = {
   "git.push": { repoId: string; ref: string; after: string; defaultBranch: boolean };
   "issue.opened": { issueId: string; repoId: string; number: number; title: string };
   "issue.updated": { issueId: string; repoId: string; number: number };
+  /** The people an issue is assigned to changed; `assignees` is the new set. */
+  "issue.assigned": { issueId: string; repoId: string; number: number; assignees: string[] };
   /** `resolvedBy` is the number of the pull request whose merge closed it. */
   "issue.closed": {
     issueId: string;
@@ -30,6 +34,8 @@ export type EventPayloads = {
   "pull.ready": { pullId: string; repoId: string; number: number; issue?: number };
   /** A push moved the head of a pull request that is ready for review. */
   "pull.updated": { pullId: string; repoId: string; number: number; issue?: number; commit: string };
+  /** A merge was asked for while the pull request was behind; it has to catch up first. */
+  "pull.merge_requested": { pullId: string; repoId: string; number: number; issue?: number };
   "pull.closed": { pullId: string; repoId: string; number: number; issue?: number };
   "pull.merged": { pullId: string; repoId: string; number: number; issue?: number; commit: string };
   /** A run of the acceptance checks finished. `commit` is what was checked. */
@@ -40,8 +46,25 @@ export type EventPayloads = {
     status: "passed" | "failed" | "errored";
     commit: string;
   };
+  /** A g1t agent finished reviewing a pull request; no verdict if it could not. */
+  "review.completed": {
+    pullId: string;
+    repoId: string;
+    number: number;
+    verdict?: "approve" | "request_changes";
+  };
   /** `number` is the issue or pull request commented on. */
-  "comment.created": { commentId: string; repoId: string; number: number };
+  /** A repository's merge queue gained, lost or settled an entry. */
+  "queue.changed": { repoId: string };
+  "comment.created": {
+    commentId: string;
+    repoId: string;
+    number: number;
+    /** Set when the comment is on a pull request. */
+    pullId?: string;
+    /** Set when the comment is a review. */
+    verdict?: Verdict;
+  };
   "session.appended": { pullId: string; repoId: string; number: number; count: number };
 };
 

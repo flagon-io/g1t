@@ -6,7 +6,7 @@ import {
   redirect,
 } from "react-router";
 
-import { type Result, type User, type Viewer, httpStatus } from "@g1t/contracts";
+import { type Result, type Role, type User, type Viewer, httpStatus } from "@g1t/contracts";
 
 import { identity } from "./services.server";
 
@@ -25,14 +25,35 @@ function sessionCookie(value: string, maxAge: number): string {
   return `${SESSION_COOKIE}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
 }
 
-/** Root middleware: resolves the signed-in user once per request. */
+/** Pages a signed-in person can use before they have a workspace. */
+const BEFORE_WORKSPACE = ["/workspaces/new", "/settings", "/verify", "/logout"];
+
+/**
+ * Root middleware: resolves the signed-in user once per request.
+ *
+ * Everything on g1t lives in a workspace, so a confirmed account with none
+ * is sent to create one, from wherever it was going, and returned there
+ * afterwards.
+ */
 export const viewerMiddleware: MiddlewareFunction<Response> = async ({
   request,
   context,
 }) => {
   const token = sessionToken(request);
-  if (token) {
-    context.set(viewerContext, await identity.userForSession(token));
+  if (!token) return;
+  const viewer = await identity.userForSession(token);
+  context.set(viewerContext, viewer);
+
+  const { pathname, search } = new URL(request.url);
+  if (
+    request.method === "GET" &&
+    viewer?.verified &&
+    (viewer.workspaces ?? []).length === 0 &&
+    !BEFORE_WORKSPACE.includes(pathname) &&
+    !pathname.endsWith(".data")
+  ) {
+    const next = pathname === "/" ? "" : `?next=${encodeURIComponent(pathname + search)}`;
+    throw redirect(`/workspaces/new${next}`);
   }
 };
 
@@ -40,6 +61,14 @@ type Context = Readonly<RouterContextProvider>;
 
 export function getViewer(context: Context): Viewer {
   return context.get(viewerContext);
+}
+
+/** The viewer's role in a workspace, or null if they are not a member. */
+export function roleIn(viewer: Viewer, slug: string): Role | null {
+  const wanted = slug.toLowerCase();
+  return (
+    viewer?.workspaces?.find((membership) => membership.slug === wanted)?.role ?? null
+  );
 }
 
 export function requireUser(context: Context, request: Request): User {

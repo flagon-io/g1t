@@ -51,11 +51,11 @@ impl From<RunRow> for CheckRun {
     }
 }
 
-fn hash(token: &str) -> String {
+pub(crate) fn hash(token: &str) -> String {
     hex::encode(Sha256::digest(token.as_bytes()))
 }
 
-fn new_token() -> String {
+pub(crate) fn new_token() -> String {
     let mut bytes = [0u8; 32];
     getrandom::getrandom(&mut bytes).expect("no source of randomness");
     hex::encode(bytes)

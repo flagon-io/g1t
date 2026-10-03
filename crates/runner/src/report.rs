@@ -60,15 +60,31 @@ pub struct Reporter {
     secrets: Vec<String>,
     pending: Vec<Entry>,
     last_flush: Instant,
+    /// False for work that has no session: entries are dropped.
+    recording: bool,
 }
 
 impl Reporter {
+    /// A reporter that records nothing, for a run with no session to keep.
+    pub fn silent() -> Self {
+        Reporter {
+            api: String::new(),
+            token: String::new(),
+            pull: String::new(),
+            secrets: Vec::new(),
+            pending: Vec::new(),
+            last_flush: Instant::now(),
+            recording: false,
+        }
+    }
+
     pub fn from_env() -> Result<Self> {
         let var = |name: &str| std::env::var(name).with_context(|| format!("{name} is not set"));
         let token = var("G1T_TOKEN")?;
         let secrets = std::iter::once(token.clone())
             .chain(std::env::var("ANTHROPIC_API_KEY"))
             .chain(std::env::var("AI_GATEWAY_TOKEN"))
+            .chain(std::env::var("BILLING_TOKEN"))
             .filter(|secret| !secret.is_empty())
             .collect();
         Ok(Reporter {
@@ -78,11 +94,12 @@ impl Reporter {
             secrets,
             pending: Vec::new(),
             last_flush: Instant::now(),
+            recording: true,
         })
     }
 
     fn post(&self, action: &str, body: serde_json::Value) -> Result<()> {
-        ureq::post(&format!("{}/v1/{}/{action}", self.api, self.pull))
+        ureq::post(&format!("{}/{}/{action}", self.api, self.pull))
             .set("authorization", &format!("Bearer {}", self.token))
             .send_json(body)
             .with_context(|| format!("{action} request failed"))?;
@@ -91,6 +108,9 @@ impl Reporter {
 
     /// Queues an entry, sending the batch if it is due.
     pub fn record(&mut self, mut entry: Entry) {
+        if !self.recording {
+            return;
+        }
         entry.text = redact(&entry.text, &self.secrets);
         self.pending.push(entry);
         if self.pending.len() >= FLUSH_SIZE || self.last_flush.elapsed() >= FLUSH_INTERVAL {

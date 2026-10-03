@@ -9,13 +9,58 @@ the "Build the Next-Gen Git Platform on Cloudflare" competition.
   collaboration; 25% multi-agent concurrency, coordination, context
   preservation, review and conflict handling; 25% ease of use.
 
+## The point
+
+**GitHub is where people keep code. g1t is where a team of agents ships it.**
+
+Hosting git is table stakes, and g1t does it the way GitHub does: issues,
+branches, pull requests, review, protected branches, people working by hand.
+None of that is the selling point. The selling point is the layer above it,
+which no forge has: **you hand g1t an outcome, and a fleet of agents converges
+it onto `main`, coordinating with each other and with you, with every decision
+on the record.**
+
+Three things only g1t does, and every feature should serve one of them:
+
+1. **Outcomes, not pull requests.** The unit people work in is "make onboarding
+   work offline", not branch #4012. A brief becomes a plan of issues with
+   dependencies; agents take them as they unblock; people steer the outcome
+   and see it converge. GitHub, Origin and Entire all stop at the pull request.
+2. **Agents that work as a team.** Agents know what the others are doing, file
+   what they find instead of widening their change, ask and answer each other
+   through the forge, and defer to people. Many agents on one codebase without
+   a human refereeing collisions.
+3. **`main` that only ever moves forward.** Every change lands through checks
+   in the combination it will live in (the merge queue), failures go back to the
+   agent that wrote them, and any line can answer "why is this here?"
+
+### Against the others
+
+| | GitHub | Cursor Origin | Entire | g1t |
+| --- | --- | --- | --- | --- |
+| Core idea | Code hosting with Copilot bolted on | A forge for Cursor's cloud agents | Store every agent session with the code | Agents converge an outcome onto `main` |
+| Unit of work | Pull request | Pull request, stacked | Commit plus session | Outcome → plan → issues → pull requests |
+| Agent context | In the Copilot app | In Cursor | In the repo, per commit | Per commit, plus why-blame on any line and what agents told each other |
+| Many agents at once | Compare outputs by hand | Agents can review agents | Not the focus | Plan with dependencies, overlap awareness, coordination tools, queue |
+| Landing | Merge queue (paid) | Stacks | Not the focus | Speculative queue testing combinations; failures return to their agent |
+| Which agents | Copilot, some others | Cursor's | Any (CLI) | Hosted agents plus any MCP client |
+
+Entire's insight, that the session belongs with the code, is one g1t shares
+and already ships (sessions, why-blame). Origin's, that agents should live in
+the forge, too. Neither coordinates a team of agents towards an outcome; that
+is the gap g1t is built for.
+
 ## Product model
 
 g1t keeps the two things every engineer already knows, issues and pull
 requests, and changes the assumption underneath them. A forge built for
-people expects one pull request per issue. g1t expects many agents working
-at once, in two shapes: several agents on the same issue, and many different
-issues in flight that all have to land on `main`.
+people expects a few changes in flight, each watched by its author. g1t
+expects dozens of agents working at once across a project, each on its own
+issue, all of which have to land on `main`. A person assigns an issue to
+the g1t agent and chooses nothing else: not how many agents, and not which
+model. An issue can still collect more than one pull request (a second
+attempt, or someone's own agent alongside g1t's), and when it does the
+issue records which one was taken.
 
 | Concept | What it is |
 | --- | --- |
@@ -53,9 +98,11 @@ An earlier version of this plan merged the two into one new object, an
 
 What g1t adds to the familiar pair:
 
-- **Several pull requests per issue is the normal case**, not an accident.
-  The issue's page lists them with their state, and merging one closes the
-  issue with that pull request recorded and the others marked superseded.
+- **Several pull requests per issue is supported**, not an accident. It
+  is the exception, for a second attempt or a competing one, but when it
+  happens the issue's page lists them with their state, and merging one
+  closes the issue with that pull request recorded and the others marked
+  superseded.
 - **A pull request can be part of the work.** Merging with "keep the issue
   open" leaves the issue and its other pull requests alone.
 - **Every pull request has a fork and a session.** See
@@ -272,6 +319,27 @@ The hierarchy above a single repo:
 | **Project** | One deliverable inside an initiative: a brief and its graph of issues. |
 | **Issue / Pull request** | As above. An issue may touch several repos; a pull request for it then holds one fork per repo and they land together. |
 
+How it feeds up, and what is built:
+
+- **A workspace is the unit everything belongs to.** Repositories, people,
+  access tokens, and later projects, budgets and policies are the
+  workspace's, never a person's. An account owns nothing; its first step
+  after confirming its email is creating a workspace, and the site sends it
+  there from wherever it was going.
+- **One namespace.** Usernames and workspaces share one set of names, as on
+  Docker Hub and npm. A username is reserved for its owner's workspace, so
+  `g1t.sh/<name>` never means two things.
+- **The workspace page is the roll-up.** `g1t.sh/<workspace>` shows its
+  repositories with their open issues and pull requests, and the pull
+  requests in progress across all of them. Projects and initiatives will
+  roll up to the same page. Its own pages live under `/<workspace>/-/`
+  (people, access tokens, settings), which no repository can be named.
+- **Workspace access tokens instead of service accounts.** A workspace has
+  tokens of its own, in the same table and code path as personal ones. One
+  acts as the workspace, with a member's rights in that workspace only,
+  records who made it and when it was last used, and keeps working when
+  that person leaves. CI, integrations and automations use these.
+
 ### Portfolio
 
 One page answers "where is the business" across every initiative:
@@ -448,11 +516,62 @@ Decisions behind this:
 - **All hosted model traffic goes through Cloudflare AI Gateway.** That gives
   one place for spend tracking, budgets, rate limits, fallback and logs,
   whichever provider or endpoint is behind it.
+- **Nobody picks a model.** A person assigns work to `g1t-agent`, as they
+  would assign an issue to Copilot, and g1t routes it. Today the kind of
+  work decides (implementing, reviewing, catching up), from one setting on
+  the runner, and each request is tagged at the gateway with that kind, the
+  repository and the pull request. The session records which model ran.
+  The gateway's own dynamic routes cannot make the choice yet: they work
+  only on its OpenAI-compatible endpoint, and the harness speaks
+  Anthropic's.
 - **Subscriptions stay local.** A Claude subscription cannot be used by a
   hosted sandbox; it needs an API key. People on subscriptions use their own
   Claude Code session, which is a full participant.
+- **The workspace pays.** A workspace buys credit by card and each agent
+  run deducts what the model cost plus a margin. The billing service asks
+  nothing of the others: the runner asks it before starting a sandbox and
+  is refused when there is no credit, and the sandbox reports what its run
+  cost with a token only it holds. Where no card processor is configured
+  nothing is charged and agents stay limited to listed accounts.
 - **Keys are secrets.** Stored in Cloudflare Secrets Store, injected into the
   sandbox for one pull request, never shown again.
+
+### Seeing a pull request through
+
+Assigning an issue is the only thing a person does until there is something
+to merge. A pull request made by a g1t agent goes through checks, a review
+by another agent, revision when either finds something, and catching up
+when `main` moves, without anyone pressing a button. It ends as ready to
+merge, or as "needs you" with the reason: the checks still fail after two
+revisions, a review could not be written, or a conflict could not be
+resolved.
+
+The work service decides the next step from the pull request's state and
+claims it in one statement, so a step is taken once. The runner asks on
+every event that could change the answer (ready, pushed, checks finished,
+review finished, `main` moved), and on a five-minute sweep for anything
+missed, and carries the step out in a sandbox.
+
+A pull request does not have to be up to date with `main` to merge,
+unless the repository's settings require it, as on GitHub. Merging one that
+is behind brings it up to date first (a clean merge needs no model; an
+agent resolves a conflict) and lands it when that push arrives. With the
+requirement on, catching up is a step of its own and the checks run again
+on the result.
+
+Each repository sets its own rules, on one settings page: whether its
+default branch takes pushes at all, how many approvals a merge needs and
+whether an agent's counts, whether failed checks can be overridden, whether
+a second agent reviews, and how often an agent is sent back before a person
+is asked. A g1t agent's pull request follows the same rules as anyone's.
+Pushes to a protected branch are refused in the git front end, with the
+reason shown by git beside the branch.
+
+Merging is a person's decision unless the repository says otherwise. With
+"merge automatically when ready" turned on in its settings, a ready pull
+request lands by itself, attributed to `g1t`. That is the whole path from
+an assigned issue to a commit on `main` with nobody in between. Required
+human approval per path, and risk tiers, are still to come.
 
 ### Choosing the right agent automatically
 
@@ -486,9 +605,10 @@ compared. Underneath, the unit of work is still a branch and a pull request.
    token, report progress and submit. Adding it is one command; sign-in is a
    browser OAuth flow with no token to paste. The `g1t` CLI installs Claude
    Code hooks that upload the session transcript as the agent works.
-2. **g1t agents.** Assign up to five of g1t's own agents to an issue. g1t
-   starts a sandbox for each (Cloudflare Containers), running a coding agent
-   headless against its own pull request and fork.
+2. **g1t agents.** Assign an issue to g1t's own agent, or many issues at
+   once, each to an agent of its own. g1t starts a sandbox for each
+   (Cloudflare Containers), running a coding agent headless against its
+   own pull request and fork.
 3. **API and CLI.** Everything above is available at `api.g1t.sh` and
    through `g1t`.
 
@@ -497,7 +617,7 @@ compared. Underneath, the unit of work is still a branch and a pull request.
 | Host | What it serves |
 | --- | --- |
 | `g1t.sh` | The site, git over HTTPS, git over SSH |
-| `api.g1t.sh` | Versioned REST API with a published OpenAPI document, cursor pagination, rate-limit headers, idempotency keys on writes, server-sent events for live pull request state, and signed webhooks |
+| `api.g1t.sh` | REST API, with no version in its paths, with a published OpenAPI document, cursor pagination, rate-limit headers, idempotency keys on writes, server-sent events for live pull request state, and signed webhooks |
 | `mcp.g1t.sh` | Remote MCP server over streamable HTTP |
 
 g1t is its own OAuth 2.1 authorization server: authorization code with PKCE,
@@ -516,6 +636,7 @@ tokens and SSH keys remain for git itself.
 | `services/identity` | Rust | Worker + D1 | Accounts, workspaces and memberships, sessions, SSH keys, access tokens, device sign-in, OAuth codes and grants |
 | `services/repos` | Rust | Worker + D1 + Artifacts | Repository registry, contents, forks, diffs, landing, git over HTTPS. Storage sits behind a `GitStore` port with an Artifacts adapter. |
 | `services/work` | Rust | Worker + D1 | Issues, pull requests, comments, sessions; later a Durable Object per repo for the landing queue and live state |
+| `services/billing` | Rust | Worker + D1 + Stripe | Each workspace's agent credit: payments, the ledger of every run, and the gate on starting one |
 | `services/events` | Rust | Worker + Queues + D1 | The event bus: durable log, and one queue per subscribing service |
 | `services/runner`, `crates/runner` | TypeScript, Rust | Worker + Containers | Starts a sandbox per g1t agent; the program inside runs the agent harness and reports through the public API |
 | `apps/web` | TypeScript | Worker | Server-rendered site. Holds no data; calls services over RPC. |
@@ -641,29 +762,72 @@ for volume splits storage by how the data is read.
 
 ## Build order
 
+What is left is ordered by how much it shows the point above, not by forge
+parity. Forge basics are done well enough; each item below should make the
+demo's story stronger.
+
+1. **The outcome page.** One live view of a brief being converged: the issue
+   graph lighting up as agents take, finish, revise and land work; who is
+   blocked on whom; the queue draining into `main`; cost so far. The demo's
+   centrepiece.
+2. **Coordination you can see.** Agents use g1t's tools (opening issues for
+   out-of-scope work, commenting on each other's pull requests); show those
+   exchanges as first-class cards on the outcome page and in timelines, with
+   handoff and question states.
+3. **Steering a running agent.** Send a message to a working agent, pause it,
+   or answer its question from the page; it picks it up at its next turn.
+4. **Racing and comparing.** Several agents on one issue, compared side by side
+   with checks and review, the winner merged and the rest superseded.
+5. **Bring your own agent, recorded.** A CLI with Claude Code hooks so sessions
+   from anyone's machine land on the pull request automatically.
+6. **A visual identity that says "agents".** Isometric line-art of lanes,
+   branches converging and agents at work; a palette and type system to match.
+7. **The large run.** Dozens of agents on a real repository, end to end, for
+   the video; g1t hosted on g1t.
+
+
 Done: site with marketing page; separate docs site with API explorer; git
 over HTTPS; accounts with registration, email verification, password reset
 and device sign-in; an OAuth 2.1 server, so MCP clients sign in through the
-browser with no token to paste; workspaces with members; issues with labels, checks and
+browser with no token to paste; workspaces with members, required before
+anything else, sharing one namespace with usernames, each with a page that
+rolls up its repositories and work in progress; access tokens owned by a
+workspace; issues with labels, checks and
 comments; pull requests in forks or from branches, with diffs and sessions,
 several per issue; acceptance checks run in clean sandboxes, gating the
-merge; line comments and review verdicts; merging with a behind check, which resolves the issue and supersedes
-the rest; g1t agents in sandboxes with a choice of model; REST API, OpenAPI
-and MCP server; event bus. Every service and the API are in Rust.
+merge; a g1t agent's pull request seen through automatically, from checks
+and review to revision and catching up, to ready to merge, and merged by
+itself where the repository's settings say so; mission control showing
+every pull request in flight by where it stands; issues and pull requests assigned to people as well as to agents,
+reviewers requested, and every such step told in the conversation; agent
+usage charged to the workspace from prepaid credit; repository settings for branch protection, required
+approvals and how g1t's agents are reviewed and merged; line comments and review verdicts, including reviews written by a
+g1t agent; overlap between pull requests flagged from every push; catching
+up with `main` by a g1t agent that resolves conflicts; importing from
+GitHub; merging with a behind check, which resolves the issue and supersedes
+the rest; g1t agents in sandboxes, with the model routed by g1t rather than chosen; REST API, OpenAPI
+and MCP server; event bus; a speculative merge queue that tests each pull request together with those
+ahead of it and lands only states that passed, ejecting a failure back to its agent; agents told about
+the other work in flight, and a person's review outranking an agent's; a person asking for changes
+sending the agent back; why-blame from any line to the commit, pull request, issue and the agent's own
+account; commit pages and a diff view with a file tree, split view and viewed state; a sidebar app
+shell with a command palette. Every service and the API are in Rust.
 
-1. Branch protection, and deleting a branch once its pull request merges.
+Earlier items still open, after those:
+
+1. Deleting a branch once its pull request merges; approval rules per
+   path; risk tiers.
 2. Scopes on OAuth grants and access tokens.
 3. Event storage per the design above: per-repo hot log, Iceberg on R2,
    hash-chained audit.
 4. CLI with Claude Code hooks to record sessions automatically.
-5. Reviewer agents assigned automatically; required reviews; risk tiers.
-6. Server-side merge and rebase; landing queue with speculative checks;
-   resolve-on-move.
-7. Compare view, proof bundles; work registry, handoff.
-8. Projects, mission control, steering; why-blame, digest, timeline.
-9. Context hub, portfolio; automations and integrations (Sentry first).
-10. SSH; bot protection; own keys, endpoints and runners.
-11. Large run (100+ agents across many issues), hardening, demo.
+5. Reviewing and catching up automatically, by policy; required reviews;
+   risk tiers.
+6. Compare view, proof bundles; handoff between agents.
+7. Projects, mission control, steering; why-blame, digest, timeline.
+8. Context hub, portfolio; automations and integrations (Sentry first).
+9. SSH; bot protection; own keys, endpoints and runners.
+10. Large run (100+ agents across many issues), hardening, demo.
 
 Later: code search, mirroring to GitHub, passkeys, SSH
 on port 22 without the CLI proxy (needs the Workers inbound TCP private

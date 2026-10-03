@@ -5,8 +5,10 @@
 //! `g1t_contracts::repos` for the methods and their arguments. Any other
 //! request is treated as git's smart HTTP protocol.
 
+mod blame;
 mod diff;
 mod git_http;
+mod import;
 mod land;
 mod refs;
 mod registry;
@@ -15,7 +17,7 @@ mod store;
 use g1t_contracts::events::{GitPush, NewEvent, Publish, RepoCreated, RepoForked};
 use g1t_contracts::repos::*;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::{FailureCode, Outcome, User, Viewer, is_valid_repo_name, new_id};
+use g1t_contracts::{FailureCode, Outcome, PrincipalKind, User, Viewer, is_valid_repo_name, new_id};
 use g1t_kit::{args, now_ms, reply, rpc_method};
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -30,6 +32,7 @@ const PULLS_NAMESPACE: &str = "pulls";
 const MAX_TEXT_BYTES: usize = 512 * 1024;
 /// How far back a pull request may have forked and still be landed.
 const MAX_ANCESTRY: u32 = 1000;
+const MAX_DESCRIPTION_CHARS: usize = 200;
 const SOURCE: &str = "repos";
 const UNVERIFIED: &str = "Confirm your email address first. Check your inbox, or resend the link from the banner on g1t.sh.";
 
@@ -38,6 +41,11 @@ fn not_found<T>() -> Outcome<T> {
 }
 
 /// Decoded text, or `None` when the file is too large or looks binary.
+/// Whether a ref is a full commit hash rather than a branch name.
+fn is_commit_hash(git_ref: &str) -> bool {
+    git_ref.len() == 40 && git_ref.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 fn text_of(bytes: Vec<u8>) -> Option<String> {
     if bytes.len() > MAX_TEXT_BYTES || bytes.contains(&0) {
         return None;
@@ -179,6 +187,43 @@ impl<S: GitStore> Repos<S> {
             .map_or_else(not_found, Outcome::Ok))
     }
 
+    async fn update(&self, a: UpdateArgs) -> Result<Outcome<Repo>> {
+        let viewer = Some(a.actor.clone());
+        let Some(repo) = self.readable(&a.path, &viewer).await? else {
+            return Ok(not_found());
+        };
+        if repo.fork_of.is_some() || !can_write(&repo, &viewer) {
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                "Only members of the repository's workspace can change its settings.",
+            ));
+        }
+        if !a.actor.verified {
+            return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
+        }
+        let description = match a.description {
+            Some(text) => Some(
+                text.trim()
+                    .chars()
+                    .take(MAX_DESCRIPTION_CHARS)
+                    .collect::<String>(),
+            )
+            .filter(|text| !text.is_empty()),
+            None => repo.description.clone(),
+        };
+        let is_private = a.is_private.unwrap_or(repo.is_private);
+        let protected = a.protected.unwrap_or(repo.protected);
+        self.registry
+            .update(&repo.id, description.as_deref(), is_private, protected)
+            .await?;
+        Ok(Outcome::Ok(Repo {
+            description,
+            is_private,
+            protected,
+            ..repo
+        }))
+    }
+
     async fn create(&self, a: CreateArgs) -> Result<Outcome<Repo>> {
         if !a.owner.verified {
             return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
@@ -210,6 +255,31 @@ impl<S: GitStore> Repos<S> {
                 "That workspace already has a repository with that name.",
             ));
         }
+        // An import is fetched before anything is created, so that an
+        // address that does not work leaves nothing behind.
+        let mut imported = None;
+        if let Some(url) = a
+            .import_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|url| !url.is_empty())
+        {
+            let Some(url) = import::clean_url(url) else {
+                return Ok(Outcome::fail(
+                    FailureCode::Invalid,
+                    "Give the https address of a public repository, such as https://github.com/owner/repo.",
+                ));
+            };
+            let remote = match import::discover(&url).await? {
+                Ok(remote) => remote,
+                Err(reason) => return Ok(Outcome::fail(FailureCode::Invalid, reason)),
+            };
+            let pack = match import::fetch(&url, &remote.head).await? {
+                Ok(pack) => pack,
+                Err(reason) => return Ok(Outcome::fail(FailureCode::Invalid, reason)),
+            };
+            imported = Some((remote, pack));
+        }
         let now = now_ms();
         let repo = Repo {
             id: new_id("rep", now),
@@ -221,8 +291,11 @@ impl<S: GitStore> Repos<S> {
                 .filter(|text| !text.is_empty()),
             is_private: a.is_private,
             owner_id: a.owner.id.clone(),
-            default_branch: "main".to_owned(),
+            default_branch: imported
+                .as_ref()
+                .map_or_else(|| "main".to_owned(), |(remote, _)| remote.branch.clone()),
             fork_of: None,
+            protected: false,
             created_at: rfc3339(now),
         };
         self.store
@@ -233,6 +306,25 @@ impl<S: GitStore> Repos<S> {
             )
             .await?;
         self.registry.insert(&repo).await?;
+        let mut pushed = None;
+        if let Some((remote, pack)) = imported {
+            let access = self
+                .store
+                .open(&store_key(&repo))
+                .await?
+                .access(Scope::Write)
+                .await?;
+            let stored =
+                land::push_pack(&access, &repo.default_branch, None, &remote.head, pack).await?;
+            if let Err(reason) = stored {
+                self.registry.remove(&repo.id).await?;
+                return Ok(Outcome::fail(
+                    FailureCode::Invalid,
+                    format!("The repository could not be stored: {reason}"),
+                ));
+            }
+            pushed = Some(remote.head);
+        }
         self.publish(NewEvent {
             kind: "repo.created",
             source: SOURCE,
@@ -246,6 +338,10 @@ impl<S: GitStore> Repos<S> {
             },
         })
         .await?;
+        if let Some(head) = pushed {
+            self.publish_push(&repo, &repo.default_branch, &head, None)
+                .await?;
+        }
         Ok(Outcome::Ok(repo))
     }
 
@@ -342,6 +438,18 @@ impl<S: GitStore> Repos<S> {
         }))
     }
 
+    async fn blame(&self, a: BlameArgs) -> Result<Outcome<Blame>> {
+        let Some(repo) = self.readable(&a.path, &a.viewer).await? else {
+            return Ok(not_found());
+        };
+        let git = self.store.open(&store_key(&repo)).await?;
+        let git_ref = a.git_ref.unwrap_or_else(|| repo.default_branch.clone());
+        Ok(match blame::blame(&git, &git_ref, &a.file_path).await? {
+            Some(blame) => Outcome::Ok(blame),
+            None => not_found(),
+        })
+    }
+
     async fn log(&self, a: LogArgs) -> Result<Outcome<Vec<Commit>>> {
         let Some(repo) = self.readable(&a.path, &a.viewer).await? else {
             return Ok(not_found());
@@ -359,6 +467,40 @@ impl<S: GitStore> Repos<S> {
         let mut branches = self.store.open(&store_key(&repo)).await?.branches().await?;
         branches.sort_by_key(|branch| branch.name != repo.default_branch);
         Ok(Outcome::Ok(branches))
+    }
+
+    /// Whether a pull request's source lacks commits that the branch it
+    /// would merge into has.
+    async fn behind(&self, a: BehindArgs) -> Result<bool> {
+        let Some(source) = self.registry.by_id(&a.source_id).await? else {
+            return Ok(false);
+        };
+        let target = match &source.fork_of {
+            Some(id) => self.registry.by_id(id).await?,
+            None => Some(source.clone()),
+        };
+        let Some(target) = target else {
+            return Ok(false);
+        };
+        let branch = a.branch.unwrap_or_else(|| target.default_branch.clone());
+        let target_head = self
+            .store
+            .open(&store_key(&target))
+            .await?
+            .log(&target.default_branch, 1)
+            .await?
+            .into_iter()
+            .next()
+            .map(|commit| commit.hash);
+        let Some(target_head) = target_head else {
+            return Ok(false);
+        };
+        let source_git = self.store.open(&store_key(&source)).await?;
+        let history = source_git.log(&branch, MAX_ANCESTRY).await?;
+        if history.is_empty() {
+            return Ok(false);
+        }
+        Ok(!descends_from(&source_git, &history, &target_head).await?)
     }
 
     async fn head(&self, a: HeadArgs) -> Result<Option<String>> {
@@ -395,6 +537,7 @@ impl<S: GitStore> Repos<S> {
             owner_id: a.actor.id.clone(),
             default_branch: source.default_branch.clone(),
             fork_of: Some(source.id.clone()),
+            protected: false,
             created_at: rfc3339(now),
         };
         self.store
@@ -426,6 +569,14 @@ impl<S: GitStore> Repos<S> {
             Some(_) => not_found(),
             None => Outcome::fail(FailureCode::Unauthenticated, "Authentication required."),
         };
+        // An agent's token works through the API only: its sandbox has its
+        // own way to push, to its own pull request.
+        if a.viewer.as_ref().is_some_and(|user| user.kind == PrincipalKind::Agent) {
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                "A g1t agent's token cannot be used with git.",
+            ));
+        }
         if let (true, Some(user)) = (write, &a.viewer)
             && !user.verified
         {
@@ -460,6 +611,7 @@ impl<S: GitStore> Repos<S> {
                         name: a.path.name.clone(),
                         description: None,
                         is_private: false,
+                        import_url: None,
                     })
                     .await?;
                 match created {
@@ -584,7 +736,10 @@ impl<S: GitStore> Repos<S> {
         };
         let git = self.store.open(&store_key(&repo)).await?;
         let head_ref = a.head.as_deref().unwrap_or(&repo.default_branch);
-        let history = git.log(head_ref, MAX_ANCESTRY).await?;
+        // The head's history is only searched when the base is worked out
+        // from another branch.
+        let depth = if a.base.is_some() || is_commit_hash(head_ref) { 1 } else { MAX_ANCESTRY };
+        let history = git.log(head_ref, depth).await?;
         let Some(head) = history.first() else {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
@@ -612,6 +767,8 @@ impl<S: GitStore> Repos<S> {
                 None => None,
             },
             // A branch, with the point where it left the default branch.
+            // A single commit, with its first parent.
+            (None, None) if is_commit_hash(head_ref) => head.parents.first().cloned(),
             (None, None) if head_ref != repo.default_branch => shared_with(&repo).await?,
             (None, None) => head.parents.first().cloned(),
         };
@@ -674,7 +831,17 @@ impl<S: GitStore> Repos<S> {
             Outcome::Ok(access) => access,
             refused => return git_http::refuse(refused),
         };
-        let forwarded = git_http::forward(request, &git, &access).await?;
+        // A protected default branch takes changes only from a merged pull
+        // request, which lands without going through here.
+        let protected = match self.registry.by_path(&git.path).await? {
+            Some(repo) if repo.protected && repo.fork_of.is_none() => Some(repo.default_branch),
+            _ => None,
+        };
+        let forwarded =
+            match git_http::forward(request, &git, &access, protected.as_deref()).await? {
+                git_http::Push::Forwarded(forwarded) => forwarded,
+                git_http::Push::Refused(response) => return Ok(response),
+            };
 
         // Artifacts' own push notifications are per repository, which does
         // not fit a repo per pull request, so the front end reports pushes
@@ -727,13 +894,16 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
             )
         }
         "create" => reply(&repos.create(args(body)?).await?),
+        "update" => reply(&repos.update(args(body)?).await?),
         "tree" => reply(&repos.tree(args(body)?).await?),
         "blob" => reply(&repos.blob(args(body)?).await?),
         "log" => reply(&repos.log(args(body)?).await?),
+        "blame" => reply(&repos.blame(args(body)?).await?),
         "fork_for_pull" => reply(&repos.fork_for_pull(args(body)?).await?),
         "git_access" => reply(&repos.git_access(args(body)?).await?),
         "branches" => reply(&repos.branches(args(body)?).await?),
         "head" => reply(&repos.head(args(body)?).await?),
+        "behind" => reply(&repos.behind(args(body)?).await?),
         "land" => reply(&repos.land(args(body)?).await?),
         "compare" => reply(&repos.compare(args(body)?).await?),
         _ => Response::error("Unknown method", 404),

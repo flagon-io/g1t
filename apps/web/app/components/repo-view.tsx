@@ -1,7 +1,9 @@
 import { BookOpen, File, Folder, FolderGit2 } from "lucide-react";
 import { Link } from "react-router";
 
-import type { BlobView as Blob, Commit, TreeView as Tree } from "@g1t/contracts";
+import type { Blame, BlobView as Blob, Commit, TreeView as Tree } from "@g1t/contracts";
+
+import { BlameView } from "./blame-view";
 
 import { CloneBox } from "./clone-box";
 import { Markdown } from "./markdown";
@@ -129,7 +131,12 @@ export function TreeView({ tree }: { tree: Tree }) {
             </h2>
             <div className="p-6">
               {/\.(md|markdown)$/i.test(readme.name) ? (
-                <Markdown source={readme.text} />
+                <Markdown
+                  source={readme.text}
+                  repo={{ namespace: repo.namespace, name: repo.name }}
+                  // Relative links in a README point into the repository.
+                  base={`/${repo.namespace}/${repo.name}/blob/${ref}${path ? `/${path}` : ""}`}
+                />
               ) : (
                 <pre className="whitespace-pre-wrap text-sm">{readme.text}</pre>
               )}
@@ -164,13 +171,26 @@ export function TreeView({ tree }: { tree: Tree }) {
 export function BlobView({
   blob,
   html,
+  blame,
 }: {
   blob: Blob;
   /** Syntax-highlighted HTML, when the language is known. */
   html: string | null;
+  /** Shown instead of the plain file when asked for, with HTML per line. */
+  blame?: { blame: Blame; lines: string[] | null } | null;
 }) {
   const { repo, ref, path, size, text } = blob;
   const lines = text?.replace(/\n$/, "").split("\n");
+  const base = `/${repo.namespace}/${repo.name}`;
+  const toggle = (label: string, on: boolean, search: string) => (
+    <Link
+      to={{ search }}
+      preventScrollReset
+      className={`rounded px-2 py-0.5 transition-colors ${on ? "bg-raised text-fg" : "hover:text-fg"}`}
+    >
+      {label}
+    </Link>
+  );
   return (
     <div>
       <Breadcrumbs
@@ -183,8 +203,16 @@ export function BlobView({
         <div className="flex items-center gap-3 border-b border-line bg-surface px-4 py-2.5 text-xs text-muted">
           {lines && <span>{lines.length.toLocaleString("en-US")} lines</span>}
           <span>{size.toLocaleString("en-US")} bytes</span>
+          {lines && (
+            <span className="ml-auto flex rounded-md border border-line p-0.5">
+              {toggle("Code", !blame, "")}
+              {toggle("Blame", Boolean(blame), "?blame=1")}
+            </span>
+          )}
         </div>
-        {html ? (
+        {blame && lines ? (
+          <BlameView base={base} path={path} lines={lines} html={blame.lines} blame={blame.blame} />
+        ) : html ? (
           <div
             className="overflow-x-auto py-3 pr-4"
             // Shiki escapes the source; this is its generated markup.

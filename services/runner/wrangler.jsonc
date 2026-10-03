@@ -13,7 +13,11 @@
 			"image": "./Dockerfile",
 			"image_build_context": "../..",
 			"instance_type": "standard-1",
-			"max_instances": 10
+			"max_instances": 20,
+			// A deploy replaces sandboxes. Ones that are busy are given this
+			// long, in seconds, to finish first, so shipping g1t does not
+			// kill agents in the middle of their work.
+			"rollout_active_grace_period": 7200
 		}
 	],
 	"durable_objects": {
@@ -22,19 +26,25 @@
 	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["AttemptSandbox"] }],
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
-		{ "binding": "WORK", "service": "g1t-work" }
+		{ "binding": "REPOS", "service": "g1t-repos" },
+		{ "binding": "WORK", "service": "g1t-work" },
+		{ "binding": "BILLING", "service": "g1t-billing" }
 	],
+	// A sweep for lifecycle steps whose trigger was missed or whose sandbox
+	// died before reporting.
+	"triggers": { "crons": ["*/5 * * * *"] },
 	// Events it reacts to: a pull request ready for review, or its head moving.
 	"queues": {
 		"consumers": [{ "queue": "g1t-events-runner", "max_batch_size": 20, "max_batch_timeout": 1 }]
 	},
 	"vars": {
 		"HOSTED_AGENT_USERS": "syntaqx",
-		// What a person can choose when starting g1t agents. The first is the
-		// default. "modelName" is shown to people; "model" is sent to the provider.
-		"AGENT_MODELS": "[{\"id\":\"balanced\",\"label\":\"Balanced\",\"description\":\"Good at most tasks.\",\"modelName\":\"Claude Sonnet 5.5\",\"model\":\"claude-sonnet-5-5\"},{\"id\":\"deep\",\"label\":\"Deep\",\"description\":\"Strongest reasoning; slower and costlier.\",\"modelName\":\"Claude Opus 5.5\",\"model\":\"claude-opus-5-5\"},{\"id\":\"fast\",\"label\":\"Fast\",\"description\":\"Quick and cheap, for small changes.\",\"modelName\":\"Claude Haiku 4.5\",\"model\":\"claude-haiku-4-5-20251001\"}]",
+		// Which model each kind of work runs on. Nobody assigning an agent
+		// chooses; this is g1t's policy. "modelName" is shown to people in the
+		// session; "model" is sent to the provider.
+		"AGENT_ROUTES": "{\"implement\":{\"modelName\":\"Claude Sonnet 5.5\",\"model\":\"claude-sonnet-5-5\"},\"review\":{\"modelName\":\"Claude Sonnet 5.5\",\"model\":\"claude-sonnet-5-5\"},\"update\":{\"modelName\":\"Claude Sonnet 5.5\",\"model\":\"claude-sonnet-5-5\"},\"plan\":{\"modelName\":\"Claude Sonnet 5.5\",\"model\":\"claude-sonnet-5-5\"}}",
 		// Set to a Cloudflare AI Gateway id to route model traffic through it.
-		"AI_GATEWAY_ID": "",
+		"AI_GATEWAY_ID": "g1t",
 		"CLOUDFLARE_ACCOUNT_ID": "1e6f2cffa3f445920836e8ebe446bb58"
 	},
 	"observability": { "enabled": true }

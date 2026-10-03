@@ -5,14 +5,21 @@
 //! consumes its queue of events from the bus.
 
 mod checks;
+mod lifecycle;
+mod plans;
+mod queue;
+mod reviews;
 mod rows;
+mod settings;
 
 use g1t_contracts::events::{
     CommentCreated, Event, IssueEvent, NewEvent, Publish, PullEvent, SessionAppended,
 };
+use g1t_contracts::identity::UsernameArgs;
 use g1t_contracts::repos::{ForkArgs, GetArgs, HeadArgs, LandArgs, Landed, Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
+use futures_util::future::{try_join, try_join3, try_join_all};
 use g1t_contracts::{FailureCode, Outcome, User, Viewer, new_id};
 use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::Serialize;
@@ -21,7 +28,7 @@ use worker::{
     Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, Request, Response, Result, event,
 };
 
-use rows::{CommentRow, IssueRow, MovedRow, NumberRow, PullRow, SessionRow, ValueRow};
+use rows::{CommentRow, IssueRow, MovedRow, NumberRow, PullRow, SessionRow, Snapshot, ValueRow};
 
 const SOURCE: &str = "work";
 const MAX_ENTRY_BATCH: usize = 200;
@@ -29,12 +36,18 @@ const MAX_ENTRY_CHARS: usize = 64_000;
 const MAX_TITLE_CHARS: usize = 200;
 const SESSION_PAGE: u32 = 500;
 const LIST_PAGE: u32 = 100;
+const MAX_ASSIGNEES: usize = 10;
 const UNVERIFIED: &str = "Confirm your email address first. Check your inbox, or resend the link from the banner on g1t.sh.";
 
 const ISSUE_COLUMNS: &str = "issues.*,
   (SELECT count(*) FROM pulls WHERE pulls.issue_id = issues.id) AS pull_count,
+  (SELECT agent FROM pulls
+   WHERE pulls.issue_id = issues.id AND pulls.status IN ('draft', 'open')
+     AND pulls.fork_repo_id IS NOT NULL
+   ORDER BY pulls.number DESC LIMIT 1) AS agent,
   (SELECT count(*) FROM comments
-   WHERE comments.repo_id = issues.repo_id AND comments.number = issues.number) AS comment_count";
+   WHERE comments.repo_id = issues.repo_id AND comments.number = issues.number
+     AND comments.kind = 'comment') AS comment_count";
 
 fn no_issue<T>() -> Outcome<T> {
     Outcome::fail(FailureCode::NotFound, "Issue not found.")
@@ -84,6 +97,7 @@ macro_rules! check {
 
 struct Work {
     db: D1Database,
+    identity: Fetcher,
     repos: Fetcher,
     events: Fetcher,
 }
@@ -221,6 +235,74 @@ impl Work {
             Some(pull) => Outcome::Ok((repo, pull)),
             None => no_pull(),
         })
+    }
+
+    /// Records something that happened to an issue or a pull request, so
+    /// that it shows in the conversation where it happened. `text` is what
+    /// `author` did, as the rest of a sentence starting with their name.
+    pub(crate) async fn note(
+        &self,
+        repo_id: &str,
+        number: u32,
+        author: (&str, &str),
+        text: &str,
+    ) -> Result<()> {
+        let now = now_ms();
+        self.db
+            .prepare(
+                "INSERT INTO comments
+                   (id, repo_id, number, author_id, author_name, body, kind, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, 'event', ?)",
+            )
+            .bind(&[
+                new_id("cmt", now).into(),
+                repo_id.into(),
+                number.into(),
+                author.0.into(),
+                author.1.into(),
+                text.into(),
+                rfc3339(now).into(),
+            ])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    /// Notes who was added to and removed from a list of people, such as
+    /// "assigned ana" or "requested a review from g1t-agent".
+    async fn note_changes(
+        &self,
+        repo_id: &str,
+        number: u32,
+        actor: &User,
+        before: &[String],
+        after: &[String],
+        (added, removed): (&str, &str),
+    ) -> Result<()> {
+        let joined = |names: Vec<&String>| {
+            names
+                .into_iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let new: Vec<&String> = after.iter().filter(|name| !before.contains(name)).collect();
+        let gone: Vec<&String> = before.iter().filter(|name| !after.contains(name)).collect();
+        let who = (actor.id.as_str(), actor.username.as_str());
+        if !new.is_empty() {
+            // Taking something on oneself reads better said that way.
+            let text = if added == "assigned" && new == [&actor.username] {
+                "self-assigned this".to_owned()
+            } else {
+                format!("{added} {}", joined(new))
+            };
+            self.note(repo_id, number, who, &text).await?;
+        }
+        if !gone.is_empty() {
+            self.note(repo_id, number, who, &format!("{removed} {}", joined(gone)))
+                .await?;
+        }
+        Ok(())
     }
 
     fn issue_event(issue: &Issue) -> IssueEvent {
@@ -388,23 +470,31 @@ impl Work {
             Some(Some(labels)) => Some(serde_json::to_string(&labels)?),
             None => None,
         };
+        let assignees = match a.assignees {
+            Some(names) => Some(check!(self.valid_assignees(names).await?)),
+            None => None,
+        };
+        let assigned = assignees.as_ref().map(serde_json::to_string).transpose()?;
         let body = a.body.map(|body| body.trim().to_owned());
         self.db
             .prepare(
                 "UPDATE issues
                  SET title = COALESCE(?, title), body = COALESCE(?, body),
-                     labels = COALESCE(?, labels), updated_at = ?
+                     labels = COALESCE(?, labels), assignees = COALESCE(?, assignees),
+                     updated_at = ?
                  WHERE id = ?",
             )
             .bind(&[
                 optional(&title),
                 optional(&body),
                 optional(&labels),
+                optional(&assigned),
                 rfc3339(now_ms()).into(),
                 issue.id.as_str().into(),
             ])?
             .run()
             .await?;
+        let before = issue.assignees.clone();
         let Some(issue) = self.issue(&issue.repo_id, issue.number).await? else {
             return Ok(no_issue());
         };
@@ -415,7 +505,82 @@ impl Work {
             Self::issue_event(&issue),
         )
         .await?;
+        if let Some(assignees) = assignees {
+            self.note_changes(
+                &issue.repo_id,
+                issue.number,
+                &a.actor,
+                &before,
+                &assignees,
+                ("assigned", "unassigned"),
+            )
+            .await?;
+            self.publish(
+                "issue.assigned",
+                &issue.repo_id,
+                &a.actor,
+                IssueEvent {
+                    assignees: Some(assignees),
+                    ..Self::issue_event(&issue)
+                },
+            )
+            .await?;
+        }
         Ok(Outcome::Ok(issue))
+    }
+
+    /// Usernames as given, tidied, if each names an account.
+    async fn valid_assignees(&self, names: Vec<String>) -> Result<Outcome<Vec<String>>> {
+        let mut assignees: Vec<String> = Vec::new();
+        for name in names {
+            let name = name.trim().trim_start_matches('@').to_lowercase();
+            if name.is_empty() || assignees.contains(&name) {
+                continue;
+            }
+            if assignees.len() == MAX_ASSIGNEES {
+                return Ok(Outcome::fail(
+                    FailureCode::Invalid,
+                    format!("An issue can be assigned to at most {MAX_ASSIGNEES} people."),
+                ));
+            }
+            let account: Viewer = g1t_kit::call(
+                &self.identity,
+                "user_by_username",
+                &UsernameArgs {
+                    username: name.clone(),
+                },
+            )
+            .await?;
+            if account.is_none() {
+                return Ok(Outcome::fail(
+                    FailureCode::Invalid,
+                    format!("There is no account named {name}."),
+                ));
+            }
+            assignees.push(name);
+        }
+        Ok(Outcome::Ok(assignees))
+    }
+
+    /// Open issues assigned to the viewer, in every repository. Callers
+    /// show only those in repositories the viewer can still see.
+    async fn list_assigned_issues(&self, a: ViewerArgs) -> Result<Vec<Issue>> {
+        let Some(viewer) = a.viewer else {
+            return Ok(Vec::new());
+        };
+        let rows = self
+            .db
+            .prepare(format!(
+                "SELECT {ISSUE_COLUMNS} FROM issues
+                 WHERE state = 'open' AND EXISTS (
+                   SELECT 1 FROM json_each(issues.assignees) WHERE json_each.value = ?)
+                 ORDER BY updated_at DESC LIMIT 50"
+            ))
+            .bind(&[viewer.username.into()])?
+            .all()
+            .await?
+            .results::<IssueRow>()?;
+        Ok(rows.into_iter().map(Issue::from).collect())
     }
 
     async fn close_issue(&self, a: IssueActionArgs) -> Result<Outcome<Issue>> {
@@ -451,6 +616,16 @@ impl Work {
             },
         )
         .await?;
+        self.note(
+            &issue.repo_id,
+            issue.number,
+            (&a.actor.id, &a.actor.username),
+            match reason {
+                IssueReason::Completed => "closed this as completed",
+                IssueReason::NotPlanned => "closed this as not planned",
+            },
+        )
+        .await?;
         issue.state = State::Closed;
         issue.reason = Some(reason);
         issue.closed_at = Some(now.clone());
@@ -482,6 +657,13 @@ impl Work {
             &issue.repo_id,
             &a.actor,
             Self::issue_event(&issue),
+        )
+        .await?;
+        self.note(
+            &issue.repo_id,
+            issue.number,
+            (&a.actor.id, &a.actor.username),
+            "reopened this",
         )
         .await?;
         issue.state = State::Open;
@@ -562,6 +744,7 @@ impl Work {
         }
         let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
         // The number names an issue or a pull request, never both.
+        let mut pull_id = None;
         let table = if self.issue(&repo.id, a.number).await?.is_some() {
             if path.is_some() || a.verdict.is_some() {
                 return Ok(Outcome::fail(
@@ -577,6 +760,7 @@ impl Work {
                     "You cannot approve or request changes on your own pull request.",
                 ));
             }
+            pull_id = Some(pull.id.clone());
             "pulls"
         } else {
             return Ok(Outcome::fail(
@@ -587,6 +771,7 @@ impl Work {
 
         let now = now_ms();
         let comment = Comment {
+            kind: CommentKind::Comment,
             id: new_id("cmt", now),
             author: a.actor.clone(),
             body: body.to_owned(),
@@ -636,6 +821,8 @@ impl Work {
                 comment_id: comment.id.clone(),
                 repo_id: repo.id.clone(),
                 number: a.number,
+                pull_id,
+                verdict: a.verdict,
             },
         )
         .await?;
@@ -783,6 +970,24 @@ impl Work {
         let Some(pull) = self.pull(&repo.id, number).await? else {
             return Ok(no_pull());
         };
+        self.manage(&pull).await?;
+        // Someone is on it now, so it is no longer waiting for an agent.
+        if let Some(issue) = pull.issue {
+            self.db
+                .prepare("UPDATE issues SET queued_by = NULL WHERE repo_id = ? AND number = ?")
+                .bind(&[repo.id.as_str().into(), issue.into()])?
+                .run()
+                .await?;
+        }
+        if let Some(issue) = pull.issue {
+            let text = if lifecycle::made_by_g1t(&pull) {
+                format!("assigned this to g1t-agent, which opened #{}", pull.number)
+            } else {
+                format!("opened #{} for this", pull.number)
+            };
+            self.note(&repo.id, issue, (&a.actor.id, &a.actor.username), &text)
+                .await?;
+        }
         self.publish(
             "pull.opened",
             &repo.id,
@@ -821,9 +1026,41 @@ impl Work {
             Some(number) => self.issue(&repo.id, number).await?,
             None => None,
         };
+        let mut pull = pull;
+        // Worked out on each push; this covers a pull request from before
+        // that was recorded.
+        if pull.files.is_empty() && pull.head_commit.is_some() {
+            pull.files = self.refresh_files(&pull).await?;
+        }
+        // Everything else at once: none of it depends on the rest, and each
+        // is a round trip of its own.
+        let standing = async {
+            let behind = self.is_behind(&repo.id, &pull).await?;
+            let lifecycle = self
+                .assess(&pull, &issue, behind)
+                .await?
+                .map(|(lifecycle, _)| lifecycle);
+            Ok::<_, worker::Error>((behind, lifecycle))
+        };
+        let (((behind, lifecycle), (landing, stalled), comments), (checks, overlaps, review_pending)) =
+            try_join(
+                try_join3(standing, self.landing_state(&pull.id), self.comments(&repo.id, pull.number)),
+                try_join3(
+                    self.latest_checks(&pull.id),
+                    self.overlaps(&pull),
+                    self.review_pending(&pull.id),
+                ),
+            )
+            .await?;
         Ok(Outcome::Ok(PullDetail {
-            comments: self.comments(&repo.id, pull.number).await?,
-            checks: self.latest_checks(&pull.id).await?,
+            comments,
+            checks,
+            overlaps,
+            behind,
+            review_pending,
+            lifecycle,
+            landing,
+            stalled,
             issue,
             pull,
         }))
@@ -853,6 +1090,77 @@ impl Work {
         Ok(Outcome::Ok(pull))
     }
 
+    async fn update_pull(&self, a: UpdatePullArgs) -> Result<Outcome<Pull>> {
+        let pull = check!(self.manageable_pull(&a.actor, &a.repo, a.number).await?);
+        let assignees = match a.assignees {
+            Some(names) => Some(check!(self.valid_assignees(names).await?)),
+            None => None,
+        };
+        let reviewers = match a.reviewers {
+            Some(names) => {
+                // A g1t agent is not an account; everyone else has to be.
+                let agent = names
+                    .iter()
+                    .any(|name| name.trim().eq_ignore_ascii_case(reviews::AGENT_NAME));
+                let people = names
+                    .into_iter()
+                    .filter(|name| !name.trim().eq_ignore_ascii_case(reviews::AGENT_NAME))
+                    .collect();
+                let mut reviewers = check!(self.valid_assignees(people).await?);
+                reviewers.retain(|name| *name != pull.author.username);
+                if agent {
+                    reviewers.insert(0, reviews::AGENT_NAME.to_owned());
+                }
+                Some(reviewers)
+            }
+            None => None,
+        };
+        self.db
+            .prepare(
+                "UPDATE pulls
+                 SET assignees = COALESCE(?, assignees), reviewers = COALESCE(?, reviewers),
+                     updated_at = ?
+                 WHERE id = ?",
+            )
+            .bind(&[
+                optional(&assignees.as_ref().map(serde_json::to_string).transpose()?),
+                optional(&reviewers.as_ref().map(serde_json::to_string).transpose()?),
+                rfc3339(now_ms()).into(),
+                pull.id.as_str().into(),
+            ])?
+            .run()
+            .await?;
+        if let Some(assignees) = &assignees {
+            self.note_changes(
+                &pull.repo_id,
+                pull.number,
+                &a.actor,
+                &pull.assignees,
+                assignees,
+                ("assigned", "unassigned"),
+            )
+            .await?;
+        }
+        if let Some(reviewers) = &reviewers {
+            self.note_changes(
+                &pull.repo_id,
+                pull.number,
+                &a.actor,
+                &pull.reviewers,
+                reviewers,
+                (
+                    "requested a review from",
+                    "withdrew the request for a review from",
+                ),
+            )
+            .await?;
+        }
+        Ok(match self.pull(&pull.repo_id, pull.number).await? {
+            Some(pull) => Outcome::Ok(pull),
+            None => no_pull(),
+        })
+    }
+
     /// Marks a draft ready for review, or updates the description of one
     /// that already is.
     async fn ready_pull(&self, a: PullActionArgs) -> Result<Outcome<Pull>> {
@@ -880,6 +1188,15 @@ impl Work {
             )
             .await?;
         }
+        if pull.status == PullStatus::Draft {
+            self.note(
+                &pull.repo_id,
+                pull.number,
+                (&a.actor.id, &a.actor.username),
+                "marked this ready for review",
+            )
+            .await?;
+        }
         pull.status = PullStatus::Open;
         pull.body = summary.or(pull.body);
         pull.updated_at = now;
@@ -901,6 +1218,28 @@ impl Work {
             Self::pull_event(&pull),
         )
         .await?;
+        self.note(
+            &pull.repo_id,
+            pull.number,
+            (&a.actor.id, &a.actor.username),
+            "closed this",
+        )
+        .await?;
+        // A closed pull request leaves the merge queue.
+        if self
+            .leave(&pull.repo_id, &pull, QueueState::Removed, Some("It was closed."))
+            .await?
+        {
+            self.publish_as(
+                "queue.changed",
+                &pull.repo_id,
+                None,
+                g1t_contracts::events::QueueChanged {
+                    repo_id: pull.repo_id.clone(),
+                },
+            )
+            .await?;
+        }
         pull.status = PullStatus::Closed;
         pull.updated_at = now;
         Ok(Outcome::Ok(pull))
@@ -912,7 +1251,7 @@ impl Work {
     /// for it close as superseded.
     async fn merge_pull(&self, a: PullActionArgs) -> Result<Outcome<Pull>> {
         let viewer = Some(a.actor.clone());
-        let (repo, mut pull) = check!(self.pull_at(&a.repo, a.number, &viewer).await?);
+        let (repo, pull) = check!(self.pull_at(&a.repo, a.number, &viewer).await?);
         match pull.status {
             PullStatus::Open => {}
             PullStatus::Draft => {
@@ -928,7 +1267,10 @@ impl Work {
                 ));
             }
         }
-        if !a.ignore_checks {
+        let settings = self.settings(&repo.id).await?;
+        // Where the repository does not allow it, asking to ignore the
+        // checks changes nothing.
+        if !a.ignore_checks || !settings.allow_ignoring_checks {
             let waiting = match pull.check_status {
                 Some(CheckStatus::Queued | CheckStatus::Running) => {
                     Some("The acceptance checks are still running.")
@@ -938,19 +1280,62 @@ impl Work {
                 Some(CheckStatus::Passed) | None => None,
             };
             if let Some(reason) = waiting {
+                let remedy = if settings.allow_ignoring_checks {
+                    "Wait or fix them, or merge anyway by ignoring the checks."
+                } else {
+                    "This repository only merges pull requests whose checks pass."
+                };
                 return Ok(Outcome::fail(
                     FailureCode::Conflict,
-                    format!("{reason} Wait or fix them, or merge anyway by ignoring the checks."),
+                    format!("{reason} {remedy}"),
                 ));
             }
         }
-        let issue = match pull.issue {
-            Some(number) if !a.keep_issue_open => self
-                .issue(&repo.id, number)
-                .await?
-                .filter(|issue| issue.state == State::Open),
-            _ => None,
-        };
+        if let Some(missing) = self.approvals_gap(&settings, &pull).await? {
+            return Ok(Outcome::fail(FailureCode::Conflict, missing));
+        }
+
+        // A repository that merges through a queue: it joins the queue, and
+        // lands once its state together with everything ahead has passed.
+        if settings.merge_queue {
+            if !a.actor.verified {
+                return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
+            }
+            if !a.actor.is_member(&repo.namespace) {
+                return Ok(Outcome::fail(
+                    FailureCode::Forbidden,
+                    "Only members of the repository's workspace can merge a pull request.",
+                ));
+            }
+            return self.enqueue(&repo, &pull, &a.actor, a.keep_issue_open).await;
+        }
+
+        // The default branch has moved under it. Unless the repository
+        // insists on that being dealt with first, bring it up to date and
+        // land it when that is done.
+        if self.is_behind(&repo.id, &pull).await? {
+            if settings.require_up_to_date {
+                return Ok(Outcome::fail(
+                    FailureCode::Conflict,
+                    format!(
+                        "{} has moved since this pull request was made, and this repository requires pull requests to be up to date before they merge. Catch up with {0} first.",
+                        repo.default_branch
+                    ),
+                ));
+            }
+            if !a.actor.verified {
+                return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
+            }
+            if !a.actor.is_member(&repo.namespace) {
+                return Ok(Outcome::fail(
+                    FailureCode::Forbidden,
+                    "Only members of the repository's workspace can merge a pull request.",
+                ));
+            }
+            self.request_landing(&pull, &a.actor, a.keep_issue_open)
+                .await?;
+            return Ok(Outcome::Ok(pull));
+        }
 
         // Whether the actor may write to the repository is decided by repos.
         let landed: Outcome<Landed> = g1t_kit::call(
@@ -965,7 +1350,29 @@ impl Work {
         )
         .await?;
         let landed = check!(landed);
+        Ok(Outcome::Ok(
+            self.record_merge(&repo, pull, &a.actor, a.keep_issue_open, landed)
+                .await?,
+        ))
+    }
 
+    /// Records a pull request as merged once the default branch holds it:
+    /// closes its issue, supersedes the others for it, and says so.
+    pub(crate) async fn record_merge(
+        &self,
+        repo: &Repo,
+        mut pull: Pull,
+        actor: &User,
+        keep_issue_open: bool,
+        landed: Landed,
+    ) -> Result<Pull> {
+        let issue = match pull.issue {
+            Some(number) if !keep_issue_open => self
+                .issue(&repo.id, number)
+                .await?
+                .filter(|issue| issue.state == State::Open),
+            _ => None,
+        };
         let now = rfc3339(now_ms());
         let mut statements = vec![
             self.db
@@ -978,7 +1385,7 @@ impl Work {
                 .bind(&[
                     landed.commit.as_str().into(),
                     optional(&landed.previous),
-                    a.actor.username.as_str().into(),
+                    actor.username.as_str().into(),
                     now.as_str().into(),
                     now.as_str().into(),
                     pull.id.as_str().into(),
@@ -1019,7 +1426,7 @@ impl Work {
         self.publish(
             "pull.merged",
             &repo.id,
-            &a.actor,
+            actor,
             PullEvent {
                 commit: Some(landed.commit.clone()),
                 ..Self::pull_event(&pull)
@@ -1030,7 +1437,7 @@ impl Work {
             self.publish(
                 "issue.closed",
                 &repo.id,
-                &a.actor,
+                actor,
                 IssueEvent {
                     reason: Some(IssueReason::Completed.as_str()),
                     resolved_by: Some(pull.number),
@@ -1040,20 +1447,31 @@ impl Work {
             .await?;
         }
 
+        let who = (actor.id.as_str(), actor.username.as_str());
+        self.note(&repo.id, pull.number, who, "merged this").await?;
+        if let Some(issue) = &issue {
+            self.note(
+                &repo.id,
+                issue.number,
+                who,
+                &format!("closed this by merging #{}", pull.number),
+            )
+            .await?;
+        }
         pull.status = PullStatus::Merged;
-        pull.head_commit = Some(landed.commit);
+        pull.head_commit = Some(landed.commit.clone());
         pull.merge_base = landed.previous;
-        pull.merged_by = Some(a.actor.username);
+        pull.merged_by = Some(actor.username.clone());
         pull.merged_at = Some(now.clone());
         pull.updated_at = now;
-        Ok(Outcome::Ok(pull))
+        Ok(pull)
     }
 
     async fn list_active_pulls(&self, a: ViewerArgs) -> Result<Vec<ActivePull>> {
         let Some(viewer) = a.viewer else {
             return Ok(Vec::new());
         };
-        let rows = self
+        let found = self
             .db
             .prepare(
                 "SELECT * FROM pulls
@@ -1062,17 +1480,38 @@ impl Work {
             )
             .bind(&[viewer.id.into()])?
             .all()
-            .await?
-            .results::<PullRow>()?;
-        let mut active = Vec::with_capacity(rows.len());
-        for pull in rows.into_iter().map(Pull::from) {
+            .await?;
+        let snapshots = found.results::<Snapshot>()?;
+        let pulls: Vec<Pull> = found.results::<PullRow>()?.into_iter().map(Pull::from).collect();
+        // Each one at once: its issue, and where it stands. That is the
+        // remembered assessment when there is one, and worked out otherwise.
+        try_join_all(pulls.into_iter().zip(snapshots).map(|(pull, snapshot)| async move {
             let issue = match pull.issue {
                 Some(number) => self.issue(&pull.repo_id, number).await?,
                 None => None,
             };
-            active.push(ActivePull { pull, issue });
-        }
-        Ok(active)
+            // Only a pull request g1t is seeing through has a lifecycle.
+            let lifecycle = if !lifecycle::made_by_g1t(&pull) || snapshot.managed == 0 {
+                None
+            } else if let (Some(stage), Some(detail)) = (snapshot.stage, snapshot.stage_detail) {
+                Some(Lifecycle {
+                    stage,
+                    detail,
+                    revisions: snapshot.revisions,
+                })
+            } else {
+                let behind = self.is_behind(&pull.repo_id, &pull).await?;
+                self.assess(&pull, &issue, behind)
+                    .await?
+                    .map(|(lifecycle, _)| lifecycle)
+            };
+            Ok::<_, worker::Error>(ActivePull {
+                pull,
+                issue,
+                lifecycle,
+            })
+        }))
+        .await
     }
 
     // --- Sessions ----------------------------------------------------------
@@ -1174,9 +1613,11 @@ impl Work {
             return Ok(());
         };
         let now = rfc3339(now_ms());
-        // The head moved, so whatever the checks said no longer applies.
+        // The head moved, so whatever the checks said no longer applies, and
+        // whatever step g1t was waiting on has been taken.
         let moved = "UPDATE pulls
-             SET head_commit = ?, updated_at = ?, check_status = NULL, check_run_id = NULL";
+             SET head_commit = ?, updated_at = ?, check_status = NULL, check_run_id = NULL,
+                 working_on = NULL, working_until = NULL, stalled = NULL";
         let active = "status IN ('draft', 'open') AND head_commit IS NOT ?";
         let returning = "RETURNING id, repo_id, number, issue_number, status";
         let mut pulls: Vec<MovedRow> = Vec::new();
@@ -1216,6 +1657,16 @@ impl Work {
                     .results::<MovedRow>()?,
             );
         }
+        // What each now changes, so overlaps show while the work is under way.
+        for moved in &pulls {
+            if let Some(pull) = self.pull_by_id(&moved.id).await? {
+                self.refresh_files(&pull).await?;
+            }
+        }
+        // A merge that was waiting for this push to bring it up to date.
+        for moved in &pulls {
+            self.land_if_requested(&moved.id).await?;
+        }
         // A draft is announced when it is marked ready instead.
         for pull in pulls
             .into_iter()
@@ -1243,6 +1694,7 @@ impl Work {
 fn service(env: &Env) -> Result<Work> {
     Ok(Work {
         db: env.d1("DB")?,
+        identity: env.service("IDENTITY")?,
         repos: env.service("REPOS")?,
         events: env.service("EVENTS")?,
     })
@@ -1268,13 +1720,34 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "add_comment" => reply(&work.add_comment(args(body)?).await?),
         "start_checks" => reply(&work.start_checks(args(body)?).await?),
         "report_checks" => reply(&work.report_checks(args(body)?).await?),
+        "start_review" => reply(&work.start_review(args(body)?).await?),
+        "advance" => reply(&work.advance(args(body)?).await?),
+        "stall" => reply(&work.stall(args(body)?).await?),
+        "managed_pulls" => reply(&work.managed_pulls(args(body)?).await?),
+        "queue" => reply(&work.queue(args(body)?).await?),
+        "queue_build" => reply(&work.queue_build(args(body)?).await?),
+        "report_queue" => reply(&work.report_queue(args(body)?).await?),
+        "remove_from_queue" => reply(&work.remove_from_queue(args(body)?).await?),
+        "catch_up_job" => reply(&work.catch_up_job(args(body)?).await?),
+        "get_settings" => reply(&work.get_settings(args(body)?).await?),
+        "update_settings" => reply(&work.update_settings(args(body)?).await?),
+        "report_review" => reply(&work.report_review(args(body)?).await?),
         "open_pull" => reply(&work.open_pull(args(body)?).await?),
         "list_pulls" => reply(&work.list_pulls(args(body)?).await?),
         "get_pull" => reply(&work.get_pull(args(body)?).await?),
+        "update_pull" => reply(&work.update_pull(args(body)?).await?),
         "ready_pull" => reply(&work.ready_pull(args(body)?).await?),
         "close_pull" => reply(&work.close_pull(args(body)?).await?),
         "merge_pull" => reply(&work.merge_pull(args(body)?).await?),
         "list_active_pulls" => reply(&work.list_active_pulls(args(body)?).await?),
+        "start_plan" => reply(&work.start_plan(args(body)?).await?),
+        "report_plan" => reply(&work.report_plan(args(body)?).await?),
+        "get_plan" => reply(&work.get_plan(args(body)?).await?),
+        "list_plans" => reply(&work.list_plans(args(body)?).await?),
+        "apply_plan" => reply(&work.apply_plan(args(body)?).await?),
+        "queue_issue" => reply(&work.queue_issue(args(body)?).await?),
+        "ready_issues" => reply(&work.ready_issues(args(body)?).await?),
+        "list_assigned_issues" => reply(&work.list_assigned_issues(args(body)?).await?),
         "append_session" => reply(&work.append_session(args(body)?).await?),
         "read_session" => reply(&work.read_session(args(body)?).await?),
         _ => Response::error("Unknown method", 404),

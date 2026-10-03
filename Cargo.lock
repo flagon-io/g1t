@@ -829,6 +829,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "g1t-billing"
+version = "0.1.0"
+dependencies = [
+ "g1t-contracts",
+ "g1t-kit",
+ "getrandom 0.2.17",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "worker",
+]
+
+[[package]]
 name = "g1t-contracts"
 version = "0.1.0"
 dependencies = [
@@ -878,6 +892,7 @@ dependencies = [
 name = "g1t-repos"
 version = "0.1.0"
 dependencies = [
+ "futures-util",
  "g1t-contracts",
  "g1t-kit",
  "serde",
@@ -916,6 +931,7 @@ dependencies = [
 name = "g1t-work"
 version = "0.1.0"
 dependencies = [
+ "futures-util",
  "g1t-contracts",
  "g1t-kit",
  "getrandom 0.2.17",

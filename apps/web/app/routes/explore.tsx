@@ -3,6 +3,7 @@ import { Form } from "react-router";
 
 import type { Route } from "./+types/explore";
 import { RepoList } from "../components/repo-list";
+import { notACredential } from "../components/ui";
 import { repos } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";
 
@@ -37,6 +38,7 @@ export default function Explore({ loaderData }: Route.ComponentProps) {
         />
         <input
           name="q"
+          {...notACredential()}
           defaultValue={query}
           placeholder="Search by name or description"
           aria-label="Search repositories"

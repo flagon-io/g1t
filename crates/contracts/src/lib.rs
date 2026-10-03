@@ -4,6 +4,7 @@
 //! arguments of each of its methods. Services and their callers depend on
 //! this crate, never on each other's code.
 
+pub mod billing;
 pub mod events;
 pub mod identity;
 mod ids;
@@ -37,10 +38,29 @@ pub struct Membership {
     pub role: Role,
 }
 
+/// What a set of credentials resolved to.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PrincipalKind {
+    /// A person's account.
+    #[default]
+    User,
+    /// A workspace, acting through one of its own access tokens. Its `id`
+    /// is the workspace's, its `username` the workspace's slug, and it is a
+    /// member of that workspace and no other.
+    Workspace,
+    /// A g1t agent at work in a sandbox, acting through a token that lives
+    /// as long as its run and can do only what that token's scope lists, in
+    /// one repository. Its `username` is `g1t-agent`.
+    Agent,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct User {
     pub id: String,
     pub username: String,
+    #[serde(default)]
+    pub kind: PrincipalKind,
     /// Whether the account's email address has been confirmed. Unverified
     /// accounts can sign in but cannot create or change anything.
     #[serde(default)]

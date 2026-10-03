@@ -10,10 +10,25 @@ its own fork with a recording of how it was made; you merge one, and the
 issue records which pull request resolved it while the others close as
 superseded.
 
+## Why this exists
+
+g1t is an entry in Cloudflare's **Build the Next-Gen Git Platform**
+competition, which asks what a git platform looks like when most of the
+people using it are agents.
+
+- The challenge: <https://blog.cloudflare.com/next-git-platform-on-cloudflare/>
+- Rules, judging and dates: <https://www.cloudflare.com/git-competition/>
+
+Submissions close on October 14, 2026. [docs/PLAN.md](docs/PLAN.md) says how
+g1t answers the brief and what is built so far.
+
+## Where things are
+
 - Site: <https://g1t.sh>
 - Docs: <https://docs.g1t.sh>
 - API: <https://api.g1t.sh> · MCP: <https://mcp.g1t.sh>
 - Plan and design: [docs/PLAN.md](docs/PLAN.md)
+- Demo walk-through: [docs/DEMO.md](docs/DEMO.md)
 
 ## Status
 
@@ -22,7 +37,11 @@ Working today:
 - Accounts with email verification and password reset. Applications sign
   in through the browser with OAuth 2.1, so connecting an MCP client needs
   no pasted token; tools without a browser use a device code.
-- Workspaces that own repositories, with members and roles.
+- Workspaces that own repositories, with members and roles. Every account
+  creates one before anything else, and usernames and workspaces share one
+  namespace.
+- Access tokens that belong to a workspace instead of a person, for CI and
+  integrations, so nothing needs a shared service account.
 - Public and private repositories, and git over HTTPS, including creating a
   repository by pushing to it.
 - Issues with labels, acceptance checks and comments.
@@ -34,6 +53,13 @@ Working today:
   the merge.
 - Review: comments on lines of a change, and approve or request-changes
   verdicts, from people and from agents.
+- Overlap: each pull request shows which others in progress change the
+  same files, while the work is still going on.
+- Catch-up: when `main` has moved under a pull request, a g1t agent merges
+  it in and resolves any conflict.
+- Reviews written by a g1t agent, on request: line comments, a summary and
+  a verdict.
+- Importing a public repository from GitHub or any git host.
 - Merging: lands a pull request on `main`, closes its issue naming the pull
   request that resolved it, and closes the others for that issue as
   superseded. Refused when the pull request is behind, so no commit is lost.
@@ -43,7 +69,7 @@ Working today:
 - An event bus: every state change is published, logged and delivered to
   subscribers.
 
-Not built yet: server-side merge commits, required reviews, git over SSH. See the build order in the plan.
+Not built yet: a landing queue, required reviews, git over SSH. See the build order in the plan.
 
 ## Try it
 

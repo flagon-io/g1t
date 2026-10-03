@@ -12,6 +12,7 @@ const SUPPORTED_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"]
 
 const INSTRUCTIONS: &str = "g1t is a git forge with issues and pull requests, built so that many agents can work on the same issue at once.
 To work on an issue: get_issue to read it and see the pull requests already made for it, then create_pull_request with the issue's number. You get a draft pull request with its own fork to clone and push to. Call record_session as you work so people can see your reasoning, push your commits, and call mark_pull_request_ready with a summary.
+Before going far, read `overlaps` on get_pull_request: other pull requests in progress that change the same files. One for a different issue will conflict with yours, so narrow your change or say so. `behind` means main has moved; pull it into your fork and push. Once your pull request is ready, the issue's acceptance checks are run for you in a clean sandbox; read their output from get_pull_request and push a fix if they fail.
 Issues and pull requests are named by repository (\"owner/name\") and number, and share one sequence of numbers.";
 
 fn result(id: &Value, value: Value) -> Value {
@@ -48,8 +49,10 @@ async fn answer(services: &Services, viewer: &Viewer, request: &Value) -> Result
         }
         "ping" => result(id, json!({})),
         "tools/list" => {
+            // An agent sees only the tools its token may use.
             let tools: Vec<Value> = Op::ALL
                 .into_iter()
+                .filter(|op| services.scope.as_ref().is_none_or(|scope| op.allowed_by(scope)))
                 .map(|op| {
                     json!({
                         "name": op.name(),

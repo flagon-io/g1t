@@ -1,0 +1,29 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-billing",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	// Runs next to its database: a request makes several queries in turn,
+	// and each would otherwise cross the distance to it.
+	"placement": { "mode": "smart" },
+	"main": "build/index.js",
+	"build": { "command": "cargo install -q worker-build@0.8.7 && worker-build --release" },
+	// Reached only through service bindings.
+	"workers_dev": false,
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "g1t-billing",
+			"database_id": "695a6979-fd07-4850-bc97-904a6b4b7a04",
+			"migrations_dir": "migrations"
+		}
+	],
+	"vars": {
+		// What is added to a run's cost, in percent. It pays the card
+		// processor's fee and the sandbox the agent ran in.
+		"MARGIN_PERCENT": "20"
+	},
+	// Secret: STRIPE_SECRET_KEY. Without it nothing is charged and the
+	// runner decides who may start agents some other way.
+	"observability": { "enabled": true }
+}

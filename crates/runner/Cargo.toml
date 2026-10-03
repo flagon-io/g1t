@@ -3,7 +3,7 @@ name = "g1t-runner"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
-description = "Runs a coding agent on one attempt inside a sandbox and reports back to g1t."
+description = "The program inside a g1t sandbox: runs an agent, checks, a catch-up merge or a review, and reports back."
 
 [dependencies]
 anyhow = "1"

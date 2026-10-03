@@ -31,9 +31,9 @@ const KILLED: i32 = 137;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CheckResult {
-    command: String,
-    passed: bool,
+pub(crate) struct CheckResult {
+    pub(crate) command: String,
+    pub(crate) passed: bool,
     exit_code: Option<i32>,
     output: String,
     duration_ms: u64,
@@ -49,14 +49,14 @@ fn tail(text: &str, limit: usize) -> String {
     format!("… (earlier output not shown)\n{kept}")
 }
 
-fn redact(text: &str, secrets: &[String]) -> String {
+pub(crate) fn redact(text: &str, secrets: &[String]) -> String {
     secrets.iter().fold(text.to_owned(), |text, secret| {
         text.replace(secret, "[redacted]")
     })
 }
 
 /// Runs one command in the checkout, without this process's credentials.
-fn run_command(command: &str, workdir: &Path, secrets: &[String]) -> CheckResult {
+pub(crate) fn run_command(command: &str, workdir: &Path, secrets: &[String]) -> CheckResult {
     let started = Instant::now();
     let output = Command::new("timeout")
         .args([
@@ -147,7 +147,7 @@ fn check_out(secrets: &[String]) -> Result<()> {
 pub fn main() -> i32 {
     let reporter = match (env("G1T_API"), env("CHECK_RUN"), env("CHECK_TOKEN")) {
         (Ok(api), Ok(run), Ok(token)) => Reporter {
-            url: format!("{api}/v1/checks/{run}"),
+            url: format!("{api}/checks/{run}"),
             token,
         },
         _ => {

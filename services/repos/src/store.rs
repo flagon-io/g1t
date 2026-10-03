@@ -89,6 +89,7 @@ impl GitStore for ArtifactsStore {
     async fn open(&self, key: &str) -> Result<ArtifactsRepo> {
         Ok(ArtifactsRepo {
             handle: js::call(&self.binding, "get", &[key.into()]).await?,
+            key: key.to_owned(),
         })
     }
 }
@@ -97,6 +98,41 @@ impl GitStore for ArtifactsStore {
 /// released when dropped.
 pub struct ArtifactsRepo {
     handle: JsValue,
+    /// The repository's store key, which scopes its cached objects.
+    key: String,
+}
+
+/// Where cached git objects live. Trees and blobs are named by their
+/// content, so a cached one is never stale; each is kept under its own
+/// repository's key, so a repository only ever finds its own objects.
+const OBJECT_CACHE: &str = "https://objects.g1t.internal/";
+/// Blobs larger than this are not cached.
+const MAX_CACHED_BLOB: usize = 1024 * 1024;
+const OBJECT_MAX_AGE: &str = "public, max-age=31536000, immutable";
+
+impl ArtifactsRepo {
+    fn cache_url(&self, kind: &str, hash: &str) -> String {
+        format!("{OBJECT_CACHE}{}/{kind}/{hash}", self.key)
+    }
+
+    async fn cached(&self, kind: &str, hash: &str) -> Option<Vec<u8>> {
+        let mut response = worker::Cache::default()
+            .get(self.cache_url(kind, hash), false)
+            .await
+            .ok()??;
+        response.bytes().await.ok()
+    }
+
+    /// Keeps an object for next time. A failure only costs a later read.
+    async fn keep(&self, kind: &str, hash: &str, bytes: Vec<u8>) {
+        let Ok(mut response) = worker::Response::from_bytes(bytes) else {
+            return;
+        };
+        let _ = response.headers_mut().set("cache-control", OBJECT_MAX_AGE);
+        let _ = worker::Cache::default()
+            .put(self.cache_url(kind, hash), response)
+            .await;
+    }
 }
 
 impl Drop for ArtifactsRepo {
@@ -199,9 +235,14 @@ impl GitRepo for ArtifactsRepo {
     }
 
     async fn read_tree(&self, tree_hash: &str) -> Result<Option<Vec<TreeEntry>>> {
+        if let Some(bytes) = self.cached("tree", tree_hash).await {
+            if let Ok(entries) = serde_json::from_slice::<Vec<TreeEntry>>(&bytes) {
+                return Ok(Some(entries));
+            }
+        }
         let entries: Option<Vec<RawEntry>> =
             js::from_js(&js::call(&self.handle, "readTree", &[tree_hash.into()]).await?)?;
-        Ok(entries.map(|entries| {
+        let entries: Option<Vec<TreeEntry>> = entries.map(|entries| {
             entries
                 .into_iter()
                 .map(|entry| TreeEntry {
@@ -210,11 +251,24 @@ impl GitRepo for ArtifactsRepo {
                     kind: entry.kind,
                 })
                 .collect()
-        }))
+        });
+        if let Some(entries) = &entries {
+            if let Ok(bytes) = serde_json::to_vec(entries) {
+                self.keep("tree", tree_hash, bytes).await;
+            }
+        }
+        Ok(entries)
     }
 
     async fn read_blob(&self, blob_hash: &str) -> Result<Option<Vec<u8>>> {
-        blob_bytes(js::call(&self.handle, "readBlob", &[blob_hash.into()]).await?).await
+        if let Some(bytes) = self.cached("blob", blob_hash).await {
+            return Ok(Some(bytes));
+        }
+        let bytes = blob_bytes(js::call(&self.handle, "readBlob", &[blob_hash.into()]).await?).await?;
+        if let Some(bytes) = bytes.as_ref().filter(|bytes| bytes.len() <= MAX_CACHED_BLOB) {
+            self.keep("blob", blob_hash, bytes.clone()).await;
+        }
+        Ok(bytes)
     }
 
     async fn read_file(&self, git_ref: &str, path: &str) -> Result<Option<Vec<u8>>> {

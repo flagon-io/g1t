@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 
 use g1t_contracts::repos::{DiffLine, EntryKind, FileDiff, FileStatus, Hunk, LineKind, TreeEntry};
+use futures_util::future::{try_join, try_join_all};
 use similar::{ChangeTag, TextDiff};
 use worker::Result;
 
@@ -38,55 +39,71 @@ async fn entries<R: GitRepo>(repo: &R, tree: Option<&str>) -> Result<BTreeMap<St
         .collect())
 }
 
-/// Collects changed files under `prefix`, depth first. Trees are compared
-/// with an explicit stack, since async functions cannot recurse directly.
+/// How many files' contents are read at once.
+const READS_AT_ONCE: usize = 16;
+
+/// Collects the files that differ between two trees. Each level of the
+/// trees is read at once, since every read is a round trip to the store
+/// and the levels' trees do not depend on each other.
 async fn changed_files<R: GitRepo>(
     repo: &R,
     old_root: Option<&str>,
     new_root: &str,
 ) -> Result<(Vec<Change>, bool)> {
     let mut changes = Vec::new();
-    let mut stack = vec![(
+    let mut level = vec![(
         String::new(),
         old_root.map(str::to_owned),
         Some(new_root.to_owned()),
     )];
-    while let Some((prefix, old_tree, new_tree)) = stack.pop() {
-        let old = entries(repo, old_tree.as_deref()).await?;
-        let new = entries(repo, new_tree.as_deref()).await?;
-        let names: std::collections::BTreeSet<&String> = old.keys().chain(new.keys()).collect();
-        for name in names {
-            let (before, after) = (old.get(name), new.get(name));
-            if before.map(|e| &e.hash) == after.map(|e| &e.hash) {
-                continue;
-            }
-            let path = format!("{prefix}{name}");
-            let subtree = |entry: Option<&TreeEntry>| {
-                entry
-                    .filter(|entry| entry.kind == EntryKind::Tree)
-                    .map(|entry| entry.hash.clone())
-            };
-            let file = |entry: Option<&TreeEntry>| {
-                entry
-                    .filter(|entry| entry.kind != EntryKind::Tree)
-                    .map(|entry| entry.hash.clone())
-            };
-            let (old_dir, new_dir) = (subtree(before), subtree(after));
-            if old_dir.is_some() || new_dir.is_some() {
-                stack.push((format!("{path}/"), old_dir, new_dir));
-            }
-            let (old_file, new_file) = (file(before), file(after));
-            if old_file.is_some() || new_file.is_some() {
-                if changes.len() >= MAX_FILES {
-                    return Ok((changes, true));
+    while !level.is_empty() {
+        let read = try_join_all(level.iter().map(|(_, old_tree, new_tree)| async move {
+            let (old, new) = try_join(
+                entries(repo, old_tree.as_deref()),
+                entries(repo, new_tree.as_deref()),
+            )
+            .await?;
+            Ok::<_, worker::Error>((old, new))
+        }))
+        .await?;
+        let mut next = Vec::new();
+        for ((prefix, _, _), (old, new)) in level.iter().zip(read) {
+            let names: std::collections::BTreeSet<&String> = old.keys().chain(new.keys()).collect();
+            for name in names {
+                let (before, after) = (old.get(name), new.get(name));
+                if before.map(|e| &e.hash) == after.map(|e| &e.hash) {
+                    continue;
                 }
-                changes.push(Change {
-                    path,
-                    old: old_file,
-                    new: new_file,
-                });
+                let path = format!("{prefix}{name}");
+                let subtree = |entry: Option<&TreeEntry>| {
+                    entry
+                        .filter(|entry| entry.kind == EntryKind::Tree)
+                        .map(|entry| entry.hash.clone())
+                };
+                let file = |entry: Option<&TreeEntry>| {
+                    entry
+                        .filter(|entry| entry.kind != EntryKind::Tree)
+                        .map(|entry| entry.hash.clone())
+                };
+                let (old_dir, new_dir) = (subtree(before), subtree(after));
+                if old_dir.is_some() || new_dir.is_some() {
+                    next.push((format!("{path}/"), old_dir, new_dir));
+                }
+                let (old_file, new_file) = (file(before), file(after));
+                if old_file.is_some() || new_file.is_some() {
+                    if changes.len() >= MAX_FILES {
+                        changes.sort_by(|a: &Change, b: &Change| a.path.cmp(&b.path));
+                        return Ok((changes, true));
+                    }
+                    changes.push(Change {
+                        path,
+                        old: old_file,
+                        new: new_file,
+                    });
+                }
             }
         }
+        level = next;
     }
     changes.sort_by(|a, b| a.path.cmp(&b.path));
     Ok((changes, false))
@@ -151,19 +168,42 @@ pub async fn compare_trees<R: GitRepo>(
     let (changes, mut truncated) = changed_files(repo, old_tree, new_tree).await?;
     let mut files = Vec::with_capacity(changes.len());
     let mut lines = 0;
+    // Contents are read a batch at a time, all of a batch at once.
+    let mut texts_read: Vec<Option<(String, String)>> = Vec::with_capacity(changes.len());
+    for batch in changes.chunks(READS_AT_ONCE) {
+        let read = try_join_all(batch.iter().map(|change| async move {
+            let (old, new) = try_join(
+                text(repo, change.old.as_deref()),
+                text(repo, change.new.as_deref()),
+            )
+            .await?;
+            Ok::<_, worker::Error>(old.zip(new))
+        }))
+        .await?;
+        lines += read
+            .iter()
+            .flatten()
+            .map(|(old, new)| old.lines().count().max(new.lines().count()))
+            .sum::<usize>();
+        texts_read.extend(read);
+        if lines >= MAX_LINES {
+            break;
+        }
+    }
+    let mut texts_read = texts_read.into_iter();
+    lines = 0;
     for change in changes {
         let status = match (&change.old, &change.new) {
             (None, _) => FileStatus::Added,
             (_, None) => FileStatus::Deleted,
             _ => FileStatus::Modified,
         };
-        let texts = if lines >= MAX_LINES {
-            truncated = true;
-            None
-        } else {
-            let old = text(repo, change.old.as_deref()).await?;
-            let new = text(repo, change.new.as_deref()).await?;
-            old.zip(new)
+        let texts = match texts_read.next() {
+            Some(texts) if lines < MAX_LINES => texts,
+            _ => {
+                truncated = true;
+                None
+            }
         };
         let (hunks, additions, deletions, binary) = match texts {
             Some((old, new)) => {

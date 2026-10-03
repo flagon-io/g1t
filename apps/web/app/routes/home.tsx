@@ -1,8 +1,12 @@
-import { ArrowRight, Plus } from "lucide-react";
-import { Link, redirect } from "react-router";
+import { ArrowRight, Hand, Plus } from "lucide-react";
+import { type ReactNode, useEffect } from "react";
+import { Link, data, useRevalidator } from "react-router";
+
+import type { Lifecycle, Pull, Repo } from "@g1t/contracts";
 
 import type { Route } from "./+types/home";
 import { Landing } from "../components/landing";
+import { STAGE_LABEL, StageDots } from "../components/lifecycle";
 import { RepoList } from "../components/repo-list";
 import {
   Avatar,
@@ -11,9 +15,11 @@ import {
   EmptyState,
   TimeAgo,
 } from "../components/ui";
-import { PullIcon } from "../components/work";
+import { Assignee, IssueIcon, PullIcon } from "../components/work";
 import { repos as reposApi, work } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";
+
+const REFRESH_MS = 5000;
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -26,35 +32,138 @@ export function meta({}: Route.MetaArgs) {
   ];
 }
 
+export function headers({ loaderHeaders }: Route.HeadersArgs) {
+  return { "Server-Timing": loaderHeaders.get("Server-Timing") ?? "" };
+}
+
 export async function loader({ context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  // Nothing can be created outside a workspace, so a new account starts there.
-  if (viewer?.verified && (viewer.workspaces ?? []).length === 0) {
-    throw redirect("/workspaces/new");
-  }
-  const [repos, pulls] = await Promise.all([
-    reposApi.list(viewer, { memberOnly: Boolean(viewer) }),
-    work.listActivePulls(viewer),
+  const started = Date.now();
+  const times: Record<string, number> = {};
+  const timed = <T,>(name: string, promise: Promise<T>) =>
+    promise.then((value) => ((times[name] = Date.now() - started), value));
+  const [repos, pulls, assigned] = await Promise.all([
+    timed("repos", reposApi.list(viewer, { memberOnly: Boolean(viewer) })),
+    timed("pulls", work.listActivePulls(viewer)),
+    timed("assigned", work.listAssignedIssues(viewer)),
   ]);
-  // Mission control links to each pull request under its repo.
-  const pullRepos = await Promise.all(
-    pulls.map(({ pull }) => reposApi.getById(pull.repoId, viewer)),
-  );
-  return {
+  // Each issue and pull request is shown under its repository. Most are in
+  // the viewer's own, already listed; the rest are looked up once each, all
+  // at once. One the viewer can no longer see drops out.
+  const known = new Map<string, Repo>(repos.map((repo) => [repo.id, repo]));
+  const missing = [
+    ...new Set([...assigned.map((issue) => issue.repoId), ...pulls.map(({ pull }) => pull.repoId)]),
+  ].filter((id) => !known.has(id));
+  const looked = await Promise.all(missing.map((id) => reposApi.getById(id, viewer)));
+  for (const found of looked) if (found.ok) known.set(found.value.id, found.value);
+  times.lookups = Date.now() - started;
+  const serverTiming = Object.entries(times)
+    .map(([name, ms]) => `${name};dur=${ms}`)
+    .join(", ");
+  return data({
     viewer,
     repos,
-    active: pulls.flatMap((item, i) => {
-      const repo = pullRepos[i];
-      return repo.ok ? [{ ...item, repo: repo.value }] : [];
+    assigned: assigned.flatMap((issue) => {
+      const repo = known.get(issue.repoId);
+      return repo ? [{ issue, repo }] : [];
     }),
-  };
+    active: pulls.flatMap((item) => {
+      const repo = known.get(item.pull.repoId);
+      return repo ? [{ ...item, repo }] : [];
+    }),
+  }, { headers: { "Server-Timing": serverTiming } });
+}
+
+type Active = { pull: Pull; lifecycle: Lifecycle | null; repo: Repo };
+
+/** What a pull request is waiting on, in a word or two. */
+function standing({ pull, lifecycle }: Active): string {
+  if (lifecycle) return STAGE_LABEL[lifecycle.stage];
+  return pull.status === "draft" ? "In progress" : "Ready for review";
+}
+
+function PullRows({ items, detail }: { items: Active[]; detail?: boolean }) {
+  return (
+    <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+      {items.map((item) => {
+        const { pull, lifecycle, repo } = item;
+        return (
+          <li key={pull.id}>
+            <Link
+              prefetch="intent"
+              to={`/${repo.namespace}/${repo.name}/pull/${pull.number}`}
+              className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-raised"
+            >
+              <PullIcon status={pull.status} />
+              <span className="min-w-0 grow">
+                <span className="block truncate font-medium">{pull.title}</span>
+                <span className="block truncate font-mono text-xs text-muted">
+                  {repo.namespace}/{repo.name}#{pull.number}
+                  {pull.issue != null && ` · for #${pull.issue}`} · {pull.agent}
+                </span>
+                {detail && lifecycle && (
+                  <span className="mt-1 block text-xs text-muted">{lifecycle.detail}</span>
+                )}
+              </span>
+              {lifecycle && (
+                <span className="hidden shrink-0 sm:block">
+                  <StageDots stage={lifecycle.stage} />
+                </span>
+              )}
+              <span className="w-28 shrink-0 text-right text-xs text-muted">
+                {standing(item)}
+              </span>
+              <span className="hidden w-14 shrink-0 text-right text-xs text-faint sm:block">
+                <TimeAgo at={pull.updatedAt} />
+              </span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function Section({ title, children }: { title: ReactNode; children: ReactNode }) {
+  return (
+    <section>
+      <h2 className="flex items-center gap-2 text-sm font-medium text-muted">{title}</h2>
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { viewer, repos, active } = loaderData;
+  const { viewer, repos, active, assigned } = loaderData;
+
+  const needsYou = active.filter((item) => item.lifecycle?.stage === "needs_you");
+  const ready = active.filter((item) => item.lifecycle?.stage === "ready");
+  const moving = active.filter(
+    (item) => item.lifecycle?.stage !== "needs_you" && item.lifecycle?.stage !== "ready",
+  );
+  // Agents are at work, so the page changes without anyone touching it.
+  const changing = moving.some((item) => item.lifecycle || item.pull.status === "draft");
+  const revalidator = useRevalidator();
+  useEffect(() => {
+    if (!changing) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") revalidator.revalidate();
+    }, REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [changing, revalidator]);
+
   if (!viewer) return <Landing repos={repos} />;
 
-  const working = active.filter(({ pull }) => pull.status === "draft");
+  const summary = [
+    moving.length > 0 && `${moving.length} in progress`,
+    ready.length > 0 && `${ready.length} ready to merge`,
+    needsYou.length > 0 && plural(needsYou.length, "needs you", "need you"),
+    assigned.length > 0 && `${assigned.length} assigned to you`,
+  ].filter(Boolean);
   return (
     <main className="mx-auto grid max-w-6xl gap-10 px-4 py-10 lg:grid-cols-[1fr_20rem]">
       <div className="min-w-0 space-y-10">
@@ -66,51 +175,71 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 Mission control
               </h1>
               <p className="text-sm text-muted">
-                {working.length === 0
+                {summary.length === 0
                   ? "Nothing is being worked on right now."
-                  : `${working.length} ${working.length === 1 ? "pull request is" : "pull requests are"} being worked on.`}
+                  : `${summary.join(" · ")}.`}
               </p>
             </div>
           </div>
         </section>
 
-        <section>
-          <h2 className="text-sm font-medium text-muted">In progress</h2>
-          <div className="mt-3">
-            {active.length === 0 ? (
-              <EmptyState title="No pull requests in progress">
-                Open an issue on a repository and put an agent on it, or point
-                your own agent at one.
-              </EmptyState>
-            ) : (
-              <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-                {active.map(({ pull, repo }) => (
-                  <li key={pull.id}>
-                    <Link
-                      to={`/${repo.namespace}/${repo.name}/pull/${pull.number}`}
-                      className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-raised"
-                    >
-                      <PullIcon status={pull.status} />
-                      <span className="min-w-0 grow">
-                        <span className="block truncate font-medium">{pull.title}</span>
-                        <span className="font-mono text-xs text-muted">
-                          {repo.namespace}/{repo.name}#{pull.number}
-                          {pull.issue != null && ` · for #${pull.issue}`} · {pull.agent}
-                        </span>
+        {needsYou.length > 0 && (
+          <Section
+            title={
+              <>
+                <Hand size={14} className="text-warn" />
+                Needs you
+              </>
+            }
+          >
+            <PullRows items={needsYou} detail />
+          </Section>
+        )}
+
+        {ready.length > 0 && (
+          <Section title="Ready to merge">
+            <PullRows items={ready} />
+          </Section>
+        )}
+
+        {assigned.length > 0 && (
+          <Section title="Assigned to you">
+            <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+              {assigned.map(({ issue, repo }) => (
+                <li key={issue.id}>
+                  <Link
+                    prefetch="intent"
+                    to={`/${repo.namespace}/${repo.name}/issues/${issue.number}`}
+                    className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-raised"
+                  >
+                    <IssueIcon issue={issue} />
+                    <span className="min-w-0 grow">
+                      <span className="block truncate font-medium">{issue.title}</span>
+                      <span className="block truncate font-mono text-xs text-muted">
+                        {repo.namespace}/{repo.name}#{issue.number}
                       </span>
-                      <span className="shrink-0 text-xs text-muted">
-                        {pull.status === "draft" ? "In progress" : "Ready for review"}
-                      </span>
-                      <span className="w-14 shrink-0 text-right text-xs text-faint">
-                        <TimeAgo at={pull.updatedAt} />
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </section>
+                    </span>
+                    {issue.agent && <Assignee agent={issue.agent} />}
+                    <span className="hidden w-14 shrink-0 text-right text-xs text-faint sm:block">
+                      <TimeAgo at={issue.updatedAt} />
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        )}
+
+        <Section title="In progress">
+          {moving.length === 0 ? (
+            <EmptyState title="No pull requests in progress">
+              Assign issues to the g1t agent from a repository's Issues tab,
+              or point your own agent at one.
+            </EmptyState>
+          ) : (
+            <PullRows items={moving} />
+          )}
+        </Section>
 
         <section>
           <div className="flex items-center justify-between">

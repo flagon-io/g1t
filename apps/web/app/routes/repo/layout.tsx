@@ -1,11 +1,19 @@
-import { BookMarked, CircleDot, Code2, GitPullRequest, History, Lock } from "lucide-react";
-import type { ReactNode } from "react";
-import { Link, NavLink, Outlet, useLocation } from "react-router";
+import {
+  BookMarked,
+  CircleDot,
+  Code2,
+  GitPullRequest,
+  History,
+  ListTree,
+  Lock,
+  Settings,
+} from "lucide-react";
+import { Link, Outlet, useRouteLoaderData } from "react-router";
 
 import type { Route } from "./+types/layout";
-import { Pill } from "../../components/ui";
+import { Pill, TabLink as Tab } from "../../components/ui";
 import { repos, work } from "../../lib/services.server";
-import { getViewer, unwrap } from "../../lib/session.server";
+import { getViewer, roleIn, unwrap } from "../../lib/session.server";
 
 export function meta({ params }: Route.MetaArgs) {
   return [{ title: `${params.owner}/${params.repo} · g1t` }];
@@ -21,52 +29,45 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   return {
     repo: unwrap(repo),
     open: counts.ok ? counts.value : { issues: 0, pulls: 0 },
+    member: roleIn(viewer, params.owner) != null,
   };
 }
 
-function Tab({
-  to,
-  also,
-  end,
-  icon,
-  count,
-  children,
-}: {
-  to: string;
-  /** Another path prefix under which this tab is the current one. */
-  also?: string;
-  end?: boolean;
-  icon: ReactNode;
-  count?: number;
-  children: ReactNode;
-}) {
-  const { pathname } = useLocation();
-  return (
-    <NavLink
-      to={to}
-      end={end}
-      className={({ isActive }) =>
-        `-mb-px flex items-center gap-2 border-b-2 px-1 pb-3 text-sm transition-colors ${
-          isActive || (also && pathname.startsWith(also + "/"))
-            ? "border-accent font-medium text-fg"
-            : "border-transparent text-muted hover:text-fg"
-        }`
-      }
-    >
-      {icon}
-      {children}
-      {count != null && count > 0 && (
-        <span className="rounded-full bg-raised px-1.5 py-px text-xs text-muted">
-          {count}
-        </span>
-      )}
-    </NavLink>
-  );
-}
-
 export default function RepoLayout({ loaderData }: Route.ComponentProps) {
-  const { repo, open } = loaderData;
+  const { repo, open, member } = loaderData;
   const base = `/${repo.namespace}/${repo.name}`;
+  const signedIn = useRouteLoaderData("root")?.user != null;
+  if (signedIn) {
+    return (
+      <>
+        <div className="border-b border-line">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 sm:px-6">
+            {repo.isPrivate ? (
+              <Lock size={15} className="text-faint" />
+            ) : (
+              <BookMarked size={15} className="text-faint" />
+            )}
+            <h1 className="font-mono text-[0.9375rem]">
+              <Link to={`/${repo.namespace}`} className="text-muted hover:text-fg">
+                {repo.namespace}
+              </Link>
+              <span className="mx-1 text-faint">/</span>
+              <Link to={base} className="font-semibold hover:underline">
+                {repo.name}
+              </Link>
+            </h1>
+            <Pill>{repo.isPrivate ? "private" : "public"}</Pill>
+            {repo.description && (
+              <p className="min-w-0 truncate text-sm text-muted">{repo.description}</p>
+            )}
+          </div>
+        </div>
+        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+          <Outlet />
+        </div>
+      </>
+    );
+  }
   return (
     <>
       {/* The repository's own header band, under the site header. */}
@@ -110,6 +111,16 @@ export default function RepoLayout({ loaderData }: Route.ComponentProps) {
             <Tab to={`${base}/commits`} icon={<History size={15} />}>
               Commits
             </Tab>
+            {member && (
+              <Tab to={`${base}/plans`} icon={<ListTree size={15} />}>
+                Plan
+              </Tab>
+            )}
+            {member && (
+              <Tab to={`${base}/settings`} icon={<Settings size={15} />}>
+                Settings
+              </Tab>
+            )}
           </nav>
         </div>
       </div>

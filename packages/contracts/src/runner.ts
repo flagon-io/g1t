@@ -1,40 +1,61 @@
 import type { User, Viewer } from "./identity";
 import type { Result } from "./result";
 import type { RepoPath } from "./repos";
-import type { Pull } from "./work";
-
-/** A model a g1t agent can run on, as offered to the person starting it. */
-export type AgentModel = {
-  /** Stable name used in requests, e.g. `balanced`. */
-  id: string;
-  label: string;
-  description: string;
-  /** The model behind it, by its public name, e.g. `Claude Sonnet 5.5`. */
-  modelName: string;
-};
+import type { Plan, Pull } from "./work";
 
 export type RunHostedInput = {
-  /** How many agents to put on the issue, each in its own sandbox. */
-  count: number;
-  /** Extra guidance given to the agents along with the issue. */
+  /** Extra guidance given to the agent along with the issue. */
   instructions?: string;
-  /** One of the offered model ids; the first offered when absent. */
-  model?: string;
 };
 
-/** Sandboxes on g1t: agents that work on an issue, and acceptance checks. */
+/**
+ * Sandboxes on g1t: agents that work on an issue, and acceptance checks.
+ *
+ * Nobody who assigns a g1t agent picks a model. g1t routes each kind of
+ * work itself, and says in the session which model ran.
+ */
 export interface RunnerApi {
-  /** The models this viewer may run g1t agents on; empty if they may not. */
-  models(viewer: Viewer): Promise<AgentModel[]>;
+  /** Whether this viewer may put g1t agents to work. */
+  enabled(viewer: Viewer): Promise<boolean>;
   /**
-   * Opens `count` draft pull requests for the issue, each made by an agent
-   * in its own sandbox. Returns as soon as the sandboxes are starting;
-   * progress shows up in each pull request's session.
+   * Assigns the issue to a g1t agent: opens a draft pull request for it,
+   * made by an agent in a sandbox of its own. Returns as soon as the
+   * sandbox is starting; progress shows up in the pull request's session.
+   * Scale comes from assigning many issues, each to its own agent.
    */
-  run(actor: User, repo: RepoPath, issue: number, input: RunHostedInput): Promise<Result<Pull[]>>;
+  run(actor: User, repo: RepoPath, issue: number, input?: RunHostedInput): Promise<Result<Pull>>;
+  /**
+   * Has an agent read the repository and turn an outcome into a plan: the
+   * issues that would get there and the order they have to land in. Returns
+   * the plan's id as soon as the sandbox is starting; the plan fills in when
+   * the agent has written it. Members of the repository's workspace only.
+   */
+  plan(actor: User, repo: RepoPath, brief: string): Promise<Result<{ planId: string }>>;
+  /**
+   * Opens a plan's issues. With `assign`, a g1t agent starts on each that
+   * depends on nothing, and on the others as what they depend on merges.
+   */
+  applyPlan(
+    actor: User,
+    repo: RepoPath,
+    planId: string,
+    options?: { assign?: boolean; keep?: number[] },
+  ): Promise<Result<Plan>>;
   /**
    * Runs the acceptance checks of a pull request again. Whoever opened it,
    * or a member of the repository's workspace, may ask.
    */
   recheck(actor: User, repo: RepoPath, number: number): Promise<Result<boolean>>;
+  /**
+   * Brings a pull request up to date with the branch it would merge into,
+   * in a sandbox. A clean merge is pushed as it is; a conflict is resolved
+   * by a g1t agent. Whoever can push to the pull request's source may ask:
+   * its author, or for one from a branch, a workspace member.
+   */
+  update(actor: User, repo: RepoPath, number: number): Promise<Result<boolean>>;
+  /**
+   * Has a g1t agent review a pull request: line comments, a summary and a
+   * verdict, posted as `g1t-agent`.
+   */
+  review(actor: User, repo: RepoPath, number: number): Promise<Result<boolean>>;
 }

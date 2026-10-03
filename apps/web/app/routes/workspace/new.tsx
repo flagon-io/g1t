@@ -1,9 +1,9 @@
 import { Form, redirect } from "react-router";
 
-import type { Route } from "./+types/workspace-new";
-import { Button, ErrorText, Field, Input } from "../components/ui";
-import { identity } from "../lib/services.server";
-import { assertSameOrigin, requireUser } from "../lib/session.server";
+import type { Route } from "./+types/new";
+import { Button, ErrorText, Field, Input } from "../../components/ui";
+import { identity } from "../../lib/services.server";
+import { assertSameOrigin, nextPath, requireUser } from "../../lib/session.server";
 
 export function meta({}: Route.MetaArgs) {
   return [{ title: "New workspace · g1t" }];
@@ -21,10 +21,12 @@ export async function action({ request, context }: Route.ActionArgs) {
   const result = await identity.createWorkspace(
     user,
     String(form.get("slug") ?? ""),
-    String(form.get("name") ?? ""),
+    String(form.get("displayName") ?? ""),
   );
   if (!result.ok) return { error: result.error.message };
-  throw redirect(`/${result.value.slug}`);
+  // Someone sent here on their way elsewhere carries on to it.
+  const next = nextPath(request);
+  throw redirect(next === "/" ? `/${result.value.slug}` : next);
 }
 
 export default function NewWorkspace({
@@ -35,13 +37,20 @@ export default function NewWorkspace({
   return (
     <main className="mx-auto max-w-lg px-4 py-12">
       <h1 className="text-xl font-semibold">
-        {first ? "Create your first workspace" : "New workspace"}
+        {first ? "Create your workspace" : "New workspace"}
       </h1>
       <p className="mt-2 text-sm text-muted">
-        A workspace owns repositories and is the first part of their address:{" "}
-        <span className="font-mono text-fg">g1t.sh/workspace/repo</span>. Use
-        one for yourself, and one for each team or company you work with.
+        {first && "Everything on g1t lives in a workspace, so this comes first. "}
+        A workspace holds repositories, the people who work on them and the
+        access tokens that automate them, and is the first part of every
+        address: <span className="font-mono text-fg">g1t.sh/workspace/repo</span>.
+        Use one for yourself, and one for each team or company you work with.
       </p>
+      {!user.verified && (
+        <p className="mt-4 rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-sm">
+          Confirm your email address first. We sent you a link.
+        </p>
+      )}
       <Form method="post" className="mt-8 space-y-4">
         <Field
           label="Name in URLs"
@@ -60,7 +69,7 @@ export default function NewWorkspace({
           </div>
         </Field>
         <Field label="Display name (optional)">
-          <Input name="name" maxLength={80} />
+          <Input name="displayName" maxLength={80} />
         </Field>
         <ErrorText>{actionData?.error}</ErrorText>
         <Button type="submit">Create workspace</Button>

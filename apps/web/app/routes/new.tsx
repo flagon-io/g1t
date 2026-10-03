@@ -30,6 +30,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     name: String(form.get("name") ?? ""),
     description: String(form.get("description") ?? ""),
     isPrivate: form.get("visibility") === "private",
+    importUrl: String(form.get("importUrl") ?? "").trim() || undefined,
   });
   if (!result.ok) return { error: result.error.message };
   throw redirect(`/${result.value.namespace}/${result.value.name}`);
@@ -64,6 +65,16 @@ export default function NewRepo({
         <Field label="Description (optional)">
           <Input name="description" maxLength={200} />
         </Field>
+        <Field
+          label="Import from (optional)"
+          hint="The address of a public repository on GitHub or any git host. Its default branch is copied, up to 40 MB. Leave empty to start with nothing."
+        >
+          <Input
+            name="importUrl"
+            type="url"
+            placeholder="https://github.com/owner/repo"
+          />
+        </Field>
         <fieldset className="space-y-2 text-sm">
           <label className="flex items-center gap-2">
             <input type="radio" name="visibility" value="public" defaultChecked />
@@ -71,7 +82,7 @@ export default function NewRepo({
           </label>
           <label className="flex items-center gap-2">
             <input type="radio" name="visibility" value="private" />
-            Private — only you
+            Private — only members of the workspace
           </label>
         </fieldset>
         <ErrorText>{actionData?.error}</ErrorText>

@@ -15,7 +15,7 @@ are created and approved only in their browser.
 1. **Start a sign-in.**
 
    ```sh
-   curl -X POST https://api.g1t.sh/v1/device/code \
+   curl -X POST https://api.g1t.sh/device/code \
      -H "Content-Type: application/json" \
      -d '{"client_name": "Claude Code"}'
    ```
@@ -37,7 +37,7 @@ are created and approved only in their browser.
 3. **Collect the token.** Poll every `interval` seconds, not faster:
 
    ```sh
-   curl -X POST https://api.g1t.sh/v1/device/token \
+   curl -X POST https://api.g1t.sh/device/token \
      -H "Content-Type: application/json" \
      -d '{"device_code": "DEVICE_CODE"}'
    ```
@@ -61,17 +61,21 @@ are created and approved only in their browser.
    person in through their browser instead (in Claude Code: `/mcp`, then
    choose g1t). The MCP server always needs one or the other.
 
-5. **Create a workspace** if `GET /v1/user` shows none. A workspace owns
+5. **Create a workspace** if `GET /user` shows none. A workspace owns
    repositories and is the first part of their address. Ask the person what
    to call it; their username is a sensible default.
 
    ```sh
-   curl -X POST https://api.g1t.sh/v1/workspaces \
+   curl -X POST https://api.g1t.sh/workspaces \
      -H "Authorization: Bearer $G1T_TOKEN" -H "Content-Type: application/json" \
      -d '{"slug": "WORKSPACE"}'
    ```
 
-6. **Push a repository.** Pushing to a repository that does not exist, in a
+6. **Or import one.** `POST /repos` with `name` and
+   `import_url` (the https address of a public repository, such as one on
+   GitHub) copies its default branch.
+
+7. **Push a repository.** Pushing to a repository that does not exist, in a
    workspace the person belongs to, creates it, public by default.
 
    ```sh
@@ -88,7 +92,7 @@ are created and approved only in their browser.
 
 Issues and pull requests are addressed by repository and number, and share
 one sequence of numbers: `#12` is one or the other. Below, `{repo}` stands
-for `/v1/repos/{owner}/{name}`.
+for `/repos/{owner}/{name}`.
 
 - **Find work:** `GET {repo}/issues?state=open`, optionally `&label=bug`.
 - **Open an issue:** `POST {repo}/issues` with `title`, `body`, and
@@ -112,6 +116,9 @@ for `/v1/repos/{owner}/{name}`.
 - **Mark it ready:** `POST {repo}/pulls/{number}/ready` with `summary`, which
   becomes the pull request's description.
 - **See what a pull request changes:** `GET {repo}/pulls/{number}/changes`.
+- **Before going far**, read `overlaps` on `GET {repo}/pulls/{number}`:
+  other pull requests in progress changing the same files. `behind` says
+  whether main has moved since; if so, pull main into the fork and push.
 - **Checks:** once a pull request is ready, g1t runs the issue's `checks`
   against it in a clean sandbox. `GET {repo}/pulls/{number}` returns
   `checks.results`, each with `passed` and `output`. If they failed, push a
@@ -130,12 +137,12 @@ for `/v1/repos/{owner}/{name}`.
   `https://g1t.sh/{owner}/{name}.git` into the fork, push, and merge again.
 
 Every one of these is also an MCP tool: `list_issues`, `get_issue`,
-`create_issue`, `update_issue`, `close_issue`, `reopen_issue`,
+`create_issue`, `update_issue`, `close_issue`, `reopen_issue`, `assign_issue`, `plan_work`, `get_plan`, `apply_plan`,
 `list_labels`, `add_comment`, `list_pull_requests`, `get_pull_request`,
 `create_pull_request`, `record_session`, `read_session`,
 `mark_pull_request_ready`, `close_pull_request`,
 `get_pull_request_changes`, `review_pull_request`, `merge_pull_request`, and `list_repos`,
-`get_repo`, `create_repo`, `list_events`, `create_workspace`, `whoami`.
+`get_repo`, `create_repo`, `update_repo`, `get_repo_settings`, `update_repo_settings`, `list_events`, `create_workspace`, `whoami`.
 MCP tools take the repository as `repo`, written `owner/name`.
 
 ## Facts
