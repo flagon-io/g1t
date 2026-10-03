@@ -1,6 +1,6 @@
 ---
 title: Accounts and authentication
-description: Accounts, email confirmation, access tokens and password reset.
+description: Accounts, email confirmation, personal access tokens, OAuth, signing in from a tool, and password reset.
 ---
 
 ## Creating an account
@@ -23,28 +23,10 @@ use the banner at the top of the site.
 
 ## Workspaces
 
-A workspace owns repositories and is the first part of their address:
-`g1t.sh/<workspace>/<repo>`. There is one kind. A workspace for just you and
-one for a company are the same thing with a different number of members, so
-there is no separate notion of an organization.
-
-Your account does not own repositories itself. After confirming your email
-the first thing you do is create a workspace, and repositories go in it.
-You can belong to up to ten.
-
-Usernames and workspaces share one set of names, so a name means the same
-thing wherever it appears. Your username is reserved for you: only you can
-create a workspace with that name, and nobody can register a username that
-is already a workspace.
-
-| Role | Can |
-| --- | --- |
-| Member | Create repositories, push, manage issues, merge pull requests. |
-| Owner | Everything a member can, and manage members, the workspace's access tokens and its details. |
-
-A workspace's page, `g1t.sh/<workspace>`, shows its repositories and the
-pull requests in progress across them. Members also see **People** and
-**Access tokens** there, and owners **Settings**.
+Your account does not own repositories itself: a workspace does. After
+confirming your email, the first thing you do is create one. Workspaces,
+their members and roles, and the access tokens that belong to a workspace
+are covered in [workspaces](/guides/workspaces/).
 
 ## Access tokens
 
@@ -63,28 +45,9 @@ seen it.
 
 A token has the full rights of your account. Scoped tokens are planned.
 
-### Workspace access tokens
-
-A workspace has access tokens of its own, for CI, integrations and agents
-that work for a team. They replace the shared "service account" other
-forges need: there is no extra account to create, pay for or lose the
-password to.
-
-| | Personal token | Workspace token |
-| --- | --- | --- |
-| Belongs to | You | The workspace |
-| Acts as | You | The workspace: its name is the author of what it does |
-| Can reach | Every workspace you belong to | That workspace only |
-| Can do | Everything you can | What a member can; it cannot manage people, tokens or workspaces |
-| When its creator leaves | Stops working | Keeps working |
-| Created by | You, in Settings | An owner, under **Access tokens** on the workspace's page |
-
-They are the same kind of token and are sent the same way. With git, any
-username works; the token is the password. `GET /user` answers with
-`"kind": "workspace"` for one, and `"kind": "user"` for a personal token.
-
-Every member can see a workspace's tokens: the name, who created each and
-when it was last used. Only owners can create or delete them.
+For CI and integrations that work for a team, a workspace can have tokens
+of its own that act as the workspace and keep working when their creator
+leaves. See [workspace access tokens](/guides/workspaces/#workspace-access-tokens).
 
 ## Signing in with OAuth
 

@@ -1,15 +1,23 @@
 ---
-title: Concepts
-description: Issues, pull requests, merging, sessions and events.
+title: How g1t works
+description: What g1t is for, and how issues, pull requests, checks, review, merging and sessions fit together.
 ---
 
-g1t is ordinary git: repositories, commits, branches, clone, push and pull all
-work as they do anywhere. On top of that it has the two things you already
-know from other forges, **issues** and **pull requests**, built so that many
-agents can work on the same issue at once.
+g1t is a git forge for teams of agents. You hand g1t an outcome, and a team
+of agents converges it onto `main`: each change is made in a pull request
+of its own, checked in a clean sandbox, reviewed, revised and merged under
+your repository's rules. People work exactly as they would on GitHub, with
+the same repositories, issues, pull requests and reviews, alongside the
+agents.
+
+Underneath it is ordinary git: repositories, commits, branches, clone, push
+and pull all work as they do anywhere. On top of that it has the two things
+you already know from other forges, **issues** and **pull requests**, built
+so that many agents can work at once without getting in each other's way.
 
 | | What it is |
 | --- | --- |
+| **Plan** | An outcome, split by an agent into issues and the order they land in. See [hand off an outcome](/guides/outcomes/). |
 | **Issue** | What should change: a bug, a feature, a question. |
 | **Pull request** | A proposed change, in its own fork or on a branch. Usually made for an issue. |
 | **Session** | The record of how a pull request was made: prompts, reasoning, tool calls. |
@@ -132,7 +140,7 @@ A pull request whose checks have not passed cannot be merged, unless a
 member of the workspace chooses to merge anyway.
 
 Running checks is in preview: they run in repositories of the workspaces
-g1t's sandboxes are enabled for.
+g1t's sandboxes are enabled for. See [the preview](/guides/usage-and-billing/#the-preview).
 
 ## Review
 
@@ -148,6 +156,9 @@ A reviewer can also give a verdict: **approve**, or **request changes**.
 The pull request shows where each reviewer stands. You cannot give a verdict
 on a pull request you opened, and that holds for agents too: one agent can
 review another's work, but not its own.
+
+Requesting changes on a g1t agent's pull request sends the agent back to
+make them. See [talk to agents](/guides/talking-to-agents/#ask-for-changes).
 
 ## Overlap
 
@@ -171,7 +182,9 @@ see what it knew.
 ## Merging
 
 A member of the repository's workspace merges a pull request once it is
-marked ready and its checks have passed. Merging moves `main` to the pull request's head commit.
+marked ready and its checks have passed. Merging moves `main` to the pull
+request's head commit, or, in a repository that merges through
+[the merge queue](/guides/merge-queue/), adds it to the queue.
 
 A pull request can only merge if it contains everything already on `main`.
 If something else landed first, merging is refused and the pull request is
@@ -187,72 +200,21 @@ pull requests are in flight.
 
 ## The merge queue
 
-Merging one pull request at a time, each caught up with `main`, keeps every
-merge clean as text. It does not prove the result works: two changes can
-merge without a conflict and still break each other. A repository that
-turns on **Merge through a queue** closes that gap.
+Merging one pull request at a time keeps every merge clean as text, but two
+changes can merge without a conflict and still break each other. A
+repository that turns on **Merge through a queue** tests each pull request
+together with the ones ahead of it, along with the checks of every issue
+already completed, and `main` only moves to a state whose checks passed.
+See [merge queue](/guides/merge-queue/).
 
-With the queue on, merging adds a pull request to the queue instead of
-changing `main`. g1t then tests up to four at a time, speculatively, each in
-its own sandbox and all at once:
+## Sessions and why-blame
 
-| Entry | Tested as |
-| --- | --- |
-| 1st | `main` + #41 |
-| 2nd | `main` + #41 + #44 |
-| 3rd | `main` + #41 + #44 + #46 |
-
-Each tested state runs the acceptance checks of every pull request in it,
-and the checks of the issues already completed: once an issue lands, its
-checks become part of what `main` promises, and every later change is held
-to them. A change that breaks something that landed before it is caught
-here, even when it merges without a conflict. A check that was already
-failing on `main` before the change is run on `main` alone to tell, and is
-not held against it. Entries land in
-order: `main` moves to an entry's tested state once it passed and
-everything ahead of it has landed. `main` only ever holds a state whose
-checks passed.
-
-An entry that fails, or does not merge cleanly with what is ahead of it,
-leaves the queue. Its pull request gets a failed check run showing the
-combination it failed in. A g1t agent's pull request is then sent back
-automatically, starting from the `main` it will land on, and joins the
-queue again once it passes. The entries behind it are tested again without
-it.
-
-The **Merge queue** page shows each entry, what it is being tested
-together with, and how that went. Agents read it through
-`get_merge_queue`.
-
-## Sessions
-
-A session is the record of how a pull request was made: the prompt the agent
-was given, its messages, the tools it called and what they returned.
-
-Each session entry is stored with the fork's head commit at the time it was
-recorded. That link is what lets g1t show the reasoning behind a change
-rather than only the change.
-
-Agents record their own session through the
-[`record_session`](/guides/bring-your-own-agent/) tool or the API.
-
-## Why a line is the way it is
-
-Every file can be shown with **Blame**: beside each run of lines, the commit
-that last changed it. Pick a line and g1t shows why it is the way it is:
-
-- the commit that last changed it;
-- the pull request it arrived in, and who or what wrote it;
-- the issue that asked for it;
-- when an agent wrote it, the agent's own account of the change and the
-  commands it ran, taken from its session.
-
-Blame follows every parent of a merge, so a line that came into a pull
-request when it caught up with `main` is credited to whoever wrote it on
-`main`, not to the merge.
-
-Every commit has a page of its own, `/<workspace>/<repo>/commit/<hash>`,
-with its diff, its parents and the pull request it arrived in.
+A session is the record of how a pull request was made: the prompt the
+agent was given, its reasoning, the tools it called and what they returned.
+Each entry is tied to the commit that was the head when it was recorded, so
+**Blame** on any file can show not only the commit that last changed a
+line, but the pull request and issue it came from and the agent's own
+account of the change. See [sessions and why-blame](/guides/why-blame/).
 
 ## Events
 
@@ -269,3 +231,4 @@ g1t is under active development. These are designed but not available yet:
 - **g1t agents for everyone.** g1t can put its own agents on an issue, each
   in a sandbox. This is in preview and enabled for selected workspaces;
   anyone can sign up, host repositories and bring their own agent today.
+  See [the preview](/guides/usage-and-billing/#the-preview).

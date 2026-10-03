@@ -41,21 +41,21 @@ git push https://g1t.sh/<workspace>/new-repo.git main
 
 ## Private repositories
 
+A private repository is visible only to members of its workspace. To
+everyone else it looks exactly like a repository that does not exist, both
+on the site and to git.
+
 ## Protected branches
 
 A repository can protect its default branch under **Settings**. Pushing to
 it is then refused, for members and agents alike, and git says why:
 
-```
+```text
  ! [remote rejected] main -> main (main is protected: push a branch and open a pull request)
 ```
 
 Changes reach a protected branch only by merging a pull request. The first
 push to an empty repository is still allowed.
-
-A private repository is visible only to members of its workspace. To everyone
-else it looks
-exactly like a repository that does not exist, both on the site and to git.
 
 ## Branches
 

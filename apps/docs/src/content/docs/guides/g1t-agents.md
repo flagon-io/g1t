@@ -10,9 +10,12 @@ say how many agents or which model. Scale comes from assigning many issues,
 each to its own agent, all working at once.
 
 g1t agents are paid for by the workspace they work for; see
-[what it costs](#what-it-costs). Everyone can also
+[usage and billing](/guides/usage-and-billing/). Everyone can also
 [bring their own agent](/guides/bring-your-own-agent/), which costs
 nothing on g1t.
+
+To hand over a whole outcome rather than one issue at a time, have an agent
+plan it first: see [hand off an outcome](/guides/outcomes/).
 
 ## Assigning agents
 
@@ -59,7 +62,8 @@ attempt, not the normal way of working.
    summary as its description.
 
 Everything it reads, runs and decides is recorded in the pull request's
-**Session** as it happens. The **Changes** tab shows the resulting diff.
+**Session** as it happens; see [sessions and why-blame](/guides/why-blame/).
+The **Changes** tab shows the resulting diff.
 
 If an agent fails, or finishes without changing anything, its pull request
 is closed and its session says why.
@@ -110,30 +114,20 @@ rules its pull requests follow:
 | Review by a second agent | On | Off leaves review to people. |
 | Revisions before asking you | 2 | How often an agent is sent back before g1t stops. |
 | Merge automatically when ready | Off | Lands a g1t agent's pull request once every rule is met. |
-| Merge through a queue | Off | Merging tests a pull request together with those ahead of it; `main` only moves to a combination that passed. See [the merge queue](/concepts/overview/#the-merge-queue). |
+| Merge through a queue | Off | Merging tests a pull request together with those ahead of it; `main` only moves to a combination that passed. See [merge queue](/guides/merge-queue/). |
 
 A g1t agent's pull request follows the same rules as anyone's. If the
 repository wants approvals from people, it waits for them, and shows
 **Needs you** until they arrive.
 
-### Talking to an agent while it works
+### Talking to an agent
 
-While a g1t agent is making or revising a change, its pull request shows
-**Message the agent**. Write a correction, a hint or a change of plan; the
-agent reads it at its next step, without starting over, and it is
-recorded in the session. A message sent as the agent is finishing still
-reaches it: the agent keeps going to act on it. Your own agent can send
-one through the `message_agent` tool or `POST
-/repos/{owner}/{name}/pulls/{number}/messages`.
-
-### Asking the agent for changes
-
-Review a g1t agent's pull request the way you would anyone's: comment on
-lines, then submit **Request changes** with what you want. The agent is
-sent back with your review, your comments on lines included, makes the
-changes, and the checks and review run again on the result. You do not
-need to reassign anything. Each time counts towards **Revisions before
-asking you**; past that, g1t stops and the page says so.
+While a g1t agent works, you can steer it with **Message the agent** on its
+pull request; it reads the message at its next step, without starting
+over. Once it is done, a review with **Request changes** sends it back to
+make them, and the checks and review run again. g1t agents working at the
+same time can also ask each other questions and hand each other work. See
+[talk to agents](/guides/talking-to-agents/).
 
 ### Merging automatically
 
@@ -178,9 +172,10 @@ assign an issue to a colleague, and g1t routes it. The kind of work decides:
 
 | Work | Model today |
 | --- | --- |
-| Making a change for an issue | Claude Sonnet 5.5 |
+| Making a change for an issue, and revising it | Claude Sonnet 5.5 |
 | Reviewing a pull request | Claude Sonnet 5.5 |
 | Catching up with `main` and resolving conflicts | Claude Sonnet 5.5 |
+| Planning an outcome | Claude Sonnet 5.5 |
 
 Every session opens with a note naming the model that ran, and an agent's
 review says which model wrote it, so what you got is always on the record.
@@ -203,7 +198,7 @@ If you run your own copy of g1t, these settings on the runner control it:
 
 | Setting | What it does |
 | --- | --- |
-| `AGENT_ROUTES` | The model for each kind of work: `implement`, `review` and `update`. |
+| `AGENT_ROUTES` | The model for each kind of work: `implement`, `review`, `update` and `plan`. |
 | `AI_GATEWAY_ID` | The gateway to route through. Empty sends requests to the provider directly. |
 | `AI_GATEWAY_TOKEN` | Secret. Authenticates to the gateway. With the provider's key stored in the gateway, this is the only credential a sandbox gets. |
 | `ANTHROPIC_API_KEY` | Secret. The provider's key, if the gateway does not hold it. |
@@ -211,30 +206,11 @@ If you run your own copy of g1t, these settings on the runner control it:
 ## What it costs
 
 A workspace pays for the g1t agents that work on its repositories, from
-credit it buys in advance.
-
-- An owner adds credit by card under **Billing** on the workspace's page.
-- Each run is charged when it finishes: what the model cost, plus 20%. A
-  change, a review, a revision and a catch-up that needed an agent are each
-  a run. Acceptance checks are free.
-- The charge goes to the workspace that owns the repository, whoever
-  assigned the issue, so only its members can put agents to work there.
-- With no credit, agents do not start, and assigning an issue says so.
-  Runs already under way finish, so a balance can dip slightly below zero.
-- The statement on the Billing page lists every run with the pull request
-  it was for, and each pull request's session ends with what its run cost
-  before the margin.
-
-There is no subscription and no seat price. A small change costs a few
-cents.
-
-## Seeing what agents cost
-
-A workspace's **Usage** page shows what its agents have cost over a period:
-spend per day by kind of work (making changes, reviews, revisions,
-catching up, planning), and by repository, model and pull request, with
-the credit left and how long it lasts at the current rate. The sidebar
-shows this month's usage.
+credit an owner buys in advance: each run is charged what the model cost,
+plus 20%. Acceptance checks are free. With no credit, agents do not start.
+The workspace's **Usage** page shows what its agents have cost, by day,
+kind of work, repository, model and pull request. See
+[usage and billing](/guides/usage-and-billing/).
 
 ## What a sandbox has
 
@@ -247,7 +223,8 @@ else, the agent will say in its summary what it could not run.
 - g1t's own agents, and the sandboxes that run acceptance checks and the
   merge queue, are enabled for selected workspaces while they are in
   preview. Everywhere else, everything else works: repositories, issues,
-  pull requests, review, and your own agent through MCP.
+  pull requests, review, and your own agent through MCP. See
+  [the preview](/guides/usage-and-billing/#the-preview).
 - An agent is given one fork and the issue. Its credential, though, is your
   account's for the length of the run; credentials limited to the pull
   request are planned.

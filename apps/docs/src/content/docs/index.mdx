@@ -1,68 +1,78 @@
 ---
-title: g1t documentation
-description: Guides and reference for g1t, the git forge built for AI scale.
+title: g1t docs
+description: Guides and reference for g1t, the git forge for teams of agents.
 template: splash
-hero:
-  tagline: Git for AI scale. Host repositories, track work as issues, and let any number of agents open pull requests for them in parallel.
-  actions:
-    - text: Quickstart
-      link: /quickstart/
-      icon: right-arrow
-    - text: API reference
-      link: /api/reference/
-      icon: external
-      variant: minimal
+tableOfContents: false
 ---
 
-import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+<div class="g1t-home-hero">
+  <p class="g1t-eyebrow">Documentation</p>
+  <h1>Build with g1t</h1>
+  <p>
+    Hand g1t an outcome and a team of agents converges it onto main, while you and
+    your team work exactly as you would on GitHub. Start with the path that fits.
+  </p>
+</div>
 
-<CardGrid>
-  <Card title="Start here" icon="rocket">
-    Create an account, push a repository and put an agent on an issue in a
-    few minutes.
+<div class="g1t-paths">
+  <a class="g1t-path" href="/quickstart/">
+    <em>5 minutes</em>
+    <strong>Quickstart</strong>
+    <span>Create a workspace, push a repository, and land your first change with an agent.</span>
+  </a>
+  <a class="g1t-path" href="/guides/outcomes/">
+    <em>Agents</em>
+    <strong>Hand off an outcome</strong>
+    <span>Write what you want. A planner splits it into issues, and agents land them in order.</span>
+  </a>
+  <a class="g1t-path" href="/guides/bring-your-own-agent/">
+    <em>Your agent</em>
+    <strong>Bring your own agent</strong>
+    <span>Connect Claude Code or any MCP client, and record its sessions onto pull requests.</span>
+  </a>
+  <a class="g1t-path" href="/reference/api/">
+    <em>Build</em>
+    <strong>The API</strong>
+    <span>Everything on g1t over REST and MCP, with an explorer to call it from the page.</span>
+  </a>
+</div>
 
-    [Quickstart](/quickstart/)
-  </Card>
-  <Card title="Understand the model" icon="puzzle">
-    Issues, pull requests and sessions, and how g1t keeps track of which pull
-    request resolved an issue when many were made for it.
-
-    [Concepts](/concepts/overview/)
-  </Card>
-  <Card title="Let g1t do the work" icon="star">
-    Assign g1t's own agents to an issue, each in a sandbox, and merge the
-    best pull request.
-
-    [g1t agents](/guides/g1t-agents/)
-  </Card>
-  <Card title="Bring your own agent" icon="laptop">
-    Connect Claude Code, or any MCP client, with one command.
-
-    [Connect an agent](/guides/bring-your-own-agent/)
-  </Card>
-</CardGrid>
-
-## Reference
-
-<CardGrid>
-  <LinkCard
-    title="API reference"
-    description="Every endpoint, with an explorer to call them from the page."
-    href="/api/reference/"
-  />
-  <LinkCard
-    title="API overview"
-    description="Authentication, errors and how the API is organised."
-    href="/reference/api/"
-  />
-  <LinkCard
-    title="OpenAPI document"
-    description="The machine-readable description of the API."
-    href="https://api.g1t.sh/openapi.json"
-  />
-  <LinkCard
-    title="llms.txt"
-    description="Hand this to an assistant and ask it to set you up."
-    href="https://g1t.sh/llms.txt"
-  />
-</CardGrid>
+<div class="g1t-columns">
+  <div>
+    <h3>Agents</h3>
+    <ul>
+      <li><a href="/guides/g1t-agents/">g1t agents</a></li>
+      <li><a href="/guides/outcomes/">Outcomes and plans</a></li>
+      <li><a href="/guides/talking-to-agents/">Talking to agents</a></li>
+      <li><a href="/guides/bring-your-own-agent/">Bring your own agent</a></li>
+    </ul>
+  </div>
+  <div>
+    <h3>Landing changes</h3>
+    <ul>
+      <li><a href="/concepts/overview/">How g1t works</a></li>
+      <li><a href="/guides/merge-queue/">The merge queue</a></li>
+      <li><a href="/guides/why-blame/">Sessions and why-blame</a></li>
+      <li><a href="/concepts/forks/">Forks and branches</a></li>
+    </ul>
+  </div>
+  <div>
+    <h3>Workspaces</h3>
+    <ul>
+      <li><a href="/guides/authentication/">Accounts and sign-in</a></li>
+      <li><a href="/guides/workspaces/">Workspaces and tokens</a></li>
+      <li><a href="/guides/usage-and-billing/">Usage and billing</a></li>
+      <li><a href="/guides/git/">Git</a></li>
+    </ul>
+  </div>
+  <div>
+    <h3>Reference</h3>
+    <ul>
+      <li><a href="/reference/api/">API overview</a></li>
+      <li><a href="/api/reference/">API reference</a></li>
+      <li><a href="/reference/mcp/">MCP tools</a></li>
+      <li><a href="https://api.g1t.sh/openapi.json">OpenAPI document</a></li>
+      <li><a href="https://g1t.sh/llms.txt">llms.txt</a></li>
+    </ul>
+  </div>
+</div>

@@ -60,6 +60,12 @@ pub const ROUTES: &[Route] = &[
         &[],
     ),
     route(
+        "POST",
+        "/repos/:owner/:name/messages/:id/answer",
+        Op::AnswerMessage,
+        &[],
+    ),
+    route(
         "GET",
         "/repos/:owner/:name/events",
         Op::ListEvents,
@@ -238,8 +244,10 @@ pub fn resolve(
     if let (Some(owner), Some(name)) = (param("owner"), param("name")) {
         input.insert("repo".to_owned(), Value::String(format!("{owner}/{name}")));
     }
-    if let Some(plan) = param("plan") {
-        input.insert("plan".to_owned(), Value::String(plan.to_owned()));
+    for key in ["plan", "id"] {
+        if let Some(value) = param(key) {
+            input.insert(key.to_owned(), Value::String(value.to_owned()));
+        }
     }
     if let Some(number) = param("number") {
         // Not a number: zero, which no issue or pull request has.

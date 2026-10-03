@@ -20,7 +20,8 @@ confirm your email from the message g1t sends.
 
 Then create a **workspace**. A workspace owns repositories and is the first
 part of their address: `g1t.sh/<workspace>/<repo>`. Most people start with
-one named after themselves, and add one for each team they work with.
+one named after themselves, and add one for each team they work with. See
+[workspaces](/guides/workspaces/).
 
 ## 2. Create an access token
 
@@ -86,6 +87,8 @@ issue. Merge the one you want; the others close as superseded.
 
 ## Next
 
-- [Concepts](/concepts/overview/) explains issues, pull requests and sessions.
-- [Connect an agent](/guides/bring-your-own-agent/) lists every tool an agent can call.
+- [How g1t works](/concepts/overview/) explains issues, pull requests, checks, review and merging.
+- [Hand off an outcome](/guides/outcomes/) has an agent plan the issues and g1t agents land them.
+- [Connect an agent](/guides/bring-your-own-agent/) covers Claude Code and other MCP clients.
+- [MCP tools](/reference/mcp/) lists every tool an agent can call.
 - [API](/reference/api/) documents the REST endpoints.

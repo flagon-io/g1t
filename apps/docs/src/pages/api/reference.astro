@@ -9,6 +9,7 @@ const configuration = {
 	darkMode: true,
 	hideDarkModeToggle: true,
 	hideClientButton: true,
+	hideModels: true,
 	defaultHttpClient: { targetKey: 'shell', clientKey: 'curl' },
 };
 ---
@@ -34,10 +35,22 @@ const configuration = {
 	</head>
 	<body>
 		<header class="bar">
-			<a class="brand" href="https://g1t.sh/">g<span>1</span>t</a>
-			<a href="/">Docs</a>
-			<a href="/reference/api/">API overview</a>
-			<a href="https://api.g1t.sh/openapi.json">OpenAPI</a>
+			<a class="brand" href="/" aria-label="g1t docs home">
+				<svg viewBox="0 0 32 32" aria-hidden="true">
+					<path d="M16 2.5 28 9.4 16 16.3 4 9.4Z" fill="currentColor"></path>
+					<path d="M4 10.9 15.3 17.4V30.2L4 23.7Z" fill="currentColor" fill-opacity="0.55"></path>
+					<path d="M28 10.9 16.7 17.4V30.2L28 23.7Z" fill="currentColor" fill-opacity="0.25"></path>
+				</svg>
+				<b>g1t</b>
+				<span class="pill">Docs</span>
+			</a>
+			<nav>
+				<a href="/">Guides</a>
+				<a href="/reference/api/">API overview</a>
+				<a href="/reference/mcp/">MCP tools</a>
+				<a href="https://api.g1t.sh/openapi.json">OpenAPI</a>
+				<a href="https://g1t.sh/register" class="cta">Sign up</a>
+			</nav>
 		</header>
 		<script
 			is:inline
@@ -67,8 +80,8 @@ const configuration = {
 		--scalar-color-1: var(--g1t-fg);
 		--scalar-color-2: var(--g1t-muted);
 		--scalar-color-3: var(--g1t-faint);
-		--scalar-color-accent: var(--g1t-accent);
-		--scalar-background-accent: color-mix(in srgb, var(--g1t-accent) 12%, transparent);
+		--scalar-color-accent: #cfc6ff;
+		--scalar-background-accent: color-mix(in srgb, var(--g1t-merged) 12%, transparent);
 		--scalar-button-1: var(--g1t-fg);
 		--scalar-button-1-color: var(--g1t-bg);
 		--scalar-button-1-hover: #ffffff;
@@ -82,16 +95,20 @@ const configuration = {
 		--scalar-sidebar-border-color: var(--g1t-line);
 		--scalar-sidebar-item-hover-background: var(--g1t-surface);
 		--scalar-sidebar-item-active-background: var(--g1t-raised);
-		--scalar-sidebar-color-active: var(--g1t-accent);
+		--scalar-sidebar-color-active: var(--g1t-fg);
 	}
 
 	.bar {
+		position: sticky;
+		top: 0;
+		z-index: 10;
 		display: flex;
 		align-items: center;
-		gap: 16px;
+		justify-content: space-between;
 		height: 56px;
-		padding: 0 16px;
-		background: var(--g1t-surface);
+		padding: 0 20px;
+		background: color-mix(in srgb, var(--g1t-bg) 88%, transparent);
+		backdrop-filter: blur(10px);
 		border-bottom: 1px solid var(--g1t-line);
 		font: 14px var(--g1t-font-sans);
 	}
@@ -99,14 +116,50 @@ const configuration = {
 		color: var(--g1t-muted);
 		text-decoration: none;
 	}
-	.bar a:hover {
-		color: var(--g1t-fg);
-	}
 	.bar .brand {
-		font: 600 18px var(--g1t-font-mono);
+		display: inline-flex;
+		align-items: center;
+		gap: 9px;
 		color: var(--g1t-fg);
 	}
-	.bar .brand span {
-		color: var(--g1t-accent);
+	.bar .brand svg {
+		width: 21px;
+		height: 21px;
+	}
+	.bar .brand b {
+		font-size: 17px;
+		letter-spacing: -0.035em;
+	}
+	.bar .pill {
+		border-radius: 999px;
+		padding: 1px 8px;
+		font-size: 11.5px;
+		color: var(--g1t-muted);
+		box-shadow: inset 0 0 0 1px var(--g1t-line-strong);
+	}
+	.bar nav {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+	.bar nav a {
+		border-radius: 6px;
+		padding: 5px 10px;
+		font-size: 13.5px;
+	}
+	.bar nav a:hover {
+		background: var(--g1t-raised);
+		color: var(--g1t-fg);
+	}
+	.bar nav a.cta {
+		margin-left: 4px;
+		background: var(--g1t-fg);
+		color: var(--g1t-bg);
+		font-weight: 500;
+	}
+	@media (max-width: 760px) {
+		.bar nav a:not(.cta) {
+			display: none;
+		}
 	}
 </style>

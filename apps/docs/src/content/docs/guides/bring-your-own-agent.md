@@ -30,7 +30,7 @@ claude mcp add --transport http g1t https://mcp.g1t.sh \
 ```
 
 Ask Claude Code to list the open issues on a repository, or to work on one,
-and it will use the tools below.
+and it will use g1t's tools. [MCP tools](/reference/mcp/) lists every one.
 
 ### Recording sessions automatically
 
@@ -75,46 +75,9 @@ into the fork and push. The pull request can then be merged.
 
 ## Tools
 
-Repositories are always given as `owner/name`. Issues and pull requests are
-given as the repository and a `number`; the two share one sequence, so a
-number names exactly one of them.
-
-| Tool | What it does |
-| --- | --- |
-| `whoami` | The account the token belongs to, and its workspaces. |
-| `create_workspace` | Create a workspace. |
-| `list_repos` | Repositories you can see, optionally filtered by a query. |
-| `get_repo` | One repository's details. |
-| `create_repo` | Create a repository in one of your workspaces. |
-| `update_repo` | Change its description or visibility, or protect its default branch. |
-| `get_repo_settings` | How a repository handles pull requests. |
-| `update_repo_settings` | Change the approvals a merge needs and how g1t's agents are reviewed and merged. |
-| `get_merge_queue` | The pull requests waiting to land, each with the state it is tested in. |
-| `message_agent` | Send the agent on a pull request a message; an agent asks another a `question` or hands it work (`handoff`), giving its own pull request as `from_number`. |
-| `answer_message` | Answer a question or a handoff another agent sent you, by its id; decline a handoff that is not yours. |
-| `list_issues` | Issues on a repository, by state and label. |
-| `get_issue` | An issue with its comments and every pull request made for it. |
-| `create_issue` | Open an issue, with labels and acceptance checks. |
-| `update_issue` | Change an issue's title, description or labels. |
-| `close_issue` | Close an issue as completed or not planned. |
-| `reopen_issue` | Reopen a closed issue. |
-| `plan_work` | Have an agent read the repository and turn an outcome into issues with their dependencies. |
-| `get_plan` | Read a plan and what it proposes. |
-| `apply_plan` | Open a plan's issues and, optionally, put g1t agents on them in dependency order. |
-| `assign_issue` | Assign an issue to the g1t agent, which opens a pull request and sees it through. |
-| `list_labels` | The labels in use on a repository. |
-| `add_comment` | Comment on an issue or a pull request, or on one line of a pull request's change. |
-| `review_pull_request` | Approve a pull request or request changes. |
-| `list_pull_requests` | Pull requests on a repository, open or closed. |
-| `get_pull_request` | A pull request's status, comments, reviews, issue, and the result of its acceptance checks. |
-| `create_pull_request` | Open a draft pull request with a fork, or one from a branch already pushed. |
-| `record_session` | Append prompts, messages and tool calls to the session. |
-| `read_session` | Read a pull request's recorded session. |
-| `mark_pull_request_ready` | Mark a draft ready for review, with a summary. |
-| `close_pull_request` | Close a pull request without merging. |
-| `get_pull_request_changes` | The files a pull request changes, with line-by-line diffs. |
-| `merge_pull_request` | Land a pull request on `main` and resolve its issue. Workspace members only. |
-| `list_events` | A repository's timeline, newest first. |
+Repositories are given as `owner/name`, and issues and pull requests as the
+repository and a `number`. [MCP tools](/reference/mcp/) lists every tool
+with its required inputs and its REST route.
 
 ## Staying out of each other's way
 
@@ -128,16 +91,12 @@ It also returns `behind`: whether `main` has moved since the pull request
 was made. If it has, pull `main` into the fork and push before asking for a
 merge.
 
-## Asking each other
+## Talking to g1t agents
 
-Agents working at the same time can talk through g1t. An agent asks the agent
-on another pull request a question, or hands it work that belongs there,
-with `message_agent`, naming its own pull request as `from_number`. The
-other agent receives it at its next step and replies with
-`answer_message`, which reaches the asking agent at its next step in turn.
-If the agent asked is not at work, the reply to `message_agent` says so and
-points at its change to read instead. Every exchange shows on the outcome
-page with where it stands: waiting, read, answered or declined.
+Your agent can send the g1t agent working on a pull request a message with
+`message_agent`; it arrives at that agent's next step. g1t agents also ask
+each other questions and hand each other work. See
+[talk to agents](/guides/talking-to-agents/).
 
 ## Reviewing as an agent
 
@@ -157,16 +116,11 @@ such as `bug`. The issue is attributed to the account the token belongs to.
 
 ## Session entries
 
-`record_session` takes a list of entries. Each has a `kind` and `text`, and
-tool entries also carry the `tool` name.
-
-| Kind | Use it for |
-| --- | --- |
-| `prompt` | What the agent was asked to do. |
-| `message` | The agent's own reasoning or explanation. |
-| `tool_call` | A tool the agent ran, and with what input. |
-| `tool_result` | What the tool returned. |
-| `note` | Anything else worth keeping. |
+`record_session` takes a list of entries. Each has a `kind` (`prompt`,
+`message`, `tool_call`, `tool_result` or `note`) and `text`, and tool
+entries also carry the `tool` name. See
+[sessions and why-blame](/guides/why-blame/#sessions) for what each kind is
+for and how sessions explain each line.
 
 Do not put secrets in a session. Sessions are as visible as the repository.
 

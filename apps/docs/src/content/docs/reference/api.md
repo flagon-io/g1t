@@ -4,7 +4,7 @@ description: Authentication, errors and the endpoints of the REST API.
 ---
 
 The REST API lives at `https://api.g1t.sh`. It exposes the same operations as
-the [MCP server](/guides/bring-your-own-agent/).
+the [MCP server](/reference/mcp/).
 
 This page is an overview. The [API reference](/api/reference/) lists
 every endpoint with its parameters and lets you call them from the page. The
@@ -77,6 +77,7 @@ Errors are JSON with a stable `code` and a human-readable `message`.
 | Status | Code | Meaning |
 | --- | --- | --- |
 | 401 | `unauthenticated` | A token is required, or the one sent is not valid. |
+| 402 | `payment_required` | The workspace has no agent credit. See [usage and billing](/guides/usage-and-billing/#when-credit-runs-out). |
 | 403 | `forbidden` | You are signed in but not allowed to do this. |
 | 404 | `not_found` | It does not exist, or you cannot see it. |
 | 409 | `conflict` | The request conflicts with the current state. |
@@ -88,14 +89,15 @@ In paths, `{owner}` is the workspace that owns the repository.
 
 | Method | Path | |
 | --- | --- | --- |
-| `GET` | `/user` | Who the token acts as, and the workspaces it can work in. `kind` is `user`, or `workspace` for a [workspace's own token](/guides/authentication/#workspace-access-tokens). |
+| `GET` | `/user` | Who the token acts as, and the workspaces it can work in. `kind` is `user`, or `workspace` for a [workspace's own token](/guides/workspaces/#workspace-access-tokens). |
 | `POST` | `/workspaces` | Create a workspace. Body: `slug`, `name`. |
 | `GET` | `/repos?q=` | Repositories you can see. |
 | `POST` | `/repos` | Create one. Body: `workspace`, `name`, `description`, `private`, and `import_url` to copy a public repository's default branch. |
 | `GET` | `/repos/{owner}/{name}` | One repository. |
 | `PATCH` | `/repos/{owner}/{name}` | Change it. Body: `description`, `private`, and `protected` to refuse pushes to the default branch. Members only. |
 | `GET` | `/repos/{owner}/{name}/settings` | How it handles pull requests. |
-| `PATCH` | `/repos/{owner}/{name}/settings` | Change that. Body, all optional: `required_approvals`, `count_agent_approvals`, `allow_ignoring_checks`, `require_up_to_date`, `agent_review`, `max_revisions`, `auto_merge`. Members only. |
+| `PATCH` | `/repos/{owner}/{name}/settings` | Change that. Body, all optional: `required_approvals`, `count_agent_approvals`, `allow_ignoring_checks`, `require_up_to_date`, `agent_review`, `max_revisions`, `auto_merge`, `merge_queue`. Members only. |
+| `GET` | `/repos/{owner}/{name}/queue` | Its [merge queue](/guides/merge-queue/): entries waiting to land, and those that recently left. |
 | `GET` | `/repos/{owner}/{name}/events?before=` | Its timeline, newest first. |
 
 ## Issues
@@ -110,7 +112,7 @@ Issues and pull requests share one sequence of numbers per repository.
 | `PATCH` | `/repos/{owner}/{name}/issues/{number}` | Change `title`, `body` or `labels`. |
 | `POST` | `/repos/{owner}/{name}/issues/{number}/close` | Close. Body: `reason`, `completed` or `not_planned`. |
 | `POST` | `/repos/{owner}/{name}/issues/{number}/reopen` | Reopen. |
-| `POST` | `/repos/{owner}/{name}/plans` | Turn an outcome into a plan. Body: `brief`. Returns `planId`; the plan takes a minute or two to write. Members only. |
+| `POST` | `/repos/{owner}/{name}/plans` | Turn an [outcome](/guides/outcomes/) into a plan. Body: `brief`. Returns `planId`; the plan takes a minute or two to write. Members only. |
 | `GET` | `/repos/{owner}/{name}/plans/{plan}` | The plan: its `status` and the issues it proposes. |
 | `POST` | `/repos/{owner}/{name}/plans/{plan}/apply` | Open its issues. Body: `assign` to put g1t agents on them in dependency order, `keep` to open only some, by position from 1. |
 | `POST` | `/repos/{owner}/{name}/issues/{number}/assign` | Assign it to the [g1t agent](/guides/g1t-agents/), which opens a pull request and sees it through. Body: `instructions` (optional). Returns the pull request. Preview: enabled accounts only. |
@@ -154,7 +156,9 @@ pull request whose merge closed it:
 | `POST` | `/repos/{owner}/{name}/pulls/{number}/ready` | Mark ready for review. Body: `summary`. |
 | `POST` | `/repos/{owner}/{name}/pulls/{number}/close` | Close without merging. |
 | `POST` | `/repos/{owner}/{name}/pulls/{number}/reviews` | Give a verdict. Body: `verdict` (`approve` or `request_changes`), `body`. Not on your own pull request. |
-| `POST` | `/repos/{owner}/{name}/pulls/{number}/merge` | Land it on `main`. Body: `keep_issue_open`, `ignore_checks`. Workspace members only; `409` if it is a draft or its checks have not passed. If `main` has moved, the pull request is brought up to date first and lands when that is done: the response is the pull request, still open, and `landing` is true on it until then. A repository that requires pull requests to be up to date answers `409` instead. |
+| `POST` | `/repos/{owner}/{name}/pulls/{number}/messages` | Send the g1t agent working on it a message. Body: `body`; from a g1t agent, also `kind` and `from_number`. See [talk to agents](/guides/talking-to-agents/). |
+| `POST` | `/repos/{owner}/{name}/pulls/{number}/messages/take` | For a g1t agent at work: the messages it has not seen yet. |
+| `POST` | `/repos/{owner}/{name}/pulls/{number}/merge` | Land it on `main`, or add it to the merge queue where the repository has one on. Body: `keep_issue_open`, `ignore_checks`. Workspace members only; `409` if it is a draft or its checks have not passed. If `main` has moved, the pull request is brought up to date first and lands when that is done: the response is the pull request, still open, and `landing` is true on it until then. A repository that requires pull requests to be up to date answers `409` instead. |
 
 Opening a pull request returns the git remote of its fork:
 
@@ -230,7 +234,8 @@ curl -X POST https://api.g1t.sh/repos/syntaqx/hello/pulls/14/session \
   -d '{"entries": [{"kind": "message", "text": "Reading src/main.rs."}]}'
 ```
 
-Up to 200 entries can be appended per request.
+Up to 200 entries can be appended per request. See
+[sessions and why-blame](/guides/why-blame/).
 
 ## Identifiers and times
 
