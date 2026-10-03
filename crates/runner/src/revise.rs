@@ -9,7 +9,17 @@
 
 use crate::report::{Entry, Reporter};
 
+/// The author woken to answer what other agents asked it while it was not
+/// at work: the same run, which pushes only if it took on handed-over work.
+pub fn answer() -> i32 {
+    finish(crate::run, "Answering failed")
+}
+
 pub fn main() -> i32 {
+    finish(crate::run, "The revision failed")
+}
+
+fn finish(run: fn(&mut Reporter) -> anyhow::Result<String>, failed: &str) -> i32 {
     let mut reporter = match Reporter::from_env() {
         Ok(reporter) => reporter,
         Err(error) => {
@@ -17,14 +27,14 @@ pub fn main() -> i32 {
             return 2;
         }
     };
-    let outcome = crate::run(&mut reporter);
+    let outcome = run(&mut reporter);
     // On success the agent's account is already in the session: the harness
     // records its messages as they arrive.
     if let Err(error) = &outcome {
         eprintln!("g1t-runner: {error:#}");
         reporter.record(Entry::new(
             "note",
-            &format!("The revision failed: {error:#}. Nothing was pushed."),
+            &format!("{failed}: {error:#}. Nothing was pushed."),
         ));
     }
     reporter.flush();

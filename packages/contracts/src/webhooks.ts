@@ -24,6 +24,7 @@ export const EVENT_TYPES = [
   "pull.merge_requested",
   "pull.merged",
   "pull.closed",
+  "agent.asked",
   "checks.completed",
   "review.completed",
   "workflow.completed",

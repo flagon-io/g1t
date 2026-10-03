@@ -542,6 +542,8 @@ pub enum Stage {
     Revising,
     /// The agent is merging in the branch it would land on, which moved.
     CatchingUp,
+    /// Woken to answer a question another agent asked it, or a handoff.
+    Answering,
     /// In the repository's merge queue, being tested with what is ahead of
     /// it before it lands.
     Queued,
@@ -681,6 +683,26 @@ pub struct UpdateSettingsArgs {
 #[serde(rename_all = "camelCase")]
 pub struct CatchUpJobArgs {
     pub pull_id: String,
+}
+
+/// `wake_for_messages`: the agent on a pull request was asked a question
+/// or handed work while it was not at work. Claims a short step for it to
+/// answer, and hands over what it was sent, marked read. Null when there
+/// is nothing waiting, or the pull request cannot take a step now.
+/// Returns `Option<Wake>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WakeForMessagesArgs {
+    pub pull_id: String,
+}
+
+/// What an agent woken to answer needs: its pull request, and what it was
+/// sent, oldest first.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Wake {
+    pub job: LifecycleJob,
+    pub messages: Vec<AgentMessage>,
 }
 
 /// `stall`: records that a step could not be carried out, so that g1t
@@ -924,7 +946,7 @@ pub struct IssueProgress {
     /// `blocked` (waiting on issues it depends on), `waiting` (for an
     /// agent), `open` (nobody on it), one of the lifecycle stages
     /// (`working`, `checking`, `reviewing`, `revising`, `catching_up`,
-    /// `queued`, `ready`, `needs_you`), `landed` or `closed`.
+    /// `answering`, `queued`, `ready`, `needs_you`), `landed` or `closed`.
     pub state: String,
     /// One sentence about where it stands.
     pub detail: String,

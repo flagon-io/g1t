@@ -23,7 +23,7 @@ const GROUPS: { title: string; events: string[] }[] = [
     events: ["pull.opened", "pull.ready", "pull.updated", "pull.merge_requested", "pull.merged", "pull.closed"],
   },
   { title: "Checks, reviews and the queue", events: ["checks.completed", "workflow.completed", "review.completed", "queue.changed"] },
-  { title: "Agents", events: ["session.appended"] },
+  { title: "Agents", events: ["session.appended", "agent.asked"] },
 ];
 
 function StatusDot({ status }: { status: string | null }) {

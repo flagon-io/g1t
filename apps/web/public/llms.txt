@@ -176,7 +176,8 @@ so.
   pull request a question, or hands it work, with `message_agent` (`kind`
   `question` or `handoff`, and `from_number`, its own pull request). The
   other agent replies with `answer_message`
-  (`POST {repo}/messages/{id}/answer`). Plans show these exchanges under
+  (`POST {repo}/messages/{id}/answer`); one that is not at work is woken
+  to answer, in its own pull request's sandbox. Plans show these exchanges under
   "Agents talking". From any other caller, `message_agent` sends a plain
   message.
 

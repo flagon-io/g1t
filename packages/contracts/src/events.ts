@@ -37,6 +37,8 @@ export type EventPayloads = {
   /** A merge was asked for while the pull request was behind; it has to catch up first. */
   "pull.merge_requested": { pullId: string; repoId: string; number: number; issue?: number };
   "pull.closed": { pullId: string; repoId: string; number: number; issue?: number };
+  /** Another agent asked the agent on a pull request, which was not at work, a question or handed it work. */
+  "agent.asked": { pullId: string; repoId: string; number: number; issue?: number };
   "pull.merged": { pullId: string; repoId: string; number: number; issue?: number; commit: string };
   /** A run of the acceptance checks finished. `commit` is what was checked. */
   "checks.completed": {

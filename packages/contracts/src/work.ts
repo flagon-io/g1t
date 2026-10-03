@@ -306,7 +306,8 @@ export type CommitStatus = {
  * to merge. g1t takes each one without being asked: `working` (the agent is
  * making the change), `checking`, `reviewing`, `revising` (the agent is
  * addressing failed checks or a review), `catching_up` (merging in the
- * branch it would land on), then `ready` for a person to merge. `needs_you`
+ * branch it would land on), `answering` (woken to answer another agent),
+ * then `ready` for a person to merge. `needs_you`
  * means g1t has stopped and a person decides what happens next.
  */
 export type Stage =
@@ -315,6 +316,7 @@ export type Stage =
   | "reviewing"
   | "revising"
   | "catching_up"
+  | "answering"
   | "queued"
   | "ready"
   | "needs_you";
@@ -347,6 +349,9 @@ export type LifecycleJob = {
   /** For a revision: which one this is, from 1. */
   round: number;
 };
+
+/** An agent woken to answer what other agents sent it while it was not at work. */
+export type Wake = { job: LifecycleJob; messages: AgentMessage[] };
 
 /**
  * `planning` while an agent reads the repository and writes it; `ready` for
@@ -589,6 +594,13 @@ export interface WorkApi {
    * merge of it was asked for. Null if none was.
    */
   catchUpJob(pullId: string): Promise<LifecycleJob | null>;
+  /**
+   * Claims a short step for the agent on a pull request to answer the
+   * questions and handoffs it was sent while not at work, and hands them
+   * over, marked read. Null when there is nothing waiting or it cannot
+   * take a step now.
+   */
+  wakeForMessages(pullId: string): Promise<Wake | null>;
 
   /**
    * Opens a pull request: a draft with a fork to push to, or, given a

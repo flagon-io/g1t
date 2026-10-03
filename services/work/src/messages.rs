@@ -18,6 +18,10 @@ const MAX_MESSAGE_CHARS: usize = 4000;
 /// Kinds an agent may send another.
 const ASKS: [&str; 2] = ["question", "handoff"];
 
+/// How long an agent woken to answer holds its pull request: nothing else
+/// starts on it meanwhile. Answering everything lets go sooner.
+const ANSWER_MINUTES: u64 = 20;
+
 #[derive(Deserialize)]
 struct MessageRow {
     id: String,
@@ -196,10 +200,28 @@ impl Work {
         self.insert_message(&repo.id, &pull.id, &a.actor.id, &message).await?;
         let mut message = message;
         if from_agent && !at_work {
-            message.hint = Some(format!(
-                "The agent on #{} is not at work right now, so it will not answer soon. Its change is there to read: use get_pull_request and get_pull_request_changes on #{}, and decide from that.",
-                pull.number, pull.number
-            ));
+            // An open pull request that g1t has not stopped on: its agent is
+            // woken to answer (see `wake_for_messages`).
+            let wakeable = pull.status == PullStatus::Open
+                && self
+                    .db
+                    .prepare("SELECT 1 AS value FROM pulls WHERE id = ? AND stalled IS NULL")
+                    .bind(&[pull.id.as_str().into()])?
+                    .first::<u32>(Some("value"))
+                    .await?
+                    .is_some();
+            message.hint = Some(if wakeable {
+                self.publish("agent.asked", &repo.id, &a.actor, Self::pull_event(&pull)).await?;
+                format!(
+                    "The agent on #{} was not at work, so g1t is waking it to answer; the answer reaches you at a later step. Its change is there to read meanwhile: get_pull_request and get_pull_request_changes on #{}.",
+                    pull.number, pull.number
+                )
+            } else {
+                format!(
+                    "The agent on #{} is not at work right now, so it will not answer soon. Its change is there to read: use get_pull_request and get_pull_request_changes on #{}, and decide from that.",
+                    pull.number, pull.number
+                )
+            });
         }
         let said = match (message.kind.as_str(), message.from_number) {
             ("question", Some(from)) => format!("was asked a question by the agent on #{from}"),
@@ -288,6 +310,20 @@ impl Work {
             .await?;
         asked.answer = Some(body.clone());
         asked.declined = a.decline;
+        // An agent woken to answer lets go of its pull request once nothing
+        // it was asked is left unanswered.
+        self.db
+            .prepare(
+                "UPDATE pulls SET working_on = NULL, working_until = NULL
+                 WHERE id = (SELECT pull_id FROM agent_messages WHERE id = ?1)
+                   AND working_on = 'answer'
+                   AND NOT EXISTS (
+                     SELECT 1 FROM agent_messages
+                     WHERE pull_id = pulls.id AND kind IN ('question', 'handoff') AND answer IS NULL)",
+            )
+            .bind(&[asked.id.as_str().into()])?
+            .run()
+            .await?;
         // Back to whoever asked: the agent on the other pull request.
         if let Some(from) = asked.from_number {
             if let Some(back) = self.pull(&repo.id, from).await?.filter(|pull| pull.status.is_active()) {
@@ -363,8 +399,87 @@ impl Work {
             Outcome::Ok(found) => found,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
+        Ok(Outcome::Ok(self.deliver(&pull).await?))
+    }
+
+    /// Wakes the agent on a pull request to answer what it was asked while
+    /// it was not at work: claims a short step, and hands over its messages.
+    pub(crate) async fn wake_for_messages(&self, a: WakeForMessagesArgs) -> Result<Option<Wake>> {
+        let Some(pull) = self.pull_by_id(&a.pull_id).await? else {
+            return Ok(None);
+        };
+        // Only another agent's question or handoff wakes it; what people
+        // say waits for its next step.
+        let waiting = self
+            .db
+            .prepare(
+                "SELECT 1 AS value FROM agent_messages
+                 WHERE pull_id = ? AND delivered_at IS NULL AND kind IN ('question', 'handoff')
+                 LIMIT 1",
+            )
+            .bind(&[pull.id.as_str().into()])?
+            .first::<u32>(Some("value"))
+            .await?
+            .is_some();
+        if !waiting || !self.claim(&pull.id, "answer", ANSWER_MINUTES, false).await? {
+            return Ok(None);
+        }
+        let repo: Outcome<g1t_contracts::repos::Repo> = g1t_kit::call(
+            &self.repos,
+            "get_by_id",
+            &g1t_contracts::repos::GetByIdArgs {
+                id: pull.repo_id.clone(),
+                viewer: self.author_viewer(&pull).await?,
+            },
+        )
+        .await?;
+        let Outcome::Ok(repo) = repo else {
+            return Ok(None);
+        };
+        let path = g1t_contracts::repos::RepoPath {
+            namespace: repo.namespace,
+            name: repo.name,
+        };
+        let issue = match pull.issue {
+            Some(number) => self.issue(&pull.repo_id, number).await?,
+            None => None,
+        };
+        let messages = self.deliver(&pull).await?;
+        let asking: Vec<String> = messages
+            .iter()
+            .filter_map(|message| message.from_number.map(|from| format!("#{from}")))
+            .collect();
+        self.note(
+            &pull.repo_id,
+            pull.number,
+            (crate::lifecycle::POLICY_ACTOR_ID, crate::lifecycle::POLICY_ACTOR_NAME),
+            &format!("woke g1t-agent to answer the agent on {}", asking.join(", ")),
+        )
+        .await?;
+        Ok(Some(Wake {
+            job: LifecycleJob {
+                pull_id: pull.id,
+                source: pull.fork.unwrap_or_else(|| path.clone()),
+                repo: path,
+                number: pull.number,
+                author: pull.author,
+                branch: pull.branch,
+                default_branch: repo.default_branch,
+                title: pull.title,
+                description: pull.body.unwrap_or_default(),
+                issue,
+                feedback: String::new(),
+                round: 0,
+            },
+            messages,
+        }))
+    }
+
+    /// Marks a pull request's undelivered messages delivered, records them
+    /// in its session, and returns them, oldest first.
+    async fn deliver(&self, pull: &Pull) -> Result<Vec<AgentMessage>> {
         let now = rfc3339(now_ms());
-        let taken: Vec<AgentMessage> = self
+        let mut taken: Vec<AgentMessage> = self
             .db
             .prepare(
                 "UPDATE agent_messages SET delivered_at = ?
@@ -378,6 +493,7 @@ impl Work {
             .into_iter()
             .map(AgentMessage::from)
             .collect();
+        taken.sort_by(|a, b| a.created_at.cmp(&b.created_at));
         if !taken.is_empty() {
             let entries: Vec<NewSessionEntry> = taken
                 .iter()
@@ -393,8 +509,8 @@ impl Work {
                     commit: None,
                 })
                 .collect();
-            self.append_entries(&pull, &entries).await?;
+            self.append_entries(pull, &entries).await?;
         }
-        Ok(Outcome::Ok(taken))
+        Ok(taken)
     }
 }

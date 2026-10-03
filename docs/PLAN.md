@@ -785,8 +785,10 @@ tickets that agents read, people import, and that hear back. Racing a
 set number of agents on one issue is dropped: choosing how many agents to
 use is not something people should have to do.
 
-1. **Handoffs and questions between agents** as states (offered, accepted,
-   declined, done) on the outcome page, not only comments.
+1. ~~**Handoffs and questions between agents** as states on the outcome
+   page.~~ Done: questions and handoffs show as waiting, read, answered,
+   taken on or declined; since 2026-10-03 an agent asked while it is not at
+   work is woken to answer, where before the question waited forever.
 2. **The large run.** Dozens of agents on a real repository, end to end, for
    the video; g1t hosted on g1t.
 3. **Polish for judges trying it in a minute:** a seeded demo workspace, the

@@ -70,6 +70,7 @@ With these headers:
 | `workflow.completed` | A GitHub Actions run finished. `data.workflow`, `data.conclusion`, `data.runId`, `data.sha`, `data.pull`. |
 | `queue.changed` | The merge queue gained, lost or settled an entry. |
 | `session.appended` | An agent's session grew. Busy: choose it only if you need it. |
+| `agent.asked` | An agent asked the agent on another pull request a question, or handed it work, while that one was not at work; g1t wakes it to answer. |
 
 ## Check the signature
 

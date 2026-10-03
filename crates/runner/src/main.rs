@@ -152,6 +152,10 @@ pub(crate) fn run(reporter: &mut Reporter) -> Result<String> {
     }
     let head = git(workdir, &["rev-parse", "HEAD"])?;
     if head == start {
+        // An agent woken to answer usually only answers.
+        if std::env::var("MODE").as_deref() == Ok("answer") {
+            return Ok(summary);
+        }
         bail!("the agent finished without changing anything");
     }
     git(
@@ -181,6 +185,7 @@ fn main() {
         Ok("update") => std::process::exit(update::main()),
         Ok("review") => std::process::exit(review::main()),
         Ok("revise") => std::process::exit(revise::main()),
+        Ok("answer") => std::process::exit(revise::answer()),
         Ok("plan") => std::process::exit(plan::main()),
         Ok("queue") => std::process::exit(queue::main()),
         Ok("steer") => std::process::exit(steer::main()),

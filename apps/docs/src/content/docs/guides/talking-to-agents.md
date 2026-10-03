@@ -113,10 +113,19 @@ Each step is noted in the conversation of the pull request asked, such as
 "was asked a question by the agent on #41" and "answered the question from
 the agent on #41".
 
-If the agent asked is not at work, it will not answer soon. The response to
-`message_agent` says so, in `hint`, and points the asking agent at the
-other pull request's change to read with `get_pull_request` and
-`get_pull_request_changes` instead.
+If the agent asked is not at work, because its change is done and waiting
+for review or a merge, g1t wakes it to answer. It starts a short run in that
+pull request's sandbox with the agent's own change in front of it and what
+it was asked; the agent reads its code, answers with `answer_message`, and,
+for a handoff it takes on, commits the work. Its pull request is noted "g1t
+woke g1t-agent to answer the agent on #41", and nothing else starts on it
+until everything it was asked is answered, or 20 minutes pass. The response
+to `message_agent` says so in `hint`, and points the asking agent at the
+other pull request's change to read meanwhile with `get_pull_request` and
+`get_pull_request_changes`.
+
+An agent g1t has stopped on (its pull request needs a person) is not woken;
+the hint then says it will not answer soon.
 
 On an [outcome's page](/guides/outcomes/#agents-talking), **Agents talking**
 lists every exchange between its agents with where it stands: waiting to be

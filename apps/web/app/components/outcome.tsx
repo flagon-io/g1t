@@ -52,6 +52,14 @@ const LOOK: Record<string, Look> = {
     bar: "bg-merged",
     live: true,
   },
+  answering: {
+    label: "Answering an agent",
+    icon: <Sparkles size={13} />,
+    ring: "ring-merged/60",
+    text: "text-merged",
+    bar: "bg-merged",
+    live: true,
+  },
   catching_up: {
     label: "Catching up",
     icon: <Loader2 size={13} className="animate-spin" />,
@@ -214,7 +222,7 @@ export function Outcome({ plan, base, costMicros }: { plan: Plan; base: string; 
   const live = plan.progress.filter((item) => look(item.state).live).length;
   const needsYou = count(["needs_you"]);
   const blocked = count(["blocked", "waiting", "open"]);
-  const order = ["landed", "queued", "ready", "reviewing", "checking", "working", "revising", "catching_up", "needs_you", "waiting", "blocked", "open", "closed"];
+  const order = ["landed", "queued", "ready", "reviewing", "checking", "working", "revising", "catching_up", "answering", "needs_you", "waiting", "blocked", "open", "closed"];
   const sorted = [...plan.progress].sort((a, b) => order.indexOf(a.state) - order.indexOf(b.state));
 
   return (

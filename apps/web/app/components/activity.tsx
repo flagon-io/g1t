@@ -4,6 +4,7 @@ import {
   CircleSlash,
   GitMerge,
   GitPullRequest,
+  MessageCircleQuestion,
   MessageSquare,
   Play,
   Terminal,
@@ -94,6 +95,8 @@ function line(event: G1tEvent, base: string): Line | null {
       };
     case "pull.merged":
       return { icon: <GitMerge size={14} />, tone: "text-accent", actor, text: <>landed {ref(event.data.number)} on main</> };
+    case "agent.asked":
+      return { icon: <MessageCircleQuestion size={14} />, tone: "text-merged", actor, text: <>asked the agent on {ref(event.data.number)}, and g1t woke it to answer</> };
     case "pull.merge_requested":
       return { icon: <GitMerge size={14} />, tone: "text-muted", actor, text: <>is bringing {ref(event.data.number)} up to date</> };
     default:

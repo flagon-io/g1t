@@ -212,6 +212,12 @@ fn decide(facts: Facts) -> (Lifecycle, Next) {
                 "The agent is merging in the branch this will land on, which has moved.",
             );
         }
+        Some("answer") => {
+            return wait(
+                Stage::Answering,
+                "The agent is answering what another agent asked it.",
+            );
+        }
         Some("merge") => return wait(Stage::Ready, "Merging."),
         Some(_) => return wait(Stage::Reviewing, "A g1t agent is reviewing the change."),
         None => {}
@@ -563,7 +569,7 @@ impl Work {
 
     /// Takes a step for a pull request, if nobody else has. One statement,
     /// so that two callers cannot both take it.
-    async fn claim(&self, pull_id: &str, step: &str, minutes: u64, revising: bool) -> Result<bool> {
+    pub(crate) async fn claim(&self, pull_id: &str, step: &str, minutes: u64, revising: bool) -> Result<bool> {
         let now = now_ms();
         let revision = if revising {
             ", revisions = revisions + 1, revised_at = ?1"

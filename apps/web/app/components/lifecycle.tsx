@@ -11,6 +11,8 @@ const STEP_OF: Record<Exclude<Stage, "needs_you">, number> = {
   checking: 1,
   reviewing: 2,
   catching_up: 3,
+  // Its change is made; it is answering another agent.
+  answering: 2,
   ready: 4,
   queued: 4,
 };
@@ -22,6 +24,7 @@ export const STAGE_LABEL: Record<Stage, string> = {
   reviewing: "In review",
   revising: "Revising",
   catching_up: "Catching up",
+  answering: "Answering an agent",
   queued: "In the merge queue",
   ready: "Ready to merge",
   needs_you: "Needs you",
@@ -55,6 +58,7 @@ const TITLE: Record<Stage, string> = {
   reviewing: "g1t is seeing this through",
   revising: "g1t is seeing this through",
   catching_up: "g1t is seeing this through",
+  answering: "g1t is seeing this through",
   queued: "In the merge queue",
   ready: "Ready to merge",
   needs_you: "Needs you",

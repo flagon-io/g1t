@@ -143,6 +143,7 @@ export function workClient(service: ServiceBinding): WorkApi {
     removeFromQueue: (actor, repo, number) => call("remove_from_queue", { actor, repo, number }),
     messageAgent: (actor, repo, number, body) => call("message_agent", { actor, repo, number, body }),
     catchUpJob: (pullId) => call("catch_up_job", { pullId }),
+    wakeForMessages: (pullId) => call("wake_for_messages", { pullId }),
     getSettings: (repo, viewer) => call("get_settings", { repo, viewer }),
     updateSettings: (actor, repo, settings) =>
       call("update_settings", { actor, repo, settings }),

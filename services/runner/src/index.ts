@@ -2,6 +2,7 @@ import { Container, type StopParams } from "@cloudflare/containers";
 import { WorkerEntrypoint } from "cloudflare:workers";
 
 import {
+  type AgentMessage,
   type CheckJob,
   type G1tEvent,
   type Issue,
@@ -97,6 +98,8 @@ type Run =
   | { kind: "update"; pullId?: string }
   /** The author sent back to address failed checks or a review. */
   | { kind: "revise"; pullId: string }
+  /** The author woken to answer other agents; nothing to undo if it fails. */
+  | { kind: "answer"; pullId: string }
   /** An agent turning an outcome into a plan. */
   | { kind: "plan"; planId: string; token: string }
   /** One combined state of a merge queue, being built and checked. */
@@ -161,6 +164,9 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       await work.failPlan(run.planId, run.token, "The sandbox stopped before the plan was written.");
       return;
     }
+    // An answer that never came: the claim lapses and the asker reads the
+    // change instead, as it was told it could.
+    if (run.kind === "answer") return;
     if (run.kind === "update" || run.kind === "revise") {
       if (run.pullId) {
         await work.stall(
@@ -326,6 +332,36 @@ function buildRevisionPrompt(job: LifecycleJob, inFlight: string | null, peopleS
     inFlight,
     WORKING_WITH_OTHERS,
     "Address every point above, and nothing else. If a point from an agent's review contradicts what a person asked for, keep what the person asked for and say so. If you disagree with a point, leave the code as it is and say why. Commit your work with a clear message. Do not push; that is done for you. Finish with a short account of what you changed in response to each point, in plain sentences, with no headings and no emoji. Say what you did not verify.",
+  ];
+  return parts.filter(Boolean).join("\n\n");
+}
+
+/**
+ * What the agent on a pull request is told when g1t wakes it to answer the
+ * questions and handoffs other agents sent while it was not at work.
+ */
+function buildAnswerPrompt(job: LifecycleJob, messages: AgentMessage[], inFlight: string | null): string {
+  const asked = messages
+    .filter((message) => message.kind === "question" || message.kind === "handoff")
+    .map((message) => {
+      const from = message.fromNumber != null ? `the agent on #${message.fromNumber}` : message.author;
+      const what = message.kind === "handoff" ? "Work handed over" : "Question";
+      return `${what} from ${from} (id ${message.id}):\n${message.body}`;
+    });
+  const said = messages
+    .filter((message) => message.kind === "message" || message.kind === "answer")
+    .map((message) => `From ${message.fromNumber != null ? `the agent on #${message.fromNumber}` : message.author}: ${message.body}`);
+  const parts = [
+    `You are a coding agent working in the git repository checked out in the current directory. It holds a change you made earlier, which is open as pull request #${job.number}. Your work on it is done for now; you have been woken because other agents in this repository asked you something.`,
+    job.issue
+      ? `Your pull request is for issue #${job.issue.number}: ${job.issue.title}\n\n${job.issue.body}`
+      : `Your pull request: ${job.title}`,
+    job.description && `What you said you changed:\n\n${job.description}`,
+    asked.join("\n\n"),
+    said.length > 0 && `Also sent to you:\n\n${said.join("\n\n")}`,
+    inFlight,
+    WORKING_WITH_OTHERS,
+    "Answer each question and handoff above with answer_message and its id, from what your change actually does: read your own code and history (git log, git diff against the default branch) before you answer, and be specific, with names, signatures and files. For a handoff, take it on only if the work belongs in your pull request; then make the change, commit it with a clear message, and answer saying what you did. Otherwise answer with decline set and say where it belongs. Do not push; that is done for you. Change nothing else. Finish with one or two plain sentences on what you answered.",
   ];
   return parts.filter(Boolean).join("\n\n");
 }
@@ -654,6 +690,10 @@ export default class RunnerService
         case "pull.merged":
           await this.advanceAll(event.data.repoId);
           break;
+        // Another agent asked one that is not at work: wake it to answer.
+        case "agent.asked":
+          await this.wakeForMessages(event.data.pullId);
+          break;
         // Something an issue was waiting on has finished, or an agent has
         // stopped and left room for another.
         case "issue.closed":
@@ -856,6 +896,56 @@ export default class RunnerService
       TOKEN_TTL_SECONDS,
     );
     return token;
+  }
+
+  /**
+   * Wakes the agent on a pull request to answer the questions and handoffs
+   * other agents sent it while it was not at work. The work service claims
+   * the step, so a second event starts nothing.
+   */
+  private async wakeForMessages(pullId: string): Promise<void> {
+    const work = workClient(this.env.WORK);
+    const wake = await work.wakeForMessages(pullId);
+    if (!wake) return;
+    const { job, messages } = wake;
+    try {
+      if (!this.modelsReachable() || !(await this.workspaceAllowed(job.repo.namespace))) {
+        throw new Error("g1t agents are not enabled for this workspace.");
+      }
+      const { token } = await identityClient(this.env.IDENTITY).createAccessToken(
+        job.author,
+        `g1t agent answering on ${job.repo.namespace}/${job.repo.name}#${job.number}`,
+        TOKEN_TTL_SECONDS,
+      );
+      const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`answer-${job.pullId}-${messages[0]?.id ?? Date.now()}`));
+      await sandbox.run({
+        kind: "answer",
+        pullId: job.pullId,
+        envVars: {
+          // Answered from its change as it stands: no merging in of the
+          // default branch, which would push a commit for a question.
+          MODE: "answer",
+          G1T_API: "https://api.g1t.sh",
+          G1T_TOKEN: token,
+          G1T_USER: job.author.username,
+          G1T_REPO: `${job.repo.namespace}/${job.repo.name}`,
+          PULL_NUMBER: String(job.number),
+          GIT_REMOTE: `https://g1t.sh/${job.source.namespace}/${job.source.name}.git`,
+          COMMIT_MESSAGE: `Take on work handed over to #${job.number}`,
+          G1T_AGENT_TOKEN: await this.agentToken(job.author, job.repo),
+          PROMPT: buildAnswerPrompt(job, messages, await this.inFlight(job.author, job.repo, job.number)),
+          ...(await this.modelEnvOrThrow("implement", job.repo, job.number)),
+        },
+      });
+    } catch (error) {
+      // Said on the pull request; the askers were told to read the change.
+      await work.appendSession(job.author, job.repo, job.number, [
+        {
+          kind: "note",
+          text: `g1t could not wake the agent to answer: ${error instanceof Error ? error.message : String(error)}`,
+        },
+      ]);
+    }
   }
 
   private async startRevision(job: LifecycleJob): Promise<void> {

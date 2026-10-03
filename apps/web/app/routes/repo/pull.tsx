@@ -437,7 +437,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
         {/* Steering: while its agent works, people can tell it things. */}
         {canManage &&
           pull.runtime === "hosted" &&
-          (working || ["working", "revising", "catching_up"].includes(lifecycle?.stage ?? "")) && (
+          (working || ["working", "revising", "catching_up", "answering"].includes(lifecycle?.stage ?? "")) && (
             <Form method="post" className="mt-4 rounded-2xl bg-surface p-4 ring-1 ring-merged/30">
               <p className="flex items-center gap-2 text-sm font-medium">
                 <Sparkles size={15} className="text-merged" />
