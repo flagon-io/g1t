@@ -36,6 +36,34 @@ impl From<MessageRow> for AgentMessage {
 }
 
 impl Work {
+    pub(crate) async fn locate_pull(&self, a: LocatePullArgs) -> Result<Outcome<LocatedPull>> {
+        let missing = || Outcome::fail(FailureCode::NotFound, "Pull request not found.");
+        let Some(pull) = self.pull_by_id(&a.id).await? else {
+            return Ok(missing());
+        };
+        let repo: Outcome<g1t_contracts::repos::Repo> = g1t_kit::call(
+            &self.repos,
+            "get_by_id",
+            &g1t_contracts::repos::GetByIdArgs {
+                id: pull.repo_id.clone(),
+                viewer: a.viewer,
+            },
+        )
+        .await?;
+        let Outcome::Ok(repo) = repo else {
+            return Ok(missing());
+        };
+        Ok(Outcome::Ok(LocatedPull {
+            repo: g1t_contracts::repos::RepoPath {
+                namespace: repo.namespace,
+                name: repo.name,
+            },
+            number: pull.number,
+            title: pull.title,
+            status: pull.status,
+        }))
+    }
+
     /// Every message sent to the agent on a pull request, oldest first.
     pub(crate) async fn messages(&self, pull_id: &str) -> Result<Vec<AgentMessage>> {
         Ok(self

@@ -1761,6 +1761,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "report_queue" => reply(&work.report_queue(args(body)?).await?),
         "remove_from_queue" => reply(&work.remove_from_queue(args(body)?).await?),
         "message_agent" => reply(&work.message_agent(args(body)?).await?),
+        "locate_pull" => reply(&work.locate_pull(args(body)?).await?),
         "take_messages" => reply(&work.take_messages(args(body)?).await?),
         "catch_up_job" => reply(&work.catch_up_job(args(body)?).await?),
         "get_settings" => reply(&work.get_settings(args(body)?).await?),

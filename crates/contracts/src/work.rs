@@ -1302,3 +1302,22 @@ pub struct ReportQueueArgs {
     #[serde(default)]
     pub conflict_with: Option<u32>,
 }
+
+
+/// `locate_pull`: where a pull request lives, by its id, for a tool that
+/// knows only the fork it is working in (`g1t.sh/pulls/<id>`). Returns
+/// `Outcome<LocatedPull>`; not found for anyone who cannot see it.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LocatePullArgs {
+    pub id: String,
+    pub viewer: Viewer,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocatedPull {
+    pub repo: RepoPath,
+    pub number: u32,
+    pub title: String,
+    pub status: PullStatus,
+}

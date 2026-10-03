@@ -347,6 +347,19 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         ("GET", "/openapi.json") => return Response::from_json(&openapi::document()),
         ("POST", "/device/code") => return device_code(&mut request, &services).await,
         ("POST", "/device/token") => return device_token(&mut request, &services).await,
+        // Where a pull request lives, for a tool that knows only its fork.
+        ("GET", path) if path.starts_with("/pulls/") && !path[7..].contains('/') => {
+            let located: Outcome<Value> = g1t_kit::call(
+                &services.work,
+                "locate_pull",
+                &json!({ "id": &path[7..], "viewer": viewer }),
+            )
+            .await?;
+            return match located {
+                Outcome::Ok(value) => Response::from_json(&value),
+                Outcome::Fail(refused) => failure(&refused),
+            };
+        }
         ("POST", path) if path.starts_with("/queue/") => {
             let entry_id = path.trim_start_matches("/queue/").to_owned();
             return report_queue(&mut request, &services, &entry_id).await;

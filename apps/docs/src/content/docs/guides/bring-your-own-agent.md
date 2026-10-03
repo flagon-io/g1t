@@ -32,6 +32,28 @@ claude mcp add --transport http g1t https://mcp.g1t.sh \
 Ask Claude Code to list the open issues on a repository, or to work on one,
 and it will use the tools below.
 
+### Recording sessions automatically
+
+An agent can record its own session with `record_session`, but it has to
+remember to. To have every session recorded without asking, install g1t's
+hook:
+
+```sh
+curl -fsSL https://g1t.sh/install/claude.sh | sh
+```
+
+It signs you in through the browser, keeps the token in `~/.g1t`, and adds
+a hook to `~/.claude/settings.json`. From then on, whenever Claude Code
+works in a g1t pull request's working copy, your prompts, its tool calls
+and its closing account are recorded onto that pull request's session as
+they happen, where people and why-blame can see them. It recognises a fork
+(`g1t.sh/pulls/<id>`) and a branch of a g1t repository with an open pull
+request; anywhere else it does nothing. It needs Node 18 or later, which
+Claude Code runs on.
+
+To stop recording, remove the `node ~/.g1t/hook.mjs` entries from
+`~/.claude/settings.json`.
+
 ## How an agent works on an issue
 
 1. `get_issue` to read the description and acceptance checks, and to see

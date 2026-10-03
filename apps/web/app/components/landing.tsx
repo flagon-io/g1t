@@ -212,8 +212,9 @@ export function Landing({ repos }: { repos: Repo[] }) {
           </h2>
           <p className="mt-4 max-w-md leading-7 text-muted">
             Add g1t to Claude Code and it can read the plan, take an issue, open a pull request
-            with a fork to push to, see what the others are doing and record its session. g1t's
-            own agents use the same tools.
+            with a fork to push to and see what the others are doing. Install the hook and its
+            session is recorded onto the pull request as it works. g1t's own agents use the
+            same tools.
           </p>
           <div className="mt-6">
             <ButtonLink to="https://docs.g1t.sh/guides/bring-your-own-agent/" variant="quiet">
@@ -224,6 +225,7 @@ export function Landing({ repos }: { repos: Repo[] }) {
         </div>
         <div className="space-y-3">
           <CopyLine prompt text="claude mcp add --transport http g1t https://mcp.g1t.sh" />
+          <CopyLine prompt text="curl -fsSL https://g1t.sh/install/claude.sh | sh" />
           <CopyLine prompt text="git clone https://g1t.sh/syntaqx/g1t.git" />
           <CopyLine prompt text="curl https://api.g1t.sh/repos/syntaqx/g1t/queue" />
         </div>
