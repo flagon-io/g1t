@@ -492,6 +492,67 @@ and on every combined state in the landing queue.
 Agents can also reach integrations directly: an agent definition lists MCP
 servers (Sentry, Linear and so on) it may use while working.
 
+## A repository that maintains itself
+
+> **2026-10-04:** the user asked for Dependabot, GitHub Advanced Security and
+> Vercel-style deployments, "so you're not having to maintain shit and you're
+> just pushing up agents that are delivering work consistently".
+
+GitHub reports problems and leaves the fix to you. In g1t, an agent opens an
+issue for each problem, writes the fix, runs its checks, links a preview and
+lands it through the queue. People only decide.
+
+### Upkeep agents
+
+- **Dependency updates.** A scheduled scan reads the lockfiles (npm, Cargo,
+  Go, pip), finds outdated and vulnerable packages and opens one issue per
+  update or group, assigned to g1t-agent. The agent upgrades the package,
+  fixes what the upgrade broke and lands it through the queue. A repository
+  sets how often it scans, which packages it groups and what lands without
+  review (`.g1t/upkeep.yml`, shaped like `dependabot.yml`).
+- **Secret scanning.** Pushes are scanned for known token formats. A push
+  that adds a secret is refused with the file and line; one already in
+  history opens an issue to rotate it and remove it.
+- **Vulnerability alerts.** Dependencies are matched against the OSV
+  database. Every alert links to the issue and pull request fixing it.
+- **Code scanning.** A reviewer agent reads each pull request's diff for
+  security problems and leaves findings as review comments with a
+  suggested fix. Findings on `main` open issues.
+- **A security page per repository** lists alerts, secrets and findings,
+  with the agent work on each, like GitHub's Security tab.
+
+All of these are event sources for the existing issue → agent → checks →
+queue pipeline; they need no new kind of work.
+
+### Deployments
+
+- **A preview for every pull request**, at
+  `<pr>--<repo>--<owner>.g1t.page`, linked on the pull request and updated
+  on each push. `main` deploys to `<repo>--<owner>.g1t.page`, and a
+  repository can add its own domain.
+- **On g1t.page, not g1t.sh,** so customer code never shares cookies or an
+  origin with the site people sign in to.
+- **Built on Workers for Platforms.** Each deployment is a user Worker in a
+  dispatch namespace; one dispatch Worker on `*.g1t.page` routes to it. The
+  build runs in the same runners as Actions. Static sites and Workers apps
+  first; container apps and databases later.
+- **Agents use the preview.** The reviewer agent opens the preview in a
+  browser, takes screenshots of what changed and attaches them to its
+  review, so an approver sees the result without reading the diff.
+- **Environments.** Preview, production and their secrets; deploy history
+  and one-click rollback.
+- **Scale to zero.** An idle branch costs neither g1t nor the customer
+  anything: a Worker runs, and is billed, only while it answers a request.
+  A preview is deleted when its pull request closes or merges, and after
+  a set number of idle days. Container apps, later, sleep when idle.
+- **On by default, off in one click.** Deployments are recommended, not
+  required: a repository can turn them off, keep only production, or
+  deploy somewhere else from its own workflows. Apps built for Cloudflare
+  (Workers, static assets, D1, KV, R2) deploy without configuration.
+
+Later, toward GitLab's DevOps breadth: environment protection rules,
+package and container registries, releases, container hosting.
+
 ## Agents and models
 
 ### Defining an agent
@@ -736,7 +797,7 @@ for volume splits storage by how the data is read.
 | --- | --- |
 | Repositories; a fork per pull request; data residency per workspace | Artifacts (forks, jurisdictions) |
 | Reacting to pushes | Artifacts event subscriptions on Queues |
-| Preview URL per pull request; deploy on merge | Workers Builds and previews |
+| Preview URL per pull request; deploy on merge | Workers for Platforms on `g1t.page` |
 | Site, API, MCP, git front end | Workers |
 | Per-repo coordination, live updates | Durable Objects |
 | Pull request lifecycles, automations | Workflows, Cron Triggers |
@@ -789,9 +850,15 @@ use is not something people should have to do.
    page.~~ Done: questions and handoffs show as waiting, read, answered,
    taken on or declined; since 2026-10-03 an agent asked while it is not at
    work is woken to answer, where before the question waited forever.
-2. **The large run.** Dozens of agents on a real repository, end to end, for
-   the video; g1t hosted on g1t.
-3. **Polish for judges trying it in a minute:** a seeded demo workspace, the
+2. **Upkeep agents** (above): dependency updates, secret scanning,
+   vulnerability alerts, code scanning, the security page. No new
+   infrastructure.
+3. **Deployments on `g1t.page`** (above): previews per pull request,
+   production on merge, the reviewer agent checking the preview.
+4. **The large run, building 2 and 3.** About 20–30 issues on g1t itself,
+   built by agents and landed through the queue, for the video: g1t built
+   on g1t.
+5. **Polish for judges trying it in a minute:** a seeded demo workspace, the
    empty states, and the first-run path from sign-up to an outcome landing.
 
 Earlier items still open, after those:
