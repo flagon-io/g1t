@@ -90,6 +90,7 @@ export default defineConfig({
 					label: 'Landing changes',
 					items: [
 						{ label: 'The merge queue', slug: 'guides/merge-queue' },
+						{ label: 'Deployments', slug: 'guides/deployments' },
 						{ label: 'Sessions and why-blame', slug: 'guides/why-blame' },
 						{ label: 'Forks and branches', slug: 'concepts/forks' },
 					],

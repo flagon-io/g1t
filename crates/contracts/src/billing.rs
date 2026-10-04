@@ -300,6 +300,11 @@ pub mod deployments_allowance {
     pub const MICROS_PER_APP_MONTH: i64 = 20_000;
     pub const MICROS_PER_MILLION_REQUESTS: i64 = 300_000;
     pub const MICROS_PER_MILLION_CPU_MS: i64 = 20_000;
+    /// What one second of a build's sandbox costs g1t (Cloudflare
+    /// Containers, standard-1: half a vCPU, 4 GiB, 8 GB disk), rounded up.
+    /// Builds are not in the allowance: each is charged at this plus the
+    /// margin.
+    pub const MICROS_PER_BUILD_SECOND: i64 = 21;
 }
 
 /// What a feature's plan costs and includes.

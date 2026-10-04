@@ -1,0 +1,43 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-deployments",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	"main": "./src/index.ts",
+	// Reached only through service bindings; builds report through the API.
+	"workers_dev": false,
+	"placement": { "mode": "smart" },
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "g1t-deployments",
+			"database_id": "TO_BE_CREATED",
+			"migrations_dir": "migrations"
+		}
+	],
+	"services": [
+		{ "binding": "REPOS", "service": "g1t-repos" },
+		{ "binding": "WORK", "service": "g1t-work" },
+		{ "binding": "IDENTITY", "service": "g1t-identity" },
+		{ "binding": "BILLING", "service": "g1t-billing" },
+		{ "binding": "RUNNER", "service": "g1t-runner" }
+	],
+	// Pull requests opened, pushed to, closed and merged; pushes to the
+	// default branch.
+	"queues": {
+		"consumers": [{ "queue": "g1t-events-deployments", "max_batch_size": 20, "max_batch_timeout": 1 }]
+	},
+	// Builds that died, usage counts, idle previews, apps of ended plans,
+	// and charging a month that is over.
+	"triggers": { "crons": ["*/10 * * * *"] },
+	"vars": {
+		"CLOUDFLARE_ACCOUNT_ID": "1e6f2cffa3f445920836e8ebe446bb58",
+		// The Workers for Platforms namespace apps are uploaded to; the
+		// dispatcher on *.g1t.page (services/pages) reads from the same one.
+		"DISPATCH_NAMESPACE": "g1t-deployments",
+		"SITE": "https://g1t.sh"
+	},
+	// Secret: CLOUDFLARE_API_TOKEN, scoped to Workers Scripts (edit) and
+	// Account Analytics (read). Without it nothing deploys.
+	"observability": { "enabled": true }
+}

@@ -243,6 +243,20 @@ Runs, jobs and logs are at GitHub's own routes under
 holds the merge, failure refuses it and sends a g1t agent back to fix it.
 Secrets and variables: `{repo}/actions/secrets`, `{repo}/actions/variables`.
 
+## Deployments
+
+A paid feature: an owner turns on the Deployments plan under the
+workspace's Billing ($5 a month: 10 apps, 1M requests, 3M CPU ms; builds
+and usage past that from credit at cost + 20%; never free). Then a member
+turns deployments on from the repository's Deployments page
+(`g1t.sh/<owner>/<repo>/deployments`). Every pull request gets a preview at
+`https://pr-<n>--<repo>--<owner>.g1t.page`, shown on it as the check
+`g1t / deploy`; the default branch deploys to
+`https://<repo>--<owner>.g1t.page` on each push. Workers projects
+(`wrangler.jsonc`) and static sites build without configuration. Previews
+come down when the pull request closes and after idle days. There is no API
+for deployments yet. Guide: https://docs.g1t.sh/guides/deployments/
+
 ## Facts
 
 - API base: `https://api.g1t.sh`. `GET /` lists every URL as a template.

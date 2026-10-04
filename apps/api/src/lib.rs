@@ -347,6 +347,26 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
             return receive_hook(&mut request, &services, id).await;
         }
 
+    // A sandbox building a deployment, reporting with its build's token,
+    // which is not a g1t token. The body goes through as it is: it can
+    // carry a Worker's bundled code.
+    if method == "POST" && !on_mcp
+        && let Some(rest) = path.strip_prefix("/deployments/jobs/")
+    {
+        let target = format!("https://deployments/jobs/{rest}");
+        let body = request.bytes().await?;
+        let headers = worker::Headers::new();
+        headers.set("content-type", "application/json")?;
+        let mut init = worker::RequestInit::new();
+        init.with_method(Method::Post)
+            .with_headers(headers)
+            .with_body(Some(worker::js_sys::Uint8Array::from(body.as_slice()).into()));
+        return env
+            .service("DEPLOYMENTS")?
+            .fetch_request(Request::new_with_init(&target, &init)?)
+            .await;
+    }
+
     // A sandbox's artifacts and cache, with its job's token, which is not a
     // g1t token either.
     if !on_mcp

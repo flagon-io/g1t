@@ -9,6 +9,7 @@ description = "The program inside a g1t sandbox: runs an agent, checks, a catch-
 g1t-actions = { path = "../actions" }
 sha2 = "0.10"
 serde_yaml = "0.9"
+toml = "0.8"
 hex = "0.4"
 anyhow = "1"
 base64 = "0.22"

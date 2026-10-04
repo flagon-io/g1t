@@ -98,6 +98,8 @@ export const DEPLOYMENTS_ALLOWANCE = {
   microsPerAppMonth: 20_000,
   microsPerMillionRequests: 300_000,
   microsPerMillionCpuMs: 20_000,
+  /** One second of a build's sandbox; builds are charged, not included. */
+  microsPerBuildSecond: 21,
 } as const;
 
 export type FeaturePlan = {

@@ -21,7 +21,9 @@
 		{ "binding": "BILLING", "service": "g1t-billing" },
 		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" },
 		{ "binding": "WEBHOOKS", "service": "g1t-webhooks" },
-		{ "binding": "ACTIONS", "service": "g1t-actions" }
+		{ "binding": "ACTIONS", "service": "g1t-actions" },
+		// Builds of deployments report through here.
+		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" }
 	],
 	// GitHub Actions artifacts and cache, in chunks, with KV's own expiry.
 	// (Moves to R2 once R2 is enabled on the account.)

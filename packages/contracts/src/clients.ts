@@ -1,5 +1,6 @@
 import type { ActionsApi } from "./actions";
 import type { BillingApi } from "./billing";
+import type { DeploymentsApi } from "./deployments";
 import type { EventsApi } from "./events";
 import type { IdentityApi } from "./identity";
 import type { IntegrationsApi } from "./integrations";
@@ -260,3 +261,16 @@ export function actionsClient(service: ServiceBinding): ActionsApi {
   };
 }
 
+
+export function deploymentsClient(service: ServiceBinding): DeploymentsApi {
+  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
+  return {
+    settings: (repo, viewer) => call("settings", { repo, viewer }),
+    updateSettings: (actor, repo, changes) => call("update_settings", { actor, repo, changes }),
+    list: (repo, viewer) => call("list", { repo, viewer }),
+    get: (repo, id, viewer) => call("get", { repo, id, viewer }),
+    redeploy: (actor, repo, number) => call("redeploy", { actor, repo, number }),
+    takeDown: (actor, repo, number) => call("take_down", { actor, repo, number }),
+    usage: (workspace, viewer) => call("usage", { workspace, viewer }),
+  };
+}

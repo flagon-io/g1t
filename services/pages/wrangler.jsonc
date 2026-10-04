@@ -1,0 +1,17 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-pages",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	"main": "./src/index.ts",
+	"workers_dev": false,
+	// Every app on g1t.page. Needs a proxied wildcard DNS record (`*`,
+	// AAAA 100::) on the zone; the apex says what g1t.page is.
+	"routes": [
+		{ "pattern": "*.g1t.page/*", "zone_name": "g1t.page" },
+		{ "pattern": "g1t.page/*", "zone_name": "g1t.page" }
+	],
+	// The apps, uploaded by the deployments service.
+	"dispatch_namespaces": [{ "binding": "APPS", "namespace": "g1t-deployments" }],
+	"observability": { "enabled": true }
+}

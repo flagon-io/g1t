@@ -39,6 +39,12 @@ pub(crate) struct CheckResult {
     duration_ms: u64,
 }
 
+impl CheckResult {
+    pub(crate) fn output_text(&self) -> &str {
+        &self.output
+    }
+}
+
 /// The last `limit` characters of `text`, saying so if any were dropped.
 fn tail(text: &str, limit: usize) -> String {
     let length = text.chars().count();
@@ -70,6 +76,7 @@ pub(crate) fn run_command(command: &str, workdir: &Path, secrets: &[String]) -> 
         .current_dir(workdir)
         .env_remove("G1T_TOKEN")
         .env_remove("CHECK_TOKEN")
+        .env_remove("DEPLOY_TOKEN")
         .stdin(Stdio::null())
         .output();
     let duration_ms = started.elapsed().as_millis() as u64;

@@ -24,6 +24,7 @@
 
 mod actions;
 mod checks;
+mod deploy;
 mod harness;
 mod plan;
 mod queue;
@@ -182,6 +183,7 @@ fn main() {
     match std::env::var("MODE").as_deref() {
         Ok("actions") => std::process::exit(actions::main()),
         Ok("checks") => std::process::exit(checks::main()),
+        Ok("deploy") => std::process::exit(deploy::main()),
         Ok("update") => std::process::exit(update::main()),
         Ok("review") => std::process::exit(review::main()),
         Ok("revise") => std::process::exit(revise::main()),

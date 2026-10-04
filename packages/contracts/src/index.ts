@@ -1,6 +1,7 @@
 export * from "./actions";
 export * from "./billing";
 export * from "./clients";
+export * from "./deployments";
 export * from "./events";
 export * from "./identity";
 export * from "./ids";

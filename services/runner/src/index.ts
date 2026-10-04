@@ -41,6 +41,8 @@ export interface RunnerEnv {
   INTEGRATIONS: ServiceBinding;
   /** GitHub Actions jobs: told when a job's sandbox dies without reporting. */
   ACTIONS: ServiceBinding;
+  /** Told when a deploy sandbox dies without reporting. */
+  DEPLOYMENTS: ServiceBinding;
   /**
    * The model proxy, which every sandbox's model requests go through with a
    * token for their run, so that no sandbox holds a key. When unset,
@@ -105,8 +107,28 @@ type Run =
   /** One combined state of a merge queue, being built and checked. */
   | { kind: "queue"; entryId: string; token: string }
   /** One job of a GitHub Actions workflow. */
-  | { kind: "actions"; jobId: string; token: string };
+  | { kind: "actions"; jobId: string; token: string }
+  /** A build of one commit, deployed to g1t.page. */
+  | { kind: "deploy"; deployId: string; token: string };
 type RunRequest = Run & { envVars: Record<string, string> };
+
+/** What the deployments service asks a sandbox to build. */
+type DeployJob = {
+  deployId: string;
+  /** Lets the sandbox, and nothing else, report this build. */
+  token: string;
+  /** Whose access reads the commit. */
+  actor: User;
+  /** The repository the commit is in: the pull request's fork, or the repository. */
+  source: RepoPath;
+  commit: string;
+  buildCommand?: string | null;
+  outputDir?: string | null;
+  buildEnv?: Record<string, string>;
+};
+
+/** Long enough to install and build; then the read token stops working. */
+const DEPLOY_TOKEN_TTL_SECONDS = 30 * 60;
 
 /** Long enough to clone, install and test; then the token stops working. */
 const CHECKS_TOKEN_TTL_SECONDS = 45 * 60;
@@ -139,6 +161,15 @@ export class AttemptSandbox extends Container<RunnerEnv> {
           token: run.token,
           report: { kind: "done", conclusion: "failure", reason: "The runner stopped before the job finished." },
         }),
+      });
+      return;
+    }
+    if (run.kind === "deploy") {
+      // Refused harmlessly if the build reported its end before it stopped.
+      await this.env.DEPLOYMENTS.fetch(`https://deployments/jobs/${run.deployId}/fail`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: run.token, message: "The build stopped before it finished." }),
       });
       return;
     }
@@ -430,6 +461,9 @@ export default class RunnerService
       await sandbox.destroy().catch(() => undefined);
       return Response.json(ok(true));
     }
+    if (request.method === "POST" && pathname === "/rpc/start_deploy") {
+      return Response.json(await this.startDeploy((await request.json()) as DeployJob));
+    }
     if (request.method === "POST" && pathname === "/rpc/plan") {
       const args = (await request.json()) as { actor: User; repo: RepoPath; brief: string };
       return Response.json(await this.plan(args.actor, args.repo, args.brief));
@@ -629,6 +663,48 @@ export default class RunnerService
       };
     }
     // `true`, not null: an outcome needs a value.
+    return ok(true);
+  }
+
+  /**
+   * Builds one commit in a sandbox of its own and deploys it to g1t.page.
+   * Asked by the deployments service, which has already checked that the
+   * workspace pays for Deployments; that plan, not model access, is what
+   * lets a build use g1t's machines.
+   */
+  private async startDeploy(job: DeployJob): Promise<Result<true>> {
+    // To read the commit, which may be private, as whoever pushed it.
+    const { token } = await identityClient(this.env.IDENTITY).createAccessToken(
+      job.actor,
+      `Deploying ${job.source.namespace}/${job.source.name}`,
+      DEPLOY_TOKEN_TTL_SECONDS,
+    );
+    const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`deploy:${job.deployId}`));
+    try {
+      await sandbox.run({
+        kind: "deploy",
+        deployId: job.deployId,
+        token: job.token,
+        envVars: {
+          MODE: "deploy",
+          G1T_API: "https://api.g1t.sh",
+          DEPLOY_ID: job.deployId,
+          DEPLOY_TOKEN: job.token,
+          G1T_USER: job.actor.username,
+          G1T_TOKEN: token,
+          GIT_REMOTE: `https://g1t.sh/${job.source.namespace}/${job.source.name}.git`,
+          GIT_COMMIT: job.commit,
+          BUILD_COMMAND: job.buildCommand ?? "",
+          OUTPUT_DIR: job.outputDir ?? "",
+          BUILD_ENV: JSON.stringify(job.buildEnv ?? {}),
+        },
+      });
+    } catch (error) {
+      return {
+        ok: false,
+        error: { code: "conflict", message: `The runner could not start the build: ${String(error).replace(/^Error: /, "")}` },
+      };
+    }
     return ok(true);
   }
 

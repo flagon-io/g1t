@@ -59,8 +59,13 @@ fn status_of(subscription: &StripeSubscription) -> SubscriptionStatus {
     }
 }
 
+/// Dollars to the cent, or finer for prices under a cent, so that a
+/// build minute's $0.0015 does not read as nothing.
 fn dollars(micros: i64) -> String {
-    format!("${:.2}", micros as f64 / MICROS_PER_DOLLAR as f64)
+    let text = format!("{:.4}", micros as f64 / MICROS_PER_DOLLAR as f64);
+    let (whole, fraction) = text.split_once('.').unwrap_or((&text, ""));
+    let fraction = fraction.trim_end_matches('0');
+    format!("${whole}.{fraction:0<2}")
 }
 
 impl SubscriptionRow {
@@ -92,7 +97,7 @@ impl Billing {
                     "Previews that cost nothing while no one visits them".to_owned(),
                 ],
                 overage: format!(
-                    "Past that, from credit: {} per extra app a month, {} per million requests and {} per million CPU milliseconds (Cloudflare's price plus {}%).",
+                    "Builds, and usage past that, come from credit at Cloudflare's price plus {3}%: {4} per build minute, {0} per extra app a month, {1} per million requests and {2} per million CPU milliseconds.",
                     dollars(crate::charge_micros(
                         allowance::MICROS_PER_APP_MONTH as f64 / MICROS_PER_DOLLAR as f64,
                         self.margin_percent
@@ -105,7 +110,11 @@ impl Billing {
                         allowance::MICROS_PER_MILLION_CPU_MS as f64 / MICROS_PER_DOLLAR as f64,
                         self.margin_percent
                     )),
-                    self.margin_percent
+                    self.margin_percent,
+                    dollars(crate::charge_micros(
+                        (allowance::MICROS_PER_BUILD_SECOND * 60) as f64 / MICROS_PER_DOLLAR as f64,
+                        self.margin_percent
+                    )),
                 ),
             },
         }
@@ -398,5 +407,18 @@ impl Billing {
             ])
             .await?;
         Ok(Outcome::Ok(true))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prices_under_a_cent_keep_their_digits() {
+        assert_eq!(dollars(1512), "$0.0015");
+        assert_eq!(dollars(24_000), "$0.024");
+        assert_eq!(dollars(360_000), "$0.36");
+        assert_eq!(dollars(5_000_000), "$5.00");
     }
 }

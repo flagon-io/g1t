@@ -13,7 +13,36 @@ description: What g1t agents cost, how a workspace pays for them, and what is fr
 Hosting repositories, issues, pull requests, review and your own agent cost
 nothing on g1t. What costs money is g1t's own agents: each run uses a
 model, and a workspace pays for the runs on its repositories from credit it
-buys in advance. There is no subscription and no seat price.
+buys in advance. There is no seat price.
+
+Some features are paid for with a monthly plan the workspace turns on, and
+are never free, including while the rest of g1t is. See
+[Plans](#plans).
+
+## Plans
+
+A plan turns on one paid feature for the whole workspace, the way
+Cloudflare's or Vercel's paid plans do: a monthly price that includes an
+allowance, and usage past it charged from credit at cost plus 20%.
+
+| Plan | Price | Includes each month |
+| --- | --- | --- |
+| [Deployments](/guides/deployments/) | $5 a month | 10 apps up at once, 1 million requests, 3 million CPU milliseconds. Builds are charged by the second. |
+
+Only an owner can turn a plan on or off.
+
+1. Open **Settings → Billing**, `g1t.sh/<workspace>/-/billing`.
+2. Under **Plans**, choose **Turn on Deployments**, and pay on the card
+   page you are sent to.
+
+Back on Billing, the plan says **On** and when it renews; the card is kept
+and charged each month. **Turn off at the end of the period** ends the plan
+on its renewal date, with nothing more charged after; **Keep Deployments**
+takes that back. If a renewal payment fails, the plan says **Payment
+failed** and the feature stops until it is paid.
+
+Plan usage past the allowance and builds are drawn from the workspace's
+credit, so a workspace with a plan can add credit while agents are free.
 
 ## The free allowance
 
@@ -42,6 +71,7 @@ too, while it lasts.
 | Planning an [outcome](/guides/outcomes/) | Yes |
 | Acceptance checks | No |
 | The [merge queue](/guides/merge-queue/) | No |
+| [Deployments](/guides/deployments/) | The plan, and builds and usage past it. Never free. |
 | Repositories, git, issues, pull requests, the API and MCP | No |
 
 Each run is charged when it finishes: what the model provider charged for

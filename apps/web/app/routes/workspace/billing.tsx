@@ -1,11 +1,17 @@
 import { CreditCard, Rocket } from "lucide-react";
 import { Form, Link, data, redirect, useNavigation } from "react-router";
 
-import { MICROS_PER_DOLLAR, type Feature, type FeatureState } from "@g1t/contracts";
+import {
+  DEPLOYMENTS_ALLOWANCE,
+  MICROS_PER_DOLLAR,
+  type DeployUsage,
+  type Feature,
+  type FeatureState,
+} from "@g1t/contracts";
 
 import type { Route } from "./+types/billing";
 import { Button, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
-import { billing } from "../../lib/services.server";
+import { billing, deployments } from "../../lib/services.server";
 import {
   assertSameOrigin,
   getViewer,
@@ -40,10 +46,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     await billing.confirm(slug, viewer, session);
     throw redirect(`/${slug}/-/billing?added=1`);
   }
-  const [account, ledger, features] = await Promise.all([
+  const [account, ledger, features, deployUsage] = await Promise.all([
     billing.account(slug, viewer),
     billing.ledger(slug, viewer),
     billing.features(slug, viewer),
+    deployments.usage(slug, viewer),
   ]);
   return {
     slug,
@@ -51,6 +58,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     account: unwrap(account),
     ledger: unwrap(ledger),
     features: unwrap(features),
+    deployUsage: deployUsage.ok ? deployUsage.value : null,
     added: url.searchParams.has("added"),
     subscribed: url.searchParams.has("subscribed"),
   };
@@ -91,7 +99,7 @@ function dollars(micros: number, digits = 2): string {
 }
 
 export default function WorkspaceBilling({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, account, ledger, features, added, subscribed } = loaderData;
+  const { slug, role, account, ledger, features, deployUsage, added, subscribed } = loaderData;
   const { status } = account;
   const paying = useNavigation().state === "submitting";
   const empty = account.balanceMicros <= 0;
@@ -124,6 +132,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
               enabled={account.status.enabled}
               live={account.status.live}
               busy={paying}
+              usage={state.plan.feature === "deployments" ? deployUsage : null}
             />
           ))}
         </div>
@@ -278,12 +287,14 @@ function PlanCard({
   enabled,
   live,
   busy,
+  usage,
 }: {
   state: FeatureState;
   owner: boolean;
   enabled: boolean;
   live: boolean;
   busy: boolean;
+  usage: DeployUsage | null;
 }) {
   const { plan, subscription } = state;
   const ending = subscription?.status === "canceling";
@@ -336,6 +347,7 @@ function PlanCard({
         ))}
       </ul>
       <p className="mt-3 text-xs text-faint">{plan.overage}</p>
+      {state.on && usage && <DeployMeter usage={usage} />}
       {!enabled ? (
         <p className="mt-4 text-sm text-muted">Payments are not set up on this g1t, so {plan.title} is already on.</p>
       ) : !owner ? (
@@ -363,5 +375,42 @@ function PlanCard({
         </Form>
       )}
     </section>
+  );
+}
+
+/** This month's use of the Deployments plan against what it includes. */
+function DeployMeter({ usage }: { usage: DeployUsage }) {
+  const a = DEPLOYMENTS_ALLOWANCE;
+  const rows: [string, number, number, (n: number) => string][] = [
+    ["Apps up at once (most this month)", usage.peakApps, a.apps, (n) => String(n)],
+    ["Requests", usage.requests, a.requests, (n) => n.toLocaleString("en-US")],
+    ["CPU milliseconds", usage.cpuMs, a.cpuMs, (n) => n.toLocaleString("en-US")],
+  ];
+  return (
+    <div className="mt-4 rounded-lg border border-line bg-bg/40 p-4">
+      <p className="text-xs font-medium text-muted">This month ({usage.month})</p>
+      <ul className="mt-2 space-y-2.5">
+        {rows.map(([label, used, included, show]) => (
+          <li key={label} className="text-sm">
+            <div className="flex justify-between gap-4">
+              <span className="text-muted">{label}</span>
+              <span className={`tabular-nums ${used > included ? "text-warn" : ""}`}>
+                {show(used)} <span className="text-faint">of {show(included)}</span>
+              </span>
+            </div>
+            <div className="mt-1 h-1 overflow-hidden rounded-full bg-line">
+              <div
+                className={`h-full rounded-full ${used > included ? "bg-warn" : "bg-accent"}`}
+                style={{ width: `${Math.min(100, (used / included) * 100)}%` }}
+              />
+            </div>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-xs text-faint">
+        Builds: {Math.ceil(usage.buildSeconds / 60)} min, {dollars(usage.buildMicros, 4)} at cost.
+        {usage.countedAt ? " Requests and CPU time are counted every few minutes." : " Requests are counted once apps get visits."}
+      </p>
+    </div>
   );
 }

@@ -20,7 +20,8 @@
 		{ "binding": "EVENTS", "service": "g1t-events" },
 		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" },
 		{ "binding": "WEBHOOKS", "service": "g1t-webhooks" },
-		{ "binding": "ACTIONS", "service": "g1t-actions" }
+		{ "binding": "ACTIONS", "service": "g1t-actions" },
+		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" }
 	],
 	"observability": { "enabled": true },
 	"upload_source_maps": true
