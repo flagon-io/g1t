@@ -1,0 +1,2564 @@
+{
+	"device_code": {
+		"request": {
+			"client_name": "Claude Code"
+		},
+		"response": {
+			"device_code": "Gm3k…",
+			"user_code": "WDJB-MJHT",
+			"verification_uri": "https://g1t.sh/device",
+			"verification_uri_complete": "https://g1t.sh/device?code=WDJB-MJHT",
+			"expires_in": 900,
+			"interval": 5
+		}
+	},
+	"device_token": {
+		"request": {
+			"device_code": "Gm3k…"
+		},
+		"response": {
+			"status": "approved",
+			"token": "g1t_…",
+			"username": "syntaqx",
+			"verified": true
+		}
+	},
+	"whoami": {
+		"response": {
+			"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+			"username": "syntaqx",
+			"kind": "user",
+			"verified": true,
+			"workspaces": [
+				{
+					"slug": "acme",
+					"role": "member"
+				},
+				{
+					"slug": "syntaqx",
+					"role": "owner"
+				}
+			]
+		},
+		"notes": "`kind` is `user`, `workspace` for a [workspace access token](/guides/workspaces/#workspace-access-tokens), or `agent` for the token a g1t agent works with. For a workspace token, `username` is the workspace's slug and `workspaces` holds only that workspace."
+	},
+	"create_workspace": {
+		"request": {
+			"slug": "syntaqx-labs",
+			"name": "Syntaqx Labs"
+		},
+		"response": {
+			"id": "wsp_01m43teqa9em6bje0bhvdj4jkb",
+			"slug": "syntaqx-labs",
+			"name": "Syntaqx Labs",
+			"description": null,
+			"createdAt": "2026-10-04T16:02:51.337Z",
+			"memberCount": 1
+		}
+	},
+	"list_repos": {
+		"query": {
+			"q": "hello"
+		},
+		"response": [
+			{
+				"id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+				"namespace": "syntaqx",
+				"name": "hello",
+				"description": "A tiny service that says hello.",
+				"isPrivate": false,
+				"ownerId": "usr_01kkntcg1eeb98j62xjm7eh09p",
+				"defaultBranch": "main",
+				"forkOf": null,
+				"protected": true,
+				"createdAt": "2026-09-28T14:11:52.640Z"
+			}
+		],
+		"notes": "Returns at most 50 repositories, newest first. Forks made for pull requests are left out."
+	},
+	"create_repo": {
+		"request": {
+			"workspace": "syntaqx",
+			"name": "hello-cli",
+			"description": "Command-line client for hello.",
+			"private": false
+		},
+		"response": {
+			"id": "rep_01m43tk1jhehztx23drs87f5fc",
+			"namespace": "syntaqx",
+			"name": "hello-cli",
+			"description": "Command-line client for hello.",
+			"isPrivate": false,
+			"ownerId": "usr_01kkntcg1eeb98j62xjm7eh09p",
+			"defaultBranch": "main",
+			"forkOf": null,
+			"protected": false,
+			"createdAt": "2026-10-04T16:05:12.913Z"
+		},
+		"notes": "`ownerId` is the id of the person who created the repository. With `import_url`, `defaultBranch` is the default branch of the repository copied."
+	},
+	"get_repo": {
+		"response": {
+			"id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"namespace": "syntaqx",
+			"name": "hello",
+			"description": "A tiny service that says hello.",
+			"isPrivate": false,
+			"ownerId": "usr_01kkntcg1eeb98j62xjm7eh09p",
+			"defaultBranch": "main",
+			"forkOf": null,
+			"protected": true,
+			"createdAt": "2026-09-28T14:11:52.640Z"
+		}
+	},
+	"update_repo": {
+		"request": {
+			"description": "Says hello, politely.",
+			"protected": true
+		},
+		"response": {
+			"id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"namespace": "syntaqx",
+			"name": "hello",
+			"description": "Says hello, politely.",
+			"isPrivate": false,
+			"ownerId": "usr_01kkntcg1eeb98j62xjm7eh09p",
+			"defaultBranch": "main",
+			"forkOf": null,
+			"protected": true,
+			"createdAt": "2026-09-28T14:11:52.640Z"
+		}
+	},
+	"get_repo_settings": {
+		"response": {
+			"autoMerge": false,
+			"requireUpToDate": false,
+			"requiredApprovals": 0,
+			"countAgentApprovals": true,
+			"allowIgnoringChecks": true,
+			"agentReview": true,
+			"maxRevisions": 2,
+			"mergeQueue": false,
+			"updatedBy": null,
+			"updatedAt": null
+		}
+	},
+	"update_repo_settings": {
+		"request": {
+			"required_approvals": 1,
+			"count_agent_approvals": false,
+			"merge_queue": true
+		},
+		"response": {
+			"autoMerge": false,
+			"requireUpToDate": false,
+			"requiredApprovals": 1,
+			"countAgentApprovals": false,
+			"allowIgnoringChecks": true,
+			"agentReview": true,
+			"maxRevisions": 2,
+			"mergeQueue": true,
+			"updatedBy": "syntaqx",
+			"updatedAt": "2026-10-04T16:20:37.508Z"
+		},
+		"notes": "`required_approvals` is at most 6 and `max_revisions` at most 5. See [what a repository can ask for](/guides/g1t-agents/#what-a-repository-can-ask-for)."
+	},
+	"list_events": {
+		"query": {
+			"before": "evt_01m43t2a6c9e3g7j1m5q9t3x7b"
+		},
+		"response": [
+			{
+				"id": "evt_01m43smh3ve52vkcna207vqctf",
+				"type": "pull.opened",
+				"source": "work",
+				"time": "2026-10-01T18:20:02.117Z",
+				"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+				"actor": "usr_01kkntcg1eeb98j62xjm7eh09p",
+				"data": {
+					"pullId": "pr_01m43smh3vexsr5pmp60qwv0vs",
+					"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+					"number": 14,
+					"issue": 12,
+					"agent": "claude-code"
+				}
+			},
+			{
+				"id": "evt_01m43shrzpf2vt5rxbb02z0xjt",
+				"type": "issue.opened",
+				"source": "work",
+				"time": "2026-10-01T18:04:11.482Z",
+				"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+				"actor": "usr_01kkntcg1eeb98j62xjm7eh09p",
+				"data": {
+					"issueId": "iss_01m43shrzpfe49x74ga7sj1c6v",
+					"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+					"number": 12,
+					"title": "Greeting should name the caller"
+				}
+			}
+		],
+		"notes": "Returns 50 events a page. To page back, send the `id` of the last event you have as `before`. `actor` is a user id, and `data` depends on `type`."
+	},
+	"list_issues": {
+		"query": {
+			"state": "open",
+			"label": "feature"
+		},
+		"response": [
+			{
+				"id": "iss_01m43shrzpfe49x74ga7sj1c6v",
+				"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+				"number": 12,
+				"title": "Greeting should name the caller",
+				"body": "Take a name from the first argument; fall back to world.",
+				"labels": [
+					"feature"
+				],
+				"checks": [
+					"cargo test"
+				],
+				"state": "open",
+				"reason": null,
+				"resolvedBy": null,
+				"author": {
+					"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+					"username": "syntaqx",
+					"kind": "user",
+					"verified": false,
+					"workspaces": []
+				},
+				"createdAt": "2026-10-01T18:04:11.482Z",
+				"updatedAt": "2026-10-01T18:04:11.482Z",
+				"closedAt": null,
+				"pullCount": 1,
+				"commentCount": 0,
+				"assignees": [],
+				"blockedBy": [],
+				"queued": false,
+				"agent": "claude-code"
+			}
+		],
+		"notes": "Returns at most 100 issues, newest first. `commentCount` counts comments, not events such as \"opened #14 for this\"."
+	},
+	"create_issue": {
+		"request": {
+			"title": "Greeting should name the caller",
+			"body": "Take a name from the first argument; fall back to world.",
+			"labels": [
+				"feature"
+			],
+			"checks": [
+				"cargo test"
+			]
+		},
+		"response": {
+			"id": "iss_01m43shrzpfe49x74ga7sj1c6v",
+			"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"number": 12,
+			"title": "Greeting should name the caller",
+			"body": "Take a name from the first argument; fall back to world.",
+			"labels": [
+				"feature"
+			],
+			"checks": [
+				"cargo test"
+			],
+			"state": "open",
+			"reason": null,
+			"resolvedBy": null,
+			"author": {
+				"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+				"username": "syntaqx",
+				"kind": "user",
+				"verified": false,
+				"workspaces": []
+			},
+			"createdAt": "2026-10-01T18:04:11.482Z",
+			"updatedAt": "2026-10-01T18:04:11.482Z",
+			"closedAt": null,
+			"pullCount": 0,
+			"commentCount": 0,
+			"assignees": [],
+			"blockedBy": [],
+			"queued": false,
+			"agent": null
+		},
+		"notes": "Labels are lowercased. A label not used before is created."
+	},
+	"get_issue": {
+		"response": {
+			"issue": {
+				"id": "iss_01m43shrzpfe49x74ga7sj1c6v",
+				"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+				"number": 12,
+				"title": "Greeting should name the caller",
+				"body": "Take a name from the first argument; fall back to world.",
+				"labels": [
+					"feature"
+				],
+				"checks": [
+					"cargo test"
+				],
+				"state": "closed",
+				"reason": "completed",
+				"resolvedBy": 14,
+				"author": {
+					"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+					"username": "syntaqx",
+					"kind": "user",
+					"verified": false,
+					"workspaces": []
+				},
+				"createdAt": "2026-10-01T18:04:11.482Z",
+				"updatedAt": "2026-10-01T18:52:17.093Z",
+				"closedAt": "2026-10-01T18:52:17.093Z",
+				"pullCount": 2,
+				"commentCount": 0,
+				"assignees": [],
+				"blockedBy": [],
+				"queued": false,
+				"agent": null
+			},
+			"pulls": [
+				{
+					"id": "pr_01m43sjq8tcz5rbm2a7k4d9e6w",
+					"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+					"number": 13,
+					"issue": 12,
+					"title": "Greeting should name the caller",
+					"body": null,
+					"agent": "claude-code",
+					"runtime": "external",
+					"status": "closed",
+					"fork": {
+						"namespace": "pulls",
+						"name": "pr_01m43sjq8tcz5rbm2a7k4d9e6w"
+					},
+					"forkRepoId": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+					"branch": null,
+					"headCommit": null,
+					"mergeBase": null,
+					"mergedBy": null,
+					"mergedAt": null,
+					"supersededBy": 14,
+					"checkStatus": null,
+					"files": [],
+					"assignees": [],
+					"reviewers": [],
+					"author": {
+						"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+						"username": "syntaqx",
+						"kind": "user",
+						"verified": false,
+						"workspaces": []
+					},
+					"createdAt": "2026-10-01T18:20:02.117Z",
+					"updatedAt": "2026-10-01T18:20:02.117Z"
+				},
+				{
+					"id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+					"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+					"number": 14,
+					"issue": 12,
+					"title": "Greeting should name the caller",
+					"body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+					"agent": "claude-code",
+					"runtime": "external",
+					"status": "merged",
+					"fork": {
+						"namespace": "pulls",
+						"name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+					},
+					"forkRepoId": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+					"branch": null,
+					"headCommit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+					"mergeBase": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
+					"mergedBy": "syntaqx",
+					"mergedAt": "2026-10-01T18:52:17.093Z",
+					"supersededBy": null,
+					"checkStatus": "passed",
+					"files": [
+						{
+							"path": "src/main.rs",
+							"additions": 6,
+							"deletions": 2
+						}
+					],
+					"assignees": [],
+					"reviewers": [
+						"ana"
+					],
+					"author": {
+						"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+						"username": "syntaqx",
+						"kind": "user",
+						"verified": false,
+						"workspaces": []
+					},
+					"createdAt": "2026-10-01T18:20:02.117Z",
+					"updatedAt": "2026-10-01T18:52:17.093Z"
+				}
+			],
+			"comments": [
+				{
+					"id": "cmt_01m43sr2b7d5f0j6k3n8p1q4v9",
+					"kind": "event",
+					"author": {
+						"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+						"username": "syntaqx",
+						"kind": "user",
+						"verified": false,
+						"workspaces": []
+					},
+					"body": "opened #14 for this",
+					"path": null,
+					"line": null,
+					"verdict": null,
+					"createdAt": "2026-10-01T18:20:02.141Z"
+				}
+			]
+		},
+		"notes": "A closed issue says how it was closed: `reason` is `completed` or `not_planned`, and `resolvedBy` is the number of the pull request whose merge closed it. Each pull request made for it is listed; one closed because another was merged has `supersededBy` set."
+	},
+	"update_issue": {
+		"request": {
+			"labels": [
+				"feature",
+				"good first issue"
+			],
+			"assignees": [
+				"syntaqx"
+			]
+		},
+		"response": {
+			"id": "iss_01m43shrzpfe49x74ga7sj1c6v",
+			"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"number": 12,
+			"title": "Greeting should name the caller",
+			"body": "Take a name from the first argument; fall back to world.",
+			"labels": [
+				"feature",
+				"good first issue"
+			],
+			"checks": [
+				"cargo test"
+			],
+			"state": "open",
+			"reason": null,
+			"resolvedBy": null,
+			"author": {
+				"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+				"username": "syntaqx",
+				"kind": "user",
+				"verified": false,
+				"workspaces": []
+			},
+			"createdAt": "2026-10-01T18:04:11.482Z",
+			"updatedAt": "2026-10-01T18:09:47.305Z",
+			"closedAt": null,
+			"pullCount": 0,
+			"commentCount": 0,
+			"assignees": [
+				"syntaqx"
+			],
+			"blockedBy": [],
+			"queued": false,
+			"agent": null
+		}
+	},
+	"close_issue": {
+		"request": {
+			"reason": "not_planned"
+		},
+		"response": {
+			"id": "iss_01m43shrzpfe49x74ga7sj1c6v",
+			"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"number": 12,
+			"title": "Greeting should name the caller",
+			"body": "Take a name from the first argument; fall back to world.",
+			"labels": [
+				"feature"
+			],
+			"checks": [
+				"cargo test"
+			],
+			"state": "closed",
+			"reason": "not_planned",
+			"resolvedBy": null,
+			"author": {
+				"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+				"username": "syntaqx",
+				"kind": "user",
+				"verified": false,
+				"workspaces": []
+			},
+			"createdAt": "2026-10-01T18:04:11.482Z",
+			"updatedAt": "2026-10-01T19:30:00.214Z",
+			"closedAt": "2026-10-01T19:30:00.214Z",
+			"pullCount": 0,
+			"commentCount": 0,
+			"assignees": [],
+			"blockedBy": [],
+			"queued": false,
+			"agent": null
+		}
+	},
+	"reopen_issue": {
+		"response": {
+			"id": "iss_01m43shrzpfe49x74ga7sj1c6v",
+			"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"number": 12,
+			"title": "Greeting should name the caller",
+			"body": "Take a name from the first argument; fall back to world.",
+			"labels": [
+				"feature"
+			],
+			"checks": [
+				"cargo test"
+			],
+			"state": "open",
+			"reason": null,
+			"resolvedBy": null,
+			"author": {
+				"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+				"username": "syntaqx",
+				"kind": "user",
+				"verified": false,
+				"workspaces": []
+			},
+			"createdAt": "2026-10-01T18:04:11.482Z",
+			"updatedAt": "2026-10-01T19:41:52.830Z",
+			"closedAt": null,
+			"pullCount": 0,
+			"commentCount": 0,
+			"assignees": [],
+			"blockedBy": [],
+			"queued": false,
+			"agent": null
+		}
+	},
+	"assign_issue": {
+		"request": {
+			"instructions": "Keep the change to src/main.rs."
+		},
+		"response": {
+			"id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+			"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"number": 14,
+			"issue": 12,
+			"title": "Greeting should name the caller",
+			"body": null,
+			"agent": "g1t-agent",
+			"runtime": "hosted",
+			"status": "draft",
+			"fork": {
+				"namespace": "pulls",
+				"name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+			},
+			"forkRepoId": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+			"branch": null,
+			"headCommit": null,
+			"mergeBase": null,
+			"mergedBy": null,
+			"mergedAt": null,
+			"supersededBy": null,
+			"checkStatus": null,
+			"files": [],
+			"assignees": [],
+			"reviewers": [],
+			"author": {
+				"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+				"username": "syntaqx",
+				"kind": "user",
+				"verified": false,
+				"workspaces": []
+			},
+			"createdAt": "2026-10-01T18:20:02.117Z",
+			"updatedAt": "2026-10-01T18:20:02.117Z"
+		},
+		"notes": "The response is the pull request the g1t agent opened, still a draft. Follow it with [get a pull request](/reference/api/pull-requests/get-pull-request/): `lifecycle` says what the agent is doing."
+	},
+	"add_comment": {
+		"request": {
+			"body": "Should an empty name fall back to \"world\"?"
+		},
+		"response": {
+			"id": "cmt_01m43sv4c8e2g6j0m4q8t2x6a1",
+			"kind": "comment",
+			"author": {
+				"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+				"username": "syntaqx",
+				"kind": "user",
+				"verified": true,
+				"workspaces": [
+					{
+						"slug": "syntaqx",
+						"role": "owner"
+					}
+				]
+			},
+			"body": "Should an empty name fall back to \"world\"?",
+			"path": null,
+			"line": null,
+			"verdict": null,
+			"createdAt": "2026-10-01T18:12:30.551Z"
+		}
+	},
+	"list_labels": {
+		"response": [
+			"bug",
+			"feature",
+			"docs",
+			"chore",
+			"question",
+			"good first issue"
+		],
+		"notes": "The five default labels come first, then the others used on the repository's issues, alphabetically."
+	},
+	"plan_work": {
+		"request": {
+			"brief": "Greet people by name, from the command line and the web page."
+		},
+		"response": {
+			"planId": "pln_01m43s9c4e8g2j6m0q4t8x2b6d"
+		}
+	},
+	"get_plan": {
+		"params": {
+			"plan": "pln_01m43s9c4e8g2j6m0q4t8x2b6d"
+		},
+		"response": {
+			"id": "pln_01m43s9c4e8g2j6m0q4t8x2b6d",
+			"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"brief": "Greet people by name, from the command line and the web page.",
+			"status": "ready",
+			"summary": "Name parsing first, then the two places that print the greeting.",
+			"issues": [
+				{
+					"title": "Greeting should name the caller",
+					"body": "Accept an optional name in `greet()` and use it.",
+					"labels": [
+						"feature"
+					],
+					"checks": [
+						"cargo test"
+					],
+					"files": [
+						"src/greet.rs"
+					],
+					"dependsOn": [],
+					"number": null
+				},
+				{
+					"title": "Show the caller's name on the web page",
+					"body": "Read `?name=` and pass it to `greet()`.",
+					"labels": [
+						"feature"
+					],
+					"checks": [
+						"cargo test"
+					],
+					"files": [
+						"src/web.rs"
+					],
+					"dependsOn": [
+						1
+					],
+					"number": null
+				}
+			],
+			"error": null,
+			"author": {
+				"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+				"username": "syntaqx",
+				"kind": "user",
+				"verified": false,
+				"workspaces": []
+			},
+			"createdAt": "2026-10-01T17:58:40.006Z",
+			"finishedAt": "2026-10-01T18:01:12.774Z",
+			"progress": [],
+			"exchanges": []
+		},
+		"notes": "A plan still `planning` after 20 minutes is reported as `failed`. `progress` follows each issue once the plan is applied."
+	},
+	"apply_plan": {
+		"params": {
+			"plan": "pln_01m43s9c4e8g2j6m0q4t8x2b6d"
+		},
+		"request": {
+			"assign": true
+		},
+		"response": {
+			"id": "pln_01m43s9c4e8g2j6m0q4t8x2b6d",
+			"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"brief": "Greet people by name, from the command line and the web page.",
+			"status": "applied",
+			"summary": "Name parsing first, then the two places that print the greeting.",
+			"issues": [
+				{
+					"title": "Greeting should name the caller",
+					"body": "Accept an optional name in `greet()` and use it.",
+					"labels": [
+						"feature"
+					],
+					"checks": [
+						"cargo test"
+					],
+					"files": [
+						"src/greet.rs"
+					],
+					"dependsOn": [],
+					"number": 12
+				},
+				{
+					"title": "Show the caller's name on the web page",
+					"body": "Read `?name=` and pass it to `greet()`.",
+					"labels": [
+						"feature"
+					],
+					"checks": [
+						"cargo test"
+					],
+					"files": [
+						"src/web.rs"
+					],
+					"dependsOn": [
+						1
+					],
+					"number": 13
+				}
+			],
+			"error": null,
+			"author": {
+				"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+				"username": "syntaqx",
+				"kind": "user",
+				"verified": false,
+				"workspaces": []
+			},
+			"createdAt": "2026-10-01T17:58:40.006Z",
+			"finishedAt": "2026-10-01T18:01:12.774Z",
+			"progress": [],
+			"exchanges": []
+		},
+		"notes": "Each opened issue's `number` is filled in. Issues left out with `keep` stay `null`."
+	},
+	"list_pull_requests": {
+		"query": {
+			"state": "open"
+		},
+		"response": [
+			{
+				"id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+				"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+				"number": 14,
+				"issue": 12,
+				"title": "Greeting should name the caller",
+				"body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+				"agent": "claude-code",
+				"runtime": "external",
+				"status": "open",
+				"fork": {
+					"namespace": "pulls",
+					"name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+				},
+				"forkRepoId": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+				"branch": null,
+				"headCommit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+				"mergeBase": null,
+				"mergedBy": null,
+				"mergedAt": null,
+				"supersededBy": null,
+				"checkStatus": "passed",
+				"files": [
+					{
+						"path": "src/main.rs",
+						"additions": 6,
+						"deletions": 2
+					}
+				],
+				"assignees": [],
+				"reviewers": [
+					"ana"
+				],
+				"author": {
+					"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+					"username": "syntaqx",
+					"kind": "user",
+					"verified": false,
+					"workspaces": []
+				},
+				"createdAt": "2026-10-01T18:20:02.117Z",
+				"updatedAt": "2026-10-01T18:35:44.902Z"
+			}
+		],
+		"notes": "Returns at most 100 pull requests, newest first. `checkStatus` is `queued`, `running`, `passed`, `failed`, `errored`, or `null` when no checks have run against the head."
+	},
+	"create_pull_request": {
+		"request": {
+			"issue": 12,
+			"agent": "claude-code"
+		},
+		"response": {
+			"pull": {
+				"id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+				"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+				"number": 14,
+				"issue": 12,
+				"title": "Greeting should name the caller",
+				"body": null,
+				"agent": "claude-code",
+				"runtime": "external",
+				"status": "draft",
+				"fork": {
+					"namespace": "pulls",
+					"name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+				},
+				"forkRepoId": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+				"branch": null,
+				"headCommit": null,
+				"mergeBase": null,
+				"mergedBy": null,
+				"mergedAt": null,
+				"supersededBy": null,
+				"checkStatus": null,
+				"files": [],
+				"assignees": [],
+				"reviewers": [],
+				"author": {
+					"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+					"username": "syntaqx",
+					"kind": "user",
+					"verified": false,
+					"workspaces": []
+				},
+				"createdAt": "2026-10-01T18:20:02.117Z",
+				"updatedAt": "2026-10-01T18:20:02.117Z"
+			},
+			"git": {
+				"remote": "https://g1t.sh/pulls/pr_01m43smh3vexsr5pmp60qwv0vs.git",
+				"username": "syntaqx",
+				"password": "your g1t access token"
+			}
+		},
+		"notes": "`title` defaults to the issue's title, and is required when there is no `issue`. Push to `git.remote` with your username and an access token as the password.\n\nSend `branch` to open the pull request from a branch already pushed to the repository. No fork is made, `fork` is `null`, `git.remote` is the repository itself, and the pull request is `open` at once."
+	},
+	"get_pull_request": {
+		"response": {
+			"pull": {
+				"id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+				"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+				"number": 14,
+				"issue": 12,
+				"title": "Greeting should name the caller",
+				"body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+				"agent": "claude-code",
+				"runtime": "external",
+				"status": "open",
+				"fork": {
+					"namespace": "pulls",
+					"name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+				},
+				"forkRepoId": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+				"branch": null,
+				"headCommit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+				"mergeBase": null,
+				"mergedBy": null,
+				"mergedAt": null,
+				"supersededBy": null,
+				"checkStatus": "passed",
+				"files": [
+					{
+						"path": "src/main.rs",
+						"additions": 6,
+						"deletions": 2
+					}
+				],
+				"assignees": [],
+				"reviewers": [
+					"ana"
+				],
+				"author": {
+					"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+					"username": "syntaqx",
+					"kind": "user",
+					"verified": false,
+					"workspaces": []
+				},
+				"createdAt": "2026-10-01T18:20:02.117Z",
+				"updatedAt": "2026-10-01T18:35:44.902Z"
+			},
+			"issue": {
+				"id": "iss_01m43shrzpfe49x74ga7sj1c6v",
+				"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+				"number": 12,
+				"title": "Greeting should name the caller",
+				"body": "Take a name from the first argument; fall back to world.",
+				"labels": [
+					"feature"
+				],
+				"checks": [
+					"cargo test"
+				],
+				"state": "open",
+				"reason": null,
+				"resolvedBy": null,
+				"author": {
+					"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+					"username": "syntaqx",
+					"kind": "user",
+					"verified": false,
+					"workspaces": []
+				},
+				"createdAt": "2026-10-01T18:04:11.482Z",
+				"updatedAt": "2026-10-01T18:20:02.117Z",
+				"closedAt": null,
+				"pullCount": 1,
+				"commentCount": 0,
+				"assignees": [],
+				"blockedBy": [],
+				"queued": false,
+				"agent": "claude-code"
+			},
+			"comments": [
+				{
+					"id": "cmt_01m43st6d0f4h8k2n6r0v4z8c2",
+					"kind": "event",
+					"author": {
+						"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+						"username": "syntaqx",
+						"kind": "user",
+						"verified": false,
+						"workspaces": []
+					},
+					"body": "marked this ready for review",
+					"path": null,
+					"line": null,
+					"verdict": null,
+					"createdAt": "2026-10-01T18:33:10.420Z"
+				}
+			],
+			"checks": {
+				"id": "chk_01m43sw8e2g6j0m4q8t2x6a0c4",
+				"headCommit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+				"status": "passed",
+				"results": [
+					{
+						"command": "cargo test",
+						"passed": true,
+						"exitCode": 0,
+						"output": "test result: ok. 3 passed; 0 failed",
+						"durationMs": 18234
+					}
+				],
+				"error": null,
+				"createdAt": "2026-10-01T18:33:11.002Z",
+				"finishedAt": "2026-10-01T18:35:44.902Z"
+			},
+			"overlaps": [],
+			"behind": false,
+			"review_pending": false,
+			"lifecycle": null,
+			"landing": false,
+			"stalled": null,
+			"messages": [
+				{
+					"id": "msg_01m43tx5egeh4t3f9zcnjenqvz",
+					"author": "syntaqx",
+					"body": "Keep \"world\" as the default when no name is given.",
+					"createdAt": "2026-10-01T18:25:00.310Z",
+					"deliveredAt": "2026-10-01T18:25:31.007Z",
+					"kind": "message",
+					"fromNumber": null,
+					"toNumber": 14,
+					"answer": null,
+					"declined": false
+				}
+			],
+			"statuses": []
+		},
+		"notes": "| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `checks` | The latest run of the acceptance checks against its head, with each command's output. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request the g1t agent is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n| `statuses` | Commit statuses reported for its head, such as workflow runs. |\n\nChecks are started by g1t, not through the API. They run when a pull request becomes ready for review and again when its head moves."
+	},
+	"get_pull_request_changes": {
+		"response": {
+			"base": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
+			"head": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+			"files": [
+				{
+					"path": "src/main.rs",
+					"status": "modified",
+					"additions": 1,
+					"deletions": 1,
+					"binary": false,
+					"hunks": [
+						{
+							"lines": [
+								{
+									"kind": "context",
+									"old": 3,
+									"new": 3,
+									"text": "fn main() {"
+								},
+								{
+									"kind": "delete",
+									"old": 4,
+									"new": null,
+									"text": "    println!(\"Hello, world!\");"
+								},
+								{
+									"kind": "add",
+									"old": null,
+									"new": 4,
+									"text": "    println!(\"Hello, {}!\", std::env::args().nth(1).unwrap_or(\"world\".into()));"
+								},
+								{
+									"kind": "context",
+									"old": 5,
+									"new": 5,
+									"text": "}"
+								}
+							]
+						}
+					]
+				}
+			],
+			"truncated": false
+		},
+		"notes": "A file's `status` is `added`, `modified` or `deleted`. A binary file has no `hunks`. In a line, `old` is `null` when it was added and `new` is `null` when it was deleted."
+	},
+	"mark_pull_request_ready": {
+		"request": {
+			"summary": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\"."
+		},
+		"response": {
+			"id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+			"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"number": 14,
+			"issue": 12,
+			"title": "Greeting should name the caller",
+			"body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+			"agent": "claude-code",
+			"runtime": "external",
+			"status": "open",
+			"fork": {
+				"namespace": "pulls",
+				"name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+			},
+			"forkRepoId": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+			"branch": null,
+			"headCommit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+			"mergeBase": null,
+			"mergedBy": null,
+			"mergedAt": null,
+			"supersededBy": null,
+			"checkStatus": null,
+			"files": [
+				{
+					"path": "src/main.rs",
+					"additions": 6,
+					"deletions": 2
+				}
+			],
+			"assignees": [],
+			"reviewers": [],
+			"author": {
+				"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+				"username": "syntaqx",
+				"kind": "user",
+				"verified": false,
+				"workspaces": []
+			},
+			"createdAt": "2026-10-01T18:20:02.117Z",
+			"updatedAt": "2026-10-01T18:33:10.398Z"
+		}
+	},
+	"review_pull_request": {
+		"request": {
+			"verdict": "request_changes",
+			"body": "Trim the name before using it."
+		},
+		"response": {
+			"id": "cmt_01m43sx9f3h7k1n5r9v3z7d1g5",
+			"kind": "comment",
+			"author": {
+				"id": "usr_01kz9d3f7h1k5n9r3v7z1c5g9b",
+				"username": "ana",
+				"kind": "user",
+				"verified": true,
+				"workspaces": [
+					{
+						"slug": "syntaqx",
+						"role": "member"
+					}
+				]
+			},
+			"body": "Trim the name before using it.",
+			"path": null,
+			"line": null,
+			"verdict": "request_changes",
+			"createdAt": "2026-10-01T18:40:05.019Z"
+		}
+	},
+	"merge_pull_request": {
+		"request": {
+			"keep_issue_open": false
+		},
+		"response": {
+			"id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+			"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"number": 14,
+			"issue": 12,
+			"title": "Greeting should name the caller",
+			"body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+			"agent": "claude-code",
+			"runtime": "external",
+			"status": "merged",
+			"fork": {
+				"namespace": "pulls",
+				"name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+			},
+			"forkRepoId": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+			"branch": null,
+			"headCommit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+			"mergeBase": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
+			"mergedBy": "syntaqx",
+			"mergedAt": "2026-10-01T18:52:17.093Z",
+			"supersededBy": null,
+			"checkStatus": "passed",
+			"files": [
+				{
+					"path": "src/main.rs",
+					"additions": 6,
+					"deletions": 2
+				}
+			],
+			"assignees": [],
+			"reviewers": [
+				"ana"
+			],
+			"author": {
+				"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+				"username": "syntaqx",
+				"kind": "user",
+				"verified": false,
+				"workspaces": []
+			},
+			"createdAt": "2026-10-01T18:20:02.117Z",
+			"updatedAt": "2026-10-01T18:52:17.093Z"
+		},
+		"notes": "A draft, or one whose checks have not passed, answers `409`. A pull request still `open` in the response has not landed yet: `landing` is true on it while it is brought up to date, and [get the merge queue](/reference/api/pull-requests/get-merge-queue/) shows it waiting in the [merge queue](/guides/merge-queue/). Merging records the pull request in the issue's `resolvedBy` and sets `supersededBy` on the pull requests it closes."
+	},
+	"close_pull_request": {
+		"response": {
+			"id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+			"repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"number": 14,
+			"issue": 12,
+			"title": "Greeting should name the caller",
+			"body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+			"agent": "claude-code",
+			"runtime": "external",
+			"status": "closed",
+			"fork": {
+				"namespace": "pulls",
+				"name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+			},
+			"forkRepoId": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+			"branch": null,
+			"headCommit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+			"mergeBase": null,
+			"mergedBy": null,
+			"mergedAt": null,
+			"supersededBy": null,
+			"checkStatus": null,
+			"files": [
+				{
+					"path": "src/main.rs",
+					"additions": 6,
+					"deletions": 2
+				}
+			],
+			"assignees": [],
+			"reviewers": [],
+			"author": {
+				"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+				"username": "syntaqx",
+				"kind": "user",
+				"verified": false,
+				"workspaces": []
+			},
+			"createdAt": "2026-10-01T18:20:02.117Z",
+			"updatedAt": "2026-10-01T19:02:48.760Z"
+		}
+	},
+	"get_merge_queue": {
+		"response": {
+			"enabled": true,
+			"active": [
+				{
+					"id": "qen_01m43rn0qsft1tpap1awkewzbb",
+					"number": 14,
+					"title": "Greeting should name the caller",
+					"agent": "claude-code",
+					"state": "testing",
+					"ahead": [],
+					"baseCommit": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
+					"combinedCommit": null,
+					"error": null,
+					"results": [],
+					"enqueuedBy": "syntaqx",
+					"createdAt": "2026-10-04T15:31:20.441Z",
+					"finishedAt": null
+				}
+			],
+			"recent": [
+				{
+					"id": "qen_01m43khqjmeb5a1magayrnk63z",
+					"number": 11,
+					"title": "Fix trailing newline in greeting",
+					"agent": "g1t-agent",
+					"state": "landed",
+					"ahead": [],
+					"baseCommit": "4b1d7e9c2a5f8e3d6c0b9a7e5d3c1b8a6f4e2d0c",
+					"combinedCommit": "c3e8a1f6d4b2097e5c3a1f8d6b4e2c0a9f7d5b3e",
+					"error": null,
+					"results": [
+						{
+							"command": "cargo test",
+							"passed": true,
+							"exitCode": 0,
+							"output": "test result: ok. 12 passed; 0 failed\n",
+							"durationMs": 48211
+						}
+					],
+					"enqueuedBy": "g1t",
+					"createdAt": "2026-10-04T14:02:09.876Z",
+					"finishedAt": "2026-10-04T14:09:55.102Z"
+				}
+			]
+		},
+		"notes": "An entry's `state` is `waiting`, `testing`, `passed`, `failed`, `landed` or `removed`. `active` is in queue order; `recent` holds at most 20, newest first."
+	},
+	"message_agent": {
+		"request": {
+			"body": "Keep \"world\" as the default when no name is given."
+		},
+		"response": {
+			"id": "msg_01m43tx5egeh4t3f9zcnjenqvz",
+			"author": "syntaqx",
+			"body": "Keep \"world\" as the default when no name is given.",
+			"createdAt": "2026-10-01T18:25:00.310Z",
+			"deliveredAt": null,
+			"kind": "message",
+			"fromNumber": null,
+			"toNumber": 14,
+			"answer": null,
+			"declined": false
+		},
+		"notes": "The response is the message. `deliveredAt` is set once the agent has read it."
+	},
+	"answer_message": {
+		"params": {
+			"id": "msg_01m43t66tde8hs2vpxhh3v8tqw"
+		},
+		"request": {
+			"body": "No. greet() keeps its name; only greet_named() is added."
+		},
+		"response": {
+			"id": "msg_01m43t66tde8hs2vpxhh3v8tqw",
+			"author": "g1t-agent",
+			"body": "Are you renaming greet() in src/lib.rs? I need to call it from #16.",
+			"createdAt": "2026-10-01T18:58:12.301Z",
+			"deliveredAt": "2026-10-01T18:58:40.117Z",
+			"kind": "question",
+			"fromNumber": 16,
+			"toNumber": 14,
+			"answer": "No. greet() keeps its name; only greet_named() is added.",
+			"declined": false
+		},
+		"notes": "The response is the question or handoff that was answered, with `answer` and `declined` filled in."
+	},
+	"take_messages": {
+		"response": [
+			{
+				"id": "msg_01m43tx5egeh4t3f9zcnjenqvz",
+				"author": "syntaqx",
+				"body": "Keep \"world\" as the default when no name is given.",
+				"createdAt": "2026-10-01T18:25:00.310Z",
+				"deliveredAt": "2026-10-01T18:25:31.007Z",
+				"kind": "message",
+				"fromNumber": null,
+				"toNumber": 14,
+				"answer": null,
+				"declined": false
+			}
+		],
+		"notes": "Only a g1t agent's token can take messages. They come oldest first, and each is marked delivered."
+	},
+	"read_session": {
+		"query": {
+			"after": 0
+		},
+		"response": [
+			{
+				"seq": 1,
+				"kind": "prompt",
+				"text": "Make the greeting name the caller (issue #12).",
+				"tool": null,
+				"commit": null,
+				"at": "2026-10-01T18:21:00.004Z"
+			},
+			{
+				"seq": 2,
+				"kind": "tool_call",
+				"text": "cargo test",
+				"tool": "bash",
+				"commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+				"at": "2026-10-01T18:30:12.660Z"
+			}
+		]
+	},
+	"record_session": {
+		"request": {
+			"entries": [
+				{
+					"kind": "message",
+					"text": "Reading src/main.rs."
+				},
+				{
+					"kind": "tool_call",
+					"text": "cargo test",
+					"tool": "bash"
+				}
+			]
+		},
+		"response": {
+			"count": 2
+		},
+		"notes": "Up to 200 entries can be appended per request. Each is recorded against the pull request's head commit at the time. See [sessions and why-blame](/guides/why-blame/)."
+	},
+	"list_workflows": {
+		"response": [
+			{
+				"id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+				"path": ".g1t/workflows/ci.yml",
+				"name": "CI",
+				"events": [
+					"push",
+					"pull_request",
+					"workflow_dispatch"
+				],
+				"state": "active",
+				"error": null,
+				"notes": [
+					{
+						"severity": "unsupported",
+						"job": "test",
+						"message": "`services` containers (such as a database) are not started on g1t yet."
+					}
+				],
+				"dispatch": {
+					"debug": {
+						"description": "Verbose logs",
+						"type": "boolean",
+						"default": false
+					}
+				},
+				"lastRun": {
+					"id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
+					"workflowId": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+					"path": ".g1t/workflows/ci.yml",
+					"name": "CI",
+					"title": "Greeting should name the caller",
+					"number": 12,
+					"attempt": 1,
+					"event": "push",
+					"ref": "refs/heads/main",
+					"sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+					"pull": null,
+					"status": "completed",
+					"conclusion": "success",
+					"error": null,
+					"actor": "syntaqx",
+					"createdAt": "2026-10-04T15:42:07.318Z",
+					"startedAt": "2026-10-04T15:42:09.020Z",
+					"finishedAt": "2026-10-04T15:44:31.877Z"
+				}
+			},
+			{
+				"id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9nq",
+				"path": ".g1t/workflows/nightly.yml",
+				"name": "Nightly",
+				"events": [
+					"schedule"
+				],
+				"state": "disabled",
+				"error": null,
+				"notes": [],
+				"dispatch": null,
+				"lastRun": null
+			}
+		],
+		"notes": "`state` is `active` or `disabled`. `dispatch` holds the `workflow_dispatch` inputs, or is `null` when the workflow cannot be run by hand. See [GitHub Actions](/guides/actions/)."
+	},
+	"list_workflow_runs": {
+		"query": {
+			"workflow": "ci.yml",
+			"branch": "main",
+			"per_page": 20
+		},
+		"response": [
+			{
+				"id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
+				"workflowId": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+				"path": ".g1t/workflows/ci.yml",
+				"name": "CI",
+				"title": "Greeting should name the caller",
+				"number": 12,
+				"attempt": 1,
+				"event": "push",
+				"ref": "refs/heads/main",
+				"sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+				"pull": null,
+				"status": "completed",
+				"conclusion": "success",
+				"error": null,
+				"actor": "syntaqx",
+				"createdAt": "2026-10-04T15:42:07.318Z",
+				"startedAt": "2026-10-04T15:42:09.020Z",
+				"finishedAt": "2026-10-04T15:44:31.877Z"
+			}
+		],
+		"notes": "A run's `status` is `queued`, `pending` (waiting for its concurrency group), `in_progress` or `completed`; `conclusion` is set once it completes."
+	},
+	"list_runs_of_workflow": {
+		"params": {
+			"workflow": "ci.yml"
+		},
+		"query": {
+			"branch": "main",
+			"per_page": 20
+		},
+		"response": [
+			{
+				"id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
+				"workflowId": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+				"path": ".g1t/workflows/ci.yml",
+				"name": "CI",
+				"title": "Greeting should name the caller",
+				"number": 12,
+				"attempt": 1,
+				"event": "push",
+				"ref": "refs/heads/main",
+				"sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+				"pull": null,
+				"status": "completed",
+				"conclusion": "success",
+				"error": null,
+				"actor": "syntaqx",
+				"createdAt": "2026-10-04T15:42:07.318Z",
+				"startedAt": "2026-10-04T15:42:09.020Z",
+				"finishedAt": "2026-10-04T15:44:31.877Z"
+			}
+		]
+	},
+	"get_workflow_run": {
+		"params": {
+			"id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr"
+		},
+		"response": {
+			"run": {
+				"id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
+				"workflowId": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+				"path": ".g1t/workflows/ci.yml",
+				"name": "CI",
+				"title": "Greeting should name the caller",
+				"number": 12,
+				"attempt": 1,
+				"event": "push",
+				"ref": "refs/heads/main",
+				"sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+				"pull": null,
+				"status": "completed",
+				"conclusion": "failure",
+				"error": null,
+				"actor": "syntaqx",
+				"createdAt": "2026-10-04T15:42:07.318Z",
+				"startedAt": "2026-10-04T15:42:09.020Z",
+				"finishedAt": "2026-10-04T15:44:31.877Z"
+			},
+			"jobs": [
+				{
+					"id": "job_01kpx7b3d0e4f8g2h6j0k4m8ns",
+					"runId": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
+					"key": "test",
+					"name": "test",
+					"needs": [],
+					"status": "completed",
+					"conclusion": "failure",
+					"steps": [
+						{
+							"number": 1,
+							"name": "Run actions/checkout@v4",
+							"status": "completed",
+							"conclusion": "success",
+							"startedAt": "2026-10-04T15:42:10.101Z",
+							"finishedAt": "2026-10-04T15:42:12.433Z"
+						},
+						{
+							"number": 2,
+							"name": "Run cargo test",
+							"status": "completed",
+							"conclusion": "failure",
+							"startedAt": "2026-10-04T15:42:12.440Z",
+							"finishedAt": "2026-10-04T15:44:30.902Z"
+						}
+					],
+					"annotations": [
+						{
+							"level": "error",
+							"message": "assertion failed: greeting names the caller",
+							"title": "greet",
+							"file": "src/main.rs",
+							"line": 41
+						}
+					],
+					"reason": null,
+					"startedAt": "2026-10-04T15:42:09.020Z",
+					"finishedAt": "2026-10-04T15:44:31.002Z"
+				},
+				{
+					"id": "job_01kpx7b3d0e4f8g2h6j0k4m8nt",
+					"runId": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
+					"key": "deploy",
+					"name": "deploy",
+					"needs": [
+						"test"
+					],
+					"status": "completed",
+					"conclusion": "skipped",
+					"steps": [],
+					"annotations": [],
+					"reason": "A job it needs did not succeed.",
+					"startedAt": null,
+					"finishedAt": "2026-10-04T15:44:31.877Z"
+				}
+			],
+			"notes": [
+				{
+					"severity": "unsupported",
+					"job": "test",
+					"message": "`services` containers (such as a database) are not started on g1t yet."
+				}
+			]
+		}
+	},
+	"get_job_logs": {
+		"params": {
+			"job": "job_01kpx7b3d0e4f8g2h6j0k4m8ns"
+		},
+		"query": {
+			"after": 0
+		},
+		"response": {
+			"chunks": [
+				{
+					"seq": 1,
+					"step": 0,
+					"text": "Preparing the sandbox\n"
+				},
+				{
+					"seq": 2,
+					"step": 2,
+					"text": "> cargo test\ntest greet ... FAILED\n"
+				}
+			],
+			"done": true
+		},
+		"notes": "Returns at most 500 chunks. Step 0 is the job's setup. While `done` is false, call again with the last `seq` as `after`."
+	},
+	"dispatch_workflow": {
+		"params": {
+			"workflow": "ci.yml"
+		},
+		"request": {
+			"ref": "main",
+			"inputs": {
+				"debug": true
+			}
+		},
+		"response": {
+			"id": "run_01kpx8d4e7f0g3h6j9k2m5n8pq",
+			"workflowId": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+			"path": ".g1t/workflows/ci.yml",
+			"name": "CI",
+			"title": "CI run by syntaqx",
+			"number": 13,
+			"attempt": 1,
+			"event": "workflow_dispatch",
+			"ref": "refs/heads/main",
+			"sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+			"pull": null,
+			"status": "queued",
+			"conclusion": null,
+			"error": null,
+			"actor": "syntaqx",
+			"createdAt": "2026-10-04T16:30:00.512Z",
+			"startedAt": null,
+			"finishedAt": null
+		}
+	},
+	"cancel_workflow_run": {
+		"params": {
+			"id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr"
+		},
+		"response": {
+			"id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
+			"workflowId": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+			"path": ".g1t/workflows/ci.yml",
+			"name": "CI",
+			"title": "Greeting should name the caller",
+			"number": 12,
+			"attempt": 1,
+			"event": "push",
+			"ref": "refs/heads/main",
+			"sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+			"pull": null,
+			"status": "completed",
+			"conclusion": "cancelled",
+			"error": null,
+			"actor": "syntaqx",
+			"createdAt": "2026-10-04T15:42:07.318Z",
+			"startedAt": "2026-10-04T15:42:09.020Z",
+			"finishedAt": "2026-10-04T15:44:31.877Z"
+		}
+	},
+	"rerun_workflow_run": {
+		"params": {
+			"id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr"
+		},
+		"request": {
+			"failed_only": true
+		},
+		"response": {
+			"id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
+			"workflowId": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+			"path": ".g1t/workflows/ci.yml",
+			"name": "CI",
+			"title": "Greeting should name the caller",
+			"number": 12,
+			"attempt": 2,
+			"event": "push",
+			"ref": "refs/heads/main",
+			"sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+			"pull": null,
+			"status": "queued",
+			"conclusion": null,
+			"error": null,
+			"actor": "syntaqx",
+			"createdAt": "2026-10-04T15:42:07.318Z",
+			"startedAt": null,
+			"finishedAt": null
+		},
+		"notes": "The run keeps its id; `attempt` goes up by one."
+	},
+	"rerun_failed_jobs": {
+		"params": {
+			"id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr"
+		},
+		"response": {
+			"id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
+			"workflowId": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+			"path": ".g1t/workflows/ci.yml",
+			"name": "CI",
+			"title": "Greeting should name the caller",
+			"number": 12,
+			"attempt": 2,
+			"event": "push",
+			"ref": "refs/heads/main",
+			"sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+			"pull": null,
+			"status": "queued",
+			"conclusion": null,
+			"error": null,
+			"actor": "syntaqx",
+			"createdAt": "2026-10-04T15:42:07.318Z",
+			"startedAt": null,
+			"finishedAt": null
+		}
+	},
+	"update_workflow": {
+		"params": {
+			"workflow": "nightly.yml"
+		},
+		"request": {
+			"enabled": false
+		},
+		"response": {
+			"id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9nq",
+			"path": ".g1t/workflows/nightly.yml",
+			"name": "Nightly",
+			"events": [
+				"schedule"
+			],
+			"state": "disabled",
+			"error": null,
+			"notes": [],
+			"dispatch": null,
+			"lastRun": null
+		}
+	},
+	"enable_workflow": {
+		"params": {
+			"workflow": "nightly.yml"
+		},
+		"response": {
+			"id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9nq",
+			"path": ".g1t/workflows/nightly.yml",
+			"name": "Nightly",
+			"events": [
+				"schedule"
+			],
+			"state": "active",
+			"error": null,
+			"notes": [],
+			"dispatch": null,
+			"lastRun": null
+		}
+	},
+	"disable_workflow": {
+		"params": {
+			"workflow": "nightly.yml"
+		},
+		"response": {
+			"id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9nq",
+			"path": ".g1t/workflows/nightly.yml",
+			"name": "Nightly",
+			"events": [
+				"schedule"
+			],
+			"state": "disabled",
+			"error": null,
+			"notes": [],
+			"dispatch": null,
+			"lastRun": null
+		}
+	},
+	"list_actions_secrets": {
+		"response": [
+			{
+				"id": "set_01kpv9q4r7s0t3v6w9x2y5z8ab",
+				"name": "NPM_TOKEN",
+				"kind": "secret",
+				"value": null,
+				"scope": "workspace",
+				"updatedAt": "2026-10-01T09:12:44.020Z",
+				"availableTo": [
+					"workflows"
+				],
+				"environments": [],
+				"repositories": [],
+				"note": null,
+				"updatedBy": "syntaqx"
+			},
+			{
+				"id": "set_01kpv9q4r7s0t3v6w9x2y5z8ac",
+				"name": "STRIPE_KEY",
+				"kind": "secret",
+				"value": null,
+				"scope": "repository",
+				"updatedAt": "2026-10-04T15:42:07.318Z",
+				"availableTo": [
+					"workflows",
+					"deployments"
+				],
+				"environments": [
+					"production"
+				],
+				"repositories": [],
+				"note": "Rotate in the Stripe dashboard.",
+				"updatedBy": "syntaqx"
+			}
+		],
+		"notes": "Values are never returned. A repository's list includes the workspace's rows that reach it, with `scope` set to `workspace`. Empty `environments` means every environment."
+	},
+	"list_actions_secrets_for_workspace": {
+		"params": {
+			"workspace": "syntaqx"
+		},
+		"response": [
+			{
+				"id": "set_01kpv9q4r7s0t3v6w9x2y5z8ab",
+				"name": "NPM_TOKEN",
+				"kind": "secret",
+				"value": null,
+				"scope": "workspace",
+				"updatedAt": "2026-10-04T15:42:07.318Z",
+				"availableTo": [
+					"workflows"
+				],
+				"environments": [],
+				"repositories": [],
+				"note": null,
+				"updatedBy": "syntaqx"
+			}
+		],
+		"notes": "Values are never returned. A repository's list includes the workspace's rows that reach it, with `scope` set to `workspace`. Empty `environments` means every environment."
+	},
+	"set_actions_secret": {
+		"params": {
+			"setting": "STRIPE_KEY"
+		},
+		"request": {
+			"value": "sk_live_…",
+			"available_to": [
+				"workflows",
+				"deployments"
+			],
+			"environments": [
+				"production"
+			]
+		},
+		"response": {
+			"id": "set_01kpv9q4r7s0t3v6w9x2y5z8ac",
+			"name": "STRIPE_KEY",
+			"kind": "secret",
+			"value": null,
+			"scope": "repository",
+			"updatedAt": "2026-10-04T15:42:07.318Z",
+			"availableTo": [
+				"workflows",
+				"deployments"
+			],
+			"environments": [
+				"production"
+			],
+			"repositories": [],
+			"note": null,
+			"updatedBy": "syntaqx"
+		},
+		"notes": "Keys are uppercased. See [secrets and variables](/guides/secrets-and-variables/)."
+	},
+	"set_actions_secret_for_workspace": {
+		"params": {
+			"workspace": "syntaqx",
+			"setting": "NPM_TOKEN"
+		},
+		"request": {
+			"value": "npm_…",
+			"repositories": [
+				"hello"
+			]
+		},
+		"response": {
+			"id": "set_01kpv9q4r7s0t3v6w9x2y5z8ac",
+			"name": "NPM_TOKEN",
+			"kind": "secret",
+			"value": null,
+			"scope": "workspace",
+			"updatedAt": "2026-10-04T15:42:07.318Z",
+			"availableTo": [
+				"workflows"
+			],
+			"environments": [],
+			"repositories": [
+				"hello"
+			],
+			"note": null,
+			"updatedBy": "syntaqx"
+		}
+	},
+	"delete_actions_secret": {
+		"params": {
+			"setting": "STRIPE_KEY"
+		},
+		"response": true
+	},
+	"delete_actions_secret_for_workspace": {
+		"params": {
+			"workspace": "syntaqx",
+			"setting": "NPM_TOKEN"
+		},
+		"response": true
+	},
+	"list_actions_variables": {
+		"response": [
+			{
+				"id": "set_01kpv9q4r7s0t3v6w9x2y5z8ad",
+				"name": "NODE_VERSION",
+				"kind": "variable",
+				"value": "20",
+				"scope": "repository",
+				"updatedAt": "2026-10-04T15:42:07.318Z",
+				"availableTo": [
+					"workflows",
+					"deployments"
+				],
+				"environments": [],
+				"repositories": [],
+				"note": null,
+				"updatedBy": "syntaqx"
+			}
+		],
+		"notes": "A repository's list includes the workspace's rows that reach it, with `scope` set to `workspace`. Empty `environments` means every environment."
+	},
+	"list_actions_variables_for_workspace": {
+		"params": {
+			"workspace": "syntaqx"
+		},
+		"response": [
+			{
+				"id": "set_01kpv9q4r7s0t3v6w9x2y5z8ad",
+				"name": "NODE_VERSION",
+				"kind": "variable",
+				"value": "20",
+				"scope": "workspace",
+				"updatedAt": "2026-10-04T15:42:07.318Z",
+				"availableTo": [
+					"workflows",
+					"deployments"
+				],
+				"environments": [],
+				"repositories": [],
+				"note": null,
+				"updatedBy": "syntaqx"
+			}
+		]
+	},
+	"set_actions_variable": {
+		"request": {
+			"setting": "NODE_VERSION",
+			"value": "20"
+		},
+		"response": {
+			"id": "set_01kpv9q4r7s0t3v6w9x2y5z8ad",
+			"name": "NODE_VERSION",
+			"kind": "variable",
+			"value": "20",
+			"scope": "repository",
+			"updatedAt": "2026-10-04T15:42:07.318Z",
+			"availableTo": [
+				"workflows",
+				"deployments"
+			],
+			"environments": [],
+			"repositories": [],
+			"note": null,
+			"updatedBy": "syntaqx"
+		},
+		"notes": "GitHub's clients send the key as `name`; that is accepted too."
+	},
+	"set_actions_variable_for_workspace": {
+		"params": {
+			"workspace": "syntaqx"
+		},
+		"request": {
+			"setting": "NODE_VERSION",
+			"value": "20"
+		},
+		"response": {
+			"id": "set_01kpv9q4r7s0t3v6w9x2y5z8ad",
+			"name": "NODE_VERSION",
+			"kind": "variable",
+			"value": "20",
+			"scope": "workspace",
+			"updatedAt": "2026-10-04T15:42:07.318Z",
+			"availableTo": [
+				"workflows",
+				"deployments"
+			],
+			"environments": [],
+			"repositories": [],
+			"note": null,
+			"updatedBy": "syntaqx"
+		}
+	},
+	"update_actions_variable": {
+		"params": {
+			"setting": "NODE_VERSION"
+		},
+		"request": {
+			"value": "22"
+		},
+		"response": {
+			"id": "set_01kpv9q4r7s0t3v6w9x2y5z8ad",
+			"name": "NODE_VERSION",
+			"kind": "variable",
+			"value": "22",
+			"scope": "repository",
+			"updatedAt": "2026-10-04T15:42:07.318Z",
+			"availableTo": [
+				"workflows",
+				"deployments"
+			],
+			"environments": [],
+			"repositories": [],
+			"note": null,
+			"updatedBy": "syntaqx"
+		}
+	},
+	"update_actions_variable_for_workspace": {
+		"params": {
+			"workspace": "syntaqx",
+			"setting": "NODE_VERSION"
+		},
+		"request": {
+			"value": "22"
+		},
+		"response": {
+			"id": "set_01kpv9q4r7s0t3v6w9x2y5z8ad",
+			"name": "NODE_VERSION",
+			"kind": "variable",
+			"value": "22",
+			"scope": "workspace",
+			"updatedAt": "2026-10-04T15:42:07.318Z",
+			"availableTo": [
+				"workflows",
+				"deployments"
+			],
+			"environments": [],
+			"repositories": [],
+			"note": null,
+			"updatedBy": "syntaqx"
+		}
+	},
+	"delete_actions_variable": {
+		"params": {
+			"setting": "NODE_VERSION"
+		},
+		"response": true
+	},
+	"delete_actions_variable_for_workspace": {
+		"params": {
+			"workspace": "syntaqx",
+			"setting": "NODE_VERSION"
+		},
+		"response": true
+	},
+	"list_webhooks": {
+		"response": [
+			{
+				"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+				"scope": "repo",
+				"workspace": "syntaqx",
+				"repo": "syntaqx/hello",
+				"url": "https://hooks.example.com/g1t",
+				"events": [
+					"git.push",
+					"pull.merged"
+				],
+				"active": true,
+				"secretHint": "…9c2e",
+				"createdBy": "syntaqx",
+				"createdAt": "2026-10-04T15:42:07.318Z",
+				"lastStatus": "delivered",
+				"lastDeliveredAt": "2026-10-04T15:42:07.611Z"
+			}
+		]
+	},
+	"list_webhooks_for_workspace": {
+		"params": {
+			"workspace": "syntaqx"
+		},
+		"response": [
+			{
+				"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+				"scope": "workspace",
+				"workspace": "syntaqx",
+				"repo": null,
+				"url": "https://hooks.example.com/g1t",
+				"events": [
+					"git.push",
+					"pull.merged"
+				],
+				"active": true,
+				"secretHint": "…9c2e",
+				"createdBy": "syntaqx",
+				"createdAt": "2026-10-04T15:42:07.318Z",
+				"lastStatus": "delivered",
+				"lastDeliveredAt": "2026-10-04T15:42:07.611Z"
+			}
+		]
+	},
+	"create_webhook": {
+		"request": {
+			"url": "https://hooks.example.com/g1t",
+			"events": [
+				"git.push",
+				"pull.merged"
+			]
+		},
+		"response": {
+			"hook": {
+				"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+				"scope": "repo",
+				"workspace": "syntaqx",
+				"repo": "syntaqx/hello",
+				"url": "https://hooks.example.com/g1t",
+				"events": [
+					"git.push",
+					"pull.merged"
+				],
+				"active": true,
+				"secretHint": "…9c2e",
+				"createdBy": "syntaqx",
+				"createdAt": "2026-10-04T15:42:07.318Z",
+				"lastStatus": "delivered",
+				"lastDeliveredAt": "2026-10-04T15:42:07.611Z"
+			},
+			"secret": "whsec_4be1a07c93d2f5e8a6b1c0d9e2f3a4b5c6d79c2e"
+		},
+		"notes": "A ping is sent before the response, so `lastStatus` is usually set already. When g1t made the signing secret, `secret` holds it: it is shown only this once. See [webhooks](/guides/webhooks/)."
+	},
+	"create_webhook_for_workspace": {
+		"params": {
+			"workspace": "syntaqx"
+		},
+		"request": {
+			"url": "https://hooks.example.com/g1t"
+		},
+		"response": {
+			"hook": {
+				"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+				"scope": "workspace",
+				"workspace": "syntaqx",
+				"repo": null,
+				"url": "https://hooks.example.com/g1t",
+				"events": [
+					"*"
+				],
+				"active": true,
+				"secretHint": "…9c2e",
+				"createdBy": "syntaqx",
+				"createdAt": "2026-10-04T15:42:07.318Z",
+				"lastStatus": "delivered",
+				"lastDeliveredAt": "2026-10-04T15:42:07.611Z"
+			},
+			"secret": "whsec_4be1a07c93d2f5e8a6b1c0d9e2f3a4b5c6d79c2e"
+		},
+		"notes": "A ping is sent before the response, so `lastStatus` is usually set already. When g1t made the signing secret, `secret` holds it: it is shown only this once. See [webhooks](/guides/webhooks/)."
+	},
+	"update_webhook": {
+		"params": {
+			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd"
+		},
+		"request": {
+			"active": false
+		},
+		"response": {
+			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+			"scope": "repo",
+			"workspace": "syntaqx",
+			"repo": "syntaqx/hello",
+			"url": "https://hooks.example.com/g1t",
+			"events": [
+				"git.push",
+				"pull.merged"
+			],
+			"active": false,
+			"secretHint": "…9c2e",
+			"createdBy": "syntaqx",
+			"createdAt": "2026-10-04T15:42:07.318Z",
+			"lastStatus": "delivered",
+			"lastDeliveredAt": "2026-10-04T15:42:07.611Z"
+		}
+	},
+	"update_webhook_for_workspace": {
+		"params": {
+			"workspace": "syntaqx",
+			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd"
+		},
+		"request": {
+			"active": false
+		},
+		"response": {
+			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+			"scope": "workspace",
+			"workspace": "syntaqx",
+			"repo": null,
+			"url": "https://hooks.example.com/g1t",
+			"events": [
+				"git.push",
+				"pull.merged"
+			],
+			"active": false,
+			"secretHint": "…9c2e",
+			"createdBy": "syntaqx",
+			"createdAt": "2026-10-04T15:42:07.318Z",
+			"lastStatus": "delivered",
+			"lastDeliveredAt": "2026-10-04T15:42:07.611Z"
+		}
+	},
+	"delete_webhook": {
+		"params": {
+			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd"
+		},
+		"response": true
+	},
+	"delete_webhook_for_workspace": {
+		"params": {
+			"workspace": "syntaqx",
+			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd"
+		},
+		"response": true
+	},
+	"ping_webhook": {
+		"params": {
+			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd"
+		},
+		"response": {
+			"id": "dlv_01kpx5p9v2j7k3m8n4p5q6r7st",
+			"hookId": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+			"eventId": "",
+			"event": "ping",
+			"status": "delivered",
+			"attempts": 1,
+			"responseStatus": 200,
+			"responseBody": "ok",
+			"error": null,
+			"durationMs": 184,
+			"payload": "{\"hook\":{\"events\":[\"git.push\",\"pull.merged\"],\"id\":\"hk_01kpx5p9s4h0t1w6x8y2a3b4cd\",\"url\":\"https://hooks.example.com/g1t\"},\"message\":\"g1t will send this webhook's events here.\",\"time\":\"2026-10-04T16:01:12.440Z\",\"type\":\"ping\"}",
+			"createdAt": "2026-10-04T16:01:12.440Z",
+			"deliveredAt": "2026-10-04T16:01:12.631Z",
+			"nextAttemptAt": null
+		},
+		"notes": "`payload` is the JSON that was sent, as a string."
+	},
+	"ping_webhook_for_workspace": {
+		"params": {
+			"workspace": "syntaqx",
+			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd"
+		},
+		"response": {
+			"id": "dlv_01kpx5p9v2j7k3m8n4p5q6r7st",
+			"hookId": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+			"eventId": "",
+			"event": "ping",
+			"status": "delivered",
+			"attempts": 1,
+			"responseStatus": 200,
+			"responseBody": "ok",
+			"error": null,
+			"durationMs": 184,
+			"payload": "{\"hook\":{\"events\":[\"git.push\",\"pull.merged\"],\"id\":\"hk_01kpx5p9s4h0t1w6x8y2a3b4cd\",\"url\":\"https://hooks.example.com/g1t\"},\"message\":\"g1t will send this webhook's events here.\",\"time\":\"2026-10-04T16:01:12.440Z\",\"type\":\"ping\"}",
+			"createdAt": "2026-10-04T16:01:12.440Z",
+			"deliveredAt": "2026-10-04T16:01:12.631Z",
+			"nextAttemptAt": null
+		}
+	},
+	"list_webhook_deliveries": {
+		"params": {
+			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd"
+		},
+		"response": [
+			{
+				"id": "dlv_01kpx6a2b3c4d5e6f7g8h9j0kz",
+				"hookId": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+				"eventId": "",
+				"event": "ping",
+				"status": "pending",
+				"attempts": 1,
+				"responseStatus": 503,
+				"responseBody": "Service Unavailable",
+				"error": null,
+				"durationMs": 212,
+				"payload": "{\"hook\":{\"events\":[\"git.push\",\"pull.merged\"],\"id\":\"hk_01kpx5p9s4h0t1w6x8y2a3b4cd\",\"url\":\"https://hooks.example.com/g1t\"},\"message\":\"g1t will send this webhook's events here.\",\"time\":\"2026-10-04T16:01:12.440Z\",\"type\":\"ping\"}",
+				"createdAt": "2026-10-04T16:20:03.100Z",
+				"deliveredAt": null,
+				"nextAttemptAt": "2026-10-04T16:21:03.312Z"
+			},
+			{
+				"id": "dlv_01kpx5p9v2j7k3m8n4p5q6r7st",
+				"hookId": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+				"eventId": "",
+				"event": "ping",
+				"status": "delivered",
+				"attempts": 1,
+				"responseStatus": 200,
+				"responseBody": "ok",
+				"error": null,
+				"durationMs": 184,
+				"payload": "{\"hook\":{\"events\":[\"git.push\",\"pull.merged\"],\"id\":\"hk_01kpx5p9s4h0t1w6x8y2a3b4cd\",\"url\":\"https://hooks.example.com/g1t\"},\"message\":\"g1t will send this webhook's events here.\",\"time\":\"2026-10-04T16:01:12.440Z\",\"type\":\"ping\"}",
+				"createdAt": "2026-10-04T16:01:12.440Z",
+				"deliveredAt": "2026-10-04T16:01:12.631Z",
+				"nextAttemptAt": null
+			}
+		],
+		"notes": "Returns at most 50, newest first. `status` is `pending`, `delivered` or `failed`; `nextAttemptAt` is set while it is pending."
+	},
+	"list_webhook_deliveries_for_workspace": {
+		"params": {
+			"workspace": "syntaqx",
+			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd"
+		},
+		"response": [
+			{
+				"id": "dlv_01kpx6a2b3c4d5e6f7g8h9j0kz",
+				"hookId": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+				"eventId": "",
+				"event": "ping",
+				"status": "pending",
+				"attempts": 1,
+				"responseStatus": 503,
+				"responseBody": "Service Unavailable",
+				"error": null,
+				"durationMs": 212,
+				"payload": "{\"hook\":{\"events\":[\"git.push\",\"pull.merged\"],\"id\":\"hk_01kpx5p9s4h0t1w6x8y2a3b4cd\",\"url\":\"https://hooks.example.com/g1t\"},\"message\":\"g1t will send this webhook's events here.\",\"time\":\"2026-10-04T16:01:12.440Z\",\"type\":\"ping\"}",
+				"createdAt": "2026-10-04T16:20:03.100Z",
+				"deliveredAt": null,
+				"nextAttemptAt": "2026-10-04T16:21:03.312Z"
+			},
+			{
+				"id": "dlv_01kpx5p9v2j7k3m8n4p5q6r7st",
+				"hookId": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+				"eventId": "",
+				"event": "ping",
+				"status": "delivered",
+				"attempts": 1,
+				"responseStatus": 200,
+				"responseBody": "ok",
+				"error": null,
+				"durationMs": 184,
+				"payload": "{\"hook\":{\"events\":[\"git.push\",\"pull.merged\"],\"id\":\"hk_01kpx5p9s4h0t1w6x8y2a3b4cd\",\"url\":\"https://hooks.example.com/g1t\"},\"message\":\"g1t will send this webhook's events here.\",\"time\":\"2026-10-04T16:01:12.440Z\",\"type\":\"ping\"}",
+				"createdAt": "2026-10-04T16:01:12.440Z",
+				"deliveredAt": "2026-10-04T16:01:12.631Z",
+				"nextAttemptAt": null
+			}
+		]
+	},
+	"redeliver_webhook": {
+		"params": {
+			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+			"delivery": "dlv_01kpx6a2b3c4d5e6f7g8h9j0kz"
+		},
+		"response": {
+			"id": "dlv_01kpx6c8d1e2f3g4h5j6k7m8np",
+			"hookId": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+			"eventId": "",
+			"event": "ping",
+			"status": "delivered",
+			"attempts": 1,
+			"responseStatus": 200,
+			"responseBody": "ok",
+			"error": null,
+			"durationMs": 171,
+			"payload": "{\"hook\":{\"events\":[\"git.push\",\"pull.merged\"],\"id\":\"hk_01kpx5p9s4h0t1w6x8y2a3b4cd\",\"url\":\"https://hooks.example.com/g1t\"},\"message\":\"g1t will send this webhook's events here.\",\"time\":\"2026-10-04T16:01:12.440Z\",\"type\":\"ping\"}",
+			"createdAt": "2026-10-04T16:25:40.007Z",
+			"deliveredAt": "2026-10-04T16:25:40.178Z",
+			"nextAttemptAt": null
+		},
+		"notes": "The response is the new delivery."
+	},
+	"redeliver_webhook_for_workspace": {
+		"params": {
+			"workspace": "syntaqx",
+			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+			"delivery": "dlv_01kpx6a2b3c4d5e6f7g8h9j0kz"
+		},
+		"response": {
+			"id": "dlv_01kpx6c8d1e2f3g4h5j6k7m8np",
+			"hookId": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+			"eventId": "",
+			"event": "ping",
+			"status": "delivered",
+			"attempts": 1,
+			"responseStatus": 200,
+			"responseBody": "ok",
+			"error": null,
+			"durationMs": 171,
+			"payload": "{\"hook\":{\"events\":[\"git.push\",\"pull.merged\"],\"id\":\"hk_01kpx5p9s4h0t1w6x8y2a3b4cd\",\"url\":\"https://hooks.example.com/g1t\"},\"message\":\"g1t will send this webhook's events here.\",\"time\":\"2026-10-04T16:01:12.440Z\",\"type\":\"ping\"}",
+			"createdAt": "2026-10-04T16:25:40.007Z",
+			"deliveredAt": "2026-10-04T16:25:40.178Z",
+			"nextAttemptAt": null
+		}
+	},
+	"list_integrations": {
+		"params": {
+			"workspace": "syntaqx"
+		},
+		"response": [
+			{
+				"id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab",
+				"workspace": "syntaqx",
+				"provider": "anthropic",
+				"kind": "models",
+				"name": "Anthropic",
+				"config": {
+					"assign": false,
+					"writeBack": true
+				},
+				"secretHint": "…3f9a",
+				"webhookUrl": null,
+				"createdBy": "syntaqx",
+				"createdAt": "2026-10-04T15:42:07.318Z",
+				"lastUsedAt": "2026-10-04T15:42:08.102Z",
+				"lastError": null,
+				"models": [
+					"claude-haiku-4-5",
+					"claude-sonnet-4-5"
+				]
+			},
+			{
+				"id": "con_01kpx4n8r3g9s0v5w7x1z2a3bc",
+				"workspace": "syntaqx",
+				"provider": "jira",
+				"kind": "tracker",
+				"name": "Jira",
+				"config": {
+					"assign": false,
+					"writeBack": true,
+					"site": "https://acme.atlassian.net",
+					"email": "syntaqx@example.com",
+					"keys": [
+						"TECH"
+					]
+				},
+				"secretHint": "…x7Qe",
+				"webhookUrl": null,
+				"createdBy": "syntaqx",
+				"createdAt": "2026-10-04T15:42:07.318Z",
+				"lastUsedAt": null,
+				"lastError": null,
+				"models": []
+			}
+		],
+		"notes": "`kind` is `models`, `alerts` or `tracker`. `secretHint` shows the end of the secret; the secret itself is never returned. `webhookUrl` is where an alert source sends its alerts."
+	},
+	"connect_integration": {
+		"params": {
+			"workspace": "syntaqx"
+		},
+		"request": {
+			"provider": "webhook",
+			"config": {
+				"repo": "syntaqx/hello",
+				"label": "bug"
+			}
+		},
+		"response": {
+			"connection": {
+				"id": "con_01kpx4n8r3g9s0v5w7x1z2a3bd",
+				"workspace": "syntaqx",
+				"provider": "webhook",
+				"kind": "alerts",
+				"name": "Webhook",
+				"config": {
+					"repo": "syntaqx/hello",
+					"label": "bug",
+					"assign": false,
+					"writeBack": true
+				},
+				"secretHint": null,
+				"webhookUrl": "https://api.g1t.sh/hooks/con_01kpx4n8r3g9s0v5w7x1z2a3bd",
+				"createdBy": "syntaqx",
+				"createdAt": "2026-10-04T15:42:07.318Z",
+				"lastUsedAt": null,
+				"lastError": null,
+				"models": []
+			},
+			"signingSecret": "g1ts_9f2c4a7e1b0d3c6f8a2e5b7d9c1f4a6e8b0d2c4f6a8e1b3d"
+		},
+		"notes": "`signingSecret` is set only when g1t made it, for `datadog` and `webhook`, and is shown only this once. A model provider is tested as it is connected. See [integrations](/guides/integrations/) and [model providers](/guides/models/)."
+	},
+	"disconnect_integration": {
+		"params": {
+			"workspace": "syntaqx",
+			"id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab"
+		},
+		"response": true
+	},
+	"test_integration": {
+		"params": {
+			"workspace": "syntaqx",
+			"id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab"
+		},
+		"response": {
+			"ok": true,
+			"message": "Anthropic accepted the key and offers 9 models."
+		},
+		"notes": "Credentials that do not work still answer `200`, with `ok` false and `message` saying what went wrong."
+	},
+	"get_model_routes": {
+		"params": {
+			"workspace": "syntaqx"
+		},
+		"response": [
+			{
+				"task": "default",
+				"connectionId": "con_01kpx3m7q2f8r9t4v6w0y1z2ab",
+				"model": "claude-sonnet-4-5"
+			},
+			{
+				"task": "review",
+				"connectionId": null,
+				"model": null
+			}
+		]
+	},
+	"set_model_routes": {
+		"params": {
+			"workspace": "syntaqx"
+		},
+		"request": {
+			"routes": [
+				{
+					"task": "default",
+					"connection_id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab",
+					"model": "claude-sonnet-4-5"
+				},
+				{
+					"task": "review",
+					"connection_id": null
+				}
+			]
+		},
+		"response": [
+			{
+				"task": "default",
+				"connectionId": "con_01kpx3m7q2f8r9t4v6w0y1z2ab",
+				"model": "claude-sonnet-4-5"
+			},
+			{
+				"task": "review",
+				"connectionId": null,
+				"model": null
+			}
+		],
+		"notes": "The response is the routes as saved, ordered by task."
+	},
+	"get_context": {
+		"query": {
+			"reference": "TECH-1234"
+		},
+		"response": {
+			"provider": "jira",
+			"key": "TECH-1234",
+			"title": "Checkout fails for EU cards",
+			"url": "https://acme.atlassian.net/browse/TECH-1234",
+			"status": "In Progress",
+			"body": "Customers with 3DS cards see a 500 at /pay.",
+			"fetchedAt": "2026-10-04T15:42:07.318Z"
+		}
+	},
+	"import_issue": {
+		"request": {
+			"reference": "TECH-1234"
+		},
+		"response": {
+			"number": 42,
+			"item": {
+				"provider": "jira",
+				"key": "TECH-1234",
+				"title": "Checkout fails for EU cards",
+				"url": "https://acme.atlassian.net/browse/TECH-1234",
+				"status": "In Progress",
+				"body": "Customers with 3DS cards see a 500 at /pay.",
+				"fetchedAt": "2026-10-04T15:42:07.318Z"
+			},
+			"created": true
+		},
+		"notes": "`created` is false when the ticket was imported before; `number` is then that issue."
+	}
+}

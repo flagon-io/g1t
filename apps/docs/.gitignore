@@ -1,2 +1,4 @@
 dist/
 .astro/
+# Written from src/data/openapi.json by scripts/api-reference.mjs.
+/src/content/docs/reference/api/

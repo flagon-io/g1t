@@ -265,7 +265,7 @@ const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
     links: [
       ["Quickstart", "https://docs.g1t.sh/quickstart/"],
       ["How g1t works", "https://docs.g1t.sh/concepts/overview/"],
-      ["API reference", "https://docs.g1t.sh/api/reference/"],
+      ["API reference", "https://docs.g1t.sh/reference/api/"],
       ["OpenAPI", "https://api.g1t.sh/openapi.json"],
       ["llms.txt", "/llms.txt"],
     ],

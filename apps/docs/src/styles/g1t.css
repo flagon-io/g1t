@@ -344,3 +344,69 @@ site-search button[data-open-modal]:hover {
 .sl-steps > li::after {
 	background: var(--g1t-line) !important;
 }
+
+/* --- API reference -------------------------------------------------------- */
+
+/* An operation's method and path, at the top of its page. */
+.sl-markdown-content .g1t-endpoint {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	overflow-x: auto;
+	border: 1px solid var(--g1t-line);
+	border-radius: 0.75rem;
+	padding: 0.7rem 0.9rem;
+	background: var(--g1t-surface);
+}
+.sl-markdown-content .g1t-endpoint code {
+	padding: 0;
+	background: transparent;
+	font-size: 0.875rem;
+	white-space: nowrap;
+	color: var(--g1t-fg);
+}
+/* Methods: the same small mono tag in the sidebar and on the page. */
+.g1t-method {
+	--method: var(--g1t-muted);
+	flex-shrink: 0;
+	border: 0 !important;
+	border-radius: 0.3rem;
+	padding: 0.05rem 0.4rem;
+	background: color-mix(in srgb, var(--method) 14%, transparent) !important;
+	color: var(--method) !important;
+	font-family: var(--g1t-font-mono);
+	font-size: 0.7rem;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+}
+.g1t-method-get,
+.g1t-method[data-method='get'] {
+	--method: var(--g1t-accent);
+}
+.g1t-method-post,
+.g1t-method[data-method='post'] {
+	--method: var(--g1t-info);
+}
+.g1t-method-put,
+.g1t-method-patch,
+.g1t-method[data-method='put'],
+.g1t-method[data-method='patch'] {
+	--method: var(--g1t-warn);
+}
+.g1t-method-delete,
+.g1t-method[data-method='delete'] {
+	--method: var(--g1t-danger);
+}
+/* In the sidebar the method sits at the end of the row, in a fixed column. */
+.sidebar-content a:has(.g1t-method) {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 0.5rem;
+}
+.sidebar-content .g1t-method {
+	min-width: 3.1rem;
+	text-align: center;
+	font-size: 0.625rem;
+	line-height: 1.6;
+}
