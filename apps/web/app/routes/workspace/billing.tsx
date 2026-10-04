@@ -1,7 +1,7 @@
-import { CreditCard } from "lucide-react";
+import { CreditCard, Rocket } from "lucide-react";
 import { Form, Link, data, redirect, useNavigation } from "react-router";
 
-import { MICROS_PER_DOLLAR } from "@g1t/contracts";
+import { MICROS_PER_DOLLAR, type Feature, type FeatureState } from "@g1t/contracts";
 
 import type { Route } from "./+types/billing";
 import { Button, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
@@ -32,19 +32,27 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const session = url.searchParams.get("session");
   if (session) {
+    // The same page returns from both a credit payment and a plan.
+    if (url.searchParams.get("plan")) {
+      await billing.confirmSubscription(slug, viewer, session);
+      throw redirect(`/${slug}/-/billing?subscribed=1`);
+    }
     await billing.confirm(slug, viewer, session);
     throw redirect(`/${slug}/-/billing?added=1`);
   }
-  const [account, ledger] = await Promise.all([
+  const [account, ledger, features] = await Promise.all([
     billing.account(slug, viewer),
     billing.ledger(slug, viewer),
+    billing.features(slug, viewer),
   ]);
   return {
     slug,
     role,
     account: unwrap(account),
     ledger: unwrap(ledger),
+    features: unwrap(features),
     added: url.searchParams.has("added"),
+    subscribed: url.searchParams.has("subscribed"),
   };
 }
 
@@ -52,6 +60,18 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
   const form = await request.formData();
+  const page = `${new URL(request.url).origin}/${params.owner.toLowerCase()}/-/billing`;
+  const intent = form.get("intent");
+  if (intent === "subscribe" || intent === "cancel" || intent === "resume") {
+    const feature = String(form.get("feature")) as Feature;
+    if (intent !== "subscribe") {
+      const changed = await billing.cancelSubscription(user, params.owner, feature, intent === "resume");
+      return changed.ok ? null : { error: changed.error.message };
+    }
+    const started = await billing.subscribe(user, params.owner, feature, `${page}?plan=${feature}`);
+    if (!started.ok) return { error: started.error.message };
+    throw redirect(started.value.url);
+  }
   const dollars = Math.trunc(Number(form.get("amount")));
   const started = await billing.checkout(
     user,
@@ -71,7 +91,7 @@ function dollars(micros: number, digits = 2): string {
 }
 
 export default function WorkspaceBilling({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, account, ledger, added } = loaderData;
+  const { slug, role, account, ledger, features, added, subscribed } = loaderData;
   const { status } = account;
   const paying = useNavigation().state === "submitting";
   const empty = account.balanceMicros <= 0;
@@ -89,7 +109,29 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
             </p>
           </div>
         )}
-        <h2 className="font-medium">Agent credit</h2>
+        <h2 className="font-medium">Plans</h2>
+        <p className="mt-1 max-w-2xl text-sm text-muted">
+          Paid features are turned on per workspace with a monthly plan. They are never free, including while the rest of
+          g1t is.
+        </p>
+        {subscribed && <p className="mt-3 text-sm text-accent">Payment received. The plan is on.</p>}
+        <div className="mt-5 space-y-4">
+          {features.map((state) => (
+            <PlanCard
+              key={state.plan.feature}
+              state={state}
+              owner={role === "owner"}
+              enabled={account.status.enabled}
+              live={account.status.live}
+              busy={paying}
+            />
+          ))}
+        </div>
+        <div className="mt-2">
+          <ErrorText>{actionData?.error}</ErrorText>
+        </div>
+
+        <h2 className="mt-12 font-medium">Agent credit</h2>
         <p className="mt-1 max-w-2xl text-sm text-muted">
           g1t agents that work on this workspace's repositories are paid for from
           its credit: what the model cost, plus {account.marginPercent}%. Checks run
@@ -108,7 +150,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
           {added && (
             <p className="mt-2 text-sm text-accent">Payment received. Credit added.</p>
           )}
-          {status.free ? (
+          {status.free && !features.some((state) => state.on && state.subscription) ? (
             <p className="mt-3 text-sm text-muted">
               Nothing to add for now: runs are free while g1t is being built out. Credit already here stays for when
               pricing starts.
@@ -120,7 +162,11 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
             </p>
           ) : role === "owner" ? (
             <Form method="post" className="mt-4">
-              <p className="text-sm text-muted">Add credit by card:</p>
+              <p className="text-sm text-muted">
+                {status.free
+                  ? "Agents are free for now; credit pays for plan usage past its allowance. Add credit by card:"
+                  : "Add credit by card:"}
+              </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {AMOUNTS.map((amount) => (
                   <Button
@@ -141,9 +187,6 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
                   test card 4242 4242 4242 4242 with any future date and any code.
                 </p>
               )}
-              <div className="mt-2">
-                <ErrorText>{actionData?.error}</ErrorText>
-              </div>
             </Form>
           ) : (
             <p className="mt-3 text-sm text-muted">An owner can add credit.</p>
@@ -225,5 +268,100 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
         </section>
       </aside>
     </div>
+  );
+}
+
+/** A paid feature: what it costs and includes, and its plan. */
+function PlanCard({
+  state,
+  owner,
+  enabled,
+  live,
+  busy,
+}: {
+  state: FeatureState;
+  owner: boolean;
+  enabled: boolean;
+  live: boolean;
+  busy: boolean;
+}) {
+  const { plan, subscription } = state;
+  const ending = subscription?.status === "canceling";
+  const owed = subscription?.status === "past_due";
+  return (
+    <section
+      className={`rounded-xl border p-5 ${
+        state.on && subscription
+          ? "border-accent/40 bg-accent/5"
+          : owed
+            ? "border-warn/40 bg-warn/5"
+            : "border-line bg-surface"
+      }`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h3 className="flex flex-wrap items-center gap-2 font-medium">
+            <Rocket size={15} className="text-accent" />
+            {plan.title}
+            {state.on && subscription && (
+              <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs text-accent">
+                {ending ? "Ends " : "On"}
+                {subscription.periodEnd && (
+                  <>
+                    {ending ? "" : " · renews "}
+                    {new Date(subscription.periodEnd).toLocaleDateString()}
+                  </>
+                )}
+              </span>
+            )}
+            {owed && <span className="rounded-full bg-warn/15 px-2 py-0.5 text-xs text-warn">Payment failed</span>}
+          </h3>
+          <p className="mt-1 text-sm text-muted">
+            Every pull request gets a live preview on g1t.page, and the default branch goes to production on merge.
+          </p>
+        </div>
+        <p className="shrink-0 text-right">
+          <span className="text-2xl font-semibold tabular-nums tracking-tight">
+            ${(plan.monthlyCents / 100).toFixed(0)}
+          </span>
+          <span className="text-sm text-muted"> / month</span>
+        </p>
+      </div>
+      <ul className="mt-4 grid gap-1.5 text-sm text-muted sm:grid-cols-2">
+        {plan.includes.map((line) => (
+          <li key={line} className="flex gap-2">
+            <span className="text-accent">✓</span>
+            {line}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-xs text-faint">{plan.overage}</p>
+      {!enabled ? (
+        <p className="mt-4 text-sm text-muted">Payments are not set up on this g1t, so {plan.title} is already on.</p>
+      ) : !owner ? (
+        !state.on && <p className="mt-4 text-sm text-muted">An owner can turn it on.</p>
+      ) : (
+        <Form method="post" className="mt-4 flex flex-wrap items-center gap-3">
+          <input type="hidden" name="feature" value={plan.feature} />
+          {!state.on || !subscription ? (
+            <Button variant="accent" type="submit" name="intent" value="subscribe" disabled={busy}>
+              <CreditCard size={14} />
+              Turn on {plan.title}
+            </Button>
+          ) : ending ? (
+            <Button variant="quiet" type="submit" name="intent" value="resume" disabled={busy}>
+              Keep {plan.title}
+            </Button>
+          ) : (
+            <Button variant="quiet" type="submit" name="intent" value="cancel" disabled={busy}>
+              Turn off at the end of the period
+            </Button>
+          )}
+          {!live && !state.on && (
+            <span className="text-xs text-faint">Test mode: card 4242 4242 4242 4242, any future date and code.</span>
+          )}
+        </Form>
+      )}
+    </section>
   );
 }

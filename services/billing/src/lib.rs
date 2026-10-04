@@ -7,12 +7,16 @@
 //! g1t's margin comes off the balance. Every change is a ledger entry, and
 //! a balance is always the sum of its ledger.
 //!
+//! Paid features (deployments) are bought separately, as monthly plans;
+//! see `features`. They are never free.
+//!
 //! Without a card processor configured the service says so and charges
 //! nothing, so that g1t still runs where billing has not been set up.
 //!
 //! Reached only through service bindings; see `g1t_contracts::billing` for
 //! the methods and their arguments.
 
+mod features;
 mod stripe;
 
 use g1t_contracts::billing::*;
@@ -128,6 +132,8 @@ struct Billing {
     free: bool,
     /// The free allowance on g1t's hosted models, when there is one.
     trial: Option<TrialConfig>,
+    /// The Deployments plan's monthly price (`DEPLOYMENTS_MONTHLY_CENTS`).
+    deployments_monthly_cents: u32,
 }
 
 /// `TRIAL_WORKSPACE_MICROS`, `TRIAL_TOTAL_MICROS` and `TRIAL_UNTIL`.
@@ -685,6 +691,11 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
             .and_then(|fee| fee.to_string().parse().ok())
             .unwrap_or(100_000),
         free: env.var("FREE_WHILE_BUILDING").is_ok_and(|v| v.to_string() == "true"),
+        deployments_monthly_cents: env
+            .var("DEPLOYMENTS_MONTHLY_CENTS")
+            .ok()
+            .and_then(|cents| cents.to_string().parse().ok())
+            .unwrap_or(500),
         trial: {
             let number = |name: &str| env.var(name).ok().and_then(|v| v.to_string().parse::<i64>().ok());
             match (
@@ -716,6 +727,12 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "trial" => reply(&billing.trial(args(body)?).await?),
         "start_run" => reply(&billing.start_run(args(body)?).await?),
         "finish_run" => reply(&billing.finish_run(args(body)?).await?),
+        "features" => reply(&billing.features(args(body)?).await?),
+        "subscribe" => reply(&billing.subscribe(args(body)?).await?),
+        "confirm_subscription" => reply(&billing.confirm_subscription(args(body)?).await?),
+        "cancel_subscription" => reply(&billing.cancel_subscription(args(body)?).await?),
+        "has_feature" => reply(&billing.has_feature(args(body)?).await?),
+        "charge_feature" => reply(&billing.charge_feature(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }

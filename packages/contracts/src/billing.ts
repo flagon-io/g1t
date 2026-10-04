@@ -81,6 +81,55 @@ export type Trial = {
   reason: "off" | "ended" | "used" | "pool" | null;
 };
 
+/**
+ * A paid feature a workspace turns on with a monthly plan, as Cloudflare's
+ * Workers for Platforms or Vercel's Pro are bought. Never free: neither
+ * `free` nor the model allowance covers it. Mirrors `Feature` in
+ * `crates/contracts/src/billing.rs`.
+ */
+export type Feature = "deployments";
+
+/** What the Deployments plan includes each month. Mirrors `deployments_allowance`. */
+export const DEPLOYMENTS_ALLOWANCE = {
+  apps: 10,
+  requests: 1_000_000,
+  cpuMs: 3_000_000,
+  /** What Cloudflare charges g1t past that, in millionths of a dollar. */
+  microsPerAppMonth: 20_000,
+  microsPerMillionRequests: 300_000,
+  microsPerMillionCpuMs: 20_000,
+} as const;
+
+export type FeaturePlan = {
+  feature: Feature;
+  title: string;
+  /** Charged every month while the plan is on, in cents. */
+  monthlyCents: number;
+  /** What the price includes, one line each. */
+  includes: string[];
+  /** How usage past the allowance is charged. */
+  overage: string;
+};
+
+export type SubscriptionStatus = "active" | "canceling" | "past_due" | "canceled";
+
+export type Subscription = {
+  feature: Feature;
+  status: SubscriptionStatus;
+  /** RFC 3339: when the period paid for ends. */
+  periodEnd: string | null;
+  startedBy: string;
+  startedAt: string;
+};
+
+/** A feature as a workspace sees it. */
+export type FeatureState = {
+  plan: FeaturePlan;
+  subscription: Subscription | null;
+  /** Whether the feature works for the workspace now. */
+  on: boolean;
+};
+
 export interface BillingApi {
   status(): Promise<BillingStatus>;
   /** Members of the workspace only. */
@@ -108,6 +157,31 @@ export interface BillingApi {
    * Asks whether a workspace may start an agent and opens the run it will be
    * charged for. Null when billing is off; a failure when there is no credit.
    */
+  /** Every paid feature and the workspace's plan for each. Members only. */
+  features(workspace: string, viewer: Viewer): Promise<Result<FeatureState[]>>;
+  /**
+   * Starts the card page for a feature's monthly plan. Owners only. The
+   * page's id comes back to `returnUrl` as `session`.
+   */
+  subscribe(actor: User, workspace: string, feature: Feature, returnUrl: string): Promise<Result<{ url: string }>>;
+  /** Turns the feature on once the plan is paid for. Safe to repeat. */
+  confirmSubscription(workspace: string, viewer: Viewer, session: string): Promise<Result<FeatureState>>;
+  /** Ends a plan at the end of its period, or (`resume`) takes that back. Owners only. */
+  cancelSubscription(actor: User, workspace: string, feature: Feature, resume?: boolean): Promise<Result<FeatureState>>;
+  /** Whether a feature works for a workspace now; a failure with the reason when not. */
+  hasFeature(workspace: string, feature: Feature): Promise<Result<boolean>>;
+  /**
+   * Usage past a plan's allowance, charged from credit at cost plus the
+   * margin, once per `reference`. False if it was charged before.
+   */
+  chargeFeature(charge: {
+    workspace: string;
+    feature: Feature;
+    costMicros: number;
+    description: string;
+    repo?: string | null;
+    reference: string;
+  }): Promise<Result<boolean>>;
   startRun(run: {
     workspace: string;
     repo: RepoPath;

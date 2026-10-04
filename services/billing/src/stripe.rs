@@ -1,5 +1,5 @@
-//! The card processor, behind the two calls billing needs: start a payment
-//! page, and ask whether a payment was made. Stripe speaks form-encoded
+//! The card processor, behind the calls billing needs: start a payment
+//! page, ask whether a payment was made, and read or end a monthly plan. Stripe speaks form-encoded
 //! requests and JSON answers.
 
 use serde::Deserialize;
@@ -22,6 +22,47 @@ pub struct Session {
     /// What was paid, in cents.
     pub amount_total: Option<u32>,
     pub customer: Option<String>,
+    /// For a plan's page: the subscription it started.
+    #[serde(default)]
+    pub subscription: Option<String>,
+}
+
+/// A monthly plan.
+#[derive(Deserialize)]
+pub struct StripeSubscription {
+    pub id: String,
+    /// `active`, `trialing`, `past_due`, `unpaid`, `canceled`, `incomplete`…
+    pub status: String,
+    #[serde(default)]
+    pub cancel_at_period_end: bool,
+    /// Unix seconds. Older API versions carry it here…
+    #[serde(default)]
+    pub current_period_end: Option<i64>,
+    /// …newer ones on each item.
+    #[serde(default)]
+    pub items: Option<Items>,
+}
+
+#[derive(Deserialize)]
+pub struct Items {
+    pub data: Vec<Item>,
+}
+
+#[derive(Deserialize)]
+pub struct Item {
+    #[serde(default)]
+    pub current_period_end: Option<i64>,
+}
+
+impl StripeSubscription {
+    /// When the period paid for ends, in Unix seconds.
+    pub fn period_end(&self) -> Option<i64> {
+        self.current_period_end.or_else(|| {
+            self.items
+                .as_ref()
+                .and_then(|items| items.data.iter().filter_map(|item| item.current_period_end).max())
+        })
+    }
 }
 
 /// Percent-encodes a form value.
@@ -130,6 +171,67 @@ impl Stripe {
         }
         self.call(Method::Post, "/checkout/sessions", Some(form(&fields)))
             .await
+    }
+
+    /// Starts a page on which a feature's monthly plan is paid for by card.
+    pub async fn start_subscription(
+        &self,
+        workspace: &str,
+        feature: &str,
+        title: &str,
+        monthly_cents: u32,
+        customer: Option<&str>,
+        return_url: &str,
+    ) -> Result<Session> {
+        let separator = if return_url.contains('?') { '&' } else { '?' };
+        let mut fields = vec![
+            ("mode", "subscription".to_owned()),
+            ("payment_method_types[0]", "card".to_owned()),
+            (
+                "success_url",
+                format!("{return_url}{separator}session={{CHECKOUT_SESSION_ID}}"),
+            ),
+            ("cancel_url", return_url.to_owned()),
+            ("client_reference_id", workspace.to_owned()),
+            ("metadata[workspace]", workspace.to_owned()),
+            ("metadata[feature]", feature.to_owned()),
+            ("subscription_data[metadata][workspace]", workspace.to_owned()),
+            ("subscription_data[metadata][feature]", feature.to_owned()),
+            ("line_items[0][quantity]", "1".to_owned()),
+            ("line_items[0][price_data][currency]", "usd".to_owned()),
+            (
+                "line_items[0][price_data][unit_amount]",
+                monthly_cents.to_string(),
+            ),
+            (
+                "line_items[0][price_data][recurring][interval]",
+                "month".to_owned(),
+            ),
+            (
+                "line_items[0][price_data][product_data][name]",
+                format!("g1t {title} for {workspace}"),
+            ),
+        ];
+        if let Some(customer) = customer {
+            fields.push(("customer", customer.to_owned()));
+        }
+        self.call(Method::Post, "/checkout/sessions", Some(form(&fields)))
+            .await
+    }
+
+    pub async fn subscription(&self, id: &str) -> Result<StripeSubscription> {
+        self.call(Method::Get, &format!("/subscriptions/{}", encode(id)), None)
+            .await
+    }
+
+    /// Ends a plan when its period does (`cancel` true), or takes that back.
+    pub async fn cancel_at_period_end(&self, id: &str, cancel: bool) -> Result<StripeSubscription> {
+        self.call(
+            Method::Post,
+            &format!("/subscriptions/{}", encode(id)),
+            Some(form(&[("cancel_at_period_end", cancel.to_string())])),
+        )
+        .await
     }
 
     pub async fn session(&self, id: &str) -> Result<Session> {

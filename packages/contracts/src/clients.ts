@@ -188,6 +188,15 @@ export function billingClient(service: ServiceBinding): BillingApi {
     canStart: (workspace) => call("can_start", { workspace }),
     trial: (workspace, exempt) => call("trial", { workspace, exempt }),
     startRun: (run) => call("start_run", run),
+    features: (workspace, viewer) => call("features", { workspace, viewer }),
+    subscribe: (actor, workspace, feature, returnUrl) =>
+      call("subscribe", { actor, workspace, feature, returnUrl }),
+    confirmSubscription: (workspace, viewer, session) =>
+      call("confirm_subscription", { workspace, viewer, session }),
+    cancelSubscription: (actor, workspace, feature, resume = false) =>
+      call("cancel_subscription", { actor, workspace, feature, resume }),
+    hasFeature: (workspace, feature) => call("has_feature", { workspace, feature }),
+    chargeFeature: (charge) => call("charge_feature", charge),
   };
 }
 

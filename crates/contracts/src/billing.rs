@@ -84,7 +84,7 @@ pub struct Account {
 pub enum EntryKind {
     /// Credit bought with a card.
     TopUp,
-    /// An agent's run.
+    /// An agent's run, or a paid feature's usage past its allowance.
     Usage,
 }
 
@@ -257,9 +257,196 @@ pub struct Usage {
     pub added_micros: i64,
 }
 
+/// A paid feature a workspace turns on with a monthly plan, the way
+/// Cloudflare's Workers for Platforms or Vercel's Pro are bought. Never
+/// free: `FREE_WHILE_BUILDING` and the free model allowance do not cover
+/// it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Feature {
+    /// Previews per pull request and production on g1t.page.
+    Deployments,
+}
+
+impl Feature {
+    pub const ALL: [Feature; 1] = [Feature::Deployments];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Feature::Deployments => "deployments",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<Feature> {
+        Feature::ALL.into_iter().find(|feature| feature.as_str() == name)
+    }
+
+    pub fn title(self) -> &'static str {
+        match self {
+            Feature::Deployments => "Deployments",
+        }
+    }
+}
+
+/// What the Deployments plan includes each month; usage past it is charged
+/// at cost plus the margin. The billing service describes the plan with
+/// these and the deployments service meters against them.
+pub mod deployments_allowance {
+    /// Apps deployed at once: production and previews together.
+    pub const APPS: u32 = 10;
+    pub const REQUESTS: u64 = 1_000_000;
+    pub const CPU_MS: u64 = 3_000_000;
+    /// What Cloudflare charges g1t past that, in millionths of a dollar.
+    pub const MICROS_PER_APP_MONTH: i64 = 20_000;
+    pub const MICROS_PER_MILLION_REQUESTS: i64 = 300_000;
+    pub const MICROS_PER_MILLION_CPU_MS: i64 = 20_000;
+}
+
+/// What a feature's plan costs and includes.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Plan {
+    pub feature: Feature,
+    pub title: String,
+    /// Charged every month while the plan is on, in cents.
+    pub monthly_cents: u32,
+    /// What the monthly price includes, one line each, for people to read.
+    pub includes: Vec<String>,
+    /// How usage past the allowance is charged, for people to read.
+    pub overage: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SubscriptionStatus {
+    /// Paid up; the feature works.
+    Active,
+    /// Paid up to the end of the period, and ends then.
+    Canceling,
+    /// The last payment failed; the feature is off until it is paid.
+    PastDue,
+    /// Ended.
+    Canceled,
+}
+
+impl SubscriptionStatus {
+    /// Whether the feature works in this state.
+    pub fn on(self) -> bool {
+        matches!(self, SubscriptionStatus::Active | SubscriptionStatus::Canceling)
+    }
+}
+
+/// A workspace's plan for one feature.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Subscription {
+    pub feature: Feature,
+    pub status: SubscriptionStatus,
+    /// RFC 3339: when the period paid for ends, and the plan renews or
+    /// ends.
+    pub period_end: Option<String>,
+    /// Username of whoever turned it on.
+    pub started_by: String,
+    /// RFC 3339.
+    pub started_at: String,
+}
+
+/// A feature as a workspace sees it: what it costs, and its plan if it has
+/// one.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureState {
+    pub plan: Plan,
+    pub subscription: Option<Subscription>,
+    /// Whether the feature works for the workspace now.
+    pub on: bool,
+}
+
+/// `features`: every paid feature and the workspace's plan for each.
+/// Members only. Returns `Outcome<Vec<FeatureState>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FeaturesArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+}
+
+/// `subscribe`: starts the card page for a feature's monthly plan. Owners
+/// only. Returns `Outcome<Checkout>`; the page's id comes back to
+/// `return_url` as `session`, for `confirm_subscription`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscribeArgs {
+    pub actor: User,
+    pub workspace: String,
+    pub feature: Feature,
+    pub return_url: String,
+}
+
+/// `confirm_subscription`: turns the feature on once the processor says
+/// the plan was paid for. Safe to call any number of times. Returns
+/// `Outcome<FeatureState>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConfirmSubscriptionArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+    pub session: String,
+}
+
+/// `cancel_subscription` (`resume` false) ends a plan at the end of the
+/// period paid for; with `resume` true, takes that back. Owners only.
+/// Returns `Outcome<FeatureState>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CancelSubscriptionArgs {
+    pub actor: User,
+    pub workspace: String,
+    pub feature: Feature,
+    #[serde(default)]
+    pub resume: bool,
+}
+
+/// `has_feature`: whether a feature works for a workspace now, asked by the
+/// service that provides it before doing paid work. Returns
+/// `Outcome<bool>`: a failure, with the reason to show, when it does not.
+/// True everywhere when no card processor is configured.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HasFeatureArgs {
+    pub workspace: String,
+    pub feature: Feature,
+}
+
+/// `charge_feature`: usage of a feature past its plan's allowance, charged
+/// from the workspace's credit at cost plus the margin, whatever
+/// `FREE_WHILE_BUILDING` says. Called by the service that provides it.
+/// Charged once per `reference`. Returns `Outcome<bool>`: false if that
+/// reference was charged before.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChargeFeatureArgs {
+    pub workspace: String,
+    pub feature: Feature,
+    /// What it cost g1t, in millionths of a dollar, before the margin.
+    pub cost_micros: i64,
+    pub description: String,
+    /// `namespace/name`, when the usage was one repository's.
+    pub repo: Option<String>,
+    /// Unique to this charge, e.g. `deployments/acme/2026-10`.
+    pub reference: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn features_are_named_as_the_site_sends_them() {
+        assert_eq!(
+            serde_json::to_value(Feature::Deployments).unwrap(),
+            serde_json::json!("deployments")
+        );
+        assert_eq!(Feature::parse("deployments"), Some(Feature::Deployments));
+        assert!(SubscriptionStatus::Canceling.on());
+        assert!(!SubscriptionStatus::PastDue.on());
+    }
 
     #[test]
     fn who_pays_is_read_as_the_runner_sends_it() {

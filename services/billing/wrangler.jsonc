@@ -37,7 +37,10 @@
 		// of them empty turns it off.
 		"TRIAL_WORKSPACE_MICROS": "1000000",
 		"TRIAL_TOTAL_MICROS": "40000000",
-		"TRIAL_UNTIL": "2026-10-23T06:59:59Z"
+		"TRIAL_UNTIL": "2026-10-23T06:59:59Z",
+		// The Deployments plan's monthly price, in cents. Turning the
+		// feature on starts it; FREE_WHILE_BUILDING does not cover it.
+		"DEPLOYMENTS_MONTHLY_CENTS": "500"
 	},
 	// Secret: STRIPE_SECRET_KEY. Without it nothing is charged and the
 	// runner decides who may start agents some other way.
