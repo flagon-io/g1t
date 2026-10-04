@@ -316,7 +316,7 @@ The hierarchy above a single repo:
 | --- | --- |
 | **Workspace** | A company or team: its people, repos, agents, budget and policies. |
 | **Initiative** | A business outcome with an owner and measurable results, e.g. "move billing to usage-based pricing". Spans any number of repos. |
-| **Project** | One deliverable inside an initiative: a brief and its graph of issues. |
+| **Outcome** | One deliverable inside an initiative: a brief and its graph of issues (shown as **Plan**). Called "project" before 2026-10-04; that name now means what [Projects](#projects) describes. |
 | **Issue / Pull request** | As above. An issue may touch several repos; a pull request for it then holds one fork per repo and they land together. |
 
 How it feeds up, and what is built:
@@ -436,8 +436,9 @@ Memory is the part of the hub that g1t owns and agents write to:
 
 - **Mission control.** The signed-in home page: every running session, every
   issue waiting on a decision, and what merged, across all repos.
-- **Projects.** Group issues across repos toward one outcome and track how
-  many are open, racing, or merged.
+- **Outcomes.** Group issues across repos toward one result and track how
+  many are open, racing, or merged. (What [Projects](#projects) means is
+  below.)
 - **Steering.** Send a message to a running pull request, or to all pull requests on an
   issue at once, without stopping them.
 - **Automations.** Rules that start work without a person (next section).
@@ -566,6 +567,156 @@ queue pipeline; they need no new kind of work.
 
 Later, toward GitLab's DevOps breadth: environment protection rules,
 package and container registries, releases, container hosting.
+
+## Projects
+
+> **2026-10-04:** the user: "an extra dimension of Projects so it's not
+> just repositories … where a lot of things can live", "very Vercel
+> like", with dependencies across projects "the Platform Engineering /
+> Port route", and "the repository is *part* of a project: you could be
+> mirroring it from GitHub/GitLab/Bitbucket, or you could let us host it
+> for you", with room for Mercurial or anything else later.
+
+**A project is the thing you are building and running; a repository is
+where some of its code lives.** Everything that is about running software
+(deployments, environments, domains, secrets, dependencies, owners,
+health, upkeep) belongs to the project. What is about the code itself
+(branches, pull requests, review, merge rules) stays with the repository.
+That split is what lets the code live anywhere.
+
+### The model
+
+| | What it is | Like |
+| --- | --- | --- |
+| **Workspace** | The company or team. Members, billing, plans, shared secrets. | Vercel team, GitLab group, GitHub org |
+| **Group** | An optional named set of projects, one level: "Payments", "Mobile". For browsing, ownership and shared settings. | GitLab subgroup, Backstage system, Port domain |
+| **Project** | One deployable thing: a site, an API, a worker, a library. Has exactly one **source**. | Vercel project, Port service, Backstage component |
+| **Source** | Where its code is: a repository and a **root directory** in it. | Vercel's connected repo + root directory |
+| **Dependency** | Project A uses project B: calls its API, consumes its package, reads its queue. | Port relations, Backstage `dependsOn` |
+
+- **One project, one source; one repository, any number of projects.** A
+  project builds from exactly one place, which keeps it as simple as
+  Vercel's. A monorepo is several projects on one repository, each with
+  its own root directory (`apps/web`, `services/api`), and a push builds
+  only the projects whose root it touched. The common case stays 1:1, and
+  every existing repository gets a project of its own name when this
+  ships, so nobody has to set anything up.
+- **Groups are for people; dependencies are for software.** Groups decide
+  where a project shows up and who owns it. Dependencies decide what
+  happens when one changes. Neither replaces the other, and a dependency
+  can cross groups.
+
+### Sources: where the code lives
+
+A source is an adapter behind one interface (`SourcePort`: clone URL,
+branches, commits, pushes as events, pull requests if it has them):
+
+| Source | Code lives | g1t gets pushes by | Pull requests |
+| --- | --- | --- | --- |
+| **Hosted on g1t** (today) | Artifacts | its own events | g1t's, with agents, the queue, review |
+| **Mirrored** from GitHub, GitLab or Bitbucket | Both; g1t keeps a copy | the provider's webhook, then fetch | The provider's, read into g1t; agents open theirs there |
+| **Connected, not copied** | The provider only | webhook | The provider's |
+| **Later:** Mercurial, Perforce, a tarball upload | Behind the same port | per adapter | per adapter |
+
+A mirrored or connected project still gets everything that is the
+project's: previews on its pull requests (a status and a comment on
+GitHub's), production on its default branch, secrets, dependencies,
+upkeep agents. That is the on-ramp: a team keeps GitHub and gets g1t's
+deployments and agents first, and moves the code later or never.
+Bring-your-own-git is also why the project, not the repository, holds the
+URL `g1t.sh/<workspace>/<project>`.
+
+### What lives on a project
+
+| | Today it is on | Moves to the project |
+| --- | --- | --- |
+| Deployments: production, previews, build settings, root directory, framework | The repository | Yes |
+| Environments: production, preview, and custom ones (`staging`) with protection rules (required approvers, branch limits) | Nowhere yet | New, on the project |
+| Domains: `<project>--<workspace>.g1t.page`, and custom domains | The repository's name | Yes |
+| Secrets and variables | The repository | Yes. Workspace rows link to projects instead of repositories. A repository's workflows read the rows of its project (with several projects on one repository, the one marked as the repository's default). |
+| Dependencies | Nowhere | New |
+| Owners, on-call, links (docs, dashboards, runbooks) | Nowhere | New: the catalog's metadata |
+| Health: scorecards (has an owner, CI passes, dependencies current, no open security alerts, deploys within N days) | Nowhere | New |
+| Upkeep agents: dependency updates, security alerts | The plan | Scoped per project |
+| Logs and analytics of the running app | Nowhere | New: requests, errors and CPU per environment, from Workers analytics |
+| Branches, pull requests, review, merge rules, the queue, webhooks | The repository | Stay |
+
+### Dependencies: why this gets powerful
+
+Declared in the UI, or in the source as `.g1t/project.yml` (which wins
+when present, as `catalog-info.yaml` does in Backstage):
+
+```yaml
+name: web
+root: apps/web
+dependsOn:
+  - project: api          # calls its HTTP API
+    as: API_URL           # its URL, per environment, as a variable
+  - project: ui-kit       # consumes its package
+```
+
+What g1t does with them:
+
+1. **Reference variables.** `API_URL` above resolves to `api`'s production
+   URL in production and to the matching preview in a preview, the way
+   Railway's `${{ api.URL }}` references work. No hard-coded URLs.
+2. **Preview stacks.** A pull request on `api` gets its own preview, and
+   **Preview with dependents** builds `web`'s preview pointed at it, so a
+   reviewer clicks through the whole change across projects. A change that
+   spans repositories (one issue, one fork per repository) gets one stack.
+3. **Release order.** Production deploys go out in dependency order; a
+   change set across projects lands through the queue together or not at
+   all.
+4. **Impact on every pull request.** "Changes `api`; `web` and `mobile`
+   depend on it." Agents get the graph in their context: an agent
+   changing an API opens follow-up issues on the projects that call it,
+   and reviewers see what else could break.
+5. **Upkeep across the graph.** A vulnerable package in `ui-kit` opens
+   issues, assigned to agents, on every project that consumes it.
+6. **Scorecards turn into work.** A project failing a scorecard check
+   ("no owner", "dependencies 90 days old") gets an issue an agent can fix.
+   That is the Port idea with the work done for you.
+7. **The map.** A workspace's projects as a graph, coloured by health and
+   by what is deploying now.
+
+### Pages
+
+- `g1t.sh/<workspace>`: projects first (grouped, with health and
+  production status), then repositories.
+- `g1t.sh/<workspace>/<project>`: overview (production, latest previews,
+  health, owners, dependencies both ways), **Deployments**,
+  **Environments**, **Secrets and variables**, **Logs**, **Settings**
+  (source, root directory, build, domains, groups, owners).
+- A hosted repository keeps its code pages; from a project they are its
+  **Code** tab. A repository page lists the projects built from it.
+
+### Services
+
+- `services/projects` (new): projects, groups, sources, dependencies,
+  owners, scorecards. Events `project.created`, `project.updated`,
+  `dependency.changed`.
+- `services/deployments`: keyed by project instead of repository.
+- Secrets and variables: the scope becomes workspace → project.
+- Sources: the hosted adapter wraps `services/repos`; a mirror adapter
+  per provider in `services/integrations`, which already holds those
+  connections.
+
+### Build order
+
+1. **Projects as the home of deployments and secrets**, 1:1 with every
+   existing repository: the service, the pages, deployments and secrets
+   moved to the project, `<project>--<workspace>.g1t.page`.
+2. **Dependencies:** declared in the UI and `.g1t/project.yml`, reference
+   variables, impact on pull requests and in agents' context, the map.
+3. **Preview stacks** and cross-project change sets.
+4. **Monorepos:** several projects on one repository, each with a root
+   directory, building only what a push touched.
+5. **Mirrored sources:** GitHub first, then GitLab and Bitbucket.
+6. **Groups, owners, scorecards** feeding the upkeep agents.
+7. **Environments** with protection rules; custom domains; logs.
+
+1 and 2 serve the competition directly (multi-agent coordination across
+projects is 25% of the score); 3 is the demo's best moment if time allows.
 
 ## Agents and models
 
