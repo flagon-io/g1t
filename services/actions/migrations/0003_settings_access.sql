@@ -2,8 +2,9 @@
 -- are: each row is a key, its type (secret or config), the environments it
 -- applies to and who reads it. A key may have one row per environment, so
 -- the unique (owner, kind, name) constraint goes; the service keeps a
--- key's rows from overlapping. Existing rows keep working as before: every
--- environment, read by workflows and deployments.
+-- key's rows from overlapping. Existing rows keep working exactly as before:
+-- every environment, read by workflows alone, so nothing reaches
+-- deployments until someone says it should.
 
 CREATE TABLE settings_v2 (
   id TEXT PRIMARY KEY,
@@ -31,8 +32,8 @@ CREATE TABLE settings_v2 (
   updated_by TEXT
 );
 
-INSERT INTO settings_v2 (id, scope, owner, kind, name, value, updated_at)
-  SELECT id, scope, owner, kind, name, value, updated_at FROM settings;
+INSERT INTO settings_v2 (id, scope, owner, kind, name, value, updated_at, available_to)
+  SELECT id, scope, owner, kind, name, value, updated_at, 'workflows' FROM settings;
 DROP TABLE settings;
 ALTER TABLE settings_v2 RENAME TO settings;
 CREATE INDEX settings_by_owner ON settings (owner, name);
