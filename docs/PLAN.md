@@ -545,6 +545,13 @@ queue pipeline; they need no new kind of work.
   anything: a Worker runs, and is billed, only while it answers a request.
   A preview is deleted when its pull request closes or merges, and after
   a set number of idle days. Container apps, later, sleep when idle.
+- **Billed to the customer, never free.** The user (2026-10-04): "we
+  should not be giving any of this available for free". Every deployment
+  is metered per workspace (requests, CPU time, deployed apps, stored
+  data), priced at Cloudflare's cost + 20% like agent usage, and drawn
+  from prepaid credit. `FREE_WHILE_BUILDING` and the free model allowance
+  do not cover deployments: a workspace without credit cannot deploy, and
+  turning deployments on says so first.
 - **On by default, off in one click.** Deployments are recommended, not
   required: a repository can turn them off, keep only production, or
   deploy somewhere else from its own workflows. Apps built for Cloudflare
