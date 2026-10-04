@@ -429,7 +429,7 @@ impl Op {
     pub fn description(self) -> &'static str {
         match self {
             Op::Whoami => {
-                "Who the access token acts as, and the workspaces it can work in. `kind` is `user` for a person's token and `workspace` for a token that belongs to a workspace."
+                "Who the access token acts as, and the workspaces it can work in. `kind` is `user` for a person's token, `workspace` for a token that belongs to a workspace, and `agent` for the token a g1t agent works with."
             }
             Op::CreateWorkspace => {
                 "Create a workspace. A workspace owns repositories and is the first part of their address: g1t.sh/{workspace}/{repo}. The whoami tool lists the ones you already belong to."
@@ -452,7 +452,7 @@ impl Op {
                 "Answer a question or a handoff another agent sent you, by the message's id. For a handoff, set decline to say it is not yours to take. The answer reaches the asking agent at its next step."
             }
             Op::TakeMessages => {
-                "For a g1t agent at work: the messages people have sent it that it has not seen yet. Each is returned once."
+                "For a g1t agent at work: the messages sent to it that it has not seen yet, from people and from other agents. Each is returned once."
             }
             Op::GetMergeQueue => {
                 "A repository's merge queue: the pull requests waiting to land, in order, each with the state it is being tested in (the default branch with the pull requests ahead of it merged in) and how that went; then those that recently landed or left. With the queue on, merging a pull request adds it here."
@@ -514,7 +514,7 @@ impl Op {
                 "What a pull request changes: the files it touches and their line-by-line diff against the commit it started from. Use it to review a pull request or to compare several made for the same issue."
             }
             Op::MergePullRequest => {
-                "Land a pull request on the repository's main branch. Only members of the repository's workspace can merge, and only once it is marked ready and its acceptance checks have passed. Merging resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded. Fails if main has moved since the pull request was opened; pull main into its fork or branch and push, then merge again."
+                "Land a pull request on the repository's main branch. Only members of the repository's workspace can merge, and only once it is marked ready and its acceptance checks have passed. Merging resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded. Where the repository has a merge queue, it joins the queue instead of landing at once. If main has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests to be up to date refuses instead, so pull main into its fork or branch, push, and merge again. Check status in the result to see whether it has landed."
             }
             Op::ListEvents => {
                 "The timeline of a repository: pushes, issues, pull requests, comments and session activity, newest first."
@@ -1091,7 +1091,7 @@ impl Op {
     }
 
     /// Whether the operation refuses an anonymous caller outright.
-    fn needs_user(self) -> bool {
+    pub(crate) fn needs_user(self) -> bool {
         !matches!(
             self,
             Op::ListRepos

@@ -319,5 +319,5 @@ Guide: https://docs.g1t.sh/guides/deployments/
 - [Usage and billing](https://docs.g1t.sh/guides/usage-and-billing/)
 - [Git](https://docs.g1t.sh/guides/git/)
 - [MCP tools](https://docs.g1t.sh/reference/mcp/)
-- [API reference](https://docs.g1t.sh/api/reference/)
+- [API reference](https://docs.g1t.sh/reference/api/)
 - [Source](https://g1t.sh/syntaqx/g1t), MIT licensed

@@ -1,45 +1,232 @@
 //! The OpenAPI document, generated from the same list the routes are.
+//!
+//! The docs site builds its API reference from a copy of this document,
+//! `apps/docs/src/data/openapi.json`. A test keeps the copy current: run
+//! `G1T_WRITE_OPENAPI=1 cargo test -p g1t-api openapi` to rewrite it.
 
 use serde_json::{Map, Value, json};
 
 use crate::operations::Op;
 use crate::rest::{ROUTES, Route};
 
+/// The sections of the API reference: a name, what it covers, and its
+/// operations in the order a reader meets them.
+const SECTIONS: &[(&str, &str, &[Op])] = &[
+    (
+        "Accounts",
+        "Signing in from a tool, and who a token acts as.",
+        &[Op::Whoami],
+    ),
+    (
+        "Workspaces",
+        "A workspace owns repositories and is the first part of their address. People and agents work in workspaces.",
+        &[Op::CreateWorkspace],
+    ),
+    (
+        "Repositories",
+        "A repository, how it handles pull requests, and its timeline.",
+        &[
+            Op::ListRepos,
+            Op::CreateRepo,
+            Op::GetRepo,
+            Op::UpdateRepo,
+            Op::GetRepoSettings,
+            Op::UpdateRepoSettings,
+            Op::ListEvents,
+        ],
+    ),
+    (
+        "Issues",
+        "What should change in a repository, with labels and comments. Issues and pull requests share one sequence of numbers.",
+        &[
+            Op::ListIssues,
+            Op::CreateIssue,
+            Op::GetIssue,
+            Op::UpdateIssue,
+            Op::CloseIssue,
+            Op::ReopenIssue,
+            Op::AssignIssue,
+            Op::AddComment,
+            Op::ListLabels,
+        ],
+    ),
+    (
+        "Plans",
+        "An outcome turned into the issues that would get there, with the order they must merge in.",
+        &[Op::PlanWork, Op::GetPlan, Op::ApplyPlan],
+    ),
+    (
+        "Pull requests",
+        "A proposed change in its own fork or on a branch. Several can be made for one issue; the one merged resolves it.",
+        &[
+            Op::ListPullRequests,
+            Op::CreatePullRequest,
+            Op::GetPullRequest,
+            Op::GetPullRequestChanges,
+            Op::MarkPullRequestReady,
+            Op::ReviewPullRequest,
+            Op::MergePullRequest,
+            Op::ClosePullRequest,
+            Op::GetMergeQueue,
+            Op::MessageAgent,
+            Op::AnswerMessage,
+            Op::TakeMessages,
+        ],
+    ),
+    (
+        "Sessions",
+        "The record of how a pull request was made: prompts, reasoning and the tools that ran.",
+        &[Op::ReadSession, Op::RecordSession],
+    ),
+    (
+        "Actions",
+        "GitHub Actions workflows in .g1t/workflows, their runs, and their jobs' logs.",
+        &[
+            Op::ListWorkflows,
+            Op::ListWorkflowRuns,
+            Op::GetWorkflowRun,
+            Op::GetJobLogs,
+            Op::DispatchWorkflow,
+            Op::CancelWorkflowRun,
+            Op::RerunWorkflowRun,
+            Op::UpdateWorkflow,
+        ],
+    ),
+    (
+        "Secrets and variables",
+        "Values that workflows and deployments read, per repository or for a whole workspace, with a row per environment.",
+        &[
+            Op::ListActionsSecrets,
+            Op::SetActionsSecret,
+            Op::DeleteActionsSecret,
+            Op::ListActionsVariables,
+            Op::SetActionsVariable,
+            Op::DeleteActionsVariable,
+        ],
+    ),
+    (
+        "Webhooks",
+        "Signed HTTPS requests sent to your own address as things happen, for a repository or a whole workspace.",
+        &[
+            Op::ListWebhooks,
+            Op::CreateWebhook,
+            Op::UpdateWebhook,
+            Op::DeleteWebhook,
+            Op::PingWebhook,
+            Op::ListWebhookDeliveries,
+            Op::RedeliverWebhook,
+        ],
+    ),
+    (
+        "Integrations",
+        "A workspace's connections to outside systems: model providers, alert sources and issue trackers.",
+        &[
+            Op::ListIntegrations,
+            Op::ConnectIntegration,
+            Op::DisconnectIntegration,
+            Op::TestIntegration,
+            Op::GetModelRoutes,
+            Op::SetModelRoutes,
+            Op::GetContext,
+            Op::ImportIssue,
+        ],
+    ),
+];
+
 /// The section of the API reference an operation is listed under.
 fn tag(op: Op) -> &'static str {
-    let name = op.name();
-    if name.contains("webhook") {
-        "Webhooks"
-    } else if name.contains("workflow") || name.contains("actions_") || name == "get_job_logs" {
-        "Actions"
-    } else if name.contains("integration") || name.contains("model_routes") || op == Op::GetContext {
-        "Integrations"
-    } else if op == Op::Whoami || name.contains("workspace") {
-        "Accounts"
-    } else if name.contains("session") {
-        "Sessions"
-    } else if name.contains("pull_request") {
-        "Pull requests"
-    } else if ["issue", "label", "comment"]
+    SECTIONS
         .iter()
-        .any(|word| name.contains(word))
-    {
-        "Issues"
-    } else {
-        "Repositories"
+        .find(|(_, _, ops)| ops.contains(&op))
+        .map_or("Repositories", |(name, _, _)| name)
+}
+
+/// What an operation's page is called, as a short sentence.
+fn title(op: Op) -> &'static str {
+    match op {
+        Op::Whoami => "Get the current user",
+        Op::CreateWorkspace => "Create a workspace",
+        Op::ListRepos => "List repositories",
+        Op::GetRepo => "Get a repository",
+        Op::CreateRepo => "Create a repository",
+        Op::UpdateRepo => "Update a repository",
+        Op::GetRepoSettings => "Get repository settings",
+        Op::UpdateRepoSettings => "Update repository settings",
+        Op::GetMergeQueue => "Get the merge queue",
+        Op::MessageAgent => "Message an agent",
+        Op::AnswerMessage => "Answer a message",
+        Op::TakeMessages => "Take new messages",
+        Op::ListIssues => "List issues",
+        Op::GetIssue => "Get an issue",
+        Op::CreateIssue => "Create an issue",
+        Op::UpdateIssue => "Update an issue",
+        Op::CloseIssue => "Close an issue",
+        Op::ReopenIssue => "Reopen an issue",
+        Op::AssignIssue => "Assign an issue to the g1t agent",
+        Op::PlanWork => "Plan work",
+        Op::GetPlan => "Get a plan",
+        Op::ApplyPlan => "Apply a plan",
+        Op::ListLabels => "List labels",
+        Op::AddComment => "Add a comment",
+        Op::ReviewPullRequest => "Review a pull request",
+        Op::ListPullRequests => "List pull requests",
+        Op::GetPullRequest => "Get a pull request",
+        Op::CreatePullRequest => "Create a pull request",
+        Op::RecordSession => "Record session entries",
+        Op::ReadSession => "Read a session",
+        Op::MarkPullRequestReady => "Mark a pull request ready",
+        Op::ClosePullRequest => "Close a pull request",
+        Op::GetPullRequestChanges => "Get a pull request's changes",
+        Op::MergePullRequest => "Merge a pull request",
+        Op::ListEvents => "List repository events",
+        Op::ListIntegrations => "List integrations",
+        Op::ConnectIntegration => "Connect an integration",
+        Op::DisconnectIntegration => "Disconnect an integration",
+        Op::TestIntegration => "Test an integration",
+        Op::GetContext => "Look up a ticket",
+        Op::ImportIssue => "Import an issue",
+        Op::GetModelRoutes => "Get model routes",
+        Op::SetModelRoutes => "Set model routes",
+        Op::ListWebhooks => "List webhooks",
+        Op::CreateWebhook => "Create a webhook",
+        Op::UpdateWebhook => "Update a webhook",
+        Op::DeleteWebhook => "Delete a webhook",
+        Op::PingWebhook => "Ping a webhook",
+        Op::ListWebhookDeliveries => "List webhook deliveries",
+        Op::RedeliverWebhook => "Redeliver a webhook delivery",
+        Op::ListWorkflows => "List workflows",
+        Op::ListWorkflowRuns => "List workflow runs",
+        Op::GetWorkflowRun => "Get a workflow run",
+        Op::GetJobLogs => "Get a job's log",
+        Op::DispatchWorkflow => "Run a workflow",
+        Op::CancelWorkflowRun => "Cancel a workflow run",
+        Op::RerunWorkflowRun => "Re-run a workflow run",
+        Op::UpdateWorkflow => "Turn a workflow on or off",
+        Op::ListActionsSecrets => "List secrets",
+        Op::SetActionsSecret => "Set a secret",
+        Op::DeleteActionsSecret => "Delete a secret",
+        Op::ListActionsVariables => "List variables",
+        Op::SetActionsVariable => "Set a variable",
+        Op::DeleteActionsVariable => "Delete a variable",
     }
 }
 
-/// A short title from an operation name: `create_issue` is "Create issue".
-fn title(op: Op) -> String {
-    if op == Op::Whoami {
-        return "Get the current user".to_owned();
-    }
-    let words = op.name().replace('_', " ");
-    let mut letters = words.chars();
-    match letters.next() {
-        Some(first) => first.to_uppercase().chain(letters).collect(),
-        None => words,
+/// Whether an operation can be refused with `402 payment_required`: the
+/// ones that start an agent, when the workspace has no credit.
+fn may_need_payment(op: Op) -> bool {
+    matches!(op, Op::AssignIssue | Op::PlanWork | Op::ApplyPlan)
+}
+
+/// What the reference says beyond each operation's own description, keyed
+/// by operation id, written by hand from what the services return: `notes`
+/// (Markdown, added to the description) and example `params` (path),
+/// `query`, `request` (body) and `response`.
+const REFERENCE: &str = include_str!("reference.json");
+
+fn examples() -> Map<String, Value> {
+    match serde_json::from_str(REFERENCE) {
+        Ok(Value::Object(examples)) => examples,
+        _ => Map::new(),
     }
 }
 
@@ -63,12 +250,73 @@ fn error_response(description: &str) -> Value {
     })
 }
 
+/// A parameter in the path or the query, described by the operation's
+/// input schema where it has the same name.
+fn parameter(name: &str, place: &str, required: bool, schema: Option<&Value>) -> Value {
+    let mut schema = schema.cloned().unwrap_or_else(|| json!({ "type": "string" }));
+    let description = match name {
+        "owner" => Some(Value::from("The workspace that owns the repository.")),
+        "name" => Some(Value::from("The repository's name.")),
+        _ => schema.as_object_mut().and_then(|schema| schema.remove("description")),
+    };
+    let mut parameter = json!({
+        "name": name,
+        "in": place,
+        "required": required,
+        "schema": schema,
+    });
+    if let Some(description) = description {
+        parameter["description"] = description;
+    }
+    parameter
+}
+
+/// The operation id of a route. An operation reached at a workspace's
+/// address as well as a repository's is documented once for each, with its
+/// own id; GitHub's alternative addresses for one operation keep GitHub's
+/// names.
+fn operation_id(route: &Route) -> String {
+    let op = route.op;
+    let base = match (route.method, route.path.rsplit('/').next().unwrap_or_default()) {
+        ("PUT", "enable") => "enable_workflow".to_owned(),
+        ("PUT", "disable") => "disable_workflow".to_owned(),
+        ("POST", "rerun-failed-jobs") => "rerun_failed_jobs".to_owned(),
+        ("PATCH", ":setting") => "update_actions_variable".to_owned(),
+        ("GET", "runs") if route.path.contains("/workflows/:workflow/") => "list_runs_of_workflow".to_owned(),
+        _ => op.name().to_owned(),
+    };
+    if route.path.starts_with("/workspaces/") && ROUTES.iter().any(|other| other.op == op && other.path.starts_with("/repos/")) {
+        format!("{base}_for_workspace")
+    } else {
+        base
+    }
+}
+
+/// The summary of a route: its operation's title, or for one of GitHub's
+/// alternative addresses, what that address does.
+fn summary(route: &Route, id: &str) -> String {
+    let base = match id.trim_end_matches("_for_workspace") {
+        "enable_workflow" => "Turn a workflow on",
+        "disable_workflow" => "Turn a workflow off",
+        "rerun_failed_jobs" => "Re-run failed jobs",
+        "update_actions_variable" => "Update a variable",
+        "list_runs_of_workflow" => "List a workflow's runs",
+        _ => title(route.op),
+    };
+    if id.ends_with("_for_workspace") {
+        format!("{base} for a workspace")
+    } else {
+        base.to_owned()
+    }
+}
+
 fn operation(route: &Route) -> Value {
     let op = route.op;
     let path_params: Vec<&str> = route.params().collect();
     // `owner` and `name` in the path stand for the operation's `repo` input.
     let covered = |name: &str| name == "repo" || path_params.contains(&name);
-    let mut properties = op.properties();
+    let all_properties = op.properties();
+    let mut properties = all_properties.clone();
     properties.retain(|name, _| !covered(name));
     let required: Vec<String> = op
         .required()
@@ -78,24 +326,17 @@ fn operation(route: &Route) -> Value {
 
     let mut parameters: Vec<Value> = path_params
         .iter()
-        .map(|name| {
-            json!({
-                "name": name,
-                "in": "path",
-                "required": true,
-                "schema": { "type": if *name == "number" { "integer" } else { "string" } },
-            })
-        })
+        .map(|name| parameter(name, "path", true, all_properties.get(*name)))
         .collect();
     let mut body = Value::Null;
     if route.method == "GET" {
         for (name, key) in route.query {
-            parameters.push(json!({
-                "name": name,
-                "in": "query",
-                "required": false,
-                "schema": properties.get(*key).cloned().unwrap_or_else(|| json!({})),
-            }));
+            parameters.push(parameter(
+                name,
+                "query",
+                required.iter().any(|required| required == key),
+                properties.get(*key),
+            ));
         }
     } else if !properties.is_empty() {
         let mut schema = json!({ "type": "object", "properties": properties });
@@ -108,39 +349,53 @@ fn operation(route: &Route) -> Value {
         });
     }
 
-    // An operation reached at a workspace's address as well as a
-    // repository's is documented once for each, with its own id.
-    // GitHub's alternative addresses for one operation keep GitHub's names.
-    let base = match (route.method, route.path.rsplit('/').next().unwrap_or_default()) {
-        ("PUT", "enable") => "enable_workflow".to_owned(),
-        ("PUT", "disable") => "disable_workflow".to_owned(),
-        ("POST", "rerun-failed-jobs") => "rerun_failed_jobs".to_owned(),
-        ("PATCH", ":setting") => "update_actions_variable".to_owned(),
-        ("GET", "runs") if route.path.contains("/workflows/:workflow/") => "list_runs_of_workflow".to_owned(),
-        _ => op.name().to_owned(),
-    };
-    let id = if route.path.starts_with("/workspaces/") && ROUTES.iter().any(|other| other.op == op && other.path.starts_with("/repos/")) {
-        format!("{base}_for_workspace")
+    let id = operation_id(route);
+    let mut responses = Map::new();
+    responses.insert(
+        "200".into(),
+        json!({
+            "description": "Success.",
+            "content": { "application/json": { "schema": {} } },
+        }),
+    );
+    responses.insert(
+        "401".into(),
+        error_response("A token is required, or the one sent is not valid."),
+    );
+    if may_need_payment(op) {
+        responses.insert(
+            "402".into(),
+            error_response("The workspace has no agent credit."),
+        );
+    }
+    responses.insert("403".into(), error_response("Signed in, but not allowed to do this."));
+    if !matches!(op, Op::Whoami | Op::ListRepos) {
+        responses.insert("404".into(), error_response("It does not exist, or you cannot see it."));
+    }
+    if route.method != "GET" {
+        responses.insert(
+            "409".into(),
+            error_response("The request conflicts with the current state."),
+        );
+    }
+    if op != Op::Whoami {
+        responses.insert("422".into(), error_response("The input is not valid."));
+    }
+    // Public data can be read without a token; everything else needs one.
+    let security = if op.needs_user() {
+        json!([{ "token": [] }])
     } else {
-        base
+        json!([{ "token": [] }, {}])
     };
     let mut described = json!({
         "operationId": id,
         "tags": [tag(op)],
-        "summary": title(op),
+        "summary": summary(route, &id),
         "description": op.description(),
+        "x-mcp-tool": op.name(),
+        "security": security,
         "parameters": parameters,
-        "responses": {
-            "200": {
-                "description": "Success.",
-                "content": { "application/json": { "schema": {} } },
-            },
-            "401": error_response("A token is required, or the one sent is not valid."),
-            "403": error_response("Signed in, but not allowed to do this."),
-            "404": error_response("It does not exist, or you cannot see it."),
-            "409": error_response("The request conflicts with the current state."),
-            "422": error_response("The input is not valid."),
-        },
+        "responses": responses,
     });
     if !body.is_null() {
         described["requestBody"] = body;
@@ -228,6 +483,45 @@ fn onboarding() -> Map<String, Value> {
     }
 }
 
+
+/// Puts each operation's examples, where it has them, into its request
+/// and response. Path and query values go under `x-example-params` and
+/// `x-example-query`, which tools that build a request can use.
+fn attach_examples(paths: &mut Map<String, Value>) {
+    let examples = examples();
+    for methods in paths.values_mut() {
+        let Some(methods) = methods.as_object_mut() else { continue };
+        for operation in methods.values_mut() {
+            let id = operation["operationId"].as_str().unwrap_or_default().to_owned();
+            let tool = operation["x-mcp-tool"].as_str().unwrap_or_default().to_owned();
+            let Some(example) = examples.get(&id).or_else(|| examples.get(&tool)) else {
+                continue;
+            };
+            if let Some(notes) = example.get("notes").and_then(Value::as_str) {
+                let description = operation["description"].as_str().unwrap_or_default();
+                operation["description"] = json!(format!("{description}\n\n{notes}"));
+            }
+            if let Some(response) = example.get("response") {
+                let content = &mut operation["responses"]["200"]["content"]["application/json"];
+                if content.is_object() {
+                    content["example"] = response.clone();
+                }
+            }
+            if let Some(request) = example.get("request") {
+                let content = &mut operation["requestBody"]["content"]["application/json"];
+                if content.is_object() {
+                    content["example"] = request.clone();
+                }
+            }
+            for (key, extension) in [("params", "x-example-params"), ("query", "x-example-query")] {
+                if let Some(values) = example.get(key) {
+                    operation[extension] = values.clone();
+                }
+            }
+        }
+    }
+}
+
 pub fn document() -> Value {
     let mut paths = onboarding();
     for route in ROUTES {
@@ -236,6 +530,19 @@ pub fn document() -> Value {
             .or_insert_with(|| json!({}));
         entry[route.method.to_lowercase()] = operation(route);
     }
+    attach_examples(&mut paths);
+    let tags: Vec<Value> = SECTIONS
+        .iter()
+        .map(|(name, description, ops)| {
+            json!({
+                "name": name,
+                "description": description,
+                // The section's operations in reading order, by MCP tool name.
+                "x-tools": ops.iter().map(|op| op.name()).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    let codes = ["unauthenticated", "payment_required", "forbidden", "not_found", "conflict", "invalid"];
     json!({
         "openapi": "3.1.0",
         "info": {
@@ -246,19 +553,7 @@ pub fn document() -> Value {
         },
         "servers": [{ "url": "https://api.g1t.sh" }],
         "security": [{ "token": [] }, {}],
-        "tags": [
-            { "name": "Accounts", "description": "Signing in from a tool, and the current user." },
-            { "name": "Repositories" },
-            {
-                "name": "Issues",
-                "description": "What should change in a repository, with labels and comments. Issues and pull requests share one sequence of numbers.",
-            },
-            {
-                "name": "Pull requests",
-                "description": "A proposed change in its own fork or on a branch. Several can be made for one issue; the one merged resolves it.",
-            },
-            { "name": "Sessions", "description": "The record of how a pull request was made." },
-        ],
+        "tags": tags,
         "paths": paths,
         "components": {
             "securitySchemes": {
@@ -277,10 +572,7 @@ pub fn document() -> Value {
                             "type": "object",
                             "required": ["code", "message"],
                             "properties": {
-                                "code": {
-                                    "type": "string",
-                                    "enum": ["unauthenticated", "forbidden", "not_found", "conflict", "invalid"],
-                                },
+                                "code": { "type": "string", "enum": codes },
                                 "message": { "type": "string" },
                             },
                         },
@@ -331,8 +623,69 @@ mod tests {
     }
 
     #[test]
+    fn every_operation_is_in_one_section() {
+        for op in Op::ALL {
+            let sections = SECTIONS
+                .iter()
+                .filter(|(_, _, ops)| ops.contains(&op))
+                .count();
+            assert_eq!(sections, 1, "{}", op.name());
+        }
+    }
+
+    #[test]
     fn titles_read_as_sentences() {
-        assert_eq!(title(Op::CreateIssue), "Create issue");
+        assert_eq!(title(Op::CreateIssue), "Create an issue");
         assert_eq!(title(Op::Whoami), "Get the current user");
+    }
+
+    #[test]
+    fn every_operation_has_an_example_response() {
+        let examples = examples();
+        assert!(!examples.is_empty(), "reference.json does not parse");
+        let document = document();
+        let mut known = Vec::new();
+        for (path, methods) in document["paths"].as_object().unwrap() {
+            for (method, operation) in methods.as_object().unwrap() {
+                known.push(operation["operationId"].as_str().unwrap().to_owned());
+                let example = &operation["responses"]["200"]["content"]["application/json"]["example"];
+                assert!(!example.is_null(), "{method} {path} has no example response");
+            }
+        }
+        for id in examples.keys() {
+            assert!(known.contains(id), "reference.json names {id}, which is not an operation");
+        }
+    }
+
+    #[test]
+    fn example_requests_send_only_what_the_body_takes() {
+        let document = document();
+        for (path, methods) in document["paths"].as_object().unwrap() {
+            for (method, operation) in methods.as_object().unwrap() {
+                let content = &operation["requestBody"]["content"]["application/json"];
+                let Some(example) = content["example"].as_object() else { continue };
+                let properties = &content["schema"]["properties"];
+                for key in example.keys() {
+                    assert!(!properties[key].is_null(), "{method} {path}: {key} is not in the body");
+                }
+            }
+        }
+    }
+
+    /// The docs site's copy of the document. Run with `G1T_WRITE_OPENAPI=1`
+    /// to rewrite it after changing an operation.
+    #[test]
+    fn the_docs_copy_is_current() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/src/data/openapi.json");
+        let current = serde_json::to_string_pretty(&document()).unwrap() + "\n";
+        if std::env::var_os("G1T_WRITE_OPENAPI").is_some() {
+            std::fs::write(path, &current).unwrap();
+            return;
+        }
+        let copy = std::fs::read_to_string(path).unwrap_or_default().replace("\r\n", "\n");
+        assert!(
+            copy == current,
+            "apps/docs/src/data/openapi.json is out of date: run G1T_WRITE_OPENAPI=1 cargo test -p g1t-api openapi"
+        );
     }
 }

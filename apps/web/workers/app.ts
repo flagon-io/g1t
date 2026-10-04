@@ -17,7 +17,7 @@ const MOVED_DOCS: Record<string, string> = {
   "/docs/g1t-agents": "/guides/g1t-agents/",
   "/docs/agents": "/guides/bring-your-own-agent/",
   "/docs/api": "/reference/api/",
-  "/docs/api/reference": "/api/reference/",
+  "/docs/api/reference": "/reference/api/",
 };
 
 export default {

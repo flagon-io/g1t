@@ -95,7 +95,7 @@ async fn authenticate(
 fn index() -> Value {
     let repo = format!("{API}/repos/{{owner}}/{{name}}");
     json!({
-        "documentation_url": "https://docs.g1t.sh/api/reference/",
+        "documentation_url": "https://docs.g1t.sh/reference/api/",
         "openapi_url": format!("{API}/openapi.json"),
         "mcp_url": "https://mcp.g1t.sh",
         "current_user_url": format!("{API}/user"),

@@ -2,6 +2,11 @@
 import starlight from '@astrojs/starlight';
 import { defineConfig } from 'astro/config';
 
+import { generateApiReference } from './scripts/api-reference.mjs';
+
+// A page per REST operation, written from the OpenAPI document.
+const apiGroups = generateApiReference();
+
 export default defineConfig({
 	site: 'https://docs.g1t.sh',
 	integrations: [
@@ -115,12 +120,13 @@ export default defineConfig({
 					label: 'Reference',
 					items: [
 						{ label: 'API overview', slug: 'reference/api' },
-						{ label: 'API explorer', link: '/api/reference/', attrs: { target: '_self' } },
 						{ label: 'MCP tools', slug: 'reference/mcp' },
+						{ label: 'Try it in the explorer', link: '/api/reference/', attrs: { target: '_self' } },
 						{ label: 'OpenAPI document', link: 'https://api.g1t.sh/openapi.json' },
 						{ label: 'llms.txt', link: 'https://g1t.sh/llms.txt' },
 					],
 				},
+				...apiGroups,
 			],
 		}),
 	],
