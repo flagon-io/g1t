@@ -2108,7 +2108,7 @@
 				"lastStatus": "delivered",
 				"lastDeliveredAt": "2026-10-04T15:42:07.611Z"
 			},
-			"secret": "whsec_4be1a07c93d2f5e8a6b1c0d9e2f3a4b5c6d79c2e"
+			"secret": "whsec_…"
 		},
 		"notes": "A ping is sent before the response, so `lastStatus` is usually set already. When g1t made the signing secret, `secret` holds it: it is shown only this once. See [webhooks](/guides/webhooks/)."
 	},
@@ -2136,7 +2136,7 @@
 				"lastStatus": "delivered",
 				"lastDeliveredAt": "2026-10-04T15:42:07.611Z"
 			},
-			"secret": "whsec_4be1a07c93d2f5e8a6b1c0d9e2f3a4b5c6d79c2e"
+			"secret": "whsec_…"
 		},
 		"notes": "A ping is sent before the response, so `lastStatus` is usually set already. When g1t made the signing secret, `secret` holds it: it is shown only this once. See [webhooks](/guides/webhooks/)."
 	},

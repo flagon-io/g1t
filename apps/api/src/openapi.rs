@@ -688,4 +688,27 @@ mod tests {
             "apps/docs/src/data/openapi.json is out of date: run G1T_WRITE_OPENAPI=1 cargo test -p g1t-api openapi"
         );
     }
+
+    /// Examples never hold anything that reads as a real credential, which
+    /// secret scanners rightly flag in a public repository: they end in `…`
+    /// after the prefix, as `whsec_…` and `g1t_…` do.
+    #[test]
+    fn examples_hold_no_real_looking_secrets() {
+        let prefixes = ["whsec_", "g1t_", "sk_live_", "sk_test_", "ghp_", "github_pat_", "xoxb-", "AKIA"];
+        for (line, text) in REFERENCE.lines().enumerate() {
+            for prefix in prefixes {
+                let mut rest = text;
+                while let Some(at) = rest.find(prefix) {
+                    let after = &rest[at + prefix.len()..];
+                    let run = after.chars().take_while(|c| c.is_ascii_alphanumeric()).count();
+                    assert!(
+                        run < 12,
+                        "reference.json line {}: `{prefix}` followed by {run} characters reads as a real secret; write `{prefix}…`",
+                        line + 1
+                    );
+                    rest = after;
+                }
+            }
+        }
+    }
 }
