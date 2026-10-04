@@ -579,7 +579,7 @@ impl Op {
                 "The secrets of a repository (with the workspace's rows that reach it) or of a workspace: each row's key, the environments it applies to, and whether workflows (`secrets.NAME`), deployments, or both read it. Values are never returned. Members only."
             }
             Op::SetActionsSecret => {
-                "Add or change a secret's row. Without `id` or `environments`, the key's row for every environment, as GitHub's API addresses a secret. `availableTo` is workflows and/or deployments (both, for a new row); `environments` limits it to some, such as production or preview, so a key can hold a value per environment. A variable's row can become a secret this way; a secret never becomes a variable. A repository's need a member; a workspace's an owner. Workspace tokens, G1T_TOKEN included, cannot change them."
+                "Add or change a secret's row. Without `id` or `environments`, the key's row for every environment, as GitHub's API addresses a secret. `available_to` is workflows and/or deployments (both, for a new row); `environments` limits it to some, such as production or preview, so a key can hold a value per environment. A variable's row can become a secret this way; a secret never becomes a variable. A repository's need a member; a workspace's an owner. Workspace tokens, G1T_TOKEN included, cannot change them."
             }
             Op::DeleteActionsSecret => "Remove a secret: one row by `id`, or every row of the key.",
             Op::ListActionsVariables => {
@@ -989,7 +989,7 @@ impl Op {
                     "setting": { "type": "string", "description": "The key, such as NPM_TOKEN." },
                     "value": { "type": "string", "description": "Needed for a new row; left out, the row keeps its value." },
                     "id": { "type": "string", "description": "The row to change, from a list. Left out: the key's row for every environment." },
-                    "availableTo": {
+                    "available_to": {
                         "type": "array",
                         "items": { "type": "string", "enum": ["workflows", "deployments"] },
                         "description": "Who reads it. Both for a new row."
@@ -1734,9 +1734,11 @@ impl Op {
                 if let Some(value) = input["value"].as_str() {
                     args["value"] = json!(value);
                 }
-                for key in ["availableTo", "environments", "repositories"] {
+                // Request bodies arrive in snake_case; the actions service
+                // takes `availableTo`.
+                for (key, to) in [("available_to", "availableTo"), ("environments", "environments"), ("repositories", "repositories")] {
                     if let Some(list) = strings(input, key) {
-                        args[key] = json!(list);
+                        args[to] = json!(list);
                     }
                 }
                 for key in ["id", "note"] {

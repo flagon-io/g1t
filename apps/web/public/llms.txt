@@ -247,7 +247,7 @@ key, Secret or Config, the environments it applies to (all, or e.g.
 production/preview, or a job's `environment:`), and whether workflows,
 deployments or both read it. API: `{repo}/actions/secrets` and
 `{repo}/actions/variables` (GitHub's routes) with extra `environments`,
-`availableTo`, `repositories`, `note`, `id`. Trusted jobs get
+`available_to`, `repositories`, `note`, `id`. Trusted jobs get
 `secrets.G1T_TOKEN` (the workspace's token; `GITHUB_TOKEN` is its alias),
 which cannot change secrets. Guide:
 https://docs.g1t.sh/guides/secrets-and-variables/

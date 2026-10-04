@@ -318,7 +318,9 @@ pub struct SetSettingArgs {
     pub value: Option<String>,
     /// `workflows` and/or `deployments`; left out, unchanged (both, for a
     /// new row).
-    #[serde(default, alias = "availableTo")]
+    // Named as callers send it: an `alias` is not honoured beside the
+    // flattened owner in the Worker's build.
+    #[serde(default, rename = "availableTo")]
     pub available_to: Option<Vec<String>>,
     /// The environments it applies to; empty is every one. Left out,
     /// unchanged.
@@ -390,4 +392,23 @@ pub struct StartJobArgs {
     pub repo: RepoPath,
     /// Minutes before the job is stopped.
     pub timeout_minutes: u32,
+}
+
+#[cfg(test)]
+mod setting_args_tests {
+    use super::*;
+
+    #[test]
+    fn who_reads_a_row_is_read_as_the_site_and_api_send_it() {
+        let args: SetSettingArgs = serde_json::from_value(serde_json::json!({
+            "actor": { "id": "usr_1", "username": "a" },
+            "repo": { "namespace": "acme", "name": "web" },
+            "kind": "secret",
+            "name": "STRIPE_KEY",
+            "availableTo": ["deployments"],
+            "environments": ["production"],
+        }))
+        .unwrap();
+        assert_eq!(args.available_to, Some(vec!["deployments".to_owned()]));
+    }
 }

@@ -558,6 +558,8 @@ class Deployments {
   }
 
   async job(id: string, step: string, body: Record<string, unknown>): Promise<Response> {
+    // Each report, for the logs: a build's own failure says why.
+    console.log("build", id, step, typeof body.message === "string" ? body.message.slice(0, 500) : "");
     const row = await this.building(id, body.token);
     if (!row) return Response.json(fail("not_found", "No such build, or it has finished."), { status: 404 });
     const cloudflare = this.cloudflare;

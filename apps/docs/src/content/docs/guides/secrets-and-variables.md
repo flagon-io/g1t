@@ -119,7 +119,7 @@ A workspace's are under `/workspaces/{workspace}/actions/secrets` and
 | Field | |
 | --- | --- |
 | `id` | The row to change or remove, from a list. |
-| `availableTo` | `["workflows"]`, `["deployments"]` or both. |
+| `available_to` | `["workflows"]`, `["deployments"]` or both. `availableTo` works too. |
 | `environments` | `["production"]`, `["preview", "staging"]`; `[]` for all. |
 | `repositories` | A workspace's row: repository names; `[]` for every one. |
 | `note` | Where to rotate it, or who to ask. |
@@ -127,7 +127,7 @@ A workspace's are under `/workspaces/{workspace}/actions/secrets` and
 ```sh
 curl -X PUT https://api.g1t.sh/repos/acme/web/actions/secrets/STRIPE_KEY \
   -H "Authorization: Bearer $YOUR_TOKEN" \
-  -d '{"value":"sk_live_…","environments":["production"],"availableTo":["deployments"]}'
+  -d '{"value":"sk_live_…","environments":["production"],"available_to":["deployments"]}'
 ```
 
 Unlike GitHub's, a secret is sent as plain `value` over HTTPS, not

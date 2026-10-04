@@ -361,10 +361,20 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         init.with_method(Method::Post)
             .with_headers(headers)
             .with_body(Some(worker::js_sys::Uint8Array::from(body.as_slice()).into()));
-        return env
+        let mut answer = env
             .service("DEPLOYMENTS")?
             .fetch_request(Request::new_with_init(&target, &init)?)
-            .await;
+            .await?;
+        // A fresh response: a fetched one's headers cannot be changed, and
+        // every response gets the API's own on the way out.
+        let status = answer.status_code();
+        return Ok(Response::from_bytes(answer.bytes().await?)?
+            .with_status(status)
+            .with_headers({
+                let headers = worker::Headers::new();
+                headers.set("content-type", "application/json")?;
+                headers
+            }));
     }
 
     // A sandbox's artifacts and cache, with its job's token, which is not a

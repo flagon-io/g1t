@@ -150,9 +150,10 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     await this.start({ envVars, enableInternet: true });
   }
 
-  override async onStop({ exitCode }: StopParams): Promise<void> {
+  override async onStop({ exitCode, reason }: StopParams): Promise<void> {
     if (exitCode === 0) return;
     const run = await this.ctx.storage.get<Run>("run");
+    console.log("sandbox stopped", run?.kind, "exit", exitCode, reason);
     if (!run) return;
     if (run.kind === "actions") {
       // Refused harmlessly if the job reported its end before it stopped.
