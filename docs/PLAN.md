@@ -715,6 +715,30 @@ What g1t does with them:
 6. **Groups, owners, scorecards** feeding the upkeep agents.
 7. **Environments** with protection rules; custom domains; logs.
 
+**Step 1 shipped 2026-10-04:** `services/projects`; every repository a
+project of its own name; the site projects-first (workspace page of
+project cards, the project overview at `g1t.sh/<workspace>/<project>`, code
+under `/code`, the sidebar and the New project flow); deployments keyed by
+project and branch at `<project>-<workspace>.g1t.page` and
+`<project>-git-<branch>-<workspace>.g1t.page`; secrets and variables owned
+by the project.
+
+### People and search
+
+> **2026-10-04:** "pull up user profiles, using a /u/username prefix kinda
+> like DockerHub … search for users if you search that explicitly, how
+> GitHub has the aside for searching against filters … a significantly
+> stronger implementation."
+
+- **Profiles at `g1t.sh/u/<username>`**, apart from workspaces at
+  `g1t.sh/<workspace>`: who they are, their workspaces, recent work,
+  agents' sessions they steered.
+- **Search with a filter sidebar:** Projects, Code, Issues, Pull requests,
+  Users, Workspaces, each with its count; filters by workspace, language,
+  state, author, agent, label, date; qualifiers in the query
+  (`user:`, `is:open`, `agent:g1t-agent`) as on GitHub. Typing `u/name`
+  searches people directly, as Docker Hub does.
+
 1 and 2 serve the competition directly (multi-agent coordination across
 projects is 25% of the score); 3 is the demo's best moment if time allows.
 

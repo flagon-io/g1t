@@ -13,7 +13,7 @@ export function meta({ params }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
-  const settings = await deployments.settings({ namespace: params.owner, name: params.repo }, viewer);
+  const settings = await deployments.settings({ workspace: params.owner, slug: params.repo }, viewer);
   return { settings: unwrap(settings) };
 }
 
@@ -21,16 +21,16 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
   const form = await request.formData();
-  const path = { namespace: params.owner, name: params.repo };
+  const ref = { workspace: params.owner, slug: params.repo };
   const intent = form.get("intent");
   if (intent === "enable" || intent === "disable") {
-    const saved = await deployments.updateSettings(user, path, { enabled: intent === "enable" });
+    const saved = await deployments.updateSettings(user, ref, { enabled: intent === "enable" });
     return saved.ok
       ? { notice: intent === "enable" ? "Deployments are on. Production is building." : "Deployments are off, and every app is down." }
       : { error: saved.error.message };
   }
   const on = (name: string) => form.get(name) === "on";
-  const saved = await deployments.updateSettings(user, path, {
+  const saved = await deployments.updateSettings(user, ref, {
     previews: on("previews"),
     production: on("production"),
     buildCommand: String(form.get("buildCommand") ?? ""),
@@ -86,7 +86,7 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
                 Deploy the default branch on every push.
               </Check>
               <Check name="previews" on={settings.previews} title="Previews">
-                A preview for every open pull request, linked on it.
+                A preview for every branch with an open pull request, linked on it.
               </Check>
             </div>
             <div className="grid gap-4 md:grid-cols-3">
@@ -115,7 +115,7 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
           <section className="mt-10 rounded-xl border border-danger/30 p-5">
             <h2 className="text-sm font-medium">Turn off deployments</h2>
             <p className="mt-1 text-sm text-muted">
-              Takes production and every preview down now, and stops building. Nothing of this repository's keeps
+              Takes production and every preview down now, and stops building. Nothing of this project's keeps
               running or costing anything. The workspace's plan stays on; turn it off under Billing.
             </p>
             <Form method="post" className="mt-3">

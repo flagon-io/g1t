@@ -1,10 +1,11 @@
 ---
 title: Deployments
-description: A live preview for every pull request and production for every push, on g1t.page. Scales to zero, and billed to the workspace.
+description: A project's production on every push and a live preview of every branch with a pull request, on g1t.page. Scales to zero, and billed to the workspace.
 ---
 
-Deployments put your repository on the web. Every pull request gets its own
-live preview, linked on the pull request, and the default branch goes to
+Deployments put your [project](/guides/projects/) on the web. Every branch
+with a pull request gets its own live preview, linked on the pull request,
+and the default branch goes to
 production on every push. Reviewers, and the agents reviewing for you,
 click through the change instead of reading a diff.
 
@@ -12,14 +13,19 @@ Apps run on Cloudflare Workers, on `g1t.page`:
 
 | | Address |
 | --- | --- |
-| Production | `https://<repo>--<workspace>.g1t.page` |
-| Preview of pull request 12 | `https://pr-12--<repo>--<workspace>.g1t.page` |
+| Production | `https://<project>-<workspace>.g1t.page` |
+| Preview of the branch `fix-login` | `https://<project>-git-fix-login-<workspace>.g1t.page` |
+
+A preview's address follows its branch, so it stays the same for every push
+to it. A pull request from a fork, as g1t's agents make them, is named
+`pr-<number>` in place of the branch. A name too long for an address, or
+one another app already has, is shortened or given a short suffix.
 
 An app runs only while it answers a request. One nobody visits runs
 nothing and costs nothing, and the next visit wakes it in milliseconds.
 
 Deployments are a paid feature, turned on per workspace with a monthly
-plan, and then per repository. Nothing deploys until you turn it on, and
+plan, and then per project. Nothing deploys until you turn it on, and
 one click turns it off again.
 
 ## Turn on deployments
@@ -28,8 +34,9 @@ one click turns it off again.
    **Settings → Billing**, `g1t.sh/<workspace>/-/billing`, and under
    **Plans** chooses **Turn on Deployments**, then pays on the card page.
    Back on Billing, the plan says **On** with its renewal date.
-2. **Turn on deployments for a repository.** Any member opens the
-   repository's **Deployments** page, `g1t.sh/<workspace>/<repo>/deployments`,
+2. **Turn on deployments for a project.** Any member opens the project's
+   **Settings → Deployments**, `g1t.sh/<workspace>/<project>/settings/deployments`,
+   or chooses **Deploy** on its overview,
    and chooses **Turn on deployments**.
 
 Production starts building at once from the default branch. Every pull
@@ -40,14 +47,14 @@ test card `4242 4242 4242 4242` with any future date and any code.
 
 ## What deploys
 
-g1t looks at the repository and builds it the way it is meant to be built.
+g1t looks at the project's root directory and builds it the way it is meant to be built.
 You do not configure anything for the common cases.
 
-| The repository has | g1t |
+| The project has | g1t |
 | --- | --- |
 | `wrangler.jsonc`, `wrangler.json` or `wrangler.toml` | Builds it as a **Workers project**: installs dependencies, runs `wrangler deploy --dry-run` to bundle it (which runs the config's own `build` command), and deploys the bundle with the config's static assets, `compatibility_date`, `compatibility_flags` and `vars`. |
 | A `build` script in `package.json` | Installs dependencies, runs `npm run build`, and serves the output as a **static site**. |
-| An `index.html` and nothing to build | Serves the repository as it is. |
+| An `index.html` and nothing to build | Serves it as it is. |
 
 Dependencies are installed by the lockfile that is there: `npm ci`,
 `pnpm install --frozen-lockfile`, `yarn install` or `bun install`, and
@@ -72,7 +79,7 @@ build: `dist`, `build`, `out`, `public`, `_site`, `.output/public`. Set
   are served under the binding name your config gives them. Cron triggers
   in the config are not scheduled.
 - `vars` are deployed as plain-text bindings (or JSON, for objects). Rows
-  of the repository's [secrets and variables](/guides/secrets-and-variables/)
+  of the project's [secrets and variables](/guides/secrets-and-variables/)
   available to Deployments are bound too, and replace a `var` of the same
   name: secrets as secret bindings.
 - **Not provisioned yet:** D1, KV, R2, Durable Objects, Queues, service
@@ -81,7 +88,7 @@ build: `dist`, `build`, `out`, `public`, `_site`, `.output/public`. Set
   lists each one it left out. Code that needs them should check that the
   binding is there.
 
-## Previews on pull requests
+## Previews of branches
 
 A preview is built when a pull request is opened, when it is marked ready,
 and on every push to it, including an agent's. Pull requests from forks,
@@ -112,10 +119,10 @@ anything, when:
 | | |
 | --- | --- |
 | Its pull request is merged or closed | That preview, at once. |
-| No one visits a preview for the repository's **idle days** | That preview, at the next sweep (every 10 minutes). The default is 7 days. |
+| No one visits a preview for the project's **idle days** | That preview, at the next sweep (every 10 minutes). The default is 7 days. |
 | You choose **Take down** on the Deployments page | That app, at once. |
 | You turn off previews or production | All of that kind, at once. |
-| You choose **Turn off deployments** | Every app of the repository, at once, and no more builds. |
+| You choose **Turn off deployments** | Every app of the project, at once, and no more builds. |
 | The workspace's plan ends or its payment fails | Every app of the workspace, at the next sweep. |
 
 A preview that came down comes back with the next push to its pull
@@ -123,20 +130,20 @@ request, or **Redeploy** on the Deployments page.
 
 ## Settings
 
-Under the repository's **Settings → Deployments**,
+Under the project's **Settings → Deployments**,
 `g1t.sh/<workspace>/<repo>/settings/deployments`:
 
 | Setting | Default | |
 | --- | --- | --- |
 | Production | On | Deploy the default branch on every push. |
-| Previews | On | A preview for every open pull request. |
+| Previews | On | A preview for every branch with an open pull request. |
 | Build command | The project's own | Runs instead of `npm run build`, or before bundling a Workers project. |
 | Output directory | Found by itself | What a static site serves. |
 | Idle days | 7 | 1 to 90. A preview no one visits this long comes down. |
 
 ## Secrets and variables
 
-Builds and running apps read the repository's
+Builds and running apps read the project's
 [secrets and variables](/guides/secrets-and-variables/) that are
 available to Deployments, and the workspace's that reach it:
 
@@ -163,7 +170,7 @@ It includes, each calendar month (UTC):
 
 | Included | |
 | --- | --- |
-| 10 apps | The most apps up at once: production and previews together, across the workspace's repositories. |
+| 10 apps | The most apps up at once: production and previews together, across the workspace's projects. |
 | 1 million requests | To all of the workspace's apps. |
 | 3 million CPU milliseconds | Time your code spends computing. Waiting on the network is not counted. |
 
@@ -198,7 +205,7 @@ idle days.
 
 ## Turn it off
 
-- **For a repository:** **Turn off deployments** under its **Settings →
+- **For a project:** **Turn off deployments** under its **Settings →
   Deployments**. Every app comes down at once. Turning it on again
   rebuilds production.
 - **For the workspace:** an owner chooses **Turn off at the end of the

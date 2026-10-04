@@ -1,0 +1,27 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-projects",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	"main": "./src/index.ts",
+	// Reached only through service bindings.
+	"workers_dev": false,
+	"placement": { "mode": "smart" },
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "g1t-projects",
+			"database_id": "0af698be-2b60-4bd9-aa93-81e84828e991",
+			"migrations_dir": "migrations"
+		}
+	],
+	"services": [
+		{ "binding": "REPOS", "service": "g1t-repos" },
+		{ "binding": "IDENTITY", "service": "g1t-identity" }
+	],
+	// A repository created is given its own project.
+	"queues": {
+		"consumers": [{ "queue": "g1t-events-projects", "max_batch_size": 20, "max_batch_timeout": 1 }]
+	},
+	"observability": { "enabled": true }
+}

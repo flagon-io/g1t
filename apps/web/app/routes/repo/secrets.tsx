@@ -27,7 +27,7 @@ export default function RepoSecrets({ loaderData, actionData, params }: Route.Co
   return (
     <div>
       <RepoSettingsTabs base={`/${params.owner}/${params.repo}`} />
-      <SecretsPanel data={loaderData} action={actionData} scope="repository" manage />
+      <SecretsPanel data={loaderData} action={actionData} scope="project" manage />
     </div>
   );
 }

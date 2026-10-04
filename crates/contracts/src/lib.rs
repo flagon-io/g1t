@@ -12,6 +12,7 @@ pub mod integrations;
 mod ids;
 mod names;
 mod outcome;
+pub mod projects;
 pub mod repos;
 pub mod time;
 pub mod webhooks;

@@ -1,5 +1,5 @@
 /**
- * A repository's or a workspace's secrets and variables, as one list in the
+ * A project's or a workspace's secrets and variables, as one list in the
  * way Vercel lists environment variables: each row is a key, its type
  * (Secret or Config), the environments it applies to and who reads it.
  * Adding and editing happen in a side panel, opened by `?add` or
@@ -35,7 +35,7 @@ export function SecretsPanel({
 }: {
   data: SecretsData;
   action: SecretsAction | undefined;
-  scope: "repository" | "workspace";
+  scope: "project" | "workspace";
   manage: boolean;
 }) {
   const location = useLocation();
@@ -68,8 +68,8 @@ export function SecretsPanel({
             and <code className="text-fg">vars.KEY</code>), <strong className="font-medium text-fg">deployments</strong>{" "}
             (the build's environment and the running app's <code className="text-fg">env.KEY</code>), or both read it.
             {scope === "workspace"
-              ? " Every repository, or the ones you link, reads the workspace's; a repository's own row of the same key wins."
-              : " Rows from the workspace are shown too; adding the same key here replaces them for this repository."}{" "}
+              ? " Every project, or the ones you link, reads the workspace's; a project's own row of the same key wins."
+              : " Rows from the workspace are shown too; adding the same key here replaces them for this project."}{" "}
             <a href="https://docs.g1t.sh/guides/secrets-and-variables/" className="text-fg hover:underline">
               How they are read
             </a>
@@ -135,7 +135,7 @@ export function SecretsPanel({
       </div>
 
       {manage && (adding || row) && (
-        <Drawer row={row} scope={scope} repositories={data.repositories} error={action?.error} />
+        <Drawer row={row} scope={scope} projects={data.projects} error={action?.error} />
       )}
     </div>
   );
@@ -167,9 +167,9 @@ function Row({ row, inherited, manage }: { row: Setting; inherited: boolean; man
           <span className="rounded-full px-2 py-px text-xs text-muted ring-1 ring-line">Workspace</span>
         ) : (
           <>
-            {row.repositories.length > 0 && (
-              <span className="mr-1 text-xs text-faint" title={row.repositories.join(", ")}>
-                {row.repositories.length} {row.repositories.length === 1 ? "repository" : "repositories"}
+            {row.projects.length > 0 && (
+              <span className="mr-1 text-xs text-faint" title={row.projects.join(", ")}>
+                {row.projects.length} {row.projects.length === 1 ? "project" : "projects"}
               </span>
             )}
             {manage && (
@@ -206,19 +206,19 @@ function Row({ row, inherited, manage }: { row: Setting; inherited: boolean; man
 function Drawer({
   row,
   scope,
-  repositories,
+  projects,
   error,
 }: {
   row: Setting | undefined;
-  scope: "repository" | "workspace";
-  repositories: string[];
+  scope: "project" | "workspace";
+  projects: string[];
   error: string | undefined;
 }) {
   const busy = useNavigation().state === "submitting";
   const editing = !!row;
   const [type, setType] = useState<"secret" | "config">(row?.kind === "variable" ? "config" : "secret");
   const [some, setSome] = useState(!!row && row.environments.length > 0);
-  const [reach, setReach] = useState(row && row.repositories.length > 0 ? "some" : "all");
+  const [reach, setReach] = useState(row && row.projects.length > 0 ? "some" : "all");
   const custom = row?.environments.filter((env) => !KNOWN_ENVIRONMENTS.includes(env)) ?? [];
   const field =
     "w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim";
@@ -381,11 +381,11 @@ function Drawer({
 
           {scope === "workspace" && (
             <fieldset>
-              <legend className="mb-2 text-sm font-medium text-muted">Repositories</legend>
+              <legend className="mb-2 text-sm font-medium text-muted">Projects</legend>
               <div className="space-y-2 text-sm">
                 <label className="flex items-center gap-2">
                   <input type="radio" name="reach" value="all" checked={reach === "all"} onChange={() => setReach("all")} className="accent-accent" />
-                  Every repository
+                  Every project
                 </label>
                 <label className="flex items-center gap-2">
                   <input type="radio" name="reach" value="some" checked={reach === "some"} onChange={() => setReach("some")} className="accent-accent" />
@@ -393,13 +393,13 @@ function Drawer({
                 </label>
                 {reach === "some" && (
                   <div className="ml-6 grid max-h-48 gap-1.5 overflow-y-auto sm:grid-cols-2">
-                    {repositories.map((name) => (
+                    {projects.map((name) => (
                       <label key={name} className="flex items-center gap-2 font-mono text-xs">
                         <input
                           type="checkbox"
-                          name="repo"
+                          name="project"
                           value={name}
-                          defaultChecked={row?.repositories.includes(name)}
+                          defaultChecked={row?.projects.includes(name)}
                           className="accent-accent"
                         />
                         {name}

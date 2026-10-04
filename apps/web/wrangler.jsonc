@@ -21,7 +21,8 @@
 		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" },
 		{ "binding": "WEBHOOKS", "service": "g1t-webhooks" },
 		{ "binding": "ACTIONS", "service": "g1t-actions" },
-		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" }
+		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
+		{ "binding": "PROJECTS", "service": "g1t-projects" }
 	],
 	"observability": { "enabled": true },
 	"upload_source_maps": true

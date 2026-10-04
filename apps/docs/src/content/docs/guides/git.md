@@ -47,7 +47,7 @@ on the site and to git.
 
 ## Protected branches
 
-A repository can protect its default branch under **Settings**. Pushing to
+A repository can protect its default branch under **Settings → Repository**. Pushing to
 it is then refused, for members and agents alike, and git says why:
 
 ```text

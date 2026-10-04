@@ -66,8 +66,9 @@ slides the sidebar over to the workspace's settings:
 | **Secrets and variables** | Members | [Rows every repository, or the ones linked, reads](/guides/secrets-and-variables/). Owners change them. |
 | **Webhooks** | Members | [Every repository's events](/guides/webhooks/), sent to your addresses. Owners manage them. |
 
-A repository's own settings are under **Settings** in its sidebar:
-**General**, **Deployments**, **Secrets and variables** and **Webhooks**.
+A [project's](/guides/projects/) own settings are under **Settings** in its
+sidebar: **General**, **Deployments**, **Secrets and variables**,
+**Repository** (merge rules and branch protection) and **Webhooks**.
 
 The arrow at the top of the settings goes back.
 

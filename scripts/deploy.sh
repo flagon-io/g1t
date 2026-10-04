@@ -19,6 +19,7 @@ ORDER=(
   services/identity
   services/repos
   services/work
+  services/projects
   services/billing
   services/integrations
   services/webhooks

@@ -2,7 +2,9 @@ import { ExternalLink, Globe, Rocket, RotateCw, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Form, Link, data, useNavigation } from "react-router";
 
-import type { Deployment, DeployStatus, FeatureState } from "@g1t/contracts";
+import type { Deployment, FeatureState } from "@g1t/contracts";
+
+import { host, StatusDot } from "../../components/deploy";
 
 import type { Route } from "./+types/deployments";
 import { Button, ButtonLink, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
@@ -18,10 +20,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const role = roleIn(viewer, params.owner);
   // Members only; to anyone else the page does not exist.
   if (!role) throw data(null, { status: 404 });
-  const path = { namespace: params.owner, name: params.repo };
+  const ref = { workspace: params.owner, slug: params.repo };
   const [settings, list, features] = await Promise.all([
-    deployments.settings(path, viewer),
-    deployments.list(path, viewer),
+    deployments.settings(ref, viewer),
+    deployments.list(ref, viewer),
     billing.features(params.owner, viewer),
   ]);
   const plan = unwrap(features).find((state) => state.plan.feature === "deployments") ?? null;
@@ -32,42 +34,24 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
   const form = await request.formData();
-  const path = { namespace: params.owner, name: params.repo };
+  const ref = { workspace: params.owner, slug: params.repo };
   const intent = form.get("intent");
-  const number = form.get("number") ? Number(form.get("number")) : null;
+  const branch = form.get("branch") ? String(form.get("branch")) : null;
   if (intent === "redeploy") {
-    const started = await deployments.redeploy(user, path, number);
+    const started = await deployments.redeploy(user, ref, branch);
     return started.ok ? { notice: "Build started." } : { error: started.error.message };
   }
   if (intent === "take-down") {
-    const done = await deployments.takeDown(user, path, number);
+    const done = await deployments.takeDown(user, ref, branch);
     return done.ok ? { notice: "Taken down." } : { error: done.error.message };
   }
   if (intent === "enable" || intent === "disable") {
-    const saved = await deployments.updateSettings(user, path, { enabled: intent === "enable" });
+    const saved = await deployments.updateSettings(user, ref, { enabled: intent === "enable" });
     return saved.ok
       ? { notice: intent === "enable" ? "Deployments are on. Production is building." : "Deployments are off, and every app is down." }
       : { error: saved.error.message };
   }
   return { error: "Unknown request." };
-}
-
-const STATUS: Record<DeployStatus, { label: string; tone: string }> = {
-  queued: { label: "Queued", tone: "text-muted" },
-  building: { label: "Building", tone: "text-warn" },
-  ready: { label: "Live", tone: "text-accent" },
-  failed: { label: "Failed", tone: "text-danger" },
-  skipped: { label: "Skipped", tone: "text-faint" },
-};
-
-function StatusDot({ status }: { status: DeployStatus }) {
-  const { label, tone } = STATUS[status];
-  return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${tone}`}>
-      <span className={`size-1.5 rounded-full bg-current ${status === "building" ? "animate-pulse" : ""}`} />
-      {label}
-    </span>
-  );
 }
 
 export default function RepoDeployments({ loaderData, actionData, params }: Route.ComponentProps) {
@@ -99,7 +83,7 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
             className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 font-mono text-xs text-muted hover:border-line-strong hover:text-fg"
           >
             <Globe size={13} />
-            {settings.productionUrl.replace("https://", "")}
+            {host(settings.productionUrl)}
           </a>
         )}
       </header>
@@ -115,7 +99,7 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
         <section className="mt-2 rounded-xl border border-accent/30 bg-accent/5 p-6">
           <h2 className="font-medium">Deploy {params.repo}</h2>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Production goes up from <span className="font-mono text-fg">{settings.productionUrl.replace("https://", "")}</span>{" "}
+            Production goes up from <span className="font-mono text-fg">{host(settings.productionUrl)}</span>{" "}
             as soon as you turn this on, and every open pull request gets its own preview. Workers projects (a{" "}
             <code className="font-mono text-fg">wrangler.jsonc</code>) and static sites deploy without configuration.
           </p>
@@ -135,14 +119,14 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
               app={production}
               off={!settings.production}
               actions={
-                <AppActions number={null} up={!!production} busy={busy} />
+                <AppActions branch={null} up={!!production} busy={busy} />
               }
             />
             <div className="rounded-xl border border-line bg-surface p-5">
               <h2 className="text-sm font-medium">Previews</h2>
               <p className="mt-0.5 text-xs text-faint">
                 {settings.previews
-                  ? `One per open pull request; down when it closes or after ${settings.idleDays} days without a visit.`
+                  ? `One per branch with an open pull request; down when it closes or after ${settings.idleDays} days without a visit.`
                   : "Off for this repository."}
               </p>
               {previews.length === 0 ? (
@@ -151,14 +135,19 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
                 <ul className="mt-3 divide-y divide-line">
                   {previews.map((app) => (
                     <li key={app.url} className="flex items-center gap-3 py-2 text-sm">
-                      <Link to={`${base}/pull/${app.number}`} className="font-medium hover:underline">
-                        #{app.number}
-                      </Link>
+                      <span className="shrink-0">
+                        <span className="font-medium">{app.branch}</span>
+                        {app.number != null && (
+                          <Link to={`${base}/pull/${app.number}`} className="ml-1.5 text-xs text-muted hover:underline">
+                            #{app.number}
+                          </Link>
+                        )}
+                      </span>
                       <a href={app.url} className="min-w-0 truncate font-mono text-xs text-muted hover:text-fg">
-                        {app.url.replace("https://", "")}
+                        {host(app.url)}
                       </a>
                       <span className="ml-auto shrink-0">
-                        <AppActions number={app.number} up busy={busy} compact />
+                        <AppActions branch={app.branch} up busy={busy} compact />
                       </span>
                     </li>
                   ))}
@@ -202,7 +191,7 @@ function PlanNeeded({ plan, owner }: { plan: FeatureState | null; owner: string 
     <section className="mt-2 rounded-xl border border-accent/30 bg-accent/5 p-6">
       <h2 className="font-medium">Deployments are part of a paid plan</h2>
       <p className="mt-1 max-w-2xl text-sm text-muted">
-        Turn on Deployments for the {owner} workspace and every repository in it can have previews for each pull
+        Turn on Deployments for the {owner} workspace and every project in it can have a preview for each pull
         request and production on g1t.page.
         {plan && ` $${(plan.plan.monthlyCents / 100).toFixed(0)} a month, including:`}
       </p>
@@ -246,7 +235,7 @@ function LiveCard({
       {app ? (
         <>
           <a href={app.url} className="mt-3 flex items-center gap-1.5 font-mono text-sm text-accent hover:underline">
-            {app.url.replace("https://", "")}
+            {host(app.url)}
             <ExternalLink size={12} />
           </a>
           <p className="mt-1 text-xs text-faint">
@@ -261,10 +250,10 @@ function LiveCard({
   );
 }
 
-function AppActions({ number, up, busy, compact }: { number: number | null; up: boolean; busy: boolean; compact?: boolean }) {
+function AppActions({ branch, up, busy, compact }: { branch: string | null; up: boolean; busy: boolean; compact?: boolean }) {
   return (
     <Form method="post" className="flex items-center gap-2">
-      {number != null && <input type="hidden" name="number" value={number} />}
+      {branch != null && <input type="hidden" name="branch" value={branch} />}
       <Button variant="quiet" type="submit" name="intent" value="redeploy" disabled={busy} title="Build again from the current head">
         <RotateCw size={13} />
         {!compact && "Redeploy"}
@@ -288,7 +277,7 @@ function BuildRow({ build, base }: { build: Deployment; base: string }) {
         </span>
         <span className="min-w-0 grow">
           <span className="block truncate font-medium">
-            {build.kind === "production" ? "Production" : `Preview of #${build.number}`}
+            {build.kind === "production" ? "Production" : `Preview of ${build.branch}`}
             <span className="ml-2 font-mono text-xs font-normal text-faint">{build.commit.slice(0, 8)}</span>
           </span>
           {build.error && <span className="mt-0.5 block truncate text-xs text-muted">{build.error}</span>}

@@ -29,8 +29,12 @@ export default [
   ]),
   // Why a line is the way it is, fetched by the blame view.
   route(":owner/:repo/why/:hash", "routes/repo/why.ts"),
+  // A project: its overview first, its repository's code under Code. The
+  // 1:1 project of a repository has the repository's name, so every
+  // repository address below keeps working.
   route(":owner/:repo", "routes/repo/layout.tsx", [
-    index("routes/repo/code.tsx"),
+    index("routes/repo/overview.tsx"),
+    route("code", "routes/repo/code.tsx"),
     route("tree/:ref/*", "routes/repo/tree.tsx"),
     route("blob/:ref/*", "routes/repo/blob.tsx"),
     route("commits", "routes/repo/commits.tsx"),
@@ -51,6 +55,7 @@ export default [
     route("plans", "routes/repo/plans.tsx"),
     route("plans/:id", "routes/repo/plan.tsx"),
     route("settings", "routes/repo/settings.tsx"),
+    route("settings/repository", "routes/repo/settings-repository.tsx"),
     route("settings/webhooks", "routes/repo/webhooks.tsx"),
     route("settings/secrets", "routes/repo/secrets.tsx"),
     route("settings/deployments", "routes/repo/settings-deployments.tsx"),

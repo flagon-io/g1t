@@ -13,7 +13,7 @@ export function meta({ params }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
-  const found = await deployments.get({ namespace: params.owner, name: params.repo }, params.id, viewer);
+  const found = await deployments.get({ workspace: params.owner, slug: params.repo }, params.id, viewer);
   if (!found.ok) throw data(null, { status: 404 });
   return { build: found.value };
 }
@@ -38,10 +38,12 @@ export default function DeploymentPage({ loaderData, params }: Route.ComponentPr
       <h1 className="mt-3 text-xl font-semibold tracking-tight">
         {build.kind === "production" ? "Production" : (
           <>
-            Preview of{" "}
-            <Link to={`${base}/pull/${build.number}`} className="hover:underline">
-              #{build.number}
-            </Link>
+            Preview of <span className="font-mono">{build.branch}</span>
+            {build.number != null && (
+              <Link to={`${base}/pull/${build.number}`} className="ml-2 text-base font-normal text-muted hover:underline">
+                #{build.number}
+              </Link>
+            )}
           </>
         )}
         <span className="ml-3 font-mono text-sm font-normal text-faint">{build.commit.slice(0, 12)}</span>

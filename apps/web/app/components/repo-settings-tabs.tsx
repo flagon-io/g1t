@@ -1,8 +1,11 @@
-import { Lock, Rocket, Settings, Webhook } from "lucide-react";
+import { GitBranch, Lock, Rocket, Settings, Webhook } from "lucide-react";
 
 import { TabLink } from "./ui";
 
-/** The parts of a repository's settings. */
+/**
+ * A project's settings, and its repository's: what is about running it
+ * first, then what is about the code.
+ */
 export function RepoSettingsTabs({ base }: { base: string }) {
   return (
     <nav className="mb-8 flex gap-x-6 border-b border-line">
@@ -14,6 +17,9 @@ export function RepoSettingsTabs({ base }: { base: string }) {
       </TabLink>
       <TabLink to={`${base}/settings/secrets`} icon={<Lock size={15} />}>
         Secrets and variables
+      </TabLink>
+      <TabLink to={`${base}/settings/repository`} icon={<GitBranch size={15} />}>
+        Repository
       </TabLink>
       <TabLink to={`${base}/settings/webhooks`} icon={<Webhook size={15} />}>
         Webhooks

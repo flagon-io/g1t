@@ -175,7 +175,8 @@ pub struct Setting {
     pub kind: String,
     /// A variable's value; secrets' are never returned.
     pub value: Option<String>,
-    /// `repository` or `workspace`.
+    /// `project` (a repository's, which belong to its project) or
+    /// `workspace`.
     pub scope: String,
     pub updated_at: String,
     /// `workflows` and/or `deployments`.
@@ -184,10 +185,10 @@ pub struct Setting {
     /// The environments it applies to; empty is every environment.
     #[serde(default)]
     pub environments: Vec<String>,
-    /// A workspace's row: the repositories it reaches, by name; empty is
-    /// every repository.
+    /// A workspace's row: the projects it reaches, by slug; empty is every
+    /// project.
     #[serde(default)]
-    pub repositories: Vec<String>,
+    pub projects: Vec<String>,
     #[serde(default)]
     pub note: Option<String>,
     #[serde(default)]
@@ -326,9 +327,9 @@ pub struct SetSettingArgs {
     /// unchanged.
     #[serde(default)]
     pub environments: Option<Vec<String>>,
-    /// A workspace's row: repository names; empty for every one.
+    /// A workspace's row: project slugs; empty for every one.
     #[serde(default)]
-    pub repositories: Option<Vec<String>>,
+    pub projects: Option<Vec<String>>,
     #[serde(default)]
     pub note: Option<String>,
 }
@@ -341,6 +342,12 @@ pub struct SetSettingArgs {
 pub struct ResolveSettingsArgs {
     pub repo_id: String,
     pub repo: RepoPath,
+    /// The project being read for; its repository's primary project if left
+    /// out.
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub project_slug: Option<String>,
     /// `workflows` or `deployments`.
     pub consumer: String,
     /// The environment being read for, such as `production` or `preview`.

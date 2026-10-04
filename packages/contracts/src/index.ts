@@ -8,6 +8,7 @@ export * from "./ids";
 export * from "./integrations";
 export * from "./names";
 export * from "./oauth";
+export * from "./projects";
 export * from "./repos";
 export * from "./result";
 export * from "./runner";

@@ -14,6 +14,7 @@ declare global {
       WEBHOOKS: ServiceBinding;
       ACTIONS: ServiceBinding;
       DEPLOYMENTS: ServiceBinding;
+      PROJECTS: ServiceBinding;
       BLOBS: KVNamespace;
     }
   }

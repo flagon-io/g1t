@@ -4,6 +4,7 @@ import {
   actionsClient,
   billingClient,
   deploymentsClient,
+  projectsClient,
   eventsClient,
   identityClient,
   integrationsClient,
@@ -21,3 +22,4 @@ export const integrations = integrationsClient(env.INTEGRATIONS);
 export const webhooks = webhooksClient(env.WEBHOOKS);
 export const actions = actionsClient(env.ACTIONS);
 export const deployments = deploymentsClient(env.DEPLOYMENTS);
+export const projects = projectsClient(env.PROJECTS);

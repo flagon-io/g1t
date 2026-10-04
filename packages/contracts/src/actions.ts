@@ -116,13 +116,14 @@ export type Setting = {
   kind: SettingKind;
   /** A variable's value. */
   value: string | null;
-  scope: "repository" | "workspace";
+  /** A project's (a repository's belong to its project) or the workspace's. */
+  scope: "project" | "workspace";
   updatedAt: string;
   availableTo: SettingReader[];
   /** The environments it applies to; empty is every environment. */
   environments: string[];
-  /** A workspace's row: the repositories it reaches; empty is every one. */
-  repositories: string[];
+  /** A workspace's row: the projects it reaches, by slug; empty is every one. */
+  projects: string[];
   /** Where to rotate it, or who to ask. */
   note: string | null;
   updatedBy: string | null;
@@ -134,7 +135,8 @@ export type SettingOptions = {
   id?: string;
   availableTo?: SettingReader[];
   environments?: string[];
-  repositories?: string[];
+  /** A workspace's row: project slugs; empty for every one. */
+  projects?: string[];
   note?: string;
 };
 

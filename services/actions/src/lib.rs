@@ -73,6 +73,8 @@ pub struct Actions {
     identity: Fetcher,
     runner: Fetcher,
     events: Fetcher,
+    /// Projects: a repository's secrets and variables belong to its project.
+    projects: Fetcher,
     /// Seals secrets; absent until `ACTIONS_KEY` is set, when secrets
     /// cannot be saved.
     sealer: Option<Sealer>,
@@ -87,6 +89,7 @@ impl Actions {
             identity: env.service("IDENTITY")?,
             runner: env.service("RUNNER")?,
             events: env.service("EVENTS")?,
+            projects: env.service("PROJECTS")?,
             sealer: env.secret("ACTIONS_KEY").ok().and_then(|key| Sealer::new(&key.to_string())),
         })
     }

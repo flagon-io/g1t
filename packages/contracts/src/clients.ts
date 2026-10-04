@@ -1,6 +1,7 @@
 import type { ActionsApi } from "./actions";
 import type { BillingApi } from "./billing";
 import type { DeploymentsApi } from "./deployments";
+import type { ProjectsApi } from "./projects";
 import type { EventsApi } from "./events";
 import type { IdentityApi } from "./identity";
 import type { IntegrationsApi } from "./integrations";
@@ -266,12 +267,24 @@ export function actionsClient(service: ServiceBinding): ActionsApi {
 export function deploymentsClient(service: ServiceBinding): DeploymentsApi {
   const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
   return {
-    settings: (repo, viewer) => call("settings", { repo, viewer }),
-    updateSettings: (actor, repo, changes) => call("update_settings", { actor, repo, changes }),
-    list: (repo, viewer) => call("list", { repo, viewer }),
-    get: (repo, id, viewer) => call("get", { repo, id, viewer }),
-    redeploy: (actor, repo, number) => call("redeploy", { actor, repo, number }),
-    takeDown: (actor, repo, number) => call("take_down", { actor, repo, number }),
+    settings: (project, viewer) => call("settings", { project, viewer }),
+    updateSettings: (actor, project, changes) => call("update_settings", { actor, project, changes }),
+    list: (project, viewer) => call("list", { project, viewer }),
+    get: (project, id, viewer) => call("get", { project, id, viewer }),
+    redeploy: (actor, project, branch) => call("redeploy", { actor, project, branch }),
+    takeDown: (actor, project, branch) => call("take_down", { actor, project, branch }),
+    overview: (workspace, viewer) => call("overview", { workspace, viewer }),
     usage: (workspace, viewer) => call("usage", { workspace, viewer }),
+  };
+}
+
+export function projectsClient(service: ServiceBinding): ProjectsApi {
+  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
+  return {
+    list: (workspace, viewer) => call("list", { workspace, viewer }),
+    get: (workspace, slug, viewer) => call("get", { workspace, slug, viewer }),
+    byRepo: (repoId) => call("by_repo", { repoId }),
+    create: (actor, workspace, input) => call("create", { actor, workspace, input }),
+    update: (actor, workspace, slug, changes) => call("update", { actor, workspace, slug, changes }),
   };
 }

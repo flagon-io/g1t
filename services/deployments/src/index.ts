@@ -1,20 +1,22 @@
 /**
- * The deployments service: every pull request gets a live preview on
- * g1t.page, and the default branch goes to production on every push.
+ * The deployments service: a project's production, deployed from its
+ * default branch on every push, and a live preview of every branch with an
+ * open pull request, on g1t.page.
  *
  * It reacts to events (a pull request opened, ready, pushed to, closed or
- * merged; a push to the default branch), asks billing whether the
- * workspace pays for Deployments, and asks the runner to build the commit
- * in a sandbox. The sandbox reports back through the API with a token for
- * that build alone; this service opens the upload of its files and puts
- * the finished app in the Workers for Platforms namespace, where the
- * `*.g1t.page` dispatcher finds it by hostname.
+ * merged; a push to the default branch) for every project built from the
+ * repository, asks billing whether the workspace pays for Deployments, and
+ * asks the runner to build the commit in a sandbox. The sandbox reports
+ * back through the API with a token for that build alone; this service
+ * opens the upload of its files and puts the finished app in the Workers
+ * for Platforms namespace, where the `*.g1t.page` dispatcher finds it by
+ * hostname.
  *
  * Nothing here is free. A build is charged by the second; requests, CPU
  * time and apps past the plan's allowance are charged once the month is
  * over. A Worker runs only while it answers a request, so an app no one
  * visits costs nothing, and a preview is taken down when its pull request
- * closes or after its repository's idle days.
+ * closes or after its project's idle days.
  *
  * Reached through service bindings (`POST /rpc/<method>`) and, for a
  * build's reports, through the API (`POST /jobs/<id>/<step>`).
@@ -27,6 +29,7 @@ import {
   identityClient,
   newId,
   ok,
+  projectsClient,
   reposClient,
   workClient,
   type DeployKind,
@@ -36,6 +39,9 @@ import {
   type Deployment,
   type G1tEvent,
   type LiveApp,
+  type Project,
+  type ProjectDeploys,
+  type ProjectRef,
   type RepoPath,
   type Result,
   type ServiceBinding,
@@ -44,7 +50,7 @@ import {
 } from "@g1t/contracts";
 
 import { Cloudflare, type BuiltWorker, type Manifest } from "./cloudflare";
-import { appUrl, scriptName } from "./names";
+import { appUrl, label, uniqueLabel } from "./names";
 
 type Env = {
   DB: D1Database;
@@ -53,6 +59,7 @@ type Env = {
   IDENTITY: ServiceBinding;
   BILLING: ServiceBinding;
   RUNNER: ServiceBinding;
+  PROJECTS: ServiceBinding;
   /** Secrets and variables: the actions service holds the one store. */
   ACTIONS: ServiceBinding;
   /** Secret: scoped to Workers scripts and analytics on g1t's account. */
@@ -64,6 +71,8 @@ type Env = {
 
 /** A build that has not reported in this long has died. */
 const BUILD_TIMEOUT_MS = 45 * 60 * 1000;
+/** A script in the namespace that no app holds, older than this, is removed. */
+const ORPHAN_AFTER_MS = 60 * 60 * 1000;
 const LIST_LIMIT = 50;
 const STATUS_CONTEXT = "g1t / deploy";
 
@@ -83,10 +92,17 @@ function isMember(viewer: Viewer, slug: string): boolean {
   return !!viewer?.workspaces?.some((membership) => membership.slug === slug.toLowerCase());
 }
 
+/** The repository a project builds from. */
+function repoOf(project: Project): { id: string; path: RepoPath; defaultBranch: string } {
+  if (project.source.kind !== "hosted") throw new Error("Only projects hosted on g1t deploy so far.");
+  return { id: project.source.repoId, path: project.source.repo, defaultBranch: project.source.defaultBranch };
+}
+
 type SettingsRow = {
+  project_id: string;
+  workspace: string;
+  slug: string;
   repo_id: string;
-  namespace: string;
-  name: string;
   enabled: number;
   previews: number;
   production: number;
@@ -97,10 +113,13 @@ type SettingsRow = {
 
 type DeploymentRow = {
   id: string;
+  project_id: string;
+  workspace: string;
+  slug: string;
   repo_id: string;
-  namespace: string;
-  name: string;
+  repo: string;
   kind: DeployKind;
+  branch: string | null;
   number: number | null;
   commit_sha: string;
   script: string;
@@ -118,10 +137,11 @@ type DeploymentRow = {
 
 type AppRow = {
   script: string;
-  repo_id: string;
-  namespace: string;
-  name: string;
+  project_id: string;
+  workspace: string;
+  slug: string;
   kind: DeployKind;
+  branch: string | null;
   number: number | null;
   commit_sha: string;
   deployed_at: string;
@@ -133,6 +153,7 @@ function toDeployment(row: DeploymentRow): Deployment {
   return {
     id: row.id,
     kind: row.kind,
+    branch: row.branch,
     number: row.number,
     commit: row.commit_sha,
     status: row.status,
@@ -143,6 +164,17 @@ function toDeployment(row: DeploymentRow): Deployment {
     createdBy: row.created_by,
     createdAt: row.created_at,
     finishedAt: row.finished_at,
+  };
+}
+
+function toLive(app: AppRow): LiveApp {
+  return {
+    kind: app.kind,
+    branch: app.branch,
+    number: app.number,
+    url: appUrl(app.script),
+    commit: app.commit_sha,
+    deployedAt: app.deployed_at,
   };
 }
 
@@ -158,6 +190,10 @@ class Deployments {
     return this.env.DB;
   }
 
+  private get projects() {
+    return projectsClient(this.env.PROJECTS);
+  }
+
   /** The workspace itself, as the service acts for it. */
   private async workspaceActor(slug: string): Promise<User | null> {
     const workspace = await identityClient(this.env.IDENTITY).getWorkspace(slug);
@@ -171,30 +207,28 @@ class Deployments {
     };
   }
 
-  private async pathById(id: string): Promise<RepoPath | null> {
-    const response = await this.env.REPOS.fetch("https://repos/rpc/path_by_id", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    return response.ok ? ((await response.json()) as RepoPath | null) : null;
-  }
-
   /**
-   * What the repository's secrets and variables available to deployments
-   * give production or a preview: its build's environment, and the same
-   * again as the running app's bindings. Untrusted builds get no secrets.
+   * What the project's secrets and variables available to deployments give
+   * production or a preview: its build's environment, and the same again as
+   * the running app's bindings. Untrusted builds get no secrets.
    */
   private async resolve(
-    repoId: string,
-    repo: RepoPath,
+    project: { id: string; slug: string; repoId: string; repo: RepoPath },
     environment: DeployKind,
     trusted: boolean,
   ): Promise<{ secrets: Record<string, string>; variables: Record<string, string> }> {
     const response = await this.env.ACTIONS.fetch("https://actions/rpc/resolve_settings", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ repoId, repo, consumer: "deployments", environment, trusted }),
+      body: JSON.stringify({
+        repoId: project.repoId,
+        repo: project.repo,
+        projectId: project.id,
+        projectSlug: project.slug,
+        consumer: "deployments",
+        environment,
+        trusted,
+      }),
     });
     if (!response.ok) throw new Error(`Secrets and variables could not be read (${response.status}).`);
     const resolved = (await response.json()) as { secrets: Record<string, string>; variables: Record<string, string> };
@@ -202,9 +236,9 @@ class Deployments {
   }
 
   /**
-   * Whether a pull request's author is trusted with the repository's
-   * secrets: g1t's agent, or a member of the workspace. Someone from
-   * outside gets a preview built without them, as their workflows run.
+   * Whether a pull request's author is trusted with the project's secrets:
+   * g1t's agent, or a member of the workspace. Someone from outside gets a
+   * preview built without them, as their workflows run.
    */
   private async insider(repo: RepoPath, author: User, actor: User): Promise<boolean> {
     if (author.kind === "agent" || author.username === "g1t-agent") return true;
@@ -216,11 +250,25 @@ class Deployments {
     return members.ok && members.value.some((m) => m.username.toLowerCase() === author.username.toLowerCase());
   }
 
-  private async settingsRow(repoId: string): Promise<SettingsRow | null> {
-    return this.db.prepare("SELECT * FROM settings WHERE repo_id = ?").bind(repoId).first<SettingsRow>();
+  private async settingsRow(projectId: string): Promise<SettingsRow | null> {
+    return this.db.prepare("SELECT * FROM settings WHERE project_id = ?").bind(projectId).first<SettingsRow>();
   }
 
-  private async toSettings(repo: RepoPath, row: SettingsRow | null): Promise<DeploySettings> {
+  /** The name an app gets, unique among apps: production, or a branch's preview. */
+  private async scriptFor(project: Project, branch: string | null): Promise<string> {
+    const base = await label(project.workspace, project.slug, branch);
+    const holder = await this.db
+      .prepare(
+        `SELECT project_id, branch FROM apps WHERE script = ?1
+         UNION ALL SELECT project_id, branch FROM deployments WHERE script = ?1 LIMIT 1`,
+      )
+      .bind(base)
+      .first<{ project_id: string; branch: string | null }>();
+    if (!holder || (holder.project_id === project.id && (holder.branch ?? null) === branch)) return base;
+    return uniqueLabel(base, `${project.id}/${branch ?? ""}`);
+  }
+
+  private async toSettings(project: Project, row: SettingsRow | null): Promise<DeploySettings> {
     return {
       enabled: !!row?.enabled,
       previews: row ? !!row.previews : true,
@@ -228,55 +276,54 @@ class Deployments {
       buildCommand: row?.build_command ?? null,
       outputDir: row?.output_dir ?? null,
       idleDays: row?.idle_days ?? 7,
-      productionUrl: appUrl(await scriptName(repo, null)),
+      productionUrl: appUrl(await this.scriptFor(project, null)),
     };
   }
 
-  /** The repository, if `viewer` belongs to its workspace and it is not a fork. */
-  private async memberRepo(repo: RepoPath, viewer: Viewer) {
-    if (!isMember(viewer, repo.namespace)) return fail("forbidden", "Only members of the workspace can manage its deployments.");
-    const found = await reposClient(this.env.REPOS).get(repo, viewer);
-    if (!found.ok) return found;
-    if (found.value.forkOf) return fail("invalid", "A pull request's working copy does not deploy on its own.");
-    return found;
+  /** The project, if `viewer` belongs to its workspace. */
+  private async memberProject(ref: ProjectRef, viewer: Viewer): Promise<Result<Project>> {
+    if (!isMember(viewer, ref.workspace)) return fail("forbidden", "Only members of the workspace can manage its deployments.");
+    return this.projects.get(ref.workspace, ref.slug, viewer);
   }
 
   // ---- Methods for the site and the API ------------------------------
 
-  async settings(a: { repo: RepoPath; viewer: Viewer }): Promise<Result<DeploySettings>> {
-    const repo = await this.memberRepo(a.repo, a.viewer);
-    if (!repo.ok) return repo;
-    return ok(await this.toSettings(a.repo, await this.settingsRow(repo.value.id)));
+  async settings(a: { project: ProjectRef; viewer: Viewer }): Promise<Result<DeploySettings>> {
+    const project = await this.memberProject(a.project, a.viewer);
+    if (!project.ok) return project;
+    return ok(await this.toSettings(project.value, await this.settingsRow(project.value.id)));
   }
 
   async updateSettings(a: {
     actor: User;
-    repo: RepoPath;
+    project: ProjectRef;
     changes: Partial<DeploySettings>;
   }): Promise<Result<DeploySettings>> {
-    const repo = await this.memberRepo(a.repo, a.actor);
-    if (!repo.ok) return repo;
-    const before = await this.toSettings(a.repo, await this.settingsRow(repo.value.id));
+    const found = await this.memberProject(a.project, a.actor);
+    if (!found.ok) return found;
+    const project = found.value;
+    const before = await this.toSettings(project, await this.settingsRow(project.id));
     const next = { ...before, ...a.changes };
     if (next.enabled && !before.enabled) {
       // Turning it on starts paid work: only with the workspace's plan.
-      const plan = await billingClient(this.env.BILLING).hasFeature(a.repo.namespace, "deployments");
+      const plan = await billingClient(this.env.BILLING).hasFeature(project.workspace, "deployments");
       if (!plan.ok) return plan;
     }
     const idleDays = Math.min(90, Math.max(1, Math.trunc(Number(next.idleDays) || 7)));
     const clip = (text: string | null | undefined) => (text?.trim() ? text.trim().slice(0, 500) : null);
     await this.db
       .prepare(
-        `INSERT INTO settings (repo_id, namespace, name, enabled, previews, production, build_command, output_dir,
-           idle_days, updated_by, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-         ON CONFLICT (repo_id) DO UPDATE SET namespace = ?2, name = ?3, enabled = ?4, previews = ?5, production = ?6,
-           build_command = ?7, output_dir = ?8, idle_days = ?9, updated_by = ?10, updated_at = ?11`,
+        `INSERT INTO settings (project_id, workspace, slug, repo_id, enabled, previews, production, build_command,
+           output_dir, idle_days, updated_by, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+         ON CONFLICT (project_id) DO UPDATE SET workspace = ?2, slug = ?3, repo_id = ?4, enabled = ?5, previews = ?6,
+           production = ?7, build_command = ?8, output_dir = ?9, idle_days = ?10, updated_by = ?11, updated_at = ?12`,
       )
       .bind(
-        repo.value.id,
-        repo.value.namespace,
-        repo.value.name,
+        project.id,
+        project.workspace,
+        project.slug,
+        repoOf(project).id,
         next.enabled ? 1 : 0,
         next.previews ? 1 : 0,
         next.production ? 1 : 0,
@@ -288,72 +335,97 @@ class Deployments {
       )
       .run();
     // What was turned off comes down now; nothing keeps running unasked.
-    if (!next.enabled) await this.takeDownWhere(repo.value.id, null);
+    if (!next.enabled) await this.takeDownWhere(project.id, null);
     else {
-      if (!next.previews) await this.takeDownWhere(repo.value.id, "preview");
-      if (!next.production) await this.takeDownWhere(repo.value.id, "production");
+      if (!next.previews) await this.takeDownWhere(project.id, "preview");
+      if (!next.production) await this.takeDownWhere(project.id, "production");
     }
     // Turned on: production goes up from the default branch at once.
     if (next.enabled && next.production && (!before.enabled || !before.production)) {
-      await this.deployProduction(repo.value.id, a.repo, repo.value.defaultBranch, null, a.actor.username);
+      await this.deployProduction(project, null, a.actor.username);
     }
-    return ok(await this.toSettings(a.repo, await this.settingsRow(repo.value.id)));
+    return ok(await this.toSettings(project, await this.settingsRow(project.id)));
   }
 
-  async list(a: { repo: RepoPath; viewer: Viewer }): Promise<Result<{ deployments: Deployment[]; live: LiveApp[] }>> {
-    const repo = await this.memberRepo(a.repo, a.viewer);
-    if (!repo.ok) return repo;
+  async list(a: { project: ProjectRef; viewer: Viewer }): Promise<Result<{ deployments: Deployment[]; live: LiveApp[] }>> {
+    const project = await this.memberProject(a.project, a.viewer);
+    if (!project.ok) return project;
     const [deployments, apps] = await Promise.all([
       this.db
-        .prepare("SELECT * FROM deployments WHERE repo_id = ? ORDER BY id DESC LIMIT ?")
-        .bind(repo.value.id, LIST_LIMIT)
+        .prepare("SELECT * FROM deployments WHERE project_id = ? ORDER BY id DESC LIMIT ?")
+        .bind(project.value.id, LIST_LIMIT)
         .all<DeploymentRow>(),
       this.db
-        .prepare("SELECT * FROM apps WHERE repo_id = ? ORDER BY kind DESC, number DESC")
-        .bind(repo.value.id)
+        .prepare("SELECT * FROM apps WHERE project_id = ? ORDER BY kind DESC, deployed_at DESC")
+        .bind(project.value.id)
         .all<AppRow>(),
     ]);
-    return ok({
-      deployments: deployments.results.map(toDeployment),
-      live: apps.results.map((app) => ({
-        kind: app.kind,
-        number: app.number,
-        url: appUrl(app.script),
-        commit: app.commit_sha,
-        deployedAt: app.deployed_at,
-      })),
-    });
+    return ok({ deployments: deployments.results.map(toDeployment), live: apps.results.map(toLive) });
   }
 
-  async get(a: { repo: RepoPath; id: string; viewer: Viewer }): Promise<Result<Deployment & { log: string | null }>> {
-    const repo = await this.memberRepo(a.repo, a.viewer);
-    if (!repo.ok) return repo;
+  async get(a: { project: ProjectRef; id: string; viewer: Viewer }): Promise<Result<Deployment & { log: string | null }>> {
+    const project = await this.memberProject(a.project, a.viewer);
+    if (!project.ok) return project;
     const row = await this.db
-      .prepare("SELECT * FROM deployments WHERE id = ? AND repo_id = ?")
-      .bind(a.id, repo.value.id)
+      .prepare("SELECT * FROM deployments WHERE id = ? AND project_id = ?")
+      .bind(a.id, project.value.id)
       .first<DeploymentRow>();
     if (!row) return fail("not_found", "No such deployment.");
     return ok({ ...toDeployment(row), log: row.log });
   }
 
-  async redeploy(a: { actor: User; repo: RepoPath; number: number | null }): Promise<Result<Deployment>> {
-    const repo = await this.memberRepo(a.repo, a.actor);
-    if (!repo.ok) return repo;
-    const settings = await this.settingsRow(repo.value.id);
-    if (!settings?.enabled) return fail("conflict", "Deployments are off for this repository.");
-    const started =
-      a.number == null
-        ? await this.deployProduction(repo.value.id, a.repo, repo.value.defaultBranch, null, a.actor.username)
-        : await this.deployPreview(repo.value.id, a.repo, a.number, a.actor.username, true);
-    return started ?? fail("conflict", "There was nothing to deploy.");
+  async redeploy(a: { actor: User; project: ProjectRef; branch: string | null }): Promise<Result<Deployment>> {
+    const found = await this.memberProject(a.project, a.actor);
+    if (!found.ok) return found;
+    const project = found.value;
+    const settings = await this.settingsRow(project.id);
+    if (!settings?.enabled) return fail("conflict", "Deployments are off for this project.");
+    if (a.branch == null) {
+      return (await this.deployProduction(project, null, a.actor.username)) ?? fail("conflict", "There was nothing to deploy.");
+    }
+    // A branch's preview comes from its pull request.
+    const app = await this.db
+      .prepare("SELECT number FROM deployments WHERE project_id = ? AND branch = ? AND number IS NOT NULL ORDER BY id DESC")
+      .bind(project.id, a.branch)
+      .first<{ number: number }>();
+    if (!app) return fail("not_found", `No pull request has deployed ${a.branch}.`);
+    return (await this.deployPreview(project, app.number, a.actor.username, true)) ?? fail("conflict", "Its pull request is not open.");
   }
 
-  async takeDown(a: { actor: User; repo: RepoPath; number: number | null }): Promise<Result<true>> {
-    const repo = await this.memberRepo(a.repo, a.actor);
-    if (!repo.ok) return repo;
-    const script = await scriptName(a.repo, a.number);
-    await this.removeApp(script);
+  async takeDown(a: { actor: User; project: ProjectRef; branch: string | null }): Promise<Result<true>> {
+    const project = await this.memberProject(a.project, a.actor);
+    if (!project.ok) return project;
+    await this.takeDownWhere(project.value.id, a.branch == null ? "production" : "preview", a.branch ?? undefined);
     return ok(true);
+  }
+
+  async overview(a: { workspace: string; viewer: Viewer }): Promise<Result<ProjectDeploys[]>> {
+    const workspace = a.workspace.toLowerCase();
+    if (!isMember(a.viewer, workspace)) return fail("forbidden", "Only members can see a workspace's deployments.");
+    const [settings, apps, latest] = await Promise.all([
+      this.db.prepare("SELECT slug, enabled FROM settings WHERE workspace = ?").bind(workspace).all<{ slug: string; enabled: number }>(),
+      this.db.prepare("SELECT * FROM apps WHERE workspace = ?").bind(workspace).all<AppRow>(),
+      this.db
+        .prepare(
+          `SELECT * FROM deployments WHERE id IN (SELECT MAX(id) FROM deployments WHERE workspace = ? GROUP BY project_id)`,
+        )
+        .bind(workspace)
+        .all<DeploymentRow>(),
+    ]);
+    return ok(
+      settings.results.map((row) => {
+        const own = apps.results.filter((app) => app.slug === row.slug);
+        const production = own.find((app) => app.kind === "production");
+        const newest = latest.results.find((d) => d.slug === row.slug);
+        return {
+          slug: row.slug,
+          enabled: !!row.enabled,
+          production: production ? toLive(production) : null,
+          previews: own.filter((app) => app.kind === "preview").length,
+          latest: newest ? toDeployment(newest) : null,
+        };
+      }),
+    );
   }
 
   async usage(a: { workspace: string; viewer: Viewer }): Promise<Result<DeployUsage>> {
@@ -371,7 +443,7 @@ class Deployments {
           build_micros: number;
           counted_at: string | null;
         }>(),
-      this.db.prepare("SELECT COUNT(*) AS n FROM apps WHERE namespace = ?").bind(slug).first<{ n: number }>(),
+      this.db.prepare("SELECT COUNT(*) AS n FROM apps WHERE workspace = ?").bind(slug).first<{ n: number }>(),
     ]);
     return ok({
       month: month(),
@@ -392,22 +464,24 @@ class Deployments {
    * recorded, when the workspace's plan is off.
    */
   private async start(input: {
-    repoId: string;
-    repo: RepoPath;
+    project: Project;
     kind: DeployKind;
+    branch: string | null;
     number: number | null;
     commit: string;
     source: RepoPath;
     reader: User;
     createdBy: string;
     settings: SettingsRow;
-    /** A push, or work by a member or an agent; see `trusted`. */
+    /** A push, or work by a member or an agent; see `insider`. */
     trusted: boolean;
   }): Promise<Result<Deployment>> {
-    const script = await scriptName(input.repo, input.number);
+    const { project } = input;
+    const repo = repoOf(project);
+    const script = await this.scriptFor(project, input.branch);
     const id = newId("dpl");
     const token = randomToken();
-    const plan = await billingClient(this.env.BILLING).hasFeature(input.repo.namespace, "deployments");
+    const plan = await billingClient(this.env.BILLING).hasFeature(project.workspace, "deployments");
     const cloudflare = this.cloudflare;
     const refused = !plan.ok
       ? plan.error.message
@@ -416,16 +490,19 @@ class Deployments {
         : null;
     await this.db
       .prepare(
-        `INSERT INTO deployments (id, repo_id, namespace, name, kind, number, commit_sha, script, status, error,
-           token_hash, trusted, created_by, created_at, finished_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO deployments (id, project_id, workspace, slug, repo_id, repo, kind, branch, number, commit_sha,
+           script, status, error, token_hash, trusted, created_by, created_at, finished_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
-        input.repoId,
-        input.repo.namespace,
-        input.repo.name,
+        project.id,
+        project.workspace,
+        project.slug,
+        repo.id,
+        `${repo.path.namespace}/${repo.path.name}`,
         input.kind,
+        input.branch,
         input.number,
         input.commit,
         script,
@@ -447,9 +524,13 @@ class Deployments {
       )
       .bind(now(), script, id)
       .run();
-    await this.status(input.repoId, input.commit, "pending", "Building", `${this.env.SITE}/${input.repo.namespace}/${input.repo.name}/deployments/${id}`);
-    // What the repository's secrets and variables give builds of this kind.
-    const build = await this.resolve(input.repoId, input.repo, input.kind, input.trusted);
+    await this.status(repo.id, input.commit, project, "pending", "Building", `${this.env.SITE}/${project.workspace}/${project.slug}/deployments/${id}`);
+    // What the project's secrets and variables give builds of this kind.
+    const build = await this.resolve(
+      { id: project.id, slug: project.slug, repoId: repo.id, repo: repo.path },
+      input.kind,
+      input.trusted,
+    );
     const response = await this.env.RUNNER.fetch("https://runner/rpc/start_deploy", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -459,6 +540,7 @@ class Deployments {
         actor: input.reader,
         source: input.source,
         commit: input.commit,
+        rootDir: project.source.rootDir,
         buildCommand: input.settings.build_command,
         outputDir: input.settings.output_dir,
         buildEnv: build.variables,
@@ -470,30 +552,25 @@ class Deployments {
     return ok(toDeployment((await this.deploymentRow(id))!));
   }
 
-  private async deployProduction(
-    repoId: string,
-    repo: RepoPath,
-    branch: string,
-    commit: string | null,
-    createdBy: string,
-  ): Promise<Result<Deployment> | null> {
-    const settings = await this.settingsRow(repoId);
+  private async deployProduction(project: Project, commit: string | null, createdBy: string): Promise<Result<Deployment> | null> {
+    const settings = await this.settingsRow(project.id);
     if (!settings?.enabled || !settings.production) return null;
-    const actor = await this.workspaceActor(repo.namespace);
+    const actor = await this.workspaceActor(project.workspace);
     if (!actor) return null;
+    const repo = repoOf(project);
     let head = commit;
     if (!head) {
-      const branches = await reposClient(this.env.REPOS).branches(repo, actor);
-      head = branches.ok ? (branches.value.find((b) => b.name === branch)?.hash ?? null) : null;
+      const branches = await reposClient(this.env.REPOS).branches(repo.path, actor);
+      head = branches.ok ? (branches.value.find((b) => b.name === repo.defaultBranch)?.hash ?? null) : null;
     }
     if (!head) return null;
     return this.start({
-      repoId,
-      repo,
+      project,
       kind: "production",
+      branch: null,
       number: null,
       commit: head,
-      source: repo,
+      source: repo.path,
       reader: actor,
       createdBy,
       settings,
@@ -502,44 +579,41 @@ class Deployments {
     });
   }
 
-  private async deployPreview(
-    repoId: string,
-    repo: RepoPath,
-    number: number,
-    createdBy: string,
-    force = false,
-  ): Promise<Result<Deployment> | null> {
-    const settings = await this.settingsRow(repoId);
+  private async deployPreview(project: Project, number: number, createdBy: string, force = false): Promise<Result<Deployment> | null> {
+    const settings = await this.settingsRow(project.id);
     if (!settings?.enabled || !settings.previews) return null;
-    const actor = await this.workspaceActor(repo.namespace);
+    const actor = await this.workspaceActor(project.workspace);
     if (!actor) return null;
-    const detail = await workClient(this.env.WORK).getPull(repo, number, actor);
+    const repo = repoOf(project);
+    const detail = await workClient(this.env.WORK).getPull(repo.path, number, actor);
     if (!detail.ok) return null;
     const { pull } = detail.value;
     if ((pull.status !== "open" && pull.status !== "draft") || !pull.headCommit) return null;
+    // A pull request from a fork (as g1t's agents work) has no branch here.
+    const branch = pull.branch ?? `pr-${number}`;
     if (!force) {
       // Already built, or being built, at this commit.
       const same = await this.db
         .prepare(
-          `SELECT id FROM deployments WHERE repo_id = ? AND kind = 'preview' AND number = ? AND commit_sha = ?
+          `SELECT id FROM deployments WHERE project_id = ? AND kind = 'preview' AND branch = ? AND commit_sha = ?
              AND status IN ('queued', 'building', 'ready')`,
         )
-        .bind(repoId, number, pull.headCommit)
+        .bind(project.id, branch, pull.headCommit)
         .first();
       if (same) return null;
     }
     return this.start({
-      repoId,
-      repo,
+      project,
       kind: "preview",
+      branch,
       number,
       commit: pull.headCommit,
-      source: pull.fork ?? repo,
+      source: pull.fork ?? repo.path,
       // The pull request's fork may be private: read it as its author.
       reader: pull.author,
       createdBy,
       settings,
-      trusted: await this.insider(repo, pull.author, actor),
+      trusted: await this.insider(repo.path, pull.author, actor),
     });
   }
 
@@ -580,15 +654,20 @@ class Deployments {
       case "finish": {
         const worker = (body.worker ?? {}) as BuiltWorker;
         const seconds = Number(body.buildSeconds) || 0;
+        const [namespace, name] = row.repo.split("/") as [string, string];
         try {
           // Running apps' secrets and variables are bound here, by g1t:
           // they never pass through the build's sandbox.
-          const runtime = await this.resolve(row.repo_id, { namespace: row.namespace, name: row.name }, row.kind, !!row.trusted);
+          const runtime = await this.resolve(
+            { id: row.project_id, slug: row.slug, repoId: row.repo_id, repo: { namespace, name } },
+            row.kind,
+            !!row.trusted,
+          );
           await cloudflare.putScript(
             row.script,
             worker,
             typeof body.completionJwt === "string" ? body.completionJwt : null,
-            [`workspace:${row.namespace}`, `repo:${row.namespace}/${row.name}`, row.kind],
+            [`workspace:${row.workspace}`, `project:${row.workspace}/${row.slug}`, row.kind],
             runtime,
           );
         } catch (error) {
@@ -605,21 +684,15 @@ class Deployments {
             .bind(JSON.stringify(Array.isArray(body.warnings) ? body.warnings : []), String(body.log ?? ""), seconds, at, id),
           this.db
             .prepare(
-              `INSERT INTO apps (script, repo_id, namespace, name, kind, number, commit_sha, deployed_at, created_at)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
-               ON CONFLICT (script) DO UPDATE SET commit_sha = ?7, deployed_at = ?8`,
+              `INSERT INTO apps (script, project_id, workspace, slug, kind, branch, number, commit_sha, deployed_at, created_at)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
+               ON CONFLICT (script) DO UPDATE SET commit_sha = ?8, number = ?7, deployed_at = ?9`,
             )
-            .bind(row.script, row.repo_id, row.namespace, row.name, row.kind, row.number, row.commit_sha, at),
+            .bind(row.script, row.project_id, row.workspace, row.slug, row.kind, row.branch, row.number, row.commit_sha, at),
         ]);
         await this.chargeBuild(row, seconds);
-        await this.notePeak(row.namespace);
-        await this.status(
-          row.repo_id,
-          row.commit_sha,
-          "success",
-          row.kind === "preview" ? "Preview is live" : "Production is live",
-          appUrl(row.script),
-        );
+        await this.notePeak(row.workspace);
+        await this.statusFor(row, "success", row.kind === "preview" ? "Preview is live" : "Production is live", appUrl(row.script));
         return Response.json(ok(true));
       }
       case "fail":
@@ -642,26 +715,23 @@ class Deployments {
       .run();
     // A failed build still used its sandbox.
     if (seconds) await this.chargeBuild(row, seconds);
-    await this.status(
-      row.repo_id,
-      row.commit_sha,
-      "failure",
-      "Deployment failed",
-      `${this.env.SITE}/${row.namespace}/${row.name}/deployments/${id}`,
-    );
+    await this.statusFor(row, "failure", "Deployment failed", `${this.env.SITE}/${row.workspace}/${row.slug}/deployments/${id}`);
   }
 
   /** Each build is charged by the second at the container price plus the margin. */
   private async chargeBuild(row: DeploymentRow, seconds: number): Promise<void> {
     const cost = Math.ceil(seconds) * DEPLOYMENTS_ALLOWANCE.microsPerBuildSecond;
     if (cost <= 0) return;
-    const what = row.kind === "preview" ? `the preview of ${row.namespace}/${row.name}#${row.number}` : `${row.namespace}/${row.name} to production`;
+    const what =
+      row.kind === "preview"
+        ? `the ${row.branch} preview of ${row.workspace}/${row.slug}`
+        : `${row.workspace}/${row.slug} to production`;
     await billingClient(this.env.BILLING).chargeFeature({
-      workspace: row.namespace,
+      workspace: row.workspace,
       feature: "deployments",
       costMicros: cost,
       description: `Building ${what} (${Math.ceil(seconds)} s)`,
-      repo: `${row.namespace}/${row.name}`,
+      repo: row.repo,
       reference: `deploy/${row.id}`,
     });
     await this.db
@@ -669,29 +739,47 @@ class Deployments {
         `INSERT INTO meters (namespace, month, build_seconds, build_micros) VALUES (?1, ?2, ?3, ?4)
          ON CONFLICT (namespace, month) DO UPDATE SET build_seconds = build_seconds + ?3, build_micros = build_micros + ?4`,
       )
-      .bind(row.namespace, month(), Math.ceil(seconds), cost)
+      .bind(row.workspace, month(), Math.ceil(seconds), cost)
       .run();
   }
 
   /** Remembers the most apps the workspace had up at once this month. */
-  private async notePeak(namespace: string): Promise<void> {
+  private async notePeak(workspace: string): Promise<void> {
     await this.db
       .prepare(
         `INSERT INTO meters (namespace, month, peak_apps)
-         VALUES (?1, ?2, (SELECT COUNT(*) FROM apps WHERE namespace = ?1))
+         VALUES (?1, ?2, (SELECT COUNT(*) FROM apps WHERE workspace = ?1))
          ON CONFLICT (namespace, month) DO UPDATE SET
-           peak_apps = MAX(peak_apps, (SELECT COUNT(*) FROM apps WHERE namespace = ?1))`,
+           peak_apps = MAX(peak_apps, (SELECT COUNT(*) FROM apps WHERE workspace = ?1))`,
       )
-      .bind(namespace, month())
+      .bind(workspace, month())
       .run();
   }
 
-  private async status(repoId: string, sha: string, state: string, description: string, targetUrl: string): Promise<void> {
+  /**
+   * The check on the commit: `g1t / deploy`, or, for one of several
+   * projects on a repository, `g1t / deploy (<project>)`.
+   */
+  private async status(
+    repoId: string,
+    sha: string,
+    project: { slug: string; primary: boolean },
+    state: string,
+    description: string,
+    targetUrl: string,
+  ): Promise<void> {
+    const context = project.primary ? STATUS_CONTEXT : `${STATUS_CONTEXT} (${project.slug})`;
     await this.env.WORK.fetch("https://work/rpc/set_commit_status", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ repoId, sha, context: STATUS_CONTEXT, state, description, targetUrl }),
+      body: JSON.stringify({ repoId, sha, context, state, description, targetUrl }),
     }).catch(() => undefined);
+  }
+
+  private async statusFor(row: DeploymentRow, state: string, description: string, targetUrl: string): Promise<void> {
+    const projects = await this.projects.byRepo(row.repo_id);
+    const primary = projects.find((p) => p.id === row.project_id)?.primary ?? true;
+    await this.status(row.repo_id, row.commit_sha, { slug: row.slug, primary }, state, description, targetUrl);
   }
 
   // ---- Taking apps down ----------------------------------------------
@@ -701,12 +789,12 @@ class Deployments {
     await this.db.prepare("DELETE FROM apps WHERE script = ?").bind(script).run();
   }
 
-  private async takeDownWhere(repoId: string, kind: DeployKind | null, number?: number): Promise<void> {
+  private async takeDownWhere(projectId: string, kind: DeployKind | null, branch?: string): Promise<void> {
     const apps = await this.db
       .prepare(
-        `SELECT script FROM apps WHERE repo_id = ?1 AND (?2 IS NULL OR kind = ?2) AND (?3 IS NULL OR number = ?3)`,
+        `SELECT script FROM apps WHERE project_id = ?1 AND (?2 IS NULL OR kind = ?2) AND (?3 IS NULL OR branch = ?3)`,
       )
-      .bind(repoId, kind, number ?? null)
+      .bind(projectId, kind, branch ?? null)
       .all<{ script: string }>();
     for (const app of apps.results) await this.removeApp(app.script);
   }
@@ -717,28 +805,27 @@ class Deployments {
     switch (event.type) {
       case "pull.opened":
       case "pull.ready":
-      case "pull.updated": {
-        const repo = await this.pathById(event.data.repoId);
-        if (repo) await this.deployPreview(event.data.repoId, repo, event.data.number, "g1t");
+      case "pull.updated":
+        for (const project of await this.projects.byRepo(event.data.repoId)) {
+          await this.deployPreview(project, event.data.number, "g1t");
+        }
         break;
-      }
       case "pull.closed":
       case "pull.merged":
-        await this.takeDownWhere(event.data.repoId, "preview", event.data.number);
+        for (const project of await this.projects.byRepo(event.data.repoId)) {
+          const apps = await this.db
+            .prepare("SELECT script FROM apps WHERE project_id = ? AND kind = 'preview' AND number = ?")
+            .bind(project.id, event.data.number)
+            .all<{ script: string }>();
+          for (const app of apps.results) await this.removeApp(app.script);
+        }
         break;
-      case "git.push": {
+      case "git.push":
         if (!event.data.defaultBranch) break;
-        const repo = await this.pathById(event.data.repoId);
-        if (!repo) break;
-        await this.deployProduction(
-          event.data.repoId,
-          repo,
-          event.data.ref.replace(/^refs\/heads\//, ""),
-          event.data.after,
-          event.actor ?? "g1t",
-        );
+        for (const project of await this.projects.byRepo(event.data.repoId)) {
+          await this.deployProduction(project, event.data.after, event.actor ?? "g1t");
+        }
         break;
-      }
     }
   }
 
@@ -746,8 +833,9 @@ class Deployments {
 
   /**
    * Every few minutes: builds that died are failed; usage is counted; idle
-   * previews and the apps of workspaces whose plan ended come down; and a
-   * month that is over is charged past its allowance.
+   * previews, the apps of workspaces whose plan ended, and scripts no app
+   * holds come down; and a month that is over is charged past its
+   * allowance.
    */
   async sweep(): Promise<void> {
     const cutoff = new Date(Date.now() - BUILD_TIMEOUT_MS).toISOString();
@@ -758,20 +846,36 @@ class Deployments {
     for (const { id } of stuck.results) await this.finishFailed(id, "The build did not finish in 45 minutes.", null, null);
 
     const apps = (await this.db.prepare("SELECT * FROM apps").all<AppRow>()).results;
-    const workspaces = [...new Set(apps.map((app) => app.namespace))];
+    const workspaces = [...new Set(apps.map((app) => app.workspace))];
 
     // Apps of workspaces whose plan has ended come down.
     const billing = billingClient(this.env.BILLING);
     for (const workspace of workspaces) {
       const plan = await billing.hasFeature(workspace, "deployments");
       if (!plan.ok && plan.error.code === "payment_required") {
-        for (const app of apps.filter((a) => a.namespace === workspace)) await this.removeApp(app.script);
+        for (const app of apps.filter((a) => a.workspace === workspace)) await this.removeApp(app.script);
       }
     }
 
+    await this.removeOrphans(apps).catch((error) => console.error("could not remove orphans", error));
     await this.count(apps).catch((error) => console.error("could not count usage", error));
     await this.takeDownIdle();
     await this.chargeMonths();
+  }
+
+  /** Scripts in the namespace that no app holds, such as ones renamed. */
+  private async removeOrphans(apps: AppRow[]): Promise<void> {
+    const cloudflare = this.cloudflare;
+    if (!cloudflare) return;
+    const held = new Set(apps.map((app) => app.script));
+    const building = await this.db
+      .prepare("SELECT script FROM deployments WHERE status IN ('queued', 'building')")
+      .all<{ script: string }>();
+    for (const row of building.results) held.add(row.script);
+    const cutoff = Date.now() - ORPHAN_AFTER_MS;
+    for (const script of await cloudflare.listScripts()) {
+      if (!held.has(script.id) && Date.parse(script.modified_on) < cutoff) await cloudflare.deleteScript(script.id);
+    }
   }
 
   /** Counts this month's requests and CPU time per workspace, from analytics. */
@@ -786,20 +890,20 @@ class Deployments {
     for (const app of apps) {
       const used = totals.get(app.script);
       if (!used) continue;
-      const sum = perWorkspace.get(app.namespace) ?? { requests: 0, cpuMs: 0 };
+      const sum = perWorkspace.get(app.workspace) ?? { requests: 0, cpuMs: 0 };
       sum.requests += used.requests;
       sum.cpuMs += used.cpuMs;
-      perWorkspace.set(app.namespace, sum);
+      perWorkspace.set(app.workspace, sum);
     }
     const at = now();
-    for (const [namespace, used] of perWorkspace) {
+    for (const [workspace, used] of perWorkspace) {
       await this.db
         .prepare(
           `INSERT INTO meters (namespace, month, requests, cpu_ms, counted_at) VALUES (?1, ?2, ?3, ?4, ?5)
            ON CONFLICT (namespace, month) DO UPDATE SET
              requests = MAX(requests, ?3), cpu_ms = MAX(cpu_ms, ?4), counted_at = ?5`,
         )
-        .bind(namespace, month(), used.requests, used.cpuMs, at)
+        .bind(workspace, month(), used.requests, used.cpuMs, at)
         .run();
     }
     // When each preview last answered anyone, for the idle sweep.
@@ -813,14 +917,14 @@ class Deployments {
         await this.db.prepare("UPDATE apps SET last_request_at = ? WHERE script = ?").bind(at, script).run();
       }
     }
-    for (const namespace of new Set(apps.map((app) => app.namespace))) await this.notePeak(namespace);
+    for (const workspace of new Set(apps.map((app) => app.workspace))) await this.notePeak(workspace);
   }
 
-  /** Previews no one has visited in their repository's idle days. */
+  /** Previews no one has visited in their project's idle days. */
   private async takeDownIdle(): Promise<void> {
     const idle = await this.db
       .prepare(
-        `SELECT apps.script FROM apps JOIN settings ON settings.repo_id = apps.repo_id
+        `SELECT apps.script FROM apps JOIN settings ON settings.project_id = apps.project_id
          WHERE apps.kind = 'preview'
            AND COALESCE(apps.last_request_at, apps.deployed_at) < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-' || settings.idle_days || ' days')`,
       )
@@ -882,6 +986,8 @@ async function rpc(service: Deployments, method: string, args: any): Promise<unk
       return service.redeploy(args);
     case "take_down":
       return service.takeDown(args);
+    case "overview":
+      return service.overview(args);
     case "usage":
       return service.usage(args);
     default:

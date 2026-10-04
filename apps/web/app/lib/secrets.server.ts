@@ -2,12 +2,12 @@ import { redirect } from "react-router";
 
 import type { Setting, SettingKind, SettingReader, SettingsOwner, User } from "@g1t/contracts";
 
-import { actions, repos } from "./services.server";
+import { actions, projects } from "./services.server";
 
 export type SecretsData = {
   rows: Setting[];
-  /** For a workspace: its repositories, to link rows to. */
-  repositories: string[];
+  /** For a workspace: its projects' slugs, to link rows to. */
+  projects: string[];
   error: string | null;
 };
 
@@ -15,11 +15,11 @@ export type SecretsData = {
 export async function loadSecrets(owner: SettingsOwner, actor: User): Promise<SecretsData> {
   const [rows, list] = await Promise.all([
     actions.settings(actor, owner, "all"),
-    "workspace" in owner ? repos.list(actor, { namespace: owner.workspace }) : Promise.resolve(null),
+    "workspace" in owner ? projects.list(owner.workspace, actor) : Promise.resolve(null),
   ]);
   return {
     rows: rows.ok ? rows.value : [],
-    repositories: Array.isArray(list) ? list.filter((repo) => !repo.forkOf).map((repo) => repo.name).sort() : [],
+    projects: list?.ok ? list.value.map((project) => project.slug) : [],
     error: rows.ok ? null : rows.error.message,
   };
 }
@@ -69,8 +69,8 @@ export async function actOnSecrets(owner: SettingsOwner, actor: User, form: Form
   }
   const availableTo = form.getAll("availableTo").map(String) as SettingReader[];
   if (availableTo.length === 0) return { error: "Choose who reads it: Workflows, Deployments, or both." };
-  const repositories =
-    "workspace" in owner && form.get("reach") === "some" ? form.getAll("repo").map(String) : [];
+  const linked =
+    "workspace" in owner && form.get("reach") === "some" ? form.getAll("project").map(String) : [];
   const note = String(form.get("note") ?? "");
   const key = String(form.get("key") ?? "").trim();
   const value = String(form.get("value") ?? "");
@@ -84,7 +84,7 @@ export async function actOnSecrets(owner: SettingsOwner, actor: User, form: Form
       id,
       availableTo,
       environments,
-      repositories: "workspace" in owner ? repositories : undefined,
+      projects: "workspace" in owner ? linked : undefined,
       note,
     });
     if (!saved.ok) return { error: pasted.length > 0 ? `${name}: ${saved.error.message}` : saved.error.message };

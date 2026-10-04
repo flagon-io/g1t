@@ -6,14 +6,20 @@
 //! previews can hold different values; a key's rows never overlap.
 //!
 //! A reader asking for an environment gets the row naming it, else the
-//! key's row for every environment. A repository's row overrides its
-//! workspace's of the same key. Names are upper-cased, as GitHub treats
+//! key's row for every environment. A project's row overrides its
+//! workspace's of the same key.
+//!
+//! A repository's rows belong to its project (its primary one, when it
+//! carries several): asked for by repository, as GitHub's API does, they
+//! are the project's. Rows from before projects move over the first time
+//! they are touched. Names are upper-cased, as GitHub treats
 //! them without regard to case. Agents never read any.
 
 use g1t_contracts::actions::{
     CONSUMERS, DeleteSettingArgs, ResolveSettingsArgs, ResolvedSettings, SetSettingArgs, Setting, SettingsArgs,
     SettingsOwner,
 };
+use g1t_contracts::projects::{ByRepoArgs, ProjectRef};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, User, new_id};
 use g1t_kit::now_ms;
@@ -109,13 +115,15 @@ impl SettingRow {
         split(&self.environments)
     }
 
-    fn repositories(&self) -> Vec<String> {
+    /// A workspace's row: the projects it reaches. The column predates
+    /// projects; it holds their slugs.
+    fn projects(&self) -> Vec<String> {
         self.repositories.as_deref().and_then(|json| serde_json::from_str(json).ok()).unwrap_or_default()
     }
 
-    fn reaches(&self, repo: &str) -> bool {
-        let list = self.repositories();
-        list.is_empty() || list.iter().any(|r| r.eq_ignore_ascii_case(repo))
+    fn reaches(&self, project: &str) -> bool {
+        let list = self.projects();
+        list.is_empty() || list.iter().any(|p| p.eq_ignore_ascii_case(project))
     }
 
     /// Whether it and rows for `environments` would both apply somewhere.
@@ -128,7 +136,7 @@ impl SettingRow {
         Setting {
             available_to: split(&self.available_to),
             environments: self.environments(),
-            repositories: self.repositories(),
+            projects: self.projects(),
             value: (self.kind == "variable").then_some(self.value),
             id: self.id,
             name: self.name,
@@ -141,12 +149,14 @@ impl SettingRow {
     }
 }
 
-/// Where settings live: `(scope, owner)` with the owner a repository id or
-/// a workspace slug.
+/// Where settings live: `(scope, owner)` with the owner a project id or a
+/// workspace slug.
 struct Place {
     scope: &'static str,
     owner: String,
     namespace: String,
+    /// The project's slug, for a project's place.
+    slug: String,
 }
 
 impl Actions {
@@ -170,7 +180,10 @@ impl Actions {
                 let Some(repo) = self.visible_repo(path, &Some(actor.clone())).await? else {
                     return Ok(fail(FailureCode::NotFound, "There is no such repository."));
                 };
-                Ok(Outcome::Ok(Place { scope: "repository", owner: repo.id, namespace: repo.namespace }))
+                let Some(project) = self.project_of(&repo.id).await? else {
+                    return Ok(fail(FailureCode::NotFound, "The repository has no project."));
+                };
+                Ok(Outcome::Ok(Place { scope: "project", owner: project.id, namespace: repo.namespace, slug: project.slug }))
             }
             (None, Some(slug)) => {
                 let slug = slug.to_lowercase();
@@ -178,11 +191,27 @@ impl Actions {
                 match role {
                     None => Ok(fail(FailureCode::Forbidden, format!("Only members of {slug} can see its secrets and variables."))),
                     Some(Role::Member) if changing => Ok(fail(FailureCode::Forbidden, format!("Only owners of {slug} can change its secrets and variables."))),
-                    Some(_) => Ok(Outcome::Ok(Place { scope: "workspace", owner: slug.clone(), namespace: slug })),
+                    Some(_) => Ok(Outcome::Ok(Place { scope: "workspace", owner: slug.clone(), namespace: slug, slug: String::new() })),
                 }
             }
             (None, None) => Ok(fail(FailureCode::Invalid, "Give `repo` or `workspace`.")),
         }
+    }
+
+    /// A repository's primary project, with the rows kept under the
+    /// repository before projects moved to it.
+    pub(crate) async fn project_of(&self, repo_id: &str) -> Result<Option<ProjectRef>> {
+        let projects: Vec<ProjectRef> =
+            g1t_kit::call(&self.projects, "by_repo", &ByRepoArgs { repo_id: repo_id.to_owned() }).await?;
+        let Some(project) = projects.into_iter().find(|p| p.primary) else {
+            return Ok(None);
+        };
+        self.db
+            .prepare("UPDATE settings SET owner = ?, scope = 'project' WHERE owner = ?")
+            .bind(&[project.id.as_str().into(), repo_id.into()])?
+            .run()
+            .await?;
+        Ok(Some(project))
     }
 
     /// `secret`, `variable`, or `None` for both.
@@ -207,14 +236,13 @@ impl Actions {
     pub async fn settings(&self, a: SettingsArgs) -> Result<Outcome<Vec<Setting>>> {
         let kind = check!(Self::kind(&a.kind));
         let place = check!(self.place(&a.actor, &a.owner, false).await?);
-        let repo_name = a.owner.repo.as_ref().map(|r| r.name.clone());
         let mut out: Vec<Setting> = Vec::new();
-        // A repository's list shows the workspace's rows that reach it, but
-        // for keys it sets itself.
-        if place.scope == "repository" {
+        // A project's list shows the workspace's rows that reach it, but for
+        // keys it sets itself.
+        if place.scope == "project" {
             let own: Vec<String> = self.rows(&place.owner).await?.into_iter().map(|row| row.name).collect();
             for row in self.rows(&place.namespace.to_lowercase()).await? {
-                if repo_name.as_deref().is_some_and(|name| row.reaches(name)) && !own.contains(&row.name) {
+                if row.reaches(&place.slug) && !own.contains(&row.name) {
                     out.push(row.describe());
                 }
             }
@@ -255,8 +283,8 @@ impl Actions {
             Err(problem) => return Ok(fail(FailureCode::Invalid, problem)),
         };
         let place = check!(self.place(&a.actor, &a.owner, true).await?);
-        if a.repositories.as_ref().is_some_and(|r| !r.is_empty()) && place.scope != "workspace" {
-            return Ok(fail(FailureCode::Invalid, "Only a workspace's rows choose repositories."));
+        if a.projects.as_ref().is_some_and(|r| !r.is_empty()) && place.scope != "workspace" {
+            return Ok(fail(FailureCode::Invalid, "Only a workspace's rows choose projects."));
         }
         let rows = self.rows(&place.owner).await?;
         // A secret and a variable may share a key, as on GitHub, where
@@ -304,7 +332,7 @@ impl Actions {
             .map(|r| r.join(","))
             .or_else(|| existing.map(|row| row.available_to.clone()))
             .unwrap_or_else(|| CONSUMERS.join(","));
-        let repositories: Option<String> = match &a.repositories {
+        let repositories: Option<String> = match &a.projects {
             Some(list) if list.is_empty() => None,
             Some(list) => Some(serde_json::to_string(list).unwrap_or_default()),
             None => existing.and_then(|row| row.repositories.clone()),
@@ -381,8 +409,8 @@ impl Actions {
     #[allow(clippy::too_many_arguments)]
     async fn resolved(
         &self,
-        repo_id: &str,
-        repo_name: &str,
+        project_id: &str,
+        project_slug: &str,
         namespace: &str,
         kind: &str,
         consumer: &str,
@@ -394,14 +422,14 @@ impl Actions {
         }
         let environment = environment.map(str::to_ascii_lowercase);
         let mut out = Map::new();
-        for owner in [namespace.to_lowercase(), repo_id.to_owned()] {
+        for owner in [namespace.to_lowercase(), project_id.to_owned()] {
             let rows: Vec<SettingRow> = self
                 .rows(&owner)
                 .await?
                 .into_iter()
                 .filter(|row| row.kind == kind)
                 .filter(|row| split(&row.available_to).iter().any(|r| r == consumer))
-                .filter(|row| row.scope != "workspace" || row.reaches(repo_name))
+                .filter(|row| row.scope != "workspace" || row.reaches(project_slug))
                 .collect();
             let mut names: Vec<&str> = rows.iter().map(|row| row.name.as_str()).collect();
             names.dedup();
@@ -434,26 +462,39 @@ impl Actions {
     /// The `vars` context of a repository's runs. `environment` is the job's
     /// `environment:`, when it has one.
     pub async fn variables_for(&self, repo_id: &str, repo: &str, environment: Option<&str>, trusted: bool) -> Result<Map<String, Value>> {
-        let (namespace, name) = repo.split_once('/').unwrap_or((repo, ""));
-        self.resolved(repo_id, name, namespace, "variable", "workflows", environment, trusted).await
+        let (namespace, _) = repo.split_once('/').unwrap_or((repo, ""));
+        let Some(project) = self.project_of(repo_id).await? else {
+            return Ok(Map::new());
+        };
+        self.resolved(&project.id, &project.slug, namespace, "variable", "workflows", environment, trusted).await
     }
 
     /// The `secrets` context of a repository's runs, opened.
     pub async fn secrets_for(&self, repo_id: &str, repo: &str, environment: Option<&str>, trusted: bool) -> Result<Map<String, Value>> {
-        let (namespace, name) = repo.split_once('/').unwrap_or((repo, ""));
-        self.resolved(repo_id, name, namespace, "secret", "workflows", environment, trusted).await
+        let (namespace, _) = repo.split_once('/').unwrap_or((repo, ""));
+        let Some(project) = self.project_of(repo_id).await? else {
+            return Ok(Map::new());
+        };
+        self.resolved(&project.id, &project.slug, namespace, "secret", "workflows", environment, trusted).await
     }
 
     /// `resolve_settings`, for the deployments service: what a deploy build
     /// and its running app get.
     pub async fn resolve_settings(&self, a: ResolveSettingsArgs) -> Result<ResolvedSettings> {
         let environment = a.environment.as_deref();
+        let (project_id, slug) = match (a.project_id, a.project_slug) {
+            (Some(id), Some(slug)) => (id, slug),
+            _ => match self.project_of(&a.repo_id).await? {
+                Some(project) => (project.id, project.slug),
+                None => return Ok(ResolvedSettings::default()),
+            },
+        };
         Ok(ResolvedSettings {
             secrets: self
-                .resolved(&a.repo_id, &a.repo.name, &a.repo.namespace, "secret", &a.consumer, environment, a.trusted)
+                .resolved(&project_id, &slug, &a.repo.namespace, "secret", &a.consumer, environment, a.trusted)
                 .await?,
             variables: self
-                .resolved(&a.repo_id, &a.repo.name, &a.repo.namespace, "variable", &a.consumer, environment, a.trusted)
+                .resolved(&project_id, &slug, &a.repo.namespace, "variable", &a.consumer, environment, a.trusted)
                 .await?,
         })
     }

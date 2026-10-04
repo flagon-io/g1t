@@ -21,6 +21,8 @@
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "BILLING", "service": "g1t-billing" },
 		{ "binding": "RUNNER", "service": "g1t-runner" },
+		// Deployments belong to projects.
+		{ "binding": "PROJECTS", "service": "g1t-projects" },
 		// Secrets and variables, with who may read each.
 		{ "binding": "ACTIONS", "service": "g1t-actions" }
 	],

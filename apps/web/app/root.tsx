@@ -37,7 +37,7 @@ import {
   DropdownMenuTrigger,
 } from "./components/ui/dropdown-menu";
 import { AppShell, Progress, type ShellData } from "./components/shell";
-import { billing, repos, work } from "./lib/services.server";
+import { billing, projects, work } from "./lib/services.server";
 import { getViewer, roleIn, viewerMiddleware } from "./lib/session.server";
 
 export const links: Route.LinksFunction = () => [
@@ -90,16 +90,22 @@ async function shellFor(
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
   const [listed, counts, account, usage] = await Promise.all([
-    workspace ? repos.list(user, { namespace: workspace.slug }) : Promise.resolve([]),
+    workspace ? projects.list(workspace.slug, user) : Promise.resolve(null),
     path ? work.counts(path, user) : Promise.resolve(null),
     workspace ? billing.account(workspace.slug, user) : Promise.resolve(null),
     workspace ? billing.usage(workspace.slug, user, monthStart) : Promise.resolve(null),
   ]);
   return {
     workspace,
-    repos: listed
-      .filter((repo) => !repo.forkOf)
-      .map(({ namespace, name, isPrivate }) => ({ namespace, name, isPrivate })),
+    // Projects are what the sidebar lists: what the workspace builds and runs.
+    repos: listed?.ok
+      ? listed.value.map((project) => ({
+          namespace: project.workspace,
+          name: project.slug,
+          title: project.name,
+          isPrivate: project.private,
+        }))
+      : [],
     repo:
       path && counts?.ok
         ? {

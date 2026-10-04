@@ -101,7 +101,7 @@ it moving again.
 
 ### What a repository can ask for
 
-Under a repository's **Settings** tab, a member of its workspace sets the
+Under a project's **Settings → Repository**, a member of its workspace sets the
 rules its pull requests follow:
 
 | Setting | Default | What it does |
@@ -133,7 +133,7 @@ same time can also ask each other questions and hand each other work. See
 
 A repository can land a g1t agent's pull request by itself once it is
 ready. A member of the workspace turns this on under the repository's
-**Settings** tab; it is off to begin with. The merge is recorded as made by
+**Settings → Repository**; it is off to begin with. The merge is recorded as made by
 `g1t`, the issue closes naming the pull request, and nothing short of
 ready is ever merged this way. One that is behind `main` is brought up to
 date as part of the merge. Pull requests from people and from other

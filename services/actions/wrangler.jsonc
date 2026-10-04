@@ -24,7 +24,9 @@
 		{ "binding": "WORK", "service": "g1t-work" },
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "RUNNER", "service": "g1t-runner" },
-		{ "binding": "EVENTS", "service": "g1t-events" }
+		{ "binding": "EVENTS", "service": "g1t-events" },
+		// A repository's secrets and variables belong to its project.
+		{ "binding": "PROJECTS", "service": "g1t-projects" }
 	],
 	// Every event on the bus: what starts workflows, and pushes that change them.
 	"queues": {

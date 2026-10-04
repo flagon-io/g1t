@@ -252,22 +252,31 @@ deployments or both read it. API: `{repo}/actions/secrets` and
 which cannot change secrets. Guide:
 https://docs.g1t.sh/guides/secrets-and-variables/
 
+## Projects
+
+A project is what a workspace builds and runs; every repository is a
+project of its own name (`g1t.sh/<owner>/<project>` opens its overview; its
+code is under `/code`; every repository address still works). Deployments,
+secrets and variables belong to the project; branches, pull requests,
+review and merge rules to its repository (Settings → Repository). Guide:
+https://docs.g1t.sh/guides/projects/
+
 ## Deployments
 
 A paid feature: an owner turns on the Deployments plan under the
 workspace's Billing ($5 a month: 10 apps, 1M requests, 3M CPU ms; builds
 and usage past that from credit at cost + 20%; never free). Then a member
-turns deployments on from the repository's Deployments page
-(`g1t.sh/<owner>/<repo>/deployments`; settings under
-`…/settings/deployments`). Builds and running apps read the secrets and
-variables available to Deployments, each key's Production or Preview row.
-Every pull request gets a preview at
-`https://pr-<n>--<repo>--<owner>.g1t.page`, shown on it as the check
-`g1t / deploy`; the default branch deploys to
-`https://<repo>--<owner>.g1t.page` on each push. Workers projects
-(`wrangler.jsonc`) and static sites build without configuration. Previews
-come down when the pull request closes and after idle days. There is no API
-for deployments yet. Guide: https://docs.g1t.sh/guides/deployments/
+turns deployments on for a project (Settings → Deployments, or Deploy on
+its overview). Production deploys from the default branch to
+`https://<project>-<owner>.g1t.page` on each push; every branch with an
+open pull request gets a preview at
+`https://<project>-git-<branch>-<owner>.g1t.page` (a fork's pull request is
+`pr-<n>`), shown on it as the check `g1t / deploy`. Builds and running apps
+read the project's secrets and variables available to Deployments, each
+key's Production or Preview row. Workers projects (`wrangler.jsonc`) and
+static sites build without configuration. Previews come down when the pull
+request closes and after idle days. There is no API for deployments yet.
+Guide: https://docs.g1t.sh/guides/deployments/
 
 ## Facts
 

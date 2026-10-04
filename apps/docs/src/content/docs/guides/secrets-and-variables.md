@@ -3,13 +3,14 @@ title: Secrets and variables
 description: One list of keys and values for workflows and deployments. Each row says which environments it applies to and who reads it.
 ---
 
-A repository and a workspace each have one list of secrets and variables.
+A [project](/guides/projects/) and a workspace each have one list of
+secrets and variables.
 Workflows and deployments both read from it; each row says whether one,
 the other or both do, and which environments it applies to.
 
 | Where | Page | Who changes it |
 | --- | --- | --- |
-| A repository | **Settings → Secrets and variables**, `g1t.sh/<workspace>/<repo>/settings/secrets` | Members |
+| A project | **Settings → Secrets and variables**, `g1t.sh/<workspace>/<project>/settings/secrets` | Members |
 | A workspace | **Settings → Secrets and variables**, `g1t.sh/<workspace>/-/secrets` | Owners |
 
 ## A row
@@ -22,7 +23,7 @@ the other or both do, and which environments it applies to.
 | **Note** | Optional: where to rotate it, or who to ask. |
 | **Environments** | **All environments**, or only some: **Production**, **Preview**, or any name a workflow job uses in `environment:`, such as `staging`. |
 | **Available to** | **Workflows**, **Deployments**, or both (the default). |
-| **Repositories** | A workspace's row only: every repository, or the ones you choose. |
+| **Projects** | A workspace's row only: every project, or the ones you choose. |
 
 ### A value per environment
 
@@ -58,8 +59,8 @@ For each key, a reader gets the row for its environment if there is one,
 else the row for all environments. A row only for other environments gives
 it nothing.
 
-A repository's row overrides its workspace's of the same key. The
-repository's list shows the workspace's rows that reach it, marked
+A project's row overrides its workspace's of the same key. The project's
+list shows the workspace's rows that reach it, marked
 **Workspace**, until it sets the key itself.
 
 A running app's rows are bound by g1t when it puts the app up; they never
@@ -121,7 +122,7 @@ A workspace's are under `/workspaces/{workspace}/actions/secrets` and
 | `id` | The row to change or remove, from a list. |
 | `available_to` | `["workflows"]`, `["deployments"]` or both. `availableTo` works too. |
 | `environments` | `["production"]`, `["preview", "staging"]`; `[]` for all. |
-| `repositories` | A workspace's row: repository names; `[]` for every one. |
+| `projects` | A workspace's row: project names; `[]` for every one. (`repositories` is read the same way.) |
 | `note` | Where to rotate it, or who to ask. |
 
 ```sh

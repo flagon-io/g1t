@@ -69,6 +69,14 @@ export default defineConfig({
 					],
 				},
 				{
+					label: 'Projects',
+					items: [
+						{ label: 'Projects', slug: 'guides/projects' },
+						{ label: 'Deployments', slug: 'guides/deployments' },
+						{ label: 'Secrets and variables', slug: 'guides/secrets-and-variables' },
+					],
+				},
+				{
 					label: 'Agents',
 					items: [
 						{ label: 'g1t agents', slug: 'guides/g1t-agents' },
@@ -84,14 +92,12 @@ export default defineConfig({
 						{ label: 'Model providers', slug: 'guides/models' },
 						{ label: 'Webhooks', slug: 'guides/webhooks' },
 						{ label: 'GitHub Actions', slug: 'guides/actions' },
-						{ label: 'Secrets and variables', slug: 'guides/secrets-and-variables' },
 					],
 				},
 				{
 					label: 'Landing changes',
 					items: [
 						{ label: 'The merge queue', slug: 'guides/merge-queue' },
-						{ label: 'Deployments', slug: 'guides/deployments' },
 						{ label: 'Sessions and why-blame', slug: 'guides/why-blame' },
 						{ label: 'Forks and branches', slug: 'concepts/forks' },
 					],

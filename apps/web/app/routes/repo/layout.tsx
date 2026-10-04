@@ -1,65 +1,93 @@
-import {
-  BookMarked,
-  CircleDot,
-  Code2,
-  GitPullRequest,
-  History,
-  ListTree,
-  Lock,
-  Settings,
-} from "lucide-react";
-import { Link, Outlet, useRouteLoaderData } from "react-router";
+import { Box, CircleDot, Code2, GitPullRequest, History, LayoutGrid, ListTree, Lock, Rocket, Settings } from "lucide-react";
+import { Link, Outlet, data, useRouteLoaderData } from "react-router";
+
+import type { Project } from "@g1t/contracts";
 
 import type { Route } from "./+types/layout";
 import { Pill, TabLink as Tab } from "../../components/ui";
-import { repos, work } from "../../lib/services.server";
+import { projects, repos, work } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `${params.owner}/${params.repo} · g1t` }];
+export function meta({ loaderData: loaded, params }: Route.MetaArgs) {
+  return [{ title: `${loaded?.project?.name ?? params.repo} · ${params.owner} · g1t` }];
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const path = { namespace: params.owner, name: params.repo };
-  const [repo, counts] = await Promise.all([
+  const [repo, counts, found] = await Promise.all([
     repos.get(path, viewer),
     work.counts(path, viewer),
+    projects.get(params.owner, params.repo, viewer),
   ]);
+  if (!repo.ok && !found.ok) throw data(null, { status: 404 });
+  let project: Project | null = found.ok ? found.value : null;
+  // A repository made a moment ago, before its project: make it now.
+  if (!project && repo.ok && !repo.value.forkOf) {
+    const own = await projects.byRepo(repo.value.id);
+    project = own.find((p) => p.slug === params.repo.toLowerCase()) ?? own[0] ?? null;
+  }
   return {
     repo: unwrap(repo),
+    project,
     open: counts.ok ? counts.value : { issues: 0, pulls: 0 },
     member: roleIn(viewer, params.owner) != null,
   };
 }
 
-export default function RepoLayout({ loaderData }: Route.ComponentProps) {
-  const { repo, open, member } = loaderData;
+/** The project the page is in, for the pages under it. */
+export function useProject() {
+  return useRouteLoaderData<typeof loader>("routes/repo/layout");
+}
+
+function Header({ project, isPrivate, namespace, name, description, large }: {
+  project: Project | null;
+  isPrivate: boolean;
+  namespace: string;
+  name: string;
+  description: string | null;
+  large?: boolean;
+}) {
+  const base = `/${namespace}/${name}`;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <span
+        className={`flex shrink-0 items-center justify-center rounded-md bg-raised text-muted ring-1 ring-line ${large ? "size-8" : "size-6"}`}
+      >
+        {isPrivate ? <Lock size={large ? 15 : 13} /> : <Box size={large ? 15 : 13} />}
+      </span>
+      <h1 className={large ? "text-lg" : "text-[0.9375rem]"}>
+        <Link to={`/${namespace}`} className="font-mono text-muted hover:text-fg">
+          {namespace}
+        </Link>
+        <span className="mx-1.5 text-faint">/</span>
+        <Link to={base} className="font-semibold hover:underline">
+          {project?.name ?? name}
+        </Link>
+      </h1>
+      <Pill>{isPrivate ? "private" : "public"}</Pill>
+      {description && <p className="min-w-0 truncate text-sm text-muted">{description}</p>}
+    </div>
+  );
+}
+
+export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
+  const { repo, project, open, member } = loaderData;
   const base = `/${repo.namespace}/${repo.name}`;
   const signedIn = useRouteLoaderData("root")?.user != null;
+  const description = project?.description ?? repo.description;
   if (signedIn) {
     return (
       <>
         <div className="border-b border-line">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 sm:px-6">
-            {repo.isPrivate ? (
-              <Lock size={15} className="text-faint" />
-            ) : (
-              <BookMarked size={15} className="text-faint" />
-            )}
-            <h1 className="font-mono text-[0.9375rem]">
-              <Link to={`/${repo.namespace}`} className="text-muted hover:text-fg">
-                {repo.namespace}
-              </Link>
-              <span className="mx-1 text-faint">/</span>
-              <Link to={base} className="font-semibold hover:underline">
-                {repo.name}
-              </Link>
-            </h1>
-            <Pill>{repo.isPrivate ? "private" : "public"}</Pill>
-            {repo.description && (
-              <p className="min-w-0 truncate text-sm text-muted">{repo.description}</p>
-            )}
+          <div className="mx-auto max-w-6xl px-4 py-3 sm:px-6">
+            <Header
+              project={project}
+              isPrivate={repo.isPrivate}
+              namespace={repo.namespace}
+              name={repo.name}
+              description={description}
+            />
           </div>
         </div>
         <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
@@ -70,42 +98,29 @@ export default function RepoLayout({ loaderData }: Route.ComponentProps) {
   }
   return (
     <>
-      {/* The repository's own header band, under the site header. */}
+      {/* The project's own header band, under the site header. */}
       <div className="border-b border-line bg-surface/60">
         <div className="mx-auto max-w-6xl px-4 pt-6">
-          <div className="flex flex-wrap items-center gap-2.5">
-            {repo.isPrivate ? (
-              <Lock size={17} className="text-faint" />
-            ) : (
-              <BookMarked size={17} className="text-faint" />
-            )}
-            <h1 className="font-mono text-lg">
-              <Link to={`/${repo.namespace}`} className="text-muted hover:text-fg">
-                {repo.namespace}
-              </Link>
-              <span className="mx-1 text-faint">/</span>
-              <Link to={base} className="font-semibold hover:underline">
-                {repo.name}
-              </Link>
-            </h1>
-            <Pill>{repo.isPrivate ? "private" : "public"}</Pill>
-          </div>
-          {repo.description && (
-            <p className="mt-2 max-w-2xl text-sm text-muted">{repo.description}</p>
-          )}
-          <nav className="mt-5 flex gap-6">
-            <Tab to={base} end icon={<Code2 size={15} />}>
+          <Header
+            project={project}
+            isPrivate={repo.isPrivate}
+            namespace={repo.namespace}
+            name={repo.name}
+            description={null}
+            large
+          />
+          {description && <p className="mt-2 max-w-2xl text-sm text-muted">{description}</p>}
+          <nav className="mt-5 flex gap-6 overflow-x-auto">
+            <Tab to={base} end icon={<LayoutGrid size={15} />}>
+              Overview
+            </Tab>
+            <Tab to={`${base}/code`} also={`${base}/tree`} icon={<Code2 size={15} />}>
               Code
             </Tab>
             <Tab to={`${base}/issues`} icon={<CircleDot size={15} />} count={open.issues}>
               Issues
             </Tab>
-            <Tab
-              to={`${base}/pulls`}
-              also={`${base}/pull`}
-              icon={<GitPullRequest size={15} />}
-              count={open.pulls}
-            >
+            <Tab to={`${base}/pulls`} also={`${base}/pull`} icon={<GitPullRequest size={15} />} count={open.pulls}>
               Pull requests
             </Tab>
             <Tab to={`${base}/commits`} icon={<History size={15} />}>
@@ -114,6 +129,11 @@ export default function RepoLayout({ loaderData }: Route.ComponentProps) {
             {member && (
               <Tab to={`${base}/plans`} icon={<ListTree size={15} />}>
                 Plan
+              </Tab>
+            )}
+            {member && (
+              <Tab to={`${base}/deployments`} icon={<Rocket size={15} />}>
+                Deployments
               </Tab>
             )}
             {member && (

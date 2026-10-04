@@ -12,7 +12,7 @@ A webhook belongs to one of two things:
 
 | | Sent the events of | Managed by | Where |
 | --- | --- | --- | --- |
-| A repository's | That repository | Members of its workspace | The repository's **Settings → Webhooks** |
+| A repository's | That repository | Members of its workspace | The project's **Settings → Webhooks** |
 | A workspace's | Every repository in the workspace | Owners | The workspace's **Settings → Webhooks** |
 
 ## Add one

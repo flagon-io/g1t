@@ -1,23 +1,26 @@
 import type { User, Viewer } from "./identity";
-import type { RepoPath } from "./repos";
 import type { Result } from "./result";
 
 /**
- * Deployments: every pull request gets a live preview on g1t.page, and the
- * default branch goes to production on each push. Apps run as Workers in a
- * Workers for Platforms namespace, so an app no one visits costs nothing.
- * A paid feature: the workspace turns it on with a monthly plan (see
- * `Feature` in `./billing`), and each repository then chooses for itself.
+ * Deployments: a project's production, deployed from its default branch on
+ * every push, and a live preview of every branch with an open pull request.
+ * Apps run as Workers in a Workers for Platforms namespace, so an app no
+ * one visits costs nothing. A paid feature: the workspace turns it on with
+ * a monthly plan (see `Feature` in `./billing`), and each project then
+ * chooses for itself.
  */
 
 /** The domain apps are served on. Never g1t.sh, so they share no cookies with it. */
 export const DEPLOYMENTS_DOMAIN = "g1t.page";
 
-/** A repository's deployment settings. */
+/** A project, as deployments name it. */
+export type ProjectRef = { workspace: string; slug: string };
+
+/** A project's deployment settings. */
 export type DeploySettings = {
-  /** Whether this repository deploys at all. Off until someone turns it on. */
+  /** Whether this project deploys at all. Off until someone turns it on. */
   enabled: boolean;
-  /** A preview for every open pull request. */
+  /** A preview for every branch with an open pull request. */
   previews: boolean;
   /** The default branch deployed to production on every push. */
   production: boolean;
@@ -46,7 +49,9 @@ export type DeployStatus =
 export type Deployment = {
   id: string;
   kind: DeployKind;
-  /** For a preview: the pull request. */
+  /** For a preview: the branch, or `pr-<n>` for a pull request from a fork. */
+  branch: string | null;
+  /** For a preview: its pull request. */
   number: number | null;
   commit: string;
   status: DeployStatus;
@@ -63,14 +68,25 @@ export type Deployment = {
   finishedAt: string | null;
 };
 
-/** An app that is up: production, or one pull request's preview. */
+/** An app that is up: production, or one branch's preview. */
 export type LiveApp = {
   kind: DeployKind;
+  branch: string | null;
   number: number | null;
   url: string;
   commit: string;
   /** RFC 3339: when it was last deployed. */
   deployedAt: string;
+};
+
+/** One project at a glance, for the workspace's page. */
+export type ProjectDeploys = {
+  slug: string;
+  enabled: boolean;
+  production: LiveApp | null;
+  previews: number;
+  /** The newest build, whatever its status. */
+  latest: Deployment | null;
 };
 
 /** What a workspace's apps used this month against its plan. */
@@ -91,17 +107,19 @@ export type DeployUsage = {
 
 export interface DeploymentsApi {
   /** Members of the workspace only. */
-  settings(repo: RepoPath, viewer: Viewer): Promise<Result<DeploySettings>>;
-  /** Members of the workspace only. Turning deployments on needs the plan. */
-  updateSettings(actor: User, repo: RepoPath, changes: Partial<DeploySettings>): Promise<Result<DeploySettings>>;
-  /** The newest deployments first, and what is up now. */
-  list(repo: RepoPath, viewer: Viewer): Promise<Result<{ deployments: Deployment[]; live: LiveApp[] }>>;
-  /** One deployment, with its build log. */
-  get(repo: RepoPath, id: string, viewer: Viewer): Promise<Result<Deployment & { log: string | null }>>;
-  /** Builds production, or a pull request's preview, again from its current head. */
-  redeploy(actor: User, repo: RepoPath, number: number | null): Promise<Result<Deployment>>;
-  /** Takes production, or a pull request's preview, down now. */
-  takeDown(actor: User, repo: RepoPath, number: number | null): Promise<Result<true>>;
+  settings(project: ProjectRef, viewer: Viewer): Promise<Result<DeploySettings>>;
+  /** Members only. Turning deployments on needs the workspace's plan. */
+  updateSettings(actor: User, project: ProjectRef, changes: Partial<DeploySettings>): Promise<Result<DeploySettings>>;
+  /** The newest builds first, and what is up now. Members only. */
+  list(project: ProjectRef, viewer: Viewer): Promise<Result<{ deployments: Deployment[]; live: LiveApp[] }>>;
+  /** One build, with its log. Members only. */
+  get(project: ProjectRef, id: string, viewer: Viewer): Promise<Result<Deployment & { log: string | null }>>;
+  /** Builds production (`branch` null), or a branch's preview, again from its head. */
+  redeploy(actor: User, project: ProjectRef, branch: string | null): Promise<Result<Deployment>>;
+  /** Takes production (`branch` null), or a branch's preview, down now. */
+  takeDown(actor: User, project: ProjectRef, branch: string | null): Promise<Result<true>>;
+  /** Every project of a workspace at a glance. Members only. */
+  overview(workspace: string, viewer: Viewer): Promise<Result<ProjectDeploys[]>>;
   /** What the workspace's apps used this month. Members only. */
   usage(workspace: string, viewer: Viewer): Promise<Result<DeployUsage>>;
 }

@@ -140,6 +140,14 @@ export class Cloudflare {
     await this.call("PUT", this.scriptPath(script), form);
   }
 
+  /** Every app in the namespace, with when it was last changed. */
+  async listScripts(): Promise<{ id: string; modified_on: string }[]> {
+    return this.call<{ id: string; modified_on: string }[]>(
+      "GET",
+      `/accounts/${this.account}/workers/dispatch/namespaces/${this.namespace}/scripts`,
+    );
+  }
+
   /** Takes an app down. Already gone is fine. */
   async deleteScript(script: string): Promise<void> {
     try {

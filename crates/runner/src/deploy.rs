@@ -22,7 +22,9 @@
 //!
 //! - `G1T_API`, `DEPLOY_ID`, `DEPLOY_TOKEN`: where and how to report.
 //! - `GIT_REMOTE`, `GIT_COMMIT`, `G1T_USER`, `G1T_TOKEN`: what to check out.
-//! - `BUILD_COMMAND`, `OUTPUT_DIR`: the repository's own choices, if any.
+//! - `ROOT_DIR`: where in the repository the project lives; empty for all
+//!   of it. Everything below is relative to it.
+//! - `BUILD_COMMAND`, `OUTPUT_DIR`: the project's own choices, if any.
 //! - `BUILD_ENV`, `BUILD_SECRETS`: JSON objects of the repository's
 //!   variables and secrets for deploy builds. Both are set for the build;
 //!   secrets' values are redacted from its log.
@@ -104,7 +106,7 @@ impl Log {
 /// Runs a command in the checkout, logging it; fails if it fails.
 fn step(log: &mut Log, command: &str, secrets: &[String]) -> Result<()> {
     log.line(&format!("$ {command}"));
-    let result = run_command(command, Path::new(WORKDIR), secrets);
+    let result = run_command(command, &project_dir(), secrets);
     if !result.output_text().is_empty() {
         log.line(result.output_text());
     }
@@ -433,7 +435,8 @@ struct Built {
 }
 
 fn build(log: &mut Log, secrets: &[String]) -> Result<Built> {
-    let dir = Path::new(WORKDIR);
+    let project = project_dir();
+    let dir = project.as_path();
     let config = read_wrangler(dir)?;
     let custom_build = std::env::var("BUILD_COMMAND").ok().filter(|c| !c.trim().is_empty());
     if let Some(install) = install_command(dir) {
@@ -519,6 +522,17 @@ fn build(log: &mut Log, secrets: &[String]) -> Result<Built> {
     }
 }
 
+/// Where the project lives in the checkout: its root directory.
+fn project_dir() -> PathBuf {
+    let root = std::env::var("ROOT_DIR").unwrap_or_default();
+    let root = root.trim_matches('/');
+    if root.is_empty() || root.split('/').any(|part| part == "..") {
+        PathBuf::from(WORKDIR)
+    } else {
+        Path::new(WORKDIR).join(root)
+    }
+}
+
 fn check_out(secrets: &[String]) -> Result<()> {
     let remote = env("GIT_REMOTE")?;
     let commit = env("GIT_COMMIT")?;
@@ -557,7 +571,7 @@ fn deploy(reporter: &Reporter, log: &mut Log, secrets: &[String]) -> Result<Valu
         "warnings": built.warnings,
     });
     if let Some(dir) = &built.assets_dir {
-        let skip_project = dir == Path::new(WORKDIR);
+        let skip_project = *dir == project_dir();
         let mut assets = Vec::new();
         collect(dir, dir, skip_project, &mut assets)?;
         if assets.is_empty() {

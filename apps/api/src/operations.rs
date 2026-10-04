@@ -999,10 +999,10 @@ impl Op {
                         "items": { "type": "string" },
                         "description": "The environments it applies to, such as production and preview, or a workflow job's environment. Empty is every environment."
                     },
-                    "repositories": {
+                    "projects": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "A workspace's row: the repositories it reaches, by name. Empty is every one."
+                        "description": "A workspace's row: the projects it reaches, by slug. Empty is every one."
                     },
                     "note": { "type": "string", "description": "Where to rotate it, or who to ask." },
                 })),
@@ -1736,7 +1736,7 @@ impl Op {
                 }
                 // Request bodies arrive in snake_case; the actions service
                 // takes `availableTo`.
-                for (key, to) in [("available_to", "availableTo"), ("environments", "environments"), ("repositories", "repositories")] {
+                for (key, to) in [("available_to", "availableTo"), ("environments", "environments"), ("repositories", "projects"), ("projects", "projects")] {
                     if let Some(list) = strings(input, key) {
                         args[to] = json!(list);
                     }

@@ -15,8 +15,10 @@ import {
   History,
   Fingerprint,
   KeyRound,
+  Box,
   Layers,
   LayoutDashboard,
+  LayoutGrid,
   ListTree,
   Lock,
   LogOut,
@@ -52,9 +54,9 @@ import {
 export type ShellData = {
   /** The workspace the sidebar is about: the one being looked at, or their first. */
   workspace: { slug: string; role: "owner" | "member" } | null;
-  /** Its repositories, newest first. */
-  repos: { namespace: string; name: string; isPrivate: boolean }[];
-  /** The repository being looked at, if any, whoever owns it. */
+  /** Its projects, by name: `name` is the slug in their address. */
+  repos: { namespace: string; name: string; title?: string; isPrivate: boolean }[];
+  /** The project being looked at, if any, whoever owns it. */
   repo: {
     namespace: string;
     name: string;
@@ -83,8 +85,8 @@ function SidebarLink({
   icon: ReactNode;
   end?: boolean;
   count?: number;
-  /** Another path prefix under which this link is the current one. */
-  also?: string;
+  /** Other path prefixes under which this link is the current one. */
+  also?: string | string[];
   children: ReactNode;
 }) {
   const { pathname } = useLocation();
@@ -94,7 +96,8 @@ function SidebarLink({
       end={end}
       prefetch="intent"
       className={({ isActive, isPending }) => {
-        const current = isActive || (also != null && pathname.startsWith(also + "/"));
+        const current =
+          isActive || [also ?? []].flat().some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"));
         return `group flex h-8 items-center gap-2.5 rounded-md px-2 text-[0.8125rem] transition-colors ${
           current
             ? "bg-raised font-medium text-fg"
@@ -334,9 +337,9 @@ function sameRepo(a: { namespace: string; name: string } | null, b: { namespace:
 }
 
 /**
- * A repository's own menu, which the sidebar slides to while you are in
- * it, as it does for settings: everything about the repository and nothing
- * else, with the way back to everything.
+ * A project's own menu, which the sidebar slides to while you are in it,
+ * as it does for settings: everything about the project, running and its
+ * code, and nothing else, with the way back to everything.
  */
 function RepoMenu({ repo, isPrivate, open }: { repo: MenuRepo; isPrivate: boolean; open: boolean }) {
   const base = `/${repo.namespace}/${repo.name}`;
@@ -354,15 +357,25 @@ function RepoMenu({ repo, isPrivate, open }: { repo: MenuRepo; isPrivate: boolea
         className="mt-3 flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-raised/60"
       >
         <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-raised text-muted ring-1 ring-line">
-          {isPrivate ? <Lock size={13} /> : <BookMarked size={13} />}
+          {isPrivate ? <Lock size={13} /> : <Box size={13} />}
         </span>
         <span className="min-w-0 truncate font-mono text-[0.8125rem]">
           <span className="text-faint">{repo.namespace}/</span>
           <span className="font-semibold text-fg">{repo.name}</span>
         </span>
       </Link>
+      <div className="mt-3 space-y-px">
+        <SidebarLink to={base} end icon={<LayoutGrid size={15} />}>
+          Overview
+        </SidebarLink>
+        {repo.member && (
+          <SidebarLink to={`${base}/deployments`} icon={<Rocket size={15} />}>
+            Deployments
+          </SidebarLink>
+        )}
+      </div>
       <SidebarGroup title="Code">
-        <SidebarLink to={base} end icon={<Code2 size={15} />} also={`${base}/tree`}>
+        <SidebarLink to={`${base}/code`} icon={<Code2 size={15} />} also={[`${base}/tree`, `${base}/blob`]}>
           Code
         </SidebarLink>
         <SidebarLink to={`${base}/commits`} also={`${base}/commit`} icon={<History size={15} />}>
@@ -389,14 +402,9 @@ function RepoMenu({ repo, isPrivate, open }: { repo: MenuRepo; isPrivate: boolea
         <SidebarLink to={`${base}/actions`} icon={<PlayCircle size={15} />}>
           Actions
         </SidebarLink>
-        {repo.member && (
-          <SidebarLink to={`${base}/deployments`} icon={<Rocket size={15} />}>
-            Deployments
-          </SidebarLink>
-        )}
       </SidebarGroup>
       {repo.member && (
-        <SidebarGroup title="Repository">
+        <SidebarGroup title="Project">
           <SidebarLink to={`${base}/settings`} icon={<Settings size={15} />}>
             Settings
           </SidebarLink>
@@ -528,12 +536,12 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
         </div>
 
         <SidebarGroup
-          title="Repositories"
+          title="Projects"
           action={
             ws && (
               <Link
                 to={`/new?workspace=${ws.slug}`}
-                aria-label="New repository"
+                aria-label="New project"
                 className="rounded p-0.5 text-faint hover:bg-raised hover:text-fg"
               >
                 <Plus size={13} />
@@ -550,13 +558,13 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
               <div key={base}>
                 <SidebarLink
                   to={base}
-                  icon={repo.isPrivate ? <Lock size={15} /> : <BookMarked size={15} />}
+                  icon={repo.isPrivate ? <Lock size={15} /> : <Box size={15} />}
                 >
-                  <span className="font-mono text-[0.8125rem]">
+                  <span className="text-[0.8125rem]">
                     {repo.namespace !== ws?.slug && (
-                      <span className="text-faint">{repo.namespace}/</span>
+                      <span className="font-mono text-faint">{repo.namespace}/</span>
                     )}
-                    {repo.name}
+                    {"title" in repo && repo.title ? repo.title : repo.name}
                   </span>
                 </SidebarLink>
               </div>
@@ -615,6 +623,8 @@ const SECTIONS: Record<string, string> = {
   plans: "Plan",
   actions: "Actions",
   deployments: "Deployments",
+  repository: "Repository",
+  code: "Code",
   secrets: "Secrets and variables",
   settings: "Settings",
   people: "Members",
@@ -690,7 +700,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
   const commands: Command[] = [
     { label: "Mission control", to: "/", icon: <LayoutDashboard size={15} /> },
     { label: "Explore repositories", to: "/explore", icon: <Compass size={15} /> },
-    { label: "New repository", to: "/new", icon: <Plus size={15} /> },
+    { label: "New project", to: "/new", icon: <Plus size={15} /> },
     { label: "New workspace", to: "/workspaces/new", icon: <Plus size={15} /> },
     { label: "Your settings", to: "/settings", icon: <Settings size={15} /> },
   ];
@@ -699,6 +709,8 @@ function commandsFor(user: User, shell: ShellData): Command[] {
     const base = `/${repo.namespace}/${repo.name}`;
     const name = `${repo.namespace}/${repo.name}`;
     commands.unshift(
+      { label: "Overview", hint: name, to: base, icon: <LayoutGrid size={15} /> },
+      { label: "Code", hint: name, to: `${base}/code`, icon: <Code2 size={15} /> },
       { label: "Issues", hint: name, to: `${base}/issues`, icon: <CircleDot size={15} /> },
       { label: "New issue", hint: name, to: `${base}/issues/new`, icon: <Plus size={15} /> },
       { label: "Pull requests", hint: name, to: `${base}/pulls`, icon: <GitPullRequest size={15} /> },
@@ -706,7 +718,10 @@ function commandsFor(user: User, shell: ShellData): Command[] {
       ...(repo.member
         ? [
             { label: "Plan work", hint: name, to: `${base}/plans`, icon: <ListTree size={15} /> },
-            { label: "Repository settings", hint: name, to: `${base}/settings`, icon: <Settings size={15} /> },
+            { label: "Deployments", hint: name, to: `${base}/deployments`, icon: <Rocket size={15} /> },
+            { label: "Secrets and variables", hint: name, to: `${base}/settings/secrets`, icon: <Lock size={15} /> },
+            { label: "Project settings", hint: name, to: `${base}/settings`, icon: <Settings size={15} /> },
+            { label: "Repository settings", hint: name, to: `${base}/settings/repository`, icon: <Settings size={15} /> },
           ]
         : []),
     );
@@ -715,17 +730,17 @@ function commandsFor(user: User, shell: ShellData): Command[] {
     commands.push(
       { label: membership.slug, hint: "Workspace", to: `/${membership.slug}`, icon: <Avatar name={membership.slug} size={15} square /> },
       { label: "Usage", hint: membership.slug, to: `/${membership.slug}/-/usage`, icon: <BarChart3 size={15} /> },
-      { label: "Billing", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/billing`, icon: <CreditCard size={15} /> },
+      { label: "Billing and plans", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/billing`, icon: <CreditCard size={15} /> },
       { label: "Access tokens", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/tokens`, icon: <KeyRound size={15} /> },
       { label: "Integrations", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/integrations`, icon: <Plug size={15} /> },
     );
   }
   for (const listed of shell.repos) {
     commands.push({
-      label: `${listed.namespace}/${listed.name}`,
-      hint: "Repository",
+      label: listed.title ?? listed.name,
+      hint: `${listed.namespace} · Project`,
       to: `/${listed.namespace}/${listed.name}`,
-      icon: <BookMarked size={15} />,
+      icon: <Box size={15} />,
     });
   }
   return commands;
@@ -979,8 +994,8 @@ export function AppShell({
                 )}
                 <DropdownMenuItem asChild>
                   <Link to="/new">
-                    <BookMarked />
-                    New repository
+                    <Box />
+                    New project
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>

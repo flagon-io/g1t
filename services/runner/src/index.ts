@@ -122,6 +122,8 @@ type DeployJob = {
   /** The repository the commit is in: the pull request's fork, or the repository. */
   source: RepoPath;
   commit: string;
+  /** Where in the repository the project lives; empty for all of it. */
+  rootDir?: string;
   buildCommand?: string | null;
   outputDir?: string | null;
   /** The repository's variables for deploy builds. */
@@ -698,6 +700,7 @@ export default class RunnerService
           G1T_TOKEN: token,
           GIT_REMOTE: `https://g1t.sh/${job.source.namespace}/${job.source.name}.git`,
           GIT_COMMIT: job.commit,
+          ROOT_DIR: job.rootDir ?? "",
           BUILD_COMMAND: job.buildCommand ?? "",
           OUTPUT_DIR: job.outputDir ?? "",
           BUILD_ENV: JSON.stringify(job.buildEnv ?? {}),

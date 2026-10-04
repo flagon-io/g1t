@@ -16,7 +16,7 @@ turn the queue off to merge directly.
 
 ## Turn it on
 
-1. Open the repository's **Settings** tab. You need to be a member of its
+1. Open the project's **Settings → Repository**. You need to be a member of its
    workspace.
 2. Turn on **Merge through a queue**.
 3. Save.
