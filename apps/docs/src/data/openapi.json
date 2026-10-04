@@ -7856,7 +7856,7 @@
                       "workflows"
                     ],
                     "environments": [],
-                    "repositories": [],
+                    "projects": [],
                     "note": null,
                     "updatedBy": "syntaqx"
                   },
@@ -7865,7 +7865,7 @@
                     "name": "STRIPE_KEY",
                     "kind": "secret",
                     "value": null,
-                    "scope": "repository",
+                    "scope": "project",
                     "updatedAt": "2026-10-04T15:42:07.318Z",
                     "availableTo": [
                       "workflows",
@@ -7874,7 +7874,7 @@
                     "environments": [
                       "production"
                     ],
-                    "repositories": [],
+                    "projects": [],
                     "note": "Rotate in the Stripe dashboard.",
                     "updatedBy": "syntaqx"
                   }
@@ -7979,7 +7979,7 @@
                   "name": "STRIPE_KEY",
                   "kind": "secret",
                   "value": null,
-                  "scope": "repository",
+                  "scope": "project",
                   "updatedAt": "2026-10-04T15:42:07.318Z",
                   "availableTo": [
                     "workflows",
@@ -7988,7 +7988,7 @@
                   "environments": [
                     "production"
                   ],
-                  "repositories": [],
+                  "projects": [],
                   "note": null,
                   "updatedBy": "syntaqx"
                 }
@@ -8079,12 +8079,12 @@
                     },
                     "description": "The environments it applies to, such as production and preview, or a workflow job's environment. Empty is every environment."
                   },
-                  "repositories": {
+                  "projects": {
                     "type": "array",
                     "items": {
                       "type": "string"
                     },
-                    "description": "A workspace's row: the repositories it reaches, by name. Empty is every one."
+                    "description": "A workspace's row: the projects it reaches, by slug. Empty is every one."
                   },
                   "note": {
                     "type": "string",
@@ -8287,14 +8287,14 @@
                     "name": "NODE_VERSION",
                     "kind": "variable",
                     "value": "20",
-                    "scope": "repository",
+                    "scope": "project",
                     "updatedAt": "2026-10-04T15:42:07.318Z",
                     "availableTo": [
                       "workflows",
                       "deployments"
                     ],
                     "environments": [],
-                    "repositories": [],
+                    "projects": [],
                     "note": null,
                     "updatedBy": "syntaqx"
                   }
@@ -8388,14 +8388,14 @@
                   "name": "NODE_VERSION",
                   "kind": "variable",
                   "value": "20",
-                  "scope": "repository",
+                  "scope": "project",
                   "updatedAt": "2026-10-04T15:42:07.318Z",
                   "availableTo": [
                     "workflows",
                     "deployments"
                   ],
                   "environments": [],
-                  "repositories": [],
+                  "projects": [],
                   "note": null,
                   "updatedBy": "syntaqx"
                 }
@@ -8490,12 +8490,12 @@
                     },
                     "description": "The environments it applies to, such as production and preview, or a workflow job's environment. Empty is every environment."
                   },
-                  "repositories": {
+                  "projects": {
                     "type": "array",
                     "items": {
                       "type": "string"
                     },
-                    "description": "A workspace's row: the repositories it reaches, by name. Empty is every one."
+                    "description": "A workspace's row: the projects it reaches, by slug. Empty is every one."
                   },
                   "note": {
                     "type": "string",
@@ -8573,14 +8573,14 @@
                   "name": "NODE_VERSION",
                   "kind": "variable",
                   "value": "22",
-                  "scope": "repository",
+                  "scope": "project",
                   "updatedAt": "2026-10-04T15:42:07.318Z",
                   "availableTo": [
                     "workflows",
                     "deployments"
                   ],
                   "environments": [],
-                  "repositories": [],
+                  "projects": [],
                   "note": null,
                   "updatedBy": "syntaqx"
                 }
@@ -8671,12 +8671,12 @@
                     },
                     "description": "The environments it applies to, such as production and preview, or a workflow job's environment. Empty is every environment."
                   },
-                  "repositories": {
+                  "projects": {
                     "type": "array",
                     "items": {
                       "type": "string"
                     },
-                    "description": "A workspace's row: the repositories it reaches, by name. Empty is every one."
+                    "description": "A workspace's row: the projects it reaches, by slug. Empty is every one."
                   },
                   "note": {
                     "type": "string",
@@ -8869,7 +8869,7 @@
                       "workflows"
                     ],
                     "environments": [],
-                    "repositories": [],
+                    "projects": [],
                     "note": null,
                     "updatedBy": "syntaqx"
                   }
@@ -8974,7 +8974,7 @@
                     "workflows"
                   ],
                   "environments": [],
-                  "repositories": [
+                  "projects": [
                     "hello"
                   ],
                   "note": null,
@@ -9067,12 +9067,12 @@
                     },
                     "description": "The environments it applies to, such as production and preview, or a workflow job's environment. Empty is every environment."
                   },
-                  "repositories": {
+                  "projects": {
                     "type": "array",
                     "items": {
                       "type": "string"
                     },
-                    "description": "A workspace's row: the repositories it reaches, by name. Empty is every one."
+                    "description": "A workspace's row: the projects it reaches, by slug. Empty is every one."
                   },
                   "note": {
                     "type": "string",
@@ -9082,7 +9082,7 @@
               },
               "example": {
                 "value": "npm_…",
-                "repositories": [
+                "projects": [
                   "hello"
                 ]
               }
@@ -9254,7 +9254,7 @@
                       "deployments"
                     ],
                     "environments": [],
-                    "repositories": [],
+                    "projects": [],
                     "note": null,
                     "updatedBy": "syntaqx"
                   }
@@ -9349,7 +9349,7 @@
                     "deployments"
                   ],
                   "environments": [],
-                  "repositories": [],
+                  "projects": [],
                   "note": null,
                   "updatedBy": "syntaqx"
                 }
@@ -9444,12 +9444,12 @@
                     },
                     "description": "The environments it applies to, such as production and preview, or a workflow job's environment. Empty is every environment."
                   },
-                  "repositories": {
+                  "projects": {
                     "type": "array",
                     "items": {
                       "type": "string"
                     },
-                    "description": "A workspace's row: the repositories it reaches, by name. Empty is every one."
+                    "description": "A workspace's row: the projects it reaches, by slug. Empty is every one."
                   },
                   "note": {
                     "type": "string",
@@ -9524,7 +9524,7 @@
                     "deployments"
                   ],
                   "environments": [],
-                  "repositories": [],
+                  "projects": [],
                   "note": null,
                   "updatedBy": "syntaqx"
                 }
@@ -9615,12 +9615,12 @@
                     },
                     "description": "The environments it applies to, such as production and preview, or a workflow job's environment. Empty is every environment."
                   },
-                  "repositories": {
+                  "projects": {
                     "type": "array",
                     "items": {
                       "type": "string"
                     },
-                    "description": "A workspace's row: the repositories it reaches, by name. Empty is every one."
+                    "description": "A workspace's row: the projects it reaches, by slug. Empty is every one."
                   },
                   "note": {
                     "type": "string",
