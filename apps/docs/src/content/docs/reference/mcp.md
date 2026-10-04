@@ -146,12 +146,12 @@ See [GitHub Actions](/guides/actions/). Workflows are GitHub's, kept in `.g1t/wo
 | `cancel_workflow_run` | `repo`, `id` | Cancel a run. Members only. | `POST /repos/{owner}/{name}/actions/runs/{id}/cancel` |
 | `rerun_workflow_run` | `repo`, `id` | Run it again; `failed_only` for the jobs that did not succeed. Members only. | `POST /repos/{owner}/{name}/actions/runs/{id}/rerun` |
 | `update_workflow` | `repo`, `workflow`, `enabled` | Turn a workflow on or off. Members only. | `PATCH /repos/{owner}/{name}/actions/workflows/{workflow}` |
-| `list_actions_secrets` | `repo` or `workspace` | Secret names, never values. | `GET /repos/{owner}/{name}/actions/secrets` |
-| `set_actions_secret` | `setting`, `value` | Add or replace a secret. | `PUT /repos/{owner}/{name}/actions/secrets/{name}` |
-| `delete_actions_secret` | `setting` | Remove a secret. | `DELETE /repos/{owner}/{name}/actions/secrets/{name}` |
-| `list_actions_variables` | `repo` or `workspace` | Variables with their values. | `GET /repos/{owner}/{name}/actions/variables` |
-| `set_actions_variable` | `setting`, `value` | Add or replace a variable. | `POST /repos/{owner}/{name}/actions/variables` |
-| `delete_actions_variable` | `setting` | Remove a variable. | `DELETE /repos/{owner}/{name}/actions/variables/{name}` |
+| `list_actions_secrets` | `repo` or `workspace` | Secrets' rows: key, environments, who reads them. Never values. | `GET /repos/{owner}/{name}/actions/secrets`, `GET /workspaces/{workspace}/actions/secrets` |
+| `set_actions_secret` | `setting` | Add or change a secret's row: `value`, and optionally `id`, `environments`, `availableTo`, `repositories`, `note`. | `PUT …/actions/secrets/{name}` |
+| `delete_actions_secret` | `setting` | Remove one row (`id`) or every row of the key. | `DELETE …/actions/secrets/{name}` |
+| `list_actions_variables` | `repo` or `workspace` | Config rows with their values. | `GET …/actions/variables` |
+| `set_actions_variable` | `setting` | Add or change a config row, as for secrets. | `POST …/actions/variables`, `PATCH …/variables/{name}` |
+| `delete_actions_variable` | `setting` | Remove one row (`id`) or every row of the key. | `DELETE …/actions/variables/{name}` |
 
 ## Messages
 

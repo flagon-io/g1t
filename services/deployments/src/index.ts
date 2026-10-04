@@ -53,6 +53,8 @@ type Env = {
   IDENTITY: ServiceBinding;
   BILLING: ServiceBinding;
   RUNNER: ServiceBinding;
+  /** Secrets and variables: the actions service holds the one store. */
+  ACTIONS: ServiceBinding;
   /** Secret: scoped to Workers scripts and analytics on g1t's account. */
   CLOUDFLARE_API_TOKEN?: string;
   CLOUDFLARE_ACCOUNT_ID: string;
@@ -63,7 +65,6 @@ type Env = {
 /** A build that has not reported in this long has died. */
 const BUILD_TIMEOUT_MS = 45 * 60 * 1000;
 const LIST_LIMIT = 50;
-const MAX_ENV_VARS = 50;
 const STATUS_CONTEXT = "g1t / deploy";
 
 const now = () => new Date().toISOString();
@@ -91,7 +92,6 @@ type SettingsRow = {
   production: number;
   build_command: string | null;
   output_dir: string | null;
-  build_env: string;
   idle_days: number;
 };
 
@@ -109,6 +109,7 @@ type DeploymentRow = {
   warnings: string;
   log: string | null;
   token_hash: string | null;
+  trusted: number;
   build_seconds: number | null;
   created_by: string;
   created_at: string;
@@ -179,6 +180,42 @@ class Deployments {
     return response.ok ? ((await response.json()) as RepoPath | null) : null;
   }
 
+  /**
+   * What the repository's secrets and variables available to deployments
+   * give production or a preview: its build's environment, and the same
+   * again as the running app's bindings. Untrusted builds get no secrets.
+   */
+  private async resolve(
+    repoId: string,
+    repo: RepoPath,
+    environment: DeployKind,
+    trusted: boolean,
+  ): Promise<{ secrets: Record<string, string>; variables: Record<string, string> }> {
+    const response = await this.env.ACTIONS.fetch("https://actions/rpc/resolve_settings", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ repoId, repo, consumer: "deployments", environment, trusted }),
+    });
+    if (!response.ok) throw new Error(`Secrets and variables could not be read (${response.status}).`);
+    const resolved = (await response.json()) as { secrets: Record<string, string>; variables: Record<string, string> };
+    return { secrets: trusted ? resolved.secrets : {}, variables: resolved.variables };
+  }
+
+  /**
+   * Whether a pull request's author is trusted with the repository's
+   * secrets: g1t's agent, or a member of the workspace. Someone from
+   * outside gets a preview built without them, as their workflows run.
+   */
+  private async insider(repo: RepoPath, author: User, actor: User): Promise<boolean> {
+    if (author.kind === "agent" || author.username === "g1t-agent") return true;
+    // On a private repository only members can open one at all.
+    const found = await reposClient(this.env.REPOS).get(repo, actor);
+    if (found.ok && found.value.isPrivate) return true;
+    if (author.workspaces?.some((m) => m.slug === repo.namespace.toLowerCase())) return true;
+    const members = await identityClient(this.env.IDENTITY).listMembers(repo.namespace, actor);
+    return members.ok && members.value.some((m) => m.username.toLowerCase() === author.username.toLowerCase());
+  }
+
   private async settingsRow(repoId: string): Promise<SettingsRow | null> {
     return this.db.prepare("SELECT * FROM settings WHERE repo_id = ?").bind(repoId).first<SettingsRow>();
   }
@@ -190,7 +227,6 @@ class Deployments {
       production: row ? !!row.production : true,
       buildCommand: row?.build_command ?? null,
       outputDir: row?.output_dir ?? null,
-      buildEnv: JSON.parse(row?.build_env ?? "{}") as Record<string, string>,
       idleDays: row?.idle_days ?? 7,
       productionUrl: appUrl(await scriptName(repo, null)),
     };
@@ -227,20 +263,15 @@ class Deployments {
       const plan = await billingClient(this.env.BILLING).hasFeature(a.repo.namespace, "deployments");
       if (!plan.ok) return plan;
     }
-    const env = Object.entries(next.buildEnv ?? {});
-    if (env.length > MAX_ENV_VARS) return fail("invalid", `At most ${MAX_ENV_VARS} build variables.`);
-    if (env.some(([name]) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name))) {
-      return fail("invalid", "A variable's name is letters, digits and underscores, not starting with a digit.");
-    }
     const idleDays = Math.min(90, Math.max(1, Math.trunc(Number(next.idleDays) || 7)));
     const clip = (text: string | null | undefined) => (text?.trim() ? text.trim().slice(0, 500) : null);
     await this.db
       .prepare(
         `INSERT INTO settings (repo_id, namespace, name, enabled, previews, production, build_command, output_dir,
-           build_env, idle_days, updated_by, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+           idle_days, updated_by, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
          ON CONFLICT (repo_id) DO UPDATE SET namespace = ?2, name = ?3, enabled = ?4, previews = ?5, production = ?6,
-           build_command = ?7, output_dir = ?8, build_env = ?9, idle_days = ?10, updated_by = ?11, updated_at = ?12`,
+           build_command = ?7, output_dir = ?8, idle_days = ?9, updated_by = ?10, updated_at = ?11`,
       )
       .bind(
         repo.value.id,
@@ -251,7 +282,6 @@ class Deployments {
         next.production ? 1 : 0,
         clip(next.buildCommand),
         clip(next.outputDir),
-        JSON.stringify(Object.fromEntries(env.map(([k, v]) => [k, String(v).slice(0, 2000)]))),
         idleDays,
         a.actor.username,
         now(),
@@ -371,6 +401,8 @@ class Deployments {
     reader: User;
     createdBy: string;
     settings: SettingsRow;
+    /** A push, or work by a member or an agent; see `trusted`. */
+    trusted: boolean;
   }): Promise<Result<Deployment>> {
     const script = await scriptName(input.repo, input.number);
     const id = newId("dpl");
@@ -385,8 +417,8 @@ class Deployments {
     await this.db
       .prepare(
         `INSERT INTO deployments (id, repo_id, namespace, name, kind, number, commit_sha, script, status, error,
-           token_hash, created_by, created_at, finished_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           token_hash, trusted, created_by, created_at, finished_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -400,6 +432,7 @@ class Deployments {
         refused ? "skipped" : "queued",
         refused,
         refused ? null : await sha256(token),
+        input.trusted ? 1 : 0,
         input.createdBy,
         now(),
         refused ? now() : null,
@@ -415,7 +448,8 @@ class Deployments {
       .bind(now(), script, id)
       .run();
     await this.status(input.repoId, input.commit, "pending", "Building", `${this.env.SITE}/${input.repo.namespace}/${input.repo.name}/deployments/${id}`);
-    const env = JSON.parse(input.settings.build_env || "{}") as Record<string, string>;
+    // What the repository's secrets and variables give builds of this kind.
+    const build = await this.resolve(input.repoId, input.repo, input.kind, input.trusted);
     const response = await this.env.RUNNER.fetch("https://runner/rpc/start_deploy", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -427,7 +461,8 @@ class Deployments {
         commit: input.commit,
         buildCommand: input.settings.build_command,
         outputDir: input.settings.output_dir,
-        buildEnv: env,
+        buildEnv: build.variables,
+        buildSecrets: build.secrets,
       }),
     });
     const started = response.ok ? ((await response.json()) as Result<true>) : fail("conflict", `The runner answered ${response.status}.`);
@@ -462,6 +497,8 @@ class Deployments {
       reader: actor,
       createdBy,
       settings,
+      // The default branch only moves by people and agents with access.
+      trusted: true,
     });
   }
 
@@ -502,6 +539,7 @@ class Deployments {
       reader: pull.author,
       createdBy,
       settings,
+      trusted: await this.insider(repo, pull.author, actor),
     });
   }
 
@@ -541,11 +579,15 @@ class Deployments {
         const worker = (body.worker ?? {}) as BuiltWorker;
         const seconds = Number(body.buildSeconds) || 0;
         try {
+          // Running apps' secrets and variables are bound here, by g1t:
+          // they never pass through the build's sandbox.
+          const runtime = await this.resolve(row.repo_id, { namespace: row.namespace, name: row.name }, row.kind, !!row.trusted);
           await cloudflare.putScript(
             row.script,
             worker,
             typeof body.completionJwt === "string" ? body.completionJwt : null,
             [`workspace:${row.namespace}`, `repo:${row.namespace}/${row.name}`, row.kind],
+            runtime,
           );
         } catch (error) {
           await this.finishFailed(id, `Cloudflare did not take the app: ${String(error).replace(/^Error: /, "")}`, String(body.log ?? ""), seconds);

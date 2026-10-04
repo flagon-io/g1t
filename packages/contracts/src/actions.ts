@@ -96,16 +96,52 @@ export type RunDetail = { run: WorkflowRun; jobs: Job[]; notes: WorkflowNote[] }
 export type LogChunk = { seq: number; step: number; text: string };
 export type JobLog = { chunks: LogChunk[]; done: boolean };
 
+/**
+ * Who may read a secret or variable: `workflows` (`secrets.*`, `vars.*` in
+ * GitHub Actions) and `deployments` (a deploy build's environment and the
+ * running app's bindings). Agents, checks and the merge queue never read
+ * any.
+ */
+export type SettingReader = "workflows" | "deployments";
+
+/**
+ * One row of secrets and variables, as Vercel lists environment variables:
+ * a key, its type, the environments it applies to and who reads it. A key
+ * may have one row per environment. Secrets' values are never returned.
+ */
 export type Setting = {
+  id: string;
   name: string;
-  /** Variables only. */
+  /** `variable` is shown as Config. Config may become a secret, never back. */
+  kind: SettingKind;
+  /** A variable's value. */
   value: string | null;
   scope: "repository" | "workspace";
   updatedAt: string;
+  availableTo: SettingReader[];
+  /** The environments it applies to; empty is every environment. */
+  environments: string[];
+  /** A workspace's row: the repositories it reaches; empty is every one. */
+  repositories: string[];
+  /** Where to rotate it, or who to ask. */
+  note: string | null;
+  updatedBy: string | null;
+};
+
+/** What saving a row sets beyond its value; left out is unchanged. */
+export type SettingOptions = {
+  /** The row to change; left out, the key's row for every environment. */
+  id?: string;
+  availableTo?: SettingReader[];
+  environments?: string[];
+  repositories?: string[];
+  note?: string;
 };
 
 export type SettingsOwner = { repo: RepoPath } | { workspace: string };
 export type SettingKind = "secret" | "variable";
+/** `all` lists both. */
+export type SettingKindFilter = SettingKind | "all";
 
 export type RunsFilter = {
   workflow?: string;
@@ -131,7 +167,16 @@ export interface ActionsApi {
   cancel(actor: User, repo: RepoPath, id: string): Promise<Result<WorkflowRun>>;
   rerun(actor: User, repo: RepoPath, id: string, failedOnly?: boolean): Promise<Result<WorkflowRun>>;
   setWorkflowEnabled(actor: User, repo: RepoPath, workflow: string, enabled: boolean): Promise<Result<Workflow>>;
-  settings(actor: User, owner: SettingsOwner, kind: SettingKind): Promise<Result<Setting[]>>;
-  setSetting(actor: User, owner: SettingsOwner, kind: SettingKind, name: string, value: string): Promise<Result<Setting>>;
-  deleteSetting(actor: User, owner: SettingsOwner, kind: SettingKind, name: string): Promise<Result<boolean>>;
+  settings(actor: User, owner: SettingsOwner, kind: SettingKindFilter): Promise<Result<Setting[]>>;
+  /** `value` null keeps an existing entry's default value. */
+  setSetting(
+    actor: User,
+    owner: SettingsOwner,
+    kind: SettingKind,
+    name: string,
+    value: string | null,
+    options?: SettingOptions,
+  ): Promise<Result<Setting>>;
+  /** One row by `id`, or every row of the key. */
+  deleteSetting(actor: User, owner: SettingsOwner, kind: SettingKindFilter, name: string, id?: string): Promise<Result<boolean>>;
 }

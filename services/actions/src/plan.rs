@@ -237,7 +237,9 @@ impl Actions {
         info.workflow_path = new.path.clone();
         info.run_id = id.clone();
         info.run_number = u64::from(numbered);
-        let vars = self.variables_for(&new.repo.id, &new.repo.namespace).await?;
+        let vars = self
+            .variables_for(&new.repo.id, &format!("{}/{}", new.repo.namespace, new.repo.name), None, new.trusted)
+            .await?;
 
         // run-name and the concurrency group read github, inputs and vars.
         let mut contexts = Map::new();
@@ -474,7 +476,7 @@ impl Actions {
     /// Decides on one job whose needs are done: skip it, fail it, or expand
     /// it into its matrix and queue it.
     async fn decide(&self, run: &RunRow, job: &workflow::Job, row: &JobRow, needed: &[(&String, Vec<&JobRow>)]) -> Result<()> {
-        let vars = self.variables_for(&run.repo_id, &repo_path(&run.repo).namespace).await?;
+        let vars = self.variables_for(&run.repo_id, &run.repo, None, run.trusted != 0).await?;
         let mut contexts = Self::base_contexts(run, &vars, &job.id);
         // A called workflow's jobs read the inputs they were called with.
         let call = row.call();
@@ -1232,7 +1234,16 @@ impl Actions {
         let spec = &spec;
         let repo = repo_path(&run.repo);
         let trusted = run.trusted != 0;
-        // GITHUB_TOKEN: the workspace's, for as long as the job may run.
+        // The job's `environment:`, by name: entries with a value for it give
+        // that value instead of their default, as GitHub's environment
+        // secrets do.
+        let environment: Option<String> = match spec.raw.get("environment") {
+            Some(Value::String(name)) if !name.contains("${{") => Some(name.clone()),
+            Some(Value::Object(env)) => env.get("name").and_then(Value::as_str).filter(|n| !n.contains("${{")).map(str::to_owned),
+            _ => None,
+        };
+        // G1T_TOKEN, and GITHUB_TOKEN as its alias: the workspace's own
+        // token, for as long as the job may run.
         let token = if trusted {
             match self.workspace_actor(&repo.namespace).await? {
                 Some(workspace) => {
@@ -1241,7 +1252,7 @@ impl Actions {
                         "create_access_token",
                         &CreateAccessTokenArgs {
                             user: workspace,
-                            name: format!("GITHUB_TOKEN for {} run {}", run.repo, run.number),
+                            name: format!("G1T_TOKEN for {} run {}", run.repo, run.number),
                             ttl_seconds: Some(u64::from(job.timeout_minutes) * 60 + 600),
                         },
                     )
@@ -1253,10 +1264,17 @@ impl Actions {
         } else {
             String::new()
         };
-        let mut secrets = if trusted { self.secrets_for(&run.repo_id, &repo.namespace).await? } else { Map::new() };
+        // A run that is not trusted (a pull request from outside the
+        // workspace) gets no secrets and an empty token.
+        let mut secrets = if trusted {
+            self.secrets_for(&run.repo_id, &run.repo, environment.as_deref(), true).await?
+        } else {
+            Map::new()
+        };
+        secrets.insert("G1T_TOKEN".into(), Value::String(token.clone()));
         secrets.insert("GITHUB_TOKEN".into(), Value::String(token.clone()));
         let masks: Vec<String> = secrets.values().filter_map(|v| v.as_str()).filter(|v| v.len() >= 4).map(str::to_owned).collect();
-        let vars = self.variables_for(&run.repo_id, &repo.namespace).await?;
+        let vars = self.variables_for(&run.repo_id, &run.repo, environment.as_deref(), trusted).await?;
 
         let jobs = self.job_rows(&run.id).await?;
         let mut needs = Map::new();

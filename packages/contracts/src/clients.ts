@@ -256,8 +256,9 @@ export function actionsClient(service: ServiceBinding): ActionsApi {
     setWorkflowEnabled: (actor, repo, workflow, enabled) =>
       call("set_workflow_enabled", { actor, repo, workflow, enabled }),
     settings: (actor, owner, kind) => call("settings", { actor, ...owner, kind }),
-    setSetting: (actor, owner, kind, name, value) => call("set_setting", { actor, ...owner, kind, name, value }),
-    deleteSetting: (actor, owner, kind, name) => call("delete_setting", { actor, ...owner, kind, name }),
+    setSetting: (actor, owner, kind, name, value, options = {}) =>
+      call("set_setting", { actor, ...owner, kind, name, value, ...options }),
+    deleteSetting: (actor, owner, kind, name, id) => call("delete_setting", { actor, ...owner, kind, name, id }),
   };
 }
 

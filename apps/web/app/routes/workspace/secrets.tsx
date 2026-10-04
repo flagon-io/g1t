@@ -16,7 +16,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
-  return actOnSecrets({ workspace: params.owner.toLowerCase() }, user, await request.formData());
+  const page = `/${params.owner}/-/secrets`;
+  return actOnSecrets({ workspace: params.owner.toLowerCase() }, user, await request.formData(), page);
 }
 
 export default function WorkspaceSecrets({ loaderData, actionData }: Route.ComponentProps) {

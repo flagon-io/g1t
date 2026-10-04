@@ -84,6 +84,7 @@ export default defineConfig({
 						{ label: 'Model providers', slug: 'guides/models' },
 						{ label: 'Webhooks', slug: 'guides/webhooks' },
 						{ label: 'GitHub Actions', slug: 'guides/actions' },
+						{ label: 'Secrets and variables', slug: 'guides/secrets-and-variables' },
 					],
 				},
 				{

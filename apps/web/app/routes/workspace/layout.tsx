@@ -28,14 +28,14 @@ const PAGES: Record<string, { title: string; about: string }> = {
     about: "Tokens that belong to the workspace, not a person: for CI, integrations and agents that work for the whole team.",
   },
   usage: { title: "Usage", about: "What the workspace's agents cost, run by run, by repository, pull request and model." },
-  billing: { title: "Billing", about: "Agent credit, and every charge against it." },
+  billing: { title: "Billing and plans", about: "Paid plans, agent credit, and every charge against it." },
   webhooks: {
     title: "Webhooks",
     about: "Every repository's events, sent to your own addresses as they happen. A repository can also have its own, under its settings.",
   },
   secrets: {
     title: "Secrets and variables",
-    about: "What every repository's GitHub Actions workflows read as secrets and vars. A repository's own, under its settings, replace these by name.",
+    about: "Shared with every repository, or the ones you link: read by workflows, deployments, or both. A repository's own row of the same key wins.",
   },
   integrations: {
     title: "Integrations",
@@ -101,7 +101,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
                   icon={<Users size={15} />}
                   count={workspace.memberCount}
                 >
-                  People
+                  Members
                 </TabLink>
                 <TabLink to={`${base}/-/tokens`} icon={<KeyRound size={15} />}>
                   Access tokens

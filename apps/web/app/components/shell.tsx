@@ -13,6 +13,7 @@ import {
   CreditCard,
   GitPullRequest,
   History,
+  Fingerprint,
   KeyRound,
   Layers,
   LayoutDashboard,
@@ -290,20 +291,20 @@ function SettingsMenu({ slug, owner, open }: { slug: string; owner: boolean; ope
         <SidebarLink to={`/${slug}/-/people`} icon={<Users size={15} />}>
           Members
         </SidebarLink>
+        <SidebarLink to={`/${slug}/-/tokens`} icon={<KeyRound size={15} />}>
+          Access tokens
+        </SidebarLink>
         <SidebarLink to={`/${slug}/-/billing`} icon={<CreditCard size={15} />}>
-          Billing
+          Billing and plans
         </SidebarLink>
         <SidebarLink to={`/${slug}/-/integrations`} icon={<Plug size={15} />}>
           Integrations
         </SidebarLink>
-        <SidebarLink to={`/${slug}/-/webhooks`} icon={<Webhook size={15} />}>
-          Webhooks
-        </SidebarLink>
         <SidebarLink to={`/${slug}/-/secrets`} icon={<Lock size={15} />}>
           Secrets and variables
         </SidebarLink>
-        <SidebarLink to={`/${slug}/-/tokens`} icon={<KeyRound size={15} />}>
-          Access tokens
+        <SidebarLink to={`/${slug}/-/webhooks`} icon={<Webhook size={15} />}>
+          Webhooks
         </SidebarLink>
       </SidebarGroup>
     </nav>
@@ -433,8 +434,8 @@ function AccountSettingsMenu({ open }: { open: boolean }) {
         Mission control
       </Link>
       <SidebarGroup title="Account">
-        {item("ssh-keys", <KeyRound size={15} />, "SSH keys")}
-        {item("tokens", <Lock size={15} />, "Access tokens")}
+        {item("ssh-keys", <Fingerprint size={15} />, "SSH keys")}
+        {item("tokens", <KeyRound size={15} />, "Access tokens")}
         {item("applications", <Plug size={15} />, "Connected applications")}
       </SidebarGroup>
     </nav>
@@ -619,7 +620,7 @@ const SECTIONS: Record<string, string> = {
   people: "Members",
   tokens: "Access tokens",
   usage: "Usage",
-  billing: "Billing",
+  billing: "Billing and plans",
   integrations: "Integrations",
   webhooks: "Webhooks",
   tree: "Code",
@@ -655,7 +656,13 @@ function Breadcrumbs({ pathname }: { pathname: string }) {
     if (third === "pull" && fourth) trail.push({ label: `Pull request #${fourth}`, to: `${repo}/pull/${fourth}` });
     else if (third === "issues" && fourth && fourth !== "new") trail.push({ label: `Issue #${fourth}`, to: `${repo}/issues/${fourth}` });
     else if (third === "commit" && fourth) trail.push({ label: fourth.slice(0, 7), to: `${repo}/commit/${fourth}`, mono: true });
-    else if (third && SECTIONS[third]) trail.push({ label: SECTIONS[third]!, to: `${repo}/${third}` });
+    else if (third && SECTIONS[third]) {
+      trail.push({ label: SECTIONS[third]!, to: `${repo}/${third}` });
+      // A settings page names which one: Settings / Secrets and variables.
+      if (third === "settings" && fourth && SECTIONS[fourth]) {
+        trail.push({ label: SECTIONS[fourth]!, to: `${repo}/settings/${fourth}` });
+      }
+    }
   }
   return (
     <nav aria-label="Where you are" className="flex min-w-0 items-center gap-1.5 text-sm">

@@ -178,6 +178,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "settings" => reply(&service.settings(args(body)?).await?),
         "set_setting" => reply(&service.set_setting(args(body)?).await?),
         "delete_setting" => reply(&service.delete_setting(args(body)?).await?),
+        "resolve_settings" => reply(&service.resolve_settings(args(body)?).await?),
         "job_spec" => reply(&service.job_spec(args(body)?).await?),
         "job_auth" => reply(&service.job_auth(args(body)?).await?),
         "job_report" => reply(&service.job_report(args(body)?).await?),

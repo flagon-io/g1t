@@ -155,16 +155,43 @@ pub struct JobLog {
     pub done: bool,
 }
 
-/// A secret's or variable's name, and for a variable its value.
+/// Who may read a secret or variable: workflows (`secrets.*` and `vars.*`
+/// in GitHub Actions) and deployments (a deploy build's environment and the
+/// running app's bindings). Agents, checks and the merge queue read none.
+pub const CONSUMERS: [&str; 2] = ["workflows", "deployments"];
+
+/// One row of a repository's or workspace's secrets and variables, as
+/// Vercel lists environment variables: a key, its type, the environments
+/// it applies to and who reads it. A key may have one row per environment.
+/// Secrets' values are never returned.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Setting {
+    #[serde(default)]
+    pub id: String,
     pub name: String,
-    /// Variables only; secrets are never returned.
+    /// `secret`, or `variable` (shown as Config).
+    #[serde(default)]
+    pub kind: String,
+    /// A variable's value; secrets' are never returned.
     pub value: Option<String>,
     /// `repository` or `workspace`.
     pub scope: String,
     pub updated_at: String,
+    /// `workflows` and/or `deployments`.
+    #[serde(default)]
+    pub available_to: Vec<String>,
+    /// The environments it applies to; empty is every environment.
+    #[serde(default)]
+    pub environments: Vec<String>,
+    /// A workspace's row: the repositories it reaches, by name; empty is
+    /// every repository.
+    #[serde(default)]
+    pub repositories: Vec<String>,
+    #[serde(default)]
+    pub note: Option<String>,
+    #[serde(default)]
+    pub updated_by: Option<String>,
 }
 
 // --- Methods ---------------------------------------------------------------
@@ -278,9 +305,53 @@ pub struct SetSettingArgs {
     pub actor: User,
     #[serde(flatten)]
     pub owner: SettingsOwner,
+    /// `secret` or `variable`. Changing a variable's row to `secret` seals
+    /// it; a secret cannot become a variable.
     pub kind: String,
     pub name: String,
-    pub value: String,
+    /// The row to change. Left out, the key's row for every environment, as
+    /// GitHub's API addresses a secret by name alone.
+    #[serde(default)]
+    pub id: Option<String>,
+    /// Needed for a new row; left out, an existing row keeps its value.
+    #[serde(default)]
+    pub value: Option<String>,
+    /// `workflows` and/or `deployments`; left out, unchanged (both, for a
+    /// new row).
+    #[serde(default, alias = "availableTo")]
+    pub available_to: Option<Vec<String>>,
+    /// The environments it applies to; empty is every one. Left out,
+    /// unchanged.
+    #[serde(default)]
+    pub environments: Option<Vec<String>>,
+    /// A workspace's row: repository names; empty for every one.
+    #[serde(default)]
+    pub repositories: Option<Vec<String>>,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+/// `resolve_settings`: the secrets and variables one reader gets, for the
+/// services that hand them out (the deployments service). Returns
+/// `ResolvedSettings`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveSettingsArgs {
+    pub repo_id: String,
+    pub repo: RepoPath,
+    /// `workflows` or `deployments`.
+    pub consumer: String,
+    /// The environment being read for, such as `production` or `preview`.
+    #[serde(default)]
+    pub environment: Option<String>,
+    /// Whether the run is trusted; an untrusted one gets no secrets.
+    pub trusted: bool,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct ResolvedSettings {
+    pub secrets: serde_json::Map<String, serde_json::Value>,
+    pub variables: serde_json::Map<String, serde_json::Value>,
 }
 
 /// `delete_setting`. Returns `Outcome<bool>`.
@@ -291,6 +362,9 @@ pub struct DeleteSettingArgs {
     pub owner: SettingsOwner,
     pub kind: String,
     pub name: String,
+    /// One row; left out, every row of the key.
+    #[serde(default)]
+    pub id: Option<String>,
 }
 
 /// `job_spec` and `job_report`: the sandbox running a job, with the job's

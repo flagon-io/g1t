@@ -1,4 +1,4 @@
-import { KeyRound, Settings, Webhook } from "lucide-react";
+import { Lock, Rocket, Settings, Webhook } from "lucide-react";
 
 import { TabLink } from "./ui";
 
@@ -9,11 +9,14 @@ export function RepoSettingsTabs({ base }: { base: string }) {
       <TabLink to={`${base}/settings`} end icon={<Settings size={15} />}>
         General
       </TabLink>
+      <TabLink to={`${base}/settings/deployments`} icon={<Rocket size={15} />}>
+        Deployments
+      </TabLink>
+      <TabLink to={`${base}/settings/secrets`} icon={<Lock size={15} />}>
+        Secrets and variables
+      </TabLink>
       <TabLink to={`${base}/settings/webhooks`} icon={<Webhook size={15} />}>
         Webhooks
-      </TabLink>
-      <TabLink to={`${base}/settings/secrets`} icon={<KeyRound size={15} />}>
-        Secrets and variables
       </TabLink>
     </nav>
   );

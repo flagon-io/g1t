@@ -23,7 +23,9 @@
 //! - `G1T_API`, `DEPLOY_ID`, `DEPLOY_TOKEN`: where and how to report.
 //! - `GIT_REMOTE`, `GIT_COMMIT`, `G1T_USER`, `G1T_TOKEN`: what to check out.
 //! - `BUILD_COMMAND`, `OUTPUT_DIR`: the repository's own choices, if any.
-//! - `BUILD_ENV`: a JSON object of variables the build runs with.
+//! - `BUILD_ENV`, `BUILD_SECRETS`: JSON objects of the repository's
+//!   variables and secrets for deploy builds. Both are set for the build;
+//!   secrets' values are redacted from its log.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -536,14 +538,16 @@ fn check_out(secrets: &[String]) -> Result<()> {
 
 fn deploy(reporter: &Reporter, log: &mut Log, secrets: &[String]) -> Result<Value> {
     check_out(secrets).context("the commit could not be checked out")?;
-    // What the repository's settings ask the build to run with.
-    if let Ok(vars) = std::env::var("BUILD_ENV")
-        && let Ok(Value::Object(vars)) = serde_json::from_str::<Value>(&vars)
-    {
-        for (name, value) in vars {
-            if let Some(value) = value.as_str() {
-                // SAFETY: single-threaded; set before any command runs.
-                unsafe { std::env::set_var(name, value) };
+    // The repository's variables and secrets for deploy builds.
+    for source in ["BUILD_ENV", "BUILD_SECRETS"] {
+        if let Ok(vars) = std::env::var(source)
+            && let Ok(Value::Object(vars)) = serde_json::from_str::<Value>(&vars)
+        {
+            for (name, value) in vars {
+                if let Some(value) = value.as_str() {
+                    // SAFETY: single-threaded; set before any command runs.
+                    unsafe { std::env::set_var(name, value) };
+                }
             }
         }
     }
@@ -598,11 +602,15 @@ pub fn main() -> i32 {
             return 2;
         }
     };
-    let secrets: Vec<String> = ["G1T_TOKEN", "DEPLOY_TOKEN"]
+    let mut secrets: Vec<String> = ["G1T_TOKEN", "DEPLOY_TOKEN"]
         .iter()
         .filter_map(|name| std::env::var(name).ok())
         .filter(|secret| !secret.is_empty())
         .collect();
+    // The repository's build secrets never appear in the log.
+    if let Ok(Value::Object(build)) = serde_json::from_str::<Value>(&std::env::var("BUILD_SECRETS").unwrap_or_default()) {
+        secrets.extend(build.values().filter_map(Value::as_str).filter(|v| v.len() >= 4).map(str::to_owned));
+    }
     if let Err(error) = reporter.send("started", json!({})) {
         eprintln!("g1t-runner: {error:#}");
         return 1;

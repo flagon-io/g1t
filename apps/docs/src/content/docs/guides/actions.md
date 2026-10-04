@@ -37,11 +37,12 @@ gives their values out, so they cannot be copied across.
 | `run:` with `bash`, `sh`, `python` or a custom shell | The same. |
 | JavaScript actions (`uses: owner/repo@v7`) | Fetched from GitHub and run as they are, on Node 24, the runtime current actions declare. |
 | Composite actions | The same. |
-| Reusable workflows in the repository (`jobs.<id>.uses: ./.g1t/workflows/build.yml`) | The same: `with:` inputs, `on.workflow_call` outputs, and nesting up to four deep. `./.github/workflows/…` finds the workflow under `.g1t/` after the move. Their jobs run with the repository's secrets. |
+| Reusable workflows in the repository (`jobs.<id>.uses: ./.g1t/workflows/build.yml`) | The same: `with:` inputs, `on.workflow_call` outputs, and nesting up to four deep. `./.github/workflows/…` finds the workflow under `.g1t/` after the move. Their jobs read the repository's secrets and variables. |
 | `actions/checkout` | Checks out from g1t, with `ref`, `fetch-depth`, `path`, `repository`, `token` and `submodules`. |
 | `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY` | The same. |
 | `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::` | The same: errors and warnings become annotations on the run. |
-| `secrets.*`, `vars.*`, `secrets.GITHUB_TOKEN` | The same; `GITHUB_TOKEN` is a token for g1t. |
+| `secrets.*`, `vars.*`, `secrets.GITHUB_TOKEN` | The same. `secrets.G1T_TOKEN` is the workspace's own token for the run; `GITHUB_TOKEN` is its alias. |
+| `environment:` on a job | The job reads each key's row for that environment, as GitHub's environment secrets work. |
 | `actions/upload-artifact`, `actions/download-artifact` | Kept with the run for 14 days, passed between its jobs, and downloadable from the run's page. Up to 60 MB each. |
 | `actions/cache`, `actions/cache/restore`, `actions/cache/save` | Kept per repository for 7 days, found by `key` or the newest under a `restore-keys` prefix. Up to 60 MB each. |
 
@@ -57,8 +58,10 @@ anything in it that runs differently.
 - **The toolkit's own cache.** Actions that cache through GitHub's service
   themselves, such as `actions/setup-node` with `cache: npm`, run without
   it. Use `actions/cache` for the same effect.
-- **Environments' protection rules**. A job with `environment:` runs with
-  the repository's secrets.
+- **Environments' protection rules** (required reviewers, wait timers,
+  branch limits). A job with `environment:` gets that environment's
+  [values](/guides/secrets-and-variables/#a-value-per-environment), and runs
+  without waiting.
 
 ## The runner
 
@@ -105,16 +108,17 @@ A run on a pull request's latest commit is a check on it:
 
 ## Secrets and variables
 
-Secrets are read as `${{ secrets.NAME }}` and variables as
-`${{ vars.NAME }}`. Set them under **Settings → Secrets and variables**:
+Secrets are read as `${{ secrets.KEY }}` and config as `${{ vars.KEY }}`,
+from the rows under **Settings → Secrets and variables** that are
+available to Workflows. A job with `environment: production` reads each
+key's Production row; other jobs read the rows for all environments. See
+[Secrets and variables](/guides/secrets-and-variables/) for how rows,
+environments and the workspace's rows work.
 
-- a repository's, which its members manage;
-- a workspace's, which owners manage and every repository reads. A
-  repository's own of the same name wins.
-
-Secret values are sealed when saved and never shown again. Pull requests
-from people outside the workspace run without secrets, and with a
-`GITHUB_TOKEN` that cannot write.
+Every trusted job also gets `${{ secrets.G1T_TOKEN }}`, the workspace's own
+token for the run, with `GITHUB_TOKEN` as its alias. Pull requests from
+people outside the workspace run without secrets, and with an empty
+token.
 
 ## Who may run workflows
 
@@ -144,9 +148,9 @@ with `https://api.g1t.sh` in place of `https://api.github.com`.
 | `list_actions_variables`, `set_actions_variable`, `delete_actions_variable` | `GET` and `POST /repos/{owner}/{repo}/actions/variables`, `PATCH` and `DELETE …/variables/{name}` |
 
 Workspace secrets and variables are under
-`/workspaces/{workspace}/actions/secrets` and `…/variables`. Unlike
-GitHub's, a secret is sent as plain `value` over HTTPS, not encrypted to a
-public key.
+`/workspaces/{workspace}/actions/secrets` and `…/variables`. The fields
+g1t adds (environments, who reads a row, linked repositories) are in
+[Secrets and variables](/guides/secrets-and-variables/#from-the-api).
 
 ```sh
 curl -X POST https://api.g1t.sh/repos/acme/web/actions/workflows/ci.yml/dispatches \

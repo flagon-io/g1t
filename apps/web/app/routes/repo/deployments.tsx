@@ -5,7 +5,7 @@ import { Form, Link, data, useNavigation } from "react-router";
 import type { Deployment, DeployStatus, FeatureState } from "@g1t/contracts";
 
 import type { Route } from "./+types/deployments";
-import { Button, ButtonLink, EmptyState, ErrorText, Field, Input, Textarea, TimeAgo } from "../../components/ui";
+import { Button, ButtonLink, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
 import { billing, deployments } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
@@ -26,18 +26,6 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   ]);
   const plan = unwrap(features).find((state) => state.plan.feature === "deployments") ?? null;
   return { role, settings: unwrap(settings), ...unwrap(list), plan };
-}
-
-/** `KEY=value` lines as an object; blank lines and `#` comments are skipped. */
-function parseEnv(text: string): Record<string, string> {
-  const vars: Record<string, string> = {};
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const at = trimmed.indexOf("=");
-    if (at > 0) vars[trimmed.slice(0, at).trim()] = trimmed.slice(at + 1).trim();
-  }
-  return vars;
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -61,16 +49,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       ? { notice: intent === "enable" ? "Deployments are on. Production is building." : "Deployments are off, and every app is down." }
       : { error: saved.error.message };
   }
-  const on = (name: string) => form.get(name) === "on";
-  const saved = await deployments.updateSettings(user, path, {
-    previews: on("previews"),
-    production: on("production"),
-    buildCommand: String(form.get("buildCommand") ?? ""),
-    outputDir: String(form.get("outputDir") ?? ""),
-    buildEnv: parseEnv(String(form.get("buildEnv") ?? "")),
-    idleDays: Number(form.get("idleDays")),
-  });
-  return saved.ok ? { notice: "Saved." } : { error: saved.error.message };
+  return { error: "Unknown request." };
 }
 
 const STATUS: Record<DeployStatus, { label: string; tone: string }> = {
@@ -201,20 +180,17 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
             )}
           </div>
 
-          <SettingsForm settings={settings} busy={busy} />
-
-          <section className="mt-10 rounded-xl border border-danger/30 p-5">
-            <h2 className="text-sm font-medium">Turn off deployments</h2>
-            <p className="mt-1 text-sm text-muted">
-              Takes production and every preview down now, and stops building. Nothing of this repository's keeps
-              running or costing anything. The workspace's plan stays on; turn it off under Billing.
-            </p>
-            <Form method="post" className="mt-3">
-              <Button variant="quiet" type="submit" name="intent" value="disable" disabled={busy}>
-                Turn off deployments
-              </Button>
-            </Form>
-          </section>
+          <p className="mt-10 text-sm text-muted">
+            Build command, output directory, idle days, and turning deployments off are under{" "}
+            <Link to={`${base}/settings/deployments`} className="text-fg hover:underline">
+              Settings → Deployments
+            </Link>
+            . Secrets and config for builds and running apps are under{" "}
+            <Link to={`${base}/settings/secrets`} className="text-fg hover:underline">
+              Settings → Secrets and variables
+            </Link>
+            .
+          </p>
         </>
       )}
     </div>
@@ -323,52 +299,5 @@ function BuildRow({ build, base }: { build: Deployment; base: string }) {
         </span>
       </Link>
     </li>
-  );
-}
-
-function SettingsForm({ settings, busy }: { settings: Route.ComponentProps["loaderData"]["settings"]; busy: boolean }) {
-  const env = Object.entries(settings.buildEnv)
-    .map(([name, value]) => `${name}=${value}`)
-    .join("\n");
-  return (
-    <Form method="post" className="mt-10 space-y-5">
-      <h2 className="text-sm font-medium text-muted">Settings</h2>
-      <div className="grid gap-3 md:grid-cols-2">
-        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface p-4 hover:border-line-strong">
-          <input type="checkbox" name="production" defaultChecked={settings.production} className="mt-1 accent-accent" />
-          <span>
-            <span className="block text-sm font-medium">Production</span>
-            <span className="mt-1 block text-sm text-muted">Deploy the default branch on every push.</span>
-          </span>
-        </label>
-        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface p-4 hover:border-line-strong">
-          <input type="checkbox" name="previews" defaultChecked={settings.previews} className="mt-1 accent-accent" />
-          <span>
-            <span className="block text-sm font-medium">Previews</span>
-            <span className="mt-1 block text-sm text-muted">A preview for every open pull request, linked on it.</span>
-          </span>
-        </label>
-      </div>
-      <div className="grid gap-4 md:grid-cols-3">
-        <Field label="Build command" hint="Instead of the project's own build script.">
-          <Input name="buildCommand" defaultValue={settings.buildCommand ?? ""} placeholder="npm run build" />
-        </Field>
-        <Field label="Output directory" hint="For a static site; found by itself when empty.">
-          <Input name="outputDir" defaultValue={settings.outputDir ?? ""} placeholder="dist" />
-        </Field>
-        <Field label="Idle days" hint="A preview no one visits for this long comes down.">
-          <Input name="idleDays" type="number" min={1} max={90} defaultValue={settings.idleDays} />
-        </Field>
-      </div>
-      <Field
-        label="Build variables"
-        hint="KEY=value, one per line. The build runs with them; they are not secret, so keep keys in Secrets."
-      >
-        <Textarea name="buildEnv" rows={4} defaultValue={env} className="font-mono" placeholder="NODE_ENV=production" />
-      </Field>
-      <Button type="submit" disabled={busy}>
-        Save settings
-      </Button>
-    </Form>
   );
 }

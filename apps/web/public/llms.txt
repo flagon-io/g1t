@@ -241,7 +241,16 @@ GitHub Actions workflows run on g1t unchanged, from `.g1t/workflows/`
 Runs, jobs and logs are at GitHub's own routes under
 `{repo}/actions/...`. A run on a pull request's head is a check: pending
 holds the merge, failure refuses it and sends a g1t agent back to fix it.
-Secrets and variables: `{repo}/actions/secrets`, `{repo}/actions/variables`.
+Secrets and variables are one list per repository (site:
+`g1t.sh/<owner>/<repo>/settings/secrets`) and per workspace: each row is a
+key, Secret or Config, the environments it applies to (all, or e.g.
+production/preview, or a job's `environment:`), and whether workflows,
+deployments or both read it. API: `{repo}/actions/secrets` and
+`{repo}/actions/variables` (GitHub's routes) with extra `environments`,
+`availableTo`, `repositories`, `note`, `id`. Trusted jobs get
+`secrets.G1T_TOKEN` (the workspace's token; `GITHUB_TOKEN` is its alias),
+which cannot change secrets. Guide:
+https://docs.g1t.sh/guides/secrets-and-variables/
 
 ## Deployments
 
@@ -249,7 +258,10 @@ A paid feature: an owner turns on the Deployments plan under the
 workspace's Billing ($5 a month: 10 apps, 1M requests, 3M CPU ms; builds
 and usage past that from credit at cost + 20%; never free). Then a member
 turns deployments on from the repository's Deployments page
-(`g1t.sh/<owner>/<repo>/deployments`). Every pull request gets a preview at
+(`g1t.sh/<owner>/<repo>/deployments`; settings under
+`…/settings/deployments`). Builds and running apps read the secrets and
+variables available to Deployments, each key's Production or Preview row.
+Every pull request gets a preview at
 `https://pr-<n>--<repo>--<owner>.g1t.page`, shown on it as the check
 `g1t / deploy`; the default branch deploys to
 `https://<repo>--<owner>.g1t.page` on each push. Workers projects

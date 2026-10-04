@@ -71,7 +71,10 @@ build: `dist`, `build`, `out`, `public`, `_site`, `.output/public`. Set
 - Your Worker's `fetch` handler runs as written, and its static assets
   are served under the binding name your config gives them. Cron triggers
   in the config are not scheduled.
-- `vars` are deployed as plain-text bindings (or JSON, for objects).
+- `vars` are deployed as plain-text bindings (or JSON, for objects). Rows
+  of the repository's [secrets and variables](/guides/secrets-and-variables/)
+  available to Deployments are bound too, and replace a `var` of the same
+  name: secrets as secret bindings.
 - **Not provisioned yet:** D1, KV, R2, Durable Objects, Queues, service
   bindings, Vectorize, Hyperdrive, Workers AI and Workflows. A project that
   declares any of them still deploys, without them, and its deployment
@@ -120,7 +123,8 @@ request, or **Redeploy** on the Deployments page.
 
 ## Settings
 
-On the repository's **Deployments** page, under **Settings**:
+Under the repository's **Settings → Deployments**,
+`g1t.sh/<workspace>/<repo>/settings/deployments`:
 
 | Setting | Default | |
 | --- | --- | --- |
@@ -129,7 +133,26 @@ On the repository's **Deployments** page, under **Settings**:
 | Build command | The project's own | Runs instead of `npm run build`, or before bundling a Workers project. |
 | Output directory | Found by itself | What a static site serves. |
 | Idle days | 7 | 1 to 90. A preview no one visits this long comes down. |
-| Build variables | None | `KEY=value` lines the build runs with, such as `NODE_ENV=production`. Up to 50. They are shown to every member, so keep keys and tokens out of them. |
+
+## Secrets and variables
+
+Builds and running apps read the repository's
+[secrets and variables](/guides/secrets-and-variables/) that are
+available to Deployments, and the workspace's that reach it:
+
+| | Reads |
+| --- | --- |
+| A production build, and production | Each key's Production row, else its row for all environments. |
+| A preview build, and the preview | Each key's Preview row, else its row for all environments. |
+
+The build gets them as environment variables, with secrets hidden in its
+log. The running app gets them as bindings, `env.KEY`, put in place by g1t
+rather than the build. A preview of a pull request from outside the
+workspace is built and runs with config only, no secrets.
+
+For example, a `STRIPE_KEY` secret with a Production row holding the live
+key and a Preview row holding the test key gives every preview the test
+key.
 
 ## What it costs
 
@@ -175,8 +198,8 @@ idle days.
 
 ## Turn it off
 
-- **For a repository:** **Turn off deployments** at the bottom of its
-  Deployments page. Every app comes down at once. Turning it on again
+- **For a repository:** **Turn off deployments** under its **Settings →
+  Deployments**. Every app comes down at once. Turning it on again
   rebuilds production.
 - **For the workspace:** an owner chooses **Turn off at the end of the
   period** under the plan on Billing. Deployments keep working until the

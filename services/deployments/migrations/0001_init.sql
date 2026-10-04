@@ -12,8 +12,6 @@ CREATE TABLE settings (
   production INTEGER NOT NULL DEFAULT 1,
   build_command TEXT,
   output_dir TEXT,
-  -- A JSON object of variables the build runs with.
-  build_env TEXT NOT NULL DEFAULT '{}',
   idle_days INTEGER NOT NULL DEFAULT 7,
   updated_by TEXT,
   updated_at TEXT NOT NULL
@@ -57,6 +55,10 @@ CREATE TABLE deployments (
   log TEXT,
   -- SHA-256 of the token the sandbox reports with.
   token_hash TEXT,
+  -- Whether it was built for someone trusted: a member, an agent, or a
+  -- push. Protected secrets and variables, and every secret, reach only
+  -- trusted builds and their apps.
+  trusted INTEGER NOT NULL DEFAULT 0,
   build_seconds INTEGER,
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL,

@@ -402,7 +402,7 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
             note(Severity::Warning, Some(id), "`container`: steps run on g1t's runner image instead of that container.".to_owned());
         }
         if spec.contains_key("environment") {
-            note(Severity::Info, Some(id), "`environment`: protection rules are not enforced on g1t yet; the job runs with the repository's secrets.".to_owned());
+            note(Severity::Info, Some(id), "`environment`: the job gets the values its secrets and variables give this environment; protection rules (approvals, wait timers, branch limits) are not enforced on g1t yet.".to_owned());
         }
         let (matrix, fail_fast, max_parallel) = match spec.get("strategy") {
             Some(Value::Object(strategy)) => (

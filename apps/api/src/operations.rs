@@ -576,17 +576,17 @@ impl Op {
             }
             Op::UpdateWorkflow => "Turn a workflow on or off without changing its file. Members only.",
             Op::ListActionsSecrets => {
-                "The names of the secrets workflows read as `secrets.NAME`: a repository's, with the ones it inherits from its workspace, or a workspace's. Values are never returned. Members only."
+                "The secrets of a repository (with the workspace's rows that reach it) or of a workspace: each row's key, the environments it applies to, and whether workflows (`secrets.NAME`), deployments, or both read it. Values are never returned. Members only."
             }
             Op::SetActionsSecret => {
-                "Add or replace a secret. A repository's need a member; a workspace's, which every repository in it reads, an owner. Names are letters, digits and underscores, upper-cased."
+                "Add or change a secret's row. Without `id` or `environments`, the key's row for every environment, as GitHub's API addresses a secret. `availableTo` is workflows and/or deployments (both, for a new row); `environments` limits it to some, such as production or preview, so a key can hold a value per environment. A variable's row can become a secret this way; a secret never becomes a variable. A repository's need a member; a workspace's an owner. Workspace tokens, G1T_TOKEN included, cannot change them."
             }
-            Op::DeleteActionsSecret => "Remove a secret.",
+            Op::DeleteActionsSecret => "Remove a secret: one row by `id`, or every row of the key.",
             Op::ListActionsVariables => {
-                "The variables workflows read as `vars.NAME`, with their values: a repository's, with the ones it inherits from its workspace, or a workspace's. Members only."
+                "The variables (Config) of a repository, with the workspace's rows that reach it, or of a workspace, with their values: each row's key, environments and readers (workflows read them as `vars.NAME`). Members only."
             }
-            Op::SetActionsVariable => "Add or replace a variable, as for secrets.",
-            Op::DeleteActionsVariable => "Remove a variable.",
+            Op::SetActionsVariable => "Add or change a variable's row, as for secrets.",
+            Op::DeleteActionsVariable => "Remove a variable: one row by `id`, or every row of the key.",
             Op::ImportIssue => {
                 "Open an issue from a ticket in Jira or Linear, or from a Sentry issue, by its key or address. The issue is linked to it: agents read the original, and when the work lands the ticket is told. Importing the same ticket again returns the issue already made. With assign, a g1t agent starts on it."
             }
@@ -986,13 +986,33 @@ impl Op {
             Op::ListActionsSecrets | Op::ListActionsVariables => object(settings_owner(json!({})), &[]),
             Op::SetActionsSecret | Op::SetActionsVariable => object(
                 settings_owner(json!({
-                    "setting": { "type": "string", "description": "The name, such as NPM_TOKEN." },
-                    "value": { "type": "string" },
+                    "setting": { "type": "string", "description": "The key, such as NPM_TOKEN." },
+                    "value": { "type": "string", "description": "Needed for a new row; left out, the row keeps its value." },
+                    "id": { "type": "string", "description": "The row to change, from a list. Left out: the key's row for every environment." },
+                    "availableTo": {
+                        "type": "array",
+                        "items": { "type": "string", "enum": ["workflows", "deployments"] },
+                        "description": "Who reads it. Both for a new row."
+                    },
+                    "environments": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "The environments it applies to, such as production and preview, or a workflow job's environment. Empty is every environment."
+                    },
+                    "repositories": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "A workspace's row: the repositories it reaches, by name. Empty is every one."
+                    },
+                    "note": { "type": "string", "description": "Where to rotate it, or who to ask." },
                 })),
-                &["setting", "value"],
+                &["setting"],
             ),
             Op::DeleteActionsSecret | Op::DeleteActionsVariable => object(
-                settings_owner(json!({ "setting": { "type": "string", "description": "The name." } })),
+                settings_owner(json!({
+                    "setting": { "type": "string", "description": "The key." },
+                    "id": { "type": "string", "description": "One row; left out, every row of the key." },
+                })),
                 &["setting"],
             ),
             Op::CreateWebhook => object(
@@ -1709,7 +1729,21 @@ impl Op {
                 args["kind"] = json!(kind);
                 // GitHub's variables API names the variable in the body as `name`.
                 args["name"] = json!(optional_text(input, "setting").or_else(|| optional_text(input, "name")).unwrap_or_default());
-                args["value"] = json!(text(input, "value"));
+                // GitHub's routes send a value every time; ours may leave it
+                // out to change only where a row applies.
+                if let Some(value) = input["value"].as_str() {
+                    args["value"] = json!(value);
+                }
+                for key in ["availableTo", "environments", "repositories"] {
+                    if let Some(list) = strings(input, key) {
+                        args[key] = json!(list);
+                    }
+                }
+                for key in ["id", "note"] {
+                    if let Some(value) = input[key].as_str() {
+                        args[key] = json!(value);
+                    }
+                }
                 let method = match self {
                     Op::ListActionsSecrets | Op::ListActionsVariables => "settings",
                     Op::SetActionsSecret | Op::SetActionsVariable => "set_setting",

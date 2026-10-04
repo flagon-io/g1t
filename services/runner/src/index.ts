@@ -124,7 +124,10 @@ type DeployJob = {
   commit: string;
   buildCommand?: string | null;
   outputDir?: string | null;
+  /** The repository's variables for deploy builds. */
   buildEnv?: Record<string, string>;
+  /** Its secrets for deploy builds: set like variables, and redacted from the log. */
+  buildSecrets?: Record<string, string>;
 };
 
 /** Long enough to install and build; then the read token stops working. */
@@ -697,6 +700,7 @@ export default class RunnerService
           BUILD_COMMAND: job.buildCommand ?? "",
           OUTPUT_DIR: job.outputDir ?? "",
           BUILD_ENV: JSON.stringify(job.buildEnv ?? {}),
+          BUILD_SECRETS: JSON.stringify(job.buildSecrets ?? {}),
         },
       });
     } catch (error) {

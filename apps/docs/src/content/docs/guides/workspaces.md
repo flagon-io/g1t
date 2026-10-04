@@ -60,9 +60,14 @@ slides the sidebar over to the workspace's settings:
 | --- | --- | --- |
 | **General** | Owners | The display name and a one-line description. |
 | **Members** | Members | Who belongs, and their roles. Owners add and remove people. |
-| **Billing** | Members | The balance and statement. Owners add credit. |
-| **Integrations** | Members | [Model providers, alerts and trackers](/guides/integrations/). Owners connect and remove them. |
 | **Access tokens** | Members | The workspace's own tokens. Owners create and delete them. |
+| **Billing and plans** | Members | [Plans](/guides/usage-and-billing/#plans), the balance and the statement. Owners turn plans on and add credit. |
+| **Integrations** | Members | [Model providers, alerts and trackers](/guides/integrations/). Owners connect and remove them. |
+| **Secrets and variables** | Members | [Rows every repository, or the ones linked, reads](/guides/secrets-and-variables/). Owners change them. |
+| **Webhooks** | Members | [Every repository's events](/guides/webhooks/), sent to your addresses. Owners manage them. |
+
+A repository's own settings are under **Settings** in its sidebar:
+**General**, **Deployments**, **Secrets and variables** and **Webhooks**.
 
 The arrow at the top of the settings goes back.
 

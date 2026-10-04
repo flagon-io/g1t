@@ -19,7 +19,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
-  return actOnSecrets(ownerOf(params), user, await request.formData());
+  const page = `/${params.owner}/${params.repo}/settings/secrets`;
+  return actOnSecrets(ownerOf(params), user, await request.formData(), page);
 }
 
 export default function RepoSecrets({ loaderData, actionData, params }: Route.ComponentProps) {

@@ -25,8 +25,6 @@ export type DeploySettings = {
   buildCommand: string | null;
   /** What to serve, for a static site; found by itself when null. */
   outputDir: string | null;
-  /** Variables the build runs with. Not secret: shown to members. */
-  buildEnv: Record<string, string>;
   /** A preview no one has visited in this many days is taken down. */
   idleDays: number;
   /** Where production is served. */

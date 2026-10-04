@@ -20,7 +20,9 @@
 		{ "binding": "WORK", "service": "g1t-work" },
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "BILLING", "service": "g1t-billing" },
-		{ "binding": "RUNNER", "service": "g1t-runner" }
+		{ "binding": "RUNNER", "service": "g1t-runner" },
+		// Secrets and variables, with who may read each.
+		{ "binding": "ACTIONS", "service": "g1t-actions" }
 	],
 	// Pull requests opened, pushed to, closed and merged; pushes to the
 	// default branch.

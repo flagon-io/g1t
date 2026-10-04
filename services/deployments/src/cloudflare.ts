@@ -89,15 +89,20 @@ export class Cloudflare {
     worker: BuiltWorker,
     completionJwt: string | null,
     tags: string[],
+    /** The repository's entries for running apps, over the project's own `vars`. */
+    runtime: { secrets: Record<string, string>; variables: Record<string, string> } = { secrets: {}, variables: {} },
   ): Promise<void> {
     const form = new FormData();
     const modules = worker.modules?.length ? worker.modules : null;
     const assetsBinding = worker.assetsBinding || "ASSETS";
-    const bindings: object[] = Object.entries(worker.vars ?? {}).map(([name, value]) =>
+    const vars: Record<string, unknown> = { ...(worker.vars ?? {}), ...runtime.variables };
+    for (const name of Object.keys(runtime.secrets)) delete vars[name];
+    const bindings: object[] = Object.entries(vars).map(([name, value]) =>
       typeof value === "string"
         ? { type: "plain_text", name, text: value }
         : { type: "json", name, json: value },
     );
+    for (const [name, text] of Object.entries(runtime.secrets)) bindings.push({ type: "secret_text", name, text });
     if (completionJwt) bindings.push({ type: "assets", name: assetsBinding });
     const assetsConfig: Record<string, string> = {};
     if (worker.htmlHandling && HTML_HANDLING.includes(worker.htmlHandling)) {
