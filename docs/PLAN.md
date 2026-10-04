@@ -552,8 +552,15 @@ queue pipeline; they need no new kind of work.
   from prepaid credit. `FREE_WHILE_BUILDING` and the free model allowance
   do not cover deployments: a workspace without credit cannot deploy, and
   turning deployments on says so first.
-- **On by default, off in one click.** Deployments are recommended, not
-  required: a repository can turn them off, keep only production, or
+- **Turning them on is a paid plan, the way Cloudflare's is.** "Including
+  things like them even enabling the feature should have that pay like
+  Cloudflare does." Enabling deployments for a workspace starts a monthly
+  fee that includes an allowance of requests, CPU time and deployed apps;
+  usage past it is billed per unit, as Workers for Platforms bills g1t.
+  The fee and allowance are the user's to set.
+- **Recommended, off in one click.** Because enabling costs money, it is
+  never switched on without the workspace agreeing: new repositories
+  recommend it prominently. A repository can turn it off, keep only production, or
   deploy somewhere else from its own workflows. Apps built for Cloudflare
   (Workers, static assets, D1, KV, R2) deploy without configuration.
 
