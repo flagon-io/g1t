@@ -11,7 +11,7 @@
 		{
 			"binding": "DB",
 			"database_name": "g1t-deployments",
-			"database_id": "TO_BE_CREATED",
+			"database_id": "aa935a8f-845b-4132-8fa3-98f1afba1db5",
 			"migrations_dir": "migrations"
 		}
 	],

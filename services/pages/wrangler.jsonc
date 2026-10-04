@@ -5,11 +5,12 @@
 	"compatibility_date": "2026-09-26",
 	"main": "./src/index.ts",
 	"workers_dev": false,
-	// Every app on g1t.page. Needs a proxied wildcard DNS record (`*`,
-	// AAAA 100::) on the zone; the apex says what g1t.page is.
+	// Every app on g1t.page. The wildcard needs a proxied DNS record (`*`,
+	// AAAA 100::) on the zone; the apex, which says what g1t.page is, is a
+	// custom domain, whose record Cloudflare makes.
 	"routes": [
 		{ "pattern": "*.g1t.page/*", "zone_name": "g1t.page" },
-		{ "pattern": "g1t.page/*", "zone_name": "g1t.page" }
+		{ "pattern": "g1t.page", "custom_domain": true }
 	],
 	// The apps, uploaded by the deployments service.
 	"dispatch_namespaces": [{ "binding": "APPS", "namespace": "g1t-deployments" }],

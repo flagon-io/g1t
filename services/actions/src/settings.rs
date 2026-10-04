@@ -281,10 +281,11 @@ impl Actions {
             .iter()
             .find(|row| row.kind == kind && existing.is_none_or(|e| e.id != row.id) && row.overlaps(&environments))
         {
-            let at = if environments.is_empty() { "every environment".to_owned() } else { environments.join(", ") };
+            let at = if clash.environments.is_empty() { "all environments".to_owned() } else { clash.environments.replace(',', ", ") };
+            let what = if kind == "secret" { "secret" } else { "config" };
             return Ok(fail(
                 FailureCode::Conflict,
-                format!("{name} already has a row for {at} ({}). Edit that row, or choose other environments.", if clash.environments.is_empty() { "every environment" } else { &clash.environments }),
+                format!("{name} already has a {what} row for {at}. Edit that row, or choose other environments."),
             ));
         }
         if existing.is_none() && rows.len() as u32 >= MAX_PER_OWNER {

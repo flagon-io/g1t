@@ -122,26 +122,23 @@ npx wrangler login
 
 Then, once:
 
-1. Create the D1 databases (`g1t`, `g1t-repos`, `g1t-work`, `g1t-events`) and
-   the queues (`g1t-events`, `g1t-events-work`) with `wrangler d1 create` and
-   `wrangler queues create`.
+1. Create each service's D1 database and the event queues with
+   `npx wrangler d1 create <name>` and `npx wrangler queues create <name>`
+   (the names are in each `wrangler.jsonc`).
 2. Put your own `account_id`, database ids and hostnames in each
    `wrangler.jsonc`.
-3. Apply the migrations: `npx wrangler d1 migrations apply DB --remote` in
-   each service directory.
+3. For [Deployments](https://docs.g1t.sh/guides/deployments/), which needs
+   the Workers for Platforms add-on and a zone for apps:
+   `scripts/setup-deployments.sh`.
 
-Deploy everything in dependency order:
+Deploy everything, migrations first, in dependency order:
 
 ```sh
-(cd services/events && npx wrangler deploy)
-(cd services/identity && npx wrangler deploy)
-(cd services/repos && npx wrangler deploy)
-(cd services/work && npx wrangler deploy)
-(cd apps/api && npx wrangler deploy)
-npm run deploy
-(cd services/runner && npx wrangler deploy)   # optional: g1t agents
-(cd apps/docs && npm run deploy)
+scripts/deploy.sh
 ```
+
+Or only what changed, still in order: `scripts/deploy.sh billing web`.
+Both use your `wrangler login`, not a token in `.env`.
 
 Create the first account by registering on your site, or with
 `node services/identity/scripts/create-user.mjs <username>`.
