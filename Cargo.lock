@@ -913,6 +913,7 @@ dependencies = [
  "g1t-kit",
  "getrandom 0.2.17",
  "hex",
+ "hmac 0.12.1",
  "serde",
  "serde_json",
  "sha2 0.10.9",

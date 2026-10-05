@@ -1,4 +1,4 @@
-import { ChevronRight, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { Link } from "react-router";
 
 import { ADMIN_WORKSPACES_LIMIT } from "@g1t/contracts";
@@ -9,7 +9,7 @@ import { Avatar, Badge, Button, EmptyState, ExposureBar, Stat, TermsBadge, Trust
 import { usd } from "~/lib/money";
 import { admin, identity } from "~/lib/services.server";
 import { requireStaff } from "~/lib/staff";
-import { type WorkspaceRow, joinWorkspaces, matchesQuery } from "~/lib/workspaces";
+import { PAGE_SIZE, type WorkspaceRow, joinWorkspaces, paginate } from "~/lib/workspaces";
 
 export const meta: Route.MetaFunction = () => [{ title: "Workspaces · sudo" }, { name: "robots", content: "noindex, nofollow" }];
 
@@ -21,59 +21,65 @@ const FILTERS = {
 
 type Filter = keyof typeof FILTERS;
 
-const SEVERITY = { stopped: 0, warning: 1, ok: 2 } as const;
-
 export async function loader({ request, context }: Route.LoaderArgs) {
   requireStaff(context);
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim().slice(0, 100);
   const show = url.searchParams.getAll("show").filter((value): value is Filter => value in FILTERS);
 
-  const [found, accounts] = await Promise.all([identity.workspaces(q || undefined), admin.accounts()]);
-  let workspaces = found;
-  // A search for an enterprise's name finds the workspaces it pays for,
-  // which identity knows nothing about.
-  const lower = q.toLowerCase();
-  const enterpriseMembers = new Set(
-    q
-      ? accounts
-          .filter((row) => row.account.kind === "enterprise" && row.account.name.toLowerCase().includes(lower))
-          .flatMap((row) => row.account.workspaces)
-      : [],
-  );
-  if (enterpriseMembers.size > 0) {
-    const listed = new Set(found.map((workspace) => workspace.slug));
-    const extra = (await identity.workspaces()).filter((workspace) => enterpriseMembers.has(workspace.slug) && !listed.has(workspace.slug));
-    workspaces = [...found, ...extra];
+  let workspaces = await identity.workspaces(q || undefined);
+  const capped = workspaces.length >= ADMIN_WORKSPACES_LIMIT;
+  // A search for an enterprise's name also finds the workspaces it pays
+  // for, which identity knows nothing about.
+  if (q) {
+    const lower = q.toLowerCase();
+    const members = new Set(
+      (await admin.accounts(q))
+        .filter((row) => row.account.kind === "enterprise" && row.account.name.toLowerCase().includes(lower))
+        .flatMap((row) => row.account.workspaces),
+    );
+    const listed = new Set(workspaces.map((workspace) => workspace.slug));
+    if ([...members].some((slug) => !listed.has(slug))) {
+      const extra = (await identity.workspaces()).filter((workspace) => members.has(workspace.slug) && !listed.has(workspace.slug));
+      workspaces = [...workspaces, ...extra];
+    }
   }
 
-  const all = joinWorkspaces(workspaces, accounts).filter((row) => matchesQuery(row, q));
-  const rows = all
-    .filter((row) => show.every((filter) => FILTERS[filter].test(row)))
-    .sort(
-      (a, b) =>
-        SEVERITY[a.billing.limit?.state ?? "ok"] - SEVERITY[b.billing.limit?.state ?? "ok"] ||
-        (b.createdAt ?? "").localeCompare(a.createdAt ?? ""),
-    );
+  // Billing's figures for exactly this page's workspaces.
+  const { page, pages, items } = paginate(workspaces, url.searchParams.get("page"));
+  const accounts = items.length > 0 ? await admin.accountsFor(items.map((workspace) => workspace.slug)) : [];
+  const onPage = joinWorkspaces(items, accounts);
+  const rows = onPage.filter((row) => show.every((filter) => FILTERS[filter].test(row)));
 
-  // Money is summed over billing's accounts, so an enterprise is counted once.
-  const sum = (pick: (row: (typeof accounts)[number]) => number) => accounts.reduce((total, row) => total + pick(row), 0);
+  // This page's own figures: a workspace on an enterprise counts its share.
+  const sum = (pick: (row: WorkspaceRow) => number) => onPage.reduce((total, row) => total + pick(row), 0);
   return {
     q,
     show,
     rows,
-    total: all.length,
-    capped: found.length >= ADMIN_WORKSPACES_LIMIT,
+    page,
+    pages,
+    onPage: onPage.length,
+    total: workspaces.length,
+    capped,
     totals: {
-      charged: sum((row) => row.chargedMicros),
-      cost: sum((row) => row.costMicros),
-      paid: sum((row) => row.paidMicros),
-      exposure: sum((row) => row.limit.exposureMicros),
-      onEnterprise: all.filter((row) => row.billing.billedTo).length,
-      stopped: accounts.filter((row) => row.limit.state === "stopped").length,
-      warning: accounts.filter((row) => row.limit.state === "warning").length,
+      charged: sum((row) => row.billing.chargedMicros),
+      cost: sum((row) => row.billing.costMicros),
+      onEnterprise: onPage.filter((row) => row.billing.billedTo).length,
+      stopped: onPage.filter((row) => row.billing.limit?.state === "stopped").length,
+      warning: onPage.filter((row) => row.billing.limit?.state === "warning").length,
     },
   };
+}
+
+/** A link to another page of the list, keeping the search and filters. */
+function pageHref(q: string, show: string[], page: number) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  for (const filter of show) params.append("show", filter);
+  if (page > 1) params.set("page", String(page));
+  const query = params.toString();
+  return query ? `/?${query}` : "/";
 }
 
 function workspaceHref(row: WorkspaceRow) {
@@ -81,7 +87,8 @@ function workspaceHref(row: WorkspaceRow) {
 }
 
 export default function Workspaces({ loaderData }: Route.ComponentProps) {
-  const { q, show, rows, total, capped, totals } = loaderData;
+  const { q, show, rows, page, pages, onPage, total, capped, totals } = loaderData;
+  const scope = pages > 1 ? "this page" : null;
   const margin = totals.charged - totals.cost;
   const filtered = q !== "" || show.length > 0;
 
@@ -93,11 +100,15 @@ export default function Workspaces({ loaderData }: Route.ComponentProps) {
       </div>
 
       <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Workspaces" value={String(total)} hint={`${totals.onEnterprise} billed to an enterprise`} />
-        <Stat label="Charged this month" value={usd(totals.charged)} hint={`Cost to g1t ${usd(totals.cost)} · margin ${usd(margin)}`} tone={margin < 0 ? "danger" : undefined} />
-        <Stat label="Unpaid usage this month" value={usd(totals.exposure)} hint={`Paid ever ${usd(totals.paid)}`} />
         <Stat
-          label="Needs attention"
+          label={q ? "Workspaces found" : "Workspaces"}
+          value={`${total}${capped ? "+" : ""}`}
+          hint={`${totals.onEnterprise} on ${scope ?? "the list"} billed to an enterprise`}
+        />
+        <Stat label={scope ? "Charged this month, this page" : "Charged this month"} value={usd(totals.charged)} hint={`Margin ${usd(margin)}`} tone={margin < 0 ? "danger" : undefined} />
+        <Stat label={scope ? "Cost to g1t, this page" : "Cost to g1t"} value={usd(totals.cost)} hint="What their usage cost g1t" />
+        <Stat
+          label={scope ? "Needs attention, this page" : "Needs attention"}
           value={`${totals.stopped} stopped`}
           hint={`${totals.warning} near the limit`}
           tone={totals.stopped > 0 ? "danger" : totals.warning > 0 ? "warn" : "mint"}
@@ -141,21 +152,26 @@ export default function Workspaces({ loaderData }: Route.ComponentProps) {
       </form>
 
       <p className="mt-4 text-xs text-faint">
-        {rows.length === total ? `${total} workspaces` : `${rows.length} of ${total} workspaces`}
+        {total} workspace{total === 1 ? "" : "s"}
         {q && (
           <>
             {" "}
             matching <span className="font-mono text-muted">{q}</span>
           </>
         )}
-        . Stopped and warning first, then newest.
+        , newest first{pages > 1 && `, ${PAGE_SIZE} a page`}.
+        {show.length > 0 && pages > 1 && ` Filters apply to this page: ${rows.length} of its ${onPage} match.`}
         {capped && ` Only the newest ${ADMIN_WORKSPACES_LIMIT} are listed; search to find older ones.`}
       </p>
 
       {rows.length === 0 ? (
         <div className="mt-3">
-          <EmptyState title={filtered ? "No workspaces match" : "No workspaces yet"}>
-            {filtered ? "Try another search, or clear the filters." : "Workspaces appear here as people create them."}
+          <EmptyState title={filtered ? (pages > 1 ? "None on this page match" : "No workspaces match") : "No workspaces yet"}>
+            {filtered
+              ? pages > 1
+                ? "Filters apply one page at a time. Try the next page, another search, or clear the filters."
+                : "Try another search, or clear the filters."
+              : "Workspaces appear here as people create them."}
           </EmptyState>
         </div>
       ) : (
@@ -222,6 +238,30 @@ export default function Workspaces({ loaderData }: Route.ComponentProps) {
           </div>
         </>
       )}
+
+      {pages > 1 && (
+        <nav aria-label="Pages" className="mt-4 flex items-center justify-between gap-3 text-sm">
+          {page > 1 ? (
+            <Link to={pageHref(q, show, page - 1)} className="inline-flex items-center gap-1 rounded-md border border-line px-3 py-1.5 text-muted hover:border-line-strong hover:text-fg">
+              <ChevronLeft size={14} />
+              Previous
+            </Link>
+          ) : (
+            <span />
+          )}
+          <span className="text-xs text-faint">
+            Page {page} of {pages}
+          </span>
+          {page < pages ? (
+            <Link to={pageHref(q, show, page + 1)} className="inline-flex items-center gap-1 rounded-md border border-line px-3 py-1.5 text-muted hover:border-line-strong hover:text-fg">
+              Next
+              <ChevronRight size={14} />
+            </Link>
+          ) : (
+            <span />
+          )}
+        </nav>
+      )}
     </main>
   );
 }
@@ -247,7 +287,6 @@ function WorkspaceName({ row }: { row: WorkspaceRow }) {
           {billing.billedTo && <Badge tone="lavender">Billed to {billing.billedTo.name}</Badge>}
           <TermsBadge terms={billing.terms} />
           {billing.limit && billing.terms.kind !== "comped" && <TrustBadge trust={billing.limit.trust} />}
-          {!row.known && <Badge tone="warn">Billing only</Badge>}
         </div>
       </div>
     </div>

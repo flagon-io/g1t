@@ -41,6 +41,8 @@ struct AccountRow {
     terms_set_by: Option<String>,
     terms_set_at: Option<String>,
     created_at: String,
+    #[serde(default)]
+    billing_email: Option<String>,
 }
 
 impl AccountRow {
@@ -147,6 +149,8 @@ impl Billing {
             terms: row.terms(),
             workspaces,
             created_at: row.created_at.clone(),
+            billing_email: row.billing_email.clone(),
+            invoices: vec![],
         }
     }
 
@@ -179,6 +183,8 @@ impl Billing {
                 terms: Terms::standard(),
                 workspaces: vec![workspace],
                 created_at: String::new(),
+                billing_email: None,
+                invoices: vec![],
             },
         })
     }
@@ -188,17 +194,22 @@ impl Billing {
         Ok(self.account_of(workspace).await?.terms)
     }
 
+    /// An enterprise, with its invoices.
+    pub(crate) async fn enterprise(&self, id: &str) -> Result<Option<BillingAccount>> {
+        let Some(row) = self.account_row(id).await?.filter(|row| row.kind == "enterprise") else {
+            return Ok(None);
+        };
+        let members = self.members(&row.id).await?;
+        let mut account = self.to_account(&row, members);
+        account.invoices = self.enterprise_invoices(&row.id).await?;
+        Ok(Some(account))
+    }
+
     /// An account by id, or the account of a workspace by its slug.
     async fn find_account(&self, id: &str) -> Result<Option<BillingAccount>> {
         let id = id.trim().to_lowercase();
         if id.starts_with("ent_") {
-            return Ok(match self.account_row(&id).await? {
-                Some(row) => {
-                    let members = self.members(&row.id).await?;
-                    Some(self.to_account(&row, members))
-                }
-                None => None,
-            });
+            return self.enterprise(&id).await;
         }
         let slug = id.strip_prefix("ws_").unwrap_or(&id);
         if slug.is_empty() {
@@ -207,7 +218,7 @@ impl Billing {
         Ok(Some(self.account_of(slug).await?))
     }
 
-    async fn audit(&self, account: &str, action: &str, detail: &str, by: &str) -> Result<()> {
+    pub(crate) async fn audit(&self, account: &str, action: &str, detail: &str, by: &str) -> Result<()> {
         let now = now_ms();
         self.db
             .prepare("INSERT INTO admin_actions (id, account, action, detail, by, created_at) VALUES (?, ?, ?, ?, ?, ?)")
@@ -294,6 +305,18 @@ impl Billing {
     // --- Staff ------------------------------------------------------------
 
     pub(crate) async fn admin_accounts(&self, a: AdminAccountsArgs) -> Result<Vec<AccountSummary>> {
+        // Exactly the workspaces asked for, such as one page of sudo's list.
+        if let Some(workspaces) = &a.workspaces {
+            let mut seen = std::collections::HashSet::new();
+            let mut summaries = vec![];
+            for slug in workspaces.iter().take(200) {
+                let account = self.account_of(slug).await?;
+                if seen.insert(account.id.clone()) {
+                    summaries.push(self.summary(account).await?);
+                }
+            }
+            return Ok(summaries);
+        }
         // Every workspace that has used or paid for anything, and every
         // account with terms of its own.
         #[derive(Deserialize)]

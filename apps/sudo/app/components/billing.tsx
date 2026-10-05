@@ -73,6 +73,9 @@ function describeTerms(terms: Terms): [string, string][] {
   ];
 }
 
+/** Where a confirmed change lands, when its result is shown in place. */
+const RESULT_ANCHOR: Partial<Record<Review["intent"], string>> = { "billing-link": "billing-link", invoice: "invoices" };
+
 export function ReviewPanel({ review, pathname }: { review: Review; pathname: string }) {
   let title: string;
   let body: ReactNode;
@@ -130,6 +133,33 @@ export function ReviewPanel({ review, pathname }: { review: Review; pathname: st
         its trust gives it. It may stop at once if its own limit is lower than what it owes.
       </p>
     );
+  } else if (review.intent === "billing-email") {
+    title = `Send ${review.name}'s invoices to ${review.after}?`;
+    body = (
+      <p className="text-sm text-muted">
+        Stripe emails its invoices to <span className="font-mono text-fg">{review.after}</span>
+        {review.before ? (
+          <>
+            {" "}
+            instead of <span className="font-mono">{review.before}</span>
+          </>
+        ) : null}
+        , from the next invoice on.{!review.before && " This also sets the enterprise up as a customer on Stripe."}
+      </p>
+    );
+  } else if (review.intent === "invoice") {
+    title = `Invoice ${review.name} now?`;
+    confirm = "Send the invoice";
+    body = (
+      <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
+        <li>Makes one Stripe invoice, with a line for each of its {review.workspaces} workspace{review.workspaces === 1 ? "" : "s"} for what it owes now.</li>
+        <li>Net 30: due in 30 days.</li>
+        <li>
+          Stripe emails it to <span className="font-mono text-fg">{review.email ?? "the invoice email (none set yet)"}</span>, with a link to
+          pay on Stripe's page.
+        </li>
+      </ul>
+    );
   } else {
     title = `Make a Stripe billing link for ${review.workspace}?`;
     confirm = "Make the link";
@@ -145,7 +175,7 @@ export function ReviewPanel({ review, pathname }: { review: Review; pathname: st
     <section id="review" className={`scroll-mt-20 rounded-lg border p-4 sm:p-5 ${danger ? "border-warn/40 bg-warn/5" : "border-merged/40 bg-merged/5"}`}>
       <h2 className="font-semibold tracking-tight">{title}</h2>
       <div className="mt-3">{body}</div>
-      <form method="post" action={`${pathname}#${review.intent === "billing-link" ? "billing-link" : "top"}`} className="mt-4 flex flex-wrap items-center gap-2">
+      <form method="post" action={`${pathname}#${RESULT_ANCHOR[review.intent] ?? "top"}`} className="mt-4 flex flex-wrap items-center gap-2">
         <Hidden values={review.fields} />
         <input type="hidden" name="intent" value={review.intent} />
         <input type="hidden" name="confirm" value="yes" />
@@ -415,6 +445,11 @@ const ACTION: Record<string, string> = {
   detach: "Workspace removed",
   credit: "Credit issued",
   billing_link: "Billing link made",
+  billing_email: "Invoice email set",
+  invoice: "Invoice sent",
+  dispute: "Payment disputed",
+  stripe: "Stripe",
+  webhook: "Webhook registered",
 };
 
 export function AuditSection({ audit, description = "Every change made in sudo, and by whom." }: { audit: AdminAction[]; description?: ReactNode }) {

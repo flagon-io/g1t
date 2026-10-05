@@ -3,17 +3,32 @@
 g1t's staff console, at <https://sudo.g1t.sh>. It is organised the way
 customers know g1t: by **workspace**.
 
-- **Workspaces** (the home page): every workspace, with its owners, members,
-  who it is billed to, its terms, this month's usage against its limit,
-  what it was charged and what it cost g1t. Search by workspace, owner,
-  email or enterprise; filter to stopped or warning, comped or custom, or
-  on an enterprise. A workspace's page shows its members, and under
+- **Workspaces** (the home page): every workspace, newest first, 50 to a
+  page, with its owners, members, who it is billed to, its terms, this
+  month's usage against its limit, what it was charged and what it cost
+  g1t. Search by workspace, owner, email or enterprise (across the whole
+  list); filter to stopped or warning, comped or custom, or on an
+  enterprise. Billing's figures are fetched for exactly the page shown, so
+  the filters, and the totals over the list, cover that page; the page
+  says so when there is more than one. A workspace's page shows its members, and under
   **Billing** its terms, who it is billed to (move it onto or off an
   enterprise), a credit form, a Stripe billing link, its ledger and its
   audit log.
 - **Enterprises**: customers that pay for several workspaces with one
   bill, one limit and one set of terms. Each has its workspaces (add or
-  remove them), combined usage, terms, credits, ledger and audit log.
+  remove them), combined usage, terms, credits, ledger and audit log, and
+  **Invoices**: where they go (the billing email, which also makes its
+  Stripe customer), a "Send invoice now" button, and every invoice with
+  its status (open, paid, overdue, void), a line per workspace, and a link
+  to Stripe's hosted invoice page. An invoice also goes out on its own as
+  each month closes: one Stripe invoice, a line per workspace for what it
+  owes, net 30, emailed by Stripe.
+- **Stripe**: whether billing's key is in test or live mode (or off), the
+  webhook Stripe calls (URL, endpoint id, events, who registered it and
+  when), and the events Stripe sent lately with what billing did with
+  each. "Register webhook" (or "Replace") has billing delete the endpoint
+  it made before, create a new one and keep its signing secret, which no
+  one sees. Do it once per mode, and again after switching to live keys.
 
 Billing's internal account ids (`ws_<slug>` for a workspace's own,
 `ent_…` for an enterprise) are never shown as names; an enterprise's id
@@ -45,8 +60,9 @@ nothing but sudo binds to them.
    configured.
 4. **Changes** are POSTs only, and only from sudo's own pages (`Origin`, or
    `Referer`, must be `https://sudo.g1t.sh`). Terms, enterprise moves, new
-   enterprises and Stripe billing links show a confirmation step first; a
-   credit needs the workspace's slug typed out.
+   enterprises, Stripe billing links, invoice emails, invoices and the
+   webhook show a confirmation step first; a credit needs the workspace's
+   slug typed out.
 5. **The pages ship no JavaScript.** The content security policy forbids
    every script and inline style; responses are `no-store`, `noindex` and
    cannot be framed. The worker has no `workers.dev` address or preview URLs.
@@ -95,7 +111,7 @@ The same two checks still apply: the Access policy, and `STAFF_EMAILS`.
 
 ```sh
 npm run typecheck -w @g1t/sudo
-npm test -w @g1t/sudo     # JWT verification, forms, money, the workspace join
+npm test -w @g1t/sudo     # JWT verification, forms, money, the workspace join, paging
 npm run build -w @g1t/sudo
 ```
 

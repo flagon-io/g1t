@@ -147,6 +147,28 @@ async fn receive_hook(request: &mut Request, services: &Services, id: &str) -> R
     Ok(Response::from_json(&json!({ "message": received.message }))?.with_status(received.status))
 }
 
+async fn receive_stripe(request: &mut Request, env: &Env) -> Result<Response> {
+    let signature = request.headers().get("stripe-signature")?.unwrap_or_default();
+    let payload = request.text().await.unwrap_or_default();
+    if payload.len() > 1_000_000 || signature.is_empty() {
+        return Ok(Response::from_json(&json!({ "message": "Not a Stripe event." }))?.with_status(400));
+    }
+    let handled: g1t_contracts::Outcome<bool> = g1t_kit::call(
+        &env.service("BILLING")?,
+        "stripe_webhook",
+        &g1t_contracts::billing::StripeWebhookArgs { payload, signature },
+    )
+    .await?;
+    // A refusal is a 400, so Stripe shows it as failed; anything handled,
+    // or already handled, is a 200, so Stripe stops sending it.
+    Ok(match handled {
+        g1t_contracts::Outcome::Ok(_) => Response::from_json(&json!({ "received": true }))?,
+        g1t_contracts::Outcome::Fail(failure) => {
+            Response::from_json(&json!({ "message": failure.message }))?.with_status(400)
+        }
+    })
+}
+
 async fn device_code(request: &mut Request, services: &Services) -> Result<Response> {
     let body = json_body(request).await;
     let started: DeviceStart = g1t_kit::call(
@@ -338,6 +360,13 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     };
     let on_mcp = url.host_str().is_some_and(|host| host.starts_with("mcp."));
     let mut services = Services::new(env)?;
+
+    // Stripe reporting to billing. Signed with the secret of the endpoint
+    // billing registered; the body goes through exactly as received, since
+    // the signature covers its bytes.
+    if method == "POST" && !on_mcp && path == "/stripe/webhook" {
+        return receive_stripe(&mut request, env).await;
+    }
 
     // Outside systems reporting to a connection. They sign what they send
     // with the connection's own secret, which is not a g1t token, so this

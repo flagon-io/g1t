@@ -43,12 +43,9 @@ export type WorkspaceBilling = {
 export type WorkspaceRow = {
   slug: string;
   name: string;
-  /** Null for a workspace billing knows and identity returned nothing for. */
-  createdAt: string | null;
+  createdAt: string;
   owners: AdminOwner[];
-  memberCount: number | null;
-  /** False when only billing knows the slug. */
-  known: boolean;
+  memberCount: number;
   billing: WorkspaceBilling;
 };
 
@@ -93,40 +90,31 @@ export function noBilling(): WorkspaceBilling {
 }
 
 /**
- * Every workspace identity listed, in its order, with its billing; then any
- * workspace only billing knows. A workspace with no billing activity is
- * still listed, on standard terms at $0.
+ * The workspaces identity listed, in its order, each with its billing. Only
+ * these: an enterprise's other workspaces, which billing returns with it,
+ * are not added. A workspace with no billing activity is still listed, on
+ * standard terms at $0.
  */
 export function joinWorkspaces(workspaces: AdminWorkspace[], accounts: AccountSummary[]): WorkspaceRow[] {
   const billing = billingBySlug(accounts);
-  const rows: WorkspaceRow[] = workspaces.map((workspace) => ({
+  return workspaces.map((workspace) => ({
     slug: workspace.slug,
     name: workspace.name,
     createdAt: workspace.createdAt,
     owners: workspace.owners,
     memberCount: workspace.memberCount,
-    known: true,
     billing: billing.get(workspace.slug) ?? noBilling(),
   }));
-  const listed = new Set(rows.map((row) => row.slug));
-  for (const [slug, entry] of billing) {
-    if (listed.has(slug)) continue;
-    rows.push({ slug, name: slug, createdAt: null, owners: [], memberCount: null, known: false, billing: entry });
-  }
-  return rows;
 }
 
-/** Whether a row matches a search: slug, name, owner, owner's email or enterprise. */
-export function matchesQuery(row: WorkspaceRow, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  const haystack = [
-    row.slug,
-    row.name,
-    row.billing.billedTo?.name,
-    ...row.owners.flatMap((owner) => [owner.username, owner.email]),
-  ];
-  return haystack.some((value) => value?.toLowerCase().includes(q));
+export const PAGE_SIZE = 50;
+
+/** One page of a list: the page asked for, kept within the pages there are. */
+export function paginate<T>(items: T[], requested: string | null, size = PAGE_SIZE) {
+  const pages = Math.max(1, Math.ceil(items.length / size));
+  const asked = Number.parseInt(requested ?? "1", 10);
+  const page = Number.isFinite(asked) ? Math.min(Math.max(asked, 1), pages) : 1;
+  return { page, pages, items: items.slice((page - 1) * size, page * size) };
 }
 
 /**

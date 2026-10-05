@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { AccountSummary, AdminWorkspace, Limit, Terms } from "@g1t/contracts";
 
-import { STANDARD_TERMS, joinWorkspaces, legacyAccountPath, matchesQuery } from "./workspaces.ts";
+import { STANDARD_TERMS, joinWorkspaces, legacyAccountPath, paginate } from "./workspaces.ts";
 
 function limit(workspace: string, account: string, exposureMicros = 0): Limit {
   return {
@@ -77,24 +77,25 @@ test("a workspace on an enterprise shows the enterprise and only its own share",
   assert.equal(rows.find((row) => row.slug === "acme")?.billing.chargedMicros, 12_000_000);
 });
 
-test("a slug only billing knows is still listed, marked unknown", () => {
-  const rows = joinWorkspaces([], [ACME]);
+test("a page lists only its own workspaces, not the rest of an enterprise", () => {
+  const rows = joinWorkspaces([workspace("acme")], [ACME]);
   assert.deepEqual(
-    rows.map((row) => [row.slug, row.known]),
-    [
-      ["acme", false],
-      ["acme-labs", false],
-    ],
+    rows.map((row) => row.slug),
+    ["acme"],
   );
 });
 
-test("search covers slug, name, owners, their emails and the enterprise", () => {
-  const [row] = joinWorkspaces([workspace("acme-labs", "ada")], [ACME]);
-  assert.ok(matchesQuery(row, "LABS"));
-  assert.ok(matchesQuery(row, "ada@"));
-  assert.ok(matchesQuery(row, "acme corp"));
-  assert.ok(matchesQuery(row, ""));
-  assert.ok(!matchesQuery(row, "globex"));
+test("pages stay within the list", () => {
+  const items = Array.from({ length: 120 }, (_, i) => i);
+  assert.deepEqual(paginate(items, null).items.slice(0, 2), [0, 1]);
+  const third = paginate(items, "3");
+  assert.equal(third.page, 3);
+  assert.equal(third.pages, 3);
+  assert.equal(third.items.length, 20);
+  assert.equal(paginate(items, "99").page, 3);
+  assert.equal(paginate(items, "-4").page, 1);
+  assert.equal(paginate(items, "abc").page, 1);
+  assert.deepEqual(paginate([], "2"), { page: 1, pages: 1, items: [] });
 });
 
 test("old account links go to the workspace or the enterprise", () => {

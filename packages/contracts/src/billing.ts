@@ -97,6 +97,10 @@ export type PayingAccount = {
   name: string;
   terms: Terms;
   workspaces: string[];
+  /** Where an enterprise's invoices go. */
+  billingEmail?: string | null;
+  /** An enterprise's invoices, newest first. */
+  invoices?: EnterpriseInvoice[];
   createdAt: string;
 };
 
@@ -112,6 +116,25 @@ export type AccountSummary = {
 
 /** One workspace's share of an `AccountSummary`. */
 export type WorkspaceFigures = { workspace: string; chargedMicros: number; costMicros: number; paidMicros: number };
+
+export type StripeStatus = {
+  /** `test` or `live`, from the key; `off` without one. */
+  mode: "test" | "live" | "off" | string;
+  webhook: { url: string; endpointId: string; events: string[]; createdBy: string; createdAt: string } | null;
+  recentEvents: { id: string; kind: string; outcome: string; receivedAt: string }[];
+  error: string | null;
+};
+
+/** An enterprise's invoice: one line per workspace, paid on Stripe's page. */
+export type EnterpriseInvoice = {
+  invoiceId: string;
+  hostedUrl: string | null;
+  amountMicros: number;
+  status: "open" | "paid" | "overdue" | "void" | string;
+  period: string;
+  lines: { workspace: string; amountMicros: number }[];
+  createdAt: string;
+};
 
 /** A customer's Stripe billing page, for staff to send them. */
 export type BillingLink = {
@@ -142,6 +165,14 @@ export interface BillingAdminApi {
   credit(workspace: string, amountMicros: number, note: string, by: string): Promise<Result<LedgerEntry>>;
   /** The workspace's Stripe billing page, to send to the customer. Logged. */
   billingLink(workspace: string, by: string): Promise<Result<BillingLink>>;
+  /** Where billing stands with Stripe; with `setup`, registers the webhook first. */
+  stripe(setup?: boolean, by?: string): Promise<StripeStatus>;
+  /** Where an enterprise's invoices go; makes its Stripe customer. */
+  enterpriseBilling(id: string, email: string, by: string): Promise<Result<PayingAccount>>;
+  /** Sends an enterprise its invoice now, for what its workspaces owe. */
+  invoiceEnterprise(id: string, by: string): Promise<Result<EnterpriseInvoice>>;
+  /** Exactly these workspaces' accounts, such as one page of the list. */
+  accountsFor(workspaces: string[]): Promise<AccountSummary[]>;
 }
 
 /** How much a workspace has earned g1t's trust with money. */

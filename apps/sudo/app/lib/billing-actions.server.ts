@@ -8,7 +8,7 @@
 import type { Terms } from "@g1t/contracts";
 import { data, redirect } from "react-router";
 
-import { fields, parseCredit, parseNote, parseSlug, parseTerms, text } from "./forms";
+import { fields, parseCredit, parseEmail, parseNote, parseSlug, parseTerms, text } from "./forms";
 import type { ActionData } from "./review";
 import { admin, identity } from "./services.server";
 import type { Staff } from "./staff";
@@ -17,7 +17,7 @@ import type { Enterprise } from "./workspaces";
 /** What a page acts on. `accountId` is billing's internal id, never shown. */
 export type Subject =
   | { kind: "workspace"; slug: string; accountId: string; terms: Terms; billedTo: Enterprise | null }
-  | { kind: "enterprise"; accountId: string; name: string; terms: Terms; workspaces: string[] };
+  | { kind: "enterprise"; accountId: string; name: string; terms: Terms; workspaces: string[]; billingEmail: string | null };
 
 function failed(section: string, error: string, values?: Record<string, string>) {
   return data<ActionData>({ error, section, values }, { status: 422 });
@@ -112,6 +112,35 @@ export async function billingAction(request: Request, staff: Staff, subject: Sub
     if (!result.ok) return failed("billing-link", result.error.message);
     // Shown once, in this response only: it is never stored or redirected to.
     return { link: result.value, workspace: subject.slug } satisfies ActionData;
+  }
+
+  if (intent === "billing-email") {
+    const values = fields(form, "email");
+    if (subject.kind !== "enterprise") return failed("top", "Only an enterprise has an invoice email.");
+    const email = parseEmail(values.email);
+    if (!email.ok) return failed("invoices", email.error, values);
+    if (email.value === subject.billingEmail) return failed("invoices", "That is already where its invoices go.", values);
+    if (!confirmed) {
+      return {
+        review: { intent, name: subject.name, before: subject.billingEmail, after: email.value, fields: { email: email.value } },
+      } satisfies ActionData;
+    }
+    const result = await admin.enterpriseBilling(subject.accountId, email.value, staff.email);
+    if (!result.ok) return failed("invoices", result.error.message, values);
+    return back("billing-email");
+  }
+
+  if (intent === "invoice") {
+    if (subject.kind !== "enterprise") return failed("top", "Only an enterprise is invoiced from sudo.");
+    if (!confirmed) {
+      return {
+        review: { intent, name: subject.name, email: subject.billingEmail, workspaces: subject.workspaces.length, fields: {} },
+      } satisfies ActionData;
+    }
+    const result = await admin.invoiceEnterprise(subject.accountId, staff.email);
+    if (!result.ok) return failed("invoices", result.error.message);
+    // Shown in this response; the invoice is also in the list from now on.
+    return { invoice: result.value } satisfies ActionData;
   }
 
   return failed("top", "Unknown action.");

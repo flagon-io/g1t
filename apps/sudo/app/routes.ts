@@ -7,6 +7,7 @@ export default [
   route("enterprises", "routes/enterprises.tsx"),
   route("enterprises/new", "routes/new-enterprise.tsx"),
   route("enterprises/:id", "routes/enterprise.tsx"),
+  route("stripe", "routes/stripe.tsx"),
   // Before sudo was organised around workspaces, everything was an account.
   route("accounts/*", "routes/legacy-accounts.tsx"),
 ] satisfies RouteConfig;

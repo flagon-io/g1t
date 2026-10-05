@@ -197,7 +197,11 @@ Some accounts are billed differently, set up by g1t with you:
 - **Enterprise**: one billing account paying for several workspaces, as
   GitHub Enterprise does. Their usage and payments count together, against
   one limit, on one set of terms, and each workspace's Billing page says
-  which enterprise pays for it.
+  which enterprise pays for it. An enterprise is invoiced: when each month
+  closes, Stripe emails one invoice to the enterprise's billing address,
+  with a line for each workspace, due in 30 days and paid on Stripe's
+  invoice page by card or bank transfer. Paying it clears every workspace
+  on it; if it goes overdue, their work stops until it is paid.
 - **Comped**: g1t covers the account's usage. Usage is still recorded with
   what it cost, so the Usage page stays accurate, and paid features are on
   without a plan.

@@ -132,6 +132,20 @@ impl Stripe {
         is_live(&self.key)
     }
 
+    /// A GET of any Stripe resource, for the webhook handlers.
+    pub(crate) async fn get<T: for<'a> Deserialize<'a>>(&self, path: &str) -> Result<T> {
+        self.call(Method::Get, path, None).await
+    }
+
+    /// A form POST to any Stripe resource.
+    pub(crate) async fn post<T: for<'a> Deserialize<'a>>(&self, path: &str, fields: &[(&str, String)]) -> Result<T> {
+        self.call(Method::Post, path, Some(form(fields))).await
+    }
+
+    pub(crate) async fn delete<T: for<'a> Deserialize<'a>>(&self, path: &str) -> Result<T> {
+        self.call(Method::Delete, path, None).await
+    }
+
     async fn call<T: for<'a> Deserialize<'a>>(
         &self,
         method: Method,

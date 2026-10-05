@@ -1,7 +1,7 @@
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, Mail, Plus, Send, Trash2 } from "lucide-react";
 import { data, Link, redirect, useLocation } from "react-router";
 
-import { type AdminOwner, type Limit, httpStatus } from "@g1t/contracts";
+import { type AdminOwner, type EnterpriseInvoice, type Limit, httpStatus } from "@g1t/contracts";
 
 import type { Route } from "./+types/enterprise";
 import { AuditSection, CreditForm, Figure, LedgerSection, ReviewPanel, TermsForm } from "~/components/billing";
@@ -33,7 +33,14 @@ async function load(raw: string) {
   const detail = result.value;
   const { account } = detail.summary;
   if (account.kind !== "enterprise") throw data("That is not an enterprise.", { status: 404 });
-  const subject: Subject = { kind: "enterprise", accountId: account.id, name: account.name, terms: account.terms, workspaces: account.workspaces };
+  const subject: Subject = {
+    kind: "enterprise",
+    accountId: account.id,
+    name: account.name,
+    terms: account.terms,
+    workspaces: account.workspaces,
+    billingEmail: account.billingEmail ?? null,
+  };
   return { detail, subject };
 }
 
@@ -81,6 +88,7 @@ export default function Enterprise({ loaderData, actionData }: Route.ComponentPr
   const { pathname } = useLocation();
   const result = actionData as ActionData | undefined;
   const review = result && "review" in result ? result.review : null;
+  const sent = result && "invoice" in result ? result.invoice : null;
   const error = (section: string): SectionError => (result && "error" in result && result.section === section ? result : null);
 
   return (
@@ -134,6 +142,13 @@ export default function Enterprise({ loaderData, actionData }: Route.ComponentPr
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="space-y-6">
           <MembersSection members={members} pathname={pathname} error={error("members")} />
+          <InvoicesSection
+            email={account.billingEmail ?? null}
+            invoices={account.invoices ?? []}
+            sent={sent}
+            pathname={pathname}
+            error={error("invoices")}
+          />
           <TermsForm terms={account.terms} pathname={pathname} error={error("terms")} />
           <LedgerSection ledger={detail.ledger} showWorkspace description="Recent lines for every workspace it pays for, newest first." />
         </div>
@@ -231,5 +246,124 @@ function DetachButton({ workspace, pathname }: { workspace: string; pathname: st
         <Trash2 size={14} />
       </button>
     </form>
+  );
+}
+
+// --- Invoices -----------------------------------------------------------------
+
+const INVOICE_STATUS: Record<string, { label: string; tone: "plain" | "mint" | "warn" | "danger" | "info" }> = {
+  open: { label: "Open", tone: "info" },
+  paid: { label: "Paid", tone: "mint" },
+  overdue: { label: "Overdue", tone: "danger" },
+  void: { label: "Void", tone: "plain" },
+};
+
+function InvoiceStatus({ status }: { status: string }) {
+  const { label, tone } = INVOICE_STATUS[status] ?? { label: status, tone: "plain" as const };
+  return <Badge tone={tone}>{label}</Badge>;
+}
+
+/** Stripe's hosted invoice page, the one the customer pays on; https only. */
+function StripeLink({ url }: { url: string | null }) {
+  if (!url || !url.startsWith("https://")) return <span className="text-faint">—</span>;
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-merged hover:underline">
+      Stripe
+      <ExternalLink size={12} />
+    </a>
+  );
+}
+
+function InvoicesSection({
+  email,
+  invoices,
+  sent,
+  pathname,
+  error,
+}: {
+  email: string | null;
+  invoices: EnterpriseInvoice[];
+  sent: EnterpriseInvoice | null;
+  pathname: string;
+  error: SectionError;
+}) {
+  return (
+    <Section id="invoices" title="Invoices" description="One Stripe invoice for every workspace it pays for, net 30, emailed by Stripe.">
+      <div className="space-y-4">
+        {error && <Notice tone="error">{error.error}</Notice>}
+        {sent && (
+          <Notice tone="ok">
+            Invoice sent: {usd(sent.amountMicros)} for {sent.period}. <StripeLink url={sent.hostedUrl} />
+          </Notice>
+        )}
+
+        <form method="post" action={`${pathname}#review`} className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <input type="hidden" name="intent" value="billing-email" />
+          <Field label="Invoices go to" hint={email ? "Stripe emails each invoice here." : "Not set yet. Needed before an invoice can be sent."} className="grow">
+            <Input name="email" type="email" required placeholder="billing@acme.com" defaultValue={error?.values?.email ?? email ?? ""} />
+          </Field>
+          <Button type="submit" variant="quiet">
+            <Mail size={14} />
+            {email ? "Change" : "Set"}
+          </Button>
+        </form>
+
+        <form method="post" action={`${pathname}#review`} className="flex flex-col gap-2 border-t border-line pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <input type="hidden" name="intent" value="invoice" />
+          <p className="text-sm text-muted">An invoice goes out on its own when each month closes. Send one now for what it owes so far.</p>
+          <Button type="submit" variant="quiet" className="shrink-0">
+            <Send size={14} />
+            Send invoice now
+          </Button>
+        </form>
+
+        {invoices.length === 0 ? (
+          <EmptyState title="No invoices yet" />
+        ) : (
+          <div className="-mx-4 -mb-4 overflow-x-auto border-t border-line sm:-mx-5 sm:-mb-5">
+            <table className="w-full min-w-xl text-sm">
+              <thead>
+                <tr className="border-b border-line text-left text-xs text-muted">
+                  <th className="px-4 py-2 font-medium sm:pl-5">Period</th>
+                  <th className="px-4 py-2 font-medium">Status</th>
+                  <th className="px-4 py-2 font-medium">Lines</th>
+                  <th className="px-4 py-2 text-right font-medium">Amount</th>
+                  <th className="px-4 py-2 font-medium sm:pr-5">Page</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invoices.map((invoice) => (
+                  <tr key={invoice.invoiceId} className="border-b border-line align-top last:border-0">
+                    <td className="px-4 py-2.5 sm:pl-5">
+                      <p>{invoice.period}</p>
+                      <p className="text-xs text-faint">
+                        <When at={invoice.createdAt} />
+                      </p>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <InvoiceStatus status={invoice.status} />
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <ul className="space-y-0.5 text-xs">
+                        {invoice.lines.map((line) => (
+                          <li key={line.workspace} className="tabular">
+                            <span className="font-mono text-fg-soft">{line.workspace}</span>
+                            <span className="text-faint">: {usd(line.amountMicros)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </td>
+                    <td className="tabular px-4 py-2.5 text-right whitespace-nowrap">{usd(invoice.amountMicros)}</td>
+                    <td className="px-4 py-2.5 text-xs sm:pr-5">
+                      <StripeLink url={invoice.hostedUrl} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </Section>
   );
 }

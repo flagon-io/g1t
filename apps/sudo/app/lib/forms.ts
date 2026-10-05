@@ -109,6 +109,20 @@ export function parseTerms(form: FormData, by: string, now = new Date()): Parsed
   };
 }
 
+/** An email address for invoices: one address, lowercased. */
+export function parseEmail(raw: string): Parsed<string> {
+  const email = raw.trim().toLowerCase();
+  const [local, domain, ...rest] = email.split("@");
+  const ok =
+    rest.length === 0 &&
+    email.length <= 254 &&
+    !!local &&
+    !!domain &&
+    /^[^\s@,;<>"]+$/.test(local) &&
+    /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain);
+  return ok ? { ok: true, value: email } : { ok: false, error: "Enter one email address, such as billing@acme.com." };
+}
+
 /** A credit's amount: more than nothing, and no more than the cap. */
 export function parseCredit(raw: string): Parsed<number> {
   const micros = parseDollars(raw);

@@ -17,6 +17,7 @@
 //! the methods and their arguments.
 
 mod accounts;
+mod webhooks;
 mod features;
 mod keeper;
 mod limits;
@@ -963,6 +964,9 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     if let Err(error) = billing.close_months().await {
         worker::console_error!("closing the month failed: {error}");
     }
+    if let Err(error) = billing.invoice_enterprises().await {
+        worker::console_error!("invoicing enterprises failed: {error}");
+    }
     if let Ok(identity) = env.service("IDENTITY") {
         if let Err(error) = billing.warn_limits(&identity).await {
             worker::console_error!("warning owners failed: {error}");
@@ -1008,6 +1012,10 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "prices" => reply(&billing.prices().await?),
         "billing_portal" => reply(&billing.billing_portal(args(body)?).await?),
         "admin_billing_link" => reply(&billing.admin_billing_link(args(body)?).await?),
+        "admin_stripe" => reply(&billing.admin_stripe(args(body)?).await?),
+        "admin_enterprise_billing" => reply(&billing.admin_enterprise_billing(args(body)?).await?),
+        "admin_invoice_enterprise" => reply(&billing.admin_invoice_enterprise(args(body)?).await?),
+        "stripe_webhook" => reply(&billing.stripe_webhook(args(body)?).await?),
         "note_pending" => reply(&billing.note_pending(args(body)?).await?),
         "admin_accounts" => reply(&billing.admin_accounts(args(body)?).await?),
         "admin_account" => reply(&billing.admin_account(args(body)?).await?),

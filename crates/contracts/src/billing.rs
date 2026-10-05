@@ -550,6 +550,12 @@ pub struct BillingAccount {
     pub terms: Terms,
     /// The workspaces it pays for.
     pub workspaces: Vec<String>,
+    /// Where an enterprise's invoices go.
+    #[serde(default)]
+    pub billing_email: Option<String>,
+    /// An enterprise's invoices, newest first. Empty for a workspace's own.
+    #[serde(default)]
+    pub invoices: Vec<EnterpriseInvoice>,
     pub created_at: String,
 }
 
@@ -619,6 +625,98 @@ pub enum TermsKind {
     Custom,
 }
 
+/// `stripe_webhook`: an event from Stripe, as the API received it: the raw
+/// body and its `Stripe-Signature` header. Billing checks the signature
+/// against the secret of the endpoint it registered, and handles each
+/// event once. Returns `Outcome<bool>`: false for one already handled.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StripeWebhookArgs {
+    pub payload: String,
+    pub signature: String,
+}
+
+/// `admin_stripe`: where billing stands with Stripe. Staff only. Returns
+/// `StripeStatus`. With `setup: true`, registers (or replaces) the webhook
+/// endpoint for the current mode first.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminStripeArgs {
+    #[serde(default)]
+    pub setup: bool,
+    #[serde(default)]
+    pub by: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StripeStatus {
+    /// `test` or `live`, from the key; `off` without one.
+    pub mode: String,
+    pub webhook: Option<StripeWebhook>,
+    /// The latest events handled, newest first.
+    pub recent_events: Vec<StripeEventSummary>,
+    /// What went wrong setting up, if it did.
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StripeWebhook {
+    pub url: String,
+    pub endpoint_id: String,
+    pub events: Vec<String>,
+    pub created_by: String,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StripeEventSummary {
+    pub id: String,
+    pub kind: String,
+    pub outcome: String,
+    pub received_at: String,
+}
+
+/// `admin_enterprise_billing`: where an enterprise's invoices go. Creates
+/// or updates its Stripe customer. Returns `Outcome<BillingAccount>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminEnterpriseBillingArgs {
+    pub id: String,
+    pub email: String,
+    pub by: String,
+}
+
+/// `admin_invoice_enterprise`: sends an enterprise its invoice now, for
+/// what its workspaces owe, rather than waiting for the month to close.
+/// Returns `Outcome<EnterpriseInvoice>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminInvoiceEnterpriseArgs {
+    pub id: String,
+    pub by: String,
+}
+
+/// An enterprise's invoice: one line per workspace, paid on Stripe.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnterpriseInvoice {
+    pub invoice_id: String,
+    /// Stripe's page for it, where it is paid.
+    pub hosted_url: Option<String>,
+    pub amount_micros: i64,
+    /// `open`, `paid`, `overdue` or `void`.
+    pub status: String,
+    pub period: String,
+    pub lines: Vec<InvoiceLine>,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvoiceLine {
+    pub workspace: String,
+    pub amount_micros: i64,
+}
+
 // --- Staff (sudo.g1t.sh) ------------------------------------------------------
 //
 // Called only by the sudo app, which only g1t staff can reach (behind
@@ -631,6 +729,10 @@ pub enum TermsKind {
 pub struct AdminAccountsArgs {
     #[serde(default)]
     pub query: Option<String>,
+    /// Exactly these workspaces' accounts, such as one page of sudo's
+    /// list; every account with activity when absent.
+    #[serde(default)]
+    pub workspaces: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

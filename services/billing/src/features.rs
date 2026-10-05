@@ -132,7 +132,7 @@ impl Billing {
     }
 
     /// Writes down what the processor says about a plan.
-    async fn record(
+    pub(crate) async fn record(
         &self,
         workspace: &str,
         feature: Feature,

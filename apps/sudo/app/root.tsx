@@ -1,4 +1,4 @@
-import { Building2, Boxes, ShieldCheck } from "lucide-react";
+import { Boxes, Building2, CreditCard, ShieldCheck } from "lucide-react";
 import { isRouteErrorResponse, Link, Links, Meta, Outlet, useLocation, useRouteLoaderData } from "react-router";
 
 import type { Route } from "./+types/root";
@@ -68,6 +68,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <NavItem to="/enterprises" active={(path) => path.startsWith("/enterprises")}>
                 <Building2 size={14} className="hidden sm:block" />
                 Enterprises
+              </NavItem>
+              <NavItem to="/stripe" active={(path) => path.startsWith("/stripe")}>
+                <CreditCard size={14} className="hidden sm:block" />
+                Stripe
               </NavItem>
             </nav>
             {root?.email && (

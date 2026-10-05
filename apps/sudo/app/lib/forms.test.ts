@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { parseCredit, parseSlugList, parseTerms } from "./forms.ts";
+import { parseCredit, parseEmail, parseSlugList, parseTerms } from "./forms.ts";
 
 const NOW = new Date("2026-10-04T12:00:00Z");
 
@@ -47,6 +47,14 @@ test("workspace lists take commas, spaces and lines, once each", () => {
   assert.deepEqual(parseSlugList("acme, Acme-labs\nbeta  beta"), { ok: true, value: ["acme", "acme-labs", "beta"] });
   assert.equal(parseSlugList("acme, bad--slug").ok, false);
   assert.equal(parseSlugList("../etc").ok, false);
+});
+
+test("invoice emails are one address", () => {
+  assert.deepEqual(parseEmail(" Billing@Acme.com "), { ok: true, value: "billing@acme.com" });
+  assert.equal(parseEmail("a@b").ok, false);
+  assert.equal(parseEmail("a@b.com, c@d.com").ok, false);
+  assert.equal(parseEmail("a@@b.com").ok, false);
+  assert.equal(parseEmail("").ok, false);
 });
 
 test("credits are positive and capped", () => {
