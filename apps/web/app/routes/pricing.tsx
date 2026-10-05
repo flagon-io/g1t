@@ -10,7 +10,7 @@ import { billing } from "../lib/services.server";
 export function meta(args: Route.MetaArgs) {
   return page(args, {
     title: "Pricing · g1t",
-    description: "g1t passes its costs through: what Cloudflare and model providers charge g1t, plus a set markup. No seats.",
+    description: "g1t passes its costs through: what Cloudflare and model providers charge g1t, plus 20%. No seats.",
   });
 }
 
@@ -35,11 +35,15 @@ function perUnit(price: Price, micros: number): string {
 const HOW = [
   {
     title: "Our cost, passed through",
-    body: "Every sandbox second, build, app request and model token costs g1t money at Cloudflare or a model provider. Each is metered and charged at that cost plus a set markup. Use a little, pay a little.",
+    body: "Every sandbox second, build, app request and model token costs g1t money at Cloudflare or a model provider. Each is metered and charged at that cost plus 20%, from the first second and the first request. Use a little, pay a little.",
   },
   {
     title: "Prices follow costs, by themselves",
     body: "Model runs are charged at what Cloudflare's AI Gateway priced each request at, so a provider's price change reaches you the same day. Every day, each Cloudflare cost is checked against what Cloudflare billed g1t; when one moves, its price moves with it, and the change is listed below.",
+  },
+  {
+    title: "The 20% is the overhead",
+    body: "It pays for running g1t and for building and keeping up the features you use. The same 20% on everything, and nothing bundled in.",
   },
   {
     title: "No seats, ever",
@@ -61,7 +65,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
   return (
     <main className="mx-auto max-w-4xl px-4 py-12">
       <p className="text-sm font-medium text-accent">Pricing</p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">What it costs us, plus a markup</h1>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">What it costs us, plus 20%</h1>
       <p className="mt-3 max-w-2xl text-muted">
         g1t runs on Cloudflare and model providers, and passes those costs through. The numbers on this page are the
         live price book g1t charges from.
@@ -120,7 +124,6 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
                   <p className="font-medium">{price.title}</p>
                   <p className="text-xs text-faint">
                     {price.source === "cloudflare" ? "Measured from Cloudflare's bill" : "Cloudflare's published price"}
-                    {price.meter === "sandbox_second" && " · 500 minutes free each month"}
                   </p>
                 </td>
                 <td className="px-4 py-3 font-mono text-xs tabular-nums text-muted">{perUnit(price, price.costMicros)}</td>
@@ -131,10 +134,6 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           </tbody>
         </table>
       </div>
-      <p className="mt-3 text-xs text-faint">
-        Sandbox time carries more markup than the rest: it pays for the orchestration around each sandbox, and the
-        free minutes everyone gets.
-      </p>
 
       <h2 className="mt-14 text-xl font-semibold tracking-tight">Features</h2>
       <p className="mt-1 text-sm text-muted">Turned on per workspace with a monthly plan. Never free.</p>
@@ -158,13 +157,16 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         <ul className="mt-4 divide-y divide-line rounded-xl border border-line">
           {book.changes.map((change) => {
             const title = book.prices.find((p) => p.meter === change.meter)?.title ?? change.meter;
-            const up = change.newCostMicros > change.oldCostMicros;
+            // What you pay moved: the cost, the markup, or both.
+            const before = change.oldCostMicros * (100 + (change.oldMarkupPercent ?? change.markupPercent));
+            const after = change.newCostMicros * (100 + change.markupPercent);
+            const up = after > before;
             return (
               <li key={`${change.meter}-${change.createdAt}`} className="px-4 py-3 text-sm">
                 <p>
                   <span className="font-medium">{title}</span>{" "}
                   <span className={up ? "text-warn" : "text-accent"}>
-                    {up ? "up" : "down"} {Math.abs((change.newCostMicros / change.oldCostMicros - 1) * 100).toFixed(1)}%
+                    {up ? "up" : "down"} {Math.abs((after / before - 1) * 100).toFixed(1)}%
                   </span>
                 </p>
                 <p className="mt-0.5 text-xs text-faint">
@@ -175,7 +177,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           })}
         </ul>
       ) : (
-        <p className="mt-2 text-sm text-muted">None yet. When a cost moves, it is listed here with why.</p>
+        <p className="mt-2 text-sm text-muted">None yet. When a price moves, it is listed here with why.</p>
       )}
 
       <a

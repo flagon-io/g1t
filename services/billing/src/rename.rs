@@ -51,11 +51,6 @@ pub(crate) const STATEMENTS: &[&str] = &[
        customer_id = COALESCE(excluded.customer_id, accounts.customer_id),
        created_at = MIN(accounts.created_at, excluded.created_at)",
     "DELETE FROM accounts WHERE workspace = ?2",
-    // Sandbox time counts toward the month's free minutes: the seconds add.
-    "INSERT INTO sandbox_months (workspace, month, seconds)
-     SELECT ?1, month, seconds FROM sandbox_months WHERE workspace = ?2
-     ON CONFLICT (workspace, month) DO UPDATE SET seconds = sandbox_months.seconds + excluded.seconds",
-    "DELETE FROM sandbox_months WHERE workspace = ?2",
     // Replaced on each report with the month's whole figure: the newer
     // report wins.
     "INSERT INTO pending_usage (workspace, source, month, charge_micros, updated_at)
@@ -243,7 +238,7 @@ mod tests {
     fn every_table_keyed_by_a_slug_is_moved() {
         let all = STATEMENTS.join("\n");
         for table in [
-            "ledger", "runs", "checkouts", "workspace_invoices", "sales_notes", "accounts", "sandbox_months",
+            "ledger", "runs", "checkouts", "workspace_invoices", "sales_notes", "accounts",
             "pending_usage", "limits", "subscriptions", "month_closes", "account_members", "sales_records",
             "enterprise_invoice_lines", "billing_accounts", "admin_actions", "enterprise_invoices",
         ] {

@@ -201,7 +201,7 @@ export const NAV: NavGroup[] = [
           plans: [
             "Runs, failures and cost per model, per day",
             "Who may use g1t's hosted models, and the free allowance's pool",
-            "Workspaces on their own provider, and what g1t charges them to orchestrate",
+            "Workspaces on their own provider, and the sandbox time their runs use",
             "Stuck or long-running agents, with a way to stop one",
           ],
         },

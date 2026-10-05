@@ -268,6 +268,7 @@ struct ChangeRow {
     old_cost_micros: f64,
     new_cost_micros: f64,
     markup_percent: u32,
+    old_markup_percent: Option<u32>,
     reason: String,
     created_at: String,
 }
@@ -334,6 +335,7 @@ impl Billing {
                     old_cost_micros: row.old_cost_micros,
                     new_cost_micros: row.new_cost_micros,
                     markup_percent: row.markup_percent,
+                    old_markup_percent: row.old_markup_percent,
                     reason: row.reason,
                     created_at: row.created_at,
                 })

@@ -43,8 +43,7 @@ So anyone can try g1t's agents without a key of their own, every workspace
 gets **$1 of model cost on g1t's own models**, free, until **October 22,
 2026** (11:59 PM Pacific). That is roughly 10 to 25 agent runs: changes,
 reviews and revisions. The allowance pays for the model part of those
-runs; everything else, such as sandbox time past the free minutes, is
-charged as usual.
+runs; everything else, such as sandbox time, is charged as usual.
 
 - Mission control and **Settings → Integrations** show what is left.
 - When it is used up, agents and workflow runs stop starting, and the
@@ -73,8 +72,8 @@ Each run is charged when it finishes: what the model provider charged for
 it, plus 20%. A small change costs a few cents.
 
 Work a workspace routes to [its own model providers](/guides/models/) is
-paid for at those providers instead. Each such run here is a flat $0.10
-for g1t's orchestration, plus its [sandbox time](#sandbox-time).
+paid for at those providers instead. Such a run is charged here only for
+its [sandbox time](#sandbox-time), like any other sandbox.
 
 The charge goes to the workspace that owns the repository, whoever
 assigned the issue. That is why only members of a workspace can put g1t
@@ -84,8 +83,9 @@ agents to work on its repositories.
 
 g1t passes its own costs through. Everything a workspace uses costs g1t
 money first, at Cloudflare or a model provider, and is charged at that
-cost plus a set markup. There is no seat price, and nothing is bundled to
-hide what it costs. The live prices are on
+cost plus 20%. The 20% pays for running g1t and for building and keeping
+up its features; g1t is not trying to make money on top of that. There is
+no seat price, and nothing is bundled to hide what it costs. The live prices are on
 [g1t.sh/pricing](https://g1t.sh/pricing), straight from the price book
 billing charges from.
 
@@ -105,7 +105,7 @@ Prices keep themselves current as those costs move:
   against what was used: Containers against the seconds containers ran,
   Workers for Platforms per request and per CPU millisecond. When a cost
   moves by 2% or more, the price book moves with it, since each price is
-  its cost times its markup, and the change is listed on the pricing page
+  its cost plus its markup, and the change is listed on the pricing page
   with the reason. A measurement far from the current cost (more than 4×
   either way) is not adopted, only logged, so one odd day cannot reprice
   anything.
@@ -113,8 +113,10 @@ Prices keep themselves current as those costs move:
 | | Markup |
 | --- | --- |
 | Models | 20% |
-| Deploy builds, app requests, CPU and apps | 20% |
-| Sandbox time | 138%, which also pays for the orchestration around each sandbox and everyone's free minutes |
+| Sandbox time | 20% |
+| Deploy builds | 20% |
+| App requests, CPU and apps | 20% |
+| Custom domains past the plan | 20% |
 
 ## Sandbox time
 
@@ -126,9 +128,8 @@ workflow jobs. It is charged to the workspace that owns the repository.
 
 | | |
 | --- | --- |
-| Free each month | 500 minutes (calendar month, UTC) |
-| Past that | about $0.002 a minute, by the second |
 | What it costs g1t | about $0.0009 a minute (Containers, standard-1, at the CPU sandboxes really use) |
+| What you pay | that plus 20%, about $0.0011 a minute, by the second from the first |
 
 Both follow what Cloudflare bills, so they move; today's exact figures are
 on [g1t.sh/pricing](https://g1t.sh/pricing). See
@@ -138,8 +139,7 @@ Deploy builds are not counted here: [Deployments](/guides/deployments/)
 charges them by the second on its own plan.
 
 Each sandbox is one line on the [statement](#the-statement), such as
-*Checks on acme/api#12: 3m 12s of sandbox time*, with whether it fell
-within the free minutes.
+*Checks on acme/api#12: 3m 12s of sandbox time*.
 
 ## Usage limits
 
@@ -203,8 +203,8 @@ Every charge is a real invoice from g1t, kept on Stripe's billing page
 with its PDF and emailed as a receipt:
 
 - **When each month closes**, an invoice for what the workspace owes,
-  itemised: agents on g1t's models, runs on your own model provider,
-  sandbox time, and deployments past the plan. Credit you paid in advance
+  itemised: agents on g1t's models, sandbox time, and deployments past
+  the plan. Credit you paid in advance
   is taken off as *Paid in advance*; anything left unpaid from before is
   added.
 - **When the workspace nears its ceiling** mid-month, the same, sooner.
@@ -341,7 +341,7 @@ time. Every member can see it.
   | Line | What it holds |
   | --- | --- |
   | Agent runs | Runs on g1t's model provider: the model's cost plus the margin. |
-  | Runs on your own model provider | The run fee for runs billed by your own provider. |
+  | Runs on your own model provider | Older months only: the flat fee runs on your own provider used to carry. |
   | Sandbox time | Each sandbox's time, memory and disk. |
   | Deployments | Builds and apps beyond the allowance. |
   | Payments | Card payments and invoices paid. |
@@ -368,8 +368,8 @@ g1t is in preview.
 - **g1t's agents, for any workspace with its own model provider:** connect
   an Anthropic key or endpoint under [Integrations](/guides/models/) and the
   workspace's agents, acceptance checks and merge queue work at once. Your
-  provider bills you for the models; g1t charges nothing for now, and $0.10
-  a run once pricing starts.
+  provider bills you for the models; g1t charges nothing for now, and only
+  each run's sandbox time once pricing starts.
 - **g1t's hosted models:** while payments are in test mode, every
   workspace can use g1t's own models on
   [the free allowance](#the-free-allowance) ($1 each, until October 22),

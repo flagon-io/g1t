@@ -32,8 +32,6 @@ export type BillingAccount = {
   status: BillingStatus;
   /** What is added to a run's cost, in percent. */
   marginPercent: number;
-  /** What a run on the workspace's own model provider is charged instead. */
-  orchestrationFeeMicros: number;
   /** The card charged near the limit and when a month closes, if one is saved. */
   card?: { brand: string; last4: string; expMonth: number; expYear: number } | null;
 };
@@ -325,6 +323,8 @@ export type PriceChange = {
   oldCostMicros: number;
   newCostMicros: number;
   markupPercent: number;
+  /** The markup before, when the change was to the markup rather than the cost. */
+  oldMarkupPercent?: number;
   reason: string;
   createdAt: string;
 };
@@ -479,8 +479,8 @@ export interface BillingApi {
   invoices(workspace: string, viewer: Viewer): Promise<Result<WorkspaceInvoice[]>>;
   /**
    * How long a sandbox ran for a workspace, reported when it stops. Its
-   * cost is always recorded; seconds past the month's free minutes are
-   * charged. False if `reference` was recorded before.
+   * cost is recorded and every second is charged, from the first. False if
+   * `reference` was recorded before.
    */
   recordSandbox(usage: {
     workspace: string;

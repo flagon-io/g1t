@@ -759,7 +759,7 @@ Every feature is exactly one of these, and the Billing page says which:
 | Kind | What the workspace does | Example |
 | --- | --- | --- |
 | **Free** | Nothing | Hosting code, issues, pull requests, review, the merge queue, bringing your own agent over MCP |
-| **Card on file** | Adds a card; pays only for what it uses | Previews, g1t's agents, workflow minutes past the free ones |
+| **Card on file** | Adds a card; pays only for what it uses | Previews, g1t's agents, workflow minutes |
 | **Activation** | Turns a feature on for a monthly fee that includes an allowance; usage past it is metered | Production deployments, Security and quality |
 | **Usage only** | Nothing up front; every unit is metered | Model tokens, build minutes, storage past the free amount |
 
@@ -825,14 +825,14 @@ What a workspace pays:
 
 | Meter | Free each month | Then | Margin | For comparison |
 | --- | --- | --- | --- | --- |
-| Sandbox minutes | 500 | $0.003 / minute | 2.5× | GitHub Actions $0.008 / minute (Linux 2-core); Vercel builds $0.0035 / CPU-minute |
+| Sandbox minutes | None (2026-10-05: charged from the first second) | Cost + 20%, by the second | 1.2× | GitHub Actions $0.008 / minute (Linux 2-core); Vercel builds $0.0035 / CPU-minute |
 | App requests | 1 million with Deployments | $0.50 / million | 1.7× | Vercel $0.60 / million invocations |
 | App CPU | 3 million ms with Deployments | $0.04 / million ms | 2× | Vercel active CPU about $0.036 / million ms |
 | Apps | 10 with Deployments | $0.05 / app-month | 2.5× | |
 | Storage | 1 GB | $1.00 / GB-month | 2× | GitHub LFS $0.07 / GB, but repositories are free there |
 | Git operations | 10,000 | $0.30 / 1,000 | 2× | |
 | g1t's models | | Cost + 20% | 1.2× | The provider's own price |
-| Your own model provider | | $0.10 / run, plus its sandbox minutes | | |
+| Your own model provider | | Only its sandbox minutes (the $0.10 run fee was dropped 2026-10-05) | | |
 | **Deployments** activation | | $5 / month, with the allowances above | covers Workers for Platforms' $25 / month across workspaces | Vercel Pro $20 per seat |
 | **Security and quality** activation (later) | | $10 / month; fixes as agent usage | | GitHub Advanced Security $49 per committer |
 
@@ -1213,8 +1213,8 @@ scoped to one repository), steering a running agent (messages delivered
 between steps, and at the end), and recording sessions from anyone's own
 Claude Code (`curl -fsSL https://g1t.sh/install/claude.sh | sh`). Integrations are
 in: a workspace's own model provider (Anthropic or any Anthropic-compatible
-endpoint, reached through a model proxy so no sandbox holds a key, for a
-flat orchestration fee), alerts from Sentry, Datadog and signed webhooks
+endpoint, reached through a model proxy so no sandbox holds a key; its
+runs pay only their sandbox time), alerts from Sentry, Datadog and signed webhooks
 that open one issue per problem and can start an agent, and Jira and Linear
 tickets that agents read, people import, and that hear back. Racing a
 set number of agents on one issue is dropped: choosing how many agents to

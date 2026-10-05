@@ -317,7 +317,7 @@ If you run your own copy of g1t, these settings on the runner control it:
 
 A workspace pays for the g1t agents that work on its repositories, after
 they run: each run is charged what AI Gateway priced its model requests
-at, plus 20%, and its sandbox by the second past the free minutes. See
+at, plus 20%, and its sandbox by the second, at cost plus 20%. See
 [Usage and billing](/guides/usage-and-billing/) for how prices are set and
 the limits on usage not yet paid for.
 The workspace's **Usage** page shows what its agents have cost, by day,

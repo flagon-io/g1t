@@ -74,9 +74,6 @@ pub struct Account {
     pub status: Status,
     /// What is added to a run's cost, in percent.
     pub margin_percent: u32,
-    /// What a run on the workspace's own model provider is charged: g1t's
-    /// sandbox and orchestration, with the model paid for elsewhere.
-    pub orchestration_fee_micros: i64,
     /// The card g1t charges as the workspace nears its limit and when a
     /// month closes, if one is on file.
     #[serde(default)]
@@ -152,7 +149,9 @@ pub struct LedgerEntry {
     /// For usage: the model, by its public name.
     pub model: Option<String>,
     /// For usage: `g1t` when g1t paid the model provider, `workspace` when
-    /// the workspace's own account did and only orchestration is charged.
+    /// the workspace's own account did. Runs on the workspace's own
+    /// provider pay only their sandbox time now, so only older entries
+    /// are `workspace`.
     #[serde(default = "g1t")]
     pub billed_to: String,
     /// For a top-up: the username of whoever paid.
@@ -367,23 +366,13 @@ pub mod deployments_allowance {
     pub const MICROS_PER_DOMAIN_MONTH: i64 = 100_000;
 }
 
-/// Sandbox time: every sandbox g1t starts for a workspace (agents,
-/// reviews, checks, the merge queue, workflow jobs) is metered by the
-/// second. Deploy builds are charged by the Deployments plan instead.
-pub mod sandbox_allowance {
-    /// Free each calendar month (UTC): 500 minutes.
-    pub const FREE_SECONDS: i64 = 30_000;
-    /// What one second costs g1t (Cloudflare Containers, standard-1),
-    /// rounded up. Recorded with every entry.
-    pub const COST_MICROS_PER_SECOND: i64 = super::deployments_allowance::MICROS_PER_BUILD_SECOND;
-    /// What one second past the free minutes is charged: $0.003 a minute.
-    pub const MICROS_PER_SECOND: i64 = 50;
-}
-
 /// `record_sandbox`: how long one sandbox ran for a workspace, reported by
-/// the runner when it stops. Recorded once per `reference`, with what it
-/// cost g1t; seconds past the month's free minutes are charged at
-/// `sandbox_allowance::MICROS_PER_SECOND`, unless `FREE_WHILE_BUILDING`.
+/// the runner when it stops. Every sandbox g1t starts for a workspace
+/// (agents, reviews, checks, the merge queue, workflow jobs) is metered by
+/// the second, from the first: recorded once per `reference`, with what it
+/// cost g1t, and charged at the price book's `sandbox_second` price unless
+/// `FREE_WHILE_BUILDING`. Deploy builds are charged by the Deployments plan
+/// instead.
 /// Returns `Outcome<bool>`: false if that reference was recorded before.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -548,6 +537,10 @@ pub struct PriceChange {
     pub old_cost_micros: f64,
     pub new_cost_micros: f64,
     pub markup_percent: u32,
+    /// The markup before, when the change was to the markup rather than
+    /// to the cost. Absent when the markup stayed `markup_percent`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub old_markup_percent: Option<u32>,
     pub reason: String,
     pub created_at: String,
 }
@@ -826,7 +819,7 @@ pub struct StatementGroup {
 #[serde(rename_all = "camelCase")]
 pub struct StatementLine {
     /// Agent runs, Sandbox time, Deployments, Payments, Credits from g1t,
-    /// Refunds, Runs on your own model provider.
+    /// Refunds, and, for older entries, Runs on your own model provider.
     pub kind: String,
     pub count: u32,
     /// Charges positive; money in (payments, credits) negative.
@@ -1294,6 +1287,37 @@ pub struct ChargeFeatureArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_account_carries_no_run_fee() {
+        let account = Account {
+            workspace: "acme".into(),
+            balance_micros: 0,
+            status: Status { enabled: true, live: false, free: false },
+            margin_percent: 20,
+            card: None,
+        };
+        let json = serde_json::to_value(account).unwrap();
+        let mut keys: Vec<&str> = json.as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["balanceMicros", "card", "marginPercent", "status", "workspace"]);
+    }
+
+    #[test]
+    fn a_price_change_says_when_the_markup_moved() {
+        let change = PriceChange {
+            meter: "sandbox_second".into(),
+            old_cost_micros: 21.0,
+            new_cost_micros: 21.0,
+            markup_percent: 20,
+            old_markup_percent: Some(138),
+            reason: "Sandbox time is now charged at cost plus 20% from the first second".into(),
+            created_at: "2026-10-05T00:00:00Z".into(),
+        };
+        assert_eq!(serde_json::to_value(&change).unwrap()["oldMarkupPercent"], 138);
+        let cost_only = PriceChange { old_markup_percent: None, ..change };
+        assert!(serde_json::to_value(&cost_only).unwrap().get("oldMarkupPercent").is_none());
+    }
 
     #[test]
     fn features_are_named_as_the_site_sends_them() {

@@ -26,13 +26,9 @@
 		"consumers": [{ "queue": "g1t-events-billing", "max_batch_size": 20, "max_batch_timeout": 1 }]
 	},
 	"vars": {
-		// What is added to a run's cost, in percent. It pays the card
-		// processor's fee and the sandbox the agent ran in.
+		// What is added to a model run's cost, in percent: g1t's overhead for
+		// running and building it. The price book's markups are the same.
 		"MARGIN_PERCENT": "20",
-		// What a run on a workspace's own model provider is charged, in
-		// millionths of a dollar: the sandbox and the orchestration around
-		// it, with the model paid for at the provider. $0.10.
-		"ORCHESTRATION_FEE_MICROS": "100000",
 		// While g1t is being built out, workspaces pay nothing: runs are
 		// recorded with what they cost, and nothing is charged. Set to
 		// "false" when pricing starts.

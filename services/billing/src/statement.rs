@@ -19,6 +19,8 @@ const PAGE: u32 = 50;
 
 /// The kind of charge a ledger row is, as the statement names it. One SQL
 /// expression, so grouping and filtering agree.
+/// `Runs on your own model provider` is only on older months: those runs
+/// carried a flat fee then, and pay only their sandbox time now.
 pub(crate) const KIND_SQL: &str = "CASE
     WHEN kind = 'top_up' AND reference LIKE 'crd%' THEN 'Credits from g1t'
     WHEN kind = 'top_up' AND amount_micros < 0 THEN 'Refunds'

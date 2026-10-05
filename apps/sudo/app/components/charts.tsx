@@ -163,7 +163,6 @@ const KIND_LABEL: Record<string, string> = {
   deployments: "Deployments",
   builds: "Builds",
   plans: "Plans",
-  orchestration: "Orchestration",
 };
 
 export function kindLabel(kind: string): string {

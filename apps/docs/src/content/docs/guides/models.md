@@ -85,16 +85,14 @@ A pull request's session says which model ran, and through which provider.
 
 ## What it costs
 
-Your providers bill you for the models. g1t charges a flat **$0.10 per
-run** for its orchestration, plus the run's
-[sandbox time](/guides/usage-and-billing/#sandbox-time). A
-change, a review, a revision, a catch-up and a plan are each a run. The
-statement marks these runs "on your own model provider" and names the
-model and provider; the Usage page shows what they cost at the provider,
-as the harness estimated it, beside what g1t charged. See
-[Usage and billing](/guides/usage-and-billing/).
+Your providers bill you for the models. g1t charges only each run's
+[sandbox time](/guides/usage-and-billing/#sandbox-time), at what it costs
+g1t plus 20%, by the second. A change, a review, a revision, a catch-up
+and a plan each run in a sandbox, and each sandbox is a line on the
+statement. See [Usage and billing](/guides/usage-and-billing/).
 
-Workspaces still need credit to start agents, for the fee.
+That sandbox time counts toward the workspace's usage limit like any
+other.
 
 ## Your keys never reach a sandbox
 

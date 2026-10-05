@@ -138,8 +138,6 @@ struct Billing {
     /// Absent when no card processor is configured.
     stripe: Option<Stripe>,
     margin_percent: u32,
-    /// Charged for a run on the workspace's own model provider.
-    orchestration_fee_micros: i64,
     /// While g1t is being built out, nothing is charged (`FREE_WHILE_BUILDING`).
     free: bool,
     /// The free allowance on g1t's hosted models, when there is one.
@@ -198,7 +196,6 @@ impl Billing {
             balance_micros: row.map_or(0, |row| row.balance_micros),
             status: self.status(),
             margin_percent: self.margin_percent,
-            orchestration_fee_micros: self.orchestration_fee_micros,
             card,
         })
     }
@@ -730,16 +727,16 @@ impl Billing {
         if claimed.is_none() {
             return Ok(Outcome::Ok(false));
         }
-        // On the workspace's own provider, the model was paid for there:
-        // g1t charges its fee, and keeps the provider's cost to show.
-        let base = if run.own_provider() {
-            self.orchestration_fee_micros
-        } else {
-            // The free allowance on g1t's models covers what it can.
-            let cost = charge_micros(a.cost_usd, 0);
-            let covered = self.trial_covers(&run.workspace, cost).await?;
-            charge_micros((cost - covered) as f64 / MICROS_PER_DOLLAR as f64, self.margin_percent)
-        };
+        // On the workspace's own provider, the model was paid for there,
+        // and the run's sandbox time is recorded on its own: nothing more
+        // to charge.
+        if run.own_provider() {
+            return Ok(Outcome::Ok(true));
+        }
+        // The free allowance on g1t's models covers what it can.
+        let cost = charge_micros(a.cost_usd, 0);
+        let covered = self.trial_covers(&run.workspace, cost).await?;
+        let base = charge_micros((cost - covered) as f64 / MICROS_PER_DOLLAR as f64, self.margin_percent);
         let (charge, terms_note) = self.charged(&run.workspace, base).await?;
         let mut description = match run.task.as_str() {
             "plan" => format!("Planning for {}", run.repo),
@@ -747,9 +744,6 @@ impl Billing {
             "update" => format!("Catching up {}#{}", run.repo, run.number),
             _ => format!("Work on {}#{}", run.repo, run.number),
         };
-        if run.own_provider() {
-            description.push_str(", on your own model provider");
-        }
         description.push_str(&terms_note);
         self.enter(
             &run.workspace,
@@ -768,8 +762,8 @@ impl Billing {
 }
 
 impl Billing {
-    /// Records how long a sandbox ran: its cost always, and a charge for
-    /// the seconds past the month's free minutes.
+    /// Records how long a sandbox ran, with its cost and its charge: every
+    /// second, from the first, at the price book's price.
     async fn record_sandbox(&self, a: RecordSandboxArgs) -> Result<Outcome<bool>> {
         if self.stripe.is_none() || a.seconds == 0 {
             return Ok(Outcome::Ok(false));
@@ -786,41 +780,16 @@ impl Billing {
         }
         let now = now_ms();
         let timestamp = rfc3339(now);
-        let month = &timestamp[..7];
-        #[derive(Deserialize)]
-        struct Used {
-            seconds: i64,
-        }
         let seconds = i64::from(a.seconds);
-        let after = self
-            .db
-            .prepare(
-                "INSERT INTO sandbox_months (workspace, month, seconds) VALUES (?1, ?2, ?3)
-                 ON CONFLICT (workspace, month) DO UPDATE SET seconds = seconds + ?3
-                 RETURNING seconds",
-            )
-            .bind(&[workspace.as_str().into(), month.into(), (seconds as f64).into()])?
-            .first::<Used>(None)
-            .await?
-            .map_or(seconds, |used| used.seconds);
-        let billable = sandbox_billable(after - seconds, seconds);
-        // From the price book, which follows what Cloudflare bills g1t.
-        let (cost_per_second, price_per_second) = self.price("sandbox_second").await?.unwrap_or((
-            sandbox_allowance::COST_MICROS_PER_SECOND as f64,
-            sandbox_allowance::MICROS_PER_SECOND as f64,
-        ));
-        let (charge, terms_note) = self.charged(&workspace, (billable as f64 * price_per_second).ceil() as i64).await?;
-        let mut description = format!("{}: {} of sandbox time", a.description, duration(seconds));
-        if billable < seconds {
-            description.push_str(if billable == 0 {
-                ", within the month's free minutes"
-            } else {
-                ", partly within the month's free minutes"
-            });
-        }
-        if billable > 0 {
-            description.push_str(&terms_note);
-        }
+        // From the price book, which follows what Cloudflare bills g1t. A
+        // sandbox is the same container as a build, so without a row it is
+        // a build second's cost plus the margin.
+        let (cost_per_second, price_per_second) = self.price("sandbox_second").await?.unwrap_or_else(|| {
+            let cost = deployments_allowance::MICROS_PER_BUILD_SECOND as f64;
+            (cost, Price::price_for(cost, self.margin_percent))
+        });
+        let (charge, terms_note) = self.charged(&workspace, sandbox_charge(seconds, price_per_second)).await?;
+        let description = format!("{}: {} of sandbox time{terms_note}", a.description, duration(seconds));
         self.db
             .batch(vec![
                 self.db
@@ -857,11 +826,10 @@ impl Billing {
     }
 }
 
-/// Of `seconds` used after `before` this month, how many are past the
-/// free minutes.
-fn sandbox_billable(before: i64, seconds: i64) -> i64 {
-    let free_left = (sandbox_allowance::FREE_SECONDS - before).max(0);
-    (seconds - free_left).max(0)
+/// What `seconds` of sandbox time are charged at `price_per_second`, in
+/// millionths of a dollar: every second, rounded up to the next millionth.
+fn sandbox_charge(seconds: i64, price_per_second: f64) -> i64 {
+    (seconds as f64 * price_per_second).ceil() as i64
 }
 
 /// `1h 2m`, `3m 12s` or `40s`.
@@ -917,11 +885,6 @@ impl Billing {
                 .ok()
                 .and_then(|percent| percent.to_string().parse().ok())
                 .unwrap_or(20),
-            orchestration_fee_micros: env
-                .var("ORCHESTRATION_FEE_MICROS")
-                .ok()
-                .and_then(|fee| fee.to_string().parse().ok())
-                .unwrap_or(100_000),
             free: env.var("FREE_WHILE_BUILDING").is_ok_and(|v| v.to_string() == "true"),
             ceilings: limits::Ceilings::from_env(&env),
             prepaid_only: env.var("PREPAID_ONLY").is_ok_and(|v| v.to_string() == "true"),
@@ -1078,11 +1041,12 @@ mod tests {
     }
 
     #[test]
-    fn sandbox_seconds_are_charged_only_past_the_free_minutes() {
-        let free = sandbox_allowance::FREE_SECONDS;
-        assert_eq!(sandbox_billable(0, 600), 0);
-        assert_eq!(sandbox_billable(free - 100, 600), 500);
-        assert_eq!(sandbox_billable(free + 5, 600), 600);
+    fn sandbox_time_is_charged_from_the_first_second() {
+        // 21 millionths a second at cost, plus 20%.
+        let price = Price::price_for(21.0, 20);
+        assert_eq!(sandbox_charge(1, price), 26);
+        assert_eq!(sandbox_charge(60, price), 1_512);
+        assert_eq!(sandbox_charge(0, price), 0);
     }
 
     #[test]

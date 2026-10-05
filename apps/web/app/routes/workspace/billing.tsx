@@ -267,7 +267,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
         <p className="mt-1 max-w-2xl text-sm text-muted">
           g1t agents that work on this workspace's repositories are paid for from
           its account: what the model cost, plus {account.marginPercent}%. Every sandbox, for agents, checks, the merge
-          queue and workflows, is metered by the second past 500 free minutes a month. Credit added here pays usage in
+          queue and workflows, is metered by the second, from the first. Credit added here pays usage in
           advance; the usage limit above decides whether work starts.
         </p>
 
@@ -356,8 +356,9 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
           <h3 className="font-medium">How it is charged</h3>
           <ul className="mt-2 list-disc space-y-1.5 pl-4 text-muted">
             <li>
-              Usage is charged after it runs, to the workspace that owns the repository: agents at what the model cost
-              plus {account.marginPercent}%, and sandbox time, builds and apps at what they cost g1t plus a set markup.
+              Usage is charged after it runs, to the workspace that owns the repository: models, sandbox time, builds
+              and apps at what they cost g1t plus {account.marginPercent}%, which pays for running and building g1t.
+              Nothing is bundled in.
             </li>
             <li>
               Each month closes with an itemised invoice, charged to the card on file. Near your limit, g1t sends one
@@ -368,8 +369,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
               <Link to={`/${slug}/-/integrations`} className="text-fg hover:underline">
                 Integrations
               </Link>
-              , the provider bills you for the model and each run here is {dollars(account.orchestrationFeeMicros)}, plus
-              its sandbox time.
+              , the provider bills you for the model, and a run here is charged only its sandbox time.
             </li>
             <li>No seats: add as many people and agents as you like.</li>
           </ul>

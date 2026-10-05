@@ -15,6 +15,13 @@ export type ChangelogEntry = {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     date: "2026-10-05",
+    title: "Cost plus 20%, on everything",
+    about:
+      "Sandbox time is charged at cost plus 20% from the first second, with no free minutes. Runs on your own model provider no longer carry a $0.10 fee: they pay only their sandbox time.",
+    href: "/pricing",
+  },
+  {
+    date: "2026-10-05",
     title: "Catch up in seconds",
     about:
       "Catch up with main merges it in at once when the two changed different files. When they overlap, the merge box shows g1t-agent at work, step by step.",

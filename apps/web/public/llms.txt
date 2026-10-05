@@ -215,8 +215,8 @@ page, or with `POST /workspaces/{workspace}/integrations`:
   as it uses, with each
   kind of work routed to one of them or to g1t's hosted models
   (`PUT /workspaces/{workspace}/model-routes`). Those providers bill the
-  workspace; g1t charges nothing while it is being built out (later, $0.10
-  a run). Sandboxes never hold a key.
+  workspace; g1t charges nothing while it is being built out (later, only
+  each run's sandbox time, at cost plus 20%). Sandboxes never hold a key.
 - **Alerts** (`sentry`, `datadog`, `webhook`): each problem opens one issue
   in a chosen repository, optionally with an agent put on it at once.
   Senders sign requests to `https://api.g1t.sh/hooks/{integration}`.
