@@ -55,7 +55,14 @@ export function upstreamRequest(
     // be read per kind of work, workspace, repository and pull request.
     headers.set(
       "cf-aig-metadata",
-      JSON.stringify({ task: upstream.task, workspace: upstream.workspace, repo: upstream.repo, pull: upstream.number }),
+      JSON.stringify({
+        task: upstream.task,
+        workspace: upstream.workspace,
+        repo: upstream.repo,
+        pull: upstream.number,
+        // What billing finds the run's requests by, to charge what they cost.
+        session: upstream.session,
+      }),
     );
     if (hosted.AI_GATEWAY_TOKEN) headers.set("cf-aig-authorization", `Bearer ${hosted.AI_GATEWAY_TOKEN}`);
     if (hosted.ANTHROPIC_API_KEY) headers.set("x-api-key", hosted.ANTHROPIC_API_KEY);

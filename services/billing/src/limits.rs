@@ -21,7 +21,7 @@
 //! exemption from the ceiling. Test-mode payments are not money, so they
 //! do not raise trust.
 
-use g1t_contracts::billing::{CheckLimitArgs, Limit, LimitArgs, LimitState, SetSpendLimitArgs, Trust};
+use g1t_contracts::billing::{CheckLimitArgs, Limit, LimitArgs, NotePendingArgs, LimitState, SetSpendLimitArgs, Trust};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, Role};
 use g1t_kit::now_ms;
@@ -124,6 +124,16 @@ impl Billing {
             .first::<Month>(None)
             .await?;
         let (used, paid_month) = month.map_or((0, 0), |m| (m.used.unwrap_or(0), m.paid.unwrap_or(0)));
+        // And what is metered but not charged until the month closes.
+        let pending = self
+            .db
+            .prepare("SELECT SUM(charge_micros) AS paid FROM pending_usage WHERE workspace = ? AND month = ?")
+            .bind(&[workspace.as_str().into(), month_start[..7].into()])?
+            .first::<Paid>(None)
+            .await?
+            .and_then(|row| row.paid)
+            .unwrap_or(0);
+        let used = used + pending;
         // Test-mode payments are not money: they pay nothing off.
         let live = self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live);
         let exposure = (used - if live { paid_month } else { 0 }).max(0);
@@ -214,6 +224,26 @@ impl Billing {
             return Ok(members_only());
         }
         Ok(Outcome::Ok(self.limit_of(&workspace).await?))
+    }
+
+    pub(crate) async fn note_pending(&self, a: NotePendingArgs) -> Result<bool> {
+        let now = rfc3339(now_ms());
+        let charge = crate::charge_micros(a.cost_micros.max(0) as f64 / g1t_contracts::billing::MICROS_PER_DOLLAR as f64, self.margin_percent);
+        self.db
+            .prepare(
+                "INSERT INTO pending_usage (workspace, source, month, charge_micros, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT (workspace, source, month) DO UPDATE SET charge_micros = ?4, updated_at = ?5",
+            )
+            .bind(&[
+                a.workspace.to_lowercase().into(),
+                a.source.as_str().into(),
+                now[..7].into(),
+                (charge as f64).into(),
+                now.as_str().into(),
+            ])?
+            .run()
+            .await?;
+        Ok(true)
     }
 
     pub(crate) async fn check_limit(&self, a: CheckLimitArgs) -> Result<Outcome<Limit>> {

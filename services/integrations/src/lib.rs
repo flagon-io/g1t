@@ -104,8 +104,14 @@ struct DeliveryRow {
     issue: Option<String>,
 }
 
+/// A model session's public id: the start of its token's hash.
+fn session_id(token_hash: &str) -> String {
+    format!("ms_{}", &token_hash[..token_hash.len().min(24)])
+}
+
 #[derive(Deserialize)]
 struct SessionRow {
+    token_hash: String,
     workspace: String,
     connection_id: Option<String>,
     repo: String,
@@ -1219,11 +1225,13 @@ impl Integrations {
                     ])?,
             ])
             .await?;
+        let id = session_id(&crypto::sha256_hex(&token));
         Ok(Outcome::Ok(ModelSession {
             token,
             billed_to: if connection.is_some() { "workspace" } else { "g1t" }.to_owned(),
             provider_name: connection.map(|row| row.name.clone()),
             model,
+            id,
         }))
     }
 
@@ -1247,6 +1255,7 @@ impl Integrations {
             repo: session.repo,
             number: session.number,
             task: session.task,
+            session: session_id(&session.token_hash),
             base_url: None,
             api_key: None,
             auth_header: None,

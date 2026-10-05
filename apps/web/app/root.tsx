@@ -165,6 +165,7 @@ function Header({ user }: { user: User | null | undefined }) {
         </Form>
         <nav className="flex items-center gap-0.5">
           <HeaderLink to="/explore">Explore</HeaderLink>
+          <HeaderLink to="/pricing">Pricing</HeaderLink>
           <HeaderLink to="https://docs.g1t.sh/">Docs</HeaderLink>
         </nav>
         <div className="ml-auto flex items-center gap-2">
@@ -262,6 +263,7 @@ const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
     title: "Product",
     links: [
       ["Explore repositories", "/explore"],
+      ["Pricing", "/pricing"],
       ["g1t agents", "https://docs.g1t.sh/guides/g1t-agents/"],
       ["Bring your own agent", "https://docs.g1t.sh/guides/bring-your-own-agent/"],
       ["Integrations", "https://docs.g1t.sh/guides/integrations/"],

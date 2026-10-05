@@ -557,6 +557,7 @@ export default class RunnerService
       task,
       model: own ? `${modelName} (${session?.providerName ?? "own provider"})` : modelName,
       billedTo: own ? "workspace" : "g1t",
+      session: own ? null : (session?.id ?? null),
     });
     if (!ticket.ok) return ticket;
     const vars: Record<string, string> = session

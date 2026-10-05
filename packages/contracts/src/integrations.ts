@@ -122,6 +122,8 @@ export type ModelSession = {
   billedTo: "g1t" | "workspace";
   providerName: string | null;
   model: string | null;
+  /** Names the run in AI Gateway's logs (`metadata.session`), for billing. */
+  id: string;
 };
 
 export type ModelUpstream = {
@@ -138,6 +140,8 @@ export type ModelUpstream = {
   repo: string;
   number: number;
   task: string;
+  /** The session's id; see `ModelSession.id`. */
+  session: string;
   baseUrl: string | null;
   apiKey: string | null;
   authHeader: string | null;

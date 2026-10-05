@@ -181,6 +181,10 @@ pub struct StartRunArgs {
     /// The runner, which is TypeScript, sends it as `billedTo`.
     #[serde(default = "g1t", alias = "billedTo")]
     pub billed_to: String,
+    /// The model session's id, when its requests go through g1t's AI
+    /// Gateway: settling charges the run what the gateway priced them at.
+    #[serde(default)]
+    pub session: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -401,6 +405,20 @@ pub struct CheckLimitArgs {
     pub workspace: String,
 }
 
+/// `note_pending`: usage this month that will be charged later, such as
+/// app traffic past a plan, so the workspace's limit counts it now. Each
+/// report replaces the last for that workspace, source and month. Called
+/// by the service that meters it. Returns `bool`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotePendingArgs {
+    pub workspace: String,
+    /// `deployments`.
+    pub source: String,
+    /// What it cost g1t so far this month, before the margin.
+    pub cost_micros: i64,
+}
+
 /// `set_spend_limit`: the owner's own monthly ceiling, under g1t's; None
 /// removes it. Owners only. Returns `Outcome<Limit>`.
 #[derive(Debug, Serialize, Deserialize)]
@@ -409,6 +427,57 @@ pub struct SetSpendLimitArgs {
     pub actor: User,
     pub workspace: String,
     pub spend_limit_micros: Option<i64>,
+}
+
+/// One metered unit: what it costs g1t, and what it is sold at. The price
+/// is always `cost × (100 + markup) / 100`, so it follows the cost.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Price {
+    /// `sandbox_second`, `build_second`, `app_requests`, `app_cpu`, `app_month`.
+    pub meter: String,
+    pub title: String,
+    pub unit: String,
+    /// Millionths of a dollar per unit; may have a fraction.
+    pub cost_micros: f64,
+    pub markup_percent: u32,
+    pub price_micros: f64,
+    /// `list`: Cloudflare's published price. `cloudflare`: what Cloudflare
+    /// actually billed g1t, measured.
+    pub source: String,
+    /// When it was last checked against Cloudflare's bill.
+    pub checked_at: Option<String>,
+    pub updated_at: String,
+}
+
+impl Price {
+    pub fn price_for(cost_micros: f64, markup_percent: u32) -> f64 {
+        cost_micros * f64::from(100 + markup_percent) / 100.0
+    }
+}
+
+/// A cost that moved.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceChange {
+    pub meter: String,
+    pub old_cost_micros: f64,
+    pub new_cost_micros: f64,
+    pub markup_percent: u32,
+    pub reason: String,
+    pub created_at: String,
+}
+
+/// `prices`: every metered price and the recent changes. Public. Returns
+/// `PriceBook`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceBook {
+    pub prices: Vec<Price>,
+    pub changes: Vec<PriceChange>,
+    /// The margin on model usage, which is charged at what AI Gateway
+    /// priced each request at.
+    pub model_margin_percent: u32,
 }
 
 /// What a feature's plan costs and includes.

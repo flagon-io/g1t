@@ -353,6 +353,11 @@ pub struct ModelSession {
     pub provider_name: Option<String>,
     /// The model to use instead of g1t's choice, if the connection names one.
     pub model: Option<String>,
+    /// Names the run in AI Gateway's logs (`metadata.session`), so billing
+    /// can charge each run what the gateway priced its requests at. Not a
+    /// secret: it cannot be turned back into the token.
+    #[serde(default)]
+    pub id: String,
 }
 
 /// What the model proxy needs to forward one run's requests.
@@ -376,6 +381,9 @@ pub struct ModelUpstream {
     pub repo: String,
     pub number: u32,
     pub task: String,
+    /// The session's id; see `ModelSession::id`.
+    #[serde(default)]
+    pub session: String,
     /// For `endpoint`: where to send requests.
     pub base_url: Option<String>,
     /// For `anthropic` and `endpoint`: the workspace's key.

@@ -823,7 +823,8 @@ class Deployments {
 
   /** Each build is charged by the second at the container price plus the margin. */
   private async chargeBuild(row: DeploymentRow, seconds: number): Promise<void> {
-    const cost = Math.ceil(seconds) * DEPLOYMENTS_ALLOWANCE.microsPerBuildSecond;
+    const costs = await this.costs();
+    const cost = Math.ceil(Math.ceil(seconds) * costs.buildSecond);
     if (cost <= 0) return;
     const what =
       row.kind === "preview"
@@ -844,6 +845,24 @@ class Deployments {
       )
       .bind(row.workspace, month(), Math.ceil(seconds), cost)
       .run();
+  }
+
+  /**
+   * What each unit costs g1t now, from billing's price book, which follows
+   * what Cloudflare bills. The plan's figures if billing cannot say.
+   */
+  private async costs(): Promise<{ buildSecond: number; millionRequests: number; millionCpuMs: number; appMonth: number }> {
+    const a = DEPLOYMENTS_ALLOWANCE;
+    const book = await billingClient(this.env.BILLING)
+      .prices()
+      .catch(() => null);
+    const cost = (meter: string, fallback: number) => book?.prices.find((p) => p.meter === meter)?.costMicros ?? fallback;
+    return {
+      buildSecond: cost("build_second", a.microsPerBuildSecond),
+      millionRequests: cost("app_requests", a.microsPerMillionRequests),
+      millionCpuMs: cost("app_cpu", a.microsPerMillionCpuMs),
+      appMonth: cost("app_month", a.microsPerAppMonth),
+    };
   }
 
   /** Remembers the most apps the workspace had up at once this month. */
@@ -1061,6 +1080,25 @@ class Deployments {
       }
     }
     for (const workspace of new Set(apps.map((app) => app.workspace))) await this.notePeak(workspace);
+    // What this month's traffic past the plan will cost, so the workspace's
+    // limit counts it now rather than when the month closes.
+    const costs = await this.costs();
+    const a = DEPLOYMENTS_ALLOWANCE;
+    for (const workspace of perWorkspace.keys()) {
+      const meter = await this.db
+        .prepare("SELECT requests, cpu_ms, peak_apps FROM meters WHERE namespace = ? AND month = ?")
+        .bind(workspace, month())
+        .first<{ requests: number; cpu_ms: number; peak_apps: number }>();
+      if (!meter) continue;
+      const cost = Math.ceil(
+        (Math.max(0, meter.requests - a.requests) / 1_000_000) * costs.millionRequests +
+          (Math.max(0, meter.cpu_ms - a.cpuMs) / 1_000_000) * costs.millionCpuMs +
+          Math.max(0, meter.peak_apps - a.apps) * costs.appMonth,
+      );
+      await billingClient(this.env.BILLING)
+        .notePending(workspace, "deployments", cost)
+        .catch((error) => console.error("could not note pending usage", error));
+    }
   }
 
   /** Previews no one has visited in their project's idle days. */
@@ -1082,14 +1120,15 @@ class Deployments {
       .bind(month())
       .all<{ namespace: string; month: string; requests: number; cpu_ms: number; peak_apps: number }>();
     const a = DEPLOYMENTS_ALLOWANCE;
+    const costs = await this.costs();
     for (const meter of due.results) {
       const extraRequests = Math.max(0, meter.requests - a.requests);
       const extraCpu = Math.max(0, meter.cpu_ms - a.cpuMs);
       const extraApps = Math.max(0, meter.peak_apps - a.apps);
       const cost = Math.ceil(
-        (extraRequests / 1_000_000) * a.microsPerMillionRequests +
-          (extraCpu / 1_000_000) * a.microsPerMillionCpuMs +
-          extraApps * a.microsPerAppMonth,
+        (extraRequests / 1_000_000) * costs.millionRequests +
+          (extraCpu / 1_000_000) * costs.millionCpuMs +
+          extraApps * costs.appMonth,
       );
       if (cost > 0) {
         const parts = [

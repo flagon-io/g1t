@@ -5,7 +5,7 @@ import type { ModelUpstream } from "@g1t/contracts";
 
 import { presentedToken, upstreamRequest } from "./route.ts";
 
-const run = { workspace: "acme", repo: "acme/web", number: 7, task: "implement", baseUrl: null, apiKey: null, authHeader: null, api: "anthropic" as const, model: null, official: false, provider: "g1t" };
+const run = { workspace: "acme", repo: "acme/web", number: 7, task: "implement", session: "ms_abc", baseUrl: null, apiKey: null, authHeader: null, api: "anthropic" as const, model: null, official: false, provider: "g1t" };
 const hosted = { AI_GATEWAY_ID: "g1t", CLOUDFLARE_ACCOUNT_ID: "acct", AI_GATEWAY_TOKEN: "gw-token" };
 
 function incoming(): Headers {
@@ -35,6 +35,7 @@ test("g1t's runs go through its gateway, tagged, without the sandbox's token", (
     workspace: "acme",
     repo: "acme/web",
     pull: 7,
+    session: "ms_abc",
   });
 });
 

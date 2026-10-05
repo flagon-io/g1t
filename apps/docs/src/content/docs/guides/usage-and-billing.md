@@ -87,6 +87,42 @@ The charge goes to the workspace that owns the repository, whoever
 assigned the issue. That is why only members of a workspace can put g1t
 agents to work on its repositories.
 
+## How prices are set
+
+g1t passes its own costs through. Everything a workspace uses costs g1t
+money first, at Cloudflare or a model provider, and is charged at that
+cost plus a set markup. There is no seat price, and nothing is bundled to
+hide what it costs. The live prices are on
+[g1t.sh/pricing](https://g1t.sh/pricing), straight from the price book
+billing charges from.
+
+Prices keep themselves current as those costs move:
+
+- **Models.** Each of g1t's hosted runs goes through its Cloudflare AI
+  Gateway, which prices every request at the provider's current rates. A
+  run is charged when it finishes at what the sandbox reported; within
+  about 15 minutes it is **settled** to the gateway's figure, and any
+  difference appears on the statement as a correction, such as
+  *Correction to "Work on acme/api#12": AI Gateway priced its 41 model
+  requests at $0.0312, not $0.0298*. When a provider changes its prices,
+  runs are charged the new ones from that day. A run whose sandbox stopped
+  without reporting is charged from the gateway's logs instead of not at
+  all.
+- **Cloudflare.** Every day, g1t checks what Cloudflare billed its account
+  against what was used: Containers against the seconds containers ran,
+  Workers for Platforms per request and per CPU millisecond. When a cost
+  moves by 2% or more, the price book moves with it, since each price is
+  its cost times its markup, and the change is listed on the pricing page
+  with the reason. A measurement far from the current cost (more than 4×
+  either way) is not adopted, only logged, so one odd day cannot reprice
+  anything.
+
+| | Markup |
+| --- | --- |
+| Models | 20% |
+| Deploy builds, app requests, CPU and apps | 20% |
+| Sandbox time | 138%, which also pays for the orchestration around each sandbox and everyone's free minutes |
+
 ## Sandbox time
 
 Every sandbox g1t starts for a workspace runs on Cloudflare Containers, and
@@ -98,8 +134,10 @@ workflow jobs. It is charged to the workspace that owns the repository.
 | | |
 | --- | --- |
 | Free each month | 500 minutes (calendar month, UTC) |
-| Past that | $0.003 a minute, by the second |
+| Past that | $0.003 a minute, by the second, at today's cost |
 | What it costs g1t | about $0.0013 a minute (Containers, standard-1) |
+
+Both follow what Cloudflare bills; see [How prices are set](#how-prices-are-set).
 
 Deploy builds are not counted here: [Deployments](/guides/deployments/)
 charges them by the second on its own plan.

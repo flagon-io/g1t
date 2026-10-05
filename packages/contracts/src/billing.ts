@@ -93,6 +93,31 @@ export type Limit = {
   message: string | null;
 };
 
+/** One metered unit: what it costs g1t and what it is sold at; the price follows the cost. */
+export type Price = {
+  meter: "sandbox_second" | "build_second" | "app_requests" | "app_cpu" | "app_month" | string;
+  title: string;
+  unit: string;
+  costMicros: number;
+  markupPercent: number;
+  priceMicros: number;
+  /** `list`: Cloudflare's published price. `cloudflare`: measured from Cloudflare's bill. */
+  source: "list" | "cloudflare" | string;
+  checkedAt: string | null;
+  updatedAt: string;
+};
+
+export type PriceChange = {
+  meter: string;
+  oldCostMicros: number;
+  newCostMicros: number;
+  markupPercent: number;
+  reason: string;
+  createdAt: string;
+};
+
+export type PriceBook = { prices: Price[]; changes: PriceChange[]; modelMarginPercent: number };
+
 export type Trial = {
   open: boolean;
   usedMicros: number;
@@ -205,6 +230,13 @@ export interface BillingApi {
     repo?: string | null;
     reference: string;
   }): Promise<Result<boolean>>;
+  /**
+   * Usage this month to be charged later (app traffic past a plan), so the
+   * workspace's limit counts it now. Replaces the last report.
+   */
+  notePending(workspace: string, source: "deployments", costMicros: number): Promise<boolean>;
+  /** Every metered price and the recent changes. Public. */
+  prices(): Promise<PriceBook>;
   /** A workspace's limit, for its members. */
   limit(workspace: string, viewer: Viewer): Promise<Result<Limit>>;
   /** The same, for the services that enforce it. */
@@ -231,6 +263,8 @@ export interface BillingApi {
     model: string;
     /** `workspace` when the run uses the workspace's own model provider. */
     billedTo?: "g1t" | "workspace";
+    /** The model session's id, so the run can be settled at AI Gateway's price. */
+    session?: string | null;
   }): Promise<Result<RunTicket | null>>;
 }
 

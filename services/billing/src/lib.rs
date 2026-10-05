@@ -17,6 +17,7 @@
 //! the methods and their arguments.
 
 mod features;
+mod keeper;
 mod limits;
 mod stripe;
 
@@ -27,7 +28,7 @@ use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use worker::wasm_bindgen::JsValue;
-use worker::{Context, D1Database, Env, Request, Response, Result, event};
+use worker::{Context, D1Database, Env, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
 
 use stripe::Stripe;
 
@@ -597,8 +598,8 @@ impl Billing {
         let token = hex::encode(bytes);
         self.db
             .prepare(
-                "INSERT INTO runs (id, workspace, repo, number, task, model, token_hash, created_at, billed_to)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO runs (id, workspace, repo, number, task, model, token_hash, created_at, billed_to, session_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 run_id.as_str().into(),
@@ -610,6 +611,7 @@ impl Billing {
                 hash(&token).into(),
                 rfc3339(now).into(),
                 if a.billed_to == "workspace" { "workspace" } else { "g1t" }.into(),
+                optional(a.session.as_deref().filter(|_| a.billed_to != "workspace")),
             ])?
             .run()
             .await?;
@@ -719,7 +721,12 @@ impl Billing {
             .await?
             .map_or(seconds, |used| used.seconds);
         let billable = sandbox_billable(after - seconds, seconds);
-        let charge = if self.free { 0 } else { billable * sandbox_allowance::MICROS_PER_SECOND };
+        // From the price book, which follows what Cloudflare bills g1t.
+        let (cost_per_second, price_per_second) = self.price("sandbox_second").await?.unwrap_or((
+            sandbox_allowance::COST_MICROS_PER_SECOND as f64,
+            sandbox_allowance::MICROS_PER_SECOND as f64,
+        ));
+        let charge = if self.free { 0 } else { (billable as f64 * price_per_second).ceil() as i64 };
         let mut description = format!("{}: {} of sandbox time", a.description, duration(seconds));
         if billable < seconds {
             description.push_str(if billable == 0 {
@@ -746,7 +753,7 @@ impl Billing {
                         (-(charge as f64)).into(),
                         description.as_str().into(),
                         optional(a.repo.as_deref()),
-                        ((seconds * sandbox_allowance::COST_MICROS_PER_SECOND) as f64).into(),
+                        (seconds as f64 * cost_per_second).ceil().into(),
                         a.reference.as_str().into(),
                         timestamp.as_str().into(),
                     ])?,
@@ -793,57 +800,80 @@ fn members_only<T>() -> Outcome<T> {
     )
 }
 
+impl Billing {
+    fn from_env(env: &Env) -> Result<Self> {
+            Ok(Billing {
+            db: env.d1("DB")?,
+            stripe: env
+                .secret("STRIPE_SECRET_KEY")
+                .ok()
+                .map(|key| key.to_string())
+                .filter(|key| !key.is_empty())
+                .map(Stripe::new),
+            margin_percent: env
+                .var("MARGIN_PERCENT")
+                .ok()
+                .and_then(|percent| percent.to_string().parse().ok())
+                .unwrap_or(20),
+            orchestration_fee_micros: env
+                .var("ORCHESTRATION_FEE_MICROS")
+                .ok()
+                .and_then(|fee| fee.to_string().parse().ok())
+                .unwrap_or(100_000),
+            free: env.var("FREE_WHILE_BUILDING").is_ok_and(|v| v.to_string() == "true"),
+            ceilings: limits::Ceilings::from_env(&env),
+            deployments_monthly_cents: env
+                .var("DEPLOYMENTS_MONTHLY_CENTS")
+                .ok()
+                .and_then(|cents| cents.to_string().parse().ok())
+                .unwrap_or(500),
+            trial: {
+                let number = |name: &str| env.var(name).ok().and_then(|v| v.to_string().parse::<i64>().ok());
+                match (
+                    number("TRIAL_WORKSPACE_MICROS"),
+                    number("TRIAL_TOTAL_MICROS"),
+                    env.var("TRIAL_UNTIL").ok().map(|v| v.to_string()),
+                ) {
+                    (Some(per_workspace_micros), Some(total_micros), Some(until))
+                        if per_workspace_micros > 0 && !until.is_empty() =>
+                    {
+                        Some(TrialConfig {
+                            per_workspace_micros,
+                            total_micros,
+                            until,
+                        })
+                    }
+                    _ => None,
+                }
+            },
+        })
+    }
+}
+
+#[event(scheduled)]
+async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
+    let Ok(billing) = Billing::from_env(&env) else {
+        return;
+    };
+    let keeper = keeper::Keeper::from_env(&env);
+    if let Err(error) = billing.settle_runs(&keeper).await {
+        worker::console_error!("settling runs failed: {error}");
+    }
+    // Once a day: check every cost against what Cloudflare billed.
+    if event.cron() == keeper::DAILY {
+        if let Err(error) = billing.reconcile(&keeper).await {
+            worker::console_error!("checking costs against Cloudflare failed: {error}");
+        }
+    }
+}
+
 #[event(fetch)]
 async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response> {
     let Some(method) = rpc_method(&request) else {
         return Response::error("Not found", 404);
     };
     let body: serde_json::Value = request.json().await?;
-    let billing = Billing {
-        db: env.d1("DB")?,
-        stripe: env
-            .secret("STRIPE_SECRET_KEY")
-            .ok()
-            .map(|key| key.to_string())
-            .filter(|key| !key.is_empty())
-            .map(Stripe::new),
-        margin_percent: env
-            .var("MARGIN_PERCENT")
-            .ok()
-            .and_then(|percent| percent.to_string().parse().ok())
-            .unwrap_or(20),
-        orchestration_fee_micros: env
-            .var("ORCHESTRATION_FEE_MICROS")
-            .ok()
-            .and_then(|fee| fee.to_string().parse().ok())
-            .unwrap_or(100_000),
-        free: env.var("FREE_WHILE_BUILDING").is_ok_and(|v| v.to_string() == "true"),
-        ceilings: limits::Ceilings::from_env(&env),
-        deployments_monthly_cents: env
-            .var("DEPLOYMENTS_MONTHLY_CENTS")
-            .ok()
-            .and_then(|cents| cents.to_string().parse().ok())
-            .unwrap_or(500),
-        trial: {
-            let number = |name: &str| env.var(name).ok().and_then(|v| v.to_string().parse::<i64>().ok());
-            match (
-                number("TRIAL_WORKSPACE_MICROS"),
-                number("TRIAL_TOTAL_MICROS"),
-                env.var("TRIAL_UNTIL").ok().map(|v| v.to_string()),
-            ) {
-                (Some(per_workspace_micros), Some(total_micros), Some(until))
-                    if per_workspace_micros > 0 && !until.is_empty() =>
-                {
-                    Some(TrialConfig {
-                        per_workspace_micros,
-                        total_micros,
-                        until,
-                    })
-                }
-                _ => None,
-            }
-        },
-    };
+    let billing = Billing::from_env(&env)?;
     match method.as_str() {
         "status" => reply(&billing.status()),
         "account" => reply(&billing.account(args(body)?).await?),
@@ -865,6 +895,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "limit" => reply(&billing.limit(args(body)?).await?),
         "check_limit" => reply(&billing.check_limit(args(body)?).await?),
         "set_spend_limit" => reply(&billing.set_spend_limit(args(body)?).await?),
+        "prices" => reply(&billing.prices().await?),
+        "note_pending" => reply(&billing.note_pending(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }

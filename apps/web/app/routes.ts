@@ -13,6 +13,7 @@ export default [
   route("new", "routes/new.tsx"),
   route("settings", "routes/settings.tsx"),
   route("explore", "routes/explore.tsx", { id: "explore" }),
+  route("pricing", "routes/pricing.tsx"),
   route("search", "routes/explore.tsx", { id: "search" }),
   route("workspaces/new", "routes/workspace/new.tsx"),
   // A workspace's own pages sit under `-`, which no repository can be named.

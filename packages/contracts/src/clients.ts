@@ -202,6 +202,8 @@ export function billingClient(service: ServiceBinding): BillingApi {
     recordSandbox: (usage) => call("record_sandbox", usage),
     limit: (workspace, viewer) => call("limit", { workspace, viewer }),
     checkLimit: (workspace) => call("check_limit", { workspace }),
+    prices: () => call("prices", {}),
+    notePending: (workspace, source, costMicros) => call("note_pending", { workspace, source, costMicros }),
     setSpendLimit: (actor, workspace, spendLimitMicros) =>
       call("set_spend_limit", { actor, workspace, spendLimitMicros }),
   };

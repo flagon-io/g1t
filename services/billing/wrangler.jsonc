@@ -47,8 +47,15 @@
 		"TRIAL_UNTIL": "2026-10-23T06:59:59Z",
 		// The Deployments plan's monthly price, in cents. Turning the
 		// feature on starts it; FREE_WHILE_BUILDING does not cover it.
-		"DEPLOYMENTS_MONTHLY_CENTS": "500"
+		"DEPLOYMENTS_MONTHLY_CENTS": "500",
+		// Where the keeper reads what g1t pays (src/keeper.rs). Its token,
+		// CLOUDFLARE_USAGE_TOKEN, is a secret: Billing, Account Analytics
+		// and AI Gateway, read only.
+		"CLOUDFLARE_ACCOUNT_ID": "1e6f2cffa3f445920836e8ebe446bb58",
+		"AI_GATEWAY_ID": "g1t"
 	},
+	// Settling runs every 15 minutes; checking costs daily (keeper::DAILY).
+	"triggers": { "crons": ["*/15 * * * *", "17 4 * * *"] },
 	// Secret: STRIPE_SECRET_KEY. Without it nothing is charged and the
 	// runner decides who may start agents some other way.
 	"observability": { "enabled": true }
