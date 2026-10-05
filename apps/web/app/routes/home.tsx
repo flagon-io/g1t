@@ -6,22 +6,18 @@ import {
   Box,
   CircleDot,
   Coins,
-  Eye,
-  FolderPlus,
   GitPullRequest,
   Hand,
   Lock,
-  Map as MapIcon,
   Plus,
   Radio,
-  Send,
   Settings,
   Sparkles,
   Users,
 } from "lucide-react";
 import { env } from "cloudflare:workers";
-import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Form, Link, data, redirect, useNavigation, useRouteLoaderData } from "react-router";
+import { type ReactNode, useEffect, useState } from "react";
+import { Link, data, useRouteLoaderData } from "react-router";
 
 import {
   type AgentRun,
@@ -62,7 +58,6 @@ import {
   nextSeen,
   rankNeeds,
   readCookie,
-  splitRequest,
   stuckMinutes,
 } from "../lib/mission";
 import { Landing } from "../components/landing";
@@ -74,7 +69,6 @@ import { DEPLOY_STATUS, StatusDot, host } from "../components/deploy";
 import { ActivityFeed, Meter, NeedsList, Panel, PulseTile, Quiet, Unavailable, percent } from "../components/mission";
 import { Avatar, CopyLine, TimeAgo } from "../components/ui";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { Switch } from "../components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { IssueIcon, PullIcon } from "../components/work";
 import {
@@ -87,7 +81,7 @@ import {
   repos as reposApi,
   work,
 } from "../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn } from "../lib/session.server";
+import { getViewer } from "../lib/session.server";
 
 /** The viewer's time zone, set by the page itself, so the greeting fits their day. */
 const TZ_COOKIE = "g1t_tz";
@@ -502,10 +496,6 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       greeting: greetingFor(hourIn(now, tz)),
       seenBefore: seen.since,
       repos: repoList,
-      // Projects the composer can open an issue in: those of the viewer's workspaces.
-      targets: repoList
-        .filter((repo) => roleIn(viewer, repo.namespace) != null && !repo.forkOf)
-        .map((repo) => ({ namespace: repo.namespace, name: repo.name, isPrivate: repo.isPrivate })),
       canRunAgents: models_ == null || models_.hosted || models_.own != null,
       trial: models_?.own == null ? (models_?.trial ?? null) : null,
       active: activeList.map(({ pull, lifecycle, repo }) => ({ pull, lifecycle, repo })),
@@ -531,158 +521,9 @@ export async function loader({ context, request }: Route.LoaderArgs) {
   );
 }
 
-export async function action({ request, context }: Route.ActionArgs) {
-  assertSameOrigin(request);
-  const user = requireUser(context, request);
-  const form = await request.formData();
-  const [namespace, name] = String(form.get("project") ?? "").split("/");
-  if (!namespace || !name) return { error: "Choose the project this is for." };
-  const { title, body } = splitRequest(String(form.get("request") ?? ""));
-  if (!title) return { error: "Say what you want done first." };
-  const path = { namespace, name };
-  const opened = await work.openIssue(user, path, { title, body });
-  if (!opened.ok) return { error: opened.error.message };
-  const to = `/${namespace}/${name}/issues/${opened.value.number}`;
-  if (form.get("assign") === "on") {
-    // The issue exists either way; its page shows the agent's pull request,
-    // or, if none could start, how to put one on it.
-    await env.RUNNER.run(user, path, opened.value.number).catch(() => null);
-  }
-  throw redirect(to);
-}
-
 type Loaded = Extract<Route.ComponentProps["loaderData"], { signedIn: true }>;
 
 // --- Pieces ---------------------------------------------------------------------
-
-function Composer({
-  targets,
-  canRunAgents,
-  workspace,
-  onReview,
-}: {
-  targets: Loaded["targets"];
-  canRunAgents: boolean;
-  workspace: string | null;
-  onReview: () => void;
-}) {
-  const navigation = useNavigation();
-  const busy = navigation.state === "submitting" && navigation.formAction === "/?index";
-  const [project, setProject] = useState(() => (targets[0] ? `${targets[0].namespace}/${targets[0].name}` : ""));
-  const [assign, setAssign] = useState(canRunAgents);
-  const text = useRef<HTMLTextAreaElement>(null);
-  const base = project ? `/${project}` : null;
-  const pill =
-    "inline-flex items-center gap-1.5 rounded-full border border-line bg-bg px-3 py-1.5 text-xs font-medium text-fg/80 transition-colors hover:border-line-strong hover:bg-raised hover:text-fg";
-  if (targets.length === 0) {
-    return (
-      <div className="rounded-2xl border border-line bg-surface p-5">
-        <p className="font-medium">Add a project to hand work to agents</p>
-        <p className="mt-1 text-sm text-muted">
-          Create a repository or import one by its address. Then describe what you want done here, and an agent starts on it.
-        </p>
-        <Link to={workspace ? `/new?workspace=${workspace}` : "/new"} className={`${pill} mt-4`}>
-          <FolderPlus size={13} /> New project
-        </Link>
-      </div>
-    );
-  }
-  return (
-    <div>
-      <Form
-        method="post"
-        action="/?index"
-        className="rounded-2xl border border-line bg-surface shadow-[0_1px_0_0_rgb(255_255_255/0.03)_inset] transition-colors focus-within:border-accent-dim/70"
-      >
-        <label htmlFor="composer" className="sr-only">
-          Describe what you want done
-        </label>
-        <textarea
-          id="composer"
-          ref={text}
-          name="request"
-          required
-          rows={3}
-          maxLength={20000}
-          autoComplete="off"
-          data-1p-ignore
-          placeholder="Describe what you want done… The first line becomes the issue's title."
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) event.currentTarget.form?.requestSubmit();
-          }}
-          className="block w-full resize-y rounded-t-2xl bg-transparent px-4 pt-4 pb-2 text-[0.9375rem] leading-6 outline-none placeholder:text-faint"
-        />
-        <div className="flex flex-wrap items-center gap-2 border-t border-line/70 px-3 py-2.5">
-          <Select name="project" value={project} onValueChange={setProject}>
-            <SelectTrigger size="sm" className="w-auto max-w-60" aria-label="Project">
-              <SelectValue placeholder="Project" />
-            </SelectTrigger>
-            <SelectContent>
-              {targets.map((target) => (
-                <SelectItem
-                  key={`${target.namespace}/${target.name}`}
-                  value={`${target.namespace}/${target.name}`}
-                  icon={<Avatar name={target.name} size={16} square />}
-                  description={target.namespace}
-                >
-                  {target.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <label
-            className={`inline-flex h-8 items-center gap-2 rounded-md px-2 text-xs ${canRunAgents ? "text-muted" : "text-faint"}`}
-            title={canRunAgents ? "Open the issue and start g1t-agent on it" : "Connect a model under Integrations to run agents"}
-          >
-            <Switch checked={assign} onCheckedChange={setAssign} disabled={!canRunAgents} aria-label="Hand to an agent" />
-            <Bot size={13} className={assign ? "text-merged" : ""} />
-            Hand to g1t-agent
-          </label>
-          {assign && <input type="hidden" name="assign" value="on" />}
-          <span className="grow" />
-          <span className="hidden text-[0.6875rem] text-faint sm:inline">Ctrl+Enter</span>
-          <button
-            type="submit"
-            disabled={busy}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-fg px-3 text-sm font-medium text-bg transition-colors hover:bg-white disabled:opacity-50"
-          >
-            <Send size={13} />
-            {busy ? (assign ? "Starting…" : "Opening…") : assign ? "Start" : "Open issue"}
-          </button>
-        </div>
-      </Form>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {base && (
-          <Link to={`${base}/issues/new`} className={pill}>
-            <CircleDot size={13} /> New issue
-          </Link>
-        )}
-        <button
-          type="button"
-          className={pill}
-          disabled={!canRunAgents}
-          onClick={() => {
-            setAssign(true);
-            text.current?.focus();
-          }}
-        >
-          <Sparkles size={13} className="text-merged" /> Hand to an agent
-        </button>
-        {base && (
-          <Link to={`${base}/plans`} className={pill}>
-            <MapIcon size={13} /> Plan an outcome
-          </Link>
-        )}
-        <button type="button" className={pill} onClick={onReview}>
-          <Eye size={13} /> Review queue
-        </button>
-        <Link to={workspace ? `/new?workspace=${workspace}` : "/new"} className={pill}>
-          <FolderPlus size={13} /> New project
-        </Link>
-      </div>
-    </div>
-  );
-}
 
 const TONE = { fg: "text-fg", warn: "text-warn", danger: "text-danger", accent: "text-accent" };
 
@@ -1151,10 +992,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     },
   ];
   const starting = steps.some((step) => !step.done);
-  const showReview = () => {
-    setPullsTab("review");
-    document.getElementById("your-pulls")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
   const counts = (n: number) => (n > 0 ? <span className="ml-1 tabular-nums text-faint">{n}</span> : null);
 
   return (
@@ -1165,9 +1002,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             {greeting}, {loaded.name}
           </h1>
           <Digest parts={loaded.digest} seenBefore={loaded.seenBefore} />
-          <div className="mt-5">
-            <Composer targets={loaded.targets} canRunAgents={canRunAgents} workspace={workspace} onReview={showReview} />
-          </div>
         </header>
 
         {starting && <GetStarted steps={steps} />}
@@ -1190,21 +1024,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           {!loaded.runsLoaded && workspace ? (
             <Unavailable what="Agent runs" />
           ) : live.length === 0 ? (
-            <Quiet
-              action={
-                canRunAgents && loaded.targets.length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => document.getElementById("composer")?.focus()}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-fg px-3 py-1.5 text-xs font-medium text-bg hover:bg-white"
-                  >
-                    <Sparkles size={12} /> Hand something to an agent
-                  </button>
-                ) : null
-              }
-            >
-              No agent is at work right now. Describe a change above and one starts on it in seconds.
-            </Quiet>
+            <Quiet>No agent is at work right now. Assign an issue to g1t-agent and one starts on it in seconds.</Quiet>
           ) : (
             <ul className="space-y-3">
               {live.map((run) => (
