@@ -859,8 +859,9 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     if let Err(error) = billing.settle_runs(&keeper).await {
         worker::console_error!("settling runs failed: {error}");
     }
-    // Once a day: check every cost against what Cloudflare billed.
-    if event.cron() == keeper::DAILY {
+    // Once a day, and at once if the costs were never checked: check every
+    // cost against what Cloudflare billed.
+    if event.cron() == keeper::DAILY || billing.never_checked().await.unwrap_or(false) {
         if let Err(error) = billing.reconcile(&keeper).await {
             worker::console_error!("checking costs against Cloudflare failed: {error}");
         }

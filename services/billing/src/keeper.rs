@@ -39,8 +39,6 @@ const SETTLE_AFTER_MS: u64 = 5 * 60 * 1000;
 const GIVE_UP_AFTER_MS: u64 = 3 * 60 * 60 * 1000;
 /// A run never finished after this died without reporting.
 const ABANDONED_AFTER_MS: u64 = 3 * 60 * 60 * 1000;
-/// Too little spend to measure a cost from.
-const MIN_MEASURED_USD: f64 = 5.0;
 /// Smaller moves are noise.
 const MIN_CHANGE: f64 = 0.02;
 /// A measurement outside this factor of the current cost is suspect.
@@ -96,9 +94,14 @@ impl Keeper {
         let mut cost = 0.0;
         let mut count = 0;
         for page in 1..=40 {
+            // The filter goes as URL-encoded JSON; the bracket form is
+            // ignored, and would sum every log there is. Session ids are
+            // [a-z0-9_], which need no escaping inside it.
+            let filter = format!(
+                "%5B%7B%22key%22%3A%22metadata.value%22%2C%22operator%22%3A%22eq%22%2C%22value%22%3A%5B%22{session}%22%5D%7D%5D"
+            );
             let url = self.api(&format!(
-                "/ai-gateway/gateways/{}/logs?per_page=50&page={page}\
-                 &filters[0][key]=metadata.value&filters[0][operator]=eq&filters[0][value][0]={session}",
+                "/ai-gateway/gateways/{}/logs?per_page=50&page={page}&filters={filter}",
                 self.gateway
             ));
             let body = self.send(Method::Get, &url, None).await?;
@@ -114,22 +117,23 @@ impl Keeper {
         Ok((cost, count))
     }
 
-    /// The account's billable usage this month, as Cloudflare reports it.
+    /// The account's billable usage, one row per service per day, as
+    /// Cloudflare reports it.
     async fn billable_usage(&self, from: &str, to: &str) -> Result<Vec<UsageRow>> {
         let body = self
-            .send(Method::Get, &self.api(&format!("/billing/usage/paygo?from={from}&to={to}")), None)
+            .send(Method::Get, &self.api(&format!("/billable-usage?from={from}&to={to}")), None)
             .await?;
         let rows = body["result"].as_array().cloned().unwrap_or_default();
         Ok(rows.iter().filter_map(UsageRow::from_value).collect())
     }
 
-    /// Seconds g1t's containers ran since `since` (RFC 3339), across the
-    /// account.
-    async fn container_seconds(&self, since: &str, until: &str) -> Result<f64> {
-        let query = "query ($account: String!, $since: Time!, $until: Time!) {
+    /// What g1t's containers used from `since` to `until` (dates), as
+    /// Cloudflare bills it: memory in byte-seconds, and CPU seconds.
+    async fn container_usage(&self, since: &str, until: &str) -> Result<ContainerUsage> {
+        let query = "query ($account: String!, $since: Date!, $until: Date!) {
           viewer { accounts(filter: { accountTag: $account }) {
-            containersMetricsAdaptiveGroups(limit: 10000, filter: { datetime_geq: $since, datetime_leq: $until }) {
-              sum { containerUptime }
+            containersUsageAdaptiveGroups(limit: 1000, filter: { date_geq: $since, date_leq: $until }) {
+              sum { cpuTimeSec allocatedMemory }
             }
           } }
         }";
@@ -140,12 +144,59 @@ impl Keeper {
                 Some(json!({ "query": query, "variables": { "account": self.account, "since": since, "until": until } })),
             )
             .await?;
-        let groups = body["data"]["viewer"]["accounts"][0]["containersMetricsAdaptiveGroups"]
+        let groups = body["data"]["viewer"]["accounts"][0]["containersUsageAdaptiveGroups"]
             .as_array()
             .cloned()
             .unwrap_or_default();
-        Ok(groups.iter().map(|g| g["sum"]["containerUptime"].as_f64().unwrap_or(0.0)).sum())
+        Ok(groups.iter().fold(ContainerUsage::default(), |total, g| ContainerUsage {
+            cpu_seconds: total.cpu_seconds + g["sum"]["cpuTimeSec"].as_f64().unwrap_or(0.0),
+            memory_byte_seconds: total.memory_byte_seconds + g["sum"]["allocatedMemory"].as_f64().unwrap_or(0.0),
+        }))
     }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct ContainerUsage {
+    cpu_seconds: f64,
+    memory_byte_seconds: f64,
+}
+
+/// g1t's sandboxes: Containers' standard-1, half a vCPU, 4 GiB, 8 GB disk.
+const SANDBOX_GIB: f64 = 4.0;
+const SANDBOX_DISK_GB: f64 = 8.0;
+const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
+
+/// Cloudflare's published Containers rates, in dollars, used for any rate
+/// the bill does not show yet (while usage is inside the included amount).
+const LIST_MEMORY_GIB_SECOND: f64 = 0.000_002_5;
+const LIST_DISK_GB_SECOND: f64 = 0.000_000_07;
+const LIST_VCPU_SECOND: f64 = 0.000_02;
+
+/// What one second of a sandbox costs, in millionths of a dollar: its
+/// memory and disk for the whole second, and the CPU sandboxes actually
+/// use per second of running, which is billed only while busy.
+pub(crate) fn sandbox_second_micros(usage: ContainerUsage, memory: f64, disk: f64, vcpu: f64) -> Option<f64> {
+    let instance_seconds = usage.memory_byte_seconds / (SANDBOX_GIB * GIB);
+    if instance_seconds < 3600.0 {
+        return None;
+    }
+    let cpu_share = usage.cpu_seconds / instance_seconds;
+    Some((SANDBOX_GIB * memory + SANDBOX_DISK_GB * disk + cpu_share * vcpu) * MICROS_PER_DOLLAR as f64)
+}
+
+/// A unit's marginal rate from the bill: the median, over the days that
+/// were charged, of cost over quantity. None while nothing was charged.
+pub(crate) fn billed_rate(rows: &[&UsageRow]) -> Option<f64> {
+    let mut rates: Vec<f64> = rows
+        .iter()
+        .filter(|r| r.cost > 0.0 && r.quantity > 0.0)
+        .map(|r| r.cost / r.quantity)
+        .collect();
+    if rates.is_empty() {
+        return None;
+    }
+    rates.sort_by(f64::total_cmp);
+    Some(rates[rates.len() / 2])
 }
 
 /// One line of Cloudflare's billable usage.
@@ -177,9 +228,12 @@ impl UsageRow {
             period_start: text(&["ChargePeriodStart", "charge_period_start"]),
             period_end: text(&["ChargePeriodEnd", "charge_period_end"]),
             service: if family.is_empty() { service } else { format!("{family} / {service}") },
-            unit: text(&["ConsumedUnit", "PricingUnit", "consumed_unit"]),
+            unit: text(&["PricingUnit", "ConsumedUnit", "consumed_unit"]),
             quantity: number(&["PricingQuantity", "ConsumedQuantity", "pricing_quantity"]),
-            cost: number(&["ContractedCost", "BilledCost", "contracted_cost"]),
+            // What g1t pays; list price if nothing was contracted.
+            cost: Some(number(&["ContractedCost", "BilledCost", "contracted_cost"]))
+                .filter(|cost| *cost > 0.0)
+                .unwrap_or_else(|| number(&["ListCost", "list_cost"])),
         })
     }
 }
@@ -286,6 +340,16 @@ impl Billing {
                 .collect(),
             model_margin_percent: self.margin_percent,
         })
+    }
+
+    /// Whether the costs have never been checked against Cloudflare's bill.
+    pub(crate) async fn never_checked(&self) -> Result<bool> {
+        Ok(self
+            .db
+            .prepare("SELECT meter FROM prices WHERE checked_at IS NOT NULL LIMIT 1")
+            .first::<Value>(None)
+            .await?
+            .is_none())
     }
 
     /// A meter's cost and price per unit, from the book.
@@ -429,9 +493,9 @@ impl Billing {
             return Ok(());
         }
         let now = rfc3339(now_ms());
-        let month_start = format!("{}-01", &now[..7]);
         let today = &now[..10];
-        let rows = keeper.billable_usage(&month_start, today).await?;
+        let since = rfc3339(now_ms() - 30 * 24 * 60 * 60 * 1000);
+        let rows = keeper.billable_usage(&since[..10], today).await?;
         for row in &rows {
             self.db
                 .prepare(
@@ -453,30 +517,58 @@ impl Billing {
                 .await?;
         }
 
-        let matching = |service: &str, unit: Option<&str>| -> (f64, f64) {
+        let named = |words: &[&str]| -> Vec<&UsageRow> {
             rows.iter()
-                .filter(|r| r.service.to_lowercase().contains(service))
-                .filter(|r| unit.is_none_or(|u| r.unit.to_lowercase().contains(u)))
-                .fold((0.0, 0.0), |(q, c), r| (q + r.quantity, c + r.cost))
+                .filter(|r| {
+                    let service = r.service.to_lowercase();
+                    words.iter().all(|word| service.contains(word))
+                })
+                .collect()
         };
 
-        // Containers: what they cost, over the seconds they ran.
-        let (_, container_cost) = matching("container", None);
-        if container_cost >= MIN_MEASURED_USD {
-            let seconds = keeper.container_seconds(&format!("{month_start}T00:00:00Z"), &now).await?;
-            if seconds > 0.0 {
-                let per_second = container_cost * MICROS_PER_DOLLAR as f64 / seconds;
-                for meter in ["sandbox_second", "build_second"] {
-                    self.measure(meter, per_second, &format!("Cloudflare billed ${container_cost:.2} for {seconds:.0} container-seconds this month")).await?;
-                }
+        // Containers: each resource at what the bill shows it costs, or
+        // the published rate while the included amount still covers it,
+        // over how much CPU g1t's sandboxes really use per second.
+        let memory = billed_rate(&named(&["container memory"]));
+        let disk = billed_rate(&named(&["container disk"]));
+        let vcpu = billed_rate(&named(&["container vcpu"]));
+        let usage = keeper.container_usage(&since[..10], today).await?;
+        if let Some(per_second) = sandbox_second_micros(
+            usage,
+            memory.unwrap_or(LIST_MEMORY_GIB_SECOND),
+            disk.unwrap_or(LIST_DISK_GB_SECOND),
+            vcpu.unwrap_or(LIST_VCPU_SECOND),
+        ) {
+            let instance_seconds = usage.memory_byte_seconds / (SANDBOX_GIB * GIB);
+            let billed = [("memory", memory), ("disk", disk), ("vCPU", vcpu)]
+                .iter()
+                .filter(|(_, rate)| rate.is_some())
+                .map(|(name, _)| *name)
+                .collect::<Vec<_>>();
+            let reason = format!(
+                "Sandboxes used {:.2} vCPU per second over {:.0} hours of Cloudflare Containers in the last 30 days; {}",
+                usage.cpu_seconds / instance_seconds,
+                instance_seconds / 3600.0,
+                if billed.is_empty() {
+                    "rates are Cloudflare's published ones".to_owned()
+                } else {
+                    format!("{} at what Cloudflare billed", billed.join(", "))
+                },
+            );
+            for meter in ["sandbox_second", "build_second"] {
+                self.measure(meter, per_second, &reason).await?;
             }
         }
-        // Workers for Platforms: per million requests and CPU milliseconds.
-        for (meter, unit, scale) in [("app_requests", "request", 1e6), ("app_cpu", "ms", 1e6)] {
-            let (quantity, cost) = matching("workers for platforms", Some(unit));
-            if cost >= MIN_MEASURED_USD && quantity > 0.0 {
-                let per = cost * MICROS_PER_DOLLAR as f64 / quantity * scale;
-                self.measure(meter, per, &format!("Cloudflare billed ${cost:.2} for {quantity:.0} {unit}s this month")).await?;
+        // Apps run as Workers: per million requests and CPU milliseconds,
+        // once the bill shows them charged.
+        let app_meters: [(&str, &[&str], &str); 2] = [
+            ("app_requests", &["workers", "requests"], "requests"),
+            ("app_cpu", &["workers cpu"], "CPU ms"),
+        ];
+        for (meter, words, unit) in app_meters {
+            if let Some(rate) = billed_rate(&named(words)) {
+                let reason = format!("Cloudflare billed Workers {unit} at ${:.2} per million", rate * 1e6);
+                self.measure(meter, rate * 1e6 * MICROS_PER_DOLLAR as f64, &reason).await?;
             }
         }
         self.db
@@ -537,11 +629,37 @@ mod tests {
     }
 
     #[test]
+    fn a_sandbox_second_is_its_memory_and_disk_and_the_cpu_it_uses() {
+        // An hour of sandboxes that kept a fifth of a vCPU busy.
+        let usage = ContainerUsage { cpu_seconds: 720.0, memory_byte_seconds: 3600.0 * 4.0 * GIB };
+        let micros = sandbox_second_micros(usage, LIST_MEMORY_GIB_SECOND, LIST_DISK_GB_SECOND, LIST_VCPU_SECOND).unwrap();
+        // 4 x 2.5 + 8 x 0.07 + 0.2 x 20 = 14.56
+        assert!((micros - 14.56).abs() < 1e-9, "{micros}");
+        // Too little use to say anything.
+        assert!(sandbox_second_micros(ContainerUsage { cpu_seconds: 1.0, memory_byte_seconds: GIB }, 1.0, 1.0, 1.0).is_none());
+    }
+
+    #[test]
+    fn a_billed_rate_is_the_median_of_the_charged_days() {
+        let row = |quantity: f64, cost: f64| UsageRow {
+            period_start: String::new(),
+            period_end: String::new(),
+            service: "Containers / Container Memory".into(),
+            unit: "Count".into(),
+            quantity,
+            cost,
+        };
+        let rows = [row(100.0, 0.0), row(100.0, 0.0002), row(100.0, 0.00025), row(100.0, 0.00025)];
+        assert_eq!(billed_rate(&rows.iter().collect::<Vec<_>>()), Some(0.000_002_5));
+        assert_eq!(billed_rate(&[&row(5.0, 0.0)]), None);
+    }
+
+    #[test]
     fn usage_rows_are_read_by_their_focus_names() {
         let row = UsageRow::from_value(&json!({
             "ServiceFamilyName": "Containers",
             "ServiceName": "Memory",
-            "ConsumedUnit": "GiB-seconds",
+            "PricingUnit": "GiB-seconds",
             "PricingQuantity": "1200.5",
             "ContractedCost": 0.003,
             "ChargePeriodStart": "2026-10-01",
