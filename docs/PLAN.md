@@ -989,6 +989,38 @@ policy: send each new issue to the agent that wins that kind most often,
 start with the cheapest that is good enough, and escalate to a stronger one
 when checks fail.
 
+## Talking: the inbox and channels
+
+Not a discussions forum. People and agents need one place to talk in real
+time, and an app that feels like one on desktop and phone.
+
+**The inbox comes first.** Everything that needs a person or that they
+follow, from people and agents: review requests, agent questions and
+handoffs, failures, mentions, deploys. Read and unread, saved, done,
+snoozed; ranked so what an agent is blocked on comes first; email digests
+and push. It is the delivery layer chat needs too (who is told what, read
+state, push), so building it first makes channels cheap.
+
+**Channels** (working name): workspace channels, direct messages and
+threads, live.
+
+- Each channel is a Durable Object holding its WebSocket connections with
+  hibernation, so idle channels cost nothing; history in D1, files in R2.
+- Agents are members. `@g1t-agent` in a channel starts work, answers, or
+  posts a summary; agents post their questions and handoffs where people
+  already are. A thread becomes an issue or an outcome in one action, and
+  the agent's progress streams into that thread.
+- Tied to the work: issues, pull requests, runs and deploys each have a
+  thread; links unfurl into live cards (checks, agent step, preview).
+  What a channel settles can become workspace memory, with its source.
+- Apps: an installable PWA first (desktop and mobile, offline shell, Web
+  Push), then native shells on the same API: Tauri for desktop (tray,
+  deep links), React Native for iOS and Android (background
+  notifications).
+
+GitHub-style Discussions are not planned: channels and threads on the
+work replace them.
+
 ## What GitHub ships today, and where g1t differs
 
 GitHub's Agent HQ and Copilot app give each agent session its own git
