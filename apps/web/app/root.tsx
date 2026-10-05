@@ -169,7 +169,7 @@ function Header({ user }: { user: User | null | undefined }) {
             <>
               <Link
                 to="/new"
-                aria-label="New repository"
+                aria-label="New project"
                 className="rounded-md border border-line p-1.5 text-muted transition-colors hover:border-line-strong hover:text-fg"
               >
                 <Plus size={16} />
@@ -214,7 +214,7 @@ function Header({ user }: { user: User | null | undefined }) {
                   <DropdownMenuItem asChild>
                     <Link to="/new">
                       <Plus />
-                      New repository
+                      New project
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />

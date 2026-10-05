@@ -80,7 +80,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
             {role && (
               <ButtonLink to={`/new?workspace=${workspace.slug}`}>
                 <Plus size={15} />
-                New repository
+                New project
               </ButtonLink>
             )}
           </div>

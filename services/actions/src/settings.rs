@@ -482,12 +482,13 @@ impl Actions {
     /// and its running app get.
     pub async fn resolve_settings(&self, a: ResolveSettingsArgs) -> Result<ResolvedSettings> {
         let environment = a.environment.as_deref();
-        let (project_id, slug) = match (a.project_id, a.project_slug) {
-            (Some(id), Some(slug)) => (id, slug),
-            _ => match self.project_of(&a.repo_id).await? {
-                Some(project) => (project.id, project.slug),
-                None => return Ok(ResolvedSettings::default()),
-            },
+        // Rows kept under the repository from before projects move to its
+        // primary project first, however the project is named here.
+        let primary = self.project_of(&a.repo_id).await?;
+        let (project_id, slug) = match (a.project_id, a.project_slug, primary) {
+            (Some(id), Some(slug), _) => (id, slug),
+            (_, _, Some(project)) => (project.id, project.slug),
+            _ => return Ok(ResolvedSettings::default()),
         };
         Ok(ResolvedSettings {
             secrets: self

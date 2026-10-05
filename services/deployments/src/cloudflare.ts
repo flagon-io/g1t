@@ -33,7 +33,15 @@ export type BuiltWorker = {
 /** Serves the site's files, for an app that brings no code of its own. */
 const ASSETS_ONLY = `export default { fetch(request, env) { return env.ASSETS.fetch(request); } };\n`;
 
-const HTML_HANDLING = ["auto-trailing-slash", "force-trailing-slash", "drop-trailing-slash", "none"];
+/** What an app answers between being taken down and being gone. */
+const TAKEN_DOWN = `export default {
+  fetch() {
+    return new Response("<!doctype html><meta charset=utf-8><meta name=robots content=noindex><title>Not up</title><body style='font:16px system-ui;background:#121214;color:#ececf1;display:grid;place-items:center;min-height:100vh;margin:0'><main><h1>This app is not up</h1><p style='color:#9a9aa6'>It was taken down. Deploying it again brings it back.</p></main>", { status: 404, headers: { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex", "cache-control": "no-store" } });
+  },
+};
+`;
+
+const HTML_HANDLING =["auto-trailing-slash", "force-trailing-slash", "drop-trailing-slash", "none"];
 const NOT_FOUND_HANDLING = ["single-page-application", "404-page", "none"];
 
 export class Cloudflare {
@@ -148,8 +156,21 @@ export class Cloudflare {
     );
   }
 
-  /** Takes an app down. Already gone is fine. */
+  /**
+   * Takes an app down. Already gone is fine.
+   *
+   * A deleted app can keep answering for a while where Cloudflare still has
+   * it warm. So it is first replaced by a notice that it is down, which
+   * reaches the edge as fast as any deploy, and deleted after.
+   */
   async deleteScript(script: string): Promise<void> {
+    const form = new FormData();
+    form.append(
+      "metadata",
+      JSON.stringify({ main_module: "index.js", compatibility_date: "2026-09-26", bindings: [], tags: ["taken-down"] }),
+    );
+    form.append("index.js", new File([TAKEN_DOWN], "index.js", { type: "application/javascript+module" }));
+    await this.call("PUT", this.scriptPath(script), form).catch(() => undefined);
     try {
       await this.call("DELETE", `${this.scriptPath(script)}?force=true`);
     } catch (error) {

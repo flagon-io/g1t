@@ -2,9 +2,9 @@
  * The dispatcher for g1t.page: every app deployed by g1t is served here.
  *
  * The hostname's first label is the app's script name in the Workers for
- * Platforms namespace (`pr-12--web--acme.g1t.page` is pull request 12's
- * preview of acme/web), so a request needs no lookup: the app is fetched
- * by name and runs only for as long as it answers. An app no one visits
+ * Platforms namespace (`web-git-fix-login-acme.g1t.page` is the fix-login
+ * branch's preview of acme's web project), so a request needs no lookup:
+ * the app is fetched by name and runs only for as long as it answers. An app no one visits
  * runs nothing and costs nothing.
  *
  * Kept apart from g1t.sh, so apps share no cookies or origin with the site
@@ -81,7 +81,7 @@ export default {
       );
     }
     // Previews are for the people reviewing a change, not search engines.
-    if (label.startsWith("pr-")) {
+    if (isPreview(label)) {
       response = new Response(response.body, response);
       response.headers.set("x-robots-tag", "noindex");
     }
@@ -89,13 +89,18 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
+/** A branch's preview: `<project>-git-<branch>-<workspace>`. */
+function isPreview(label: string): boolean {
+  return label.includes("-git-");
+}
+
 function missing(label: string): Response {
-  const preview = label.startsWith("pr-");
+  const preview = isPreview(label);
   return page(
     404,
     preview ? "This preview is not up" : "Nothing deployed here",
     preview
-      ? `<p>A preview comes down when its pull request is closed or merged, or after its repository's idle days without a visit. Pushing to the pull request, or redeploying it from the repository's Deployments page, brings it back.</p>`
-      : `<p>No app is deployed at <code>${escape(label)}.${DOMAIN}</code>. Deployments are turned on per repository, from its Deployments page on g1t.</p>`,
+      ? `<p>A preview comes down when its pull request is closed or merged, or after its project's idle days without a visit. Pushing to the branch, or redeploying it from the project's Deployments page, brings it back.</p>`
+      : `<p>No app is deployed at <code>${escape(label)}.${DOMAIN}</code>. Deployments are turned on per project, from its Settings on g1t.</p>`,
   );
 }

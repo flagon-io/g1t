@@ -646,7 +646,7 @@ function Breadcrumbs({ pathname }: { pathname: string }) {
     const words: Record<string, string> = {
       settings: "Account",
       explore: "Explore",
-      new: "New repository",
+      new: "New project",
       search: "Search",
       workspaces: "New workspace",
     };
