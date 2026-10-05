@@ -418,6 +418,100 @@ pub struct PullDetail {
     /// What workflow runs said about its head commit, one per workflow.
     #[serde(default)]
     pub statuses: Vec<CommitStatus>,
+    /// Whether it merges cleanly into the branch it targets, worked out
+    /// ahead of time whenever either side moves.
+    #[serde(default)]
+    pub mergeable: Mergeable,
+    /// When `mergeable` is `conflicting`: the files that conflict.
+    #[serde(default)]
+    pub conflicts: Vec<String>,
+    /// Earlier runs of its acceptance checks, newest first, without their
+    /// output.
+    #[serde(default)]
+    pub earlier_checks: Vec<CheckRun>,
+}
+
+/// Whether a pull request's change merges cleanly into the branch it
+/// targets.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Mergeable {
+    /// It merges without conflicts.
+    Clean,
+    /// Some files conflict: see `PullDetail::conflicts`.
+    Conflicting,
+    /// Not known: never worked out, or it could not be.
+    #[default]
+    Unknown,
+    /// Being worked out now.
+    Checking,
+}
+
+impl Mergeable {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Mergeable::Clean => "clean",
+            Mergeable::Conflicting => "conflicting",
+            Mergeable::Unknown => "unknown",
+            Mergeable::Checking => "checking",
+        }
+    }
+
+    pub fn parse(value: Option<&str>) -> Mergeable {
+        match value {
+            Some("clean") => Mergeable::Clean,
+            Some("conflicting") => Mergeable::Conflicting,
+            Some("checking") => Mergeable::Checking,
+            _ => Mergeable::Unknown,
+        }
+    }
+}
+
+/// `start_mergecheck`: claims the probe of whether a pull request merges
+/// cleanly, which the work service asked for with a `pull.mergecheck`
+/// event. Called by the runner service, which starts the sandbox. Refused
+/// when it is no longer wanted, or when the repository already has as many
+/// probes running as it may. Returns `Outcome<MergecheckJob>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartMergecheckArgs {
+    pub pull_id: String,
+}
+
+/// What a sandbox needs to find out whether a pull request merges cleanly.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergecheckJob {
+    pub pull_id: String,
+    /// Lets the sandbox, and nothing else, report this probe.
+    pub token: String,
+    pub repo: RepoPath,
+    pub number: u32,
+    pub default_branch: String,
+    /// The default branch's commit to merge into.
+    pub base: String,
+    /// The repository holding the change: its fork, or the repository.
+    pub source: RepoPath,
+    /// The branch of `source` holding it.
+    pub branch: String,
+    /// The change's commit.
+    pub head: String,
+    /// Who opened the pull request, and so can read its source.
+    pub author: User,
+}
+
+/// `report_mergecheck`: what a sandbox found. Returns `Outcome<Mergeable>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportMergecheckArgs {
+    pub pull_id: String,
+    pub token: String,
+    /// The files that conflict; empty when it merges cleanly.
+    #[serde(default)]
+    pub conflicts: Vec<String>,
+    /// Why it could not be found out.
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 /// What a workflow run (or another tool) says about a commit.
@@ -1402,6 +1496,9 @@ pub struct ReportQueueArgs {
     /// For a merge conflict: the pull request whose change it collided with.
     #[serde(default)]
     pub conflict_with: Option<u32>,
+    /// For a merge conflict: the files that conflicted.
+    #[serde(default)]
+    pub conflicts: Vec<String>,
 }
 
 
@@ -1421,4 +1518,120 @@ pub struct LocatedPull {
     pub number: u32,
     pub title: String,
     pub status: PullStatus,
+}
+
+// --- A person's work -------------------------------------------------------
+
+/// Issues or pull requests, on a person's profile.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthoredKind {
+    Issue,
+    Pull,
+}
+
+/// The state filter on a person's work. `Closed` takes in merged pull
+/// requests too; `Merged` is only those.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthoredState {
+    Open,
+    Closed,
+    Merged,
+}
+
+/// How a person's work is ordered.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthoredSort {
+    /// Newest first.
+    #[default]
+    Created,
+    /// Most recently changed first.
+    Updated,
+    /// Oldest first.
+    Oldest,
+}
+
+/// The most items one `by_author` page holds.
+pub const AUTHORED_PAGE: u32 = 25;
+
+/// `by_author`: the issues and pull requests a person opened, only on
+/// repositories `viewer` may read, so a private title never reaches anyone
+/// who could not open it. Returns `Outcome<Authored>`; not found for an
+/// account that does not exist.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ByAuthorArgs {
+    pub username: String,
+    pub viewer: Viewer,
+    #[serde(default)]
+    pub kind: Option<AuthoredKind>,
+    #[serde(default)]
+    pub state: Option<AuthoredState>,
+    /// Only work on this repository: `namespace/name`.
+    #[serde(default)]
+    pub repo: Option<String>,
+    #[serde(default)]
+    pub sort: AuthoredSort,
+    /// The `next` of the page before, to read on from there.
+    #[serde(default)]
+    pub before: Option<String>,
+    /// At most [`AUTHORED_PAGE`]; that when absent.
+    #[serde(default)]
+    pub limit: Option<u32>,
+}
+
+/// One issue or pull request a person opened.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthoredItem {
+    pub kind: AuthoredKind,
+    pub repo: RepoPath,
+    pub number: u32,
+    pub title: String,
+    /// Open or closed; a merged pull request is closed.
+    pub state: State,
+    /// A pull request's own status.
+    pub status: Option<PullStatus>,
+    /// Why an issue was closed.
+    pub reason: Option<IssueReason>,
+    pub draft: bool,
+    pub merged: bool,
+    /// RFC 3339.
+    pub created_at: String,
+    /// RFC 3339.
+    pub updated_at: String,
+    /// When a pull request was merged. RFC 3339.
+    pub merged_at: Option<String>,
+}
+
+/// What a person has done, as far as the viewer may see.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthoredCounts {
+    pub pulls_merged: u32,
+    pub pulls_open: u32,
+    pub pulls: u32,
+    pub issues: u32,
+    pub issues_open: u32,
+}
+
+/// A repository a person has opened work on, with how much.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AuthoredRepo {
+    pub repo: RepoPath,
+    pub count: u32,
+}
+
+/// A page of a person's work.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Authored {
+    pub items: Vec<AuthoredItem>,
+    /// Pass as `before` for the next page; null on the last.
+    pub next: Option<String>,
+    /// Over every repository the viewer may read, whatever the filters.
+    pub counts: AuthoredCounts,
+    /// Those repositories, most work first.
+    pub repos: Vec<AuthoredRepo>,
 }

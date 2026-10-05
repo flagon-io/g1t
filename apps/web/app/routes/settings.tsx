@@ -7,6 +7,7 @@ import { AvatarField } from "../components/avatar-field";
 import { Button, ErrorText, Field, Input, TimeAgo } from "../components/ui";
 import { readAvatarUpload } from "../lib/avatar-upload";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
+import { ProfileSection } from "../components/profile-form";
 
 export function meta(args: Route.MetaArgs) {
   return page(args, { title: "Settings · g1t" });
@@ -14,12 +15,13 @@ export function meta(args: Route.MetaArgs) {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
-  const [keys, tokens, applications] = await Promise.all([
+  const [keys, tokens, applications, profile] = await Promise.all([
     identity.listSshKeys(user),
     identity.listAccessTokens(user),
     identity.listOAuthGrants(user),
+    identity.profile(user.username),
   ]);
-  return { user, keys, tokens, applications };
+  return { user, keys, tokens, applications, profile };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -29,6 +31,18 @@ export async function action({ request, context }: Route.ActionArgs) {
   const id = String(form.get("id") ?? "");
 
   switch (form.get("intent")) {
+    // Identity checks every field again, and the website most of all.
+    case "profile": {
+      const text = (name: string) => String(form.get(name) ?? "");
+      const result = await identity.updateProfile(user, {
+        name: text("name"),
+        bio: text("bio"),
+        location: text("location"),
+        website: text("website"),
+        pronouns: text("pronouns"),
+      });
+      return result.ok ? { profileSaved: true } : { profileError: result.error.message };
+    }
     // The picture: identity checks the image's bytes again.
     case "avatar": {
       const upload = await readAvatarUpload(form);
@@ -92,7 +106,7 @@ export default function Settings({
   loaderData,
   actionData,
 }: Route.ComponentProps) {
-  const { user, keys, tokens, applications } = loaderData;
+  const { user, keys, tokens, applications, profile } = loaderData;
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
       <header className="mb-8 border-b border-line pb-6">
@@ -113,6 +127,12 @@ export default function Settings({
           />
         </div>
       </section>
+      <ProfileSection
+        username={user.username}
+        profile={profile}
+        error={actionData && "profileError" in actionData ? actionData.profileError : undefined}
+        saved={Boolean(actionData && "profileSaved" in actionData)}
+      />
       <section id="ssh-keys" className="scroll-mt-20">
         <h2 className="font-medium">SSH keys</h2>
         <ul className="mt-4 divide-y divide-line rounded-md border border-line empty:hidden">

@@ -17,6 +17,14 @@ Public repositories can be cloned without signing in:
 git clone https://g1t.sh/syntaqx/g1t.git
 ```
 
+If the workspace is [renamed](/guides/workspaces/#rename-a-workspace), the
+old remote redirects to the new one for 90 days. Git follows the redirect
+and warns about it; point the remote at the new address:
+
+```sh
+git remote set-url origin https://g1t.sh/<new-workspace>/<repo>.git
+```
+
 ## Authentication
 
 Pushing, and reading private repositories, needs credentials. Use your

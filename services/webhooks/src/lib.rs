@@ -9,6 +9,7 @@
 //! was sent and what came back.
 
 mod deliver;
+mod rename;
 
 use std::time::Duration;
 
@@ -742,6 +743,11 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
 async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()> {
     let service = Webhooks::new(&env)?;
     for message in batch.messages()? {
+        // A workspace renamed: its rows move to the slug it has now.
+        if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), rename::STATEMENTS).await? {
+            message.ack();
+            continue;
+        }
         service.on_event(message.body()).await?;
         message.ack();
     }

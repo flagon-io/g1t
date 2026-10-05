@@ -3,6 +3,9 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 
 import {
   type AgentMessage,
+  type AgentRun,
+  type RunKind,
+  agentsClient,
   type CheckJob,
   type G1tEvent,
   type Issue,
@@ -108,6 +111,8 @@ type Run =
   | { kind: "plan"; planId: string; token: string }
   /** One combined state of a merge queue, being built and checked. */
   | { kind: "queue"; entryId: string; token: string }
+  /** Whether a pull request merges cleanly: two commits merged, nothing pushed. */
+  | { kind: "mergecheck"; pullId: string; token: string }
   /** One job of a GitHub Actions workflow. */
   | { kind: "actions"; jobId: string; token: string }
   /** A build of one commit, deployed to g1t.page. */
@@ -115,7 +120,26 @@ type Run =
 /** Whose sandbox time it is, reported when the sandbox stops. */
 type Meter = { workspace: string; repo: string; description: string };
 /** Deploy builds are metered by the Deployments plan, not here. */
-type RunRequest = Run & { envVars: Record<string, string>; meter?: Meter };
+type RunRequest = Run & { envVars: Record<string, string>; meter?: Meter; track?: Track };
+
+/**
+ * What to record the sandbox as, so people can watch it in the Agents
+ * section: an agent run, or a run of checks or the merge queue.
+ */
+type Track = {
+  actor: User;
+  repo: RepoPath;
+  kind: RunKind;
+  number?: number | null;
+  pullId?: string | null;
+  title?: string | null;
+  startedBy?: string | null;
+};
+/** The run a sandbox reports to, kept so it can be closed when it stops. */
+type TrackedRun = { runId: string; token: string };
+
+/** Kinds whose failure handling is replaced by a person's stop: the pull request waits for them. */
+const STOP_ENDS: ReadonlySet<string> = new Set(["agent", "revise", "update", "answer"]);
 
 function meter(repo: RepoPath, description: string): Meter {
   return { workspace: repo.namespace, repo: `${repo.namespace}/${repo.name}`, description };
@@ -147,6 +171,9 @@ const DEPLOY_TOKEN_TTL_SECONDS = 30 * 60;
 /** Long enough to clone, install and test; then the token stops working. */
 const CHECKS_TOKEN_TTL_SECONDS = 45 * 60;
 
+/** Long enough to clone and merge two commits; then the read token stops working. */
+const MERGECHECK_TOKEN_TTL_SECONDS = 10 * 60;
+
 /**
  * One sandbox, for one agent or one run of checks. The image's entrypoint
  * is the g1t runner, which does the work and exits; this class only starts
@@ -156,10 +183,53 @@ export class AttemptSandbox extends Container<RunnerEnv> {
   sleepAfter = "45m";
 
   async run(request: RunRequest): Promise<void> {
-    const { envVars, meter, ...run } = request;
+    const { envVars, meter, track, ...run } = request;
     await this.ctx.storage.put("run", run);
     if (meter) await this.ctx.storage.put("meter", { ...meter, started: Date.now() });
-    await this.start({ envVars, enableInternet: true });
+    const tracked = track ? await this.openRun(track, envVars) : null;
+    try {
+      await this.start({
+        envVars: tracked ? { ...envVars, AGENT_RUN: tracked.runId, AGENT_RUN_TOKEN: tracked.token } : envVars,
+        enableInternet: true,
+      });
+    } catch (error) {
+      if (tracked) await this.closeRun("failed", `The sandbox could not start: ${String(error)}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Records the run, which the sandbox then reports its steps to. Never
+   * stops the sandbox from starting: without a record it just goes unseen.
+   */
+  private async openRun(track: Track, envVars: Record<string, string>): Promise<TrackedRun | null> {
+    const opened = await agentsClient(this.env.WORK)
+      .openRun({
+        ...track,
+        model: envVars.AGENT_MODEL_NAME ?? envVars.ANTHROPIC_MODEL ?? null,
+        sandbox: this.ctx.id.toString(),
+      })
+      .catch((error: unknown) => ({ ok: false as const, error: { message: String(error) } }));
+    if (!opened.ok) {
+      console.log("agent run not recorded", track.kind, opened.error.message);
+      return null;
+    }
+    await this.ctx.storage.put("agentRun", opened.value);
+    return opened.value;
+  }
+
+  /**
+   * Ends the run's record, once. Returns the status it ended with:
+   * `stopped` when a person stopped it first.
+   */
+  private async closeRun(outcome: "succeeded" | "failed", error?: string): Promise<string | null> {
+    const tracked = await this.ctx.storage.get<TrackedRun>("agentRun");
+    if (!tracked) return null;
+    await this.ctx.storage.delete("agentRun");
+    const closed = await agentsClient(this.env.WORK)
+      .closeRun(tracked.runId, tracked.token, outcome, error)
+      .catch(() => null);
+    return closed?.ok ? closed.value : null;
   }
 
   /** Reports how long the sandbox ran, once, whatever it exited with. */
@@ -182,8 +252,14 @@ export class AttemptSandbox extends Container<RunnerEnv> {
 
   override async onStop({ exitCode, reason }: StopParams): Promise<void> {
     await this.meterStop();
+    const ended = await this.closeRun(
+      exitCode === 0 ? "succeeded" : "failed",
+      exitCode === 0 ? undefined : `The sandbox exited with ${exitCode}.`,
+    );
     if (exitCode === 0) return;
     const run = await this.ctx.storage.get<Run>("run");
+    // A person stopped it: g1t has already left the pull request for them.
+    if (ended === "stopped" && run && STOP_ENDS.has(run.kind)) return;
     console.log("sandbox stopped", run?.kind, "exit", exitCode, reason);
     if (!run) return;
     if (run.kind === "actions") {
@@ -223,6 +299,11 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     if (run.kind === "queue") {
       // Refused harmlessly if the state was reported before it stopped.
       await work.failQueue(run.entryId, run.token, "The sandbox stopped before the state was checked.");
+      return;
+    }
+    if (run.kind === "mergecheck") {
+      // Refused harmlessly if the probe reported before it stopped.
+      await work.failMergecheck(run.pullId, run.token, "The sandbox stopped before the merge check finished.");
       return;
     }
     if (run.kind === "plan") {
@@ -310,6 +391,9 @@ const AGENT_OPERATIONS = [
   "list_events",
   // Messages people send it while it works, picked up between steps.
   "take_messages",
+  // Memory: what the project and its workspace know, and adding to it.
+  "remember",
+  "recall",
   // Asking the agents on other pull requests, and answering them.
   "message_agent",
   "answer_message",
@@ -595,7 +679,7 @@ export default class RunnerService
       integrationsClient(this.env.INTEGRATIONS)
         .references(repo.namespace, text)
         .catch((): ContextItem[] => []),
-      this.projectContext(repo).catch(() => null),
+      this.projectAndMemory(repo),
     ]);
     if (items.length === 0) return projects;
     if (number > 0) {
@@ -607,6 +691,50 @@ export default class RunnerService
       ]);
     }
     return [describeOutside(items), projects].filter(Boolean).join("\n\n");
+  }
+
+  /** The project's surroundings and what is remembered about it, for an agent. */
+  private async projectAndMemory(repo: RepoPath): Promise<string | null> {
+    const [projects, memory] = await Promise.all([
+      this.projectContext(repo).catch(() => null),
+      this.memoryContext(repo),
+    ]);
+    return [projects, memory].filter(Boolean).join("\n\n") || null;
+  }
+
+  /**
+   * What the project and its workspace remember, for every g1t agent run:
+   * pinned first, then what was used most recently, within a budget, each
+   * level labelled. Never holds up a run.
+   */
+  private async memoryContext(repo: RepoPath): Promise<string | null> {
+    const context = await agentsClient(this.env.WORK)
+      .memoryContext(repo)
+      .catch(() => null);
+    return context?.text ?? null;
+  }
+
+  /** `prompt` with what is remembered added. */
+  private async withMemory(prompt: string, repo: RepoPath): Promise<string> {
+    const memory = await this.memoryContext(repo);
+    return memory ? `${prompt}\n\n${memory}` : prompt;
+  }
+
+  /**
+   * Stops an agent run: the work service marks it stopped and leaves its
+   * pull request for a person, and its sandbox is destroyed. Members only.
+   */
+  async stopRun(actor: User, repo: RepoPath, runId: string): Promise<Result<AgentRun>> {
+    const stopped = await agentsClient(this.env.WORK).stopRun(actor, repo, runId);
+    if (!stopped.ok) return stopped;
+    try {
+      const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromString(stopped.value.sandbox));
+      await sandbox.destroy();
+    } catch (error) {
+      // Already gone, or never started: the record says stopped either way.
+      console.log("sandbox not destroyed", runId, String(error));
+    }
+    return ok(stopped.value.run);
   }
 
   /**
@@ -844,7 +972,14 @@ export default class RunnerService
           break;
         case "checks.completed":
         case "review.completed":
+        // Whether it merges cleanly settled: a conflict is the agent's to resolve.
+        case "pull.mergeability":
           await this.advance(event.data.pullId);
+          break;
+        // Its head or its target moved and both changed the same files:
+        // find out whether it still merges cleanly.
+        case "pull.mergecheck":
+          await this.startMergecheck(event.data.pullId);
           break;
         // Something joined, left or landed: test the next batch if none is.
         case "queue.changed":
@@ -964,6 +1099,8 @@ export default class RunnerService
         job.title,
         job.description,
         job.issue && `Issue #${job.issue.number}: ${job.issue.title}\n\n${job.issue.body}`,
+        // The files g1t already found conflict, when it knows.
+        job.feedback,
       ],
       pullId: job.pullId,
     });
@@ -1031,6 +1168,13 @@ export default class RunnerService
       kind: "queue",
       entryId: job.entryId,
       token: job.token,
+      track: {
+        actor: job.actor,
+        repo: job.repo,
+        kind: "queue",
+        number: job.stack.at(-1)?.number ?? null,
+        title: `Merge queue: ${job.stack.map((item) => `#${item.number}`).join(" + ")}`,
+      },
       meter: meter(job.repo, `Merge queue on ${job.repo.namespace}/${job.repo.name}`),
       envVars: {
         MODE: "queue",
@@ -1096,6 +1240,7 @@ export default class RunnerService
       await sandbox.run({
         kind: "answer",
         pullId: job.pullId,
+        track: { actor: job.author, repo: job.repo, kind: "answer", number: job.number, pullId: job.pullId },
         meter: meter(job.repo, `Agent answering on ${job.repo.namespace}/${job.repo.name}#${job.number}`),
         envVars: {
           // Answered from its change as it stands: no merging in of the
@@ -1109,7 +1254,10 @@ export default class RunnerService
           GIT_REMOTE: `https://g1t.sh/${job.source.namespace}/${job.source.name}.git`,
           COMMIT_MESSAGE: `Take on work handed over to #${job.number}`,
           G1T_AGENT_TOKEN: await this.agentToken(job.author, job.repo),
-          PROMPT: buildAnswerPrompt(job, messages, await this.inFlight(job.author, job.repo, job.number)),
+          PROMPT: await this.withMemory(
+            buildAnswerPrompt(job, messages, await this.inFlight(job.author, job.repo, job.number)),
+            job.repo,
+          ),
           ...(await this.modelEnvOrThrow("implement", job.repo, job.number)),
         },
       });
@@ -1136,6 +1284,7 @@ export default class RunnerService
     await sandbox.run({
       kind: "revise",
       pullId: job.pullId,
+      track: { actor: job.author, repo: job.repo, kind: "revise", number: job.number, pullId: job.pullId },
       meter: meter(job.repo, `Agent revising ${job.repo.namespace}/${job.repo.name}#${job.number}`),
       envVars: {
         MODE: "revise",
@@ -1150,10 +1299,13 @@ export default class RunnerService
         // Revised from where the branch it will land on is now.
         UPSTREAM_REMOTE: `https://g1t.sh/${job.repo.namespace}/${job.repo.name}.git`,
         UPSTREAM_BRANCH: job.defaultBranch,
-        PROMPT: buildRevisionPrompt(
-          job,
-          await this.inFlight(job.author, job.repo, job.number),
-          await this.peopleSaid(job.author, job.repo, job.number),
+        PROMPT: await this.withMemory(
+          buildRevisionPrompt(
+            job,
+            await this.inFlight(job.author, job.repo, job.number),
+            await this.peopleSaid(job.author, job.repo, job.number),
+          ),
+          job.repo,
         ),
         ...(await this.modelEnvOrThrow("implement", job.repo, job.number)),
       },
@@ -1186,6 +1338,7 @@ export default class RunnerService
       kind: "checks",
       runId: job.runId,
       token: job.token,
+      track: { actor: job.author, repo: job.repo, kind: "checks", number: job.number, pullId },
       meter: meter(job.repo, `Checks on ${job.repo.namespace}/${job.repo.name}#${job.number}`),
       envVars: {
         MODE: "checks",
@@ -1200,6 +1353,56 @@ export default class RunnerService
       },
     });
     return true;
+  }
+
+  /**
+   * Merges a pull request's head into its target in a sandbox of its own,
+   * without an agent and pushing nothing, to find the files that conflict.
+   * The work service decides when one is needed and how many may run.
+   */
+  private async startMergecheck(pullId: string): Promise<void> {
+    const work = workClient(this.env.WORK);
+    const started = await work.startMergecheck(pullId);
+    if (!started.ok) return;
+    const job = started.value;
+    try {
+      // Like any sandbox, only for workspaces that may use g1t's machines.
+      if (!(await this.workspaceAllowed(job.repo.namespace))) {
+        throw new Error("This workspace cannot use g1t's sandboxes.");
+      }
+      // To read the change, which may be private, as whoever opened it.
+      const { token } = await identityClient(this.env.IDENTITY).createAccessToken(
+        job.author,
+        `Merge check of ${job.repo.namespace}/${job.repo.name}#${job.number}`,
+        MERGECHECK_TOKEN_TTL_SECONDS,
+      );
+      const remote = (path: RepoPath) => `https://g1t.sh/${path.namespace}/${path.name}.git`;
+      // One sandbox per pair of commits: asking twice starts nothing twice.
+      const sandbox = this.env.SANDBOX.get(
+        this.env.SANDBOX.idFromName(`mergecheck-${job.pullId}-${job.head}-${job.base}`),
+      );
+      await sandbox.run({
+        kind: "mergecheck",
+        pullId: job.pullId,
+        token: job.token,
+        meter: meter(job.repo, `Merge check of ${job.repo.namespace}/${job.repo.name}#${job.number}`),
+        envVars: {
+          MODE: "mergecheck",
+          G1T_API: "https://api.g1t.sh",
+          MERGECHECK_PULL: job.pullId,
+          MERGECHECK_TOKEN: job.token,
+          G1T_USER: job.author.username,
+          G1T_TOKEN: token,
+          BASE_REMOTE: remote(job.repo),
+          BASE_COMMIT: job.base,
+          HEAD_REMOTE: remote(job.source),
+          HEAD_BRANCH: job.branch,
+          HEAD_COMMIT: job.head,
+        },
+      });
+    } catch (error) {
+      await work.failMergecheck(job.pullId, job.token, error instanceof Error ? error.message : String(error));
+    }
   }
 
   /**
@@ -1237,7 +1440,7 @@ export default class RunnerService
     if (refused) return refused;
     const found = await workClient(this.env.WORK).getPull(repo, number, actor);
     if (!found.ok) return found;
-    const { pull, issue, behind } = found.value;
+    const { pull, issue, behind, conflicts = [] } = found.value;
     if (pull.status !== "draft" && pull.status !== "open") {
       return fail("conflict", `This pull request is already ${pull.status}.`);
     }
@@ -1265,7 +1468,13 @@ export default class RunnerService
         : `https://g1t.sh/${repo.namespace}/${repo.name}.git`,
       branch: pull.branch ?? defaultBranch,
       defaultBranch,
-      about: [pull.title, pull.body, issue && `Issue #${issue.number}: ${issue.title}\n\n${issue.body}`],
+      about: [
+        pull.title,
+        pull.body,
+        issue && `Issue #${issue.number}: ${issue.title}\n\n${issue.body}`,
+        conflicts.length > 0 &&
+          `g1t found ahead of time that merging ${defaultBranch} into this pull request conflicts in these files: ${conflicts.join(", ")}.`,
+      ],
     });
     return ok(true);
   }
@@ -1297,6 +1506,15 @@ export default class RunnerService
     await sandbox.run({
       kind: "update",
       pullId: update.pullId,
+      track: {
+        actor,
+        repo,
+        kind: "update",
+        number,
+        pullId: update.pullId ?? null,
+        // One a person asked for, rather than g1t by itself.
+        startedBy: update.pullId ? null : actor.username,
+      },
       meter: meter(repo, `Catching up ${repo.namespace}/${repo.name}#${number}`),
       envVars: {
         MODE: "update",
@@ -1309,7 +1527,7 @@ export default class RunnerService
         GIT_BRANCH: update.branch,
         UPSTREAM_REMOTE: `https://g1t.sh/${repo.namespace}/${repo.name}.git`,
         UPSTREAM_BRANCH: update.defaultBranch,
-        PROMPT: update.about.filter(Boolean).join("\n\n"),
+        PROMPT: await this.withMemory(update.about.filter(Boolean).join("\n\n"), repo),
         ...(await this.modelEnvOrThrow("update", repo, number)),
       },
     });
@@ -1358,6 +1576,7 @@ export default class RunnerService
       kind: "review",
       runId: job.runId,
       token: job.token,
+      track: { actor: job.author, repo, kind: "review", number, pullId },
       meter: meter(repo, `Review of ${repo.namespace}/${repo.name}#${number}`),
       envVars: {
         MODE: "review",
@@ -1370,7 +1589,7 @@ export default class RunnerService
         GIT_COMMIT: job.commit,
         UPSTREAM_REMOTE: `https://g1t.sh/${job.repo.namespace}/${job.repo.name}.git`,
         UPSTREAM_BRANCH: job.defaultBranch,
-        PROMPT: about.filter(Boolean).join("\n\n"),
+        PROMPT: await this.withMemory(about.filter(Boolean).join("\n\n"), repo),
         ...model.value,
       },
     });
@@ -1423,6 +1642,7 @@ export default class RunnerService
       kind: "plan",
       planId: job.planId,
       token: job.token,
+      track: { actor, repo, kind: "plan", title: job.brief, startedBy: actor.username },
       meter: meter(repo, `Planning for ${repo.namespace}/${repo.name}`),
       envVars: {
         MODE: "plan",
@@ -1504,6 +1724,7 @@ export default class RunnerService
       actor,
       repo,
       number: pull.number,
+      track: { actor, repo, kind: "implement", number: pull.number, pullId: pull.id, startedBy: actor.username },
       meter: meter(repo, `Agent on ${repo.namespace}/${repo.name}#${pull.number}`),
       envVars: {
         G1T_API: "https://api.g1t.sh",

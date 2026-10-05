@@ -17,6 +17,7 @@
 
 mod payload;
 mod plan;
+mod rename;
 mod settings;
 mod sync;
 mod trigger;
@@ -192,6 +193,11 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
 async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()> {
     let service = Actions::new(&env)?;
     for message in batch.messages()? {
+        // A workspace renamed: its rows move to the slug it has now.
+        if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), rename::STATEMENTS).await? {
+            message.ack();
+            continue;
+        }
         if let Err(error) = service.on_event(message.body()).await {
             worker::console_error!("actions: event {} failed: {error}", message.body().id);
             message.retry();

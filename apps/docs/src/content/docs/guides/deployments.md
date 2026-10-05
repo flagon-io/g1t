@@ -21,6 +21,10 @@ to it. A pull request from a fork, as g1t's agents make them, is named
 `pr-<number>` in place of the branch. A name too long for an address, or
 one another app already has, is shortened or given a short suffix.
 
+When a workspace is [renamed](/guides/workspaces/#rename-a-workspace), its
+apps move to addresses with the new name, and the old addresses redirect to
+them for 90 days.
+
 An app runs only while it answers a request. One nobody visits runs
 nothing and costs nothing, and the next visit wakes it in milliseconds.
 
@@ -133,6 +137,79 @@ Each push to the default branch, which is each merge on a protected
 branch, builds and replaces production. The **Deployments** page shows the
 live address, the commit it runs and when it went up.
 
+## Custom domains
+
+Production can be served at a domain of your own, such as `example.com` or
+`www.example.com`, as well as at its address on g1t.page. A domain belongs
+to the project, not to a build: every redeploy is served on it with nothing
+to change.
+
+### Add a domain
+
+1. Open the project's **Settings → Domains**,
+   `g1t.sh/<workspace>/<repo>/settings/domains`.
+2. Enter the domain and choose **Add domain**. Leave **Also add the www
+   (or apex) twin** checked to add both `example.com` and
+   `www.example.com` at once: the one you typed serves the app, and the
+   other redirects to it with a `308`, path and query kept.
+3. Add the DNS records the page lists, at whoever manages the domain's
+   DNS. Each name and value has a copy button.
+4. Wait. The page follows the domain from **Waiting for DNS** to
+   **Issuing certificate** to **Active** by itself; **Check now** asks
+   again at once.
+
+Custom domains need the workspace's Deployments plan. Only members of the
+workspace can add or remove them.
+
+### A subdomain, such as www
+
+Add one record:
+
+| Type | Name | Target |
+| --- | --- | --- |
+| `CNAME` | `www` | `domains.g1t.page` |
+
+The same goes for any subdomain, such as `app.example.com` (name `app`).
+
+### The apex, such as example.com
+
+DNS does not allow a plain `CNAME` at the apex of a domain, so use your
+provider's flattened form of one, pointed at `domains.g1t.page`:
+
+| DNS provider | Record |
+| --- | --- |
+| Cloudflare DNS | `CNAME` at `@` (Cloudflare flattens it) |
+| Amazon Route 53 | Not supported by alias records to other zones; use the www pairing below |
+| DNSimple, NS1, Namecheap, Porkbun, Gandi | `ALIAS` at `@` |
+| DNS Made Easy, Constellix | `ANAME` at `@` |
+
+If your provider has no flattened `CNAME`, `ALIAS` or `ANAME`, add
+`www.example.com` on g1t instead, and set up your provider's forwarding (or
+any redirect) from `example.com` to `www.example.com`.
+
+### Verification and certificates
+
+Pointing the domain at `domains.g1t.page` is what proves it is yours: once
+the record is seen, the certificate authority checks the domain over HTTP
+and issues a certificate, renewed by itself before it expires. Visitors are
+always served over HTTPS, TLS 1.2 or newer.
+
+The page may also list a `TXT` record named `_cf-custom-hostname.<domain>`.
+It proves ownership before traffic moves, which is useful when the domain
+is serving a site elsewhere today: add the `TXT` first, wait for
+**Issuing certificate** or **Active**, then change the `CNAME`. Any other
+`TXT` records listed are for the certificate and are needed as shown.
+
+DNS changes can take from a few minutes to an hour to be seen. A domain
+that stays at **Waiting for DNS** usually has a record with a typo, a
+leftover `A` or `AAAA` record beside the new one, or (on Cloudflare DNS) a
+`CAA` record that does not allow the certificate's authority.
+
+### Remove a domain
+
+Choose **Remove** beside it. It stops serving the project at once, and any
+domain redirecting to it goes too. Your DNS records are left as they are.
+
 ## When apps come down
 
 Nothing keeps running unasked. An app comes down, and stops costing
@@ -195,6 +272,7 @@ It includes, each calendar month (UTC):
 | 10 apps | The most apps up at once: production and previews together, across the workspace's projects. |
 | 1 million requests | To all of the workspace's apps. |
 | 3 million CPU milliseconds | Time your code spends computing. Waiting on the network is not counted. |
+| 3 custom domains | Across the workspace's projects, with their certificates. A www/apex pair is two. |
 
 **Usage past that,** and **every build**, come out of the workspace's
 [credit](/guides/usage-and-billing/#add-credit) at Cloudflare's price plus
@@ -206,6 +284,7 @@ It includes, each calendar month (UTC):
 | Each app past 10 | $0.024 a month |
 | Each million requests past 1 million | $0.36 |
 | Each million CPU milliseconds past 3 million | $0.024 |
+| Each custom domain past 3 | $0.12 a month, by the most the workspace had at once that month |
 
 Builds are charged when they finish. Usage past the allowance is charged
 once, on the first sweep after the month ends, as one line: *Deployments in
@@ -251,7 +330,9 @@ Usage from the month that is under way is still charged once it ends.
    g1t's [Workers for Platforms](https://developers.cloudflare.com/cloudflare-for-platforms/workers-for-platforms/)
    namespace, under the name in its address.
 5. A request to `*.g1t.page` reaches g1t's dispatcher, which runs the app
-   by the name in the hostname. Nothing else is looked up.
+   by the name in the hostname. Nothing else is looked up. A request to a
+   custom domain reaches the same dispatcher through Cloudflare for SaaS;
+   it looks the hostname up once, in a key-value store kept at the edge.
 
 Your code never holds a Cloudflare credential, and apps are served from
 `g1t.page`, not `g1t.sh`, so they share no cookies or origin with the site
@@ -266,6 +347,9 @@ you sign in to.
 | "the output directory `x` does not exist after the build" | The build wrote elsewhere: check its log, then fix **Output directory**. |
 | "`d1_databases` is not provisioned on g1t.page yet" | The app deployed without that binding. See [Workers projects](#workers-projects). |
 | A preview page says "This preview is not up" | It came down (see [When apps come down](#when-apps-come-down)). Push, or choose **Redeploy**. |
+| "Custom domains are being switched on" | Custom domains are not on for g1t.page yet. Domains you add are kept, and set up by themselves once they are. |
+| A domain stays at **Waiting for DNS** | Check the record against the one listed, remove other `A`/`AAAA` records for the same name, then choose **Check now**. |
+| A domain says "This domain is not set up" | It points at g1t, but no project has added it. Add it under **Settings → Domains**. |
 | "The build did not finish in 45 minutes" | Builds are stopped after 45 minutes. Make the build faster, or build less for previews with **Build command**. |
 
 ## Running your own g1t
@@ -279,6 +363,14 @@ Deployments need a Workers for Platforms namespace and a zone for apps:
    Analytics: Read**, and store it:
    `npx wrangler secret put CLOUDFLARE_API_TOKEN` in `services/deployments`.
 4. Deploy `services/deployments`, `services/pages`, and the runner.
+
+Custom domains also need Cloudflare for SaaS on the apps' zone. Turn it on
+under the zone's **SSL/TLS → Custom Hostnames**, give the token **SSL and
+Certificates: Edit** on the zone, and run `scripts/setup-custom-domains.sh`:
+it creates the `g1t-domains` KV namespace, the fallback origin's DNS record
+(`domains`, `AAAA`, `100::`, proxied) and sets it as the fallback origin.
+The dispatcher's `*/*` route on the zone, in `services/pages/wrangler.jsonc`,
+is what brings custom domains' traffic to it.
 
 Without a card processor configured, every feature is on and nothing is
 charged.

@@ -148,6 +148,8 @@ struct Facts {
     review: Option<FinishedReview>,
     /// Whether the branch it would land on has moved without it.
     behind: bool,
+    /// Whether it is known to conflict with the branch it would land on.
+    conflicting: bool,
     /// Whether the repository lands a ready pull request by itself.
     auto_merge: bool,
     /// Whether the repository refuses to merge one that is behind.
@@ -366,6 +368,18 @@ fn decide(facts: Facts) -> (Lifecycle, Next) {
         }
     }
 
+    // A conflict found ahead of time is resolved before anything else that
+    // is left: it could not merge, by a person or by the queue, until then.
+    if facts.conflicting {
+        return (
+            at(
+                Stage::CatchingUp,
+                "It conflicts with the branch it will land on. The agent is merging that branch in and resolving the conflicts.",
+                revisions,
+            ),
+            Next::CatchUp,
+        );
+    }
     // Only where the repository insists is catching up a step of its own,
     // followed by the checks again. Elsewhere it happens as part of merging.
     if facts.behind && facts.require_up_to_date {
@@ -491,6 +505,7 @@ impl Work {
             revisions: progress.revisions,
             review,
             behind,
+            conflicting: self.conflicting_files(pull).await?.is_some(),
             auto_merge: settings.auto_merge,
             require_up_to_date: settings.require_up_to_date,
             agent_review: settings.agent_review,
@@ -800,6 +815,7 @@ impl Work {
         };
         let feedback = match &next {
             Next::Revise(feedback) => self.feedback(&pull, feedback).await?,
+            Next::CatchUp => self.conflict_note(&pull, &repo.default_branch).await?,
             _ => String::new(),
         };
         if !self
@@ -1090,6 +1106,7 @@ impl Work {
             Some(number) => self.issue(&pull.repo_id, number).await?,
             None => None,
         };
+        let feedback = self.conflict_note(&pull, &repo.default_branch).await?;
         Ok(Some(LifecycleJob {
             pull_id: pull.id,
             source: pull.fork.unwrap_or_else(|| path.clone()),
@@ -1101,9 +1118,21 @@ impl Work {
             title: pull.title,
             description: pull.body.unwrap_or_default(),
             issue,
-            feedback: String::new(),
+            feedback,
             round: 0,
         }))
+    }
+
+    /// For an agent catching up: the files g1t already knows conflict, so
+    /// it reads them first. Empty when none are known.
+    pub(crate) async fn conflict_note(&self, pull: &Pull, default_branch: &str) -> Result<String> {
+        Ok(match self.conflicting_files(pull).await? {
+            Some(files) if !files.is_empty() => format!(
+                "g1t found ahead of time that merging {default_branch} into this pull request conflicts in these files: {}.",
+                files.join(", ")
+            ),
+            _ => String::new(),
+        })
     }
 
     pub(crate) async fn stall(&self, a: StallArgs) -> Result<bool> {
@@ -1211,6 +1240,7 @@ mod tests {
             revisions: 0,
             review: None,
             behind: false,
+            conflicting: false,
             auto_merge: false,
             require_up_to_date: false,
             agent_review: true,
@@ -1465,6 +1495,29 @@ mod tests {
             ..facts()
         };
         assert_eq!(outcome(unreviewed), (Stage::Reviewing, "review"));
+    }
+
+    #[test]
+    fn a_conflict_found_ahead_of_time_is_resolved_before_merging() {
+        let conflicting = || Facts {
+            review: reviewed(Some(Verdict::Approve)),
+            behind: true,
+            conflicting: true,
+            ..facts()
+        };
+        // Even where the repository would merge one that is merely behind.
+        assert_eq!(outcome(conflicting()), (Stage::CatchingUp, "catch up"));
+        let automatic = Facts {
+            auto_merge: true,
+            ..conflicting()
+        };
+        assert_eq!(outcome(automatic), (Stage::CatchingUp, "catch up"));
+        // Failed checks come first: a revision merges the branch in too.
+        let failing = Facts {
+            check_status: Some(CheckStatus::Failed),
+            ..conflicting()
+        };
+        assert_eq!(outcome(failing), (Stage::Revising, "revise for checks"));
     }
 
     #[test]

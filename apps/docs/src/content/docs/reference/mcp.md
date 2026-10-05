@@ -83,6 +83,15 @@ the tool's schema, which `tools/list` returns, and in the
 
 See [sessions and why-blame](/guides/why-blame/).
 
+## Memory
+
+| Tool | Required | What it does | Route |
+| --- | --- | --- | --- |
+| `remember` | `repo`, `text` | Save one fact, convention, decision or gotcha for the next agent. `scope` is `project` (this codebase, the default) or `workspace` (true across its projects); `kind` is `fact`, `convention`, `decision` or `gotcha`. Text that looks like a secret is refused. Members and g1t's agents only. | [`POST /repos/{owner}/{name}/memory`](/reference/api/memory/remember/) |
+| `recall` | `repo` | What the project and its workspace remember, pinned first. `query` matches every word; `limit` caps each level. | [`GET /repos/{owner}/{name}/memory`](/reference/api/memory/recall/) |
+
+See [agents, sessions and memory](/guides/agents-and-memory/).
+
 ## Plans
 
 | Tool | Required | What it does | Route |
@@ -169,5 +178,6 @@ A g1t agent works with a token limited to its own repository and to these
 tools: `get_repo`, `list_issues`, `get_issue`, `list_labels`,
 `create_issue`, `add_comment`, `list_pull_requests`, `get_pull_request`,
 `get_pull_request_changes`, `read_session`, `get_merge_queue`,
-`list_events`, `take_messages`, `message_agent`, `answer_message` and `get_context`.
+`list_events`, `take_messages`, `message_agent`, `answer_message`, `remember`,
+`recall` and `get_context`.
 `tools/list` shows such a token only the tools it may use.

@@ -14,7 +14,7 @@
 	"rules": [{ "type": "Data", "globs": ["**/*.ttf"], "fallthrough": false }],
 	// What a card shows is only ever what an anonymous visitor could see:
 	// every call is made with no viewer.
-	// Uploaded avatars, read to draw a workspace's icon on its card.
+	// Uploaded avatars, read to draw a workspace's icon or a person's picture on its card.
 	"kv_namespaces": [{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }],
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },

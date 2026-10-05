@@ -48,6 +48,8 @@ export default function ProjectOverview({ loaderData, actionData, params }: Rout
   const { member, project, settings, builds, live, pulls, commit, open, dependencies } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const production = live.find((app) => app.kind === "production") ?? null;
+  // The project's own domain, once it is active, is where production is visited.
+  const productionUrl = production ? (settings?.primaryDomain ? `https://${settings.primaryDomain}` : production.url) : null;
   const previews = live.filter((app) => app.kind === "preview");
   const latestProduction = builds.find((build) => build.kind === "production") ?? null;
   const busy = useNavigation().state === "submitting";
@@ -67,10 +69,10 @@ export default function ProjectOverview({ loaderData, actionData, params }: Rout
               {production ? (
                 <>
                   <a
-                    href={production.url}
+                    href={productionUrl ?? production.url}
                     className="mt-2 flex items-center gap-1.5 truncate font-mono text-lg font-medium hover:text-accent"
                   >
-                    {host(production.url)}
+                    {host(productionUrl ?? production.url)}
                     <ArrowUpRight size={16} className="shrink-0 text-faint" />
                   </a>
                   <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
@@ -108,7 +110,7 @@ export default function ProjectOverview({ loaderData, actionData, params }: Rout
             {member && (
               <div className="flex shrink-0 items-center gap-2">
                 {production && (
-                  <ButtonLink to={production.url} variant="accent" reloadDocument>
+                  <ButtonLink to={productionUrl ?? production.url} variant="accent" reloadDocument>
                     Visit
                     <ArrowUpRight size={14} />
                   </ButtonLink>

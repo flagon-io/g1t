@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 
 import {
   actionsClient,
+  agentsClient,
   billingClient,
   deploymentsClient,
   projectsClient,
@@ -23,3 +24,5 @@ export const webhooks = webhooksClient(env.WEBHOOKS);
 export const actions = actionsClient(env.ACTIONS);
 export const deployments = deploymentsClient(env.DEPLOYMENTS);
 export const projects = projectsClient(env.PROJECTS);
+/** Agent runs, sessions and memory: methods of the work service. */
+export const agents = agentsClient(env.WORK);

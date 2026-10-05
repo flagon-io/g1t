@@ -230,10 +230,66 @@ pub struct ListArgs {
     pub limit: Option<u32>,
 }
 
+/// `workspace.renamed`: a workspace's slug changed from `from` to `to`.
+/// Every service that stores a slug moves its rows to the workspace's
+/// *current* slug (ask identity by `workspace_id`), so that a repeated or
+/// late delivery after a second rename still lands in the right place.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceRenamed {
+    pub workspace_id: String,
+    pub from: String,
+    pub to: String,
+}
+
+impl WorkspaceRenamed {
+    /// The slugs whose rows move to `current`: the two this rename names,
+    /// minus `current` itself. Moving rows keyed by either converges on the
+    /// current slug whatever order renames are delivered in.
+    pub fn stale_slugs(&self, current: &str) -> Vec<String> {
+        let mut slugs: Vec<String> = Vec::new();
+        for slug in [&self.from, &self.to] {
+            if slug != current && !slugs.contains(slug) {
+                slugs.push(slug.clone());
+            }
+        }
+        slugs
+    }
+}
+
 /// `queue.changed`: a repository's merge queue gained, lost or settled an
 /// entry, so the next batch may be ready to test.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueChanged {
     pub repo_id: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn renamed(from: &str, to: &str) -> WorkspaceRenamed {
+        WorkspaceRenamed {
+            workspace_id: "wsp_1".into(),
+            from: from.into(),
+            to: to.into(),
+        }
+    }
+
+    #[test]
+    fn stale_slugs_leave_out_the_current_one() {
+        assert_eq!(renamed("a", "b").stale_slugs("b"), vec!["a"]);
+        // Delivered after a second rename, b → c: both move to c.
+        assert_eq!(renamed("a", "b").stale_slugs("c"), vec!["a", "b"]);
+        // Renamed back: a → b → a.
+        assert_eq!(renamed("a", "b").stale_slugs("a"), vec!["b"]);
+    }
+
+    #[test]
+    fn reads_the_published_payload() {
+        let data = serde_json::json!({ "workspaceId": "wsp_1", "from": "a", "to": "b" });
+        let event: WorkspaceRenamed = serde_json::from_value(data).unwrap();
+        assert_eq!((event.from.as_str(), event.to.as_str()), ("a", "b"));
+    }
 }

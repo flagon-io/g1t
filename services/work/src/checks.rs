@@ -22,6 +22,8 @@ use crate::{Work, optional};
 
 const MAX_OUTPUT_CHARS: usize = 16_000;
 const MAX_RESULTS: usize = 20;
+/// How many earlier runs a pull request shows.
+const EARLIER_RUNS: u32 = 10;
 
 #[derive(Deserialize)]
 struct RunRow {
@@ -75,6 +77,30 @@ impl Work {
             .first::<RunRow>(None)
             .await?
             .map(CheckRun::from))
+    }
+
+    /// The runs before the latest, newest first, without what each command
+    /// printed: enough to see how the checks went over time.
+    pub(crate) async fn earlier_checks(&self, pull_id: &str) -> Result<Vec<CheckRun>> {
+        let rows = self
+            .db
+            .prepare(
+                "SELECT * FROM check_runs WHERE pull_id = ? ORDER BY id DESC LIMIT ? OFFSET 1",
+            )
+            .bind(&[pull_id.into(), EARLIER_RUNS.into()])?
+            .all()
+            .await?
+            .results::<RunRow>()?;
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                let mut run = CheckRun::from(row);
+                for result in &mut run.results {
+                    result.output = String::new();
+                }
+                run
+            })
+            .collect())
     }
 
     /// Begins a check run for a pull request that is ready for review, and

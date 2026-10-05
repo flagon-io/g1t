@@ -405,6 +405,31 @@ pub struct BehindArgs {
     pub branch: Option<String>,
 }
 
+/// `divergence`: how a pull request's source and the default branch it
+/// would merge into have moved apart since they last agreed: the files each
+/// side changed. Takes `BehindArgs`. For services that have already decided
+/// the caller may see the pull request; it reveals paths, not contents.
+/// Returns `Option<Divergence>`, null when either side has no commits.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Divergence {
+    /// The source's commit.
+    pub head: String,
+    /// The default branch's commit.
+    pub base: String,
+    /// Where they last agreed, if that could be found.
+    pub merge_base: Option<String>,
+    /// Whether the default branch has commits the source does not.
+    pub behind: bool,
+    /// The files the source changed since the merge base.
+    pub ours: Vec<String>,
+    /// The files the default branch changed since the merge base. Empty
+    /// when it is not behind.
+    pub theirs: Vec<String>,
+    /// Whether either list was cut short.
+    pub truncated: bool,
+}
+
 /// `head`: the commit a branch points to, or null. For services reacting
 /// to a push, which have no viewer; it reveals nothing but a commit hash.
 /// Returns `Option<String>`.
@@ -429,4 +454,26 @@ pub const G1T_BRANCH_PREFIX: &str = "g1t-";
 pub struct DeleteBranchArgs {
     pub repo_id: String,
     pub branch: String,
+}
+
+/// `readable`: of these repository ids, the repositories the viewer may
+/// read, as `get_by_id` decides; forks and unknown ids are left out. For
+/// services that hold ids and must show only what the viewer could open.
+/// At most [`MAX_READABLE`] ids are looked at. Returns `Vec<Repo>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReadableArgs {
+    pub ids: Vec<String>,
+    pub viewer: Viewer,
+}
+
+/// The most ids one `readable` call looks at.
+pub const MAX_READABLE: usize = 500;
+
+/// `public_namespaces`: the workspaces in which this account made a public
+/// repository, and so a public project, which anyone can see on its page.
+/// Returns `Vec<String>` of workspace slugs.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicNamespacesArgs {
+    pub owner_id: String,
 }

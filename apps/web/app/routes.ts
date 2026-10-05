@@ -12,6 +12,8 @@ export default [
   route("oauth/authorize", "routes/oauth-authorize.tsx"),
   route("new", "routes/new.tsx"),
   route("settings", "routes/settings.tsx"),
+  // People, apart from workspaces: `u` is a reserved name.
+  route("u/:username", "routes/user.tsx"),
   route("explore", "routes/explore.tsx", { id: "explore" }),
   route("pricing", "routes/pricing.tsx"),
   route("search", "routes/explore.tsx", { id: "search" }),
@@ -27,11 +29,15 @@ export default [
     route("-/webhooks", "routes/workspace/webhooks.tsx"),
     route("-/secrets", "routes/workspace/secrets.tsx"),
     route("-/settings", "routes/workspace/settings.tsx"),
+    route("-/agents", "routes/workspace/agents.tsx"),
+    route("-/memory", "routes/workspace/memory.tsx"),
     // What the workspace will have across its projects.
     route("-/soon/:feature", "routes/workspace/soon.tsx"),
   ]),
   // Why a line is the way it is, fetched by the blame view.
   route(":owner/:repo/why/:hash", "routes/repo/why.ts"),
+  // A project's agent runs as JSON, and stopping or messaging one.
+  route(":owner/:repo/agents.json", "routes/repo/agents-live.ts"),
   // A project: its overview first, its repository's code under Code. The
   // 1:1 project of a repository has the repository's name, so every
   // repository address below keeps working.
@@ -49,6 +55,11 @@ export default [
     route("pulls/new", "routes/repo/pull-new.tsx"),
     route("pull/:number", "routes/repo/pull.tsx"),
     route("queue", "routes/repo/queue.tsx"),
+    route("agents", "routes/repo/agents.tsx"),
+    route("agents/runs/:id", "routes/repo/agents-run.tsx"),
+    route("sessions", "routes/repo/sessions.tsx"),
+    route("sessions/:number", "routes/repo/session.tsx"),
+    route("memory", "routes/repo/memory.tsx"),
     route("actions", "routes/repo/actions.tsx"),
     route("actions/runs/:id", "routes/repo/actions-run.tsx"),
     route("actions/runs/:id/artifacts/:name", "routes/repo/actions-artifact.ts"),
@@ -62,6 +73,7 @@ export default [
     route("settings/webhooks", "routes/repo/webhooks.tsx"),
     route("settings/secrets", "routes/repo/secrets.tsx"),
     route("settings/deployments", "routes/repo/settings-deployments.tsx"),
+    route("settings/domains", "routes/repo/settings-domains.tsx"),
     route("settings/dependencies", "routes/repo/settings-dependencies.tsx"),
     // What the project will have: one page for each Soon in its menu.
     route("soon/:feature", "routes/repo/soon.tsx"),

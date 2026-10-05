@@ -39,9 +39,16 @@
 		// The Workers for Platforms namespace apps are uploaded to; the
 		// dispatcher on *.g1t.page (services/pages) reads from the same one.
 		"DISPATCH_NAMESPACE": "g1t-deployments",
-		"SITE": "https://g1t.sh"
+		"SITE": "https://g1t.sh",
+		// The g1t.page zone: custom domains are Cloudflare for SaaS custom
+		// hostnames on it (see src/domains.ts).
+		"CUSTOM_HOSTNAMES_ZONE_ID": "45d1c969bdd9d593756e70d5f45c2cbb"
 	},
+	// Custom domains: hostname to app, written here and read by the
+	// dispatcher (services/pages). Made by scripts/setup-custom-domains.sh.
+	"kv_namespaces": [{ "binding": "DOMAINS", "id": "14bc5c233d4c46a5bbf23b5367cce5fd" }],
 	// Secret: CLOUDFLARE_API_TOKEN, scoped to Workers Scripts (edit) and
-	// Account Analytics (read). Without it nothing deploys.
+	// Account Analytics (read), and, for custom domains, SSL and
+	// Certificates (edit) on the g1t.page zone. Without it nothing deploys.
 	"observability": { "enabled": true }
 }

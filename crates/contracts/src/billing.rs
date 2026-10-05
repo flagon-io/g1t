@@ -360,6 +360,11 @@ pub mod deployments_allowance {
     /// Builds are not in the allowance: each is charged at this plus the
     /// margin.
     pub const MICROS_PER_BUILD_SECOND: i64 = 21;
+    /// Custom domains across the workspace (Cloudflare for SaaS custom
+    /// hostnames); each one past these is charged by the month.
+    pub const CUSTOM_DOMAINS: u32 = 3;
+    /// What one custom hostname costs g1t a month: $0.10.
+    pub const MICROS_PER_DOMAIN_MONTH: i64 = 100_000;
 }
 
 /// Sandbox time: every sandbox g1t starts for a workspace (agents,

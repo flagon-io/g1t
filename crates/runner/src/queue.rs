@@ -163,6 +163,7 @@ pub fn main() -> i32 {
                         files.join(", ")
                     ),
                     "conflictWith": with,
+                    "conflicts": files,
                 }));
             }
             Err(Stopped::Failed(error)) => {

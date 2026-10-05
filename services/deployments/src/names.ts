@@ -50,6 +50,10 @@ export async function uniqueLabel(base: string, key: string): Promise<string> {
   return `${base.slice(0, MAX_LABEL - suffix.length).replace(/-+$/, "")}${suffix}`;
 }
 
+export function appHost(script: string): string {
+  return `${script}.${DEPLOYMENTS_DOMAIN}`;
+}
+
 export function appUrl(script: string): string {
-  return `https://${script}.${DEPLOYMENTS_DOMAIN}`;
+  return `https://${appHost(script)}`;
 }

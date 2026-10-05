@@ -80,6 +80,11 @@ export type CreateRepoInput = {
 export interface ReposApi {
   get(path: RepoPath, viewer: Viewer): Promise<Result<Repo>>;
   getById(id: string, viewer: Viewer): Promise<Result<Repo>>;
+  /**
+   * The workspaces in which this account made a public repository, and so
+   * a public project anyone can see. By account id.
+   */
+  publicNamespaces(ownerId: string): Promise<string[]>;
   /** Repos the viewer may see, newest first, optionally matching `query`. */
   list(
     viewer: Viewer,

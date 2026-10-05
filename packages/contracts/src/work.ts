@@ -289,6 +289,42 @@ export type PullDetail = {
   messages: AgentMessage[];
   /** What workflow runs said about its head commit, one per workflow. */
   statuses?: CommitStatus[];
+  /**
+   * Whether it merges cleanly into the branch it targets, worked out ahead
+   * of time whenever either side moves.
+   */
+  mergeable?: Mergeable;
+  /** When `mergeable` is `conflicting`: the files that conflict. */
+  conflicts?: string[];
+  /** Earlier runs of its acceptance checks, newest first, without their output. */
+  earlierChecks?: CheckRun[];
+};
+
+/**
+ * Whether a pull request merges cleanly into the branch it targets:
+ * `unknown` when it was never worked out or could not be, `checking` while
+ * a probe merges the two.
+ */
+export type Mergeable = "clean" | "conflicting" | "unknown" | "checking";
+
+/** What a sandbox needs to find out whether a pull request merges cleanly. */
+export type MergecheckJob = {
+  pullId: string;
+  /** Lets the sandbox, and nothing else, report this probe. */
+  token: string;
+  repo: RepoPath;
+  number: number;
+  defaultBranch: string;
+  /** The default branch's commit to merge into. */
+  base: string;
+  /** The repository holding the change: its fork, or the repository. */
+  source: RepoPath;
+  /** The branch of `source` holding it. */
+  branch: string;
+  /** The change's commit. */
+  head: string;
+  /** Who opened the pull request, and so can read its source. */
+  author: User;
 };
 
 /** What a workflow run (or another tool) says about a commit. */
@@ -560,6 +596,14 @@ export interface WorkApi {
   startReview(pullId: string): Promise<Result<ReviewJob>>;
   /** Records that a review could not be written. For the runner service. */
   failReview(runId: string, token: string, error: string): Promise<Result<boolean>>;
+  /**
+   * Claims the probe of whether a pull request merges cleanly that a
+   * `pull.mergecheck` event asked for. Refused when it is no longer wanted
+   * or the repository has as many running as it may. For the runner service.
+   */
+  startMergecheck(pullId: string): Promise<Result<MergecheckJob>>;
+  /** Records that a probe could not be carried out. For the runner service. */
+  failMergecheck(pullId: string, token: string, error: string): Promise<Result<Mergeable>>;
 
   /**
    * Works out the next step for a pull request g1t is seeing through and,
@@ -652,6 +696,11 @@ export interface WorkApi {
   listActivePulls(
     viewer: Viewer,
   ): Promise<{ pull: Pull; issue: Issue | null; lifecycle: Lifecycle | null }[]>;
+  /**
+   * The issues and pull requests a person opened, a page at a time, only
+   * on repositories the viewer may read. Not found for no such account.
+   */
+  byAuthor(username: string, viewer: Viewer, filter?: AuthoredFilter): Promise<Result<Authored>>;
 
   /**
    * Records an outcome to plan for. Members only. For the runner service,
@@ -800,4 +849,66 @@ export type QueueJob = {
   /** The checks of issues already completed: the default branch's contract. */
   contractChecks: string[];
   actor: User;
+};
+
+// --- A person's work ---------------------------------------------------------
+// Mirrors the `Authored*` types in `crates/contracts/src/work.rs`.
+
+export type AuthoredKind = "issue" | "pull";
+/** `closed` takes in merged pull requests too; `merged` is only those. */
+export type AuthoredState = "open" | "closed" | "merged";
+/** `created` is newest first, `updated` most recently changed, `oldest` oldest first. */
+export type AuthoredSort = "created" | "updated" | "oldest";
+
+/** The most items one `byAuthor` page holds. */
+export const AUTHORED_PAGE = 25;
+
+export type AuthoredFilter = {
+  kind?: AuthoredKind;
+  state?: AuthoredState;
+  /** `namespace/name`. */
+  repo?: string;
+  sort?: AuthoredSort;
+  /** The `next` of the page before. */
+  before?: string;
+  limit?: number;
+};
+
+export type AuthoredItem = {
+  kind: AuthoredKind;
+  repo: RepoPath;
+  number: number;
+  title: string;
+  /** A merged pull request is closed. */
+  state: State;
+  /** A pull request's own status; null on an issue. */
+  status: PullStatus | null;
+  /** Why an issue was closed. */
+  reason: IssueReason | null;
+  draft: boolean;
+  merged: boolean;
+  /** RFC 3339. */
+  createdAt: string;
+  /** RFC 3339. */
+  updatedAt: string;
+  /** RFC 3339. */
+  mergedAt: string | null;
+};
+
+/** Over every repository the viewer may read, whatever the filters. */
+export type AuthoredCounts = {
+  pullsMerged: number;
+  pullsOpen: number;
+  pulls: number;
+  issues: number;
+  issuesOpen: number;
+};
+
+export type Authored = {
+  items: AuthoredItem[];
+  /** Pass as `before` for the next page; null on the last. */
+  next: string | null;
+  counts: AuthoredCounts;
+  /** The repositories they worked in that the viewer may read, most work first. */
+  repos: { repo: RepoPath; count: number }[];
 };

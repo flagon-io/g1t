@@ -14,7 +14,9 @@ mod refs;
 mod registry;
 mod store;
 
-use g1t_contracts::events::{GitPush, NewEvent, Publish, RepoCreated, RepoForked};
+use g1t_contracts::events::{
+    Event, GitPush, NewEvent, Publish, RepoCreated, RepoForked, WorkspaceRenamed,
+};
 use g1t_contracts::repos::*;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, User, Viewer, is_valid_repo_name, new_id};
@@ -22,7 +24,7 @@ use g1t_kit::{args, now_ms, reply, rpc_method};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use serde::Serialize;
-use worker::{Context, Env, Fetcher, Request, Response, Result, event};
+use worker::{Context, Env, Fetcher, MessageBatch, Method, Request, Response, Result, event};
 
 use registry::{Registry, can_read, can_write, store_key};
 use store::{ArtifactsStore, GitRepo, GitStore, Scope};
@@ -298,6 +300,7 @@ impl<S: GitStore> Repos<S> {
             protected: false,
             created_at: rfc3339(now),
         };
+        self.registry.claim_store_key(&repo).await?;
         self.store
             .create(
                 &store_key(&repo),
@@ -509,6 +512,66 @@ impl<S: GitStore> Repos<S> {
         Ok(!descends_from(&source_git, &history, &target_head).await?)
     }
 
+    /// The files a pull request's source and the default branch it would
+    /// merge into each changed since they last agreed. Where the two lists
+    /// share no file, the merge cannot conflict; where they do, it may.
+    async fn divergence(&self, a: BehindArgs) -> Result<Option<Divergence>> {
+        let Some(source) = self.registry.by_id(&a.source_id).await? else {
+            return Ok(None);
+        };
+        let target = match &source.fork_of {
+            Some(id) => self.registry.by_id(id).await?,
+            None => Some(source.clone()),
+        };
+        let Some(target) = target else {
+            return Ok(None);
+        };
+        let branch = a.branch.unwrap_or_else(|| target.default_branch.clone());
+        let source_git = self.store.open(&store_key(&source)).await?;
+        let target_git = self.store.open(&store_key(&target)).await?;
+        let (history, target_history) = futures_util::future::try_join(
+            source_git.log(&branch, MAX_ANCESTRY),
+            target_git.log(&target.default_branch, MAX_ANCESTRY),
+        )
+        .await?;
+        let (Some(head), Some(base)) = (history.first(), target_history.first()) else {
+            return Ok(None);
+        };
+        let behind = !descends_from(&source_git, &history, &base.hash).await?;
+        let shared: HashSet<String> = target_history.iter().map(|commit| commit.hash.clone()).collect();
+        let merge_base = nearest_ancestor_in(&source_git, &history, &shared).await?;
+        let mut divergence = Divergence {
+            head: head.hash.clone(),
+            base: base.hash.clone(),
+            merge_base: merge_base.clone(),
+            behind,
+            ..Divergence::default()
+        };
+        let merge_base_tree = match &merge_base {
+            Some(hash) => target_history
+                .iter()
+                .find(|commit| commit.hash == *hash)
+                .map(|commit| commit.tree_hash.clone()),
+            None => None,
+        };
+        let Some(merge_base_tree) = merge_base_tree else {
+            // No common history to compare from: say nothing is known.
+            divergence.truncated = true;
+            return Ok(Some(divergence));
+        };
+        let (ours, truncated_ours) =
+            diff::changed_paths(&source_git, Some(&merge_base_tree), &head.tree_hash).await?;
+        divergence.ours = ours;
+        divergence.truncated = truncated_ours;
+        if behind {
+            let (theirs, truncated_theirs) =
+                diff::changed_paths(&target_git, Some(&merge_base_tree), &base.tree_hash).await?;
+            divergence.theirs = theirs;
+            divergence.truncated |= truncated_theirs;
+        }
+        Ok(Some(divergence))
+    }
+
     async fn head(&self, a: HeadArgs) -> Result<Option<String>> {
         let Some(repo) = self.registry.by_id(&a.repo_id).await? else {
             return Ok(None);
@@ -577,6 +640,7 @@ impl<S: GitStore> Repos<S> {
             protected: false,
             created_at: rfc3339(now),
         };
+        self.registry.claim_store_key(&fork).await?;
         self.store
             .open(&store_key(&source))
             .await?
@@ -865,6 +929,13 @@ impl<S: GitStore> Repos<S> {
         let Some(git) = git_http::parse(&request.url()?) else {
             return Response::error("Not found", 404);
         };
+        // A workspace that was renamed: git follows a redirect when it
+        // first asks for refs, and uses the new address from then on.
+        if self.registry.by_path(&git.path).await?.is_none()
+            && let Some(location) = git_http::renamed(&request.url()?, &env.service("IDENTITY")?).await?
+        {
+            return git_http::moved(&location, request.method() == Method::Get);
+        }
         let viewer = git_http::viewer(&request, &env.service("IDENTITY")?).await?;
         let access = self
             .git_access(GitAccessArgs {
@@ -941,6 +1012,14 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     match method.as_str() {
         "get" => reply(&repos.get(args(body)?).await?),
         "get_by_id" => reply(&repos.get_by_id(args(body)?).await?),
+        "readable" => {
+            let a: ReadableArgs = args(body)?;
+            reply(&repos.registry.readable(&a.ids, &a.viewer).await?)
+        }
+        "public_namespaces" => {
+            let a: PublicNamespacesArgs = args(body)?;
+            reply(&repos.registry.public_namespaces(&a.owner_id).await?)
+        }
         "path_by_id" => {
             let a: PathByIdArgs = args(body)?;
             reply(
@@ -980,9 +1059,53 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "branches" => reply(&repos.branches(args(body)?).await?),
         "head" => reply(&repos.head(args(body)?).await?),
         "behind" => reply(&repos.behind(args(body)?).await?),
+        "divergence" => reply(&repos.divergence(args(body)?).await?),
         "land" => reply(&repos.land(args(body)?).await?),
         "delete_branch" => reply(&repos.delete_branch(args(body)?).await?),
         "compare" => reply(&repos.compare(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
+}
+
+/// Events from the bus. Only a workspace's rename concerns this service:
+/// its repositories move to the workspace's current slug, asked of identity
+/// by id, so a repeated or late delivery lands in the same place. Their git
+/// store keys stay as they were.
+#[event(queue)]
+async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()> {
+    let registry = Registry { db: env.d1("DB")? };
+    let identity = env.service("IDENTITY")?;
+    for message in batch.messages()? {
+        let event = message.body();
+        if event.kind != "workspace.renamed" {
+            continue;
+        }
+        let Ok(renamed) = serde_json::from_value::<WorkspaceRenamed>(event.data.clone()) else {
+            worker::console_error!("workspace.renamed {} could not be read", event.id);
+            continue;
+        };
+        let names: HashMap<String, String> = g1t_kit::call(
+            &identity,
+            "usernames",
+            &g1t_contracts::identity::UsernamesArgs {
+                ids: vec![renamed.workspace_id.clone()],
+            },
+        )
+        .await?;
+        let current = names
+            .get(&renamed.workspace_id)
+            .cloned()
+            .unwrap_or_else(|| renamed.to.clone());
+        let left = registry
+            .rename_namespace(&renamed.stale_slugs(&current), &current)
+            .await?;
+        if left > 0 {
+            worker::console_error!(
+                "{left} repositories stayed under {} or {}: {current} already has repositories of the same names",
+                renamed.from,
+                renamed.to
+            );
+        }
+    }
+    Ok(())
 }

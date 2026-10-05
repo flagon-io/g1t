@@ -48,6 +48,10 @@ function sources(overrides: Partial<Sources> = {}) {
     identity: {
       getWorkspace: async (slug) =>
         slug === "acme" ? ({ slug: "acme", name: "Acme", description: "Rockets", id: "w", createdAt: "", memberCount: 3, avatar: null } as Workspace) : null,
+      profile: async (username) =>
+        username === "ada"
+          ? { username: "ada", name: "Ada Lovelace", bio: "Engines.", location: null, website: null, pronouns: null, avatar: null, createdAt: "" }
+          : null,
     },
     repos: {
       // Like the service: a private repository can come back to a member,
@@ -60,6 +64,8 @@ function sources(overrides: Partial<Sources> = {}) {
         seen(viewer, !hidden(path) && number === 7 ? ok({ issue: ISSUE, pulls: [], comments: [] }) : notFound),
       getPull: async (path, number, viewer) =>
         seen(viewer, !hidden(path) && number === 8 ? ok({ pull: PULL, issue: null, comments: [] } as never) : notFound),
+      byAuthor: async (_username, viewer) =>
+        seen(viewer, ok({ items: [], next: null, repos: [], counts: { pullsMerged: 4, pullsOpen: 1, pulls: 6, issues: 2, issuesOpen: 1 } })),
     },
     projects: {
       get: async (workspace, slug, viewer) =>
@@ -104,6 +110,24 @@ test("a workspace shows its name and how many projects are public", async () => 
   // Its members-only pages show the same public card.
   assert.equal((await resolve("/acme/-/billing", s)).kind, "workspace");
   assert.equal((await resolve("/nobody", s)).kind, "brand");
+});
+
+test("a person shows their name, bio and public work, looked up as no one", async () => {
+  const { sources: s, viewers } = sources();
+  assert.deepEqual(await resolve("/u/Ada", s), {
+    kind: "person",
+    username: "ada",
+    name: "Ada Lovelace",
+    bio: "Engines.",
+    pullsMerged: 4,
+    pullsOpen: 1,
+    issues: 2,
+    avatar: null,
+  });
+  assert.ok(viewers.every((viewer) => viewer === null));
+  assert.equal((await resolve("/u/nobody", s)).kind, "brand");
+  assert.equal((await resolve("/u", s)).kind, "brand");
+  assert.equal((await resolve("/u/ada/extra", s)).kind, "brand");
 });
 
 test("a public project shows its name, description and open work", async () => {

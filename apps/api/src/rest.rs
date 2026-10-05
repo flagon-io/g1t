@@ -65,6 +65,13 @@ pub const ROUTES: &[Route] = &[
         Op::AnswerMessage,
         &[],
     ),
+    route("POST", "/repos/:owner/:name/memory", Op::Remember, &[]),
+    route(
+        "GET",
+        "/repos/:owner/:name/memory",
+        Op::Recall,
+        &[("q", "query"), ("limit", "limit")],
+    ),
     route(
         "GET",
         "/repos/:owner/:name/events",

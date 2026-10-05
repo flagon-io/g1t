@@ -20,6 +20,11 @@
 	],
 	// Identity emails owners as their workspace nears its usage limit.
 	"services": [{ "binding": "IDENTITY", "service": "g1t-identity" }],
+	// Events from the bus: a workspace renamed moves its billing to the
+	// new slug (src/rename.rs).
+	"queues": {
+		"consumers": [{ "queue": "g1t-events-billing", "max_batch_size": 20, "max_batch_timeout": 1 }]
+	},
 	"vars": {
 		// What is added to a run's cost, in percent. It pays the card
 		// processor's fee and the sandbox the agent ran in.

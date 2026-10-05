@@ -9,6 +9,8 @@ mod crypto;
 mod device;
 mod email;
 mod oauth;
+mod profiles;
+mod rename;
 mod tokens;
 mod workspaces;
 
@@ -325,7 +327,8 @@ impl Identity {
             ])?
             .first::<serde_json::Value>(None)
             .await?;
-        if taken.is_some() {
+        // A renamed workspace's old slug stays reserved for it a while.
+        if taken.is_some() || self.slug_held(&username).await? {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
                 "That username or email is already registered.",
@@ -546,6 +549,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "add_member" => reply(&identity.add_member(args(body)?).await?),
         "remove_member" => reply(&identity.remove_member(args(body)?).await?),
         "update_workspace" => reply(&identity.update_workspace(args(body)?).await?),
+        "rename_workspace" => reply(&identity.rename_workspace(args(body)?).await?),
+        "check_workspace_rename" => reply(&identity.check_workspace_rename(args(body)?).await?),
+        "resolve_slug" => reply(&identity.resolve_slug(args(body)?).await?),
         "set_workspace_avatar" => reply(&identity.set_workspace_avatar(args(body)?).await?),
         "set_user_avatar" => reply(&identity.set_user_avatar(args(body)?).await?),
         "list_workspace_tokens" => reply(&identity.list_workspace_tokens(args(body)?).await?),
@@ -574,6 +580,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "user_for_ssh_key" => reply(&identity.user_for_ssh_key(args(body)?).await?),
         "user_by_username" => reply(&identity.user_by_username(args(body)?).await?),
         "usernames" => reply(&identity.usernames(args(body)?).await?),
+        "profile" => reply(&identity.profile(args(body)?).await?),
+        "update_profile" => reply(&identity.update_profile(args(body)?).await?),
+        "profile_workspaces" => reply(&identity.profile_workspaces(args(body)?).await?),
         "list_ssh_keys" => reply(&identity.list_ssh_keys(args(body)?).await?),
         "add_ssh_key" => reply(&identity.add_ssh_key(args(body)?).await?),
         "remove_ssh_key" => reply(&identity.remove("ssh_keys", args(body)?).await?),

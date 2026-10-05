@@ -8,6 +8,7 @@ import { type Pull, PROVIDERS } from "@g1t/contracts";
 import type { Route } from "./+types/issue";
 import { excerpt, page } from "../../lib/meta";
 import { Markdown } from "../../components/markdown";
+import { AgentStepLine } from "../../components/agents";
 import {
   Avatar,
   Button,
@@ -29,6 +30,7 @@ import {
   PeoplePicker,
   IssueState,
   Label,
+  PersonLink,
   PullIcon,
   plainText,
 } from "../../components/work";
@@ -260,7 +262,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           <span className="flex items-center gap-2">
             <Avatar name={issue.author.username} size={18} />
             <span>
-              <span className="font-medium text-fg">{issue.author.username}</span> opened this{" "}
+              <PersonLink name={issue.author.username} className="font-medium text-fg hover:underline" /> opened this{" "}
               <TimeAgo at={issue.createdAt} />
             </span>
           </span>
@@ -399,6 +401,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                         : "Seeing it through checks and review"}{" "}
                       · #{assigned.number}
                     </span>
+                    <AgentStepLine owner={params.owner} repo={params.repo} number={assigned.number} />
                   </span>
                   <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-accent" />
                 </Link>

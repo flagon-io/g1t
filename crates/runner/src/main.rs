@@ -10,7 +10,8 @@
 //! `update` brings a pull request up to date with its target branch,
 //! `review` has an agent review one, and `revise` sends the author back to
 //! address what the checks or a review found, `plan` turns an outcome
-//! into issues, `queue` builds and checks a state of the merge queue, and
+//! into issues, `queue` builds and checks a state of the merge queue,
+//! `mergecheck` finds out whether a pull request merges cleanly, and
 //! `actions` runs one job of a GitHub Actions workflow.
 //! See the modules of those names.
 //!
@@ -26,7 +27,9 @@ mod actions;
 mod checks;
 mod deploy;
 mod harness;
+mod mergecheck;
 mod plan;
+mod progress;
 mod queue;
 mod report;
 mod review;
@@ -190,6 +193,7 @@ fn main() {
         Ok("answer") => std::process::exit(revise::answer()),
         Ok("plan") => std::process::exit(plan::main()),
         Ok("queue") => std::process::exit(queue::main()),
+        Ok("mergecheck") => std::process::exit(mergecheck::main()),
         Ok("steer") => std::process::exit(steer::main()),
         _ => {}
     }

@@ -8,11 +8,22 @@
 	// Every app on g1t.page. The wildcard needs a proxied DNS record (`*`,
 	// AAAA 100::) on the zone; the apex, which says what g1t.page is, is a
 	// custom domain, whose record Cloudflare makes.
+	//
+	// `*/*` is for custom domains: Cloudflare for SaaS sends each custom
+	// hostname's traffic through the g1t.page zone, and this route is what
+	// brings it here. Custom hostnames point at the fallback origin,
+	// domains.g1t.page (a proxied AAAA 100::), set up once by
+	// scripts/setup-custom-domains.sh.
 	"routes": [
 		{ "pattern": "*.g1t.page/*", "zone_name": "g1t.page" },
+		// Custom domains: add this route once Cloudflare for SaaS is on for the
+		// zone (Cloudflare refuses a wildcard host before then):
+		// { "pattern": "*/*", "zone_name": "g1t.page" },
 		{ "pattern": "g1t.page", "custom_domain": true }
 	],
 	// The apps, uploaded by the deployments service.
 	"dispatch_namespaces": [{ "binding": "APPS", "namespace": "g1t-deployments" }],
+	// Custom domains: hostname to app, written by the deployments service.
+	"kv_namespaces": [{ "binding": "DOMAINS", "id": "14bc5c233d4c46a5bbf23b5367cce5fd" }],
 	"observability": { "enabled": true }
 }

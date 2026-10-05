@@ -4,6 +4,7 @@ import { Outlet, data, useLocation, useRouteLoaderData } from "react-router";
 import type { Route } from "./+types/layout";
 import { page } from "../../lib/meta";
 import { Avatar, ButtonLink, Pill, TabLink } from "../../components/ui";
+import { redirectIfRenamed } from "../../lib/renamed.server";
 import { identity } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 
@@ -11,9 +12,13 @@ export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   return page(args, { title: `${loaderData?.workspace.name ?? params.owner} · g1t` });
 }
 
-export async function loader({ params, context }: Route.LoaderArgs) {
+export async function loader({ params, context, request }: Route.LoaderArgs) {
   const workspace = await identity.getWorkspace(params.owner);
-  if (!workspace) throw data(null, { status: 404 });
+  if (!workspace) {
+    // A workspace's old name, after a rename: its pages are at the new one.
+    await redirectIfRenamed(request, params.owner);
+    throw data(null, { status: 404 });
+  }
   return { workspace, role: roleIn(getViewer(context), workspace.slug) };
 }
 
@@ -30,6 +35,14 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   usage: { title: "Usage", about: "What the workspace's agents cost, run by run, by repository, pull request and model." },
   billing: { title: "Billing and plans", about: "Paid plans, agent credit, and every charge against it." },
+  agents: {
+    title: "Agent fleet",
+    about: "Every agent at work across the workspace's projects: what each holds, what it is doing now, and what it has cost.",
+  },
+  memory: {
+    title: "Workspace memory",
+    about: "What holds across all of the workspace's projects, given to every agent in every one of them, beside each project's own memory.",
+  },
   webhooks: {
     title: "Webhooks",
     about: "Every repository's events, sent to your own addresses as they happen. A repository can also have its own, under its settings.",

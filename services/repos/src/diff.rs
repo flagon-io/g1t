@@ -109,6 +109,18 @@ async fn changed_files<R: GitRepo>(
     Ok((changes, false))
 }
 
+/// The paths of the files that differ between two trees, without reading
+/// any file: what is needed to see whether two changes touch the same
+/// files. Returns the paths and whether the list was cut short.
+pub async fn changed_paths<R: GitRepo>(
+    repo: &R,
+    old_tree: Option<&str>,
+    new_tree: &str,
+) -> Result<(Vec<String>, bool)> {
+    let (changes, truncated) = changed_files(repo, old_tree, new_tree).await?;
+    Ok((changes.into_iter().map(|change| change.path).collect(), truncated))
+}
+
 /// The text of a blob, or `None` if it is binary, too large or missing.
 async fn text<R: GitRepo>(repo: &R, hash: Option<&str>) -> Result<Option<String>> {
     let Some(hash) = hash else {

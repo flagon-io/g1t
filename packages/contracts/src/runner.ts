@@ -1,3 +1,4 @@
+import type { AgentRun } from "./agents";
 import type { Trial } from "./billing";
 import type { User, Viewer } from "./identity";
 import type { Result } from "./result";
@@ -77,4 +78,9 @@ export interface RunnerApi {
    * verdict, posted as `g1t-agent`.
    */
   review(actor: User, repo: RepoPath, number: number): Promise<Result<boolean>>;
+  /**
+   * Stops an agent run: marks it stopped, destroys its sandbox, and leaves
+   * the pull request it was on for a person. Members of the workspace only.
+   */
+  stopRun(actor: User, repo: RepoPath, runId: string): Promise<Result<AgentRun>>;
 }

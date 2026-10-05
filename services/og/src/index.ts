@@ -85,7 +85,7 @@ export default {
     } catch (error) {
       console.error("og: rendering failed", url.pathname, error);
       // An icon it could not draw is left out rather than losing the card.
-      if (card.kind !== "workspace" || !card.icon) return Response.redirect(FALLBACK, 302);
+      if ((card.kind !== "workspace" && card.kind !== "person") || !card.icon) return Response.redirect(FALLBACK, 302);
       try {
         png = await cardPng({ ...card, icon: undefined }, ASSETS);
       } catch {
@@ -120,7 +120,7 @@ function withCacheControl(response: Response, failed: boolean): Response {
 /** What satori can draw: PNG and JPEG. A WebP or GIF icon is left off the card. */
 const DRAWABLE = new Set(["image/png", "image/jpeg"]);
 
-/** A workspace's uploaded icon as a data URI, if it has one satori can draw. */
+/** A workspace's or person's uploaded icon as a data URI, if it has one satori can draw. */
 async function iconFor(env: Env, avatar: string | null | undefined): Promise<string | undefined> {
   if (!avatar || !/^[0-9a-f]{64}$/.test(avatar)) return undefined;
   try {
@@ -140,7 +140,7 @@ async function iconFor(env: Env, avatar: string | null | undefined): Promise<str
 
 async function cardFor(url: URL, env: Env): Promise<Card> {
   const card = await lookUpCard(url, env);
-  if (card.kind === "workspace") return { ...card, icon: await iconFor(env, card.avatar) };
+  if (card.kind === "workspace" || card.kind === "person") return { ...card, icon: await iconFor(env, card.avatar) };
   return card;
 }
 

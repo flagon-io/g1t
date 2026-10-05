@@ -342,6 +342,24 @@ export function cardTree(card: Card): Node {
       });
     }
 
+    case "person": {
+      const [merged, mergedNoun] = count(card.pullsMerged, "pull request merged", "pull requests merged");
+      const [pulls, pullNoun] = count(card.pullsOpen, "open pull request", "open pull requests");
+      const [issues, issueNoun] = count(card.issues, "issue opened", "issues opened");
+      return frame({
+        address: `g1t.sh/u/${card.username}`,
+        // The username above the name they go by; "Profile" when there is none.
+        eyebrow: withIcon(card.icon, card.name ? eyebrow(`@${card.username}`, true) : eyebrow("Profile", false), true),
+        title: card.name ? title(card.name, 2) : repoTitle(card.username),
+        description: card.bio,
+        facts: [
+          fact(ICON.merged, merged, mergedNoun),
+          fact(ICON.pull, pulls, pullNoun),
+          fact(ICON.issue, issues, issueNoun),
+        ],
+      });
+    }
+
     case "project": {
       const [issues, issueNoun] = count(card.issues, "open issue", "open issues");
       const [pulls, pullNoun] = count(card.pulls, "open pull request", "open pull requests");
@@ -398,13 +416,13 @@ export function cardTree(card: Card): Node {
   }
 }
 
-/** The workspace's uploaded icon beside its eyebrow, when it has one. */
-function withIcon(icon: string | undefined, beside: Node): Node {
+/** The uploaded icon beside an eyebrow, when there is one: round for a person. */
+function withIcon(icon: string | undefined, beside: Node, round = false): Node {
   if (!icon) return beside;
   return h(
     "div",
     { display: "flex", alignItems: "center", gap: 22 },
-    img(icon, 64, 64, { borderRadius: 14, objectFit: "cover", flexShrink: 0 }),
+    img(icon, 64, 64, { borderRadius: round ? 32 : 14, objectFit: "cover", flexShrink: 0 }),
     beside,
   );
 }

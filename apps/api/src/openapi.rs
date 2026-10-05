@@ -79,6 +79,11 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         &[Op::ReadSession, Op::RecordSession],
     ),
     (
+        "Memory",
+        "What agents and people learned that the next agent should know, for one project or across a workspace. Members and g1t's agents only; never a secret.",
+        &[Op::Remember, Op::Recall],
+    ),
+    (
         "Actions",
         "GitHub Actions workflows in .g1t/workflows, their runs, and their jobs' logs.",
         &[
@@ -156,6 +161,8 @@ fn title(op: Op) -> &'static str {
         Op::MessageAgent => "Message an agent",
         Op::AnswerMessage => "Answer a message",
         Op::TakeMessages => "Take new messages",
+        Op::Remember => "Remember something",
+        Op::Recall => "Recall memory",
         Op::ListIssues => "List issues",
         Op::GetIssue => "Get an issue",
         Op::CreateIssue => "Create an issue",

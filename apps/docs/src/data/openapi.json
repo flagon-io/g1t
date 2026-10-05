@@ -99,6 +99,14 @@
       ]
     },
     {
+      "name": "Memory",
+      "description": "What agents and people learned that the next agent should know, for one project or across a workspace. Members and g1t's agents only; never a secret.",
+      "x-tools": [
+        "remember",
+        "recall"
+      ]
+    },
+    {
       "name": "Actions",
       "description": "GitHub Actions workflows in .g1t/workflows, their runs, and their jobs' logs.",
       "x-tools": [
@@ -1718,6 +1726,303 @@
         },
         "x-example-params": {
           "id": "msg_01m43t66tde8hs2vpxhh3v8tqw"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/memory": {
+      "post": {
+        "operationId": "remember",
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Remember something",
+        "description": "Save something to memory that the next agent working here should know: how to build or test, a convention, a decision and why, a trap. scope project is for this codebase; scope workspace is for what holds across all of the workspace's projects, such as \"we use pnpm everywhere\" or where staging lives. One short fact per memory. Every g1t agent run is given memory at its start, pinned first. Never save a secret, key, token or password: text that looks like one is refused. Members of the workspace and g1t's agents only.\n\nText that looks like a key, a token or a password is refused with `invalid`: memory is read by every agent in the workspace. Saving the same text again in the same scope returns the memory already kept.",
+        "x-mcp-tool": "remember",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "mem_01m43v8q2w3e4r5t6y7u8i9o0p",
+                  "scope": "project",
+                  "workspace": "syntaqx",
+                  "repo": {
+                    "namespace": "syntaqx",
+                    "name": "hello"
+                  },
+                  "text": "The tests need TZ=UTC or the date tests fail.",
+                  "kind": "gotcha",
+                  "source": {
+                    "kind": "run",
+                    "runId": "arn_01m43v2c1p9k8d7e6f5a4b3c2d",
+                    "repo": {
+                      "namespace": "syntaqx",
+                      "name": "hello"
+                    },
+                    "number": 14
+                  },
+                  "createdBy": "g1t-agent",
+                  "pinned": false,
+                  "createdAt": "2026-10-01T18:40:12.000Z",
+                  "updatedAt": "2026-10-01T18:40:12.000Z",
+                  "lastUsedAt": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "What to remember, in one or two sentences. At most 1000 characters."
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "project",
+                      "workspace"
+                    ],
+                    "description": "project: about this codebase. workspace: true across the workspace's projects. Defaults to project."
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "fact",
+                      "convention",
+                      "decision",
+                      "gotcha"
+                    ],
+                    "description": "Defaults to fact."
+                  },
+                  "from_number": {
+                    "type": "integer",
+                    "description": "For an agent: the pull request you are working on, recorded as where it was learned."
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              },
+              "example": {
+                "text": "The tests need TZ=UTC or the date tests fail.",
+                "scope": "project",
+                "kind": "gotcha",
+                "from_number": 14
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "recall",
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Recall memory",
+        "description": "Search what the project and its workspace remember, by words in any order, or list it all without a query. Pinned memories come first, then the most recently used. Members of the workspace and g1t's agents only.\n\nMembers of the workspace only. Each memory returned is marked used, which keeps it near the front of what agents are given.",
+        "x-mcp-tool": "recall",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Words to look for. Leave out for everything."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "At most 100 of each level; 20 if not given."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "project": [],
+                  "workspace": [
+                    {
+                      "id": "mem_01m43t0a1s2d3f4g5h6j7k8l9z",
+                      "scope": "workspace",
+                      "workspace": "syntaqx",
+                      "repo": null,
+                      "text": "We use pnpm everywhere, never npm or yarn.",
+                      "kind": "convention",
+                      "source": {
+                        "kind": "person",
+                        "runId": null,
+                        "repo": null,
+                        "number": null
+                      },
+                      "createdBy": "syntaqx",
+                      "pinned": true,
+                      "createdAt": "2026-10-01T18:40:12.000Z",
+                      "updatedAt": "2026-10-01T18:40:12.000Z",
+                      "lastUsedAt": null
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-query": {
+          "q": "pnpm"
         }
       }
     },
@@ -10716,7 +11021,7 @@
           "Pull requests"
         ],
         "summary": "Get a pull request",
-        "description": "A pull request's status, head commit, comments and reviews, the issue it is for, the latest run of that issue's acceptance checks with each command's output, whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different issue means the two will conflict; say so, or keep clear of those files.\n\n| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `checks` | The latest run of the acceptance checks against its head, with each command's output. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request the g1t agent is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n| `statuses` | Commit statuses reported for its head, such as workflow runs. |\n\nChecks are started by g1t, not through the API. They run when a pull request becomes ready for review and again when its head moves.",
+        "description": "A pull request's status, head commit, comments and reviews, the issue it is for, the latest run of that issue's acceptance checks with each command's output, whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different issue means the two will conflict; say so, or keep clear of those files.\n\n| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `checks` | The latest run of the acceptance checks against its head, with each command's output. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request the g1t agent is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n| `statuses` | Commit statuses reported for its head, such as workflow runs. |\n| `mergeable` | Whether it merges cleanly into its target: `clean`, `conflicting`, `checking` (being worked out) or `unknown`. Worked out ahead of time whenever it or its target moves. |\n| `conflicts` | When `mergeable` is `conflicting`, the files that conflict. Resolve them by merging the target in, or have the g1t agent do it. |\n| `earlierChecks` | Earlier runs of the acceptance checks, newest first, without their output. |\n\nChecks are started by g1t, not through the API. They run when a pull request becomes ready for review and again when its head moves.",
         "x-mcp-tool": "get_pull_request",
         "security": [
           {

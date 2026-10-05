@@ -67,6 +67,10 @@ export function identityClient(service: ServiceBinding): IdentityApi {
       call("remove_member", { actor, slug, username }),
     updateWorkspace: (actor, slug, details) =>
       call("update_workspace", { actor, slug, ...details }),
+    renameWorkspace: (actor, slug, newSlug) => call("rename_workspace", { actor, slug, newSlug }),
+    checkWorkspaceRename: (actor, slug, newSlug) =>
+      call("check_workspace_rename", { actor, slug, newSlug }),
+    resolveSlug: (slug) => call("resolve_slug", { slug }),
     setWorkspaceAvatar: (actor, slug, image) => call("set_workspace_avatar", { actor, slug, image }),
     setUserAvatar: (user, image) => call("set_user_avatar", { user, image }),
     listWorkspaceTokens: (slug, viewer) => call("list_workspace_tokens", { slug, viewer }),
@@ -81,6 +85,10 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     userForSshKey: (fingerprint) => call("user_for_ssh_key", { fingerprint }),
     userByUsername: (username) => call("user_by_username", { username }),
     usernames: (ids) => call("usernames", { ids }),
+    profile: (username) => call("profile", { username }),
+    updateProfile: (actor, fields) => call("update_profile", { actor, ...fields }),
+    profileWorkspaces: (username, viewer, publicIn) =>
+      call("profile_workspaces", { username, viewer, public: publicIn }),
     listSshKeys: (user) => call("list_ssh_keys", { user }),
     addSshKey: (user, title, publicKey) =>
       call("add_ssh_key", { user, title, publicKey }),
@@ -92,6 +100,24 @@ export function identityClient(service: ServiceBinding): IdentityApi {
       call("create_agent_token", { onBehalfOf, scope, ttlSeconds }),
     removeAccessToken: (user, id) => call("remove_access_token", { user, id }),
   };
+}
+
+/**
+ * The slug a renamed workspace has now, for a `workspace.renamed` handler:
+ * asked of identity by the workspace's id, so that renames delivered twice
+ * or out of order converge. Falls back to the event's `to`.
+ */
+export async function currentWorkspaceSlug(
+  identity: ServiceBinding,
+  renamed: { workspaceId: string; to: string },
+): Promise<string> {
+  const names = await identityClient(identity).usernames([renamed.workspaceId]);
+  return names[renamed.workspaceId] ?? renamed.to;
+}
+
+/** The slugs whose rows move to `current`: the two a rename names, less `current`. */
+export function staleSlugs(renamed: { from: string; to: string }, current: string): string[] {
+  return [...new Set([renamed.from, renamed.to])].filter((slug) => slug !== current);
 }
 
 /** Staff-only identity. Only sudo binds to it; see `IdentityAdminApi`. */
@@ -108,6 +134,7 @@ export function reposClient(service: ServiceBinding): ReposApi {
   return {
     get: (path, viewer) => call("get", { path, viewer }),
     getById: (id, viewer) => call("get_by_id", { id, viewer }),
+    publicNamespaces: (ownerId) => call("public_namespaces", { ownerId }),
     list: (viewer, options = {}) => call("list", { viewer, ...options }),
     create: (owner, input) => call("create", { owner, ...input }),
     update: (actor, path, changes) => call("update", { actor, path, ...changes }),
@@ -147,6 +174,8 @@ export function workClient(service: ServiceBinding): WorkApi {
       call("report_checks", { runId, token, ...report }),
     startReview: (pullId) => call("start_review", { pullId }),
     failReview: (runId, token, error) => call("report_review", { runId, token, error }),
+    startMergecheck: (pullId) => call("start_mergecheck", { pullId }),
+    failMergecheck: (pullId, token, error) => call("report_mergecheck", { pullId, token, error }),
     advance: (pullId) => call("advance", { pullId }),
     stall: (pullId, reason) => call("stall", { pullId, reason }),
     managedPulls: (repoId) => call("managed_pulls", { repoId }),
@@ -171,6 +200,7 @@ export function workClient(service: ServiceBinding): WorkApi {
     mergePull: (actor, repo, number, options = {}) =>
       call("merge_pull", { actor, repo, number, ...options }),
     listActivePulls: (viewer) => call("list_active_pulls", { viewer }),
+    byAuthor: (username, viewer, filter = {}) => call("by_author", { username, viewer, ...filter }),
     startPlan: (actor, repo, brief) => call("start_plan", { actor, repo, brief }),
     failPlan: (planId, token, error) => call("report_plan", { planId, token, error }),
     getPlan: (repo, viewer, id) => call("get_plan", { repo, viewer, id }),
@@ -330,6 +360,11 @@ export function deploymentsClient(service: ServiceBinding): DeploymentsApi {
     stack: (actor, project, branch) => call("stack", { actor, project, branch }),
     overview: (workspace, viewer) => call("overview", { workspace, viewer }),
     usage: (workspace, viewer) => call("usage", { workspace, viewer }),
+    domains: (project, viewer) => call("domains", { project, viewer }),
+    addDomain: (actor, project, hostname, options = {}) =>
+      call("add_domain", { actor, project, hostname, twin: !!options.twin }),
+    removeDomain: (actor, project, id) => call("remove_domain", { actor, project, id }),
+    refreshDomain: (actor, project, id) => call("refresh_domain", { actor, project, id }),
   };
 }
 

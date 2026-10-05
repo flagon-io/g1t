@@ -1,5 +1,8 @@
 //! Repository metadata in D1.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+
 use g1t_contracts::Viewer;
 use g1t_contracts::repos::{Repo, RepoPath};
 use serde::Deserialize;
@@ -18,11 +21,37 @@ struct RepoRow {
     fork_of: Option<String>,
     protected: u8,
     created_at: String,
+    /// Null only on rows written before the column existed and not yet
+    /// migrated; their key is the one worked out from the path.
+    #[serde(default)]
+    store: Option<String>,
+}
+
+thread_local! {
+    /// Store keys that differ from the one a repository's path gives: those
+    /// of repositories whose workspace was renamed after they were made.
+    /// Filled whenever a row is read or written, so every `Repo` this
+    /// service holds has its key here. A key never changes once given, so
+    /// requests sharing the isolate can share the map.
+    static MOVED: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
+
+/// The key a repository's path gives: what every repository was stored
+/// under before workspaces could be renamed.
+pub fn path_key(repo: &Repo) -> String {
+    format!("{}--{}", repo.namespace, repo.name)
+}
+
+/// Records where a repository is stored, when its path does not say.
+pub fn remember_store(repo: &Repo, store: &str) {
+    if store != path_key(repo) {
+        MOVED.with(|moved| moved.borrow_mut().insert(repo.id.clone(), store.to_owned()));
+    }
 }
 
 impl From<RepoRow> for Repo {
     fn from(row: RepoRow) -> Self {
-        Repo {
+        let repo = Repo {
             id: row.id,
             namespace: row.namespace,
             name: row.name,
@@ -33,13 +62,19 @@ impl From<RepoRow> for Repo {
             fork_of: row.fork_of,
             protected: row.protected != 0,
             created_at: row.created_at,
+        };
+        if let Some(store) = &row.store {
+            remember_store(&repo, store);
         }
+        repo
     }
 }
 
 /// The key a repo is stored under in the git store.
 pub fn store_key(repo: &Repo) -> String {
-    format!("{}--{}", repo.namespace, repo.name)
+    MOVED
+        .with(|moved| moved.borrow().get(&repo.id).cloned())
+        .unwrap_or_else(|| path_key(repo))
 }
 
 /// Whether the viewer may read `repo`, going by the repository alone. A
@@ -176,6 +211,52 @@ impl Registry {
         Ok(rows.into_iter().map(Repo::from).collect())
     }
 
+    /// Of these ids, the repositories (not forks) the viewer may read.
+    pub async fn readable(&self, ids: &[String], viewer: &Viewer) -> Result<Vec<Repo>> {
+        let ids: Vec<&String> = ids.iter().take(g1t_contracts::repos::MAX_READABLE).collect();
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        // One parameter however many ids: D1 binds at most 100.
+        let rows = self
+            .db
+            .prepare(
+                "SELECT * FROM repos
+                 WHERE id IN (SELECT value FROM json_each(?)) AND fork_of IS NULL",
+            )
+            .bind(&[serde_json::to_string(&ids)?.into()])?
+            .all()
+            .await?
+            .results::<RepoRow>()?;
+        Ok(rows
+            .into_iter()
+            .map(Repo::from)
+            .filter(|repo| can_read(repo, viewer))
+            .collect())
+    }
+
+    /// The workspaces in which this account made a public repository.
+    pub async fn public_namespaces(&self, owner_id: &str) -> Result<Vec<String>> {
+        #[derive(Deserialize)]
+        struct Row {
+            namespace: String,
+        }
+        Ok(self
+            .db
+            .prepare(
+                "SELECT DISTINCT namespace FROM repos
+                 WHERE owner_id = ? AND is_private = 0 AND fork_of IS NULL
+                 ORDER BY namespace",
+            )
+            .bind(&[owner_id.into()])?
+            .all()
+            .await?
+            .results::<Row>()?
+            .into_iter()
+            .map(|row| row.namespace)
+            .collect())
+    }
+
     /// Forgets a repository that could not be filled.
     pub async fn remove(&self, id: &str) -> Result<()> {
         self.db
@@ -186,13 +267,70 @@ impl Registry {
         Ok(())
     }
 
+    /// Picks the store key for a repository about to be made, and
+    /// remembers it: the one its path gives, unless a repository already
+    /// holds that (one made in a workspace that has since been renamed,
+    /// whose old name this workspace now has), when its id.
+    pub async fn claim_store_key(&self, repo: &Repo) -> Result<String> {
+        let wanted = path_key(repo);
+        let held = self
+            .db
+            .prepare("SELECT 1 AS held FROM repos WHERE store = ?")
+            .bind(&[wanted.as_str().into()])?
+            .first::<serde_json::Value>(None)
+            .await?
+            .is_some();
+        let key = if held { repo.id.clone() } else { wanted };
+        remember_store(repo, &key);
+        Ok(key)
+    }
+
+    /// Moves a renamed workspace's repositories to its current slug, from
+    /// any of `stale`. A repository whose name the current slug already has
+    /// (one pushed there in the moment before this ran) stays where it is;
+    /// returns how many did.
+    pub async fn rename_namespace(&self, stale: &[String], current: &str) -> Result<usize> {
+        if stale.is_empty() {
+            return Ok(0);
+        }
+        let marks = vec!["?"; stale.len()].join(", ");
+        let mut moved: Vec<JsValue> = vec![current.into()];
+        moved.extend(stale.iter().map(|slug| JsValue::from(slug.as_str())));
+        let left: Vec<JsValue> = stale.iter().map(|slug| JsValue::from(slug.as_str())).collect();
+        let results = self
+            .db
+            .batch(vec![
+                self.db
+                    .prepare(format!(
+                        "UPDATE OR IGNORE repos SET namespace = ? WHERE namespace IN ({marks})"
+                    ))
+                    .bind(&moved)?,
+                self.db
+                    .prepare(format!(
+                        "SELECT count(*) AS left FROM repos WHERE namespace IN ({marks})"
+                    ))
+                    .bind(&left)?,
+            ])
+            .await?;
+        #[derive(Deserialize)]
+        struct Left {
+            left: usize,
+        }
+        Ok(results
+            .get(1)
+            .map(|result| result.results::<Left>())
+            .transpose()?
+            .and_then(|rows| rows.into_iter().next())
+            .map_or(0, |row| row.left))
+    }
+
     pub async fn insert(&self, repo: &Repo) -> Result<()> {
         self.db
             .prepare(
                 "INSERT INTO repos
                    (id, namespace, name, description, is_private, owner_id,
-                    default_branch, fork_of, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    default_branch, fork_of, created_at, store)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 repo.id.as_str().into(),
@@ -204,6 +342,7 @@ impl Registry {
                 repo.default_branch.as_str().into(),
                 optional(&repo.fork_of),
                 repo.created_at.as_str().into(),
+                store_key(repo).into(),
             ])?
             .run()
             .await?;

@@ -9,6 +9,7 @@ use std::process::{Command, Stdio};
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
+use crate::progress::{self, Progress};
 use crate::report::{Entry, Reporter};
 
 const MAX_TURNS: &str = "80";
@@ -62,7 +63,11 @@ fn report_cost(cost_usd: f64, turns: u64) {
 
 /// Records one line of Claude Code's `stream-json` output. Returns the final
 /// result when the line is the one that ends the run.
-fn handle_event(event: &Value, reporter: &mut Reporter) -> Option<Result<String>> {
+fn handle_event(
+    event: &Value,
+    reporter: &mut Reporter,
+    progress: &mut Option<Progress>,
+) -> Option<Result<String>> {
     let blocks = || {
         event["message"]["content"]
             .as_array()
@@ -77,10 +82,16 @@ fn handle_event(event: &Value, reporter: &mut Reporter) -> Option<Result<String>
                         let text = block["text"].as_str().unwrap_or_default().trim();
                         if !text.is_empty() {
                             reporter.record(Entry::new("message", text));
+                            if let Some(progress) = progress {
+                                progress.step(&format!("Said: {}", text.lines().next().unwrap_or_default()));
+                            }
                         }
                     }
                     Some("tool_use") => {
                         let tool = block["name"].as_str().unwrap_or("tool");
+                        if let Some(progress) = progress {
+                            progress.step(&progress::describe_tool(tool, &block["input"]));
+                        }
                         reporter.record(Entry::tool(
                             "tool_call",
                             tool,
@@ -110,6 +121,9 @@ fn handle_event(event: &Value, reporter: &mut Reporter) -> Option<Result<String>
             if let Some(cost) = event["total_cost_usd"].as_f64() {
                 let turns = event["num_turns"].as_u64().unwrap_or_default();
                 report_cost(cost, turns);
+                if let Some(progress) = progress {
+                    progress.cost(cost, turns);
+                }
                 reporter.record(Entry::new(
                     "note",
                     &format!("This run cost ${cost:.4} over {turns} turns."),
@@ -175,6 +189,11 @@ pub fn run_claude(workdir: &Path, prompt: &str, reporter: &mut Reporter) -> Resu
             }
         }
     }
+    // How the run goes, step by step, for people watching it live.
+    let mut progress = Progress::from_env();
+    if let Some(progress) = &mut progress {
+        progress.step("Started the agent");
+    }
     let mut child = Command::new("claude")
         .current_dir(workdir)
         .args(&tools)
@@ -197,6 +216,7 @@ pub fn run_claude(workdir: &Path, prompt: &str, reporter: &mut Reporter) -> Resu
         .env_remove("BILLING_TOKEN")
         .env_remove("PLAN_TOKEN")
         .env_remove("G1T_AGENT_TOKEN")
+        .env_remove("AGENT_RUN_TOKEN")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -210,11 +230,14 @@ pub fn run_claude(workdir: &Path, prompt: &str, reporter: &mut Reporter) -> Resu
         let Ok(event) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
-        if let Some(result) = handle_event(&event, reporter) {
+        if let Some(result) = handle_event(&event, reporter, &mut progress) {
             outcome = Some(result);
         }
     }
     let status = child.wait()?;
+    if let Some(progress) = &mut progress {
+        progress.flush();
+    }
     match outcome {
         Some(result) => result,
         None => bail!("Claude Code exited ({status}) without a result"),

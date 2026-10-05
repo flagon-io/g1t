@@ -29,7 +29,9 @@
 			{ "binding": "SUBSCRIBER_WEBHOOKS", "queue": "g1t-events-webhooks" },
 			{ "binding": "SUBSCRIBER_ACTIONS", "queue": "g1t-events-actions" },
 			{ "binding": "SUBSCRIBER_DEPLOYMENTS", "queue": "g1t-events-deployments" },
-			{ "binding": "SUBSCRIBER_PROJECTS", "queue": "g1t-events-projects" }
+			{ "binding": "SUBSCRIBER_PROJECTS", "queue": "g1t-events-projects" },
+			{ "binding": "SUBSCRIBER_REPOS", "queue": "g1t-events-repos" },
+			{ "binding": "SUBSCRIBER_BILLING", "queue": "g1t-events-billing" }
 		],
 		"consumers": [{ "queue": "g1t-events", "max_batch_size": 100, "max_batch_timeout": 1 }]
 	},

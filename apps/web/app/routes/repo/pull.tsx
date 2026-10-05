@@ -29,6 +29,7 @@ import { Form, Link, redirect, useRevalidator } from "react-router";
 import {
   type Comparison,
   type Deployment,
+  type Job,
   type LiveApp,
   type SessionEntry,
   type Viewer,
@@ -39,6 +40,7 @@ import type { Route } from "./+types/pull";
 import { excerpt, page } from "../../lib/meta";
 import { DiffView } from "../../components/diff-view";
 import { LifecyclePanel } from "../../components/lifecycle";
+import { AgentPanel } from "../../components/agents";
 import { Markdown } from "../../components/markdown";
 import {
   Avatar,
@@ -58,11 +60,13 @@ import {
   CommentList,
   IssueIcon,
   PeoplePicker,
+  PersonLink,
   PullState,
   TimelineItem,
   verdicts,
 } from "../../components/work";
-import { deployments, identity, projects, repos, work } from "../../lib/services.server";
+import { ChecksSection, ConflictsSection, MergeabilityRow, runIdOf } from "../../components/merge-box";
+import { actions, deployments, identity, projects, repos, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 
 const REFRESH_MS = 4000;
@@ -117,14 +121,23 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   }
   const { pull } = found.value;
   const range = pullComparison(pull);
-  const [session, comparison] = await Promise.all([
+  // The jobs of each workflow run on its head, to list checks job by job.
+  // Read as the viewer: a run they cannot see is listed by its status alone.
+  const runIds = [...new Set((found.value.statuses ?? []).map(runIdOf).filter((id) => id != null))].slice(0, 10);
+  const [session, comparison, runs] = await Promise.all([
     tab === "session" ? work.readSession(path, number, viewer) : null,
     tab === "changes"
       ? repos.compare(range.repoId, viewer, range.base, range.head)
       : null,
+    tab === "conversation" && pull.status === "open"
+      ? Promise.all(runIds.map((id) => actions.run(path, viewer, id).catch(() => null)))
+      : [],
   ]);
+  const workflowJobs: Record<string, Job[]> = {};
+  for (const run of runs) if (run?.ok) workflowJobs[run.value.run.id] = run.value.jobs;
   return {
     ...found.value,
+    workflowJobs,
     tab,
     session: session?.ok ? session.value : [],
     // An empty comparison if it could not be made.
@@ -205,6 +218,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       reviewers: [...form.getAll("reviewer").map(String), "g1t-agent"],
     });
     if (!asked.ok) return { error: asked.error.message, action };
+  }
+  // A workflow run's failed jobs, run again. Who may is the actions service's call.
+  if (action === "rerun-workflow") {
+    const rerun = await actions.rerun(user, path, String(form.get("run") ?? ""), true);
+    return rerun.ok ? null : { error: rerun.error.message, action };
   }
   const result =
     action === "merge"
@@ -384,6 +402,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     lifecycle,
     messages,
     statuses = [],
+    mergeable = "unknown",
+    conflicts = [],
+    earlierChecks = [],
+    workflowJobs,
     affects,
     preview,
     build,
@@ -437,13 +459,25 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   // g1t is taking a step of its own accord, so the page will change.
   const moving =
     lifecycle != null && lifecycle.stage !== "ready" && lifecycle.stage !== "needs_you";
+  // Whether it merges cleanly is being worked out, so the box will change.
+  const probing = active && mergeable === "checking";
+  const conflicting = active && mergeable === "conflicting";
+  const resolving = submitted === "update" && conflicting;
   useEffect(() => {
-    if (!working && !checking && !reviewPending && !catchingUp && !moving && !landing) return;
+    if (!working && !checking && !reviewPending && !catchingUp && !moving && !landing && !probing && !resolving) return;
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") revalidator.revalidate();
     }, REFRESH_MS);
     return () => clearInterval(timer);
-  }, [working, checking, reviewPending, catchingUp, moving, landing, revalidator]);
+  }, [working, checking, reviewPending, catchingUp, moving, landing, probing, resolving, revalidator]);
+  // Why the merge button cannot be pressed, if it cannot.
+  const mergeBlocked = conflicting
+    ? "Resolve the conflicts first."
+    : probing
+      ? "Waiting to find out whether it merges cleanly."
+      : behind && requireUpToDate
+        ? `This repository requires it to be up to date with ${defaultBranch} first.`
+        : null;
 
   return (
     // The changes get the whole width; people and settings are a tab away.
@@ -460,9 +494,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               size={18}
             />
             <span>
-              <span className="font-medium text-fg">
-                {(pull.status === "merged" && pull.mergedBy) || pull.author.username}
-              </span>{" "}
+              <PersonLink
+                name={(pull.status === "merged" && pull.mergedBy) || pull.author.username}
+                className="font-medium text-fg hover:underline"
+              />{" "}
               {pull.status === "merged" ? "merged" : "wants to merge"}
               {pull.branch && (
                 <>
@@ -501,6 +536,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
         )}
 
         {lifecycle && <LifecyclePanel lifecycle={lifecycle} />}
+        {/* The agent on it: who, doing what this minute, for how long, at what cost. */}
+        <AgentPanel owner={params.owner} repo={params.repo} number={pull.number} stage={lifecycle?.stage ?? null} />
 
         {/* Steering: while its agent works, people can tell it things. */}
         {canManage &&
@@ -740,31 +777,22 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
 
               {pull.status === "open" && (
                 <StatusBox>
-                  {checks && (
-                    <StatusRow
-                      icon={
-                        checks.status === "passed" ? (
-                          <CircleCheck size={16} className="text-accent" />
-                        ) : checking ? (
-                          <Loader size={16} className="animate-spin text-faint" />
-                        ) : (
-                          <CircleSlash size={16} className="text-danger" />
-                        )
-                      }
-                      title={
-                        checks.status === "passed"
-                          ? "Acceptance checks passed"
-                          : checking
-                            ? "Acceptance checks are running"
-                            : checks.status === "failed"
-                              ? "Acceptance checks failed"
-                              : "Acceptance checks could not be run"
-                      }
-                    >
-                      {checks.results.length > 0 &&
-                        `${checks.results.filter((result) => result.passed).length} of ${checks.results.length} passed, in a clean sandbox.`}
-                    </StatusRow>
-                  )}
+                  <ChecksSection
+                    run={checks}
+                    commands={issue?.checks ?? []}
+                    statuses={statuses}
+                    jobs={workflowJobs}
+                    pull={pull}
+                    base={base}
+                    earlier={earlierChecks}
+                    canRerun={canManage}
+                    canRerunWorkflows={canMerge}
+                    error={
+                      actionData?.action === "recheck" || actionData?.action === "rerun-workflow"
+                        ? actionData.error
+                        : null
+                    }
+                  />
                   <StatusRow
                     icon={
                       reviews.some(({ verdict }) => verdict === "request_changes") ? (
@@ -800,11 +828,27 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       {defaultBranch} has moved, so g1t is bringing this up to date first. It
                       lands as soon as that is done. Watch it in the Session tab.
                     </StatusRow>
+                  ) : conflicting ? (
+                    <ConflictsSection
+                      conflicts={conflicts}
+                      pull={pull}
+                      owner={params.owner}
+                      repo={params.repo}
+                      defaultBranch={defaultBranch}
+                      changesUrl={here + "?tab=changes"}
+                      canResolve={canUpdate && agentsEnabled}
+                      resolving={resolving}
+                      onResolve={() => setSubmitted("update")}
+                      error={actionData?.action === "update" ? actionData.error : null}
+                    />
+                  ) : probing ? (
+                    <MergeabilityRow mergeable={mergeable} defaultBranch={defaultBranch} />
                   ) : behind ? (
                     <StatusRow
                       icon={<GitPullRequestArrow size={16} className="text-info" />}
                       title={`${defaultBranch} has moved since this was made`}
                     >
+                      {mergeable === "clean" && "It has no conflicts with it. "}
                       {requireUpToDate
                         ? "This repository requires pull requests to be up to date, so it has to catch up before it can merge."
                         : "That does not stop it merging: it is brought up to date as part of the merge."}
@@ -870,17 +914,18 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                           type="submit"
                           name="action"
                           value="merge"
-                          disabled={behind && requireUpToDate}
+                          disabled={mergeBlocked != null}
+                          title={mergeBlocked ?? undefined}
                         >
                           {mergeQueue ? <Layers size={15} /> : <GitMerge size={15} />}
                           {mergeQueue ? "Add to the merge queue" : `Merge into ${defaultBranch}`}
                         </Button>
-                        <span className="text-xs text-muted">
-                          {mergeQueue
+                        <span className={`text-xs ${mergeBlocked ? "text-danger" : "text-muted"}`}>
+                          {mergeBlocked ?? (mergeQueue
                             ? `Tested together with everything ahead of it, then lands on ${defaultBranch}.`
                             : issue?.state === "open"
                               ? `Closes issue #${issue.number}, and any other pull requests still open for it.`
-                              : `Lands its commits on ${defaultBranch}.`}
+                              : `Lands its commits on ${defaultBranch}.`)}
                         </span>
                       </div>
                       {actionData?.action === "merge" && (
@@ -904,7 +949,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                 </Form>
               )}
               {actionData &&
-                !["merge", "comment", "recheck", "update", "agent-review", "reviewers", "assign"].includes(
+                !["merge", "comment", "recheck", "rerun-workflow", "update", "agent-review", "reviewers", "assign"].includes(
                   String(actionData.action),
                 ) && <ErrorText>{actionData.error}</ErrorText>}
             </div>
@@ -918,13 +963,13 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
       </div>
 
       <aside className={tab === "changes" ? "hidden" : "space-y-6"}>
-        <ChecksPanel
-          run={checks}
-          commands={issue?.checks ?? []}
-          canRerun={canManage && pull.status === "open"}
-        />
-        {actionData?.action === "recheck" && <ErrorText>{actionData.error}</ErrorText>}
-        <WorkflowStatuses statuses={statuses} />
+        {/* An open pull request shows its checks in full in the merge box. */}
+        {pull.status !== "open" && (
+          <>
+            <ChecksPanel run={checks} commands={issue?.checks ?? []} canRerun={false} />
+            <WorkflowStatuses statuses={statuses} />
+          </>
+        )}
         {affects.length > 0 && (
           <section>
             <h3 className="flex items-center gap-1.5 text-sm font-medium">

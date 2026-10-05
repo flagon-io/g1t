@@ -80,11 +80,11 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
         </div>
         {settings.enabled && (
           <a
-            href={settings.productionUrl}
+            href={settings.primaryDomain ? `https://${settings.primaryDomain}` : settings.productionUrl}
             className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 font-mono text-xs text-muted hover:border-line-strong hover:text-fg"
           >
             <Globe size={13} />
-            {host(settings.productionUrl)}
+            {settings.primaryDomain ?? host(settings.productionUrl)}
           </a>
         )}
       </header>
@@ -178,6 +178,10 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
             . Secrets and config for builds and running apps are under{" "}
             <Link to={`${base}/settings/secrets`} className="text-fg hover:underline">
               Settings → Secrets and variables
+            </Link>
+            , and production's own domains under{" "}
+            <Link to={`${base}/settings/domains`} className="text-fg hover:underline">
+              Settings → Domains
             </Link>
             .
           </p>

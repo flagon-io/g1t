@@ -106,6 +106,10 @@ Before landing, g1t checks that nothing has changed underneath:
 - If `main` moved outside the queue, every entry is tested again on the new
   `main`.
 
+A pull request that is already known to conflict with `main` is not added
+to the queue: [its merge box](/guides/pull-requests/#conflicts) says which
+files conflict and how to resolve them first.
+
 ## When an entry fails
 
 An entry fails when its checks or its `merge_group` workflows fail in the
@@ -116,8 +120,10 @@ It leaves the queue, and:
 1. Its pull request gets a failed check run. Each command is named with the
    state it ran in, such as `cargo test (merge queue, on the default branch
    with #41 merged in first)`, and the run says why it failed. A conflict
-   names the pull request ahead it collided with.
-2. Its conversation records that it was taken out of the queue, and why.
+   names the pull request ahead it collided with, and the files.
+2. Its conversation records that it was taken out of the queue, and why: a
+   conflict links the pull request it collided with and each conflicting
+   file, which opens in the pull request's changes.
 3. The entries that were tested on top of it are tested again without it.
 
 A g1t agent's pull request is then sent back to revise, like any failed

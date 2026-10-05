@@ -197,6 +197,34 @@ const VERDICTS = {
   request_changes: { label: "requested changes", style: "text-danger" },
 } as const;
 
+/** How g1t's own agents are named; they have no profile to link to. */
+const AGENTS = new Set(["g1t-agent", "g1t agent", "g1t"]);
+
+/**
+ * A person's name (or `children`) linking to their profile at `/u/<name>`.
+ * g1t's agents, and names that are not usernames, stay plain text.
+ */
+export function PersonLink({
+  name,
+  className,
+  label,
+  children,
+}: {
+  name: string;
+  className?: string;
+  label?: string;
+  children?: ReactNode;
+}) {
+  if (AGENTS.has(name) || !/^[a-z0-9-]{1,39}$/i.test(name)) {
+    return <span className={className}>{children ?? name}</span>;
+  }
+  return (
+    <Link to={`/u/${name.toLowerCase()}`} className={className} aria-label={label}>
+      {children ?? name}
+    </Link>
+  );
+}
+
 /**
  * Comments in order, then the box to add one. On a pull request, `review`
  * says where its changes are shown and whether the viewer may give a
@@ -224,14 +252,16 @@ export function TimelineItem({
   return (
     <div className="flex gap-3">
       <span className="mt-1 hidden shrink-0 sm:block">
-        <Avatar name={author} size={32} />
+        <PersonLink name={author} label={`${author}'s profile`}>
+          <Avatar name={author} size={32} />
+        </PersonLink>
       </span>
       <article className="min-w-0 grow overflow-hidden rounded-xl border border-line bg-surface">
         <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-raised/40 px-4 py-2 text-sm text-muted">
           <span className="sm:hidden">
             <Avatar name={author} size={18} />
           </span>
-          <span className="font-medium text-fg">{author}</span>
+          <PersonLink name={author} className="font-medium text-fg hover:underline" />
           {action}
           {at && <TimeAgo at={at} />}
           {aside && <span className="ml-auto min-w-0">{aside}</span>}
@@ -244,13 +274,31 @@ export function TimelineItem({
 
 type Review = { changesUrl: string; canJudge: boolean };
 
-/** Text with each `#12` linked to the issue or pull request of that number. */
-function WithReferences({ text, base }: { text: string; base?: string }) {
+/**
+ * Text with each `#12` linked to the issue or pull request of that number,
+ * and each file named in backticks shown as code, linked to its diff when
+ * `filesUrl` says where the changes are.
+ */
+function WithReferences({ text, base, filesUrl }: { text: string; base?: string; filesUrl?: string }) {
   if (!base) return <>{text}</>;
   return (
     <>
-      {text.split(/(#\d+)/).map((part, index) =>
-        /^#\d+$/.test(part) ? (
+      {text.split(/(#\d+|`[^`\n]+`)/).map((part, index) =>
+        /^`[^`]+`$/.test(part) ? (
+          filesUrl ? (
+            <Link
+              key={index}
+              to={`${filesUrl}#file-${part.slice(1, -1)}`}
+              className="font-mono text-xs text-fg hover:underline"
+            >
+              {part.slice(1, -1)}
+            </Link>
+          ) : (
+            <code key={index} className="font-mono text-xs text-fg">
+              {part.slice(1, -1)}
+            </code>
+          )
+        ) : /^#\d+$/.test(part) ? (
           // Issues and pull requests share numbers; the issue page forwards.
           <Link
             key={index}
@@ -268,7 +316,7 @@ function WithReferences({ text, base }: { text: string; base?: string }) {
 }
 
 /** Something that happened, as one line on the conversation's rail. */
-function TimelineEvent({ comment, base }: { comment: Comment; base?: string }) {
+function TimelineEvent({ comment, base, filesUrl }: { comment: Comment; base?: string; filesUrl?: string }) {
   return (
     <div className="flex items-center gap-3 text-sm text-muted">
       <span className="hidden w-8 shrink-0 justify-center sm:flex">
@@ -276,9 +324,9 @@ function TimelineEvent({ comment, base }: { comment: Comment; base?: string }) {
       </span>
       <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
         <Avatar name={comment.author.username} size={16} />
-        <span className="font-medium text-fg">{comment.author.username}</span>
+        <PersonLink name={comment.author.username} className="font-medium text-fg hover:underline" />
         <span>
-          <WithReferences text={comment.body} base={base} />
+          <WithReferences text={comment.body} base={base} filesUrl={filesUrl} />
         </span>
         <span className="text-faint">
           · <TimeAgo at={comment.createdAt} />
@@ -306,7 +354,7 @@ export function CommentList({
     <>
       {comments.map((comment) => {
         if (comment.kind === "event") {
-          return <TimelineEvent key={comment.id} comment={comment} base={base} />;
+          return <TimelineEvent key={comment.id} comment={comment} base={base} filesUrl={review?.changesUrl} />;
         }
         const verdict = comment.verdict && VERDICTS[comment.verdict];
         return (

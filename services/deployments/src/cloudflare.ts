@@ -9,6 +9,8 @@
  * else.
  */
 
+import { redirectScript } from "./redirect";
+
 const API = "https://api.cloudflare.com/client/v4";
 
 export type Manifest = Record<string, { hash: string; size: number }>;
@@ -185,6 +187,14 @@ export class Cloudflare {
    */
   async pauseScript(script: string): Promise<void> {
     await this.placeholder(script, PAUSED, "paused");
+  }
+
+  /**
+   * Replaces an app with a redirect to `targetHost`, path and query kept:
+   * what an app's old address answers after its workspace is renamed.
+   */
+  async redirectScript(script: string, targetHost: string): Promise<void> {
+    await this.placeholder(script, redirectScript(targetHost), "redirect");
   }
 
   private async placeholder(script: string, code: string, tag: string): Promise<void> {

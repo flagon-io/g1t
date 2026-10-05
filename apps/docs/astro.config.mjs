@@ -90,6 +90,7 @@ export default defineConfig({
 						{ label: 'g1t agents', slug: 'guides/g1t-agents' },
 						{ label: 'Outcomes and plans', slug: 'guides/outcomes' },
 						{ label: 'Talking to agents', slug: 'guides/talking-to-agents' },
+						{ label: 'Agents, sessions and memory', slug: 'guides/agents-and-memory' },
 						{ label: 'Bring your own agent', slug: 'guides/bring-your-own-agent' },
 					],
 				},
@@ -105,6 +106,7 @@ export default defineConfig({
 				{
 					label: 'Landing changes',
 					items: [
+						{ label: 'Pull requests and checks', slug: 'guides/pull-requests' },
 						{ label: 'The merge queue', slug: 'guides/merge-queue' },
 						{ label: 'Sessions and why-blame', slug: 'guides/why-blame' },
 						{ label: 'Forks and branches', slug: 'concepts/forks' },

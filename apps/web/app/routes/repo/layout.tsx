@@ -7,6 +7,7 @@ import type { Route } from "./+types/layout";
 import { page } from "../../lib/meta";
 import { type Tab as PageTab, tabsFor } from "../../lib/project-nav";
 import { Pill, TabLink as Tab } from "../../components/ui";
+import { redirectIfRenamed } from "../../lib/renamed.server";
 import { projects, repos, work } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
 
@@ -14,7 +15,7 @@ export function meta({ loaderData: loaded, params, ...args }: Route.MetaArgs) {
   return page(args, { title: `${loaded?.project?.name ?? params.repo} · ${params.owner} · g1t` });
 }
 
-export async function loader({ params, context }: Route.LoaderArgs) {
+export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const path = { namespace: params.owner, name: params.repo };
   const [repo, counts, found] = await Promise.all([
@@ -22,7 +23,11 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     work.counts(path, viewer),
     projects.get(params.owner, params.repo, viewer),
   ]);
-  if (!repo.ok && !found.ok) throw data(null, { status: 404 });
+  if (!repo.ok && !found.ok) {
+    // Under a workspace's old name, after a rename: the project is at the new one.
+    await redirectIfRenamed(request, params.owner);
+    throw data(null, { status: 404 });
+  }
   let project: Project | null = found.ok ? found.value : null;
   // A repository made a moment ago, before its project: make it now.
   if (!project && repo.ok && !repo.value.forkOf) {

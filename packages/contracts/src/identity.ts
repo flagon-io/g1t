@@ -41,6 +41,12 @@ export type Membership = {
   avatar?: string;
 };
 
+/** How long an old workspace slug redirects, and stays reserved for it, after a rename. */
+export const SLUG_HOLD_DAYS = 90;
+
+/** How long a workspace must wait between renames. */
+export const RENAME_COOLDOWN_HOURS = 24;
+
 /** The largest avatar that can be uploaded, in bytes. */
 export const MAX_AVATAR_BYTES = 1024 * 1024;
 
@@ -232,6 +238,20 @@ export interface IdentityApi {
   /** Owners only. An empty name falls back to the slug. */
   updateWorkspace(actor: User, slug: string, details: { name: string; description: string }): Promise<Result<Workspace>>;
   /**
+   * Owners only. Changes the slug, the first segment of the workspace's
+   * URLs; the display name is untouched. The old slug redirects to the new
+   * one, and stays reserved for this workspace, for `SLUG_HOLD_DAYS`.
+   * Publishes `workspace.renamed`.
+   */
+  renameWorkspace(actor: User, slug: string, newSlug: string): Promise<Result<Workspace>>;
+  /** Whether `renameWorkspace` would be allowed, changing nothing. */
+  checkWorkspaceRename(actor: User, slug: string, newSlug: string): Promise<Result<boolean>>;
+  /**
+   * The workspace's current slug when `slug` is one it was renamed from
+   * within `SLUG_HOLD_DAYS`; null otherwise, including for a slug in use.
+   */
+  resolveSlug(slug: string): Promise<string | null>;
+  /**
    * Owners only. `image` is the file in base64: PNG, JPEG, WebP or GIF, at
    * most `MAX_AVATAR_BYTES`, checked by its bytes. Null removes the icon.
    */
@@ -259,6 +279,17 @@ export interface IdentityApi {
   userByUsername(username: string): Promise<Viewer>;
   /** The names behind account and workspace ids; unknown ids are left out. */
   usernames(ids: string[]): Promise<Record<string, string>>;
+
+  /** A person's public profile, or null if there is no such account. Never an email address. */
+  profile(username: string): Promise<Profile | null>;
+  /** A person changes their own profile. Every field is replaced; an empty one is cleared. */
+  updateProfile(actor: User, fields: ProfileFields): Promise<Result<Profile>>;
+  /**
+   * The workspaces a profile shows `viewer`: those the viewer belongs to
+   * as well, and those of `publicIn` (where the person made a public
+   * project) that the person really belongs to. Nothing else.
+   */
+  profileWorkspaces(username: string, viewer: Viewer, publicIn: string[]): Promise<ProfileWorkspace[]>;
 
   listSshKeys(user: User): Promise<SshKey[]>;
   /** Takes one line in OpenSSH public key format. */
@@ -288,3 +319,35 @@ export interface IdentityApi {
 
 /** What an agent's token may do: these operations, in this repository. */
 export type AgentScope = { repo: RepoPath; operations: string[] };
+
+/** The most characters each profile field takes. Mirrors `crates/contracts/src/identity.rs`. */
+export const PROFILE_LIMITS = { name: 80, bio: 160, location: 80, website: 200, pronouns: 40 } as const;
+
+/** What anyone may see about a person, at `g1t.sh/u/<username>`. */
+export type Profile = {
+  username: string;
+  /** The name they go by, if they gave one. */
+  name: string | null;
+  bio: string | null;
+  location: string | null;
+  /** Always an `https://` address. */
+  website: string | null;
+  pronouns: string | null;
+  /** The uploaded avatar's hash, served at `/avatars/<avatar>`. */
+  avatar: string | null;
+  /** When the account was made. RFC 3339. */
+  createdAt: string;
+};
+
+/** What a person may change on their profile. Empty clears a field. */
+export type ProfileFields = {
+  name: string;
+  bio: string;
+  location: string;
+  /** `https://…`; a bare `example.com` is taken as `https://example.com`. */
+  website: string;
+  pronouns: string;
+};
+
+/** A workspace on a person's profile. */
+export type ProfileWorkspace = { slug: string; name: string; avatar: string | null };

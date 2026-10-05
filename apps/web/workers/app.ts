@@ -28,8 +28,11 @@ export default {
   async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
     // Git over HTTPS shares this hostname but belongs to the repos service.
+    // Its answer goes back to the git client as it is: a repository under a
+    // renamed workspace's old name answers with a 301, which git follows and
+    // must see, so the redirect is never followed here.
     if (GIT_PATH.test(pathname)) {
-      return env.REPOS.fetch(request);
+      return env.REPOS.fetch(new Request(request, { redirect: "manual" }));
     }
     const avatar = AVATAR_PATH.exec(pathname);
     if (avatar) {
@@ -60,7 +63,8 @@ async function serveAvatar(env: Env, ctx: ExecutionContext, request: Request, ha
   if (method !== "GET" && method !== "HEAD") {
     return new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } });
   }
-  const cache = caches.default;
+  // The Workers runtime's own cache, which the DOM types do not know.
+  const cache = (caches as unknown as { default: Cache }).default;
   const key = new Request(new URL(`/avatars/${hash}`, request.url).toString(), { method: "GET" });
   const cached = await cache.match(key);
   if (cached) {

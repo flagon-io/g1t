@@ -23,24 +23,30 @@
  */
 
 import {
+  CUSTOM_DOMAIN_TARGET,
   DEPLOYMENTS_ALLOWANCE,
+  SLUG_HOLD_DAYS,
   billingClient,
+  currentWorkspaceSlug,
   fail,
   identityClient,
   newId,
   ok,
   projectsClient,
   reposClient,
+  staleSlugs,
   workClient,
   type DeployKind,
   type DeploySettings,
   type DeployStatus,
   type DeployUsage,
   type Deployment,
+  type Domain,
   type G1tEvent,
   type LiveApp,
   type Project,
   type ProjectDeploys,
+  type ProjectDomains,
   type ProjectRef,
   type RepoPath,
   type Result,
@@ -50,7 +56,9 @@ import {
 } from "@g1t/contracts";
 
 import { Cloudflare, type BuiltWorker, type Manifest } from "./cloudflare";
-import { appUrl, label, uniqueLabel } from "./names";
+import { CustomHostnames } from "./custom-hostnames";
+import { Domains, NOT_ENABLED_NOTICE, extraDomains, toDomain } from "./domains";
+import { appHost, appUrl, label, uniqueLabel } from "./names";
 
 type Env = {
   DB: D1Database;
@@ -67,6 +75,10 @@ type Env = {
   CLOUDFLARE_ACCOUNT_ID: string;
   DISPATCH_NAMESPACE: string;
   SITE: string;
+  /** Custom domains: hostname to app, read by the dispatcher. */
+  DOMAINS?: KVNamespace;
+  /** The g1t.page zone, where custom hostnames are added (Cloudflare for SaaS). */
+  CUSTOM_HOSTNAMES_ZONE_ID?: string;
 };
 
 /** A build that has not reported in this long has died. */
@@ -75,6 +87,11 @@ const BUILD_TIMEOUT_MS = 45 * 60 * 1000;
 const ORPHAN_AFTER_MS = 60 * 60 * 1000;
 const LIST_LIMIT = 50;
 const STATUS_CONTEXT = "g1t / deploy";
+/**
+ * Deliveries of `workspace.renamed` that wait for the projects service to
+ * have seen it too, before going ahead with the new slug regardless.
+ */
+const RENAME_WAITS = 3;
 
 const now = () => new Date().toISOString();
 const month = (at = new Date()) => at.toISOString().slice(0, 7);
@@ -190,6 +207,12 @@ class Deployments {
 
   private get db() {
     return this.env.DB;
+  }
+
+  private get domains(): Domains {
+    const token = this.env.CLOUDFLARE_API_TOKEN;
+    const zone = this.env.CUSTOM_HOSTNAMES_ZONE_ID;
+    return new Domains(this.env.DB, this.env.DOMAINS, token && zone ? new CustomHostnames(token, zone) : null);
   }
 
   private get projects() {
@@ -319,6 +342,7 @@ class Deployments {
       outputDir: row?.output_dir ?? null,
       idleDays: row?.idle_days ?? 7,
       productionUrl: appUrl(await this.scriptFor(project, null)),
+      primaryDomain: await this.domains.primary(project.id).catch(() => null),
     };
   }
 
@@ -555,6 +579,75 @@ class Deployments {
     });
   }
 
+  // ---- Custom domains ------------------------------------------------
+
+  async listDomains(a: { project: ProjectRef; viewer: Viewer }): Promise<Result<ProjectDomains>> {
+    const project = await this.memberProject(a.project, a.viewer);
+    if (!project.ok) return project;
+    const domains = this.domains;
+    await domains.catchUp(project.value.id).catch((error) => console.error("could not check domains", error));
+    const [rows, available, used] = await Promise.all([
+      domains.forProject(project.value.id),
+      domains.available(),
+      domains.countFor(project.value.workspace),
+    ]);
+    return ok({
+      domains: rows.map(toDomain),
+      target: CUSTOM_DOMAIN_TARGET,
+      available,
+      notice: available ? null : NOT_ENABLED_NOTICE,
+      included: DEPLOYMENTS_ALLOWANCE.customDomains,
+      used,
+    });
+  }
+
+  async addDomain(a: { actor: User; project: ProjectRef; hostname: string; twin?: boolean }): Promise<Result<Domain[]>> {
+    const found = await this.memberProject(a.project, a.actor);
+    if (!found.ok) return found;
+    const project = found.value;
+    const plan = await billingClient(this.env.BILLING).hasFeature(project.workspace, "deployments");
+    if (!plan.ok) return plan;
+    const added = await this.domains.add({
+      project: { id: project.id, workspace: project.workspace, slug: project.slug },
+      script: await this.productionScript(project),
+      hostname: String(a.hostname ?? ""),
+      twin: !!a.twin,
+      by: a.actor.username,
+    });
+    if (!added.ok) return fail(added.code, added.message);
+    await this.notePeak(project.workspace);
+    return ok(added.rows.map(toDomain));
+  }
+
+  async removeDomain(a: { actor: User; project: ProjectRef; id: string }): Promise<Result<true>> {
+    const found = await this.memberProject(a.project, a.actor);
+    if (!found.ok) return found;
+    const row = await this.domains.byId(found.value.id, String(a.id ?? ""));
+    if (!row) return fail("not_found", "No such domain.");
+    await this.domains.remove(row);
+    return ok(true);
+  }
+
+  async refreshDomain(a: { actor: User; project: ProjectRef; id: string }): Promise<Result<Domain>> {
+    const found = await this.memberProject(a.project, a.actor);
+    if (!found.ok) return found;
+    const domains = this.domains;
+    const row = await domains.byId(found.value.id, String(a.id ?? ""));
+    if (!row) return fail("not_found", "No such domain.");
+    const after = await domains.refresh(row, row.script ?? (await this.productionScript(found.value)), true);
+    await this.notePeak(found.value.workspace);
+    return ok(toDomain(after));
+  }
+
+  /** The script production is up under, or the name it will have. */
+  private async productionScript(project: Project): Promise<string> {
+    const app = await this.db
+      .prepare("SELECT script FROM apps WHERE project_id = ? AND kind = 'production'")
+      .bind(project.id)
+      .first<{ script: string }>();
+    return app?.script ?? (await this.scriptFor(project, null));
+  }
+
   // ---- Starting builds -----------------------------------------------
 
   /**
@@ -777,7 +870,11 @@ class Deployments {
           await this.finishFailed(id, `Cloudflare did not take the app: ${String(error).replace(/^Error: /, "")}`, String(body.log ?? ""), seconds);
           return Response.json(ok(false));
         }
+        // The same app at an older name (its workspace was renamed) now
+        // redirects here; it stays up as it was if the redirect cannot be put.
+        const redirected = await this.supersede(cloudflare, row);
         const at = now();
+        const expires = new Date(Date.parse(at) + SLUG_HOLD_DAYS * 24 * 60 * 60 * 1000).toISOString();
         await this.db.batch([
           this.db
             .prepare(
@@ -792,7 +889,22 @@ class Deployments {
                ON CONFLICT (script) DO UPDATE SET commit_sha = ?8, number = ?7, deployed_at = ?9, paused_at = NULL`,
             )
             .bind(row.script, row.project_id, row.workspace, row.slug, row.kind, row.branch, row.number, row.commit_sha, at),
+          // A name that redirected elsewhere (a rename undone) is an app again.
+          this.db.prepare("DELETE FROM redirects WHERE script = ?").bind(row.script),
+          ...redirected.flatMap((old) => [
+            this.db.prepare("DELETE FROM apps WHERE script = ?").bind(old),
+            this.db
+              .prepare(
+                `INSERT INTO redirects (script, target, workspace, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT (script) DO UPDATE SET target = ?2, workspace = ?3, created_at = ?4, expires_at = ?5`,
+              )
+              .bind(old, appHost(row.script), row.workspace, at, expires),
+          ]),
         ]);
+        // The project's own domains serve production wherever it is up.
+        if (row.kind === "production") {
+          await this.domains.follow(row.project_id, row.script).catch((error) => console.error("could not point domains", error));
+        }
         await this.chargeBuild(row, seconds);
         await this.notePeak(row.workspace);
         await this.statusFor(row, "success", row.kind === "preview" ? "Preview is live" : "Production is live", appUrl(row.script));
@@ -804,6 +916,31 @@ class Deployments {
       default:
         return Response.json(fail("not_found", "No such step."), { status: 404 });
     }
+  }
+
+  /**
+   * Older names of the app `row` just put up: one project's production, or
+   * its preview of one branch, has one name, so any other app row for the
+   * same is the app under the name it had before its workspace was renamed.
+   * Each is replaced in the namespace by a redirect to the new name; the
+   * names that were are returned, for their app rows to go.
+   */
+  private async supersede(cloudflare: Cloudflare, row: DeploymentRow): Promise<string[]> {
+    const older = await this.db
+      .prepare("SELECT script FROM apps WHERE project_id = ? AND kind = ? AND branch IS ? AND script != ?")
+      .bind(row.project_id, row.kind, row.branch, row.script)
+      .all<{ script: string }>();
+    const done: string[] = [];
+    for (const { script } of older.results) {
+      try {
+        await cloudflare.redirectScript(script, appHost(row.script));
+        done.push(script);
+      } catch (error) {
+        // Left as it is, the next deploy of this app tries again.
+        console.error("could not redirect", script, "to", row.script, error);
+      }
+    }
+    return done;
   }
 
   private async finishFailed(id: string, message: string, log: string | null, seconds: number | null): Promise<void> {
@@ -851,7 +988,13 @@ class Deployments {
    * What each unit costs g1t now, from billing's price book, which follows
    * what Cloudflare bills. The plan's figures if billing cannot say.
    */
-  private async costs(): Promise<{ buildSecond: number; millionRequests: number; millionCpuMs: number; appMonth: number }> {
+  private async costs(): Promise<{
+    buildSecond: number;
+    millionRequests: number;
+    millionCpuMs: number;
+    appMonth: number;
+    domainMonth: number;
+  }> {
     const a = DEPLOYMENTS_ALLOWANCE;
     const book = await billingClient(this.env.BILLING)
       .prices()
@@ -862,17 +1005,20 @@ class Deployments {
       millionRequests: cost("app_requests", a.microsPerMillionRequests),
       millionCpuMs: cost("app_cpu", a.microsPerMillionCpuMs),
       appMonth: cost("app_month", a.microsPerAppMonth),
+      domainMonth: cost("custom_domain_month", a.microsPerDomainMonth),
     };
   }
 
-  /** Remembers the most apps the workspace had up at once this month. */
+  /** Remembers the most apps, and custom domains, the workspace had at once this month. */
   private async notePeak(workspace: string): Promise<void> {
     await this.db
       .prepare(
-        `INSERT INTO meters (namespace, month, peak_apps)
-         VALUES (?1, ?2, (SELECT COUNT(*) FROM apps WHERE workspace = ?1))
+        `INSERT INTO meters (namespace, month, peak_apps, peak_domains)
+         VALUES (?1, ?2, (SELECT COUNT(*) FROM apps WHERE workspace = ?1),
+           (SELECT COUNT(*) FROM domains WHERE workspace = ?1 AND cf_hostname_id IS NOT NULL))
          ON CONFLICT (namespace, month) DO UPDATE SET
-           peak_apps = MAX(peak_apps, (SELECT COUNT(*) FROM apps WHERE workspace = ?1))`,
+           peak_apps = MAX(peak_apps, (SELECT COUNT(*) FROM apps WHERE workspace = ?1)),
+           peak_domains = MAX(peak_domains, (SELECT COUNT(*) FROM domains WHERE workspace = ?1 AND cf_hostname_id IS NOT NULL))`,
       )
       .bind(workspace, month())
       .run();
@@ -923,8 +1069,12 @@ class Deployments {
 
   // ---- Events --------------------------------------------------------
 
-  async onEvent(event: G1tEvent): Promise<void> {
+  /** `attempts`: which delivery of the event this is, from 1. */
+  async onEvent(event: G1tEvent, attempts = 1): Promise<void> {
     switch (event.type) {
+      case "workspace.renamed":
+        await this.renamed(event.data, attempts);
+        break;
       case "pull.opened":
       case "pull.ready":
       case "pull.updated":
@@ -949,6 +1099,166 @@ class Deployments {
         }
         break;
     }
+  }
+
+  /**
+   * A workspace's slug changed, and with it every app's name: production
+   * at `<project>-<workspace>`, previews at `<project>-git-<branch>-<workspace>`.
+   *
+   * Its rows move to the slug it has now (asked of identity, so a delivery
+   * twice over, or an older rename after a newer one, ends the same), and
+   * each app that is up is built again from the same commit under its new
+   * name. The old name keeps serving the app until the new one is live;
+   * then the build's finish puts a redirect to the new name in its place
+   * (see `supersede`), held for as long as the workspace holds its old slug.
+   *
+   * Paused apps are left: they are rebuilt, under the new name, when the
+   * workspace is under its limit again, and the old name redirects then.
+   * Builds under way for the old name are dropped and started again under
+   * the new one. Only rows still under an old slug are acted on, so a
+   * second delivery builds nothing.
+   */
+  private async renamed(renamed: { workspaceId: string; from: string; to: string }, attempts: number): Promise<void> {
+    const current = await currentWorkspaceSlug(this.env.IDENTITY, renamed);
+    const stale = staleSlugs(renamed, current);
+    if (stale.length === 0) return;
+    const marks = stale.map(() => "?").join(", ");
+
+    // What to build again, read before the rows move.
+    const [apps, building] = await Promise.all([
+      this.db
+        .prepare(`SELECT * FROM apps WHERE workspace IN (${marks}) AND paused_at IS NULL`)
+        .bind(...stale)
+        .all<AppRow>(),
+      this.db
+        .prepare(`SELECT * FROM deployments WHERE workspace IN (${marks}) AND status IN ('queued', 'building') ORDER BY id`)
+        .bind(...stale)
+        .all<DeploymentRow>(),
+    ]);
+    type Target = { projectId: string; kind: DeployKind; branch: string | null; number: number | null; commit: string };
+    const targets = new Map<string, Target>();
+    const key = (t: { project_id: string; kind: DeployKind; branch: string | null }) => `${t.project_id}/${t.kind}/${t.branch ?? ""}`;
+    for (const app of apps.results) {
+      targets.set(key(app), { projectId: app.project_id, kind: app.kind, branch: app.branch, number: app.number, commit: app.commit_sha });
+    }
+    // A build under way is newer than what is up.
+    for (const row of building.results) {
+      targets.set(key(row), { projectId: row.project_id, kind: row.kind, branch: row.branch, number: row.number, commit: row.commit_sha });
+    }
+
+    // The projects, as the projects service has them now.
+    const projectIds = [...new Set([...targets.values()].map((t) => t.projectId))];
+    const projects = new Map<string, Project>();
+    if (projectIds.length > 0) {
+      const repoIds = await this.db
+        .prepare(`SELECT DISTINCT repo_id FROM settings WHERE project_id IN (${projectIds.map(() => "?").join(", ")})`)
+        .bind(...projectIds)
+        .all<{ repo_id: string }>();
+      for (const { repo_id } of repoIds.results) {
+        for (const project of await this.projects.byRepo(repo_id)) {
+          if (projectIds.includes(project.id)) projects.set(project.id, project);
+        }
+      }
+      // The projects service hears of the rename on its own queue: wait for
+      // it a few deliveries, so the builds read the repository by its new name.
+      const behind = [...projects.values()].some((p) => p.workspace !== current);
+      if (behind && attempts < RENAME_WAITS) throw new Error(`projects has not seen ${renamed.from} renamed to ${current} yet`);
+    }
+
+    // Every row moves at once.
+    const at = now();
+    const statements: D1PreparedStatement[] = [];
+    for (const slug of stale) {
+      statements.push(
+        this.db
+          .prepare(
+            `UPDATE deployments SET status = 'skipped', error = 'The workspace was renamed: built again under its new name.',
+               finished_at = ? WHERE workspace = ? AND status IN ('queued', 'building')`,
+          )
+          .bind(at, slug),
+        this.db.prepare("UPDATE settings SET workspace = ?1 WHERE workspace = ?2").bind(current, slug),
+        this.db.prepare("UPDATE apps SET workspace = ?1 WHERE workspace = ?2").bind(current, slug),
+        this.db
+          .prepare(
+            `UPDATE deployments SET workspace = ?1,
+               repo = CASE WHEN substr(repo, 1, length(?2) + 1) = ?2 || '/' THEN ?1 || substr(repo, length(?2) + 1) ELSE repo END
+             WHERE workspace = ?2`,
+          )
+          .bind(current, slug),
+        this.db.prepare("UPDATE redirects SET workspace = ?1 WHERE workspace = ?2").bind(current, slug),
+        this.domains.rename(slug, current),
+        // Counters add up; the peak is the higher; a month charged stays charged.
+        this.db
+          .prepare(
+            `INSERT INTO meters (namespace, month, requests, cpu_ms, peak_apps, peak_domains, build_seconds, build_micros, counted_at, charged_at)
+             SELECT ?1, month, requests, cpu_ms, peak_apps, peak_domains, build_seconds, build_micros, counted_at, charged_at
+             FROM meters WHERE namespace = ?2
+             ON CONFLICT (namespace, month) DO UPDATE SET
+               requests = requests + excluded.requests,
+               cpu_ms = cpu_ms + excluded.cpu_ms,
+               peak_apps = MAX(peak_apps, excluded.peak_apps),
+               peak_domains = MAX(peak_domains, excluded.peak_domains),
+               build_seconds = build_seconds + excluded.build_seconds,
+               build_micros = build_micros + excluded.build_micros,
+               counted_at = COALESCE(MAX(counted_at, excluded.counted_at), counted_at, excluded.counted_at),
+               charged_at = COALESCE(charged_at, excluded.charged_at)`,
+          )
+          .bind(current, slug),
+        this.db.prepare("DELETE FROM meters WHERE namespace = ?").bind(slug),
+      );
+    }
+    await this.db.batch(statements);
+
+    // Each app again, under its new name. Its dependencies' addresses are
+    // read again too, so apps that call one another follow the rename.
+    // Failures are logged, not retried: the rows have moved, and the next
+    // deploy of the app puts it under its new name all the same.
+    const actor = await this.workspaceActor(current);
+    for (const target of targets.values()) {
+      const found = projects.get(target.projectId);
+      if (!found) continue;
+      const project = this.underSlug(found, current, stale);
+      try {
+        const started =
+          target.kind === "production"
+            ? await this.deployProduction(project, target.commit, "g1t")
+            : target.number != null
+              ? await this.deployPreview(project, target.number, "g1t", true)
+              : await this.rebuildStack(project, target.branch, target.commit, actor);
+        if (started && !started.ok) console.log("could not rebuild", project.slug, target.branch, started.error.message);
+      } catch (error) {
+        console.error("could not rebuild after rename", project.slug, target.branch, error);
+      }
+    }
+  }
+
+  /** `project` under the workspace's slug now, whether or not projects has caught up. */
+  private underSlug(project: Project, current: string, stale: string[]): Project {
+    const source =
+      project.source.kind === "hosted" && stale.includes(project.source.repo.namespace)
+        ? { ...project.source, repo: { ...project.source.repo, namespace: current } }
+        : project.source;
+    return { ...project, workspace: current, source };
+  }
+
+  /** A stack's preview (no pull request of its own) built again at `commit`. */
+  private async rebuildStack(project: Project, branch: string | null, commit: string, actor: User | null): Promise<Result<Deployment> | null> {
+    if (!actor || branch == null) return null;
+    const settings = await this.settingsRow(project.id);
+    if (!settings?.enabled || !settings.previews) return null;
+    return this.start({
+      project,
+      kind: "preview",
+      branch,
+      number: null,
+      commit,
+      source: repoOf(project).path,
+      reader: actor,
+      createdBy: "g1t",
+      settings,
+      // As `stack` built it: the project's own default branch.
+      trusted: true,
+    });
   }
 
   // ---- The sweep -----------------------------------------------------
@@ -977,8 +1287,20 @@ class Deployments {
       const plan = await billing.hasFeature(workspace, "deployments");
       if (!plan.ok && plan.error.code === "payment_required") {
         for (const app of apps.filter((a) => a.workspace === workspace)) await this.removeApp(app.script);
+        // Custom domains cost g1t by the month: they go with the plan.
+        await this.domains.removeWhere("workspace", workspace).catch((error) => console.error("could not remove domains", error));
       }
     }
+
+    await this.domains
+      .sweep(async (projectId) => {
+        const app = await this.db
+          .prepare("SELECT script FROM apps WHERE project_id = ? AND kind = 'production'")
+          .bind(projectId)
+          .first<{ script: string }>();
+        return app?.script ?? null;
+      })
+      .catch((error) => console.error("could not check domains", error));
 
     await this.removeOrphans(apps).catch((error) => console.error("could not remove orphans", error));
     await this.count(apps).catch((error) => console.error("could not count usage", error));
@@ -1025,11 +1347,17 @@ class Deployments {
     }
   }
 
-  /** Scripts in the namespace that no app holds, such as ones renamed. */
+  /**
+   * Scripts in the namespace that no app holds, such as ones renamed. An
+   * old address that redirects to its app's new one is held until its
+   * redirect expires, then removed with the rest.
+   */
   private async removeOrphans(apps: AppRow[]): Promise<void> {
     const cloudflare = this.cloudflare;
     if (!cloudflare) return;
-    const held = new Set(apps.map((app) => app.script));
+    await this.db.prepare("DELETE FROM redirects WHERE expires_at < ?").bind(now()).run();
+    const redirects = await this.db.prepare("SELECT script FROM redirects").all<{ script: string }>();
+    const held = new Set([...apps.map((app) => app.script), ...redirects.results.map((r) => r.script)]);
     const building = await this.db
       .prepare("SELECT script FROM deployments WHERE status IN ('queued', 'building')")
       .all<{ script: string }>();
@@ -1086,14 +1414,15 @@ class Deployments {
     const a = DEPLOYMENTS_ALLOWANCE;
     for (const workspace of perWorkspace.keys()) {
       const meter = await this.db
-        .prepare("SELECT requests, cpu_ms, peak_apps FROM meters WHERE namespace = ? AND month = ?")
+        .prepare("SELECT requests, cpu_ms, peak_apps, peak_domains FROM meters WHERE namespace = ? AND month = ?")
         .bind(workspace, month())
-        .first<{ requests: number; cpu_ms: number; peak_apps: number }>();
+        .first<{ requests: number; cpu_ms: number; peak_apps: number; peak_domains: number }>();
       if (!meter) continue;
       const cost = Math.ceil(
         (Math.max(0, meter.requests - a.requests) / 1_000_000) * costs.millionRequests +
           (Math.max(0, meter.cpu_ms - a.cpuMs) / 1_000_000) * costs.millionCpuMs +
-          Math.max(0, meter.peak_apps - a.apps) * costs.appMonth,
+          Math.max(0, meter.peak_apps - a.apps) * costs.appMonth +
+          extraDomains(meter.peak_domains ?? 0) * costs.domainMonth,
       );
       await billingClient(this.env.BILLING)
         .notePending(workspace, "deployments", cost)
@@ -1118,21 +1447,24 @@ class Deployments {
     const due = await this.db
       .prepare("SELECT * FROM meters WHERE month < ? AND charged_at IS NULL")
       .bind(month())
-      .all<{ namespace: string; month: string; requests: number; cpu_ms: number; peak_apps: number }>();
+      .all<{ namespace: string; month: string; requests: number; cpu_ms: number; peak_apps: number; peak_domains: number }>();
     const a = DEPLOYMENTS_ALLOWANCE;
     const costs = await this.costs();
     for (const meter of due.results) {
       const extraRequests = Math.max(0, meter.requests - a.requests);
       const extraCpu = Math.max(0, meter.cpu_ms - a.cpuMs);
       const extraApps = Math.max(0, meter.peak_apps - a.apps);
+      const moreDomains = extraDomains(meter.peak_domains ?? 0);
       const cost = Math.ceil(
         (extraRequests / 1_000_000) * costs.millionRequests +
           (extraCpu / 1_000_000) * costs.millionCpuMs +
-          extraApps * costs.appMonth,
+          extraApps * costs.appMonth +
+          moreDomains * costs.domainMonth,
       );
       if (cost > 0) {
         const parts = [
           extraApps && `${extraApps} extra apps`,
+          moreDomains && `${moreDomains} extra custom domains`,
           extraRequests && `${extraRequests.toLocaleString("en-US")} extra requests`,
           extraCpu && `${extraCpu.toLocaleString("en-US")} extra CPU ms`,
         ].filter(Boolean);
@@ -1174,6 +1506,14 @@ async function rpc(service: Deployments, method: string, args: any, ctx: Executi
       return service.overview(args);
     case "usage":
       return service.usage(args);
+    case "domains":
+      return service.listDomains(args);
+    case "add_domain":
+      return service.addDomain(args);
+    case "remove_domain":
+      return service.removeDomain(args);
+    case "refresh_domain":
+      return service.refreshDomain(args);
     default:
       return undefined;
   }
@@ -1200,7 +1540,7 @@ export default {
     const service = new Deployments(env);
     for (const message of batch.messages) {
       try {
-        await service.onEvent(message.body);
+        await service.onEvent(message.body, message.attempts);
         message.ack();
       } catch (error) {
         console.error("deployments could not handle", message.body.type, error);

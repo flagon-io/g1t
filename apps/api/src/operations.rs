@@ -61,6 +61,8 @@ pub enum Op {
     MessageAgent,
     AnswerMessage,
     TakeMessages,
+    Remember,
+    Recall,
     ListIssues,
     GetIssue,
     CreateIssue,
@@ -285,7 +287,7 @@ fn repo_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 64] = [
+    pub const ALL: [Op; 66] = [
         Op::Whoami,
         Op::CreateWorkspace,
         Op::ListRepos,
@@ -298,6 +300,8 @@ impl Op {
         Op::MessageAgent,
         Op::AnswerMessage,
         Op::TakeMessages,
+        Op::Remember,
+        Op::Recall,
         Op::ListIssues,
         Op::GetIssue,
         Op::CreateIssue,
@@ -370,6 +374,8 @@ impl Op {
             Op::MessageAgent => "message_agent",
             Op::AnswerMessage => "answer_message",
             Op::TakeMessages => "take_messages",
+            Op::Remember => "remember",
+            Op::Recall => "recall",
             Op::UpdateRepoSettings => "update_repo_settings",
             Op::ListIssues => "list_issues",
             Op::GetIssue => "get_issue",
@@ -450,6 +456,12 @@ impl Op {
             }
             Op::AnswerMessage => {
                 "Answer a question or a handoff another agent sent you, by the message's id. For a handoff, set decline to say it is not yours to take. The answer reaches the asking agent at its next step."
+            }
+            Op::Remember => {
+                "Save something to memory that the next agent working here should know: how to build or test, a convention, a decision and why, a trap. scope project is for this codebase; scope workspace is for what holds across all of the workspace's projects, such as \"we use pnpm everywhere\" or where staging lives. One short fact per memory. Every g1t agent run is given memory at its start, pinned first. Never save a secret, key, token or password: text that looks like one is refused. Members of the workspace and g1t's agents only."
+            }
+            Op::Recall => {
+                "Search what the project and its workspace remember, by words in any order, or list it all without a query. Pinned memories come first, then the most recently used. Members of the workspace and g1t's agents only."
             }
             Op::TakeMessages => {
                 "For a g1t agent at work: the messages sent to it that it has not seen yet, from people and from other agents. Each is returned once."
@@ -656,6 +668,35 @@ impl Op {
                 &["repo", "id", "body"],
             ),
             Op::TakeMessages => object(numbered(json!({})), &["repo", "number"]),
+            Op::Remember => object(
+                json!({
+                    "repo": repo_schema(),
+                    "text": { "type": "string", "description": "What to remember, in one or two sentences. At most 1000 characters." },
+                    "scope": {
+                        "type": "string",
+                        "enum": ["project", "workspace"],
+                        "description": "project: about this codebase. workspace: true across the workspace's projects. Defaults to project.",
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": ["fact", "convention", "decision", "gotcha"],
+                        "description": "Defaults to fact.",
+                    },
+                    "from_number": {
+                        "type": "integer",
+                        "description": "For an agent: the pull request you are working on, recorded as where it was learned.",
+                    },
+                }),
+                &["repo", "text"],
+            ),
+            Op::Recall => object(
+                json!({
+                    "repo": repo_schema(),
+                    "query": { "type": "string", "description": "Words to look for. Leave out for everything." },
+                    "limit": { "type": "integer", "description": "At most 100 of each level; 20 if not given." },
+                }),
+                &["repo"],
+            ),
             Op::UpdateRepoSettings => object(
                 json!({
                     "repo": repo_schema(),
@@ -1144,7 +1185,26 @@ impl Op {
         )
     }
 
+    /// Runs the operation. One that found nothing, or was refused, under a
+    /// workspace slug that has since been renamed runs again under the
+    /// workspace's current slug; neither outcome changed anything.
     pub async fn run(
+        self,
+        services: &Services,
+        viewer: &Viewer,
+        input: &Value,
+    ) -> Result<Outcome<Value>> {
+        let outcome = self.run_once(services, viewer, input).await?;
+        if let Outcome::Fail(failure) = &outcome
+            && matches!(failure.code, FailureCode::NotFound | FailureCode::Forbidden)
+            && let Some(retargeted) = crate::renamed::retarget(services, input).await?
+        {
+            return self.run_once(services, viewer, &retargeted).await;
+        }
+        Ok(outcome)
+    }
+
+    async fn run_once(
         self,
         services: &Services,
         viewer: &Viewer,
@@ -1312,6 +1372,44 @@ impl Op {
                         "id": text(input, "id"),
                         "body": text(input, "body"),
                         "decline": input["decline"].as_bool() == Some(true),
+                    }),
+                )
+                .await
+            }
+            Op::Remember => {
+                let scope = match input["scope"].as_str() {
+                    Some("workspace") => "workspace",
+                    None | Some("project") => "project",
+                    Some(_) => return failed(FailureCode::Invalid, "scope must be project or workspace."),
+                };
+                let kind = input["kind"].as_str().unwrap_or("fact");
+                if g1t_contracts::agents::MemoryKind::parse(kind).is_none() {
+                    return failed(FailureCode::Invalid, "kind must be fact, convention, decision or gotcha.");
+                }
+                pass(
+                    work,
+                    "add_memory",
+                    &json!({
+                        "actor": actor(),
+                        "workspace": repo.namespace.to_lowercase(),
+                        "repo": repo,
+                        "scope": scope,
+                        "text": text(input, "text"),
+                        "kind": kind,
+                        "fromNumber": integer(input, "from_number"),
+                    }),
+                )
+                .await
+            }
+            Op::Recall => {
+                pass(
+                    work,
+                    "recall",
+                    &json!({
+                        "viewer": viewer,
+                        "repo": repo,
+                        "query": optional_text(input, "query"),
+                        "limit": integer(input, "limit"),
                     }),
                 )
                 .await

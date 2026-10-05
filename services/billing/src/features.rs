@@ -94,6 +94,14 @@ impl Billing {
                     ),
                     format!("{} million requests", allowance::REQUESTS / 1_000_000),
                     format!("{} million CPU milliseconds", allowance::CPU_MS / 1_000_000),
+                    format!(
+                        "{} custom domains, with certificates, then {} each a month",
+                        allowance::CUSTOM_DOMAINS,
+                        dollars(crate::charge_micros(
+                            allowance::MICROS_PER_DOMAIN_MONTH as f64 / MICROS_PER_DOLLAR as f64,
+                            self.margin_percent
+                        )),
+                    ),
                     "Previews that cost nothing while no one visits them".to_owned(),
                 ],
                 overage: format!(

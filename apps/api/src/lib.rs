@@ -9,6 +9,7 @@ mod mcp;
 mod oauth;
 mod openapi;
 mod operations;
+mod renamed;
 mod rest;
 
 use g1t_contracts::billing::FinishRunArgs;
@@ -16,7 +17,8 @@ use g1t_contracts::identity::{
     DeviceClaim, DeviceClaimArgs, DeviceStart, DeviceStartArgs, TokenArgs,
 };
 use g1t_contracts::work::{
-    CheckRun, QueueState, ReportChecksArgs, ReportPlanArgs, ReportQueueArgs, ReportReviewArgs,
+    CheckRun, Mergeable, QueueState, ReportChecksArgs, ReportMergecheckArgs, ReportPlanArgs,
+    ReportQueueArgs, ReportReviewArgs,
 };
 use g1t_contracts::identity::AgentScope;
 use g1t_contracts::{Failure, FailureCode, Outcome, PrincipalKind, Viewer};
@@ -257,11 +259,37 @@ async fn report_queue(
             results: serde_json::from_value(body["results"].clone()).unwrap_or_default(),
             error: body["error"].as_str().map(str::to_owned),
             conflict_with: body["conflictWith"].as_u64().map(|n| n as u32),
+            conflicts: serde_json::from_value(body["conflicts"].clone()).unwrap_or_default(),
         },
     )
     .await?;
     match reported {
         Outcome::Ok(state) => Response::from_json(&json!({ "state": state })),
+        Outcome::Fail(refused) => failure(&refused),
+    }
+}
+
+/// A sandbox reporting whether a pull request merges cleanly. As with
+/// checks, the probe's own token is the credential.
+async fn report_mergecheck(
+    request: &mut Request,
+    services: &Services,
+    pull_id: &str,
+) -> Result<Response> {
+    let body = json_body(request).await;
+    let reported: Outcome<Mergeable> = g1t_kit::call(
+        &services.work,
+        "report_mergecheck",
+        &ReportMergecheckArgs {
+            pull_id: pull_id.to_owned(),
+            token: body["token"].as_str().unwrap_or_default().to_owned(),
+            conflicts: serde_json::from_value(body["conflicts"].clone()).unwrap_or_default(),
+            error: body["error"].as_str().map(str::to_owned),
+        },
+    )
+    .await?;
+    match reported {
+        Outcome::Ok(state) => Response::from_json(&json!({ "mergeable": state })),
         Outcome::Fail(refused) => failure(&refused),
     }
 }
@@ -485,6 +513,10 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
                 Outcome::Fail(refused) => failure(&refused),
             };
         }
+        ("POST", path) if path.starts_with("/mergechecks/") => {
+            let pull_id = path.trim_start_matches("/mergechecks/").to_owned();
+            return report_mergecheck(&mut request, &services, &pull_id).await;
+        }
         ("POST", path) if path.starts_with("/queue/") => {
             let entry_id = path.trim_start_matches("/queue/").to_owned();
             return report_queue(&mut request, &services, &entry_id).await;
@@ -506,6 +538,21 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
             .await?;
             return match answered {
                 Outcome::Ok(value) => Response::from_json(&value),
+                Outcome::Fail(refused) => failure(&refused),
+            };
+        }
+        // A sandbox reporting its agent run's steps, cost and end. As with
+        // checks, the run's own token, in the body, is the credential.
+        ("POST", path) if path.starts_with("/agent-runs/") && path.ends_with("/report") => {
+            let run_id = path.trim_start_matches("/agent-runs/").trim_end_matches("/report");
+            let mut body = json_body(&mut request).await;
+            if !body.is_object() {
+                body = json!({});
+            }
+            body["runId"] = json!(run_id);
+            let reported: Outcome<Value> = g1t_kit::call(&services.work, "report_run", &body).await?;
+            return match reported {
+                Outcome::Ok(status) => Response::from_json(&json!({ "status": status })),
                 Outcome::Fail(refused) => failure(&refused),
             };
         }

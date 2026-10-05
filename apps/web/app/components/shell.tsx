@@ -35,6 +35,7 @@ import {
   Webhook,
   PlayCircle,
   Bot,
+  Brain,
   ShieldCheck,
   Rocket,
   X,
@@ -486,9 +487,9 @@ function RepoMenu({ repo, isPrivate, open }: { repo: MenuRepo; isPrivate: boolea
         <SidebarLink to={`${base}/pulls`} also={[`${base}/pull`, `${base}/queue`]} icon={<GitPullRequest size={15} />} count={repo.pulls}>
           Pull requests
         </SidebarLink>
-        <SidebarSoonLink to={`${base}/soon/agents`} also={soonPaths(base, "Agents")} icon={<Bot size={15} />} about="Every agent at work on this project, its sessions, playbooks and memory.">
+        <SidebarLink to={`${base}/agents`} also={[`${base}/sessions`, `${base}/memory`, ...soonPaths(base, "Agents")]} icon={<Bot size={15} />}>
           Agents
-        </SidebarSoonLink>
+        </SidebarLink>
         <SidebarLink to={`${base}/actions`} icon={<PlayCircle size={15} />}>
           Workflows
         </SidebarLink>
@@ -564,7 +565,7 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
   // In a repository, or on the way into one, its own menu takes the sidebar.
   const target = going ?? pathname;
   const repoPath = /^\/([^/]+)\/([^/-][^/]*)(\/|$)/.exec(target);
-  const reserved = new Set(["settings", "explore", "search", "new", "workspaces", "login", "logout", "register", "verify", "forgot", "reset", "device", "oauth"]);
+  const reserved = new Set(["settings", "explore", "search", "new", "u", "pricing", "avatars", "workspaces", "login", "logout", "register", "verify", "forgot", "reset", "device", "oauth"]);
   const inRepo = repoPath != null && !reserved.has(repoPath[1]) && repoPath[2] !== "-";
   const away = inSettings || inAccount || inRepo;
   // The repository the menu is for: the one loaded if it is the one being
@@ -675,6 +676,12 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
         </SidebarGroup>
         {ws && (
           <SidebarGroup title="Across projects">
+            <SidebarLink to={`/${ws.slug}/-/agents`} icon={<Bot size={15} />}>
+              Agent fleet
+            </SidebarLink>
+            <SidebarLink to={`/${ws.slug}/-/memory`} icon={<Brain size={15} />}>
+              Memory
+            </SidebarLink>
             {roadmapIn("Workspace").map((item) => (
               <SidebarSoonLink
                 key={item.key}

@@ -92,6 +92,13 @@ request caught up and checked again before it may merge turns on **Require
 pull requests to be up to date before merging** in its settings; catching
 up is then a step of its own, before "ready".
 
+g1t also works out ahead of time whether each pull request still merges
+cleanly, every time it or `main` moves
+([how](/guides/pull-requests/#conflicts)). When one of an agent's pull
+requests is found to conflict, g1t does not wait for a merge to trip over
+it: the agent is sent to merge `main` in and resolve the conflicts, told
+which files conflict, and the checks run again on the result.
+
 The pull request's page shows which step it is at. If g1t cannot finish,
 because the checks still fail after two revisions, a review could not be
 written, or a conflict could not be resolved while bringing it up to date,

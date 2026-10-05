@@ -6,6 +6,7 @@ import { page } from "../../lib/meta";
 import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
 import { CheckBadge } from "../../components/checks";
 import { ChangeSize, PullIcon, StateTabs } from "../../components/work";
+import { AgentBadge, useActiveRuns } from "../../components/agents";
 import { work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
@@ -26,6 +27,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 export default function Pulls({ loaderData, params }: Route.ComponentProps) {
   const { pulls, state } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
+  // Which pull requests an agent is working on this minute, and at what.
+  const working = useActiveRuns(params.owner, params.repo);
   return (
     <div>
       <StateTabs
@@ -67,6 +70,7 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
                           draft
                         </span>
                       )}
+                      <AgentBadge run={working.get(pull.number)} />
                     </span>
                     <span className="mt-0.5 block text-xs text-faint">
                       #{pull.number} opened <TimeAgo at={pull.createdAt} /> by{" "}

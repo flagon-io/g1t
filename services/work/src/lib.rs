@@ -4,13 +4,17 @@
 //! `g1t_contracts::work` for the methods and their arguments. It also
 //! consumes its queue of events from the bus.
 
+mod authored;
 mod checks;
 mod lifecycle;
+mod memory;
+mod mergeability;
 mod plans;
 mod messages;
 mod queue;
 mod reviews;
 mod rows;
+mod runs;
 mod settings;
 mod statuses;
 
@@ -1072,14 +1076,17 @@ impl Work {
         // Everything else at once: none of it depends on the rest, and each
         // is a round trip of its own.
         let standing = async {
-            let behind = self.is_behind(&repo.id, &pull).await?;
+            // Mergeability first: where g1t sees a pull request through, a
+            // conflict decides its next step.
+            let (merge, behind) =
+                try_join(self.mergeability(&pull), self.is_behind(&repo.id, &pull)).await?;
             let lifecycle = self
                 .assess(&pull, &issue, behind)
                 .await?
                 .map(|(lifecycle, _)| lifecycle);
-            Ok::<_, worker::Error>((behind, lifecycle))
+            Ok::<_, worker::Error>((behind, lifecycle, merge))
         };
-        let (((behind, lifecycle), (landing, stalled), comments), (checks, overlaps, review_pending)) =
+        let (((behind, lifecycle, (mergeable, conflicts)), (landing, stalled), comments), (checks, overlaps, review_pending)) =
             try_join(
                 try_join3(standing, self.landing_state(&pull.id), self.comments(&repo.id, pull.number)),
                 try_join3(
@@ -1100,6 +1107,9 @@ impl Work {
             stalled,
             messages: self.messages(&pull.id).await?,
             statuses: self.statuses(&repo.id, pull.head_commit.as_deref()).await?,
+            mergeable,
+            conflicts,
+            earlier_checks: self.earlier_checks(&pull.id).await?,
             issue,
             pull,
         }))
@@ -1341,6 +1351,22 @@ impl Work {
         }
         if let Some(missing) = self.approvals_gap(&settings, &pull).await? {
             return Ok(Outcome::fail(FailureCode::Conflict, missing));
+        }
+        // Known ahead of time to conflict: neither a merge nor the queue
+        // would get through, so say what has to be resolved now.
+        if let Some(files) = self.conflicting_files(&pull).await? {
+            let named = if files.is_empty() {
+                String::new()
+            } else {
+                format!(" in {}", files.join(", "))
+            };
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                format!(
+                    "This branch has conflicts with {}{named} that must be resolved first. Have the g1t agent resolve them, or merge {0} into it, fix them and push.",
+                    repo.default_branch
+                ),
+            ));
         }
 
         // A repository that merges through a queue: it joins the queue, and
@@ -1745,6 +1771,11 @@ impl Work {
         for moved in &pulls {
             self.land_if_requested(&moved.id).await?;
         }
+        // Whether each still merges cleanly, and, when a default branch
+        // moved, every open pull request into it.
+        let moved_ids: Vec<String> = pulls.iter().map(|pull| pull.id.clone()).collect();
+        self.after_push(repo_id, event.data["defaultBranch"].as_bool() == Some(true), &moved_ids)
+            .await;
         // A draft is announced when it is marked ready instead.
         for pull in pulls
             .into_iter()
@@ -1825,6 +1856,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "close_pull" => reply(&work.close_pull(args(body)?).await?),
         "merge_pull" => reply(&work.merge_pull(args(body)?).await?),
         "list_active_pulls" => reply(&work.list_active_pulls(args(body)?).await?),
+        "by_author" => reply(&work.by_author(args(body)?).await?),
         "start_plan" => reply(&work.start_plan(args(body)?).await?),
         "report_plan" => reply(&work.report_plan(args(body)?).await?),
         "get_plan" => reply(&work.get_plan(args(body)?).await?),
@@ -1835,6 +1867,22 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "list_assigned_issues" => reply(&work.list_assigned_issues(args(body)?).await?),
         "append_session" => reply(&work.append_session(args(body)?).await?),
         "read_session" => reply(&work.read_session(args(body)?).await?),
+        // Agents at work, their sessions, and memory (runs.rs, memory.rs).
+        "open_run" => reply(&work.open_run(args(body)?).await?),
+        "report_run" => reply(&work.report_run(args(body)?).await?),
+        "stop_run" => reply(&work.stop_run(args(body)?).await?),
+        "list_runs" => reply(&work.list_runs(args(body)?).await?),
+        "get_run" => reply(&work.get_run(args(body)?).await?),
+        "list_sessions" => reply(&work.list_sessions(args(body)?).await?),
+        "get_session" => reply(&work.get_session(args(body)?).await?),
+        "list_memories" => reply(&work.list_memories(args(body)?).await?),
+        "add_memory" => reply(&work.add_memory(args(body)?).await?),
+        "update_memory" => reply(&work.update_memory(args(body)?).await?),
+        "delete_memory" => reply(&work.delete_memory(args(body)?).await?),
+        "recall" => reply(&work.recall(args(body)?).await?),
+        "memory_context" => reply(&work.memory_context(args(body)?).await?),
+        "start_mergecheck" => reply(&work.start_mergecheck(args(body)?).await?),
+        "report_mergecheck" => reply(&work.report_mergecheck(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }
@@ -1844,6 +1892,11 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
 async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()> {
     let work = service(&env)?;
     for message in batch.messages()? {
+        // A workspace renamed: its agent runs and memory move to the slug it has now.
+        if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), memory::RENAMED).await? {
+            message.ack();
+            continue;
+        }
         work.on_event(message.body()).await?;
         message.ack();
     }

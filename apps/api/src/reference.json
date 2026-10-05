@@ -979,7 +979,7 @@
 			],
 			"statuses": []
 		},
-		"notes": "| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `checks` | The latest run of the acceptance checks against its head, with each command's output. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request the g1t agent is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n| `statuses` | Commit statuses reported for its head, such as workflow runs. |\n\nChecks are started by g1t, not through the API. They run when a pull request becomes ready for review and again when its head moves."
+		"notes": "| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `checks` | The latest run of the acceptance checks against its head, with each command's output. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request the g1t agent is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n| `statuses` | Commit statuses reported for its head, such as workflow runs. |\n| `mergeable` | Whether it merges cleanly into its target: `clean`, `conflicting`, `checking` (being worked out) or `unknown`. Worked out ahead of time whenever it or its target moves. |\n| `conflicts` | When `mergeable` is `conflicting`, the files that conflict. Resolve them by merging the target in, or have the g1t agent do it. |\n| `earlierChecks` | Earlier runs of the acceptance checks, newest first, without their output. |\n\nChecks are started by g1t, not through the API. They run when a pull request becomes ready for review and again when its head moves."
 	},
 	"get_pull_request_changes": {
 		"response": {
@@ -2560,5 +2560,69 @@
 			"created": true
 		},
 		"notes": "`created` is false when the ticket was imported before; `number` is then that issue."
+	},
+	"remember": {
+		"request": {
+			"text": "The tests need TZ=UTC or the date tests fail.",
+			"scope": "project",
+			"kind": "gotcha",
+			"from_number": 14
+		},
+		"response": {
+			"id": "mem_01m43v8q2w3e4r5t6y7u8i9o0p",
+			"scope": "project",
+			"workspace": "syntaqx",
+			"repo": {
+				"namespace": "syntaqx",
+				"name": "hello"
+			},
+			"text": "The tests need TZ=UTC or the date tests fail.",
+			"kind": "gotcha",
+			"source": {
+				"kind": "run",
+				"runId": "arn_01m43v2c1p9k8d7e6f5a4b3c2d",
+				"repo": {
+					"namespace": "syntaqx",
+					"name": "hello"
+				},
+				"number": 14
+			},
+			"createdBy": "g1t-agent",
+			"pinned": false,
+			"createdAt": "2026-10-01T18:40:12.000Z",
+			"updatedAt": "2026-10-01T18:40:12.000Z",
+			"lastUsedAt": null
+		},
+		"notes": "Text that looks like a key, a token or a password is refused with `invalid`: memory is read by every agent in the workspace. Saving the same text again in the same scope returns the memory already kept."
+	},
+	"recall": {
+		"query": {
+			"q": "pnpm"
+		},
+		"response": {
+			"project": [],
+			"workspace": [
+				{
+					"id": "mem_01m43t0a1s2d3f4g5h6j7k8l9z",
+					"scope": "workspace",
+					"workspace": "syntaqx",
+					"repo": null,
+					"text": "We use pnpm everywhere, never npm or yarn.",
+					"kind": "convention",
+					"source": {
+						"kind": "person",
+						"runId": null,
+						"repo": null,
+						"number": null
+					},
+					"createdBy": "syntaqx",
+					"pinned": true,
+					"createdAt": "2026-10-01T18:40:12.000Z",
+					"updatedAt": "2026-10-01T18:40:12.000Z",
+					"lastUsedAt": null
+				}
+			]
+		},
+		"notes": "Members of the workspace only. Each memory returned is marked used, which keeps it near the front of what agents are given."
 	}
 }

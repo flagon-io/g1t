@@ -14,9 +14,13 @@
 
 import { parse as parseYaml } from "yaml";
 
+import { renameStatements } from "./rename";
+
 import {
+  currentWorkspaceSlug,
   fail,
   identityClient,
+  staleSlugs,
   newId,
   ok,
   reposClient,
@@ -481,6 +485,12 @@ class Projects {
   }
 
   async onEvent(event: G1tEvent): Promise<void> {
+    if (event.type === "workspace.renamed") {
+      const current = await currentWorkspaceSlug(this.env.IDENTITY, event.data);
+      const statements = renameStatements(staleSlugs(event.data, current), current);
+      if (statements.length) await this.db.batch(statements.map(({ sql, params }) => this.db.prepare(sql).bind(...params)));
+      return;
+    }
     if (event.type === "git.push" && event.data.defaultBranch) {
       const rows = await this.db.prepare("SELECT * FROM projects WHERE repo_id = ?").bind(event.data.repoId).all<Row>();
       for (const row of rows.results) await this.syncFile(row, event.data.after);

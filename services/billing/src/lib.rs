@@ -23,6 +23,7 @@ mod webhooks;
 mod features;
 mod keeper;
 mod limits;
+mod rename;
 mod stripe;
 
 use g1t_contracts::billing::*;
@@ -33,7 +34,7 @@ use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use worker::wasm_bindgen::JsValue;
-use worker::{Context, D1Database, Env, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
+use worker::{Context, D1Database, Env, MessageBatch, MessageExt, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
 
 use stripe::Stripe;
 
@@ -981,6 +982,19 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
             worker::console_error!("checking costs against Cloudflare failed: {error}");
         }
     }
+}
+
+/// Events from the bus, on billing's own queue: only a workspace's rename
+/// matters here (see `rename`).
+#[event(queue)]
+async fn queue(batch: MessageBatch<g1t_contracts::events::Event>, env: Env, _ctx: Context) -> Result<()> {
+    let billing = Billing::from_env(&env)?;
+    let identity = env.service("IDENTITY").ok();
+    for message in batch.messages()? {
+        billing.on_event(identity.as_ref(), message.body()).await?;
+        message.ack();
+    }
+    Ok(())
 }
 
 #[event(fetch)]

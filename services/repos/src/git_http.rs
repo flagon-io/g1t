@@ -125,6 +125,40 @@ pub fn refuse<T>(outcome: Outcome<T>) -> Result<Response> {
     Ok(response)
 }
 
+/// `url` with its first path segment, the workspace, replaced by `slug`.
+pub fn with_namespace(url: &Url, slug: &str) -> Option<String> {
+    let rest = url.path().strip_prefix('/')?.split_once('/')?.1;
+    let mut moved = url.clone();
+    moved.set_path(&format!("/{slug}/{rest}"));
+    Some(moved.to_string())
+}
+
+/// Where a git request for a renamed workspace's old address should go
+/// now, if its first segment is an old slug that still redirects.
+pub async fn renamed(url: &Url, identity: &Fetcher) -> Result<Option<String>> {
+    let Some(old) = url.path().strip_prefix('/').and_then(|path| path.split('/').next()) else {
+        return Ok(None);
+    };
+    let current: Option<String> = g1t_kit::call(
+        identity,
+        "resolve_slug",
+        &g1t_contracts::identity::SlugArgs {
+            slug: old.to_owned(),
+        },
+    )
+    .await?;
+    Ok(current.and_then(|slug| with_namespace(url, &slug)))
+}
+
+/// A permanent redirect: 301 for git's first request for refs, which it
+/// follows and then uses the new address for the rest; 308 for the
+/// others, so a POST stays a POST.
+pub fn moved(location: &str, get: bool) -> Result<Response> {
+    let mut response = Response::empty()?.with_status(if get { 301 } else { 308 });
+    response.headers_mut().set("location", location)?;
+    Ok(response)
+}
+
 const ZERO_ID: &str = "0000000000000000000000000000000000000000";
 const HEADS: &str = "refs/heads/";
 const TAGS: &str = "refs/tags/";
@@ -316,7 +350,21 @@ pub async fn forward(
 
 #[cfg(test)]
 mod tests {
-    use super::{Pushed, ZERO_ID, pushed_branches, refusal};
+    use super::{Pushed, ZERO_ID, pushed_branches, refusal, with_namespace};
+
+    #[test]
+    fn a_renamed_workspace_keeps_the_rest_of_the_address() {
+        let url = worker::Url::parse(
+            "https://g1t.sh/acme/rocket.git/info/refs?service=git-upload-pack",
+        )
+        .unwrap();
+        assert_eq!(
+            with_namespace(&url, "acme-inc").as_deref(),
+            Some("https://g1t.sh/acme-inc/rocket.git/info/refs?service=git-upload-pack")
+        );
+        let bare = worker::Url::parse("https://g1t.sh/acme").unwrap();
+        assert_eq!(with_namespace(&bare, "acme-inc"), None);
+    }
 
     fn pkt(payload: &str) -> Vec<u8> {
         format!("{:04x}{payload}", payload.len() + 4).into_bytes()

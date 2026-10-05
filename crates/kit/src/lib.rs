@@ -190,3 +190,75 @@ pub mod js {
         call_key(target, &method.into(), args).await
     }
 }
+
+/// Moving a service's rows when a workspace is renamed.
+pub mod rename {
+    use std::collections::HashMap;
+
+    use g1t_contracts::events::{Event, WorkspaceRenamed};
+    use g1t_contracts::identity::UsernamesArgs;
+    use worker::wasm_bindgen::JsValue;
+    use worker::{D1Database, Env, Result};
+
+    /// Handles `workspace.renamed` with `statements`, and says whether
+    /// `event` was one. Each statement uses `?1` for the workspace's current
+    /// slug (asked of identity by id, so renames delivered twice or out of
+    /// order converge) and `?2` for a slug its rows may still be under; the
+    /// statements run in one batch per such slug. A statement that matches
+    /// nothing changes nothing, so running them again is harmless.
+    pub async fn on_event(env: &Env, db: &D1Database, event: &Event, statements: &[&str]) -> Result<bool> {
+        if event.kind != "workspace.renamed" {
+            return Ok(false);
+        }
+        let Ok(renamed) = serde_json::from_value::<WorkspaceRenamed>(event.data.clone()) else {
+            worker::console_error!("workspace.renamed {} could not be read", event.id);
+            return Ok(true);
+        };
+        let names: HashMap<String, String> = crate::call(
+            &env.service("IDENTITY")?,
+            "usernames",
+            &UsernamesArgs {
+                ids: vec![renamed.workspace_id.clone()],
+            },
+        )
+        .await?;
+        let current = names
+            .get(&renamed.workspace_id)
+            .cloned()
+            .unwrap_or_else(|| renamed.to.clone());
+        for stale in renamed.stale_slugs(&current) {
+            let values: [JsValue; 2] = [current.as_str().into(), stale.as_str().into()];
+            let mut batch = Vec::with_capacity(statements.len());
+            for sql in statements {
+                batch.push(db.prepare(*sql).bind(&values[..parameters(sql)])?);
+            }
+            db.batch(batch).await?;
+        }
+        Ok(true)
+    }
+
+    /// How many values a statement takes: its highest `?N`.
+    pub fn parameters(sql: &str) -> usize {
+        sql.split('?')
+            .skip(1)
+            .filter_map(|rest| {
+                let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+                digits.parse().ok()
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::parameters;
+
+        #[test]
+        fn counts_numbered_parameters() {
+            assert_eq!(parameters("UPDATE t SET a = ?1 WHERE a = ?2"), 2);
+            assert_eq!(parameters("DELETE FROM t WHERE a = ?2"), 2);
+            assert_eq!(parameters("UPDATE t SET a = ?1"), 1);
+            assert_eq!(parameters("DELETE FROM t"), 0);
+        }
+    }
+}

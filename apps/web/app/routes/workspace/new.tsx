@@ -55,7 +55,7 @@ export default function NewWorkspace({
       <Form method="post" className="mt-8 space-y-4">
         <Field
           label="Name in URLs"
-          hint="Lowercase letters, digits and single hyphens. It cannot be changed later."
+          hint="Lowercase letters, digits and single hyphens. An owner can change it later; old addresses redirect for 90 days."
         >
           <div className="flex items-center gap-2 font-mono text-sm">
             <span className="text-muted">g1t.sh/</span>

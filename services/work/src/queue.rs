@@ -605,6 +605,7 @@ impl Work {
                     crate::statuses::list(failed)
                 )),
                 conflict_with: None,
+                conflicts: Vec::new(),
             };
             self.eject(&row, &report).await?;
         }
@@ -637,9 +638,21 @@ impl Work {
                 ahead.iter().map(|n| format!("#{n}")).collect::<Vec<_>>().join(", ")
             )
         };
+        // Named in backticks, so the conversation can link each to the diff.
+        let files = crate::mergeability::tidy(report.conflicts.clone())
+            .iter()
+            .map(|path| format!("`{path}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
         let why = match (&report.error, report.conflict_with) {
+            (_, Some(other)) if other != row.number && !files.is_empty() => format!(
+                "Its change conflicts with #{other}, which is ahead of it in the merge queue, in {files}. Bring it up to date with the default branch once #{other} lands, and merge it again."
+            ),
             (_, Some(other)) if other != row.number => format!(
                 "Its change conflicts with #{other}, which is ahead of it in the merge queue. Bring it up to date with the default branch once #{other} lands, and merge it again."
+            ),
+            (Some(_), None) if !files.is_empty() => format!(
+                "Its change conflicts with the default branch in {files}. Bring it up to date with the default branch, and merge it again."
             ),
             (Some(error), _) if error.starts_with("the workflow ") => {
                 format!("{} when it was combined with {state}.", error.replacen("the workflow", "The workflow", 1).trim_end_matches(" on it"))

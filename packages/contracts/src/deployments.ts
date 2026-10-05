@@ -32,6 +32,12 @@ export type DeploySettings = {
   idleDays: number;
   /** Where production is served. */
   productionUrl: string;
+  /**
+   * The project's own domain for production, once it is active: the first
+   * custom domain added that serves the app rather than redirecting. Null
+   * until one is.
+   */
+  primaryDomain: string | null;
 };
 
 export type DeployKind = "preview" | "production";
@@ -105,6 +111,63 @@ export type DeployUsage = {
   countedAt: string | null;
 };
 
+/** Where custom domains point: a hostname on g1t.page that routes to the dispatcher. */
+export const CUSTOM_DOMAIN_TARGET = "domains.g1t.page";
+
+/**
+ * A custom domain's state: `pending` until its DNS points at g1t (or its
+ * ownership record is found), `verifying` while its certificate is
+ * issued, then `active`. `failed` says why in `error`; `removing` is on
+ * its way out.
+ */
+export type DomainStatus = "pending" | "verifying" | "active" | "failed" | "removing";
+
+/** A DNS record the domain's owner adds at their DNS provider. */
+export type DomainRecord = {
+  /** `ALIAS` stands for a flattened CNAME at the apex, whatever the provider calls it. */
+  type: "CNAME" | "TXT" | "ALIAS";
+  /** The record's full name. */
+  name: string;
+  value: string;
+  /** What it is for, in a few words. */
+  purpose: string;
+};
+
+/** A hostname of the project's own, serving its production. */
+export type Domain = {
+  id: string;
+  hostname: string;
+  /** What it serves: `production`. */
+  target: "production";
+  status: DomainStatus;
+  /** Cloudflare's state for its certificate, as given. */
+  sslStatus: string | null;
+  /** Whether it is a registrable domain itself (`example.com`), which needs a flattened CNAME. */
+  apex: boolean;
+  /** Every record to add: where traffic goes, then any Cloudflare asks for. */
+  records: DomainRecord[];
+  /** A hostname this one redirects to (308, path and query kept), for a www/apex pair. */
+  redirectTo: string | null;
+  /** Why it is not active yet, or failed. */
+  error: string | null;
+  createdBy: string;
+  createdAt: string;
+  verifiedAt: string | null;
+};
+
+export type ProjectDomains = {
+  domains: Domain[];
+  /** The hostname every domain points at. */
+  target: string;
+  /** False until custom domains are switched on for g1t.page; `notice` says so. */
+  available: boolean;
+  notice: string | null;
+  /** Custom domains the Deployments plan includes, across the workspace; more are charged by the month. */
+  included: number;
+  /** The workspace's custom domains now. */
+  used: number;
+};
+
 export interface DeploymentsApi {
   /** Members of the workspace only. */
   settings(project: ProjectRef, viewer: Viewer): Promise<Result<DeploySettings>>;
@@ -129,4 +192,15 @@ export interface DeploymentsApi {
   overview(workspace: string, viewer: Viewer): Promise<Result<ProjectDeploys[]>>;
   /** What the workspace's apps used this month. Members only. */
   usage(workspace: string, viewer: Viewer): Promise<Result<DeployUsage>>;
+  /** The project's custom domains. Members only. */
+  domains(project: ProjectRef, viewer: Viewer): Promise<Result<ProjectDomains>>;
+  /**
+   * Adds a custom domain for production. With `twin`, its www or apex twin
+   * is added too, redirecting to it. Members only; needs the Deployments plan.
+   */
+  addDomain(actor: User, project: ProjectRef, hostname: string, options?: { twin?: boolean }): Promise<Result<Domain[]>>;
+  /** Removes a custom domain, and any domain redirecting to it. Members only. */
+  removeDomain(actor: User, project: ProjectRef, id: string): Promise<Result<true>>;
+  /** Asks Cloudflare to check the domain again now. Members only. */
+  refreshDomain(actor: User, project: ProjectRef, id: string): Promise<Result<Domain>>;
 }

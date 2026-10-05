@@ -22,5 +22,9 @@
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "EVENTS", "service": "g1t-events" }
 	],
+	// A workspace renamed moves its repositories to the new slug.
+	"queues": {
+		"consumers": [{ "queue": "g1t-events-repos", "max_batch_size": 20, "max_batch_timeout": 1 }]
+	},
 	"observability": { "enabled": true }
 }

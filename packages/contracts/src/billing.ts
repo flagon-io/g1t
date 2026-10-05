@@ -295,7 +295,7 @@ export type Limit = {
 
 /** One metered unit: what it costs g1t and what it is sold at; the price follows the cost. */
 export type Price = {
-  meter: "sandbox_second" | "build_second" | "app_requests" | "app_cpu" | "app_month" | string;
+  meter: "sandbox_second" | "build_second" | "app_requests" | "app_cpu" | "app_month" | "custom_domain_month" | string;
   title: string;
   unit: string;
   costMicros: number;
@@ -346,6 +346,9 @@ export const DEPLOYMENTS_ALLOWANCE = {
   microsPerMillionCpuMs: 20_000,
   /** One second of a build's sandbox; builds are charged, not included. */
   microsPerBuildSecond: 21,
+  /** Custom domains across the workspace, and what each one past that costs g1t a month. */
+  customDomains: 3,
+  microsPerDomainMonth: 100_000,
 } as const;
 
 export type FeaturePlan = {

@@ -147,7 +147,8 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         </div>
         <p className="mt-1 text-sm text-muted">
           Includes {DEPLOYMENTS_ALLOWANCE.apps} apps up at once, {(DEPLOYMENTS_ALLOWANCE.requests / 1e6).toLocaleString()}{" "}
-          million requests and {(DEPLOYMENTS_ALLOWANCE.cpuMs / 1e6).toLocaleString()} million CPU milliseconds a month;
+          million requests, {(DEPLOYMENTS_ALLOWANCE.cpuMs / 1e6).toLocaleString()} million CPU milliseconds and{" "}
+          {DEPLOYMENTS_ALLOWANCE.customDomains} custom domains a month;
           builds, and usage past that, at the prices above.
         </p>
       </section>

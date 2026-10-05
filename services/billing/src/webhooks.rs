@@ -281,7 +281,11 @@ impl Billing {
             }
             "invoice.payment_failed" => match (object["subscription"].as_str(), object["metadata"]["g1t_workspace"].as_str()) {
                 (Some(subscription), _) => self.settle_subscription(subscription).await?,
-                (None, Some(workspace)) => {
+                (None, Some(tagged)) => {
+                    // The invoice's own row names the workspace as it is
+                    // now; the metadata keeps the slug it was sent under.
+                    let workspace = self.workspace_of_invoice(&text("id")).await?.unwrap_or_else(|| tagged.to_owned());
+                    let workspace = workspace.as_str();
                     self.mark_declined(workspace, "the card was declined for an invoice").await?;
                     format!("{workspace}: invoice payment failed; work stopped")
                 }
@@ -400,6 +404,21 @@ impl Billing {
             .db
             .prepare("SELECT workspace FROM accounts WHERE customer_id = ?")
             .bind(&[customer.into()])?
+            .first::<Row>(None)
+            .await?
+            .map(|row| row.workspace))
+    }
+
+    /// The workspace a workspace invoice was sent to, under its slug now.
+    async fn workspace_of_invoice(&self, invoice_id: &str) -> Result<Option<String>> {
+        #[derive(Deserialize)]
+        struct Row {
+            workspace: String,
+        }
+        Ok(self
+            .db
+            .prepare("SELECT workspace FROM workspace_invoices WHERE invoice_id = ?")
+            .bind(&[invoice_id.into()])?
             .first::<Row>(None)
             .await?
             .map(|row| row.workspace))

@@ -46,7 +46,12 @@ export const SECTIONS: Section[] = [
   },
   {
     key: "Agents",
-    tabs: soon("Agents"),
+    tabs: [
+      { label: "At work", path: "agents" },
+      { label: "Sessions", path: "sessions" },
+      { label: "Memory", path: "memory", members: true },
+      ...soon("Agents"),
+    ],
   },
   {
     key: "Deployments",

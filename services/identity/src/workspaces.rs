@@ -116,6 +116,8 @@ impl Identity {
                 .get_workspace(SlugArgs { slug: slug.clone() })
                 .await?
                 .is_some()
+            // A renamed workspace's old slug stays reserved for it a while.
+            || self.slug_held(&slug).await?
         {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,

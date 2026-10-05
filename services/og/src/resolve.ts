@@ -33,6 +33,19 @@ export type Card =
       icon?: string;
     }
   | {
+      /** A person's profile, at `/u/<username>`. */
+      kind: "person";
+      username: string;
+      name: string | null;
+      bio: string | null;
+      /** Over public repositories only. */
+      pullsMerged: number;
+      pullsOpen: number;
+      issues: number;
+      avatar?: string | null;
+      icon?: string;
+    }
+  | {
       kind: "project";
       owner: string;
       repo: string;
@@ -66,9 +79,9 @@ export const BRAND: Card = { kind: "brand" };
 
 /** The services a card is looked up in: only the calls it needs. */
 export type Sources = {
-  identity: Pick<IdentityApi, "getWorkspace">;
+  identity: Pick<IdentityApi, "getWorkspace" | "profile">;
   repos: Pick<ReposApi, "get">;
-  work: Pick<WorkApi, "counts" | "getIssue" | "getPull">;
+  work: Pick<WorkApi, "counts" | "getIssue" | "getPull" | "byAuthor">;
   projects: Pick<ProjectsApi, "get" | "list">;
 };
 
@@ -161,9 +174,28 @@ export async function resolve(path: string, sources: Sources): Promise<Card> {
   }
 }
 
-async function lookUp(parts: string[], { identity, repos, work, projects }: Sources): Promise<Card | null> {
+async function lookUp(parts: string[], sources: Sources): Promise<Card | null> {
+  const { identity, repos, work, projects } = sources;
   const [owner, repo, section, item] = parts;
   if (owner === undefined) return PAGES[""];
+  // A person, under `u`. Counted with no viewer: public repositories only.
+  if (owner.toLowerCase() === "u") {
+    if (repo === undefined || parts.length !== 2 || !NAME.test(repo)) return null;
+    const profile = await identity.profile(repo.toLowerCase());
+    if (!profile) return null;
+    const authored = await work.byAuthor(profile.username, null, { limit: 1 }).catch(() => null);
+    const counts = authored?.ok ? authored.value.counts : null;
+    return {
+      kind: "person",
+      username: profile.username,
+      name: profile.name,
+      bio: profile.bio,
+      pullsMerged: counts?.pullsMerged ?? 0,
+      pullsOpen: counts?.pullsOpen ?? 0,
+      issues: counts?.issues ?? 0,
+      avatar: profile.avatar,
+    };
+  }
   if (RESERVED.has(owner.toLowerCase())) return parts.length === 1 ? (PAGES[owner.toLowerCase()] ?? null) : null;
   if (!NAME.test(owner)) return null;
 

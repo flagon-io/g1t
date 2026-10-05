@@ -37,6 +37,14 @@ export type EventPayloads = {
   /** A merge was asked for while the pull request was behind; it has to catch up first. */
   "pull.merge_requested": { pullId: string; repoId: string; number: number; issue?: number };
   "pull.closed": { pullId: string; repoId: string; number: number; issue?: number };
+  /**
+   * The pull request's head or its target moved and the files both changed
+   * overlap: a sandbox should find out whether it still merges cleanly.
+   * `commit` is its head.
+   */
+  "pull.mergecheck": { pullId: string; repoId: string; number: number; issue?: number; commit: string };
+  /** Whether the pull request merges cleanly was settled. */
+  "pull.mergeability": { pullId: string; repoId: string; number: number; issue?: number };
   /** Another agent asked the agent on a pull request, which was not at work, a question or handed it work. */
   "agent.asked": { pullId: string; repoId: string; number: number; issue?: number };
   "pull.merged": { pullId: string; repoId: string; number: number; issue?: number; commit: string };
@@ -68,6 +76,13 @@ export type EventPayloads = {
     verdict?: Verdict;
   };
   "session.appended": { pullId: string; repoId: string; number: number; count: number };
+  /**
+   * A workspace's slug changed from `from` to `to`. Services that store a
+   * slug move their rows to the workspace's *current* slug (see
+   * `currentWorkspaceSlug`), so a repeated or late delivery after a second
+   * rename still lands in the right place.
+   */
+  "workspace.renamed": { workspaceId: string; from: string; to: string };
 };
 
 export type EventType = keyof EventPayloads;

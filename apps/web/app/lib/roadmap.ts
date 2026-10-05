@@ -120,34 +120,8 @@ export const ROADMAP: RoadmapItem[] = [
   },
 
   // --- Agents -------------------------------------------------------------
-  {
-    key: "agents",
-    title: "At work",
-    section: "Agents",
-    summary: "Every agent at work on this project now, and a way to steer it.",
-    why: "Agents are the project's busiest contributors. See each one live: what issue it holds, what it is doing this minute, what it has spent, and send it a word mid-run.",
-    plans: [
-      "Live view of each running agent, with its current step",
-      "Steer, pause or stop a run, and hand it to a person",
-      "What each run has cost so far",
-      "Your own agents and g1t's side by side",
-    ],
-    today: { label: "Pull requests", path: "pulls" },
-  },
-  {
-    key: "sessions",
-    title: "Sessions",
-    section: "Agents",
-    summary: "Every agent session that changed this project, searchable.",
-    why: "When an agent writes a line, its reasoning is worth keeping. Every session is kept, searchable, and linked from the lines it wrote, so why-blame answers why the code is the way it is.",
-    plans: [
-      "Every session, with its prompt, steps, tools and result",
-      "Search by file, issue, agent or words",
-      "Why-blame: from any line to the session that wrote it",
-      "Sessions as context for the next agent on the same code",
-    ],
-    today: { label: "Commits", path: "commits" },
-  },
+  // At work, Sessions and Memory are built (see project-nav.ts), and so is
+  // the workspace's Agent fleet.
   {
     key: "playbooks",
     title: "Playbooks",
@@ -160,29 +134,7 @@ export const ROADMAP: RoadmapItem[] = [
       "Paths agents may not touch without a person",
       "Learned from reviews: what people corrected becomes a rule",
     ],
-    today: { label: "Settings", path: "settings" },
-  },
-  {
-    key: "memory",
-    title: "Memory",
-    section: "Agents",
-    summary: "What agents have learned about this project, kept and curated.",
-    why: "Agents that forget repeat mistakes. g1t keeps what they learn about the code, its quirks and its people, and lets you see, edit and delete it.",
-    plans: ["Facts agents learned, with where they learned them", "Edit or remove anything", "Shared across every agent on the project"],
-  },
-
-  {
-    key: "fleet",
-    title: "Agent fleet",
-    section: "Workspace",
-    summary: "Every agent at work across the workspace, and what each is costing.",
-    why: "Agents work on many projects at once. The fleet shows them all: what each holds, how far along it is, and where people are needed.",
-    plans: [
-      "Every running agent across projects, live",
-      "Queue of work waiting for an agent, by priority",
-      "Spend by agent, project and kind of work",
-      "Pause or redirect agents across the workspace",
-    ],
+    today: { label: "Memory", path: "memory" },
   },
 
   // --- Deployments ----------------------------------------------------------

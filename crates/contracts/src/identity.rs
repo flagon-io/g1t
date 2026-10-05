@@ -295,6 +295,34 @@ pub struct UpdateWorkspaceArgs {
     pub description: String,
 }
 
+/// `rename_workspace`: owners only. Changes the workspace's slug, the first
+/// segment of its URLs, to `new_slug`; the display name is untouched. The
+/// old slug redirects to the new one, and is held for this workspace, for
+/// [`SLUG_HOLD_DAYS`]. Publishes `workspace.renamed`. Returns
+/// `Outcome<Workspace>`.
+///
+/// `check_workspace_rename` takes the same arguments and answers whether
+/// the rename would be allowed, changing nothing. Returns `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameWorkspaceArgs {
+    pub actor: User,
+    pub slug: String,
+    pub new_slug: String,
+}
+
+/// How long a workspace's old slug keeps redirecting to it, and stays
+/// reserved for it, after a rename.
+pub const SLUG_HOLD_DAYS: u64 = 90;
+
+/// How long a workspace must wait between renames.
+pub const RENAME_COOLDOWN_HOURS: u64 = 24;
+
+// `resolve_slug` takes `SlugArgs` and returns `Option<String>`: the
+// workspace's current slug when `slug` is one it was renamed from within
+// the last `SLUG_HOLD_DAYS`, and null otherwise (including for a slug that
+// is in use).
+
 /// `set_workspace_avatar`: owners only. `image` is the file's bytes in
 /// base64: PNG, JPEG, WebP or GIF, at most `MAX_AVATAR_BYTES`. Null removes
 /// the icon. Returns `Outcome<Workspace>`.
@@ -512,4 +540,78 @@ pub struct AdminMember {
     pub role: crate::Role,
     /// When they joined the workspace. RFC 3339.
     pub joined: String,
+}
+
+// --- Profiles ------------------------------------------------------------
+//
+// A person's public page at `g1t.sh/u/<username>`. Everything in a
+// `Profile` is shown to anyone, signed in or not; an email address never is.
+
+/// The most characters each profile field takes.
+pub const MAX_PROFILE_NAME: usize = 80;
+pub const MAX_PROFILE_BIO: usize = 160;
+pub const MAX_PROFILE_LOCATION: usize = 80;
+pub const MAX_PROFILE_WEBSITE: usize = 200;
+pub const MAX_PROFILE_PRONOUNS: usize = 40;
+
+/// What anyone may see about a person.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Profile {
+    pub username: String,
+    /// The name they go by, if they gave one.
+    pub name: Option<String>,
+    /// One or two lines about them, at most [`MAX_PROFILE_BIO`] characters.
+    pub bio: Option<String>,
+    pub location: Option<String>,
+    /// An `https://` address.
+    pub website: Option<String>,
+    pub pronouns: Option<String>,
+    /// The uploaded avatar's hash, served at `/avatars/<avatar>`.
+    pub avatar: Option<String>,
+    /// When the account was made. RFC 3339.
+    pub created_at: String,
+}
+
+// `profile` takes `UsernameArgs` and returns `Option<Profile>`: null for
+// an account that does not exist.
+
+/// `update_profile`: a person changes their own profile. Every field is
+/// replaced; an empty one is cleared. Returns `Outcome<Profile>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateProfileArgs {
+    pub actor: User,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub bio: String,
+    #[serde(default)]
+    pub location: String,
+    #[serde(default)]
+    pub website: String,
+    #[serde(default)]
+    pub pronouns: String,
+}
+
+/// `profile_workspaces`: the workspaces shown on a person's profile, as
+/// `viewer` may see them. A membership is shown only when it is no secret
+/// from the viewer: a workspace the viewer belongs to as well, or one of
+/// `public`, the workspaces the caller found the person has made a public
+/// project in (whose page shows that already). Returns
+/// `Vec<ProfileWorkspace>`; empty for an account that does not exist.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProfileWorkspacesArgs {
+    pub username: String,
+    pub viewer: crate::Viewer,
+    #[serde(default)]
+    pub public: Vec<String>,
+}
+
+/// A workspace on a person's profile.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ProfileWorkspace {
+    pub slug: String,
+    pub name: String,
+    pub avatar: Option<String>,
 }
