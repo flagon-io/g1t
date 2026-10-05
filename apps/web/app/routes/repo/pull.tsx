@@ -15,7 +15,9 @@ import {
   Radar,
   Sparkles,
   MessageSquare,
+  ArrowUpRight,
   MessagesSquare,
+  Rocket,
   Network,
   StickyNote,
   User,
@@ -24,7 +26,14 @@ import {
 import { useEffect, useState } from "react";
 import { Form, Link, redirect, useRevalidator } from "react-router";
 
-import { type Comparison, type SessionEntry, pullComparison } from "@g1t/contracts";
+import {
+  type Comparison,
+  type Deployment,
+  type LiveApp,
+  type SessionEntry,
+  type Viewer,
+  pullComparison,
+} from "@g1t/contracts";
 
 import type { Route } from "./+types/pull";
 import { DiffView } from "../../components/diff-view";
@@ -124,9 +133,38 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     canIgnoreChecks: !settings.ok || settings.value.allowIgnoringChecks,
     defaultBranch: repo.ok ? repo.value.defaultBranch : "main",
     affects: deps.ok ? deps.value.usedBy : [],
-    // This pull request's preview, if it is up: a stack builds on it.
-    preview: deployed?.ok ? (deployed.value.live.find((app) => app.kind === "preview" && app.number === number) ?? null) : null,
+    ...(await deploymentOf(deployed?.ok ? deployed.value : null, number, params.owner, deps.ok ? deps.value.usedBy : [], viewer)),
   };
+}
+
+/**
+ * Where this pull request is live: its preview (or its latest build, while
+ * one is going or after one failed), and the previews of the projects
+ * that use this one, built against it.
+ */
+async function deploymentOf(
+  list: { deployments: Deployment[]; live: LiveApp[] } | null,
+  number: number,
+  owner: string,
+  affects: { slug: string; name: string }[],
+  viewer: Viewer,
+) {
+  if (!list) return { preview: null, build: null, stacked: [] };
+  const preview = list.live.find((app) => app.kind === "preview" && app.number === number) ?? null;
+  const build = list.deployments.find((d) => d.kind === "preview" && d.number === number) ?? null;
+  const branch = preview?.branch ?? build?.branch ?? null;
+  const stacked = branch
+    ? (
+        await Promise.all(
+          affects.slice(0, 5).map(async (project) => {
+            const theirs = await deployments.list({ workspace: owner, slug: project.slug }, viewer);
+            const app = theirs.ok ? theirs.value.live.find((a) => a.kind === "preview" && a.branch === branch) : undefined;
+            return app ? { name: project.name, slug: project.slug, url: app.url } : null;
+          }),
+        )
+      ).filter((entry) => entry != null)
+    : [];
+  return { preview, build, stacked };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -337,6 +375,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     statuses = [],
     affects,
     preview,
+    build,
+    stacked,
     landing,
     stalled,
     requireUpToDate,
@@ -667,6 +707,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               </TimelineItem>
 
               <CommentList comments={comments} review={review} base={base} />
+
+              {(preview || build) && (
+                <DeploymentCard preview={preview} build={build} stacked={stacked} base={base} />
+              )}
 
               {pull.status === "draft" && (
                 <StatusBox>
@@ -1072,5 +1116,89 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
         </section>
       </aside>
     </div>
+  );
+}
+
+/** Where the pull request's change is live, as GitHub shows a deployment. */
+function DeploymentCard({
+  preview,
+  build,
+  stacked,
+  base,
+}: {
+  preview: LiveApp | null;
+  build: Deployment | null;
+  stacked: { name: string; slug: string; url: string }[];
+  base: string;
+}) {
+  const building = build?.status === "queued" || build?.status === "building";
+  const failed = build?.status === "failed";
+  return (
+    <section className="ml-12 overflow-hidden rounded-xl border border-line bg-surface">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+        <span
+          className={`flex size-8 shrink-0 items-center justify-center rounded-full ring-1 ${
+            failed ? "text-danger ring-danger/40" : building ? "text-warn ring-warn/40" : "text-accent ring-accent/40"
+          }`}
+        >
+          {building ? <Loader size={15} className="animate-spin" /> : <Rocket size={15} />}
+        </span>
+        <div className="min-w-0 grow">
+          <p className="text-sm font-medium">
+            {building
+              ? preview
+                ? "Deploying the latest push. The last preview is still live."
+                : "Deploying a preview"
+              : failed
+                ? "The preview failed to deploy"
+                : "This branch is live"}
+          </p>
+          {preview ? (
+            <a href={preview.url} className="mt-0.5 block truncate font-mono text-xs text-muted hover:text-accent">
+              {preview.url.replace(/^https?:[/][/]/, "")}
+            </a>
+          ) : (
+            build?.error && <p className="mt-0.5 truncate text-xs text-muted">{build.error}</p>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {build && (
+            <Link to={`${base}/deployments/${build.id}`} className="text-xs text-muted hover:text-fg">
+              {failed ? "See why" : "Build log"}
+            </Link>
+          )}
+          {preview && (
+            <a
+              href={preview.url}
+              className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-bg hover:opacity-90"
+            >
+              Visit preview
+              <ArrowUpRight size={13} />
+            </a>
+          )}
+        </div>
+      </div>
+      {preview && (
+        <p className="border-t border-line px-4 py-2 text-xs text-faint">
+          <span className="font-mono">{preview.commit.slice(0, 7)}</span> · deployed <TimeAgo at={preview.deployedAt} />
+          {preview.branch && ` · from ${preview.branch}`}
+        </p>
+      )}
+      {stacked.length > 0 && (
+        <div className="border-t border-line px-4 py-2.5">
+          <p className="text-xs text-muted">Built against this change:</p>
+          <ul className="mt-1.5 space-y-1">
+            {stacked.map((entry) => (
+              <li key={entry.slug} className="flex items-center gap-2 text-xs">
+                <span className="font-medium">{entry.name}</span>
+                <a href={entry.url} className="truncate font-mono text-muted hover:text-accent">
+                  {entry.url.replace(/^https?:[/][/]/, "")}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }

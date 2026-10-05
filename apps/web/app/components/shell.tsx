@@ -30,6 +30,17 @@ import {
   Users,
   Webhook,
   PlayCircle,
+  Activity,
+  Bot,
+  Kanban,
+  Package,
+  PackageCheck,
+  ScrollText,
+  Server,
+  ShieldCheck,
+  Siren,
+  Tag,
+  ToggleRight,
   Rocket,
   X,
 } from "lucide-react";
@@ -115,6 +126,26 @@ function SidebarLink({
         </span>
       )}
     </NavLink>
+  );
+}
+
+/**
+ * Something a project will have, shown where it will live so people can
+ * see where g1t is going. Not a link: nothing is behind it yet.
+ */
+function SidebarSoon({ icon, children, about }: { icon: ReactNode; children: ReactNode; about: string }) {
+  return (
+    <div
+      title={about}
+      aria-disabled="true"
+      className="flex h-8 cursor-default items-center gap-2.5 rounded-md px-2 text-[0.8125rem] text-faint"
+    >
+      <span className="shrink-0 opacity-70">{icon}</span>
+      <span className="grow truncate">{children}</span>
+      <span className="rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">
+        Soon
+      </span>
+    </div>
   );
 }
 
@@ -397,11 +428,60 @@ function RepoMenu({ repo, isPrivate, open }: { repo: MenuRepo; isPrivate: boolea
         <SidebarLink to={`${base}/queue`} icon={<Layers size={15} />}>
           Merge queue
         </SidebarLink>
+        <SidebarSoon icon={<Kanban size={15} />} about="Issues and pull requests on boards, by state, owner or outcome.">
+          Boards
+        </SidebarSoon>
+        <SidebarSoon icon={<BookOpen size={15} />} about="Pages about the project that agents keep current as the code changes.">
+          Wiki
+        </SidebarSoon>
+      </SidebarGroup>
+      <SidebarGroup title="Agents">
+        <SidebarSoon icon={<Bot size={15} />} about="Every agent at work on this project now: what it is doing, what it knows, and a way to steer it.">
+          Agents at work
+        </SidebarSoon>
+        <SidebarSoon icon={<ScrollText size={15} />} about="Every agent session that changed this project, searchable, with why-blame back to the lines it wrote.">
+          Sessions
+        </SidebarSoon>
       </SidebarGroup>
       <SidebarGroup title="Automate">
         <SidebarLink to={`${base}/actions`} icon={<PlayCircle size={15} />}>
           Actions
         </SidebarLink>
+      </SidebarGroup>
+      <SidebarGroup title="Secure">
+        <SidebarSoon icon={<ShieldCheck size={15} />} about="Secret scanning, vulnerable dependencies and code scanning, each finding fixed by an agent through the queue.">
+          Security and quality
+        </SidebarSoon>
+        <SidebarSoon icon={<PackageCheck size={15} />} about="Outdated packages updated by agents, tested and landed through the queue.">
+          Dependency updates
+        </SidebarSoon>
+      </SidebarGroup>
+      <SidebarGroup title="Deploy">
+        <SidebarSoon icon={<Server size={15} />} about="Staging and other environments, with required approvers and branch rules.">
+          Environments
+        </SidebarSoon>
+        <SidebarSoon icon={<Tag size={15} />} about="Tagged releases with notes written from what landed.">
+          Releases
+        </SidebarSoon>
+        <SidebarSoon icon={<Package size={15} />} about="npm, container and other packages published from the project.">
+          Packages
+        </SidebarSoon>
+        <SidebarSoon icon={<ToggleRight size={15} />} about="Turn features on per environment or per user, without a deploy.">
+          Feature flags
+        </SidebarSoon>
+      </SidebarGroup>
+      <SidebarGroup title="Operate">
+        <SidebarSoon icon={<Activity size={15} />} about="Requests, errors and CPU time of each deployment, and its logs.">
+          Logs and metrics
+        </SidebarSoon>
+        <SidebarSoon icon={<Siren size={15} />} about="Errors and incidents from the running app, each becoming an issue an agent can take.">
+          Errors and incidents
+        </SidebarSoon>
+      </SidebarGroup>
+      <SidebarGroup title="Insights">
+        <SidebarSoon icon={<BarChart3 size={15} />} about="How work flows: lead time, agents' share of changes, review time, what costs most.">
+          Insights
+        </SidebarSoon>
       </SidebarGroup>
       {repo.member && (
         <SidebarGroup title="Project">
