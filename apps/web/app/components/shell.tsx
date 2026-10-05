@@ -1,4 +1,5 @@
 import {
+  Activity,
   ArrowLeft,
   GanttChart,
   KanbanSquare,
@@ -496,6 +497,9 @@ function RepoMenu({ repo, isPrivate, open }: { repo: MenuRepo; isPrivate: boolea
             Deployments
           </SidebarLink>
         ) : null}
+        <SidebarSoonLink to={`${base}/soon/logs`} also={soonPaths(base, "Observability")} icon={<Activity size={15} />} about="Logs, errors, uptime and analytics of the project's deployed apps.">
+          Observability
+        </SidebarSoonLink>
         <SidebarSoonLink to={`${base}/soon/security`} also={soonPaths(base, "Security")} icon={<ShieldCheck size={15} />} about="Findings, secret scanning, dependency updates and code scanning, each fixed by an agent.">
           Security
         </SidebarSoonLink>

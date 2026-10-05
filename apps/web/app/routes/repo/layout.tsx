@@ -84,7 +84,7 @@ function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
   const current = (tab: PageTab) =>
     [tab.path, ...(tab.also ?? [])].some((path) => rest === path || rest.startsWith(`${path}/`));
   return (
-    <nav aria-label="Views" className="-mb-px flex gap-1 overflow-x-auto">
+    <nav aria-label="Views" className="-mb-px flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {tabs.map((tab) => (
         <NavLink
           key={tab.path}
@@ -100,10 +100,12 @@ function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
           }`}
         >
           {tab.label}
+          {/* Soon, said quietly: a dot, with the word for screen readers. */}
           {tab.soon && (
-            <span className="rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">
-              Soon
-            </span>
+            <>
+              <span aria-hidden="true" className="size-1.5 rounded-full bg-accent/70" />
+              <span className="sr-only">(soon)</span>
+            </>
           )}
         </NavLink>
       ))}

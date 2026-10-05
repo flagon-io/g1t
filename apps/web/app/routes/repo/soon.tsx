@@ -37,12 +37,15 @@ export function SoonView({ item, base }: { item: RoadmapItem; base: string }) {
   const inWorkspace = item.section === "Workspace";
   return (
     <div className="mx-auto max-w-3xl">
-      <p className="flex items-center gap-2 text-sm text-muted">
-        <span>{inWorkspace ? "Across projects" : item.section}</span>
-        <span className="text-line-strong">/</span>
-        <span className="text-fg">{item.title}</span>
-      </p>
-      <div className="mt-4 flex flex-wrap items-center gap-3">
+      {/* A project's tabs already say where this is; the workspace's need saying. */}
+      {inWorkspace && (
+        <p className="mb-4 flex items-center gap-2 text-sm text-muted">
+          <span>Across projects</span>
+          <span className="text-line-strong">/</span>
+          <span className="text-fg">{item.title}</span>
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-3xl font-semibold tracking-tight">{item.title}</h1>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/40 bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">
           <Sparkles size={12} />

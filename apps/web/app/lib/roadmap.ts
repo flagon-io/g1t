@@ -15,7 +15,7 @@ export type RoadmapItem = {
    * Where it lives: a project page whose tabs it joins, or the workspace,
    * for what spans projects (boards, the roadmap, packages, the fleet).
    */
-  section: "Code" | "Issues" | "Agents" | "Deployments" | "Security" | "Insights" | "Workspace";
+  section: "Code" | "Issues" | "Agents" | "Deployments" | "Observability" | "Security" | "Insights" | "Workspace";
   /** One line, for the menu's tooltip and the page's lead. */
   summary: string;
   /** Why it matters, in two or three sentences. */
@@ -273,8 +273,8 @@ export const ROADMAP: RoadmapItem[] = [
   // --- Observe ------------------------------------------------------------
   {
     key: "logs",
-    title: "Logs and metrics",
-    section: "Deployments",
+    title: "Logs",
+    section: "Observability",
     summary: "Requests, errors and CPU time of each deployment, and its logs.",
     why: "Every deployed app's logs and numbers, by deployment, so a regression points at the change that caused it.",
     plans: ["Live and searchable logs", "Requests, errors, latency and CPU by deployment", "Compare a preview with production"],
@@ -282,8 +282,8 @@ export const ROADMAP: RoadmapItem[] = [
   },
   {
     key: "errors",
-    title: "Errors and incidents",
-    section: "Deployments",
+    title: "Errors",
+    section: "Observability",
     summary: "Errors from the running app, each becoming an issue an agent can take.",
     why: "An error in production should become a fix, not a dashboard. Each new error is grouped, explained, and turned into an issue with the context an agent needs.",
     plans: ["Errors grouped with stack and request", "One click to an issue for an agent", "Incidents with a timeline and who was told"],
@@ -292,7 +292,7 @@ export const ROADMAP: RoadmapItem[] = [
   {
     key: "uptime",
     title: "Uptime",
-    section: "Deployments",
+    section: "Observability",
     summary: "Checks that the app answers, from around the world.",
     why: "Know the app is down before your users tell you, and who was told.",
     plans: ["Checks from many places", "Alerts by email and webhook", "A public status page"],
@@ -300,7 +300,7 @@ export const ROADMAP: RoadmapItem[] = [
   {
     key: "analytics",
     title: "Web analytics",
-    section: "Deployments",
+    section: "Observability",
     summary: "Who visits the deployed apps, without cookies.",
     why: "Visits, pages and referrers for each app, private by design, from Cloudflare's own analytics.",
     plans: ["Visits, pages, referrers and countries", "No cookies, no personal data", "Per deployment and per preview"],
