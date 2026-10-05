@@ -52,13 +52,17 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     throw redirect(`/${slug}/-/billing?added=1`);
   }
   const group: "day" | "project" = url.searchParams.get("group") === "project" ? "project" : "day";
-  const [account, statement, features, deployUsage, limit, invoices] = await Promise.all([
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+  const [account, statement, features, deployUsage, limit, invoices, thisMonth, allTime] = await Promise.all([
     billing.account(slug, viewer),
     billing.statement(slug, viewer, url.searchParams.get("month"), group),
     billing.features(slug, viewer),
     deployments.usage(slug, viewer),
     billing.limit(slug, viewer),
     billing.invoices(slug, viewer).catch(() => null),
+    billing.usage(slug, viewer, monthStart).catch(() => null),
+    billing.usage(slug, viewer, "1970-01-01T00:00:00.000Z").catch(() => null),
   ]);
   return {
     slug,
@@ -70,6 +74,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     deployUsage: deployUsage.ok ? deployUsage.value : null,
     limit: limit.ok ? limit.value : null,
     invoices: invoices?.ok ? invoices.value : [],
+    spent: {
+      month: thisMonth?.ok ? thisMonth.value.spentMicros : null,
+      total: allTime?.ok ? allTime.value.spentMicros : null,
+      added: allTime?.ok ? allTime.value.addedMicros : null,
+    },
     added: url.searchParams.has("added"),
     subscribed: url.searchParams.has("subscribed"),
   };
@@ -131,7 +140,7 @@ function dollars(micros: number, digits = 2): string {
 }
 
 export default function WorkspaceBilling({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, account, statement, group, features, deployUsage, limit, invoices, added, subscribed } = loaderData;
+  const { slug, role, account, statement, group, spent, features, deployUsage, limit, invoices, added, subscribed } = loaderData;
   const { status } = account;
   const paying = useNavigation().state === "submitting";
   const empty = account.balanceMicros <= 0;
@@ -267,10 +276,32 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
             empty && status.enabled ? "border-warn/40 bg-warn/5" : "border-line bg-surface"
           }`}
         >
-          <p className="text-xs text-muted">Balance</p>
-          <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight">
-            {dollars(account.balanceMicros)}
-          </p>
+          <dl className="flex flex-wrap items-end gap-x-10 gap-y-4">
+            <div>
+              <dt className="text-xs text-muted">Balance</dt>
+              <dd className="mt-1 text-3xl font-semibold tabular-nums tracking-tight">
+                {dollars(account.balanceMicros)}
+              </dd>
+            </div>
+            {spent.month !== null && (
+              <div>
+                <dt className="text-xs text-muted">Spent this month</dt>
+                <dd className="mt-1 text-xl font-medium tabular-nums">{dollars(spent.month)}</dd>
+              </div>
+            )}
+            {spent.total !== null && (
+              <div>
+                <dt className="text-xs text-muted">Spent in total</dt>
+                <dd className="mt-1 text-xl font-medium tabular-nums">{dollars(spent.total)}</dd>
+              </div>
+            )}
+            {spent.added !== null && spent.added !== 0 && (
+              <div>
+                <dt className="text-xs text-muted">Paid and credited in total</dt>
+                <dd className="mt-1 text-xl font-medium tabular-nums text-muted">{dollars(spent.added)}</dd>
+              </div>
+            )}
+          </dl>
           {added && (
             <p className="mt-2 text-sm text-accent">Payment received. Credit added.</p>
           )}

@@ -325,6 +325,10 @@ Pick a period: **This month**, **Last 7 days**, **Last 30 days** or **Last
 
 ## The statement
 
+Beside the balance, the **Billing** page shows what the workspace has
+spent this month and in total, and what it has paid and been credited in
+total: every agent run, sandbox, build and app, at what was charged.
+
 The **Billing** page ends with the workspace's statement, a month at a
 time. Every member can see it.
 
