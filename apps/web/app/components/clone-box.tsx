@@ -24,7 +24,8 @@ export function CloneBox({ path }: { path: string }) {
       </TabsContent>
       <TabsContent value="ssh">
         <p className="rounded-lg border border-dashed border-line p-3 text-xs text-muted">
-          Git over SSH is not available yet. Use HTTPS for now.
+          Git over SSH is waiting on inbound TCP on Cloudflare, which g1t has applied for. Use HTTPS for now: it
+          clones, fetches and pushes the same. Keys you add under Settings will work as soon as SSH is on.
         </p>
       </TabsContent>
       <TabsContent value="agent">

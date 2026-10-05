@@ -87,8 +87,10 @@ Working today:
 - An event bus: every state change is published, logged and delivered to
   subscribers.
 
-Not built yet: git over SSH, a code-search index, and the Soon pages in
-each project's menu. See the build order in the plan.
+Not built yet: a code-search index and the Soon pages in each project's
+menu. Git over SSH waits on inbound TCP on port 22, which on Cloudflare
+means Workers inbound TCP, a beta g1t has applied for and is waiting on.
+Use HTTPS until then. See the build order in the plan.
 
 ## Try it
 

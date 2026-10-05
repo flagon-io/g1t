@@ -94,4 +94,11 @@ Repositories are stored in Cloudflare Artifacts, which limits a repository to
 
 ## SSH
 
-Git over SSH is not available yet. Use HTTPS.
+Git over SSH is not available yet. Use HTTPS, which works for clone,
+fetch and push everywhere SSH would.
+
+Why: git over SSH needs raw TCP connections on port 22, and g1t runs
+entirely on Cloudflare's network. Accepting inbound TCP traffic directly
+into Workers is in a beta from Cloudflare that g1t has applied for and is
+waiting on. SSH keys can already be added under **Settings → SSH keys**,
+and will be used once SSH is on.
