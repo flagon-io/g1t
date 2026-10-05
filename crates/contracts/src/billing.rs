@@ -307,6 +307,37 @@ pub mod deployments_allowance {
     pub const MICROS_PER_BUILD_SECOND: i64 = 21;
 }
 
+/// Sandbox time: every sandbox g1t starts for a workspace (agents,
+/// reviews, checks, the merge queue, workflow jobs) is metered by the
+/// second. Deploy builds are charged by the Deployments plan instead.
+pub mod sandbox_allowance {
+    /// Free each calendar month (UTC): 500 minutes.
+    pub const FREE_SECONDS: i64 = 30_000;
+    /// What one second costs g1t (Cloudflare Containers, standard-1),
+    /// rounded up. Recorded with every entry.
+    pub const COST_MICROS_PER_SECOND: i64 = super::deployments_allowance::MICROS_PER_BUILD_SECOND;
+    /// What one second past the free minutes is charged: $0.003 a minute.
+    pub const MICROS_PER_SECOND: i64 = 50;
+}
+
+/// `record_sandbox`: how long one sandbox ran for a workspace, reported by
+/// the runner when it stops. Recorded once per `reference`, with what it
+/// cost g1t; seconds past the month's free minutes are charged at
+/// `sandbox_allowance::MICROS_PER_SECOND`, unless `FREE_WHILE_BUILDING`.
+/// Returns `Outcome<bool>`: false if that reference was recorded before.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordSandboxArgs {
+    pub workspace: String,
+    pub seconds: u32,
+    /// What ran, e.g. `Checks on acme/api#12`.
+    pub description: String,
+    /// `namespace/name`.
+    pub repo: Option<String>,
+    /// Unique to the run.
+    pub reference: String,
+}
+
 /// What a feature's plan costs and includes.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

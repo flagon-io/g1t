@@ -184,6 +184,18 @@ export interface BillingApi {
     repo?: string | null;
     reference: string;
   }): Promise<Result<boolean>>;
+  /**
+   * How long a sandbox ran for a workspace, reported when it stops. Its
+   * cost is always recorded; seconds past the month's free minutes are
+   * charged. False if `reference` was recorded before.
+   */
+  recordSandbox(usage: {
+    workspace: string;
+    seconds: number;
+    description: string;
+    repo?: string | null;
+    reference: string;
+  }): Promise<Result<boolean>>;
   startRun(run: {
     workspace: string;
     repo: RepoPath;

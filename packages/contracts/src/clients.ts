@@ -199,6 +199,7 @@ export function billingClient(service: ServiceBinding): BillingApi {
       call("cancel_subscription", { actor, workspace, feature, resume }),
     hasFeature: (workspace, feature) => call("has_feature", { workspace, feature }),
     chargeFeature: (charge) => call("charge_feature", charge),
+    recordSandbox: (usage) => call("record_sandbox", usage),
   };
 }
 

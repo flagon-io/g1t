@@ -673,6 +673,110 @@ impl Billing {
     }
 }
 
+impl Billing {
+    /// Records how long a sandbox ran: its cost always, and a charge for
+    /// the seconds past the month's free minutes.
+    async fn record_sandbox(&self, a: RecordSandboxArgs) -> Result<Outcome<bool>> {
+        if self.stripe.is_none() || a.seconds == 0 {
+            return Ok(Outcome::Ok(false));
+        }
+        let workspace = a.workspace.to_lowercase();
+        let seen = self
+            .db
+            .prepare("SELECT id FROM ledger WHERE reference = ?")
+            .bind(&[a.reference.as_str().into()])?
+            .first::<Touched>(None)
+            .await?;
+        if seen.is_some() {
+            return Ok(Outcome::Ok(false));
+        }
+        let now = now_ms();
+        let timestamp = rfc3339(now);
+        let month = &timestamp[..7];
+        #[derive(Deserialize)]
+        struct Used {
+            seconds: i64,
+        }
+        let seconds = i64::from(a.seconds);
+        let after = self
+            .db
+            .prepare(
+                "INSERT INTO sandbox_months (workspace, month, seconds) VALUES (?1, ?2, ?3)
+                 ON CONFLICT (workspace, month) DO UPDATE SET seconds = seconds + ?3
+                 RETURNING seconds",
+            )
+            .bind(&[workspace.as_str().into(), month.into(), (seconds as f64).into()])?
+            .first::<Used>(None)
+            .await?
+            .map_or(seconds, |used| used.seconds);
+        let billable = sandbox_billable(after - seconds, seconds);
+        let charge = if self.free { 0 } else { billable * sandbox_allowance::MICROS_PER_SECOND };
+        let mut description = format!("{}: {} of sandbox time", a.description, duration(seconds));
+        if billable < seconds {
+            description.push_str(if billable == 0 {
+                ", within the month's free minutes"
+            } else {
+                ", partly within the month's free minutes"
+            });
+        }
+        if self.free && billable > 0 {
+            description.push_str(" (free while g1t is being built out)");
+        }
+        self.db
+            .batch(vec![
+                self.db
+                    .prepare(
+                        "INSERT INTO ledger
+                           (id, workspace, kind, amount_micros, description, repo, task,
+                            cost_micros, reference, created_at, billed_to)
+                         VALUES (?, ?, 'usage', ?, ?, ?, 'sandbox', ?, ?, ?, 'g1t')",
+                    )
+                    .bind(&[
+                        new_id("led", now).into(),
+                        workspace.as_str().into(),
+                        (-(charge as f64)).into(),
+                        description.as_str().into(),
+                        optional(a.repo.as_deref()),
+                        ((seconds * sandbox_allowance::COST_MICROS_PER_SECOND) as f64).into(),
+                        a.reference.as_str().into(),
+                        timestamp.as_str().into(),
+                    ])?,
+                self.db
+                    .prepare(
+                        "INSERT INTO accounts (workspace, balance_micros, created_at)
+                         VALUES (?1, ?2, ?3)
+                         ON CONFLICT (workspace) DO UPDATE SET balance_micros = balance_micros + ?2",
+                    )
+                    .bind(&[
+                        workspace.as_str().into(),
+                        (-(charge as f64)).into(),
+                        timestamp.as_str().into(),
+                    ])?,
+            ])
+            .await?;
+        Ok(Outcome::Ok(true))
+    }
+}
+
+/// Of `seconds` used after `before` this month, how many are past the
+/// free minutes.
+fn sandbox_billable(before: i64, seconds: i64) -> i64 {
+    let free_left = (sandbox_allowance::FREE_SECONDS - before).max(0);
+    (seconds - free_left).max(0)
+}
+
+/// `1h 2m`, `3m 12s` or `40s`.
+fn duration(seconds: i64) -> String {
+    let (h, m, s) = (seconds / 3600, seconds % 3600 / 60, seconds % 60);
+    if h > 0 {
+        format!("{h}h {m}m")
+    } else if m > 0 {
+        format!("{m}m {s}s")
+    } else {
+        format!("{s}s")
+    }
+}
+
 fn members_only<T>() -> Outcome<T> {
     Outcome::fail(
         FailureCode::Forbidden,
@@ -747,6 +851,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "cancel_subscription" => reply(&billing.cancel_subscription(args(body)?).await?),
         "has_feature" => reply(&billing.has_feature(args(body)?).await?),
         "charge_feature" => reply(&billing.charge_feature(args(body)?).await?),
+        "record_sandbox" => reply(&billing.record_sandbox(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }
@@ -768,6 +873,21 @@ mod tests {
         assert_eq!(charge_micros(0.000_000_4, 20), 2);
         assert_eq!(charge_micros(0.0, 20), 0);
         assert_eq!(charge_micros(-3.0, 20), 0);
+    }
+
+    #[test]
+    fn sandbox_seconds_are_charged_only_past_the_free_minutes() {
+        let free = sandbox_allowance::FREE_SECONDS;
+        assert_eq!(sandbox_billable(0, 600), 0);
+        assert_eq!(sandbox_billable(free - 100, 600), 500);
+        assert_eq!(sandbox_billable(free + 5, 600), 600);
+    }
+
+    #[test]
+    fn durations_read_plainly() {
+        assert_eq!(duration(40), "40s");
+        assert_eq!(duration(192), "3m 12s");
+        assert_eq!(duration(3720), "1h 2m");
     }
 
     #[test]

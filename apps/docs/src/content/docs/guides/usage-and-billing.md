@@ -69,8 +69,9 @@ too, while it lasts.
 | A review by a g1t agent | Yes |
 | Catching up with `main` | Yes, when it needed an agent |
 | Planning an [outcome](/guides/outcomes/) | Yes |
-| Acceptance checks | No |
-| The [merge queue](/guides/merge-queue/) | No |
+| Acceptance checks | [Sandbox time](#sandbox-time) |
+| The [merge queue](/guides/merge-queue/) | [Sandbox time](#sandbox-time) |
+| [Workflow](/guides/actions/) jobs | [Sandbox time](#sandbox-time) |
 | [Deployments](/guides/deployments/) | The plan, and builds and usage past it. Never free. |
 | Repositories, git, issues, pull requests, the API and MCP | No |
 
@@ -85,6 +86,28 @@ g1t is being built out).
 The charge goes to the workspace that owns the repository, whoever
 assigned the issue. That is why only members of a workspace can put g1t
 agents to work on its repositories.
+
+## Sandbox time
+
+Every sandbox g1t starts for a workspace runs on Cloudflare Containers, and
+Cloudflare charges g1t for every second of it. So each one is metered by
+the second, from start to stop, whatever it was for: agents, reviews,
+revisions, catch-ups, planning, acceptance checks, the merge queue and
+workflow jobs. It is charged to the workspace that owns the repository.
+
+| | |
+| --- | --- |
+| Free each month | 500 minutes (calendar month, UTC) |
+| Past that | $0.003 a minute, by the second |
+| What it costs g1t | about $0.0013 a minute (Containers, standard-1) |
+
+Deploy builds are not counted here: [Deployments](/guides/deployments/)
+charges them by the second on its own plan.
+
+Each sandbox is one line on the [statement](#the-statement), such as
+*Checks on acme/api#12: 3m 12s of sandbox time*, with whether it fell
+within the free minutes. While g1t is being built out it is recorded but
+not charged.
 
 ## Add credit
 

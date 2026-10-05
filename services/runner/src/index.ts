@@ -112,7 +112,14 @@ type Run =
   | { kind: "actions"; jobId: string; token: string }
   /** A build of one commit, deployed to g1t.page. */
   | { kind: "deploy"; deployId: string; token: string };
-type RunRequest = Run & { envVars: Record<string, string> };
+/** Whose sandbox time it is, reported when the sandbox stops. */
+type Meter = { workspace: string; repo: string; description: string };
+/** Deploy builds are metered by the Deployments plan, not here. */
+type RunRequest = Run & { envVars: Record<string, string>; meter?: Meter };
+
+function meter(repo: RepoPath, description: string): Meter {
+  return { workspace: repo.namespace, repo: `${repo.namespace}/${repo.name}`, description };
+}
 
 /** What the deployments service asks a sandbox to build. */
 type DeployJob = {
@@ -149,12 +156,32 @@ export class AttemptSandbox extends Container<RunnerEnv> {
   sleepAfter = "45m";
 
   async run(request: RunRequest): Promise<void> {
-    const { envVars, ...run } = request;
+    const { envVars, meter, ...run } = request;
     await this.ctx.storage.put("run", run);
+    if (meter) await this.ctx.storage.put("meter", { ...meter, started: Date.now() });
     await this.start({ envVars, enableInternet: true });
   }
 
+  /** Reports how long the sandbox ran, once, whatever it exited with. */
+  private async meterStop(): Promise<void> {
+    const metered = await this.ctx.storage.get<Meter & { started: number }>("meter");
+    if (!metered) return;
+    await this.ctx.storage.delete("meter");
+    const seconds = Math.max(1, Math.ceil((Date.now() - metered.started) / 1000));
+    const recorded = await billingClient(this.env.BILLING)
+      .recordSandbox({
+        workspace: metered.workspace,
+        seconds,
+        description: metered.description,
+        repo: metered.repo,
+        reference: `sandbox/${this.ctx.id.toString()}/${metered.started}`,
+      })
+      .catch((error: unknown) => ({ ok: false as const, error: { message: String(error) } }));
+    if (!recorded.ok) console.log("sandbox time not recorded", metered.workspace, seconds, recorded.error.message);
+  }
+
   override async onStop({ exitCode, reason }: StopParams): Promise<void> {
+    await this.meterStop();
     if (exitCode === 0) return;
     const run = await this.ctx.storage.get<Run>("run");
     console.log("sandbox stopped", run?.kind, "exit", exitCode, reason);
@@ -694,6 +721,7 @@ export default class RunnerService
         kind: "actions",
         jobId: args.job,
         token: args.token,
+        meter: meter(args.repo, `A workflow job in ${args.repo.namespace}/${args.repo.name}`),
         envVars: {
           MODE: "actions",
           G1T_API: "https://api.g1t.sh",
@@ -987,6 +1015,7 @@ export default class RunnerService
       kind: "queue",
       entryId: job.entryId,
       token: job.token,
+      meter: meter(job.repo, `Merge queue on ${job.repo.namespace}/${job.repo.name}`),
       envVars: {
         MODE: "queue",
         G1T_API: "https://api.g1t.sh",
@@ -1051,6 +1080,7 @@ export default class RunnerService
       await sandbox.run({
         kind: "answer",
         pullId: job.pullId,
+        meter: meter(job.repo, `Agent answering on ${job.repo.namespace}/${job.repo.name}#${job.number}`),
         envVars: {
           // Answered from its change as it stands: no merging in of the
           // default branch, which would push a commit for a question.
@@ -1090,6 +1120,7 @@ export default class RunnerService
     await sandbox.run({
       kind: "revise",
       pullId: job.pullId,
+      meter: meter(job.repo, `Agent revising ${job.repo.namespace}/${job.repo.name}#${job.number}`),
       envVars: {
         MODE: "revise",
         G1T_API: "https://api.g1t.sh",
@@ -1139,6 +1170,7 @@ export default class RunnerService
       kind: "checks",
       runId: job.runId,
       token: job.token,
+      meter: meter(job.repo, `Checks on ${job.repo.namespace}/${job.repo.name}#${job.number}`),
       envVars: {
         MODE: "checks",
         G1T_API: "https://api.g1t.sh",
@@ -1249,6 +1281,7 @@ export default class RunnerService
     await sandbox.run({
       kind: "update",
       pullId: update.pullId,
+      meter: meter(repo, `Catching up ${repo.namespace}/${repo.name}#${number}`),
       envVars: {
         MODE: "update",
         G1T_API: "https://api.g1t.sh",
@@ -1309,6 +1342,7 @@ export default class RunnerService
       kind: "review",
       runId: job.runId,
       token: job.token,
+      meter: meter(repo, `Review of ${repo.namespace}/${repo.name}#${number}`),
       envVars: {
         MODE: "review",
         G1T_API: "https://api.g1t.sh",
@@ -1373,6 +1407,7 @@ export default class RunnerService
       kind: "plan",
       planId: job.planId,
       token: job.token,
+      meter: meter(repo, `Planning for ${repo.namespace}/${repo.name}`),
       envVars: {
         MODE: "plan",
         G1T_API: "https://api.g1t.sh",
@@ -1453,6 +1488,7 @@ export default class RunnerService
       actor,
       repo,
       number: pull.number,
+      meter: meter(repo, `Agent on ${repo.namespace}/${repo.name}#${pull.number}`),
       envVars: {
         G1T_API: "https://api.g1t.sh",
         G1T_TOKEN: token,
