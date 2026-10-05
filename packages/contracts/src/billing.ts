@@ -72,6 +72,57 @@ export type RunTicket = { runId: string; token: string };
  * open to them: a few dollars of model cost each, out of one pool, until a
  * date. Mirrors `Trial` in `crates/contracts/src/billing.rs`.
  */
+/** How an account is charged. Standard unless g1t set otherwise in sudo. */
+export type Terms = {
+  kind: "standard" | "comped" | "custom";
+  discountPercent: number;
+  ceilingMicros: number | null;
+  note: string;
+  until: string | null;
+  setBy: string | null;
+  setAt: string | null;
+};
+
+/**
+ * Who pays: a workspace's own account, or an enterprise's, which pays for
+ * several workspaces with one bill and one limit.
+ */
+export type PayingAccount = {
+  id: string;
+  kind: "workspace" | "enterprise";
+  name: string;
+  terms: Terms;
+  workspaces: string[];
+  createdAt: string;
+};
+
+export type AccountSummary = {
+  account: PayingAccount;
+  limit: Limit;
+  chargedMicros: number;
+  costMicros: number;
+  paidMicros: number;
+};
+
+export type AdminAction = { id: string; account: string; action: string; detail: string; by: string; createdAt: string };
+
+export type AccountDetail = {
+  summary: AccountSummary;
+  workspaces: Limit[];
+  ledger: LedgerEntry[];
+  audit: AdminAction[];
+};
+
+/** Staff-only billing, for sudo.g1t.sh. Every change names who made it. */
+export interface BillingAdminApi {
+  accounts(query?: string): Promise<AccountSummary[]>;
+  account(id: string): Promise<Result<AccountDetail>>;
+  setTerms(id: string, terms: Terms, by: string): Promise<Result<PayingAccount>>;
+  createEnterprise(name: string, workspaces: string[], by: string): Promise<Result<PayingAccount>>;
+  attach(workspace: string, account: string | null, by: string): Promise<Result<PayingAccount>>;
+  credit(workspace: string, amountMicros: number, note: string, by: string): Promise<Result<LedgerEntry>>;
+}
+
 /** How much a workspace has earned g1t's trust with money. */
 export type Trust = "new" | "paid" | "reviewed" | "internal";
 
@@ -83,6 +134,9 @@ export type Trust = "new" | "paid" | "reviewed" | "internal";
  */
 export type Limit = {
   workspace: string;
+  /** The account that pays: the workspace's own (`ws_<slug>`), or its enterprise's. */
+  account: string;
+  accountName: string;
   trust: Trust;
   exposureMicros: number;
   /** The lower of g1t's ceiling and the owner's spend limit; null for g1t's own. */

@@ -29,14 +29,16 @@
 		// While g1t is being built out, workspaces pay nothing: runs are
 		// recorded with what they cost, and nothing is charged. Set to
 		// "false" when pricing starts.
-		"FREE_WHILE_BUILDING": "true",
+		// Off: workspaces are charged as their account's terms say. g1t's own
+		// (syntaqx) is comped in sudo.g1t.sh, not by this switch.
+		"FREE_WHILE_BUILDING": "false",
 		// How far a workspace's unpaid usage may go before its work stops
 		// (see src/limits.rs): $3 before any live payment, then twice what
-		// it has paid, between $25 and $1,000. LIMIT_EXEMPT is g1t's own.
+		// it has paid, between $25 and $1,000. Comped and custom terms are set
+		// per account in sudo.g1t.sh.
 		"LIMIT_NEW_MICROS": "3000000",
 		"LIMIT_PAID_MIN_MICROS": "25000000",
 		"LIMIT_PAID_MAX_MICROS": "1000000000",
-		"LIMIT_EXEMPT": "syntaqx",
 		// A free allowance on g1t's hosted models, so people can try g1t's
 		// agents without a key of their own: each workspace may use this
 		// much model cost ($1), out of one pool for everyone ($40), until

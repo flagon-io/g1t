@@ -162,9 +162,9 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
         <h2 className="mt-12 font-medium">Agent credit</h2>
         <p className="mt-1 max-w-2xl text-sm text-muted">
           g1t agents that work on this workspace's repositories are paid for from
-          its credit: what the model cost, plus {account.marginPercent}%. Every sandbox, for agents, checks, the merge
-          queue and workflows, is metered by the second past 500 free minutes a month. With no credit, agents do not
-          start.
+          its account: what the model cost, plus {account.marginPercent}%. Every sandbox, for agents, checks, the merge
+          queue and workflows, is metered by the second past 500 free minutes a month. Credit added here pays usage in
+          advance; the usage limit above decides whether work starts.
         </p>
 
         <div
@@ -442,7 +442,7 @@ const TRUST: Record<Limit["trust"], { label: string; detail: string }> = {
   },
   paid: { label: "Paid", detail: "Twice what the workspace has paid g1t, from $25 up to $1,000." },
   reviewed: { label: "Reviewed", detail: "Set by g1t for this workspace." },
-  internal: { label: "g1t", detail: "One of g1t's own workspaces: no limit." },
+  internal: { label: "Comped", detail: "g1t covers this workspace's usage: nothing is charged, and there is no limit." },
 };
 
 /**
@@ -463,9 +463,9 @@ function LimitCard({ limit, owner, busy, error }: { limit: Limit; owner: boolean
         <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">{trust.label}</span>
       </div>
       <p className="mt-1 max-w-2xl text-sm text-muted">
-        What this month's usage cost g1t, or is charged, whichever is more, less what was paid this month. At the limit,
-        new sandboxes and builds stop and apps pause until the workspace pays or the month turns. Work already running
-        finishes.
+        What this month's usage cost g1t, or is charged, whichever is more, less what was paid this month. With a card on
+        file, g1t charges it as the workspace nears the limit, so its work does not stop. Without one, at the limit new
+        sandboxes and builds stop and apps pause until it pays or the month turns. Work already running finishes.
       </p>
       <p className="mt-4 text-2xl font-semibold tabular-nums tracking-tight">
         {dollars(limit.exposureMicros)}
@@ -475,6 +475,12 @@ function LimitCard({ limit, owner, busy, error }: { limit: Limit; owner: boolean
         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-line" role="presentation">
           <div className={`h-full ${bar}`} style={{ width: `${Math.max(share * 100, share > 0 ? 2 : 0)}%` }} />
         </div>
+      )}
+      {limit.account.startsWith("ent_") && (
+        <p className="mt-3 text-sm text-muted">
+          Paid for by the <span className="font-medium text-fg">{limit.accountName}</span> enterprise: these figures are
+          for all of its workspaces together.
+        </p>
       )}
       {limit.message && <p className="mt-3 text-sm">{limit.message}</p>}
       <p className="mt-3 text-xs text-faint">

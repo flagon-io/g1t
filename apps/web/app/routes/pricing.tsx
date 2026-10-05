@@ -17,8 +17,8 @@ export function meta() {
 }
 
 export async function loader() {
-  const book = await billing.prices().catch(() => null);
-  return { book };
+  const [book, status] = await Promise.all([billing.prices().catch(() => null), billing.status().catch(() => null)]);
+  return { book, free: status?.free ?? false };
 }
 
 /** A price in dollars, with as many digits as it needs to say anything. */
@@ -49,12 +49,16 @@ const HOW = [
   },
   {
     title: "Limits that protect both of us",
-    body: "Usage not yet paid for can only go so far: $3 for a new workspace, growing with what it pays. At the limit, work stops instead of running up a bill. Owners can set a lower one.",
+    body: "Usage not yet paid for can only go so far: $3 for a new workspace, growing with what it pays. With a card on file, g1t charges it as you near the limit, so work that is paid for never stops. Owners can set a lower limit of their own.",
+  },
+  {
+    title: "Enterprise billing",
+    body: "One bill, one limit and one set of terms for several workspaces, as GitHub Enterprise does. Write to us to set one up.",
   },
 ];
 
 export default function Pricing({ loaderData }: Route.ComponentProps) {
-  const { book } = loaderData;
+  const { book, free } = loaderData;
   const checked = book?.prices.map((p) => p.checkedAt).filter((at): at is string => !!at).sort().at(-1);
   return (
     <main className="mx-auto max-w-4xl px-4 py-12">
@@ -64,12 +68,14 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         g1t runs on Cloudflare and model providers, and passes those costs through. The numbers on this page are the
         live price book g1t charges from.
       </p>
-      <div className="mt-5 rounded-xl border border-accent/30 bg-accent/5 px-4 py-3 text-sm">
-        <span className="font-medium">Free while g1t is being built out.</span>{" "}
-        <span className="text-muted">
-          Usage is recorded at these prices but not charged for now. Paid features, such as Deployments, are charged.
-        </span>
-      </div>
+      {free && (
+        <div className="mt-5 rounded-xl border border-accent/30 bg-accent/5 px-4 py-3 text-sm">
+          <span className="font-medium">Free while g1t is being built out.</span>{" "}
+          <span className="text-muted">
+            Usage is recorded at these prices but not charged for now. Paid features, such as Deployments, are charged.
+          </span>
+        </div>
+      )}
 
       <div className="mt-10 grid gap-4 sm:grid-cols-2">
         {HOW.map((item) => (

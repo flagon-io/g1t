@@ -376,6 +376,12 @@ pub enum LimitState {
 #[serde(rename_all = "camelCase")]
 pub struct Limit {
     pub workspace: String,
+    /// The account that pays, whose usage and payments the limit counts:
+    /// the workspace's own, or its enterprise's.
+    #[serde(default)]
+    pub account: String,
+    #[serde(default)]
+    pub account_name: String,
     pub trust: Trust,
     /// Usage this month (UTC) less what was paid this month.
     pub exposure_micros: i64,
@@ -478,6 +484,179 @@ pub struct PriceBook {
     /// The margin on model usage, which is charged at what AI Gateway
     /// priced each request at.
     pub model_margin_percent: u32,
+}
+
+/// Who pays: a billing account. Every workspace has one; by default its
+/// own. An enterprise account pays for several workspaces at once, as
+/// GitHub Enterprise does: one bill, one limit, one set of terms.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BillingAccount {
+    /// `ws_<slug>` for a workspace's own account; `ent_…` for an enterprise.
+    pub id: String,
+    pub kind: AccountKind,
+    pub name: String,
+    pub terms: Terms,
+    /// The workspaces it pays for.
+    pub workspaces: Vec<String>,
+    pub created_at: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountKind {
+    Workspace,
+    Enterprise,
+}
+
+/// How an account is charged. Standard unless g1t set otherwise in sudo.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Terms {
+    pub kind: TermsKind,
+    /// Off every usage charge, in percent. Custom terms only.
+    #[serde(default)]
+    pub discount_percent: u32,
+    /// A ceiling on unpaid usage that replaces the one trust would give.
+    #[serde(default)]
+    pub ceiling_micros: Option<i64>,
+    /// Why, for whoever looks next.
+    #[serde(default)]
+    pub note: String,
+    /// When the terms end and the account goes back to standard.
+    #[serde(default)]
+    pub until: Option<String>,
+    #[serde(default)]
+    pub set_by: Option<String>,
+    #[serde(default)]
+    pub set_at: Option<String>,
+}
+
+impl Terms {
+    pub fn standard() -> Self {
+        Terms {
+            kind: TermsKind::Standard,
+            discount_percent: 0,
+            ceiling_micros: None,
+            note: String::new(),
+            until: None,
+            set_by: None,
+            set_at: None,
+        }
+    }
+
+    /// What a charge becomes under these terms.
+    pub fn apply(&self, charge_micros: i64) -> i64 {
+        match self.kind {
+            TermsKind::Comped => 0,
+            TermsKind::Custom => charge_micros * i64::from(100 - self.discount_percent.min(100)) / 100,
+            TermsKind::Standard => charge_micros,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TermsKind {
+    /// Prices as published, limits by trust.
+    Standard,
+    /// Nothing charged; usage still recorded with its cost. Paid features
+    /// are on without a plan. For g1t's own workspaces, partners, and the
+    /// like.
+    Comped,
+    /// A discount, a ceiling, or both.
+    Custom,
+}
+
+// --- Staff (sudo.g1t.sh) ------------------------------------------------------
+//
+// Called only by the sudo app, which only g1t staff can reach (behind
+// Cloudflare Access). Each change names who made it, and is kept in the
+// audit log.
+
+/// `admin_accounts`: every billing account, with where each stands this
+/// month. Returns `Vec<AccountSummary>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminAccountsArgs {
+    #[serde(default)]
+    pub query: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountSummary {
+    pub account: BillingAccount,
+    pub limit: Limit,
+    /// Charged this month, after terms.
+    pub charged_micros: i64,
+    /// What this month's usage cost g1t.
+    pub cost_micros: i64,
+    /// Paid, ever.
+    pub paid_micros: i64,
+}
+
+/// `admin_account`: one account in full. Returns `Outcome<AccountDetail>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminAccountArgs {
+    /// An account id, or a workspace slug.
+    pub id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountDetail {
+    pub summary: AccountSummary,
+    /// Each workspace's limit, for an enterprise.
+    pub workspaces: Vec<Limit>,
+    pub ledger: Vec<LedgerEntry>,
+    pub audit: Vec<AdminAction>,
+}
+
+/// `admin_set_terms`. Returns `Outcome<BillingAccount>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminSetTermsArgs {
+    pub id: String,
+    pub terms: Terms,
+    pub by: String,
+}
+
+/// `admin_create_enterprise`. Returns `Outcome<BillingAccount>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminCreateEnterpriseArgs {
+    pub name: String,
+    pub workspaces: Vec<String>,
+    pub by: String,
+}
+
+/// `admin_attach`: moves a workspace onto an enterprise account, or back
+/// onto its own with `account: None`. Returns `Outcome<BillingAccount>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminAttachArgs {
+    pub workspace: String,
+    pub account: Option<String>,
+    pub by: String,
+}
+
+/// `admin_credit`: money g1t gives a workspace, such as a refund or a
+/// goodwill credit. Returns `Outcome<LedgerEntry>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminCreditArgs {
+    pub workspace: String,
+    pub amount_micros: i64,
+    pub note: String,
+    pub by: String,
+}
+
+/// One change made in sudo.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminAction {
+    pub id: String,
+    pub account: String,
+    pub action: String,
+    pub detail: String,
+    pub by: String,
+    pub created_at: String,
 }
 
 /// What a feature's plan costs and includes.

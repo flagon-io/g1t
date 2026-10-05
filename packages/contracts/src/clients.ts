@@ -1,5 +1,5 @@
 import type { ActionsApi } from "./actions";
-import type { BillingApi } from "./billing";
+import type { BillingAdminApi, BillingApi } from "./billing";
 import type { DeploymentsApi } from "./deployments";
 import type { ProjectsApi } from "./projects";
 import type { EventsApi } from "./events";
@@ -206,6 +206,18 @@ export function billingClient(service: ServiceBinding): BillingApi {
     notePending: (workspace, source, costMicros) => call("note_pending", { workspace, source, costMicros }),
     setSpendLimit: (actor, workspace, spendLimitMicros) =>
       call("set_spend_limit", { actor, workspace, spendLimitMicros }),
+  };
+}
+
+export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
+  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
+  return {
+    accounts: (query) => call("admin_accounts", { query: query ?? null }),
+    account: (id) => call("admin_account", { id }),
+    setTerms: (id, terms, by) => call("admin_set_terms", { id, terms, by }),
+    createEnterprise: (name, workspaces, by) => call("admin_create_enterprise", { name, workspaces, by }),
+    attach: (workspace, account, by) => call("admin_attach", { workspace, account, by }),
+    credit: (workspace, amountMicros, note, by) => call("admin_credit", { workspace, amount_micros: amountMicros, note, by }),
   };
 }
 

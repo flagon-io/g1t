@@ -92,11 +92,12 @@ async function shellFor(
   const path = params.owner && params.repo ? { namespace: params.owner, name: params.repo } : null;
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
-  const [listed, counts, account, usage] = await Promise.all([
+  const [listed, counts, account, usage, limit] = await Promise.all([
     workspace ? projects.list(workspace.slug, user) : Promise.resolve(null),
     path ? work.counts(path, user) : Promise.resolve(null),
     workspace ? billing.account(workspace.slug, user) : Promise.resolve(null),
     workspace ? billing.usage(workspace.slug, user, monthStart) : Promise.resolve(null),
+    workspace ? billing.limit(workspace.slug, user).catch(() => null) : Promise.resolve(null),
   ]);
   return {
     workspace,
@@ -118,9 +119,16 @@ async function shellFor(
             pulls: counts.value.pulls,
           }
         : null,
-    // While g1t is being built out nothing is charged, so no credit is shown.
-    creditMicros:
-      account?.ok && account.value.status.enabled && !account.value.status.free ? account.value.balanceMicros : null,
+    // Where the workspace stands against its usage limit, once billing is on.
+    limit:
+      account?.ok && account.value.status.enabled && limit?.ok
+        ? {
+            exposureMicros: limit.value.exposureMicros,
+            ceilingMicros: limit.value.ceilingMicros,
+            state: limit.value.state,
+            comped: limit.value.trust === "internal",
+          }
+        : null,
     free: account?.ok ? Boolean(account.value.status.free) : false,
     // While g1t is free every charge is zero, so usage is shown at cost.
     monthUsageMicros: usage?.ok ? (usage.value.free ? usage.value.usedMicros : usage.value.spentMicros) : null,

@@ -16,6 +16,7 @@
 //! Reached only through service bindings; see `g1t_contracts::billing` for
 //! the methods and their arguments.
 
+mod accounts;
 mod features;
 mod keeper;
 mod limits;
@@ -24,6 +25,7 @@ mod stripe;
 use g1t_contracts::billing::*;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, Role, new_id};
+use g1t_contracts::billing::TermsKind;
 use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -138,6 +140,8 @@ struct Billing {
     deployments_monthly_cents: u32,
     /// How far unpaid usage may go; see `limits`.
     ceilings: limits::Ceilings,
+    /// `PREPAID_ONLY`: the old rule, that agents need credit first.
+    prepaid_only: bool,
 }
 
 /// `TRIAL_WORKSPACE_MICROS`, `TRIAL_TOTAL_MICROS` and `TRIAL_UNTIL`.
@@ -247,6 +251,14 @@ impl Billing {
                     ])?,
             ])
             .await?;
+        // Money in clears a card declined at the limit.
+        if kind == "top_up" {
+            self.db
+                .prepare("UPDATE limits SET autopay_failed_at = NULL, autopay_error = NULL WHERE workspace = ?")
+                .bind(&[workspace.into()])?
+                .run()
+                .await?;
+        }
         Ok(())
     }
 
@@ -489,8 +501,10 @@ impl Billing {
 
     /// A refusal if the workspace has no credit to start an agent with.
     async fn out_of_credit<T>(&self, workspace: &str) -> Result<Option<Outcome<T>>> {
-        // While g1t is being built out, no one needs credit.
-        if self.free {
+        // Billing is postpaid: usage limits decide whether work starts
+        // (see `limits`), and credit is a prepayment that lowers what is
+        // owed. A balance no longer has to be positive to start.
+        if self.free || !self.prepaid_only {
             return Ok(None);
         }
         let balance = self
@@ -509,6 +523,16 @@ impl Billing {
 
     /// A workspace's free allowance on g1t's hosted models: what its runs
     /// there have cost against its share, and the pool everyone draws on.
+    /// How much of a hosted model run's cost the workspace's free allowance
+    /// covers, if it is still open.
+    async fn trial_covers(&self, workspace: &str, cost_micros: i64) -> Result<i64> {
+        let trial = self.trial(TrialArgs { workspace: workspace.to_owned(), exempt: vec![] }).await?;
+        if !trial.open {
+            return Ok(0);
+        }
+        Ok(cost_micros.min((trial.limit_micros - trial.used_micros).max(0)))
+    }
+
     async fn trial(&self, a: TrialArgs) -> Result<Trial> {
         let workspace = a.workspace.to_lowercase();
         let Some(config) = &self.trial else {
@@ -524,7 +548,7 @@ impl Billing {
             .db
             .prepare(
                 "SELECT SUM(cost_micros) AS micros FROM ledger
-                 WHERE kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' AND workspace = ?",
+                 WHERE kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' AND COALESCE(task, '') NOT IN ('sandbox', 'deployments') AND workspace = ?",
             )
             .bind(&[workspace.as_str().into()])?
             .first::<Sum>(None)
@@ -542,7 +566,7 @@ impl Billing {
             .db
             .prepare(format!(
                 "SELECT SUM(cost_micros) AS micros FROM ledger
-                 WHERE kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' AND workspace NOT IN ({marks})"
+                 WHERE kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' AND COALESCE(task, '') NOT IN ('sandbox', 'deployments') AND workspace NOT IN ({marks})"
             ))
             .bind(&values)?
             .first::<Sum>(None)
@@ -648,14 +672,15 @@ impl Billing {
         }
         // On the workspace's own provider, the model was paid for there:
         // g1t charges its fee, and keeps the provider's cost to show.
-        let charge = if self.free {
-            // Recorded, with what it cost, but not charged.
-            0
-        } else if run.own_provider() {
+        let base = if run.own_provider() {
             self.orchestration_fee_micros
         } else {
-            charge_micros(a.cost_usd, self.margin_percent)
+            // The free allowance on g1t's models covers what it can.
+            let cost = charge_micros(a.cost_usd, 0);
+            let covered = self.trial_covers(&run.workspace, cost).await?;
+            charge_micros((cost - covered) as f64 / MICROS_PER_DOLLAR as f64, self.margin_percent)
         };
+        let (charge, terms_note) = self.charged(&run.workspace, base).await?;
         let mut description = match run.task.as_str() {
             "plan" => format!("Planning for {}", run.repo),
             "review" => format!("Review of {}#{}", run.repo, run.number),
@@ -665,9 +690,7 @@ impl Billing {
         if run.own_provider() {
             description.push_str(", on your own model provider");
         }
-        if self.free {
-            description.push_str(" (free while g1t is being built out)");
-        }
+        description.push_str(&terms_note);
         self.enter(
             &run.workspace,
             EntryKind::Usage,
@@ -726,7 +749,7 @@ impl Billing {
             sandbox_allowance::COST_MICROS_PER_SECOND as f64,
             sandbox_allowance::MICROS_PER_SECOND as f64,
         ));
-        let charge = if self.free { 0 } else { (billable as f64 * price_per_second).ceil() as i64 };
+        let (charge, terms_note) = self.charged(&workspace, (billable as f64 * price_per_second).ceil() as i64).await?;
         let mut description = format!("{}: {} of sandbox time", a.description, duration(seconds));
         if billable < seconds {
             description.push_str(if billable == 0 {
@@ -735,8 +758,8 @@ impl Billing {
                 ", partly within the month's free minutes"
             });
         }
-        if self.free && billable > 0 {
-            description.push_str(" (free while g1t is being built out)");
+        if billable > 0 {
+            description.push_str(&terms_note);
         }
         self.db
             .batch(vec![
@@ -793,6 +816,25 @@ fn duration(seconds: i64) -> String {
     }
 }
 
+impl Billing {
+    /// What a workspace is charged for something that would be `base`:
+    /// nothing while g1t is free, or as its account's terms say. With a
+    /// note for the statement when it differs.
+    pub(crate) async fn charged(&self, workspace: &str, base: i64) -> Result<(i64, String)> {
+        if self.free {
+            return Ok((0, " (free while g1t is being built out)".to_owned()));
+        }
+        let terms = self.terms_of(workspace).await?;
+        let charge = terms.apply(base);
+        let note = match terms.kind {
+            TermsKind::Comped => " (comped)".to_owned(),
+            TermsKind::Custom if terms.discount_percent > 0 && base > 0 => format!(" ({}% off)", terms.discount_percent),
+            _ => String::new(),
+        };
+        Ok((charge, note))
+    }
+}
+
 fn members_only<T>() -> Outcome<T> {
     Outcome::fail(
         FailureCode::Forbidden,
@@ -822,6 +864,7 @@ impl Billing {
                 .unwrap_or(100_000),
             free: env.var("FREE_WHILE_BUILDING").is_ok_and(|v| v.to_string() == "true"),
             ceilings: limits::Ceilings::from_env(&env),
+            prepaid_only: env.var("PREPAID_ONLY").is_ok_and(|v| v.to_string() == "true"),
             deployments_monthly_cents: env
                 .var("DEPLOYMENTS_MONTHLY_CENTS")
                 .ok()
@@ -858,6 +901,9 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     let keeper = keeper::Keeper::from_env(&env);
     if let Err(error) = billing.settle_runs(&keeper).await {
         worker::console_error!("settling runs failed: {error}");
+    }
+    if let Err(error) = billing.autopay().await {
+        worker::console_error!("paying at the limit failed: {error}");
     }
     // Once a day, and at once if the costs were never checked: check every
     // cost against what Cloudflare billed.
@@ -898,6 +944,12 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "set_spend_limit" => reply(&billing.set_spend_limit(args(body)?).await?),
         "prices" => reply(&billing.prices().await?),
         "note_pending" => reply(&billing.note_pending(args(body)?).await?),
+        "admin_accounts" => reply(&billing.admin_accounts(args(body)?).await?),
+        "admin_account" => reply(&billing.admin_account(args(body)?).await?),
+        "admin_set_terms" => reply(&billing.admin_set_terms(args(body)?).await?),
+        "admin_create_enterprise" => reply(&billing.admin_create_enterprise(args(body)?).await?),
+        "admin_attach" => reply(&billing.admin_attach(args(body)?).await?),
+        "admin_credit" => reply(&billing.admin_credit(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }

@@ -1,19 +1,13 @@
 ---
 title: Usage and billing
-description: What g1t agents cost, how a workspace pays for them, and what is free.
+description: What g1t costs, how a workspace pays, the limits that keep unpaid usage in check, and enterprise billing.
 ---
 
-> **Free while g1t is being built out.** For now, using g1t costs nothing:
-> agents, reviews, checks and workflows. Bring your own model provider and
-> its usage is billed by that provider, not by g1t. Runs are still recorded
-> with what they cost, so the Usage page shows what you are using. This is
-> for now, not forever: the pricing below is how g1t will charge once it
-> starts, and we will say so well before anything is charged.
-
 Hosting repositories, issues, pull requests, review and your own agent cost
-nothing on g1t. What costs money is g1t's own agents: each run uses a
-model, and a workspace pays for the runs on its repositories from credit it
-buys in advance. There is no seat price.
+nothing on g1t. What costs money is what g1t runs for you: its agents'
+models, the sandboxes they and your checks run in, and deployed apps. Each
+is charged at what it costs g1t plus a set markup, after it is used, to the
+workspace that owns the repository. There is no seat price.
 
 Some features are paid for with a monthly plan the workspace turns on, and
 are never free, including while the rest of g1t is. See
@@ -79,9 +73,8 @@ Each run is charged when it finishes: what the model provider charged for
 it, plus 20%. A small change costs a few cents.
 
 Work a workspace routes to [its own model providers](/guides/models/) is
-paid for at those providers instead, and each such run here will be a flat
-$0.10 for the sandbox and orchestration once pricing starts (nothing while
-g1t is being built out).
+paid for at those providers instead. Each such run here is a flat $0.10
+for g1t's orchestration, plus its [sandbox time](#sandbox-time).
 
 The charge goes to the workspace that owns the repository, whoever
 assigned the issue. That is why only members of a workspace can put g1t
@@ -134,18 +127,19 @@ workflow jobs. It is charged to the workspace that owns the repository.
 | | |
 | --- | --- |
 | Free each month | 500 minutes (calendar month, UTC) |
-| Past that | $0.003 a minute, by the second, at today's cost |
-| What it costs g1t | about $0.0013 a minute (Containers, standard-1) |
+| Past that | about $0.002 a minute, by the second |
+| What it costs g1t | about $0.0009 a minute (Containers, standard-1, at the CPU sandboxes really use) |
 
-Both follow what Cloudflare bills; see [How prices are set](#how-prices-are-set).
+Both follow what Cloudflare bills, so they move; today's exact figures are
+on [g1t.sh/pricing](https://g1t.sh/pricing). See
+[How prices are set](#how-prices-are-set).
 
 Deploy builds are not counted here: [Deployments](/guides/deployments/)
 charges them by the second on its own plan.
 
 Each sandbox is one line on the [statement](#the-statement), such as
 *Checks on acme/api#12: 3m 12s of sandbox time*, with whether it fell
-within the free minutes. While g1t is being built out it is recorded but
-not charged.
+within the free minutes.
 
 ## Usage limits
 
@@ -164,26 +158,58 @@ month turns:
   again, g1t rebuilds each one from the commit it was serving, by itself.
 
 What counts is this month's usage (UTC), each item at what it cost g1t or
-what it is charged, whichever is more, less what was paid this month. It
-counts while g1t is free too: free is a price of nothing, not a way around
-the limit.
+what it is charged, whichever is more, less what was paid this month. Even
+usage that is free to you, such as the free minutes, counts at its cost:
+the limit is about what g1t has spent on a workspace's behalf.
 
 | Workspace | Limit |
 | --- | --- |
 | **New**: has not paid g1t yet | $3: the free allowances and a little more |
 | **Paid**: has paid g1t | twice what it has paid, from $25 up to $1,000 |
 | **Reviewed** | what g1t set for it, after talking with you |
+| **Comped** | none: g1t covers it |
 
-Payments in test mode are not money, so they do not raise the limit. To
-go past $1,000, write to support.
+The limit is there to stop accounts that will never pay, not to slow down
+ones that do. So:
 
-At 80% the Billing page turns amber and says how close the workspace is.
-An owner can set a lower **spend limit** of their own under **Settings →
-Billing → Usage limit**; work stops at whichever is lower.
+- **With a card on file, work does not stop.** As a workspace nears its
+  limit (80%), g1t charges its card for what it owes. That payment lowers
+  what is owed and raises the limit, since the limit grows with what a
+  workspace has paid. A workspace that pays as it goes keeps going.
+- **A declined card stops work** until it is paid, with a message saying
+  so, and the pull requests that were waiting say **Needs you**. Paying
+  under Billing with another card clears it at once.
+- **Your own spend limit means stop.** An owner can set a lower monthly
+  limit under **Settings → Billing → Usage limit**. At that one, g1t stops
+  work and does not charge the card past it.
+
+Payments in test mode are not money: they neither lower what is owed nor
+raise the limit, and automatic charges only happen with live payments.
+Credits g1t gives, such as refunds, lower what is owed but do not raise
+the limit. To go past $1,000, write to support.
+
+## Enterprises and custom terms
+
+Some accounts are billed differently, set up by g1t with you:
+
+- **Enterprise**: one billing account paying for several workspaces, as
+  GitHub Enterprise does. Their usage and payments count together, against
+  one limit, on one set of terms, and each workspace's Billing page says
+  which enterprise pays for it.
+- **Comped**: g1t covers the account's usage. Usage is still recorded with
+  what it cost, so the Usage page stays accurate, and paid features are on
+  without a plan.
+- **Custom**: a discount on every usage charge, a limit of its own, or
+  both, sometimes until a date, after which standard terms apply.
+
+Each change is made by g1t staff in g1t's billing console and recorded with
+who made it and why. To ask for one, write to support.
 
 ## Add credit
 
-Only an owner of the workspace can add credit.
+Credit is a payment in advance: it pays for usage as it happens, and lowers
+what the workspace owes against its limit. It is never needed to start
+work. Only an owner of the workspace can add credit.
 
 1. Open the workspace's **Settings → Billing**, `g1t.sh/<workspace>/-/billing`.
 2. Under **Add credit by card**, choose an amount: $10, $25, $50 or $100.
@@ -197,24 +223,24 @@ While payments on g1t are in test mode, no real card is charged. Use the
 test card `4242 4242 4242 4242` with any future date and any code. The
 Billing page says when payments are in test mode.
 
-## When credit runs out
+## When work is stopped
 
-With no credit, g1t agents do not start. Assigning an issue, planning, or
-asking for a review is refused with `402` and a message saying the
-workspace has no agent credit:
+A workspace at its limit, or with a declined card, starts nothing new.
+Assigning an issue, planning, or asking for a review is refused with `402`
+and the reason:
 
 ```json
 {
   "error": {
     "code": "payment_required",
-    "message": "The acme workspace has no agent credit. An owner can add some under Billing on the workspace's page."
+    "message": "The acme workspace reached its $3.00 limit for usage not yet paid for, so its sandboxes, builds and apps are stopped. The limit grows as a workspace pays g1t; an owner can pay under Billing, or write to support to have it raised."
   }
 }
 ```
 
 A step g1t would take by itself, such as a revision or a review, stops
 instead, and the pull request says **Needs you** with the reason. Runs
-already under way finish, so a balance can dip slightly below zero.
+already under way finish, so usage can go slightly past the limit.
 
 ## The Usage page
 

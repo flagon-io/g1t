@@ -1,0 +1,60 @@
+@import "tailwindcss" source(".");
+@import "@g1t/theme/tokens.css";
+
+/* Tailwind's names for the shared g1t tokens, as in apps/web. */
+@theme {
+  --font-sans: var(--g1t-font-sans);
+  --font-mono: var(--g1t-font-mono);
+
+  --color-bg: var(--g1t-bg);
+  --color-surface: var(--g1t-surface);
+  --color-raised: var(--g1t-raised);
+  --color-line: var(--g1t-line);
+  --color-line-strong: var(--g1t-line-strong);
+
+  --color-fg: var(--g1t-fg);
+  --color-fg-soft: var(--g1t-fg-soft);
+  --color-muted: var(--g1t-muted);
+  --color-faint: var(--g1t-faint);
+
+  --color-accent: var(--g1t-accent);
+  --color-accent-dim: var(--g1t-accent-dim);
+
+  --color-info: var(--g1t-info);
+  --color-merged: var(--g1t-merged);
+  --color-warn: var(--g1t-warn);
+  --color-danger: var(--g1t-danger);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-bg font-sans text-fg antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-merged) 35%, transparent);
+}
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-merged);
+    outline-offset: 2px;
+  }
+
+  .grid > * {
+    min-width: 0;
+  }
+
+  :root {
+    accent-color: var(--color-merged);
+  }
+
+  /* Figures line up in columns of money. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}

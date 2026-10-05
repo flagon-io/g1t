@@ -1,0 +1,28 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-sudo",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	"main": "./workers/app.ts",
+	// Staff only: reachable at sudo.g1t.sh, behind Cloudflare Access, and
+	// nowhere else. No workers.dev address and no preview URLs, so there is
+	// no way round Access to the worker.
+	"routes": [{ "pattern": "sudo.g1t.sh", "custom_domain": true }],
+	"workers_dev": false,
+	"preview_urls": false,
+	// Even the stylesheet goes through the worker, which checks the Access
+	// token on every request before anything is served.
+	"assets": { "binding": "ASSETS", "run_worker_first": true },
+	"services": [{ "binding": "BILLING", "service": "g1t-billing" }],
+	"vars": {
+		// The Zero Trust team domain, such as `g1t.cloudflareaccess.com`.
+		"ACCESS_TEAM_DOMAIN": "",
+		// The Access application's Audience (AUD) tag.
+		"ACCESS_AUD": "",
+		// Who may use sudo, comma separated. Access lets them in; this
+		// decides again, in case the Access policy is ever widened.
+		"STAFF_EMAILS": "syntaqx@gmail.com"
+	},
+	"observability": { "enabled": true },
+	"upload_source_maps": true
+}

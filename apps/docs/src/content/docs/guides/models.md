@@ -85,10 +85,9 @@ A pull request's session says which model ran, and through which provider.
 
 ## What it costs
 
-While g1t is being built out, g1t charges nothing for runs on your own
-providers: they bill you for the models, and that is all. Once pricing
-starts, g1t will charge your credit a flat **$0.10 per run** for the
-sandbox and orchestration. A
+Your providers bill you for the models. g1t charges a flat **$0.10 per
+run** for its orchestration, plus the run's
+[sandbox time](/guides/usage-and-billing/#sandbox-time). A
 change, a review, a revision, a catch-up and a plan are each a run. The
 statement marks these runs "on your own model provider" and names the
 model and provider; the Usage page shows what they cost at the provider,

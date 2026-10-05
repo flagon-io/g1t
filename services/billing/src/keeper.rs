@@ -422,11 +422,12 @@ impl Billing {
             .bind(&[run.id.as_str().into()])?
             .first::<Charged>(None)
             .await?;
+        let terms = self.terms_of(&run.workspace).await?;
         let charge_for = |micros: i64| {
             if self.free {
                 0
             } else {
-                charge_micros(micros as f64 / MICROS_PER_DOLLAR as f64, self.margin_percent)
+                terms.apply(charge_micros(micros as f64 / MICROS_PER_DOLLAR as f64, self.margin_percent))
             }
         };
         let settled_at = rfc3339(now_ms());

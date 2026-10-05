@@ -856,7 +856,43 @@ each. Nothing in a workspace's bill is subsidised by another's.
    limits and their warnings; prepaid credit retired.
 4. Per-workspace allow-lists of projects for each feature, and per-project
    opt-out; "nothing to deploy" detection.
-5. Turn off FREE_WHILE_BUILDING when the user says so.
+5. Turn off FREE_WHILE_BUILDING when the user says so. **Done 2026-10-05.**
+
+Shipped by 2026-10-05: sandbox seconds for every sandbox; the price book
+and its keeper (runs settled to AI Gateway's price every 15 minutes;
+Container and Workers costs checked against Cloudflare's billable usage
+and container analytics daily, with a public change log on
+g1t.sh/pricing); usage limits by trust with automatic payment near the
+limit; app traffic counted toward limits as it happens; billing accounts,
+terms and enterprises; free mode off, syntaqx comped.
+
+Still to build, in order: Stripe card-on-file without a payment (setup
+mode) and webhooks; month-end invoices for postpaid usage (and one
+invoice per enterprise); the subscription with activations as items;
+storage and git-operation meters; limit warnings by email at 50/80/100%;
+self-serve enterprise management for enterprise owners.
+
+### Accounts, terms and enterprises
+
+Every workspace is paid for by a billing account: its own (`ws_<slug>`)
+or an enterprise's (`ent_…`), which pays for several workspaces with one
+limit, one set of terms and, once invoices exist, one bill, as GitHub
+Enterprise does. Terms are standard, comped (nothing charged, usage still
+recorded at cost, paid features on) or custom (a discount, its own
+ceiling, an end date). g1t staff manage them in **sudo.g1t.sh**, a
+separate Worker behind Cloudflare Access that also verifies the Access
+token itself and allows only listed staff emails; every change is kept
+with who made it and why.
+
+### Limits: stop non-payers, never payers
+
+The limit is on usage not yet paid for, counted at cost to g1t or charge,
+whichever is more: $3 before any live payment, then twice what has been
+paid ($25 to $1,000), or what staff set. A workspace with a card on file
+is charged automatically near its limit, which both pays what it owes and
+raises the limit, so paying users are never stopped. A declined card
+stops work until paid. The owner's own spend limit always means stop.
+Test-mode payments never lower exposure or raise trust.
 
 ## Agents and models
 

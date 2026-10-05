@@ -368,6 +368,10 @@ impl Billing {
 
     pub(crate) async fn has_feature(&self, a: HasFeatureArgs) -> Result<Outcome<bool>> {
         let workspace = a.workspace.to_lowercase();
+        // Comped accounts have every feature without a plan.
+        if self.terms_of(&workspace).await?.kind == g1t_contracts::billing::TermsKind::Comped {
+            return Ok(Outcome::Ok(true));
+        }
         if self.state(&workspace, a.feature).await?.on {
             return Ok(Outcome::Ok(true));
         }
@@ -395,8 +399,9 @@ impl Billing {
             return Ok(Outcome::Ok(false));
         }
         let cost = a.cost_micros as f64 / MICROS_PER_DOLLAR as f64;
-        // Never free: the margin applies whatever FREE_WHILE_BUILDING says.
-        let charge = crate::charge_micros(cost, self.margin_percent);
+        // Never free: the margin applies whatever FREE_WHILE_BUILDING says,
+        // and only the account's terms change it.
+        let charge = self.terms_of(&workspace).await?.apply(crate::charge_micros(cost, self.margin_percent));
         let now = now_ms();
         let timestamp = rfc3339(now);
         self.db

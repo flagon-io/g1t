@@ -30,6 +30,7 @@ ORDER=(
   apps/api
   services/pages
   apps/web
+  apps/sudo
   apps/docs
 )
 

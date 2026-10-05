@@ -21,7 +21,7 @@
 //! exemption from the ceiling. Test-mode payments are not money, so they
 //! do not raise trust.
 
-use g1t_contracts::billing::{CheckLimitArgs, Limit, LimitArgs, NotePendingArgs, LimitState, SetSpendLimitArgs, Trust};
+use g1t_contracts::billing::{CheckLimitArgs, Limit, LimitArgs, NotePendingArgs, TermsKind, LimitState, SetSpendLimitArgs, Trust};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, Role};
 use g1t_kit::now_ms;
@@ -39,8 +39,6 @@ pub(crate) struct Ceilings {
     /// `LIMIT_PAID_MIN_MICROS` and `LIMIT_PAID_MAX_MICROS`.
     pub paid_min: i64,
     pub paid_max: i64,
-    /// `LIMIT_EXEMPT`: g1t's own workspaces, comma-separated.
-    pub exempt: Vec<String>,
 }
 
 impl Ceilings {
@@ -52,14 +50,6 @@ impl Ceilings {
             new: number("LIMIT_NEW_MICROS", 3_000_000),
             paid_min: number("LIMIT_PAID_MIN_MICROS", 25_000_000),
             paid_max: number("LIMIT_PAID_MAX_MICROS", 1_000_000_000),
-            exempt: env
-                .var("LIMIT_EXEMPT")
-                .map(|v| v.to_string())
-                .unwrap_or_default()
-                .split(',')
-                .map(|name| name.trim().to_lowercase())
-                .filter(|name| !name.is_empty())
-                .collect(),
         }
     }
 
@@ -78,10 +68,14 @@ pub(crate) fn state(exposure: i64, ceiling: Option<i64>) -> LimitState {
     }
 }
 
+/// Never charged automatically for less.
+const AUTOPAY_MIN_CENTS: i64 = 500;
+
 #[derive(Deserialize)]
 struct LimitRow {
-    ceiling_micros: Option<i64>,
     spend_limit_micros: Option<i64>,
+    autopay_failed_at: Option<String>,
+    autopay_error: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -96,21 +90,32 @@ struct Paid {
 }
 
 impl Billing {
-    /// The workspace's limit, worked out from its ledger.
+    /// The workspace's limit, worked out from the ledger of the account
+    /// that pays for it: its own, or its enterprise's, whose workspaces'
+    /// usage and payments count together.
     pub(crate) async fn limit_of(&self, workspace: &str) -> Result<Limit> {
         let workspace = workspace.to_lowercase();
+        let account = self.account_of(&workspace).await?;
         let row = self
             .db
-            .prepare("SELECT ceiling_micros, spend_limit_micros FROM limits WHERE workspace = ?")
+            .prepare("SELECT spend_limit_micros, autopay_failed_at, autopay_error FROM limits WHERE workspace = ?")
             .bind(&[workspace.as_str().into()])?
             .first::<LimitRow>(None)
             .await?;
         let month_start = format!("{}-01", &rfc3339(now_ms())[..7]);
+        let marks = vec!["?"; account.workspaces.len().max(1)].join(", ");
+        let members: Vec<JsValue> = if account.workspaces.is_empty() {
+            vec![JsValue::from(workspace.as_str())]
+        } else {
+            account.workspaces.iter().map(|w| JsValue::from(w.as_str())).collect()
+        };
+        let mut with_month = members.clone();
+        with_month.push(month_start.as_str().into());
         // Each usage entry at its cost to g1t or its charge, whichever is
         // more; on the workspace's own provider, only g1t's fee is g1t's.
         let month = self
             .db
-            .prepare(
+            .prepare(format!(
                 "SELECT
                    SUM(CASE WHEN kind = 'usage' THEN
                          CASE WHEN COALESCE(billed_to, 'g1t') = 'g1t'
@@ -118,17 +123,21 @@ impl Billing {
                               ELSE -amount_micros END
                        END) AS used,
                    SUM(CASE WHEN kind = 'top_up' THEN amount_micros END) AS paid
-                 FROM ledger WHERE workspace = ?1 AND created_at >= ?2",
-            )
-            .bind(&[workspace.as_str().into(), month_start.as_str().into()])?
+                 FROM ledger WHERE workspace IN ({marks}) AND created_at >= ?"
+            ))
+            .bind(&with_month)?
             .first::<Month>(None)
             .await?;
         let (used, paid_month) = month.map_or((0, 0), |m| (m.used.unwrap_or(0), m.paid.unwrap_or(0)));
         // And what is metered but not charged until the month closes.
+        let mut pending_args = members.clone();
+        pending_args.push(month_start[..7].into());
         let pending = self
             .db
-            .prepare("SELECT SUM(charge_micros) AS paid FROM pending_usage WHERE workspace = ? AND month = ?")
-            .bind(&[workspace.as_str().into(), month_start[..7].into()])?
+            .prepare(format!(
+                "SELECT SUM(charge_micros) AS paid FROM pending_usage WHERE workspace IN ({marks}) AND month = ?"
+            ))
+            .bind(&pending_args)?
             .first::<Paid>(None)
             .await?
             .and_then(|row| row.paid)
@@ -138,31 +147,43 @@ impl Billing {
         let live = self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live);
         let exposure = (used - if live { paid_month } else { 0 }).max(0);
 
-        let (trust, trust_ceiling) = if self.ceilings.exempt.iter().any(|name| *name == workspace) {
-            (Trust::Internal, None)
-        } else if let Some(ceiling) = row.as_ref().and_then(|row| row.ceiling_micros) {
-            (Trust::Reviewed, Some(ceiling))
-        } else {
-            let paid = self.live_paid(&workspace).await?;
-            if paid > 0 {
-                (Trust::Paid, Some(self.ceilings.for_paid(paid)))
-            } else {
-                (Trust::New, Some(self.ceilings.new))
+        let (trust, trust_ceiling) = match account.terms.kind {
+            TermsKind::Comped => (Trust::Internal, None),
+            _ if account.terms.ceiling_micros.is_some() => (Trust::Reviewed, account.terms.ceiling_micros),
+            _ => {
+                let paid = self.live_paid(&members).await?;
+                if paid > 0 {
+                    (Trust::Paid, Some(self.ceilings.for_paid(paid)))
+                } else {
+                    (Trust::New, Some(self.ceilings.new))
+                }
             }
         };
-        let spend_limit = row.and_then(|row| row.spend_limit_micros);
+        let spend_limit = row.as_ref().and_then(|row| row.spend_limit_micros);
+        // A card declined when g1t charged it at the limit stops work until
+        // it is paid; any payment clears it.
+        let declined = row.as_ref().and_then(|row| row.autopay_failed_at.clone().map(|at| (at, row.autopay_error.clone())));
         let ceiling = match (trust_ceiling, spend_limit) {
             (Some(ceiling), Some(own)) => Some(ceiling.min(own)),
             (None, Some(own)) => Some(own),
             (ceiling, None) => ceiling,
         };
-        let state = state(exposure, ceiling);
+        let state = if declined.is_some() && exposure > 0 { LimitState::Stopped } else { state(exposure, ceiling) };
+        let who = if account.kind == g1t_contracts::billing::AccountKind::Enterprise {
+            format!("The {} enterprise, which pays for {workspace},", account.name)
+        } else {
+            format!("The {workspace} workspace")
+        };
         let message = match state {
             LimitState::Ok => None,
             LimitState::Warning => Some(format!(
-                "The {workspace} workspace has used {} of its {} limit this month. At the limit, its sandboxes, builds and apps stop until it pays or the month turns.",
+                "{who} has used {} of its {} limit this month. At the limit, its sandboxes, builds and apps stop until it pays or the month turns.",
                 dollars_plain(exposure),
                 dollars_plain(ceiling.unwrap_or_default()),
+            )),
+            LimitState::Stopped if declined.is_some() => Some(format!(
+                "{who} could not be charged for its usage ({}), so its sandboxes, builds and apps are stopped. An owner can pay under Billing with another card.",
+                declined.as_ref().and_then(|(_, error)| error.clone()).unwrap_or_else(|| "the card was declined".to_owned()),
             )),
             LimitState::Stopped => Some(if spend_limit.is_some() && ceiling == spend_limit {
                 format!(
@@ -171,13 +192,15 @@ impl Billing {
                 )
             } else {
                 format!(
-                    "The {workspace} workspace reached its {} limit for usage not yet paid for, so its sandboxes, builds and apps are stopped. The limit grows as a workspace pays g1t; an owner can pay under Billing, or write to support to have it raised.",
+                    "{who} reached its {} limit for usage not yet paid for, so its sandboxes, builds and apps are stopped. The limit grows as a workspace pays g1t; an owner can pay under Billing, or write to support to have it raised.",
                     dollars_plain(ceiling.unwrap_or_default()),
                 )
             }),
         };
         Ok(Limit {
             workspace,
+            account: account.id,
+            account_name: account.name,
             trust,
             exposure_micros: exposure,
             ceiling_micros: ceiling,
@@ -188,15 +211,20 @@ impl Billing {
         })
     }
 
-    /// Real money the workspace has paid g1t. Nothing in test mode.
-    async fn live_paid(&self, workspace: &str) -> Result<i64> {
+    /// Real money the workspaces have paid g1t. Nothing in test mode, and
+    /// credits g1t gave are not payments.
+    async fn live_paid(&self, members: &[JsValue]) -> Result<i64> {
         if !self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live) {
             return Ok(0);
         }
+        let marks = vec!["?"; members.len().max(1)].join(", ");
         Ok(self
             .db
-            .prepare("SELECT SUM(amount_micros) AS paid FROM ledger WHERE workspace = ? AND kind = 'top_up'")
-            .bind(&[workspace.into()])?
+            .prepare(format!(
+                "SELECT SUM(amount_micros) AS paid FROM ledger
+                 WHERE workspace IN ({marks}) AND kind = 'top_up' AND reference NOT LIKE 'crd%'"
+            ))
+            .bind(members)?
             .first::<Paid>(None)
             .await?
             .and_then(|row| row.paid)
@@ -246,6 +274,86 @@ impl Billing {
         Ok(true)
     }
 
+    /// Charges the saved card of each workspace nearing its limit, for what
+    /// it owes, so that a workspace that pays never has its work stopped.
+    /// Only with live payments: test-mode payments are not money and lower
+    /// nothing. Not for a workspace's own spend limit, which means stop, nor
+    /// for enterprises, which are invoiced.
+    pub(crate) async fn autopay(&self) -> Result<()> {
+        let Some(stripe) = self.stripe.as_ref().filter(|stripe| stripe.live()) else {
+            return Ok(());
+        };
+        #[derive(Deserialize)]
+        struct Candidate {
+            workspace: String,
+            customer_id: Option<String>,
+        }
+        let month_start = format!("{}-01", &rfc3339(now_ms())[..7]);
+        let candidates = self
+            .db
+            .prepare(
+                "SELECT DISTINCT ledger.workspace AS workspace, accounts.customer_id AS customer_id
+                 FROM ledger JOIN accounts ON accounts.workspace = ledger.workspace
+                 WHERE ledger.kind = 'usage' AND ledger.created_at >= ? AND accounts.customer_id IS NOT NULL",
+            )
+            .bind(&[month_start.as_str().into()])?
+            .all()
+            .await?
+            .results::<Candidate>()?;
+        for candidate in candidates {
+            let Some(customer) = candidate.customer_id else { continue };
+            let limit = self.limit_of(&candidate.workspace).await?;
+            let own_limit = limit.spend_limit_micros.is_some() && limit.ceiling_micros == limit.spend_limit_micros;
+            if limit.state == LimitState::Ok
+                || own_limit
+                || limit.trust == Trust::Internal
+                || limit.account.starts_with("ent_")
+            {
+                continue;
+            }
+            let cents = ((limit.exposure_micros + 9_999) / 10_000).max(AUTOPAY_MIN_CENTS);
+            let key = format!("autopay/{}/{}/{}", candidate.workspace, &month_start[..7], limit.exposure_micros / 1_000_000);
+            let description = format!("g1t usage for {}, paid automatically near its limit", candidate.workspace);
+            let now = rfc3339(now_ms());
+            match stripe.charge_saved_card(&customer, cents, &description, &key).await {
+                Ok(payment) if payment.status == "succeeded" => {
+                    self.enter(
+                        &candidate.workspace,
+                        g1t_contracts::billing::EntryKind::TopUp,
+                        payment.amount_received.max(cents) * 10_000,
+                        &format!("Paid automatically by card, near the {} limit", dollars_plain(limit.ceiling_micros.unwrap_or_default())),
+                        &payment.id,
+                        None,
+                        None,
+                        None,
+                        Some(&customer),
+                    )
+                    .await?;
+                    self.db
+                        .prepare("UPDATE limits SET autopay_failed_at = NULL, autopay_error = NULL WHERE workspace = ?")
+                        .bind(&[candidate.workspace.as_str().into()])?
+                        .run()
+                        .await?;
+                }
+                outcome => {
+                    let error = match outcome {
+                        Ok(payment) => format!("the payment is {}", payment.status.replace('_', " ")),
+                        Err(error) => error.to_string().chars().take(200).collect(),
+                    };
+                    self.db
+                        .prepare(
+                            "INSERT INTO limits (workspace, autopay_failed_at, autopay_error, updated_at) VALUES (?1, ?2, ?3, ?2)
+                             ON CONFLICT (workspace) DO UPDATE SET autopay_failed_at = ?2, autopay_error = ?3, updated_at = ?2",
+                        )
+                        .bind(&[candidate.workspace.as_str().into(), now.as_str().into(), error.as_str().into()])?
+                        .run()
+                        .await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) async fn check_limit(&self, a: CheckLimitArgs) -> Result<Outcome<Limit>> {
         Ok(Outcome::Ok(self.limit_of(&a.workspace).await?))
     }
@@ -279,7 +387,7 @@ mod tests {
     use super::*;
 
     fn ceilings() -> Ceilings {
-        Ceilings { new: 3_000_000, paid_min: 25_000_000, paid_max: 1_000_000_000, exempt: vec![] }
+        Ceilings { new: 3_000_000, paid_min: 25_000_000, paid_max: 1_000_000_000 }
     }
 
     #[test]

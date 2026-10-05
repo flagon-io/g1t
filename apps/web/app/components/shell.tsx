@@ -75,8 +75,13 @@ export type ShellData = {
     issues: number;
     pulls: number;
   } | null;
-  /** The workspace's agent credit, if billing is on and they may see it. */
-  creditMicros: number | null;
+  /** Where the workspace stands against its usage limit, if billing is on. */
+  limit: {
+    exposureMicros: number;
+    ceilingMicros: number | null;
+    state: "ok" | "warning" | "stopped";
+    comped: boolean;
+  } | null;
   /** Whether g1t charges nothing for now, while it is being built out. */
   free?: boolean;
   /** What its agents have cost since the start of the month. */
@@ -211,12 +216,18 @@ function WorkspaceSwitcher({ user, shell }: { user: User; shell: ShellData }) {
   );
 }
 
-/** This month's spend against what is left, as Vercel shows a plan's usage. */
+/**
+ * This month's usage, and how close the workspace is to its usage limit,
+ * as Vercel shows a plan's usage.
+ */
 function UsageCard({ slug, shell }: { slug: string; shell: ShellData }) {
   if (shell.monthUsageMicros == null) return null;
   const spent = shell.monthUsageMicros;
-  const left = shell.creditMicros;
-  const share = left != null && spent + left > 0 ? Math.min(1, spent / (spent + Math.max(left, 0))) : 0;
+  const limit = shell.limit;
+  const ceiling = limit?.ceilingMicros ?? null;
+  const share = limit && ceiling ? Math.min(1, limit.exposureMicros / Math.max(ceiling, 1)) : 0;
+  const tone = limit?.state === "stopped" ? "text-danger" : limit?.state === "warning" ? "text-warn" : "text-faint";
+  const bar = limit?.state === "stopped" ? "bg-danger" : limit?.state === "warning" ? "bg-warn" : "bg-accent";
   return (
     <Link
       to={`/${slug}/-/usage`}
@@ -230,20 +241,24 @@ function UsageCard({ slug, shell }: { slug: string; shell: ShellData }) {
         <span className="font-mono text-sm tabular-nums">${(spent / MICROS_PER_DOLLAR).toFixed(2)}</span>
         {shell.free ? (
           <span className="text-xs text-accent">Free for now</span>
+        ) : limit?.comped ? (
+          <span className="text-xs text-accent">Comped</span>
         ) : (
-          left != null && (
-            <span className={`text-xs ${left <= 0 ? "text-warn" : "text-faint"}`}>
-              ${(left / MICROS_PER_DOLLAR).toFixed(2)} left
+          ceiling != null && (
+            <span className={`text-xs ${tone}`}>
+              {limit?.state === "stopped" ? "Limit reached" : `$${(ceiling / MICROS_PER_DOLLAR).toFixed(2)} limit`}
             </span>
           )
         )}
       </span>
-      <span className="mt-2 block h-1 overflow-hidden rounded-full bg-raised">
-        <span
-          className={`block h-full rounded-full ${left != null && left <= 0 ? "bg-warn" : "bg-accent"}`}
-          style={{ width: `${Math.max(share * 100, spent > 0 ? 3 : 0)}%` }}
-        />
-      </span>
+      {ceiling != null && !limit?.comped && (
+        <span className="mt-2 block h-1 overflow-hidden rounded-full bg-raised">
+          <span
+            className={`block h-full rounded-full ${bar}`}
+            style={{ width: `${Math.max(share * 100, share > 0 ? 3 : 0)}%` }}
+          />
+        </span>
+      )}
     </Link>
   );
 }

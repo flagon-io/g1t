@@ -125,7 +125,9 @@ token.
 Workflows run in every workspace that can use g1t's agents: one with its
 own [model provider](/guides/models/) connected, or one on
 [the free allowance](/guides/usage-and-billing/#the-free-allowance) while
-it lasts. They are free while g1t is being built out. Elsewhere a run is
+it lasts. Each job's sandbox is charged as
+[sandbox time](/guides/usage-and-billing/#sandbox-time), past the free
+minutes. Elsewhere a run is
 recorded with its jobs failed and the reason, and the Actions page says so
 before the first run.
 

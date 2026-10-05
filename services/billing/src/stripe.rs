@@ -80,6 +80,16 @@ fn encode(value: &str) -> String {
 }
 
 /// `name=value` pairs as a form body.
+/// A payment made with no one there.
+#[derive(Debug, Deserialize)]
+pub struct PaymentIntent {
+    pub id: String,
+    /// `succeeded`, or anything else when it did not go through.
+    pub status: String,
+    #[serde(default)]
+    pub amount_received: i64,
+}
+
 pub(crate) fn form(fields: &[(&str, String)]) -> String {
     fields
         .iter()
@@ -104,8 +114,21 @@ impl Stripe {
         path: &str,
         body: Option<String>,
     ) -> Result<T> {
+        self.send(method, path, body, None).await
+    }
+
+    async fn send<T: for<'a> Deserialize<'a>>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<String>,
+        idempotency_key: Option<&str>,
+    ) -> Result<T> {
         let headers = Headers::new();
         headers.set("authorization", &format!("Bearer {}", self.key))?;
+        if let Some(key) = idempotency_key {
+            headers.set("idempotency-key", key)?;
+        }
         if body.is_some() {
             headers.set("content-type", "application/x-www-form-urlencoded")?;
         }
@@ -124,6 +147,41 @@ impl Stripe {
             )));
         }
         response.json().await
+    }
+
+    /// Charges the customer's saved card, with no one there: the automatic
+    /// payment at a workspace's limit. `key` makes a retry the same charge.
+    pub async fn charge_saved_card(
+        &self,
+        customer: &str,
+        amount_cents: i64,
+        description: &str,
+        key: &str,
+    ) -> Result<PaymentIntent> {
+        #[derive(Deserialize)]
+        struct Methods {
+            data: Vec<Method_>,
+        }
+        #[derive(Deserialize)]
+        struct Method_ {
+            id: String,
+        }
+        let methods: Methods = self
+            .call(Method::Get, &format!("/payment_methods?customer={}&type=card&limit=1", encode(customer)), None)
+            .await?;
+        let Some(card) = methods.data.first() else {
+            return Err(Error::RustError("no card on file".into()));
+        };
+        let fields = [
+            ("amount", amount_cents.to_string()),
+            ("currency", "usd".to_owned()),
+            ("customer", customer.to_owned()),
+            ("payment_method", card.id.clone()),
+            ("off_session", "true".to_owned()),
+            ("confirm", "true".to_owned()),
+            ("description", description.to_owned()),
+        ];
+        self.send(Method::Post, "/payment_intents", Some(form(&fields)), Some(key)).await
     }
 
     /// Starts a page on which `amount_cents` of credit is paid for by card.

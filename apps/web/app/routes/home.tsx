@@ -300,12 +300,12 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         }
       : canRunAgents
       ? {
-          // Nothing to pay while g1t is being built out.
-          done: Boolean(shell?.free) || shell?.creditMicros == null || shell.creditMicros > 0,
-          title: "Add agent credit",
-          about: "g1t's agents are paid for from the workspace's credit, at what the model costs plus 20%.",
+          // Done unless the workspace is near or at its usage limit.
+          done: Boolean(shell?.free) || shell?.limit == null || shell.limit.comped || shell.limit.state === "ok",
+          title: "Keep work running",
+          about: "Usage is charged after it runs, at what it costs g1t plus a markup. Add a card under Billing, so g1t charges it as you near your limit instead of stopping work.",
           to: workspace ? `/${workspace}/-/billing` : null,
-          action: "Add credit",
+          action: "Billing",
         }
       : {
           done: false,
