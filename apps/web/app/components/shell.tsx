@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  ChevronRight,
   BarChart3,
   BookMarked,
   BookOpen,
@@ -16,7 +17,6 @@ import {
   Fingerprint,
   KeyRound,
   Box,
-  Layers,
   LayoutDashboard,
   LayoutGrid,
   ListTree,
@@ -33,14 +33,7 @@ import {
   Activity,
   Bot,
   Kanban,
-  Package,
-  PackageCheck,
-  ScrollText,
-  Server,
   ShieldCheck,
-  Siren,
-  Tag,
-  ToggleRight,
   Rocket,
   X,
 } from "lucide-react";
@@ -146,6 +139,141 @@ function SidebarSoon({ icon, children, about }: { icon: ReactNode; children: Rea
       className="flex h-8 cursor-default items-center gap-2.5 rounded-md px-2 text-[0.8125rem] text-faint"
     >
       <span className="shrink-0 opacity-70">{icon}</span>
+      <span className="grow truncate">{children}</span>
+      <span className="rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">
+        Soon
+      </span>
+    </div>
+  );
+}
+
+/**
+ * A section of the project menu that opens to show its pages, as GitLab's
+ * does: one row with an icon, and its pages indented under it. It opens
+ * by itself when one of its pages is the current one, and otherwise
+ * remembers whether it was left open.
+ */
+function SidebarSection({
+  title,
+  icon,
+  paths = [],
+  soon = false,
+  children,
+}: {
+  title: string;
+  icon: ReactNode;
+  /** Path prefixes of its pages: one being current opens it. */
+  paths?: string[];
+  /** Nothing in it is built yet. */
+  soon?: boolean;
+  children: ReactNode;
+}) {
+  const { pathname } = useLocation();
+  const current = paths.some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"));
+  const key = `g1t.sidebar.${title}`;
+  const [open, setOpen] = useState<boolean>(current);
+  // What the person left it as, once the page is in the browser.
+  useEffect(() => {
+    if (current) {
+      setOpen(true);
+      return;
+    }
+    try {
+      const saved = localStorage.getItem(key);
+      if (saved != null) setOpen(saved === "1");
+    } catch {
+      // No storage: it stays as it is.
+    }
+  }, [current, key]);
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    try {
+      localStorage.setItem(key, next ? "1" : "0");
+    } catch {
+      // Remembered for this page only.
+    }
+  };
+  return (
+    <section>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        className={`group flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-left text-[0.8125rem] transition-colors hover:bg-raised/60 ${
+          current ? "text-fg" : soon ? "text-faint hover:text-muted" : "text-muted hover:text-fg"
+        }`}
+      >
+        <span className={`shrink-0 ${current ? "text-muted" : "text-faint group-hover:text-muted"}`}>{icon}</span>
+        <span className={`min-w-0 grow truncate ${current ? "font-medium" : ""}`}>{title}</span>
+        {soon && !open && (
+          <span className="rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">
+            Soon
+          </span>
+        )}
+        <ChevronRight
+          size={14}
+          className={`shrink-0 text-faint transition-transform duration-150 ${open ? "rotate-90" : ""}`}
+          aria-hidden="true"
+        />
+      </button>
+      {open && (
+        <div className="relative mt-px mb-1 space-y-px before:absolute before:top-1 before:bottom-1 before:left-[1.1875rem] before:w-px before:bg-line">
+          {children}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** A page inside a section: indented, without an icon of its own. */
+function SidebarSubLink({
+  to,
+  end,
+  count,
+  also,
+  children,
+}: {
+  to: string;
+  end?: boolean;
+  count?: number;
+  also?: string | string[];
+  children: ReactNode;
+}) {
+  const { pathname } = useLocation();
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      prefetch="intent"
+      className={({ isActive, isPending }) => {
+        const current =
+          isActive || [also ?? []].flat().some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"));
+        return `relative flex h-8 items-center gap-2 rounded-md pr-2 pl-[2.375rem] text-[0.8125rem] transition-colors ${
+          current
+            ? "bg-raised font-medium text-fg before:absolute before:top-1.5 before:bottom-1.5 before:left-[1.1875rem] before:z-10 before:w-px before:bg-accent"
+            : isPending
+              ? "bg-raised/60 text-fg"
+              : "text-muted hover:bg-raised/60 hover:text-fg"
+        }`;
+      }}
+    >
+      <span className="min-w-0 grow truncate">{children}</span>
+      {count != null && count > 0 && (
+        <span className="rounded bg-line px-1.5 text-[0.6875rem] tabular-nums text-muted">{count}</span>
+      )}
+    </NavLink>
+  );
+}
+
+/** A page a section will have: shown so people can see where g1t is going. */
+function SidebarSubSoon({ about, children }: { about: string; children: ReactNode }) {
+  return (
+    <div
+      title={about}
+      aria-disabled="true"
+      className="flex h-8 cursor-default items-center gap-2 rounded-md pr-2 pl-[2.375rem] text-[0.8125rem] text-faint"
+    >
       <span className="grow truncate">{children}</span>
       <span className="rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">
         Soon
@@ -414,97 +542,103 @@ function RepoMenu({ repo, isPrivate, open }: { repo: MenuRepo; isPrivate: boolea
         <SidebarLink to={base} end icon={<LayoutGrid size={15} />}>
           Overview
         </SidebarLink>
+
+        <SidebarSection title="Plan" icon={<Kanban size={15} />} paths={[`${base}/issues`, `${base}/plans`]}>
+          <SidebarSubLink to={`${base}/issues`} count={repo.issues}>
+            Issues
+          </SidebarSubLink>
+          {repo.member && <SidebarSubLink to={`${base}/plans`}>Outcomes</SidebarSubLink>}
+          <SidebarSubSoon about="Issues and pull requests on boards, by state, owner or outcome.">Boards</SidebarSubSoon>
+          <SidebarSubSoon about="Dates to land outcomes by, with what is left and what is at risk.">Milestones</SidebarSubSoon>
+          <SidebarSubSoon about="Pages about the project that agents keep current as the code changes.">Wiki</SidebarSubSoon>
+        </SidebarSection>
+
+        <SidebarSection
+          title="Code"
+          icon={<Code2 size={15} />}
+          paths={[`${base}/pulls`, `${base}/pull`, `${base}/queue`, `${base}/code`, `${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`]}
+        >
+          <SidebarSubLink to={`${base}/pulls`} also={`${base}/pull`} count={repo.pulls}>
+            Pull requests
+          </SidebarSubLink>
+          <SidebarSubLink to={`${base}/queue`}>Merge queue</SidebarSubLink>
+          <SidebarSubLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`]}>
+            Files
+          </SidebarSubLink>
+          <SidebarSubLink to={`${base}/commits`} also={`${base}/commit`}>
+            Commits
+          </SidebarSubLink>
+          <SidebarSubSoon about="Every branch, who and what is on it, how far behind it is, and its preview.">Branches</SidebarSubSoon>
+          <SidebarSubSoon about="Tags, and the releases made from them.">Tags</SidebarSubSoon>
+        </SidebarSection>
+
+        <SidebarSection title="Agents" icon={<Bot size={15} />} soon>
+          <SidebarSubSoon about="Every agent at work on this project now: what it is doing, what it knows, and a way to steer it.">
+            At work
+          </SidebarSubSoon>
+          <SidebarSubSoon about="Every agent session that changed this project, searchable, with why-blame back to the lines it wrote.">
+            Sessions
+          </SidebarSubSoon>
+          <SidebarSubSoon about="How agents should work here: conventions, commands and checks, kept with the code.">
+            Playbooks
+          </SidebarSubSoon>
+        </SidebarSection>
+
+        <SidebarSection title="Build" icon={<PlayCircle size={15} />} paths={[`${base}/actions`]}>
+          <SidebarSubLink to={`${base}/actions`}>Actions</SidebarSubLink>
+          <SidebarSubSoon about="g1t's machines, or your own, that run workflow jobs and checks.">Runners</SidebarSubSoon>
+          <SidebarSubSoon about="What builds and workflow jobs produce, kept and downloadable.">Artifacts</SidebarSubSoon>
+          <SidebarSubSoon about="Workflows that run on a timetable, and their history.">Schedules</SidebarSubSoon>
+        </SidebarSection>
+
+        <SidebarSection title="Deploy" icon={<Rocket size={15} />} paths={repo.member ? [`${base}/deployments`] : []}>
+          {repo.member && <SidebarSubLink to={`${base}/deployments`}>Deployments</SidebarSubLink>}
+          <SidebarSubSoon about="Staging and other environments, with required approvers and branch rules.">Environments</SidebarSubSoon>
+          <SidebarSubSoon about="Tagged releases with notes written from what landed.">Releases</SidebarSubSoon>
+          <SidebarSubSoon about="npm, container and other packages published from the project.">Packages</SidebarSubSoon>
+          <SidebarSubSoon about="Turn features on per environment or per user, without a deploy.">Feature flags</SidebarSubSoon>
+        </SidebarSection>
+
+        <SidebarSection title="Secure" icon={<ShieldCheck size={15} />} soon>
+          <SidebarSubSoon about="Every finding in one place, by severity, with the agent fixing each.">Security overview</SidebarSubSoon>
+          <SidebarSubSoon about="Keys and tokens found in the code or its history, revoked and removed by an agent.">
+            Secret scanning
+          </SidebarSubSoon>
+          <SidebarSubSoon about="Outdated and vulnerable packages, updated by agents, tested and landed through the queue.">
+            Dependency updates
+          </SidebarSubSoon>
+          <SidebarSubSoon about="Code scanned for vulnerabilities on every change, each finding fixed through the queue.">
+            Code scanning
+          </SidebarSubSoon>
+        </SidebarSection>
+
+        <SidebarSection title="Operate" icon={<Activity size={15} />} soon>
+          <SidebarSubSoon about="Requests, errors and CPU time of each deployment, and its logs.">Logs and metrics</SidebarSubSoon>
+          <SidebarSubSoon about="Errors and incidents from the running app, each becoming an issue an agent can take.">
+            Errors and incidents
+          </SidebarSubSoon>
+          <SidebarSubSoon about="Checks that the app answers, from around the world, and who is told when it does not.">Uptime</SidebarSubSoon>
+        </SidebarSection>
+
+        <SidebarSection title="Analyze" icon={<BarChart3 size={15} />} soon>
+          <SidebarSubSoon about="How work flows: lead time, review time, and the share of changes agents make.">Insights</SidebarSubSoon>
+          <SidebarSubSoon about="What the project costs, by agent run, sandbox, build and app.">Costs</SidebarSubSoon>
+          <SidebarSubSoon about="Deploy frequency, lead time, change failure rate and time to restore.">Delivery metrics</SidebarSubSoon>
+        </SidebarSection>
+
         {repo.member && (
-          <SidebarLink to={`${base}/deployments`} icon={<Rocket size={15} />}>
-            Deployments
-          </SidebarLink>
+          <SidebarSection title="Settings" icon={<Settings size={15} />} paths={[`${base}/settings`]}>
+            <SidebarSubLink to={`${base}/settings`} end>
+              General
+            </SidebarSubLink>
+            <SidebarSubLink to={`${base}/settings/repository`}>Repository</SidebarSubLink>
+            <SidebarSubLink to={`${base}/settings/deployments`}>Deployments</SidebarSubLink>
+            <SidebarSubLink to={`${base}/settings/dependencies`}>Dependencies</SidebarSubLink>
+            <SidebarSubLink to={`${base}/settings/secrets`}>Secrets and variables</SidebarSubLink>
+            <SidebarSubLink to={`${base}/settings/webhooks`}>Webhooks</SidebarSubLink>
+          </SidebarSection>
         )}
       </div>
-      <SidebarGroup title="Code">
-        <SidebarLink to={`${base}/code`} icon={<Code2 size={15} />} also={[`${base}/tree`, `${base}/blob`]}>
-          Code
-        </SidebarLink>
-        <SidebarLink to={`${base}/commits`} also={`${base}/commit`} icon={<History size={15} />}>
-          Commits
-        </SidebarLink>
-      </SidebarGroup>
-      <SidebarGroup title="Work">
-        <SidebarLink to={`${base}/issues`} icon={<CircleDot size={15} />} count={repo.issues}>
-          Issues
-        </SidebarLink>
-        <SidebarLink to={`${base}/pulls`} also={`${base}/pull`} icon={<GitPullRequest size={15} />} count={repo.pulls}>
-          Pull requests
-        </SidebarLink>
-        {repo.member && (
-          <SidebarLink to={`${base}/plans`} icon={<ListTree size={15} />}>
-            Plan
-          </SidebarLink>
-        )}
-        <SidebarLink to={`${base}/queue`} icon={<Layers size={15} />}>
-          Merge queue
-        </SidebarLink>
-        <SidebarSoon icon={<Kanban size={15} />} about="Issues and pull requests on boards, by state, owner or outcome.">
-          Boards
-        </SidebarSoon>
-        <SidebarSoon icon={<BookOpen size={15} />} about="Pages about the project that agents keep current as the code changes.">
-          Wiki
-        </SidebarSoon>
-      </SidebarGroup>
-      <SidebarGroup title="Agents">
-        <SidebarSoon icon={<Bot size={15} />} about="Every agent at work on this project now: what it is doing, what it knows, and a way to steer it.">
-          Agents at work
-        </SidebarSoon>
-        <SidebarSoon icon={<ScrollText size={15} />} about="Every agent session that changed this project, searchable, with why-blame back to the lines it wrote.">
-          Sessions
-        </SidebarSoon>
-      </SidebarGroup>
-      <SidebarGroup title="Automate">
-        <SidebarLink to={`${base}/actions`} icon={<PlayCircle size={15} />}>
-          Actions
-        </SidebarLink>
-      </SidebarGroup>
-      <SidebarGroup title="Secure">
-        <SidebarSoon icon={<ShieldCheck size={15} />} about="Secret scanning, vulnerable dependencies and code scanning, each finding fixed by an agent through the queue.">
-          Security and quality
-        </SidebarSoon>
-        <SidebarSoon icon={<PackageCheck size={15} />} about="Outdated packages updated by agents, tested and landed through the queue.">
-          Dependency updates
-        </SidebarSoon>
-      </SidebarGroup>
-      <SidebarGroup title="Deploy">
-        <SidebarSoon icon={<Server size={15} />} about="Staging and other environments, with required approvers and branch rules.">
-          Environments
-        </SidebarSoon>
-        <SidebarSoon icon={<Tag size={15} />} about="Tagged releases with notes written from what landed.">
-          Releases
-        </SidebarSoon>
-        <SidebarSoon icon={<Package size={15} />} about="npm, container and other packages published from the project.">
-          Packages
-        </SidebarSoon>
-        <SidebarSoon icon={<ToggleRight size={15} />} about="Turn features on per environment or per user, without a deploy.">
-          Feature flags
-        </SidebarSoon>
-      </SidebarGroup>
-      <SidebarGroup title="Operate">
-        <SidebarSoon icon={<Activity size={15} />} about="Requests, errors and CPU time of each deployment, and its logs.">
-          Logs and metrics
-        </SidebarSoon>
-        <SidebarSoon icon={<Siren size={15} />} about="Errors and incidents from the running app, each becoming an issue an agent can take.">
-          Errors and incidents
-        </SidebarSoon>
-      </SidebarGroup>
-      <SidebarGroup title="Insights">
-        <SidebarSoon icon={<BarChart3 size={15} />} about="How work flows: lead time, agents' share of changes, review time, what costs most.">
-          Insights
-        </SidebarSoon>
-      </SidebarGroup>
-      {repo.member && (
-        <SidebarGroup title="Project">
-          <SidebarLink to={`${base}/settings`} icon={<Settings size={15} />}>
-            Settings
-          </SidebarLink>
-        </SidebarGroup>
-      )}
     </nav>
   );
 }
@@ -685,11 +819,16 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
       </div>
       </div>
 
-      {/* The workspace's own things sit at the bottom, by its usage and the account. */}
-      <div className="space-y-2 p-2">
+      {/* The workspace's own things sit at the bottom, by its usage and the
+          account: a panel of their own, ruled off from whatever menu is above,
+          however long it grows. */}
+      <div className="shrink-0 space-y-2 border-t border-line bg-surface/50 p-2 pt-3">
         {ws && (
           <div className="space-y-px">
-            <p className="px-2 pb-1 text-[0.6875rem] font-medium uppercase tracking-wider text-faint">{ws.slug}</p>
+            <p className="flex items-center gap-2 px-2 pb-1 text-[0.6875rem] font-medium uppercase tracking-wider text-faint">
+              <span>Workspace</span>
+              <span className="min-w-0 truncate font-mono normal-case tracking-normal text-muted">{ws.slug}</span>
+            </p>
             <SidebarLink to={`/${ws.slug}/-/usage`} icon={<BarChart3 size={15} />}>
               Usage
             </SidebarLink>
