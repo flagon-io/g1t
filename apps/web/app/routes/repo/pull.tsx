@@ -535,71 +535,6 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
           </p>
         )}
 
-        {lifecycle && <LifecyclePanel lifecycle={lifecycle} />}
-        {/* The agent on it: who, doing what this minute, for how long, at what cost. */}
-        <AgentPanel owner={params.owner} repo={params.repo} number={pull.number} stage={lifecycle?.stage ?? null} />
-
-        {/* Steering: while its agent works, people can tell it things. */}
-        {canManage &&
-          pull.runtime === "hosted" &&
-          (working || ["working", "revising", "catching_up", "answering"].includes(lifecycle?.stage ?? "")) && (
-            <Form method="post" className="mt-4 rounded-2xl bg-surface p-4 ring-1 ring-merged/30">
-              <p className="flex items-center gap-2 text-sm font-medium">
-                <Sparkles size={15} className="text-merged" />
-                Message the agent
-              </p>
-              <p className="mt-1 text-xs text-muted">
-                A correction, a hint, a change of plan. It reads it at its next step, without
-                starting over.
-              </p>
-              <div className="mt-3 flex gap-2">
-                <input type="hidden" name="action" value="message" />
-                <input
-                  name="body"
-                  required
-                  autoComplete="off"
-                  data-1p-ignore
-                  placeholder="Keep the old flag working too…"
-                  className="h-9 min-w-0 grow rounded-md bg-bg px-3 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-merged/60"
-                />
-                <Button type="submit">Send</Button>
-              </div>
-            </Form>
-          )}
-        {messages.length > 0 && (
-          <ul className="mt-3 space-y-1.5">
-            {messages.map((message) => (
-              <li key={message.id} className="flex items-start gap-2 text-sm">
-                <Avatar name={message.author} size={18} />
-                <span className="min-w-0 grow">
-                  <span className="font-medium">
-                    {message.fromNumber != null ? `The agent on #${message.fromNumber}` : message.author}
-                  </span>{" "}
-                  <span className="text-muted">
-                    {message.kind === "question"
-                      ? "asked:"
-                      : message.kind === "handoff"
-                        ? "handed over:"
-                        : message.kind === "answer"
-                          ? "answered:"
-                          : "to the agent:"}
-                  </span>{" "}
-                  {message.body}
-                  {message.answer && (
-                    <span className="mt-1 block border-l-2 border-merged/40 pl-2 text-muted">
-                      {message.declined ? "Declined: " : "Answer: "}
-                      {message.answer}
-                    </span>
-                  )}
-                </span>
-                <span className={`shrink-0 text-xs ${message.deliveredAt ? "text-accent" : "text-faint"}`}>
-                  {message.deliveredAt ? "read by the agent" : "waiting for its next step"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-
         {issue && (
           <Link
             to={`${base}/issues/${issue.number}`}
@@ -620,7 +555,6 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             )}
           </Link>
         )}
-
         {pull.status === "merged" && (
           <p className="mt-4 flex items-center gap-2.5 rounded-xl border border-merged/40 bg-merged/5 px-4 py-2.5 text-sm">
             <GitMerge size={16} className="shrink-0 text-merged" />
@@ -649,32 +583,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
           </p>
         )}
 
-        {collisions.length > 0 && active && (
-          <div className="mt-4 rounded-xl border border-line bg-surface px-4 py-3 text-sm">
-            <p className="flex items-center gap-2.5 font-medium">
-              <Radar size={16} className="shrink-0 text-info" />
-              Other work is changing the same files
-            </p>
-            <ul className="mt-2 space-y-1.5">
-              {collisions.map((other) => (
-                <li key={other.number} className="flex flex-wrap items-baseline gap-x-2 text-muted">
-                  <Link
-                    to={`${base}/pull/${other.number}`}
-                    className="font-medium text-fg hover:underline"
-                  >
-                    {other.title} <span className="font-normal text-faint">#{other.number}</span>
-                  </Link>
-                  <span className="font-mono text-xs">{other.paths.join(", ")}</span>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-2 text-xs text-faint">
-              Whichever merges second will have to catch up, and may conflict.
-            </p>
-          </div>
-        )}
-
-        <nav className="mt-8 flex gap-6 border-b border-line">
+        <nav className="mt-6 flex gap-6 border-b border-line">
           <TabLink to={here} active={tab === "conversation"}>
             <MessageSquare size={15} />
             Conversation
@@ -688,6 +597,101 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             Changes
           </TabLink>
         </nav>
+        {/* What is happening on it now: its stage, its agent, what people told
+            the agent, and what else touches the same files. On the conversation,
+            so the tabs sit right under the title. */}
+        {tab === "conversation" && (
+          <div>
+            {lifecycle && <LifecyclePanel lifecycle={lifecycle} />}
+            {/* The agent on it: who, doing what this minute, for how long, at what cost. */}
+            <AgentPanel owner={params.owner} repo={params.repo} number={pull.number} stage={lifecycle?.stage ?? null} />
+
+            {/* Steering: while its agent works, people can tell it things. */}
+            {canManage &&
+              pull.runtime === "hosted" &&
+              (working || ["working", "revising", "catching_up", "answering"].includes(lifecycle?.stage ?? "")) && (
+                <Form method="post" className="mt-4 rounded-2xl bg-surface p-4 ring-1 ring-merged/30">
+                  <p className="flex items-center gap-2 text-sm font-medium">
+                    <Sparkles size={15} className="text-merged" />
+                    Message the agent
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    A correction, a hint, a change of plan. It reads it at its next step, without
+                    starting over.
+                  </p>
+                  <div className="mt-3 flex gap-2">
+                    <input type="hidden" name="action" value="message" />
+                    <input
+                      name="body"
+                      required
+                      autoComplete="off"
+                      data-1p-ignore
+                      placeholder="Keep the old flag working too…"
+                      className="h-9 min-w-0 grow rounded-md bg-bg px-3 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-merged/60"
+                    />
+                    <Button type="submit">Send</Button>
+                  </div>
+                </Form>
+              )}
+            {messages.length > 0 && (
+              <ul className="mt-3 space-y-1.5">
+                {messages.map((message) => (
+                  <li key={message.id} className="flex items-start gap-2 text-sm">
+                    <Avatar name={message.author} size={18} />
+                    <span className="min-w-0 grow">
+                      <span className="font-medium">
+                        {message.fromNumber != null ? `The agent on #${message.fromNumber}` : message.author}
+                      </span>{" "}
+                      <span className="text-muted">
+                        {message.kind === "question"
+                          ? "asked:"
+                          : message.kind === "handoff"
+                            ? "handed over:"
+                            : message.kind === "answer"
+                              ? "answered:"
+                              : "to the agent:"}
+                      </span>{" "}
+                      {message.body}
+                      {message.answer && (
+                        <span className="mt-1 block border-l-2 border-merged/40 pl-2 text-muted">
+                          {message.declined ? "Declined: " : "Answer: "}
+                          {message.answer}
+                        </span>
+                      )}
+                    </span>
+                    <span className={`shrink-0 text-xs ${message.deliveredAt ? "text-accent" : "text-faint"}`}>
+                      {message.deliveredAt ? "read by the agent" : "waiting for its next step"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {collisions.length > 0 && active && (
+              <div className="mt-4 rounded-xl border border-line bg-surface px-4 py-3 text-sm">
+                <p className="flex items-center gap-2.5 font-medium">
+                  <Radar size={16} className="shrink-0 text-info" />
+                  Other work is changing the same files
+                </p>
+                <ul className="mt-2 space-y-1.5">
+                  {collisions.map((other) => (
+                    <li key={other.number} className="flex flex-wrap items-baseline gap-x-2 text-muted">
+                      <Link
+                        to={`${base}/pull/${other.number}`}
+                        className="font-medium text-fg hover:underline"
+                      >
+                        {other.title} <span className="font-normal text-faint">#{other.number}</span>
+                      </Link>
+                      <span className="font-mono text-xs">{other.paths.join(", ")}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-xs text-faint">
+                  Whichever merges second will have to catch up, and may conflict.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
         <div className="mt-5">
           {comparison ? (
             <DiffView
