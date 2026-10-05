@@ -88,6 +88,28 @@ build: `dist`, `build`, `out`, `public`, `_site`, `.output/public`. Set
   lists each one it left out. Code that needs them should check that the
   binding is there.
 
+## Addresses of other projects
+
+A project that [depends on another](/guides/projects/#dependencies) with
+`as: API_URL` gets that project's address as `API_URL`, in its build and in
+its running app:
+
+| Building | `API_URL` is |
+| --- | --- |
+| Production | The other project's production. |
+| A preview of branch `x` | The other project's preview of `x` if it is up, else its production. |
+
+A secret or variable of the same name wins over it.
+
+### Preview stacks
+
+A change to an API is best seen in the apps that call it. On a pull
+request whose preview is up, **Preview them against this change** (under
+**Affects**) builds a preview of every project that uses this one, from its
+own default branch, under the same branch name. Each gets this preview's
+address through its variable. They come down with their idle days, like
+any preview.
+
 ## Previews of branches
 
 A preview is built when a pull request is opened, when it is marked ready,

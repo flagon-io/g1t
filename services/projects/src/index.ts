@@ -12,15 +12,20 @@
  * Reached through service bindings: `POST /rpc/<method>`.
  */
 
+import { parse as parseYaml } from "yaml";
+
 import {
   fail,
   identityClient,
   newId,
   ok,
   reposClient,
+  type Dependencies,
+  type DependencyLink,
   type G1tEvent,
   type NewProject,
   type Project,
+  type ProjectGraph,
   type Repo,
   type Result,
   type ServiceBinding,
@@ -54,6 +59,14 @@ type Row = {
 };
 
 const now = () => new Date().toISOString();
+
+/** A variable's name for a dependency's address, spelled as secrets' names are. */
+const ALIAS = /^[A-Z_][A-Z0-9_]{0,99}$/;
+/** How many dependencies a project may declare. */
+const MAX_DEPENDENCIES = 50;
+
+type LinkRow = { slug: string; name: string; alias: string | null; source: "ui" | "file" };
+type NodeRow = { id: string; slug: string; workspace: string; alias: string | null };
 
 function toProject(row: Row): Project {
   return {
@@ -292,7 +305,187 @@ class Projects {
     return ok(toProject((await this.db.prepare("SELECT * FROM projects WHERE id = ?").bind(row.id).first<Row>())!));
   }
 
+  // ---- Dependencies ------------------------------------------------------
+
+  private async row(workspace: string, slug: string): Promise<Row | null> {
+    return this.db
+      .prepare("SELECT * FROM projects WHERE workspace = ? AND slug = ?")
+      .bind(workspace.toLowerCase(), slug.toLowerCase())
+      .first<Row>();
+  }
+
+  private async links(projectId: string): Promise<Dependencies> {
+    const [out, into] = await Promise.all([
+      this.db
+        .prepare(
+          `SELECT p.slug, p.name, d.alias, d.source FROM dependencies d JOIN projects p ON p.id = d.depends_on_id
+           WHERE d.project_id = ? ORDER BY p.name COLLATE NOCASE`,
+        )
+        .bind(projectId)
+        .all<LinkRow>(),
+      this.db
+        .prepare(
+          `SELECT p.slug, p.name, d.alias, d.source FROM dependencies d JOIN projects p ON p.id = d.project_id
+           WHERE d.depends_on_id = ? ORDER BY p.name COLLATE NOCASE`,
+        )
+        .bind(projectId)
+        .all<LinkRow>(),
+    ]);
+    const link = (r: LinkRow): DependencyLink => ({ slug: r.slug, name: r.name, as: r.alias, source: r.source });
+    return { dependsOn: out.results.map(link), usedBy: into.results.map(link) };
+  }
+
+  /** Whether `from` already reaches `to` through dependencies. */
+  private async reaches(from: string, to: string): Promise<boolean> {
+    const seen = new Set<string>([from]);
+    let frontier = [from];
+    while (frontier.length > 0) {
+      const marks = frontier.map(() => "?").join(", ");
+      const next = await this.db
+        .prepare(`SELECT depends_on_id AS id FROM dependencies WHERE project_id IN (${marks})`)
+        .bind(...frontier)
+        .all<{ id: string }>();
+      frontier = [];
+      for (const { id } of next.results) {
+        if (id === to) return true;
+        if (!seen.has(id)) {
+          seen.add(id);
+          frontier.push(id);
+        }
+      }
+    }
+    return false;
+  }
+
+  async dependencies(a: { workspace: string; slug: string; viewer: Viewer }): Promise<Result<Dependencies>> {
+    const row = await this.row(a.workspace, a.slug);
+    if (!row || !this.visible(row, a.viewer)) return fail("not_found", "There is no such project.");
+    return ok(await this.links(row.id));
+  }
+
+  /** Records `row` using `target`, after the checks every way of declaring one shares. */
+  private async declare(row: Row, target: Row, alias: string | null, source: "ui" | "file", by: string): Promise<Result<true>> {
+    if (target.id === row.id) return fail("invalid", "A project cannot depend on itself.");
+    if (alias != null && !ALIAS.test(alias)) {
+      return fail("invalid", "The variable's name is capital letters, digits and underscores, such as API_URL.");
+    }
+    if (await this.reaches(target.id, row.id)) {
+      return fail("conflict", `${target.slug} already depends on ${row.slug}, directly or through others; that would be a cycle.`);
+    }
+    const count = await this.db
+      .prepare("SELECT COUNT(*) AS n FROM dependencies WHERE project_id = ?")
+      .bind(row.id)
+      .first<{ n: number }>();
+    if ((count?.n ?? 0) >= MAX_DEPENDENCIES) return fail("invalid", `A project can depend on at most ${MAX_DEPENDENCIES} others.`);
+    await this.db
+      .prepare(
+        `INSERT INTO dependencies (project_id, depends_on_id, alias, source, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (project_id, depends_on_id) DO UPDATE SET alias = excluded.alias, source = excluded.source`,
+      )
+      .bind(row.id, target.id, alias, source, by, now())
+      .run();
+    return ok(true);
+  }
+
+  async addDependency(a: { actor: User; workspace: string; slug: string; on: string; as: string | null }): Promise<Result<Dependencies>> {
+    if (!isMember(a.actor, a.workspace)) return fail("forbidden", "Only members can change a workspace's projects.");
+    const [row, target] = await Promise.all([this.row(a.workspace, a.slug), this.row(a.workspace, a.on)]);
+    if (!row) return fail("not_found", "There is no such project.");
+    if (!target) return fail("not_found", `${a.workspace} has no project called ${a.on}.`);
+    const existing = await this.db
+      .prepare("SELECT source FROM dependencies WHERE project_id = ? AND depends_on_id = ?")
+      .bind(row.id, target.id)
+      .first<{ source: string }>();
+    if (existing?.source === "file") return fail("conflict", "This dependency is declared in .g1t/project.yml; change it there.");
+    const alias = a.as?.trim() ? a.as.trim().toUpperCase() : null;
+    const done = await this.declare(row, target, alias, "ui", a.actor.username);
+    if (!done.ok) return done;
+    return ok(await this.links(row.id));
+  }
+
+  async removeDependency(a: { actor: User; workspace: string; slug: string; on: string }): Promise<Result<Dependencies>> {
+    if (!isMember(a.actor, a.workspace)) return fail("forbidden", "Only members can change a workspace's projects.");
+    const [row, target] = await Promise.all([this.row(a.workspace, a.slug), this.row(a.workspace, a.on)]);
+    if (!row || !target) return fail("not_found", "There is no such dependency.");
+    const removed = await this.db
+      .prepare("DELETE FROM dependencies WHERE project_id = ? AND depends_on_id = ? AND source = 'ui' RETURNING project_id")
+      .bind(row.id, target.id)
+      .first();
+    if (!removed) return fail("conflict", "This dependency is declared in .g1t/project.yml, or does not exist; change the file.");
+    return ok(await this.links(row.id));
+  }
+
+  async graph(a: { projectId: string }): Promise<ProjectGraph> {
+    const [out, into] = await Promise.all([
+      this.db
+        .prepare(
+          `SELECT p.id, p.slug, p.workspace, d.alias FROM dependencies d JOIN projects p ON p.id = d.depends_on_id WHERE d.project_id = ?`,
+        )
+        .bind(a.projectId)
+        .all<NodeRow>(),
+      this.db
+        .prepare(
+          `SELECT p.id, p.slug, p.workspace, d.alias FROM dependencies d JOIN projects p ON p.id = d.project_id WHERE d.depends_on_id = ?`,
+        )
+        .bind(a.projectId)
+        .all<NodeRow>(),
+    ]);
+    const node = (r: NodeRow) => ({ id: r.id, slug: r.slug, workspace: r.workspace, as: r.alias });
+    return { dependsOn: out.results.map(node), usedBy: into.results.map(node) };
+  }
+
+  /** For the runner: each project on a repository, with what it uses and what uses it. */
+  async contextForRepo(a: { repoId: string }): Promise<{ slug: string; name: string; dependencies: Dependencies }[]> {
+    const rows = await this.db.prepare("SELECT * FROM projects WHERE repo_id = ?").bind(a.repoId).all<Row>();
+    return Promise.all(rows.results.map(async (row) => ({ slug: row.slug, name: row.name, dependencies: await this.links(row.id) })));
+  }
+
+  /**
+   * A project's `.g1t/project.yml` at a commit of its default branch:
+   *
+   *     dependsOn:
+   *       - project: api
+   *         as: API_URL
+   *
+   * Its dependencies replace the ones the file declared before. Ones that
+   * cannot be kept (an unknown project, a cycle) are left out.
+   */
+  private async syncFile(row: Row, commit: string): Promise<void> {
+    const actor = await this.workspaceActor(row.workspace);
+    if (!actor) return;
+    const path = row.root_dir ? `${row.root_dir}/.g1t/project.yml` : ".g1t/project.yml";
+    const blob = await reposClient(this.env.REPOS).blob({ namespace: row.repo_namespace, name: row.repo_name }, actor, commit, path);
+    if (!blob.ok || blob.value.text == null) {
+      // No file (any more): what it declared goes with it.
+      await this.db.prepare("DELETE FROM dependencies WHERE project_id = ? AND source = 'file'").bind(row.id).run();
+      return;
+    }
+    let declared: unknown[] = [];
+    try {
+      const parsed = parseYaml(blob.value.text) as { dependsOn?: unknown } | null;
+      if (Array.isArray(parsed?.dependsOn)) declared = parsed.dependsOn;
+    } catch (error) {
+      console.error("could not read", path, "of", row.slug, error);
+      return;
+    }
+    await this.db.prepare("DELETE FROM dependencies WHERE project_id = ? AND source = 'file'").bind(row.id).run();
+    for (const entry of declared.slice(0, MAX_DEPENDENCIES)) {
+      const item = entry as { project?: unknown; as?: unknown } | string;
+      const on = typeof item === "string" ? item : typeof item?.project === "string" ? item.project : null;
+      if (!on) continue;
+      const target = await this.row(row.workspace, on);
+      if (!target) continue;
+      const alias = typeof item === "object" && typeof item.as === "string" ? item.as.trim().toUpperCase() : null;
+      await this.declare(row, target, alias, "file", "g1t");
+    }
+  }
+
   async onEvent(event: G1tEvent): Promise<void> {
+    if (event.type === "git.push" && event.data.defaultBranch) {
+      const rows = await this.db.prepare("SELECT * FROM projects WHERE repo_id = ?").bind(event.data.repoId).all<Row>();
+      for (const row of rows.results) await this.syncFile(row, event.data.after);
+      return;
+    }
     if (event.type !== "repo.created") return;
     const actor = await this.workspaceActor(event.data.namespace);
     if (!actor) return;
@@ -318,6 +511,16 @@ export default {
         return Response.json(await service.create(args));
       case "update":
         return Response.json(await service.update(args));
+      case "dependencies":
+        return Response.json(await service.dependencies(args));
+      case "add_dependency":
+        return Response.json(await service.addDependency(args));
+      case "remove_dependency":
+        return Response.json(await service.removeDependency(args));
+      case "graph":
+        return Response.json(await service.graph(args));
+      case "context_for_repo":
+        return Response.json(await service.contextForRepo(args));
       default:
         return new Response("Unknown method\n", { status: 404 });
     }

@@ -1,4 +1,4 @@
-import { ArrowUpRight, Box, CircleDot, Code2, GitBranch, GitCommitHorizontal, GitPullRequest, Lock, Rocket, RotateCw } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Box, CircleDot, Code2, GitBranch, GitCommitHorizontal, GitPullRequest, Lock, Network, Rocket, RotateCw } from "lucide-react";
 import { Form, Link, useNavigation } from "react-router";
 
 import type { Route } from "./+types/overview";
@@ -15,13 +15,14 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const member = roleIn(viewer, params.owner) != null;
   const path = { namespace: params.owner, name: params.repo };
   const ref = { workspace: params.owner, slug: params.repo };
-  const [project, settings, list, pulls, log, counts] = await Promise.all([
+  const [project, settings, list, pulls, log, counts, deps] = await Promise.all([
     projects.get(params.owner, params.repo, viewer),
     member ? deployments.settings(ref, viewer) : null,
     member ? deployments.list(ref, viewer) : null,
     work.listPulls(path, viewer, "open"),
     repos.log(path, viewer, null, 1),
     work.counts(path, viewer),
+    projects.dependencies(params.owner, params.repo, viewer),
   ]);
   return {
     member,
@@ -32,6 +33,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     pulls: pulls.ok ? pulls.value.slice(0, MAX_PULLS) : [],
     commit: log.ok ? (log.value[0] ?? null) : null,
     open: counts.ok ? counts.value : { issues: 0, pulls: 0 },
+    dependencies: deps.ok ? deps.value : { dependsOn: [], usedBy: [] },
   };
 }
 
@@ -43,7 +45,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function ProjectOverview({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { member, project, settings, builds, live, pulls, commit, open } = loaderData;
+  const { member, project, settings, builds, live, pulls, commit, open, dependencies } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const production = live.find((app) => app.kind === "production") ?? null;
   const previews = live.filter((app) => app.kind === "preview");
@@ -300,6 +302,62 @@ export default function ProjectOverview({ loaderData, actionData, params }: Rout
             <p className="mt-2 text-xl font-semibold tabular-nums">{open.pulls}</p>
             <p className="text-xs text-muted">Pull requests</p>
           </Link>
+        </section>
+
+        <section className="rounded-xl border border-line bg-surface p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted uppercase">
+              <Network size={13} />
+              Dependencies
+            </h2>
+            {member && (
+              <Link to={`${base}/settings/dependencies`} className="text-xs text-muted hover:text-fg">
+                Manage
+              </Link>
+            )}
+          </div>
+          {dependencies.dependsOn.length === 0 && dependencies.usedBy.length === 0 ? (
+            <p className="mt-3 text-xs text-muted">
+              Uses no other project, and none uses it. Declare one, and builds get its address and agents know what
+              depends on what.
+            </p>
+          ) : (
+            <div className="mt-3 space-y-3 text-xs">
+              {dependencies.dependsOn.length > 0 && (
+                <div>
+                  <p className="flex items-center gap-1 text-muted">
+                    <ArrowUpRight size={12} /> Depends on
+                  </p>
+                  <ul className="mt-1.5 space-y-1">
+                    {dependencies.dependsOn.map((d) => (
+                      <li key={d.slug} className="flex items-center justify-between gap-2">
+                        <Link to={`/${params.owner}/${d.slug}`} className="font-medium hover:underline">
+                          {d.name}
+                        </Link>
+                        {d.as && <code className="font-mono text-faint">{d.as}</code>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {dependencies.usedBy.length > 0 && (
+                <div>
+                  <p className="flex items-center gap-1 text-muted">
+                    <ArrowDownLeft size={12} /> Used by
+                  </p>
+                  <ul className="mt-1.5 space-y-1">
+                    {dependencies.usedBy.map((d) => (
+                      <li key={d.slug}>
+                        <Link to={`/${params.owner}/${d.slug}`} className="font-medium hover:underline">
+                          {d.name}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
         </section>
 
         {project && (

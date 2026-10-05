@@ -46,6 +46,25 @@ export type NewProject = {
   rootDir?: string;
 };
 
+/** One end of a dependency, as a page shows it. */
+export type DependencyLink = {
+  slug: string;
+  name: string;
+  /** The variable carrying the other project's address, such as `API_URL`. */
+  as: string | null;
+  /** Declared on the site, or in the project's `.g1t/project.yml`. */
+  source: "ui" | "file";
+};
+
+/** What a project uses, and what uses it. */
+export type Dependencies = { dependsOn: DependencyLink[]; usedBy: DependencyLink[] };
+
+/** A project's dependencies by id, for services. */
+export type ProjectGraph = {
+  dependsOn: { id: string; slug: string; workspace: string; as: string | null }[];
+  usedBy: { id: string; slug: string; workspace: string; as: string | null }[];
+};
+
 export interface ProjectsApi {
   /** A workspace's projects, by name. Members, or anyone for public repositories. */
   list(workspace: string, viewer: Viewer): Promise<Result<Project[]>>;
@@ -61,4 +80,15 @@ export interface ProjectsApi {
     slug: string,
     changes: { name?: string; description?: string | null; rootDir?: string },
   ): Promise<Result<Project>>;
+  /** What a project uses and what uses it. Whoever may see the project. */
+  dependencies(workspace: string, slug: string, viewer: Viewer): Promise<Result<Dependencies>>;
+  /**
+   * `slug` uses `on`, with `as` the variable that carries `on`'s address.
+   * Members only; refused if it would make a cycle.
+   */
+  addDependency(actor: User, workspace: string, slug: string, on: string, as: string | null): Promise<Result<Dependencies>>;
+  /** Members only. A dependency from `.g1t/project.yml` is changed there. */
+  removeDependency(actor: User, workspace: string, slug: string, on: string): Promise<Result<Dependencies>>;
+  /** For services: a project's dependencies by id. */
+  graph(projectId: string): Promise<ProjectGraph>;
 }

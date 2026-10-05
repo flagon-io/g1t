@@ -116,6 +116,13 @@ export interface DeploymentsApi {
   get(project: ProjectRef, id: string, viewer: Viewer): Promise<Result<Deployment & { log: string | null }>>;
   /** Builds production (`branch` null), or a branch's preview, again from its head. */
   redeploy(actor: User, project: ProjectRef, branch: string | null): Promise<Result<Deployment>>;
+  /**
+   * Builds previews of the projects that use this one, under the same
+   * branch, each pointed at this branch's preview. Answers at once with the
+   * names of the projects being built; the builds go on in the
+   * background. Members only.
+   */
+  stack(actor: User, project: ProjectRef, branch: string): Promise<Result<string[]>>;
   /** Takes production (`branch` null), or a branch's preview, down now. */
   takeDown(actor: User, project: ProjectRef, branch: string | null): Promise<Result<true>>;
   /** Every project of a workspace at a glance. Members only. */

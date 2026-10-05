@@ -43,6 +43,8 @@ export interface RunnerEnv {
   ACTIONS: ServiceBinding;
   /** Told when a deploy sandbox dies without reporting. */
   DEPLOYMENTS: ServiceBinding;
+  /** What a repository's projects use and what uses them, for agents. */
+  PROJECTS: ServiceBinding;
   /**
    * The model proxy, which every sandbox's model requests go through with a
    * token for their run, so that no sandbox holds a key. When unset,
@@ -561,10 +563,13 @@ export default class RunnerService
     number: number,
     text: string,
   ): Promise<string | null> {
-    const items: ContextItem[] = await integrationsClient(this.env.INTEGRATIONS)
-      .references(repo.namespace, text)
-      .catch(() => []);
-    if (items.length === 0) return null;
+    const [items, projects] = await Promise.all([
+      integrationsClient(this.env.INTEGRATIONS)
+        .references(repo.namespace, text)
+        .catch((): ContextItem[] => []),
+      this.projectContext(repo).catch(() => null),
+    ]);
+    if (items.length === 0) return projects;
     if (number > 0) {
       await workClient(this.env.WORK).appendSession(actor, repo, number, [
         {
@@ -573,7 +578,43 @@ export default class RunnerService
         },
       ]);
     }
-    return describeOutside(items);
+    return [describeOutside(items), projects].filter(Boolean).join("\n\n");
+  }
+
+  /**
+   * The projects this repository is the source of, what they use and what
+   * uses them: so an agent changing an interface knows who calls it, and
+   * opens issues there rather than widening its change.
+   */
+  private async projectContext(repo: RepoPath): Promise<string | null> {
+    const found = await reposClient(this.env.REPOS).get(repo, null);
+    if (!found.ok) return null;
+    const response = await this.env.PROJECTS.fetch("https://projects/rpc/context_for_repo", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ repoId: found.value.id }),
+    });
+    if (!response.ok) return null;
+    const projects = (await response.json()) as {
+      slug: string;
+      name: string;
+      dependencies: { dependsOn: { slug: string; as: string | null }[]; usedBy: { slug: string; as: string | null }[] };
+    }[];
+    const lines: string[] = [];
+    for (const project of projects) {
+      const { dependsOn, usedBy } = project.dependencies;
+      if (dependsOn.length === 0 && usedBy.length === 0) continue;
+      const named = (list: { slug: string; as: string | null }[]) =>
+        list.map((d) => (d.as ? `${d.slug} (its address is in ${d.as})` : d.slug)).join(", ");
+      if (dependsOn.length > 0) lines.push(`- The ${project.name} project uses: ${named(dependsOn)}.`);
+      if (usedBy.length > 0) lines.push(`- Projects that use ${project.name}: ${named(usedBy)}.`);
+    }
+    if (lines.length === 0) return null;
+    return [
+      "This repository's projects and the projects around them in the workspace:",
+      ...lines,
+      "If your change alters what the projects that use this one rely on (an API, a package's exports, a message's shape), keep it working for them, or open an issue on each with create_issue saying what they need to change, and mention it in your summary. Do not change their code from here.",
+    ].join("\n");
   }
 
   /** The same, for a step g1t takes by itself: a refusal stops the step. */

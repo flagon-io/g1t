@@ -273,6 +273,7 @@ export function deploymentsClient(service: ServiceBinding): DeploymentsApi {
     get: (project, id, viewer) => call("get", { project, id, viewer }),
     redeploy: (actor, project, branch) => call("redeploy", { actor, project, branch }),
     takeDown: (actor, project, branch) => call("take_down", { actor, project, branch }),
+    stack: (actor, project, branch) => call("stack", { actor, project, branch }),
     overview: (workspace, viewer) => call("overview", { workspace, viewer }),
     usage: (workspace, viewer) => call("usage", { workspace, viewer }),
   };
@@ -286,5 +287,9 @@ export function projectsClient(service: ServiceBinding): ProjectsApi {
     byRepo: (repoId) => call("by_repo", { repoId }),
     create: (actor, workspace, input) => call("create", { actor, workspace, input }),
     update: (actor, workspace, slug, changes) => call("update", { actor, workspace, slug, changes }),
+    dependencies: (workspace, slug, viewer) => call("dependencies", { workspace, slug, viewer }),
+    addDependency: (actor, workspace, slug, on, as) => call("add_dependency", { actor, workspace, slug, on, as }),
+    removeDependency: (actor, workspace, slug, on) => call("remove_dependency", { actor, workspace, slug, on }),
+    graph: (projectId) => call("graph", { projectId }),
   };
 }

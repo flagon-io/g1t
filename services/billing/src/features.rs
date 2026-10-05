@@ -11,7 +11,7 @@ use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
 
-use crate::stripe::StripeSubscription;
+use crate::stripe::{StripeSubscription, is_missing};
 use crate::{Billing, Touched, members_only, optional};
 
 #[derive(Deserialize)]
@@ -174,8 +174,18 @@ impl Billing {
         let stale = row.period_end.as_deref().is_none_or(|end| end <= rfc3339(now_ms()).as_str())
             && row.status != "canceled";
         if let (true, Some(stripe)) = (stale, &self.stripe) {
-            let subscription = stripe.subscription(&row.subscription_id).await?;
-            self.record(workspace, feature, &subscription, &row.started_by).await?;
+            match stripe.subscription(&row.subscription_id).await {
+                Ok(subscription) => self.record(workspace, feature, &subscription, &row.started_by).await?,
+                // A plan from another Stripe account: it has ended here.
+                Err(error) if is_missing(&error) => {
+                    self.db
+                        .prepare("UPDATE subscriptions SET status = 'canceled', updated_at = ? WHERE workspace = ? AND feature = ?")
+                        .bind(&[rfc3339(now_ms()).into(), workspace.into(), feature.as_str().into()])?
+                        .run()
+                        .await?;
+                }
+                Err(error) => return Err(error),
+            }
             return self.subscription_row(workspace, feature).await;
         }
         Ok(Some(row))
@@ -227,16 +237,32 @@ impl Billing {
         }
         let plan = self.plan(a.feature);
         let customer = self.row(&workspace).await?.and_then(|row| row.customer_id);
-        let session = stripe
-            .start_subscription(
-                &workspace,
-                a.feature.as_str(),
-                &plan.title,
-                plan.monthly_cents,
-                customer.as_deref(),
-                &a.return_url,
-            )
-            .await?;
+        let start = |customer: Option<String>| {
+            let plan = &plan;
+            let workspace = &workspace;
+            let return_url = &a.return_url;
+            async move {
+                stripe
+                    .start_subscription(
+                        workspace,
+                        a.feature.as_str(),
+                        &plan.title,
+                        plan.monthly_cents,
+                        customer.as_deref(),
+                        return_url,
+                    )
+                    .await
+            }
+        };
+        let session = match start(customer.clone()).await {
+            Ok(session) => session,
+            // A customer saved under another Stripe account: start afresh.
+            Err(error) if customer.is_some() && is_missing(&error) => {
+                self.forget_customer(&workspace).await?;
+                start(None).await?
+            }
+            Err(error) => return Err(error),
+        };
         let Some(url) = session.url else {
             return Err(worker::Error::RustError(
                 "the card processor returned no payment page".into(),

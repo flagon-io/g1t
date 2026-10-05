@@ -59,6 +59,7 @@ export default [
     route("settings/webhooks", "routes/repo/webhooks.tsx"),
     route("settings/secrets", "routes/repo/secrets.tsx"),
     route("settings/deployments", "routes/repo/settings-deployments.tsx"),
+    route("settings/dependencies", "routes/repo/settings-dependencies.tsx"),
   ]),
   // Anything else: a 404 that still knows who is signed in.
   route("*", "routes/not-found.tsx"),

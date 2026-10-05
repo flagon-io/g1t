@@ -244,6 +244,13 @@ impl Stripe {
     }
 }
 
+/// Whether the processor said an id it was given does not exist, as when
+/// g1t moves to another Stripe account and ids saved from the old one stay
+/// behind.
+pub(crate) fn is_missing(error: &Error) -> bool {
+    error.to_string().contains("resource_missing")
+}
+
 pub(crate) fn is_live(key: &str) -> bool {
     key.starts_with("sk_live_") || key.starts_with("rk_live_")
 }

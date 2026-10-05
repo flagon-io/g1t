@@ -384,14 +384,18 @@ impl Billing {
             ));
         }
         let customer = self.row(&workspace).await?.and_then(|row| row.customer_id);
-        let session = stripe
-            .start_checkout(
-                &workspace,
-                a.amount_cents,
-                customer.as_deref(),
-                &a.return_url,
-            )
-            .await?;
+        let session = match stripe
+            .start_checkout(&workspace, a.amount_cents, customer.as_deref(), &a.return_url)
+            .await
+        {
+            Ok(session) => session,
+            // A customer saved under another Stripe account: start afresh.
+            Err(error) if customer.is_some() && stripe::is_missing(&error) => {
+                self.forget_customer(&workspace).await?;
+                stripe.start_checkout(&workspace, a.amount_cents, None, &a.return_url).await?
+            }
+            Err(error) => return Err(error),
+        };
         let Some(url) = session.url else {
             return Err(worker::Error::RustError(
                 "the card processor returned no payment page".into(),
@@ -467,6 +471,16 @@ impl Billing {
             }
         }
         Ok(Outcome::Ok(self.standing(&workspace).await?))
+    }
+
+    /// Drops a saved customer the card processor no longer knows.
+    pub(crate) async fn forget_customer(&self, workspace: &str) -> Result<()> {
+        self.db
+            .prepare("UPDATE accounts SET customer_id = NULL WHERE workspace = ?")
+            .bind(&[workspace.into()])?
+            .run()
+            .await?;
+        Ok(())
     }
 
     /// A refusal if the workspace has no credit to start an agent with.

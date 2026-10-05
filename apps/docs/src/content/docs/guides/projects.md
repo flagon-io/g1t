@@ -50,6 +50,7 @@ A project's **Settings** has a tab for each part:
 | --- | --- |
 | **General** | The project's name and description, its source, and its **root directory**. |
 | **Deployments** | Production, previews, build command, output directory and idle days. See [Deployments](/guides/deployments/#settings). |
+| **Dependencies** | The projects this one uses, and the ones that use it. See [Dependencies](#dependencies). |
 | **Secrets and variables** | The project's rows. See [Secrets and variables](/guides/secrets-and-variables/). |
 | **Repository** | The repository's visibility, branch protection, required approvals, checks, the merge queue and auto-merge. |
 | **Webhooks** | The repository's [webhooks](/guides/webhooks/). |
@@ -83,9 +84,36 @@ Today a project's source is a repository hosted on g1t. Coming next:
   and agents.
 - **Several projects on one repository**, each from its own root
   directory, with a push building only the projects it touched.
-- **Dependencies between projects**: `web` uses `api`, so a preview of
-  `web` can point at `api`'s preview, and an agent changing `api` knows
-  what depends on it.
+
+
+## Dependencies
+
+A project can depend on others in its workspace: `web` calls `api`'s HTTP
+API, or consumes `ui-kit`'s package. Declare it under **Settings →
+Dependencies**, or in a `.g1t/project.yml` in the project's root
+directory:
+
+```yaml
+dependsOn:
+  - project: api
+    as: API_URL
+  - project: ui-kit
+```
+
+The file is read on every push to the default branch, and its dependencies
+replace the ones it declared before; those are marked **project.yml** and
+changed only in the file. A dependency that would make a cycle, or names a
+project that does not exist, is left out.
+
+What g1t does with them:
+
+| | |
+| --- | --- |
+| **Addresses in builds and apps** | With `as: API_URL`, `web`'s builds and its running app get `API_URL` set to `api`'s address for the same environment: production gets `api`'s production; a preview gets the preview of `api` on the same branch if one is up, else `api`'s production. A secret or variable of the same name on `web` wins. |
+| **Preview stacks** | On a pull request of `api` whose preview is up, **Preview them against this change** builds a preview of every project that uses `api`, from its default branch, under the same branch name, so each reaches the change through its variable. A reviewer clicks through the whole change. |
+| **Affects** | A pull request lists the projects that use its project, so reviewers see what else a change can break. |
+| **Agents** | An agent working on a project is told what it uses and what uses it. If its change alters what those rely on, it keeps it working for them or opens an issue on each saying what to change, and says so in its summary. |
+| **The overview** | Each project's overview shows what it depends on and what uses it. |
 
 ## From the API
 

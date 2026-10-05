@@ -216,6 +216,46 @@ class Deployments {
     project: { id: string; slug: string; repoId: string; repo: RepoPath },
     environment: DeployKind,
     trusted: boolean,
+    branch: string | null,
+  ): Promise<{ secrets: Record<string, string>; variables: Record<string, string> }> {
+    const [rows, references] = await Promise.all([
+      this.rows(project, environment, trusted),
+      this.references(project.id, environment === "preview" ? branch : null),
+    ]);
+    // The project's own rows win over a dependency's address of the same name.
+    return { secrets: rows.secrets, variables: { ...references, ...rows.variables } };
+  }
+
+  /**
+   * Each dependency's address, under the name the dependency gives it:
+   * for a preview, the same branch's preview of it if one is up, else its
+   * production; for production, its production.
+   */
+  private async references(projectId: string, branch: string | null): Promise<Record<string, string>> {
+    const graph = await this.projects.graph(projectId).catch(() => null);
+    const out: Record<string, string> = {};
+    for (const dependency of graph?.dependsOn ?? []) {
+      if (!dependency.as) continue;
+      const app =
+        (branch
+          ? await this.db
+              .prepare("SELECT script FROM apps WHERE project_id = ? AND kind = 'preview' AND branch = ?")
+              .bind(dependency.id, branch)
+              .first<{ script: string }>()
+          : null) ??
+        (await this.db
+          .prepare("SELECT script FROM apps WHERE project_id = ? AND kind = 'production'")
+          .bind(dependency.id)
+          .first<{ script: string }>());
+      out[dependency.as] = appUrl(app?.script ?? (await label(dependency.workspace, dependency.slug, null)));
+    }
+    return out;
+  }
+
+  private async rows(
+    project: { id: string; slug: string; repoId: string; repo: RepoPath },
+    environment: DeployKind,
+    trusted: boolean,
   ): Promise<{ secrets: Record<string, string>; variables: Record<string, string> }> {
     const response = await this.env.ACTIONS.fetch("https://actions/rpc/resolve_settings", {
       method: "POST",
@@ -392,6 +432,62 @@ class Deployments {
     return (await this.deployPreview(project, app.number, a.actor.username, true)) ?? fail("conflict", "Its pull request is not open.");
   }
 
+  /**
+   * A preview stack: the projects that use this one get previews of their
+   * own default branch, under the same branch name, so each reaches this
+   * branch's preview through its dependency's variable. A change to an API
+   * can then be clicked through in the apps that call it.
+   */
+  async stack(
+    a: { actor: User; project: ProjectRef; branch: string },
+    background: (work: Promise<unknown>) => void,
+  ): Promise<Result<string[]>> {
+    const found = await this.memberProject(a.project, a.actor);
+    if (!found.ok) return found;
+    const upstream = await this.db
+      .prepare("SELECT script FROM apps WHERE project_id = ? AND kind = 'preview' AND branch = ?")
+      .bind(found.value.id, a.branch)
+      .first();
+    if (!upstream) return fail("conflict", `${a.branch} has no preview up to build against.`);
+    const graph = await this.projects.graph(found.value.id);
+    const ready: { project: Project; settings: SettingsRow }[] = [];
+    for (const dependent of graph.usedBy) {
+      const project = await this.projects.get(dependent.workspace, dependent.slug, a.actor);
+      if (!project.ok) continue;
+      const settings = await this.settingsRow(project.value.id);
+      if (settings?.enabled && settings.previews) ready.push({ project: project.value, settings });
+    }
+    if (ready.length === 0) return fail("conflict", "No project that uses this one has previews turned on.");
+    // The builds start after the answer: a person moving on from the page
+    // does not stop them.
+    background(
+      (async () => {
+        for (const { project, settings } of ready) {
+          const actor = await this.workspaceActor(project.workspace);
+          if (!actor) continue;
+          const repo = repoOf(project);
+          const branches = await reposClient(this.env.REPOS).branches(repo.path, actor);
+          const head = branches.ok ? branches.value.find((b) => b.name === repo.defaultBranch)?.hash : undefined;
+          if (!head) continue;
+          await this.start({
+            project,
+            kind: "preview",
+            branch: a.branch,
+            number: null,
+            commit: head,
+            source: repo.path,
+            reader: actor,
+            createdBy: a.actor.username,
+            settings,
+            // Its own default branch, asked for by a member.
+            trusted: true,
+          });
+        }
+      })().catch((error) => console.error("stack failed", a.project.slug, a.branch, error)),
+    );
+    return ok(ready.map(({ project }) => project.name));
+  }
+
   async takeDown(a: { actor: User; project: ProjectRef; branch: string | null }): Promise<Result<true>> {
     const project = await this.memberProject(a.project, a.actor);
     if (!project.ok) return project;
@@ -530,6 +626,7 @@ class Deployments {
       { id: project.id, slug: project.slug, repoId: repo.id, repo: repo.path },
       input.kind,
       input.trusted,
+      input.branch,
     );
     const response = await this.env.RUNNER.fetch("https://runner/rpc/start_deploy", {
       method: "POST",
@@ -662,6 +759,7 @@ class Deployments {
             { id: row.project_id, slug: row.slug, repoId: row.repo_id, repo: { namespace, name } },
             row.kind,
             !!row.trusted,
+            row.branch,
           );
           await cloudflare.putScript(
             row.script,
@@ -972,7 +1070,7 @@ class Deployments {
 }
 
 /** `POST /rpc/<method>`: the arguments are the body. */
-async function rpc(service: Deployments, method: string, args: any): Promise<unknown> {
+async function rpc(service: Deployments, method: string, args: any, ctx: ExecutionContext): Promise<unknown> {
   switch (method) {
     case "settings":
       return service.settings(args);
@@ -986,6 +1084,8 @@ async function rpc(service: Deployments, method: string, args: any): Promise<unk
       return service.redeploy(args);
     case "take_down":
       return service.takeDown(args);
+    case "stack":
+      return service.stack(args, (work) => ctx.waitUntil(work));
     case "overview":
       return service.overview(args);
     case "usage":
@@ -996,14 +1096,14 @@ async function rpc(service: Deployments, method: string, args: any): Promise<unk
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const { pathname } = new URL(request.url);
     if (request.method !== "POST") return new Response("Not found\n", { status: 404 });
     const service = new Deployments(env);
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const rpcMatch = pathname.match(/^\/rpc\/([a-z_]+)$/);
     if (rpcMatch) {
-      const result = await rpc(service, rpcMatch[1], body);
+      const result = await rpc(service, rpcMatch[1], body, ctx);
       return result === undefined ? new Response("Unknown method\n", { status: 404 }) : Response.json(result);
     }
     // A build's reports, forwarded by the API.

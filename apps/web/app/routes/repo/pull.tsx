@@ -16,6 +16,7 @@ import {
   Sparkles,
   MessageSquare,
   MessagesSquare,
+  Network,
   StickyNote,
   User,
   Wrench,
@@ -50,7 +51,7 @@ import {
   TimelineItem,
   verdicts,
 } from "../../components/work";
-import { identity, repos, work } from "../../lib/services.server";
+import { deployments, identity, projects, repos, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 
 const REFRESH_MS = 4000;
@@ -76,13 +77,17 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     (membership) => membership.slug === params.owner,
   );
   // At once: none of these depends on another.
-  const [found, repo, settings, agentsEnabled, members] = await Promise.all([
+  const ref = { workspace: params.owner, slug: params.repo };
+  const [found, repo, settings, agentsEnabled, members, deps, deployed] = await Promise.all([
     work.getPull(path, number, viewer),
     repos.get(path, viewer),
     work.getSettings(path, viewer),
     env.RUNNER.enabled(viewer, path),
     // A member picks reviewers and assignees from the workspace's people.
     member ? identity.listMembers(params.owner, viewer) : null,
+    // The projects that use this one: what a change here can affect.
+    projects.dependencies(params.owner, params.repo, viewer),
+    member ? deployments.list(ref, viewer) : null,
   ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be an issue.
@@ -118,6 +123,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     requiredApprovals: settings.ok ? settings.value.requiredApprovals : 0,
     canIgnoreChecks: !settings.ok || settings.value.allowIgnoringChecks,
     defaultBranch: repo.ok ? repo.value.defaultBranch : "main",
+    affects: deps.ok ? deps.value.usedBy : [],
+    // This pull request's preview, if it is up: a stack builds on it.
+    preview: deployed?.ok ? (deployed.value.live.find((app) => app.kind === "preview" && app.number === number) ?? null) : null,
   };
 }
 
@@ -135,6 +143,13 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     ...form.getAll(field).map(String),
     ...String(form.get("others") ?? "").split(/[\s,]+/),
   ];
+  // The projects that use this one, built against this pull request's preview.
+  if (action === "stack") {
+    const built = await deployments.stack(user, { workspace: params.owner, slug: params.repo }, String(form.get("branch") ?? ""));
+    return built.ok
+      ? { action, notice: `Building ${built.value.join(", ")} against this preview. They appear on their Deployments pages.` }
+      : { action, error: built.error.message };
+  }
   // Asking a g1t agent for its review records the request, then starts it.
   if (action === "agent-review") {
     const asked = await work.updatePull(user, path, number, {
@@ -320,6 +335,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     lifecycle,
     messages,
     statuses = [],
+    affects,
+    preview,
     landing,
     stalled,
     requireUpToDate,
@@ -862,6 +879,43 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
         />
         {actionData?.action === "recheck" && <ErrorText>{actionData.error}</ErrorText>}
         <WorkflowStatuses statuses={statuses} />
+        {affects.length > 0 && (
+          <section>
+            <h3 className="flex items-center gap-1.5 text-sm font-medium">
+              <Network size={14} className="text-faint" />
+              Affects
+            </h3>
+            <p className="mt-1 text-xs text-muted">Projects that use this one, and so may feel this change:</p>
+            <ul className="mt-2 space-y-1 text-sm">
+              {affects.map((project) => (
+                <li key={project.slug} className="flex items-center justify-between gap-2">
+                  <Link to={`/${params.owner}/${project.slug}`} className="hover:underline">
+                    {project.name}
+                  </Link>
+                  {project.as && <code className="font-mono text-xs text-faint">{project.as}</code>}
+                </li>
+              ))}
+            </ul>
+            {preview?.branch && canMerge && (
+              <Form method="post" className="mt-3">
+                <input type="hidden" name="action" value="stack" />
+                <input type="hidden" name="branch" value={preview.branch} />
+                <button
+                  type="submit"
+                  className="w-full rounded-md border border-line px-3 py-1.5 text-xs text-muted transition-colors hover:border-line-strong hover:text-fg"
+                >
+                  Preview them against this change
+                </button>
+              </Form>
+            )}
+            {actionData?.action === "stack" &&
+              ("notice" in actionData ? (
+                <p className="mt-2 text-xs text-accent">{String(actionData.notice)}</p>
+              ) : (
+                <ErrorText>{actionData.error}</ErrorText>
+              ))}
+          </section>
+        )}
 
         <section>
           <h3 className="text-sm font-medium">Reviewers</h3>

@@ -624,6 +624,7 @@ const SECTIONS: Record<string, string> = {
   actions: "Actions",
   deployments: "Deployments",
   repository: "Repository",
+  dependencies: "Dependencies",
   code: "Code",
   secrets: "Secrets and variables",
   settings: "Settings",
