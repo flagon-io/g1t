@@ -13,8 +13,9 @@ import {
 
 import type { Route } from "./+types/billing";
 import { page } from "../../lib/meta";
+import { StatementView } from "../../components/statement";
 import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
-import { Button, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
+import { Button, ErrorText } from "../../components/ui";
 import { billing, deployments } from "../../lib/services.server";
 import {
   assertSameOrigin,
@@ -50,9 +51,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     await billing.confirm(slug, viewer, session);
     throw redirect(`/${slug}/-/billing?added=1`);
   }
-  const [account, ledger, features, deployUsage, limit, invoices] = await Promise.all([
+  const group: "day" | "project" = url.searchParams.get("group") === "project" ? "project" : "day";
+  const [account, statement, features, deployUsage, limit, invoices] = await Promise.all([
     billing.account(slug, viewer),
-    billing.ledger(slug, viewer),
+    billing.statement(slug, viewer, url.searchParams.get("month"), group),
     billing.features(slug, viewer),
     deployments.usage(slug, viewer),
     billing.limit(slug, viewer),
@@ -62,7 +64,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     slug,
     role,
     account: unwrap(account),
-    ledger: unwrap(ledger),
+    statement: unwrap(statement),
+    group,
     features: unwrap(features),
     deployUsage: deployUsage.ok ? deployUsage.value : null,
     limit: limit.ok ? limit.value : null,
@@ -128,7 +131,7 @@ function dollars(micros: number, digits = 2): string {
 }
 
 export default function WorkspaceBilling({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, account, ledger, features, deployUsage, limit, invoices, added, subscribed } = loaderData;
+  const { slug, role, account, statement, group, features, deployUsage, limit, invoices, added, subscribed } = loaderData;
   const { status } = account;
   const paying = useNavigation().state === "submitting";
   const empty = account.balanceMicros <= 0;
@@ -314,46 +317,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
           )}
         </div>
 
-        <h3 className="mt-10 text-sm font-medium text-muted">Statement</h3>
-        <div className="mt-3">
-          {ledger.length === 0 ? (
-            <EmptyState title="Nothing yet">
-              Each agent run and each payment appears here.
-            </EmptyState>
-          ) : (
-            <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
-              {ledger.map((entry) => (
-                <li key={entry.id} className="flex items-center gap-4 px-4 py-3 text-sm">
-                  <div className="min-w-0 grow">
-                    {entry.repo && entry.number ? (
-                      <Link
-                        to={`/${entry.repo}/pull/${entry.number}`}
-                        className="block truncate font-medium hover:underline"
-                      >
-                        {entry.description}
-                      </Link>
-                    ) : (
-                      <p className="truncate font-medium">{entry.description}</p>
-                    )}
-                    <p className="mt-0.5 text-xs text-faint">
-                      <TimeAgo at={entry.createdAt} />
-                      {entry.model && ` · ${entry.model}`}
-                      {entry.createdBy && ` · ${entry.createdBy}`}
-                    </p>
-                  </div>
-                  <span
-                    className={`shrink-0 font-mono text-sm tabular-nums ${
-                      entry.amountMicros > 0 ? "text-accent" : "text-muted"
-                    }`}
-                  >
-                    {entry.amountMicros > 0 && "+"}
-                    {dollars(entry.amountMicros, entry.kind === "usage" ? 4 : 2)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <StatementView slug={slug} statement={statement} group={group} />
       </div>
 
       <aside className="space-y-5 text-sm">

@@ -786,6 +786,79 @@ pub struct AdminWorkspaceInvoicesArgs {
     pub workspace: String,
 }
 
+/// `statement`: a month of a workspace's ledger, grouped by day (or by
+/// project) with a line per kind of charge. Members only. Returns
+/// `Outcome<Statement>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StatementArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+    /// YYYY-MM; this month when absent.
+    #[serde(default)]
+    pub month: Option<String>,
+    /// `day` (the default) or `project`.
+    #[serde(default)]
+    pub group: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Statement {
+    pub month: String,
+    /// Months with any entries, newest first.
+    pub months: Vec<String>,
+    pub groups: Vec<StatementGroup>,
+    pub totals: StatementTotals,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatementGroup {
+    /// The day (YYYY-MM-DD) or the project (`owner/name`, or empty).
+    pub key: String,
+    pub label: String,
+    pub lines: Vec<StatementLine>,
+    /// What the group's charges come to.
+    pub charged_micros: i64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatementLine {
+    /// Agent runs, Sandbox time, Deployments, Payments, Credits from g1t,
+    /// Refunds, Runs on your own model provider.
+    pub kind: String,
+    pub count: u32,
+    /// Charges positive; money in (payments, credits) negative.
+    pub charged_micros: i64,
+    pub cost_micros: i64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatementTotals {
+    pub charged_micros: i64,
+    pub paid_micros: i64,
+    pub cost_micros: i64,
+    pub entries: u32,
+}
+
+/// `statement_entries`: one statement line's entries, newest first, 50 at
+/// a time (`before` = the last id seen). Returns `Outcome<Vec<LedgerEntry>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StatementEntriesArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+    pub month: String,
+    pub kind: String,
+    #[serde(default)]
+    pub day: Option<String>,
+    #[serde(default)]
+    pub project: Option<String>,
+    #[serde(default)]
+    pub before: Option<String>,
+}
+
 // --- Sales (sudo.g1t.sh) ------------------------------------------------------
 //
 // What staff need to know to reach out: who is growing, who is close to

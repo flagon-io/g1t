@@ -19,6 +19,7 @@
 mod accounts;
 mod invoices;
 mod sales;
+mod statement;
 mod webhooks;
 mod features;
 mod keeper;
@@ -1033,6 +1034,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_invoice_enterprise" => reply(&billing.admin_invoice_enterprise(args(body)?).await?),
         "stripe_webhook" => reply(&billing.stripe_webhook(args(body)?).await?),
         "invoices" => reply(&billing.invoices(args(body)?).await?),
+        "statement" => reply(&billing.statement(args(body)?).await?),
+        "statement_entries" => reply(&billing.statement_entries(args(body)?).await?),
         "admin_workspace_invoices" => {
             let a: AdminWorkspaceInvoicesArgs = args(body)?;
             reply(&billing.workspace_invoices(&a.workspace.to_lowercase()).await?)

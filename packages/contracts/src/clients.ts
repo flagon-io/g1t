@@ -224,6 +224,17 @@ export function billingClient(service: ServiceBinding): BillingApi {
     status: () => call("status", {}),
     account: (workspace, viewer) => call("account", { workspace, viewer }),
     ledger: (workspace, viewer) => call("ledger", { workspace, viewer }),
+    statement: (workspace, viewer, month = null, group = "day") => call("statement", { workspace, viewer, month, group }),
+    statementEntries: (workspace, viewer, filter) =>
+      call("statement_entries", {
+        workspace,
+        viewer,
+        month: filter.month,
+        kind: filter.kind,
+        day: filter.day ?? null,
+        project: filter.project ?? null,
+        before: filter.before ?? null,
+      }),
     usage: (workspace, viewer, since) => call("usage", { workspace, viewer, since }),
     checkout: (actor, workspace, amountCents, returnUrl) =>
       call("checkout", { actor, workspace, amountCents, returnUrl }),

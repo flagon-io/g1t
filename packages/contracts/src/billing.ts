@@ -152,6 +152,19 @@ export type WorkspaceInvoice = {
   createdAt: string;
 };
 
+/** A month of the ledger, grouped by day or project, a line per kind of charge. */
+export type Statement = {
+  month: string;
+  months: string[];
+  groups: {
+    key: string;
+    label: string;
+    lines: { kind: string; count: number; chargedMicros: number; costMicros: number }[];
+    chargedMicros: number;
+  }[];
+  totals: { chargedMicros: number; paidMicros: number; costMicros: number; entries: number };
+};
+
 export type MonthFigures = { month: string; chargedMicros: number; costMicros: number; paidMicros: number };
 
 export type SignalKind = "at_limit" | "near_ceiling" | "declined" | "growing" | "established" | "first_payment" | "high_spend";
@@ -387,6 +400,14 @@ export interface BillingApi {
   account(workspace: string, viewer: Viewer): Promise<Result<BillingAccount>>;
   /** Newest first. Members of the workspace only. */
   ledger(workspace: string, viewer: Viewer): Promise<Result<LedgerEntry[]>>;
+  /** A month of the ledger, grouped by `day` (default) or `project`. Members only. */
+  statement(workspace: string, viewer: Viewer, month?: string | null, group?: "day" | "project"): Promise<Result<Statement>>;
+  /** One statement line's entries, 50 at a time; `before` is the last id seen. */
+  statementEntries(
+    workspace: string,
+    viewer: Viewer,
+    filter: { month: string; kind: string; day?: string | null; project?: string | null; before?: string | null },
+  ): Promise<Result<LedgerEntry[]>>;
   /** What the workspace's agents cost since `since`, broken down. Members only. */
   usage(workspace: string, viewer: Viewer, since: string): Promise<Result<Usage>>;
   /**

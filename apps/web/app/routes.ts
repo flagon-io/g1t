@@ -25,6 +25,8 @@ export default [
     route("-/tokens", "routes/workspace/tokens.tsx"),
     route("-/usage", "routes/workspace/usage.tsx"),
     route("-/billing", "routes/workspace/billing.tsx"),
+    route("-/billing/entries", "routes/workspace/statement-entries.ts"),
+    route("-/billing/statement.csv", "routes/workspace/statement-csv.ts"),
     route("-/integrations", "routes/workspace/integrations.tsx"),
     route("-/webhooks", "routes/workspace/webhooks.tsx"),
     route("-/secrets", "routes/workspace/secrets.tsx"),

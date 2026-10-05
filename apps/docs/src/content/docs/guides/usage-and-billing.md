@@ -325,9 +325,32 @@ Pick a period: **This month**, **Last 7 days**, **Last 30 days** or **Last
 
 ## The statement
 
-The **Billing** page lists the workspace's balance and its statement:
-every payment and every run, newest first, up to the latest 100. Each run names its kind of work
-and links to the pull request it was for. Every member can see it.
+The **Billing** page ends with the workspace's statement, a month at a
+time. Every member can see it.
+
+- **Totals.** What the month charged, what was paid and credited, and how
+  many entries make it up.
+- **Grouped by day or by project.** Each day (or project) has one line
+  per kind of charge, with how many entries it holds and what they come
+  to, rather than a row for every run:
+
+  | Line | What it holds |
+  | --- | --- |
+  | Agent runs | Runs on g1t's model provider: the model's cost plus the margin. |
+  | Runs on your own model provider | The run fee for runs billed by your own provider. |
+  | Sandbox time | Each sandbox's time, memory and disk. |
+  | Deployments | Builds and apps beyond the allowance. |
+  | Payments | Card payments and invoices paid. |
+  | Credits from g1t | Credit g1t added, such as a goodwill credit. |
+  | Refunds | Money given back to your card. |
+
+- **Open a line** to see its entries, 50 at a time, newest first. Each
+  run links to the pull request it was for.
+- **Pick a month** to see an earlier one; months with no entries are not
+  listed.
+- **CSV** downloads every entry of the month, with the line it falls
+  under, for your own books. Invoices from Stripe remain the record for
+  what was charged to your card.
 
 Each pull request's session also ends with what its run cost before the
 margin.
