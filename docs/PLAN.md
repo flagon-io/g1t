@@ -796,25 +796,50 @@ ever switched on without the workspace choosing it.
 - Agents and workflows are allowed per project the same way, so a
   workspace can keep spend to the projects that matter.
 
-### Prices: at least cost, usually more
+### Prices: what it costs us, passed through
 
-Cloudflare's list prices are the floor; the margin pays for Stripe
-(about 3%), support and g1t itself.
+> **2026-10-04, decided:** postpaid with spend limits, as Vercel and
+> Cloudflare do; no per-seat price, ever ("fuck per-seat pricing").
+> "If they're barely using them great, but if they're using the shit out
+> of them that will cost me a ton, so that cost needs to move onto them."
 
-| Feature | Kind | Price (proposed) | Cloudflare cost behind it |
-| --- | --- | --- | --- |
-| Code hosting, issues, pull requests, review | Free | Up to 1 GB per workspace; then $0.10 / GB-month | Artifacts storage, D1 |
-| Bring your own agent (MCP) | Free | | Workers requests |
-| g1t agents on g1t's models | Card on file, usage | Model cost + 20% | Model provider |
-| g1t agents on your own provider | Card on file, usage | $0.10 per run | Sandbox minutes, orchestration |
-| Workflow (Actions) minutes | Free, then usage | 1,000 minutes a month free; then $0.006 / minute | Containers ≈ $0.0013 / minute (standard-1) |
-| Previews | Card on file, usage | $0.0015 / build minute; apps, requests and CPU as below | Containers, Workers for Platforms |
-| Production deployments | Activation | $5 / month: 10 apps, 1M requests, 3M CPU-ms; then $0.024 / app-month, $0.36 / million requests, $0.024 / million CPU-ms | Workers for Platforms $25 / month shared, plus usage |
-| Security and quality (when built) | Activation | $10 / month per workspace; the agents' fixes as agent usage | Sandbox minutes, models |
-| Custom domains (when built) | Included with production | | Cloudflare for SaaS hostnames |
+**Every Cloudflare cost a workspace causes is metered to it.** Light use
+fits in a small free allowance; past it, each unit is charged at
+Cloudflare's price times a margin of at least 1.5, which pays for Stripe
+(about 3%), shared overhead (the site, the API, D1) and g1t itself.
 
-No seat price: people are free; the work is what costs. That is part of
-the pitch against GitHub's per-seat plans.
+Cloudflare's prices (October 2026), and the cost per unit g1t meters:
+
+| What g1t meters | Cloudflare's price | Cost to g1t per unit |
+| --- | --- | --- |
+| **Sandbox minute** (agents, checks, merge queue, workflow jobs, deploy builds), standard-1: ½ vCPU, 4 GiB, 8 GB | CPU $0.00002 / vCPU-s while busy; memory $0.0000025 / GiB-s and disk $0.00000007 / GB-s while running | ≤ $0.0012 / minute (CPU counted as busy throughout, since g1t cannot see it per sandbox) |
+| **App request** (deployments) | Workers for Platforms: $0.30 / million past 20M | $0.30 / million |
+| **App CPU** | $0.02 / million CPU-ms past 60M | $0.02 / million ms |
+| **App** (a deployed script) | $0.02 / script-month past 1,000 | $0.02 / app-month |
+| **Storage** (repositories, artifacts, caches) | Artifacts $0.50 / GB-month (billing starts 2026-10-14); KV $0.50 / GB-month | $0.50 / GB-month |
+| **Git operation** (clone, fetch, push) | Artifacts $0.15 / 1,000 past 10,000 | $0.15 / 1,000 |
+| **Model tokens** | The provider's price | As charged |
+| Container egress, emails, the site's own requests | Small and shared | In the margin |
+
+What a workspace pays:
+
+| Meter | Free each month | Then | Margin | For comparison |
+| --- | --- | --- | --- | --- |
+| Sandbox minutes | 500 | $0.003 / minute | 2.5× | GitHub Actions $0.008 / minute (Linux 2-core); Vercel builds $0.0035 / CPU-minute |
+| App requests | 1 million with Deployments | $0.50 / million | 1.7× | Vercel $0.60 / million invocations |
+| App CPU | 3 million ms with Deployments | $0.04 / million ms | 2× | Vercel active CPU about $0.036 / million ms |
+| Apps | 10 with Deployments | $0.05 / app-month | 2.5× | |
+| Storage | 1 GB | $1.00 / GB-month | 2× | GitHub LFS $0.07 / GB, but repositories are free there |
+| Git operations | 10,000 | $0.30 / 1,000 | 2× | |
+| g1t's models | | Cost + 20% | 1.2× | The provider's own price |
+| Your own model provider | | $0.10 / run, plus its sandbox minutes | | |
+| **Deployments** activation | | $5 / month, with the allowances above | covers Workers for Platforms' $25 / month across workspaces | Vercel Pro $20 per seat |
+| **Security and quality** activation (later) | | $10 / month; fixes as agent usage | | GitHub Advanced Security $49 per committer |
+
+A workspace that uses g1t lightly (a few agent runs, a small site)
+pays nothing or its activation; a workspace running agents all day pays
+for the sandboxes and models those agents use, with g1t's margin on
+each. Nothing in a workspace's bill is subsidised by another's.
 
 ### Build order
 
@@ -824,7 +849,10 @@ the pitch against GitHub's per-seat plans.
    kinds.
 2. One subscription per workspace with activations as items; Deployments
    moves onto it.
-3. Meters for each usage dimension, fed from billing's ledger; spend
+3. Meters for each usage dimension above, fed from billing's ledger:
+   every sandbox reports how long it ran when it stops (agents, checks,
+   the queue, workflow jobs and deploy builds alike); deployments report
+   requests, CPU and apps; repos report storage and git operations. Spend
    limits and their warnings; prepaid credit retired.
 4. Per-workspace allow-lists of projects for each feature, and per-project
    opt-out; "nothing to deploy" detection.
