@@ -109,6 +109,36 @@ A pull request that only has fallen behind its target, without conflicts,
 still merges: merging brings it up to date first, unless the repository
 requires pull requests to be up to date.
 
+## Catching up
+
+When the target branch has moved, the merge box says **main has moved since
+this was made**. Whoever can push to the pull request (whoever opened it,
+for one in its own fork; any member of the workspace, for a branch) can
+press **Catch up with main now**:
+
+1. **When the two changed different files**, g1t merges `main` in itself,
+   in a few seconds. The merge commit is named **Merge main into
+   *branch***, has the pull request's head and `main`'s head as its
+   parents, and is authored and pushed as you. The box then says **Brought
+   up to date with main**, and the checks and workflows run again on the
+   new commit, as after any push.
+2. **When both changed some of the same files**, a sandbox merges `main` in
+   with git, and a [g1t agent](/guides/g1t-agents/) resolves any conflict.
+   The box says what is happening (**g1t-agent is resolving conflicts with
+   main** when the merge is known to conflict) with the run's live step and
+   how long it has taken. It usually takes about a minute. When the result
+   is pushed, the box shows the pull request up to date; if the run fails,
+   or nothing has been pushed after five minutes, the box says so and
+   offers **Try again**. Nothing is pushed by a run that fails.
+
+Either way the merge is pushed only if the pull request's branch is still
+where it was when the catch-up started. If someone pushed to it meanwhile,
+the catch-up stops with nothing lost, and you can press it again.
+
+The second case needs g1t agents enabled for the workspace and is
+[charged](/guides/usage-and-billing/#what-is-charged) as agent work; the
+first is not.
+
 A [g1t agent's](/guides/g1t-agents/) pull request that is found to conflict
 is sent back to resolve it by itself, before it is ready.
 

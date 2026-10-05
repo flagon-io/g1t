@@ -25,7 +25,10 @@ use g1t_contracts::events::{
     CommentCreated, Event, IssueEvent, NewEvent, Publish, PullEvent, SessionAppended,
 };
 use g1t_contracts::identity::UsernameArgs;
-use g1t_contracts::repos::{ForkArgs, GetArgs, HeadArgs, LandArgs, Landed, Repo, RepoPath};
+use g1t_contracts::repos::{
+    ForkArgs, GetArgs, HeadArgs, LandArgs, Landed, NeedsAgentReason, PullBranchUpdate, Repo, RepoPath,
+    UpdatePullBranchArgs,
+};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
 use futures_util::future::{try_join, try_join3, try_join_all};
@@ -1146,6 +1149,60 @@ impl Work {
         Ok(Outcome::Ok(pull))
     }
 
+    /// Brings a pull request up to date with the default branch without a
+    /// sandbox, where the repos service can do that safely. Whoever could
+    /// have pushed the merge themselves may ask: whoever opened it, for a
+    /// fork; any member, for a branch of the repository. When it needs a
+    /// real merge, says so, naming the conflicting files if a probe found
+    /// them, and pushes nothing.
+    async fn catch_up_pull(&self, a: PullActionArgs) -> Result<Outcome<PullBranchUpdate>> {
+        let (repo, pull) = check!(self.pull_at(&a.repo, a.number, &Some(a.actor.clone())).await?);
+        if !pull.status.is_active() {
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                format!("This pull request is already {}.", pull.status.as_str()),
+            ));
+        }
+        let allowed = if pull.fork_repo_id.is_some() {
+            pull.author.id == a.actor.id
+        } else {
+            a.actor.is_member(&repo.namespace)
+        };
+        if !allowed {
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                if pull.fork_repo_id.is_some() {
+                    "Only whoever opened this pull request can update it."
+                } else {
+                    "Only members of the workspace can update this pull request."
+                },
+            ));
+        }
+        let updated: Outcome<PullBranchUpdate> = g1t_kit::call(
+            &self.repos,
+            "update_pull_branch",
+            &UpdatePullBranchArgs {
+                source_id: pull.fork_repo_id.clone().unwrap_or_else(|| repo.id.clone()),
+                branch: pull.branch.clone(),
+                number: pull.number,
+                actor: a.actor,
+            },
+        )
+        .await?;
+        // A probe that found conflicts says more than "both changed it".
+        if let Outcome::Ok(PullBranchUpdate::NeedsAgent { .. }) = &updated
+            && let Some(files) = self.conflicting_files(&pull).await?
+            && !files.is_empty()
+        {
+            return Ok(Outcome::Ok(PullBranchUpdate::NeedsAgent {
+                reason: NeedsAgentReason::Conflicting,
+                detail: "Merging it conflicts.".to_owned(),
+                paths: files,
+            }));
+        }
+        Ok(updated)
+    }
+
     async fn update_pull(&self, a: UpdatePullArgs) -> Result<Outcome<Pull>> {
         let pull = check!(self.manageable_pull(&a.actor, &a.repo, a.number).await?);
         let assignees = match a.assignees {
@@ -1859,6 +1916,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "list_pulls" => reply(&work.list_pulls(args(body)?).await?),
         "get_pull" => reply(&work.get_pull(args(body)?).await?),
         "update_pull" => reply(&work.update_pull(args(body)?).await?),
+        "catch_up_pull" => reply(&work.catch_up_pull(args(body)?).await?),
         "ready_pull" => reply(&work.ready_pull(args(body)?).await?),
         "close_pull" => reply(&work.close_pull(args(body)?).await?),
         "merge_pull" => reply(&work.merge_pull(args(body)?).await?),

@@ -949,6 +949,13 @@ pub struct OpenPullArgs {
 }
 
 /// `ready_pull`, `close_pull` and `merge_pull`. Each returns `Outcome<Pull>`.
+///
+/// Also `catch_up_pull`: brings the pull request up to date with the
+/// default branch without a sandbox where that is safe, as the repos
+/// service's `update_pull_branch` does, after checking that `actor` may
+/// update it: whoever opened it for a fork, any member for a branch.
+/// Returns `Outcome<repos::PullBranchUpdate>`; on `needs_agent` nothing was
+/// pushed and the runner's `update` is the way on.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PullActionArgs {

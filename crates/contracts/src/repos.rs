@@ -476,6 +476,61 @@ pub struct Divergence {
     pub truncated: bool,
 }
 
+/// `update_pull_branch`: brings a pull request's source up to date with the
+/// default branch it would merge into, without a sandbox, when that can be
+/// done safely: merges the default branch's head into the source's head and
+/// pushes the merge commit to the source's branch, as `actor`, only if the
+/// branch has not moved meanwhile. It applies only when the two sides
+/// changed different files since they last agreed; otherwise the answer is
+/// [`PullBranchUpdate::NeedsAgent`] and nothing is pushed. Refused unless
+/// `actor` may push to the source. Returns `Outcome<PullBranchUpdate>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatePullBranchArgs {
+    /// The pull request's fork, or the repository itself for a branch.
+    pub source_id: String,
+    /// The branch of the source. A fork is updated on its default branch.
+    #[serde(default)]
+    pub branch: Option<String>,
+    /// The pull request's number, to name it in the merge commit's message
+    /// when its branch has the same name as the default branch.
+    pub number: u32,
+    /// Who asked: the merge commit's author and committer, and the pusher.
+    pub actor: User,
+}
+
+/// Why an update has to be left to a sandbox.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NeedsAgentReason {
+    /// Both sides changed some of the same files; merging them needs a
+    /// real merge, which may or may not conflict.
+    Overlap,
+    /// Merging is known to conflict.
+    Conflicting,
+    /// The update could not be worked out here, such as when the two sides
+    /// share no history g1t can see, or the change is too large to list.
+    Unsupported,
+}
+
+/// What came of `update_pull_branch` (or the work service's `catch_up_pull`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum PullBranchUpdate {
+    /// The merge commit was pushed: the branch moved from `previous` to
+    /// `commit`.
+    Updated { commit: String, previous: String },
+    /// The source already holds the default branch's head.
+    UpToDate { commit: String },
+    /// Nothing was pushed; a sandbox has to merge it. `paths` are the
+    /// files both sides changed, or that conflict, when known.
+    NeedsAgent {
+        reason: NeedsAgentReason,
+        detail: String,
+        paths: Vec<String>,
+    },
+}
+
 /// `head`: the commit a branch points to, or null. For services reacting
 /// to a push, which have no viewer; it reveals nothing but a commit hash.
 /// Returns `Option<String>`.
@@ -635,5 +690,25 @@ mod topic_tests {
         assert!(topics(&[&"a".repeat(36)]).is_err());
         let many: Vec<String> = (0..21).map(|i| format!("t{i}")).collect();
         assert!(clean_topics(&many).is_err());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pull_branch_update_reads_as_the_web_expects() {
+        let update = PullBranchUpdate::NeedsAgent {
+            reason: NeedsAgentReason::Overlap,
+            detail: "both".into(),
+            paths: vec!["a.rs".into()],
+        };
+        assert_eq!(
+            serde_json::to_value(&update).unwrap(),
+            serde_json::json!({ "outcome": "needs_agent", "reason": "overlap", "detail": "both", "paths": ["a.rs"] })
+        );
+        let done = PullBranchUpdate::UpToDate { commit: "c".into() };
+        assert_eq!(serde_json::to_value(&done).unwrap(), serde_json::json!({ "outcome": "up_to_date", "commit": "c" }));
     }
 }

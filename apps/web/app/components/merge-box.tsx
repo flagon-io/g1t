@@ -18,12 +18,14 @@ import {
   Terminal,
   TriangleAlert,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Form, Link } from "react-router";
 
-import type { CheckResult, CheckRun, CommitStatus, Job, Mergeable, Pull } from "@g1t/contracts";
+import type { CheckResult, CheckRun, CommitStatus, Job, Mergeable, PullBranchUpdate, Pull } from "@g1t/contracts";
 
+import { catchUpPhase, catchUpRun, catchUpTitle, catchUpWhy } from "../lib/catch-up";
 import { duration } from "./actions";
+import { Elapsed, useRuns } from "./agents";
 import { Button, CopyLine, ErrorText, TimeAgo } from "./ui";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
@@ -549,7 +551,6 @@ export function ConflictsSection({
   changesUrl,
   canResolve,
   resolving,
-  onResolve,
   error,
 }: {
   conflicts: string[];
@@ -561,8 +562,8 @@ export function ConflictsSection({
   changesUrl: string;
   /** Whether the viewer may have the g1t agent resolve them. */
   canResolve: boolean;
+  /** Whether asking for it is on its way. */
   resolving: boolean;
-  onResolve: () => void;
   error?: string | null;
 }) {
   const steps = commandLineSteps(pull, owner, repo, defaultBranch, conflicts);
@@ -595,11 +596,11 @@ export function ConflictsSection({
           )}
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {canResolve && (
-              <Form method="post" onSubmit={onResolve}>
+              <Form method="post">
                 <input type="hidden" name="action" value="update" />
                 <Button variant="primary" type="submit" disabled={resolving}>
-                  <Sparkles size={14} />
-                  {resolving ? "The g1t agent is resolving them…" : "Resolve with g1t agent"}
+                  {resolving ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  {resolving ? "Starting g1t-agent…" : "Resolve with g1t agent"}
                 </Button>
               </Form>
             )}
@@ -696,4 +697,105 @@ export function MergeabilityRow({
     );
   }
   return null;
+}
+
+/**
+ * A catch-up handed to a sandbox, while it lasts: who is doing what, the
+ * run's live step, and how long it has taken. It ends with the pull request
+ * up to date (and this disappears), or with a plain failure and a way to
+ * try again. It never spins on with no end.
+ */
+export function CatchUpProgress({
+  owner,
+  repo,
+  number,
+  defaultBranch,
+  behind,
+  update,
+  startedAt,
+  retrying,
+}: {
+  owner: string;
+  repo: string;
+  number: number;
+  defaultBranch: string;
+  behind: boolean;
+  update: Extract<PullBranchUpdate, { outcome: "needs_agent" }>;
+  /** When it was asked for, in ms since the epoch. */
+  startedAt: number;
+  /** Whether a retry is on its way. */
+  retrying: boolean;
+}) {
+  // The page revalidates while this is working, which reloads the runs too.
+  const data = useRuns(owner, repo, { number: String(number), limit: "5" });
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(timer);
+  }, []);
+  const run = catchUpRun(data?.runs ?? [], startedAt);
+  const phase = catchUpPhase({ behind, run, startedAt, now });
+  if (phase === "done") return null;
+  const session = `/${owner}/${repo}/sessions/${number}`;
+  if (phase !== "working") {
+    return (
+      <div className="flex gap-3 px-4 py-3 text-sm">
+        <TriangleAlert size={16} className={`mt-0.5 shrink-0 ${phase === "failed" ? "text-danger" : "text-warn"}`} />
+        <div className="min-w-0">
+          <p className="font-medium">
+            {phase === "failed"
+              ? `Catching up with ${defaultBranch} failed`
+              : `Catching up with ${defaultBranch} is taking longer than it should`}
+          </p>
+          <p className="mt-0.5 text-muted">
+            {phase === "failed"
+              ? `${run?.error ? `${run.error} ` : ""}Nothing was pushed, so the pull request is as it was.`
+              : "It usually takes about a minute. It may still finish; this page updates if it does."}{" "}
+            <Link to={session} className="text-fg hover:underline">
+              See the session
+            </Link>
+            .
+          </p>
+          <Form method="post" className="mt-2">
+            <input type="hidden" name="action" value="update" />
+            <Button variant="quiet" type="submit" disabled={retrying}>
+              {retrying ? <LoaderCircle size={14} className="animate-spin" /> : <RotateCw size={14} />}
+              {retrying ? "Trying again…" : "Try again"}
+            </Button>
+          </Form>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex gap-3 px-4 py-3 text-sm">
+      <LoaderCircle size={16} className="mt-0.5 shrink-0 animate-spin text-merged" />
+      <div className="min-w-0 grow">
+        <p className="font-medium">{catchUpTitle(update.reason, defaultBranch)}</p>
+        <p className="mt-0.5 text-muted">
+          {catchUpWhy(update, defaultBranch)} This usually takes about a minute; the pull request updates here when it
+          is pushed.
+        </p>
+        {update.paths.length > 0 && (
+          <p className="mt-1 truncate font-mono text-xs text-faint" title={update.paths.join(", ")}>
+            {update.paths.slice(0, 5).join(", ")}
+            {update.paths.length > 5 && ` and ${update.paths.length - 5} more`}
+          </p>
+        )}
+        <p
+          className="mt-2 truncate rounded-lg bg-bg px-3 py-2 font-mono text-xs text-fg/85 ring-1 ring-line"
+          title={run?.step ?? undefined}
+        >
+          <span className="mr-2 inline-block size-1.5 animate-pulse rounded-full bg-merged align-middle" />
+          {run?.step ?? (run ? "Starting a sandbox…" : "Waiting for a sandbox…")}
+        </p>
+        <p className="mt-2 flex flex-wrap items-center gap-x-3 text-xs text-muted">
+          <Elapsed from={new Date(startedAt).toISOString()} />
+          <Link to={session} className="hover:text-fg">
+            Watch the session
+          </Link>
+        </p>
+      </div>
+    </div>
+  );
 }

@@ -83,7 +83,7 @@ fn refusal(decision: &Decision) -> Result<Response> {
 impl<S: GitStore> Repos<S> {
     /// Where a git request's entry belongs: the repository a fork came
     /// from, so that a pull request's pushes are in its workspace's log.
-    async fn audit_target(&self, path: &RepoPath) -> Result<AuditTarget> {
+    pub(crate) async fn audit_target(&self, path: &RepoPath) -> Result<AuditTarget> {
         let mut repo = path.clone();
         if let Some(found) = self.registry.by_path(path).await?
             && let Some(source) = found.fork_of.as_deref()
@@ -101,7 +101,7 @@ impl<S: GitStore> Repos<S> {
         })
     }
 
-    async fn record_git(&self, entry: NewAuditEntry) {
+    pub(crate) async fn record_git(&self, entry: NewAuditEntry) {
         let recorded: Result<u32> = g1t_kit::call(
             &self.events,
             "audit_record",

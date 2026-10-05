@@ -176,6 +176,27 @@ export type Blame = {
 /** A branch and the commit it points to. */
 export type Branch = { name: string; hash: string };
 
+/**
+ * What came of bringing a pull request up to date with the default branch
+ * without a sandbox. `needs_agent` pushed nothing: the runner's `update`
+ * merges it in a sandbox, with an agent if it conflicts.
+ */
+export type PullBranchUpdate =
+  | { outcome: "updated"; commit: string; previous: string }
+  | { outcome: "up_to_date"; commit: string }
+  | {
+      outcome: "needs_agent";
+      /**
+       * `overlap`: both sides changed some of the same files. `conflicting`:
+       * merging is known to conflict. `unsupported`: it could not be worked
+       * out without git, such as for a very large change.
+       */
+      reason: "overlap" | "conflicting" | "unsupported";
+      detail: string;
+      /** The files both changed, or that conflict, when known. */
+      paths: string[];
+    };
+
 export type DiffLine = {
   kind: "context" | "add" | "delete";
   /** Line number in the old file; null for added lines. */

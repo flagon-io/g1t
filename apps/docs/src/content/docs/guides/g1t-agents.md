@@ -220,7 +220,10 @@ the issue close as superseded. See
   has an agent read the change and post comments on lines, a summary and a
   verdict.
 - **Catch up.** When `main` has moved under a pull request, **Catch up with
-  main** has an agent merge it in and resolve any conflict.
+  main** merges it in. When the two changed different files g1t does that
+  itself in seconds, with no agent; otherwise an agent merges it in a
+  sandbox and resolves any conflict
+  ([catching up](/guides/pull-requests/#catching-up)).
 
 Both run in sandboxes of their own.
 

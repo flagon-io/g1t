@@ -23,8 +23,8 @@ import {
   User,
   Wrench,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { Form, Link, redirect, useRevalidator } from "react-router";
+import { useEffect } from "react";
+import { Form, Link, redirect, useNavigation, useRevalidator } from "react-router";
 
 import {
   type Comparison,
@@ -65,7 +65,8 @@ import {
   TimelineItem,
   verdicts,
 } from "../../components/work";
-import { ChecksSection, ConflictsSection, MergeabilityRow, runIdOf } from "../../components/merge-box";
+import { CatchUpProgress, ChecksSection, ConflictsSection, MergeabilityRow, runIdOf } from "../../components/merge-box";
+import { CATCH_UP_TIMEOUT_MS } from "../../lib/catch-up";
 import { actions, deployments, identity, projects, repos, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 
@@ -219,6 +220,22 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     });
     if (!asked.ok) return { error: asked.error.message, action };
   }
+  // Catching up: merged and pushed in seconds when the two sides changed
+  // different files; otherwise handed to a sandbox, which takes a minute.
+  if (action === "update") {
+    const caught = await work.catchUpPull(user, path, number);
+    if (!caught.ok) return { action, error: caught.error.message };
+    const update = caught.value;
+    if (update.outcome !== "needs_agent") {
+      return {
+        action,
+        updated: { commit: update.commit, already: update.outcome === "up_to_date", at: Date.now() },
+      };
+    }
+    const started = await env.RUNNER.update(user, path, number);
+    if (!started.ok) return { action, error: started.error.message };
+    return { action, agent: { update, startedAt: Date.now() } };
+  }
   // A workflow run's failed jobs, run again. Who may is the actions service's call.
   if (action === "rerun-workflow") {
     const rerun = await actions.rerun(user, path, String(form.get("run") ?? ""), true);
@@ -238,8 +255,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         ? await work.closePull(user, path, number)
         : action === "recheck"
           ? await env.RUNNER.recheck(user, path, number)
-          : action === "update"
-            ? await env.RUNNER.update(user, path, number)
           : action === "agent-review"
             ? await env.RUNNER.review(user, path, number)
           : action === "reviewers"
@@ -464,22 +479,33 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   const reviewerNames = [
     ...new Set([...pull.reviewers, ...reviews.map(({ reviewer }) => reviewer)]),
   ];
-  const [submitted, setSubmitted] = useState<string | null>(null);
-  const catchingUp = submitted === "update" && behind;
+  // A catch-up: the click shows at once; the answer says whether it is
+  // done already or a sandbox is on it.
+  const navigation = useNavigation();
+  const catchUpPending = navigation.state !== "idle" && navigation.formData?.get("action") === "update";
+  const catchUp = actionData?.action === "update" ? actionData : null;
+  const caughtUp = catchUp && "updated" in catchUp ? catchUp.updated : null;
+  const agentCatchUp = catchUp && "agent" in catchUp ? catchUp.agent : null;
+  // Pushed already: followed until the pull request's head is the merge,
+  // so its checks show starting again, for a minute at most.
+  const settling =
+    caughtUp != null && !caughtUp.already && pull.headCommit !== caughtUp.commit && Date.now() - caughtUp.at < 60_000;
+  // Followed until it is pushed, or for so long, never longer.
+  const catchingUp =
+    agentCatchUp != null && behind && Date.now() - agentCatchUp.startedAt < CATCH_UP_TIMEOUT_MS + REFRESH_MS;
   // g1t is taking a step of its own accord, so the page will change.
   const moving =
     lifecycle != null && lifecycle.stage !== "ready" && lifecycle.stage !== "needs_you";
   // Whether it merges cleanly is being worked out, so the box will change.
   const probing = active && mergeable === "checking";
   const conflicting = active && mergeable === "conflicting";
-  const resolving = submitted === "update" && conflicting;
   useEffect(() => {
-    if (!working && !checking && !reviewPending && !catchingUp && !moving && !landing && !probing && !resolving) return;
+    if (!working && !checking && !reviewPending && !catchingUp && !settling && !moving && !landing && !probing) return;
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") revalidator.revalidate();
     }, REFRESH_MS);
     return () => clearInterval(timer);
-  }, [working, checking, reviewPending, catchingUp, moving, landing, probing, resolving, revalidator]);
+  }, [working, checking, reviewPending, catchingUp, settling, moving, landing, probing, revalidator]);
   // Why the merge button cannot be pressed, if it cannot.
   const mergeBlocked = conflicting
     ? "Resolve the conflicts first."
@@ -854,6 +880,17 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         {defaultBranch} has moved, so g1t is bringing this up to date first. It
                         lands as soon as that is done. Watch it in the Session tab.
                       </StatusRow>
+                    ) : agentCatchUp && behind ? (
+                      <CatchUpProgress
+                        owner={params.owner}
+                        repo={params.repo}
+                        number={pull.number}
+                        defaultBranch={defaultBranch}
+                        behind={behind}
+                        update={agentCatchUp.update}
+                        startedAt={agentCatchUp.startedAt}
+                        retrying={catchUpPending}
+                      />
                     ) : conflicting ? (
                       <ConflictsSection
                         conflicts={conflicts}
@@ -863,9 +900,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         defaultBranch={defaultBranch}
                         changesUrl={here + "?tab=changes"}
                         canResolve={canUpdate && agentsEnabled}
-                        resolving={resolving}
-                        onResolve={() => setSubmitted("update")}
-                        error={actionData?.action === "update" ? actionData.error : null}
+                        resolving={catchUpPending}
+                        error={catchUp && "error" in catchUp ? catchUp.error : null}
                       />
                     ) : probing ? (
                       <MergeabilityRow mergeable={mergeable} defaultBranch={defaultBranch} />
@@ -878,28 +914,36 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         {requireUpToDate
                           ? "This repository requires pull requests to be up to date, so it has to catch up before it can merge."
                           : "That does not stop it merging: it is brought up to date as part of the merge."}
-                        {canUpdate && agentsEnabled && (
-                          <Form
-                            method="post"
-                            className="mt-2"
-                            onSubmit={() => setSubmitted("update")}
-                          >
+                        {canUpdate && (
+                          <Form method="post" className="mt-2">
                             <input type="hidden" name="action" value="update" />
-                            <Button variant="quiet" type="submit" disabled={catchingUp}>
-                              {catchingUp ? "Catching up…" : `Catch up with ${defaultBranch} now`}
+                            <Button variant="quiet" type="submit" disabled={catchUpPending}>
+                              {catchUpPending && <Loader size={14} className="animate-spin" />}
+                              {catchUpPending ? `Merging ${defaultBranch} in…` : `Catch up with ${defaultBranch} now`}
                             </Button>
                           </Form>
                         )}
-                        {actionData?.action === "update" && (
-                          <ErrorText>{actionData.error}</ErrorText>
-                        )}
+                        {catchUp && "error" in catchUp && <ErrorText>{catchUp.error}</ErrorText>}
                       </StatusRow>
                     ) : (
                       pull.headCommit && (
                         <StatusRow
                           icon={<CircleCheck size={16} className="text-accent" />}
-                          title={`Up to date with ${defaultBranch}`}
-                        />
+                          title={
+                            (caughtUp && !caughtUp.already) || agentCatchUp
+                              ? `Brought up to date with ${defaultBranch}`
+                              : `Up to date with ${defaultBranch}`
+                          }
+                        >
+                          {caughtUp && !caughtUp.already && (
+                            <>
+                              Merged <span className="font-mono">{defaultBranch}</span> in as{" "}
+                              <span className="font-mono text-fg">{caughtUp.commit.slice(0, 7)}</span>. Its checks run
+                              again on the new commit.
+                            </>
+                          )}
+                          {agentCatchUp && "g1t-agent merged it in and pushed the result. Its checks run again on the new commit."}
+                        </StatusRow>
                       )
                     )}
                     {stalled && !lifecycle && (

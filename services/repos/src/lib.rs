@@ -6,6 +6,7 @@
 //! request is treated as git's smart HTTP protocol.
 
 mod blame;
+mod catch_up;
 mod diff;
 mod git_http;
 mod import;
@@ -1161,6 +1162,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "behind" => reply(&repos.behind(args(body)?).await?),
         "divergence" => reply(&repos.divergence(args(body)?).await?),
         "land" => reply(&repos.land(args(body)?).await?),
+        "update_pull_branch" => reply(&repos.update_pull_branch(args(body)?).await?),
         "delete_branch" => reply(&repos.delete_branch(args(body)?).await?),
         "compare" => reply(&repos.compare(args(body)?).await?),
         "scan_history" => reply(&repos.scan_history(args(body)?).await?),

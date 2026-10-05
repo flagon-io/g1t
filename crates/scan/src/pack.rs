@@ -4,6 +4,10 @@
 //! A pushed pack is usually thin: some objects are deltas against objects
 //! the repository already has. Those are left pending until the caller
 //! supplies their bases with [`Pack::supply`].
+//!
+//! Writing is the small part g1t needs for a merge it makes itself: a pack
+//! of whole objects ([`write_pack`]), or one fetched from elsewhere with a
+//! few objects added ([`extend_pack`]).
 
 use std::collections::HashMap;
 
@@ -32,6 +36,16 @@ impl ObjectKind {
             4 => ObjectKind::Tag,
             _ => return None,
         })
+    }
+
+    /// The type code a pack gives objects of this kind.
+    fn code(self) -> u8 {
+        match self {
+            ObjectKind::Commit => 1,
+            ObjectKind::Tree => 2,
+            ObjectKind::Blob => 3,
+            ObjectKind::Tag => 4,
+        }
     }
 
     fn name(self) -> &'static str {
@@ -119,6 +133,62 @@ fn varint(data: &[u8], at: &mut usize) -> Option<usize> {
             return Some(value);
         }
     }
+}
+
+/// An entry's header in a pack: its type and its inflated size.
+fn header(code: u8, size: usize) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut byte = (code << 4) | (size & 15) as u8;
+    let mut rest = size >> 4;
+    while rest > 0 {
+        out.push(byte | 0x80);
+        byte = (rest & 0x7f) as u8;
+        rest >>= 7;
+    }
+    out.push(byte);
+    out
+}
+
+fn write_entries(pack: &mut Vec<u8>, objects: &[(ObjectKind, Vec<u8>)]) {
+    for (kind, data) in objects {
+        pack.extend(header(kind.code(), data.len()));
+        pack.extend(miniz_oxide::deflate::compress_to_vec_zlib(data, 6));
+    }
+}
+
+fn seal(mut pack: Vec<u8>) -> Vec<u8> {
+    let checksum = Sha1::digest(&pack);
+    pack.extend_from_slice(&checksum);
+    pack
+}
+
+/// A version 2 pack holding `objects` whole, with no deltas: what git's
+/// receive-pack takes, when the objects are few and new.
+pub fn write_pack(objects: &[(ObjectKind, Vec<u8>)]) -> Vec<u8> {
+    let mut pack = b"PACK".to_vec();
+    pack.extend_from_slice(&2u32.to_be_bytes());
+    pack.extend_from_slice(&(objects.len() as u32).to_be_bytes());
+    write_entries(&mut pack, objects);
+    seal(pack)
+}
+
+/// `pack` with `objects` added after its own, as one pack. Its entries keep
+/// their offsets, since the header stays the same length, so its deltas
+/// still find their bases. `pack` must not be thin.
+pub fn extend_pack(pack: &[u8], objects: &[(ObjectKind, Vec<u8>)]) -> Result<Vec<u8>, String> {
+    if pack.len() < 32 || &pack[..4] != b"PACK" {
+        return Err("not a pack".into());
+    }
+    let (body, trailer) = pack.split_at(pack.len() - 20);
+    if Sha1::digest(body).as_slice() != trailer {
+        return Err("the pack's checksum does not match".into());
+    }
+    let count = u32::from_be_bytes([pack[8], pack[9], pack[10], pack[11]]) as usize;
+    let total = u32::try_from(count + objects.len()).map_err(|_| "the pack is too large")?;
+    let mut out = body.to_vec();
+    out[8..12].copy_from_slice(&total.to_be_bytes());
+    write_entries(&mut out, objects);
+    Ok(seal(out))
 }
 
 /// Applies a git delta to its base.
@@ -414,32 +484,13 @@ pub(crate) mod tests {
     use super::*;
     use miniz_oxide::deflate::compress_to_vec_zlib;
 
-    fn header(code: u8, size: usize) -> Vec<u8> {
-        let mut out = Vec::new();
-        let mut byte = (code << 4) | (size & 15) as u8;
-        let mut rest = size >> 4;
-        while rest > 0 {
-            out.push(byte | 0x80);
-            byte = (rest & 0x7f) as u8;
-            rest >>= 7;
-        }
-        out.push(byte);
-        out
-    }
-
     /// A pack of whole objects, plus ref-deltas given as (base id, delta).
     pub fn build_pack(objects: &[(ObjectKind, Vec<u8>)], ref_deltas: &[(String, Vec<u8>)]) -> Vec<u8> {
         let mut pack = b"PACK".to_vec();
         pack.extend_from_slice(&2u32.to_be_bytes());
         pack.extend_from_slice(&((objects.len() + ref_deltas.len()) as u32).to_be_bytes());
         for (kind, data) in objects {
-            let code = match kind {
-                ObjectKind::Commit => 1,
-                ObjectKind::Tree => 2,
-                ObjectKind::Blob => 3,
-                ObjectKind::Tag => 4,
-            };
-            pack.extend(header(code, data.len()));
+            pack.extend(header(kind.code(), data.len()));
             pack.extend(compress_to_vec_zlib(data, 6));
         }
         for (base, delta) in ref_deltas {
@@ -531,5 +582,24 @@ pub(crate) mod tests {
         assert_eq!(pack_start(&body), Some(commands.len()));
         assert_eq!(pack_start(&commands), None);
         assert!(Pack::parse(b"nope").is_err());
+    }
+
+    #[test]
+    fn written_packs_are_sealed_and_extend() {
+        let blob = b"hello
+".to_vec();
+        let pack = write_pack(&[(ObjectKind::Blob, blob.clone())]);
+        let (body, trailer) = pack.split_at(pack.len() - 20);
+        assert_eq!(Sha1::digest(body).as_slice(), trailer);
+        let more = extend_pack(&pack, &[(ObjectKind::Blob, b"more
+".to_vec())]).unwrap();
+        assert_eq!(&more[8..12], &2u32.to_be_bytes());
+        let read = Pack::parse(&more).unwrap();
+        assert!(read.blob("ce013625030ba8dba906f756967f9e9ca394464a").is_some());
+        assert!(read.blob(&object_id(ObjectKind::Blob, b"more
+")).is_some());
+        let mut broken = pack.clone();
+        broken[12] ^= 1;
+        assert!(extend_pack(&broken, &[]).is_err());
     }
 }

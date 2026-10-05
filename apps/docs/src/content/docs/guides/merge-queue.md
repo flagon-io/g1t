@@ -108,7 +108,11 @@ Before landing, g1t checks that nothing has changed underneath:
 
 A pull request that is already known to conflict with `main` is not added
 to the queue: [its merge box](/guides/pull-requests/#conflicts) says which
-files conflict and how to resolve them first.
+files conflict and how to resolve them first. One that is only behind `main`
+does not need to catch up to join the queue, since the queue tests it on
+top of `main`. Where the repository requires pull requests to be up to
+date, [catch it up](/guides/pull-requests/#catching-up) first: when it and
+`main` changed different files that takes a few seconds and no agent.
 
 ## When an entry fails
 

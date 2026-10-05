@@ -191,11 +191,14 @@ A pull request can only merge if it contains everything already on `main`.
 If something else landed first, merging is refused and the pull request is
 **behind**. Its page says so before you try.
 
-**Catch up with main** fixes that. A g1t agent merges `main` into the pull
-request in a sandbox. If the merge is clean, it is pushed as it is. If it
-conflicts, the agent is given the conflicted files and what the pull request
-is for, resolves them, and pushes the result. Either way the session records
-what was done, and the checks run again on the result. You can also do it by
+**Catch up with main** fixes that. When the pull request and `main` changed
+different files, g1t merges `main` in itself and pushes the merge in a few
+seconds. When they changed some of the same files, a g1t agent merges `main`
+into the pull request in a sandbox: if the merge is clean, it is pushed as it
+is; if it conflicts, the agent is given the conflicted files and what the
+pull request is for, resolves them, and pushes the result, and the session
+records what was done. Either way the checks run again on the result
+([how catching up works](/guides/pull-requests/#catching-up)). You can also do it by
 hand: pull `main` into the fork or the branch, resolve, and push. `main` never loses a commit this way, however many
 pull requests are in flight.
 

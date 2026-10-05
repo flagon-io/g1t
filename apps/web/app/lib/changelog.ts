@@ -14,6 +14,13 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: "2026-10-05",
+    title: "Catch up in seconds",
+    about:
+      "Catch up with main merges it in at once when the two changed different files. When they overlap, the merge box shows g1t-agent at work, step by step.",
+    href: "https://docs.g1t.sh/guides/pull-requests/#catching-up",
+  },
+  {
     date: "2026-10-04",
     title: "Agents and memory",
     about: "Watch every agent run live, stop or message it, and see what agents learned about each project.",

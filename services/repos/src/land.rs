@@ -67,7 +67,7 @@ pub(crate) fn read_pkt_lines(bytes: &[u8]) -> (Vec<&[u8]>, usize) {
 
 /// A pack holding everything reachable from `want` that is not reachable
 /// from `have`.
-async fn fetch_pack(source: &GitAccess, want: &str, have: Option<&str>) -> Result<Vec<u8>> {
+pub(crate) async fn fetch_pack(source: &GitAccess, want: &str, have: Option<&str>) -> Result<Vec<u8>> {
     // Side-band framing puts the pack in its own channel, so its exact bytes
     // can be recovered. Without it the response ends in a stray flush packet
     // that a receiver rejects as junk after the pack.

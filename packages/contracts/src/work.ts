@@ -1,5 +1,5 @@
 import type { User, Viewer } from "./identity";
-import type { RepoPath } from "./repos";
+import type { PullBranchUpdate, RepoPath } from "./repos";
 import type { Result } from "./result";
 
 /**
@@ -665,6 +665,14 @@ export interface WorkApi {
     number: number,
     changes: { assignees?: string[]; reviewers?: string[] },
   ): Promise<Result<Pull>>;
+  /**
+   * Brings a pull request up to date with the default branch in seconds,
+   * without a sandbox, when the two changed different files: the merge
+   * commit is pushed to its branch as `actor`, who must be whoever opened
+   * it (for a fork) or a member (for a branch). Otherwise `needs_agent`, and
+   * nothing is pushed: the runner's `update` is the way on.
+   */
+  catchUpPull(actor: User, repo: RepoPath, number: number): Promise<Result<PullBranchUpdate>>;
   /** Marks a draft ready for review and sets its description. */
   readyPull(actor: User, repo: RepoPath, number: number, summary: string): Promise<Result<Pull>>;
   closePull(actor: User, repo: RepoPath, number: number): Promise<Result<Pull>>;

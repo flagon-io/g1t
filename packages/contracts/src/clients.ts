@@ -197,6 +197,7 @@ export function workClient(service: ServiceBinding): WorkApi {
     getPull: (repo, number, viewer) => call("get_pull", { repo, number, viewer }),
     updatePull: (actor, repo, number, changes) =>
       call("update_pull", { actor, repo, number, ...changes }),
+    catchUpPull: (actor, repo, number) => call("catch_up_pull", { actor, repo, number }),
     readyPull: (actor, repo, number, summary) =>
       call("ready_pull", { actor, repo, number, summary }),
     closePull: (actor, repo, number) => call("close_pull", { actor, repo, number }),

@@ -71,7 +71,8 @@ async fn changed_files<R: GitRepo>(
             let names: std::collections::BTreeSet<&String> = old.keys().chain(new.keys()).collect();
             for name in names {
                 let (before, after) = (old.get(name), new.get(name));
-                if before.map(|e| &e.hash) == after.map(|e| &e.hash) {
+                // A file made executable keeps its hash, and is still a change.
+                if before.map(|e| (&e.hash, e.kind)) == after.map(|e| (&e.hash, e.kind)) {
                     continue;
                 }
                 let path = format!("{prefix}{name}");
