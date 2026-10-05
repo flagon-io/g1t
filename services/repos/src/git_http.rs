@@ -208,6 +208,27 @@ fn commands(body: &[u8]) -> (Vec<Command>, String) {
     (commands, capabilities)
 }
 
+/// The bytes of the pack a receive-pack request carries: everything after
+/// the flush packet that ends its commands. Zero for a push that only
+/// deletes refs.
+pub(crate) fn pack_bytes(body: &[u8]) -> u64 {
+    let mut position = 0;
+    while let Some(length) = body
+        .get(position..position + 4)
+        .and_then(|hex| std::str::from_utf8(hex).ok())
+        .and_then(|hex| usize::from_str_radix(hex, 16).ok())
+    {
+        if length == 0 {
+            return (body.len() - position - 4) as u64;
+        }
+        if length < 4 || position + length > body.len() {
+            break;
+        }
+        position += length;
+    }
+    0
+}
+
 fn pkt_line(payload: &[u8]) -> Vec<u8> {
     let mut line = format!("{:04x}", payload.len() + 4).into_bytes();
     line.extend_from_slice(payload);
@@ -322,6 +343,8 @@ pub struct Forwarded {
     /// For a push: the branches and tags it asks to move, and the commits
     /// to move them to. Whether each moved is for the caller to confirm.
     pub pushed: Vec<Pushed>,
+    /// For a push: the size of the pack it sent, for the storage meter.
+    pub pack_bytes: u64,
 }
 
 /// What became of a git request.
@@ -358,6 +381,7 @@ pub async fn forward(
     let mut init = RequestInit::new();
     init.with_method(request.method()).with_headers(headers);
     let mut pushed = Vec::new();
+    let mut pack = 0;
     if request.method() == Method::Post {
         // Pushes are capped at 100 MB by the platform, so buffering is safe.
         let body = request.bytes().await?;
@@ -374,6 +398,7 @@ pub async fn forward(
                 return Ok(Push::Blocked(response));
             }
             pushed = pushed_branches(&body);
+            pack = pack_bytes(&body);
         }
         init.with_body(Some(Uint8Array::from(body.as_slice()).into()));
     }
@@ -382,12 +407,31 @@ pub async fn forward(
     Ok(Push::Forwarded(Forwarded {
         response: Fetch::Request(upstream).send().await?,
         pushed,
+        pack_bytes: pack,
     }))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Pushed, ZERO_ID, framed, pushed_branches, refusal, with_namespace};
+    use super::{Pushed, ZERO_ID, framed, pack_bytes, pushed_branches, refusal, with_namespace};
+
+    #[test]
+    fn a_push_is_measured_by_the_pack_after_its_commands() {
+        let old = "c71546fcd893ef8b0f57388b65e620d759705dda";
+        let new = "4807077b296e6edbf410d55e72749d3e1170c291";
+        let pack = b"PACK\0\0\0\x02\0\0\0\0rest-of-pack";
+        let body = [
+            pkt(&format!("{old} {new} refs/heads/main\0 report-status\n")),
+            b"0000".to_vec(),
+            pack.to_vec(),
+        ]
+        .concat();
+        assert_eq!(pack_bytes(&body), pack.len() as u64);
+        // Only deletions: no pack.
+        let body = [pkt(&format!("{old} {ZERO_ID} refs/heads/gone\n")), b"0000".to_vec()].concat();
+        assert_eq!(pack_bytes(&body), 0);
+        assert_eq!(pack_bytes(b"garbage"), 0);
+    }
 
     #[test]
     fn a_renamed_workspace_keeps_the_rest_of_the_address() {

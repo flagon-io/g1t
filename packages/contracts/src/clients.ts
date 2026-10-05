@@ -264,6 +264,7 @@ export function billingClient(service: ServiceBinding): BillingApi {
     setSpendLimit: (actor, workspace, spendLimitMicros, useFullLimit = false) =>
       call("set_spend_limit", { actor, workspace, spendLimitMicros, use_full_limit: useFullLimit }),
     invoices: (workspace, viewer) => call("invoices", { workspace, viewer }),
+    entitlements: (workspace) => call("entitlements", { workspace }),
   };
 }
 
@@ -273,6 +274,7 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
     accounts: (query) => call("admin_accounts", { query: query ?? null }),
     account: (id) => call("admin_account", { id }),
     setTerms: (id, terms, by) => call("admin_set_terms", { id, terms, by }),
+    setAllowances: (id, allowances, note, by) => call("admin_set_allowances", { id, allowances, note, by }),
     createEnterprise: (name, workspaces, by) => call("admin_create_enterprise", { name, workspaces, by }),
     attach: (workspace, account, by) => call("admin_attach", { workspace, account, by }),
     credit: (workspace, amountMicros, note, by) => call("admin_credit", { workspace, amount_micros: amountMicros, note, by }),

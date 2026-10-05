@@ -20,7 +20,7 @@ import {
   Pencil,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { Form, Link, data, redirect, useNavigate, useSearchParams } from "react-router";
+import { Form, Link, redirect, useNavigate, useSearchParams } from "react-router";
 
 import type { Authored, AuthoredItem, AuthoredSort, AuthoredState, Profile } from "@g1t/contracts";
 
@@ -30,6 +30,7 @@ import { Avatar, Button, ButtonLink, EmptyState, TimeAgo } from "../components/u
 import { RadioGroup, RadioOption } from "../components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { IssueIcon, PullIcon } from "../components/work";
+import { notFound } from "../lib/not-found.server";
 import { identity, repos, work } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";
 
@@ -69,7 +70,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const username = params.username.toLowerCase();
   const profile = await identity.profile(username);
-  if (!profile) throw data(null, { status: 404 });
+  if (!profile) throw notFound("person");
   // One address per person: `/u/Ada` is `/u/ada`.
   if (params.username !== profile.username) {
     throw redirect(`/u/${profile.username}${url.search}`);

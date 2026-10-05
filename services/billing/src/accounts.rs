@@ -16,8 +16,8 @@
 
 use g1t_contracts::billing::{
     AccountDetail, AccountKind, AccountSummary, AdminAccountArgs, AdminAccountsArgs, AdminAction, AdminAttachArgs,
-    AdminCreateEnterpriseArgs, AdminCreditArgs, AdminSetTermsArgs, BillingAccount, EntryKind, LedgerEntry, Terms,
-    TermsKind, WorkspaceFigures,
+    AdminCreateEnterpriseArgs, AdminCreditArgs, AdminSetAllowancesArgs, AdminSetTermsArgs, Allowances, BillingAccount,
+    EntryKind, LedgerEntry, Terms, TermsKind, WorkspaceFigures,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, new_id};
@@ -43,6 +43,22 @@ struct AccountRow {
     created_at: String,
     #[serde(default)]
     billing_email: Option<String>,
+    #[serde(default)]
+    team_granted: Option<i64>,
+    #[serde(default)]
+    oss_repo_micros: Option<i64>,
+    #[serde(default)]
+    trial_micros: Option<i64>,
+}
+
+impl AccountRow {
+    fn allowances(&self) -> Allowances {
+        Allowances {
+            team: self.team_granted.unwrap_or(0) != 0,
+            oss_repo_micros: self.oss_repo_micros,
+            trial_micros: self.trial_micros,
+        }
+    }
 }
 
 impl AccountRow {
@@ -151,6 +167,7 @@ impl Billing {
             created_at: row.created_at.clone(),
             billing_email: row.billing_email.clone(),
             invoices: vec![],
+            allowances: row.allowances(),
         }
     }
 
@@ -185,6 +202,7 @@ impl Billing {
                 created_at: String::new(),
                 billing_email: None,
                 invoices: vec![],
+                allowances: Allowances::default(),
             },
         })
     }
@@ -462,6 +480,65 @@ impl Billing {
         Ok(Outcome::Ok(self.find_account(&account.id).await?.unwrap_or(account)))
     }
 
+    /// Team without charge, and the account's share of g1t's pools.
+    pub(crate) async fn admin_set_allowances(&self, a: AdminSetAllowancesArgs) -> Result<Outcome<BillingAccount>> {
+        if a.by.trim().is_empty() || a.note.trim().is_empty() {
+            return Ok(Outcome::fail(FailureCode::Invalid, "Say who is making the change, and why, in the note."));
+        }
+        let money = |m: Option<i64>| m.is_none_or(|m| (0..=1_000 * g1t_contracts::billing::MICROS_PER_DOLLAR).contains(&m));
+        if !money(a.allowances.oss_repo_micros) || !money(a.allowances.trial_micros) {
+            return Ok(Outcome::fail(FailureCode::Invalid, "A pool share is between $0 and $1,000."));
+        }
+        let Some(account) = self.find_account(&a.id).await? else {
+            return Ok(Outcome::fail(FailureCode::NotFound, "No such account."));
+        };
+        let now = rfc3339(now_ms());
+        let opt = |m: Option<i64>| m.map_or(JsValue::NULL, |m| (m as f64).into());
+        // A workspace's own account gets a row the first time anything is set.
+        self.db
+            .prepare(
+                "INSERT INTO billing_accounts (id, kind, name, terms_kind, discount_percent, note, created_by, created_at,
+                   team_granted, oss_repo_micros, trial_micros)
+                 VALUES (?1, ?2, ?3, 'standard', 0, '', ?4, ?5, ?6, ?7, ?8)
+                 ON CONFLICT (id) DO UPDATE SET team_granted = ?6, oss_repo_micros = ?7, trial_micros = ?8",
+            )
+            .bind(&[
+                account.id.as_str().into(),
+                if account.kind == AccountKind::Enterprise { "enterprise" } else { "workspace" }.into(),
+                account.name.as_str().into(),
+                a.by.as_str().into(),
+                now.as_str().into(),
+                u32::from(a.allowances.team).into(),
+                opt(a.allowances.oss_repo_micros),
+                opt(a.allowances.trial_micros),
+            ])?
+            .run()
+            .await?;
+        // A trial amount from staff replaces each workspace's grant, outside
+        // the monthly pool; what was used stays used.
+        if let Some(amount) = a.allowances.trial_micros {
+            for workspace in &account.workspaces {
+                self.db
+                    .prepare(
+                        "INSERT INTO trial_grants (workspace, month, granted_micros, used_micros, created_at)
+                         VALUES (?1, 'staff', ?2, 0, ?3)
+                         ON CONFLICT (workspace) DO UPDATE SET month = 'staff', granted_micros = ?2",
+                    )
+                    .bind(&[workspace.as_str().into(), (amount as f64).into(), now.as_str().into()])?
+                    .run()
+                    .await?;
+            }
+        }
+        self.audit(
+            &account.id,
+            "allowances",
+            &format!("{} → {}: {}", describe_allowances(&account.allowances), describe_allowances(&a.allowances), a.note.trim()),
+            &a.by,
+        )
+        .await?;
+        Ok(Outcome::Ok(self.find_account(&account.id).await?.unwrap_or(account)))
+    }
+
     pub(crate) async fn admin_create_enterprise(&self, a: AdminCreateEnterpriseArgs) -> Result<Outcome<BillingAccount>> {
         let name = a.name.trim();
         if name.is_empty() || a.by.trim().is_empty() {
@@ -597,6 +674,18 @@ impl Billing {
     }
 }
 
+/// Allowances as the audit log reads them.
+fn describe_allowances(a: &Allowances) -> String {
+    let mut parts = vec![if a.team { "Team on" } else { "Team off" }.to_owned()];
+    if let Some(m) = a.oss_repo_micros {
+        parts.push(format!("open-source share {} a repository", crate::features::dollars(m)));
+    }
+    if let Some(m) = a.trial_micros {
+        parts.push(format!("trial {}", crate::features::dollars(m)));
+    }
+    parts.join(", ")
+}
+
 /// A workspace's figures in `list`, added at the end the first time.
 fn figures_for<'a>(list: &'a mut Vec<WorkspaceFigures>, workspace: &str) -> &'a mut WorkspaceFigures {
     let i = match list.iter().position(|f| f.workspace == workspace) {
@@ -630,6 +719,13 @@ mod tests {
         let custom = Terms { ceiling_micros: Some(50_000_000), note: "Design partner".into(), ..terms(TermsKind::Custom, 20) };
         assert_eq!(describe(&custom), "custom (20% off, ceiling $50.00): Design partner");
         assert_eq!(describe(&Terms::standard()), "standard");
+    }
+
+    #[test]
+    fn allowances_read_plainly_in_the_audit_log() {
+        assert_eq!(describe_allowances(&Allowances::default()), "Team off");
+        let given = Allowances { team: true, oss_repo_micros: Some(5_000_000), trial_micros: Some(2_000_000) };
+        assert_eq!(describe_allowances(&given), "Team on, open-source share $5.00 a repository, trial $2.00");
     }
 
     #[test]

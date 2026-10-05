@@ -24,6 +24,7 @@ export type SectionError = { error: string; values?: Record<string, string> } | 
 /** The flash messages a change redirects back with (`?done=`). */
 export const DONE: Record<string, string> = {
   terms: "Terms saved. They apply to charges from now on.",
+  allowances: "Plan and pools saved. They apply to charges from now on.",
   attach: "Workspace moved onto the enterprise.",
   detach: "Workspace moved off the enterprise. It pays for itself again.",
   credit: "Credit issued.",

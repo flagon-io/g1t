@@ -6,7 +6,7 @@
 use g1t_contracts::billing::deployments_allowance as allowance;
 use g1t_contracts::billing::*;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::{FailureCode, Outcome, Role, new_id};
+use g1t_contracts::{FailureCode, Outcome, Role};
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
@@ -59,6 +59,17 @@ fn status_of(subscription: &StripeSubscription) -> SubscriptionStatus {
     }
 }
 
+/// `1 GB`, `50 GB`, or `500 MB`, as storage is priced (powers of ten).
+pub(crate) fn bytes(bytes: i64) -> String {
+    if bytes >= 1_000_000_000 && bytes % 1_000_000_000 == 0 {
+        format!("{} GB", bytes / 1_000_000_000)
+    } else if bytes >= 1_000_000_000 {
+        format!("{:.1} GB", bytes as f64 / 1e9)
+    } else {
+        format!("{} MB", bytes / 1_000_000)
+    }
+}
+
 /// Dollars to the cent, or finer for prices under a cent, so that a
 /// build minute's $0.0015 does not read as nothing.
 pub(crate) fn dollars(micros: i64) -> String {
@@ -83,6 +94,40 @@ impl SubscriptionRow {
 impl Billing {
     pub(crate) fn plan(&self, feature: Feature) -> Plan {
         match feature {
+            Feature::Team => Plan {
+                feature,
+                title: feature.title().to_owned(),
+                monthly_cents: self.plans.team_monthly_cents,
+                includes: vec![
+                    format!(
+                        "{} of usage credit each month, drawn first by the month's usage at cost plus {}%. Unused credit does not roll over.",
+                        dollars(self.plans.team_included_micros),
+                        self.margin_percent
+                    ),
+                    format!(
+                        "{} of private repository storage, rather than {}",
+                        bytes(self.plans.team_storage_bytes),
+                        bytes(self.plans.free_storage_bytes)
+                    ),
+                    format!(
+                        "The audit log kept {}, rather than {} days",
+                        if self.plans.team_audit_days % 365 == 0 {
+                            match self.plans.team_audit_days / 365 {
+                                1 => "for 1 year".to_owned(),
+                                years => format!("for {years} years"),
+                            }
+                        } else {
+                            format!("for {} days", self.plans.team_audit_days)
+                        },
+                        self.plans.audit_days
+                    ),
+                    "Everyone in the workspace, at one price: never per person".to_owned(),
+                ],
+                overage: format!(
+                    "Usage past the credit is charged as it is without the plan: at cost plus {}%.",
+                    self.margin_percent
+                ),
+            },
             Feature::Deployments => Plan {
                 feature,
                 title: feature.title().to_owned(),
@@ -92,6 +137,7 @@ impl Billing {
                         "{} apps deployed at once, production and previews together",
                         allowance::APPS
                     ),
+                    format!("{} build minutes", self.plans.build_seconds / 60),
                     format!("{} million requests", allowance::REQUESTS / 1_000_000),
                     format!("{} million CPU milliseconds", allowance::CPU_MS / 1_000_000),
                     format!(
@@ -105,7 +151,7 @@ impl Billing {
                     "Previews that cost nothing while no one visits them".to_owned(),
                 ],
                 overage: format!(
-                    "Builds, and usage past that, come from credit at Cloudflare's price plus {3}%: {4} per build minute, {0} per extra app a month, {1} per million requests and {2} per million CPU milliseconds.",
+                    "Usage past that is charged at Cloudflare's price plus {3}%: {4} per build minute, by the second, {0} per extra app a month, {1} per million requests and {2} per million CPU milliseconds.",
                     dollars(crate::charge_micros(
                         allowance::MICROS_PER_APP_MONTH as f64 / MICROS_PER_DOLLAR as f64,
                         self.margin_percent
@@ -204,11 +250,30 @@ impl Billing {
             .current(workspace, feature)
             .await?
             .and_then(|row| row.subscription());
+        let included = self.included(workspace, feature).await?;
         Ok(FeatureState {
             plan: self.plan(feature),
-            on: self.stripe.is_none() || subscription.as_ref().is_some_and(|s| s.status.on()),
+            on: included || self.stripe.is_none() || subscription.as_ref().is_some_and(|s| s.status.on()),
             subscription,
+            included,
         })
+    }
+
+    /// Whether the feature is on without a plan: comped terms have every
+    /// feature, and g1t staff can give an account Team.
+    async fn included(&self, workspace: &str, feature: Feature) -> Result<bool> {
+        let account = self.account_of(workspace).await?;
+        Ok(account.terms.kind == g1t_contracts::billing::TermsKind::Comped
+            || (feature == Feature::Team && account.allowances.team))
+    }
+
+    /// Whether the workspace's plan for the feature is paid up.
+    pub(crate) async fn plan_on(&self, workspace: &str, feature: Feature) -> Result<bool> {
+        Ok(self
+            .current(workspace, feature)
+            .await?
+            .and_then(|row| row.subscription())
+            .is_some_and(|s| s.status.on()))
     }
 
     pub(crate) async fn features(&self, a: FeaturesArgs) -> Result<Outcome<Vec<FeatureState>>> {
@@ -237,7 +302,14 @@ impl Billing {
                 "Payments are not set up on this g1t, so every feature is already on.",
             ));
         };
-        if self.state(&workspace, a.feature).await?.subscription.is_some_and(|s| s.status.on()) {
+        let state = self.state(&workspace, a.feature).await?;
+        if state.included {
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                format!("{} is included for {workspace} already, at no charge.", a.feature.title()),
+            ));
+        }
+        if state.subscription.is_some_and(|s| s.status.on()) {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
                 format!("{} is already on for {workspace}.", a.feature.title()),
@@ -376,8 +448,9 @@ impl Billing {
 
     pub(crate) async fn has_feature(&self, a: HasFeatureArgs) -> Result<Outcome<bool>> {
         let workspace = a.workspace.to_lowercase();
-        // Comped accounts have every feature without a plan.
-        if self.terms_of(&workspace).await?.kind == g1t_contracts::billing::TermsKind::Comped {
+        // Comped accounts have every feature without a plan, and staff can
+        // give an account Team.
+        if self.included(&workspace, a.feature).await? {
             return Ok(Outcome::Ok(true));
         }
         if self.state(&workspace, a.feature).await?.on {
@@ -406,52 +479,85 @@ impl Billing {
         if seen.is_some() {
             return Ok(Outcome::Ok(false));
         }
-        let cost = a.cost_micros as f64 / MICROS_PER_DOLLAR as f64;
+        let timestamp = rfc3339(now_ms());
+        let month = crate::credits::month_of(&timestamp);
+        let mut description = a.description.clone();
+        // A build: the plan's build time this month pays for what it can.
+        let cost_micros = match a.build_seconds.filter(|s| *s > 0 && a.feature == Feature::Deployments) {
+            Some(seconds) => {
+                let included = self
+                    .draw_allowance("build_seconds", &workspace, &month, seconds.into(), self.plans.build_seconds.into())
+                    .await?;
+                if included > 0 {
+                    description.push_str(&format!(
+                        ", {} of it included in the plan",
+                        if included == i64::from(seconds) { "all".to_owned() } else { format!("{included} s") }
+                    ));
+                }
+                billable_build_cost(a.cost_micros, seconds, included)
+            }
+            None => a.cost_micros,
+        };
+        let cost = cost_micros as f64 / MICROS_PER_DOLLAR as f64;
         // Never free: the margin applies whatever FREE_WHILE_BUILDING says,
-        // and only the account's terms change it.
+        // and only the account's terms change it. The Team credit pays what
+        // it can; the trial and the open-source pool never pay for
+        // deployments.
         let charge = self.terms_of(&workspace).await?.apply(crate::charge_micros(cost, self.margin_percent));
-        let now = now_ms();
-        let timestamp = rfc3339(now);
-        self.db
-            .batch(vec![
-                self.db
-                    .prepare(
-                        "INSERT INTO ledger
-                           (id, workspace, kind, amount_micros, description, repo, task,
-                            cost_micros, reference, created_at, billed_to)
-                         VALUES (?, ?, 'usage', ?, ?, ?, ?, ?, ?, ?, 'g1t')",
-                    )
-                    .bind(&[
-                        new_id("led", now).into(),
-                        workspace.as_str().into(),
-                        (-(charge as f64)).into(),
-                        a.description.as_str().into(),
-                        optional(a.repo.as_deref()),
-                        a.feature.as_str().into(),
-                        (a.cost_micros as f64).into(),
-                        a.reference.as_str().into(),
-                        timestamp.as_str().into(),
-                    ])?,
-                self.db
-                    .prepare(
-                        "INSERT INTO accounts (workspace, balance_micros, created_at)
-                         VALUES (?1, ?2, ?3)
-                         ON CONFLICT (workspace) DO UPDATE SET balance_micros = balance_micros + ?2",
-                    )
-                    .bind(&[
-                        workspace.as_str().into(),
-                        (-(charge as f64)).into(),
-                        timestamp.as_str().into(),
-                    ])?,
-            ])
-            .await?;
+        let drawn = self.draw(&workspace, charge, &month, &crate::credits::Eligible::default()).await?;
+        description.push_str(&drawn.note());
+        self.post_usage(crate::storage::UsageLine {
+            workspace: &workspace,
+            charged: charge - drawn.total(),
+            description: &description,
+            repo: a.repo.as_deref(),
+            task: a.feature.as_str(),
+            cost: cost_micros,
+            reference: &a.reference,
+            created_at: &timestamp,
+            drawn,
+        })
+        .await?;
         Ok(Outcome::Ok(true))
     }
+}
+
+/// What of a build's cost is charged when `included` of its `seconds` were
+/// paid for by the plan: the rest, in proportion, rounded up.
+pub(crate) fn billable_build_cost(cost_micros: i64, seconds: u32, included: i64) -> i64 {
+    if seconds == 0 {
+        return cost_micros;
+    }
+    let billable = (i64::from(seconds) - included.max(0)).max(0);
+    (cost_micros as f64 * billable as f64 / f64::from(seconds)).ceil() as i64
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_plan_pays_for_its_build_minutes_and_the_rest_is_charged() {
+        // A 5-minute build at 21 millionths a second costs 6,300.
+        assert_eq!(billable_build_cost(6_300, 300, 300), 0);
+        assert_eq!(billable_build_cost(6_300, 300, 0), 6_300);
+        // The allowance ran out a minute into it: four minutes are charged.
+        assert_eq!(billable_build_cost(6_300, 300, 60), 5_040);
+        // Then at cost plus 20%.
+        assert_eq!(crate::credits::with_margin(5_040, 20), 6_048);
+        // 200 minutes a month cost g1t about $0.25 of the plan's $5.
+        let month = crate::credits::Config::default().build_seconds;
+        assert_eq!(month, 12_000);
+        assert_eq!(i64::from(month) * allowance::MICROS_PER_BUILD_SECOND, 252_000);
+    }
+
+    #[test]
+    fn storage_reads_in_gigabytes() {
+        assert_eq!(bytes(1_000_000_000), "1 GB");
+        assert_eq!(bytes(50_000_000_000), "50 GB");
+        assert_eq!(bytes(1_500_000_000), "1.5 GB");
+        assert_eq!(bytes(500_000_000), "500 MB");
+    }
 
     #[test]
     fn prices_under_a_cent_keep_their_digits() {

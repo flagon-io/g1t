@@ -8,7 +8,7 @@
 import type { Terms } from "@g1t/contracts";
 import { data, redirect } from "react-router";
 
-import { fields, parseCredit, parseEmail, parseNote, parseSlug, parseTerms, text } from "./forms";
+import { fields, parseAllowances, parseCredit, parseEmail, parseNote, parseSlug, parseTerms, text } from "./forms";
 import type { ActionData } from "./review";
 import { admin, identity } from "./services.server";
 import type { Staff } from "./staff";
@@ -41,6 +41,21 @@ export async function billingAction(request: Request, staff: Staff, subject: Sub
     const result = await admin.setTerms(subject.accountId, terms.value, staff.email);
     if (!result.ok) return failed("terms", result.error.message, values);
     return back("terms");
+  }
+
+  if (intent === "allowances") {
+    // Team without charge, and the account's share of g1t's pools.
+    const values = fields(form, "team", "oss", "trial", "note");
+    if (subject.kind === "workspace" && subject.billedTo) {
+      return failed("allowances", `This workspace is on ${subject.billedTo.name}. Set its plan and pools on the enterprise.`, values);
+    }
+    const allowances = parseAllowances(form);
+    if (!allowances.ok) return failed("allowances", allowances.error, values);
+    const note = parseNote(values.note);
+    if (!note.ok) return failed("allowances", note.error, values);
+    const result = await admin.setAllowances(subject.accountId, allowances.value, note.value, staff.email);
+    if (!result.ok) return failed("allowances", result.error.message, values);
+    return back("allowances");
   }
 
   if (intent === "attach") {

@@ -1060,6 +1060,16 @@ impl<S: GitStore> Repos<S> {
             };
         self.finish_git(audit, forwarded.response.status_code(), None).await;
 
+        // What the push stored, for billing's storage meter. A failure only
+        // leaves the count short.
+        if forwarded.response.status_code() == 200
+            && forwarded.pack_bytes > 0
+            && let Some(repo) = self.registry.by_path(&git.path).await?
+            && let Err(error) = self.registry.add_stored_bytes(&repo, forwarded.pack_bytes).await
+        {
+            worker::console_error!("stored bytes for {} not counted: {error}", git.path.name);
+        }
+
         // Artifacts' own push notifications are per repository, which does
         // not fit a repo per pull request, so the front end reports pushes
         // itself: one event for each branch that moved.
@@ -1170,6 +1180,11 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "list_files" => reply(&repos.list_files(args(body)?).await?),
         "changed_files" => reply(&repos.changed_files(args(body)?).await?),
         "read_blobs" => reply(&repos.read_blobs(args(body)?).await?),
+        "visibility" => {
+            let a: g1t_contracts::repos::VisibilityArgs = args(body)?;
+            reply(&repos.registry.visibility(&a.paths).await?)
+        }
+        "storage" => reply(&repos.registry.storage().await?),
         "all_ids" => {
             let a: AllIdsArgs = args(body)?;
             let limit = a.limit.clamp(1, 500);

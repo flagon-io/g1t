@@ -273,22 +273,23 @@ It includes, each calendar month (UTC):
 | 1 million requests | To all of the workspace's apps. |
 | 3 million CPU milliseconds | Time your code spends computing. Waiting on the network is not counted. |
 | 3 custom domains | Across the workspace's projects, with their certificates. A www/apex pair is two. |
+| 200 build minutes | Every build's time, whether it succeeds or fails. About $0.25 of the plan's price at cost. |
 
-**Usage past that,** and **every build**, come out of the workspace's
-[credit](/guides/usage-and-billing/#add-credit) at Cloudflare's price plus
-20%:
+**Usage past that** is charged at Cloudflare's price plus 20%:
 
 | | Price |
 | --- | --- |
-| A build | $0.0015 a minute, by the second, whether it succeeds or fails. Not part of the plan. |
+| A build past the 200 minutes | $0.0015 a minute, by the second, whether it succeeds or fails. |
 | Each app past 10 | $0.024 a month |
 | Each million requests past 1 million | $0.36 |
 | Each million CPU milliseconds past 3 million | $0.024 |
 | Each custom domain past 3 | $0.12 a month, by the most the workspace had at once that month |
 
-Builds are charged when they finish. Usage past the allowance is charged
-once, on the first sweep after the month ends, as one line: *Deployments in
-2026-10 past the plan*.
+Builds are recorded when they finish: the plan's minutes pay for them
+first, and a build that runs past them is charged only for the seconds
+past them. Other usage past the allowance is charged once, on the first
+sweep after the month ends, as one line: *Deployments in 2026-10 past the
+plan*.
 
 An app that no one visits costs nothing beyond counting toward the 10. That
 is why previews come down when their pull request closes and after their
@@ -296,12 +297,13 @@ idle days.
 
 ### Seeing what you use
 
-- **Billing**, under the Deployments plan, shows this month's apps,
-  requests and CPU time against what the plan includes, and what builds
-  have cost. Requests and CPU time are counted from Cloudflare's analytics
+- **Billing**, under the Deployments plan, shows this month's apps, build
+  minutes, requests and CPU time against what the plan includes.
+  Requests and CPU time are counted from Cloudflare's analytics
   every 10 minutes.
 - The **statement** on Billing lists every build (*Building acme/web to
-  production (48 s)*) and every month's usage past the plan.
+  production (48 s), all of it included in the plan*) and every month's
+  usage past the plan.
 - Each build's page shows how long it ran.
 
 ## Turn it off

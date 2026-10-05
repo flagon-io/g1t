@@ -7,7 +7,7 @@ import { CreditCard, Gift, ScrollText, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
-import type { AdminAction, AdminOwner, BillingLink, LedgerEntry, Terms } from "@g1t/contracts";
+import type { AdminAction, AdminOwner, Allowances, BillingLink, LedgerEntry, Terms } from "@g1t/contracts";
 
 import { Avatar, Badge, Button, EmptyState, Field, Input, Notice, Section, Select, Textarea, When } from "~/components/ui";
 import { actionLabel } from "~/lib/ledgers";
@@ -253,6 +253,64 @@ export function TermsForm({ terms, pathname, error }: { terms: Terms; pathname: 
         </Field>
         <div className="flex justify-end">
           <Button type="submit">Review terms</Button>
+        </div>
+      </form>
+    </Section>
+  );
+}
+
+// --- Plan and pools -----------------------------------------------------------
+
+/**
+ * The Team plan without charge, and the account's share of g1t's pools.
+ * Comped accounts have Team anyway; this is for partners on other terms.
+ */
+export function AllowancesForm({
+  allowances,
+  comped,
+  pathname,
+  error,
+}: {
+  allowances: Allowances | undefined;
+  comped: boolean;
+  pathname: string;
+  error: SectionError;
+}) {
+  const values = error?.values;
+  const current = allowances ?? { team: false, ossRepoMicros: null, trialMicros: null };
+  return (
+    <Section
+      id="allowances"
+      title="Plan and pools"
+      description={
+        comped
+          ? "Comped: the Team plan is on without charge whatever is set here. The pool shares still apply."
+          : "The Team plan without charge, and this account's share of g1t's open-source pool and of trials."
+      }
+    >
+      <form method="post" action={`${pathname}#allowances`} className="space-y-4">
+        <input type="hidden" name="intent" value="allowances" />
+        {error && <Notice tone="error">{error.error}</Notice>}
+        <label className="flex cursor-pointer items-start gap-2.5 text-sm">
+          <input type="checkbox" name="team" defaultChecked={values ? values.team === "on" : current.team} className="mt-0.5" />
+          <span>
+            <span className="block font-medium">Team, without charge</span>
+            <span className="block text-xs text-muted">Its credit, storage and audit log, with no plan to pay for.</span>
+          </span>
+        </label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Open-source share $" hint="Each public repository, a month. Blank: the default.">
+            <Input name="oss" inputMode="decimal" placeholder="Default" defaultValue={values?.oss ?? dollarsField(current.ossRepoMicros)} />
+          </Field>
+          <Field label="Trial credit $" hint="Each workspace, outside the monthly pool. Blank: the default.">
+            <Input name="trial" inputMode="decimal" placeholder="Default" defaultValue={values?.trial ?? dollarsField(current.trialMicros)} />
+          </Field>
+        </div>
+        <Field label="Note" hint="Required. Why, for whoever looks next.">
+          <Textarea name="note" rows={2} required maxLength={500} defaultValue={values?.note ?? ""} placeholder="e.g. Open-source foundation, larger share through 2027" />
+        </Field>
+        <div className="flex justify-end">
+          <Button type="submit">Save plan and pools</Button>
         </div>
       </form>
     </Section>

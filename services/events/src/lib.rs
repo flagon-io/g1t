@@ -208,3 +208,21 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
     batch.ack_all();
     Ok(())
 }
+
+/// Once a day: audit entries older than any plan keeps are removed
+/// (`AUDIT_KEEP_DAYS`, a year by default). Shorter windows, such as 30 days
+/// without the Team plan, are applied where the log is read.
+#[event(scheduled)]
+async fn scheduled(_event: worker::ScheduledEvent, env: Env, _ctx: worker::ScheduleContext) {
+    let keep_days = env
+        .var("AUDIT_KEEP_DAYS")
+        .ok()
+        .and_then(|v| v.to_string().parse().ok())
+        .unwrap_or(audit::DEFAULT_KEEP_DAYS);
+    let Ok(db) = env.d1("DB") else { return };
+    match audit::purge(&db, &audit::keep_from(now_ms(), keep_days), 20).await {
+        Ok(removed) if removed > 0 => worker::console_log!("removed {removed} audit entries older than {keep_days} days"),
+        Ok(_) => {}
+        Err(error) => worker::console_error!("could not remove old audit entries: {error}"),
+    }
+}

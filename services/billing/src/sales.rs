@@ -456,6 +456,9 @@ impl Billing {
                 "SELECT CASE
                           WHEN task = 'sandbox' THEN 'Sandbox time'
                           WHEN task = 'deployments' THEN 'Deployments'
+                          WHEN task = 'security' THEN 'Security scans'
+                          WHEN task = 'context' THEN 'Search embeddings'
+                          WHEN task = 'storage' THEN 'Private storage'
                           WHEN billed_to = 'workspace' THEN 'Own-provider runs'
                           ELSE 'Models' END AS kind,
                         -SUM(amount_micros) AS charged, SUM(cost_micros) AS cost
@@ -511,6 +514,7 @@ impl Billing {
             declined: tally(SignalKind::Declined),
             open_invoices_micros: open_invoices,
             follow_ups_due: follow_ups as u32,
+            pools: Some(self.pools().await?),
         })
     }
 }

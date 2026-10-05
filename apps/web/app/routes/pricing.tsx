@@ -1,6 +1,6 @@
 import { ArrowUpRight } from "lucide-react";
 
-import { DEPLOYMENTS_ALLOWANCE, MICROS_PER_DOLLAR, type Price } from "@g1t/contracts";
+import { DEPLOYMENTS_ALLOWANCE, type FeaturePlan, type FreeTier, MICROS_PER_DOLLAR, type Price } from "@g1t/contracts";
 
 import type { Route } from "./+types/pricing";
 import { page } from "../lib/meta";
@@ -10,7 +10,8 @@ import { billing } from "../lib/services.server";
 export function meta(args: Route.MetaArgs) {
   return page(args, {
     title: "Pricing · g1t",
-    description: "g1t passes its costs through: what Cloudflare and model providers charge g1t, plus 20%. No seats.",
+    description:
+      "g1t passes its costs through: what Cloudflare and model providers charge g1t, plus 20%. Public repositories are free. No seats, ever.",
   });
 }
 
@@ -32,6 +33,58 @@ function perUnit(price: Price, micros: number): string {
   return price.unit === "second" ? `${money(micros * 60)} a minute` : `${money(micros)} per ${price.unit}`;
 }
 
+/** Whole dollars when they are whole. */
+function dollars(micros: number): string {
+  const d = micros / MICROS_PER_DOLLAR;
+  return Number.isInteger(d) ? `$${d}` : `$${d.toFixed(2)}`;
+}
+
+function gigabytes(bytes: number): string {
+  return `${Math.round((bytes / 1e9) * 10) / 10} GB`;
+}
+
+/** What the page says when billing cannot be reached: the published defaults. */
+const DEFAULT_FREE: FreeTier = {
+  trialWorkspaceMicros: 1_000_000,
+  trialMonthlyPoolMicros: 40_000_000,
+  ossPoolMicros: 10_000_000,
+  ossRepoMicros: 1_000_000,
+  freePrivateStorageBytes: 1_000_000_000,
+  auditRetentionDays: 30,
+  minChargeMicros: 5_000_000,
+};
+
+const DEFAULT_PLANS: FeaturePlan[] = [
+  {
+    feature: "team",
+    title: "Team",
+    monthlyCents: 2000,
+    includes: [
+      "$5 of usage credit each month, drawn first by the month's usage at cost plus 20%. Unused credit does not roll over.",
+      "50 GB of private repository storage, rather than 1 GB",
+      "The audit log kept for 1 year, rather than 30 days",
+      "Everyone in the workspace, at one price: never per person",
+    ],
+    overage: "Usage past the credit is charged as it is without the plan: at cost plus 20%.",
+  },
+  {
+    feature: "deployments",
+    title: "Deployments",
+    monthlyCents: 500,
+    includes: [
+      `${DEPLOYMENTS_ALLOWANCE.apps} apps deployed at once, production and previews together`,
+      `${DEPLOYMENTS_ALLOWANCE.buildSeconds / 60} build minutes`,
+      `${DEPLOYMENTS_ALLOWANCE.requests / 1e6} million requests`,
+      `${DEPLOYMENTS_ALLOWANCE.cpuMs / 1e6} million CPU milliseconds`,
+      `${DEPLOYMENTS_ALLOWANCE.customDomains} custom domains, with certificates`,
+    ],
+    overage: "Usage past that is charged at Cloudflare's price plus 20%.",
+  },
+];
+
+/** The ways to reach g1t about an enterprise account. */
+const ENTERPRISE_MAIL = "mailto:billing@g1t.sh?subject=Enterprise%20billing%20for%20g1t";
+
 const HOW = [
   {
     title: "Our cost, passed through",
@@ -47,21 +100,23 @@ const HOW = [
   },
   {
     title: "No seats, ever",
-    body: "Add as many people and agents as you like. A workspace pays for what it uses, and for the features it turns on.",
+    body: "Add as many people and agents as you like. A workspace pays for what it uses, and for the plans it turns on, each a flat price for the whole workspace.",
+  },
+  {
+    title: "Free where something pays for it",
+    body: "Public repositories are free, and their agents' compute comes from a capped open-source pool g1t pays for. New workspaces get a small trial from a monthly budget. Nothing free is an open-ended allowance.",
   },
   {
     title: "Limits that protect both of us",
     body: "Usage not yet paid for can only go so far: $3 for a new workspace, growing with what it pays. With a card on file, g1t charges it as you near the limit, so work that is paid for never stops. Owners can set a lower limit of their own.",
-  },
-  {
-    title: "Enterprise billing",
-    body: "One bill, one limit and one set of terms for several workspaces. Write to us to set one up.",
   },
 ];
 
 export default function Pricing({ loaderData }: Route.ComponentProps) {
   const { book, free } = loaderData;
   const checked = book?.prices.map((p) => p.checkedAt).filter((at): at is string => !!at).sort().at(-1);
+  const tier = book?.free ?? DEFAULT_FREE;
+  const plans = book?.plans?.length ? book.plans : DEFAULT_PLANS;
   return (
     <main className="mx-auto max-w-4xl px-4 py-12">
       <p className="text-sm font-medium text-accent">Pricing</p>
@@ -135,21 +190,125 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         </table>
       </div>
 
-      <h2 className="mt-14 text-xl font-semibold tracking-tight">Features</h2>
-      <p className="mt-1 text-sm text-muted">Turned on per workspace with a monthly plan. Never free.</p>
+      <h2 className="mt-14 text-xl font-semibold tracking-tight">Free, and what pays for it</h2>
+      <p className="mt-1 text-sm text-muted">
+        Hosting, git, issues, pull requests, review, search, the API and MCP cost nothing. What runs for you is metered,
+        and these pay for some of it first, each from a fixed budget.
+      </p>
+      <div className="mt-4 overflow-x-auto rounded-xl border border-line">
+        <table className="w-full min-w-[36rem] text-left text-sm">
+          <thead className="border-b border-line text-xs text-muted">
+            <tr>
+              <th className="px-4 py-2.5 font-medium">What is free</th>
+              <th className="px-4 py-2.5 font-medium">Paid for by</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            <tr>
+              <td className="px-4 py-3">
+                <p className="font-medium">Public repositories and open source</p>
+                <p className="text-xs text-faint">
+                  Hosting, issues, pull requests and search are never charged. Agents' sandbox time and model cost on a
+                  public repository come from the pool, up to {dollars(tier.ossRepoMicros)} a month per repository.
+                </p>
+              </td>
+              <td className="px-4 py-3 text-muted">
+                g1t's open-source pool, {dollars(tier.ossPoolMicros)} a month in all. When it or a repository's share is
+                spent, the workspace pays as usual.
+              </td>
+            </tr>
+            {tier.trialWorkspaceMicros > 0 && (
+              <tr>
+                <td className="px-4 py-3">
+                  <p className="font-medium">A trial for each new workspace</p>
+                  <p className="text-xs text-faint">
+                    {dollars(tier.trialWorkspaceMicros)} of usage credit, once, given the first time it uses something.
+                  </p>
+                </td>
+                <td className="px-4 py-3 text-muted">
+                  A trial budget of {dollars(tier.trialMonthlyPoolMicros)} a month. When a month's is given out, new
+                  trials start again on the 1st.
+                </td>
+              </tr>
+            )}
+            <tr>
+              <td className="px-4 py-3">
+                <p className="font-medium">Private storage</p>
+                <p className="text-xs text-faint">
+                  {gigabytes(tier.freePrivateStorageBytes)} per workspace; past it, at the storage price above.
+                </p>
+              </td>
+              <td className="px-4 py-3 text-muted">g1t, as part of the free core: at most {gigabytes(tier.freePrivateStorageBytes)} of storage a workspace, about $0.50 a month at Cloudflare's price.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-3 text-sm text-muted">
+        No card is charged less than {dollars(tier.minChargeMicros)}, so a payment's fee is never most of it. Smaller
+        amounts carry over to the next invoice.
+      </p>
+
+      <h2 className="mt-14 text-xl font-semibold tracking-tight">Plans</h2>
+      <p className="mt-1 text-sm text-muted">
+        Turned on by an owner, per workspace, at one flat price a month. Never per person.
+      </p>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        {plans.map((plan) => (
+          <section key={plan.feature} className="flex flex-col rounded-xl border border-line bg-surface p-5">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="font-medium">{plan.title}</h3>
+              <p>
+                <span className="text-2xl font-semibold">${plan.monthlyCents / 100}</span>{" "}
+                <span className="text-sm text-muted">/ month per workspace</span>
+              </p>
+            </div>
+            <ul className="mt-3 space-y-1.5 text-sm text-muted">
+              {plan.includes.map((line) => (
+                <li key={line} className="flex gap-2">
+                  <span aria-hidden className="text-accent">
+                    ·
+                  </span>
+                  {line}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs text-faint">{plan.overage}</p>
+          </section>
+        ))}
+      </div>
+
+      <h2 className="mt-14 text-xl font-semibold tracking-tight">Enterprise</h2>
+      <p className="mt-1 text-sm text-muted">
+        For organizations that would rather we run it for several teams, on terms set with them.
+      </p>
       <section className="mt-4 rounded-xl border border-line bg-surface p-5">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="font-medium">Deployments</h3>
-          <p>
-            <span className="text-2xl font-semibold">$5</span> <span className="text-sm text-muted">/ month</span>
-          </p>
-        </div>
-        <p className="mt-1 text-sm text-muted">
-          Includes {DEPLOYMENTS_ALLOWANCE.apps} apps up at once, {(DEPLOYMENTS_ALLOWANCE.requests / 1e6).toLocaleString()}{" "}
-          million requests, {(DEPLOYMENTS_ALLOWANCE.cpuMs / 1e6).toLocaleString()} million CPU milliseconds and{" "}
-          {DEPLOYMENTS_ALLOWANCE.customDomains} custom domains a month;
-          builds, and usage past that, at the prices above.
-        </p>
+        <ul className="grid gap-3 text-sm sm:grid-cols-2">
+          <li>
+            <p className="font-medium">Consolidated invoicing</p>
+            <p className="text-muted">One monthly invoice for every workspace, one limit, paid by card or bank transfer.</p>
+          </li>
+          <li>
+            <p className="font-medium">Custom terms</p>
+            <p className="text-muted">A limit of your own, discounts on usage, and terms until a date, set with you.</p>
+          </li>
+          <li>
+            <p className="font-medium">Audit log export</p>
+            <p className="text-muted">Every action by people and agents, as CSV or JSON, kept a year on Team.</p>
+          </li>
+          <li>
+            <p className="font-medium">
+              Single sign-on <span className="ml-1 rounded bg-raised px-1.5 py-0.5 text-xs text-muted">Coming</span>
+            </p>
+            <p className="text-muted">Sign in through your identity provider. Not available yet.</p>
+          </li>
+        </ul>
+        <a
+          href={ENTERPRISE_MAIL}
+          className="mt-5 inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm hover:border-line-strong"
+        >
+          Write to us about enterprise
+          <ArrowUpRight size={14} />
+        </a>
       </section>
 
       <h2 className="mt-14 text-xl font-semibold tracking-tight">Price changes</h2>
@@ -161,13 +320,18 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             const before = change.oldCostMicros * (100 + (change.oldMarkupPercent ?? change.markupPercent));
             const after = change.newCostMicros * (100 + change.markupPercent);
             const up = after > before;
+            const fresh = after === before;
             return (
               <li key={`${change.meter}-${change.createdAt}`} className="px-4 py-3 text-sm">
                 <p>
                   <span className="font-medium">{title}</span>{" "}
-                  <span className={up ? "text-warn" : "text-accent"}>
-                    {up ? "up" : "down"} {Math.abs((after / before - 1) * 100).toFixed(1)}%
-                  </span>
+                  {fresh ? (
+                    <span className="text-muted">new</span>
+                  ) : (
+                    <span className={up ? "text-warn" : "text-accent"}>
+                      {up ? "up" : "down"} {Math.abs((after / before - 1) * 100).toFixed(1)}%
+                    </span>
+                  )}
                 </p>
                 <p className="mt-0.5 text-xs text-faint">
                   {change.reason} · <TimeAgo at={change.createdAt} />

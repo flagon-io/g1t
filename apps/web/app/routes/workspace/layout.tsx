@@ -1,10 +1,12 @@
-import { CreditCard, KeyRound, LayoutGrid, Plug, Plus, Settings, Users } from "lucide-react";
-import { Outlet, data, useLocation, useRouteLoaderData } from "react-router";
+import { Plus } from "lucide-react";
+import { Outlet, data, useLocation } from "react-router";
 
 import type { Route } from "./+types/layout";
 import { page } from "../../lib/meta";
-import { Avatar, ButtonLink, Pill, TabLink } from "../../components/ui";
+import { Avatar, ButtonLink, Pill } from "../../components/ui";
+import { notFound } from "../../lib/not-found.server";
 import { redirectIfRenamed } from "../../lib/renamed.server";
+import { rememberWorkspace } from "../../lib/workspace-choice";
 import { identity } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 
@@ -17,9 +19,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   if (!workspace) {
     // A workspace's old name, after a rename: its pages are at the new one.
     await redirectIfRenamed(request, params.owner);
-    throw data(null, { status: 404 });
+    throw notFound("workspace");
   }
-  return { workspace, role: roleIn(getViewer(context), workspace.slug) };
+  const role = roleIn(getViewer(context), workspace.slug);
+  // Opening one of your workspaces makes it the one you are in.
+  if (!role) return { workspace, role };
+  const secure = new URL(request.url).protocol === "https:";
+  return data({ workspace, role }, { headers: { "Set-Cookie": rememberWorkspace(workspace.slug, secure) } });
 }
 
 /** A workspace's own pages, each with its title and what it is for. */
@@ -71,12 +77,10 @@ const PAGES: Record<string, { title: string; about: string }> = {
 
 export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
   const { workspace, role } = loaderData;
-  const base = `/${workspace.slug}`;
-  const signedIn = useRouteLoaderData("root")?.user != null;
-  // The sidebar finds the workspace's pages for someone signed in, so its
-  // pages need a title, not the workspace's whole header again.
+  // The sidebar finds the workspace's pages, for everyone, so its pages
+  // need a title, not the workspace's whole header again.
   const page = PAGES[useLocation().pathname.split("/-/")[1]?.split("/")[0] ?? ""];
-  if (signedIn && page) {
+  if (page) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
         <header className="mb-8 border-b border-line pb-6">
@@ -89,9 +93,9 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
   }
   return (
     <>
-      {/* The workspace's own header band, under the site header. */}
+      {/* The workspace's own header band. */}
       <div className="border-b border-line bg-surface/60">
-        <div className="mx-auto max-w-6xl px-4 pt-8">
+        <div className="mx-auto max-w-6xl px-4 pt-8 pb-8">
           <div className="flex flex-wrap items-center gap-4">
             <Avatar name={workspace.slug} image={workspace.avatar} size={52} square />
             <div className="min-w-0 grow">
@@ -112,40 +116,6 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
           </div>
           {workspace.description && (
             <p className="mt-4 max-w-2xl text-sm text-muted">{workspace.description}</p>
-          )}
-          {signedIn ? (
-            <div className="pb-8" />
-          ) : (
-          <nav className="mt-6 flex flex-wrap gap-x-6">
-            <TabLink to={base} end icon={<LayoutGrid size={15} />}>
-              Overview
-            </TabLink>
-            {role && (
-              <>
-                <TabLink
-                  to={`${base}/-/people`}
-                  icon={<Users size={15} />}
-                  count={workspace.memberCount}
-                >
-                  Members
-                </TabLink>
-                <TabLink to={`${base}/-/tokens`} icon={<KeyRound size={15} />}>
-                  Access tokens
-                </TabLink>
-                <TabLink to={`${base}/-/billing`} icon={<CreditCard size={15} />}>
-                  Billing
-                </TabLink>
-                <TabLink to={`${base}/-/integrations`} icon={<Plug size={15} />}>
-                  Integrations
-                </TabLink>
-              </>
-            )}
-            {role === "owner" && (
-              <TabLink to={`${base}/-/settings`} icon={<Settings size={15} />}>
-                Settings
-              </TabLink>
-            )}
-          </nav>
           )}
         </div>
       </div>

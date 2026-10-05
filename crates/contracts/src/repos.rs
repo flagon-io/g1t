@@ -670,6 +670,41 @@ pub struct IdPage {
     pub next: Option<String>,
 }
 
+/// `visibility`: which of these repositories (`namespace/name`) are
+/// private, for billing, which pays for work on public ones from g1t's
+/// open-source pool. A pull request's working copy answers as the
+/// repository it is a copy of. Unknown paths are left out. Returns
+/// `Vec<RepoVisibility>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct VisibilityArgs {
+    pub paths: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RepoVisibility {
+    pub path: String,
+    pub is_private: bool,
+}
+
+/// `storage`: what each workspace's private repositories hold, as far as
+/// g1t can measure it, for billing's daily storage meter. Returns
+/// `Vec<WorkspaceStorage>`.
+///
+/// The git store does not report a repository's size. What is counted is
+/// the bytes of every pack pushed through g1t's git endpoints to the
+/// repository or to its pull requests' working copies. Pushes made from
+/// agents' sandboxes, which go to the store directly, and imports are not
+/// counted, so it is a lower bound on what is stored.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct StorageArgs {}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceStorage {
+    pub namespace: String,
+    pub private_bytes: i64,
+    pub public_bytes: i64,
+}
+
 #[cfg(test)]
 mod topic_tests {
     use super::*;

@@ -44,6 +44,7 @@ import {
   type ServiceBinding,
   type User,
   type Viewer,
+  billingClient,
   currentWorkspaceSlug,
   deploymentsClient,
   fail,
@@ -81,6 +82,8 @@ type Env = {
   DEPLOYMENTS: ServiceBinding;
   INTEGRATIONS: ServiceBinding;
   SECURITY?: ServiceBinding;
+  /** Told the month's embedding cost so far, which it charges once the month is over. */
+  BILLING?: ServiceBinding;
 };
 
 /** Workers AI's embedding model: 768 dimensions, as the index was made with. */
@@ -294,7 +297,9 @@ class Context {
         }));
         if (vectors.length) await VECTORS.upsert(vectors);
         stored += vectors.length;
-        await this.meter(workspace, texts.reduce((sum, text) => sum + Math.ceil(text.length / 4), 0));
+        const tokens = (rows: { text: string }[]) => rows.reduce((sum, row) => sum + Math.ceil(row.text.length / 4), 0);
+        const all = texts.map((text) => ({ text }));
+        await this.meter(workspace, tokens(all), tokens(all.filter((_, i) => batch[i].meta.private)));
       }
       return stored;
     } catch (error) {
@@ -312,14 +317,29 @@ class Context {
     }
   }
 
-  private async meter(workspace: string, tokens: number): Promise<void> {
-    await this.db
+  /**
+   * Records what embedding cost. Of it, `billableTokens` are private
+   * text's: public repositories' text and searches are never charged.
+   * Billing is told the month's billable total, which it charges at cost
+   * plus its margin once the month is over (its `embedding_tokens` meter).
+   * A failure to tell billing only delays it: the next call sends the
+   * whole month again.
+   */
+  private async meter(workspace: string, tokens: number, billableTokens = 0): Promise<void> {
+    const total = await this.db
       .prepare(
-        `INSERT INTO usage (workspace, month, tokens, cost_micros) VALUES (?1, ?2, ?3, ?4)
-         ON CONFLICT (workspace, month) DO UPDATE SET tokens = tokens + ?3, cost_micros = cost_micros + ?4`,
+        `INSERT INTO usage (workspace, month, tokens, cost_micros, billable_micros) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT (workspace, month) DO UPDATE SET
+           tokens = tokens + ?3, cost_micros = cost_micros + ?4, billable_micros = billable_micros + ?5
+         RETURNING billable_micros`,
       )
-      .bind(workspace, month(), tokens, Math.ceil(tokens * MICROS_PER_TOKEN))
-      .run();
+      .bind(workspace, month(), tokens, Math.ceil(tokens * MICROS_PER_TOKEN), billableTokens * MICROS_PER_TOKEN)
+      .first<{ billable_micros: number }>();
+    if (this.env.BILLING && total && billableTokens > 0) {
+      await billingClient(this.env.BILLING)
+        .notePending(workspace, "context", Math.ceil(total.billable_micros))
+        .catch((error) => console.error("could not tell billing what embedding cost", workspace, error));
+    }
   }
 
   private async embedQuery(workspace: string, query: string): Promise<number[] | null> {

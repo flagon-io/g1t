@@ -3,7 +3,7 @@
 //! with each line's entries a page at a time.
 
 use g1t_contracts::billing::{
-    LedgerEntry, Statement, StatementArgs, StatementEntriesArgs, StatementGroup, StatementLine, StatementTotals,
+    Covered, LedgerEntry, Statement, StatementArgs, StatementEntriesArgs, StatementGroup, StatementLine, StatementTotals,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::Outcome;
@@ -27,6 +27,9 @@ pub(crate) const KIND_SQL: &str = "CASE
     WHEN kind = 'top_up' THEN 'Payments'
     WHEN task = 'sandbox' THEN 'Sandbox time'
     WHEN task = 'deployments' THEN 'Deployments'
+    WHEN task = 'security' THEN 'Security scans'
+    WHEN task = 'context' THEN 'Search embeddings'
+    WHEN task = 'storage' THEN 'Private storage'
     WHEN billed_to = 'workspace' THEN 'Runs on your own model provider'
     ELSE 'Agent runs' END";
 
@@ -37,11 +40,32 @@ pub(crate) fn kind_order(kind: &str) -> u8 {
         "Runs on your own model provider" => 1,
         "Sandbox time" => 2,
         "Deployments" => 3,
-        "Payments" => 4,
-        "Credits from g1t" => 5,
-        "Refunds" => 6,
-        _ => 7,
+        "Private storage" => 4,
+        "Search embeddings" => 5,
+        "Security scans" => 6,
+        "Payments" => 7,
+        "Credits from g1t" => 8,
+        "Refunds" => 9,
+        _ => 10,
     }
+}
+
+/// What paid for usage before it was charged, as the statement names it,
+/// with the ledger column that holds it.
+pub(crate) const COVERED: [(&str, &str, &str); 3] = [
+    ("team_credit", "credit_micros", "Paid by your Team plan's credit"),
+    ("trial", "trial_micros", "Paid by your trial credit"),
+    ("oss_pool", "oss_micros", "Paid by g1t's open-source pool"),
+];
+
+/// The statement's lines for what paid: each source with anything to show.
+pub(crate) fn covered_lines(sums: [i64; 3]) -> Vec<Covered> {
+    COVERED
+        .iter()
+        .zip(sums)
+        .filter(|(_, micros)| *micros > 0)
+        .map(|((source, _, label), micros)| Covered { source: (*source).to_owned(), label: (*label).to_owned(), micros })
+        .collect()
 }
 
 /// `2026-10` and the first instant of the next month, for a range.
@@ -62,6 +86,9 @@ struct Row {
     count: u32,
     amount: Option<i64>,
     cost: Option<i64>,
+    credit: Option<i64>,
+    trial: Option<i64>,
+    oss: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -84,7 +111,8 @@ impl Billing {
             .db
             .prepare(format!(
                 "SELECT {group_sql} AS group_key, {KIND_SQL} AS kind, COUNT(*) AS count,
-                        SUM(amount_micros) AS amount, SUM(cost_micros) AS cost
+                        SUM(amount_micros) AS amount, SUM(cost_micros) AS cost,
+                        SUM(credit_micros) AS credit, SUM(trial_micros) AS trial, SUM(oss_micros) AS oss
                  FROM ledger WHERE workspace = ?1 AND created_at >= ?2 AND created_at < ?3
                  GROUP BY 1, 2"
             ))
@@ -94,15 +122,21 @@ impl Billing {
             .results::<Row>()?;
 
         let mut groups: Vec<StatementGroup> = vec![];
+        let mut covered = [0i64; 3];
         for row in rows {
             let key = row.group_key.unwrap_or_default();
             let amount = row.amount.unwrap_or(0);
+            let paid_for = [row.credit.unwrap_or(0), row.trial.unwrap_or(0), row.oss.unwrap_or(0)];
+            for (total, micros) in covered.iter_mut().zip(paid_for) {
+                *total += micros;
+            }
             let line = StatementLine {
                 kind: row.kind.clone(),
                 count: row.count,
                 // Charges positive, money in negative, as a statement reads.
                 charged_micros: -amount,
                 cost_micros: row.cost.unwrap_or(0),
+                covered_micros: paid_for.iter().sum(),
             };
             match groups.iter_mut().find(|g| g.key == key) {
                 Some(group) => group.lines.push(line),
@@ -129,6 +163,8 @@ impl Billing {
             paid_micros: lines.clone().filter(|l| l.charged_micros < 0).map(|l| -l.charged_micros).sum(),
             cost_micros: lines.clone().map(|l| l.cost_micros).sum(),
             entries: lines.map(|l| l.count).sum(),
+            covered: covered_lines(covered),
+            carried_micros: self.carried(&workspace, &month).await?,
         };
         let months = self
             .db
@@ -141,6 +177,22 @@ impl Billing {
             .map(|m| m.month)
             .collect();
         Ok(Outcome::Ok(Statement { month, months, groups, totals }))
+    }
+
+    /// What was owed when `month` closed but was under the minimum charge,
+    /// and so carried over to the next invoice.
+    async fn carried(&self, workspace: &str, month: &str) -> Result<i64> {
+        #[derive(Deserialize)]
+        struct Row {
+            amount_micros: i64,
+        }
+        Ok(self
+            .db
+            .prepare("SELECT amount_micros FROM month_closes WHERE workspace = ? AND month = ? AND status = 'carried'")
+            .bind(&[workspace.into(), month.into()])?
+            .first::<Row>(None)
+            .await?
+            .map_or(0, |row| row.amount_micros))
     }
 
     /// One line's entries, newest first, a page at a time.
@@ -202,5 +254,15 @@ mod tests {
     fn usage_lines_come_before_money_in() {
         assert!(kind_order("Agent runs") < kind_order("Sandbox time"));
         assert!(kind_order("Deployments") < kind_order("Payments"));
+        assert!(kind_order("Security scans") < kind_order("Payments"));
+    }
+
+    #[test]
+    fn the_statement_says_what_paid_before_the_workspace_did() {
+        let lines = covered_lines([0, 250_000, 120_000]);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].label, "Paid by your trial credit");
+        assert_eq!(lines[1], Covered { source: "oss_pool".into(), label: "Paid by g1t's open-source pool".into(), micros: 120_000 });
+        assert!(covered_lines([0, 0, 0]).is_empty());
     }
 }

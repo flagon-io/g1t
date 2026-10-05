@@ -259,7 +259,7 @@ agents cannot set each other to work this way.
 
 **Who can.** Members of the project's workspace. Anyone else who mentions
 it gets a short reply saying only members can, and nothing starts. When
-the workspace cannot run agents (for example, its free allowance is used
+the workspace cannot run agents (for example, its trial credit is used
 up and it has no model provider of its own), g1t-agent replies with why.
 
 Each comment starts one run at most; to ask again, write a new comment.
@@ -334,9 +334,9 @@ else, the agent will say in its summary what it could not run.
 
 - g1t's agents, and the sandboxes that run acceptance checks and the merge
   queue, work in any workspace that has
-  [its own model provider](/guides/models/), and, until October 22, in any
-  workspace on its free $1 of g1t's own models. See
-  [the free allowance](/guides/usage-and-billing/#the-free-allowance).
+  [its own model provider](/guides/models/), and in any workspace with
+  trial credit left on g1t's own models. See
+  [trials](/guides/usage-and-billing/#trials).
 - A run has two hours. After that its credentials expire and it can no
   longer push or report.
 

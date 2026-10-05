@@ -34,10 +34,13 @@ pub struct Status {
     pub free: bool,
 }
 
-/// `trial`: the free allowance on g1t's hosted models for a workspace that
-/// is not otherwise open to them, so people can try g1t's agents without a
-/// key of their own. Each workspace gets a few dollars of model cost, out
-/// of one pool, until an end date. Returns `Trial`.
+/// `trial`: a workspace's trial credit, so people can try g1t (its agents on
+/// g1t's hosted models among it) without a key or a card of their own. Each
+/// new workspace gets one grant of usage credit (`TRIAL_WORKSPACE_MICROS`),
+/// made when it first uses something, out of a pool for everyone that
+/// resets each calendar month (`TRIAL_MONTHLY_POOL_MICROS`). When this
+/// month's pool is given out, new grants wait for the next month. Returns
+/// `Trial`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrialArgs {
@@ -51,16 +54,27 @@ pub struct TrialArgs {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Trial {
-    /// Whether its agents may use g1t's hosted models on the allowance now.
+    /// Whether its agents may use g1t's hosted models on the trial now: it
+    /// has credit left, or this month's pool can still grant it some.
     pub open: bool,
-    /// What its runs on g1t's models have cost, in millionths of a dollar.
+    /// What the trial has paid for so far, in millionths of a dollar.
     pub used_micros: i64,
+    /// Its grant, or what it would be granted.
     pub limit_micros: i64,
-    /// RFC 3339; when the allowance ends for everyone.
+    /// No longer used: the trial does not end on a date. Kept for older
+    /// readers; always null.
     pub ends_at: Option<String>,
-    /// Why it is closed: `off` (no allowance), `ended`, `used` (this
-    /// workspace's is spent) or `pool` (everyone's is).
+    /// Why it is closed: `off` (no trials), `used` (this workspace's grant
+    /// is spent) or `pool` (this month's grants are all given out; see
+    /// `waits_until`). `ended` is no longer sent.
     pub reason: Option<String>,
+    /// Whether the workspace has its grant already.
+    #[serde(default)]
+    pub granted: bool,
+    /// RFC 3339: when a workspace waiting for a grant can get one, the
+    /// first of next month. Only with reason `pool`.
+    #[serde(default)]
+    pub waits_until: Option<String>,
 }
 
 /// A workspace's standing.
@@ -162,6 +176,16 @@ pub struct LedgerEntry {
     /// lines apart.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<String>,
+    /// For usage: what the Team plan's monthly credit paid of it. The
+    /// entry's `amount_micros` is what is left to pay.
+    #[serde(default)]
+    pub credit_micros: i64,
+    /// For usage: what the workspace's trial credit paid of it.
+    #[serde(default)]
+    pub trial_micros: i64,
+    /// For usage: what g1t's open-source pool paid of it.
+    #[serde(default)]
+    pub oss_micros: i64,
 }
 
 fn g1t() -> String {
@@ -320,14 +344,18 @@ pub struct Usage {
 pub enum Feature {
     /// Previews per pull request and production on g1t.page.
     Deployments,
+    /// The Team plan: a flat price per workspace, never per person, with a
+    /// monthly usage credit, more private storage and a longer audit log.
+    Team,
 }
 
 impl Feature {
-    pub const ALL: [Feature; 1] = [Feature::Deployments];
+    pub const ALL: [Feature; 2] = [Feature::Team, Feature::Deployments];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Feature::Deployments => "deployments",
+            Feature::Team => "team",
         }
     }
 
@@ -338,6 +366,7 @@ impl Feature {
     pub fn title(self) -> &'static str {
         match self {
             Feature::Deployments => "Deployments",
+            Feature::Team => "Team",
         }
     }
 }
@@ -356,9 +385,12 @@ pub mod deployments_allowance {
     pub const MICROS_PER_MILLION_CPU_MS: i64 = 20_000;
     /// What one second of a build's sandbox costs g1t (Cloudflare
     /// Containers, standard-1: half a vCPU, 4 GiB, 8 GB disk), rounded up.
-    /// Builds are not in the allowance: each is charged at this plus the
-    /// margin.
     pub const MICROS_PER_BUILD_SECOND: i64 = 21;
+    /// Build time the plan includes each month: 200 minutes, about $0.25 of
+    /// the plan's price at cost. Builds past it are charged by the second
+    /// at cost plus the margin. Billing's `DEPLOYMENTS_BUILD_SECONDS`
+    /// overrides it.
+    pub const BUILD_SECONDS: u32 = 12_000;
     /// Custom domains across the workspace (Cloudflare for SaaS custom
     /// hostnames); each one past these is charged by the month.
     pub const CUSTOM_DOMAINS: u32 = 3;
@@ -481,7 +513,9 @@ pub struct CheckLimitArgs {
 #[serde(rename_all = "camelCase")]
 pub struct NotePendingArgs {
     pub workspace: String,
-    /// `deployments`.
+    /// `deployments`, `security` (scans), `context` (search embeddings) or
+    /// `storage`. Billing charges `security`, `context` and `storage`
+    /// itself once the month is over; `deployments` charges its own.
     pub source: String,
     /// What it cost g1t so far this month, before the margin.
     pub cost_micros: i64,
@@ -555,6 +589,32 @@ pub struct PriceBook {
     /// The margin on model usage, which is charged at what AI Gateway
     /// priced each request at.
     pub model_margin_percent: u32,
+    /// Every plan, as it is sold now.
+    #[serde(default)]
+    pub plans: Vec<Plan>,
+    /// What is free, and what pays for it.
+    #[serde(default)]
+    pub free: Option<FreeTier>,
+}
+
+/// What g1t gives without a plan, each with what pays for it: a capped
+/// budget, never an open-ended allowance.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FreeTier {
+    /// Each new workspace's trial credit, once.
+    pub trial_workspace_micros: i64,
+    /// Trial grants each month, in all; new trials wait when it is spent.
+    pub trial_monthly_pool_micros: i64,
+    /// g1t's open-source pool each month, and any one repository's share.
+    pub oss_pool_micros: i64,
+    pub oss_repo_micros: i64,
+    /// Private repository storage before it is charged.
+    pub free_private_storage_bytes: i64,
+    /// Days of audit log without Team.
+    pub audit_retention_days: u32,
+    /// The smallest amount a card is charged; less carries over.
+    pub min_charge_micros: i64,
 }
 
 /// Who pays: a billing account. Every workspace has one; by default its
@@ -577,6 +637,70 @@ pub struct BillingAccount {
     #[serde(default)]
     pub invoices: Vec<EnterpriseInvoice>,
     pub created_at: String,
+    /// What g1t staff set for the account beyond its terms.
+    #[serde(default)]
+    pub allowances: Allowances,
+}
+
+/// Set per account by g1t staff in sudo, on top of its terms.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Allowances {
+    /// The Team plan without paying for it, such as for a partner.
+    /// Comped accounts have it anyway.
+    #[serde(default)]
+    pub team: bool,
+    /// Each of the account's public repositories' monthly cap on g1t's
+    /// open-source pool, in place of `OSS_REPO_MICROS`. None: the default.
+    #[serde(default)]
+    pub oss_repo_micros: Option<i64>,
+    /// The trial credit each of its workspaces gets, in place of
+    /// `TRIAL_WORKSPACE_MICROS`, outside the monthly pool. None: the default.
+    #[serde(default)]
+    pub trial_micros: Option<i64>,
+}
+
+/// `admin_set_allowances`: the Team plan on or off without charge, and the
+/// account's share of g1t's pools. Recorded with who and why. Returns
+/// `Outcome<BillingAccount>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminSetAllowancesArgs {
+    pub id: String,
+    pub allowances: Allowances,
+    pub note: String,
+    pub by: String,
+}
+
+/// `entitlements`: what a workspace's plans give it now, for the services
+/// and pages that apply them (the audit log's retention, private storage,
+/// the Team credit). Returns `Entitlements`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EntitlementsArgs {
+    pub workspace: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Entitlements {
+    pub workspace: String,
+    /// Whether the Team plan is on: paid for, comped, or given by g1t.
+    pub team: bool,
+    /// How far back the audit log can be read and exported.
+    pub audit_retention_days: u32,
+    /// Private repository storage included before it is charged.
+    pub free_private_storage_bytes: i64,
+    /// The last daily measure of the workspace's private repositories.
+    pub private_storage_bytes: i64,
+    /// The Team credit each month, and what of it is used this month.
+    pub team_credit_micros: i64,
+    pub team_credit_used_micros: i64,
+    /// What g1t's open-source pool paid for the workspace this month.
+    pub oss_paid_micros: i64,
+    /// Build time the Deployments plan includes each month, and used.
+    pub build_seconds_included: u32,
+    pub build_seconds_used: u32,
+    /// The smallest amount a card is charged; less carries over.
+    pub min_charge_micros: i64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -825,6 +949,11 @@ pub struct StatementLine {
     /// Charges positive; money in (payments, credits) negative.
     pub charged_micros: i64,
     pub cost_micros: i64,
+    /// Of the usage on the line, what was paid for before it was charged:
+    /// by the Team plan's credit, the trial credit or g1t's open-source
+    /// pool. Not in `charged_micros`.
+    #[serde(default)]
+    pub covered_micros: i64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -834,6 +963,26 @@ pub struct StatementTotals {
     pub paid_micros: i64,
     pub cost_micros: i64,
     pub entries: u32,
+    /// What paid for usage before it was charged, one line per source,
+    /// such as "Paid by g1t's open-source pool".
+    #[serde(default)]
+    pub covered: Vec<Covered>,
+    /// Owed when the month closed but under the minimum charge, so it
+    /// carries over to the next invoice. Zero when nothing carried.
+    #[serde(default)]
+    pub carried_micros: i64,
+}
+
+/// One source that paid for usage before it was charged.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Covered {
+    /// `team_credit`, `trial` or `oss_pool`.
+    pub source: String,
+    /// "Paid by your Team plan's credit", "Paid by your trial credit",
+    /// "Paid by g1t's open-source pool".
+    pub label: String,
+    pub micros: i64,
 }
 
 /// `statement_entries`: one statement line's entries, newest first, 50 at
@@ -1020,6 +1169,26 @@ pub struct Overview {
     pub open_invoices_micros: i64,
     /// Follow-ups due today or earlier.
     pub follow_ups_due: u32,
+    /// The capped budgets g1t pays from, this month.
+    #[serde(default)]
+    pub pools: Option<Pools>,
+}
+
+/// g1t's capped budgets for free usage, this calendar month (UTC).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Pools {
+    /// YYYY-MM.
+    pub month: String,
+    /// Trial grants made this month, against the month's pool.
+    pub trial_granted_micros: i64,
+    pub trial_pool_micros: i64,
+    pub trial_grants: u32,
+    /// What the open-source pool paid this month, against its cap.
+    pub oss_used_micros: i64,
+    pub oss_pool_micros: i64,
+    /// Each public repository's monthly cap on the pool.
+    pub oss_repo_micros: i64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1211,6 +1380,10 @@ pub struct FeatureState {
     pub subscription: Option<Subscription>,
     /// Whether the feature works for the workspace now.
     pub on: bool,
+    /// On without a plan: comped terms, or given by g1t. Nothing to pay
+    /// and nothing to turn off.
+    #[serde(default)]
+    pub included: bool,
 }
 
 /// `features`: every paid feature and the workspace's plan for each.
@@ -1282,6 +1455,11 @@ pub struct ChargeFeatureArgs {
     pub repo: Option<String>,
     /// Unique to this charge, e.g. `deployments/acme/2026-10`.
     pub reference: String,
+    /// For a build: how long it ran. The plan's included build time this
+    /// month pays for what it can, and only the rest of `cost_micros` is
+    /// charged.
+    #[serde(default)]
+    pub build_seconds: Option<u32>,
 }
 
 #[cfg(test)]
@@ -1326,6 +1504,8 @@ mod tests {
             serde_json::json!("deployments")
         );
         assert_eq!(Feature::parse("deployments"), Some(Feature::Deployments));
+        assert_eq!(serde_json::to_value(Feature::Team).unwrap(), serde_json::json!("team"));
+        assert_eq!(Feature::parse("team"), Some(Feature::Team));
         assert!(SubscriptionStatus::Canceling.on());
         assert!(!SubscriptionStatus::PastDue.on());
     }

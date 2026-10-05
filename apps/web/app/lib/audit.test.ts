@@ -8,6 +8,7 @@ import {
   exportName,
   filterHref,
   parseFilters,
+  retainedSince,
   ruleLabel,
   targetLabel,
   toCsv,
@@ -88,4 +89,15 @@ test("the CSV quotes what it must and keeps formulas as text", () => {
   assert.ok(lines[1].includes('"A g1t agent\'s token can never use merge_pull_request: ""merging"" is for people, too."'));
   assert.ok(lines[2].includes("'=HYPERLINK(1)"));
   assert.equal(exportName("acme", "csv", new Date("2026-10-04T23:00:00Z")), "acme-audit-2026-10-04.csv");
+});
+
+test("the log reads back only as far as the plan keeps it", () => {
+  const now = Date.parse("2026-10-31T00:00:00.000Z");
+  // 30 days without Team.
+  assert.equal(retainedSince(null, 30, now), "2026-10-01T00:00:00.000Z");
+  assert.equal(retainedSince("2026-01-01T00:00:00.000Z", 30, now), "2026-10-01T00:00:00.000Z");
+  // A later start than the window is kept.
+  assert.equal(retainedSince("2026-10-20T00:00:00.000Z", 30, now), "2026-10-20T00:00:00.000Z");
+  // A year on Team.
+  assert.equal(retainedSince("2026-01-01T00:00:00.000Z", 365, now), "2026-01-01T00:00:00.000Z");
 });

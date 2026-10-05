@@ -39,6 +39,8 @@ import {
 import type { Route } from "./+types/home";
 import { page } from "../lib/meta";
 import { CHANGELOG, changelogHref } from "../lib/changelog";
+import { WORKSPACE_COOKIE, chosenWorkspace } from "../lib/workspace-choice";
+import { trialClosed } from "../lib/trial";
 import {
   type ActivityItem,
   type Need,
@@ -201,7 +203,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
   const seen = nextSeen(readCookie(cookies, SEEN_COOKIE), now);
   const tz = readCookie(cookies, TZ_COOKIE);
   const memberships = viewer.workspaces ?? [];
-  const slug = memberships[0]?.slug ?? null;
+  // The workspace you chose, as the sidebar shows it (lib/workspace-choice.ts).
+  const slug = chosenWorkspace(memberships, readCookie(cookies, WORKSPACE_COOKIE))?.slug ?? null;
   const mine = new Set(memberships.map((m) => m.slug.toLowerCase()));
   const username = viewer.username;
 
@@ -958,7 +961,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       ? {
           done: true,
           title: "Try g1t's agents free",
-          about: `This workspace has ${dollars(trial.limitMicros - trial.usedMicros)} of its free ${dollars(trial.limitMicros)} left on g1t's models.`,
+          about: trial.granted
+            ? `This workspace has ${dollars(trial.limitMicros - trial.usedMicros)} of its ${dollars(trial.limitMicros)} trial credit left, for g1t's models and sandboxes.`
+            : `This workspace gets ${dollars(trial.limitMicros)} of trial credit, for g1t's models and sandboxes, the first time its agents work.`,
           to: workspace ? `/${workspace}/-/integrations` : null,
           action: "Connect",
         }
@@ -974,11 +979,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             done: false,
             title: "Connect a model",
             about: `${
-              trial?.reason === "used"
-                ? "This workspace has used its free allowance on g1t's models. "
-                : trial?.reason === "pool" || trial?.reason === "ended"
-                  ? "The free allowance on g1t's models has ended. "
-                  : ""
+              trialClosed(trial, workspace ?? "This workspace") ? `${trialClosed(trial, workspace ?? "This workspace")} ` : ""
             }Agents need a model to think with. Connect your Anthropic or OpenAI key, or any compatible endpoint.`,
             to: workspace ? `/${workspace}/-/integrations` : null,
             action: "Connect",

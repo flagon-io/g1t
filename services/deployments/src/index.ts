@@ -12,7 +12,8 @@
  * for Platforms namespace, where the `*.g1t.page` dispatcher finds it by
  * hostname.
  *
- * Nothing here is free. A build is charged by the second; requests, CPU
+ * Nothing here is free. The plan includes 200 build minutes a month, and
+ * builds past them are charged by the second; requests, CPU
  * time and apps past the plan's allowance are charged once the month is
  * over. A Worker runs only while it answers a request, so an app no one
  * visits costs nothing, and a preview is taken down when its pull request
@@ -962,7 +963,7 @@ class Deployments {
     await this.statusFor(row, "failure", "Deployment failed", `${this.env.SITE}/${row.workspace}/${row.slug}/deployments/${id}`);
   }
 
-  /** Each build is charged by the second at the container price plus the margin. */
+  /** Each build is charged by the second at the container price plus the margin, past the plan's included build minutes (billing applies those). */
   private async chargeBuild(row: DeploymentRow, seconds: number): Promise<void> {
     const costs = await this.costs();
     const cost = Math.ceil(Math.ceil(seconds) * costs.buildSecond);
@@ -978,6 +979,9 @@ class Deployments {
       description: `Building ${what} (${Math.ceil(seconds)} s)`,
       repo: row.repo,
       reference: `deploy/${row.id}`,
+      // The plan's included build minutes pay for what they can; billing
+      // charges the rest.
+      buildSeconds: Math.ceil(seconds),
     });
     await this.db
       .prepare(

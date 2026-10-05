@@ -24,6 +24,16 @@ export function visibilityFor(role: Role | null, username: string): AuditVisibil
   return null;
 }
 
+/**
+ * The earliest time a workspace's log can be read from, given how many
+ * days its plan keeps (30, or a year on Team): the later of what was asked
+ * for and the start of the window.
+ */
+export function retainedSince(since: string | null | undefined, days: number, now = Date.now()): string {
+  const start = new Date(now - days * 24 * 60 * 60 * 1000).toISOString();
+  return since && since > start ? since : start;
+}
+
 /** The filters a page's address can carry. */
 export type AuditFilters = {
   actor: string;

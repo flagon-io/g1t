@@ -2,11 +2,21 @@ import { env } from "cloudflare:workers";
 
 import { type AuditEntry, type AuditQuery, type Viewer, auditClient } from "@g1t/contracts";
 
-import { visibilityFor } from "./audit";
+import { retainedSince, visibilityFor } from "./audit";
+import { billing } from "./services.server";
 import { roleIn } from "./session.server";
 
 /** The audit log, which the events service keeps. */
 export const audit = auditClient(env.EVENTS);
+
+/**
+ * How many days of the workspace's log its plan keeps: 30, or a year on
+ * Team. Null when billing cannot say, and then nothing is held back.
+ */
+export async function auditRetention(workspace: string): Promise<number | null> {
+  const found = await billing.entitlements(workspace.toLowerCase()).catch(() => null);
+  return found?.auditRetentionDays ?? null;
+}
 
 /** The most rows one export writes. */
 export const EXPORT_LIMIT = 10_000;
@@ -18,7 +28,10 @@ export const EXPORT_LIMIT = 10_000;
 export async function auditPage(viewer: Viewer, query: Omit<AuditQuery, "visibility">) {
   const visibility = viewer ? visibilityFor(roleIn(viewer, query.workspace), viewer.username) : null;
   if (!visibility) return null;
-  return audit.list({ ...query, workspace: query.workspace.toLowerCase(), visibility });
+  // Reads and exports go back only as far as the workspace's plan keeps.
+  const days = await auditRetention(query.workspace);
+  const since = days == null ? query.since : retainedSince(query.since, days);
+  return audit.list({ ...query, since, workspace: query.workspace.toLowerCase(), visibility });
 }
 
 /** Every entry matching `query`, page by page, up to `EXPORT_LIMIT`. */

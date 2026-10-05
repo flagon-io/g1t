@@ -8,6 +8,7 @@ import {
 
 import { type Result, type Role, type User, type Viewer, httpStatus } from "@g1t/contracts";
 
+import { safeNext } from "./next";
 import { identity } from "./services.server";
 
 const SESSION_COOKIE = "g1t_session";
@@ -86,8 +87,7 @@ export function requireUser(context: Context, request: Request): User {
  * `next` cannot redirect off g1t.
  */
 export function nextPath(request: Request): string {
-  const next = new URL(request.url).searchParams.get("next") ?? "/";
-  return next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  return safeNext(new URL(request.url).searchParams.get("next"));
 }
 
 /** `Set-Cookie` value that starts a session. */

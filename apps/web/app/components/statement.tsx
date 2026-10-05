@@ -105,6 +105,23 @@ export function StatementView({
         </div>
       </dl>
 
+      {((totals.covered?.length ?? 0) > 0 || (totals.carriedMicros ?? 0) > 0) && (
+        <ul className="mt-2 space-y-1 rounded-xl border border-line bg-surface px-4 py-3 text-sm">
+          {totals.covered?.map((paid) => (
+            <li key={paid.source} className="flex justify-between gap-4">
+              <span className="text-muted">{paid.label}</span>
+              <span className="font-mono tabular-nums text-accent">{charge(paid.micros)}</span>
+            </li>
+          ))}
+          {(totals.carriedMicros ?? 0) > 0 && (
+            <li className="flex justify-between gap-4">
+              <span className="text-muted">Under the minimum charge, so carried over to the next invoice</span>
+              <span className="font-mono tabular-nums">{charge(totals.carriedMicros ?? 0)}</span>
+            </li>
+          )}
+        </ul>
+      )}
+
       <div className="mt-3">
         {statement.groups.length === 0 ? (
           <EmptyState title={`Nothing in ${monthLabel(statement.month)}`}>
@@ -129,6 +146,7 @@ export function StatementView({
                       kind={line.kind}
                       count={line.count}
                       chargedMicros={line.chargedMicros}
+                      coveredMicros={line.coveredMicros ?? 0}
                       day={group === "day" ? g.key : null}
                       project={group === "project" ? g.key : null}
                     />
@@ -149,6 +167,7 @@ function StatementLineRow({
   kind,
   count,
   chargedMicros,
+  coveredMicros,
   day,
   project,
 }: {
@@ -157,6 +176,7 @@ function StatementLineRow({
   kind: string;
   count: number;
   chargedMicros: number;
+  coveredMicros: number;
   day: string | null;
   project: string | null;
 }) {
@@ -199,6 +219,7 @@ function StatementLineRow({
         <span className="grow truncate font-medium">{kind}</span>
         <span className="shrink-0 text-xs text-faint tabular-nums">
           {count.toLocaleString("en-US")} {count === 1 ? "entry" : "entries"}
+          {coveredMicros > 0 && ` · ${charge(coveredMicros)} paid for`}
         </span>
         <span
           className={`w-24 shrink-0 text-right font-mono tabular-nums ${moneyIn ? "text-accent" : "text-fg"}`}

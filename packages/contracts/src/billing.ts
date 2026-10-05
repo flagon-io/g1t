@@ -59,6 +59,12 @@ export type LedgerEntry = {
   createdAt: string;
   /** The workspace the line belongs to, which tells an enterprise's lines apart. */
   workspace?: string | null;
+  /** For usage: what the Team plan's credit paid of it. `amountMicros` is what is left to pay. */
+  creditMicros?: number;
+  /** For usage: what the workspace's trial credit paid of it. */
+  trialMicros?: number;
+  /** For usage: what g1t's open-source pool paid of it. */
+  ossMicros?: number;
 };
 
 /** What lets a sandbox, and nothing else, report what its run cost. */
@@ -100,6 +106,52 @@ export type PayingAccount = {
   /** An enterprise's invoices, newest first. */
   invoices?: EnterpriseInvoice[];
   createdAt: string;
+  /** What g1t staff set for the account beyond its terms. */
+  allowances?: Allowances;
+};
+
+/** Set per account by g1t staff in sudo, on top of its terms. */
+export type Allowances = {
+  /** The Team plan without paying for it. Comped accounts have it anyway. */
+  team: boolean;
+  /** Each public repository's monthly cap on g1t's open-source pool; null for the default. */
+  ossRepoMicros: number | null;
+  /** Each workspace's trial credit, outside the monthly pool; null for the default. */
+  trialMicros: number | null;
+};
+
+/** What a workspace's plans give it now. Mirrors `Entitlements` in `crates/contracts/src/billing.rs`. */
+export type Entitlements = {
+  workspace: string;
+  /** Whether the Team plan is on: paid for, comped, or given by g1t. */
+  team: boolean;
+  /** How far back the audit log can be read and exported. */
+  auditRetentionDays: number;
+  /** Private repository storage included before it is charged. */
+  freePrivateStorageBytes: number;
+  /** The last daily measure of the workspace's private repositories (a lower bound). */
+  privateStorageBytes: number;
+  /** The Team credit each month, and what of it is used this month. */
+  teamCreditMicros: number;
+  teamCreditUsedMicros: number;
+  /** What g1t's open-source pool paid for the workspace this month. */
+  ossPaidMicros: number;
+  /** Build time the Deployments plan includes each month, and used. */
+  buildSecondsIncluded: number;
+  buildSecondsUsed: number;
+  /** The smallest amount a card is charged; less carries over. */
+  minChargeMicros: number;
+};
+
+/** g1t's capped budgets for free usage this month. */
+export type Pools = {
+  month: string;
+  trialGrantedMicros: number;
+  trialPoolMicros: number;
+  trialGrants: number;
+  ossUsedMicros: number;
+  ossPoolMicros: number;
+  ossRepoMicros: number;
 };
 
 export type AccountSummary = {
@@ -157,10 +209,20 @@ export type Statement = {
   groups: {
     key: string;
     label: string;
-    lines: { kind: string; count: number; chargedMicros: number; costMicros: number }[];
+    /** `coveredMicros`: what the Team credit, the trial or the open-source pool paid, not in `chargedMicros`. */
+    lines: { kind: string; count: number; chargedMicros: number; costMicros: number; coveredMicros?: number }[];
     chargedMicros: number;
   }[];
-  totals: { chargedMicros: number; paidMicros: number; costMicros: number; entries: number };
+  totals: {
+    chargedMicros: number;
+    paidMicros: number;
+    costMicros: number;
+    entries: number;
+    /** What paid for usage before it was charged, such as "Paid by g1t's open-source pool". */
+    covered?: { source: "team_credit" | "trial" | "oss_pool" | string; label: string; micros: number }[];
+    /** Owed when the month closed but under the minimum charge: on the next invoice. */
+    carriedMicros?: number;
+  };
 };
 
 export type MonthFigures = { month: string; chargedMicros: number; costMicros: number; paidMicros: number };
@@ -217,6 +279,8 @@ export type Overview = {
   declined: number;
   openInvoicesMicros: number;
   followUpsDue: number;
+  /** g1t's capped budgets for free usage, this month. */
+  pools?: Pools | null;
 };
 
 /** A customer's Stripe billing page, for staff to send them. */
@@ -243,6 +307,8 @@ export interface BillingAdminApi {
   accounts(query?: string): Promise<AccountSummary[]>;
   account(id: string): Promise<Result<AccountDetail>>;
   setTerms(id: string, terms: Terms, by: string): Promise<Result<PayingAccount>>;
+  /** Team on or off without charge, and the account's share of the pools. Needs a note. */
+  setAllowances(id: string, allowances: Allowances, note: string, by: string): Promise<Result<PayingAccount>>;
   createEnterprise(name: string, workspaces: string[], by: string): Promise<Result<PayingAccount>>;
   attach(workspace: string, account: string | null, by: string): Promise<Result<PayingAccount>>;
   credit(workspace: string, amountMicros: number, note: string, by: string): Promise<Result<LedgerEntry>>;
@@ -306,7 +372,18 @@ export type Limit = {
 
 /** One metered unit: what it costs g1t and what it is sold at; the price follows the cost. */
 export type Price = {
-  meter: "sandbox_second" | "build_second" | "app_requests" | "app_cpu" | "app_month" | "custom_domain_month" | string;
+  meter:
+    | "sandbox_second"
+    | "build_second"
+    | "app_requests"
+    | "app_cpu"
+    | "app_month"
+    | "custom_domain_month"
+    | "private_storage"
+    | "embedding_tokens"
+    | "scan_cpu"
+    | "scan_rows"
+    | string;
   title: string;
   unit: string;
   costMicros: number;
@@ -329,15 +406,50 @@ export type PriceChange = {
   createdAt: string;
 };
 
-export type PriceBook = { prices: Price[]; changes: PriceChange[]; modelMarginPercent: number };
+export type PriceBook = {
+  prices: Price[];
+  changes: PriceChange[];
+  modelMarginPercent: number;
+  /** Every plan, as sold now. */
+  plans?: FeaturePlan[];
+  /** What is free, and the capped budgets that pay for it. */
+  free?: FreeTier | null;
+};
 
+/** What g1t gives without a plan; each is paid for by a capped budget. */
+export type FreeTier = {
+  /** Each new workspace's trial credit, once. */
+  trialWorkspaceMicros: number;
+  /** Trial grants each month, in all; new trials wait when it is spent. */
+  trialMonthlyPoolMicros: number;
+  /** g1t's open-source pool each month, and any one repository's share. */
+  ossPoolMicros: number;
+  ossRepoMicros: number;
+  /** Private repository storage before it is charged. */
+  freePrivateStorageBytes: number;
+  /** Days of audit log without Team. */
+  auditRetentionDays: number;
+  /** The smallest amount a card is charged; less carries over. */
+  minChargeMicros: number;
+};
+
+/**
+ * A workspace's trial credit: one grant per workspace, made the first time
+ * it uses something, out of a pool that resets each calendar month. Mirrors
+ * `Trial` in `crates/contracts/src/billing.rs`.
+ */
 export type Trial = {
   open: boolean;
   usedMicros: number;
   limitMicros: number;
+  /** No longer used: trials do not end on a date. */
   endsAt: string | null;
-  /** Why it is closed: `off`, `ended`, `used` (this workspace's) or `pool` (everyone's). */
+  /** Why it is closed: `off`, `used` (this workspace's grant is spent) or `pool` (this month's are given out). */
   reason: "off" | "ended" | "used" | "pool" | null;
+  /** Whether the workspace has its grant already. */
+  granted?: boolean;
+  /** With `pool`: when new trials start again, the first of next month. */
+  waitsUntil?: string | null;
 };
 
 /**
@@ -346,18 +458,20 @@ export type Trial = {
  * `free` nor the model allowance covers it. Mirrors `Feature` in
  * `crates/contracts/src/billing.rs`.
  */
-export type Feature = "deployments";
+export type Feature = "deployments" | "team";
 
 /** What the Deployments plan includes each month. Mirrors `deployments_allowance`. */
 export const DEPLOYMENTS_ALLOWANCE = {
   apps: 10,
   requests: 1_000_000,
   cpuMs: 3_000_000,
+  /** Build time included: 200 minutes. Billing's `DEPLOYMENTS_BUILD_SECONDS` decides. */
+  buildSeconds: 12_000,
   /** What Cloudflare charges g1t past that, in millionths of a dollar. */
   microsPerAppMonth: 20_000,
   microsPerMillionRequests: 300_000,
   microsPerMillionCpuMs: 20_000,
-  /** One second of a build's sandbox; builds are charged, not included. */
+  /** One second of a build's sandbox, past the included build time. */
   microsPerBuildSecond: 21,
   /** Custom domains across the workspace, and what each one past that costs g1t a month. */
   customDomains: 3,
@@ -392,6 +506,8 @@ export type FeatureState = {
   subscription: Subscription | null;
   /** Whether the feature works for the workspace now. */
   on: boolean;
+  /** On without a plan: comped terms, or given by g1t. Nothing to pay or turn off. */
+  included?: boolean;
 };
 
 export interface BillingApi {
@@ -458,12 +574,18 @@ export interface BillingApi {
     description: string;
     repo?: string | null;
     reference: string;
+    /** For a build: how long it ran, so the plan's included build time pays for what it can. */
+    buildSeconds?: number | null;
   }): Promise<Result<boolean>>;
   /**
-   * Usage this month to be charged later (app traffic past a plan), so the
-   * workspace's limit counts it now. Replaces the last report.
+   * What a source cost g1t so far this month, so the workspace's limit
+   * counts it now. Replaces the last report. Billing charges `context`
+   * and `security` itself once the month is over; `deployments` charges
+   * its own.
    */
-  notePending(workspace: string, source: "deployments", costMicros: number): Promise<boolean>;
+  notePending(workspace: string, source: "deployments" | "context" | "security", costMicros: number): Promise<boolean>;
+  /** What the workspace's plans give it now: Team, audit retention, storage, credit used. */
+  entitlements(workspace: string): Promise<Entitlements>;
   /** Every metered price and the recent changes. Public. */
   prices(): Promise<PriceBook>;
   /** A workspace's limit, for its members. */

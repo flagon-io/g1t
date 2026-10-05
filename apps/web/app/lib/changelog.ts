@@ -15,6 +15,20 @@ export type ChangelogEntry = {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     date: "2026-10-05",
+    title: "Browse public projects in the sidebar",
+    about:
+      "Public projects, Explore, Search and profiles use the sidebar whether you are signed in or not. A page you cannot see says so plainly, the same for private and missing, with a way to sign in or switch account.",
+    href: "https://docs.g1t.sh/guides/git/#browsing-without-an-account",
+  },
+  {
+    date: "2026-10-05",
+    title: "The Team plan, and free open source",
+    about:
+      "Team is $20 a month per workspace, never per person, with $5 of usage credit, 50 GB of private storage and a year of audit log. Work on public repositories is paid by g1t's open-source pool first, trials renew monthly, and no card is charged under $5.",
+    href: "/pricing",
+  },
+  {
+    date: "2026-10-05",
     title: "Cost plus 20%, on everything",
     about:
       "Sandbox time is charged at cost plus 20% from the first second, with no free minutes. Runs on your own model provider no longer carry a $0.10 fee: they pay only their sandbox time.",

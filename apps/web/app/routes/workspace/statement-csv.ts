@@ -15,7 +15,21 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const statement = await billing.statement(params.owner, viewer, month, "day");
   if (!statement.ok) throw data(null, { status: 404 });
   const kinds = [...new Set(statement.value.groups.flatMap((group) => group.lines.map((line) => line.kind)))];
-  const rows: string[][] = [["date", "kind", "description", "project", "pull request", "model", "by", "amount (USD)"]];
+  const rows: string[][] = [
+    [
+      "date",
+      "kind",
+      "description",
+      "project",
+      "pull request",
+      "model",
+      "by",
+      "amount (USD)",
+      "paid by Team credit (USD)",
+      "paid by trial credit (USD)",
+      "paid by open-source pool (USD)",
+    ],
+  ];
   for (const kind of kinds) {
     let before: string | null = null;
     for (let page = 0; page < MAX_PAGES; page++) {
@@ -51,6 +65,9 @@ function row(kind: string, entry: LedgerEntry): string[] {
     entry.createdBy ?? "",
     // Charges positive, as on the statement.
     (-entry.amountMicros / MICROS_PER_DOLLAR).toFixed(6),
+    ((entry.creditMicros ?? 0) / MICROS_PER_DOLLAR).toFixed(6),
+    ((entry.trialMicros ?? 0) / MICROS_PER_DOLLAR).toFixed(6),
+    ((entry.ossMicros ?? 0) / MICROS_PER_DOLLAR).toFixed(6),
   ];
 }
 

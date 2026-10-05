@@ -17,6 +17,8 @@
 //! the methods and their arguments.
 
 mod accounts;
+mod credits;
+mod storage;
 mod invoices;
 mod sales;
 mod statement;
@@ -82,6 +84,12 @@ struct LedgerRow {
     billed_to: Option<String>,
     #[serde(default)]
     workspace: Option<String>,
+    #[serde(default)]
+    credit_micros: Option<i64>,
+    #[serde(default)]
+    trial_micros: Option<i64>,
+    #[serde(default)]
+    oss_micros: Option<i64>,
 }
 
 impl From<LedgerRow> for LedgerEntry {
@@ -99,6 +107,9 @@ impl From<LedgerRow> for LedgerEntry {
             created_by: row.created_by,
             created_at: row.created_at,
             workspace: row.workspace,
+            credit_micros: row.credit_micros.unwrap_or(0),
+            trial_micros: row.trial_micros.unwrap_or(0),
+            oss_micros: row.oss_micros.unwrap_or(0),
         }
     }
 }
@@ -140,27 +151,20 @@ struct Billing {
     margin_percent: u32,
     /// While g1t is being built out, nothing is charged (`FREE_WHILE_BUILDING`).
     free: bool,
-    /// The free allowance on g1t's hosted models, when there is one.
-    trial: Option<TrialConfig>,
+    /// Whether new workspaces get trial credit (`TRIAL_WORKSPACE_MICROS`
+    /// and `TRIAL_MONTHLY_POOL_MICROS` both above zero).
+    trials_on: bool,
+    /// The plans' and pools' numbers; see `credits`.
+    plans: credits::Config,
+    /// The repos service: which repositories are public, and what private
+    /// ones hold. Absent where it is not bound.
+    repos: Option<worker::Fetcher>,
     /// The Deployments plan's monthly price (`DEPLOYMENTS_MONTHLY_CENTS`).
     deployments_monthly_cents: u32,
     /// How far unpaid usage may go; see `limits`.
     ceilings: limits::Ceilings,
     /// `PREPAID_ONLY`: the old rule, that agents need credit first.
     prepaid_only: bool,
-}
-
-/// `TRIAL_WORKSPACE_MICROS`, `TRIAL_TOTAL_MICROS` and `TRIAL_UNTIL`.
-struct TrialConfig {
-    per_workspace_micros: i64,
-    total_micros: i64,
-    /// RFC 3339, in UTC.
-    until: String,
-}
-
-#[derive(serde::Deserialize)]
-struct Sum {
-    micros: Option<i64>,
 }
 
 impl Billing {
@@ -578,76 +582,6 @@ impl Billing {
         }))
     }
 
-    /// A workspace's free allowance on g1t's hosted models: what its runs
-    /// there have cost against its share, and the pool everyone draws on.
-    /// How much of a hosted model run's cost the workspace's free allowance
-    /// covers, if it is still open.
-    async fn trial_covers(&self, workspace: &str, cost_micros: i64) -> Result<i64> {
-        let trial = self.trial(TrialArgs { workspace: workspace.to_owned(), exempt: vec![] }).await?;
-        if !trial.open {
-            return Ok(0);
-        }
-        Ok(cost_micros.min((trial.limit_micros - trial.used_micros).max(0)))
-    }
-
-    async fn trial(&self, a: TrialArgs) -> Result<Trial> {
-        let workspace = a.workspace.to_lowercase();
-        let Some(config) = &self.trial else {
-            return Ok(Trial {
-                open: false,
-                used_micros: 0,
-                limit_micros: 0,
-                ends_at: None,
-                reason: Some("off".to_owned()),
-            });
-        };
-        let used = self
-            .db
-            .prepare(
-                "SELECT SUM(cost_micros) AS micros FROM ledger
-                 WHERE kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' AND COALESCE(task, '') NOT IN ('sandbox', 'deployments') AND workspace = ?",
-            )
-            .bind(&[workspace.as_str().into()])?
-            .first::<Sum>(None)
-            .await?
-            .and_then(|sum| sum.micros)
-            .unwrap_or_default();
-        // Everyone's, but for the workspaces open to hosted models anyway.
-        let exempt: Vec<String> = a.exempt.iter().map(|name| name.trim().to_lowercase()).collect();
-        let marks = vec!["?"; exempt.len().max(1)].join(", ");
-        let mut values: Vec<JsValue> = exempt.iter().map(|name| JsValue::from(name.as_str())).collect();
-        if values.is_empty() {
-            values.push(JsValue::from(""));
-        }
-        let pooled = self
-            .db
-            .prepare(format!(
-                "SELECT SUM(cost_micros) AS micros FROM ledger
-                 WHERE kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' AND COALESCE(task, '') NOT IN ('sandbox', 'deployments') AND workspace NOT IN ({marks})"
-            ))
-            .bind(&values)?
-            .first::<Sum>(None)
-            .await?
-            .and_then(|sum| sum.micros)
-            .unwrap_or_default();
-        let reason = if rfc3339(now_ms()) >= config.until {
-            Some("ended")
-        } else if used >= config.per_workspace_micros {
-            Some("used")
-        } else if pooled >= config.total_micros {
-            Some("pool")
-        } else {
-            None
-        };
-        Ok(Trial {
-            open: reason.is_none(),
-            used_micros: used,
-            limit_micros: config.per_workspace_micros,
-            ends_at: Some(config.until.clone()),
-            reason: reason.map(str::to_owned),
-        })
-    }
-
     async fn can_start(&self, a: CanStartArgs) -> Result<Outcome<bool>> {
         if self.stripe.is_none() {
             return Ok(Outcome::Ok(true));
@@ -733,11 +667,14 @@ impl Billing {
         if run.own_provider() {
             return Ok(Outcome::Ok(true));
         }
-        // The free allowance on g1t's models covers what it can.
-        let cost = charge_micros(a.cost_usd, 0);
-        let covered = self.trial_covers(&run.workspace, cost).await?;
-        let base = charge_micros((cost - covered) as f64 / MICROS_PER_DOLLAR as f64, self.margin_percent);
+        // Its cost plus the margin, on the account's terms; then the Team
+        // credit, the trial credit and, for a public repository, g1t's
+        // open-source pool pay what they can (see `credits`).
+        let base = charge_micros(a.cost_usd, self.margin_percent);
         let (charge, terms_note) = self.charged(&run.workspace, base).await?;
+        let month = credits::month_of(&rfc3339(now_ms()));
+        let eligible = credits::Eligible { trial: true, repo: Some(run.repo.clone()) };
+        let drawn = self.draw(&run.workspace, charge, &month, &eligible).await?;
         let mut description = match run.task.as_str() {
             "plan" => format!("Planning for {}", run.repo),
             "review" => format!("Review of {}#{}", run.repo, run.number),
@@ -745,10 +682,11 @@ impl Billing {
             _ => format!("Work on {}#{}", run.repo, run.number),
         };
         description.push_str(&terms_note);
+        description.push_str(&drawn.note());
         self.enter(
             &run.workspace,
             EntryKind::Usage,
-            -charge,
+            -(charge - drawn.total()),
             &description,
             &a.run_id,
             Some(&run),
@@ -757,6 +695,7 @@ impl Billing {
             None,
         )
         .await?;
+        self.record_drawn(&a.run_id, &drawn).await?;
         Ok(Outcome::Ok(true))
     }
 }
@@ -789,15 +728,18 @@ impl Billing {
             (cost, Price::price_for(cost, self.margin_percent))
         });
         let (charge, terms_note) = self.charged(&workspace, sandbox_charge(seconds, price_per_second)).await?;
-        let description = format!("{}: {} of sandbox time{terms_note}", a.description, duration(seconds));
+        let eligible = credits::Eligible { trial: true, repo: a.repo.clone() };
+        let drawn = self.draw(&workspace, charge, &credits::month_of(&timestamp), &eligible).await?;
+        let charge = charge - drawn.total();
+        let description = format!("{}: {} of sandbox time{terms_note}{}", a.description, duration(seconds), drawn.note());
         self.db
             .batch(vec![
                 self.db
                     .prepare(
                         "INSERT INTO ledger
                            (id, workspace, kind, amount_micros, description, repo, task,
-                            cost_micros, reference, created_at, billed_to)
-                         VALUES (?, ?, 'usage', ?, ?, ?, 'sandbox', ?, ?, ?, 'g1t')",
+                            cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros)
+                         VALUES (?, ?, 'usage', ?, ?, ?, 'sandbox', ?, ?, ?, 'g1t', ?, ?, ?)",
                     )
                     .bind(&[
                         new_id("led", now).into(),
@@ -808,6 +750,9 @@ impl Billing {
                         (seconds as f64 * cost_per_second).ceil().into(),
                         a.reference.as_str().into(),
                         timestamp.as_str().into(),
+                        (drawn.credit as f64).into(),
+                        (drawn.trial as f64).into(),
+                        (drawn.oss as f64).into(),
                     ])?,
                 self.db
                     .prepare(
@@ -893,25 +838,12 @@ impl Billing {
                 .ok()
                 .and_then(|cents| cents.to_string().parse().ok())
                 .unwrap_or(500),
-            trial: {
-                let number = |name: &str| env.var(name).ok().and_then(|v| v.to_string().parse::<i64>().ok());
-                match (
-                    number("TRIAL_WORKSPACE_MICROS"),
-                    number("TRIAL_TOTAL_MICROS"),
-                    env.var("TRIAL_UNTIL").ok().map(|v| v.to_string()),
-                ) {
-                    (Some(per_workspace_micros), Some(total_micros), Some(until))
-                        if per_workspace_micros > 0 && !until.is_empty() =>
-                    {
-                        Some(TrialConfig {
-                            per_workspace_micros,
-                            total_micros,
-                            until,
-                        })
-                    }
-                    _ => None,
-                }
+            trials_on: {
+                let plans = credits::Config::from_env(env);
+                plans.trial_workspace_micros > 0 && plans.trial_monthly_pool_micros > 0
             },
+            plans: credits::Config::from_env(env),
+            repos: env.service("REPOS").ok(),
         })
     }
 }
@@ -927,6 +859,11 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     }
     if let Err(error) = billing.autopay().await {
         worker::console_error!("paying at the limit failed: {error}");
+    }
+    // Last month's metered usage (scans, embeddings, storage) goes on the
+    // ledger before the month is closed and invoiced.
+    if let Err(error) = billing.charge_pending().await {
+        worker::console_error!("charging last month's metered usage failed: {error}");
     }
     if let Err(error) = billing.close_months().await {
         worker::console_error!("closing the month failed: {error}");
@@ -944,6 +881,12 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     if event.cron() == keeper::DAILY || billing.never_checked().await.unwrap_or(false) {
         if let Err(error) = billing.reconcile(&keeper).await {
             worker::console_error!("checking costs against Cloudflare failed: {error}");
+        }
+    }
+    // Once a day: what each workspace's private repositories hold.
+    if event.cron() == keeper::DAILY {
+        if let Err(error) = billing.measure_storage().await {
+            worker::console_error!("measuring storage failed: {error}");
         }
     }
 }
@@ -1017,6 +960,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_create_enterprise" => reply(&billing.admin_create_enterprise(args(body)?).await?),
         "admin_attach" => reply(&billing.admin_attach(args(body)?).await?),
         "admin_credit" => reply(&billing.admin_credit(args(body)?).await?),
+        "admin_set_allowances" => reply(&billing.admin_set_allowances(args(body)?).await?),
+        "entitlements" => reply(&billing.entitlements(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }

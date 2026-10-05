@@ -277,6 +277,40 @@ pub async fn list(db: &D1Database, a: ListAuditArgs) -> Result<AuditPage> {
     Ok(AuditPage { entries, next })
 }
 
+/// Entries are kept this many days unless `AUDIT_KEEP_DAYS` says otherwise:
+/// the longest any plan reads back (a year, on Team). Shorter windows,
+/// such as 30 days without Team, are applied where the log is read.
+pub const DEFAULT_KEEP_DAYS: u32 = 365;
+/// Rows removed per statement, so one purge never runs long.
+const PURGE_BATCH: u32 = 5_000;
+
+/// The oldest time an entry is kept from, `keep_days` before `now_ms`.
+pub fn keep_from(now_ms: u64, keep_days: u32) -> String {
+    g1t_contracts::time::rfc3339(now_ms.saturating_sub(u64::from(keep_days) * 24 * 60 * 60 * 1000))
+}
+
+/// Removes entries older than every plan keeps, a batch at a time, up to
+/// `rounds` batches. Returns how many went.
+pub async fn purge(db: &D1Database, before: &str, rounds: u32) -> Result<u32> {
+    let mut removed = 0;
+    for _ in 0..rounds {
+        let result = db
+            .prepare(
+                "DELETE FROM audit_entries WHERE id IN
+                   (SELECT id FROM audit_entries WHERE time < ? ORDER BY time LIMIT ?)",
+            )
+            .bind(&[before.into(), PURGE_BATCH.into()])?
+            .run()
+            .await?;
+        let changed = result.meta()?.and_then(|meta| meta.changes).unwrap_or(0) as u32;
+        removed += changed;
+        if changed < PURGE_BATCH {
+            break;
+        }
+    }
+    Ok(removed)
+}
+
 /// Moves a renamed workspace's rows to its new slug.
 pub async fn follow_renames(db: &D1Database, events: &[Event]) -> Result<()> {
     for event in events
@@ -313,6 +347,14 @@ pub async fn follow_renames(db: &D1Database, events: &[Event]) -> Result<()> {
 mod tests {
     use super::*;
     use g1t_contracts::audit::{ActorKind, AuditOutcome};
+
+    #[test]
+    fn entries_are_kept_as_long_as_the_longest_plan_reads_back() {
+        // 2026-10-05T00:00:00Z, a year back.
+        let now = 1_791_158_400_000;
+        assert_eq!(keep_from(now, 365), "2025-10-05T00:00:00.000Z");
+        assert_eq!(DEFAULT_KEEP_DAYS, 365);
+    }
 
     fn args() -> ListAuditArgs {
         ListAuditArgs {

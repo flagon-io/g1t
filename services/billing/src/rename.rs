@@ -53,13 +53,30 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "DELETE FROM accounts WHERE workspace = ?2",
     // Replaced on each report with the month's whole figure: the newer
     // report wins.
-    "INSERT INTO pending_usage (workspace, source, month, charge_micros, updated_at)
-     SELECT ?1, source, month, charge_micros, updated_at FROM pending_usage WHERE workspace = ?2
+    "INSERT INTO pending_usage (workspace, source, month, charge_micros, cost_micros, charged_at, updated_at)
+     SELECT ?1, source, month, charge_micros, cost_micros, charged_at, updated_at FROM pending_usage WHERE workspace = ?2
      ON CONFLICT (workspace, source, month) DO UPDATE SET
        charge_micros = CASE WHEN excluded.updated_at > pending_usage.updated_at
                             THEN excluded.charge_micros ELSE pending_usage.charge_micros END,
+       cost_micros = CASE WHEN excluded.updated_at > pending_usage.updated_at
+                          THEN excluded.cost_micros ELSE pending_usage.cost_micros END,
+       charged_at = COALESCE(pending_usage.charged_at, excluded.charged_at),
        updated_at = MAX(pending_usage.updated_at, excluded.updated_at)",
     "DELETE FROM pending_usage WHERE workspace = ?2",
+    // Monthly allowances drawn by the workspace (its Team credit, its
+    // build time) add up; a repository's share of the open-source pool
+    // follows the repository's new name.
+    "INSERT INTO allowance_use (kind, scope, month, used)
+     SELECT kind, ?1, month, used FROM allowance_use WHERE scope = ?2
+     ON CONFLICT (kind, scope, month) DO UPDATE SET used = allowance_use.used + excluded.used",
+    "DELETE FROM allowance_use WHERE scope = ?2",
+    "UPDATE OR IGNORE allowance_use SET scope = ?1 || substr(scope, length(?2) + 1)
+     WHERE kind = 'oss_repo' AND substr(scope, 1, length(?2) + 1) = ?2 || '/'",
+    // One trial grant per workspace: the current slug's stays if it has one.
+    "UPDATE OR IGNORE trial_grants SET workspace = ?1 WHERE workspace = ?2",
+    "DELETE FROM trial_grants WHERE workspace = ?2",
+    "UPDATE OR IGNORE storage_days SET workspace = ?1 WHERE workspace = ?2",
+    "DELETE FROM storage_days WHERE workspace = ?2",
     // Limits, field by field: a ceiling or an owner's spend limit set under
     // either slug is kept (the current slug's if both), a stop for a
     // declined card stays, and the highest warning this month is kept.
@@ -241,6 +258,7 @@ mod tests {
             "ledger", "runs", "checkouts", "workspace_invoices", "sales_notes", "accounts",
             "pending_usage", "limits", "subscriptions", "month_closes", "account_members", "sales_records",
             "enterprise_invoice_lines", "billing_accounts", "admin_actions", "enterprise_invoices",
+            "allowance_use", "trial_grants", "storage_days",
         ] {
             assert!(all.contains(&format!("FROM {table} WHERE workspace = ?2"))
                 || all.contains(&format!("UPDATE {table} SET"))

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { parseCredit, parseEmail, parseSales, parseSalesNote, parseSlugList, parseTerms } from "./forms.ts";
+import { parseAllowances, parseCredit, parseEmail, parseSales, parseSalesNote, parseSlugList, parseTerms } from "./forms.ts";
 
 const NOW = new Date("2026-10-04T12:00:00Z");
 
@@ -85,4 +85,19 @@ test("a sales note is required, and not endless", () => {
   assert.deepEqual(parseSalesNote("Spoke to Ana; wants an enterprise quote."), { ok: true, value: "Spoke to Ana; wants an enterprise quote." });
   assert.equal(parseSalesNote("").ok, false);
   assert.equal(parseSalesNote("x".repeat(2001)).ok, false);
+});
+
+test("allowances: Team on or off, and pool shares in dollars or the default", () => {
+  const form = (entries: Record<string, string>) => {
+    const data = new FormData();
+    for (const [name, value] of Object.entries(entries)) data.set(name, value);
+    return data;
+  };
+  assert.deepEqual(parseAllowances(form({})), { ok: true, value: { team: false, ossRepoMicros: null, trialMicros: null } });
+  assert.deepEqual(parseAllowances(form({ team: "on", oss: "5", trial: "2.50" })), {
+    ok: true,
+    value: { team: true, ossRepoMicros: 5_000_000, trialMicros: 2_500_000 },
+  });
+  assert.equal(parseAllowances(form({ oss: "lots" })).ok, false);
+  assert.equal(parseAllowances(form({ trial: "5000" })).ok, false);
 });

@@ -24,6 +24,7 @@ import {
 
 import type { Route } from "./+types/integrations";
 import { page } from "../../lib/meta";
+import { trialClosed } from "../../lib/trial";
 import { MODEL_CATALOG, ModelCatalog, ModelProviderFields, ProviderMark, ProviderTiles, Routing } from "../../components/model-providers";
 import { Avatar, Button, CopyLine, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
@@ -203,11 +204,7 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
             </span>
             <p className="text-sm text-muted">
               <span className="font-medium text-fg">Choose how your agents reach a model.</span>{" "}
-              {trial?.reason === "used"
-                ? `${slug} has used its free allowance on g1t's models.`
-                : trial?.reason === "pool" || trial?.reason === "ended"
-                  ? "The free allowance on g1t's models has ended."
-                  : `g1t's hosted models are not open to ${slug}.`}{" "}
+              {trialClosed(trial, slug) ?? `g1t's hosted models are not open to ${slug}.`}{" "}
               Connect a provider of your own below and your agents start at once, billed by that provider.
             </p>
           </div>
@@ -217,7 +214,9 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
           <p className="flex items-center gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-sm text-muted">
             <CheckCircle2 size={15} className="shrink-0 text-merged" />
             {trial?.open
-              ? `All work runs on g1t's models, free: ${slug} has ${dollars(Math.max(0, trial.limitMicros - trial.usedMicros))} of its ${dollars(trial.limitMicros)} allowance left${trial.endsAt ? `, until ${new Date(trial.endsAt).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "America/Los_Angeles" })}` : ""}. Connect a provider of your own for more, or to choose models.`
+              ? trial.granted
+                ? `All work runs on g1t's models, paid by ${slug}'s trial credit first: ${dollars(Math.max(0, trial.limitMicros - trial.usedMicros))} of ${dollars(trial.limitMicros)} left. Connect a provider of your own for more, or to choose models.`
+                : `All work runs on g1t's models. ${slug} gets ${dollars(trial.limitMicros)} of trial credit the first time its agents work. Connect a provider of your own for more, or to choose models.`
               : free
                 ? "All work runs on g1t's models, free while g1t is being built out. Connect a provider of your own to choose models and pay for them there."
                 : `All work runs on g1t's models, charged to your credit at cost plus ${marginPercent}%. Connect a provider of your own to choose models and pay for them there.`}

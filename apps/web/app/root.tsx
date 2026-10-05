@@ -22,6 +22,7 @@ import {
   Scripts,
   ScrollRestoration,
   type ShouldRevalidateFunctionArgs,
+  useLocation,
   useParams,
   useRouteLoaderData,
   useSubmit,
@@ -42,6 +43,10 @@ import {
   DropdownMenuTrigger,
 } from "./components/ui/dropdown-menu";
 import { AppShell, Progress, type ShellData } from "./components/shell";
+import { readCookie } from "./lib/mission";
+import { WORKSPACE_COOKIE, workspaceFor } from "./lib/workspace-choice";
+import { NotFound } from "./components/not-found";
+import { usesAppShell } from "./lib/chrome";
 import { CommandPalette, type PaletteCommand, usePaletteShortcut } from "./components/command-palette";
 import { billing, projects, work } from "./lib/services.server";
 import { getViewer, roleIn, viewerMiddleware } from "./lib/session.server";
@@ -65,9 +70,27 @@ export const links: Route.LinksFunction = () => [
 
 export const middleware: Route.MiddlewareFunction[] = [viewerMiddleware];
 
-export async function loader({ context, params }: Route.LoaderArgs) {
+export async function loader({ context, params, request }: Route.LoaderArgs) {
   const user = getViewer(context);
-  return { user, shell: user ? await shellFor(user, params) : null };
+  const chosen = readCookie(request.headers.get("cookie"), WORKSPACE_COOKIE);
+  return { user, shell: user ? await shellFor(user, params, chosen) : await visitorShell(params) };
+}
+
+/**
+ * The sidebar for someone not signed in: nothing of their own, only the
+ * open counts of the project being looked at. One call, and only in a
+ * project; it answers the same for a private project as a missing one.
+ */
+async function visitorShell(params: { owner?: string; repo?: string }): Promise<ShellData> {
+  const path = params.owner && params.repo ? { namespace: params.owner, name: params.repo } : null;
+  const counts = path ? await work.counts(path, null) : null;
+  return {
+    workspace: null,
+    repos: [],
+    repo: path && counts?.ok ? { ...path, member: false, issues: counts.value.issues, pulls: counts.value.pulls } : null,
+    limit: null,
+    monthUsageMicros: null,
+  };
 }
 
 /**
@@ -85,16 +108,17 @@ export function shouldRevalidate({
 }
 
 /**
- * The sidebar: the workspace being looked at if they belong to it, else
- * their first; its repositories; and the repository being looked at.
+ * The sidebar: the workspace you chose (lib/workspace-choice.ts), or the
+ * one whose own pages these are; its projects; and the repository being
+ * looked at. A project in another workspace does not switch it.
  */
 async function shellFor(
   user: User,
   params: { owner?: string; repo?: string },
+  chosen: string | null,
 ): Promise<ShellData> {
   const memberships = user.workspaces ?? [];
-  const here = params.owner ? memberships.find((m) => m.slug === params.owner?.toLowerCase()) : undefined;
-  const workspace = here ?? memberships[0] ?? null;
+  const workspace = workspaceFor(memberships, chosen, params);
   const path = params.owner && params.repo ? { namespace: params.owner, name: params.repo } : null;
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
@@ -376,6 +400,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // Undefined when the root loader itself failed.
   const root = useRouteLoaderData<typeof loader>("root");
   const user = root?.user;
+  const { pathname } = useLocation();
   const banner = user && !user.verified && (
     <Form
       method="post"
@@ -401,8 +426,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body className="flex min-h-screen flex-col">
-        {user && root?.shell ? (
-          <AppShell user={user} shell={root.shell} banner={banner}>
+        {root?.shell && usesAppShell(pathname, user != null) ? (
+          <AppShell user={user ?? null} shell={root.shell} banner={banner}>
             {children}
           </AppShell>
         ) : (
@@ -431,10 +456,9 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   let stack: string | undefined;
 
   if (isRouteErrorResponse(error)) {
-    if (error.status === 404) {
-      title = "Page not found";
-      details = "There is nothing at this address, or you do not have access to it.";
-    } else if (typeof error.data === "string" && error.data) {
+    // The same page for something private and something missing.
+    if (error.status === 404) return <NotFound data={error.data} />;
+    if (typeof error.data === "string" && error.data) {
       details = error.data;
     }
   } else if (import.meta.env.DEV && error instanceof Error) {

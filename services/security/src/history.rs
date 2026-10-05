@@ -11,9 +11,40 @@ use crate::store::RepoRow;
 
 /// Commits read per call to the repos service.
 const PAGE: u32 = 25;
-/// What one read of a git object is taken to cost g1t, in millionths of a
-/// dollar: a store call and the Worker time around it, rounded up.
-pub const MICROS_PER_READ: i64 = 1;
+// What scanning costs g1t, from Cloudflare's published prices on the
+// Workers Paid plan (October 2026), the same as billing's `scan_cpu` and
+// `scan_rows` meters:
+//
+// - Worker CPU time: $0.02 per million CPU milliseconds, so 0.02 millionths
+//   of a dollar per millisecond.
+// - D1 rows written: $1.00 per million, so 1 millionth of a dollar a row.
+//   Rows read ($0.001 per million) come to nothing measurable.
+// - Requests: the scan's calls between g1t's services go over service
+//   bindings, which Cloudflare does not charge as requests.
+// - Artifacts: its operations are priced for create, push, pull and clone;
+//   reading a git object through the binding is none of those.
+// - OSV, which dependency checks query, is free.
+//
+// So a scan costs the CPU it takes and the rows it writes. The CPU per
+// object read is an estimate: decoding the object and running every
+// secret pattern over it, generously rounded up. Billing charges the
+// total at cost plus its margin once the month is over.
+
+/// Worker CPU, in millionths of a dollar per millisecond.
+pub const MICROS_PER_CPU_MS: f64 = 0.02;
+/// One D1 row written, in millionths of a dollar.
+pub const MICROS_PER_ROW_WRITTEN: f64 = 1.0;
+/// CPU one git object read takes in a history scan, in milliseconds.
+pub const CPU_MS_PER_READ: f64 = 5.0;
+
+/// What a page of history scanning cost g1t, in millionths of a dollar,
+/// rounded up: the CPU of its reads, and the rows it writes (where the
+/// scan stands, the month's usage, and each secret found).
+pub fn history_page_cost(reads: u32, secrets: usize) -> i64 {
+    let cpu = f64::from(reads) * CPU_MS_PER_READ * MICROS_PER_CPU_MS;
+    let rows = (2 + secrets) as f64 * MICROS_PER_ROW_WRITTEN;
+    (cpu + rows).ceil() as i64
+}
 
 impl Security {
     /// Whether the workspace's usage has reached its limit, which stops
@@ -60,7 +91,8 @@ impl Security {
             let fingerprints: Vec<String> = page.secrets.iter().map(|secret| secret.fingerprint.clone()).collect();
             self.store.landed(&repo.repo_id, &fingerprints).await?;
             self.store.add_secrets(&repo.repo_id, &page.secrets, SecretStatus::Open, "history", None).await?;
-            self.meter(&repo.namespace, page.reads, page.commits, 0, i64::from(page.reads) * MICROS_PER_READ).await?;
+            let cost = history_page_cost(page.reads, page.secrets.len());
+            self.meter(&repo.namespace, page.reads, page.commits, 0, cost).await?;
             match page.next {
                 Some(next) => {
                     self.store.set_history(&repo.repo_id, "running", Some(&next), page.commits).await?;

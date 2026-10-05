@@ -1,10 +1,11 @@
-import { ArrowUpRight, CreditCard, FileText, Receipt, Rocket } from "lucide-react";
+import { ArrowUpRight, CreditCard, FileText, Receipt, Rocket, Users } from "lucide-react";
 import { Form, Link, data, redirect, useNavigation } from "react-router";
 
 import {
   DEPLOYMENTS_ALLOWANCE,
   MICROS_PER_DOLLAR,
   type DeployUsage,
+  type Entitlements,
   type Feature,
   type FeatureState,
   type Limit,
@@ -54,7 +55,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const group: "day" | "project" = url.searchParams.get("group") === "project" ? "project" : "day";
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
-  const [account, statement, features, deployUsage, limit, invoices, thisMonth, allTime] = await Promise.all([
+  const [account, statement, features, deployUsage, limit, invoices, thisMonth, allTime, entitlements] = await Promise.all([
     billing.account(slug, viewer),
     billing.statement(slug, viewer, url.searchParams.get("month"), group),
     billing.features(slug, viewer),
@@ -63,6 +64,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     billing.invoices(slug, viewer).catch(() => null),
     billing.usage(slug, viewer, monthStart).catch(() => null),
     billing.usage(slug, viewer, "1970-01-01T00:00:00.000Z").catch(() => null),
+    billing.entitlements(slug).catch(() => null),
   ]);
   return {
     slug,
@@ -79,6 +81,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       total: allTime?.ok ? allTime.value.spentMicros : null,
       added: allTime?.ok ? allTime.value.addedMicros : null,
     },
+    entitlements,
     added: url.searchParams.has("added"),
     subscribed: url.searchParams.has("subscribed"),
   };
@@ -140,7 +143,8 @@ function dollars(micros: number, digits = 2): string {
 }
 
 export default function WorkspaceBilling({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, account, statement, group, spent, features, deployUsage, limit, invoices, added, subscribed } = loaderData;
+  const { slug, role, account, statement, group, spent, features, deployUsage, limit, invoices, entitlements, added, subscribed } =
+    loaderData;
   const { status } = account;
   const paying = useNavigation().state === "submitting";
   const empty = account.balanceMicros <= 0;
@@ -242,8 +246,8 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
 
         <h2 className="font-medium">Plans</h2>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Paid features are turned on per workspace with a monthly plan. They are never free, including while the rest of
-          g1t is.
+          Plans are turned on per workspace, at one flat price a month for everyone in it: never per person. They are
+          charged including while the rest of g1t is free.
         </p>
         {subscribed && <p className="mt-3 text-sm text-accent">Payment received. The plan is on.</p>}
         <div className="mt-5 space-y-4">
@@ -256,6 +260,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
               live={account.status.live}
               busy={paying}
               usage={state.plan.feature === "deployments" ? deployUsage : null}
+              entitlements={entitlements}
             />
           ))}
         </div>
@@ -371,6 +376,14 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
               </Link>
               , the provider bills you for the model, and a run here is charged only its sandbox time.
             </li>
+            <li>
+              Work on public repositories is paid for by g1t's open-source pool first, up to a monthly cap per
+              repository; the statement says so on each line it paid.
+            </li>
+            <li>
+              No card is charged less than {dollars(entitlements?.minChargeMicros ?? 5 * MICROS_PER_DOLLAR, 0)}: smaller
+              amounts carry over to the next invoice.
+            </li>
             <li>No seats: add as many people and agents as you like.</li>
           </ul>
           <div className="mt-4 space-y-1.5 border-t border-line pt-4 text-sm">
@@ -401,6 +414,7 @@ function PlanCard({
   live,
   busy,
   usage,
+  entitlements,
 }: {
   state: FeatureState;
   owner: boolean;
@@ -408,14 +422,17 @@ function PlanCard({
   live: boolean;
   busy: boolean;
   usage: DeployUsage | null;
+  entitlements: Entitlements | null;
 }) {
   const { plan, subscription } = state;
   const ending = subscription?.status === "canceling";
   const owed = subscription?.status === "past_due";
+  const team = plan.feature === "team";
+  const Icon = team ? Users : Rocket;
   return (
     <section
       className={`rounded-xl border p-5 ${
-        state.on && subscription
+        (state.on && subscription) || state.included
           ? "border-accent/40 bg-accent/5"
           : owed
             ? "border-warn/40 bg-warn/5"
@@ -425,8 +442,11 @@ function PlanCard({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <h3 className="flex flex-wrap items-center gap-2 font-medium">
-            <Rocket size={15} className="text-accent" />
+            <Icon size={15} className="text-accent" />
             {plan.title}
+            {state.included && (
+              <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs text-accent">Included, no charge</span>
+            )}
             {state.on && subscription && (
               <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs text-accent">
                 {ending ? "Ends " : "On"}
@@ -441,7 +461,9 @@ function PlanCard({
             {owed && <span className="rounded-full bg-warn/15 px-2 py-0.5 text-xs text-warn">Payment failed</span>}
           </h3>
           <p className="mt-1 text-sm text-muted">
-            Every pull request gets a live preview on g1t.page, and the default branch goes to production on merge.
+            {team
+              ? "For a workspace that works here every day: a monthly usage credit, more private storage and a longer audit log, at one price for everyone in it."
+              : "Every pull request gets a live preview on g1t.page, and the default branch goes to production on merge."}
           </p>
         </div>
         <p className="shrink-0 text-right">
@@ -449,6 +471,7 @@ function PlanCard({
             ${(plan.monthlyCents / 100).toFixed(0)}
           </span>
           <span className="text-sm text-muted"> / month</span>
+          {team && <span className="block text-xs text-faint">per workspace</span>}
         </p>
       </div>
       <ul className="mt-4 grid gap-1.5 text-sm text-muted sm:grid-cols-2">
@@ -460,8 +483,13 @@ function PlanCard({
         ))}
       </ul>
       <p className="mt-3 text-xs text-faint">{plan.overage}</p>
-      {state.on && usage && <DeployMeter usage={usage} />}
-      {!enabled ? (
+      {state.on && usage && <DeployMeter usage={usage} entitlements={entitlements} />}
+      {team && state.on && entitlements?.team && <TeamMeter entitlements={entitlements} />}
+      {state.included ? (
+        <p className="mt-4 text-sm text-muted">
+          {plan.title} is on for this workspace at no charge, under terms g1t set with it.
+        </p>
+      ) : !enabled ? (
         <p className="mt-4 text-sm text-muted">Payments are not set up on this g1t, so {plan.title} is already on.</p>
       ) : !owner ? (
         !state.on && <p className="mt-4 text-sm text-muted">An owner can turn it on.</p>
@@ -491,11 +519,34 @@ function PlanCard({
   );
 }
 
+/** This month's Team credit: what of it the month's usage has drawn. */
+function TeamMeter({ entitlements }: { entitlements: Entitlements }) {
+  const used = entitlements.teamCreditUsedMicros;
+  const of = entitlements.teamCreditMicros;
+  return (
+    <div className="mt-4 rounded-lg border border-line bg-bg/40 p-4">
+      <div className="flex justify-between gap-4 text-sm">
+        <span className="text-muted">Credit used this month</span>
+        <span className="tabular-nums">
+          {dollars(used)} <span className="text-faint">of {dollars(of)}</span>
+        </span>
+      </div>
+      <Meter used={used} of={of} state={used >= of ? "warning" : "ok"} />
+      <p className="mt-3 text-xs text-faint">
+        Usage draws on the credit first, at cost plus 20%; past it, usage is charged as usual. It starts again on the
+        1st, and what is unused does not carry over.
+      </p>
+    </div>
+  );
+}
+
 /** This month's use of the Deployments plan against what it includes. */
-function DeployMeter({ usage }: { usage: DeployUsage }) {
+function DeployMeter({ usage, entitlements }: { usage: DeployUsage; entitlements: Entitlements | null }) {
   const a = DEPLOYMENTS_ALLOWANCE;
+  const buildMinutes = (entitlements?.buildSecondsIncluded ?? a.buildSeconds) / 60;
   const rows: [string, number, number, (n: number) => string][] = [
     ["Apps up at once (most this month)", usage.peakApps, a.apps, (n) => String(n)],
+    ["Build minutes", Math.ceil(usage.buildSeconds / 60), buildMinutes, (n) => n.toLocaleString("en-US")],
     ["Requests", usage.requests, a.requests, (n) => n.toLocaleString("en-US")],
     ["CPU milliseconds", usage.cpuMs, a.cpuMs, (n) => n.toLocaleString("en-US")],
   ];
@@ -521,7 +572,8 @@ function DeployMeter({ usage }: { usage: DeployUsage }) {
         ))}
       </ul>
       <p className="mt-3 text-xs text-faint">
-        Builds: {Math.ceil(usage.buildSeconds / 60)} min, {dollars(usage.buildMicros, 4)} at cost.
+        Builds past the included minutes are charged by the second; this month's builds cost g1t{" "}
+        {dollars(usage.buildMicros, 4)} in all.
         {usage.countedAt ? " Requests and CPU time are counted every few minutes." : " Requests are counted once apps get visits."}
       </p>
     </div>

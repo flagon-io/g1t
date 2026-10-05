@@ -3,11 +3,14 @@ title: Usage and billing
 description: What g1t costs, how a workspace pays, the limits that keep unpaid usage in check, and enterprise billing.
 ---
 
-Hosting repositories, issues, pull requests, review and your own agent cost
-nothing on g1t. What costs money is what g1t runs for you: its agents'
-models, the sandboxes they and your checks run in, and deployed apps. Each
-is charged at what it costs g1t plus a set markup, after it is used, to the
-workspace that owns the repository. There is no seat price.
+Hosting repositories, git, issues, pull requests, review, search and your
+own agent cost nothing on g1t. Public repositories are free, and so is the
+compute their agents use, up to a monthly budget g1t pays for. What costs
+money is what g1t runs for you on private work: its agents' models, the
+sandboxes they and your checks run in, deployed apps, and private storage
+past the free amount. Each is charged at what it costs g1t plus 20%, after
+it is used, to the workspace that owns the repository. There is no seat
+price, ever.
 
 Some features are paid for with a monthly plan the workspace turns on, and
 are never free, including while the rest of g1t is. See
@@ -15,43 +18,93 @@ are never free, including while the rest of g1t is. See
 
 ## Plans
 
-A plan turns on one paid feature for the whole workspace: a monthly price
-that includes an allowance, with usage past it charged at cost plus 20%.
+A plan is one flat price a month for the whole workspace, however many
+people and agents are in it: never per person.
 
 | Plan | Price | Includes each month |
 | --- | --- | --- |
-| [Deployments](/guides/deployments/) | $5 a month | 10 apps up at once, 1 million requests, 3 million CPU milliseconds. Builds are charged by the second. |
+| Team | $20 a month per workspace | $5 of usage credit, 50 GB of private storage, and a year of [audit log](/guides/audit-log/) |
+| [Deployments](/guides/deployments/) | $5 a month | 10 apps up at once, 200 build minutes, 1 million requests, 3 million CPU milliseconds and 3 custom domains |
+
+Usage past what a plan includes is charged at cost plus 20%, as it is
+without the plan.
+
+### Team
+
+| | Without Team | With Team |
+| --- | --- | --- |
+| Usage credit | None | $5 a month |
+| Private repository storage | 1 GB | 50 GB |
+| Audit log | 30 days | 1 year |
+| People | Everyone, no seat price | Everyone, no seat price |
+
+The **usage credit** pays for the month's usage first, at cost plus 20%:
+agents, sandbox time, builds, storage, search embeddings and security
+scans. Past it, usage is charged as usual. It starts again on the 1st of
+each month (UTC), and what is left unused does not carry over. Billing
+shows how much of it this month's usage has drawn.
+
+### Turning a plan on
 
 Only an owner can turn a plan on or off.
 
 1. Open **Settings → Billing**, `g1t.sh/<workspace>/-/billing`.
-2. Under **Plans**, choose **Turn on Deployments**, and pay on the card
-   page you are sent to.
+2. Under **Plans**, choose **Turn on Team** (or **Turn on Deployments**),
+   and pay on the card page you are sent to.
 
 Back on Billing, the plan says **On** and when it renews; the card is kept
 and charged each month. **Turn off at the end of the period** ends the plan
-on its renewal date, with nothing more charged after; **Keep Deployments**
-takes that back. If a renewal payment fails, the plan says **Payment
-failed** and the feature stops until it is paid.
+on its renewal date, with nothing more charged after; **Keep Team** takes
+that back. If a renewal payment fails, the plan says **Payment failed** and
+the plan's features stop until it is paid.
 
-Plan usage past the allowance and builds are drawn from the workspace's
-credit, so a workspace with a plan can add credit while agents are free.
+A plan that says **Included, no charge** is on under terms g1t set with the
+workspace, such as [comped](#enterprises-and-custom-terms) terms, with
+nothing to pay or turn off.
 
-## The free allowance
+## What is free, and what pays for it
 
-So anyone can try g1t's agents without a key of their own, every workspace
-gets **$1 of model cost on g1t's own models**, free, until **October 22,
-2026** (11:59 PM Pacific). That is roughly 10 to 25 agent runs: changes,
-reviews and revisions. The allowance pays for the model part of those
-runs; everything else, such as sandbox time, is charged as usual.
+Everything free on g1t is paid for by something: a plan, or a fixed
+budget g1t sets aside each month. None of it is an open-ended allowance.
 
+### Public repositories and open source
+
+Hosting, git, issues, pull requests, review and search on a public
+repository are never charged.
+
+The compute its agents use, **sandbox time and model cost**, is paid by
+**g1t's open-source pool** first:
+
+| | Each month (UTC) |
+| --- | --- |
+| The pool, for every public repository together | $10 |
+| One repository's share of it, at most | $1 |
+
+When the pool or the repository's share is spent, that month's usage is
+charged to the workspace as usual. Each statement line the pool paid says
+so, as in *Work on acme/lib#12 ($0.04 paid by g1t's open-source pool)*,
+and the month's statement totals it under **Paid by g1t's open-source
+pool**. Builds, storage, embeddings and scans are not paid by the pool.
+
+### Trials
+
+So anyone can try g1t's agents without a key or a card, each new workspace
+gets **$1 of trial credit**, once. It is given the first time the
+workspace uses something, and pays for its usage at cost plus 20%, after
+any Team credit: g1t's models, sandbox time, storage, embeddings and
+scans, but never deployments. That is roughly 10 to 25 agent runs.
+
+- Trials come from a budget of **$40 a month** for every new workspace
+  together. It renews on the 1st of each month (UTC). When a month's
+  budget is given out, new trials wait for the next month, and mission
+  control and **Settings → Integrations** say when they start again.
 - Mission control and **Settings → Integrations** show what is left.
-- When it is used up, agents and workflow runs stop starting, and the
-  pages that start them say so and link to Integrations. Connect your own
-  model provider there and everything carries on at once.
-- The allowance draws on one shared pool. If the pool runs out before
-  October 22, the allowance ends for everyone early.
-- Workspaces on their own provider never use it.
+- When it is used up, agents and workflow runs on g1t's models stop
+  starting, and the pages that start them say so and link to
+  Integrations. Connect your own model provider there and everything
+  carries on at once.
+- Workspaces that had the free allowance before trials renewed monthly keep
+  what they had left of it.
 
 ## What is charged
 
@@ -66,7 +119,11 @@ runs; everything else, such as sandbox time, is charged as usual.
 | The [merge queue](/guides/merge-queue/) | [Sandbox time](#sandbox-time) |
 | [Workflow](/guides/actions/) jobs | [Sandbox time](#sandbox-time) |
 | [Deployments](/guides/deployments/) | The plan, and builds and usage past it. Never free. |
-| Repositories, git, issues, pull requests, the API and MCP | No |
+| [Private repository storage](#storage-search-embeddings-and-scans) | Past 1 GB (50 GB on Team) |
+| [Search embeddings](#storage-search-embeddings-and-scans) | For private text |
+| [Security scans](#storage-search-embeddings-and-scans) | Yes |
+| Repositories, git, issues, pull requests, search, the API and MCP | No |
+| Agents and sandboxes on a public repository | From [the open-source pool](#public-repositories-and-open-source) first |
 
 Each run is charged when it finishes: what the model provider charged for
 it, plus 20%. A small change costs a few cents.
@@ -117,6 +174,7 @@ Prices keep themselves current as those costs move:
 | Deploy builds | 20% |
 | App requests, CPU and apps | 20% |
 | Custom domains past the plan | 20% |
+| Private storage, search embeddings and security scans | 20% |
 
 ## Sandbox time
 
@@ -140,6 +198,26 @@ charges them by the second on its own plan.
 
 Each sandbox is one line on the [statement](#the-statement), such as
 *Checks on acme/api#12: 3m 12s of sandbox time*.
+
+## Storage, search embeddings and scans
+
+Three things g1t used to absorb are metered at what they cost plus 20%,
+like the rest. Each is counted through the month and charged once it is
+over, as one line dated the month's last day, so the limit counts it as it
+happens.
+
+| | What it costs g1t | What is counted |
+| --- | --- | --- |
+| Private repository storage | $0.50 a GB-month (Cloudflare Artifacts) | Each day, what the workspace's private repositories hold past 1 GB (50 GB on Team). A month's GB-months are those days added up, divided by 30. |
+| Search embeddings | $0.067 per million tokens (Workers AI) | The text of private repositories, issues and pull requests put in the search index. Public text and searches are not charged. |
+| Security scans | $0.02 per million CPU milliseconds and $1.00 per million rows written (Workers and D1) | The CPU each history scan and dependency check takes and the rows it writes. Calls to OSV are free. |
+
+Storage is measured from the packs pushed through g1t's git endpoints to
+each repository and its pull requests' working copies. Pushes made by
+g1t's own agents and imports are not counted yet, so what is charged is
+never more than what is stored. Public repositories are never charged.
+
+The live prices are on [g1t.sh/pricing](https://g1t.sh/pricing).
 
 ## Usage limits
 
@@ -167,7 +245,7 @@ paid for. g1t lets that reach a ceiling that grows with your history:
 
 | | Ceiling on what is unpaid |
 | --- | --- |
-| **New**: has not paid g1t yet | $3: the free allowances and a little more |
+| **New**: has not paid g1t yet | $3 |
 | **Paid** | twice what you have paid, from $25 up to $1,000 |
 | **Established**: three steady months | three times your monthly spend, up to $10,000, by itself |
 | **Reviewed** | what g1t set with you; contact us |
@@ -192,6 +270,8 @@ How the ceiling grows:
 What counts as unpaid is each item at what it cost g1t or what it is
 charged, whichever is more, less what was paid this month, plus anything
 left unpaid from earlier months: a new month is not a fresh allowance.
+What a plan's credit, a trial or the open-source pool paid for does not
+count: those are paid for already.
 
 A **declined card** stops work until it is paid, as does a payment
 disputed with the card's bank. Paying under Billing with another card
@@ -212,6 +292,15 @@ with its PDF and emailed as a receipt:
 Each is charged to the card on file. The Billing page lists them, with
 links to view each on Stripe and download its PDF.
 
+### The minimum charge
+
+No card is charged less than **$5**, so a payment's fee is never most of
+what is paid. When a month closes owing less, nothing is charged: the
+amount carries over and goes on the next invoice that reaches $5, as
+*Unpaid from earlier*. That month's statement says what carried over. A
+charge made because a workspace is near its limit goes through whatever
+the amount, so work can carry on.
+
 ## Enterprises and custom terms
 
 Some accounts are billed differently, set up by g1t with you:
@@ -225,13 +314,21 @@ Some accounts are billed differently, set up by g1t with you:
   invoice page by card or bank transfer. Paying it clears every workspace
   on it; if it goes overdue, their work stops until it is paid.
 - **Comped**: g1t covers the account's usage. Usage is still recorded with
-  what it cost, so the Usage page stays accurate, and paid features are on
-  without a plan.
+  what it cost, so the Usage page stays accurate, and paid features,
+  Team among them, are on without a plan.
+- **Plan and pools**: Team without charge, such as for a partner, or a
+  larger share of the open-source pool or of trials.
 - **Custom**: a discount on every usage charge, a limit of its own, or
   both, sometimes until a date, after which standard terms apply.
 
 Each change is made by g1t staff in g1t's billing console and recorded with
-who made it and why. To ask for one, write to support.
+who made it and why. To ask for one, write to
+[billing@g1t.sh](mailto:billing@g1t.sh).
+
+An enterprise account also has the [audit log](/guides/audit-log/) of each
+of its workspaces, exported as CSV or JSON, and a year of it with Team.
+Single sign-on through your identity provider is coming; it is not
+available yet.
 
 ## Your card, invoices and billing details
 
@@ -344,16 +441,26 @@ time. Every member can see it.
   | Runs on your own model provider | Older months only: the flat fee runs on your own provider used to carry. |
   | Sandbox time | Each sandbox's time, memory and disk. |
   | Deployments | Builds and apps beyond the allowance. |
+  | Private storage | Storage past the free amount, once a month. |
+  | Search embeddings | Private text put in the search index, once a month. |
+  | Security scans | History scans and dependency checks, once a month. |
   | Payments | Card payments and invoices paid. |
   | Credits from g1t | Credit g1t added, such as a goodwill credit. |
   | Refunds | Money given back to your card. |
 
+- **Paid for.** Below the totals, what paid for usage before it was
+  charged: **Paid by your Team plan's credit**, **Paid by your trial
+  credit** and **Paid by g1t's open-source pool**, each with its amount.
+  Lines show how much of them was paid this way, and each entry says so
+  in its description. A month that closed under the
+  [minimum charge](#the-minimum-charge) says what carried over.
 - **Open a line** to see its entries, 50 at a time, newest first. Each
   run links to the pull request it was for.
 - **Pick a month** to see an earlier one; months with no entries are not
   listed.
 - **CSV** downloads every entry of the month, with the line it falls
-  under, for your own books. Invoices from Stripe remain the record for
+  under and what the Team credit, the trial and the open-source pool paid
+  of it, for your own books. Invoices from Stripe remain the record for
   what was charged to your card.
 
 Each pull request's session also ends with what its run cost before the
@@ -371,10 +478,10 @@ g1t is in preview.
   provider bills you for the models; g1t charges nothing for now, and only
   each run's sandbox time once pricing starts.
 - **g1t's hosted models:** while payments are in test mode, every
-  workspace can use g1t's own models on
-  [the free allowance](#the-free-allowance) ($1 each, until October 22),
-  and a few g1t has opened them to without limit. When payments go live,
-  every workspace can use them, paid from its credit.
+  workspace can use g1t's own models on [its trial credit](#trials) ($1
+  each, from a budget that renews monthly), and a few g1t has opened them
+  to without limit. When payments go live, every workspace can use them,
+  paid from its credit.
 
 Each workspace decides where its model spend goes. A workspace that can use
 neither sees a message saying so, with the way to connect its own provider.

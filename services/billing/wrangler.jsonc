@@ -19,7 +19,12 @@
 		}
 	],
 	// Identity emails owners as their workspace nears its usage limit.
-	"services": [{ "binding": "IDENTITY", "service": "g1t-identity" }],
+	// Repos says which repositories are public (the open-source pool pays
+	// for work on those) and what private ones hold (the storage meter).
+	"services": [
+		{ "binding": "IDENTITY", "service": "g1t-identity" },
+		{ "binding": "REPOS", "service": "g1t-repos" }
+	],
 	// Events from the bus: a workspace renamed moves its billing to the
 	// new slug (src/rename.rs).
 	"queues": {
@@ -42,17 +47,38 @@
 		"LIMIT_NEW_MICROS": "3000000",
 		"LIMIT_PAID_MIN_MICROS": "25000000",
 		"LIMIT_PAID_MAX_MICROS": "1000000000",
-		// A free allowance on g1t's hosted models, so people can try g1t's
-		// agents without a key of their own: each workspace may use this
-		// much model cost ($1), out of one pool for everyone ($40), until
-		// the end of finalist judging (2026-10-22, 11:59 PM Pacific). Any
-		// of them empty turns it off.
+		// Trial credit, so people can try g1t without a key or a card: each
+		// new workspace gets this much usage credit ($1), once, granted the
+		// first time it uses something, out of a pool for everyone ($40)
+		// that resets each calendar month (UTC). When a month's pool is
+		// given out, new trials wait for the next month. Either at 0 turns
+		// new trials off. See src/credits.rs.
 		"TRIAL_WORKSPACE_MICROS": "1000000",
-		"TRIAL_TOTAL_MICROS": "40000000",
-		"TRIAL_UNTIL": "2026-10-23T06:59:59Z",
+		"TRIAL_MONTHLY_POOL_MICROS": "40000000",
+		// g1t's open-source pool: sandbox time and model cost for work on
+		// public repositories, up to $10 a month in all and $1 a month for
+		// any one repository. Past either, the workspace pays as usual.
+		"OSS_POOL_MICROS": "10000000",
+		"OSS_REPO_MICROS": "1000000",
+		// The Team plan: $20 a month per workspace, never per person, with
+		// $5 of usage credit a month (drawn first; it does not roll over),
+		// 50 GB of private storage and a year of audit log.
+		"TEAM_MONTHLY_CENTS": "2000",
+		"TEAM_INCLUDED_MICROS": "5000000",
+		"TEAM_PRIVATE_STORAGE_BYTES": "50000000000",
+		"TEAM_AUDIT_RETENTION_DAYS": "365",
+		// Without Team: 1 GB of private storage free (charged past it at
+		// cost plus the margin), and 30 days of audit log.
+		"FREE_PRIVATE_STORAGE_BYTES": "1000000000",
+		"AUDIT_RETENTION_DAYS": "30",
+		// No card is charged less than $5, so a payment's fee is never most
+		// of it: smaller amounts carry over to the next invoice.
+		"MIN_CHARGE_MICROS": "5000000",
 		// The Deployments plan's monthly price, in cents. Turning the
-		// feature on starts it; FREE_WHILE_BUILDING does not cover it.
+		// feature on starts it; FREE_WHILE_BUILDING does not cover it. It
+		// includes 200 build minutes a month (about $0.25 of it at cost).
 		"DEPLOYMENTS_MONTHLY_CENTS": "500",
+		"DEPLOYMENTS_BUILD_SECONDS": "12000",
 		// Where the keeper reads what g1t pays (src/keeper.rs). Its token,
 		// CLOUDFLARE_USAGE_TOKEN, is a secret: Billing, Account Analytics
 		// and AI Gateway, read only.

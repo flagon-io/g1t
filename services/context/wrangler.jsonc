@@ -28,7 +28,9 @@
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
 		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" },
-		{ "binding": "SECURITY", "service": "g1t-security" }
+		{ "binding": "SECURITY", "service": "g1t-security" },
+		// Told what embedding cost each month, which it charges.
+		{ "binding": "BILLING", "service": "g1t-billing" }
 	],
 	"queues": {
 		// Every event, to keep the catalog and search current; and its own

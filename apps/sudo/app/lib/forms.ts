@@ -2,7 +2,7 @@
  * Reading sudo's forms. Everything typed is checked here before it goes
  * to the billing service, which checks it again.
  */
-import type { SalesStage, Terms } from "@g1t/contracts";
+import type { Allowances, SalesStage, Terms } from "@g1t/contracts";
 
 import { MICROS_PER_DOLLAR, parseDollars } from "./money.ts";
 import { isStage } from "./signals.ts";
@@ -175,4 +175,28 @@ export function parseCredit(raw: string): Parsed<number> {
   if (micros == null || micros <= 0) return { ok: false, error: "The amount is dollars and cents, more than zero, such as 25 or 120.50." };
   if (micros > MAX_CREDIT_MICROS) return { ok: false, error: "One credit is at most $10,000. Issue more than one if it really is more." };
   return { ok: true, value: micros };
+}
+
+/** The most staff can set an account's share of a pool to, against a slipped finger. */
+export const MAX_POOL_SHARE_MICROS = 1_000 * MICROS_PER_DOLLAR;
+
+/**
+ * Allowances from the plan-and-pools form: Team without charge, and the
+ * account's share of the open-source pool and of trials. A blank amount
+ * means the default.
+ */
+export function parseAllowances(form: FormData): Parsed<Allowances> {
+  const amount = (name: string, what: string): Parsed<number | null> => {
+    const raw = text(form, name);
+    if (!raw) return { ok: true, value: null };
+    const micros = parseDollars(raw);
+    if (micros == null || micros < 0) return { ok: false, error: `${what} is dollars and cents, such as 5 or 2.50, or blank for the default.` };
+    if (micros > MAX_POOL_SHARE_MICROS) return { ok: false, error: `${what} is at most $1,000.` };
+    return { ok: true, value: micros };
+  };
+  const oss = amount("oss", "The open-source share");
+  if (!oss.ok) return oss;
+  const trial = amount("trial", "The trial credit");
+  if (!trial.ok) return trial;
+  return { ok: true, value: { team: text(form, "team") === "on", ossRepoMicros: oss.value, trialMicros: trial.value } };
 }

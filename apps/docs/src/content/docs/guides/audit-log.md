@@ -52,6 +52,12 @@ Each agent run's page has a **What it did** section listing its entries in
 order, and a pull request's **Agent** panel shows the latest of what its
 runs did. Both link to the full log, filtered to the run.
 
+## How long it is kept
+
+The log can be read and exported back **30 days**, or **a year** on the
+[Team plan](/guides/usage-and-billing/#plans). The Audit log page says
+which applies. Entries older than a year are removed.
+
 ## Export
 
 **CSV** and **JSON** on the Audit log page download what the current

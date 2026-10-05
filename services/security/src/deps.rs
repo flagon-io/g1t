@@ -24,9 +24,21 @@ const ADVISORY_MAX_AGE_MS: u64 = 7 * 24 * 60 * 60 * 1000;
 const MAX_ADVISORY_FETCHES: usize = 150;
 /// Upgrade issues opened per scan, most severe first.
 const MAX_NEW_ISSUES: usize = 8;
-/// What one call to OSV is taken to cost, for metering: a Worker
-/// subrequest and its CPU, rounded up.
-const MICROS_PER_OSV_CALL: i64 = 2;
+/// CPU one call to OSV takes, sending it and reading its answer, in
+/// milliseconds (an estimate, rounded up). OSV itself is free, and a
+/// Worker's outgoing requests are not charged.
+const CPU_MS_PER_OSV_CALL: f64 = 2.0;
+
+/// What a dependency check cost g1t, in millionths of a dollar, rounded
+/// up, at the prices in `history`: the CPU of its OSV calls, and the rows
+/// it writes (an advisory kept for each call at most, each vulnerability
+/// found, where the check stands and the month's usage).
+pub fn dependency_check_cost(calls: u32, found: usize) -> i64 {
+    use crate::history::{MICROS_PER_CPU_MS, MICROS_PER_ROW_WRITTEN};
+    let cpu = f64::from(calls) * CPU_MS_PER_OSV_CALL * MICROS_PER_CPU_MS;
+    let rows = (calls as usize + found + 2) as f64 * MICROS_PER_ROW_WRITTEN;
+    (cpu + rows).ceil() as i64
+}
 
 async fn osv_call(method: Method, url: &str, body: Option<&Value>) -> Result<Option<Value>> {
     let headers = Headers::new();
@@ -171,7 +183,7 @@ impl Security {
         };
         self.store.replace_vulnerabilities(&repo.repo_id, &found).await?;
         self.store.set_dependencies_scanned(&repo.repo_id, files.commit.as_deref(), &paths, None).await?;
-        self.meter(&repo.namespace, 0, 0, calls, i64::from(calls) * MICROS_PER_OSV_CALL).await?;
+        self.meter(&repo.namespace, 0, 0, calls, dependency_check_cost(calls, found.len())).await?;
         if repo.upkeep != 0 {
             self.open_upgrades(repo, &located).await?;
         }
@@ -388,6 +400,17 @@ fn issue_text(ecosystem: &str, package: &str, target: &str, vulns: &[&VulnRow], 
 mod tests {
     use super::*;
     use g1t_contracts::security::LockfileText;
+
+    #[test]
+    fn scans_cost_their_cpu_and_the_rows_they_write() {
+        // 10 OSV calls and 3 vulnerabilities: 0.4 of CPU, 15 rows.
+        assert_eq!(dependency_check_cost(10, 3), 16);
+        assert_eq!(dependency_check_cost(0, 0), 2);
+        // A page of 25 commits that read 100 objects and found nothing:
+        // 10 of CPU and 2 rows. The old placeholder charged 100.
+        assert_eq!(crate::history::history_page_cost(100, 0), 12);
+        assert_eq!(crate::history::history_page_cost(0, 1), 3);
+    }
 
     #[test]
     fn go_sum_is_skipped_beside_go_mod() {

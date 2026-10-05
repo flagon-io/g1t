@@ -18,9 +18,6 @@ use worker::Result;
 
 use crate::Billing;
 
-/// Stripe will not charge a card less than this.
-const MIN_INVOICE_MICROS: i64 = 500_000;
-
 /// The invoice's lines: what was used since the last one, by kind, then
 /// whatever makes the total what is owed.
 pub(crate) fn invoice_lines(used: &[(String, i64)], owed: i64) -> Vec<InvoiceItem> {
@@ -86,8 +83,16 @@ impl Billing {
         let Some(account) = self.row(workspace).await? else { return Ok(Err("Nothing billed yet.".into())) };
         let Some(customer) = account.customer_id else { return Ok(Err("No card on file.".into())) };
         let owed = (-account.balance_micros).max(0);
-        if owed < MIN_INVOICE_MICROS {
-            return Ok(Err("Less is owed than Stripe will charge.".into()));
+        // A month's close charges no less than the minimum
+        // (`MIN_CHARGE_MICROS`), so a payment's fee is never most of it;
+        // less carries over. A charge because a limit was reached always
+        // goes through, so a new workspace's small limit never strands it.
+        if reason == "month" && !crate::limits::worth_charging(owed, self.plans.min_charge_micros) {
+            return Ok(Err(format!(
+                "{} is owed, under the {} minimum charge; it carries over to the next invoice.",
+                crate::features::dollars(owed),
+                crate::features::dollars(self.plans.min_charge_micros)
+            )));
         }
         // What was used since the last invoice, by kind.
         #[derive(Deserialize)]
@@ -114,6 +119,9 @@ impl Billing {
                 "SELECT CASE
                           WHEN task = 'sandbox' THEN 'Sandbox time'
                           WHEN task = 'deployments' THEN 'Deployments: builds and usage past the plan'
+                          WHEN task = 'security' THEN 'Security scans'
+                          WHEN task = 'context' THEN 'Search embeddings'
+                          WHEN task = 'storage' THEN 'Private repository storage'
                           WHEN billed_to = 'workspace' THEN 'Runs on your own model provider'
                           ELSE 'Agents on g1t''s models' END AS kind,
                         -SUM(amount_micros) AS charged

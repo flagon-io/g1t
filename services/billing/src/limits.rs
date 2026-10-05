@@ -139,13 +139,17 @@ impl Billing {
         with_month.push(month_start.as_str().into());
         // Each usage entry at its cost to g1t or its charge, whichever is
         // more; on the workspace's own provider, only g1t's fee is g1t's.
+        // What a plan's credit, the trial or the open-source pool paid for
+        // is not unpaid: those are capped budgets already paid for.
         let month = self
             .db
             .prepare(format!(
                 "SELECT
                    SUM(CASE WHEN kind = 'usage' THEN
                          CASE WHEN COALESCE(billed_to, 'g1t') = 'g1t'
-                              THEN MAX(COALESCE(cost_micros, 0), -amount_micros)
+                              THEN MAX(COALESCE(cost_micros, 0) - COALESCE(credit_micros, 0)
+                                         - COALESCE(trial_micros, 0) - COALESCE(oss_micros, 0),
+                                       -amount_micros)
                               ELSE -amount_micros END
                        END) AS used,
                    SUM(CASE WHEN kind = 'top_up' THEN amount_micros END) AS paid
@@ -430,23 +434,12 @@ impl Billing {
         Ok(Outcome::Ok(self.limit_of(&workspace).await?))
     }
 
+    /// What a source cost so far this month. `security`, `context` and
+    /// `storage` are charged by billing once the month is over (see
+    /// `storage`); `deployments` charges its own.
     pub(crate) async fn note_pending(&self, a: NotePendingArgs) -> Result<bool> {
         let now = rfc3339(now_ms());
-        let charge = crate::charge_micros(a.cost_micros.max(0) as f64 / g1t_contracts::billing::MICROS_PER_DOLLAR as f64, self.margin_percent);
-        self.db
-            .prepare(
-                "INSERT INTO pending_usage (workspace, source, month, charge_micros, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)
-                 ON CONFLICT (workspace, source, month) DO UPDATE SET charge_micros = ?4, updated_at = ?5",
-            )
-            .bind(&[
-                a.workspace.to_lowercase().into(),
-                a.source.as_str().into(),
-                now[..7].into(),
-                (charge as f64).into(),
-                now.as_str().into(),
-            ])?
-            .run()
-            .await?;
+        self.set_pending(&a.workspace, &a.source, &now[..7], a.cost_micros).await?;
         Ok(true)
     }
 
@@ -553,9 +546,15 @@ impl Billing {
                 continue;
             }
             let owed = (-account.balance.unwrap_or(0)).max(0);
-            if owed < 10_000 {
-                // Under a cent: nothing worth charging.
+            if owed == 0 {
                 record("nothing", 0, None, None)?.run().await?;
+                continue;
+            }
+            if !worth_charging(owed, self.plans.min_charge_micros) {
+                // Under the minimum charge: a card payment's fee would be
+                // too much of it. It stays owed and goes on the next
+                // invoice that reaches the minimum.
+                record("carried", owed, None, None)?.run().await?;
                 continue;
             }
             match self.invoice_workspace(&account.workspace, "month", &closing).await? {
@@ -701,6 +700,12 @@ impl Billing {
     }
 }
 
+/// Whether `owed` is enough to charge a card: at least the minimum charge
+/// (`MIN_CHARGE_MICROS`). Less carries over to the next invoice.
+pub(crate) fn worth_charging(owed: i64, min_charge: i64) -> bool {
+    owed > 0 && owed >= min_charge
+}
+
 /// Which warning a workspace has reached: 100, 80, 50 or none (0).
 pub(crate) fn warning_level(exposure: i64, ceiling: i64) -> i64 {
     if exposure >= ceiling {
@@ -770,6 +775,19 @@ mod tests {
         assert_eq!(warning_level(150, 300), 50);
         assert_eq!(warning_level(240, 300), 80);
         assert_eq!(warning_level(300, 300), 100);
+    }
+
+    #[test]
+    fn amounts_under_the_minimum_carry_over() {
+        let min = 5_000_000;
+        assert!(!worth_charging(0, min));
+        assert!(!worth_charging(4_990_000, min));
+        assert!(worth_charging(5_000_000, min));
+        assert!(worth_charging(12_000_000, min));
+        // $3 carried from last month and $2.50 this month: charged together.
+        let carried = 3_000_000;
+        assert!(!worth_charging(carried, min));
+        assert!(worth_charging(carried + 2_500_000, min));
     }
 
     #[test]

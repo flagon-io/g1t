@@ -53,6 +53,27 @@ A private repository is visible only to members of its workspace. To
 everyone else it looks exactly like a repository that does not exist, both
 on the site and to git.
 
+On the site, an address you cannot see gives the same page either way, with
+status 404:
+
+| You are | The page says |
+| --- | --- |
+| Signed out | **Sign in to see this project**: it may be private, or it may not exist. Signing in brings you back to the same address. |
+| Signed in | **This project doesn't exist, or you don't have access to it**, which account you are signed in as, and a link to switch account. If you should have access, ask an owner of the workspace to add you. |
+
+Issues, pull requests and workspace pages work the same way. A profile
+that does not exist says **No one goes by that name**, since profiles are
+public.
+
+## Browsing without an account
+
+Public projects, Explore, Search and profiles are open to everyone, in the
+same sidebar members use. Signed out, the sidebar has Explore and Search,
+and in a project its Code, Issues, Pull requests, Agents and Workflows;
+pages only members see, such as Deployments, Security and Settings, are
+left out. **Sign in** and **Sign up** sit at the bottom, and both bring you
+back to the page you were on.
+
 ## Protected branches
 
 A repository can protect its default branch under **Settings → Repository**. Pushing to

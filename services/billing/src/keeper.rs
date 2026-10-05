@@ -292,6 +292,17 @@ struct Unsettled {
 struct Charged {
     cost_micros: Option<i64>,
     description: String,
+    amount_micros: i64,
+}
+
+/// What a settled run's correction comes to, from the charges at the
+/// reported and the gateway's cost and what the workspace was charged at
+/// first. A charge up is drawn down like any charge; a charge down is
+/// given back only up to what the workspace paid, since what a credit or
+/// a pool paid was never the workspace's money.
+pub(crate) fn correction(reported_charge: i64, gateway_charge: i64, first_charged: i64) -> i64 {
+    let delta = gateway_charge - reported_charge;
+    if delta >= 0 { delta } else { delta.max(-first_charged.max(0)) }
 }
 
 fn ms(timestamp: &str) -> u64 {
@@ -341,6 +352,16 @@ impl Billing {
                 })
                 .collect(),
             model_margin_percent: self.margin_percent,
+            plans: g1t_contracts::billing::Feature::ALL.iter().map(|feature| self.plan(*feature)).collect(),
+            free: Some(g1t_contracts::billing::FreeTier {
+                trial_workspace_micros: if self.trials_on { self.plans.trial_workspace_micros } else { 0 },
+                trial_monthly_pool_micros: if self.trials_on { self.plans.trial_monthly_pool_micros } else { 0 },
+                oss_pool_micros: self.plans.oss_pool_micros,
+                oss_repo_micros: self.plans.oss_repo_micros,
+                free_private_storage_bytes: self.plans.free_storage_bytes,
+                audit_retention_days: self.plans.audit_days,
+                min_charge_micros: self.plans.min_charge_micros,
+            }),
         })
     }
 
@@ -420,7 +441,7 @@ impl Billing {
         let gateway_micros = charge_micros(cost_usd, 0);
         let charged = self
             .db
-            .prepare("SELECT cost_micros, description FROM ledger WHERE reference = ?")
+            .prepare("SELECT cost_micros, description, amount_micros FROM ledger WHERE reference = ?")
             .bind(&[run.id.as_str().into()])?
             .first::<Charged>(None)
             .await?;
@@ -452,12 +473,18 @@ impl Billing {
         match charged {
             // Never reported: charged now, from the gateway's figure.
             None => {
+                let charge = charge_for(gateway_micros);
+                let eligible = crate::credits::Eligible { trial: true, repo: Some(run.repo.clone()) };
+                let drawn = self.draw(&run.workspace, charge, &settled_at[..7], &eligible).await?;
                 let description = format!(
-                    "Work on {}#{}, settled from AI Gateway after the sandbox stopped without reporting{free_note}",
-                    run.repo, run.number
+                    "Work on {}#{}, settled from AI Gateway after the sandbox stopped without reporting{free_note}{}",
+                    run.repo,
+                    run.number,
+                    drawn.note()
                 );
-                self.enter(&run.workspace, EntryKind::Usage, -charge_for(gateway_micros), &description, &run.id, Some(&row), Some(gateway_micros), None, None)
+                self.enter(&run.workspace, EntryKind::Usage, -(charge - drawn.total()), &description, &run.id, Some(&row), Some(gateway_micros), None, None)
                     .await?;
+                self.record_drawn(&run.id, &drawn).await?;
             }
             Some(charged) => {
                 let reported = charged.cost_micros.unwrap_or(0);
@@ -465,25 +492,35 @@ impl Billing {
                 if delta == 0 {
                     return Ok(());
                 }
-                let amount = -(charge_for(gateway_micros) - charge_for(reported));
+                let change = correction(charge_for(reported), charge_for(gateway_micros), -charged.amount_micros);
+                // A charge up is paid for like any other charge.
+                let drawn = if change > 0 {
+                    let eligible = crate::credits::Eligible { trial: true, repo: Some(run.repo.clone()) };
+                    self.draw(&run.workspace, change, &settled_at[..7], &eligible).await?
+                } else {
+                    crate::credits::Drawn::default()
+                };
                 let description = format!(
-                    "Correction to “{}”: AI Gateway priced its {requests} model requests at {}, not {}",
+                    "Correction to “{}”: AI Gateway priced its {requests} model requests at {}, not {}{}",
                     charged.description,
                     crate::features::dollars(gateway_micros),
                     crate::features::dollars(reported),
+                    drawn.note(),
                 );
+                let reference = format!("{}/settled", run.id);
                 self.enter(
                     &run.workspace,
                     EntryKind::Usage,
-                    amount,
+                    -(change - drawn.total()),
                     &description,
-                    &format!("{}/settled", run.id),
+                    &reference,
                     Some(&row),
                     Some(delta),
                     None,
                     None,
                 )
                 .await?;
+                self.record_drawn(&reference, &drawn).await?;
             }
         }
         Ok(())
@@ -564,9 +601,11 @@ impl Billing {
         }
         // Apps run as Workers: per million requests and CPU milliseconds,
         // once the bill shows them charged.
-        let app_meters: [(&str, &[&str], &str); 2] = [
+        // Security scans' CPU follows the same Workers CPU rate.
+        let app_meters: [(&str, &[&str], &str); 3] = [
             ("app_requests", &["workers", "requests"], "requests"),
             ("app_cpu", &["workers cpu"], "CPU ms"),
+            ("scan_cpu", &["workers cpu"], "CPU ms"),
         ];
         for (meter, words, unit) in app_meters {
             if let Some(rate) = billed_rate(&named(words)) {
@@ -621,6 +660,18 @@ impl Billing {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_correction_never_gives_back_what_the_workspace_did_not_pay() {
+        // Up by 2 cents: charged in full (then drawn down like any charge).
+        assert_eq!(correction(100_000, 120_000, 100_000), 20_000);
+        // Down by 2 cents, all of it paid by the workspace: given back.
+        assert_eq!(correction(120_000, 100_000, 120_000), -20_000);
+        // Down, but the open-source pool paid all but a cent: a cent back.
+        assert_eq!(correction(120_000, 100_000, 10_000), -10_000);
+        // Paid entirely by a credit or pool: nothing back.
+        assert_eq!(correction(120_000, 100_000, 0), 0);
+    }
 
     #[test]
     fn small_moves_are_noise_and_wild_ones_are_not_believed() {

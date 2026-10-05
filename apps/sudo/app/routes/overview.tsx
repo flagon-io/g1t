@@ -74,6 +74,23 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
             <Stat label="Paying workspaces" value={String(overview.payingWorkspaces)} hint="Charged something this month" />
           </div>
 
+          {overview.pools && (
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <Stat
+                label="Open-source pool"
+                value={`${usd(overview.pools.ossUsedMicros)} of ${usd(overview.pools.ossPoolMicros)}`}
+                hint={`Paid for work on public repositories this month; up to ${usd(overview.pools.ossRepoMicros)} each`}
+                tone={overview.pools.ossUsedMicros >= overview.pools.ossPoolMicros ? "warn" : undefined}
+              />
+              <Stat
+                label="Trials given"
+                value={`${usd(overview.pools.trialGrantedMicros)} of ${usd(overview.pools.trialPoolMicros)}`}
+                hint={`${overview.pools.trialGrants} new workspace${overview.pools.trialGrants === 1 ? "" : "s"} this month; new trials wait when it is given out`}
+                tone={overview.pools.trialGrantedMicros >= overview.pools.trialPoolMicros ? "warn" : undefined}
+              />
+            </div>
+          )}
+
           <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <Section title="Last six months" description="Charged against what it cost g1t, every workspace together.">
               <MonthsChart months={months} />

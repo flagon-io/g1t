@@ -34,6 +34,7 @@ import {
   PullIcon,
   plainText,
 } from "../../components/work";
+import { notFound } from "../../lib/not-found.server";
 import { identity, integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 
@@ -73,7 +74,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     // Issues and pull requests share numbers; this one may be a pull request.
     const pull = await work.getPull(path, number, viewer);
     if (pull.ok) throw redirect(`/${params.owner}/${params.repo}/pull/${number}`);
-    throw new Response("Issue not found.", { status: 404 });
+    throw notFound("issue");
   }
   const { issue } = found.value;
   return {

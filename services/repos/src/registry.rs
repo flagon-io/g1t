@@ -285,6 +285,72 @@ impl Registry {
             .collect())
     }
 
+    /// Adds a pushed pack's bytes to what the repository is counted as
+    /// holding: its own, or, for a pull request's working copy, the
+    /// repository it is a copy of, whose storage it is.
+    pub async fn add_stored_bytes(&self, repo: &Repo, bytes: u64) -> Result<()> {
+        if bytes == 0 {
+            return Ok(());
+        }
+        let root = repo.fork_of.as_deref().unwrap_or(&repo.id);
+        self.db
+            .prepare("UPDATE repos SET stored_bytes = stored_bytes + ? WHERE id = ?")
+            .bind(&[(bytes as f64).into(), root.into()])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    /// Which of these `namespace/name` paths are private. A working copy
+    /// answers as its repository. Unknown paths are left out.
+    pub async fn visibility(&self, paths: &[String]) -> Result<Vec<g1t_contracts::repos::RepoVisibility>> {
+        let mut out = Vec::new();
+        for path in paths.iter().take(50) {
+            let Some((namespace, name)) = path.split_once('/') else { continue };
+            let Some(repo) = self
+                .by_path(&RepoPath { namespace: namespace.to_owned(), name: name.to_owned() })
+                .await?
+            else {
+                continue;
+            };
+            let is_private = match &repo.fork_of {
+                Some(parent) => self.by_id(parent).await?.map_or(repo.is_private, |parent| parent.is_private),
+                None => repo.is_private,
+            };
+            out.push(g1t_contracts::repos::RepoVisibility { path: path.clone(), is_private });
+        }
+        Ok(out)
+    }
+
+    /// What each workspace's repositories are counted as holding, private
+    /// and public apart. Working copies count toward their repository.
+    pub async fn storage(&self) -> Result<Vec<g1t_contracts::repos::WorkspaceStorage>> {
+        #[derive(Deserialize)]
+        struct Row {
+            namespace: String,
+            private_bytes: Option<f64>,
+            public_bytes: Option<f64>,
+        }
+        Ok(self
+            .db
+            .prepare(
+                "SELECT namespace,
+                        SUM(CASE WHEN is_private = 1 THEN stored_bytes ELSE 0 END) AS private_bytes,
+                        SUM(CASE WHEN is_private = 0 THEN stored_bytes ELSE 0 END) AS public_bytes
+                 FROM repos WHERE fork_of IS NULL AND stored_bytes > 0 GROUP BY namespace",
+            )
+            .all()
+            .await?
+            .results::<Row>()?
+            .into_iter()
+            .map(|row| g1t_contracts::repos::WorkspaceStorage {
+                namespace: row.namespace,
+                private_bytes: row.private_bytes.unwrap_or(0.0) as i64,
+                public_bytes: row.public_bytes.unwrap_or(0.0) as i64,
+            })
+            .collect())
+    }
+
     /// Forgets a repository that could not be filled.
     pub async fn remove(&self, id: &str) -> Result<()> {
         self.db

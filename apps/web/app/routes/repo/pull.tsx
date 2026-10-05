@@ -67,6 +67,7 @@ import {
 } from "../../components/work";
 import { CatchUpProgress, ChecksSection, ConflictsSection, MergeabilityRow, runIdOf } from "../../components/merge-box";
 import { CATCH_UP_TIMEOUT_MS } from "../../lib/catch-up";
+import { notFound } from "../../lib/not-found.server";
 import { actions, deployments, identity, projects, repos, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 
@@ -118,7 +119,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // Issues and pull requests share numbers; this one may be an issue.
     const issue = await work.getIssue(path, number, viewer);
     if (issue.ok) throw redirect(`/${params.owner}/${params.repo}/issues/${number}`);
-    throw new Response("Pull request not found.", { status: 404 });
+    throw notFound("pull");
   }
   const { pull } = found.value;
   const range = pullComparison(pull);

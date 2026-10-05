@@ -6,7 +6,7 @@ import { page } from "../../lib/meta";
 import { AuditTable } from "../../components/audit";
 import { Button, ButtonLink, EmptyState, Field, Input } from "../../components/ui";
 import { type AuditFilters, filterHref, parseFilters, toQuery } from "../../lib/audit";
-import { auditPage } from "../../lib/audit.server";
+import { auditPage, auditRetention } from "../../lib/audit.server";
 import { repos } from "../../lib/services.server";
 import { requireUser, roleIn } from "../../lib/session.server";
 
@@ -37,9 +37,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   if (!role) throw data("Only members of this workspace can read its audit log.", { status: 404 });
   const filters = parseFilters(new URL(request.url).searchParams);
   const { visibility: _, ...query } = toQuery(workspace, { kind: "all" }, filters, PAGE_SIZE);
-  const [found, projects] = await Promise.all([
+  const [found, projects, retention] = await Promise.all([
     auditPage(viewer, query),
     repos.list(viewer, { namespace: workspace }).catch(() => []),
+    auditRetention(workspace),
   ]);
   return {
     workspace,
@@ -48,6 +49,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     entries: found?.entries ?? [],
     next: found?.next ?? null,
     projects: projects.map((repo) => repo.name),
+    retention,
   };
 }
 
@@ -75,7 +77,7 @@ const SELECT =
   "w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none transition-colors hover:border-line-strong focus:border-accent-dim";
 
 export default function WorkspaceAudit({ loaderData }: Route.ComponentProps) {
-  const { workspace, role, filters, entries, next, projects } = loaderData;
+  const { workspace, role, filters, entries, next, projects, retention } = loaderData;
   const base = `/${workspace}/-/audit`;
   const filtered = Object.entries(filters).some(([key, value]) => key !== "before" && value);
   const exportHref = (format: "csv" | "json") => filterHref(`${base}/export`, { ...filters, before: "" }) + `${filtered ? "&" : "?"}format=${format}`;
@@ -88,6 +90,10 @@ export default function WorkspaceAudit({ loaderData }: Route.ComponentProps) {
         {role === "owner"
           ? " As an owner you see the whole workspace."
           : " As a member you see what was done to the workspace's projects, and what was done by you or on your behalf."}
+        {retention != null &&
+          (retention >= 365
+            ? ` The log goes back ${retention === 365 ? "a year" : `${retention} days`}, on the Team plan.`
+            : ` The log goes back ${retention} days; the Team plan keeps a year.`)}
       </p>
 
       <Form method="get" className="mt-6 rounded-xl border border-line bg-surface p-4">

@@ -139,9 +139,9 @@ A pull request whose checks have not passed cannot be merged, unless a
 member of the workspace chooses to merge anyway.
 
 Checks run in repositories of workspaces that can use g1t's agents: those
-with [their own model provider](/guides/models/), and those on
-[the free allowance](/guides/usage-and-billing/#the-free-allowance) of
-g1t's hosted models.
+with [their own model provider](/guides/models/), and those with
+[trial credit](/guides/usage-and-billing/#trials) left on g1t's hosted
+models.
 
 ## Review
 
@@ -234,6 +234,6 @@ g1t is under active development. These are designed but not available yet:
 - **Milestones.**
 - **g1t agents for everyone.** g1t can put its own agents on an issue, each
   in a sandbox. A workspace that connects its own model provider can use
-  them today, and until October 22 every workspace gets a free $1 of agent
-  time on g1t's own models, no key needed.
-  See [the free allowance](/guides/usage-and-billing/#the-free-allowance).
+  them today, and every new workspace gets $1 of trial credit, which pays
+  for g1t's own models and sandboxes, no key needed.
+  See [trials](/guides/usage-and-billing/#trials).

@@ -24,6 +24,7 @@ import {
   LayoutGrid,
   ListTree,
   Lock,
+  LogIn,
   LogOut,
   Menu,
   Plus,
@@ -49,7 +50,7 @@ import type { Membership, User } from "@g1t/contracts";
 import { MICROS_PER_DOLLAR } from "@g1t/contracts";
 
 import { CommandPalette, type PaletteCommand, usePaletteShortcut } from "./command-palette";
-import { Mark } from "./logo";
+import { Logo, Mark } from "./logo";
 import { Avatar, notACredential } from "./ui";
 import {
   DropdownMenu,
@@ -60,8 +61,14 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { type RoadmapItem, roadmapIn } from "../lib/roadmap";
+import { VISITOR_LINKS, projectPages } from "../lib/chrome";
+import { withNext } from "../lib/next";
 
-/** What the sidebar needs, worked out by the root loader for a signed-in person. */
+/**
+ * What the sidebar needs, worked out by the root loader. For a visitor who
+ * is not signed in there is no workspace, no projects and no usage: only
+ * the project being looked at, if they can see it.
+ */
 export type ShellData = {
   /** The workspace the sidebar is about: the one being looked at, or their first. */
   workspace: Membership | null;
@@ -459,16 +466,29 @@ function sameRepo(a: { namespace: string; name: string } | null, b: { namespace:
  * as it does for settings: everything about the project, running and its
  * code, and nothing else, with the way back to everything.
  */
-function RepoMenu({ repo, isPrivate, open }: { repo: MenuRepo; isPrivate: boolean; open: boolean }) {
+function RepoMenu({
+  repo,
+  isPrivate,
+  open,
+  visitor = false,
+}: {
+  repo: MenuRepo;
+  isPrivate: boolean;
+  open: boolean;
+  /** Not signed in: the way back is Explore, not mission control. */
+  visitor?: boolean;
+}) {
   const base = `/${repo.namespace}/${repo.name}`;
+  // What a member sees, and what everyone who can see the project does.
+  const shows = new Set(projectPages(repo.member));
   return (
     <nav aria-label={`${repo.namespace}/${repo.name}`} inert={!open} className={PANEL}>
       <Link
-        to="/"
+        to={visitor ? "/explore" : "/"}
         className="group mt-3 flex h-8 items-center gap-2 rounded-md px-2 text-[0.8125rem] text-muted transition-colors hover:bg-raised/60 hover:text-fg"
       >
         <ArrowLeft size={15} className="text-faint transition-transform group-hover:-translate-x-0.5 group-hover:text-muted" />
-        Mission control
+        {visitor ? "Explore" : "Mission control"}
       </Link>
       <NavLink
         to={base}
@@ -504,7 +524,7 @@ function RepoMenu({ repo, isPrivate, open }: { repo: MenuRepo; isPrivate: boolea
         <SidebarLink to={`${base}/actions`} icon={<PlayCircle size={15} />}>
           Workflows
         </SidebarLink>
-        {repo.member ? (
+        {shows.has("deployments") ? (
           <SidebarLink to={`${base}/deployments`} also={soonPaths(base, "Deployments")} icon={<Rocket size={15} />}>
             Deployments
           </SidebarLink>
@@ -512,7 +532,7 @@ function RepoMenu({ repo, isPrivate, open }: { repo: MenuRepo; isPrivate: boolea
         <SidebarSoonLink to={`${base}/soon/logs`} also={soonPaths(base, "Observability")} icon={<Activity size={15} />} about="Logs, errors, uptime and analytics of the project's deployed apps.">
           Observability
         </SidebarSoonLink>
-        {repo.member ? (
+        {shows.has("security") ? (
           <SidebarLink to={`${base}/security`} also={soonPaths(base, "Security")} icon={<ShieldCheck size={15} />}>
             Security
           </SidebarLink>
@@ -520,7 +540,7 @@ function RepoMenu({ repo, isPrivate, open }: { repo: MenuRepo; isPrivate: boolea
         <SidebarSoonLink to={`${base}/soon/delivery`} also={soonPaths(base, "Insights")} icon={<BarChart3 size={15} />} about="Delivery metrics, costs and the work agents do.">
           Insights
         </SidebarSoonLink>
-        {repo.member && (
+        {shows.has("settings") && (
           <SidebarLink to={`${base}/settings`} icon={<Settings size={15} />}>
             Settings
           </SidebarLink>
@@ -624,7 +644,35 @@ function AccountSettingsMenu({ open }: { open: boolean }) {
   );
 }
 
-function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind: () => void }) {
+/**
+ * Signing in and signing up, in place of the account for a visitor. Signing
+ * in brings them back to the page they are on.
+ */
+function VisitorPanel() {
+  const { pathname, search } = useLocation();
+  return (
+    <div className="space-y-2">
+      <p className="px-1 text-xs text-muted">Sign in to open issues, review pull requests and run agents.</p>
+      <div className="grid grid-cols-2 gap-2">
+        <Link
+          to={withNext("/login", pathname + search)}
+          className="flex h-9 items-center justify-center gap-1.5 rounded-md border border-line text-[0.8125rem] font-medium text-fg/90 transition-colors hover:border-line-strong hover:bg-raised hover:text-fg"
+        >
+          <LogIn size={14} />
+          Sign in
+        </Link>
+        <Link
+          to={withNext("/register", pathname + search)}
+          className="flex h-9 items-center justify-center rounded-md bg-fg text-[0.8125rem] font-medium text-bg transition-colors hover:bg-white"
+        >
+          Sign up
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function Sidebar({ user, shell, onFind }: { user: User | null; shell: ShellData; onFind: () => void }) {
   const ws = shell.workspace;
   const { pathname } = useLocation();
   const going = useNavigation().location?.pathname;
@@ -649,7 +697,7 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
       ? active
       : {
           ...targetRepo,
-          member: (user.workspaces ?? []).some((m) => m.slug === targetRepo.namespace.toLowerCase()),
+          member: (user?.workspaces ?? []).some((m) => m.slug === targetRepo.namespace.toLowerCase()),
         }
     : null;
   // What sits on the far side of the track. Kept while sliding back, so it
@@ -684,13 +732,21 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
     <div className="flex h-full flex-col">
       {/* The same height and rule as the top bar, so the two read as one line. */}
       <div className="flex h-16 shrink-0 items-center gap-1 border-b border-line pr-2 pl-2.5">
-        <Link to="/" aria-label="g1t home" className="shrink-0 rounded-md p-1.5 hover:bg-raised">
-          <Mark className="size-6" />
-        </Link>
-        <span className="shrink-0 text-line-strong" aria-hidden="true">
-          /
-        </span>
-        <WorkspaceSwitcher user={user} shell={shell} />
+        {user ? (
+          <>
+            <Link to="/" aria-label="g1t home" className="shrink-0 rounded-md p-1.5 hover:bg-raised">
+              <Mark className="size-6" />
+            </Link>
+            <span className="shrink-0 text-line-strong" aria-hidden="true">
+              /
+            </span>
+            <WorkspaceSwitcher user={user} shell={shell} />
+          </>
+        ) : (
+          <Link to="/" aria-label="g1t home" className="rounded-md px-1.5 py-1 hover:bg-raised">
+            <Logo />
+          </Link>
+        )}
       </div>
       <div className="px-2 pt-3">
         <button
@@ -706,6 +762,17 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
       <div className="relative min-h-0 grow overflow-hidden">
       <div className={`${LAYER} ${away ? "pointer-events-none -translate-x-1/4 opacity-0" : "translate-x-0 opacity-100"}`}>
       <nav aria-label="g1t" inert={away} className={PANEL}>
+        {/* A visitor browses: no workspace, no projects of their own. */}
+        {!user ? (
+          <div className="mt-3 space-y-px">
+            {VISITOR_LINKS.map((link) => (
+              <SidebarLink key={link.to} to={link.to} icon={link.to === "/search" ? <Search size={15} /> : <Compass size={15} />}>
+                {link.label}
+              </SidebarLink>
+            ))}
+          </div>
+        ) : (
+        <>
         <div className="mt-3 space-y-px">
           <SidebarLink to="/" end icon={<LayoutDashboard size={15} />}>
             Mission control
@@ -777,6 +844,8 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
             ))}
           </SidebarGroup>
         )}
+        </>
+        )}
       </nav>
       </div>
       <div className={`${LAYER} ${away ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-full opacity-0"}`}>
@@ -788,6 +857,7 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
               repo={shown.current}
               isPrivate={shell.repos.some((repo) => sameRepo(repo, shown.current) && repo.isPrivate)}
               open={inRepo}
+              visitor={!user}
             />
           ) : side.current === "account" || !ws ? (
             <AccountSettingsMenu open={inAccount} />
@@ -821,7 +891,7 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
           </div>
         )}
         {ws && <UsageCard slug={ws.slug} shell={shell} />}
-        <AccountMenu user={user} />
+        {user ? <AccountMenu user={user} /> : <VisitorPanel />}
       </div>
     </div>
   );
@@ -867,6 +937,10 @@ function Breadcrumbs({ pathname }: { pathname: string }) {
     };
     return <span className="text-sm font-medium">{words[parts[0]!]}</span>;
   }
+  // A person's profile, by their handle.
+  if (parts[0] === "u" && parts[1]) {
+    return <span className="truncate font-mono text-[0.8125rem] font-medium">@{parts[1]}</span>;
+  }
   const [owner, second, third, fourth] = parts;
   const trail: { label: string; to: string; mono?: boolean }[] = [{ label: owner!, to: `/${owner}`, mono: true }];
   if (second === "-") {
@@ -911,7 +985,8 @@ function Breadcrumbs({ pathname }: { pathname: string }) {
 type Command = PaletteCommand;
 
 /** Everything the palette can jump to, from what the sidebar already knows. */
-function commandsFor(user: User, shell: ShellData): Command[] {
+function commandsFor(user: User | null, shell: ShellData, here: string): Command[] {
+  if (!user) return visitorCommands(shell, here);
   const commands: Command[] = [
     { label: "Mission control", to: "/", icon: <LayoutDashboard size={15} /> },
     { label: "Explore repositories", to: "/explore", icon: <Compass size={15} /> },
@@ -962,6 +1037,32 @@ function commandsFor(user: User, shell: ShellData): Command[] {
   return commands;
 }
 
+/** What the palette offers a visitor: browsing, the project they are in, and signing in. */
+function visitorCommands(shell: ShellData, here: string): Command[] {
+  const commands: Command[] = [];
+  const repo = shell.repo;
+  if (repo) {
+    const base = `/${repo.namespace}/${repo.name}`;
+    const name = `${repo.namespace}/${repo.name}`;
+    commands.push(
+      { label: "Overview", hint: name, to: base, icon: <LayoutGrid size={15} /> },
+      { label: "Code", hint: name, to: `${base}/code`, icon: <Code2 size={15} /> },
+      { label: "Issues", hint: name, to: `${base}/issues`, icon: <CircleDot size={15} /> },
+      { label: "Pull requests", hint: name, to: `${base}/pulls`, icon: <GitPullRequest size={15} /> },
+      { label: "Commits", hint: name, to: `${base}/commits`, icon: <History size={15} /> },
+    );
+  }
+  commands.push(
+    { label: "Explore", hint: "Public projects", to: "/explore", icon: <Compass size={15} /> },
+    { label: "Search g1t", hint: "Repositories, code, issues, people", to: "/search", icon: <Search size={15} /> },
+    { label: "Pricing", to: "/pricing", icon: <CreditCard size={15} /> },
+    { label: "Documentation", to: "https://docs.g1t.sh/", icon: <BookOpen size={15} /> },
+    { label: "Sign in", to: withNext("/login", here), icon: <LogIn size={15} /> },
+    { label: "Sign up", to: withNext("/register", here), icon: <Plus size={15} /> },
+  );
+  return commands;
+}
+
 /**
  * A bar across the top of the page while the next one loads, as GitHub
  * has: it appears at once, creeps towards the end while waiting, then fills
@@ -1004,9 +1105,11 @@ export function Progress() {
 }
 
 /**
- * The signed-in app: a sidebar with the workspace, its repositories and the
- * sections of the one being looked at; a slim bar with search and the
- * account; and the page.
+ * The app: a sidebar with the workspace, its repositories and the sections
+ * of the one being looked at; a slim bar with search and the account; and
+ * the page. A visitor who is not signed in gets the same frame, with
+ * Explore and Search in place of the workspace, and signing in in place of
+ * the account.
  */
 export function AppShell({
   user,
@@ -1014,16 +1117,16 @@ export function AppShell({
   banner,
   children,
 }: {
-  user: User;
+  user: User | null;
   shell: ShellData;
   banner?: ReactNode;
   children: ReactNode;
 }) {
-  const submit = useSubmit();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const [drawer, setDrawer] = useState(false);
   const [palette, setPalette] = useState(false);
-  const commands = useMemo(() => commandsFor(user, shell), [user, shell]);
+  const here = pathname + search;
+  const commands = useMemo(() => commandsFor(user, shell, here), [user, shell, here]);
 
   // A new page closes the drawer on small screens.
   useEffect(() => setDrawer(false), [pathname]);
@@ -1088,6 +1191,15 @@ export function AppShell({
             >
               Docs
             </a>
+            {!user ? (
+              // The sidebar has these too, but on a phone it is folded away.
+              <Link
+                to={withNext("/login", here)}
+                className="flex h-9 items-center rounded-md bg-fg px-3 text-sm font-medium text-bg transition-colors hover:bg-white lg:hidden"
+              >
+                Sign in
+              </Link>
+            ) : (
             <DropdownMenu>
               <DropdownMenuTrigger
                 aria-label="Create"
@@ -1127,6 +1239,7 @@ export function AppShell({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            )}
           </div>
         </header>
         {banner}

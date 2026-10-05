@@ -6,6 +6,7 @@ import { type AccountSummary, type AdminAction, type Limit, type Terms, httpStat
 
 import type { Route } from "./+types/workspace";
 import {
+  AllowancesForm,
   AuditSection,
   BillingLinkSection,
   CreditForm,
@@ -89,6 +90,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     person,
     billedTo,
     terms: subject.terms,
+    allowances: summary.account.allowances,
     limit,
     figures,
     months: summary.months ?? [],
@@ -124,7 +126,7 @@ const SECTIONS = [
 ];
 
 export default function Workspace({ loaderData, actionData }: Route.ComponentProps) {
-  const { me, slug, name, person, billedTo, terms, limit, figures, months, enterprises, sales, salesError, invoices, invoicesError, ledger, audit, done, salesDone } =
+  const { me, slug, name, person, billedTo, terms, allowances, limit, figures, months, enterprises, sales, salesError, invoices, invoicesError, ledger, audit, done, salesDone } =
     loaderData;
   const { pathname } = useLocation();
   const result = actionData as ActionData | undefined;
@@ -274,7 +276,10 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
               </div>
             </Section>
           ) : (
-            <TermsForm terms={terms} pathname={pathname} error={error("terms")} />
+            <>
+              <TermsForm terms={terms} pathname={pathname} error={error("terms")} />
+              <AllowancesForm allowances={allowances} comped={terms.kind === "comped"} pathname={pathname} error={error("allowances")} />
+            </>
           )}
           <WorkspaceInvoicesSection invoices={invoices} unavailable={invoicesError} />
           <div id="ledger" className="scroll-mt-20">

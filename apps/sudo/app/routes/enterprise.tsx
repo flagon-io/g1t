@@ -4,7 +4,7 @@ import { data, Link, redirect, useLocation } from "react-router";
 import { type AdminOwner, type EnterpriseInvoice, type Limit, httpStatus } from "@g1t/contracts";
 
 import type { Route } from "./+types/enterprise";
-import { AuditSection, CreditForm, Figure, LedgerSection, ReviewPanel, TermsForm } from "~/components/billing";
+import { AllowancesForm, AuditSection, CreditForm, Figure, LedgerSection, ReviewPanel, TermsForm } from "~/components/billing";
 import { Avatar, Badge, Button, EmptyState, ExposureBar, Field, Input, Notice, Section, StateBadge, TermsBadge, TrustBadge, When } from "~/components/ui";
 import { type Subject, billingAction } from "~/lib/billing-actions.server";
 import { usd } from "~/lib/money";
@@ -150,6 +150,12 @@ export default function Enterprise({ loaderData, actionData }: Route.ComponentPr
             error={error("invoices")}
           />
           <TermsForm terms={account.terms} pathname={pathname} error={error("terms")} />
+          <AllowancesForm
+            allowances={account.allowances}
+            comped={account.terms.kind === "comped"}
+            pathname={pathname}
+            error={error("allowances")}
+          />
           <LedgerSection ledger={detail.ledger} showWorkspace description="Recent lines for every workspace it pays for, newest first." />
         </div>
         <div className="space-y-6">
