@@ -1028,6 +1028,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_sales" => reply(&billing.admin_sales(args(body)?).await?),
         "admin_set_sales" => reply(&billing.admin_set_sales(args(body)?).await?),
         "admin_add_note" => reply(&billing.admin_add_note(args(body)?).await?),
+        "admin_invoices" => reply(&billing.admin_invoices(args(body)?).await?),
+        "admin_audit" => reply(&billing.admin_audit(args(body)?).await?),
         "note_pending" => reply(&billing.note_pending(args(body)?).await?),
         "admin_accounts" => reply(&billing.admin_accounts(args(body)?).await?),
         "admin_account" => reply(&billing.admin_account(args(body)?).await?),

@@ -819,6 +819,55 @@ pub struct Signal {
     /// Its sales stage, if staff gave it one.
     pub stage: Option<String>,
     pub owner: Option<String>,
+    #[serde(default)]
+    pub next_step: Option<String>,
+    /// When the next step is due, `YYYY-MM-DD`.
+    #[serde(default)]
+    pub next_at: Option<String>,
+}
+
+/// `admin_invoices`: every invoice g1t has sent, workspaces' and
+/// enterprises', newest first. Returns `Vec<InvoiceSummary>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminInvoicesArgs {
+    /// `paid`, `open`, `failed`, `overdue` or `void`.
+    #[serde(default)]
+    pub status: Option<String>,
+    /// YYYY-MM, by when it was sent.
+    #[serde(default)]
+    pub month: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvoiceSummary {
+    pub invoice_id: String,
+    /// `workspace` or `enterprise`.
+    pub kind: String,
+    /// The workspace's slug, or the enterprise's account id.
+    pub account: String,
+    /// What to call it: the workspace, or the enterprise's name.
+    pub name: String,
+    pub reason: String,
+    pub period: String,
+    pub amount_micros: i64,
+    pub status: String,
+    pub hosted_url: Option<String>,
+    pub created_at: String,
+    pub paid_at: Option<String>,
+}
+
+/// `admin_audit`: every change made in sudo, and by Stripe, newest first.
+/// Returns `Vec<AdminAction>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminAuditArgs {
+    #[serde(default)]
+    pub by: Option<String>,
+    #[serde(default)]
+    pub action: Option<String>,
+    /// Only those before this time, for paging.
+    #[serde(default)]
+    pub before: Option<String>,
 }
 
 /// `admin_signals`: every workspace worth reaching out to, most urgent

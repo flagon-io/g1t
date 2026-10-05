@@ -248,6 +248,9 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
       }),
     addNote: (workspace, text, by) => call("admin_add_note", { workspace, text, by }),
     workspaceInvoices: (workspace) => call("admin_workspace_invoices", { workspace }),
+    allInvoices: (filter = {}) => call("admin_invoices", { status: filter.status ?? null, month: filter.month ?? null }),
+    audit: (filter = {}) =>
+      call("admin_audit", { by: filter.by ?? null, action: filter.action ?? null, before: filter.before ?? null }),
   };
 }
 

@@ -272,7 +272,8 @@ impl Billing {
             let this_month = row.this_month.unwrap_or(0).max(0);
             let last_month = row.last_month.unwrap_or(0).max(0);
             let record = self.record_row(&row.workspace).await?;
-            let (stage, owner) = record.map_or((None, None), |r| (Some(r.stage), r.owner));
+            let (stage, owner, next_step, next_at) =
+                record.map_or((None, None, None, None), |r| (Some(r.stage), r.owner, r.next_step, r.next_at));
             let mut push = |kind: SignalKind, detail: String, value: i64| {
                 signals.push(Signal {
                     workspace: row.workspace.clone(),
@@ -281,6 +282,8 @@ impl Billing {
                     value_micros: value,
                     stage: stage.clone(),
                     owner: owner.clone(),
+                    next_step: next_step.clone(),
+                    next_at: next_at.clone(),
                 });
             };
             let declined = limit.message.as_deref().is_some_and(|m| m.contains("could not be charged"));
@@ -340,6 +343,100 @@ impl Billing {
         }
         signals.sort_by(|a, b| urgency(a.kind).cmp(&urgency(b.kind)).then(b.value_micros.cmp(&a.value_micros)));
         Ok(signals)
+    }
+
+    /// Every invoice g1t has sent, workspaces' and enterprises'.
+    pub(crate) async fn admin_invoices(&self, a: g1t_contracts::billing::AdminInvoicesArgs) -> Result<Vec<g1t_contracts::billing::InvoiceSummary>> {
+        #[derive(Deserialize)]
+        struct Row {
+            invoice_id: String,
+            kind: String,
+            account: String,
+            name: String,
+            reason: String,
+            period: String,
+            amount_micros: i64,
+            status: String,
+            hosted_url: Option<String>,
+            created_at: String,
+            paid_at: Option<String>,
+        }
+        let status = a.status.filter(|s| ["paid", "open", "failed", "overdue", "void"].contains(&s.as_str()));
+        let month = a.month.filter(|m| m.len() == 7 && m.chars().all(|c| c.is_ascii_digit() || c == '-'));
+        let rows = self
+            .db
+            .prepare(
+                "SELECT * FROM (
+                   SELECT invoice_id, 'workspace' AS kind, workspace AS account, workspace AS name, reason, period,
+                          amount_micros, status, hosted_url, created_at, paid_at
+                   FROM workspace_invoices
+                   UNION ALL
+                   SELECT i.invoice_id, 'enterprise', i.account_id, COALESCE(b.name, i.account_id), 'enterprise', i.period,
+                          i.amount_micros, i.status, i.hosted_url, i.created_at, i.paid_at
+                   FROM enterprise_invoices i LEFT JOIN billing_accounts b ON b.id = i.account_id
+                 )
+                 WHERE (?1 IS NULL OR status = ?1) AND (?2 IS NULL OR substr(created_at, 1, 7) = ?2)
+                 ORDER BY created_at DESC LIMIT 200",
+            )
+            .bind(&[crate::optional(status.as_deref()), crate::optional(month.as_deref())])?
+            .all()
+            .await?
+            .results::<Row>()?;
+        Ok(rows
+            .into_iter()
+            .map(|r| g1t_contracts::billing::InvoiceSummary {
+                invoice_id: r.invoice_id,
+                kind: r.kind,
+                account: r.account,
+                name: r.name,
+                reason: r.reason,
+                period: r.period,
+                amount_micros: r.amount_micros,
+                status: r.status,
+                hosted_url: r.hosted_url,
+                created_at: r.created_at,
+                paid_at: r.paid_at,
+            })
+            .collect())
+    }
+
+    /// Every change made in sudo and by Stripe, newest first.
+    pub(crate) async fn admin_audit(&self, a: g1t_contracts::billing::AdminAuditArgs) -> Result<Vec<g1t_contracts::billing::AdminAction>> {
+        #[derive(Deserialize)]
+        struct Row {
+            id: String,
+            account: String,
+            action: String,
+            detail: String,
+            by: String,
+            created_at: String,
+        }
+        let rows = self
+            .db
+            .prepare(
+                "SELECT id, account, action, detail, by, created_at FROM admin_actions
+                 WHERE (?1 IS NULL OR by = ?1) AND (?2 IS NULL OR action = ?2) AND (?3 IS NULL OR created_at < ?3)
+                 ORDER BY created_at DESC LIMIT 100",
+            )
+            .bind(&[
+                crate::optional(a.by.as_deref().map(str::trim).filter(|s| !s.is_empty())),
+                crate::optional(a.action.as_deref().map(str::trim).filter(|s| !s.is_empty())),
+                crate::optional(a.before.as_deref()),
+            ])?
+            .all()
+            .await?
+            .results::<Row>()?;
+        Ok(rows
+            .into_iter()
+            .map(|r| g1t_contracts::billing::AdminAction {
+                id: r.id,
+                account: r.account,
+                action: r.action,
+                detail: r.detail,
+                by: r.by,
+                created_at: r.created_at,
+            })
+            .collect())
     }
 
     /// The business at a glance.

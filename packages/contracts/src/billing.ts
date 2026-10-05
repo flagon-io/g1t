@@ -164,6 +164,24 @@ export type Signal = {
   valueMicros: number;
   stage: string | null;
   owner: string | null;
+  nextStep?: string | null;
+  /** When the next step is due, YYYY-MM-DD. */
+  nextAt?: string | null;
+};
+
+/** One invoice g1t has sent, a workspace's or an enterprise's. */
+export type InvoiceSummary = {
+  invoiceId: string;
+  kind: "workspace" | "enterprise";
+  account: string;
+  name: string;
+  reason: string;
+  period: string;
+  amountMicros: number;
+  status: string;
+  hostedUrl: string | null;
+  createdAt: string;
+  paidAt: string | null;
 };
 
 export type SalesStage = "none" | "lead" | "contacted" | "negotiating" | "won" | "lost" | "churn_risk";
@@ -237,6 +255,10 @@ export interface BillingAdminApi {
   addNote(workspace: string, text: string, by: string): Promise<Result<SalesRecord>>;
   /** A workspace's invoices from g1t, for staff. */
   workspaceInvoices(workspace: string): Promise<WorkspaceInvoice[]>;
+  /** Every invoice g1t has sent, newest first. */
+  allInvoices(filter?: { status?: string; month?: string }): Promise<InvoiceSummary[]>;
+  /** Every change made in sudo and by Stripe, newest first, 100 at a time. */
+  audit(filter?: { by?: string; action?: string; before?: string }): Promise<AdminAction[]>;
 }
 
 /** How much a workspace has earned g1t's trust with money. */
