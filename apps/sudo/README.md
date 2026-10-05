@@ -61,6 +61,14 @@ Visit <https://sudo.g1t.sh>: Access asks you to sign in, then the accounts
 list opens. Anyone else gets Access's own refusal; anyone Access lets in who
 is not in `STAFF_EMAILS` gets a 403 from the worker.
 
+## Signing in through WARP
+
+Staff signed in to the Zero Trust org in the Cloudflare One agent (WARP)
+reach sudo without the login page: the org allows WARP sessions as Access
+sign-ins (8 hours), the sudo app accepts them, and the `g1t staff` policy
+is also on the WARP enrollment app, so staff can enroll their devices.
+The same two checks still apply: the Access policy, and `STAFF_EMAILS`.
+
 ## Working on it
 
 ```sh

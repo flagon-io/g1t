@@ -164,7 +164,8 @@ const TRUST: Record<Trust, { label: string; tone: "plain" | "lavender" | "mint" 
   new: { label: "New", tone: "plain" },
   paid: { label: "Paid", tone: "info" },
   reviewed: { label: "Reviewed", tone: "mint" },
-  internal: { label: "Internal", tone: "lavender" },
+  // Comped accounts: g1t covers their usage, with no ceiling.
+  internal: { label: "Comped", tone: "lavender" },
 };
 
 export function TrustBadge({ trust }: { trust: Trust }) {
