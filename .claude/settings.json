@@ -6,7 +6,10 @@
       "Bash(npx wrangler d1 migrations list:*)",
       "Bash(npx wrangler secret put:*)",
       "Bash(npx wrangler tail:*)",
-      "Bash(npm run deploy:*)"
+      "Bash(npm run deploy:*)",
+      "Bash(bash */ship-deployments.sh)",
+      "Bash(CLOUDFLARE_API_TOKEN= npx wrangler:*)",
+      "Bash(npx wrangler:*)"
     ]
   }
 }
