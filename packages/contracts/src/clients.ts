@@ -200,6 +200,10 @@ export function billingClient(service: ServiceBinding): BillingApi {
     hasFeature: (workspace, feature) => call("has_feature", { workspace, feature }),
     chargeFeature: (charge) => call("charge_feature", charge),
     recordSandbox: (usage) => call("record_sandbox", usage),
+    limit: (workspace, viewer) => call("limit", { workspace, viewer }),
+    checkLimit: (workspace) => call("check_limit", { workspace }),
+    setSpendLimit: (actor, workspace, spendLimitMicros) =>
+      call("set_spend_limit", { actor, workspace, spendLimitMicros }),
   };
 }
 

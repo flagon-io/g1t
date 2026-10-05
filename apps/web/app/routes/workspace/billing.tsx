@@ -7,6 +7,7 @@ import {
   type DeployUsage,
   type Feature,
   type FeatureState,
+  type Limit,
 } from "@g1t/contracts";
 
 import type { Route } from "./+types/billing";
@@ -46,11 +47,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     await billing.confirm(slug, viewer, session);
     throw redirect(`/${slug}/-/billing?added=1`);
   }
-  const [account, ledger, features, deployUsage] = await Promise.all([
+  const [account, ledger, features, deployUsage, limit] = await Promise.all([
     billing.account(slug, viewer),
     billing.ledger(slug, viewer),
     billing.features(slug, viewer),
     deployments.usage(slug, viewer),
+    billing.limit(slug, viewer),
   ]);
   return {
     slug,
@@ -59,6 +61,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     ledger: unwrap(ledger),
     features: unwrap(features),
     deployUsage: deployUsage.ok ? deployUsage.value : null,
+    limit: limit.ok ? limit.value : null,
     added: url.searchParams.has("added"),
     subscribed: url.searchParams.has("subscribed"),
   };
@@ -70,6 +73,18 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const form = await request.formData();
   const page = `${new URL(request.url).origin}/${params.owner.toLowerCase()}/-/billing`;
   const intent = form.get("intent");
+  if (intent === "spend-limit" || intent === "no-spend-limit") {
+    const amount = Number(form.get("limit"));
+    if (intent === "spend-limit" && !(Number.isFinite(amount) && amount >= 0)) {
+      return { error: "A spend limit is a dollar amount." };
+    }
+    const set = await billing.setSpendLimit(
+      user,
+      params.owner,
+      intent === "spend-limit" ? Math.round(amount * MICROS_PER_DOLLAR) : null,
+    );
+    return set.ok ? null : { error: set.error.message };
+  }
   if (intent === "subscribe" || intent === "cancel" || intent === "resume") {
     const feature = String(form.get("feature")) as Feature;
     if (intent !== "subscribe") {
@@ -99,7 +114,7 @@ function dollars(micros: number, digits = 2): string {
 }
 
 export default function WorkspaceBilling({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, account, ledger, features, deployUsage, added, subscribed } = loaderData;
+  const { slug, role, account, ledger, features, deployUsage, limit, added, subscribed } = loaderData;
   const { status } = account;
   const paying = useNavigation().state === "submitting";
   const empty = account.balanceMicros <= 0;
@@ -117,6 +132,10 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
             </p>
           </div>
         )}
+        {limit && account.status.enabled && (
+          <LimitCard limit={limit} owner={role === "owner"} busy={paying} error={actionData?.error} />
+        )}
+
         <h2 className="font-medium">Plans</h2>
         <p className="mt-1 max-w-2xl text-sm text-muted">
           Paid features are turned on per workspace with a monthly plan. They are never free, including while the rest of
@@ -143,8 +162,9 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
         <h2 className="mt-12 font-medium">Agent credit</h2>
         <p className="mt-1 max-w-2xl text-sm text-muted">
           g1t agents that work on this workspace's repositories are paid for from
-          its credit: what the model cost, plus {account.marginPercent}%. Checks run
-          free. With no credit, agents do not start.
+          its credit: what the model cost, plus {account.marginPercent}%. Every sandbox, for agents, checks, the merge
+          queue and workflows, is metered by the second past 500 free minutes a month. With no credit, agents do not
+          start.
         </p>
 
         <div
@@ -412,5 +432,83 @@ function DeployMeter({ usage }: { usage: DeployUsage }) {
         {usage.countedAt ? " Requests and CPU time are counted every few minutes." : " Requests are counted once apps get visits."}
       </p>
     </div>
+  );
+}
+
+const TRUST: Record<Limit["trust"], { label: string; detail: string }> = {
+  new: {
+    label: "New",
+    detail: "No payment to g1t yet, so the limit is small: the free allowances and a little more. It grows once the workspace pays.",
+  },
+  paid: { label: "Paid", detail: "Twice what the workspace has paid g1t, from $25 up to $1,000." },
+  reviewed: { label: "Reviewed", detail: "Set by g1t for this workspace." },
+  internal: { label: "g1t", detail: "One of g1t's own workspaces: no limit." },
+};
+
+/**
+ * How far this month's unpaid usage has gone, and where work stops: g1t's
+ * ceiling for the workspace, or the owners' own spend limit if lower.
+ */
+function LimitCard({ limit, owner, busy, error }: { limit: Limit; owner: boolean; busy: boolean; error?: string }) {
+  const ceiling = limit.ceilingMicros;
+  const share = ceiling ? Math.min(1, limit.exposureMicros / Math.max(ceiling, 1)) : 0;
+  const tone =
+    limit.state === "stopped" ? "border-danger/40 bg-danger/5" : limit.state === "warning" ? "border-warn/40 bg-warn/5" : "border-line bg-surface";
+  const bar = limit.state === "stopped" ? "bg-danger" : limit.state === "warning" ? "bg-warn" : "bg-accent";
+  const trust = TRUST[limit.trust];
+  return (
+    <section className={`mb-10 rounded-xl border p-5 ${tone}`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-medium">Usage limit</h2>
+        <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">{trust.label}</span>
+      </div>
+      <p className="mt-1 max-w-2xl text-sm text-muted">
+        What this month's usage cost g1t, or is charged, whichever is more, less what was paid this month. At the limit,
+        new sandboxes and builds stop and apps pause until the workspace pays or the month turns. Work already running
+        finishes.
+      </p>
+      <p className="mt-4 text-2xl font-semibold tabular-nums tracking-tight">
+        {dollars(limit.exposureMicros)}
+        <span className="text-base font-normal text-muted"> {ceiling == null ? "· no limit" : `of ${dollars(ceiling)}`}</span>
+      </p>
+      {ceiling != null && (
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-line" role="presentation">
+          <div className={`h-full ${bar}`} style={{ width: `${Math.max(share * 100, share > 0 ? 2 : 0)}%` }} />
+        </div>
+      )}
+      {limit.message && <p className="mt-3 text-sm">{limit.message}</p>}
+      <p className="mt-3 text-xs text-faint">
+        {trust.detail}
+        {limit.trustCeilingMicros != null && limit.spendLimitMicros != null && ` g1t's limit is ${dollars(limit.trustCeilingMicros)}.`}
+      </p>
+      {owner && limit.trust !== "internal" && (
+        <Form method="post" className="mt-4 flex flex-wrap items-end gap-2">
+          <label className="text-sm">
+            <span className="block text-xs text-muted">Your own monthly spend limit</span>
+            <span className="mt-1 flex items-center rounded-md border border-line bg-bg px-2 focus-within:border-accent">
+              <span className="text-muted">$</span>
+              <input
+                name="limit"
+                type="number"
+                min={0}
+                step={1}
+                defaultValue={limit.spendLimitMicros != null ? limit.spendLimitMicros / MICROS_PER_DOLLAR : ""}
+                placeholder="None"
+                className="w-24 bg-transparent px-1 py-1.5 tabular-nums outline-none"
+              />
+            </span>
+          </label>
+          <Button variant="quiet" type="submit" name="intent" value="spend-limit" disabled={busy}>
+            Set
+          </Button>
+          {limit.spendLimitMicros != null && (
+            <Button variant="quiet" type="submit" name="intent" value="no-spend-limit" disabled={busy}>
+              Remove
+            </Button>
+          )}
+          <ErrorText>{error}</ErrorText>
+        </Form>
+      )}
+    </section>
   );
 }

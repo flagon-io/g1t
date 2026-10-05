@@ -72,6 +72,27 @@ export type RunTicket = { runId: string; token: string };
  * open to them: a few dollars of model cost each, out of one pool, until a
  * date. Mirrors `Trial` in `crates/contracts/src/billing.rs`.
  */
+/** How much a workspace has earned g1t's trust with money. */
+export type Trust = "new" | "paid" | "reviewed" | "internal";
+
+/**
+ * How far a workspace's unpaid usage has gone this month, and where its
+ * work stops: past `ceilingMicros`, no new sandboxes, builds or app
+ * requests. Usage counts at its cost to g1t or its charge, whichever is
+ * more, so it counts while g1t is free too.
+ */
+export type Limit = {
+  workspace: string;
+  trust: Trust;
+  exposureMicros: number;
+  /** The lower of g1t's ceiling and the owner's spend limit; null for g1t's own. */
+  ceilingMicros: number | null;
+  trustCeilingMicros: number | null;
+  spendLimitMicros: number | null;
+  state: "ok" | "warning" | "stopped";
+  message: string | null;
+};
+
 export type Trial = {
   open: boolean;
   usedMicros: number;
@@ -184,6 +205,12 @@ export interface BillingApi {
     repo?: string | null;
     reference: string;
   }): Promise<Result<boolean>>;
+  /** A workspace's limit, for its members. */
+  limit(workspace: string, viewer: Viewer): Promise<Result<Limit>>;
+  /** The same, for the services that enforce it. */
+  checkLimit(workspace: string): Promise<Result<Limit>>;
+  /** The owner's own monthly ceiling, under g1t's; null removes it. Owners only. */
+  setSpendLimit(actor: User, workspace: string, spendLimitMicros: number | null): Promise<Result<Limit>>;
   /**
    * How long a sandbox ran for a workspace, reported when it stops. Its
    * cost is always recorded; seconds past the month's free minutes are

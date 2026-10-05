@@ -338,6 +338,79 @@ pub struct RecordSandboxArgs {
     pub reference: String,
 }
 
+/// How much a workspace has earned g1t's trust with money, which sets how
+/// far its unpaid usage can go before its work stops.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Trust {
+    /// No live payment yet: only a little past the free allowances.
+    New,
+    /// Has paid g1t real money: the ceiling grows with what it has paid.
+    Paid,
+    /// A ceiling g1t set by hand, after talking to the workspace.
+    Reviewed,
+    /// g1t's own workspaces: no ceiling.
+    Internal,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LimitState {
+    Ok,
+    /// Past 80% of the ceiling.
+    Warning,
+    /// At or past it: no new sandboxes, builds or app requests.
+    Stopped,
+}
+
+/// How far a workspace's unpaid usage has gone this month, and where its
+/// work stops: like Fly's or Cloudflare's limits for new accounts, so no
+/// one runs up costs g1t cannot collect. Usage counts at what it cost g1t
+/// or what it is charged, whichever is more, so it counts while g1t is
+/// free too.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Limit {
+    pub workspace: String,
+    pub trust: Trust,
+    /// Usage this month (UTC) less what was paid this month.
+    pub exposure_micros: i64,
+    /// Where work stops: the lower of g1t's ceiling and the owner's own
+    /// spend limit. None for g1t's own workspaces.
+    pub ceiling_micros: Option<i64>,
+    /// The ceiling g1t sets from `trust`.
+    pub trust_ceiling_micros: Option<i64>,
+    /// The owner's own monthly limit, if they set one.
+    pub spend_limit_micros: Option<i64>,
+    pub state: LimitState,
+    /// What to tell people when work is stopped or close to it.
+    pub message: Option<String>,
+}
+
+/// `limit`: a workspace's limit, for its members. Returns `Outcome<Limit>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LimitArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+}
+
+/// `check_limit`: the same, for the services that enforce it. Returns
+/// `Outcome<Limit>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CheckLimitArgs {
+    pub workspace: String,
+}
+
+/// `set_spend_limit`: the owner's own monthly ceiling, under g1t's; None
+/// removes it. Owners only. Returns `Outcome<Limit>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetSpendLimitArgs {
+    pub actor: User,
+    pub workspace: String,
+    pub spend_limit_micros: Option<i64>,
+}
+
 /// What a feature's plan costs and includes.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

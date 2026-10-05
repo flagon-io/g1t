@@ -147,6 +147,8 @@ type AppRow = {
   deployed_at: string;
   created_at: string;
   last_request_at: string | null;
+  /** Set while its workspace is over its limit; see `holdToLimits`. */
+  paused_at: string | null;
 };
 
 function toDeployment(row: DeploymentRow): Deployment {
@@ -578,9 +580,12 @@ class Deployments {
     const id = newId("dpl");
     const token = randomToken();
     const plan = await billingClient(this.env.BILLING).hasFeature(project.workspace, "deployments");
+    const limit = await billingClient(this.env.BILLING).checkLimit(project.workspace);
     const cloudflare = this.cloudflare;
     const refused = !plan.ok
       ? plan.error.message
+      : limit.ok && limit.value.state === "stopped"
+        ? (limit.value.message ?? "The workspace reached its usage limit.")
       : !cloudflare
         ? "Deployments are not set up on this g1t: it has no Cloudflare token."
         : null;
@@ -784,7 +789,7 @@ class Deployments {
             .prepare(
               `INSERT INTO apps (script, project_id, workspace, slug, kind, branch, number, commit_sha, deployed_at, created_at)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
-               ON CONFLICT (script) DO UPDATE SET commit_sha = ?8, number = ?7, deployed_at = ?9`,
+               ON CONFLICT (script) DO UPDATE SET commit_sha = ?8, number = ?7, deployed_at = ?9, paused_at = NULL`,
             )
             .bind(row.script, row.project_id, row.workspace, row.slug, row.kind, row.branch, row.number, row.commit_sha, at),
         ]);
@@ -948,6 +953,7 @@ class Deployments {
 
     // Apps of workspaces whose plan has ended come down.
     const billing = billingClient(this.env.BILLING);
+    await this.holdToLimits(apps).catch((error) => console.error("could not apply limits", error));
     for (const workspace of workspaces) {
       const plan = await billing.hasFeature(workspace, "deployments");
       if (!plan.ok && plan.error.code === "payment_required") {
@@ -959,6 +965,45 @@ class Deployments {
     await this.count(apps).catch((error) => console.error("could not count usage", error));
     await this.takeDownIdle();
     await this.chargeMonths();
+  }
+
+  /**
+   * Pauses the apps of workspaces that reached their limit for usage not
+   * yet paid for, and rebuilds them from the same commit once they are
+   * under it again. Paused apps answer with a notice and run nothing.
+   */
+  private async holdToLimits(apps: AppRow[]): Promise<void> {
+    const cloudflare = this.cloudflare;
+    if (!cloudflare) return;
+    const billing = billingClient(this.env.BILLING);
+    for (const workspace of [...new Set(apps.map((app) => app.workspace))]) {
+      const limit = await billing.checkLimit(workspace);
+      if (!limit.ok) continue;
+      const theirs = apps.filter((app) => app.workspace === workspace);
+      if (limit.value.state === "stopped") {
+        for (const app of theirs.filter((a) => !a.paused_at)) {
+          await cloudflare.pauseScript(app.script);
+          await this.db.prepare("UPDATE apps SET paused_at = ? WHERE script = ?").bind(now(), app.script).run();
+        }
+        continue;
+      }
+      const paused = theirs.filter((a) => a.paused_at);
+      if (paused.length === 0) continue;
+      const actor = await this.workspaceActor(workspace);
+      if (!actor) continue;
+      for (const app of paused) {
+        const project = await this.projects.get(workspace, app.slug, actor);
+        if (!project.ok) continue;
+        // A failed or refused rebuild leaves it paused, to try again next time.
+        const rebuilt =
+          app.kind === "production"
+            ? await this.deployProduction(project.value, app.commit_sha, "g1t")
+            : app.number != null
+              ? await this.deployPreview(project.value, app.number, "g1t", true)
+              : null;
+        if (rebuilt && !rebuilt.ok) console.log("could not resume", app.script, rebuilt.error.message);
+      }
+    }
   }
 
   /** Scripts in the namespace that no app holds, such as ones renamed. */

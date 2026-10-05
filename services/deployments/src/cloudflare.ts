@@ -34,6 +34,12 @@ export type BuiltWorker = {
 const ASSETS_ONLY = `export default { fetch(request, env) { return env.ASSETS.fetch(request); } };\n`;
 
 /** What an app answers between being taken down and being gone. */
+const PAUSED = `export default {
+  fetch() {
+    return new Response("<!doctype html><meta charset=utf-8><meta name=robots content=noindex><title>Paused</title><body style='font:16px system-ui;background:#121214;color:#ececf1;display:grid;place-items:center;min-height:100vh;margin:0;padding:0 16px'><main style='max-width:32rem'><h1>This app is paused</h1><p style='color:#9a9aa6'>The workspace it belongs to reached its usage limit on g1t. It comes back by itself once the workspace is under it again.</p></main>", { status: 402, headers: { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex", "cache-control": "no-store" } });
+  },
+};`;
+
 const TAKEN_DOWN = `export default {
   fetch() {
     return new Response("<!doctype html><meta charset=utf-8><meta name=robots content=noindex><title>Not up</title><body style='font:16px system-ui;background:#121214;color:#ececf1;display:grid;place-items:center;min-height:100vh;margin:0'><main><h1>This app is not up</h1><p style='color:#9a9aa6'>It was taken down. Deploying it again brings it back.</p></main>", { status: 404, headers: { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex", "cache-control": "no-store" } });
@@ -164,18 +170,31 @@ export class Cloudflare {
    * reaches the edge as fast as any deploy, and deleted after.
    */
   async deleteScript(script: string): Promise<void> {
-    const form = new FormData();
-    form.append(
-      "metadata",
-      JSON.stringify({ main_module: "index.js", compatibility_date: "2026-09-26", bindings: [], tags: ["taken-down"] }),
-    );
-    form.append("index.js", new File([TAKEN_DOWN], "index.js", { type: "application/javascript+module" }));
-    await this.call("PUT", this.scriptPath(script), form).catch(() => undefined);
+    await this.placeholder(script, TAKEN_DOWN, "taken-down").catch(() => undefined);
     try {
       await this.call("DELETE", `${this.scriptPath(script)}?force=true`);
     } catch (error) {
       if (!/404|not found|10007/i.test(String(error))) throw error;
     }
+  }
+
+  /**
+   * Replaces an app with a notice that it is paused: its workspace reached
+   * its limit. The notice costs next to nothing to answer with, and the app
+   * comes back by being deployed again.
+   */
+  async pauseScript(script: string): Promise<void> {
+    await this.placeholder(script, PAUSED, "paused");
+  }
+
+  private async placeholder(script: string, code: string, tag: string): Promise<void> {
+    const form = new FormData();
+    form.append(
+      "metadata",
+      JSON.stringify({ main_module: "index.js", compatibility_date: "2026-09-26", bindings: [], tags: [tag] }),
+    );
+    form.append("index.js", new File([code], "index.js", { type: "application/javascript+module" }));
+    await this.call("PUT", this.scriptPath(script), form);
   }
 
   /**

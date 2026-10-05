@@ -109,6 +109,40 @@ Each sandbox is one line on the [statement](#the-statement), such as
 within the free minutes. While g1t is being built out it is recorded but
 not charged.
 
+## Usage limits
+
+Everything a workspace uses costs g1t money at Cloudflare or a model
+provider before the workspace pays for it. So, as Fly and Cloudflare do
+with new accounts, every workspace has a limit on usage not yet paid for.
+When it is reached, the workspace's work stops until it pays, or the
+month turns:
+
+- **No new sandboxes.** Assigning an agent, planning, asking for a
+  review and workflow jobs are refused with `402 payment_required` and the
+  reason; acceptance checks and the merge queue wait. Runs already under
+  way finish.
+- **No new builds**, and **deployed apps pause**: they answer with a page
+  saying so (`402`) and run nothing. Once the workspace is under its limit
+  again, g1t rebuilds each one from the commit it was serving, by itself.
+
+What counts is this month's usage (UTC), each item at what it cost g1t or
+what it is charged, whichever is more, less what was paid this month. It
+counts while g1t is free too: free is a price of nothing, not a way around
+the limit.
+
+| Workspace | Limit |
+| --- | --- |
+| **New**: has not paid g1t yet | $3: the free allowances and a little more |
+| **Paid**: has paid g1t | twice what it has paid, from $25 up to $1,000 |
+| **Reviewed** | what g1t set for it, after talking with you |
+
+Payments in test mode are not money, so they do not raise the limit. To
+go past $1,000, write to support.
+
+At 80% the Billing page turns amber and says how close the workspace is.
+An owner can set a lower **spend limit** of their own under **Settings →
+Billing → Usage limit**; work stops at whichever is lower.
+
 ## Add credit
 
 Only an owner of the workspace can add credit.

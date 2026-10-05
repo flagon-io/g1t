@@ -704,6 +704,8 @@ export default class RunnerService
     repo: RepoPath;
     timeoutMinutes: number;
   }): Promise<Result<true>> {
+    const over = await this.overLimit(args.repo.namespace);
+    if (over) return { ok: false, error: { code: "payment_required", message: over } };
     // The same workspaces that may use g1t's sandboxes for agents.
     if (!(await this.workspaceAllowed(args.repo.namespace))) {
       return {
@@ -787,8 +789,21 @@ export default class RunnerService
 
   /** Whether a workspace's repositories may use g1t's agents and sandboxes at all. */
   private async workspaceAllowed(namespace: string): Promise<boolean> {
+    if (await this.overLimit(namespace)) return false;
     const access = await this.modelAccess(namespace);
     return access.own != null || access.hosted;
+  }
+
+  /**
+   * Why the workspace can start no sandbox: it reached its limit for usage
+   * not yet paid for. Null when it can, or when billing cannot say.
+   */
+  private async overLimit(namespace: string): Promise<string | null> {
+    const limit = await billingClient(this.env.BILLING)
+      .checkLimit(namespace)
+      .catch(() => null);
+    if (!limit?.ok || limit.value.state !== "stopped") return null;
+    return limit.value.message ?? `The ${namespace} workspace reached its usage limit.`;
   }
 
   /**

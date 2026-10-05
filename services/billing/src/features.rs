@@ -61,7 +61,7 @@ fn status_of(subscription: &StripeSubscription) -> SubscriptionStatus {
 
 /// Dollars to the cent, or finer for prices under a cent, so that a
 /// build minute's $0.0015 does not read as nothing.
-fn dollars(micros: i64) -> String {
+pub(crate) fn dollars(micros: i64) -> String {
     let text = format!("{:.4}", micros as f64 / MICROS_PER_DOLLAR as f64);
     let (whole, fraction) = text.split_once('.').unwrap_or((&text, ""));
     let fraction = fraction.trim_end_matches('0');

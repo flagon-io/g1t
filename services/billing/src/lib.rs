@@ -17,6 +17,7 @@
 //! the methods and their arguments.
 
 mod features;
+mod limits;
 mod stripe;
 
 use g1t_contracts::billing::*;
@@ -134,6 +135,8 @@ struct Billing {
     trial: Option<TrialConfig>,
     /// The Deployments plan's monthly price (`DEPLOYMENTS_MONTHLY_CENTS`).
     deployments_monthly_cents: u32,
+    /// How far unpaid usage may go; see `limits`.
+    ceilings: limits::Ceilings,
 }
 
 /// `TRIAL_WORKSPACE_MICROS`, `TRIAL_TOTAL_MICROS` and `TRIAL_UNTIL`.
@@ -567,6 +570,9 @@ impl Billing {
         if self.stripe.is_none() {
             return Ok(Outcome::Ok(true));
         }
+        if let Some(stopped) = self.stopped(&a.workspace).await? {
+            return Ok(stopped);
+        }
         Ok(self
             .out_of_credit(&a.workspace.to_lowercase())
             .await?
@@ -578,6 +584,9 @@ impl Billing {
             return Ok(Outcome::Ok(None));
         }
         let workspace = a.workspace.to_lowercase();
+        if let Some(stopped) = self.stopped(&workspace).await? {
+            return Ok(stopped);
+        }
         if let Some(refused) = self.out_of_credit(&workspace).await? {
             return Ok(refused);
         }
@@ -809,6 +818,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
             .and_then(|fee| fee.to_string().parse().ok())
             .unwrap_or(100_000),
         free: env.var("FREE_WHILE_BUILDING").is_ok_and(|v| v.to_string() == "true"),
+        ceilings: limits::Ceilings::from_env(&env),
         deployments_monthly_cents: env
             .var("DEPLOYMENTS_MONTHLY_CENTS")
             .ok()
@@ -852,6 +862,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "has_feature" => reply(&billing.has_feature(args(body)?).await?),
         "charge_feature" => reply(&billing.charge_feature(args(body)?).await?),
         "record_sandbox" => reply(&billing.record_sandbox(args(body)?).await?),
+        "limit" => reply(&billing.limit(args(body)?).await?),
+        "check_limit" => reply(&billing.check_limit(args(body)?).await?),
+        "set_spend_limit" => reply(&billing.set_spend_limit(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }
