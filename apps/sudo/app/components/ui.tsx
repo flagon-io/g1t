@@ -156,17 +156,44 @@ export function TermsBadge({ terms }: { terms: Terms }) {
   return <Badge>Standard</Badge>;
 }
 
-const TRUST: Record<Trust, { label: string; tone: "plain" | "lavender" | "mint" | "info" }> = {
-  new: { label: "New", tone: "plain" },
-  paid: { label: "Paid", tone: "info" },
-  reviewed: { label: "Reviewed", tone: "mint" },
+const TRUST: Record<Trust, { label: string; tone: "plain" | "lavender" | "mint" | "info"; about: string }> = {
+  new: { label: "New", tone: "plain", about: "New: has not paid g1t yet, so the limit is small." },
+  paid: { label: "Paid", tone: "info", about: "Paid: has paid g1t, and the limit grows with what it has paid." },
+  established: {
+    label: "Established",
+    tone: "mint",
+    about: "Established: the limit follows their monthly spend, up to $10,000.",
+  },
+  reviewed: { label: "Reviewed", tone: "mint", about: "Reviewed: g1t set the limit by hand, after talking to them." },
   // Comped accounts: g1t covers their usage, with no ceiling.
-  internal: { label: "Comped", tone: "lavender" },
+  internal: { label: "Comped", tone: "lavender", about: "Comped: g1t covers their usage, with no limit." },
 };
 
 export function TrustBadge({ trust }: { trust: Trust }) {
-  const { label, tone } = TRUST[trust] ?? { label: trust, tone: "plain" };
-  return <Badge tone={tone}>{label}</Badge>;
+  const { label, tone, about } = TRUST[trust] ?? { label: trust, tone: "plain", about: "" };
+  return (
+    <span title={about || undefined}>
+      <Badge tone={tone}>{label}</Badge>
+    </span>
+  );
+}
+
+/** What a trust level means for the limit, in a sentence. */
+export function trustAbout(trust: Trust): string {
+  return TRUST[trust]?.about ?? "";
+}
+
+/** A page's title, a line about it, and anything to its right. */
+export function PageHeader({ title, description, actions }: { title: ReactNode; description?: ReactNode; actions?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="min-w-0">
+        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        {description && <p className="mt-1 text-sm text-muted">{description}</p>}
+      </div>
+      {actions}
+    </div>
+  );
 }
 
 const STATE = {

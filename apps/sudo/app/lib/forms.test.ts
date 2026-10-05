@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { parseCredit, parseEmail, parseSlugList, parseTerms } from "./forms.ts";
+import { parseCredit, parseEmail, parseSales, parseSalesNote, parseSlugList, parseTerms } from "./forms.ts";
 
 const NOW = new Date("2026-10-04T12:00:00Z");
 
@@ -61,4 +61,28 @@ test("credits are positive and capped", () => {
   assert.deepEqual(parseCredit("25.50"), { ok: true, value: 25_500_000 });
   assert.equal(parseCredit("0").ok, false);
   assert.equal(parseCredit("10000.01").ok, false);
+});
+
+test("a sales record: a stage, an owner's email or nobody, a next step and its day", () => {
+  assert.deepEqual(parseSales(form({ stage: "contacted", owner: " Me@G1t.sh ", nextStep: "Call  about\n terms", nextAt: "2026-10-09" })), {
+    ok: true,
+    value: { stage: "contacted", owner: "me@g1t.sh", nextStep: "Call about terms", nextAt: "2026-10-09" },
+  });
+  assert.deepEqual(parseSales(form({ stage: "none", owner: "", nextStep: "", nextAt: "" })), {
+    ok: true,
+    value: { stage: "none", owner: null, nextStep: null, nextAt: null },
+  });
+  assert.equal(parseSales(form({ stage: "closed" })).ok, false);
+  assert.equal(parseSales(form({ stage: "lead", owner: "not an email" })).ok, false);
+  assert.equal(parseSales(form({ stage: "lead", nextStep: "x".repeat(201) })).ok, false);
+  assert.equal(parseSales(form({ stage: "lead", nextStep: "Call", nextAt: "2026-02-30" })).ok, false);
+  assert.equal(parseSales(form({ stage: "lead", nextStep: "Call", nextAt: "next week" })).ok, false);
+  // A date needs a step to go with it.
+  assert.equal(parseSales(form({ stage: "lead", nextAt: "2026-10-09" })).ok, false);
+});
+
+test("a sales note is required, and not endless", () => {
+  assert.deepEqual(parseSalesNote("Spoke to Ana; wants an enterprise quote."), { ok: true, value: "Spoke to Ana; wants an enterprise quote." });
+  assert.equal(parseSalesNote("").ok, false);
+  assert.equal(parseSalesNote("x".repeat(2001)).ok, false);
 });

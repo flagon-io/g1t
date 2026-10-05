@@ -53,6 +53,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import { type RoadmapItem, roadmapIn } from "../lib/roadmap";
 
 /** What the sidebar needs, worked out by the root loader for a signed-in person. */
 export type ShellData = {
@@ -266,20 +267,48 @@ function SidebarSubLink({
   );
 }
 
-/** A page a section will have: shown so people can see where g1t is going. */
-function SidebarSubSoon({ about, children }: { about: string; children: ReactNode }) {
+/**
+ * A page a section will have: a link to a page saying what it will be,
+ * so people can see where g1t is going, and read about it.
+ */
+function SidebarSubSoon({ to, about, children }: { to: string; about: string; children: ReactNode }) {
   return (
-    <div
+    <NavLink
+      to={to}
       title={about}
-      aria-disabled="true"
-      className="flex h-8 cursor-default items-center gap-2 rounded-md pr-2 pl-[2.375rem] text-[0.8125rem] text-faint"
+      prefetch="intent"
+      className={({ isActive }) =>
+        `relative flex h-8 items-center gap-2 rounded-md pr-2 pl-[2.375rem] text-[0.8125rem] transition-colors ${
+          isActive
+            ? "bg-raised text-fg before:absolute before:top-1.5 before:bottom-1.5 before:left-[1.1875rem] before:z-10 before:w-px before:bg-accent"
+            : "text-faint hover:bg-raised/60 hover:text-muted"
+        }`
+      }
     >
       <span className="grow truncate">{children}</span>
       <span className="rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">
         Soon
       </span>
-    </div>
+    </NavLink>
   );
+}
+
+/** A section's Soon pages, from the roadmap. */
+function SoonItems({ base, section }: { base: string; section: RoadmapItem["section"] }) {
+  return (
+    <>
+      {roadmapIn(section).map((item) => (
+        <SidebarSubSoon key={item.key} to={`${base}/soon/${item.key}`} about={item.summary}>
+          {item.title}
+        </SidebarSubSoon>
+      ))}
+    </>
+  );
+}
+
+/** A section's own pages and its Soon pages, for opening it when current. */
+function sectionPaths(base: string, section: RoadmapItem["section"], own: string[]): string[] {
+  return [...own, ...roadmapIn(section).map((item) => `${base}/soon/${item.key}`)];
 }
 
 function SidebarGroup({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
@@ -543,87 +572,60 @@ function RepoMenu({ repo, isPrivate, open }: { repo: MenuRepo; isPrivate: boolea
           Overview
         </SidebarLink>
 
-        <SidebarSection title="Plan" icon={<Kanban size={15} />} paths={[`${base}/issues`, `${base}/plans`]}>
+        <SidebarSection
+          title="Work"
+          icon={<Kanban size={15} />}
+          paths={sectionPaths(base, "Work", [`${base}/issues`, `${base}/pulls`, `${base}/pull`, `${base}/queue`, `${base}/plans`])}
+        >
           <SidebarSubLink to={`${base}/issues`} count={repo.issues}>
             Issues
           </SidebarSubLink>
+          <SidebarSubLink to={`${base}/pulls`} also={`${base}/pull`} count={repo.pulls}>
+            Pull requests
+          </SidebarSubLink>
+          <SidebarSubLink to={`${base}/queue`}>Merge queue</SidebarSubLink>
           {repo.member && <SidebarSubLink to={`${base}/plans`}>Outcomes</SidebarSubLink>}
-          <SidebarSubSoon about="Issues and pull requests on boards, by state, owner or outcome.">Boards</SidebarSubSoon>
-          <SidebarSubSoon about="Dates to land outcomes by, with what is left and what is at risk.">Milestones</SidebarSubSoon>
-          <SidebarSubSoon about="Pages about the project that agents keep current as the code changes.">Wiki</SidebarSubSoon>
+          <SoonItems base={base} section="Work" />
         </SidebarSection>
 
         <SidebarSection
           title="Code"
           icon={<Code2 size={15} />}
-          paths={[`${base}/pulls`, `${base}/pull`, `${base}/queue`, `${base}/code`, `${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`]}
+          paths={sectionPaths(base, "Code", [`${base}/code`, `${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`])}
         >
-          <SidebarSubLink to={`${base}/pulls`} also={`${base}/pull`} count={repo.pulls}>
-            Pull requests
-          </SidebarSubLink>
-          <SidebarSubLink to={`${base}/queue`}>Merge queue</SidebarSubLink>
           <SidebarSubLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`]}>
             Files
           </SidebarSubLink>
           <SidebarSubLink to={`${base}/commits`} also={`${base}/commit`}>
             Commits
           </SidebarSubLink>
-          <SidebarSubSoon about="Every branch, who and what is on it, how far behind it is, and its preview.">Branches</SidebarSubSoon>
-          <SidebarSubSoon about="Tags, and the releases made from them.">Tags</SidebarSubSoon>
+          <SoonItems base={base} section="Code" />
         </SidebarSection>
 
-        <SidebarSection title="Agents" icon={<Bot size={15} />} soon>
-          <SidebarSubSoon about="Every agent at work on this project now: what it is doing, what it knows, and a way to steer it.">
-            At work
-          </SidebarSubSoon>
-          <SidebarSubSoon about="Every agent session that changed this project, searchable, with why-blame back to the lines it wrote.">
-            Sessions
-          </SidebarSubSoon>
-          <SidebarSubSoon about="How agents should work here: conventions, commands and checks, kept with the code.">
-            Playbooks
-          </SidebarSubSoon>
+        <SidebarSection title="Agents" icon={<Bot size={15} />} paths={sectionPaths(base, "Agents", [])} soon>
+          <SoonItems base={base} section="Agents" />
         </SidebarSection>
 
-        <SidebarSection title="Build" icon={<PlayCircle size={15} />} paths={[`${base}/actions`]}>
-          <SidebarSubLink to={`${base}/actions`}>Actions</SidebarSubLink>
-          <SidebarSubSoon about="g1t's machines, or your own, that run workflow jobs and checks.">Runners</SidebarSubSoon>
-          <SidebarSubSoon about="What builds and workflow jobs produce, kept and downloadable.">Artifacts</SidebarSubSoon>
-          <SidebarSubSoon about="Workflows that run on a timetable, and their history.">Schedules</SidebarSubSoon>
-        </SidebarSection>
-
-        <SidebarSection title="Deploy" icon={<Rocket size={15} />} paths={repo.member ? [`${base}/deployments`] : []}>
+        <SidebarSection
+          title="Ship"
+          icon={<Rocket size={15} />}
+          paths={sectionPaths(base, "Ship", [`${base}/actions`, ...(repo.member ? [`${base}/deployments`] : [])])}
+        >
+          <SidebarSubLink to={`${base}/actions`}>Workflows</SidebarSubLink>
           {repo.member && <SidebarSubLink to={`${base}/deployments`}>Deployments</SidebarSubLink>}
-          <SidebarSubSoon about="Staging and other environments, with required approvers and branch rules.">Environments</SidebarSubSoon>
-          <SidebarSubSoon about="Tagged releases with notes written from what landed.">Releases</SidebarSubSoon>
-          <SidebarSubSoon about="npm, container and other packages published from the project.">Packages</SidebarSubSoon>
-          <SidebarSubSoon about="Turn features on per environment or per user, without a deploy.">Feature flags</SidebarSubSoon>
+          <SoonItems base={base} section="Ship" />
         </SidebarSection>
 
-        <SidebarSection title="Secure" icon={<ShieldCheck size={15} />} soon>
-          <SidebarSubSoon about="Every finding in one place, by severity, with the agent fixing each.">Security overview</SidebarSubSoon>
-          <SidebarSubSoon about="Keys and tokens found in the code or its history, revoked and removed by an agent.">
-            Secret scanning
-          </SidebarSubSoon>
-          <SidebarSubSoon about="Outdated and vulnerable packages, updated by agents, tested and landed through the queue.">
-            Dependency updates
-          </SidebarSubSoon>
-          <SidebarSubSoon about="Code scanned for vulnerabilities on every change, each finding fixed through the queue.">
-            Code scanning
-          </SidebarSubSoon>
+        <SidebarSection title="Security" icon={<ShieldCheck size={15} />} paths={sectionPaths(base, "Security", [])} soon>
+          <SoonItems base={base} section="Security" />
         </SidebarSection>
 
-        <SidebarSection title="Operate" icon={<Activity size={15} />} soon>
-          <SidebarSubSoon about="Requests, errors and CPU time of each deployment, and its logs.">Logs and metrics</SidebarSubSoon>
-          <SidebarSubSoon about="Errors and incidents from the running app, each becoming an issue an agent can take.">
-            Errors and incidents
-          </SidebarSubSoon>
-          <SidebarSubSoon about="Checks that the app answers, from around the world, and who is told when it does not.">Uptime</SidebarSubSoon>
+        <SidebarSection title="Observe" icon={<Activity size={15} />} paths={sectionPaths(base, "Observe", [])} soon>
+          <SoonItems base={base} section="Observe" />
         </SidebarSection>
 
-        <SidebarSection title="Analyze" icon={<BarChart3 size={15} />} soon>
-          <SidebarSubSoon about="How work flows: lead time, review time, and the share of changes agents make.">Insights</SidebarSubSoon>
-          <SidebarSubSoon about="What the project costs, by agent run, sandbox, build and app.">Costs</SidebarSubSoon>
-          <SidebarSubSoon about="Deploy frequency, lead time, change failure rate and time to restore.">Delivery metrics</SidebarSubSoon>
+        <SidebarSection title="Insights" icon={<BarChart3 size={15} />} paths={sectionPaths(base, "Insights", [])} soon>
+          <SoonItems base={base} section="Insights" />
         </SidebarSection>
 
         {repo.member && (
@@ -854,12 +856,13 @@ const SECTIONS: Record<string, string> = {
   pulls: "Pull requests",
   queue: "Merge queue",
   commits: "Commits",
-  plans: "Plan",
-  actions: "Actions",
+  plans: "Outcomes",
+  actions: "Workflows",
+  soon: "Soon",
   deployments: "Deployments",
   repository: "Repository",
   dependencies: "Dependencies",
-  code: "Code",
+  code: "Files",
   secrets: "Secrets and variables",
   settings: "Settings",
   people: "Members",

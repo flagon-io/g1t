@@ -1,7 +1,8 @@
 import { ArrowLeft, Building2, LogOut } from "lucide-react";
+import type { ReactNode } from "react";
 import { data, Link, useLocation } from "react-router";
 
-import { type AccountSummary, type AdminAction, httpStatus } from "@g1t/contracts";
+import { type AccountSummary, type AdminAction, type Limit, type Terms, httpStatus } from "@g1t/contracts";
 
 import type { Route } from "./+types/workspace";
 import {
@@ -14,12 +15,16 @@ import {
   ReviewPanel,
   TermsForm,
 } from "~/components/billing";
-import { Avatar, Badge, Button, EmptyState, ExposureBar, Field, Notice, Section, Select, StateBadge, TermsBadge, TrustBadge, When } from "~/components/ui";
+import { MonthsChart } from "~/components/charts";
+import { SalesSection, StageBadge, WorkspaceInvoicesSection } from "~/components/sales";
+import { Avatar, Badge, Button, EmptyState, ExposureBar, Field, Notice, Section, Select, StateBadge, TermsBadge, TrustBadge, When, trustAbout } from "~/components/ui";
 import { type Subject, billingAction } from "~/lib/billing-actions.server";
-import { parseSlug } from "~/lib/forms";
+import { parseSlug, text } from "~/lib/forms";
 import { usd } from "~/lib/money";
-import { type ActionData, type SectionError, doneMessage } from "~/lib/review";
+import { type ActionData, DONE, type SectionError, doneKey } from "~/lib/review";
+import { SALES_INTENTS, salesAction } from "~/lib/sales-actions.server";
 import { admin, identity } from "~/lib/services.server";
+import { settle } from "~/lib/settle";
 import { requireStaff } from "~/lib/staff";
 import type { Enterprise } from "~/lib/workspaces";
 
@@ -49,8 +54,11 @@ async function load(raw: string) {
   return { slug, person, detail, billedTo, subject };
 }
 
+/** Sales and invoices are newer billing methods; a page still opens without them. */
+const SALES_DONE = new Set(["sales", "note"]);
+
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  requireStaff(context);
+  const staff = requireStaff(context);
   const { slug, person, detail, billedTo, subject } = await load(params.slug);
   const { summary } = detail;
   // On an enterprise, the limit is the enterprise's and the figures are
@@ -60,12 +68,22 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const figures = billedTo
     ? { charged: share?.chargedMicros ?? 0, cost: share?.costMicros ?? 0, paid: share?.paidMicros ?? 0 }
     : { charged: summary.chargedMicros, cost: summary.costMicros, paid: summary.paidMicros };
-  const enterprises = billedTo
-    ? []
-    : (await admin.accounts())
-        .filter((row: AccountSummary) => row.account.kind === "enterprise")
-        .map((row) => ({ id: row.account.id, name: row.account.name, members: row.account.workspaces.length }));
+  const [enterprises, sales, invoices] = await Promise.all([
+    billedTo
+      ? Promise.resolve([])
+      : admin
+          .accounts()
+          .then((rows: AccountSummary[]) =>
+            rows
+              .filter((row) => row.account.kind === "enterprise")
+              .map((row) => ({ id: row.account.id, name: row.account.name, members: row.account.workspaces.length })),
+          ),
+    settle(admin.sales(slug)),
+    settle(admin.workspaceInvoices(slug)),
+  ]);
+  const done = doneKey(request.url);
   return {
+    me: staff.email,
     slug,
     name: person?.name ?? slug,
     person,
@@ -73,10 +91,16 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     terms: subject.terms,
     limit,
     figures,
+    months: summary.months ?? [],
     enterprises,
+    sales: sales.ok ? sales.value : null,
+    salesError: sales.ok ? null : sales.error,
+    invoices: invoices.ok ? invoices.value : [],
+    invoicesError: invoices.ok ? null : invoices.error,
     ledger: billedTo ? detail.ledger.filter((entry) => !entry.workspace || entry.workspace === slug) : detail.ledger,
     audit: billedTo ? detail.audit.filter((entry) => mentions(entry, slug)) : detail.audit,
-    done: doneMessage(request.url),
+    done: done && !SALES_DONE.has(done) ? DONE[done] : null,
+    salesDone: done && SALES_DONE.has(done) ? DONE[done] : null,
   };
 }
 
@@ -84,11 +108,24 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const staff = requireStaff(context);
   // What is acted on comes from billing and identity, not from the form.
   const { slug, subject } = await load(params.slug);
-  return billingAction(request, staff, subject, `/workspaces/${encodeURIComponent(slug)}`);
+  const path = `/workspaces/${encodeURIComponent(slug)}`;
+  const form = await request.clone().formData();
+  if (SALES_INTENTS.has(text(form, "intent"))) return salesAction(form, staff, slug, path);
+  return billingAction(request, staff, subject, path);
 }
 
+const SECTIONS = [
+  { id: "members", label: "Members" },
+  { id: "sales", label: "Sales" },
+  { id: "billing", label: "Billing" },
+  { id: "invoices", label: "Invoices" },
+  { id: "ledger", label: "Ledger" },
+  { id: "audit", label: "Audit log" },
+];
+
 export default function Workspace({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, name, person, billedTo, terms, limit, figures, enterprises, ledger, audit, done } = loaderData;
+  const { me, slug, name, person, billedTo, terms, limit, figures, months, enterprises, sales, salesError, invoices, invoicesError, ledger, audit, done, salesDone } =
+    loaderData;
   const { pathname } = useLocation();
   const result = actionData as ActionData | undefined;
   const review = result && "review" in result ? result.review : null;
@@ -98,7 +135,7 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
 
   return (
     <main id="top" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-8 sm:py-10">
-      <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
+      <Link to="/workspaces" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
         <ArrowLeft size={14} />
         Workspaces
       </Link>
@@ -123,6 +160,7 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
               <TermsBadge terms={terms} />
               {terms.kind !== "comped" && <TrustBadge trust={limit.trust} />}
               <StateBadge state={limit.state} />
+              {sales && sales.stage !== "none" && <StageBadge stage={sales.stage} />}
             </div>
           </div>
         </div>
@@ -134,7 +172,19 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
         )}
       </div>
 
-      <div className="mt-6 space-y-3">
+      <nav aria-label="On this page" className="mt-6 -mx-4 overflow-x-auto px-4">
+        <ul className="flex gap-1 border-b border-line text-sm">
+          {SECTIONS.map((section) => (
+            <li key={section.id}>
+              <a href={`#${section.id}`} className="block border-b-2 border-transparent px-2.5 py-2 whitespace-nowrap text-muted transition-colors hover:border-line-strong hover:text-fg">
+                {section.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      <div className="mt-6 space-y-3 empty:hidden">
         {done && <Notice tone="ok">{done}</Notice>}
         {error("top") && <Notice tone="error">{error("top")?.error}</Notice>}
         {limit.message && <Notice tone={limit.state === "stopped" ? "error" : limit.state === "warning" ? "warn" : "info"}>{limit.message}</Notice>}
@@ -142,7 +192,7 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
       </div>
 
       {/* People */}
-      <Section title="Members" description="Everyone in the workspace. Owners manage its members and billing." className="mt-6">
+      <Section id="members" title="Members" description="Everyone in the workspace. Owners manage its members and billing." className="mt-6">
         {!person ? (
           <Notice tone="warn">Identity has no record of {slug}; only billing knows it. It may have been deleted.</Notice>
         ) : person.members.length === 0 ? (
@@ -180,23 +230,36 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
         )}
       </Section>
 
+      {/* Sales */}
+      <div className="mt-6">
+        <SalesSection
+          sales={sales}
+          unavailable={salesError}
+          me={me}
+          pathname={pathname}
+          salesError={error("sales")}
+          noteError={error("note")}
+          done={salesDone}
+        />
+      </div>
+
       {/* Billing */}
-      <h2 className="mt-10 text-lg font-semibold tracking-tight">Billing</h2>
+      <h2 id="billing" className="mt-10 scroll-mt-20 text-lg font-semibold tracking-tight">
+        Billing
+      </h2>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-lg border border-line bg-surface px-4 py-3 sm:col-span-2">
-          <p className="mb-2 text-xs text-muted">
-            Usage this month against the limit{billedTo && <> · shared with every workspace {billedTo.name} pays for</>}
-          </p>
-          <ExposureBar limit={limit} wide />
-          <p className="mt-2 text-xs text-faint">
-            {billedTo ? <>Limit via {billedTo.name}</> : <>Limit from trust {usd(limit.trustCeilingMicros)}</>} · owner's spend limit{" "}
-            {usd(limit.spendLimitMicros)}
-            {terms.ceilingMicros != null && <> · custom limit {usd(terms.ceilingMicros)}</>}
-          </p>
-        </div>
+        <LimitCard limit={limit} terms={terms} billedTo={billedTo} />
         <Figure label="Charged this month" value={usd(figures.charged)} hint={`Cost to g1t ${usd(figures.cost)}`} />
         <Figure label="Paid ever" value={usd(figures.paid)} hint={`Margin this month ${usd(figures.charged - figures.cost)}`} />
       </div>
+
+      <Section
+        title="Last six months"
+        description={billedTo ? `${billedTo.name}'s figures: every workspace it pays for, together.` : "What it was charged, against what its usage cost g1t."}
+        className="mt-6"
+      >
+        <MonthsChart wide months={months} label={`${billedTo ? billedTo.name : name}: charged and cost by month`} />
+      </Section>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="space-y-6">
@@ -213,31 +276,93 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
           ) : (
             <TermsForm terms={terms} pathname={pathname} error={error("terms")} />
           )}
-          <LedgerSection
-            ledger={ledger}
-            description={billedTo ? `This workspace's lines among ${billedTo.name}'s latest 100.` : "Recent lines of the statement, newest first."}
-          />
+          <WorkspaceInvoicesSection invoices={invoices} unavailable={invoicesError} />
+          <div id="ledger" className="scroll-mt-20">
+            <LedgerSection
+              ledger={ledger}
+              description={billedTo ? `This workspace's lines among ${billedTo.name}'s latest 100.` : "Recent lines of the statement, newest first."}
+            />
+          </div>
         </div>
 
         <div className="space-y-6">
           <BillingLinkSection link={link} pathname={pathname} error={error("billing-link")} />
           <CreditForm workspaces={[slug]} pathname={pathname} error={error("credit")} />
-          <AuditSection
-            audit={audit}
-            description={
-              billedTo ? (
-                <>
-                  Changes about this workspace in {billedTo.name}'s log.{" "}
-                  <Link to={`/enterprises/${encodeURIComponent(billedTo.id)}`} className="text-merged hover:underline">
-                    Full log
-                  </Link>
-                </>
-              ) : undefined
-            }
-          />
+          <div id="audit" className="scroll-mt-20">
+            <AuditSection
+              audit={audit}
+              description={
+                billedTo ? (
+                  <>
+                    Changes about this workspace in {billedTo.name}'s log.{" "}
+                    <Link to={`/enterprises/${encodeURIComponent(billedTo.id)}`} className="text-merged hover:underline">
+                      Full log
+                    </Link>
+                  </>
+                ) : undefined
+              }
+            />
+          </div>
         </div>
       </div>
     </main>
+  );
+}
+
+/**
+ * The limit, and in words how it is made: trust, the owners' own spend
+ * limit (or the default), the most they may set, and how it grows.
+ */
+function LimitCard({ limit, terms, billedTo }: { limit: Limit; terms: Terms; billedTo: Enterprise | null }) {
+  const lines: { label: string; value: ReactNode }[] = [];
+  if (billedTo) {
+    lines.push({ label: "Limit", value: <>{billedTo.name}'s, shared by every workspace it pays for</> });
+  } else if (terms.kind !== "comped") {
+    lines.push({ label: "From trust", value: <>{usd(limit.trustCeilingMicros)}. {trustAbout(limit.trust)}</> });
+  }
+  if (terms.ceilingMicros != null) lines.push({ label: "Custom limit", value: usd(terms.ceilingMicros) });
+  if (!billedTo && terms.kind !== "comped") {
+    lines.push({
+      label: "Owners' limit",
+      value: limit.defaultSpendLimit ? (
+        <>The default, {usd(limit.spendLimitMicros ?? 200_000_000)} a month: they have not chosen one</>
+      ) : limit.spendLimitMicros == null ? (
+        "None of their own: they use everything available"
+      ) : (
+        <>{usd(limit.spendLimitMicros)} a month, chosen by the owners</>
+      ),
+    });
+    if (limit.availableMicros !== undefined) {
+      lines.push({
+        label: "Available",
+        value:
+          limit.availableMicros == null ? (
+            "No ceiling"
+          ) : (
+            <>Up to {usd(limit.availableMicros)}: the most owners may set; past it, they contact g1t</>
+          ),
+      });
+    }
+  }
+  if (limit.growth) lines.push({ label: "Grows", value: limit.growth });
+
+  return (
+    <div className="rounded-lg border border-line bg-surface px-4 py-3 sm:col-span-2">
+      <p className="mb-2 text-xs text-muted">
+        Usage this month against the limit{billedTo && <> · shared with every workspace {billedTo.name} pays for</>}
+      </p>
+      <ExposureBar limit={limit} wide />
+      {lines.length > 0 && (
+        <dl className="mt-3 space-y-1 text-xs">
+          {lines.map((line) => (
+            <div key={line.label} className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-2">
+              <dt className="text-faint">{line.label}</dt>
+              <dd className="text-fg-soft">{line.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </div>
   );
 }
 

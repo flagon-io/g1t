@@ -79,7 +79,7 @@ function pageHref(q: string, show: string[], page: number) {
   for (const filter of show) params.append("show", filter);
   if (page > 1) params.set("page", String(page));
   const query = params.toString();
-  return query ? `/?${query}` : "/";
+  return query ? `/workspaces?${query}` : "/workspaces";
 }
 
 function workspaceHref(row: WorkspaceRow) {
@@ -115,7 +115,7 @@ export default function Workspaces({ loaderData }: Route.ComponentProps) {
         />
       </div>
 
-      <form method="get" action="/" role="search" className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center">
+      <form method="get" action="/workspaces" role="search" className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="relative grow">
           <Search size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
           <input
@@ -144,7 +144,7 @@ export default function Workspaces({ loaderData }: Route.ComponentProps) {
             Apply
           </Button>
           {filtered && (
-            <Link to="/" className="px-1 text-xs text-muted underline-offset-4 hover:text-fg hover:underline">
+            <Link to="/workspaces" className="px-1 text-xs text-muted underline-offset-4 hover:text-fg hover:underline">
               Clear
             </Link>
           )}

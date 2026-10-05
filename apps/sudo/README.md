@@ -1,19 +1,45 @@
 # sudo
 
-g1t's staff console, at <https://sudo.g1t.sh>. It is organised the way
-customers know g1t: by **workspace**.
+g1t's staff console, at <https://sudo.g1t.sh>: the back office g1t is
+building for itself, for sales, support and finance. It is organised the
+way customers know g1t: by **workspace**.
 
-- **Workspaces** (the home page): every workspace, newest first, 50 to a
+The sidebar (`app/lib/nav.ts`) has Overview and Reach out at the top, then
+sections that fold open to their pages: Customers, Revenue, Platform,
+Support and Team. Each fold is a `<details>`, drawn open for the section
+holding the current page; on a phone the same menu sits behind a "Menu"
+button in the top bar. Pages not built yet are marked **Soon**: each is a
+real page (`routes/soon.tsx`, made from its entry in `nav.ts`) saying what
+it will do, why, and what it will have, so the sidebar doubles as the
+roadmap.
+
+- **Overview** (`/`): this month charged, cost and margin; the last six
+  months as a chart; this month by kind of usage; paying workspaces; how
+  many are stopped, near their limit or declined (each a link into Reach
+  out); open invoices; follow-ups due; and the five most urgent signals.
+  From billing's `admin_overview` and `admin_signals`.
+- **Reach out** (`/reach-out`): every workspace worth a word, most urgent
+  first (at limit, declined, near limit, high spend, growing, established,
+  first payment), with its owners, the reason in a sentence, the figure,
+  and its sales stage and owner at g1t. Filter by why and by whose
+  (everyone's, unassigned, mine). Each row opens the workspace's Sales.
+- **Workspaces** (`/workspaces`): every workspace, newest first, 50 to a
   page, with its owners, members, who it is billed to, its terms, this
   month's usage against its limit, what it was charged and what it cost
   g1t. Search by workspace, owner, email or enterprise (across the whole
   list); filter to stopped or warning, comped or custom, or on an
   enterprise. Billing's figures are fetched for exactly the page shown, so
   the filters, and the totals over the list, cover that page; the page
-  says so when there is more than one. A workspace's page shows its members, and under
-  **Billing** its terms, who it is billed to (move it onto or off an
+  says so when there is more than one. A workspace's page shows its members;
+  **Sales** (its stage, the staff member who has it, the next step and its
+  date, and notes, newest first; `admin_sales`, `admin_set_sales`,
+  `admin_add_note`); and under **Billing** its limit in words (trust, the
+  owners' own spend limit or the default, the most they may set, how it
+  grows), its last six months as a chart, its invoices (`admin_workspace_invoices`,
+  with Stripe's page and PDF), its terms, who it is billed to (move it onto or off an
   enterprise), a credit form, a Stripe billing link, its ledger and its
-  audit log.
+  audit log. If billing does not answer for sales or invoices, the page
+  still opens and says so in those sections.
 - **Enterprises**: customers that pay for several workspaces with one
   bill, one limit and one set of terms. Each has its workspaces (add or
   remove them), combined usage, terms, credits, ledger and audit log, and
@@ -29,6 +55,9 @@ customers know g1t: by **workspace**.
   each. "Register webhook" (or "Replace") has billing delete the endpoint
   it made before, create a new one and keep its signing secret, which no
   one sees. Do it once per mode, and again after switching to live keys.
+
+Sales changes are not money, so they have no confirmation step; they are
+still POSTs from sudo's own pages, recorded with who made them.
 
 Billing's internal account ids (`ws_<slug>` for a workspace's own,
 `ent_…` for an enterprise) are never shown as names; an enterprise's id
@@ -111,7 +140,7 @@ The same two checks still apply: the Access policy, and `STAFF_EMAILS`.
 
 ```sh
 npm run typecheck -w @g1t/sudo
-npm test -w @g1t/sudo     # JWT verification, forms, money, the workspace join, paging
+npm test -w @g1t/sudo     # JWT verification, forms, money, the workspace join, paging, nav, charts, signals
 npm run build -w @g1t/sudo
 ```
 

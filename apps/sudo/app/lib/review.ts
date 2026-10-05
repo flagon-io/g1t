@@ -29,7 +29,15 @@ export const DONE: Record<string, string> = {
   credit: "Credit issued.",
   created: "Enterprise created.",
   "billing-email": "Saved where the enterprise's invoices go.",
+  sales: "Sales record saved.",
+  note: "Note added.",
 };
+
+/** The `?done=` key, if it is one sudo knows. */
+export function doneKey(url: string): string | null {
+  const done = new URL(url).searchParams.get("done");
+  return done && DONE[done] ? done : null;
+}
 
 export function doneMessage(url: string): string | null {
   const done = new URL(url).searchParams.get("done");

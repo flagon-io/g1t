@@ -12,7 +12,7 @@ import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
 export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Actions · ${params.owner}/${params.repo} · g1t` }];
+  return [{ title: `Workflows · ${params.owner}/${params.repo} · g1t` }];
 }
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
@@ -264,15 +264,15 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
         <div>
           <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
             <PlayCircle size={18} className="text-accent" />
-            Actions
+            Workflows
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            GitHub Actions workflows in <code className="text-fg">.g1t/workflows</code>, run as GitHub runs them. A run on
-            a pull request counts as its checks.
+            Workflows in <code className="text-fg">.g1t/workflows</code>, written as GitHub Actions and run as GitHub runs
+            them. A run on a pull request counts as its checks.
           </p>
         </div>
         <a href="https://docs.g1t.sh/guides/actions/" className="text-sm text-muted underline underline-offset-4 hover:text-fg">
-          How Actions run on g1t
+          How workflows run on g1t
         </a>
       </header>
 

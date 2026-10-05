@@ -2,9 +2,10 @@
  * Reading sudo's forms. Everything typed is checked here before it goes
  * to the billing service, which checks it again.
  */
-import type { Terms } from "@g1t/contracts";
+import type { SalesStage, Terms } from "@g1t/contracts";
 
 import { MICROS_PER_DOLLAR, parseDollars } from "./money.ts";
+import { isStage } from "./signals.ts";
 
 /** A workspace slug, as identity allows them (GitHub's rules). */
 const SLUG = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}$/;
@@ -121,6 +122,51 @@ export function parseEmail(raw: string): Parsed<string> {
     /^[^\s@,;<>"]+$/.test(local) &&
     /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain);
   return ok ? { ok: true, value: email } : { ok: false, error: "Enter one email address, such as billing@acme.com." };
+}
+
+export type SalesUpdate = { stage: SalesStage; owner: string | null; nextStep: string | null; nextAt: string | null };
+
+const MAX_NEXT_STEP = 200;
+const MAX_SALES_NOTE = 2000;
+
+/**
+ * A workspace's sales record from its form. The owner is a staff member's
+ * email, or nobody; a next step may have a date (a day, UTC) or not.
+ */
+export function parseSales(form: FormData): Parsed<SalesUpdate> {
+  const stage = text(form, "stage");
+  if (!isStage(stage)) return { ok: false, error: "Choose a stage." };
+
+  let owner: string | null = null;
+  const rawOwner = text(form, "owner");
+  if (rawOwner !== "") {
+    const email = parseEmail(rawOwner);
+    if (!email.ok) return { ok: false, error: "The owner is a staff member's email, such as you@g1t.sh, or blank for nobody." };
+    owner = email.value;
+  }
+
+  const nextStep = text(form, "nextStep").replace(/\s+/g, " ");
+  if (nextStep.length > MAX_NEXT_STEP) return { ok: false, error: `Keep the next step under ${MAX_NEXT_STEP} characters.` };
+
+  let nextAt: string | null = null;
+  const rawDate = text(form, "nextAt");
+  if (rawDate !== "") {
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? new Date(`${rawDate}T00:00:00Z`) : null;
+    if (!day || Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== rawDate) {
+      return { ok: false, error: "The follow-up date is not a date." };
+    }
+    nextAt = rawDate;
+  }
+  if (nextAt && !nextStep) return { ok: false, error: "Say what the next step is, as well as when." };
+
+  return { ok: true, value: { stage, owner, nextStep: nextStep || null, nextAt } };
+}
+
+/** A note on a workspace's sales record. */
+export function parseSalesNote(raw: string): Parsed<string> {
+  if (!raw) return { ok: false, error: "Write the note first." };
+  if (raw.length > MAX_SALES_NOTE) return { ok: false, error: `Keep a note under ${MAX_SALES_NOTE} characters.` };
+  return { ok: true, value: raw };
 }
 
 /** A credit's amount: more than nothing, and no more than the cap. */

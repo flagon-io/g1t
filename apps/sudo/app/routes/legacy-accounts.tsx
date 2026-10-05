@@ -11,7 +11,7 @@ import { legacyAccountPath } from "~/lib/workspaces";
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   requireStaff(context);
   const id = (params["*"] ?? "").replace(/\/+$/, "");
-  if (!id) return redirect(`/${new URL(request.url).search}`, 301);
+  if (!id) return redirect(`/workspaces${new URL(request.url).search}`, 301);
   const path = legacyAccountPath(id);
   if (!path) throw data("That is not a workspace or an enterprise.", { status: 404 });
   return redirect(path, 301);

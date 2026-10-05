@@ -61,6 +61,8 @@ export default [
     route("settings/secrets", "routes/repo/secrets.tsx"),
     route("settings/deployments", "routes/repo/settings-deployments.tsx"),
     route("settings/dependencies", "routes/repo/settings-dependencies.tsx"),
+    // What the project will have: one page for each Soon in its menu.
+    route("soon/:feature", "routes/repo/soon.tsx"),
   ]),
   // Anything else: a 404 that still knows who is signed in.
   route("*", "routes/not-found.tsx"),
