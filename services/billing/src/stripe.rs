@@ -104,16 +104,6 @@ fn encode(value: &str) -> String {
 }
 
 /// `name=value` pairs as a form body.
-/// A payment made with no one there.
-#[derive(Debug, Deserialize)]
-pub struct PaymentIntent {
-    pub id: String,
-    /// `succeeded`, or anything else when it did not go through.
-    pub status: String,
-    #[serde(default)]
-    pub amount_received: i64,
-}
-
 pub(crate) fn form(fields: &[(&str, String)]) -> String {
     fields
         .iter()
@@ -140,6 +130,17 @@ impl Stripe {
     /// A form POST to any Stripe resource.
     pub(crate) async fn post<T: for<'a> Deserialize<'a>>(&self, path: &str, fields: &[(&str, String)]) -> Result<T> {
         self.call(Method::Post, path, Some(form(fields))).await
+    }
+
+    /// A form POST that Stripe does at most once for `key`, however often
+    /// it is sent.
+    pub(crate) async fn post_idempotent<T: for<'a> Deserialize<'a>>(
+        &self,
+        path: &str,
+        fields: &[(&str, String)],
+        key: &str,
+    ) -> Result<T> {
+        self.send(Method::Post, path, Some(form(fields)), Some(key)).await
     }
 
     pub(crate) async fn delete<T: for<'a> Deserialize<'a>>(&self, path: &str) -> Result<T> {
@@ -185,41 +186,6 @@ impl Stripe {
             )));
         }
         response.json().await
-    }
-
-    /// Charges the customer's saved card, with no one there: the automatic
-    /// payment at a workspace's limit. `key` makes a retry the same charge.
-    pub async fn charge_saved_card(
-        &self,
-        customer: &str,
-        amount_cents: i64,
-        description: &str,
-        key: &str,
-    ) -> Result<PaymentIntent> {
-        #[derive(Deserialize)]
-        struct Methods {
-            data: Vec<Method_>,
-        }
-        #[derive(Deserialize)]
-        struct Method_ {
-            id: String,
-        }
-        let methods: Methods = self
-            .call(Method::Get, &format!("/payment_methods?customer={}&type=card&limit=1", encode(customer)), None)
-            .await?;
-        let Some(card) = methods.data.first() else {
-            return Err(Error::RustError("no card on file".into()));
-        };
-        let fields = [
-            ("amount", amount_cents.to_string()),
-            ("currency", "usd".to_owned()),
-            ("customer", customer.to_owned()),
-            ("payment_method", card.id.clone()),
-            ("off_session", "true".to_owned()),
-            ("confirm", "true".to_owned()),
-            ("description", description.to_owned()),
-        ];
-        self.send(Method::Post, "/payment_intents", Some(form(&fields)), Some(key)).await
     }
 
     /// A customer for a workspace that has none yet.

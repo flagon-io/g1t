@@ -112,6 +112,8 @@ export type AccountSummary = {
   paidMicros: number;
   /** The same figures for each of the account's workspaces that has any. */
   byWorkspace: WorkspaceFigures[];
+  /** The last six months, oldest first. */
+  months?: MonthFigures[];
 };
 
 /** One workspace's share of an `AccountSummary`. */
@@ -134,6 +136,58 @@ export type EnterpriseInvoice = {
   period: string;
   lines: { workspace: string; amountMicros: number }[];
   createdAt: string;
+};
+
+/** A workspace's invoice: monthly, or when charged near its limit. Itemised, in Stripe's billing page. */
+export type WorkspaceInvoice = {
+  invoiceId: string;
+  workspace: string;
+  reason: "month" | "threshold" | string;
+  period: string;
+  amountMicros: number;
+  status: "paid" | "open" | "failed" | "void" | string;
+  hostedUrl: string | null;
+  pdfUrl: string | null;
+  lines: { description: string; amountMicros: number }[];
+  createdAt: string;
+};
+
+export type MonthFigures = { month: string; chargedMicros: number; costMicros: number; paidMicros: number };
+
+export type SignalKind = "at_limit" | "near_ceiling" | "declined" | "growing" | "established" | "first_payment" | "high_spend";
+
+/** Why a workspace is worth reaching out to. */
+export type Signal = {
+  workspace: string;
+  kind: SignalKind;
+  detail: string;
+  valueMicros: number;
+  stage: string | null;
+  owner: string | null;
+};
+
+export type SalesStage = "none" | "lead" | "contacted" | "negotiating" | "won" | "lost" | "churn_risk";
+
+export type SalesRecord = {
+  workspace: string;
+  stage: SalesStage | string;
+  owner: string | null;
+  nextStep: string | null;
+  nextAt: string | null;
+  notes: { id: string; text: string; by: string; createdAt: string }[];
+  updatedAt: string | null;
+};
+
+export type Overview = {
+  month: string;
+  months: MonthFigures[];
+  byKind: { kind: string; chargedMicros: number; costMicros: number }[];
+  payingWorkspaces: number;
+  stopped: number;
+  nearCeiling: number;
+  declined: number;
+  openInvoicesMicros: number;
+  followUpsDue: number;
 };
 
 /** A customer's Stripe billing page, for staff to send them. */
@@ -173,10 +227,20 @@ export interface BillingAdminApi {
   invoiceEnterprise(id: string, by: string): Promise<Result<EnterpriseInvoice>>;
   /** Exactly these workspaces' accounts, such as one page of the list. */
   accountsFor(workspaces: string[]): Promise<AccountSummary[]>;
+  /** Every workspace worth reaching out to, most urgent first. */
+  signals(): Promise<Signal[]>;
+  /** The business at a glance. */
+  overview(): Promise<Overview>;
+  /** A workspace's sales record. */
+  sales(workspace: string): Promise<SalesRecord>;
+  setSales(workspace: string, record: { stage: string; owner?: string | null; nextStep?: string | null; nextAt?: string | null }, by: string): Promise<Result<SalesRecord>>;
+  addNote(workspace: string, text: string, by: string): Promise<Result<SalesRecord>>;
+  /** A workspace's invoices from g1t, for staff. */
+  workspaceInvoices(workspace: string): Promise<WorkspaceInvoice[]>;
 }
 
 /** How much a workspace has earned g1t's trust with money. */
-export type Trust = "new" | "paid" | "reviewed" | "internal";
+export type Trust = "new" | "paid" | "established" | "reviewed" | "internal";
 
 /**
  * How far a workspace's unpaid usage has gone this month, and where its
@@ -197,6 +261,14 @@ export type Limit = {
   spendLimitMicros: number | null;
   state: "ok" | "warning" | "stopped";
   message: string | null;
+  /** Charged this month: what the spend limit is measured against. */
+  spentMicros?: number;
+  /** True while the owners have not chosen a limit, so the automatic one applies: $200, or twice last month's spend. */
+  defaultSpendLimit?: boolean;
+  /** The most owners may set their own limit to; past it, they contact g1t. */
+  availableMicros?: number | null;
+  /** How the ceiling grows from here, in a sentence. */
+  growth?: string | null;
 };
 
 /** One metered unit: what it costs g1t and what it is sold at; the price follows the cost. */
@@ -352,8 +424,13 @@ export interface BillingApi {
   limit(workspace: string, viewer: Viewer): Promise<Result<Limit>>;
   /** The same, for the services that enforce it. */
   checkLimit(workspace: string): Promise<Result<Limit>>;
-  /** The owner's own monthly ceiling, under g1t's; null removes it. Owners only. */
-  setSpendLimit(actor: User, workspace: string, spendLimitMicros: number | null): Promise<Result<Limit>>;
+  /**
+   * The owners' own monthly limit, up to what is available; null goes back
+   * to the default, and `useFullLimit` uses everything available. Owners only.
+   */
+  setSpendLimit(actor: User, workspace: string, spendLimitMicros: number | null, useFullLimit?: boolean): Promise<Result<Limit>>;
+  /** The workspace's invoices from g1t, newest first. Members only. */
+  invoices(workspace: string, viewer: Viewer): Promise<Result<WorkspaceInvoice[]>>;
   /**
    * How long a sandbox ran for a workspace, reported when it stops. Its
    * cost is always recorded; seconds past the month's free minutes are

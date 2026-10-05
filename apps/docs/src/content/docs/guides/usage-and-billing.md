@@ -143,52 +143,75 @@ within the free minutes.
 
 ## Usage limits
 
-Everything a workspace uses costs g1t money at Cloudflare or a model
-provider before the workspace pays for it. So, as Fly and Cloudflare do
-with new accounts, every workspace has a limit on usage not yet paid for.
-When it is reached, the workspace's work stops until it pays, or the
-month turns:
+Every workspace has two limits. One protects you from a surprise bill;
+the other protects g1t from usage that is never paid for. Both are on
+**Settings → Billing → Limits**.
 
-- **No new sandboxes.** Assigning an agent, planning, asking for a
-  review and workflow jobs are refused with `402 payment_required` and the
-  reason; acceptance checks and the merge queue wait. Runs already under
-  way finish.
-- **No new builds**, and **deployed apps pause**: they answer with a page
-  saying so (`402`) and run nothing. Once the workspace is under its limit
-  again, g1t rebuilds each one from the commit it was serving, by itself.
+### Your monthly spend limit
 
-What counts is this month's usage (UTC), each item at what it cost g1t or
-what it is charged, whichever is more, less what was paid this month, plus
-any charges left unpaid from earlier months: a new month is not a fresh
-allowance. Even
-usage that is free to you, such as the free minutes, counts at its cost:
-the limit is about what g1t has spent on a workspace's behalf.
+What the workspace may spend in a month (UTC). At it, work stops until the
+month turns or an owner raises it. Owners choose one of:
 
-| Workspace | Limit |
+- **Automatic** (the default): $200, or twice last month's spend,
+  whichever is more. It keeps up as you grow: a workspace that spent $900
+  last month can spend $1,800 this month without anyone changing a thing.
+- **Fixed**: an amount you set.
+- **None**: work never stops for spend.
+
+You are emailed at 50%, 80% and 100% of it.
+
+### What g1t lets go unpaid
+
+Usage is charged after it runs, so at any moment some of it is not yet
+paid for. g1t lets that reach a ceiling that grows with your history, the
+way Cloudflare and Fly do:
+
+| | Ceiling on what is unpaid |
 | --- | --- |
 | **New**: has not paid g1t yet | $3: the free allowances and a little more |
-| **Paid**: has paid g1t | twice what it has paid, from $25 up to $1,000 |
-| **Reviewed** | what g1t set for it, after talking with you |
-| **Comped** | none: g1t covers it |
+| **Paid** | twice what you have paid, from $25 up to $1,000 |
+| **Established**: three steady months | three times your monthly spend, up to $10,000, by itself |
+| **Reviewed** | what g1t set with you; contact us |
 
-The limit is there to stop accounts that will never pay, not to slow down
-ones that do. So:
+With a card on file, **g1t charges it as you near the ceiling** (80%):
+an invoice for what you owe, paid at once, after which the ceiling is
+yours again. So a workspace that pays keeps going, however much it uses;
+the ceiling only stops one that does not.
 
-- **With a card on file, work does not stop.** As a workspace nears its
-  limit (80%), g1t charges its card for what it owes. That payment lowers
-  what is owed and raises the limit, since the limit grows with what a
-  workspace has paid. A workspace that pays as it goes keeps going.
-- **A declined card stops work** until it is paid, with a message saying
-  so, and the pull requests that were waiting say **Needs you**. Paying
-  under Billing with another card clears it at once.
-- **Your own spend limit means stop.** An owner can set a lower monthly
-  limit under **Settings → Billing → Usage limit**. At that one, g1t stops
-  work and does not charge the card past it.
+How the ceiling grows:
 
-Payments in test mode are not money: they neither lower what is owed nor
-raise the limit, and automatic charges only happen with live payments.
-Credits g1t gives, such as refunds, lower what is owed but do not raise
-the limit. To go past $1,000, write to support.
+- A payment counts once it has **cleared for 7 days**, the time in which
+  most bad cards are caught. Payments with prepaid cards pay, but do not
+  raise the ceiling, nor do credits g1t gives or payments in test mode.
+- **Established** comes by itself after three months in a row of real spend
+  ($20 or more each), every monthly invoice paid, nothing declined in 90
+  days and nothing ever disputed. From then the ceiling follows your
+  spend.
+- Past $10,000, or for terms of your own, **contact us**: we set it with
+  you, often with an enterprise account and invoices.
+
+What counts as unpaid is each item at what it cost g1t or what it is
+charged, whichever is more, less what was paid this month, plus anything
+left unpaid from earlier months: a new month is not a fresh allowance.
+
+A **declined card** stops work until it is paid, as does a payment
+disputed with the card's bank. Paying under Billing with another card
+clears it at once.
+
+## Invoices
+
+Every charge is a real invoice from g1t, kept on Stripe's billing page
+with its PDF and emailed as a receipt:
+
+- **When each month closes**, an invoice for what the workspace owes,
+  itemised: agents on g1t's models, runs on your own model provider,
+  sandbox time, and deployments past the plan. Credit you paid in advance
+  is taken off as *Paid in advance*; anything left unpaid from before is
+  added.
+- **When the workspace nears its ceiling** mid-month, the same, sooner.
+
+Each is charged to the card on file. The Billing page lists them, with
+links to view each on Stripe and download its PDF.
 
 ## Enterprises and custom terms
 
@@ -223,11 +246,11 @@ need help, we send you a link to that same Stripe page.
 
 With a card on file:
 
-- **Near the usage limit** (80%), g1t charges it for what the workspace
-  owes, at least $5, so work does not stop.
-- **When each month closes**, g1t charges it for what the workspace owed
-  at the end of the month, and the statement shows the payment as *Usage
-  for 2026-10, charged to the card on file when the month closed*.
+- **Near the ceiling** on what is unpaid (80%), g1t sends an
+  [invoice](#invoices) for what the workspace owes and charges it, so work
+  does not stop.
+- **When each month closes**, the month's [invoice](#invoices) is charged
+  to it.
 - **If it is declined**, work stops until the workspace pays, and the
   Billing page and the API say why. Replace the card or add credit to pay.
 

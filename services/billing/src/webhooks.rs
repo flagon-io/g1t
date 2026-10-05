@@ -273,13 +273,19 @@ impl Billing {
             "invoice.paid" => {
                 if let Some(subscription) = object["subscription"].as_str() {
                     self.settle_subscription(subscription).await?
+                } else if let Some(done) = self.workspace_invoice_paid(&text("id")).await? {
+                    done
                 } else {
                     self.enterprise_invoice_paid(&text("id")).await?
                 }
             }
-            "invoice.payment_failed" => match object["subscription"].as_str() {
-                Some(subscription) => self.settle_subscription(subscription).await?,
-                None => "ignored: not a plan".to_owned(),
+            "invoice.payment_failed" => match (object["subscription"].as_str(), object["metadata"]["g1t_workspace"].as_str()) {
+                (Some(subscription), _) => self.settle_subscription(subscription).await?,
+                (None, Some(workspace)) => {
+                    self.mark_declined(workspace, "the card was declined for an invoice").await?;
+                    format!("{workspace}: invoice payment failed; work stopped")
+                }
+                _ => "ignored: not g1t's".to_owned(),
             },
             "invoice.overdue" => self.enterprise_invoice_status(&text("id"), "overdue").await?,
             "invoice.voided" => self.enterprise_invoice_status(&text("id"), "void").await?,
@@ -455,6 +461,14 @@ impl Billing {
             return Ok("ignored: not a workspace's customer".to_owned());
         };
         let now = rfc3339(now_ms());
+        // The disputed payment never counts toward trust again.
+        for reference in [charge["payment_intent"].as_str(), charge["invoice"].as_str()].into_iter().flatten() {
+            self.db
+                .prepare("UPDATE ledger SET disputed = ? WHERE workspace = ? AND reference = ?")
+                .bind(&[(if stop { 1 } else { 0 }).into(), workspace.as_str().into(), reference.into()])?
+                .run()
+                .await?;
+        }
         if stop {
             self.db
                 .prepare(

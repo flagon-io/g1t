@@ -598,9 +598,9 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
   return (
     <div className="flex h-full flex-col">
       {/* The same height and rule as the top bar, so the two read as one line. */}
-      <div className="flex h-14 shrink-0 items-center gap-1.5 border-b border-line px-3">
-        <Link to="/" aria-label="g1t home" className="shrink-0 rounded-md p-1.5 hover:bg-raised">
-          <Mark className="size-5" />
+      <div className="flex h-16 shrink-0 items-center gap-2 border-b border-line px-3">
+        <Link to="/" aria-label="g1t home" className="shrink-0 rounded-md p-2 hover:bg-raised">
+          <Mark className="size-6" />
         </Link>
         <span className="shrink-0 text-line-strong" aria-hidden="true">
           /
@@ -611,7 +611,7 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
         <button
           type="button"
           onClick={onFind}
-          className="flex h-8 w-full items-center gap-2 rounded-md bg-surface px-2.5 text-[0.8125rem] text-faint ring-1 ring-line transition-colors hover:text-muted hover:ring-line-strong"
+          className="flex h-9 w-full items-center gap-2 rounded-md bg-surface px-2.5 text-[0.8125rem] text-faint ring-1 ring-line transition-colors hover:text-muted hover:ring-line-strong"
         >
           <Search size={14} />
           <span className="grow text-left">Find…</span>
@@ -1046,7 +1046,7 @@ export function AppShell({
       )}
 
       <div className="flex min-h-screen min-w-0 flex-col lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-bg/85 px-4 backdrop-blur sm:px-6">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-line bg-bg/85 px-4 backdrop-blur sm:px-6">
           <button
             type="button"
             aria-label="Open menu"
@@ -1059,14 +1059,14 @@ export function AppShell({
           <div className="ml-auto flex items-center gap-1.5">
             <a
               href="https://docs.g1t.sh/"
-              className="hidden rounded-md px-2 py-1 text-[0.8125rem] text-muted transition-colors hover:bg-raised hover:text-fg sm:block"
+              className="hidden rounded-md px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-raised hover:text-fg sm:block"
             >
               Docs
             </a>
             <DropdownMenu>
               <DropdownMenuTrigger
                 aria-label="Create"
-                className="flex h-8 items-center gap-1.5 rounded-md bg-fg px-2.5 text-[0.8125rem] font-medium text-bg outline-none transition-colors hover:bg-white"
+                className="flex h-9 items-center gap-1.5 rounded-md bg-fg px-3 text-sm font-medium text-bg outline-none transition-colors hover:bg-white"
               >
                 <Plus size={14} />
                 New

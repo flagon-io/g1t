@@ -8,6 +8,7 @@ import {
   type Feature,
   type FeatureState,
   type Limit,
+  type WorkspaceInvoice,
 } from "@g1t/contracts";
 
 import type { Route } from "./+types/billing";
@@ -47,12 +48,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     await billing.confirm(slug, viewer, session);
     throw redirect(`/${slug}/-/billing?added=1`);
   }
-  const [account, ledger, features, deployUsage, limit] = await Promise.all([
+  const [account, ledger, features, deployUsage, limit, invoices] = await Promise.all([
     billing.account(slug, viewer),
     billing.ledger(slug, viewer),
     billing.features(slug, viewer),
     deployments.usage(slug, viewer),
     billing.limit(slug, viewer),
+    billing.invoices(slug, viewer).catch(() => null),
   ]);
   return {
     slug,
@@ -62,6 +64,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     features: unwrap(features),
     deployUsage: deployUsage.ok ? deployUsage.value : null,
     limit: limit.ok ? limit.value : null,
+    invoices: invoices?.ok ? invoices.value : [],
     added: url.searchParams.has("added"),
     subscribed: url.searchParams.has("subscribed"),
   };
@@ -79,15 +82,18 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     if (!started.ok) return { error: started.error.message };
     throw redirect(started.value.url);
   }
-  if (intent === "spend-limit" || intent === "no-spend-limit") {
+  if (intent === "spend-limit") {
+    // automatic, fixed (with an amount), or none.
+    const mode = String(form.get("mode") ?? "automatic");
     const amount = Number(form.get("limit"));
-    if (intent === "spend-limit" && !(Number.isFinite(amount) && amount >= 0)) {
-      return { error: "A spend limit is a dollar amount." };
+    if (mode === "fixed" && !(Number.isFinite(amount) && amount >= 1)) {
+      return { error: "A spend limit is a dollar amount, $1 or more." };
     }
     const set = await billing.setSpendLimit(
       user,
       params.owner,
-      intent === "spend-limit" ? Math.round(amount * MICROS_PER_DOLLAR) : null,
+      mode === "fixed" ? Math.round(amount * MICROS_PER_DOLLAR) : null,
+      mode === "none",
     );
     return set.ok ? null : { error: set.error.message };
   }
@@ -120,7 +126,7 @@ function dollars(micros: number, digits = 2): string {
 }
 
 export default function WorkspaceBilling({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, account, ledger, features, deployUsage, limit, added, subscribed } = loaderData;
+  const { slug, role, account, ledger, features, deployUsage, limit, invoices, added, subscribed } = loaderData;
   const { status } = account;
   const paying = useNavigation().state === "submitting";
   const empty = account.balanceMicros <= 0;
@@ -190,6 +196,8 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
             )}
           </section>
         )}
+
+        {invoices.length > 0 && <InvoiceList invoices={invoices} />}
 
         <h2 className="font-medium">Plans</h2>
         <p className="mt-1 max-w-2xl text-sm text-muted">
@@ -491,85 +499,199 @@ function DeployMeter({ usage }: { usage: DeployUsage }) {
 }
 
 const TRUST: Record<Limit["trust"], { label: string; detail: string }> = {
-  new: {
-    label: "New",
-    detail: "No payment to g1t yet, so the limit is small: the free allowances and a little more. It grows once the workspace pays.",
-  },
-  paid: { label: "Paid", detail: "Twice what the workspace has paid g1t, from $25 up to $1,000." },
+  new: { label: "New", detail: "No payment to g1t yet." },
+  paid: { label: "Paid", detail: "Grows with every payment." },
+  established: { label: "Established", detail: "Follows your monthly spend." },
   reviewed: { label: "Reviewed", detail: "Set by g1t for this workspace." },
   internal: { label: "Comped", detail: "g1t covers this workspace's usage: nothing is charged, and there is no limit." },
 };
 
+/** One meter: how much of a limit is used. */
+function Meter({ used, of, state }: { used: number; of: number | null; state: "ok" | "warning" | "stopped" }) {
+  const share = of ? Math.min(1, used / Math.max(of, 1)) : 0;
+  const bar = state === "stopped" ? "bg-danger" : state === "warning" ? "bg-warn" : "bg-accent";
+  return (
+    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line" role="presentation">
+      <div className={`h-full ${bar}`} style={{ width: `${Math.max(share * 100, share > 0 ? 2 : 0)}%` }} />
+    </div>
+  );
+}
+
+function meterState(used: number, of: number | null): "ok" | "warning" | "stopped" {
+  if (of == null) return "ok";
+  if (used >= of) return "stopped";
+  return used * 5 >= of * 4 ? "warning" : "ok";
+}
+
 /**
- * How far this month's unpaid usage has gone, and where work stops: g1t's
- * ceiling for the workspace, or the owners' own spend limit if lower.
+ * The workspace's two limits, side by side: the owners' monthly spend
+ * limit, which protects them from a surprise; and what g1t lets go unpaid,
+ * which grows with what they pay and is charged to the card as it nears.
  */
 function LimitCard({ limit, owner, busy, error }: { limit: Limit; owner: boolean; busy: boolean; error?: string }) {
-  const ceiling = limit.ceilingMicros;
-  const share = ceiling ? Math.min(1, limit.exposureMicros / Math.max(ceiling, 1)) : 0;
   const tone =
     limit.state === "stopped" ? "border-danger/40 bg-danger/5" : limit.state === "warning" ? "border-warn/40 bg-warn/5" : "border-line bg-surface";
-  const bar = limit.state === "stopped" ? "bg-danger" : limit.state === "warning" ? "bg-warn" : "bg-accent";
   const trust = TRUST[limit.trust];
+  const spent = limit.spentMicros ?? 0;
+  const spendLimit = limit.spendLimitMicros;
+  const available = limit.availableMicros ?? limit.ceilingMicros;
+  const mode = limit.defaultSpendLimit ? "automatic" : spendLimit == null ? "none" : "fixed";
+  if (limit.trust === "internal") {
+    return (
+      <section className="mb-10 rounded-xl border border-line bg-surface p-5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="font-medium">Limits</h2>
+          <span className="rounded-full border border-accent/40 px-2 py-0.5 text-xs text-accent">Comped</span>
+        </div>
+        <p className="mt-1 text-sm text-muted">{trust.detail}</p>
+      </section>
+    );
+  }
   return (
     <section className={`mb-10 rounded-xl border p-5 ${tone}`}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-medium">Usage limit</h2>
+        <h2 className="font-medium">Limits</h2>
         <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">{trust.label}</span>
       </div>
-      <p className="mt-1 max-w-2xl text-sm text-muted">
-        What this month's usage cost g1t, or is charged, whichever is more, less what was paid this month. With a card on
-        file, g1t charges it as the workspace nears the limit, so its work does not stop. Without one, at the limit new
-        sandboxes and builds stop and apps pause until it pays or the month turns. Work already running finishes.
-      </p>
-      <p className="mt-4 text-2xl font-semibold tabular-nums tracking-tight">
-        {dollars(limit.exposureMicros)}
-        <span className="text-base font-normal text-muted"> {ceiling == null ? "· no limit" : `of ${dollars(ceiling)}`}</span>
-      </p>
-      {ceiling != null && (
-        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-line" role="presentation">
-          <div className={`h-full ${bar}`} style={{ width: `${Math.max(share * 100, share > 0 ? 2 : 0)}%` }} />
-        </div>
-      )}
       {limit.account.startsWith("ent_") && (
-        <p className="mt-3 text-sm text-muted">
+        <p className="mt-1 text-sm text-muted">
           Paid for by the <span className="font-medium text-fg">{limit.accountName}</span> enterprise: these figures are
           for all of its workspaces together.
         </p>
       )}
-      {limit.message && <p className="mt-3 text-sm">{limit.message}</p>}
-      <p className="mt-3 text-xs text-faint">
-        {trust.detail}
-        {limit.trustCeilingMicros != null && limit.spendLimitMicros != null && ` g1t's limit is ${dollars(limit.trustCeilingMicros)}.`}
-      </p>
-      {owner && limit.trust !== "internal" && (
-        <Form method="post" className="mt-4 flex flex-wrap items-end gap-2">
-          <label className="text-sm">
-            <span className="block text-xs text-muted">Your own monthly spend limit</span>
-            <span className="mt-1 flex items-center rounded-md border border-line bg-bg px-2 focus-within:border-accent">
-              <span className="text-muted">$</span>
-              <input
-                name="limit"
-                type="number"
-                min={0}
-                step={1}
-                defaultValue={limit.spendLimitMicros != null ? limit.spendLimitMicros / MICROS_PER_DOLLAR : ""}
-                placeholder="None"
-                className="w-24 bg-transparent px-1 py-1.5 tabular-nums outline-none"
-              />
+
+      <div className="mt-5 grid gap-6 sm:grid-cols-2">
+        <div>
+          <p className="text-xs text-muted">Spent this month</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight">
+            {dollars(spent)}
+            <span className="text-base font-normal text-muted">
+              {spendLimit == null ? " · no spend limit" : ` of ${dollars(spendLimit)}`}
             </span>
-          </label>
-          <Button variant="quiet" type="submit" name="intent" value="spend-limit" disabled={busy}>
-            Set
-          </Button>
-          {limit.spendLimitMicros != null && (
-            <Button variant="quiet" type="submit" name="intent" value="no-spend-limit" disabled={busy}>
-              Remove
-            </Button>
+          </p>
+          {spendLimit != null && <Meter used={spent} of={spendLimit} state={meterState(spent, spendLimit)} />}
+          <p className="mt-2 text-xs text-faint">
+            {mode === "automatic"
+              ? "Your spend limit is automatic: $200, or twice last month's spend, so it keeps up as you grow."
+              : mode === "fixed"
+                ? "A spend limit you set. At it, work stops until the month turns."
+                : "No spend limit: work never stops for spend, only for what g1t lets go unpaid."}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-muted">Not yet paid</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight">
+            {dollars(limit.exposureMicros)}
+            <span className="text-base font-normal text-muted">
+              {available == null ? "" : ` of ${dollars(available)} available`}
+            </span>
+          </p>
+          {available != null && (
+            <Meter used={limit.exposureMicros} of={available} state={meterState(limit.exposureMicros, available)} />
           )}
+          <p className="mt-2 text-xs text-faint">
+            With a card on file, g1t charges it as this nears what is available, so work keeps going.
+            {limit.growth ? ` ${limit.growth}` : ""}
+          </p>
+        </div>
+      </div>
+
+      {limit.message && <p className="mt-4 text-sm">{limit.message}</p>}
+
+      {owner && (
+        <Form method="post" className="mt-5 border-t border-line pt-4">
+          <fieldset>
+            <legend className="text-xs text-muted">Your monthly spend limit</legend>
+            <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+              <label className="flex items-center gap-2">
+                <input type="radio" name="mode" value="automatic" defaultChecked={mode === "automatic"} className="accent-accent" />
+                Automatic
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="radio" name="mode" value="fixed" defaultChecked={mode === "fixed"} className="accent-accent" />
+                Fixed at
+                <span className="flex items-center rounded-md border border-line bg-bg px-2 focus-within:border-accent">
+                  <span className="text-muted">$</span>
+                  <input
+                    name="limit"
+                    type="number"
+                    min={1}
+                    step={1}
+                    defaultValue={mode === "fixed" && spendLimit != null ? spendLimit / MICROS_PER_DOLLAR : ""}
+                    placeholder="500"
+                    className="w-24 bg-transparent px-1 py-1 tabular-nums outline-none"
+                  />
+                </span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="radio" name="mode" value="none" defaultChecked={mode === "none"} className="accent-accent" />
+                None
+              </label>
+              <Button variant="quiet" type="submit" name="intent" value="spend-limit" disabled={busy}>
+                Save
+              </Button>
+            </div>
+          </fieldset>
           <ErrorText>{error}</ErrorText>
+          <p className="mt-3 text-xs text-faint">
+            Need more than {available != null ? dollars(available) : "this"} available?{" "}
+            <a href="mailto:billing@g1t.sh" className="text-fg hover:underline">
+              Contact us
+            </a>{" "}
+            and we will set terms that fit.
+          </p>
         </Form>
       )}
+    </section>
+  );
+}
+
+/** The workspace's invoices from g1t, each kept on Stripe with its PDF. */
+function InvoiceList({ invoices }: { invoices: WorkspaceInvoice[] }) {
+  return (
+    <section className="mb-10">
+      <h2 className="font-medium">Invoices</h2>
+      <p className="mt-1 text-sm text-muted">
+        One when each month closes, and one each time g1t charges the card near your limit. Receipts and PDFs are also
+        on Stripe's billing page.
+      </p>
+      <ul className="mt-4 divide-y divide-line overflow-hidden rounded-xl border border-line">
+        {invoices.map((invoice) => (
+          <li key={invoice.invoiceId} className="px-4 py-3 text-sm">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="font-medium">
+                {invoice.reason === "month" ? `Usage for ${invoice.period}` : `Charged near the limit, ${invoice.period}`}
+              </span>
+              <span
+                className={`rounded-full border px-2 py-0.5 text-xs ${
+                  invoice.status === "paid" ? "border-accent/40 text-accent" : "border-danger/40 text-danger"
+                }`}
+              >
+                {invoice.status === "paid" ? "Paid" : invoice.status === "failed" ? "Payment failed" : invoice.status}
+              </span>
+              <span className="ml-auto font-mono tabular-nums">{dollars(invoice.amountMicros)}</span>
+              {invoice.hostedUrl && (
+                <a href={invoice.hostedUrl} className="text-xs text-muted hover:text-fg">
+                  View
+                </a>
+              )}
+              {invoice.pdfUrl && (
+                <a href={invoice.pdfUrl} className="text-xs text-muted hover:text-fg">
+                  PDF
+                </a>
+              )}
+            </div>
+            <ul className="mt-1.5 space-y-0.5 text-xs text-faint">
+              {invoice.lines.map((line) => (
+                <li key={line.description} className="flex justify-between gap-4">
+                  <span>{line.description}</span>
+                  <span className="font-mono tabular-nums">{dollars(line.amountMicros)}</span>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

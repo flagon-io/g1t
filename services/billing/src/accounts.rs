@@ -292,7 +292,9 @@ impl Billing {
         for p in &paid {
             figures_for(&mut by_workspace, &p.workspace).paid_micros += p.paid.unwrap_or(0);
         }
+        let months = self.months_for(&account.workspaces, 6).await?;
         Ok(AccountSummary {
+            months,
             charged_micros: by_workspace.iter().map(|f| f.charged_micros).sum(),
             cost_micros: by_workspace.iter().map(|f| f.cost_micros).sum(),
             paid_micros: by_workspace.iter().map(|f| f.paid_micros).sum(),

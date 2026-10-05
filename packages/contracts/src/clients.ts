@@ -214,8 +214,9 @@ export function billingClient(service: ServiceBinding): BillingApi {
     checkLimit: (workspace) => call("check_limit", { workspace }),
     prices: () => call("prices", {}),
     notePending: (workspace, source, costMicros) => call("note_pending", { workspace, source, costMicros }),
-    setSpendLimit: (actor, workspace, spendLimitMicros) =>
-      call("set_spend_limit", { actor, workspace, spendLimitMicros }),
+    setSpendLimit: (actor, workspace, spendLimitMicros, useFullLimit = false) =>
+      call("set_spend_limit", { actor, workspace, spendLimitMicros, use_full_limit: useFullLimit }),
+    invoices: (workspace, viewer) => call("invoices", { workspace, viewer }),
   };
 }
 
@@ -233,6 +234,20 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
     enterpriseBilling: (id, email, by) => call("admin_enterprise_billing", { id, email, by }),
     invoiceEnterprise: (id, by) => call("admin_invoice_enterprise", { id, by }),
     accountsFor: (workspaces) => call("admin_accounts", { query: null, workspaces }),
+    signals: () => call("admin_signals", {}),
+    overview: () => call("admin_overview", {}),
+    sales: (workspace) => call("admin_sales", { workspace }),
+    setSales: (workspace, record, by) =>
+      call("admin_set_sales", {
+        workspace,
+        stage: record.stage,
+        owner: record.owner ?? null,
+        next_step: record.nextStep ?? null,
+        next_at: record.nextAt ?? null,
+        by,
+      }),
+    addNote: (workspace, text, by) => call("admin_add_note", { workspace, text, by }),
+    workspaceInvoices: (workspace) => call("admin_workspace_invoices", { workspace }),
   };
 }
 

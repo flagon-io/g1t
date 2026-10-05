@@ -402,6 +402,9 @@ pub enum Trust {
     New,
     /// Has paid g1t real money: the ceiling grows with what it has paid.
     Paid,
+    /// Has paid steadily for months, with nothing disputed or declined:
+    /// the ceiling follows its monthly spend, up to $10,000, by itself.
+    Established,
     /// A ceiling g1t set by hand, after talking to the workspace.
     Reviewed,
     /// g1t's own workspaces: no ceiling.
@@ -446,6 +449,20 @@ pub struct Limit {
     pub state: LimitState,
     /// What to tell people when work is stopped or close to it.
     pub message: Option<String>,
+    /// Charged this month, which the spend limit is measured against.
+    #[serde(default)]
+    pub spent_micros: i64,
+    /// True while the owners have not chosen a spend limit of their own, so
+    /// the automatic one applies: $200, or twice last month's spend.
+    #[serde(default)]
+    pub default_spend_limit: bool,
+    /// The most the owners may set their own limit to: g1t's ceiling. To
+    /// go past it, they contact g1t.
+    #[serde(default)]
+    pub available_micros: Option<i64>,
+    /// How the ceiling grows from here, in a sentence.
+    #[serde(default)]
+    pub growth: Option<String>,
 }
 
 /// `limit`: a workspace's limit, for its members. Returns `Outcome<Limit>`.
@@ -483,7 +500,12 @@ pub struct NotePendingArgs {
 pub struct SetSpendLimitArgs {
     pub actor: User,
     pub workspace: String,
+    /// A monthly limit, at most what is available; None goes back to the
+    /// default.
     pub spend_limit_micros: Option<i64>,
+    /// Use everything available, with no limit of their own.
+    #[serde(default)]
+    pub use_full_limit: bool,
 }
 
 /// One metered unit: what it costs g1t, and what it is sold at. The price
@@ -717,6 +739,177 @@ pub struct InvoiceLine {
     pub amount_micros: i64,
 }
 
+/// A workspace's invoice from g1t: one per month, and one each time it is
+/// charged near its limit. Itemised, charged to the card on file, and kept
+/// in Stripe's billing page with its PDF.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceInvoice {
+    pub invoice_id: String,
+    pub workspace: String,
+    /// `month` (2026-10) or `threshold`.
+    pub reason: String,
+    pub period: String,
+    pub amount_micros: i64,
+    /// `paid`, `open`, `failed` or `void`.
+    pub status: String,
+    pub hosted_url: Option<String>,
+    pub pdf_url: Option<String>,
+    pub lines: Vec<InvoiceItem>,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvoiceItem {
+    pub description: String,
+    pub amount_micros: i64,
+}
+
+/// `invoices`: a workspace's invoices from g1t, newest first. Members
+/// only. Returns `Outcome<Vec<WorkspaceInvoice>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InvoicesArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+}
+
+/// `admin_workspace_invoices`: the same, for staff. Returns
+/// `Vec<WorkspaceInvoice>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminWorkspaceInvoicesArgs {
+    pub workspace: String,
+}
+
+// --- Sales (sudo.g1t.sh) ------------------------------------------------------
+//
+// What staff need to know to reach out: who is growing, who is close to
+// their limit, who was declined, who has become a steady customer. And what
+// was done about it: a stage, an owner on g1t's side, a next step, notes.
+
+/// Why a workspace is worth a look.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SignalKind {
+    /// At its limit, or its own spend limit: work is stopped.
+    AtLimit,
+    /// Past 80% of what is available to it: about to need more.
+    NearCeiling,
+    /// Its card was declined or a payment disputed.
+    Declined,
+    /// This month is well ahead of last month.
+    Growing,
+    /// Became Established: the ceiling now follows its spend.
+    Established,
+    /// Paid g1t for the first time.
+    FirstPayment,
+    /// Spending enough that custom terms or an enterprise may suit it.
+    HighSpend,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Signal {
+    pub workspace: String,
+    pub kind: SignalKind,
+    /// One sentence, with the figures.
+    pub detail: String,
+    /// The figure that matters, such as this month's spend.
+    pub value_micros: i64,
+    /// Its sales stage, if staff gave it one.
+    pub stage: Option<String>,
+    pub owner: Option<String>,
+}
+
+/// `admin_signals`: every workspace worth reaching out to, most urgent
+/// first. Returns `Vec<Signal>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminSignalsArgs {}
+
+/// What staff are doing about a workspace.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SalesRecord {
+    pub workspace: String,
+    /// `none`, `lead`, `contacted`, `negotiating`, `won`, `lost` or `churn_risk`.
+    pub stage: String,
+    /// The staff member looking after it.
+    pub owner: Option<String>,
+    pub next_step: Option<String>,
+    /// RFC 3339 date.
+    pub next_at: Option<String>,
+    pub notes: Vec<SalesNote>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SalesNote {
+    pub id: String,
+    pub text: String,
+    pub by: String,
+    pub created_at: String,
+}
+
+/// `admin_sales`: a workspace's sales record. Returns `SalesRecord`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminSalesArgs {
+    pub workspace: String,
+}
+
+/// `admin_set_sales`: its stage, owner and next step. Returns `Outcome<SalesRecord>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminSetSalesArgs {
+    pub workspace: String,
+    pub stage: String,
+    #[serde(default)]
+    pub owner: Option<String>,
+    #[serde(default)]
+    pub next_step: Option<String>,
+    #[serde(default)]
+    pub next_at: Option<String>,
+    pub by: String,
+}
+
+/// `admin_add_note`. Returns `Outcome<SalesRecord>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminAddNoteArgs {
+    pub workspace: String,
+    pub text: String,
+    pub by: String,
+}
+
+/// `admin_overview`: the business at a glance. Returns `Overview`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminOverviewArgs {}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Overview {
+    /// YYYY-MM.
+    pub month: String,
+    /// The last six months, oldest first, all workspaces together.
+    pub months: Vec<MonthFigures>,
+    /// This month by kind of usage: models, sandbox, deployments, plans.
+    pub by_kind: Vec<KindFigures>,
+    pub paying_workspaces: u32,
+    pub stopped: u32,
+    pub near_ceiling: u32,
+    pub declined: u32,
+    /// Sent and not yet paid, workspaces and enterprises.
+    pub open_invoices_micros: i64,
+    /// Follow-ups due today or earlier.
+    pub follow_ups_due: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KindFigures {
+    pub kind: String,
+    pub charged_micros: i64,
+    pub cost_micros: i64,
+}
+
 // --- Staff (sudo.g1t.sh) ------------------------------------------------------
 //
 // Called only by the sudo app, which only g1t staff can reach (behind
@@ -750,6 +943,20 @@ pub struct AccountSummary {
     /// any, so staff can see what one member of an enterprise used.
     #[serde(default)]
     pub by_workspace: Vec<WorkspaceFigures>,
+    /// The last six months, oldest first, for trends.
+    #[serde(default)]
+    pub months: Vec<MonthFigures>,
+}
+
+/// One month of an account's billing.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MonthFigures {
+    /// YYYY-MM.
+    pub month: String,
+    pub charged_micros: i64,
+    pub cost_micros: i64,
+    pub paid_micros: i64,
 }
 
 /// One workspace's share of an [`AccountSummary`].

@@ -17,6 +17,8 @@
 //! the methods and their arguments.
 
 mod accounts;
+mod invoices;
+mod sales;
 mod webhooks;
 mod features;
 mod keeper;
@@ -1016,6 +1018,16 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_enterprise_billing" => reply(&billing.admin_enterprise_billing(args(body)?).await?),
         "admin_invoice_enterprise" => reply(&billing.admin_invoice_enterprise(args(body)?).await?),
         "stripe_webhook" => reply(&billing.stripe_webhook(args(body)?).await?),
+        "invoices" => reply(&billing.invoices(args(body)?).await?),
+        "admin_workspace_invoices" => {
+            let a: AdminWorkspaceInvoicesArgs = args(body)?;
+            reply(&billing.workspace_invoices(&a.workspace.to_lowercase()).await?)
+        }
+        "admin_signals" => reply(&billing.admin_signals(args(body)?).await?),
+        "admin_overview" => reply(&billing.admin_overview(args(body)?).await?),
+        "admin_sales" => reply(&billing.admin_sales(args(body)?).await?),
+        "admin_set_sales" => reply(&billing.admin_set_sales(args(body)?).await?),
+        "admin_add_note" => reply(&billing.admin_add_note(args(body)?).await?),
         "note_pending" => reply(&billing.note_pending(args(body)?).await?),
         "admin_accounts" => reply(&billing.admin_accounts(args(body)?).await?),
         "admin_account" => reply(&billing.admin_account(args(body)?).await?),
