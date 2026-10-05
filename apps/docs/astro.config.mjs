@@ -123,6 +123,7 @@ export default defineConfig({
 						{ label: 'Audit log', slug: 'guides/audit-log' },
 						{ label: 'Usage and billing', slug: 'guides/usage-and-billing' },
 						{ label: 'Git', slug: 'guides/git' },
+						{ label: 'Run g1t yourself', slug: 'guides/self-hosting' },
 					],
 				},
 				{

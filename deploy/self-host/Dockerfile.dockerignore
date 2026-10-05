@@ -1,0 +1,19 @@
+# For deploy/self-host/Dockerfile only (BuildKit reads <Dockerfile>.dockerignore).
+# Unlike the root .dockerignore, the site and the packages are needed here.
+.git
+.credentials
+.g1t
+.claude
+.vscode
+.env*
+**/.dev.vars*
+**/node_modules
+**/target
+**/build
+**/dist
+**/.wrangler
+**/.astro
+deploy/self-host/.generated
+docs
+apps/docs
+apps/sudo

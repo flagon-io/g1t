@@ -1,0 +1,66 @@
+# Self-hosted g1t, phase 1: the core forge on your own machine.
+#
+#   docker compose -f deploy/self-host/docker-compose.yml up --build
+#
+# Then open http://localhost:8787. Mail (the confirmation link at sign-up)
+# lands in Mailpit at http://localhost:8025.
+#
+# What runs: the site and every core service in one workerd (g1t), git
+# repositories as bare repos on a volume (gitstore), and Mailpit for mail.
+# Agents, deployments, context search and billing are off. See
+# docs/SELF_HOSTING.md.
+name: g1t
+
+services:
+  g1t:
+    build:
+      context: ../..
+      dockerfile: deploy/self-host/Dockerfile
+    ports:
+      - "${G1T_PORT:-8787}:8787"
+    environment:
+      # Where people reach this installation. Links in mail point here.
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8787}
+      GITSTORE_URL: http://gitstore:8080
+      GITSTORE_SECRET_FILE: /secrets/gitstore
+      MAIL_URL: ${MAIL_URL:-http://mailpit:8025}
+      MAIL_FROM: ${MAIL_FROM:-g1t <noreply@localhost>}
+    volumes:
+      - g1t-data:/data
+      - g1t-secrets:/secrets:ro
+    depends_on:
+      gitstore:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    restart: unless-stopped
+
+  gitstore:
+    build:
+      context: ./gitstore
+    environment:
+      GITSTORE_URL: http://gitstore:8080
+      GITSTORE_SECRET_FILE: /secrets/gitstore
+    volumes:
+      - g1t-git:/data/git
+      - g1t-secrets:/secrets
+    # Not published: only the g1t container reaches it.
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "${MAILPIT_PORT:-8025}:8025"
+    # To deliver for real, relay through your SMTP server:
+    # environment:
+    #   MP_SMTP_RELAY_HOST: smtp.example.com
+    #   MP_SMTP_RELAY_PORT: "587"
+    #   MP_SMTP_RELAY_USERNAME: ...
+    #   MP_SMTP_RELAY_PASSWORD: ...
+    #   MP_SMTP_RELAY_ALL: "true"
+    restart: unless-stopped
+
+volumes:
+  g1t-data:
+  g1t-git:
+  g1t-secrets:

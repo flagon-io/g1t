@@ -1184,6 +1184,32 @@ for volume splits storage by how the data is read.
 | Transcripts and logs | R2 |
 | Email, bot protection, keys | Email Sending, Turnstile, Secrets Store |
 
+## Running g1t yourself
+
+g1t.sh runs on Cloudflare, and that does not change. The core is MIT and
+must also run on anyone's own machine with `docker compose up`. A free
+core people can self-host is what makes paid hosting worth trusting.
+Self-hosting never makes hosted worse: hosted code paths keep their
+behaviour, and a self-hosted adapter sits beside the hosted one. The
+inventory of every Cloudflare dependency, the design and the risks are in
+[SELF_HOSTING.md](SELF_HOSTING.md).
+
+The approach: the Workers stay Workers, and self-hosted they run in
+workerd, the open-source Workers runtime. D1, KV and Queues are SQLite on a
+volume, with the same migrations. Cloudflare-only bindings are replaced
+by stand-ins:
+
+- Artifacts becomes bare repositories served by `git http-backend`;
+- Email Sending becomes SMTP, through Mailpit;
+- services that are off answer "off" instead of failing.
+
+| Phase | Scope | Estimate |
+| --- | --- | --- |
+| 1. Core forge | Done: `deploy/self-host/` (compose, git store, binding stand-ins, smoke test) and the "Run g1t yourself" guide. Left: the API on its own port, `PUBLIC_URL` in place of hard-coded hosts, cron, pull requests in the smoke test, CI that runs it. | 1–1.5 weeks left |
+| 2. Agents | Docker sandboxes with the same runner image, an egress allow-list proxy for guardrails, `g1t.toml`, a launcher in place of `wrangler dev` | 2–3 weeks |
+| 3. Search, context, deployments | sqlite-vec plus an OpenAI-compatible embedder; an app host on workerd; Caddy for app and custom domains; SSH | 3–4 weeks |
+| 4. Parity and upgrades | Code-level ports in `g1t_kit` and `@g1t/platform`, sudo without Access, online backups, released images, an upgrade test in CI | 3–4 weeks |
+
 ## The submission
 
 - **g1t is built on g1t.** This repository is hosted on g1t.sh, its features
