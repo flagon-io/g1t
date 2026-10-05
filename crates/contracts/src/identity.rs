@@ -619,3 +619,41 @@ pub struct ProfileWorkspace {
     pub name: String,
     pub avatar: Option<String>,
 }
+
+/// `directory`: every account or every workspace, as their public pages
+/// show them, a page at a time in name order. For services that index
+/// them, such as search; nothing private is in it. Returns
+/// `DirectoryPage`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct DirectoryArgs {
+    /// `user` or `workspace`.
+    pub kind: String,
+    /// Names after this one.
+    #[serde(default)]
+    pub after: Option<String>,
+    pub limit: u32,
+}
+
+/// One account or workspace in the directory.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectoryEntry {
+    /// The account's or workspace's id.
+    pub id: String,
+    /// A username or a workspace's slug.
+    pub slug: String,
+    /// A person's display name or a workspace's name.
+    pub name: Option<String>,
+    /// A person's bio or a workspace's description.
+    pub bio: Option<String>,
+    pub avatar: Option<String>,
+    /// RFC 3339.
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct DirectoryPage {
+    pub entries: Vec<DirectoryEntry>,
+    /// Where the next page starts; null on the last.
+    pub next: Option<String>,
+}

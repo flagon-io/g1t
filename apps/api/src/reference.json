@@ -2625,6 +2625,87 @@
 		},
 		"notes": "Members of the workspace only. Each memory returned is marked used, which keeps it near the front of what agents are given."
 	},
+	"search": {
+		"query": {
+			"q": "parse_query language:rust repo:acme/web",
+			"type": "code"
+		},
+		"response": {
+			"query": "parse_query repo:acme/web language:rust",
+			"type": "code",
+			"counts": {
+				"repositories": 0,
+				"code": 2,
+				"issues": 0,
+				"pulls": 0,
+				"people": 0
+			},
+			"page": 1,
+			"per_page": 20,
+			"more": false,
+			"hits": [
+				{
+					"kind": "code",
+					"title": "src/search/query.rs",
+					"url": "/acme/web/blob/main/src/search/query.rs#L42",
+					"repo": "acme/web",
+					"private": false,
+					"description": null,
+					"snippet": [],
+					"lines": [
+						{
+							"number": 41,
+							"parts": [
+								{
+									"text": "/// Reads a query typed into the search box.",
+									"highlight": false
+								}
+							]
+						},
+						{
+							"number": 42,
+							"parts": [
+								{
+									"text": "pub fn ",
+									"highlight": false
+								},
+								{
+									"text": "parse_query",
+									"highlight": true
+								},
+								{
+									"text": "(text: &str) -> Query {",
+									"highlight": false
+								}
+							]
+						},
+						{
+							"number": 43,
+							"parts": [
+								{
+									"text": "    let mut query = Query::default();",
+									"highlight": false
+								}
+							]
+						}
+					],
+					"path": "src/search/query.rs",
+					"language": "rust",
+					"ref": "main",
+					"number": null,
+					"state": null,
+					"author": null,
+					"labels": [],
+					"topics": [],
+					"slug": null,
+					"avatar": null,
+					"updated_at": null
+				}
+			],
+			"notes": []
+		},
+		"notes": "`q` takes words, `\"exact phrases\"`, `-words` to leave out, and qualifiers: `repo:owner/name`, `org:` (or `workspace:`), `language:`, `path:` (a glob when it has `*`), `is:issue`, `is:pr`, `is:open`, `is:closed`, `is:merged`, `is:draft`, `is:public`, `is:private`, `author:` and `label:`; most can be left out with a leading `-`, as in `-label:wontfix`. `type` is `repositories`, `code`, `issues`, `pulls` or `people`; without it, `path:` means code, `is:pr` pull requests, `is:open`, `author:` or `label:` issues, and anything else repositories. `counts` says how many results each type has, up to 1,000. Each result's `snippet` (or, for code, each of its `lines`) is a list of parts, `highlight` true where the query matched. Code is searched on default branches and needs a word of three characters or more, unless the query names a `repo:`. Public content is returned to anyone, without a token; private content only to members of its workspace, checked when the search runs, so a repository made private stops appearing at once. A g1t agent's token can search too."
+	},
 	"search_context": {
 		"params": {
 			"workspace": "acme"

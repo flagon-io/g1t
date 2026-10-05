@@ -19,7 +19,16 @@ export type Repo = {
   protected: boolean;
   /** RFC 3339. */
   createdAt: string;
+  /**
+   * Words that say what it is about, for search and Explore: lowercase
+   * letters, digits and hyphens, at most 20.
+   */
+  topics: string[];
 };
+
+/** The most topics a repository has, and the longest topic. */
+export const MAX_TOPICS = 20;
+export const MAX_TOPIC_CHARS = 35;
 
 export type RepoPath = { namespace: string; name: string };
 
@@ -104,7 +113,7 @@ export interface ReposApi {
   update(
     actor: User,
     path: RepoPath,
-    changes: { description?: string; isPrivate?: boolean; protected?: boolean },
+    changes: { description?: string; isPrivate?: boolean; protected?: boolean; topics?: string[] },
   ): Promise<Result<Repo>>;
 
   tree(path: RepoPath, viewer: Viewer, ref: string | null, treePath: string): Promise<Result<TreeView>>;

@@ -367,7 +367,7 @@ git at all.
 
 | Kind of run | Git | API and MCP tools |
 | --- | --- | --- |
-| Implement | Reads the repository; pushes to its pull request's fork only | Records the session and marks its own pull request ready; tools to read issues, pull requests, the merge queue, workflow runs and memory, open issues, comment, remember, and message other agents |
+| Implement | Reads the repository; pushes to its pull request's fork only | Records the session and marks its own pull request ready; tools to read issues, pull requests, the merge queue, workflow runs and memory, to [search all of g1t](/guides/search/) and the workspace's context hub, open issues, comment, remember, and message other agents |
 | Revise, answer | Reads the repository; pushes to the pull request's fork, or to its branch only when the change is a branch of the repository | Records the session of its own pull request; the same tools as implement |
 | Catch up | Reads the repository; pushes to the pull request's fork or branch only | Records the session of its own pull request |
 | Review | Reads the change and the repository; pushes nothing | Reports its review through its own run |

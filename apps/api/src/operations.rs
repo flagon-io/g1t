@@ -28,6 +28,8 @@ pub struct Services {
     pub actions: Fetcher,
     /// The context hub: catalog and search.
     pub context: Fetcher,
+    /// Search across all of g1t.
+    pub search: Fetcher,
     /// Where the request came in, for its audit entries.
     pub audit: crate::audit::AuditContext,
     /// Set for a request made with an agent's token: all it may do.
@@ -47,6 +49,7 @@ impl Services {
             webhooks: env.service("WEBHOOKS")?,
             actions: env.service("ACTIONS")?,
             context: env.service("CONTEXT")?,
+            search: env.service("SEARCH")?,
             scope: None,
             audit: crate::audit::AuditContext::default(),
         })
@@ -71,6 +74,7 @@ pub enum Op {
     Recall,
     SearchContext,
     GetEntity,
+    Search,
     ListIssues,
     GetIssue,
     CreateIssue,
@@ -295,7 +299,7 @@ fn repo_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 68] = [
+    pub const ALL: [Op; 69] = [
         Op::Whoami,
         Op::CreateWorkspace,
         Op::ListRepos,
@@ -312,6 +316,7 @@ impl Op {
         Op::Recall,
         Op::SearchContext,
         Op::GetEntity,
+        Op::Search,
         Op::ListIssues,
         Op::GetIssue,
         Op::CreateIssue,
@@ -388,6 +393,7 @@ impl Op {
             Op::Recall => "recall",
             Op::SearchContext => "search_context",
             Op::GetEntity => "get_entity",
+            Op::Search => "search",
             Op::UpdateRepoSettings => "update_repo_settings",
             Op::ListIssues => "list_issues",
             Op::GetIssue => "get_issue",
@@ -455,7 +461,7 @@ impl Op {
             Op::ListRepos => "Repositories you can see, optionally filtered by a search query.",
             Op::GetRepo => "One repository's details.",
             Op::UpdateRepo => {
-                "Change a repository's description, whether it is private, and whether its default branch is protected. A protected branch refuses pushes and changes only by merging a pull request. Only the fields given are changed. Members of its workspace only."
+                "Change a repository's description, its topics, whether it is private, and whether its default branch is protected. A protected branch refuses pushes and changes only by merging a pull request. Only the fields given are changed. Members of its workspace only."
             }
             Op::GetRepoSettings => {
                 "How a repository handles pull requests: the approvals a merge needs, whether failed checks can be overridden, whether a pull request must be up to date, and how g1t's agents are reviewed, revised and merged."
@@ -477,6 +483,9 @@ impl Op {
             }
             Op::SearchContext => {
                 "One search across a workspace's context hub: its catalog (projects, apps, APIs, packages, languages, owners, environments, integrations, docs), the text of its docs, its issues and pull requests, and, for members and g1t's agents, its kept memory. Results are ranked by meaning, each labelled with its kind, where it came from, who wrote it and how fresh it is; matching words answers when meaning cannot. Give the workspace, or a repository in it. Narrow with project (a project's slug) and kinds. Reads only what you may see: memory and private projects are for members."
+            }
+            Op::Search => {
+                "Search all of g1t: repositories (name, description, topics, README), code on default branches (file names and contents), issues, pull requests, people and workspaces. Covers everything public, and private content in workspaces you belong to; signed out, public only. Write words, \"exact phrases\", -words to leave out, and qualifiers: repo:owner/name, org:workspace, language:rust, path:src/ (a glob with *), is:issue, is:pr, is:open, is:closed, is:merged, author:username, label:bug. type picks the kind of results (repositories, code, issues, pulls or people); without it, the qualifiers decide. Returns one page of results with the matches highlighted, code with line numbers, and how many there are of each kind."
             }
             Op::GetEntity => {
                 "One entry of a workspace's catalog, by kind and its id or key (a project's slug, a package as npm:<name>, an owner's username), with every relation it has: what it depends on, who owns it, where it deploys, what documents it, what it exposes and uses. search_context finds entries."
@@ -656,6 +665,11 @@ impl Op {
                         "type": "boolean",
                         "description": "Refuse pushes to the default branch, so that it changes only by merging a pull request.",
                     },
+                    "topics": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Replaces its topics, which search and Explore show: lowercase letters, digits and hyphens, at most 20. An empty list clears them.",
+                    },
                 }),
                 &["repo"],
             ),
@@ -730,6 +744,19 @@ impl Op {
                         "description": "Only these kinds. All of them if not given.",
                     },
                     "limit": { "type": "integer", "description": "At most 50; 20 if not given." },
+                }),
+                &["query"],
+            ),
+            Op::Search => object(
+                json!({
+                    "query": { "type": "string", "description": "What to look for: words, \"phrases\" and qualifiers, such as parse_query language:rust repo:acme/web." },
+                    "type": {
+                        "type": "string",
+                        "enum": ["repositories", "code", "issues", "pulls", "people"],
+                        "description": "Which kind of results. Worked out from the qualifiers if not given: path: means code, is:pr pull requests, is:open or label: issues, otherwise repositories.",
+                    },
+                    "page": { "type": "integer", "description": "From 1; at most 50." },
+                    "per_page": { "type": "integer", "description": "At most 50; 20 if not given." },
                 }),
                 &["query"],
             ),
@@ -1184,6 +1211,7 @@ impl Op {
         !matches!(
             self,
             Op::ListRepos
+                | Op::Search
                 | Op::GetRepo
                 | Op::ListIssues
                 | Op::GetIssue
@@ -1211,6 +1239,7 @@ impl Op {
                 | Op::CreateWorkspace
                 | Op::SearchContext
                 | Op::GetEntity
+                | Op::Search
                 | Op::ListRepos
                 | Op::CreateRepo
                 | Op::ListIntegrations
@@ -1382,6 +1411,7 @@ impl Op {
                         "description": input["description"].as_str(),
                         "isPrivate": input["private"].as_bool(),
                         "protected": input["protected"].as_bool(),
+                        "topics": strings(input, "topics"),
                     }),
                 )
                 .await
@@ -1494,6 +1524,22 @@ impl Op {
                     )
                     .await
                 }
+            }
+            Op::Search => {
+                pass(
+                    &services.search,
+                    "search",
+                    &json!({
+                        "viewer": viewer,
+                        "query": text(input, "query"),
+                        "type": optional_text(input, "type").and_then(|kind| {
+                            g1t_contracts::search::SearchType::parse(&kind).map(|kind| kind.as_str())
+                        }),
+                        "page": integer(input, "page"),
+                        "perPage": integer(input, "per_page"),
+                    }),
+                )
+                .await
             }
             Op::Recall => {
                 pass(

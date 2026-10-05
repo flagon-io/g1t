@@ -223,6 +223,7 @@ pub const READ_OPERATIONS: &[&str] = &[
     "get_context",
     "search_context",
     "get_entity",
+    "search",
     "list_workflows",
     "list_workflow_runs",
     "get_workflow_run",
@@ -289,6 +290,7 @@ const TOOLS_READ: &[&str] = &[
     "recall",
     "search_context",
     "get_entity",
+    "search",
     "list_workflows",
     "list_workflow_runs",
     "get_workflow_run",
@@ -598,6 +600,31 @@ mod tests {
             assert!(tools.contains(&"search_context") && tools.contains(&"get_entity"));
         }
         assert!(is_read("search_context") && is_read("get_entity"));
+    }
+
+    #[test]
+    fn agents_can_search_all_of_g1t() {
+        // Site-wide search only reads: every run that reads its repository
+        // may use it, and nothing that never reads gets it.
+        assert!(is_read("search"));
+        assert!(!NEVER.contains(&"search"));
+        for kind in [
+            RunCredentialKind::Implement,
+            RunCredentialKind::Revise,
+            RunCredentialKind::Answer,
+            RunCredentialKind::Review,
+            RunCredentialKind::Plan,
+            RunCredentialKind::Update,
+        ] {
+            let tools = operations_for(kind, CredentialUse::Tools);
+            assert!(tools.contains(&"search"), "{kind:?} should search");
+            // The context hub's search stays its own tool beside it.
+            assert!(tools.contains(&"search_context"), "{kind:?} keeps search_context");
+        }
+        for kind in [RunCredentialKind::Checks, RunCredentialKind::Queue, RunCredentialKind::Mergecheck, RunCredentialKind::Deploy] {
+            assert!(!operations_for(kind, CredentialUse::Tools).contains(&"search"));
+        }
+        assert!(!operations_for(RunCredentialKind::Implement, CredentialUse::Runner).contains(&"search"));
     }
 
     fn path(namespace: &str, name: &str) -> RepoPath {

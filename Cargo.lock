@@ -1025,6 +1025,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "g1t-search"
+version = "0.1.0"
+dependencies = [
+ "g1t-contracts",
+ "g1t-kit",
+ "serde",
+ "serde_json",
+ "worker",
+]
+
+[[package]]
 name = "g1t-secrets"
 version = "0.1.0"
 dependencies = [

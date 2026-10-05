@@ -38,7 +38,7 @@ the tool's schema, which `tools/list` returns, and in the
 | `list_repos` | | Repositories you can see, optionally filtered by `query`. | [`GET /repos?q=`](/reference/api/repositories/list-repos/) |
 | `get_repo` | `repo` | One repository's details. | [`GET /repos/{owner}/{name}`](/reference/api/repositories/get-repo/) |
 | `create_repo` | `name` | Create a repository in one of your workspaces, empty or as a copy of a public git repository (`import_url`). `workspace` may be left out if you belong to exactly one. | [`POST /repos`](/reference/api/repositories/create-repo/) |
-| `update_repo` | `repo` | Change its description, whether it is private, and whether its default branch is protected. Members only. | [`PATCH /repos/{owner}/{name}`](/reference/api/repositories/update-repo/) |
+| `update_repo` | `repo` | Change its description, its `topics`, whether it is private, and whether its default branch is protected. Members only. | [`PATCH /repos/{owner}/{name}`](/reference/api/repositories/update-repo/) |
 | `get_repo_settings` | `repo` | How it handles pull requests: approvals, checks, being up to date, and how g1t's agents are reviewed, revised and merged. | [`GET /repos/{owner}/{name}/settings`](/reference/api/repositories/get-repo-settings/) |
 | `update_repo_settings` | `repo` | Change those settings. Only the fields given change. Members only. | [`PATCH /repos/{owner}/{name}/settings`](/reference/api/repositories/update-repo-settings/) |
 | `list_labels` | `repo` | The labels available on its issues. | [`GET /repos/{owner}/{name}/labels`](/reference/api/issues/list-labels/) |
@@ -48,6 +48,16 @@ the tool's schema, which `tools/list` returns, and in the
 `allow_ignoring_checks`, `require_up_to_date`, `agent_review`,
 `max_revisions`, `auto_merge` and `merge_queue`. See
 [what a repository can ask for](/guides/g1t-agents/#what-a-repository-can-ask-for).
+
+## Search
+
+| Tool | Required | What it does | Route |
+| --- | --- | --- | --- |
+| `search` | `query` | Search all of g1t: repositories, code on default branches, issues, pull requests, people and workspaces. Public results for everyone; private ones in workspaces you belong to. `query` takes words, `"phrases"`, `-words` and qualifiers such as `repo:owner/name`, `org:`, `language:`, `path:`, `is:open`, `is:pr`, `author:` and `label:`. `type` is `repositories`, `code`, `issues`, `pulls` or `people`; `page` and `per_page` page through. Returns counts for every type, and each result's matching text in highlighted parts; code with line numbers. | [`GET /search`](/reference/api/search/search/) |
+
+See [search and Explore](/guides/search/) for the full syntax. `search`
+looks across all of g1t; `search_context`, under [Memory](#memory), asks one
+workspace's context hub.
 
 ## Issues
 
@@ -185,7 +195,7 @@ of run.
 
 | Run | Tools |
 | --- | --- |
-| Implement, revise, answer | `get_repo`, `list_issues`, `get_issue`, `list_labels`, `list_pull_requests`, `get_pull_request`, `get_pull_request_changes`, `read_session`, `get_merge_queue`, `list_events`, `recall`, `search_context`, `get_entity`, `list_workflows`, `list_workflow_runs`, `get_workflow_run`, `get_job_logs`, and `create_issue`, `add_comment`, `take_messages`, `remember`, `message_agent`, `answer_message`, `get_context` |
+| Implement, revise, answer | `get_repo`, `list_issues`, `get_issue`, `list_labels`, `list_pull_requests`, `get_pull_request`, `get_pull_request_changes`, `read_session`, `get_merge_queue`, `list_events`, `recall`, `search_context`, `get_entity`, `search`, `list_workflows`, `list_workflow_runs`, `get_workflow_run`, `get_job_logs`, and `create_issue`, `add_comment`, `take_messages`, `remember`, `message_agent`, `answer_message`, `get_context` |
 | Review | The same reading tools, and `add_comment`, `review_pull_request`, `get_context` |
 | Plan | The same reading tools, and `create_issue`, `get_context` |
 | Catch up | The reading tools only |

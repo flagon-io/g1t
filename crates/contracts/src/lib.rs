@@ -19,6 +19,7 @@ mod names;
 mod outcome;
 pub mod projects;
 pub mod repos;
+pub mod search;
 pub mod security;
 pub mod time;
 pub mod webhooks;

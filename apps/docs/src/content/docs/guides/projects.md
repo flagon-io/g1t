@@ -52,7 +52,7 @@ A project's **Settings** has a tab for each part:
 | **Deployments** | Production, previews, build command, output directory and idle days. See [Deployments](/guides/deployments/#settings). |
 | **Dependencies** | The projects this one uses, and the ones that use it. See [Dependencies](#dependencies). |
 | **Secrets and variables** | The project's rows. See [Secrets and variables](/guides/secrets-and-variables/). |
-| **Repository** | The repository's visibility, branch protection, required approvals, checks, the merge queue and auto-merge. |
+| **Repository** | The repository's description, [topics](/guides/search/#what-is-indexed), visibility, branch protection, required approvals, checks, the merge queue and auto-merge. |
 | **Webhooks** | The repository's [webhooks](/guides/webhooks/). |
 
 The **root directory** says where in the repository the project lives,

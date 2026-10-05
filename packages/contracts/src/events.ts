@@ -12,6 +12,21 @@ export type EventPayloads = {
   "repo.created": { repoId: string; namespace: string; name: string; isPrivate: boolean };
   "repo.forked": { repoId: string; sourceRepoId: string; pullId: string };
   /**
+   * A repository's description, topics or visibility changed.
+   * `visibilityChanged` says whether it went public or private, which
+   * `repo.visibility_changed` also announces on its own.
+   */
+  "repo.updated": { repoId: string; namespace: string; name: string; isPrivate: boolean; visibilityChanged: boolean };
+  "repo.visibility_changed": { repoId: string; isPrivate: boolean };
+  /** A repository's path changed. */
+  "repo.renamed": { repoId: string; namespace: string; name: string };
+  /** A repository is gone, and everything about it with it. */
+  "repo.deleted": { repoId: string };
+  /** An account was made, or changed what its profile shows. Ask identity for the profile. */
+  "user.updated": { username: string };
+  /** A workspace was made, or its name, description or icon changed. */
+  "workspace.updated": { workspaceId: string; slug: string };
+  /**
    * One branch moved by a push. `ref` is the full ref, `after` the commit it
    * points to now, and `defaultBranch` whether it is the default branch.
    */

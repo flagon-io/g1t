@@ -18,6 +18,8 @@ declare global {
       SECURITY: ServiceBinding;
       /** The context hub: catalog, search and scorecards. */
       CONTEXT: ServiceBinding;
+      /** Search across all of g1t, and Explore. */
+      SEARCH: ServiceBinding;
       BLOBS: KVNamespace;
       /** Uploaded avatars by SHA-256, with `{ contentType }`; written by identity. */
       AVATARS: KVNamespace;

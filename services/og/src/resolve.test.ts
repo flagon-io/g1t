@@ -22,6 +22,7 @@ function repo(namespace: string, name: string, isPrivate = false): Repo {
     forkOf: null,
     protected: true,
     createdAt: "",
+    topics: [],
   };
 }
 

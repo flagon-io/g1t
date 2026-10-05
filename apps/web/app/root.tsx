@@ -1,12 +1,16 @@
 import {
   BookOpen,
   ChevronDown,
+  Compass,
+  CreditCard,
   LayoutDashboard,
+  LogIn,
   LogOut,
   Plus,
   Search,
   Settings,
 } from "lucide-react";
+import { useState } from "react";
 import {
   Form,
   isRouteErrorResponse,
@@ -18,6 +22,7 @@ import {
   Scripts,
   ScrollRestoration,
   type ShouldRevalidateFunctionArgs,
+  useParams,
   useRouteLoaderData,
   useSubmit,
 } from "react-router";
@@ -37,6 +42,7 @@ import {
   DropdownMenuTrigger,
 } from "./components/ui/dropdown-menu";
 import { AppShell, Progress, type ShellData } from "./components/shell";
+import { CommandPalette, type PaletteCommand, usePaletteShortcut } from "./components/command-palette";
 import { billing, projects, work } from "./lib/services.server";
 import { getViewer, roleIn, viewerMiddleware } from "./lib/session.server";
 
@@ -150,8 +156,22 @@ function HeaderLink({ to, children }: { to: string; children: React.ReactNode })
   );
 }
 
+/** What the palette offers someone without the app's sidebar. */
+const PUBLIC_COMMANDS: PaletteCommand[] = [
+  { label: "Explore", hint: "Public projects", to: "/explore", icon: <Compass size={15} /> },
+  { label: "Search g1t", hint: "Repositories, code, issues, people", to: "/search", icon: <Search size={15} /> },
+  { label: "Pricing", to: "/pricing", icon: <CreditCard size={15} /> },
+  { label: "Documentation", to: "https://docs.g1t.sh/", icon: <BookOpen size={15} /> },
+  { label: "Sign in", to: "/login", icon: <LogIn size={15} /> },
+  { label: "Sign up", to: "/register", icon: <Plus size={15} /> },
+];
+
 function Header({ user }: { user: User | null | undefined }) {
   const submit = useSubmit();
+  const [palette, setPalette] = useState(false);
+  usePaletteShortcut(() => setPalette((open) => !open));
+  const params = useParams();
+  const repo = params.owner && params.repo ? `${params.owner}/${params.repo}` : null;
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4">
@@ -166,11 +186,28 @@ function Header({ user }: { user: User | null | undefined }) {
           <input
             name="q"
             {...notACredential()}
-            placeholder="Search repositories"
-            aria-label="Search repositories"
-            className="w-full rounded-md border border-line bg-bg py-1.5 pr-3 pl-8 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim"
+            placeholder="Search g1t"
+            aria-label="Search g1t"
+            className="w-full rounded-md border border-line bg-bg py-1.5 pr-12 pl-8 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim"
           />
+          <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded bg-raised px-1.5 font-mono text-[0.625rem] text-muted ring-1 ring-line">
+            ⌘K
+          </kbd>
         </Form>
+        <button
+          type="button"
+          aria-label="Search g1t"
+          onClick={() => setPalette(true)}
+          className="rounded-md p-1.5 text-muted transition-colors hover:bg-raised hover:text-fg sm:hidden"
+        >
+          <Search size={16} />
+        </button>
+        <CommandPalette
+          open={palette}
+          onOpenChange={setPalette}
+          commands={user ? [{ label: "Mission control", to: "/", icon: <LayoutDashboard size={15} /> }, ...PUBLIC_COMMANDS.slice(0, 4)] : PUBLIC_COMMANDS}
+          repo={repo}
+        />
         <nav className="flex items-center gap-0.5">
           <HeaderLink to="/explore">Explore</HeaderLink>
           <HeaderLink to="/pricing">Pricing</HeaderLink>

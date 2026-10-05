@@ -257,6 +257,61 @@ impl WorkspaceRenamed {
     }
 }
 
+/// `repo.updated`: a repository's description, topics or visibility
+/// changed. `visibility_changed` says whether it went public or private,
+/// which `repo.visibility_changed` also announces on its own.
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoUpdated {
+    pub repo_id: String,
+    pub namespace: String,
+    pub name: String,
+    pub is_private: bool,
+    #[serde(default)]
+    pub visibility_changed: bool,
+}
+
+/// `repo.visibility_changed`: a repository went public or private.
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoVisibilityChanged {
+    pub repo_id: String,
+    pub is_private: bool,
+}
+
+/// `repo.renamed`: a repository's path changed.
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoRenamed {
+    pub repo_id: String,
+    pub namespace: String,
+    pub name: String,
+}
+
+/// `repo.deleted`: a repository is gone, and everything about it with it.
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoDeleted {
+    pub repo_id: String,
+}
+
+/// `user.updated`: an account was made, or changed what its profile shows
+/// (name, bio, avatar). Nothing private: ask identity for the profile.
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserUpdated {
+    pub username: String,
+}
+
+/// `workspace.updated`: a workspace was made, or its name, description or
+/// icon changed. Ask identity for it by slug.
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceUpdated {
+    pub workspace_id: String,
+    pub slug: String,
+}
+
 /// `queue.changed`: a repository's merge queue gained, lost or settled an
 /// entry, so the next batch may be ready to test.
 #[derive(Debug, Serialize)]

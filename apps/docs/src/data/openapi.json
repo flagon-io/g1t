@@ -107,6 +107,13 @@
       ]
     },
     {
+      "name": "Search",
+      "description": "One search across all of g1t: repositories, code, issues, pull requests, people and workspaces. Public content for everyone, and private content in workspaces you belong to.",
+      "x-tools": [
+        "search"
+      ]
+    },
+    {
       "name": "Context",
       "description": "A workspace's context hub: a catalog of what it builds and runs, built from its repositories, deployments and integrations, and one search across the catalog, docs, issues, pull requests and memory.",
       "x-tools": [
@@ -703,6 +710,186 @@
         }
       }
     },
+    "/search": {
+      "get": {
+        "operationId": "search",
+        "tags": [
+          "Search"
+        ],
+        "summary": "Search g1t",
+        "description": "Search all of g1t: repositories (name, description, topics, README), code on default branches (file names and contents), issues, pull requests, people and workspaces. Covers everything public, and private content in workspaces you belong to; signed out, public only. Write words, \"exact phrases\", -words to leave out, and qualifiers: repo:owner/name, org:workspace, language:rust, path:src/ (a glob with *), is:issue, is:pr, is:open, is:closed, is:merged, author:username, label:bug. type picks the kind of results (repositories, code, issues, pulls or people); without it, the qualifiers decide. Returns one page of results with the matches highlighted, code with line numbers, and how many there are of each kind.\n\n`q` takes words, `\"exact phrases\"`, `-words` to leave out, and qualifiers: `repo:owner/name`, `org:` (or `workspace:`), `language:`, `path:` (a glob when it has `*`), `is:issue`, `is:pr`, `is:open`, `is:closed`, `is:merged`, `is:draft`, `is:public`, `is:private`, `author:` and `label:`; most can be left out with a leading `-`, as in `-label:wontfix`. `type` is `repositories`, `code`, `issues`, `pulls` or `people`; without it, `path:` means code, `is:pr` pull requests, `is:open`, `author:` or `label:` issues, and anything else repositories. `counts` says how many results each type has, up to 1,000. Each result's `snippet` (or, for code, each of its `lines`) is a list of parts, `highlight` true where the query matched. Code is searched on default branches and needs a word of three characters or more, unless the query names a `repo:`. Public content is returned to anyone, without a token; private content only to members of its workspace, checked when the search runs, so a repository made private stops appearing at once. A g1t agent's token can search too.",
+        "x-mcp-tool": "search",
+        "security": [
+          {
+            "token": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "What to look for: words, \"phrases\" and qualifiers, such as parse_query language:rust repo:acme/web."
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "repositories",
+                "code",
+                "issues",
+                "pulls",
+                "people"
+              ]
+            },
+            "description": "Which kind of results. Worked out from the qualifiers if not given: path: means code, is:pr pull requests, is:open or label: issues, otherwise repositories."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "From 1; at most 50."
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "At most 50; 20 if not given."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "query": "parse_query repo:acme/web language:rust",
+                  "type": "code",
+                  "counts": {
+                    "repositories": 0,
+                    "code": 2,
+                    "issues": 0,
+                    "pulls": 0,
+                    "people": 0
+                  },
+                  "page": 1,
+                  "per_page": 20,
+                  "more": false,
+                  "hits": [
+                    {
+                      "kind": "code",
+                      "title": "src/search/query.rs",
+                      "url": "/acme/web/blob/main/src/search/query.rs#L42",
+                      "repo": "acme/web",
+                      "private": false,
+                      "description": null,
+                      "snippet": [],
+                      "lines": [
+                        {
+                          "number": 41,
+                          "parts": [
+                            {
+                              "text": "/// Reads a query typed into the search box.",
+                              "highlight": false
+                            }
+                          ]
+                        },
+                        {
+                          "number": 42,
+                          "parts": [
+                            {
+                              "text": "pub fn ",
+                              "highlight": false
+                            },
+                            {
+                              "text": "parse_query",
+                              "highlight": true
+                            },
+                            {
+                              "text": "(text: &str) -> Query {",
+                              "highlight": false
+                            }
+                          ]
+                        },
+                        {
+                          "number": 43,
+                          "parts": [
+                            {
+                              "text": "    let mut query = Query::default();",
+                              "highlight": false
+                            }
+                          ]
+                        }
+                      ],
+                      "path": "src/search/query.rs",
+                      "language": "rust",
+                      "ref": "main",
+                      "number": null,
+                      "state": null,
+                      "author": null,
+                      "labels": [],
+                      "topics": [],
+                      "slug": null,
+                      "avatar": null,
+                      "updated_at": null
+                    }
+                  ],
+                  "notes": []
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-query": {
+          "q": "parse_query language:rust repo:acme/web",
+          "type": "code"
+        }
+      }
+    },
     "/repos/{owner}/{name}": {
       "get": {
         "operationId": "get_repo",
@@ -807,7 +994,7 @@
           "Repositories"
         ],
         "summary": "Update a repository",
-        "description": "Change a repository's description, whether it is private, and whether its default branch is protected. A protected branch refuses pushes and changes only by merging a pull request. Only the fields given are changed. Members of its workspace only.",
+        "description": "Change a repository's description, its topics, whether it is private, and whether its default branch is protected. A protected branch refuses pushes and changes only by merging a pull request. Only the fields given are changed. Members of its workspace only.",
         "x-mcp-tool": "update_repo",
         "security": [
           {
@@ -923,6 +1110,13 @@
                   "protected": {
                     "type": "boolean",
                     "description": "Refuse pushes to the default branch, so that it changes only by merging a pull request."
+                  },
+                  "topics": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Replaces its topics, which search and Explore show: lowercase letters, digits and hyphens, at most 20. An empty list clears them."
                   }
                 }
               },

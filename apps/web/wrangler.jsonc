@@ -29,7 +29,8 @@
 		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
 		{ "binding": "PROJECTS", "service": "g1t-projects" },
 		{ "binding": "SECURITY", "service": "g1t-security" },
-		{ "binding": "CONTEXT", "service": "g1t-context" }
+		{ "binding": "CONTEXT", "service": "g1t-context" },
+		{ "binding": "SEARCH", "service": "g1t-search" }
 	],
 	"observability": { "enabled": true },
 	"upload_source_maps": true

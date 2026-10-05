@@ -16,7 +16,9 @@ export default [
   route("u/:username", "routes/user.tsx"),
   route("explore", "routes/explore.tsx", { id: "explore" }),
   route("pricing", "routes/pricing.tsx"),
-  route("search", "routes/explore.tsx", { id: "search" }),
+  route("search", "routes/search.tsx"),
+  // What the command palette shows as someone types.
+  route("search.json", "routes/search-json.ts"),
   route("workspaces/new", "routes/workspace/new.tsx"),
   // A workspace's own pages sit under `-`, which no repository can be named.
   route(":owner", "routes/workspace/layout.tsx", [

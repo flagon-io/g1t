@@ -580,9 +580,22 @@ impl Actions {
         let Some(sha) = read.head.clone() else {
             return Ok(fail(FailureCode::NotFound, format!("There is no branch or tag called {short}.")));
         };
-        let wanted = a.workflow.trim_start_matches(".g1t/workflows/");
+        // A workflow is named by its file (`build.yml`), its path, or its id
+        // (`wfl_…`), which stands for the path it was read from.
+        let by_id = if a.workflow.starts_with("wfl_") {
+            self.db
+                .prepare("SELECT * FROM workflows WHERE repo_id = ? AND id = ?")
+                .bind(&[repo.id.as_str().into(), a.workflow.as_str().into()])?
+                .first::<WorkflowRow>(None)
+                .await?
+                .map(|row| row.path)
+        } else {
+            None
+        };
+        let named = by_id.as_deref().unwrap_or(&a.workflow);
+        let wanted = named.trim_start_matches(".g1t/workflows/");
         let Some(file) = read.files.iter().find(|file| {
-            file.path.rsplit('/').next() == Some(wanted) || file.path == a.workflow
+            file.path.rsplit('/').next() == Some(wanted) || file.path == named
         }) else {
             return Ok(fail(FailureCode::NotFound, format!("There is no workflow {wanted} on {short}.")));
         };

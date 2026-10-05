@@ -84,6 +84,11 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         &[Op::Remember, Op::Recall],
     ),
     (
+        "Search",
+        "One search across all of g1t: repositories, code, issues, pull requests, people and workspaces. Public content for everyone, and private content in workspaces you belong to.",
+        &[Op::Search],
+    ),
+    (
         "Context",
         "A workspace's context hub: a catalog of what it builds and runs, built from its repositories, deployments and integrations, and one search across the catalog, docs, issues, pull requests and memory.",
         &[Op::SearchContext, Op::GetEntity],
@@ -170,6 +175,7 @@ fn title(op: Op) -> &'static str {
         Op::Recall => "Recall memory",
         Op::SearchContext => "Search the context hub",
         Op::GetEntity => "Get a catalog entry",
+        Op::Search => "Search g1t",
         Op::ListIssues => "List issues",
         Op::GetIssue => "Get an issue",
         Op::CreateIssue => "Create an issue",
@@ -383,7 +389,7 @@ fn operation(route: &Route) -> Value {
         );
     }
     responses.insert("403".into(), error_response("Signed in, but not allowed to do this."));
-    if !matches!(op, Op::Whoami | Op::ListRepos) {
+    if !matches!(op, Op::Whoami | Op::ListRepos | Op::Search) {
         responses.insert("404".into(), error_response("It does not exist, or you cannot see it."));
     }
     if route.method != "GET" {

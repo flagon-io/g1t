@@ -31,6 +31,12 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/user", Op::Whoami, &[]),
     route("POST", "/workspaces", Op::CreateWorkspace, &[]),
     route("GET", "/repos", Op::ListRepos, &[("q", "query")]),
+    route(
+        "GET",
+        "/search",
+        Op::Search,
+        &[("q", "query"), ("type", "type"), ("page", "page"), ("per_page", "per_page")],
+    ),
     route("POST", "/repos", Op::CreateRepo, &[]),
     route("GET", "/repos/:owner/:name", Op::GetRepo, &[]),
     route("PATCH", "/repos/:owner/:name", Op::UpdateRepo, &[]),

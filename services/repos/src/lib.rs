@@ -10,6 +10,7 @@ mod diff;
 mod git_http;
 mod import;
 mod land;
+mod listing;
 mod refs;
 mod registry;
 mod run_access;
@@ -17,7 +18,8 @@ mod secret_scan;
 mod store;
 
 use g1t_contracts::events::{
-    Event, GitPush, NewEvent, Publish, RepoCreated, RepoForked, WorkspaceRenamed,
+    Event, GitPush, NewEvent, Publish, RepoCreated, RepoForked, RepoUpdated, RepoVisibilityChanged,
+    WorkspaceRenamed,
 };
 use g1t_contracts::repos::*;
 use g1t_contracts::time::rfc3339;
@@ -219,15 +221,86 @@ impl<S: GitStore> Repos<S> {
         };
         let is_private = a.is_private.unwrap_or(repo.is_private);
         let protected = a.protected.unwrap_or(repo.protected);
+        let topics = match &a.topics {
+            Some(topics) => match clean_topics(topics) {
+                Ok(topics) => topics,
+                Err(reason) => return Ok(Outcome::fail(FailureCode::Invalid, reason)),
+            },
+            None => repo.topics.clone(),
+        };
         self.registry
-            .update(&repo.id, description.as_deref(), is_private, protected)
+            .update(&repo.id, description.as_deref(), is_private, protected, &topics)
             .await?;
-        Ok(Outcome::Ok(Repo {
+        let visibility_changed = is_private != repo.is_private;
+        let updated = Repo {
             description,
             is_private,
             protected,
+            topics,
             ..repo
-        }))
+        };
+        // Search and anything else that shows the repository hears of it;
+        // a change of visibility is announced on its own as well, so that
+        // what was public stops being shown at once.
+        self.publish(NewEvent {
+            kind: "repo.updated",
+            source: SOURCE,
+            repo_id: Some(updated.id.clone()),
+            actor: Some(a.actor.id.clone()),
+            data: RepoUpdated {
+                repo_id: updated.id.clone(),
+                namespace: updated.namespace.clone(),
+                name: updated.name.clone(),
+                is_private,
+                visibility_changed,
+            },
+        })
+        .await?;
+        if visibility_changed {
+            self.publish(NewEvent {
+                kind: "repo.visibility_changed",
+                source: SOURCE,
+                repo_id: Some(updated.id.clone()),
+                actor: Some(a.actor.id),
+                data: RepoVisibilityChanged {
+                    repo_id: updated.id.clone(),
+                    is_private,
+                },
+            })
+            .await?;
+        }
+        Ok(Outcome::Ok(updated))
+    }
+
+    /// The repository with this id, if it is not a fork, and its store.
+    async fn stored(&self, repo_id: &str) -> Result<Option<S::Repo>> {
+        match self.registry.by_id(repo_id).await? {
+            Some(repo) if repo.fork_of.is_none() => Ok(Some(self.store.open(&store_key(&repo)).await?)),
+            _ => Ok(None),
+        }
+    }
+
+    async fn list_files(&self, a: ListFilesArgs) -> Result<FileList> {
+        let Some(repo) = self.registry.by_id(&a.repo_id).await?.filter(|repo| repo.fork_of.is_none()) else {
+            return Ok(FileList::default());
+        };
+        let git = self.store.open(&store_key(&repo)).await?;
+        let head = a.git_ref.unwrap_or_else(|| repo.default_branch.clone());
+        listing::list(&git, None, &head, &a.skip_dirs, a.limit).await
+    }
+
+    async fn changed_files(&self, a: ChangedFilesArgs) -> Result<FileList> {
+        let Some(git) = self.stored(&a.repo_id).await? else {
+            return Ok(FileList::default());
+        };
+        listing::list(&git, a.base.as_deref(), &a.head, &a.skip_dirs, a.limit).await
+    }
+
+    async fn read_blobs(&self, a: ReadBlobsArgs) -> Result<Vec<BlobText>> {
+        let Some(git) = self.stored(&a.repo_id).await? else {
+            return Ok(Vec::new());
+        };
+        listing::read(&git, &a.hashes, a.max_bytes.min(MAX_TEXT_BYTES as u32)).await
     }
 
     async fn create(&self, a: CreateArgs) -> Result<Outcome<Repo>> {
@@ -303,6 +376,7 @@ impl<S: GitStore> Repos<S> {
             fork_of: None,
             protected: false,
             created_at: rfc3339(now),
+            topics: Vec::new(),
         };
         self.registry.claim_store_key(&repo).await?;
         self.store
@@ -643,6 +717,7 @@ impl<S: GitStore> Repos<S> {
             fork_of: Some(source.id.clone()),
             protected: false,
             created_at: rfc3339(now),
+            topics: Vec::new(),
         };
         self.registry.claim_store_key(&fork).await?;
         self.store
@@ -1090,6 +1165,16 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "compare" => reply(&repos.compare(args(body)?).await?),
         "scan_history" => reply(&repos.scan_history(args(body)?).await?),
         "find_lockfiles" => reply(&repos.find_lockfiles(args(body)?).await?),
+        "list_files" => reply(&repos.list_files(args(body)?).await?),
+        "changed_files" => reply(&repos.changed_files(args(body)?).await?),
+        "read_blobs" => reply(&repos.read_blobs(args(body)?).await?),
+        "all_ids" => {
+            let a: AllIdsArgs = args(body)?;
+            let limit = a.limit.clamp(1, 500);
+            let ids = repos.registry.ids_after(a.after.as_deref(), limit).await?;
+            let next = (ids.len() == limit as usize).then(|| ids.last().cloned()).flatten();
+            reply(&IdPage { ids, next })
+        }
         _ => Response::error("Unknown method", 404),
     }
 }

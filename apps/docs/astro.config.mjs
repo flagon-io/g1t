@@ -73,6 +73,7 @@ export default defineConfig({
 					items: [
 						{ label: 'Quickstart', slug: 'quickstart' },
 						{ label: 'How g1t works', slug: 'concepts/overview' },
+						{ label: 'Search and Explore', slug: 'guides/search' },
 					],
 				},
 				{

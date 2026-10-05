@@ -26,6 +26,49 @@ pub struct Repo {
     pub protected: bool,
     /// RFC 3339.
     pub created_at: String,
+    /// Words that say what it is about, for search and Explore: lowercase
+    /// letters, digits and hyphens. See [`clean_topics`].
+    #[serde(default)]
+    pub topics: Vec<String>,
+}
+
+/// The most topics a repository has.
+pub const MAX_TOPICS: usize = 20;
+/// The longest topic.
+pub const MAX_TOPIC_CHARS: usize = 35;
+
+/// Topics as they are kept: lowercase, spaces and underscores made
+/// hyphens, each of letters, digits and hyphens, starting with a letter or
+/// digit, without repeats, at most [`MAX_TOPICS`]. Anything else is the
+/// first topic that could not be read.
+pub fn clean_topics(topics: &[String]) -> Result<Vec<String>, String> {
+    let mut kept: Vec<String> = Vec::new();
+    for topic in topics {
+        let topic: String = topic
+            .trim()
+            .to_lowercase()
+            .chars()
+            .map(|c| if c == ' ' || c == '_' { '-' } else { c })
+            .collect();
+        if topic.is_empty() {
+            continue;
+        }
+        let valid = topic.chars().count() <= MAX_TOPIC_CHARS
+            && topic.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            && topic.chars().next().is_some_and(|c| c.is_ascii_alphanumeric());
+        if !valid {
+            return Err(format!(
+                "\"{topic}\" is not a topic: use letters, digits and hyphens, at most {MAX_TOPIC_CHARS} characters."
+            ));
+        }
+        if !kept.contains(&topic) {
+            kept.push(topic);
+        }
+    }
+    if kept.len() > MAX_TOPICS {
+        return Err(format!("A repository has at most {MAX_TOPICS} topics."));
+    }
+    Ok(kept)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -195,6 +238,9 @@ pub struct UpdateArgs {
     pub is_private: Option<bool>,
     #[serde(default)]
     pub protected: Option<bool>,
+    /// Replaces its topics; an empty list clears them.
+    #[serde(default)]
+    pub topics: Option<Vec<String>>,
 }
 
 /// `tree`. Returns `Outcome<TreeView>`.
@@ -476,4 +522,118 @@ pub const MAX_READABLE: usize = 500;
 #[serde(rename_all = "camelCase")]
 pub struct PublicNamespacesArgs {
     pub owner_id: String,
+}
+
+/// One file on a branch, or one a change touched: its path and blob.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileEntry {
+    pub path: String,
+    /// The blob it holds now; null when the change deleted it.
+    pub hash: Option<String>,
+}
+
+/// Files, and whether there were more than were listed.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileList {
+    /// The commit the files were read at; null for an empty repository.
+    pub commit: Option<String>,
+    pub files: Vec<FileEntry>,
+    pub truncated: bool,
+}
+
+/// `list_files`: every file on a branch (the default branch when absent),
+/// path order by level, never descending into a directory named in
+/// `skip_dirs`. For services that index a repository; no viewer, since it
+/// is only reached by g1t's own services. Returns `FileList`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListFilesArgs {
+    pub repo_id: String,
+    #[serde(default, rename = "ref")]
+    pub git_ref: Option<String>,
+    #[serde(default)]
+    pub skip_dirs: Vec<String>,
+    /// At most this many files; capped at [`MAX_LISTED_FILES`].
+    pub limit: u32,
+}
+
+/// `changed_files`: the files that differ between two commits, as
+/// `list_files` reads them. With no `base`, every file at `head`. Returns
+/// `FileList`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangedFilesArgs {
+    pub repo_id: String,
+    #[serde(default)]
+    pub base: Option<String>,
+    pub head: String,
+    #[serde(default)]
+    pub skip_dirs: Vec<String>,
+    pub limit: u32,
+}
+
+/// The most files one `list_files` or `changed_files` call lists.
+pub const MAX_LISTED_FILES: u32 = 10_000;
+
+/// `read_blobs`: the text of these blobs of a repository, for services
+/// that index it. A blob larger than `max_bytes`, or binary, comes back
+/// with no text. Returns `Vec<BlobText>`, in the order asked.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadBlobsArgs {
+    pub repo_id: String,
+    pub hashes: Vec<String>,
+    pub max_bytes: u32,
+}
+
+/// The most blobs one `read_blobs` call reads.
+pub const MAX_READ_BLOBS: usize = 100;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BlobText {
+    pub hash: String,
+    pub size: u64,
+    /// Null when the blob is missing, binary or larger than asked.
+    pub text: Option<String>,
+}
+
+/// `all_ids`: every repository that is not a fork, by id, a page at a
+/// time, for services that index all of them. Returns `IdPage`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AllIdsArgs {
+    /// Ids after this one.
+    #[serde(default)]
+    pub after: Option<String>,
+    pub limit: u32,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct IdPage {
+    pub ids: Vec<String>,
+    /// Where the next page starts; null on the last.
+    pub next: Option<String>,
+}
+
+#[cfg(test)]
+mod topic_tests {
+    use super::*;
+
+    fn topics(list: &[&str]) -> Result<Vec<String>, String> {
+        clean_topics(&list.iter().map(|t| t.to_string()).collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn topics_are_tidied() {
+        assert_eq!(topics(&["Rust", " web_server ", "rust", ""]).unwrap(), vec!["rust", "web-server"]);
+    }
+
+    #[test]
+    fn odd_topics_are_refused() {
+        assert!(topics(&["c++"]).is_err());
+        assert!(topics(&["-lead"]).is_err());
+        assert!(topics(&[&"a".repeat(36)]).is_err());
+        let many: Vec<String> = (0..21).map(|i| format!("t{i}")).collect();
+        assert!(clean_topics(&many).is_err());
+    }
 }

@@ -14,7 +14,6 @@ import {
   CircleDot,
   Code2,
   Compass,
-  CornerDownLeft,
   CreditCard,
   GitPullRequest,
   History,
@@ -42,13 +41,14 @@ import {
   X,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { Form, Link, NavLink, useLocation, useNavigate, useNavigation, useSubmit } from "react-router";
+import { Form, Link, NavLink, useLocation, useNavigation, useSubmit } from "react-router";
 
 import type { Membership, User } from "@g1t/contracts";
 import { MICROS_PER_DOLLAR } from "@g1t/contracts";
 
+import { CommandPalette, type PaletteCommand, usePaletteShortcut } from "./command-palette";
 import { Mark } from "./logo";
-import { Avatar } from "./ui";
+import { Avatar, notACredential } from "./ui";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -838,13 +838,14 @@ function Breadcrumbs({ pathname }: { pathname: string }) {
   );
 }
 
-type Command = { label: string; hint?: string; to: string; icon: ReactNode };
+type Command = PaletteCommand;
 
 /** Everything the palette can jump to, from what the sidebar already knows. */
 function commandsFor(user: User, shell: ShellData): Command[] {
   const commands: Command[] = [
     { label: "Mission control", to: "/", icon: <LayoutDashboard size={15} /> },
     { label: "Explore repositories", to: "/explore", icon: <Compass size={15} /> },
+    { label: "Search g1t", hint: "Repositories, code, issues, people", to: "/search", icon: <Search size={15} /> },
     { label: "New project", to: "/new", icon: <Plus size={15} /> },
     { label: "New workspace", to: "/workspaces/new", icon: <Plus size={15} /> },
     { label: "Your settings", to: "/settings", icon: <Settings size={15} /> },
@@ -889,105 +890,6 @@ function commandsFor(user: User, shell: ShellData): Command[] {
     });
   }
   return commands;
-}
-
-function CommandPalette({
-  open,
-  onClose,
-  commands,
-}: {
-  open: boolean;
-  onClose: () => void;
-  commands: Command[];
-}) {
-  const navigate = useNavigate();
-  const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState(0);
-  const input = useRef<HTMLInputElement>(null);
-  const matches = useMemo(() => {
-    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-    return commands
-      .filter((command) => {
-        const text = `${command.label} ${command.hint ?? ""}`.toLowerCase();
-        return words.every((word) => text.includes(word));
-      })
-      .slice(0, 12);
-  }, [commands, query]);
-
-  useEffect(() => {
-    if (!open) return;
-    setQuery("");
-    setSelected(0);
-    input.current?.focus();
-  }, [open]);
-  useEffect(() => setSelected(0), [query]);
-
-  if (!open) return null;
-  const go = (command: Command | undefined) => {
-    if (!command) return;
-    onClose();
-    navigate(command.to);
-  };
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 px-4 pt-[12vh] backdrop-blur-sm" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-label="Go to"
-        className="w-full max-w-xl overflow-hidden rounded-xl border border-line-strong bg-raised shadow-2xl shadow-black/60"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-center gap-3 border-b border-line px-4">
-          <Search size={16} className="text-faint" />
-          <input
-            ref={input}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowDown") {
-                event.preventDefault();
-                setSelected((index) => Math.min(index + 1, matches.length - 1));
-              } else if (event.key === "ArrowUp") {
-                event.preventDefault();
-                setSelected((index) => Math.max(index - 1, 0));
-              } else if (event.key === "Enter") {
-                event.preventDefault();
-                go(matches[selected]);
-              } else if (event.key === "Escape") {
-                onClose();
-              }
-            }}
-            placeholder="Go to a repository, a page, or an action…"
-            autoComplete="off"
-            data-1p-ignore
-            className="h-12 grow border-0 bg-transparent text-sm shadow-none outline-none ring-0 placeholder:text-faint focus:outline-none focus-visible:outline-none"
-          />
-          <kbd className="rounded border border-line px-1.5 font-mono text-[0.6875rem] text-faint">esc</kbd>
-        </div>
-        <ul className="max-h-[50vh] overflow-y-auto p-1.5">
-          {matches.length === 0 && (
-            <li className="px-3 py-6 text-center text-sm text-faint">Nothing matches.</li>
-          )}
-          {matches.map((command, index) => (
-            <li key={`${command.to}-${command.label}`}>
-              <button
-                type="button"
-                onMouseEnter={() => setSelected(index)}
-                onClick={() => go(command)}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${
-                  index === selected ? "bg-line text-fg" : "text-muted"
-                }`}
-              >
-                <span className="shrink-0 text-faint">{command.icon}</span>
-                <span className="min-w-0 grow truncate">{command.label}</span>
-                {command.hint && <span className="shrink-0 truncate text-xs text-faint">{command.hint}</span>}
-                {index === selected && <CornerDownLeft size={13} className="shrink-0 text-faint" />}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  );
 }
 
 /**
@@ -1055,16 +957,7 @@ export function AppShell({
 
   // A new page closes the drawer on small screens.
   useEffect(() => setDrawer(false), [pathname]);
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setPalette((open) => !open);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  usePaletteShortcut(() => setPalette((open) => !open));
 
   return (
     <div className="min-h-screen">
@@ -1105,7 +998,20 @@ export function AppShell({
             <Menu size={18} />
           </button>
           <Breadcrumbs pathname={pathname} />
-          <div className="ml-auto flex items-center gap-1.5">
+          <Form action="/search" role="search" className="relative ml-auto hidden w-full max-w-64 md:block">
+            <Search size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
+            <input
+              name="q"
+              {...notACredential()}
+              placeholder="Search g1t"
+              aria-label="Search g1t"
+              className="h-9 w-full rounded-md border border-line bg-surface pr-12 pl-8 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim"
+            />
+            <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded bg-raised px-1.5 font-mono text-[0.625rem] text-muted ring-1 ring-line">
+              ⌘K
+            </kbd>
+          </Form>
+          <div className="ml-auto flex items-center gap-1.5 md:ml-0">
             <a
               href="https://docs.g1t.sh/"
               className="hidden rounded-md px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-raised hover:text-fg sm:block"
@@ -1156,7 +1062,12 @@ export function AppShell({
         {banner}
         <main className="min-w-0 grow">{children}</main>
       </div>
-      <CommandPalette open={palette} onClose={() => setPalette(false)} commands={commands} />
+      <CommandPalette
+        open={palette}
+        onOpenChange={setPalette}
+        commands={commands}
+        repo={shell.repo ? `${shell.repo.namespace}/${shell.repo.name}` : null}
+      />
     </div>
   );
 }

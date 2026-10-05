@@ -53,6 +53,10 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     description: String(form.get("description") ?? ""),
     isPrivate: form.get("visibility") === "private",
     protected: on("protected"),
+    // Typed with commas or spaces between them; the service tidies the rest.
+    topics: String(form.get("topics") ?? "")
+      .split(/[\s,]+/)
+      .filter(Boolean),
   });
   if (!repo.ok) return { saved: false, error: repo.error.message };
   const settings = await work.updateSettings(user, path, {
@@ -156,6 +160,12 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
         <Section title="General" about="What the repository is and who can see it.">
           <Field label="Description">
             <Input name="description" maxLength={200} defaultValue={repo.description ?? ""} />
+          </Field>
+          <Field
+            label="Topics"
+            hint="What it is about, for search and Explore: words such as cli, rust or design-system, separated by commas or spaces. Up to 20."
+          >
+            <Input name="topics" maxLength={800} defaultValue={(repo.topics ?? []).join(", ")} placeholder="cli, rust" />
           </Field>
           <fieldset>
             <legend className="sr-only">Visibility</legend>

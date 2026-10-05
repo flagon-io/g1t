@@ -1,0 +1,38 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-search",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	// Runs next to its database: a search makes several queries in turn,
+	// and each would otherwise cross the distance to it.
+	"placement": { "mode": "smart" },
+	"main": "build/index.js",
+	"build": { "command": "cargo install -q worker-build@0.8.7 && worker-build --release" },
+	// Reached only through service bindings.
+	"workers_dev": false,
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "g1t-search",
+			// Create with `wrangler d1 create g1t-search` and put its id here.
+			"database_id": "9d04cbf3-cd02-4544-b3e3-2d78767e13bf",
+			"migrations_dir": "migrations"
+		}
+	],
+	"services": [
+		{ "binding": "IDENTITY", "service": "g1t-identity" },
+		{ "binding": "REPOS", "service": "g1t-repos" },
+		{ "binding": "WORK", "service": "g1t-work" }
+	],
+	"queues": {
+		// Its own jobs: a push's files, a repository compared whole, a page
+		// of the backfill. One at a time, so each stays within its caps.
+		"producers": [{ "binding": "JOBS", "queue": "g1t-search-jobs" }],
+		"consumers": [
+			// Every event, to keep the index current.
+			{ "queue": "g1t-events-search", "max_batch_size": 20, "max_batch_timeout": 2 },
+			{ "queue": "g1t-search-jobs", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3 }
+		]
+	},
+	"observability": { "enabled": true }
+}

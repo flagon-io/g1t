@@ -13,6 +13,7 @@ import {
   identityClient,
   integrationsClient,
   reposClient,
+  searchClient,
   securityClient,
   webhooksClient,
   workClient,
@@ -35,5 +36,7 @@ export const agents = agentsClient(env.WORK);
 export const guardrails = guardrailsClient(env.WORK);
 /** The context hub: catalog, search and scorecards. */
 export const context = contextClient(env.CONTEXT);
+/** Search across all of g1t, and Explore. */
+export const search = searchClient(env.SEARCH);
 /** Memory candidates and their review: methods of the work service. */
 export const memoryReview = memoryReviewClient(env.WORK);

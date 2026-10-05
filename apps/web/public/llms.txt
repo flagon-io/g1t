@@ -295,6 +295,27 @@ static sites build without configuration. Previews come down when the pull
 request closes and after idle days. There is no API for deployments yet.
 Guide: https://docs.g1t.sh/guides/deployments/
 
+## Search
+
+`GET https://api.g1t.sh/search?q=<query>&type=<type>` (MCP tool `search`)
+searches all of g1t: repositories (name, description, topics, README), code
+on default branches, issues, pull requests, people and workspaces. No token
+needed for public results; with one, private results in the token's
+workspaces are included, checked against current membership. `type` is
+`repositories`, `code`, `issues`, `pulls` or `people` (worked out from the
+qualifiers when left out); `page` and `per_page` (at most 50) page through.
+The query takes words, `"exact phrases"`, `-word` to leave out, and
+`repo:owner/name`, `org:<workspace>`, `language:<lang>`, `path:<prefix or
+*.glob>`, `is:issue`, `is:pr`, `is:open`, `is:closed`, `is:merged`,
+`author:<username>`, `label:<label>`. Code search matches any run of three
+characters or more; vendored directories, lockfiles, binaries and files
+over 512 KB are not indexed. Results give `counts` per type and each hit's
+`snippet` or code `lines` as parts with `highlight`. On the site:
+`https://g1t.sh/search?q=`, ⌘K, and `https://g1t.sh/explore` for public
+projects by activity, language (`?language=`) and topic (`?topic=`).
+`search_context` stays the search of one workspace's context hub. Guide:
+https://docs.g1t.sh/guides/search/
+
 ## Facts
 
 - API base: `https://api.g1t.sh`. `GET /` lists every URL as a template.
@@ -320,6 +341,7 @@ Guide: https://docs.g1t.sh/guides/deployments/
 
 - [Quickstart](https://docs.g1t.sh/quickstart/)
 - [How g1t works](https://docs.g1t.sh/concepts/overview/)
+- [Search and Explore](https://docs.g1t.sh/guides/search/)
 - [g1t agents](https://docs.g1t.sh/guides/g1t-agents/)
 - [Outcomes and plans](https://docs.g1t.sh/guides/outcomes/)
 - [Talking to agents](https://docs.g1t.sh/guides/talking-to-agents/)

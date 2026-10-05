@@ -7,6 +7,7 @@ mod admin;
 mod avatars;
 mod crypto;
 mod device;
+mod directory;
 mod email;
 mod oauth;
 mod profiles;
@@ -542,19 +543,51 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     };
 
     match method.as_str() {
-        "register" => reply(&identity.register(args(body)?).await?),
+        "register" => {
+            let outcome = identity.register(args(body)?).await?;
+            if let Outcome::Ok(signed_in) = &outcome {
+                identity.announce_user(&signed_in.user.username, Some(&signed_in.user.id)).await;
+            }
+            reply(&outcome)
+        }
         "sign_in" => reply(&identity.sign_in(args(body)?).await?),
-        "create_workspace" => reply(&identity.create_workspace(args(body)?).await?),
+        "create_workspace" => {
+            let outcome = identity.create_workspace(args(body)?).await?;
+            if let Outcome::Ok(workspace) = &outcome {
+                identity.announce_workspace(&workspace.id, &workspace.slug, None).await;
+            }
+            reply(&outcome)
+        }
         "get_workspace" => reply(&identity.get_workspace(args(body)?).await?),
         "list_members" => reply(&identity.list_members(args(body)?).await?),
         "add_member" => reply(&identity.add_member(args(body)?).await?),
         "remove_member" => reply(&identity.remove_member(args(body)?).await?),
-        "update_workspace" => reply(&identity.update_workspace(args(body)?).await?),
+        "update_workspace" => {
+            let outcome = identity.update_workspace(args(body)?).await?;
+            if let Outcome::Ok(workspace) = &outcome {
+                identity.announce_workspace(&workspace.id, &workspace.slug, None).await;
+            }
+            reply(&outcome)
+        }
         "rename_workspace" => reply(&identity.rename_workspace(args(body)?).await?),
         "check_workspace_rename" => reply(&identity.check_workspace_rename(args(body)?).await?),
         "resolve_slug" => reply(&identity.resolve_slug(args(body)?).await?),
-        "set_workspace_avatar" => reply(&identity.set_workspace_avatar(args(body)?).await?),
-        "set_user_avatar" => reply(&identity.set_user_avatar(args(body)?).await?),
+        "set_workspace_avatar" => {
+            let outcome = identity.set_workspace_avatar(args(body)?).await?;
+            if let Outcome::Ok(workspace) = &outcome {
+                identity.announce_workspace(&workspace.id, &workspace.slug, None).await;
+            }
+            reply(&outcome)
+        }
+        "set_user_avatar" => {
+            let a: SetUserAvatarArgs = args(body)?;
+            let (username, id) = (a.user.username.clone(), a.user.id.clone());
+            let outcome = identity.set_user_avatar(a).await?;
+            if matches!(outcome, Outcome::Ok(_)) {
+                identity.announce_user(&username, Some(&id)).await;
+            }
+            reply(&outcome)
+        }
         "list_workspace_tokens" => reply(&identity.list_workspace_tokens(args(body)?).await?),
         "create_workspace_token" => reply(&identity.create_workspace_token(args(body)?).await?),
         "remove_workspace_token" => reply(&identity.remove_workspace_token(args(body)?).await?),
@@ -582,7 +615,14 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "user_by_username" => reply(&identity.user_by_username(args(body)?).await?),
         "usernames" => reply(&identity.usernames(args(body)?).await?),
         "profile" => reply(&identity.profile(args(body)?).await?),
-        "update_profile" => reply(&identity.update_profile(args(body)?).await?),
+        "update_profile" => {
+            let outcome = identity.update_profile(args(body)?).await?;
+            if let Outcome::Ok(profile) = &outcome {
+                identity.announce_user(&profile.username, None).await;
+            }
+            reply(&outcome)
+        }
+        "directory" => reply(&identity.directory(args(body)?).await?),
         "profile_workspaces" => reply(&identity.profile_workspaces(args(body)?).await?),
         "list_ssh_keys" => reply(&identity.list_ssh_keys(args(body)?).await?),
         "add_ssh_key" => reply(&identity.add_ssh_key(args(body)?).await?),

@@ -25,6 +25,9 @@ struct RepoRow {
     /// migrated; their key is the one worked out from the path.
     #[serde(default)]
     store: Option<String>,
+    /// JSON; absent on rows read before the column existed.
+    #[serde(default)]
+    topics: Option<String>,
 }
 
 thread_local! {
@@ -62,6 +65,11 @@ impl From<RepoRow> for Repo {
             fork_of: row.fork_of,
             protected: row.protected != 0,
             created_at: row.created_at,
+            topics: row
+                .topics
+                .as_deref()
+                .and_then(|topics| serde_json::from_str(topics).ok())
+                .unwrap_or_default(),
         };
         if let Some(store) = &row.store {
             remember_store(&repo, store);
@@ -124,13 +132,15 @@ impl Registry {
         description: Option<&str>,
         is_private: bool,
         protected: bool,
+        topics: &[String],
     ) -> Result<()> {
         self.db
-            .prepare("UPDATE repos SET description = ?, is_private = ?, protected = ? WHERE id = ?")
+            .prepare("UPDATE repos SET description = ?, is_private = ?, protected = ?, topics = ? WHERE id = ?")
             .bind(&[
                 description.map_or(JsValue::NULL, JsValue::from),
                 u32::from(is_private).into(),
                 u32::from(protected).into(),
+                serde_json::to_string(topics)?.into(),
                 id.into(),
             ])?
             .run()
@@ -254,6 +264,24 @@ impl Registry {
             .results::<Row>()?
             .into_iter()
             .map(|row| row.namespace)
+            .collect())
+    }
+
+    /// Repositories that are not forks, by id, a page at a time.
+    pub async fn ids_after(&self, after: Option<&str>, limit: u32) -> Result<Vec<String>> {
+        #[derive(Deserialize)]
+        struct Row {
+            id: String,
+        }
+        Ok(self
+            .db
+            .prepare("SELECT id FROM repos WHERE fork_of IS NULL AND id > ? ORDER BY id LIMIT ?")
+            .bind(&[after.unwrap_or("").into(), limit.into()])?
+            .all()
+            .await?
+            .results::<Row>()?
+            .into_iter()
+            .map(|row| row.id)
             .collect())
     }
 

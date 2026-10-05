@@ -47,6 +47,24 @@ export function useProject() {
   return useRouteLoaderData<typeof loader>("routes/repo/layout");
 }
 
+/** A repository's topics, each a way into Explore. */
+function Topics({ topics }: { topics: string[] | undefined }) {
+  if (!topics?.length) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {topics.map((topic) => (
+        <Link
+          key={topic}
+          to={`/explore?topic=${encodeURIComponent(topic)}`}
+          className="rounded-full bg-accent/10 px-2 py-px text-xs text-accent ring-1 ring-accent/30 transition-colors hover:bg-accent/20"
+        >
+          {topic}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 function Header({ project, isPrivate, namespace, name, description, large }: {
   project: Project | null;
   isPrivate: boolean;
@@ -137,6 +155,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
               name={repo.name}
               description={description}
             />
+            <Topics topics={repo.topics} />
             {tabs && (
               <div className="mt-3">
                 <PageTabs base={base} tabs={tabs} />
@@ -164,6 +183,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
             large
           />
           {description && <p className="mt-2 max-w-2xl text-sm text-muted">{description}</p>}
+          <Topics topics={repo.topics} />
           <nav className="mt-5 flex gap-6 overflow-x-auto">
             <Tab to={base} end icon={<LayoutGrid size={15} />}>
               Overview

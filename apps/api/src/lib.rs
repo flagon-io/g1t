@@ -122,6 +122,7 @@ fn index() -> Value {
         "current_user_url": format!("{API}/user"),
         "workspaces_url": format!("{API}/workspaces"),
         "repositories_url": format!("{API}/repos{{?q}}"),
+        "search_url": format!("{API}/search{{?q,type,page,per_page}}"),
         "repository_url": repo,
         "repository_events_url": format!("{repo}/events{{?before}}"),
         "labels_url": format!("{repo}/labels"),

@@ -7,7 +7,7 @@
 //! encoded again, so that every field the type has is sent, not only the
 //! ones an example shows.
 
-use g1t_contracts::{actions, integrations, repos, webhooks, work};
+use g1t_contracts::{actions, integrations, repos, search, webhooks, work};
 use g1t_kit::wire::{self, USER_KEYED};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -66,6 +66,7 @@ fn sample(op: Op, example: &Value) -> Value {
     let sent = as_services_send(example);
     match op {
         Op::ListRepos => through::<Vec<repos::Repo>>(op, sent),
+        Op::Search => through::<search::SearchResults>(op, sent),
         Op::GetRepo | Op::CreateRepo | Op::UpdateRepo => through::<repos::Repo>(op, sent),
         Op::GetRepoSettings | Op::UpdateRepoSettings => through::<work::RepoSettings>(op, sent),
         Op::GetMergeQueue => through::<work::QueueView>(op, sent),
