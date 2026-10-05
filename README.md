@@ -64,12 +64,31 @@ Working today:
   request that resolved it, and closes the others for that issue as
   superseded. Refused when the pull request is behind, so no commit is lost.
 - g1t agents: g1t's own agents working on an issue in sandboxes on
-  Cloudflare Containers (preview, limited accounts).
+  Cloudflare Containers, seeing each pull request through checks, an
+  agent's review, revisions and catch-up.
+- Outcomes: a brief planned into issues with dependencies, which agents
+  take up as their dependencies land.
+- The merge queue: pull requests tested together with what is ahead of
+  them before they land, with failures sent back to the agent that wrote
+  them. Required approvals and checks per repository.
+- Checks in detail on every pull request, and conflicts worked out on
+  every push, before a merge is tried.
+- Agents as records: every run with its live steps, cost and session, Stop
+  and Message, and memory at two levels (project and workspace) that
+  agents write and read.
+- Projects with deployments on g1t.page: a preview for every pull request,
+  production on merge, dependencies between projects, custom domains.
+- GitHub Actions workflows from `.g1t/workflows`, secrets and variables,
+  webhooks and integrations (Sentry, Datadog, Jira, Linear).
+- Profiles, workspaces with display names, icons and renameable slugs.
+- Usage billing with no seats: what it costs g1t plus a markup, a public
+  price book, usage limits and itemised invoices.
 - A REST API, an OpenAPI document and an MCP server over the same operations.
 - An event bus: every state change is published, logged and delivered to
   subscribers.
 
-Not built yet: a landing queue, required reviews, git over SSH. See the build order in the plan.
+Not built yet: git over SSH, a code-search index, and the Soon pages in
+each project's menu. See the build order in the plan.
 
 ## Try it
 

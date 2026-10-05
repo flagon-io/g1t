@@ -42,8 +42,9 @@ credit, so a workspace with a plan can add credit while agents are free.
 So anyone can try g1t's agents without a key of their own, every workspace
 gets **$1 of model cost on g1t's own models**, free, until **October 22,
 2026** (11:59 PM Pacific). That is roughly 10 to 25 agent runs: changes,
-reviews and revisions. The allowance covers the GitHub Actions runners
-too, while it lasts.
+reviews and revisions. The allowance pays for the model part of those
+runs; everything else, such as sandbox time past the free minutes, is
+charged as usual.
 
 - Mission control and **Settings → Integrations** show what is left.
 - When it is used up, agents and workflow runs stop starting, and the
