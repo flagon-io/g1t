@@ -16,12 +16,12 @@
 	"services": [{ "binding": "BILLING", "service": "g1t-billing" }],
 	"vars": {
 		// The Zero Trust team domain, such as `g1t.cloudflareaccess.com`.
-		"ACCESS_TEAM_DOMAIN": "",
+		"ACCESS_TEAM_DOMAIN": "syntaqx.cloudflareaccess.com",
 		// The Access application's Audience (AUD) tag.
-		"ACCESS_AUD": "",
+		"ACCESS_AUD": "5479fcf84130fc7ae68c207ae69a81b2aa17d97714443c6f1dddd058c530b8cf",
 		// Who may use sudo, comma separated. Access lets them in; this
 		// decides again, in case the Access policy is ever widened.
-		"STAFF_EMAILS": "syntaqx@gmail.com"
+		"STAFF_EMAILS": "syntaqx@gmail.com, @g1t.sh"
 	},
 	"observability": { "enabled": true },
 	"upload_source_maps": true

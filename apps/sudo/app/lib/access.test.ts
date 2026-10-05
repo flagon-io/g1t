@@ -6,6 +6,8 @@ import {
   authorize,
   clearKeyCache,
   isSameOrigin,
+  isStaff,
+  parseStaff,
   readSettings,
   verifyAccessJwt,
 } from "./access.ts";
@@ -203,4 +205,16 @@ test("changes are only taken from sudo's own pages", () => {
   assert.equal(isSameOrigin(post({ referer: "https://sudo.g1t.sh.evil.example/" })), false);
   assert.equal(isSameOrigin(post({ origin: "https://sudo.g1t.sh", "sec-fetch-site": "cross-site" })), false);
   assert.equal(isSameOrigin(post({})), false);
+});
+
+test("everyone at a staff domain is staff, and nobody at a lookalike", () => {
+  const staff = parseStaff("syntaqx@gmail.com, @g1t.sh");
+  assert.deepEqual(staff, ["syntaqx@gmail.com", "@g1t.sh"]);
+  assert.equal(isStaff("syntaqx@gmail.com", staff), true);
+  assert.equal(isStaff("ada@g1t.sh", staff), true);
+  assert.equal(isStaff("ada@xg1t.sh", staff), false);
+  assert.equal(isStaff("ada@g1t.sh.evil.com", staff), false);
+  assert.equal(isStaff("someone@gmail.com", staff), false);
+  assert.equal(isStaff("@g1t.sh", staff), false);
+  assert.equal(isStaff("a@b@g1t.sh", staff), false);
 });

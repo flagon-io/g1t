@@ -26,7 +26,7 @@ export type AccessSettings = {
   teamDomain: string;
   /** The Access application's Audience (AUD) tag. */
   aud: string;
-  /** Lowercased staff emails. */
+  /** Lowercased staff emails, and `@domain` for everyone at a domain. */
   staff: string[];
 };
 
@@ -62,11 +62,23 @@ export function normalizeTeamDomain(raw: string): string | null {
   return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.cloudflareaccess\.com$/.test(host) ? host : null;
 }
 
+/**
+ * The staff list: emails, and `@g1t.sh` for everyone with an address at
+ * that domain. Access proves the address belongs to whoever signed in.
+ */
 export function parseStaff(raw: string): string[] {
   return raw
     .split(/[,\s]+/)
     .map((email) => email.trim().toLowerCase())
-    .filter((email) => /^[^@\s]+@[^@\s]+$/.test(email));
+    .filter((email) => /^[^@\s]*@[a-z0-9.-]+\.[a-z]{2,}$/.test(email));
+}
+
+/** Whether a signed-in email is on the staff list: exactly, or by its whole domain. */
+export function isStaff(email: string, staff: string[]): boolean {
+  const at = email.lastIndexOf("@");
+  if (at <= 0 || email.indexOf("@") !== at) return false;
+  const domain = email.slice(at);
+  return staff.some((entry) => (entry.startsWith("@") ? entry === domain : entry === email));
 }
 
 export type AccessClaims = {
@@ -234,7 +246,7 @@ export async function authorize(
   if (!verified.ok) return verified;
   const email = typeof verified.claims.email === "string" ? verified.claims.email.trim().toLowerCase() : "";
   if (!email) return { ok: false, reason: "token has no email" };
-  if (!settings.staff.includes(email)) return { ok: false, reason: "not staff", email };
+  if (!isStaff(email, settings.staff)) return { ok: false, reason: "not staff", email };
   return { ok: true, email };
 }
 

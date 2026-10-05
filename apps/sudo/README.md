@@ -35,9 +35,11 @@ and each change is recorded there with the staff member's email.
    - Application name: `sudo`.
    - Session duration: short, such as 8 hours.
    - Public hostname: `sudo.g1t.sh` (path empty, so it covers everything).
-2. **Add a policy:** action *Allow*, include *Emails* → the owner's address
-   (the same addresses as `STAFF_EMAILS`). Add more staff here *and* in
-   `STAFF_EMAILS`; either one alone is not enough.
+2. **Add a policy** (`g1t staff`): action *Allow*, include *Emails* → the
+   owner's address, and *Emails ending in* → `g1t.sh` for everyone with a
+   g1t address (the same entries as `STAFF_EMAILS`, where a domain is
+   written `@g1t.sh`). Add more staff here *and* in `STAFF_EMAILS`; either
+   one alone is not enough.
 3. Save, then open the application's **Overview** (or *Basic information*)
    and copy the **Application Audience (AUD) tag**.
 4. Find the **team domain** under **Zero Trust → Settings → Custom pages**
@@ -48,7 +50,7 @@ and each change is recorded there with the staff member's email.
    "vars": {
      "ACCESS_TEAM_DOMAIN": "<team>.cloudflareaccess.com",
      "ACCESS_AUD": "<the AUD tag>",
-     "STAFF_EMAILS": "syntaqx@gmail.com"
+     "STAFF_EMAILS": "syntaqx@gmail.com, @g1t.sh"
    }
    ```
 
