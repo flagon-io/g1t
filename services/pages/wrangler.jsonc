@@ -16,9 +16,8 @@
 	// scripts/setup-custom-domains.sh.
 	"routes": [
 		{ "pattern": "*.g1t.page/*", "zone_name": "g1t.page" },
-		// Custom domains: add this route once Cloudflare for SaaS is on for the
-		// zone (Cloudflare refuses a wildcard host before then):
-		// { "pattern": "*/*", "zone_name": "g1t.page" },
+		// Custom domains (Cloudflare for SaaS is on for the zone).
+		{ "pattern": "*/*", "zone_name": "g1t.page" },
 		{ "pattern": "g1t.page", "custom_domain": true }
 	],
 	// The apps, uploaded by the deployments service.
