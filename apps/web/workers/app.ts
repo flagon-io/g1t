@@ -25,7 +25,7 @@ const MOVED_DOCS: Record<string, string> = {
 };
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
     // Git over HTTPS shares this hostname but belongs to the repos service.
     if (GIT_PATH.test(pathname)) {
@@ -33,7 +33,7 @@ export default {
     }
     const avatar = AVATAR_PATH.exec(pathname);
     if (avatar) {
-      return serveAvatar(env, avatar[1], request.method);
+      return serveAvatar(env, ctx, request, avatar[1]);
     }
     // The documentation is its own site.
     if (pathname === "/docs" || pathname.startsWith("/docs/")) {
@@ -50,9 +50,21 @@ export default {
  * kept for good. It is served as nothing but an image: the stored type,
  * no sniffing, and a policy that lets nothing in it run.
  */
-async function serveAvatar(env: Env, hash: string, method: string): Promise<Response> {
+/**
+ * An uploaded icon. Its address is its content's hash, so it never changes:
+ * each data centre keeps it in its cache after the first view, and storage
+ * is read about once per place, not once per visitor.
+ */
+async function serveAvatar(env: Env, ctx: ExecutionContext, request: Request, hash: string): Promise<Response> {
+  const method = request.method;
   if (method !== "GET" && method !== "HEAD") {
     return new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+  }
+  const cache = caches.default;
+  const key = new Request(new URL(`/avatars/${hash}`, request.url).toString(), { method: "GET" });
+  const cached = await cache.match(key);
+  if (cached) {
+    return method === "HEAD" ? new Response(null, { headers: cached.headers }) : cached;
   }
   const { value, metadata } = await env.AVATARS.getWithMetadata<{ contentType?: string }>(hash, {
     type: "arrayBuffer",
@@ -65,14 +77,14 @@ async function serveAvatar(env: Env, hash: string, method: string): Promise<Resp
       headers: { "cache-control": "public, max-age=60" },
     });
   }
-  return new Response(method === "HEAD" ? null : value, {
-    headers: {
-      "content-type": contentType,
-      "content-length": String(value.byteLength),
-      "cache-control": "public, max-age=31536000, immutable",
-      "x-content-type-options": "nosniff",
-      "content-security-policy": "default-src 'none'; sandbox",
-      "cross-origin-resource-policy": "cross-origin",
-    },
-  });
+  const headers = {
+    "content-type": contentType,
+    "content-length": String(value.byteLength),
+    "cache-control": "public, max-age=31536000, immutable",
+    "x-content-type-options": "nosniff",
+    "content-security-policy": "default-src 'none'; sandbox",
+    "cross-origin-resource-policy": "cross-origin",
+  };
+  ctx.waitUntil(cache.put(key, new Response(value, { headers })));
+  return new Response(method === "HEAD" ? null : value, { headers });
 }
