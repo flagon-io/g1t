@@ -5,6 +5,8 @@ export const DEPLOY_STATUS: Record<DeployStatus, { label: string; tone: string }
   queued: { label: "Queued", tone: "text-muted" },
   building: { label: "Building", tone: "text-warn" },
   ready: { label: "Live", tone: "text-accent" },
+  replaced: { label: "Replaced", tone: "text-faint" },
+  down: { label: "Down", tone: "text-faint" },
   failed: { label: "Failed", tone: "text-danger" },
   skipped: { label: "Skipped", tone: "text-faint" },
 };

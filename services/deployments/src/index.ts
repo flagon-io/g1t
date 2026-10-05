@@ -882,6 +882,10 @@ class Deployments {
                WHERE id = ?`,
             )
             .bind(JSON.stringify(Array.isArray(body.warnings) ? body.warnings : []), String(body.log ?? ""), seconds, at, id),
+          // The build it replaces is no longer what the app serves.
+          this.db
+            .prepare(`UPDATE deployments SET status = 'replaced' WHERE script = ? AND id != ? AND status = 'ready'`)
+            .bind(row.script, id),
           this.db
             .prepare(
               `INSERT INTO apps (script, project_id, workspace, slug, kind, branch, number, commit_sha, deployed_at, created_at)
@@ -1054,7 +1058,11 @@ class Deployments {
 
   private async removeApp(script: string): Promise<void> {
     await this.cloudflare?.deleteScript(script);
-    await this.db.prepare("DELETE FROM apps WHERE script = ?").bind(script).run();
+    await this.db.batch([
+      this.db.prepare("DELETE FROM apps WHERE script = ?").bind(script),
+      // Its build is no longer live anywhere.
+      this.db.prepare("UPDATE deployments SET status = 'down' WHERE script = ? AND status = 'ready'").bind(script),
+    ]);
   }
 
   private async takeDownWhere(projectId: string, kind: DeployKind | null, branch?: string): Promise<void> {

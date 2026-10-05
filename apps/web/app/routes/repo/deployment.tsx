@@ -23,6 +23,8 @@ const WORDS = {
   queued: "Waiting for a sandbox",
   building: "Building",
   ready: "Live",
+  replaced: "Replaced by a newer build",
+  down: "Taken down",
   failed: "Failed",
   skipped: "Skipped",
 } as const;

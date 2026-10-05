@@ -46,7 +46,12 @@ export type DeployStatus =
   /** Waiting for a sandbox. */
   | "queued"
   | "building"
+  /** What its app serves now. */
   | "ready"
+  /** Built and served, until a newer build of the same app replaced it. */
+  | "replaced"
+  /** Built and served, until its app was taken down. */
+  | "down"
   | "failed"
   /** Not built: the workspace's plan is off, or the build was replaced. */
   | "skipped";
