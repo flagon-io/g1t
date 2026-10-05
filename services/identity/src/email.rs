@@ -33,7 +33,7 @@ async fn send_link(
         text: format!("{intro}\n\n{action}: {link}\n\n{footer}\n"),
         html: format!(
             "<div style=\"font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 16px;color:#16150f\">\
-             <p style=\"font-size:20px;font-weight:600;margin:0 0 16px\">g1t</p>\
+             <p style=\"margin:0 0 20px\"><img src=\"{SITE}/brand/g1t-logo.png\" width=\"69\" height=\"28\" alt=\"g1t\" style=\"display:block;border:0\"></p>\
              <p style=\"font-size:15px;line-height:1.6\">{intro}</p>\
              <p style=\"margin:24px 0\"><a href=\"{link}\" style=\"background:#16150f;color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:15px\">{action}</a></p>\
              <p style=\"font-size:13px;line-height:1.6;color:#6e6a5e\">{footer}</p>\

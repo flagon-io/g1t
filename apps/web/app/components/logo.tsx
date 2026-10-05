@@ -1,17 +1,20 @@
 /**
- * g1t's mark: an isometric cube, the unit of work in its artwork. Three
- * faces in three tones of the text colour, split by hairline gaps, so it
- * holds at any size and on any background.
+ * g1t's mark, "the fleet": three 1s stepping back in depth, the agents at
+ * work behind the one change in front. The front 1 takes the text colour;
+ * the two behind it fade into lavender. The same shapes as the favicon and
+ * the brand files in .g1t/brand and public/brand.
  */
 export function Mark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
-      {/* Top face */}
-      <path d="M16 2.5 28 9.4 16 16.3 4 9.4Z" fill="currentColor" />
-      {/* Left face */}
-      <path d="M4 10.9 15.3 17.4V30.2L4 23.7Z" fill="currentColor" fillOpacity="0.55" />
-      {/* Right face */}
-      <path d="M28 10.9 16.7 17.4V30.2L28 23.7Z" fill="currentColor" fillOpacity="0.25" />
+      <g transform="translate(0.7 0.5)">
+        {/* The agents behind */}
+        <rect x="6.2" y="9.5" width="4.4" height="17" rx="2.2" fill="var(--g1t-merged)" fillOpacity="0.35" />
+        <rect x="12.4" y="7" width="4.8" height="19.5" rx="2.4" fill="var(--g1t-merged)" fillOpacity="0.65" />
+        {/* The 1 in front */}
+        <rect x="19" y="4.5" width="5.4" height="22" rx="2.7" fill="currentColor" />
+        <path d="M21.7 7.2 17.6 10.9" fill="none" stroke="currentColor" strokeWidth="4.6" strokeLinecap="round" />
+      </g>
     </svg>
   );
 }
