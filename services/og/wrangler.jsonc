@@ -1,0 +1,24 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-og",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	"main": "./src/index.ts",
+	"workers_dev": false,
+	// The social cards the site and the docs link to from their og:image
+	// tags. A custom domain, whose DNS record Cloudflare makes on deploy.
+	"routes": [{ "pattern": "og.g1t.sh", "custom_domain": true }],
+	// The fonts are vendored as TrueType, which satori can read; the
+	// renderers' WebAssembly is bundled as modules, the only way Workers
+	// will run it.
+	"rules": [{ "type": "Data", "globs": ["**/*.ttf"], "fallthrough": false }],
+	// What a card shows is only ever what an anonymous visitor could see:
+	// every call is made with no viewer.
+	"services": [
+		{ "binding": "IDENTITY", "service": "g1t-identity" },
+		{ "binding": "REPOS", "service": "g1t-repos" },
+		{ "binding": "WORK", "service": "g1t-work" },
+		{ "binding": "PROJECTS", "service": "g1t-projects" }
+	],
+	"observability": { "enabled": true }
+}

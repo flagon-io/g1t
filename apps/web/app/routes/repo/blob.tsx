@@ -1,11 +1,12 @@
 import type { Route } from "./+types/blob";
+import { page } from "../../lib/meta";
 import { BlobView } from "../../components/repo-view";
 import { highlight, highlightLines } from "../../lib/highlight.server";
 import { repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `${params["*"]} · ${params.owner}/${params.repo} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `${params["*"]} · ${params.owner}/${params.repo} · g1t` });
 }
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {

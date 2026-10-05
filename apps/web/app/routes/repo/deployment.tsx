@@ -2,12 +2,13 @@ import { ArrowLeft, ExternalLink } from "lucide-react";
 import { Link, data } from "react-router";
 
 import type { Route } from "./+types/deployment";
+import { page } from "../../lib/meta";
 import { TimeAgo } from "../../components/ui";
 import { deployments } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Deployment · ${params.owner}/${params.repo} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Deployment · ${params.owner}/${params.repo} · g1t` });
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {

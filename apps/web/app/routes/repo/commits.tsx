@@ -4,14 +4,15 @@ import { Link } from "react-router";
 import type { Commit } from "@g1t/contracts";
 
 import type { Route } from "./+types/commits";
+import { page } from "../../lib/meta";
 import { Avatar, EmptyState, TimeAgo } from "../../components/ui";
 import { repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
 const PAGE_SIZE = 50;
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Commits · ${params.owner}/${params.repo} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Commits · ${params.owner}/${params.repo} · g1t` });
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {

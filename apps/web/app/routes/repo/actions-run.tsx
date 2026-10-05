@@ -5,15 +5,16 @@ import { Form, Link, useNavigation, useRevalidator, useSearchParams } from "reac
 import type { Annotation, Job, StepState } from "@g1t/contracts";
 
 import type { Route } from "./+types/actions-run";
+import { page } from "../../lib/meta";
 import { LogText, Notes, StatusIcon, duration, shortRef, standingWord, useJobLog } from "../../components/actions";
 import { Button, ErrorText, TimeAgo } from "../../components/ui";
 import { listArtifacts } from "../../lib/artifacts.server";
 import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
-export function meta({ loaderData, params }: Route.MetaArgs) {
+export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   const run = loaderData?.detail.run;
-  return [{ title: `${run ? `${run.title || run.name} #${run.number}` : "Run"} · ${params.owner}/${params.repo} · g1t` }];
+  return page(args, { title: `${run ? `${run.title || run.name} #${run.number}` : "Run"} · ${params.owner}/${params.repo} · g1t` });
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {

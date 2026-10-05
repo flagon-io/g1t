@@ -6,6 +6,7 @@ import type { Comparison, Pull } from "@g1t/contracts";
 
 import { parseCommitMessage } from "../../lib/commit-message";
 import type { Route } from "./+types/commit";
+import { page } from "../../lib/meta";
 import { DiffView } from "../../components/diff-view";
 import { Avatar, TimeAgo } from "../../components/ui";
 import { immutable } from "../../lib/immutable.server";
@@ -17,11 +18,11 @@ export function headers({ loaderHeaders }: Route.HeadersArgs) {
   return { "Server-Timing": loaderHeaders.get("Server-Timing") ?? "" };
 }
 
-export function meta({ loaderData, params }: Route.MetaArgs) {
+export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   const subject = loaderData?.commit.message.split("\n")[0];
-  return [
-    { title: `${subject ? `${subject} · ` : ""}${params.hash.slice(0, 7)} · ${params.owner}/${params.repo} · g1t` },
-  ];
+  return page(args, {
+    title: `${subject ? `${subject} · ` : ""}${params.hash.slice(0, 7)} · ${params.owner}/${params.repo} · g1t`,
+  });
 }
 
 /** How far back a short hash is looked for. */

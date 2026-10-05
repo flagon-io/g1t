@@ -5,6 +5,7 @@ import { Form, Link, data, redirect, useNavigation } from "react-router";
 import type { Plan } from "@g1t/contracts";
 
 import type { Route } from "./+types/plans";
+import { page } from "../../lib/meta";
 import { Button, EmptyState, ErrorText, Textarea, TimeAgo } from "../../components/ui";
 import { work } from "../../lib/services.server";
 import {
@@ -15,8 +16,8 @@ import {
   unwrap,
 } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Plan · ${params.owner}/${params.repo} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Plan · ${params.owner}/${params.repo} · g1t` });
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {

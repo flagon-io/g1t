@@ -1,12 +1,13 @@
 import { Form, redirect } from "react-router";
 
 import type { Route } from "./+types/new";
+import { page } from "../../lib/meta";
 import { Button, ErrorText, Field, Input } from "../../components/ui";
 import { identity } from "../../lib/services.server";
 import { assertSameOrigin, nextPath, requireUser } from "../../lib/session.server";
 
-export function meta({}: Route.MetaArgs) {
-  return [{ title: "New workspace · g1t" }];
+export function meta(args: Route.MetaArgs) {
+  return page(args, { title: "New workspace · g1t" });
 }
 
 export function loader({ request, context }: Route.LoaderArgs) {

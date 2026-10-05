@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { Form, Link, data, useNavigation, useRevalidator } from "react-router";
 
 import type { Route } from "./+types/plan";
+import { page } from "../../lib/meta";
 import { Markdown } from "../../components/markdown";
 import { Activity, Exchanges } from "../../components/activity";
 import { Outcome } from "../../components/outcome";
@@ -21,8 +22,8 @@ import {
 
 const REFRESH_MS = 4000;
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Plan · ${params.owner}/${params.repo} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Plan · ${params.owner}/${params.repo} · g1t` });
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {

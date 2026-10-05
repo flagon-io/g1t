@@ -1,6 +1,7 @@
 import { Form, Link, redirect } from "react-router";
 
 import type { Route } from "./+types/login";
+import { page } from "../lib/meta";
 import { AuthCard } from "../components/auth-card";
 import { Button, ErrorText, Field, Input } from "../components/ui";
 import { identity } from "../lib/services.server";
@@ -11,8 +12,8 @@ import {
   startSession,
 } from "../lib/session.server";
 
-export function meta({}: Route.MetaArgs) {
-  return [{ title: "Sign in · g1t" }];
+export function meta(args: Route.MetaArgs) {
+  return page(args, { title: "Sign in · g1t" });
 }
 
 export function loader({ request, context }: Route.LoaderArgs) {

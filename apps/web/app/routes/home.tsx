@@ -6,6 +6,7 @@ import { Link, data, useRevalidator, useRouteLoaderData } from "react-router";
 import type { Lifecycle, Pull, Repo } from "@g1t/contracts";
 
 import type { Route } from "./+types/home";
+import { page } from "../lib/meta";
 import { Landing } from "../components/landing";
 import type { ShellData } from "../components/shell";
 import { STAGE_LABEL, StageDots } from "../components/lifecycle";
@@ -25,15 +26,12 @@ const REFRESH_MS = 5000;
 
 const dollars = (micros: number) => `$${(Math.max(0, micros) / 1_000_000).toFixed(2)}`;
 
-export function meta({}: Route.MetaArgs) {
-  return [
-    { title: "g1t — Git for AI scale" },
-    {
-      name: "description",
-      content:
-        "A git forge for thousands of agents working on the same code at once: every change isolated, every decision recorded, every change landed in order. Open source, built on Cloudflare.",
-    },
-  ];
+export function meta(args: Route.MetaArgs) {
+  return page(args, {
+    title: "g1t — Git for AI scale",
+    description:
+      "A git forge for thousands of agents working on the same code at once: every change isolated, every decision recorded, every change landed in order. Open source, built on Cloudflare.",
+  });
 }
 
 export function headers({ loaderHeaders }: Route.HeadersArgs) {

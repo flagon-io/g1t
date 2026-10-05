@@ -6,13 +6,14 @@ import { Form, Link, useNavigation, useRevalidator, useSearchParams } from "reac
 import type { DispatchInput, Workflow, WorkflowRun } from "@g1t/contracts";
 
 import type { Route } from "./+types/actions";
+import { page } from "../../lib/meta";
 import { Notes, StatusIcon, duration, shortRef } from "../../components/actions";
 import { Button, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
 import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Workflows · ${params.owner}/${params.repo} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Workflows · ${params.owner}/${params.repo} · g1t` });
 }
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {

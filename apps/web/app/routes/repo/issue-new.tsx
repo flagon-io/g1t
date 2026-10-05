@@ -4,13 +4,14 @@ import { Form, redirect, useNavigation } from "react-router";
 import { PROVIDERS } from "@g1t/contracts";
 
 import type { Route } from "./+types/issue-new";
+import { page } from "../../lib/meta";
 import { Button, ErrorText, Field, Input, Textarea } from "../../components/ui";
 import { Label } from "../../components/work";
 import { integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, unwrap } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `New issue · ${params.owner}/${params.repo} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `New issue · ${params.owner}/${params.repo} · g1t` });
 }
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {

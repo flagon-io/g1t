@@ -2,11 +2,16 @@ import { ArrowRight, Check, Sparkles } from "lucide-react";
 import { Link, data } from "react-router";
 
 import type { Route } from "./+types/soon";
+import { page } from "../../lib/meta";
 import { ROADMAP, roadmapIn, roadmapItem } from "../../lib/roadmap";
 
-export function meta({ params }: Route.MetaArgs) {
+export function meta({ params, ...args }: Route.MetaArgs) {
   const item = roadmapItem(params.feature);
-  return [{ title: `${item?.title ?? "Soon"} · ${params.owner}/${params.repo} · g1t` }];
+  return page(args, {
+    title: `${item?.title ?? "Soon"} · ${params.owner}/${params.repo} · g1t`,
+    description: item ? `Soon on g1t: ${item.summary}` : null,
+    version: item ? [item.title, item.summary] : undefined,
+  });
 }
 
 export function loader({ params }: Route.LoaderArgs) {

@@ -3,6 +3,7 @@ import { Form, data, useNavigation } from "react-router";
 
 import { RepoSettingsTabs } from "../../components/repo-settings-tabs";
 import type { Route } from "./+types/settings-repository";
+import { page } from "../../lib/meta";
 import { Button, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
 import { repos, work } from "../../lib/services.server";
 import {
@@ -13,8 +14,8 @@ import {
   unwrap,
 } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Repository settings · ${params.owner}/${params.repo} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Repository settings · ${params.owner}/${params.repo} · g1t` });
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {

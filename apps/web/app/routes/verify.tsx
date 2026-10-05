@@ -2,12 +2,13 @@ import { CircleCheck, MailWarning } from "lucide-react";
 import { redirect } from "react-router";
 
 import type { Route } from "./+types/verify";
+import { page } from "../lib/meta";
 import { ButtonLink } from "../components/ui";
 import { identity } from "../lib/services.server";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
 
-export function meta({}: Route.MetaArgs) {
-  return [{ title: "Confirm your email · g1t" }];
+export function meta(args: Route.MetaArgs) {
+  return page(args, { title: "Confirm your email · g1t" });
 }
 
 /** Follows the link from the confirmation email. */

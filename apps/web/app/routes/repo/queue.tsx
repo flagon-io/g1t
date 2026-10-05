@@ -14,14 +14,15 @@ import { Link, useRevalidator } from "react-router";
 import type { QueueEntry, QueueState } from "@g1t/contracts";
 
 import type { Route } from "./+types/queue";
+import { page } from "../../lib/meta";
 import { Avatar, ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
 import { repos, work } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
 
 const REFRESH_MS = 4000;
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Merge queue · ${params.owner}/${params.repo} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Merge queue · ${params.owner}/${params.repo} · g1t` });
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {

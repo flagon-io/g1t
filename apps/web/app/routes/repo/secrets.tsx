@@ -1,11 +1,12 @@
 import type { Route } from "./+types/secrets";
+import { page } from "../../lib/meta";
 import { RepoSettingsTabs } from "../../components/repo-settings-tabs";
 import { SecretsPanel } from "../../components/secrets";
 import { actOnSecrets, loadSecrets } from "../../lib/secrets.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Secrets and variables · ${params.owner}/${params.repo} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Secrets and variables · ${params.owner}/${params.repo} · g1t` });
 }
 
 const ownerOf = (params: { owner: string; repo: string }) => ({ repo: { namespace: params.owner, name: params.repo } });

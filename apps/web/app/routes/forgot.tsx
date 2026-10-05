@@ -1,13 +1,14 @@
 import { Form, Link } from "react-router";
 
 import type { Route } from "./+types/forgot";
+import { page } from "../lib/meta";
 import { AuthCard } from "../components/auth-card";
 import { Button, Field, Input } from "../components/ui";
 import { identity } from "../lib/services.server";
 import { assertSameOrigin } from "../lib/session.server";
 
-export function meta({}: Route.MetaArgs) {
-  return [{ title: "Reset your password · g1t" }];
+export function meta(args: Route.MetaArgs) {
+  return page(args, { title: "Reset your password · g1t" });
 }
 
 export async function action({ request }: Route.ActionArgs) {

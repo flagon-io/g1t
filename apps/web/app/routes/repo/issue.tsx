@@ -6,6 +6,7 @@ import { Form, Link, redirect, useNavigation, useRevalidator } from "react-route
 import { type Pull, PROVIDERS } from "@g1t/contracts";
 
 import type { Route } from "./+types/issue";
+import { excerpt, page } from "../../lib/meta";
 import { Markdown } from "../../components/markdown";
 import {
   Avatar,
@@ -35,9 +36,20 @@ import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/sess
 
 const REFRESH_MS = 4000;
 
-export function meta({ loaderData, params }: Route.MetaArgs) {
-  const title = loaderData ? `${loaderData.issue.title} · Issue #${loaderData.issue.number} · ` : "";
-  return [{ title: `${title}${params.owner}/${params.repo} · g1t` }];
+export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
+  const issue = loaderData?.issue;
+  const title = issue ? `${issue.title} · Issue #${issue.number} · ` : "";
+  const state = issue?.state === "open" ? "Open" : issue?.reason === "not_planned" ? "Closed as not planned" : "Closed";
+  const body = excerpt(issue?.body);
+  return page(args, {
+    title: `${title}${params.owner}/${params.repo} · g1t`,
+    description: issue
+      ? `${state} issue #${issue.number} on ${params.owner}/${params.repo}, opened by ${issue.author.username}.${body ? ` ${body}` : ""}`
+      : null,
+    // The card shows the title and the state.
+    version: issue ? [issue.title, issue.state, issue.reason] : undefined,
+    type: "article",
+  });
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {

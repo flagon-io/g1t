@@ -29,6 +29,7 @@ ORDER=(
   services/runner
   apps/api
   services/pages
+  services/og
   apps/web
   apps/sudo
   apps/docs

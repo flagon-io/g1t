@@ -4,6 +4,7 @@ import { Link, data } from "react-router";
 import { MICROS_PER_DOLLAR, type UsageSlice } from "@g1t/contracts";
 
 import type { Route } from "./+types/usage";
+import { page } from "../../lib/meta";
 import { ButtonLink } from "../../components/ui";
 import { billing } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
@@ -34,8 +35,8 @@ function start(period: Period, now = new Date()): Date {
   return new Date(day.getTime() - (days - 1) * 86_400_000);
 }
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Usage · ${params.owner} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Usage · ${params.owner} · g1t` });
 }
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {

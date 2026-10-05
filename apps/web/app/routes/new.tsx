@@ -3,12 +3,13 @@ import { useState } from "react";
 import { Form, redirect, useNavigation } from "react-router";
 
 import type { Route } from "./+types/new";
+import { page } from "../lib/meta";
 import { Button, ErrorText, Field, Input } from "../components/ui";
 import { repos } from "../lib/services.server";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
 
-export function meta({}: Route.MetaArgs) {
-  return [{ title: "New project · g1t" }];
+export function meta(args: Route.MetaArgs) {
+  return page(args, { title: "New project · g1t" });
 }
 
 export function loader({ request, context }: Route.LoaderArgs) {

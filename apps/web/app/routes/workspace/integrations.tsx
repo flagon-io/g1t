@@ -23,13 +23,14 @@ import {
 } from "@g1t/contracts";
 
 import type { Route } from "./+types/integrations";
+import { page } from "../../lib/meta";
 import { MODEL_CATALOG, ModelCatalog, ModelProviderFields, ProviderMark, ProviderTiles, Routing } from "../../components/model-providers";
 import { Button, CopyLine, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
 import { billing, integrations, repos } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Integrations · ${params.owner} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Integrations · ${params.owner} · g1t` });
 }
 
 const isProvider = (value: string | null): value is Provider => value != null && value in PROVIDERS;

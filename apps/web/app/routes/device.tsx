@@ -2,12 +2,13 @@ import { CircleCheck, CircleX, KeyRound } from "lucide-react";
 import { Form } from "react-router";
 
 import type { Route } from "./+types/device";
+import { page } from "../lib/meta";
 import { Button, ErrorText, Field, Input } from "../components/ui";
 import { identity } from "../lib/services.server";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
 
-export function meta({}: Route.MetaArgs) {
-  return [{ title: "Connect an application · g1t" }];
+export function meta(args: Route.MetaArgs) {
+  return page(args, { title: "Connect an application · g1t" });
 }
 
 /** Where a tool sends a person to approve its sign-in. */

@@ -1,10 +1,11 @@
 import type { Route } from "./+types/webhooks";
+import { page } from "../../lib/meta";
 import { WebhooksPanel } from "../../components/webhooks";
 import { actOnWebhooks, loadWebhooks } from "../../lib/webhooks.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Webhooks · ${params.owner} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Webhooks · ${params.owner} · g1t` });
 }
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {

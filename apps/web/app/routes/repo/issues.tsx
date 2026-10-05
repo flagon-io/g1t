@@ -3,6 +3,7 @@ import { GitPullRequest, MessageSquare, Plus, Sparkles, X } from "lucide-react";
 import { Form, Link, useNavigation } from "react-router";
 
 import type { Route } from "./+types/issues";
+import { page } from "../../lib/meta";
 import { Button, ButtonLink, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
 import {
   Assignee,
@@ -17,8 +18,8 @@ import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/sess
 /** As many sandboxes as one request may start. */
 const MAX_ASSIGNED_AT_ONCE = 10;
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Issues · ${params.owner}/${params.repo} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Issues · ${params.owner}/${params.repo} · g1t` });
 }
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {

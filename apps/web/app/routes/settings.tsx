@@ -2,11 +2,12 @@ import { identity } from "../lib/services.server";
 import { Form, Link } from "react-router";
 
 import type { Route } from "./+types/settings";
+import { page } from "../lib/meta";
 import { Button, ErrorText, Field, Input, TimeAgo } from "../components/ui";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
 
-export function meta({}: Route.MetaArgs) {
-  return [{ title: "Settings · g1t" }];
+export function meta(args: Route.MetaArgs) {
+  return page(args, { title: "Settings · g1t" });
 }
 
 export async function loader({ request, context }: Route.LoaderArgs) {

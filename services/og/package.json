@@ -1,0 +1,17 @@
+{
+  "name": "@g1t/og",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test src/*.test.ts",
+    "typecheck": "wrangler types --include-env=false && tsc -p tsconfig.json",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@g1t/contracts": "*",
+    "@resvg/resvg-wasm": "^2.6.2",
+    "satori": "0.32.0"
+  }
+}

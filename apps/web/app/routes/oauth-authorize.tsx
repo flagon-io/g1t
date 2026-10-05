@@ -4,12 +4,13 @@ import { Form, redirect } from "react-router";
 import { decodeOAuthClient, isRegisteredRedirect } from "@g1t/contracts";
 
 import type { Route } from "./+types/oauth-authorize";
+import { page } from "../lib/meta";
 import { Button } from "../components/ui";
 import { identity } from "../lib/services.server";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
 
-export function meta({}: Route.MetaArgs) {
-  return [{ title: "Sign in to an application · g1t" }];
+export function meta(args: Route.MetaArgs) {
+  return page(args, { title: "Sign in to an application · g1t" });
 }
 
 type Checked =

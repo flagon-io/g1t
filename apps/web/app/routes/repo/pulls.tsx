@@ -2,14 +2,15 @@ import { Bot, GitBranch, Plus } from "lucide-react";
 import { Link } from "react-router";
 
 import type { Route } from "./+types/pulls";
+import { page } from "../../lib/meta";
 import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
 import { CheckBadge } from "../../components/checks";
 import { ChangeSize, PullIcon, StateTabs } from "../../components/work";
 import { work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Pull requests · ${params.owner}/${params.repo} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Pull requests · ${params.owner}/${params.repo} · g1t` });
 }
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {

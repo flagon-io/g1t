@@ -3,17 +3,15 @@ import { ArrowUpRight } from "lucide-react";
 import { DEPLOYMENTS_ALLOWANCE, MICROS_PER_DOLLAR, type Price } from "@g1t/contracts";
 
 import type { Route } from "./+types/pricing";
+import { page } from "../lib/meta";
 import { TimeAgo } from "../components/ui";
 import { billing } from "../lib/services.server";
 
-export function meta() {
-  return [
-    { title: "Pricing · g1t" },
-    {
-      name: "description",
-      content: "g1t passes its costs through: what Cloudflare and model providers charge g1t, plus a set markup. No seats.",
-    },
-  ];
+export function meta(args: Route.MetaArgs) {
+  return page(args, {
+    title: "Pricing · g1t",
+    description: "g1t passes its costs through: what Cloudflare and model providers charge g1t, plus a set markup. No seats.",
+  });
 }
 
 export async function loader() {

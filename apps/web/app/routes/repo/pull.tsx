@@ -36,6 +36,7 @@ import {
 } from "@g1t/contracts";
 
 import type { Route } from "./+types/pull";
+import { excerpt, page } from "../../lib/meta";
 import { DiffView } from "../../components/diff-view";
 import { LifecyclePanel } from "../../components/lifecycle";
 import { Markdown } from "../../components/markdown";
@@ -68,11 +69,20 @@ const EMPTY_COMPARISON: Comparison = { base: null, head: "", files: [], truncate
 const TABS = ["conversation", "session", "changes"] as const;
 type Tab = (typeof TABS)[number];
 
-export function meta({ loaderData, params }: Route.MetaArgs) {
-  const title = loaderData
-    ? `${loaderData.pull.title} · Pull request #${loaderData.pull.number} · `
-    : "";
-  return [{ title: `${title}${params.owner}/${params.repo} · g1t` }];
+export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
+  const pull = loaderData?.pull;
+  const title = pull ? `${pull.title} · Pull request #${pull.number} · ` : "";
+  const state = { draft: "Draft", open: "Open", merged: "Merged", closed: "Closed" }[pull?.status ?? "open"];
+  const body = excerpt(pull?.body);
+  return page(args, {
+    title: `${title}${params.owner}/${params.repo} · g1t`,
+    description: pull
+      ? `${state} pull request #${pull.number} on ${params.owner}/${params.repo} by ${pull.author.username}.${body ? ` ${body}` : ""}`
+      : null,
+    // The card shows the title and the state.
+    version: pull ? [pull.title, pull.status] : undefined,
+    type: "article",
+  });
 }
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {

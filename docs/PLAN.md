@@ -1046,6 +1046,7 @@ tokens and SSH keys remain for git itself.
 | `services/billing` | Rust | Worker + D1 + Stripe | Each workspace's agent credit: payments, the ledger of every run, and the gate on starting one |
 | `services/events` | Rust | Worker + Queues + D1 | The event bus: durable log, and one queue per subscribing service |
 | `services/runner`, `crates/runner` | TypeScript, Rust | Worker + Containers | Starts a sandbox per g1t agent; the program inside runs the agent harness and reports through the public API |
+| `services/og` | TypeScript | Worker + Cache API | Social cards at `og.g1t.sh`: one PNG per page of the site and the docs (satori and resvg), looked up as an anonymous visitor, so nothing private appears on one |
 | `apps/web` | TypeScript | Worker | Server-rendered site. Holds no data; calls services over RPC. |
 | `apps/docs` | TypeScript | Worker (static) | Documentation and the API explorer |
 | `apps/api` | Rust | Worker | REST API (`api.g1t.sh`), MCP server (`mcp.g1t.sh`) and OpenAPI document, all generated from one list of operations; the OAuth endpoints |

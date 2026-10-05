@@ -7,12 +7,13 @@ import type { Deployment, FeatureState } from "@g1t/contracts";
 import { host, StatusDot } from "../../components/deploy";
 
 import type { Route } from "./+types/deployments";
+import { page } from "../../lib/meta";
 import { Button, ButtonLink, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
 import { billing, deployments } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Deployments · ${params.owner}/${params.repo} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Deployments · ${params.owner}/${params.repo} · g1t` });
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {

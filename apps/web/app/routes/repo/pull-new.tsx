@@ -2,6 +2,7 @@ import { GitBranch } from "lucide-react";
 import { Form, redirect } from "react-router";
 
 import type { Route } from "./+types/pull-new";
+import { page } from "../../lib/meta";
 import {
   Button,
   CopyLine,
@@ -14,8 +15,8 @@ import {
 import { repos, work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, unwrap } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `New pull request · ${params.owner}/${params.repo} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `New pull request · ${params.owner}/${params.repo} · g1t` });
 }
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {

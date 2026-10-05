@@ -1,12 +1,13 @@
 import { Form, data, redirect } from "react-router";
 
 import type { Route } from "./+types/settings";
+import { page } from "../../lib/meta";
 import { Button, ErrorText, Field, Input } from "../../components/ui";
 import { identity } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Settings · ${params.owner} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Settings · ${params.owner} · g1t` });
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {

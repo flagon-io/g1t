@@ -1,11 +1,12 @@
 import type { Route } from "./+types/tree";
+import { page } from "../../lib/meta";
 import { TreeView } from "../../components/repo-view";
 import { repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
+export function meta({ params, ...args }: Route.MetaArgs) {
   const path = params["*"] ? `${params["*"]} · ` : "";
-  return [{ title: `${path}${params.owner}/${params.repo} · g1t` }];
+  return page(args, { title: `${path}${params.owner}/${params.repo} · g1t` });
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {

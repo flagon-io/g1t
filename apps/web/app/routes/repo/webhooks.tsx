@@ -1,11 +1,12 @@
 import type { Route } from "./+types/webhooks";
+import { page } from "../../lib/meta";
 import { RepoSettingsTabs } from "../../components/repo-settings-tabs";
 import { WebhooksPanel } from "../../components/webhooks";
 import { actOnWebhooks, loadWebhooks } from "../../lib/webhooks.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Webhooks · ${params.owner}/${params.repo} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Webhooks · ${params.owner}/${params.repo} · g1t` });
 }
 
 function ownerOf(params: { owner: string; repo: string }) {

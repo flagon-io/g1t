@@ -97,6 +97,7 @@ full. An assistant can do it for you from <https://g1t.sh/llms.txt>.
 | `services/work` | Issues, pull requests, reviews, check runs and sessions. Rust. |
 | `services/events` | The event bus and its log. Rust. |
 | `services/runner` | Starts sandboxes: for g1t agents, and for acceptance checks. |
+| `services/og` | Social cards at `og.g1t.sh`: a PNG per page, showing only what anyone may see. |
 | `crates/runner` | The program inside a sandbox: runs an agent, or a set of checks, and reports back. Rust. |
 | `crates/contracts` | Types and service interfaces for the Rust services. |
 | `crates/kit` | Plumbing shared by Rust services on Workers. |

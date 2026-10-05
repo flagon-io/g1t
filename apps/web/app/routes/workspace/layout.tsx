@@ -2,12 +2,13 @@ import { CreditCard, KeyRound, LayoutGrid, Plug, Plus, Settings, Users } from "l
 import { Outlet, data, useLocation, useRouteLoaderData } from "react-router";
 
 import type { Route } from "./+types/layout";
+import { page } from "../../lib/meta";
 import { Avatar, ButtonLink, Pill, TabLink } from "../../components/ui";
 import { identity } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 
-export function meta({ loaderData, params }: Route.MetaArgs) {
-  return [{ title: `${loaderData?.workspace.name ?? params.owner} · g1t` }];
+export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `${loaderData?.workspace.name ?? params.owner} · g1t` });
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {

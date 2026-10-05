@@ -2,13 +2,14 @@ import { Box, Code2, GitBranch } from "lucide-react";
 import { Form, Link, data, useNavigation } from "react-router";
 
 import type { Route } from "./+types/settings";
+import { page } from "../../lib/meta";
 import { RepoSettingsTabs } from "../../components/repo-settings-tabs";
 import { Button, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
 import { projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Settings · ${params.owner}/${params.repo} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Settings · ${params.owner}/${params.repo} · g1t` });
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {

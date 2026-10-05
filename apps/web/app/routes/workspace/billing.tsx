@@ -12,6 +12,7 @@ import {
 } from "@g1t/contracts";
 
 import type { Route } from "./+types/billing";
+import { page } from "../../lib/meta";
 import { Button, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
 import { billing, deployments } from "../../lib/services.server";
 import {
@@ -25,8 +26,8 @@ import {
 /** What can be added in one payment, in dollars. */
 const AMOUNTS = [10, 25, 50, 100];
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Billing · ${params.owner} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Billing · ${params.owner} · g1t` });
 }
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {

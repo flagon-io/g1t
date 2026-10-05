@@ -1,6 +1,7 @@
 import { Form } from "react-router";
 
 import type { Route } from "./+types/tokens";
+import { page } from "../../lib/meta";
 import {
   Button,
   CopyLine,
@@ -19,8 +20,8 @@ import {
   unwrap,
 } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Access tokens · ${params.owner} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Access tokens · ${params.owner} · g1t` });
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {

@@ -1,10 +1,11 @@
 import type { Route } from "./+types/secrets";
+import { page } from "../../lib/meta";
 import { SecretsPanel } from "../../components/secrets";
 import { actOnSecrets, loadSecrets } from "../../lib/secrets.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Secrets and variables · ${params.owner} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `Secrets and variables · ${params.owner} · g1t` });
 }
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {

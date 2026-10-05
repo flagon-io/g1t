@@ -4,12 +4,13 @@ import { Link, Outlet, data, useRouteLoaderData } from "react-router";
 import type { Project } from "@g1t/contracts";
 
 import type { Route } from "./+types/layout";
+import { page } from "../../lib/meta";
 import { Pill, TabLink as Tab } from "../../components/ui";
 import { projects, repos, work } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
 
-export function meta({ loaderData: loaded, params }: Route.MetaArgs) {
-  return [{ title: `${loaded?.project?.name ?? params.repo} · ${params.owner} · g1t` }];
+export function meta({ loaderData: loaded, params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `${loaded?.project?.name ?? params.repo} · ${params.owner} · g1t` });
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {

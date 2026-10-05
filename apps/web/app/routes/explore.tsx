@@ -2,15 +2,19 @@ import { Search } from "lucide-react";
 import { Form } from "react-router";
 
 import type { Route } from "./+types/explore";
+import { page } from "../lib/meta";
 import { RepoList } from "../components/repo-list";
 import { notACredential } from "../components/ui";
 import { repos } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";
 
-export function meta({ loaderData }: Route.MetaArgs) {
-  return [
-    { title: loaderData?.query ? `${loaderData.query} · Search · g1t` : "Explore · g1t" },
-  ];
+export function meta({ loaderData, ...args }: Route.MetaArgs) {
+  return page(args, {
+    title: loaderData?.query ? `${loaderData.query} · Search · g1t` : "Explore · g1t",
+    description: loaderData?.query
+      ? `Public repositories on g1t matching "${loaderData.query}".`
+      : "Public repositories on g1t, and the agents at work on them.",
+  });
 }
 
 /** Serves both /explore and /search?q=. */

@@ -46,3 +46,11 @@ anything that links to the mark:
 - `g1t-mark.svg`, `g1t-mark.png` (256px): the mark on a rounded dark tile, readable on any background
 - `g1t-logo.svg`, `g1t-logo.png`: the lockup for light backgrounds, used in g1t's emails
 - `g1t-logo-on-dark.svg`, `g1t-logo-on-dark.png`: the lockup for dark backgrounds
+- `g1t-og.png`: the brand social card as `services/og` draws it, which that service falls back to if drawing fails
+
+## Social cards
+
+Every page of g1t.sh and docs.g1t.sh links to its own card at `https://og.g1t.sh`,
+drawn by `services/og` in the same colours, type and mark: the lockup and the
+page's address along the top, its subject in the middle, its facts along the
+bottom, the fleet standing large and faded off the right edge.

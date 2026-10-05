@@ -1,6 +1,7 @@
 import { Form } from "react-router";
 
 import type { Route } from "./+types/people";
+import { page } from "../../lib/meta";
 import { Avatar, Button, ErrorText, Field, Input, Pill } from "../../components/ui";
 import { identity } from "../../lib/services.server";
 import {
@@ -11,8 +12,8 @@ import {
   unwrap,
 } from "../../lib/session.server";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `People · ${params.owner} · g1t` }];
+export function meta({ params, ...args }: Route.MetaArgs) {
+  return page(args, { title: `People · ${params.owner} · g1t` });
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
