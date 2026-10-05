@@ -39,12 +39,12 @@ test("every item has its own path, a label and a line about it", () => {
 
 test("the built pages are not marked soon", () => {
   const built = navItems().filter((item) => !item.soon).map((item) => item.to);
-  assert.deepEqual(built, ["/", "/reach-out", "/workspaces", "/enterprises", "/stripe"]);
+  assert.deepEqual(built, ["/", "/reach-out", "/workspaces", "/enterprises", "/invoices", "/stripe", "/audit"]);
 });
 
 test("every soon page says what it will do, why, and what it will have", () => {
   const soon = soonItems();
-  assert.ok(soon.length >= 10);
+  assert.ok(soon.length >= 9);
   for (const item of soon) {
     assert.ok(item.soon.summary.length >= 1 && item.soon.summary.length <= 4, item.label);
     assert.ok(item.soon.plans.length >= 3 && item.soon.plans.length <= 6, item.label);
@@ -61,8 +61,9 @@ test("view as customer promises an audit and a time limit", () => {
 });
 
 test("soonFor finds a placeholder by its path, and nothing else", () => {
-  assert.equal(soonFor("/invoices")?.label, "Invoices");
-  assert.equal(soonFor("/invoices/")?.label, "Invoices");
+  assert.equal(soonFor("/prices")?.label, "Plans & prices");
+  assert.equal(soonFor("/prices/")?.label, "Plans & prices");
+  assert.equal(soonFor("/invoices"), null);
   assert.equal(soonFor("/workspaces"), null);
   assert.equal(soonFor("/nope"), null);
 });

@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { CalendarClock, ChevronRight } from "lucide-react";
 import { Link } from "react-router";
 
 import type { AdminOwner, Signal } from "@g1t/contracts";
@@ -6,11 +6,23 @@ import type { AdminOwner, Signal } from "@g1t/contracts";
 import type { Route } from "./+types/reach-out";
 import { Owners } from "~/components/billing";
 import { SignalBadge, StaffName, StageBadge } from "~/components/sales";
-import { Avatar, EmptyState, Notice, PageHeader } from "~/components/ui";
+import { Avatar, EmptyState, Notice, PageHeader, When } from "~/components/ui";
 import { usd } from "~/lib/money";
 import { identity, admin } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
-import { SIGNAL_KINDS, type Who, bySignalUrgency, countByKind, filterSignals, isSignalKind, parseWho, reachOutHref } from "~/lib/signals";
+import {
+  SIGNAL_KINDS,
+  type Who,
+  bySignalUrgency,
+  countByKind,
+  filterSignals,
+  followUpsDue,
+  isFollowUpDue,
+  isSignalKind,
+  parseWho,
+  reachOutHref,
+  today,
+} from "~/lib/signals";
 import { requireStaff } from "~/lib/staff";
 
 export const meta: Route.MetaFunction = () => [{ title: "Reach out · sudo" }, { name: "robots", content: "noindex, nofollow" }];
@@ -21,10 +33,15 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const rawKind = url.searchParams.get("kind");
   const kind = isSignalKind(rawKind) ? rawKind : null;
   const who = parseWho(url.searchParams.get("who"));
+  const due = url.searchParams.get("due") === "1";
+  const on = today();
 
   // Owners and names come from identity's list: one call, newest 500.
   const [signals, workspaces] = await Promise.all([settle(admin.signals()), settle(identity.workspaces())]);
-  const all = signals.ok ? bySignalUrgency(signals.value) : [];
+  const every = signals.ok ? bySignalUrgency(signals.value) : [];
+  const dueAll = followUpsDue(every, on);
+  // Follow-ups due: one line per workspace whose next step is due.
+  const all = due ? dueAll : every;
   const people = new Map(
     (workspaces.ok ? workspaces.value : []).map((workspace) => [workspace.slug, { name: workspace.name, owners: workspace.owners }]),
   );
@@ -36,11 +53,14 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   }));
   return {
     me: staff.email,
+    on,
     kind,
     who,
+    due,
+    dueCount: filterSignals(dueAll, { kind: null, who, me: staff.email }).length,
     rows,
-    total: all.length,
-    workspaces: new Set(all.map((signal) => signal.workspace)).size,
+    total: every.length,
+    workspaces: new Set(every.map((signal) => signal.workspace)).size,
     counts: countByKind(forWho),
     whoCounts: {
       all: all.length,
@@ -79,7 +99,7 @@ function rowHref(signal: Signal) {
 }
 
 export default function ReachOut({ loaderData }: Route.ComponentProps) {
-  const { me, kind, who, rows, total, workspaces, counts, whoCounts, error } = loaderData;
+  const { me, on, kind, who, due, dueCount, rows, total, workspaces, counts, whoCounts, error } = loaderData;
   const forWho = Object.values(counts).reduce((sum, count) => sum + count, 0);
 
   return (
@@ -109,18 +129,23 @@ export default function ReachOut({ loaderData }: Route.ComponentProps) {
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="mr-1 w-10 text-xs text-faint">Whose</span>
           {WHO.map((option) => (
-            <Pill key={option.who} to={reachOutHref({ kind, who: option.who })} active={who === option.who} count={whoCounts[option.who]}>
+            <Pill key={option.who} to={reachOutHref({ kind, who: option.who, due })} active={who === option.who} count={whoCounts[option.who]}>
               {option.label}
             </Pill>
           ))}
+          <span className="mx-1 h-4 w-px bg-line" aria-hidden="true" />
+          <Pill to={reachOutHref({ kind, who, due: !due })} active={due} count={dueCount}>
+            <CalendarClock size={12} />
+            Follow-ups due
+          </Pill>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="mr-1 w-10 text-xs text-faint">Why</span>
-          <Pill to={reachOutHref({ who })} active={kind == null} count={forWho}>
+          <Pill to={reachOutHref({ who, due })} active={kind == null} count={forWho}>
             Any
           </Pill>
           {SIGNAL_KINDS.map((entry) => (
-            <Pill key={entry.kind} to={reachOutHref({ kind: entry.kind, who })} active={kind === entry.kind} count={counts[entry.kind] ?? 0}>
+            <Pill key={entry.kind} to={reachOutHref({ kind: entry.kind, who, due })} active={kind === entry.kind} count={counts[entry.kind] ?? 0}>
               {entry.label}
             </Pill>
           ))}
@@ -130,7 +155,9 @@ export default function ReachOut({ loaderData }: Route.ComponentProps) {
       {rows.length === 0 ? (
         <div className="mt-5">
           <EmptyState title={total === 0 ? "Nobody needs a word right now" : "None match"}>
-            {total === 0
+            {due && rows.length === 0 && total > 0
+              ? "No next steps are due. Set one on a workspace's Sales section and it shows up here on its day."
+              : total === 0
               ? "Workspaces show up here when they stop, come close to their limit, are declined, grow, or pay for the first time."
               : who === "mine"
                 ? "No signals for workspaces you own. Take one from Unassigned by setting yourself as its owner on its Sales section."
@@ -157,6 +184,7 @@ export default function ReachOut({ loaderData }: Route.ComponentProps) {
                     <StageBadge stage={row.signal.stage} />
                     <StaffName email={row.signal.owner} me={me} />
                   </div>
+                  <NextStep signal={row.signal} on={on} />
                 </Link>
               </li>
             ))}
@@ -170,7 +198,7 @@ export default function ReachOut({ loaderData }: Route.ComponentProps) {
                   <th className="px-4 py-2.5 font-medium">Workspace</th>
                   <th className="px-4 py-2.5 font-medium">Why</th>
                   <th className="px-4 py-2.5 text-right font-medium">Figure</th>
-                  <th className="px-4 py-2.5 font-medium">Stage</th>
+                  <th className="px-4 py-2.5 font-medium">Stage · next step</th>
                   <th className="px-4 py-2.5 font-medium">Owner at g1t</th>
                   <th className="w-8 px-2 py-2.5" />
                 </tr>
@@ -188,8 +216,9 @@ export default function ReachOut({ loaderData }: Route.ComponentProps) {
                       <p className="mt-1 max-w-md text-sm text-muted">{row.signal.detail}</p>
                     </td>
                     <td className="tabular px-4 py-3 text-right whitespace-nowrap text-fg-soft">{usd(row.signal.valueMicros)}</td>
-                    <td className="px-4 py-3">
+                    <td className="max-w-56 px-4 py-3">
                       <StageBadge stage={row.signal.stage} />
+                      <NextStep signal={row.signal} on={on} />
                     </td>
                     <td className="max-w-48 px-4 py-3 text-xs">
                       <StaffName email={row.signal.owner} me={me} />
@@ -226,5 +255,26 @@ function WorkspaceCell({ row }: { row: Row }) {
         )}
       </div>
     </div>
+  );
+}
+
+/** The workspace's next step, and its day: amber when it is due. */
+function NextStep({ signal, on }: { signal: Signal; on: string }) {
+  if (!signal.nextStep && !signal.nextAt) return null;
+  const due = isFollowUpDue(signal, on);
+  return (
+    <p className={`mt-1.5 flex items-start gap-1.5 text-xs ${due ? "text-warn" : "text-muted"}`}>
+      <CalendarClock size={12} className="mt-0.5 shrink-0" />
+      <span className="min-w-0">
+        {signal.nextStep ?? "Next step"}
+        {signal.nextAt && (
+          <span className={due ? "text-warn" : "text-faint"}>
+            {" · "}
+            {due ? (signal.nextAt.slice(0, 10) < on ? "overdue since " : "due ") : "on "}
+            <When at={`${signal.nextAt.slice(0, 10)}T00:00:00Z`} />
+          </span>
+        )}
+      </span>
+    </p>
   );
 }

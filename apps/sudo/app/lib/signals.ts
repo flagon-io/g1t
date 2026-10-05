@@ -66,6 +66,31 @@ export function filterSignals(signals: Signal[], { kind, who, me }: { kind: Sign
   });
 }
 
+/** Today, as billing compares follow-up days: `YYYY-MM-DD`, UTC. */
+export function today(now = new Date()): string {
+  return now.toISOString().slice(0, 10);
+}
+
+/** A next step due today or earlier, on a deal that is still open. */
+export function isFollowUpDue(signal: Pick<Signal, "nextAt" | "stage">, on = today()): boolean {
+  if (!signal.nextAt || signal.stage === "won" || signal.stage === "lost") return false;
+  return signal.nextAt.slice(0, 10) <= on;
+}
+
+/**
+ * Follow-ups due, one per workspace (a workspace with several signals has
+ * one sales record), the longest overdue first.
+ */
+export function followUpsDue(signals: Signal[], on = today()): Signal[] {
+  const seen = new Set<string>();
+  return signals
+    .filter((signal) => isFollowUpDue(signal, on))
+    .filter((signal) => (seen.has(signal.workspace) ? false : (seen.add(signal.workspace), true)))
+    .map((signal, index) => ({ signal, index }))
+    .sort((a, b) => (a.signal.nextAt ?? "").localeCompare(b.signal.nextAt ?? "") || a.index - b.index)
+    .map(({ signal }) => signal);
+}
+
 /** How many signals of each kind, for the filter's counts. */
 export function countByKind(signals: Signal[]): Record<string, number> {
   const counts: Record<string, number> = {};
@@ -74,8 +99,9 @@ export function countByKind(signals: Signal[]): Record<string, number> {
 }
 
 /** A link to the queue with these filters; the defaults are left out. */
-export function reachOutHref({ kind, who }: { kind?: string | null; who?: Who }): string {
+export function reachOutHref({ kind, who, due }: { kind?: string | null; who?: Who; due?: boolean }): string {
   const params = new URLSearchParams();
+  if (due) params.set("due", "1");
   if (kind) params.set("kind", kind);
   if (who && who !== "all") params.set("who", who);
   const query = params.toString();

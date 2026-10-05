@@ -22,7 +22,19 @@ roadmap.
   first (at limit, declined, near limit, high spend, growing, established,
   first payment), with its owners, the reason in a sentence, the figure,
   and its sales stage and owner at g1t. Filter by why and by whose
-  (everyone's, unassigned, mine). Each row opens the workspace's Sales.
+  (everyone's, unassigned, mine), or show only **follow-ups due** (a next
+  step due today or earlier, on a deal not won or lost; one per
+  workspace). Rows show the next step and its day. Each row opens the
+  workspace's Sales.
+- **Invoices** (`/invoices`): every invoice g1t has sent, workspaces' and
+  enterprises', newest first (`admin_invoices`, at most 200). Filter by
+  status and month; totals for what is listed (amount, paid, outstanding);
+  each links to its workspace or enterprise and to Stripe's page (https
+  only).
+- **Audit log** (`/audit`): every change made in sudo, and what Stripe told
+  billing, newest first, 100 a page with "Older" (`admin_audit`). Filter by
+  staff email and kind of change; each line links to its workspace or
+  enterprise.
 - **Workspaces** (`/workspaces`): every workspace, newest first, 50 to a
   page, with its owners, members, who it is billed to, its terms, this
   month's usage against its limit, what it was charged and what it cost

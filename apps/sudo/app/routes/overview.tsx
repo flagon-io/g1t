@@ -117,7 +117,7 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
               hint="Sent and not yet paid"
             />
             <AttentionCard
-              to={reachOutHref({})}
+              to={reachOutHref({ due: true })}
               icon={<CalendarClock size={15} />}
               label="Follow-ups due"
               value={overview.followUpsDue}

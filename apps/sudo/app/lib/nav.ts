@@ -107,24 +107,6 @@ export const NAV: NavGroup[] = [
         to: "/invoices",
         icon: "invoices",
         about: "Every invoice g1t has sent, to workspaces and enterprises.",
-        soon: {
-          summary: [
-            "Every invoice g1t has sent, in one list: workspaces' monthly and threshold invoices, and enterprises' net-30 ones. Finance needs to see what is open, what is overdue and what failed without opening each customer in turn.",
-            "Billing keeps each workspace's and each enterprise's invoices today, but has no way to list them all at once. Once it does, this is where month-end close and collections happen.",
-          ],
-          plans: [
-            "Filter by status (open, paid, overdue, failed, void), by month, and by workspace or enterprise",
-            "Totals for what is open and overdue, and what was collected this month",
-            "Each invoice's lines, with links to Stripe's hosted page and PDF",
-            "Retry a failed charge, or void an invoice, with a confirmation and a note",
-            "Export a month for the books",
-          ],
-          meanwhile: {
-            text: "A workspace's invoices are on its page, under Invoices; an enterprise's are on its page.",
-            to: "/enterprises",
-            link: "Enterprises",
-          },
-        },
       },
       {
         label: "Plans & prices",
@@ -332,18 +314,6 @@ export const NAV: NavGroup[] = [
         to: "/audit",
         icon: "audit",
         about: "Every change made in sudo, by whom, across every customer.",
-        soon: {
-          summary: [
-            "Every change made in sudo, across every customer, newest first: terms, credits, enterprise moves, billing links, invoices, webhooks, and sales notes. Billing already records each one with the staff member's email; it keeps them per account, and has no way yet to list them all together.",
-            "One log makes reviews possible: what changed this week, everything one person did, every credit over a hundred dollars.",
-          ],
-          plans: [
-            "Every change, filterable by staff member, kind and customer",
-            "Links back to the workspace or enterprise each change was about",
-            "Export for a review or an audit",
-          ],
-          meanwhile: { text: "Each workspace's and enterprise's page has its own audit log, under Billing.", to: "/workspaces", link: "Workspaces" },
-        },
       },
     ],
   },

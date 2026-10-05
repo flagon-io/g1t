@@ -10,6 +10,7 @@ import { Link } from "react-router";
 import type { AdminAction, AdminOwner, BillingLink, LedgerEntry, Terms } from "@g1t/contracts";
 
 import { Avatar, Badge, Button, EmptyState, Field, Input, Notice, Section, Select, Textarea, When } from "~/components/ui";
+import { actionLabel } from "~/lib/ledgers";
 import { dollarsField, usd } from "~/lib/money";
 import type { Review, SectionError } from "~/lib/review";
 
@@ -438,19 +439,7 @@ export function LedgerSection({
   );
 }
 
-const ACTION: Record<string, string> = {
-  terms: "Terms changed",
-  create: "Enterprise created",
-  attach: "Workspace added",
-  detach: "Workspace removed",
-  credit: "Credit issued",
-  billing_link: "Billing link made",
-  billing_email: "Invoice email set",
-  invoice: "Invoice sent",
-  dispute: "Payment disputed",
-  stripe: "Stripe",
-  webhook: "Webhook registered",
-};
+
 
 export function AuditSection({ audit, description = "Every change made in sudo, and by whom." }: { audit: AdminAction[]; description?: ReactNode }) {
   return (
@@ -465,7 +454,7 @@ export function AuditSection({ audit, description = "Every change made in sudo, 
           {audit.map((entry) => (
             <li key={entry.id} className="border-l-2 border-merged/40 pl-3">
               <p className="flex flex-wrap items-center gap-x-2 text-sm">
-                <span className="font-medium text-merged">{ACTION[entry.action] ?? entry.action}</span>
+                <span className="font-medium text-merged">{actionLabel(entry.action)}</span>
                 <span className="text-xs text-faint">
                   <When at={entry.createdAt} time />
                 </span>
