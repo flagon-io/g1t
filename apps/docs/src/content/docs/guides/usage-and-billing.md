@@ -15,9 +15,8 @@ are never free, including while the rest of g1t is. See
 
 ## Plans
 
-A plan turns on one paid feature for the whole workspace, the way
-Cloudflare's or Vercel's paid plans do: a monthly price that includes an
-allowance, and usage past it charged from credit at cost plus 20%.
+A plan turns on one paid feature for the whole workspace: a monthly price
+that includes an allowance, with usage past it charged at cost plus 20%.
 
 | Plan | Price | Includes each month |
 | --- | --- | --- |
@@ -163,8 +162,7 @@ You are emailed at 50%, 80% and 100% of it.
 ### What g1t lets go unpaid
 
 Usage is charged after it runs, so at any moment some of it is not yet
-paid for. g1t lets that reach a ceiling that grows with your history, the
-way Cloudflare and Fly do:
+paid for. g1t lets that reach a ceiling that grows with your history:
 
 | | Ceiling on what is unpaid |
 | --- | --- |
@@ -217,8 +215,8 @@ links to view each on Stripe and download its PDF.
 
 Some accounts are billed differently, set up by g1t with you:
 
-- **Enterprise**: one billing account paying for several workspaces, as
-  GitHub Enterprise does. Their usage and payments count together, against
+- **Enterprise**: one billing account paying for several workspaces.
+  Their usage and payments count together, against
   one limit, on one set of terms, and each workspace's Billing page says
   which enterprise pays for it. An enterprise is invoiced: when each month
   closes, Stripe emails one invoice to the enterprise's billing address,

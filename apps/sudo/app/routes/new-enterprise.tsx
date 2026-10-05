@@ -58,7 +58,7 @@ export default function NewEnterprise({ actionData }: Route.ComponentProps) {
       </Link>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">New enterprise</h1>
       <p className="mt-1 text-sm text-muted">
-        One customer that pays for several workspaces, as GitHub Enterprise does: one bill, one limit, one set of terms. Set its terms
+        One customer that pays for several workspaces: one bill, one limit, one set of terms. Set its terms
         once it exists.
       </p>
 

@@ -33,7 +33,7 @@ export const ROADMAP: RoadmapItem[] = [
     title: "Board",
     section: "Workspace",
     summary: "Issues and pull requests as a board, a table or a roadmap, with fields of your own.",
-    why: "Like GitHub Projects: one view of everything in flight, arranged the way your team thinks about it. Agents move the cards as they work, so the board is never out of date.",
+    why: "One view of everything in flight, arranged the way your team thinks about it. Agents move the cards as they work, so the board is never out of date.",
     plans: [
       "Board, table and roadmap views of the same items, saved and shared",
       "Custom fields: status, priority, size, iteration, dates, anything",
@@ -249,7 +249,7 @@ export const ROADMAP: RoadmapItem[] = [
     title: "Dependency updates",
     section: "Security",
     summary: "Outdated and vulnerable packages, updated by agents.",
-    why: "Like Dependabot, but the agent also fixes what the upgrade breaks, so updates land instead of piling up.",
+    why: "Updates that land instead of piling up: the agent upgrades the package and fixes whatever the upgrade breaks, in the same pull request.",
     plans: ["Vulnerable packages first, then outdated ones", "Breaking changes fixed in the same pull request", "Grouped, scheduled and landed through the queue"],
   },
   {

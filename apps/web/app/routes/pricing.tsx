@@ -51,7 +51,7 @@ const HOW = [
   },
   {
     title: "Enterprise billing",
-    body: "One bill, one limit and one set of terms for several workspaces, as GitHub Enterprise does. Write to us to set one up.",
+    body: "One bill, one limit and one set of terms for several workspaces. Write to us to set one up.",
   },
 ];
 
