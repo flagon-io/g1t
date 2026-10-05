@@ -4,6 +4,7 @@ declare global {
   namespace Cloudflare {
     interface Env {
       BILLING: ServiceBinding;
+      IDENTITY: ServiceBinding;
       ASSETS: Fetcher;
       ACCESS_TEAM_DOMAIN: string;
       ACCESS_AUD: string;

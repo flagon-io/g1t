@@ -77,6 +77,53 @@ pub struct Account {
     /// What a run on the workspace's own model provider is charged: g1t's
     /// sandbox and orchestration, with the model paid for elsewhere.
     pub orchestration_fee_micros: i64,
+    /// The card g1t charges as the workspace nears its limit and when a
+    /// month closes, if one is on file.
+    #[serde(default)]
+    pub card: Option<Card>,
+}
+
+/// A saved card, as far as it is safe to show.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Card {
+    /// `visa`, `mastercard`, ...
+    pub brand: String,
+    pub last4: String,
+    pub exp_month: u32,
+    pub exp_year: u32,
+}
+
+/// `billing_portal`: Stripe's hosted billing page for the workspace, where
+/// an owner adds or replaces the card, sees invoices and receipts, and sets
+/// the billing email and address. g1t never handles card numbers. Owners
+/// only. Returns `Outcome<Checkout>` (its `url`); Stripe sends them back
+/// to `return_url`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BillingPortalArgs {
+    pub actor: User,
+    pub workspace: String,
+    pub return_url: String,
+}
+
+/// `admin_billing_link`: for staff to send a customer: their Stripe billing
+/// page. Returns `Outcome<BillingLink>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminBillingLinkArgs {
+    pub workspace: String,
+    pub by: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BillingLink {
+    /// A one-time session on Stripe's billing page, signed in already.
+    pub portal_url: String,
+    /// The billing page's sign-in page, which does not expire: the
+    /// customer signs in with the email Stripe has for them.
+    pub login_url: Option<String>,
+    pub customer_email: Option<String>,
+    pub expires_note: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,6 +159,10 @@ pub struct LedgerEntry {
     pub created_by: Option<String>,
     /// RFC 3339.
     pub created_at: String,
+    /// The workspace the line belongs to, which tells an enterprise's
+    /// lines apart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
 }
 
 fn g1t() -> String {
@@ -592,6 +643,20 @@ pub struct AccountSummary {
     /// What this month's usage cost g1t.
     pub cost_micros: i64,
     /// Paid, ever.
+    pub paid_micros: i64,
+    /// The same figures for each of the account's workspaces that has
+    /// any, so staff can see what one member of an enterprise used.
+    #[serde(default)]
+    pub by_workspace: Vec<WorkspaceFigures>,
+}
+
+/// One workspace's share of an [`AccountSummary`].
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceFigures {
+    pub workspace: String,
+    pub charged_micros: i64,
+    pub cost_micros: i64,
     pub paid_micros: i64,
 }
 

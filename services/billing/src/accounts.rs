@@ -17,7 +17,7 @@
 use g1t_contracts::billing::{
     AccountDetail, AccountKind, AccountSummary, AdminAccountArgs, AdminAccountsArgs, AdminAction, AdminAttachArgs,
     AdminCreateEnterpriseArgs, AdminCreditArgs, AdminSetTermsArgs, BillingAccount, EntryKind, LedgerEntry, Terms,
-    TermsKind,
+    TermsKind, WorkspaceFigures,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, new_id};
@@ -230,11 +230,13 @@ impl Billing {
         let limit = self.limit_of(&first).await?;
         #[derive(Deserialize)]
         struct Totals {
+            workspace: String,
             charged: Option<i64>,
             cost: Option<i64>,
         }
         #[derive(Deserialize)]
         struct Paid {
+            workspace: String,
             paid: Option<i64>,
         }
         let marks = vec!["?"; account.workspaces.len().max(1)].join(", ");
@@ -248,24 +250,44 @@ impl Billing {
         let totals = self
             .db
             .prepare(format!(
-                "SELECT -SUM(amount_micros) AS charged, SUM(cost_micros) AS cost FROM ledger
-                 WHERE kind = 'usage' AND workspace IN ({marks}) AND created_at >= ?"
+                "SELECT workspace, -SUM(amount_micros) AS charged, SUM(cost_micros) AS cost FROM ledger
+                 WHERE kind = 'usage' AND workspace IN ({marks}) AND created_at >= ? GROUP BY workspace"
             ))
             .bind(&with_month)?
-            .first::<Totals>(None)
-            .await?;
+            .all()
+            .await?
+            .results::<Totals>()?;
         let paid = self
             .db
-            .prepare(format!("SELECT SUM(amount_micros) AS paid FROM ledger WHERE kind = 'top_up' AND workspace IN ({marks})"))
+            .prepare(format!(
+                "SELECT workspace, SUM(amount_micros) AS paid FROM ledger
+                 WHERE kind = 'top_up' AND workspace IN ({marks}) GROUP BY workspace"
+            ))
             .bind(&values)?
-            .first::<Paid>(None)
-            .await?;
+            .all()
+            .await?
+            .results::<Paid>()?;
+        // Each workspace's share, in the account's order; the account's
+        // figures are their sum.
+        let mut by_workspace: Vec<WorkspaceFigures> = vec![];
+        for workspace in &account.workspaces {
+            figures_for(&mut by_workspace, workspace);
+        }
+        for t in &totals {
+            let f = figures_for(&mut by_workspace, &t.workspace);
+            f.charged_micros += t.charged.unwrap_or(0);
+            f.cost_micros += t.cost.unwrap_or(0);
+        }
+        for p in &paid {
+            figures_for(&mut by_workspace, &p.workspace).paid_micros += p.paid.unwrap_or(0);
+        }
         Ok(AccountSummary {
+            charged_micros: by_workspace.iter().map(|f| f.charged_micros).sum(),
+            cost_micros: by_workspace.iter().map(|f| f.cost_micros).sum(),
+            paid_micros: by_workspace.iter().map(|f| f.paid_micros).sum(),
+            by_workspace,
             account,
             limit,
-            charged_micros: totals.as_ref().and_then(|t| t.charged).unwrap_or(0),
-            cost_micros: totals.and_then(|t| t.cost).unwrap_or(0),
-            paid_micros: paid.and_then(|p| p.paid).unwrap_or(0),
         })
     }
 
@@ -484,6 +506,44 @@ impl Billing {
         Ok(Outcome::Ok(self.account_of(&workspace).await?))
     }
 
+    pub(crate) async fn admin_billing_link(
+        &self,
+        a: g1t_contracts::billing::AdminBillingLinkArgs,
+    ) -> Result<Outcome<g1t_contracts::billing::BillingLink>> {
+        let workspace = a.workspace.trim().to_lowercase();
+        if workspace.is_empty() || a.by.trim().is_empty() {
+            return Ok(Outcome::fail(FailureCode::Invalid, "Name the workspace, and who is asking."));
+        }
+        let Some(stripe) = &self.stripe else {
+            return Ok(Outcome::fail(FailureCode::Conflict, "Payments are not set up on this g1t."));
+        };
+        let customer = match self.customer_for(&workspace).await {
+            Ok(customer) => customer,
+            Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, format!("Stripe could not be reached: {error}"))),
+        };
+        let link = async {
+            let configuration = stripe.portal_configuration().await?;
+            let portal_url = stripe.portal_session(&customer, "https://g1t.sh/").await?;
+            let customer_email = stripe.customer_email(&customer).await.ok().flatten();
+            Ok::<_, worker::Error>(g1t_contracts::billing::BillingLink {
+                portal_url,
+                login_url: configuration.login_page.and_then(|page| page.url),
+                customer_email,
+                expires_note: "The one-time link works for a short while and only once; the sign-in page does not expire."
+                    .to_owned(),
+            })
+        }
+        .await;
+        match link {
+            Ok(link) => {
+                let account = self.account_of(&workspace).await?;
+                self.audit(&account.id, "billing_link", &format!("Stripe billing link for {workspace}"), &a.by).await?;
+                Ok(Outcome::Ok(link))
+            }
+            Err(error) => Ok(Outcome::fail(FailureCode::Conflict, format!("Stripe's billing page could not be opened: {error}"))),
+        }
+    }
+
     pub(crate) async fn admin_credit(&self, a: AdminCreditArgs) -> Result<Outcome<LedgerEntry>> {
         let workspace = a.workspace.trim().to_lowercase();
         if workspace.is_empty() || a.note.trim().is_empty() || a.by.trim().is_empty() {
@@ -512,6 +572,18 @@ impl Billing {
     }
 }
 
+/// A workspace's figures in `list`, added at the end the first time.
+fn figures_for<'a>(list: &'a mut Vec<WorkspaceFigures>, workspace: &str) -> &'a mut WorkspaceFigures {
+    let i = match list.iter().position(|f| f.workspace == workspace) {
+        Some(i) => i,
+        None => {
+            list.push(WorkspaceFigures { workspace: workspace.to_owned(), ..Default::default() });
+            list.len() - 1
+        }
+    };
+    &mut list[i]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -533,5 +605,16 @@ mod tests {
         let custom = Terms { ceiling_micros: Some(50_000_000), note: "Design partner".into(), ..terms(TermsKind::Custom, 20) };
         assert_eq!(describe(&custom), "custom (20% off, ceiling $50.00): Design partner");
         assert_eq!(describe(&Terms::standard()), "standard");
+    }
+
+    #[test]
+    fn each_workspace_gets_one_share() {
+        let mut list = vec![];
+        figures_for(&mut list, "acme").charged_micros += 5;
+        figures_for(&mut list, "beta").cost_micros += 2;
+        figures_for(&mut list, "acme").charged_micros += 7;
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0], WorkspaceFigures { workspace: "acme".into(), charged_micros: 12, ..Default::default() });
+        assert_eq!(list[1].cost_micros, 2);
     }
 }

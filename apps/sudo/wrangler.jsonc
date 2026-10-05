@@ -13,7 +13,12 @@
 	// Even the stylesheet goes through the worker, which checks the Access
 	// token on every request before anything is served.
 	"assets": { "binding": "ASSETS", "run_worker_first": true },
-	"services": [{ "binding": "BILLING", "service": "g1t-billing" }],
+	// Billing's and identity's staff-only methods (admin_*). Nothing else
+	// binds to identity's admin_* methods.
+	"services": [
+		{ "binding": "BILLING", "service": "g1t-billing" },
+		{ "binding": "IDENTITY", "service": "g1t-identity" }
+	],
 	"vars": {
 		// The Zero Trust team domain, such as `g1t.cloudflareaccess.com`.
 		"ACCESS_TEAM_DOMAIN": "syntaqx.cloudflareaccess.com",

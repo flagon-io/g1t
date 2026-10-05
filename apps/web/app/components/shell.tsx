@@ -598,7 +598,7 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
   return (
     <div className="flex h-full flex-col">
       {/* The same height and rule as the top bar, so the two read as one line. */}
-      <div className="flex h-12 shrink-0 items-center gap-1 border-b border-line px-2">
+      <div className="flex h-14 shrink-0 items-center gap-1.5 border-b border-line px-3">
         <Link to="/" aria-label="g1t home" className="shrink-0 rounded-md p-1.5 hover:bg-raised">
           <Mark className="size-5" />
         </Link>
@@ -1046,7 +1046,7 @@ export function AppShell({
       )}
 
       <div className="flex min-h-screen min-w-0 flex-col lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-line bg-bg/85 px-3 backdrop-blur sm:px-4">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-bg/85 px-4 backdrop-blur sm:px-6">
           <button
             type="button"
             aria-label="Open menu"

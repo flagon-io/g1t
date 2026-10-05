@@ -44,6 +44,48 @@ export type Workspace = {
 
 export type Member = { username: string; role: Role };
 
+/** An owner of a workspace, as staff see them. */
+export type AdminOwner = { username: string; email: string | null };
+
+/** A workspace as staff see it. Mirrors `AdminWorkspace` in `crates/contracts/src/identity.rs`. */
+export type AdminWorkspace = {
+  slug: string;
+  name: string;
+  /** RFC 3339. */
+  createdAt: string;
+  owners: AdminOwner[];
+  memberCount: number;
+};
+
+/** A member of a workspace, as staff see them. */
+export type AdminMember = { username: string; email: string | null; role: Role; /** RFC 3339. */ joined: string };
+
+export type AdminWorkspaceDetail = {
+  slug: string;
+  name: string;
+  description: string | null;
+  /** RFC 3339. */
+  createdAt: string;
+  /** Owners first, then by username. */
+  members: AdminMember[];
+};
+
+/** The most workspaces one `workspaces` call returns. */
+export const ADMIN_WORKSPACES_LIMIT = 500;
+
+/**
+ * Staff-only identity, for sudo.g1t.sh. It takes no viewer and checks no
+ * membership: only sudo calls it, over its service binding, once Cloudflare
+ * Access and its staff list have let someone in. Never call it on behalf of
+ * a customer.
+ */
+export interface IdentityAdminApi {
+  /** Every workspace, newest first, at most 500; `query` matches slug, name, or an owner's username or email. */
+  workspaces(query?: string): Promise<AdminWorkspace[]>;
+  /** One workspace with all its members, or null. */
+  workspace(slug: string): Promise<AdminWorkspaceDetail | null>;
+}
+
 /** Who is asking. Every read and write in every service takes one. */
 export type Viewer = User | null;
 

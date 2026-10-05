@@ -407,3 +407,84 @@ pub struct CreateAgentTokenArgs {
 /// The id and name g1t's agents act under.
 pub const AGENT_ID: &str = "usr_g1t_agent";
 pub const AGENT_NAME: &str = "g1t-agent";
+
+// --- Staff ---------------------------------------------------------------
+//
+// Staff-only methods, for sudo.g1t.sh. They take no viewer and check no
+// membership: only sudo calls them, over its service binding, after it has
+// verified a Cloudflare Access sign-in and its staff list. Nothing a
+// customer can reach should ever forward to them.
+
+/// `notify_owners`: emails a short notice, with one link, to each owner of
+/// a workspace with a confirmed address. Called by other services (billing
+/// warns owners near their usage limit), never on a person's behalf.
+/// Returns how many were sent.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NotifyOwnersArgs {
+    pub workspace: String,
+    pub subject: String,
+    /// One or two sentences: what happened and what it means.
+    pub intro: String,
+    /// The button's words, such as `Open billing`.
+    pub action: String,
+    /// Where the button goes; must be on g1t.sh.
+    pub link: String,
+    /// Small print: why they got it.
+    pub footer: String,
+}
+
+/// `admin_workspaces`: every workspace, newest first, at most
+/// [`ADMIN_WORKSPACES_LIMIT`], optionally only those whose slug, name or
+/// an owner's username or email contains `query`. Returns
+/// `Vec<AdminWorkspace>`. Staff only.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminWorkspacesArgs {
+    #[serde(default)]
+    pub query: Option<String>,
+}
+
+/// The most workspaces one `admin_workspaces` call returns.
+pub const ADMIN_WORKSPACES_LIMIT: usize = 500;
+
+/// An owner of a workspace, as staff see them.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AdminOwner {
+    pub username: String,
+    pub email: Option<String>,
+}
+
+/// A workspace as staff see it: who owns it and how many belong to it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminWorkspace {
+    pub slug: String,
+    pub name: String,
+    /// RFC 3339.
+    pub created_at: String,
+    pub owners: Vec<AdminOwner>,
+    pub member_count: u32,
+}
+
+/// `admin_workspace`: one workspace with every member, or null. Takes
+/// `SlugArgs`; returns `Option<AdminWorkspaceDetail>`. Staff only.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminWorkspaceDetail {
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    /// RFC 3339.
+    pub created_at: String,
+    /// Owners first, then by username.
+    pub members: Vec<AdminMember>,
+}
+
+/// A member of a workspace, as staff see them.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AdminMember {
+    pub username: String,
+    pub email: Option<String>,
+    pub role: crate::Role,
+    /// When they joined the workspace. RFC 3339.
+    pub joined: String,
+}

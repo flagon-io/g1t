@@ -75,6 +75,8 @@ struct LedgerRow {
     created_by: Option<String>,
     created_at: String,
     billed_to: Option<String>,
+    #[serde(default)]
+    workspace: Option<String>,
 }
 
 impl From<LedgerRow> for LedgerEntry {
@@ -91,6 +93,7 @@ impl From<LedgerRow> for LedgerEntry {
             billed_to: row.billed_to.unwrap_or_else(|| "g1t".to_owned()),
             created_by: row.created_by,
             created_at: row.created_at,
+            workspace: row.workspace,
         }
     }
 }
@@ -175,16 +178,68 @@ impl Billing {
     }
 
     async fn standing(&self, workspace: &str) -> Result<Account> {
+        let row = self.row(workspace).await?;
+        let card = match (&self.stripe, row.as_ref().and_then(|row| row.customer_id.as_deref())) {
+            (Some(stripe), Some(customer)) => stripe.card(customer).await.ok().flatten().map(|card| Card {
+                brand: card.brand,
+                last4: card.last4,
+                exp_month: card.exp_month,
+                exp_year: card.exp_year,
+            }),
+            _ => None,
+        };
         Ok(Account {
             workspace: workspace.to_owned(),
-            balance_micros: self
-                .row(workspace)
-                .await?
-                .map_or(0, |row| row.balance_micros),
+            balance_micros: row.map_or(0, |row| row.balance_micros),
             status: self.status(),
             margin_percent: self.margin_percent,
             orchestration_fee_micros: self.orchestration_fee_micros,
+            card,
         })
+    }
+
+    /// The workspace's customer at Stripe, made the first time one is needed.
+    pub(crate) async fn customer_for(&self, workspace: &str) -> Result<String> {
+        let Some(stripe) = &self.stripe else {
+            return Err(worker::Error::RustError("payments are not set up".into()));
+        };
+        if let Some(customer) = self.row(workspace).await?.and_then(|row| row.customer_id) {
+            return Ok(customer);
+        }
+        let customer = stripe.create_customer(workspace).await?;
+        self.db
+            .prepare(
+                "INSERT INTO accounts (workspace, balance_micros, customer_id, created_at) VALUES (?1, 0, ?2, ?3)
+                 ON CONFLICT (workspace) DO UPDATE SET customer_id = ?2",
+            )
+            .bind(&[workspace.into(), customer.as_str().into(), rfc3339(now_ms()).into()])?
+            .run()
+            .await?;
+        Ok(customer)
+    }
+
+    /// Stripe's hosted billing page for the workspace. Owners only.
+    async fn billing_portal(&self, a: BillingPortalArgs) -> Result<Outcome<Checkout>> {
+        let workspace = a.workspace.to_lowercase();
+        if a.actor.role_in(&workspace) != Some(Role::Owner) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can manage the workspace's billing."));
+        }
+        let Some(stripe) = &self.stripe else {
+            return Ok(Outcome::fail(FailureCode::Conflict, "Payments are not set up on this g1t."));
+        };
+        let customer = match self.customer_for(&workspace).await {
+            Ok(customer) => customer,
+            Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, format!("Stripe could not be reached: {error}"))),
+        };
+        match stripe.portal_session(&customer, &a.return_url).await {
+            Ok(url) => Ok(Outcome::Ok(Checkout { url })),
+            Err(error) if stripe::is_missing(&error) => {
+                // The customer was removed at Stripe: a new one next time.
+                self.forget_customer(&workspace).await?;
+                Ok(Outcome::fail(FailureCode::Conflict, "Stripe no longer had this workspace's customer. Try again."))
+            }
+            Err(error) => Ok(Outcome::fail(FailureCode::Conflict, format!("Stripe's billing page could not be opened: {error}"))),
+        }
     }
 
     /// Adds a ledger entry and moves the balance by the same amount, as
@@ -905,6 +960,14 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     if let Err(error) = billing.autopay().await {
         worker::console_error!("paying at the limit failed: {error}");
     }
+    if let Err(error) = billing.close_months().await {
+        worker::console_error!("closing the month failed: {error}");
+    }
+    if let Ok(identity) = env.service("IDENTITY") {
+        if let Err(error) = billing.warn_limits(&identity).await {
+            worker::console_error!("warning owners failed: {error}");
+        }
+    }
     // Once a day, and at once if the costs were never checked: check every
     // cost against what Cloudflare billed.
     if event.cron() == keeper::DAILY || billing.never_checked().await.unwrap_or(false) {
@@ -943,6 +1006,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "check_limit" => reply(&billing.check_limit(args(body)?).await?),
         "set_spend_limit" => reply(&billing.set_spend_limit(args(body)?).await?),
         "prices" => reply(&billing.prices().await?),
+        "billing_portal" => reply(&billing.billing_portal(args(body)?).await?),
+        "admin_billing_link" => reply(&billing.admin_billing_link(args(body)?).await?),
         "note_pending" => reply(&billing.note_pending(args(body)?).await?),
         "admin_accounts" => reply(&billing.admin_accounts(args(body)?).await?),
         "admin_account" => reply(&billing.admin_account(args(body)?).await?),

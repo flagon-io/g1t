@@ -3,7 +3,7 @@ import type { BillingAdminApi, BillingApi } from "./billing";
 import type { DeploymentsApi } from "./deployments";
 import type { ProjectsApi } from "./projects";
 import type { EventsApi } from "./events";
-import type { IdentityApi } from "./identity";
+import type { IdentityAdminApi, IdentityApi } from "./identity";
 import type { IntegrationsApi } from "./integrations";
 import type { WebhooksApi } from "./webhooks";
 import type { ReposApi } from "./repos";
@@ -89,6 +89,15 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     createAgentToken: (onBehalfOf, scope, ttlSeconds) =>
       call("create_agent_token", { onBehalfOf, scope, ttlSeconds }),
     removeAccessToken: (user, id) => call("remove_access_token", { user, id }),
+  };
+}
+
+/** Staff-only identity. Only sudo binds to it; see `IdentityAdminApi`. */
+export function identityAdminClient(service: ServiceBinding): IdentityAdminApi {
+  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
+  return {
+    workspaces: (query) => call("admin_workspaces", { query: query ?? null }),
+    workspace: (slug) => call("admin_workspace", { slug }),
   };
 }
 
@@ -199,6 +208,7 @@ export function billingClient(service: ServiceBinding): BillingApi {
       call("cancel_subscription", { actor, workspace, feature, resume }),
     hasFeature: (workspace, feature) => call("has_feature", { workspace, feature }),
     chargeFeature: (charge) => call("charge_feature", charge),
+    billingPortal: (actor, workspace, returnUrl) => call("billing_portal", { actor, workspace, return_url: returnUrl }),
     recordSandbox: (usage) => call("record_sandbox", usage),
     limit: (workspace, viewer) => call("limit", { workspace, viewer }),
     checkLimit: (workspace) => call("check_limit", { workspace }),
@@ -218,6 +228,7 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
     createEnterprise: (name, workspaces, by) => call("admin_create_enterprise", { name, workspaces, by }),
     attach: (workspace, account, by) => call("admin_attach", { workspace, account, by }),
     credit: (workspace, amountMicros, note, by) => call("admin_credit", { workspace, amount_micros: amountMicros, note, by }),
+    billingLink: (workspace, by) => call("admin_billing_link", { workspace, by }),
   };
 }
 

@@ -27,6 +27,30 @@ pub struct Session {
     pub subscription: Option<String>,
 }
 
+/// g1t's settings for Stripe's hosted billing page.
+#[derive(Debug, Deserialize)]
+pub struct PortalConfiguration {
+    pub id: String,
+    #[serde(default)]
+    pub login_page: Option<LoginPage>,
+    #[serde(default)]
+    pub metadata: Option<std::collections::HashMap<String, String>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LoginPage {
+    pub url: Option<String>,
+}
+
+/// A saved card's details.
+#[derive(Debug, Deserialize)]
+pub struct SavedCard {
+    pub brand: String,
+    pub last4: String,
+    pub exp_month: u32,
+    pub exp_year: u32,
+}
+
 /// A monthly plan.
 #[derive(Deserialize)]
 pub struct StripeSubscription {
@@ -182,6 +206,95 @@ impl Stripe {
             ("description", description.to_owned()),
         ];
         self.send(Method::Post, "/payment_intents", Some(form(&fields)), Some(key)).await
+    }
+
+    /// A customer for a workspace that has none yet.
+    pub async fn create_customer(&self, workspace: &str) -> Result<String> {
+        #[derive(Deserialize)]
+        struct Customer {
+            id: String,
+        }
+        let fields = [
+            ("name", workspace.to_owned()),
+            ("metadata[workspace]", workspace.to_owned()),
+        ];
+        let customer: Customer = self.call(Method::Post, "/customers", Some(form(&fields))).await?;
+        Ok(customer.id)
+    }
+
+    /// A session on Stripe's hosted billing page (the customer portal) for
+    /// the customer, coming back to `return_url`.
+    pub async fn portal_session(&self, customer: &str, return_url: &str) -> Result<String> {
+        #[derive(Deserialize)]
+        struct Portal {
+            url: String,
+        }
+        let configuration = self.portal_configuration().await?;
+        let fields = [
+            ("customer", customer.to_owned()),
+            ("return_url", return_url.to_owned()),
+            ("configuration", configuration.id),
+        ];
+        let portal: Portal = self.call(Method::Post, "/billing_portal/sessions", Some(form(&fields))).await?;
+        Ok(portal.url)
+    }
+
+    /// g1t's billing page settings at Stripe, made the first time they are
+    /// needed: cards, invoices, billing details, and a sign-in page.
+    pub async fn portal_configuration(&self) -> Result<PortalConfiguration> {
+        #[derive(Deserialize)]
+        struct List {
+            data: Vec<PortalConfiguration>,
+        }
+        let list: List = self
+            .call(Method::Get, "/billing_portal/configurations?active=true&limit=20", None)
+            .await?;
+        if let Some(existing) = list
+            .data
+            .into_iter()
+            .find(|c| c.metadata.as_ref().and_then(|m| m.get("g1t")).is_some())
+        {
+            return Ok(existing);
+        }
+        let fields = [
+            ("business_profile[headline]", "g1t billing: your card, invoices and billing details".to_owned()),
+            ("features[payment_method_update][enabled]", "true".to_owned()),
+            ("features[invoice_history][enabled]", "true".to_owned()),
+            ("features[customer_update][enabled]", "true".to_owned()),
+            ("features[customer_update][allowed_updates][0]", "email".to_owned()),
+            ("features[customer_update][allowed_updates][1]", "address".to_owned()),
+            ("features[customer_update][allowed_updates][2]", "name".to_owned()),
+            ("features[customer_update][allowed_updates][3]", "tax_id".to_owned()),
+            ("login_page[enabled]", "true".to_owned()),
+            ("metadata[g1t]", "billing".to_owned()),
+        ];
+        self.call(Method::Post, "/billing_portal/configurations", Some(form(&fields))).await
+    }
+
+    /// The customer's email at Stripe, if they gave one.
+    pub async fn customer_email(&self, customer: &str) -> Result<Option<String>> {
+        #[derive(Deserialize)]
+        struct Customer {
+            email: Option<String>,
+        }
+        let found: Customer = self.call(Method::Get, &format!("/customers/{}", encode(customer)), None).await?;
+        Ok(found.email)
+    }
+
+    /// The customer's card, if one is saved.
+    pub async fn card(&self, customer: &str) -> Result<Option<SavedCard>> {
+        #[derive(Deserialize)]
+        struct Methods {
+            data: Vec<Method_>,
+        }
+        #[derive(Deserialize)]
+        struct Method_ {
+            card: Option<SavedCard>,
+        }
+        let methods: Methods = self
+            .call(Method::Get, &format!("/payment_methods?customer={}&type=card&limit=1", encode(customer)), None)
+            .await?;
+        Ok(methods.data.into_iter().next().and_then(|m| m.card))
     }
 
     /// Starts a page on which `amount_cents` of credit is paid for by card.

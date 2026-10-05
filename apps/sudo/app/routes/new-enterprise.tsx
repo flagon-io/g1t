@@ -4,7 +4,7 @@ import { data, Link, redirect } from "react-router";
 import type { Route } from "./+types/new-enterprise";
 import { Avatar, Button, Field, Input, Notice, Section, Textarea } from "~/components/ui";
 import { fields, parseSlugList, text } from "~/lib/forms";
-import { admin } from "~/lib/services.server";
+import { admin, identity } from "~/lib/services.server";
 import { requireStaff } from "~/lib/staff";
 
 export const meta: Route.MetaFunction = () => [{ title: "New enterprise · sudo" }, { name: "robots", content: "noindex, nofollow" }];
@@ -31,6 +31,9 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (!workspaces.ok) return fail(workspaces.error);
   if (workspaces.value.length === 0) return fail("Name at least one workspace for it to pay for.");
   if (workspaces.value.length > 100) return fail("At most 100 workspaces at once.");
+  const found = await Promise.all(workspaces.value.map((slug) => identity.workspace(slug)));
+  const unknown = workspaces.value.filter((_, index) => !found[index]);
+  if (unknown.length > 0) return fail(`No workspace called ${unknown.join(", ")}.`);
 
   // Moving workspaces onto it changes who pays for them: confirm first.
   if (text(form, "confirm") !== "yes") {
@@ -38,7 +41,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
   const result = await admin.createEnterprise(name, workspaces.value, staff.email);
   if (!result.ok) return fail(result.error.message);
-  return redirect(`/accounts/${encodeURIComponent(result.value.id)}?done=created#top`);
+  return redirect(`/enterprises/${encodeURIComponent(result.value.id)}?done=created#top`);
 }
 
 export default function NewEnterprise({ actionData }: Route.ComponentProps) {
@@ -49,13 +52,13 @@ export default function NewEnterprise({ actionData }: Route.ComponentProps) {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8 sm:py-10">
-      <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
+      <Link to="/enterprises" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
         <ArrowLeft size={14} />
-        Accounts
+        Enterprises
       </Link>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">New enterprise</h1>
       <p className="mt-1 text-sm text-muted">
-        One account that pays for several workspaces, as GitHub Enterprise does: one bill, one limit, one set of terms. Set its terms
+        One customer that pays for several workspaces, as GitHub Enterprise does: one bill, one limit, one set of terms. Set its terms
         once it exists.
       </p>
 
@@ -63,7 +66,7 @@ export default function NewEnterprise({ actionData }: Route.ComponentProps) {
         <section id="review" className="mt-6 scroll-mt-20 rounded-lg border border-merged/40 bg-merged/5 p-4 sm:p-5">
           <h2 className="font-semibold tracking-tight">Create {review.name}?</h2>
           <p className="mt-1 text-sm text-muted">
-            These workspaces will be billed through it from now on, under its limit and terms instead of their own:
+            These workspaces will be billed to it from now on, under its limit and terms instead of their own:
           </p>
           <ul className="mt-3 flex flex-wrap gap-2">
             {review.workspaces.map((slug) => (

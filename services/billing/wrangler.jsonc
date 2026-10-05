@@ -18,6 +18,8 @@
 			"migrations_dir": "migrations"
 		}
 	],
+	// Identity emails owners as their workspace nears its usage limit.
+	"services": [{ "binding": "IDENTITY", "service": "g1t-identity" }],
 	"vars": {
 		// What is added to a run's cost, in percent. It pays the card
 		// processor's fee and the sandbox the agent ran in.

@@ -7,7 +7,7 @@ import { AlertTriangle, CheckCircle2, Info } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { Link, type LinkProps } from "react-router";
 
-import type { Limit, PayingAccount, Terms, Trust } from "@g1t/contracts";
+import type { Limit, Terms, Trust } from "@g1t/contracts";
 
 import { usd } from "~/lib/money";
 
@@ -148,10 +148,6 @@ export function Badge({ tone = "plain", children }: { tone?: "plain" | "lavender
   );
 }
 
-export function KindBadge({ kind }: { kind: PayingAccount["kind"] }) {
-  return kind === "enterprise" ? <Badge tone="lavender">Enterprise</Badge> : <Badge>Workspace</Badge>;
-}
-
 export function TermsBadge({ terms }: { terms: Terms }) {
   if (terms.kind === "comped") return <Badge tone="mint">Comped</Badge>;
   if (terms.kind === "custom") {
@@ -185,8 +181,8 @@ export function StateBadge({ state }: { state: Limit["state"] }) {
 }
 
 /**
- * Unpaid usage this month against the ceiling, as a bar coloured by where
- * it stands. An account with no ceiling (g1t's own) shows the figure only.
+ * Usage this month that is not paid for yet, against the limit, as a bar
+ * coloured by where it stands. With no limit (comped) it shows the figure.
  */
 export function ExposureBar({ limit, wide = false }: { limit: Limit; wide?: boolean }) {
   const { exposureMicros, ceilingMicros, state } = limit;
@@ -197,11 +193,11 @@ export function ExposureBar({ limit, wide = false }: { limit: Limit; wide?: bool
       <div className="flex items-baseline justify-between gap-2 text-xs">
         <span className="tabular font-medium text-fg-soft">
           {usd(exposureMicros)}
-          <span className="font-normal text-faint"> / {ceilingMicros == null ? "no ceiling" : usd(ceilingMicros)}</span>
+          <span className="font-normal text-faint"> / {ceilingMicros == null ? "no limit" : usd(ceilingMicros)}</span>
         </span>
         {percent != null && <span className={`tabular ${STATE[state].text}`}>{percent}%</span>}
       </div>
-      <svg viewBox="0 0 100 4" preserveAspectRatio="none" className="mt-1.5 block h-1.5 w-full" role="img" aria-label={`${STATE[state].label}: ${percent ?? 0}% of the ceiling`}>
+      <svg viewBox="0 0 100 4" preserveAspectRatio="none" className="mt-1.5 block h-1.5 w-full" role="img" aria-label={`${STATE[state].label}: ${percent ?? 0}% of the limit`}>
         <rect x="0" y="0" width="100" height="4" rx="2" fill="var(--g1t-raised)" />
         {ceilingMicros != null && share > 0 && (
           <rect x="0" y="0" width={Math.max(2, share * 100)} height="4" rx="2" fill={STATE[state].fill} />

@@ -3,6 +3,7 @@
 //! Reached only through service bindings; see `g1t_contracts::identity` for
 //! the methods and their arguments.
 
+mod admin;
 mod crypto;
 mod device;
 mod email;
@@ -573,6 +574,10 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "create_agent_token" => reply(&identity.create_agent_token(args(body)?).await?),
         "agent_scope" => reply(&identity.agent_scope(args(body)?).await?),
         "remove_access_token" => reply(&identity.remove("access_tokens", args(body)?).await?),
+        // Staff only: sudo.g1t.sh, over its service binding. See admin.rs.
+        "notify_owners" => reply(&identity.notify_owners(args(body)?).await?),
+        "admin_workspaces" => reply(&identity.admin_workspaces(args(body)?).await?),
+        "admin_workspace" => reply(&identity.admin_workspace(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }

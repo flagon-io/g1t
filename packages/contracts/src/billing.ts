@@ -34,6 +34,8 @@ export type BillingAccount = {
   marginPercent: number;
   /** What a run on the workspace's own model provider is charged instead. */
   orchestrationFeeMicros: number;
+  /** The card charged near the limit and when a month closes, if one is saved. */
+  card?: { brand: string; last4: string; expMonth: number; expYear: number } | null;
 };
 
 /** One line of a workspace's statement. */
@@ -57,6 +59,8 @@ export type LedgerEntry = {
   createdBy: string | null;
   /** RFC 3339. */
   createdAt: string;
+  /** The workspace the line belongs to, which tells an enterprise's lines apart. */
+  workspace?: string | null;
 };
 
 /** What lets a sandbox, and nothing else, report what its run cost. */
@@ -102,6 +106,21 @@ export type AccountSummary = {
   chargedMicros: number;
   costMicros: number;
   paidMicros: number;
+  /** The same figures for each of the account's workspaces that has any. */
+  byWorkspace: WorkspaceFigures[];
+};
+
+/** One workspace's share of an `AccountSummary`. */
+export type WorkspaceFigures = { workspace: string; chargedMicros: number; costMicros: number; paidMicros: number };
+
+/** A customer's Stripe billing page, for staff to send them. */
+export type BillingLink = {
+  /** One-time and short-lived, signed in already. */
+  portalUrl: string;
+  /** The page's sign-in, which does not expire: the customer signs in by email. */
+  loginUrl: string | null;
+  customerEmail: string | null;
+  expiresNote: string;
 };
 
 export type AdminAction = { id: string; account: string; action: string; detail: string; by: string; createdAt: string };
@@ -121,6 +140,8 @@ export interface BillingAdminApi {
   createEnterprise(name: string, workspaces: string[], by: string): Promise<Result<PayingAccount>>;
   attach(workspace: string, account: string | null, by: string): Promise<Result<PayingAccount>>;
   credit(workspace: string, amountMicros: number, note: string, by: string): Promise<Result<LedgerEntry>>;
+  /** The workspace's Stripe billing page, to send to the customer. Logged. */
+  billingLink(workspace: string, by: string): Promise<Result<BillingLink>>;
 }
 
 /** How much a workspace has earned g1t's trust with money. */
@@ -246,6 +267,11 @@ export interface BillingApi {
    * `session`.
    */
   checkout(actor: User, workspace: string, amountCents: number, returnUrl: string): Promise<Result<{ url: string }>>;
+  /**
+   * Stripe's hosted billing page for the workspace: card, invoices, billing
+   * email and address. g1t never handles card numbers. Owners only.
+   */
+  billingPortal(actor: User, workspace: string, returnUrl: string): Promise<Result<{ url: string }>>;
   /** Credits a payment once the processor says it was made. Safe to repeat. */
   confirm(workspace: string, viewer: Viewer, session: string): Promise<Result<BillingAccount>>;
   /**

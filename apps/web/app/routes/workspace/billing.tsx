@@ -73,6 +73,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const form = await request.formData();
   const page = `${new URL(request.url).origin}/${params.owner.toLowerCase()}/-/billing`;
   const intent = form.get("intent");
+  if (intent === "portal") {
+    // Card, invoices and billing details live on Stripe's own page.
+    const started = await billing.billingPortal(user, params.owner, page);
+    if (!started.ok) return { error: started.error.message };
+    throw redirect(started.value.url);
+  }
   if (intent === "spend-limit" || intent === "no-spend-limit") {
     const amount = Number(form.get("limit"));
     if (intent === "spend-limit" && !(Number.isFinite(amount) && amount >= 0)) {
@@ -134,6 +140,55 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
         )}
         {limit && account.status.enabled && (
           <LimitCard limit={limit} owner={role === "owner"} busy={paying} error={actionData?.error} />
+        )}
+
+        {account.status.enabled && limit?.trust !== "internal" && (
+          <section className="mb-10 rounded-xl border border-line bg-surface p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-medium">Card and invoices</h2>
+                {account.card ? (
+                  <p className="mt-1 text-sm">
+                    <span className="capitalize">{account.card.brand}</span> ending{" "}
+                    <span className="font-mono">{account.card.last4}</span>
+                    <span className="text-muted">
+                      {" "}
+                      · expires {String(account.card.expMonth).padStart(2, "0")}/{account.card.expYear}
+                    </span>
+                  </p>
+                ) : (
+                  <p className="mt-1 max-w-xl text-sm text-muted">
+                    No card yet. With one on file, g1t charges it as the workspace nears its usage limit and when each
+                    month closes, so work never stops for a payment. Saving it charges nothing.
+                  </p>
+                )}
+                <p className="mt-2 max-w-xl text-xs text-faint">
+                  Cards, invoices, receipts and the billing email and address are managed on Stripe's billing page. g1t
+                  never sees card numbers.
+                </p>
+              </div>
+              {role === "owner" && (
+                <Form method="post">
+                  <Button variant={account.card ? "quiet" : "accent"} type="submit" name="intent" value="portal" disabled={paying}>
+                    <CreditCard size={14} />
+                    {account.card ? "Manage billing on Stripe" : "Add a card on Stripe"}
+                  </Button>
+                </Form>
+              )}
+            </div>
+            {account.card && (
+              <p className="mt-3 text-xs text-faint">
+                Charged near the usage limit, for what the workspace owes, and when each month closes. A declined card
+                stops work until it is paid.
+              </p>
+            )}
+            {!account.status.live && (
+              <p className="mt-3 text-xs text-faint">
+                Test mode: use card 4242 4242 4242 4242, any future date and code. Test cards are never charged
+                automatically.
+              </p>
+            )}
+          </section>
         )}
 
         <h2 className="font-medium">Plans</h2>

@@ -1,14 +1,36 @@
 # sudo
 
-g1t's staff console, at <https://sudo.g1t.sh>. Staff use it to manage how
-accounts pay: comp a workspace, set custom terms (a discount, a ceiling on
-unpaid usage, an end date), create Enterprise accounts that pay for several
-workspaces, move workspaces on and off them, issue credits, and see where
-every account stands this month with its ledger and audit log.
+g1t's staff console, at <https://sudo.g1t.sh>. It is organised the way
+customers know g1t: by **workspace**.
 
-It holds no data. Everything goes to the billing service's staff methods
-(`admin_*`, see `BillingAdminApi` in `packages/contracts/src/billing.ts`),
-and each change is recorded there with the staff member's email.
+- **Workspaces** (the home page): every workspace, with its owners, members,
+  who it is billed to, its terms, this month's usage against its limit,
+  what it was charged and what it cost g1t. Search by workspace, owner,
+  email or enterprise; filter to stopped or warning, comped or custom, or
+  on an enterprise. A workspace's page shows its members, and under
+  **Billing** its terms, who it is billed to (move it onto or off an
+  enterprise), a credit form, a Stripe billing link, its ledger and its
+  audit log.
+- **Enterprises**: customers that pay for several workspaces with one
+  bill, one limit and one set of terms. Each has its workspaces (add or
+  remove them), combined usage, terms, credits, ledger and audit log.
+
+Billing's internal account ids (`ws_<slug>` for a workspace's own,
+`ent_…` for an enterprise) are never shown as names; an enterprise's id
+appears only as small "Billing account id" text. Old `/accounts/…` links
+redirect to the workspace or enterprise they meant.
+
+**Cards stay on Stripe.** sudo never shows a card field. To help a customer
+update their card or see invoices, staff make a Stripe billing link on the
+workspace's page (it is recorded) and send it to the owner.
+
+It holds no data. Workspaces, owners and members come from identity's
+staff methods (`admin_workspaces`, `admin_workspace`; `IdentityAdminApi` in
+`packages/contracts/src/identity.ts`); everything about money goes to the
+billing service's (`admin_*`, `BillingAdminApi` in
+`packages/contracts/src/billing.ts`), where each change is recorded with
+the staff member's email. Both are reached over service bindings only, and
+nothing but sudo binds to them.
 
 ## How it is locked
 
@@ -22,9 +44,9 @@ and each change is recorded there with the staff member's email.
    `STAFF_EMAILS` are all set, every request gets a 403 saying sudo is not
    configured.
 4. **Changes** are POSTs only, and only from sudo's own pages (`Origin`, or
-   `Referer`, must be `https://sudo.g1t.sh`). Terms, enterprise moves and new
-   enterprises show a confirmation step first; a credit needs the workspace's
-   slug typed out.
+   `Referer`, must be `https://sudo.g1t.sh`). Terms, enterprise moves, new
+   enterprises and Stripe billing links show a confirmation step first; a
+   credit needs the workspace's slug typed out.
 5. **The pages ship no JavaScript.** The content security policy forbids
    every script and inline style; responses are `no-store`, `noindex` and
    cannot be framed. The worker has no `workers.dev` address or preview URLs.
@@ -54,10 +76,10 @@ and each change is recorded there with the staff member's email.
    }
    ```
 
-6. Deploy: `scripts/deploy.sh sudo` (after `billing`, whose `admin_*`
-   methods it calls).
+6. Deploy: `scripts/deploy.sh sudo` (after `billing` and `identity`, whose
+   `admin_*` methods it calls).
 
-Visit <https://sudo.g1t.sh>: Access asks you to sign in, then the accounts
+Visit <https://sudo.g1t.sh>: Access asks you to sign in, then the workspaces
 list opens. Anyone else gets Access's own refusal; anyone Access lets in who
 is not in `STAFF_EMAILS` gets a 403 from the worker.
 
@@ -73,7 +95,7 @@ The same two checks still apply: the Access policy, and `STAFF_EMAILS`.
 
 ```sh
 npm run typecheck -w @g1t/sudo
-npm test -w @g1t/sudo     # JWT verification, forms, money
+npm test -w @g1t/sudo     # JWT verification, forms, money, the workspace join
 npm run build -w @g1t/sudo
 ```
 

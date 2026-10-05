@@ -394,7 +394,7 @@ function FileSection({
       className="scroll-mt-28 rounded-xl border border-line"
     >
       <header
-        className={`sticky top-12 z-20 flex items-center gap-2.5 border-line bg-surface/95 px-3 py-2 backdrop-blur ${
+        className={`sticky top-14 z-20 flex items-center gap-2.5 border-line bg-surface/95 px-3 py-2 backdrop-blur ${
           collapsed ? "rounded-xl" : "rounded-t-xl border-b"
         }`}
       >
@@ -707,7 +707,7 @@ export function DiffView({
   const allCollapsed = files.every((file) => collapsed.has(file.path));
   return (
     <div>
-      <div className="sticky top-12 z-30 -mx-1 mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 bg-bg/90 px-1 py-2 backdrop-blur">
+      <div className="sticky top-14 z-30 -mx-1 mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 bg-bg/90 px-1 py-2 backdrop-blur">
         <span className="text-sm text-muted">
           <span className="font-medium text-fg">{files.length}</span> {files.length === 1 ? "file" : "files"}
         </span>

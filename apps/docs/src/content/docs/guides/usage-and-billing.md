@@ -158,7 +158,9 @@ month turns:
   again, g1t rebuilds each one from the commit it was serving, by itself.
 
 What counts is this month's usage (UTC), each item at what it cost g1t or
-what it is charged, whichever is more, less what was paid this month. Even
+what it is charged, whichever is more, less what was paid this month, plus
+any charges left unpaid from earlier months: a new month is not a fresh
+allowance. Even
 usage that is free to you, such as the free minutes, counts at its cost:
 the limit is about what g1t has spent on a workspace's behalf.
 
@@ -204,6 +206,30 @@ Some accounts are billed differently, set up by g1t with you:
 
 Each change is made by g1t staff in g1t's billing console and recorded with
 who made it and why. To ask for one, write to support.
+
+## Your card, invoices and billing details
+
+These live on **Stripe's billing page**, not on g1t: g1t never sees or
+stores card numbers. An owner opens it from **Settings → Billing → Card
+and invoices → Manage billing on Stripe** (or **Add a card on Stripe**),
+and there adds or replaces the card, downloads invoices and receipts, and
+sets the billing email, address and tax ID. Saving a card charges
+nothing. g1t support never takes card details by phone or email; if you
+need help, we send you a link to that same Stripe page.
+
+With a card on file:
+
+- **Near the usage limit** (80%), g1t charges it for what the workspace
+  owes, at least $5, so work does not stop.
+- **When each month closes**, g1t charges it for what the workspace owed
+  at the end of the month, and the statement shows the payment as *Usage
+  for 2026-10, charged to the card on file when the month closed*.
+- **If it is declined**, work stops until the workspace pays, and the
+  Billing page and the API say why. Replace the card or add credit to pay.
+
+Comped workspaces are never charged, and an enterprise's workspaces are
+billed through the enterprise. Test-mode cards are never charged
+automatically.
 
 ## Add credit
 

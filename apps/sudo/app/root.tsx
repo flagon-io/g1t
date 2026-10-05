@@ -1,5 +1,5 @@
-import { Building2, ShieldCheck, Users } from "lucide-react";
-import { isRouteErrorResponse, Link, Links, Meta, NavLink, Outlet, useRouteLoaderData } from "react-router";
+import { Building2, Boxes, ShieldCheck } from "lucide-react";
+import { isRouteErrorResponse, Link, Links, Meta, Outlet, useLocation, useRouteLoaderData } from "react-router";
 
 import type { Route } from "./+types/root";
 import "./app.css";
@@ -26,19 +26,20 @@ export async function loader({ context }: Route.LoaderArgs) {
   return { email: requireStaff(context).email };
 }
 
-function NavItem({ to, end, children }: { to: string; end?: boolean; children: React.ReactNode }) {
+/** A top-level section; it stays lit on the pages beneath it. */
+function NavItem({ to, active, children }: { to: string; active: (path: string) => boolean; children: React.ReactNode }) {
+  const { pathname } = useLocation();
+  const isActive = active(pathname);
   return (
-    <NavLink
+    <Link
       to={to}
-      end={end}
-      className={({ isActive }) =>
-        `inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-raised hover:text-fg ${
-          isActive ? "text-fg" : "text-muted"
-        }`
-      }
+      aria-current={isActive ? "page" : undefined}
+      className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-raised hover:text-fg ${
+        isActive ? "bg-raised/60 text-fg" : "text-muted"
+      }`}
     >
       {children}
-    </NavLink>
+    </Link>
   );
 }
 
@@ -60,14 +61,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Logo />
             </Link>
             <nav className="flex items-center gap-0.5">
-              <NavItem to="/" end>
-                <Users size={14} className="hidden sm:block" />
-                Accounts
+              <NavItem to="/" active={(path) => path === "/" || path.startsWith("/workspaces")}>
+                <Boxes size={14} className="hidden sm:block" />
+                Workspaces
               </NavItem>
-              <NavItem to="/enterprises/new">
+              <NavItem to="/enterprises" active={(path) => path.startsWith("/enterprises")}>
                 <Building2 size={14} className="hidden sm:block" />
-                <span className="sm:hidden">New ent.</span>
-                <span className="hidden sm:inline">New enterprise</span>
+                Enterprises
               </NavItem>
             </nav>
             {root?.email && (
@@ -114,7 +114,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       <p className="mt-3 break-words text-muted">{details}</p>
       <div className="mt-8">
         <ButtonLink to="/" variant="quiet">
-          Back to accounts
+          Back to workspaces
         </ButtonLink>
       </div>
     </main>

@@ -145,7 +145,26 @@ impl Billing {
         let used = used + pending;
         // Test-mode payments are not money: they pay nothing off.
         let live = self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live);
-        let exposure = (used - if live { paid_month } else { 0 }).max(0);
+        // Charges from earlier months still unpaid carry over, so a new
+        // month is not a fresh allowance for an account that never pays.
+        // Credits g1t gave count as paid; test-mode payments do not.
+        let mut before = members.clone();
+        before.push(month_start.as_str().into());
+        let carried = self
+            .db
+            .prepare(format!(
+                "SELECT SUM(CASE WHEN kind = 'usage' THEN amount_micros
+                                 WHEN kind = 'top_up' AND ({live} = 1 OR reference LIKE 'crd%') THEN amount_micros
+                                 ELSE 0 END) AS paid
+                 FROM ledger WHERE workspace IN ({marks}) AND created_at < ?",
+                live = u8::from(live)
+            ))
+            .bind(&before)?
+            .first::<Paid>(None)
+            .await?
+            .and_then(|row| row.paid)
+            .map_or(0, |balance| (-balance).max(0));
+        let exposure = (used - if live { paid_month } else { 0 }).max(0) + carried;
 
         let (trust, trust_ceiling) = match account.terms.kind {
             TermsKind::Comped => (Trust::Internal, None),
@@ -311,12 +330,30 @@ impl Billing {
             {
                 continue;
             }
-            let cents = ((limit.exposure_micros + 9_999) / 10_000).max(AUTOPAY_MIN_CENTS);
-            let key = format!("autopay/{}/{}/{}", candidate.workspace, &month_start[..7], limit.exposure_micros / 1_000_000);
+            // What it owes: its charges less what it has paid, never the cost
+            // of what was free to it. At least the minimum, which is credit
+            // toward what comes next.
+            let balance = self.row(&candidate.workspace).await?.map_or(0, |row| row.balance_micros);
+            let owed = (-balance).max(0);
+            if owed == 0 {
+                continue;
+            }
+            let cents = ((owed + 9_999) / 10_000).max(AUTOPAY_MIN_CENTS);
+            let key = format!("autopay/{}/{}/{}", candidate.workspace, &month_start[..7], owed / 1_000_000);
             let description = format!("g1t usage for {}, paid automatically near its limit", candidate.workspace);
             let now = rfc3339(now_ms());
             match stripe.charge_saved_card(&customer, cents, &description, &key).await {
                 Ok(payment) if payment.status == "succeeded" => {
+                    // A retried charge is the same payment: credited once.
+                    let seen = self
+                        .db
+                        .prepare("SELECT id FROM ledger WHERE reference = ?")
+                        .bind(&[payment.id.as_str().into()])?
+                        .first::<serde_json::Value>(None)
+                        .await?;
+                    if seen.is_some() {
+                        continue;
+                    }
                     self.enter(
                         &candidate.workspace,
                         g1t_contracts::billing::EntryKind::TopUp,
@@ -354,6 +391,214 @@ impl Billing {
         Ok(())
     }
 
+    /// Closes last month for each workspace with a card on file: charges
+    /// what it owed when the month ended. Live payments only, once per
+    /// workspace and month; a declined card stops work until it is paid.
+    /// Comped workspaces owe nothing, and enterprises are invoiced.
+    pub(crate) async fn close_months(&self) -> Result<()> {
+        let Some(stripe) = self.stripe.as_ref().filter(|stripe| stripe.live()) else {
+            return Ok(());
+        };
+        let now = rfc3339(now_ms());
+        let month_start = format!("{}-01", &now[..7]);
+        let closing = previous_month(&now[..7]);
+        #[derive(Deserialize)]
+        struct Open {
+            workspace: String,
+            customer_id: String,
+            balance: Option<i64>,
+        }
+        let open = self
+            .db
+            .prepare(
+                "SELECT accounts.workspace AS workspace, accounts.customer_id AS customer_id,
+                        (SELECT SUM(amount_micros) FROM ledger
+                          WHERE ledger.workspace = accounts.workspace AND ledger.created_at < ?1) AS balance
+                 FROM accounts
+                 WHERE accounts.customer_id IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM month_closes
+                                    WHERE month_closes.workspace = accounts.workspace AND month_closes.month = ?2)
+                 LIMIT 20",
+            )
+            .bind(&[month_start.as_str().into(), closing.as_str().into()])?
+            .all()
+            .await?
+            .results::<Open>()?;
+        for account in open {
+            let record = |status: &str, amount: i64, payment: Option<&str>, error: Option<&str>| {
+                self.db
+                    .prepare(
+                        "INSERT OR IGNORE INTO month_closes (workspace, month, status, amount_micros, payment_id, error, closed_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    )
+                    .bind(&[
+                        account.workspace.as_str().into(),
+                        closing.as_str().into(),
+                        status.into(),
+                        (amount as f64).into(),
+                        crate::optional(payment),
+                        crate::optional(error),
+                        now.as_str().into(),
+                    ])
+            };
+            let payer = self.account_of(&account.workspace).await?;
+            if payer.terms.kind == TermsKind::Comped || payer.id.starts_with("ent_") {
+                record("skipped", 0, None, None)?.run().await?;
+                continue;
+            }
+            let owed = (-account.balance.unwrap_or(0)).max(0);
+            if owed < 10_000 {
+                // Under a cent: nothing worth charging.
+                record("nothing", 0, None, None)?.run().await?;
+                continue;
+            }
+            let cents = (owed + 9_999) / 10_000;
+            let key = format!("close/{}/{closing}", account.workspace);
+            let description = format!("g1t usage for {} in {closing}", account.workspace);
+            match stripe.charge_saved_card(&account.customer_id, cents, &description, &key).await {
+                Ok(payment) if payment.status == "succeeded" => {
+                    let seen = self
+                        .db
+                        .prepare("SELECT id FROM ledger WHERE reference = ?")
+                        .bind(&[payment.id.as_str().into()])?
+                        .first::<serde_json::Value>(None)
+                        .await?;
+                    if seen.is_none() {
+                        self.enter(
+                            &account.workspace,
+                            g1t_contracts::billing::EntryKind::TopUp,
+                            payment.amount_received.max(cents) * 10_000,
+                            &format!("Usage for {closing}, charged to the card on file when the month closed"),
+                            &payment.id,
+                            None,
+                            None,
+                            None,
+                            Some(&account.customer_id),
+                        )
+                        .await?;
+                    }
+                    record("paid", cents * 10_000, Some(&payment.id), None)?.run().await?;
+                }
+                outcome => {
+                    let error = match outcome {
+                        Ok(payment) => format!("the payment is {}", payment.status.replace('_', " ")),
+                        Err(error) => error.to_string().chars().take(200).collect(),
+                    };
+                    self.db
+                        .prepare(
+                            "INSERT INTO limits (workspace, autopay_failed_at, autopay_error, updated_at) VALUES (?1, ?2, ?3, ?2)
+                             ON CONFLICT (workspace) DO UPDATE SET autopay_failed_at = ?2, autopay_error = ?3, updated_at = ?2",
+                        )
+                        .bind(&[account.workspace.as_str().into(), now.as_str().into(), error.as_str().into()])?
+                        .run()
+                        .await?;
+                    record("failed", cents * 10_000, None, Some(&error))?.run().await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Emails a workspace's owners as it passes 50%, 80% and 100% of its
+    /// limit, once each a month, and when its card was declined, so that
+    /// work never stops without warning.
+    pub(crate) async fn warn_limits(&self, identity: &worker::Fetcher) -> Result<()> {
+        if self.stripe.is_none() {
+            return Ok(());
+        }
+        let now = rfc3339(now_ms());
+        let month = &now[..7];
+        #[derive(Deserialize)]
+        struct Candidate {
+            workspace: String,
+        }
+        let candidates = self
+            .db
+            .prepare(
+                "SELECT DISTINCT workspace FROM ledger WHERE kind = 'usage' AND created_at >= ?1
+                 UNION SELECT workspace FROM limits WHERE autopay_failed_at IS NOT NULL",
+            )
+            .bind(&[format!("{month}-01").into()])?
+            .all()
+            .await?
+            .results::<Candidate>()?;
+        #[derive(Deserialize)]
+        struct Told {
+            warned_month: Option<String>,
+            warned_level: Option<i64>,
+            autopay_failed_at: Option<String>,
+            declined_told_at: Option<String>,
+        }
+        for Candidate { workspace } in candidates {
+            let limit = self.limit_of(&workspace).await?;
+            let told = self
+                .db
+                .prepare("SELECT warned_month, warned_level, autopay_failed_at, declined_told_at FROM limits WHERE workspace = ?")
+                .bind(&[workspace.as_str().into()])?
+                .first::<Told>(None)
+                .await?;
+            let billing = format!("https://g1t.sh/{workspace}/-/billing");
+
+            // A declined card, once per decline.
+            if let Some(Told { autopay_failed_at: Some(failed), declined_told_at, .. }) = &told {
+                if declined_told_at.as_deref().is_none_or(|at| at < failed.as_str()) {
+                    let sent = notify(
+                        identity,
+                        &workspace,
+                        &format!("g1t: the card for {workspace} was declined"),
+                        &limit.message.clone().unwrap_or_else(|| format!("g1t could not charge the card on file for {workspace}.")),
+                        "Update the card",
+                        &billing,
+                    )
+                    .await;
+                    if sent {
+                        self.db
+                            .prepare("UPDATE limits SET declined_told_at = ? WHERE workspace = ?")
+                            .bind(&[now.as_str().into(), workspace.as_str().into()])?
+                            .run()
+                            .await?;
+                    }
+                }
+            }
+
+            let Some(ceiling) = limit.ceiling_micros.filter(|c| *c > 0) else { continue };
+            let level = warning_level(limit.exposure_micros, ceiling);
+            let already = told
+                .as_ref()
+                .filter(|t| t.warned_month.as_deref() == Some(month))
+                .and_then(|t| t.warned_level)
+                .unwrap_or(0);
+            if level <= already {
+                continue;
+            }
+            let (subject, intro) = match level {
+                100 => (
+                    format!("g1t: {workspace} reached its usage limit"),
+                    limit.message.clone().unwrap_or_else(|| format!("{workspace} reached its usage limit.")),
+                ),
+                _ => (
+                    format!("g1t: {workspace} has used {level}% of its usage limit"),
+                    format!(
+                        "{workspace} has used {} of its {} usage limit this month. At the limit its sandboxes, builds and apps stop until it pays or the month turns. With a card on file, g1t charges it as the limit nears, so work keeps going.",
+                        dollars_plain(limit.exposure_micros),
+                        dollars_plain(ceiling),
+                    ),
+                ),
+            };
+            if notify(identity, &workspace, &subject, &intro, "Open billing", &billing).await {
+                self.db
+                    .prepare(
+                        "INSERT INTO limits (workspace, warned_month, warned_level, updated_at) VALUES (?1, ?2, ?3, ?4)
+                         ON CONFLICT (workspace) DO UPDATE SET warned_month = ?2, warned_level = ?3, updated_at = ?4",
+                    )
+                    .bind(&[workspace.as_str().into(), month.into(), (level as f64).into(), now.as_str().into()])?
+                    .run()
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) async fn check_limit(&self, a: CheckLimitArgs) -> Result<Outcome<Limit>> {
         Ok(Outcome::Ok(self.limit_of(&a.workspace).await?))
     }
@@ -382,9 +627,67 @@ impl Billing {
     }
 }
 
+/// Which warning a workspace has reached: 100, 80, 50 or none (0).
+pub(crate) fn warning_level(exposure: i64, ceiling: i64) -> i64 {
+    if exposure >= ceiling {
+        100
+    } else if exposure * 5 >= ceiling * 4 {
+        80
+    } else if exposure * 2 >= ceiling {
+        50
+    } else {
+        0
+    }
+}
+
+/// Emails the workspace's owners through identity. False if nothing was sent.
+async fn notify(identity: &worker::Fetcher, workspace: &str, subject: &str, intro: &str, action: &str, link: &str) -> bool {
+    let args = g1t_contracts::identity::NotifyOwnersArgs {
+        workspace: workspace.to_owned(),
+        subject: subject.to_owned(),
+        intro: intro.to_owned(),
+        action: action.to_owned(),
+        link: link.to_owned(),
+        footer: "You get this because you own this workspace on g1t. Usage limits are explained at https://docs.g1t.sh/guides/usage-and-billing/#usage-limits".to_owned(),
+    };
+    match g1t_kit::call::<_, u32>(identity, "notify_owners", &args).await {
+        Ok(sent) => sent > 0,
+        Err(error) => {
+            worker::console_error!("could not tell {workspace}'s owners: {error}");
+            false
+        }
+    }
+}
+
+/// `2026-09` for `2026-10`, and `2025-12` for `2026-01`.
+pub(crate) fn previous_month(month: &str) -> String {
+    let year: i32 = month[..4].parse().unwrap_or(1970);
+    let number: u32 = month[5..7].parse().unwrap_or(1);
+    if number == 1 {
+        format!("{}-12", year - 1)
+    } else {
+        format!("{year}-{:02}", number - 1)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn warnings_come_at_half_four_fifths_and_the_limit() {
+        assert_eq!(warning_level(0, 300), 0);
+        assert_eq!(warning_level(149, 300), 0);
+        assert_eq!(warning_level(150, 300), 50);
+        assert_eq!(warning_level(240, 300), 80);
+        assert_eq!(warning_level(300, 300), 100);
+    }
+
+    #[test]
+    fn the_month_before_wraps_the_year() {
+        assert_eq!(previous_month("2026-10"), "2026-09");
+        assert_eq!(previous_month("2026-01"), "2025-12");
+    }
 
     fn ceilings() -> Ceilings {
         Ceilings { new: 3_000_000, paid_min: 25_000_000, paid_max: 1_000_000_000 }

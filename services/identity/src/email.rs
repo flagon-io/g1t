@@ -17,7 +17,7 @@ struct Message<'a> {
 }
 
 /// A short message with one link to follow.
-async fn send_link(
+pub async fn send_link(
     env: &Env,
     to: &str,
     subject: &str,
