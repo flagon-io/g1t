@@ -94,7 +94,7 @@ async fn list(kv: &KvStore, prefix: &str) -> Result<Vec<(String, Meta)>> {
 }
 
 fn error(status: u16, message: &str) -> Result<Response> {
-    Ok(Response::from_json(&json!({ "error": { "message": message } }))?.with_status(status))
+    Ok(crate::reply(&json!({ "error": { "message": message } }))?.with_status(status))
 }
 
 fn valid_name(name: &str) -> bool {
@@ -161,7 +161,7 @@ pub async fn for_job(mut request: Request, env: &Env, services: &Services, metho
                 .into_iter()
                 .map(|(_, meta)| json!({ "name": meta.name, "size": meta.size }))
                 .collect();
-            Response::from_json(&listed)
+            crate::reply(&listed)
         }
         (_, what) if what.starts_with("artifacts/") => {
             let name = decode(&what["artifacts/".len()..]);
@@ -175,7 +175,7 @@ pub async fn for_job(mut request: Request, env: &Env, services: &Services, metho
                     return error(413, "Artifacts are at most 60 MB.");
                 }
                 put(&kv, &base, &name, &bytes, ARTIFACT_TTL).await?;
-                return Response::from_json(&json!({ "name": name, "size": bytes.len() }));
+                return crate::reply(&json!({ "name": name, "size": bytes.len() }));
             }
             match get(&kv, &base).await? {
                 Some(bytes) => Response::from_bytes(bytes),
@@ -191,14 +191,14 @@ pub async fn for_job(mut request: Request, env: &Env, services: &Services, metho
                 let base = format!("c/{repo}/{key}");
                 // A key is written once, as on GitHub.
                 if kv.get(&base).text().await?.is_some() {
-                    return Response::from_json(&json!({ "saved": false, "reason": "That key is already cached." }));
+                    return crate::reply(&json!({ "saved": false, "reason": "That key is already cached." }));
                 }
                 let bytes = request.bytes().await?;
                 if bytes.len() > MAX_BYTES {
                     return error(413, "Cache entries are at most 60 MB.");
                 }
                 put(&kv, &base, &key, &bytes, CACHE_TTL).await?;
-                return Response::from_json(&json!({ "saved": true }));
+                return crate::reply(&json!({ "saved": true }));
             }
             // The exact key, else the newest entry under each restore key.
             let exact = format!("c/{repo}/{key}");

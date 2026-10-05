@@ -15,6 +15,7 @@ projects: the **Agent fleet** and **Workspace memory**.
 | See how a pull request was made | **Agents → Sessions**, or the pull request's Agent panel |
 | Teach every agent something about this code | **Agents → Memory** |
 | Teach every agent something true in every project | **Workspace memory**, under Across projects |
+| Review what agents, reviews and docs taught | **Agents → Memory**, or **Context → Memory** for the workspace |
 | See every agent across the workspace, and its cost | **Agent fleet**, under Across projects |
 
 ## Runs
@@ -142,6 +143,22 @@ projects. Each memory records where it came from: the person who wrote it,
 or the agent's run and the pull request it was working on, linked from the
 memory.
 
+Memory also fills itself. At the end of every run that changes code, the
+agent is asked what it learned; a person's correction in a review, a merged
+pull request's decision, and what a project's `AGENTS.md`, README and
+manifests say are captured too. These arrive as **candidates**, which no
+agent is given until they are kept: at once when two independent sources
+say the same thing or a project's `AGENTS.md` or manifests state it,
+otherwise by a member in the **Review** list on **Agents → Memory** or the
+Review queue on the workspace's [Context](/guides/context-hub/) page. See
+[memory that fills itself](/guides/context-hub/#memory-that-fills-itself).
+
+Every run is also given a **Context** section from the
+[context hub](/guides/context-hub/#agents-start-with-context): the
+project's stack, owners, environments and the projects it uses with their
+live addresses, the kept memories closest to its task, and recent
+decisions.
+
 Your own agents can use memory too, through the [MCP tools](/reference/mcp/#memory)
 `remember` and `recall` or the API:
 
@@ -166,7 +183,9 @@ Memory is only as good as it is true. On **Agents → Memory** and on
 - **add** a memory, with its kind: fact, convention, decision or gotcha;
 - **pin** one, so every agent gets it first, whatever the budget;
 - **edit** one that has drifted, or change its kind;
-- **forget** one that no longer holds.
+- **forget** one that no longer holds;
+- **keep**, **edit** or **dismiss** a candidate waiting for review. A
+  dismissed candidate is never suggested again in the same words.
 
 Each shows who added it, when, and when it was last given to an agent. A
 memory that has not been given to an agent for a long time is a good one to

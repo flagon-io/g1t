@@ -37,17 +37,18 @@ pub fn tidy_events(given: &[String]) -> Result<Vec<String>, String> {
 }
 
 /// What is sent for an event: the event as the bus has it, with the
-/// repository, the workspace and whoever caused it named.
+/// repository, the workspace and whoever caused it named. Its keys are in
+/// `snake_case`, as everything g1t sends out is (see `g1t_kit::wire`).
 pub fn payload(event: &Event, workspace: &str, repo: Option<(&str, &str)>, actor_name: Option<&str>) -> Value {
-    json!({
+    g1t_kit::wire::snake_case(json!({
         "id": event.id,
         "type": event.kind,
         "time": event.time,
         "workspace": workspace,
-        "repository": repo.map(|(id, full_name)| json!({ "id": id, "fullName": full_name })),
+        "repository": repo.map(|(id, full_name)| json!({ "id": id, "full_name": full_name })),
         "actor": event.actor.as_ref().map(|id| json!({ "id": id, "username": actor_name })),
         "data": event.data,
-    })
+    }))
 }
 
 /// What is sent to check a webhook works.
@@ -143,6 +144,25 @@ mod tests {
         ] {
             assert!(check_url(url).is_err(), "{url}");
         }
+    }
+
+    #[test]
+    fn payloads_are_snake_case() {
+        let event = Event {
+            id: "evt_1".to_owned(),
+            kind: "pull.merged".to_owned(),
+            source: "work".to_owned(),
+            time: "2026-10-04T16:00:00Z".to_owned(),
+            repo_id: Some("rep_1".to_owned()),
+            actor: Some("usr_1".to_owned()),
+            data: json!({ "pullId": "pul_1", "repoId": "rep_1", "supersededBy": null, "inputs": { "dryRun": true } }),
+        };
+        let sent = payload(&event, "acme", Some(("rep_1", "acme/rocket")), Some("syntaqx"));
+        assert_eq!(sent["repository"]["full_name"], "acme/rocket");
+        assert_eq!(sent["data"]["pull_id"], "pul_1");
+        assert!(sent["data"].get("superseded_by").is_some());
+        assert_eq!(sent["data"]["inputs"]["dryRun"], true);
+        assert!(g1t_kit::wire::camel_case_keys(&sent).is_empty());
     }
 
     #[test]

@@ -83,6 +83,12 @@ export type EventPayloads = {
    * rename still lands in the right place.
    */
   "workspace.renamed": { workspaceId: string; from: string; to: string };
+  /**
+   * A memory was added, changed, reviewed or forgotten. No text: ask the
+   * work service for it by id. `repoId` is the project's, or null for the
+   * workspace's memory. `status` is `deleted` once forgotten.
+   */
+  "memory.changed": { memoryId: string; workspace: string; status: "candidate" | "kept" | "dismissed" | "deleted" };
 };
 
 export type EventType = keyof EventPayloads;

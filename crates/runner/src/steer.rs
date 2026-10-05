@@ -27,15 +27,16 @@ struct Config {
     number: u32,
 }
 
+/// One message, as the API sends it: `snake_case`, or `fromNumber` from
+/// before its bodies were.
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct Message {
     id: String,
     author: String,
     body: String,
     #[serde(default)]
     kind: String,
-    #[serde(default)]
+    #[serde(default, alias = "fromNumber")]
     from_number: Option<u32>,
 }
 

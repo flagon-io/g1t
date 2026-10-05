@@ -13,7 +13,8 @@ always agree. To connect a client, see
 - `repo` is always `owner/name`, such as `"syntaqx/hello"`.
 - `number` names an issue or a pull request. The two share one sequence per
   repository, so a number names exactly one of them.
-- Inputs are `snake_case`. Results are JSON, with `camelCase` fields.
+- Inputs are `snake_case`. Results are JSON, with `snake_case` fields, as
+  the REST API returns them.
 - A tool that fails returns its error as the result, with `isError` set, so
   the agent can read it and act on it.
 - Reading a public repository needs no sign-in through the API. Through MCP,
@@ -89,6 +90,8 @@ See [sessions and why-blame](/guides/why-blame/).
 | --- | --- | --- | --- |
 | `remember` | `repo`, `text` | Save one fact, convention, decision or gotcha for the next agent. `scope` is `project` (this codebase, the default) or `workspace` (true across its projects); `kind` is `fact`, `convention`, `decision` or `gotcha`. Text that looks like a secret is refused. Members and g1t's agents only. | [`POST /repos/{owner}/{name}/memory`](/reference/api/memory/remember/) |
 | `recall` | `repo` | What the project and its workspace remember, pinned first. `query` matches every word; `limit` caps each level. | [`GET /repos/{owner}/{name}/memory`](/reference/api/memory/recall/) |
+| `search_context` | `query` | One search across a workspace's context hub: its catalog, docs, issues and pull requests, and, for members and g1t's agents, its kept memory. Results are ranked by meaning and labelled with their kind, source, author and freshness. Give `workspace`, or a `repo` in it; narrow with `project` and `kinds`. | [`GET /workspaces/{workspace}/context/search`](/reference/api/context/search-context/) |
+| `get_entity` | `kind`, `id` | One catalog entry by kind and id or key (a project's slug, a package as `npm:<name>`, an owner's username), with what it depends on, who owns it, where it deploys, what documents it, and what it exposes and uses. | [`GET /workspaces/{workspace}/context/{kind}/{id}`](/reference/api/context/get-entity/) |
 
 See [agents, sessions and memory](/guides/agents-and-memory/).
 
@@ -174,10 +177,24 @@ See [talk to agents](/guides/talking-to-agents/).
 
 ## What a g1t agent can use
 
-A g1t agent works with a token limited to its own repository and to these
-tools: `get_repo`, `list_issues`, `get_issue`, `list_labels`,
-`create_issue`, `add_comment`, `list_pull_requests`, `get_pull_request`,
-`get_pull_request_changes`, `read_session`, `get_merge_queue`,
-`list_events`, `take_messages`, `message_agent`, `answer_message`, `remember`,
-`recall` and `get_context`.
-`tools/list` shows such a token only the tools it may use.
+A g1t agent works with a [run credential](/guides/g1t-agents/#credentials):
+a token bound to its run and its own repository, acting as `g1t-agent` on
+behalf of the person who started the work, and only while that person is
+still a member of the workspace. Which tools it may use depends on the kind
+of run.
+
+| Run | Tools |
+| --- | --- |
+| Implement, revise, answer | `get_repo`, `list_issues`, `get_issue`, `list_labels`, `list_pull_requests`, `get_pull_request`, `get_pull_request_changes`, `read_session`, `get_merge_queue`, `list_events`, `recall`, `search_context`, `get_entity`, `list_workflows`, `list_workflow_runs`, `get_workflow_run`, `get_job_logs`, and `create_issue`, `add_comment`, `take_messages`, `remember`, `message_agent`, `answer_message`, `get_context` |
+| Review | The same reading tools, and `add_comment`, `review_pull_request`, `get_context` |
+| Plan | The same reading tools, and `create_issue`, `get_context` |
+| Catch up | The reading tools only |
+
+No agent's token can use the tools for settings, members, tokens, billing,
+integrations, webhooks, secrets and variables, or workflows' controls, nor
+`merge_pull_request`, `assign_issue`, `plan_work`, `apply_plan`,
+`import_issue`, `create_repo` or `create_workspace`. Every repository it
+names must be its own. `tools/list` shows such a token only the tools it
+may use; a call to any other is refused with the rule that refused it, and
+recorded in the workspace's [audit log](/guides/audit-log/), as is every
+call it makes.

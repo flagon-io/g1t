@@ -29,7 +29,34 @@ export type ModelAccess = {
   trial: Trial | null;
 };
 
+/**
+ * The files every g1t agent run in a repository reads as the repository's
+ * instructions, as they are on its default branch.
+ */
+export type RepoInstructions = {
+  branch: string;
+  /** Null when the repository has no commits yet. */
+  commit: string | null;
+  files: {
+    path: string;
+    /** `root` is read by every run, `directory` by runs that touch files under it, `review` by reviews. */
+    role: "root" | "directory" | "review";
+    text: string;
+    /** Longer than agents are given; they get the start of it. */
+    truncated: boolean;
+    lastChanged: { commit: string; message: string; author: string; at: string } | null;
+  }[];
+  /** How much of each file, and of all of them, an agent is given. */
+  limits: { fileChars: number; totalChars: number };
+};
+
 export interface RunnerApi {
+  /**
+   * The repository's instructions for agents (`AGENTS.md`, `CLAUDE.md`,
+   * `.g1t/review.md`), as they are on its default branch: what every g1t
+   * agent run there reads. Whoever can see the repository may ask.
+   */
+  instructions(viewer: Viewer, repo: RepoPath): Promise<Result<RepoInstructions>>;
   /** How `workspace`'s agents would reach a model now. */
   modelAccess(workspace: string): Promise<ModelAccess>;
   /**

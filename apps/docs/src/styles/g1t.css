@@ -116,9 +116,11 @@ site-search button[data-open-modal]:hover {
 	background: var(--g1t-surface);
 	color: var(--g1t-fg);
 }
-/* The current page: brighter text and a lavender mark, not a filled bar. */
+/* The current page: brighter text and a lavender mark, not a filled bar.
+   Square on the mark's side, so the mark is a straight line. */
 .sidebar-content a[aria-current='page'],
 .sidebar-content a[aria-current='page']:hover {
+	border-radius: 0 0.375rem 0.375rem 0;
 	background: var(--g1t-surface);
 	color: var(--g1t-fg);
 	font-weight: 500;

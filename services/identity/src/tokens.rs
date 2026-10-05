@@ -93,21 +93,22 @@ impl Identity {
         else {
             return Ok(None);
         };
-        // An agent's token: g1t-agent, a member of its repository's
-        // workspace, and only for what its scope lists.
+        // An agent's token: g1t-agent on behalf of the person it was made
+        // for, in its repository's workspace while they belong to it, and
+        // only for what its scope lists. See run_credentials.rs.
         if let Some(scope) = presented
             .agent_scope
             .as_deref()
             .and_then(|scope| serde_json::from_str::<AgentScope>(scope).ok())
         {
-            return Ok(Some(User {
-                id: AGENT_ID.to_owned(),
-                username: AGENT_NAME.to_owned(),
-                kind: PrincipalKind::Agent,
-                verified: true,
-                workspaces: vec![Membership::member(scope.repo.namespace)],
-                ..User::default()
-            }));
+            return self
+                .agent_principal(
+                    &presented.id,
+                    presented.user_id.as_deref(),
+                    presented.workspace_id.as_deref(),
+                    scope,
+                )
+                .await;
         }
         let viewer = match (&presented.user_id, &presented.workspace_id) {
             (Some(user_id), _) => {
@@ -129,7 +130,7 @@ impl Identity {
 
     /// A workspace as the actor behind one of its own tokens. It can do
     /// what a member can, in that workspace only.
-    async fn workspace_principal(&self, workspace_id: &str) -> Result<Viewer> {
+    pub(crate) async fn workspace_principal(&self, workspace_id: &str) -> Result<Viewer> {
         let workspace = self
             .db
             .prepare("SELECT id, slug FROM workspaces WHERE id = ?")

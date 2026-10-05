@@ -147,6 +147,13 @@ impl Progress {
         self.send(json!({ "costUsd": cost_usd, "turns": turns }));
     }
 
+    /// Ends the run as stopped because it reached a cap of its guardrails
+    /// (guard.rs): `budget` or `time`.
+    pub fn halt(&mut self, reason: &str, message: &str) {
+        self.flush();
+        self.send(json!({ "halt": reason, "error": message }));
+    }
+
     /// Whether a person stopped the run.
     #[allow(dead_code)]
     pub fn stopped(&self) -> bool {

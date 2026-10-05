@@ -27,7 +27,9 @@
 		{ "binding": "WEBHOOKS", "service": "g1t-webhooks" },
 		{ "binding": "ACTIONS", "service": "g1t-actions" },
 		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
-		{ "binding": "PROJECTS", "service": "g1t-projects" }
+		{ "binding": "PROJECTS", "service": "g1t-projects" },
+		{ "binding": "SECURITY", "service": "g1t-security" },
+		{ "binding": "CONTEXT", "service": "g1t-context" }
 	],
 	"observability": { "enabled": true },
 	"upload_source_maps": true

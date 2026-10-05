@@ -251,7 +251,7 @@ function page(operation, all) {
 		out.push(
 			'## Body parameters',
 			'',
-			'Send a JSON object. Names are `snake_case`; the `camelCase` spelling is accepted too.',
+			'Send a JSON object. Names are `snake_case`, as in responses; the `camelCase` spelling is accepted too.',
 			'',
 			table(['Name', 'Type', 'Required', 'Description'], propertyRows(body)),
 			'',

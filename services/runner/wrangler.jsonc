@@ -32,7 +32,9 @@
 		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" },
 		{ "binding": "ACTIONS", "service": "g1t-actions" },
 		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
-		{ "binding": "PROJECTS", "service": "g1t-projects" }
+		{ "binding": "PROJECTS", "service": "g1t-projects" },
+		// The context hub: the Context section every agent run starts with.
+		{ "binding": "CONTEXT", "service": "g1t-context" }
 	],
 	// A sweep for lifecycle steps whose trigger was missed or whose sandbox
 	// died before reporting.
@@ -57,7 +59,11 @@
 		// Set to a Cloudflare AI Gateway id to route model traffic through it.
 		// Used only when MODELS_URL is unset.
 		"AI_GATEWAY_ID": "g1t",
-		"CLOUDFLARE_ACCOUNT_ID": "1e6f2cffa3f445920836e8ebe446bb58"
+		"CLOUDFLARE_ACCOUNT_ID": "1e6f2cffa3f445920836e8ebe446bb58",
+		// Guardrails' network list is enforced by starting sandboxes without
+		// internet and passing their HTTP(S) through this Worker. "off" opens
+		// every sandbox's network again, whatever its guardrails say.
+		"EGRESS": "enforce"
 	},
 	"observability": { "enabled": true }
 }

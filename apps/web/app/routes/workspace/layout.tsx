@@ -43,6 +43,18 @@ const PAGES: Record<string, { title: string; about: string }> = {
     title: "Workspace memory",
     about: "What holds across all of the workspace's projects, given to every agent in every one of them, beside each project's own memory.",
   },
+  context: {
+    title: "Context",
+    about: "Everything the workspace builds and runs, and what it knows: a catalog built from its projects, memory with a review queue, one search over all of it, and a scorecard for each project.",
+  },
+  audit: {
+    title: "Audit log",
+    about: "Every action agents took with their run credentials, and every change people and tokens made: by whom, on whose behalf, to what, and whether it was allowed.",
+  },
+  guardrails: {
+    title: "Guardrails",
+    about: "What agents may reach, run, spend and take in every project's sandboxes. Each project can override these under its settings.",
+  },
   webhooks: {
     title: "Webhooks",
     about: "Every repository's events, sent to your own addresses as they happen. A repository can also have its own, under its settings.",

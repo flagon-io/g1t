@@ -15,6 +15,9 @@ declare global {
       ACTIONS: ServiceBinding;
       DEPLOYMENTS: ServiceBinding;
       PROJECTS: ServiceBinding;
+      SECURITY: ServiceBinding;
+      /** The context hub: catalog, search and scorecards. */
+      CONTEXT: ServiceBinding;
       BLOBS: KVNamespace;
       /** Uploaded avatars by SHA-256, with `{ contentType }`; written by identity. */
       AVATARS: KVNamespace;

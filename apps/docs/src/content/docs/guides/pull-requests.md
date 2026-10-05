@@ -118,8 +118,8 @@ is sent back to resolve it by itself, before it is ready.
 
 | Field | What it is |
 | --- | --- |
-| `checks` | The latest run of the acceptance checks: `status`, `headCommit`, `error`, and `results`, each with `command`, `passed`, `exitCode`, `output` and `durationMs`. |
-| `earlierChecks` | The runs before it, newest first, without their output. |
+| `checks` | The latest run of the acceptance checks: `status`, `head_commit`, `error`, and `results`, each with `command`, `passed`, `exit_code`, `output` and `duration_ms`. |
+| `earlier_checks` | The runs before it, newest first, without their output. |
 | `statuses` | What each workflow run said about its head. |
 | `mergeable` | `clean`, `conflicting`, `checking` or `unknown`. |
 | `conflicts` | When conflicting, the files that conflict. |

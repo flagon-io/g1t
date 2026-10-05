@@ -26,11 +26,14 @@
 mod actions;
 mod checks;
 mod deploy;
+mod guard;
 mod harness;
+mod learned;
 mod mergecheck;
 mod plan;
 mod progress;
 mod queue;
+mod reply;
 mod report;
 mod review;
 mod revise;
@@ -146,7 +149,8 @@ pub(crate) fn run(reporter: &mut Reporter) -> Result<String> {
         }
     }
 
-    let summary = harness::run_claude(workdir, &prompt, reporter)?;
+    // The agent is asked what it learned; that goes to memory, not the summary.
+    let summary = learned::finish(harness::run_claude(workdir, &learned::ask(&prompt), reporter)?);
 
     // Commit whatever the agent left in the working tree.
     if !git(workdir, &["status", "--porcelain"])?.is_empty() {
@@ -182,6 +186,13 @@ pub(crate) fn run(reporter: &mut Reporter) -> Result<String> {
 }
 
 fn main() {
+    // A guarded sandbox's HTTPS is re-signed on its way out: trust that
+    // before anything is fetched. The guard hook runs before every tool
+    // call, so it skips this.
+    if std::env::var("MODE").as_deref() == Ok("guard") {
+        std::process::exit(guard::hook_main());
+    }
+    guard::trust_egress_ca();
     // The same image does the other jobs a sandbox is started for.
     match std::env::var("MODE").as_deref() {
         Ok("actions") => std::process::exit(actions::main()),
@@ -192,6 +203,7 @@ fn main() {
         Ok("revise") => std::process::exit(revise::main()),
         Ok("answer") => std::process::exit(revise::answer()),
         Ok("plan") => std::process::exit(plan::main()),
+        Ok("reply") => std::process::exit(reply::main()),
         Ok("queue") => std::process::exit(queue::main()),
         Ok("mergecheck") => std::process::exit(mergecheck::main()),
         Ok("steer") => std::process::exit(steer::main()),
@@ -214,6 +226,13 @@ fn main() {
         }
         Err(error) => {
             eprintln!("g1t-runner: {error:#}");
+            // Stopped at a cap: like a person's stop, the pull request is
+            // left open for a person, not closed.
+            if guard::is_halt(&error) {
+                reporter.record(Entry::new("note", &format!("g1t stopped the agent: {error:#}.")));
+                reporter.flush();
+                std::process::exit(1);
+            }
             reporter.record(Entry::new("note", &format!("The run failed: {error:#}")));
             reporter.flush();
             let _ = reporter.close();

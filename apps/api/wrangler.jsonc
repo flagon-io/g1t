@@ -23,7 +23,9 @@
 		{ "binding": "WEBHOOKS", "service": "g1t-webhooks" },
 		{ "binding": "ACTIONS", "service": "g1t-actions" },
 		// Builds of deployments report through here.
-		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" }
+		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
+		// The context hub: search_context and get_entity.
+		{ "binding": "CONTEXT", "service": "g1t-context" }
 	],
 	// GitHub Actions artifacts and cache, in chunks, with KV's own expiry.
 	// (Moves to R2 once R2 is enabled on the account.)

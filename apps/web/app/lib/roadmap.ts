@@ -127,14 +127,14 @@ export const ROADMAP: RoadmapItem[] = [
     title: "Playbooks",
     section: "Agents",
     summary: "How agents should work here: conventions, commands and checks.",
-    why: "Every project has its own way of doing things. A playbook tells every agent how this one builds, tests, names things and what it must never touch, kept with the code and versioned with it.",
+    why: "Every project has its own way of doing things. Today every agent run already reads the repository's AGENTS.md and CLAUDE.md, at the root and in the directories it touches, and reviews read .g1t/review.md, all from the default branch. Playbooks build on those files with structure g1t can act on, not just read.",
     plans: [
       "Instructions per kind of work: fixes, features, reviews, upgrades",
-      "Commands to build and test, run before every change",
-      "Paths agents may not touch without a person",
-      "Learned from reviews: what people corrected becomes a rule",
+      "Commands to build and test that g1t runs before every change, not just tells the agent about",
+      "Paths agents may not touch without a person, enforced on push",
+      "Learned from reviews: what people corrected becomes a proposed rule",
     ],
-    today: { label: "Memory", path: "memory" },
+    today: { label: "Instructions, on Agents", path: "agents" },
   },
 
   // --- Deployments ----------------------------------------------------------
@@ -180,30 +180,8 @@ export const ROADMAP: RoadmapItem[] = [
   },
 
   // --- Security -------------------------------------------------------------
-  {
-    key: "security",
-    title: "Overview",
-    section: "Security",
-    summary: "Every security finding in one place, with the agent fixing each.",
-    why: "Findings are worth something only when they are fixed. Each one here becomes an issue an agent takes, tested and landed through the merge queue.",
-    plans: ["Findings by severity across scanners", "Each fixed by an agent through the queue", "A security policy and how to report to you"],
-  },
-  {
-    key: "secret-scanning",
-    title: "Secret scanning",
-    section: "Security",
-    summary: "Keys and tokens found in the code or its history, revoked and removed.",
-    why: "A leaked key is an incident. g1t blocks pushes that carry one, finds old ones in history, and helps revoke them.",
-    plans: ["Push protection for known key formats", "History scanned for leaks", "Revocation with the provider, where it allows"],
-  },
-  {
-    key: "dependency-updates",
-    title: "Dependency updates",
-    section: "Security",
-    summary: "Outdated and vulnerable packages, updated by agents.",
-    why: "Updates that land instead of piling up: the agent upgrades the package and fixes whatever the upgrade breaks, in the same pull request.",
-    plans: ["Vulnerable packages first, then outdated ones", "Breaking changes fixed in the same pull request", "Grouped, scheduled and landed through the queue"],
-  },
+  // The overview, secret scanning and dependency upkeep are built: see
+  // routes/repo/security.tsx.
   {
     key: "code-scanning",
     title: "Code scanning",

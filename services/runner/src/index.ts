@@ -24,6 +24,9 @@ import {
   type ContextItem,
   type ModelAccess,
   type ModelSession,
+  type MentionJob,
+  type RepoInstructions,
+  mentionsClient,
   billingClient,
   fail,
   identityClient,
@@ -34,6 +37,24 @@ import {
 } from "@g1t/contracts";
 
 import { type AgentRoutes, type AgentTask, canReachModel, modelEnv } from "./model-env";
+import { hubContext } from "./hub";
+import { holdCredentials, pushGrant, remotePath, revokeCredentials, runCredential } from "./credentials";
+import { buildMentionPrompt, describeThread, handleMention, planMention } from "./mentions";
+import { instructionsFor, repoInstructions, withBlock } from "./repo-instructions";
+import {
+  ALARM_GRACE_SECONDS,
+  type RunGuard,
+  egress,
+  egressHosts,
+  guardFor,
+  harnessEnv,
+  newlyBlocked,
+  reportRun,
+  timeCapMessage,
+} from "./guard";
+
+// Outbound interception, which network guardrails use, needs this exported.
+export { ContainerProxy } from "@cloudflare/containers";
 
 export interface RunnerEnv {
   SANDBOX: DurableObjectNamespace<AttemptSandbox>;
@@ -48,6 +69,8 @@ export interface RunnerEnv {
   DEPLOYMENTS: ServiceBinding;
   /** What a repository's projects use and what uses them, for agents. */
   PROJECTS: ServiceBinding;
+  /** The context hub: the Context section every agent run starts with. */
+  CONTEXT?: ServiceBinding;
   /**
    * The model proxy, which every sandbox's model requests go through with a
    * token for their run, so that no sandbox holds a key. When unset,
@@ -82,6 +105,12 @@ export interface RunnerEnv {
   CLOUDFLARE_ACCOUNT_ID: string;
   /** Secret. Authenticates to the gateway, if it requires it. */
   AI_GATEWAY_TOKEN?: string;
+  /**
+   * `off` starts every sandbox with an open network whatever its
+   * guardrails say: a switch for the operator, should egress through the
+   * Worker misbehave. Anything else enforces them.
+   */
+  EGRESS?: string;
 }
 
 /** A run that takes longer than this has its token expire under it. */
@@ -180,19 +209,45 @@ const MERGECHECK_TOKEN_TTL_SECONDS = 10 * 60;
  * it and cleans up if it dies without reporting.
  */
 export class AttemptSandbox extends Container<RunnerEnv> {
-  sleepAfter = "45m";
+  // Past the longest time cap (implement, 90 minutes) and its alarm, so a
+  // long run is never put to sleep before its own cap ends it. A finished
+  // run's process exits and stops the sandbox well before this.
+  sleepAfter = "100m";
+  // A guarded sandbox's HTTPS goes through `egress` too (guard.ts).
+  interceptHttps = true;
+  static {
+    // Assigned, not declared: a class field would hide the setter that
+    // registers the handler with the containers library.
+    AttemptSandbox.outboundHandlers = { egress };
+  }
 
   async run(request: RunRequest): Promise<void> {
     const { envVars, meter, track, ...run } = request;
+    // A tracked run gets its project's guardrails; no sandbox for one
+    // starts without them.
+    const guard = track ? await guardFor(this.env.WORK, track.repo, track.kind) : null;
     await this.ctx.storage.put("run", run);
     if (meter) await this.ctx.storage.put("meter", { ...meter, started: Date.now() });
-    const tracked = track ? await this.openRun(track, envVars) : null;
+    const tracked = track ? await this.openRun(track, envVars, guard) : null;
+    // Its credentials are tied to the run, and revoked when it stops.
+    await holdCredentials(this.env.IDENTITY, this.ctx.storage, envVars, tracked?.runId ?? null);
     try {
+      const vars = tracked ? { ...envVars, AGENT_RUN: tracked.runId, AGENT_RUN_TOKEN: tracked.token } : envVars;
+      const restricted = (guard?.policy.restrictNetwork ?? false) && this.env.EGRESS !== "off";
+      if (guard && restricted) {
+        this.enableInternet = false;
+        await this.setOutboundHandler("egress", { hosts: egressHosts(guard, this.env, vars) });
+      }
       await this.start({
-        envVars: tracked ? { ...envVars, AGENT_RUN: tracked.runId, AGENT_RUN_TOKEN: tracked.token } : envVars,
-        enableInternet: true,
+        envVars: guard ? { ...vars, ...harnessEnv(guard, vars, restricted) } : vars,
+        enableInternet: !restricted,
       });
+      if (guard) {
+        await this.ctx.storage.put("timeCap", guard.minutes);
+        await this.schedule(guard.minutes * 60 + ALARM_GRACE_SECONDS, "timeUp");
+      }
     } catch (error) {
+      await revokeCredentials(this.env.IDENTITY, this.ctx.storage);
       if (tracked) await this.closeRun("failed", `The sandbox could not start: ${String(error)}`);
       throw error;
     }
@@ -202,12 +257,14 @@ export class AttemptSandbox extends Container<RunnerEnv> {
    * Records the run, which the sandbox then reports its steps to. Never
    * stops the sandbox from starting: without a record it just goes unseen.
    */
-  private async openRun(track: Track, envVars: Record<string, string>): Promise<TrackedRun | null> {
+  private async openRun(track: Track, envVars: Record<string, string>, guard: RunGuard | null): Promise<TrackedRun | null> {
     const opened = await agentsClient(this.env.WORK)
       .openRun({
         ...track,
         model: envVars.AGENT_MODEL_NAME ?? envVars.ANTHROPIC_MODEL ?? null,
         sandbox: this.ctx.id.toString(),
+        budgetUsd: guard?.policy.budgetUsd ?? null,
+        timeCapMinutes: guard?.minutes ?? null,
       })
       .catch((error: unknown) => ({ ok: false as const, error: { message: String(error) } }));
     if (!opened.ok) {
@@ -216,6 +273,25 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     }
     await this.ctx.storage.put("agentRun", opened.value);
     return opened.value;
+  }
+
+  /** A host this sandbox was refused, said once as a step of its run. */
+  async noteBlocked(host: string): Promise<void> {
+    const tracked = await this.ctx.storage.get<TrackedRun>("agentRun");
+    if (!tracked) return;
+    const noted = newlyBlocked((await this.ctx.storage.get<string[]>("blocked")) ?? [], host);
+    if (!noted) return;
+    await this.ctx.storage.put("blocked", noted.seen);
+    await reportRun(this.env.WORK, tracked, { steps: [noted.step] });
+  }
+
+  /** The run's time cap has passed: stop it, as stopped for time. */
+  async timeUp(): Promise<void> {
+    const tracked = await this.ctx.storage.get<TrackedRun>("agentRun");
+    if (!tracked) return;
+    const minutes = (await this.ctx.storage.get<number>("timeCap")) ?? 0;
+    await reportRun(this.env.WORK, tracked, { halt: "time", error: timeCapMessage(minutes) });
+    await this.destroy().catch((error: unknown) => console.log("sandbox not destroyed at its time cap", String(error)));
   }
 
   /**
@@ -251,6 +327,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
   }
 
   override async onStop({ exitCode, reason }: StopParams): Promise<void> {
+    await revokeCredentials(this.env.IDENTITY, this.ctx.storage);
     await this.meterStop();
     const ended = await this.closeRun(
       exitCode === 0 ? "succeeded" : "failed",
@@ -399,6 +476,9 @@ const AGENT_OPERATIONS = [
   "answer_message",
   // Tickets and alerts outside g1t, through the workspace's integrations.
   "get_context",
+  // The context hub: one search across the workspace, and its catalog.
+  "search_context",
+  "get_entity",
   // GitHub Actions: how the workflows went on its change, and why.
   "list_workflows",
   "list_workflow_runs",
@@ -679,7 +759,7 @@ export default class RunnerService
       integrationsClient(this.env.INTEGRATIONS)
         .references(repo.namespace, text)
         .catch((): ContextItem[] => []),
-      this.projectAndMemory(repo),
+      this.projectAndMemory(repo, text),
     ]);
     if (items.length === 0) return projects;
     if (number > 0) {
@@ -694,12 +774,14 @@ export default class RunnerService
   }
 
   /** The project's surroundings and what is remembered about it, for an agent. */
-  private async projectAndMemory(repo: RepoPath): Promise<string | null> {
-    const [projects, memory] = await Promise.all([
+  private async projectAndMemory(repo: RepoPath, task = ""): Promise<string | null> {
+    const [projects, memory, hub] = await Promise.all([
       this.projectContext(repo).catch(() => null),
       this.memoryContext(repo),
+      // The context hub: catalog, relevant memory, recent decisions (hub.ts).
+      hubContext(this.env, repo, task),
     ]);
-    return [projects, memory].filter(Boolean).join("\n\n") || null;
+    return [projects, memory, hub].filter(Boolean).join("\n\n") || null;
   }
 
   /**
@@ -716,8 +798,8 @@ export default class RunnerService
 
   /** `prompt` with what is remembered added. */
   private async withMemory(prompt: string, repo: RepoPath): Promise<string> {
-    const memory = await this.memoryContext(repo);
-    return memory ? `${prompt}\n\n${memory}` : prompt;
+    const [memory, hub] = await Promise.all([this.memoryContext(repo), hubContext(this.env, repo, prompt)]);
+    return [prompt, memory, hub].filter(Boolean).join("\n\n");
   }
 
   /**
@@ -880,11 +962,14 @@ export default class RunnerService
    */
   private async startDeploy(job: DeployJob): Promise<Result<true>> {
     // To read the commit, which may be private, as whoever pushed it.
-    const { token } = await identityClient(this.env.IDENTITY).createAccessToken(
-      job.actor,
-      `Deploying ${job.source.namespace}/${job.source.name}`,
-      DEPLOY_TOKEN_TTL_SECONDS,
-    );
+    const token = await runCredential(this.env.IDENTITY, {
+      onBehalfOf: job.actor,
+      repo: job.source,
+      kind: "deploy",
+      use: "runner",
+      read: [job.source],
+      ttlSeconds: DEPLOY_TOKEN_TTL_SECONDS,
+    });
     const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`deploy:${job.deployId}`));
     try {
       await sandbox.run({
@@ -989,6 +1074,14 @@ export default class RunnerService
         // the other sends the agent back.
         case "comment.created":
           if (event.data.pullId && event.data.verdict) await this.advance(event.data.pullId);
+          // Someone mentioned @g1t-agent: do what they asked, once.
+          await this.mention(event.data.commentId);
+          break;
+        // An issue given the label the repository's rule names is queued
+        // for an agent: start it if there is room.
+        case "issue.opened":
+        case "issue.updated":
+          await this.startReady(event.data.repoId);
           break;
         // Someone merged a pull request that is behind: bring it up to
         // date, and the work service lands it when the push arrives.
@@ -1157,11 +1250,17 @@ export default class RunnerService
 
   private async startQueueRun(job: QueueJob): Promise<void> {
     // To read the changes and push the tested state, as a member.
-    const { token } = await identityClient(this.env.IDENTITY).createAccessToken(
-      job.actor,
-      `Merge queue for ${job.repo.namespace}/${job.repo.name}`,
-      CHECKS_TOKEN_TTL_SECONDS,
-    );
+    // Reads each queued change; pushes only the queue's own branch.
+    const token = await runCredential(this.env.IDENTITY, {
+      onBehalfOf: job.actor,
+      repo: job.repo,
+      kind: "queue",
+      use: "runner",
+      number: job.stack.at(-1)?.number ?? null,
+      read: job.stack.map((item) => item.source),
+      push: [{ repo: job.repo, branch: job.branch }],
+      ttlSeconds: CHECKS_TOKEN_TTL_SECONDS,
+    });
     const remote = (path: RepoPath) => `https://g1t.sh/${path.namespace}/${path.name}.git`;
     const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`queue-${job.entryId}-${job.baseCommit}`));
     await sandbox.run({
@@ -1208,13 +1307,23 @@ export default class RunnerService
   }
 
   /** A token for g1t's own tools, for an agent working for `actor` in `repo`. */
-  private async agentToken(actor: User, repo: RepoPath): Promise<string> {
-    const { token } = await identityClient(this.env.IDENTITY).createAgentToken(
-      actor,
-      { repo, operations: AGENT_OPERATIONS },
-      TOKEN_TTL_SECONDS,
-    );
-    return token;
+  private async agentToken(
+    actor: User,
+    repo: RepoPath,
+    kind: "implement" | "revise" | "answer" = "implement",
+    number: number | null = null,
+  ): Promise<string> {
+    // A run credential for the agent's tools: what this kind of run may do
+    // through MCP, in `repo` only, on `actor`'s behalf. AGENT_OPERATIONS is
+    // what identity grants for these kinds; see credentials.rs.
+    return runCredential(this.env.IDENTITY, {
+      onBehalfOf: actor,
+      repo,
+      kind,
+      use: "tools",
+      number,
+      ttlSeconds: TOKEN_TTL_SECONDS,
+    });
   }
 
   /**
@@ -1231,11 +1340,16 @@ export default class RunnerService
       if (!this.modelsReachable() || !(await this.workspaceAllowed(job.repo.namespace))) {
         throw new Error("g1t agents are not enabled for this workspace.");
       }
-      const { token } = await identityClient(this.env.IDENTITY).createAccessToken(
-        job.author,
-        `g1t agent answering on ${job.repo.namespace}/${job.repo.name}#${job.number}`,
-        TOKEN_TTL_SECONDS,
-      );
+      const token = await runCredential(this.env.IDENTITY, {
+        onBehalfOf: job.author,
+        repo: job.repo,
+        kind: "answer",
+        use: "runner",
+        number: job.number,
+        read: [job.repo, job.source],
+        push: [pushGrant(job.repo, job.source, job.branch ?? job.defaultBranch)],
+        ttlSeconds: TOKEN_TTL_SECONDS,
+      });
       const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`answer-${job.pullId}-${messages[0]?.id ?? Date.now()}`));
       await sandbox.run({
         kind: "answer",
@@ -1253,9 +1367,12 @@ export default class RunnerService
           PULL_NUMBER: String(job.number),
           GIT_REMOTE: `https://g1t.sh/${job.source.namespace}/${job.source.name}.git`,
           COMMIT_MESSAGE: `Take on work handed over to #${job.number}`,
-          G1T_AGENT_TOKEN: await this.agentToken(job.author, job.repo),
+          G1T_AGENT_TOKEN: await this.agentToken(job.author, job.repo, "answer", job.number),
           PROMPT: await this.withMemory(
-            buildAnswerPrompt(job, messages, await this.inFlight(job.author, job.repo, job.number)),
+            withBlock(
+              buildAnswerPrompt(job, messages, await this.inFlight(job.author, job.repo, job.number)),
+              await this.guidance("answer", job.author, job.repo, job.number, job.title),
+            ),
             job.repo,
           ),
           ...(await this.modelEnvOrThrow("implement", job.repo, job.number)),
@@ -1272,19 +1389,25 @@ export default class RunnerService
     }
   }
 
-  private async startRevision(job: LifecycleJob): Promise<void> {
-    const { token } = await identityClient(this.env.IDENTITY).createAccessToken(
-      job.author,
-      `g1t agent revising ${job.repo.namespace}/${job.repo.name}#${job.number}`,
-      TOKEN_TTL_SECONDS,
-    );
+  /** `startedBy` is set when a person sent it back, by mentioning it. */
+  private async startRevision(job: LifecycleJob, startedBy?: string): Promise<void> {
+    const token = await runCredential(this.env.IDENTITY, {
+      onBehalfOf: job.author,
+      repo: job.repo,
+      kind: "revise",
+      use: "runner",
+      number: job.number,
+      read: [job.repo, job.source],
+      push: [pushGrant(job.repo, job.source, job.branch ?? job.defaultBranch)],
+      ttlSeconds: TOKEN_TTL_SECONDS,
+    });
     const sandbox = this.env.SANDBOX.get(
       this.env.SANDBOX.idFromName(`revise-${job.pullId}-${job.round}`),
     );
     await sandbox.run({
       kind: "revise",
       pullId: job.pullId,
-      track: { actor: job.author, repo: job.repo, kind: "revise", number: job.number, pullId: job.pullId },
+      track: { actor: job.author, repo: job.repo, kind: "revise", number: job.number, pullId: job.pullId, startedBy: startedBy ?? null },
       meter: meter(job.repo, `Agent revising ${job.repo.namespace}/${job.repo.name}#${job.number}`),
       envVars: {
         MODE: "revise",
@@ -1295,15 +1418,18 @@ export default class RunnerService
         PULL_NUMBER: String(job.number),
         GIT_REMOTE: `https://g1t.sh/${job.source.namespace}/${job.source.name}.git`,
         COMMIT_MESSAGE: `Address feedback on #${job.number}`,
-        G1T_AGENT_TOKEN: await this.agentToken(job.author, job.repo),
+        G1T_AGENT_TOKEN: await this.agentToken(job.author, job.repo, "revise", job.number),
         // Revised from where the branch it will land on is now.
         UPSTREAM_REMOTE: `https://g1t.sh/${job.repo.namespace}/${job.repo.name}.git`,
         UPSTREAM_BRANCH: job.defaultBranch,
         PROMPT: await this.withMemory(
-          buildRevisionPrompt(
-            job,
-            await this.inFlight(job.author, job.repo, job.number),
-            await this.peopleSaid(job.author, job.repo, job.number),
+          withBlock(
+            buildRevisionPrompt(
+              job,
+              await this.inFlight(job.author, job.repo, job.number),
+              await this.peopleSaid(job.author, job.repo, job.number),
+            ),
+            await this.guidance("revise", job.author, job.repo, job.number, job.feedback),
           ),
           job.repo,
         ),
@@ -1328,11 +1454,15 @@ export default class RunnerService
       return false;
     }
     // To read the commit, which may be private, as the one who pushed it.
-    const { token } = await identityClient(this.env.IDENTITY).createAccessToken(
-      job.author,
-      `Checks on ${job.repo.namespace}/${job.repo.name}#${job.number}`,
-      CHECKS_TOKEN_TTL_SECONDS,
-    );
+    const token = await runCredential(this.env.IDENTITY, {
+      onBehalfOf: job.author,
+      repo: job.repo,
+      kind: "checks",
+      use: "runner",
+      number: job.number,
+      read: [job.source],
+      ttlSeconds: CHECKS_TOKEN_TTL_SECONDS,
+    });
     const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(job.runId));
     await sandbox.run({
       kind: "checks",
@@ -1371,11 +1501,15 @@ export default class RunnerService
         throw new Error("This workspace cannot use g1t's sandboxes.");
       }
       // To read the change, which may be private, as whoever opened it.
-      const { token } = await identityClient(this.env.IDENTITY).createAccessToken(
-        job.author,
-        `Merge check of ${job.repo.namespace}/${job.repo.name}#${job.number}`,
-        MERGECHECK_TOKEN_TTL_SECONDS,
-      );
+      const token = await runCredential(this.env.IDENTITY, {
+        onBehalfOf: job.author,
+        repo: job.repo,
+        kind: "mergecheck",
+        use: "runner",
+        number: job.number,
+        read: [job.repo, job.source],
+        ttlSeconds: MERGECHECK_TOKEN_TTL_SECONDS,
+      });
       const remote = (path: RepoPath) => `https://g1t.sh/${path.namespace}/${path.name}.git`;
       // One sandbox per pair of commits: asking twice starts nothing twice.
       const sandbox = this.env.SANDBOX.get(
@@ -1495,11 +1629,18 @@ export default class RunnerService
     pullId?: string;
   }): Promise<void> {
     const { actor, repo, number } = update;
-    const { token } = await identityClient(this.env.IDENTITY).createAccessToken(
-      actor,
-      `Catching up ${repo.namespace}/${repo.name}#${number}`,
-      TOKEN_TTL_SECONDS,
-    );
+    // Pushes only the pull request's own branch, or anywhere in its fork.
+    const source = remotePath(update.remote) ?? repo;
+    const token = await runCredential(this.env.IDENTITY, {
+      onBehalfOf: actor,
+      repo,
+      kind: "update",
+      use: "runner",
+      number,
+      read: [repo, source],
+      push: [pushGrant(repo, source, update.branch)],
+      ttlSeconds: TOKEN_TTL_SECONDS,
+    });
     const sandbox = this.env.SANDBOX.get(
       this.env.SANDBOX.idFromName(`update-${repo.namespace}-${repo.name}-${number}-${Date.now()}`),
     );
@@ -1527,7 +1668,10 @@ export default class RunnerService
         GIT_BRANCH: update.branch,
         UPSTREAM_REMOTE: `https://g1t.sh/${repo.namespace}/${repo.name}.git`,
         UPSTREAM_BRANCH: update.defaultBranch,
-        PROMPT: await this.withMemory(update.about.filter(Boolean).join("\n\n"), repo),
+        PROMPT: await this.withMemory(
+          withBlock(update.about.filter(Boolean).join("\n\n"), await this.guidance("update", actor, repo, number)),
+          repo,
+        ),
         ...(await this.modelEnvOrThrow("update", repo, number)),
       },
     });
@@ -1552,11 +1696,16 @@ export default class RunnerService
     const job = started.value;
     const { repo, number } = job;
     // To read the commit, which may be private, as the one who pushed it.
-    const { token } = await identityClient(this.env.IDENTITY).createAccessToken(
-      job.author,
-      `Review of ${repo.namespace}/${repo.name}#${number}`,
-      CHECKS_TOKEN_TTL_SECONDS,
-    );
+    // Reads the change and where it will land; pushes nothing.
+    const token = await runCredential(this.env.IDENTITY, {
+      onBehalfOf: job.author,
+      repo,
+      kind: "review",
+      use: "runner",
+      number,
+      read: [repo, job.source],
+      ttlSeconds: CHECKS_TOKEN_TTL_SECONDS,
+    });
     const about = [
       `Pull request #${job.number}: ${job.title}`,
       job.description,
@@ -1589,7 +1738,10 @@ export default class RunnerService
         GIT_COMMIT: job.commit,
         UPSTREAM_REMOTE: `https://g1t.sh/${job.repo.namespace}/${job.repo.name}.git`,
         UPSTREAM_BRANCH: job.defaultBranch,
-        PROMPT: await this.withMemory(about.filter(Boolean).join("\n\n"), repo),
+        PROMPT: await this.withMemory(
+          withBlock(about.filter(Boolean).join("\n\n"), await this.guidance("review", job.author, repo, number, job.description)),
+          repo,
+        ),
         ...model.value,
       },
     });
@@ -1632,11 +1784,14 @@ export default class RunnerService
       return model;
     }
     // To read the repository, which may be private, as the one planning.
-    const { token } = await identityClient(this.env.IDENTITY).createAccessToken(
-      actor,
-      `Planning for ${repo.namespace}/${repo.name}`,
-      CHECKS_TOKEN_TTL_SECONDS,
-    );
+    const token = await runCredential(this.env.IDENTITY, {
+      onBehalfOf: actor,
+      repo,
+      kind: "plan",
+      use: "runner",
+      read: [repo],
+      ttlSeconds: CHECKS_TOKEN_TTL_SECONDS,
+    });
     const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(job.planId));
     await sandbox.run({
       kind: "plan",
@@ -1652,7 +1807,13 @@ export default class RunnerService
         G1T_USER: actor.username,
         G1T_TOKEN: token,
         GIT_REMOTE: `https://g1t.sh/${repo.namespace}/${repo.name}.git`,
-        PROMPT: [job.brief, await this.outsideContext(actor, repo, 0, job.brief)].filter(Boolean).join("\n\n"),
+        PROMPT: [
+          job.brief,
+          await this.outsideContext(actor, repo, 0, job.brief),
+          await this.guidance("plan", actor, repo, null, job.brief),
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
         ...model.value,
       },
     });
@@ -1711,13 +1872,20 @@ export default class RunnerService
       return model;
     }
 
-    // The sandbox acts as the person who assigned the issue, through a
-    // token that only lives as long as a run can.
-    const { token } = await identityClient(this.env.IDENTITY).createAccessToken(
-      actor,
-      `g1t agent on ${repo.namespace}/${repo.name}#${pull.number}`,
-      TOKEN_TTL_SECONDS,
-    );
+    // The sandbox acts as g1t-agent on behalf of the person who assigned
+    // the issue, through a credential bound to this run: it reads the
+    // repository, pushes to the pull request's fork only, records the
+    // session and marks this pull request ready, and nothing else.
+    const token = await runCredential(this.env.IDENTITY, {
+      onBehalfOf: actor,
+      repo,
+      kind: "implement",
+      use: "runner",
+      number: pull.number,
+      read: [repo, fork],
+      push: [{ repo: fork, branch: null }],
+      ttlSeconds: TOKEN_TTL_SECONDS,
+    });
     const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(pull.id));
     await sandbox.run({
       kind: "agent",
@@ -1734,17 +1902,149 @@ export default class RunnerService
         PULL_NUMBER: String(pull.number),
         GIT_REMOTE: `https://g1t.sh/${fork.namespace}/${fork.name}.git`,
         COMMIT_MESSAGE: issue.title,
-        G1T_AGENT_TOKEN: await this.agentToken(actor, repo),
+        G1T_AGENT_TOKEN: await this.agentToken(actor, repo, "implement", pull.number),
         PROMPT: buildPrompt(
           issue,
           input.instructions?.trim() ?? "",
           await this.inFlight(actor, repo, pull.number),
           pull.number,
-          await this.outsideContext(actor, repo, pull.number, `${issue.title}\n${issue.body}\n${input.instructions ?? ""}`),
+          [
+            await this.outsideContext(actor, repo, pull.number, `${issue.title}\n${issue.body}\n${input.instructions ?? ""}`),
+            await this.guidance("implement", actor, repo, pull.number, `${issue.title}\n${issue.body}`),
+          ]
+            .filter(Boolean)
+            .join("\n\n") || null,
         ),
         ...model.value,
       },
     });
     return ok(pull);
+  }
+
+  /**
+   * The repository's instructions for agents, for one run's prompt, noted
+   * in the pull request's session when the run is on one.
+   */
+  private guidance(
+    task: Parameters<typeof instructionsFor>[1]["task"],
+    actor: User,
+    repo: RepoPath,
+    pull: number | null,
+    about?: string,
+  ): Promise<string | null> {
+    return instructionsFor(this.env, { task, actor, repo, pull, about, note: pull != null });
+  }
+
+  async instructions(viewer: Viewer, repo: RepoPath): Promise<Result<RepoInstructions>> {
+    return repoInstructions(this.env.REPOS, viewer, repo);
+  }
+
+  /** Acts on a comment's mention of @g1t-agent, if it made one not yet acted on. */
+  private async mention(commentId: string): Promise<void> {
+    const mentions = mentionsClient(this.env.WORK);
+    const job = await mentions.takeMention(commentId).catch(() => null);
+    if (!job) return;
+    await handleMention(job, {
+      mentions,
+      refusal: async (actor, repo) => {
+        const refused = await this.refusal(actor, repo);
+        return refused && !refused.ok ? refused.error.message : null;
+      },
+      assign: (job) => this.run(job.actor, job.repo, job.number),
+      revise: (lifecycle, startedBy) => this.startRevision(lifecycle, startedBy),
+      review: (job) => this.review(job.actor, job.repo, job.number),
+      answer: (job) => this.startReply(job),
+      message: (job) => workClient(this.env.WORK).messageAgent(job.actor, job.repo, job.number, job.body),
+      record: (job, why) => this.recordMention(job, why),
+    });
+  }
+
+  /** A mention that started nothing, recorded as a failed run so it shows with the others. */
+  private async recordMention(job: MentionJob, why: string): Promise<void> {
+    const kinds = { assign: "implement", revise: "revise", message: "revise", review: "review" } as const;
+    const plan = planMention(job).kind;
+    const agents = agentsClient(this.env.WORK);
+    const opened = await agents.openRun({
+      actor: job.actor,
+      repo: job.repo,
+      kind: plan in kinds ? kinds[plan as keyof typeof kinds] : "answer",
+      number: job.number,
+      pullId: job.pull?.id ?? null,
+      title: `Mentioned by ${job.actor.username}`,
+      sandbox: `mention:${job.commentId}`,
+      startedBy: job.actor.username,
+    });
+    if (opened.ok) await agents.closeRun(opened.value.runId, opened.value.token, "failed", why);
+  }
+
+  /**
+   * Answers a question asked of @g1t-agent in a comment, in a sandbox that
+   * reads the code (the default branch, or the pull request's head) and
+   * posts the answer in the thread. It changes nothing.
+   */
+  private async startReply(job: MentionJob): Promise<Result<true>> {
+    const work = workClient(this.env.WORK);
+    let title: string;
+    let body: string;
+    let comments: Comment[];
+    if (job.pull) {
+      const found = await work.getPull(job.repo, job.number, job.actor);
+      if (!found.ok) return found;
+      ({ title } = found.value.pull);
+      body = found.value.pull.body ?? "";
+      comments = found.value.comments;
+    } else {
+      const found = await work.getIssue(job.repo, job.number, job.actor);
+      if (!found.ok) return found;
+      ({ title, body } = found.value.issue);
+      comments = found.value.comments;
+    }
+    const model = await this.modelEnv("implement", job.repo, job.number);
+    if (!model.ok) return model;
+    const source = job.pull?.source ?? job.repo;
+    // Reads the code; pushes nothing. Its answer is posted with its tools.
+    const token = await runCredential(this.env.IDENTITY, {
+      onBehalfOf: job.actor,
+      repo: job.repo,
+      kind: "answer",
+      use: "runner",
+      number: job.number,
+      read: [job.repo, source],
+      ttlSeconds: TOKEN_TTL_SECONDS,
+    });
+    const prompt = withBlock(
+      buildMentionPrompt(job, { title, body, thread: describeThread(comments, job.commentId) }),
+      await this.guidance("reply", job.actor, job.repo, job.pull ? job.number : null, `${title}\n${body}\n${job.body}`),
+    );
+    const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`reply-${job.commentId}`));
+    await sandbox.run({
+      // Nothing to undo if it fails: the run says so in the thread itself.
+      kind: "answer",
+      pullId: job.pull?.id ?? "",
+      track: {
+        actor: job.actor,
+        repo: job.repo,
+        kind: "answer",
+        number: job.number,
+        pullId: job.pull?.id ?? null,
+        title: `Answering ${job.actor.username} on #${job.number}`,
+        startedBy: job.actor.username,
+      },
+      meter: meter(job.repo, `Agent answering on ${job.repo.namespace}/${job.repo.name}#${job.number}`),
+      envVars: {
+        MODE: "reply",
+        G1T_API: "https://api.g1t.sh",
+        G1T_TOKEN: token,
+        G1T_USER: job.actor.username,
+        G1T_REPO: `${job.repo.namespace}/${job.repo.name}`,
+        REPLY_NUMBER: String(job.number),
+        GIT_REMOTE: `https://g1t.sh/${source.namespace}/${source.name}.git`,
+        GIT_REF: job.pull ? (job.pull.headCommit ?? job.pull.branch ?? "") : job.defaultBranch,
+        G1T_AGENT_TOKEN: await this.agentToken(job.actor, job.repo, "answer", job.number),
+        PROMPT: await this.withMemory(prompt, job.repo),
+        ...model.value,
+      },
+    });
+    return ok(true);
   }
 }

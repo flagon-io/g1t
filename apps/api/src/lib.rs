@@ -4,12 +4,15 @@
 //! operations (see [`operations::Op`]), which call the services that own
 //! the data. This Worker holds none.
 
+mod audit;
 mod blobs;
 mod mcp;
 mod oauth;
 mod openapi;
 mod operations;
 mod renamed;
+#[cfg(test)]
+mod responses;
 mod rest;
 
 use g1t_contracts::billing::FinishRunArgs;
@@ -22,6 +25,7 @@ use g1t_contracts::work::{
 };
 use g1t_contracts::identity::AgentScope;
 use g1t_contracts::{Failure, FailureCode, Outcome, PrincipalKind, Viewer};
+use g1t_kit::wire;
 use serde_json::{Value, json};
 use worker::{Context, Env, Method, Request, Response, Result, event};
 
@@ -42,9 +46,24 @@ fn method_name(method: Method) -> &'static str {
     }
 }
 
+/// A JSON response. Every body the API sends has its keys in `snake_case`;
+/// the contracts it passes through are `camelCase`, so they are converted
+/// here, on the way out (see [`g1t_kit::wire`]). The OpenAPI document and
+/// the MCP protocol's own envelope keep the spelling their standards use.
+pub(crate) fn reply<T: serde::Serialize>(value: &T) -> Result<Response> {
+    Response::from_json(&wire::snake_case(serde_json::to_value(value)?))
+}
+
+/// The parts of a job's spec (`POST /actions/jobs/{job}/spec`) that are the
+/// workflow file, GitHub's contexts and event, and where to check out, all
+/// passed through as they are.
+const JOB_SPEC_AS_GIVEN: &[&str] = &[
+    "spec", "workflow", "github", "event", "contexts", "checkout",
+];
+
 /// An error in the shape every endpoint uses.
 fn failure(failure: &Failure) -> Result<Response> {
-    Ok(Response::from_json(&json!({ "error": failure }))?.with_status(failure.code.http_status()))
+    Ok(reply(&json!({ "error": failure }))?.with_status(failure.code.http_status()))
 }
 
 fn fail(code: FailureCode, message: &str) -> Result<Response> {
@@ -138,7 +157,7 @@ async fn receive_hook(request: &mut Request, services: &Services, id: &str) -> R
         .collect();
     let body = request.text().await.unwrap_or_default();
     if body.len() > 1_000_000 {
-        return Ok(Response::from_json(&json!({ "message": "The body is too large." }))?.with_status(413));
+        return Ok(reply(&json!({ "message": "The body is too large." }))?.with_status(413));
     }
     let received: g1t_contracts::integrations::Received = g1t_kit::call(
         &services.integrations,
@@ -146,14 +165,14 @@ async fn receive_hook(request: &mut Request, services: &Services, id: &str) -> R
         &json!({ "id": id, "headers": headers, "body": body }),
     )
     .await?;
-    Ok(Response::from_json(&json!({ "message": received.message }))?.with_status(received.status))
+    Ok(reply(&json!({ "message": received.message }))?.with_status(received.status))
 }
 
 async fn receive_stripe(request: &mut Request, env: &Env) -> Result<Response> {
     let signature = request.headers().get("stripe-signature")?.unwrap_or_default();
     let payload = request.text().await.unwrap_or_default();
     if payload.len() > 1_000_000 || signature.is_empty() {
-        return Ok(Response::from_json(&json!({ "message": "Not a Stripe event." }))?.with_status(400));
+        return Ok(reply(&json!({ "message": "Not a Stripe event." }))?.with_status(400));
     }
     let handled: g1t_contracts::Outcome<bool> = g1t_kit::call(
         &env.service("BILLING")?,
@@ -164,9 +183,9 @@ async fn receive_stripe(request: &mut Request, env: &Env) -> Result<Response> {
     // A refusal is a 400, so Stripe shows it as failed; anything handled,
     // or already handled, is a 200, so Stripe stops sending it.
     Ok(match handled {
-        g1t_contracts::Outcome::Ok(_) => Response::from_json(&json!({ "received": true }))?,
+        g1t_contracts::Outcome::Ok(_) => reply(&json!({ "received": true }))?,
         g1t_contracts::Outcome::Fail(failure) => {
-            Response::from_json(&json!({ "message": failure.message }))?.with_status(400)
+            reply(&json!({ "message": failure.message }))?.with_status(400)
         }
     })
 }
@@ -181,7 +200,7 @@ async fn device_code(request: &mut Request, services: &Services) -> Result<Respo
         },
     )
     .await?;
-    Response::from_json(&json!({
+    reply(&json!({
         "device_code": started.device_code,
         "user_code": started.user_code,
         "verification_uri": "https://g1t.sh/device",
@@ -201,7 +220,7 @@ async fn device_token(request: &mut Request, services: &Services) -> Result<Resp
         },
     )
     .await?;
-    Response::from_json(&match claim {
+    reply(&match claim {
         DeviceClaim::Approved { token, user } => json!({
             "status": "approved",
             "token": token,
@@ -236,7 +255,7 @@ async fn report_checks(
     )
     .await?;
     match reported {
-        Outcome::Ok(run) => Response::from_json(&json!({ "status": run.status })),
+        Outcome::Ok(run) => reply(&json!({ "status": run.status })),
         Outcome::Fail(refused) => failure(&refused),
     }
 }
@@ -264,7 +283,7 @@ async fn report_queue(
     )
     .await?;
     match reported {
-        Outcome::Ok(state) => Response::from_json(&json!({ "state": state })),
+        Outcome::Ok(state) => reply(&json!({ "state": state })),
         Outcome::Fail(refused) => failure(&refused),
     }
 }
@@ -289,7 +308,7 @@ async fn report_mergecheck(
     )
     .await?;
     match reported {
-        Outcome::Ok(state) => Response::from_json(&json!({ "mergeable": state })),
+        Outcome::Ok(state) => reply(&json!({ "mergeable": state })),
         Outcome::Fail(refused) => failure(&refused),
     }
 }
@@ -317,7 +336,7 @@ async fn report_review(
     )
     .await?;
     match reported {
-        Outcome::Ok(_) => Response::from_json(&json!({ "recorded": true })),
+        Outcome::Ok(_) => reply(&json!({ "recorded": true })),
         Outcome::Fail(refused) => failure(&refused),
     }
 }
@@ -343,7 +362,7 @@ async fn report_plan(
     )
     .await?;
     match reported {
-        Outcome::Ok(_) => Response::from_json(&json!({ "recorded": true })),
+        Outcome::Ok(_) => reply(&json!({ "recorded": true })),
         Outcome::Fail(refused) => failure(&refused),
     }
 }
@@ -369,7 +388,7 @@ async fn report_usage(
     )
     .await?;
     match charged {
-        Outcome::Ok(_) => Response::from_json(&json!({ "recorded": true })),
+        Outcome::Ok(_) => reply(&json!({ "recorded": true })),
         Outcome::Fail(refused) => failure(&refused),
     }
 }
@@ -425,7 +444,12 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         // A fresh response: a fetched one's headers cannot be changed, and
         // every response gets the API's own on the way out.
         let status = answer.status_code();
-        return Ok(Response::from_bytes(answer.bytes().await?)?
+        let bytes = answer.bytes().await?;
+        let bytes = match serde_json::from_slice::<Value>(&bytes) {
+            Ok(body) => serde_json::to_vec(&wire::snake_case(body))?,
+            Err(_) => bytes,
+        };
+        return Ok(Response::from_bytes(bytes)?
             .with_status(status)
             .with_headers({
                 let headers = worker::Headers::new();
@@ -448,8 +472,12 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         Ok(viewer) => viewer,
         Err(refused) => return Ok(refused),
     };
-    // An agent's token: what it may do comes with it.
-    if viewer.as_ref().is_some_and(|viewer| viewer.kind == PrincipalKind::Agent) {
+    services.audit = audit::AuditContext::of(&request, on_mcp);
+    // An agent's token: what it may do comes with it, on the composite
+    // identity identity resolved it to.
+    if let Some(acting) = viewer.as_ref().and_then(|viewer| viewer.acting.as_ref()) {
+        services.scope = Some(acting.scope.clone());
+    } else if viewer.as_ref().is_some_and(|viewer| viewer.kind == PrincipalKind::Agent) {
         let header = request.headers().get("authorization")?.unwrap_or_default();
         let token = header.split_once(' ').map(|(_, token)| token.trim()).unwrap_or_default();
         let scope: Option<AgentScope> = g1t_kit::call(
@@ -474,7 +502,7 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     }
 
     match (method, path.trim_end_matches('/')) {
-        ("GET", "") => return Response::from_json(&index()),
+        ("GET", "") => return reply(&index()),
         ("GET", "/openapi.json") => return Response::from_json(&openapi::document()),
         // A run's artifacts: listed, or one downloaded.
         ("GET", path) if path.starts_with("/repos/") && path.contains("/actions/runs/") && path.contains("/artifacts") => {
@@ -489,7 +517,7 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
                         )
                         .await?;
                         match seen {
-                            Outcome::Ok(_) => Response::from_json(&blobs::of_run(env, run).await?),
+                            Outcome::Ok(_) => reply(&blobs::of_run(env, run).await?),
                             Outcome::Fail(refused) => failure(&refused),
                         }
                     }
@@ -509,7 +537,7 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
             )
             .await?;
             return match located {
-                Outcome::Ok(value) => Response::from_json(&value),
+                Outcome::Ok(value) => reply(&value),
                 Outcome::Fail(refused) => failure(&refused),
             };
         }
@@ -537,7 +565,9 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
             )
             .await?;
             return match answered {
-                Outcome::Ok(value) => Response::from_json(&value),
+                // A job's spec is the workflow and its contexts as GitHub
+                // has them; only g1t's own keys around them are converted.
+                Outcome::Ok(value) => Response::from_json(&wire::snake_case_keeping(value, JOB_SPEC_AS_GIVEN)),
                 Outcome::Fail(refused) => failure(&refused),
             };
         }
@@ -552,7 +582,22 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
             body["runId"] = json!(run_id);
             let reported: Outcome<Value> = g1t_kit::call(&services.work, "report_run", &body).await?;
             return match reported {
-                Outcome::Ok(status) => Response::from_json(&json!({ "status": status })),
+                Outcome::Ok(status) => reply(&json!({ "status": status })),
+                Outcome::Fail(refused) => failure(&refused),
+            };
+        }
+        // What a run's agent learned, as memory candidates; the same token.
+        ("POST", path) if path.starts_with("/agent-runs/") && path.ends_with("/learned") => {
+            let run_id = path.trim_start_matches("/agent-runs/").trim_end_matches("/learned");
+            let body = json_body(&mut request).await;
+            let learned = json!({
+                "runId": run_id,
+                "token": body["token"].as_str().unwrap_or_default(),
+                "items": body["items"].as_array().cloned().unwrap_or_default(),
+            });
+            let captured: Outcome<Value> = g1t_kit::call(&services.work, "report_learned", &learned).await?;
+            return match captured {
+                Outcome::Ok(captured) => reply(&captured),
                 Outcome::Fail(refused) => failure(&refused),
             };
         }
@@ -590,15 +635,14 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     let Some((route, input)) = rest::resolve(method, &path, &query, body) else {
         return fail(FailureCode::NotFound, "No such endpoint.");
     };
-    match route.op.run(&services, &viewer, &input).await? {
-        Outcome::Ok(value) => Response::from_json(&value),
+    match audit::run(route.op, &services, &viewer, &input).await? {
+        Outcome::Ok(value) => reply(&value),
         Outcome::Fail(refused) => failure(&refused),
     }
 }
 
-/// Request bodies take the same keys as the MCP tools, `snake_case`; the
-/// `camelCase` that responses use is accepted too, so a client can send
-/// back what it read.
+/// Request bodies take the same keys as the MCP tools, `snake_case`, as
+/// responses use; the `camelCase` spelling is accepted too.
 fn snake_case_keys(body: Value) -> Value {
     let Value::Object(fields) = body else {
         return body;

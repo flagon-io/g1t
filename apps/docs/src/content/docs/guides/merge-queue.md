@@ -173,10 +173,10 @@ curl https://api.g1t.sh/repos/acme/web/queue
       "agent": "g1t-agent",
       "state": "testing",
       "ahead": [41],
-      "baseCommit": "8f3c2e1…",
-      "combinedCommit": null,
+      "base_commit": "8f3c2e1…",
+      "combined_commit": null,
       "results": [],
-      "enqueuedBy": "g1t"
+      "enqueued_by": "g1t"
     }
   ],
   "recent": []
@@ -190,8 +190,8 @@ curl https://api.g1t.sh/repos/acme/web/queue
 | `recent` | Those that landed or left, newest first. |
 | `state` | `waiting`, `testing`, `passed`, `failed`, `landed` or `removed`. |
 | `ahead` | The pull requests merged ahead of it in the state being tested. Empty when it was tested on `main` alone. |
-| `baseCommit` | The commit of `main` the state was built on. |
-| `combinedCommit` | The tested state. |
+| `base_commit` | The commit of `main` the state was built on. |
+| `combined_commit` | The tested state. |
 | `results` | The checks run against it, each with `command`, `passed` and `output`. |
 | `error` | Why it failed: a conflict, or what could not be run. |
-| `enqueuedBy` | Who added it: a username, or `g1t` when it was merged automatically. |
+| `enqueued_by` | Who added it: a username, or `g1t` when it was merged automatically. |

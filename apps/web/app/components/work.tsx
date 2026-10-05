@@ -15,7 +15,8 @@ import type { Comment, Issue, Pull, State } from "@g1t/contracts";
 
 import { repoAt } from "../lib/markdown-plugins";
 import { Markdown } from "./markdown";
-import { Avatar, Button, Textarea, TimeAgo } from "./ui";
+import { MentionTextarea } from "./mention-textarea";
+import { Avatar, Button, TimeAgo } from "./ui";
 import { CheckboxOption } from "./ui/checkbox";
 
 /** Hues for the labels every repository starts with. */
@@ -426,7 +427,7 @@ export function CommentForm({
       </span>
       <Form method="post" className="min-w-0 grow space-y-2" key={resetKey}>
         <input type="hidden" name="action" value="comment" />
-        <Textarea
+        <MentionTextarea
           name="body"
           rows={3}
           placeholder={

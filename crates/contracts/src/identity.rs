@@ -435,11 +435,15 @@ pub struct OAuthGrant {
 
 
 /// What an agent's token may do: these operations, in this repository.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentScope {
     pub repo: crate::repos::RepoPath,
     /// API and MCP operation names, such as `create_issue`.
     pub operations: Vec<String>,
+    /// Set on a run credential: the run it belongs to, and what it may do
+    /// with git. See [`crate::credentials`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run: Option<crate::credentials::RunBinding>,
 }
 
 /// `create_agent_token`: a token for a g1t agent working on someone's

@@ -33,6 +33,11 @@ export default [
     route("-/settings", "routes/workspace/settings.tsx"),
     route("-/agents", "routes/workspace/agents.tsx"),
     route("-/memory", "routes/workspace/memory.tsx"),
+    route("-/context", "routes/workspace/context.tsx"),
+    route("-/security", "routes/workspace/security.tsx"),
+    route("-/audit", "routes/workspace/audit.tsx"),
+    route("-/audit/export", "routes/workspace/audit-export.ts"),
+    route("-/guardrails", "routes/workspace/guardrails.tsx"),
     // What the workspace will have across its projects.
     route("-/soon/:feature", "routes/workspace/soon.tsx"),
   ]),
@@ -40,6 +45,8 @@ export default [
   route(":owner/:repo/why/:hash", "routes/repo/why.ts"),
   // A project's agent runs as JSON, and stopping or messaging one.
   route(":owner/:repo/agents.json", "routes/repo/agents-live.ts"),
+  // What a project's agent runs did, from the audit log, for the Agent panel.
+  route(":owner/:repo/audit.json", "routes/repo/audit-live.ts"),
   // A project: its overview first, its repository's code under Code. The
   // 1:1 project of a repository has the repository's name, so every
   // repository address below keeps working.
@@ -68,6 +75,7 @@ export default [
     route("actions/jobs/:job/log", "routes/repo/actions-log.ts"),
     route("deployments", "routes/repo/deployments.tsx"),
     route("deployments/:id", "routes/repo/deployment.tsx"),
+    route("security", "routes/repo/security.tsx"),
     route("plans", "routes/repo/plans.tsx"),
     route("plans/:id", "routes/repo/plan.tsx"),
     route("settings", "routes/repo/settings.tsx"),
@@ -77,6 +85,8 @@ export default [
     route("settings/deployments", "routes/repo/settings-deployments.tsx"),
     route("settings/domains", "routes/repo/settings-domains.tsx"),
     route("settings/dependencies", "routes/repo/settings-dependencies.tsx"),
+    route("settings/guardrails", "routes/repo/settings-guardrails.tsx"),
+    route("settings/agents", "routes/repo/settings-agents.tsx"),
     // What the project will have: one page for each Soon in its menu.
     route("soon/:feature", "routes/repo/soon.tsx"),
   ]),

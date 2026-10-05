@@ -1,0 +1,43 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-context",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	"main": "./src/index.ts",
+	// Reached only through service bindings.
+	"workers_dev": false,
+	"placement": { "mode": "smart" },
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "g1t-context",
+			// Create with: wrangler d1 create g1t-context, then put its id here.
+			"database_id": "e000b2d7-380c-483f-a568-40de11edd25f",
+			"migrations_dir": "migrations"
+		}
+	],
+	// Search: Workers AI embeds text (@cf/baai/bge-base-en-v1.5, 768
+	// dimensions) into this index, with metadata indexes on workspace, kind,
+	// project and private, so a query only ever reads one workspace.
+	"ai": { "binding": "AI" },
+	"vectorize": [{ "binding": "VECTORS", "index_name": "g1t-context" }],
+	"services": [
+		{ "binding": "REPOS", "service": "g1t-repos" },
+		{ "binding": "PROJECTS", "service": "g1t-projects" },
+		{ "binding": "WORK", "service": "g1t-work" },
+		{ "binding": "IDENTITY", "service": "g1t-identity" },
+		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
+		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" },
+		{ "binding": "SECURITY", "service": "g1t-security" }
+	],
+	"queues": {
+		// Every event, to keep the catalog and search current; and its own
+		// jobs, one project of a backfill each, so no request does them all.
+		"producers": [{ "binding": "JOBS", "queue": "g1t-context-jobs" }],
+		"consumers": [
+			{ "queue": "g1t-events-context", "max_batch_size": 20, "max_batch_timeout": 2 },
+			{ "queue": "g1t-context-jobs", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 2 }
+		]
+	},
+	"observability": { "enabled": true }
+}

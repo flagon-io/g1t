@@ -293,7 +293,6 @@ const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
     title: "Project",
     links: [
       ["Source on g1t", "/syntaqx/g1t"],
-      ["Source on GitHub", "https://github.com/syntaqx/g1t"],
       ["MIT license", "/syntaqx/g1t/blob/main/LICENSE"],
     ],
   },

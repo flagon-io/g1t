@@ -26,6 +26,10 @@ pub struct Services {
     pub integrations: Fetcher,
     pub webhooks: Fetcher,
     pub actions: Fetcher,
+    /// The context hub: catalog and search.
+    pub context: Fetcher,
+    /// Where the request came in, for its audit entries.
+    pub audit: crate::audit::AuditContext,
     /// Set for a request made with an agent's token: all it may do.
     pub scope: Option<AgentScope>,
 }
@@ -42,7 +46,9 @@ impl Services {
             integrations: env.service("INTEGRATIONS")?,
             webhooks: env.service("WEBHOOKS")?,
             actions: env.service("ACTIONS")?,
+            context: env.service("CONTEXT")?,
             scope: None,
+            audit: crate::audit::AuditContext::default(),
         })
     }
 }
@@ -63,6 +69,8 @@ pub enum Op {
     TakeMessages,
     Remember,
     Recall,
+    SearchContext,
+    GetEntity,
     ListIssues,
     GetIssue,
     CreateIssue,
@@ -287,7 +295,7 @@ fn repo_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 66] = [
+    pub const ALL: [Op; 68] = [
         Op::Whoami,
         Op::CreateWorkspace,
         Op::ListRepos,
@@ -302,6 +310,8 @@ impl Op {
         Op::TakeMessages,
         Op::Remember,
         Op::Recall,
+        Op::SearchContext,
+        Op::GetEntity,
         Op::ListIssues,
         Op::GetIssue,
         Op::CreateIssue,
@@ -376,6 +386,8 @@ impl Op {
             Op::TakeMessages => "take_messages",
             Op::Remember => "remember",
             Op::Recall => "recall",
+            Op::SearchContext => "search_context",
+            Op::GetEntity => "get_entity",
             Op::UpdateRepoSettings => "update_repo_settings",
             Op::ListIssues => "list_issues",
             Op::GetIssue => "get_issue",
@@ -462,6 +474,12 @@ impl Op {
             }
             Op::Recall => {
                 "Search what the project and its workspace remember, by words in any order, or list it all without a query. Pinned memories come first, then the most recently used. Members of the workspace and g1t's agents only."
+            }
+            Op::SearchContext => {
+                "One search across a workspace's context hub: its catalog (projects, apps, APIs, packages, languages, owners, environments, integrations, docs), the text of its docs, its issues and pull requests, and, for members and g1t's agents, its kept memory. Results are ranked by meaning, each labelled with its kind, where it came from, who wrote it and how fresh it is; matching words answers when meaning cannot. Give the workspace, or a repository in it. Narrow with project (a project's slug) and kinds. Reads only what you may see: memory and private projects are for members."
+            }
+            Op::GetEntity => {
+                "One entry of a workspace's catalog, by kind and its id or key (a project's slug, a package as npm:<name>, an owner's username), with every relation it has: what it depends on, who owns it, where it deploys, what documents it, what it exposes and uses. search_context finds entries."
             }
             Op::TakeMessages => {
                 "For a g1t agent at work: the messages sent to it that it has not seen yet, from people and from other agents. Each is returned once."
@@ -696,6 +714,36 @@ impl Op {
                     "limit": { "type": "integer", "description": "At most 100 of each level; 20 if not given." },
                 }),
                 &["repo"],
+            ),
+            Op::SearchContext => object(
+                json!({
+                    "query": { "type": "string", "description": "What you want to know, in words: \"how do we deploy the api\", \"who owns billing\"." },
+                    "workspace": workspace_schema(),
+                    "repo": { "type": "string", "description": "Instead of workspace: a repository in it, as \"owner/name\"." },
+                    "project": { "type": "string", "description": "Only what is about this project, by its slug." },
+                    "kinds": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": ["project", "app", "api", "package", "language", "owner", "environment", "integration", "doc", "memory", "issue", "pull"],
+                        },
+                        "description": "Only these kinds. All of them if not given.",
+                    },
+                    "limit": { "type": "integer", "description": "At most 50; 20 if not given." },
+                }),
+                &["query"],
+            ),
+            Op::GetEntity => object(
+                json!({
+                    "kind": {
+                        "type": "string",
+                        "enum": ["project", "app", "api", "package", "language", "owner", "environment", "integration", "doc"],
+                    },
+                    "id": { "type": "string", "description": "Its id (ent_…), or its key: a project's slug, npm:<name>, a username." },
+                    "workspace": workspace_schema(),
+                    "repo": { "type": "string", "description": "Instead of workspace: a repository in it, as \"owner/name\"." },
+                }),
+                &["kind", "id"],
             ),
             Op::UpdateRepoSettings => object(
                 json!({
@@ -1156,11 +1204,13 @@ impl Op {
     }
 
     /// Whether the operation is about one repository, named by `repo`.
-    fn needs_repo(self) -> bool {
+    pub(crate) fn needs_repo(self) -> bool {
         !matches!(
             self,
             Op::Whoami
                 | Op::CreateWorkspace
+                | Op::SearchContext
+                | Op::GetEntity
                 | Op::ListRepos
                 | Op::CreateRepo
                 | Op::ListIntegrations
@@ -1400,6 +1450,50 @@ impl Op {
                     }),
                 )
                 .await
+            }
+            Op::SearchContext | Op::GetEntity => {
+                // The workspace named, or the repository's, or an agent's own.
+                let workspace = match optional_text(input, "workspace") {
+                    Some(workspace) => workspace.to_lowercase(),
+                    None if !repo.namespace.is_empty() => repo.namespace.to_lowercase(),
+                    None => match &services.scope {
+                        Some(scope) => scope.repo.namespace.to_lowercase(),
+                        None => return failed(FailureCode::Invalid, "Give the workspace, or a repository in it as \"owner/name\"."),
+                    },
+                };
+                if let Some(scope) = &services.scope
+                    && !scope.repo.namespace.eq_ignore_ascii_case(&workspace)
+                {
+                    return failed(
+                        FailureCode::Forbidden,
+                        &format!("A g1t agent's token works in the {} workspace only.", scope.repo.namespace),
+                    );
+                }
+                if self == Op::SearchContext {
+                    pass(
+                        &services.context,
+                        "search",
+                        &json!({
+                            "workspace": workspace,
+                            "viewer": viewer,
+                            "query": text(input, "query"),
+                            "project": optional_text(input, "project"),
+                            // A list, or in a URL, comma-separated.
+                            "kinds": strings(input, "kinds").or_else(|| {
+                                optional_text(input, "kinds").map(|kinds| kinds.split(',').map(|kind| kind.trim().to_owned()).collect())
+                            }),
+                            "limit": integer(input, "limit"),
+                        }),
+                    )
+                    .await
+                } else {
+                    pass(
+                        &services.context,
+                        "entity",
+                        &json!({ "workspace": workspace, "viewer": viewer, "kind": text(input, "kind"), "id": text(input, "id") }),
+                    )
+                    .await
+                }
             }
             Op::Recall => {
                 pass(

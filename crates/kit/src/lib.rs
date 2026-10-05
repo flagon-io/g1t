@@ -60,6 +60,8 @@ pub async fn call<A: Serialize, R: DeserializeOwned>(
     response.json().await
 }
 
+pub mod wire;
+
 /// Helpers for bindings that workers-rs has no typed wrapper for, such as
 /// Artifacts and Email Sending. Values cross the boundary as JSON.
 pub mod js {

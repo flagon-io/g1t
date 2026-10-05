@@ -36,6 +36,7 @@ import {
   PlayCircle,
   Bot,
   Brain,
+  Network,
   ShieldCheck,
   Rocket,
   X,
@@ -363,7 +364,7 @@ function AccountMenu({ user }: { user: User }) {
 }
 
 /** A workspace's settings pages, which the sidebar slides over to. */
-const SETTINGS_PAGE = /^\/([^/]+)\/-\/(settings|people|tokens|billing|integrations|webhooks|secrets)(\/|$)/;
+const SETTINGS_PAGE = /^\/([^/]+)\/-\/(settings|people|tokens|billing|integrations|webhooks|secrets|audit)(\/|$)/;
 
 /**
  * The sidebar's menus are two layers, the way a phone pushes a screen: the
@@ -413,8 +414,14 @@ function SettingsMenu({ slug, owner, open }: { slug: string; owner: boolean; ope
         <SidebarLink to={`/${slug}/-/secrets`} icon={<Lock size={15} />}>
           Secrets and variables
         </SidebarLink>
+        <SidebarLink to={`/${slug}/-/guardrails`} icon={<ShieldCheck size={15} />}>
+          Guardrails
+        </SidebarLink>
         <SidebarLink to={`/${slug}/-/webhooks`} icon={<Webhook size={15} />}>
           Webhooks
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/audit`} icon={<History size={15} />}>
+          Audit log
         </SidebarLink>
       </SidebarGroup>
     </nav>
@@ -501,9 +508,11 @@ function RepoMenu({ repo, isPrivate, open }: { repo: MenuRepo; isPrivate: boolea
         <SidebarSoonLink to={`${base}/soon/logs`} also={soonPaths(base, "Observability")} icon={<Activity size={15} />} about="Logs, errors, uptime and analytics of the project's deployed apps.">
           Observability
         </SidebarSoonLink>
-        <SidebarSoonLink to={`${base}/soon/security`} also={soonPaths(base, "Security")} icon={<ShieldCheck size={15} />} about="Findings, secret scanning, dependency updates and code scanning, each fixed by an agent.">
-          Security
-        </SidebarSoonLink>
+        {repo.member ? (
+          <SidebarLink to={`${base}/security`} also={soonPaths(base, "Security")} icon={<ShieldCheck size={15} />}>
+            Security
+          </SidebarLink>
+        ) : null}
         <SidebarSoonLink to={`${base}/soon/delivery`} also={soonPaths(base, "Insights")} icon={<BarChart3 size={15} />} about="Delivery metrics, costs and the work agents do.">
           Insights
         </SidebarSoonLink>
@@ -679,8 +688,14 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
             <SidebarLink to={`/${ws.slug}/-/agents`} icon={<Bot size={15} />}>
               Agent fleet
             </SidebarLink>
+            <SidebarLink to={`/${ws.slug}/-/context`} icon={<Network size={15} />}>
+              Context
+            </SidebarLink>
             <SidebarLink to={`/${ws.slug}/-/memory`} icon={<Brain size={15} />}>
               Memory
+            </SidebarLink>
+            <SidebarLink to={`/${ws.slug}/-/security`} icon={<ShieldCheck size={15} />}>
+              Security
             </SidebarLink>
             {roadmapIn("Workspace").map((item) => (
               <SidebarSoonLink

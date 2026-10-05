@@ -223,5 +223,5 @@ curl -X POST https://api.g1t.sh/workspaces/acme/integrations \
 `openai_endpoint`, `sentry`, `datadog`, `webhook`, `jira` or `linear`. `config` takes `repo`, `assign`, `label`,
 `write_back`, `organization`, `site`, `email`, `keys`, `base_url`,
 `auth_header` and `model`; each provider uses the ones above. For `datadog`
-and `webhook`, the response's `signingSecret` is the only time the secret
+and `webhook`, the response's `signing_secret` is the only time the secret
 is shown.

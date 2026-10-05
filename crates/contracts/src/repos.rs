@@ -28,7 +28,7 @@ pub struct Repo {
     pub created_at: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RepoPath {
     pub namespace: String,
     pub name: String,

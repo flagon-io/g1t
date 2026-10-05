@@ -166,6 +166,16 @@ pub struct AgentRun {
     /// What it cost, in US dollars, as the harness reported it. Members only.
     pub cost_usd: Option<f64>,
     pub turns: Option<u32>,
+    /// The most it may cost, in US dollars, from its guardrails. None: no
+    /// cap. Members only.
+    #[serde(default)]
+    pub budget_usd: Option<f64>,
+    /// The longest it may take, in minutes, from its guardrails.
+    #[serde(default)]
+    pub time_cap_minutes: Option<u32>,
+    /// `budget` or `time` when g1t stopped it for reaching a cap.
+    #[serde(default)]
+    pub halted: Option<String>,
     /// RFC 3339.
     pub created_at: String,
     pub started_at: Option<String>,
@@ -205,6 +215,12 @@ pub struct OpenRunArgs {
     pub sandbox: String,
     #[serde(default)]
     pub started_by: Option<String>,
+    /// Its cost cap, from its guardrails, in US dollars.
+    #[serde(default)]
+    pub budget_usd: Option<f64>,
+    /// Its time cap, from its guardrails, in minutes.
+    #[serde(default)]
+    pub time_cap_minutes: Option<u32>,
 }
 
 /// `report_run`: a sandbox telling how its run goes, with the run's token.
@@ -223,6 +239,9 @@ pub struct ReportRunArgs {
     /// `succeeded` or `failed`, to end the run.
     pub outcome: Option<RunStatus>,
     pub error: Option<String>,
+    /// `budget` or `time`: the run reached a cap of its guardrails and
+    /// stopped. Ends it as stopped, like a person's stop.
+    pub halt: Option<crate::guardrails::Halt>,
 }
 
 /// `stop_run`: a member stops a run. Marks it stopped and returns where its
@@ -401,6 +420,41 @@ pub struct MemorySource {
     pub repo: Option<RepoPath>,
     #[serde(default)]
     pub number: Option<u32>,
+    /// What it was captured from: `run:<id>`, `comment:<id>`,
+    /// `pull:<repo id>#<n>`, `doc:<repo id>:<path>`. See `crate::capture`.
+    #[serde(default)]
+    pub reference: Option<String>,
+    /// What it was learned from, quoted.
+    #[serde(default)]
+    pub evidence: Option<String>,
+}
+
+/// Whether agents are given a memory: `kept` ones are; a `candidate` waits
+/// for review (see `crate::capture`); a `dismissed` one is never suggested
+/// again from the same wording.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryStatus {
+    Candidate,
+    #[default]
+    Kept,
+    Dismissed,
+}
+
+impl MemoryStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MemoryStatus::Candidate => "candidate",
+            MemoryStatus::Kept => "kept",
+            MemoryStatus::Dismissed => "dismissed",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<MemoryStatus> {
+        [MemoryStatus::Candidate, MemoryStatus::Kept, MemoryStatus::Dismissed]
+            .into_iter()
+            .find(|status| status.as_str() == value)
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -424,6 +478,15 @@ pub struct Memory {
     pub updated_at: String,
     /// When it was last given to an agent.
     pub last_used_at: Option<String>,
+    /// Kept memories are given to agents; candidates wait for review.
+    #[serde(default)]
+    pub status: MemoryStatus,
+    /// 0 to 1: how sure its source was. None for what people wrote.
+    #[serde(default)]
+    pub confidence: Option<f64>,
+    /// How many independent sources said it.
+    #[serde(default)]
+    pub seen: u32,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

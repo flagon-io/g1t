@@ -5,9 +5,12 @@
 //! consumes its queue of events from the bus.
 
 mod authored;
+mod capture;
 mod checks;
+mod guardrails;
 mod lifecycle;
 mod memory;
+mod mentions;
 mod mergeability;
 mod plans;
 mod messages;
@@ -418,6 +421,7 @@ impl Work {
         let Some(issue) = self.issue(&repo.id, number).await? else {
             return Ok(no_issue());
         };
+        self.apply_label_rule(&a.actor, &issue, &[]).await?;
         self.publish(
             "issue.opened",
             &repo.id,
@@ -536,9 +540,11 @@ impl Work {
             .run()
             .await?;
         let before = issue.assignees.clone();
+        let labels_before = issue.labels.clone();
         let Some(issue) = self.issue(&issue.repo_id, issue.number).await? else {
             return Ok(no_issue());
         };
+        self.apply_label_rule(&a.actor, &issue, &labels_before).await?;
         self.publish(
             "issue.updated",
             &issue.repo_id,
@@ -854,6 +860,7 @@ impl Work {
                     ])?,
             ])
             .await?;
+        self.note_mention(&a.actor, &repo, a.number, &comment, pull_id.as_deref()).await?;
         self.publish(
             "comment.created",
             &repo.id,
@@ -1881,8 +1888,20 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "delete_memory" => reply(&work.delete_memory(args(body)?).await?),
         "recall" => reply(&work.recall(args(body)?).await?),
         "memory_context" => reply(&work.memory_context(args(body)?).await?),
+        // What agents may do in a sandbox (guardrails.rs).
+        "get_guardrails" => reply(&work.get_guardrails(args(body)?).await?),
+        "update_guardrails" => reply(&work.update_guardrails(args(body)?).await?),
+        "run_guardrails" => reply(&work.run_guardrails(args(body)?).await?),
         "start_mergecheck" => reply(&work.start_mergecheck(args(body)?).await?),
         "report_mergecheck" => reply(&work.report_mergecheck(args(body)?).await?),
+        // Memory that fills itself, and its review queue (capture.rs).
+        method if capture::METHODS.contains(&method) => capture::dispatch(&work, method, body).await,
+        // @g1t-agent in comments, and the label rule (mentions.rs).
+        "take_mention" => reply(&work.take_mention(args(body)?).await?),
+        "mention_revision" => reply(&work.mention_revision(args(body)?).await?),
+        "reply_mention" => reply(&work.reply_mention(args(body)?).await?),
+        "get_agent_rules" => reply(&work.get_agent_rules(args(body)?).await?),
+        "set_agent_rules" => reply(&work.set_agent_rules(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }
@@ -1893,10 +1912,11 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
     let work = service(&env)?;
     for message in batch.messages()? {
         // A workspace renamed: its agent runs and memory move to the slug it has now.
-        if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), memory::RENAMED).await? {
+        if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), &[memory::RENAMED, guardrails::RENAMED].concat()).await? {
             message.ack();
             continue;
         }
+        capture::on_event(&work, message.body()).await;
         work.on_event(message.body()).await?;
         message.ack();
     }

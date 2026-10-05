@@ -1,0 +1,68 @@
+---
+title: Audit log
+description: Every action agents take with their run credentials, and every change people and tokens make, with whether it was allowed and the rule that decided.
+---
+
+Every workspace keeps an audit log. It records:
+
+- **Everything an agent does** with its [run credentials](/guides/g1t-agents/#credentials),
+  reads included: every API and MCP call, every clone and fetch, every push.
+- **Every change people and workspace tokens make** through the API, the
+  MCP server and git: opening and closing issues, comments, merges,
+  settings, pushes. Reads by people are not recorded.
+
+Refusals are recorded too, with the rule that refused them. Entries are
+only ever added: nothing edits or removes one.
+
+## What an entry says
+
+| Field | What it is |
+| --- | --- |
+| Time | When it happened, to the millisecond. |
+| Actor | Who did it: a person, an agent, or a workspace token. |
+| On behalf of | For an agent, the person it worked for: `g1t-agent on behalf of syntaqx`. |
+| Run | The agent run, with its kind: `implement`, `review`, `update` and so on. |
+| Credential | The id of the token used. |
+| Action | The API or MCP operation, such as `create_issue`, or `git.push` and `git.fetch`. |
+| Target | The repository, the issue or pull request number, and for git the refs it moved. |
+| Outcome | `allowed` or `denied`. |
+| Rule | What decided it: the run's scope, such as `run:implement/tools`; a refusal rule, such as `scope:repository`; or, for people, their own access. A refusal by the repository's own rules is `service` (or `repository` for git). |
+| Result | `ok`, or the reason it failed. |
+| Request id | The request's id, the same one Cloudflare logs it under. |
+
+The rules that refuse an agent are listed under
+[credentials](/guides/g1t-agents/#credentials).
+
+## Read the log
+
+Open the workspace's settings and choose **Audit log**, or go to
+`g1t.sh/<workspace>/-/audit`.
+
+- **Owners** see everything in the workspace.
+- **Members** see what was done to the workspace's projects, and anything
+  they did, or had done on their behalf. Changes owners made to the
+  workspace itself are for owners.
+
+Filter by actor (a person matches what they did and what agents did for
+them), agent, action, project, outcome, who acted, and a range of days.
+The filters are part of the page's address, so a filtered view can be
+shared with anyone who can see it.
+
+Each agent run's page has a **What it did** section listing its entries in
+order, and a pull request's **Agent** panel shows the latest of what its
+runs did. Both link to the full log, filtered to the run.
+
+## Export
+
+**CSV** and **JSON** on the Audit log page download what the current
+filters match, up to 10,000 entries, newest first. The CSV has one column
+for each field above; a cell that a spreadsheet would read as a formula is
+written as text.
+
+## What is not recorded
+
+- Reads by people and workspace tokens.
+- What people do on the website itself. The API, the MCP server and git
+  are recorded.
+- What g1t does on its own, such as closing a pull request whose agent
+  failed. Those changes are in the pull request's timeline.

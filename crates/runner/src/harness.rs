@@ -5,10 +5,14 @@
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
+use crate::guard::{self, Halted, Policy};
 use crate::progress::{self, Progress};
 use crate::report::{Entry, Reporter};
 
@@ -129,6 +133,10 @@ fn handle_event(
                     &format!("This run cost ${cost:.4} over {turns} turns."),
                 ));
             }
+            // Claude Code stopped at the run's cost cap (`--max-budget-usd`).
+            if event["subtype"] == "error_max_budget_usd" {
+                return Some(Err(anyhow::Error::new(Halted::Budget)));
+            }
             Some(if event["is_error"].as_bool().unwrap_or(false) {
                 Err(anyhow::anyhow!("the agent reported an error: {text}"))
             } else {
@@ -189,12 +197,39 @@ pub fn run_claude(workdir: &Path, prompt: &str, reporter: &mut Reporter) -> Resu
             }
         }
     }
+    // The run's guardrails (guard.rs): the hook before every tool call, the
+    // permission rules, and the cost cap, which Claude Code enforces itself.
+    let policy = guard::Policy::from_env();
+    if let Some(policy) = &policy {
+        let installed = guard::install(policy, &std::env::var("GUARDRAILS").unwrap_or_default());
+        if let Some(file) = installed.settings_file {
+            tools.extend(["--settings".to_owned(), file]);
+        }
+        if let Some(budget) = policy.budget_usd.filter(|budget| *budget > 0.0) {
+            tools.extend(["--max-budget-usd".to_owned(), format!("{budget:.2}")]);
+        }
+    }
+    // A fork's checkout is anyone's: none of its CLAUDE.md, .claude
+    // settings, hooks, MCP servers or commands are loaded (guard.rs).
+    let trusted = guard::checkout_trusted_from_env();
+    if !trusted {
+        tools.extend(guard::UNTRUSTED_FLAGS.iter().map(|flag| (*flag).to_owned()));
+        reporter.record(Entry::new(
+            "note",
+            "This checkout is not the repository's own branch, so its CLAUDE.md and .claude settings, hooks, MCP servers and commands were not loaded.",
+        ));
+    }
+    let mut denials = guard::Denials::default();
     // How the run goes, step by step, for people watching it live.
     let mut progress = Progress::from_env();
     if let Some(progress) = &mut progress {
         progress.step("Started the agent");
     }
-    let mut child = Command::new("claude")
+    let mut command = Command::new("claude");
+    if !trusted {
+        command.env(guard::UNTRUSTED_ENV.0, guard::UNTRUSTED_ENV.1);
+    }
+    let mut child = command
         .current_dir(workdir)
         .args(&tools)
         .args([
@@ -223,6 +258,20 @@ pub fn run_claude(workdir: &Path, prompt: &str, reporter: &mut Reporter) -> Resu
         .spawn()
         .context("could not start Claude Code")?;
 
+    // The time cap: the agent is stopped when it passes, and the run with it.
+    let timed_out = Arc::new(AtomicBool::new(false));
+    let finished = Arc::new(AtomicBool::new(false));
+    if let Some(minutes) = policy.as_ref().and_then(|policy| policy.minutes) {
+        let (pid, timed_out, finished) = (child.id(), timed_out.clone(), finished.clone());
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(u64::from(minutes) * 60));
+            if !finished.load(Ordering::SeqCst) {
+                timed_out.store(true, Ordering::SeqCst);
+                let _ = Command::new("kill").arg(pid.to_string()).status();
+            }
+        });
+    }
+
     let stdout = child.stdout.take().context("no output from Claude Code")?;
     let mut outcome = None;
     for line in BufReader::new(stdout).lines() {
@@ -233,10 +282,33 @@ pub fn run_claude(workdir: &Path, prompt: &str, reporter: &mut Reporter) -> Resu
         if let Some(result) = handle_event(&event, reporter, &mut progress) {
             outcome = Some(result);
         }
+        // What the guardrails refused, as steps people can see.
+        for denied in denials.take() {
+            reporter.record(Entry::new("note", &denied));
+            if let Some(progress) = &mut progress {
+                progress.step(&denied);
+            }
+        }
     }
     let status = child.wait()?;
+    finished.store(true, Ordering::SeqCst);
+    if timed_out.load(Ordering::SeqCst) {
+        outcome = Some(Err(anyhow::Error::new(Halted::Time)));
+    }
     if let Some(progress) = &mut progress {
         progress.flush();
+        if let Some(halted) = outcome.as_ref().and_then(|o| o.as_ref().err()).and_then(|e| e.downcast_ref::<Halted>()) {
+            let message = match (halted, &policy) {
+                (Halted::Budget, Some(Policy { budget_usd: Some(budget), .. })) => {
+                    format!("Stopped: it reached its cost cap of ${budget:.2}.")
+                }
+                (Halted::Time, Some(Policy { minutes: Some(minutes), .. })) => {
+                    format!("Stopped: it reached its time cap of {minutes} minutes.")
+                }
+                _ => format!("Stopped: {halted}."),
+            };
+            progress.halt(halted.reason(), &message);
+        }
     }
     match outcome {
         Some(result) => result,

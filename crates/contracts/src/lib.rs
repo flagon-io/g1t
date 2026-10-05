@@ -6,8 +6,12 @@
 
 pub mod actions;
 pub mod agents;
+pub mod audit;
 pub mod billing;
+pub mod capture;
+pub mod credentials;
 pub mod events;
+pub mod guardrails;
 pub mod identity;
 pub mod integrations;
 mod ids;
@@ -15,6 +19,7 @@ mod names;
 mod outcome;
 pub mod projects;
 pub mod repos;
+pub mod security;
 pub mod time;
 pub mod webhooks;
 pub mod work;
@@ -99,6 +104,10 @@ pub struct User {
     /// `/avatars/<avatar>`. Absent means the generated letter avatar.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
+    /// Set on an agent resolved from its token: who it acts for, with which
+    /// credential, and what it may do. See [`credentials`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acting: Option<Box<credentials::Acting>>,
 }
 
 impl User {

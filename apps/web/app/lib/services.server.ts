@@ -4,12 +4,16 @@ import {
   actionsClient,
   agentsClient,
   billingClient,
+  contextClient,
   deploymentsClient,
+  memoryReviewClient,
   projectsClient,
   eventsClient,
+  guardrailsClient,
   identityClient,
   integrationsClient,
   reposClient,
+  securityClient,
   webhooksClient,
   workClient,
 } from "@g1t/contracts";
@@ -24,5 +28,12 @@ export const webhooks = webhooksClient(env.WEBHOOKS);
 export const actions = actionsClient(env.ACTIONS);
 export const deployments = deploymentsClient(env.DEPLOYMENTS);
 export const projects = projectsClient(env.PROJECTS);
+export const security = securityClient(env.SECURITY);
 /** Agent runs, sessions and memory: methods of the work service. */
 export const agents = agentsClient(env.WORK);
+/** What agents may do in a sandbox: methods of the work service. */
+export const guardrails = guardrailsClient(env.WORK);
+/** The context hub: catalog, search and scorecards. */
+export const context = contextClient(env.CONTEXT);
+/** Memory candidates and their review: methods of the work service. */
+export const memoryReview = memoryReviewClient(env.WORK);

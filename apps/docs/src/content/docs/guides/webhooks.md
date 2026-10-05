@@ -36,9 +36,9 @@ Each delivery is a `POST` with a JSON body:
   "type": "comment.created",
   "time": "2026-10-03T04:54:37.708Z",
   "workspace": "acme",
-  "repository": { "id": "rep_cf985171afeee00a62a1c0acb0", "fullName": "acme/web" },
+  "repository": { "id": "rep_cf985171afeee00a62a1c0acb0", "full_name": "acme/web" },
   "actor": { "id": "usr_b51a1a09fc53e9471cbe1426b7", "username": "ada" },
-  "data": { "commentId": "cmt_01m401te9eekb92kccgwhympr4", "number": 3, "repoId": "rep_cf985171afeee00a62a1c0acb0" }
+  "data": { "comment_id": "cmt_01m401te9eekb92kccgwhympr4", "number": 3, "repo_id": "rep_cf985171afeee00a62a1c0acb0" }
 }
 ```
 
@@ -60,14 +60,14 @@ With these headers:
 
 | Event | When |
 | --- | --- |
-| `git.push` | A branch moved. `data.ref`, `data.after`, `data.defaultBranch`. |
+| `git.push` | A branch moved. `data.ref`, `data.after`, `data.default_branch`. |
 | `repo.created`, `repo.forked` | A repository was made, or forked for a pull request. |
-| `issue.opened`, `issue.updated`, `issue.assigned`, `issue.closed`, `issue.reopened` | An issue changed. `data.number`; on close, `data.reason` and `data.resolvedBy`. |
+| `issue.opened`, `issue.updated`, `issue.assigned`, `issue.closed`, `issue.reopened` | An issue changed. `data.number`; on close, `data.reason` and `data.resolved_by`. |
 | `comment.created` | A comment or review on an issue or pull request. |
 | `pull.opened`, `pull.ready`, `pull.updated`, `pull.merge_requested`, `pull.merged`, `pull.closed` | A pull request changed. `data.number`, `data.issue`; on merge, `data.commit`. |
 | `checks.completed` | An issue's acceptance checks finished on a pull request. `data.status` is `passed`, `failed` or `errored`. |
 | `review.completed` | A g1t agent reviewed a pull request. `data.verdict`. |
-| `workflow.completed` | A GitHub Actions run finished. `data.workflow`, `data.conclusion`, `data.runId`, `data.sha`, `data.pull`. |
+| `workflow.completed` | A GitHub Actions run finished. `data.workflow`, `data.conclusion`, `data.run_id`, `data.sha`, `data.pull`. |
 | `queue.changed` | The merge queue gained, lost or settled an entry. |
 | `session.appended` | An agent's session grew. Busy: choose it only if you need it. |
 | `agent.asked` | An agent asked the agent on another pull request a question, or handed it work, while that one was not at work; g1t wakes it to answer. |

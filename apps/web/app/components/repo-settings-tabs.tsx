@@ -1,4 +1,4 @@
-import { GitBranch, Globe, Lock, Network, Rocket, Settings, Webhook } from "lucide-react";
+import { Bot, GitBranch, Globe, Lock, Network, Rocket, Settings, ShieldCheck, Webhook } from "lucide-react";
 
 import { TabLink } from "./ui";
 
@@ -20,6 +20,12 @@ export function RepoSettingsTabs({ base }: { base: string }) {
       </TabLink>
       <TabLink to={`${base}/settings/dependencies`} icon={<Network size={15} />}>
         Dependencies
+      </TabLink>
+      <TabLink to={`${base}/settings/agents`} icon={<Bot size={15} />}>
+        Agents
+      </TabLink>
+      <TabLink to={`${base}/settings/guardrails`} icon={<ShieldCheck size={15} />}>
+        Guardrails
       </TabLink>
       <TabLink to={`${base}/settings/secrets`} icon={<Lock size={15} />}>
         Secrets and variables

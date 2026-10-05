@@ -6,6 +6,9 @@ import { RUN_KIND_LABEL, isActiveRun } from "@g1t/contracts";
 import type { Route } from "./+types/agents-run";
 import { page } from "../../lib/meta";
 import { RunCard, useLiveRefresh } from "../../components/agents";
+import { RunCaps } from "../../components/guardrails";
+import { WhatItDid } from "../../components/audit";
+import { runAudit } from "../../lib/audit.server";
 import { agents } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
 
@@ -17,7 +20,9 @@ export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const run = await agents.getRun(viewer, { namespace: params.owner, name: params.repo }, params.id);
-  return { run: unwrap(run), member: roleIn(viewer, params.owner) != null };
+  // What it did with its credentials, from the audit log: members only.
+  const did = await runAudit(viewer, params.owner, [params.id]);
+  return { run: unwrap(run), member: roleIn(viewer, params.owner) != null, did };
 }
 
 function clock(at: string): string {
@@ -25,7 +30,7 @@ function clock(at: string): string {
 }
 
 export default function AgentRunPage({ loaderData, params }: Route.ComponentProps) {
-  const { run, member } = loaderData;
+  const { run, member, did } = loaderData;
   const active = isActiveRun(run.status);
   useLiveRefresh(active);
   const base = `/${params.owner}/${params.repo}`;
@@ -40,6 +45,7 @@ export default function AgentRunPage({ loaderData, params }: Route.ComponentProp
       <ul className="mt-4">
         <RunCard run={run} member={member} />
       </ul>
+      <RunCaps run={run} member={member} />
       <section className="mt-8">
         <div className="flex items-baseline justify-between">
           <h3 className="text-sm font-medium">Steps</h3>
@@ -76,6 +82,17 @@ export default function AgentRunPage({ loaderData, params }: Route.ComponentProp
           </p>
         )}
       </section>
+      {member && (
+        <section className="mt-8">
+          <div className="flex items-baseline justify-between">
+            <h3 className="text-sm font-medium">What it did</h3>
+            <Link to={`/${params.owner}/-/audit?run=${encodeURIComponent(run.id)}`} className="text-xs text-muted hover:text-fg">
+              In the audit log
+            </Link>
+          </div>
+          <WhatItDid entries={did} />
+        </section>
+      )}
     </div>
   );
 }

@@ -3,7 +3,7 @@
   "info": {
     "title": "g1t API",
     "version": "1",
-    "description": "The REST API for g1t, a git forge built for agents. The same operations are available to agents as MCP tools at https://mcp.g1t.sh.",
+    "description": "The REST API for g1t, a git forge built for agents. The same operations are available to agents as MCP tools at https://mcp.g1t.sh. Every name in a request or response body is `snake_case`; names you chose, such as a workflow's inputs or a secret's name, are returned as you wrote them.",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -104,6 +104,14 @@
       "x-tools": [
         "remember",
         "recall"
+      ]
+    },
+    {
+      "name": "Context",
+      "description": "A workspace's context hub: a catalog of what it builds and runs, built from its repositories, deployments and integrations, and one search across the catalog, docs, issues, pull requests and memory.",
+      "x-tools": [
+        "search_context",
+        "get_entity"
       ]
     },
     {
@@ -399,8 +407,8 @@
                   "slug": "syntaqx-labs",
                   "name": "Syntaqx Labs",
                   "description": null,
-                  "createdAt": "2026-10-04T16:02:51.337Z",
-                  "memberCount": 1
+                  "created_at": "2026-10-04T16:02:51.337Z",
+                  "member_count": 1
                 }
               }
             }
@@ -523,12 +531,12 @@
                     "namespace": "syntaqx",
                     "name": "hello",
                     "description": "A tiny service that says hello.",
-                    "isPrivate": false,
-                    "ownerId": "usr_01kkntcg1eeb98j62xjm7eh09p",
-                    "defaultBranch": "main",
-                    "forkOf": null,
+                    "is_private": false,
+                    "owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                    "default_branch": "main",
+                    "fork_of": null,
                     "protected": true,
-                    "createdAt": "2026-09-28T14:11:52.640Z"
+                    "created_at": "2026-09-28T14:11:52.640Z"
                   }
                 ]
               }
@@ -575,7 +583,7 @@
           "Repositories"
         ],
         "summary": "Create a repository",
-        "description": "Create a repository in one of your workspaces, empty or as a copy of a public git repository elsewhere.\n\n`ownerId` is the id of the person who created the repository. With `import_url`, `defaultBranch` is the default branch of the repository copied.",
+        "description": "Create a repository in one of your workspaces, empty or as a copy of a public git repository elsewhere.\n\n`owner_id` is the id of the person who created the repository. With `import_url`, `default_branch` is the default branch of the repository copied.",
         "x-mcp-tool": "create_repo",
         "security": [
           {
@@ -594,12 +602,12 @@
                   "namespace": "syntaqx",
                   "name": "hello-cli",
                   "description": "Command-line client for hello.",
-                  "isPrivate": false,
-                  "ownerId": "usr_01kkntcg1eeb98j62xjm7eh09p",
-                  "defaultBranch": "main",
-                  "forkOf": null,
+                  "is_private": false,
+                  "owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                  "default_branch": "main",
+                  "fork_of": null,
                   "protected": false,
-                  "createdAt": "2026-10-04T16:05:12.913Z"
+                  "created_at": "2026-10-04T16:05:12.913Z"
                 }
               }
             }
@@ -741,12 +749,12 @@
                   "namespace": "syntaqx",
                   "name": "hello",
                   "description": "A tiny service that says hello.",
-                  "isPrivate": false,
-                  "ownerId": "usr_01kkntcg1eeb98j62xjm7eh09p",
-                  "defaultBranch": "main",
-                  "forkOf": null,
+                  "is_private": false,
+                  "owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                  "default_branch": "main",
+                  "fork_of": null,
                   "protected": true,
-                  "createdAt": "2026-09-28T14:11:52.640Z"
+                  "created_at": "2026-09-28T14:11:52.640Z"
                 }
               }
             }
@@ -837,12 +845,12 @@
                   "namespace": "syntaqx",
                   "name": "hello",
                   "description": "Says hello, politely.",
-                  "isPrivate": false,
-                  "ownerId": "usr_01kkntcg1eeb98j62xjm7eh09p",
-                  "defaultBranch": "main",
-                  "forkOf": null,
+                  "is_private": false,
+                  "owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                  "default_branch": "main",
+                  "fork_of": null,
                   "protected": true,
-                  "createdAt": "2026-09-28T14:11:52.640Z"
+                  "created_at": "2026-09-28T14:11:52.640Z"
                 }
               }
             }
@@ -969,16 +977,16 @@
               "application/json": {
                 "schema": {},
                 "example": {
-                  "autoMerge": false,
-                  "requireUpToDate": false,
-                  "requiredApprovals": 0,
-                  "countAgentApprovals": true,
-                  "allowIgnoringChecks": true,
-                  "agentReview": true,
-                  "maxRevisions": 2,
-                  "mergeQueue": false,
-                  "updatedBy": null,
-                  "updatedAt": null
+                  "auto_merge": false,
+                  "require_up_to_date": false,
+                  "required_approvals": 0,
+                  "count_agent_approvals": true,
+                  "allow_ignoring_checks": true,
+                  "agent_review": true,
+                  "max_revisions": 2,
+                  "merge_queue": false,
+                  "updated_by": null,
+                  "updated_at": null
                 }
               }
             }
@@ -1065,16 +1073,16 @@
               "application/json": {
                 "schema": {},
                 "example": {
-                  "autoMerge": false,
-                  "requireUpToDate": false,
-                  "requiredApprovals": 1,
-                  "countAgentApprovals": false,
-                  "allowIgnoringChecks": true,
-                  "agentReview": true,
-                  "maxRevisions": 2,
-                  "mergeQueue": true,
-                  "updatedBy": "syntaqx",
-                  "updatedAt": "2026-10-04T16:20:37.508Z"
+                  "auto_merge": false,
+                  "require_up_to_date": false,
+                  "required_approvals": 1,
+                  "count_agent_approvals": false,
+                  "allow_ignoring_checks": true,
+                  "agent_review": true,
+                  "max_revisions": 2,
+                  "merge_queue": true,
+                  "updated_by": "syntaqx",
+                  "updated_at": "2026-10-04T16:20:37.508Z"
                 }
               }
             }
@@ -1232,13 +1240,13 @@
                       "agent": "claude-code",
                       "state": "testing",
                       "ahead": [],
-                      "baseCommit": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
-                      "combinedCommit": null,
+                      "base_commit": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
+                      "combined_commit": null,
                       "error": null,
                       "results": [],
-                      "enqueuedBy": "syntaqx",
-                      "createdAt": "2026-10-04T15:31:20.441Z",
-                      "finishedAt": null
+                      "enqueued_by": "syntaqx",
+                      "created_at": "2026-10-04T15:31:20.441Z",
+                      "finished_at": null
                     }
                   ],
                   "recent": [
@@ -1249,21 +1257,21 @@
                       "agent": "g1t-agent",
                       "state": "landed",
                       "ahead": [],
-                      "baseCommit": "4b1d7e9c2a5f8e3d6c0b9a7e5d3c1b8a6f4e2d0c",
-                      "combinedCommit": "c3e8a1f6d4b2097e5c3a1f8d6b4e2c0a9f7d5b3e",
+                      "base_commit": "4b1d7e9c2a5f8e3d6c0b9a7e5d3c1b8a6f4e2d0c",
+                      "combined_commit": "c3e8a1f6d4b2097e5c3a1f8d6b4e2c0a9f7d5b3e",
                       "error": null,
                       "results": [
                         {
                           "command": "cargo test",
                           "passed": true,
-                          "exitCode": 0,
+                          "exit_code": 0,
                           "output": "test result: ok. 12 passed; 0 failed\n",
-                          "durationMs": 48211
+                          "duration_ms": 48211
                         }
                       ],
-                      "enqueuedBy": "g1t",
-                      "createdAt": "2026-10-04T14:02:09.876Z",
-                      "finishedAt": "2026-10-04T14:09:55.102Z"
+                      "enqueued_by": "g1t",
+                      "created_at": "2026-10-04T14:02:09.876Z",
+                      "finished_at": "2026-10-04T14:09:55.102Z"
                     }
                   ]
                 }
@@ -1320,7 +1328,7 @@
           "Pull requests"
         ],
         "summary": "Message an agent",
-        "description": "Send the agent working on a pull request a message: a correction, a hint, a change of plan. It receives it at its next step, and it is recorded in the pull request's session. The pull request's author and members of its workspace only. An agent uses it to ask the agent on another pull request a question (kind: question) or hand it work that belongs there (kind: handoff), giving its own pull request as from_number; the answer comes back to it at its next step.\n\nThe response is the message. `deliveredAt` is set once the agent has read it.",
+        "description": "Send the agent working on a pull request a message: a correction, a hint, a change of plan. It receives it at its next step, and it is recorded in the pull request's session. The pull request's author and members of its workspace only. An agent uses it to ask the agent on another pull request a question (kind: question) or hand it work that belongs there (kind: handoff), giving its own pull request as from_number; the answer comes back to it at its next step.\n\nThe response is the message. `delivered_at` is set once the agent has read it.",
         "x-mcp-tool": "message_agent",
         "security": [
           {
@@ -1366,11 +1374,11 @@
                   "id": "msg_01m43tx5egeh4t3f9zcnjenqvz",
                   "author": "syntaqx",
                   "body": "Keep \"world\" as the default when no name is given.",
-                  "createdAt": "2026-10-01T18:25:00.310Z",
-                  "deliveredAt": null,
+                  "created_at": "2026-10-01T18:25:00.310Z",
+                  "delivered_at": null,
                   "kind": "message",
-                  "fromNumber": null,
-                  "toNumber": 14,
+                  "from_number": null,
+                  "to_number": 14,
                   "answer": null,
                   "declined": false
                 }
@@ -1518,11 +1526,11 @@
                     "id": "msg_01m43tx5egeh4t3f9zcnjenqvz",
                     "author": "syntaqx",
                     "body": "Keep \"world\" as the default when no name is given.",
-                    "createdAt": "2026-10-01T18:25:00.310Z",
-                    "deliveredAt": "2026-10-01T18:25:31.007Z",
+                    "created_at": "2026-10-01T18:25:00.310Z",
+                    "delivered_at": "2026-10-01T18:25:31.007Z",
                     "kind": "message",
-                    "fromNumber": null,
-                    "toNumber": 14,
+                    "from_number": null,
+                    "to_number": 14,
                     "answer": null,
                     "declined": false
                   }
@@ -1636,11 +1644,11 @@
                   "id": "msg_01m43t66tde8hs2vpxhh3v8tqw",
                   "author": "g1t-agent",
                   "body": "Are you renaming greet() in src/lib.rs? I need to call it from #16.",
-                  "createdAt": "2026-10-01T18:58:12.301Z",
-                  "deliveredAt": "2026-10-01T18:58:40.117Z",
+                  "created_at": "2026-10-01T18:58:12.301Z",
+                  "delivered_at": "2026-10-01T18:58:40.117Z",
                   "kind": "question",
-                  "fromNumber": 16,
-                  "toNumber": 14,
+                  "from_number": 16,
+                  "to_number": 14,
                   "answer": "No. greet() keeps its name; only greet_named() is added.",
                   "declined": false
                 }
@@ -1781,18 +1789,18 @@
                   "kind": "gotcha",
                   "source": {
                     "kind": "run",
-                    "runId": "arn_01m43v2c1p9k8d7e6f5a4b3c2d",
+                    "run_id": "arn_01m43v2c1p9k8d7e6f5a4b3c2d",
                     "repo": {
                       "namespace": "syntaqx",
                       "name": "hello"
                     },
                     "number": 14
                   },
-                  "createdBy": "g1t-agent",
+                  "created_by": "g1t-agent",
                   "pinned": false,
-                  "createdAt": "2026-10-01T18:40:12.000Z",
-                  "updatedAt": "2026-10-01T18:40:12.000Z",
-                  "lastUsedAt": null
+                  "created_at": "2026-10-01T18:40:12.000Z",
+                  "updated_at": "2026-10-01T18:40:12.000Z",
+                  "last_used_at": null
                 }
               }
             }
@@ -1965,15 +1973,15 @@
                       "kind": "convention",
                       "source": {
                         "kind": "person",
-                        "runId": null,
+                        "run_id": null,
                         "repo": null,
                         "number": null
                       },
-                      "createdBy": "syntaqx",
+                      "created_by": "syntaqx",
                       "pinned": true,
-                      "createdAt": "2026-10-01T18:40:12.000Z",
-                      "updatedAt": "2026-10-01T18:40:12.000Z",
-                      "lastUsedAt": null
+                      "created_at": "2026-10-01T18:40:12.000Z",
+                      "updated_at": "2026-10-01T18:40:12.000Z",
+                      "last_used_at": null
                     }
                   ]
                 }
@@ -2082,11 +2090,11 @@
                     "type": "pull.opened",
                     "source": "work",
                     "time": "2026-10-01T18:20:02.117Z",
-                    "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                     "actor": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "data": {
-                      "pullId": "pr_01m43smh3vexsr5pmp60qwv0vs",
-                      "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                      "pull_id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+                      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                       "number": 14,
                       "issue": 12,
                       "agent": "claude-code"
@@ -2097,11 +2105,11 @@
                     "type": "issue.opened",
                     "source": "work",
                     "time": "2026-10-01T18:04:11.482Z",
-                    "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                     "actor": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "data": {
-                      "issueId": "iss_01m43shrzpfe49x74ga7sj1c6v",
-                      "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                      "issue_id": "iss_01m43shrzpfe49x74ga7sj1c6v",
+                      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                       "number": 12,
                       "title": "Greeting should name the caller"
                     }
@@ -2258,7 +2266,7 @@
           "Issues"
         ],
         "summary": "List issues",
-        "description": "Issues on a repository, newest first. An issue is something that should change: a bug, a feature, a question. Pull requests are made against it.\n\nReturns at most 100 issues, newest first. `commentCount` counts comments, not events such as \"opened #14 for this\".",
+        "description": "Issues on a repository, newest first. An issue is something that should change: a bug, a feature, a question. Pull requests are made against it.\n\nReturns at most 100 issues, newest first. `comment_count` counts comments, not events such as \"opened #14 for this\".",
         "x-mcp-tool": "list_issues",
         "security": [
           {
@@ -2316,7 +2324,7 @@
                 "example": [
                   {
                     "id": "iss_01m43shrzpfe49x74ga7sj1c6v",
-                    "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                     "number": 12,
                     "title": "Greeting should name the caller",
                     "body": "Take a name from the first argument; fall back to world.",
@@ -2328,7 +2336,7 @@
                     ],
                     "state": "open",
                     "reason": null,
-                    "resolvedBy": null,
+                    "resolved_by": null,
                     "author": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
@@ -2336,13 +2344,13 @@
                       "verified": false,
                       "workspaces": []
                     },
-                    "createdAt": "2026-10-01T18:04:11.482Z",
-                    "updatedAt": "2026-10-01T18:04:11.482Z",
-                    "closedAt": null,
-                    "pullCount": 1,
-                    "commentCount": 0,
+                    "created_at": "2026-10-01T18:04:11.482Z",
+                    "updated_at": "2026-10-01T18:04:11.482Z",
+                    "closed_at": null,
+                    "pull_count": 1,
+                    "comment_count": 0,
                     "assignees": [],
-                    "blockedBy": [],
+                    "blocked_by": [],
                     "queued": false,
                     "agent": "claude-code"
                   }
@@ -2437,7 +2445,7 @@
                 "schema": {},
                 "example": {
                   "id": "iss_01m43shrzpfe49x74ga7sj1c6v",
-                  "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "number": 12,
                   "title": "Greeting should name the caller",
                   "body": "Take a name from the first argument; fall back to world.",
@@ -2449,7 +2457,7 @@
                   ],
                   "state": "open",
                   "reason": null,
-                  "resolvedBy": null,
+                  "resolved_by": null,
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
@@ -2457,13 +2465,13 @@
                     "verified": false,
                     "workspaces": []
                   },
-                  "createdAt": "2026-10-01T18:04:11.482Z",
-                  "updatedAt": "2026-10-01T18:04:11.482Z",
-                  "closedAt": null,
-                  "pullCount": 0,
-                  "commentCount": 0,
+                  "created_at": "2026-10-01T18:04:11.482Z",
+                  "updated_at": "2026-10-01T18:04:11.482Z",
+                  "closed_at": null,
+                  "pull_count": 0,
+                  "comment_count": 0,
                   "assignees": [],
-                  "blockedBy": [],
+                  "blocked_by": [],
                   "queued": false,
                   "agent": null
                 }
@@ -2577,7 +2585,7 @@
           "Issues"
         ],
         "summary": "Get an issue",
-        "description": "An issue: its description, labels and acceptance checks, its comments, and every pull request made against it with its status. If the issue is closed, resolvedBy is the number of the pull request that was merged for it. Read this before opening a pull request, to see what others have already tried.\n\nA closed issue says how it was closed: `reason` is `completed` or `not_planned`, and `resolvedBy` is the number of the pull request whose merge closed it. Each pull request made for it is listed; one closed because another was merged has `supersededBy` set.",
+        "description": "An issue: its description, labels and acceptance checks, its comments, and every pull request made against it with its status. If the issue is closed, resolvedBy is the number of the pull request that was merged for it. Read this before opening a pull request, to see what others have already tried.\n\nA closed issue says how it was closed: `reason` is `completed` or `not_planned`, and `resolved_by` is the number of the pull request whose merge closed it. Each pull request made for it is listed; one closed because another was merged has `superseded_by` set.",
         "x-mcp-tool": "get_issue",
         "security": [
           {
@@ -2623,7 +2631,7 @@
                 "example": {
                   "issue": {
                     "id": "iss_01m43shrzpfe49x74ga7sj1c6v",
-                    "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                     "number": 12,
                     "title": "Greeting should name the caller",
                     "body": "Take a name from the first argument; fall back to world.",
@@ -2635,7 +2643,7 @@
                     ],
                     "state": "closed",
                     "reason": "completed",
-                    "resolvedBy": 14,
+                    "resolved_by": 14,
                     "author": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
@@ -2643,20 +2651,20 @@
                       "verified": false,
                       "workspaces": []
                     },
-                    "createdAt": "2026-10-01T18:04:11.482Z",
-                    "updatedAt": "2026-10-01T18:52:17.093Z",
-                    "closedAt": "2026-10-01T18:52:17.093Z",
-                    "pullCount": 2,
-                    "commentCount": 0,
+                    "created_at": "2026-10-01T18:04:11.482Z",
+                    "updated_at": "2026-10-01T18:52:17.093Z",
+                    "closed_at": "2026-10-01T18:52:17.093Z",
+                    "pull_count": 2,
+                    "comment_count": 0,
                     "assignees": [],
-                    "blockedBy": [],
+                    "blocked_by": [],
                     "queued": false,
                     "agent": null
                   },
                   "pulls": [
                     {
                       "id": "pr_01m43sjq8tcz5rbm2a7k4d9e6w",
-                      "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                       "number": 13,
                       "issue": 12,
                       "title": "Greeting should name the caller",
@@ -2668,14 +2676,14 @@
                         "namespace": "pulls",
                         "name": "pr_01m43sjq8tcz5rbm2a7k4d9e6w"
                       },
-                      "forkRepoId": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+                      "fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
                       "branch": null,
-                      "headCommit": null,
-                      "mergeBase": null,
-                      "mergedBy": null,
-                      "mergedAt": null,
-                      "supersededBy": 14,
-                      "checkStatus": null,
+                      "head_commit": null,
+                      "merge_base": null,
+                      "merged_by": null,
+                      "merged_at": null,
+                      "superseded_by": 14,
+                      "check_status": null,
                       "files": [],
                       "assignees": [],
                       "reviewers": [],
@@ -2686,12 +2694,12 @@
                         "verified": false,
                         "workspaces": []
                       },
-                      "createdAt": "2026-10-01T18:20:02.117Z",
-                      "updatedAt": "2026-10-01T18:20:02.117Z"
+                      "created_at": "2026-10-01T18:20:02.117Z",
+                      "updated_at": "2026-10-01T18:20:02.117Z"
                     },
                     {
                       "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
-                      "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                       "number": 14,
                       "issue": 12,
                       "title": "Greeting should name the caller",
@@ -2703,14 +2711,14 @@
                         "namespace": "pulls",
                         "name": "pr_01m43smh3vexsr5pmp60qwv0vs"
                       },
-                      "forkRepoId": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+                      "fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
                       "branch": null,
-                      "headCommit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
-                      "mergeBase": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
-                      "mergedBy": "syntaqx",
-                      "mergedAt": "2026-10-01T18:52:17.093Z",
-                      "supersededBy": null,
-                      "checkStatus": "passed",
+                      "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                      "merge_base": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
+                      "merged_by": "syntaqx",
+                      "merged_at": "2026-10-01T18:52:17.093Z",
+                      "superseded_by": null,
+                      "check_status": "passed",
                       "files": [
                         {
                           "path": "src/main.rs",
@@ -2729,8 +2737,8 @@
                         "verified": false,
                         "workspaces": []
                       },
-                      "createdAt": "2026-10-01T18:20:02.117Z",
-                      "updatedAt": "2026-10-01T18:52:17.093Z"
+                      "created_at": "2026-10-01T18:20:02.117Z",
+                      "updated_at": "2026-10-01T18:52:17.093Z"
                     }
                   ],
                   "comments": [
@@ -2748,7 +2756,7 @@
                       "path": null,
                       "line": null,
                       "verdict": null,
-                      "createdAt": "2026-10-01T18:20:02.141Z"
+                      "created_at": "2026-10-01T18:20:02.141Z"
                     }
                   ]
                 }
@@ -2847,7 +2855,7 @@
                 "schema": {},
                 "example": {
                   "id": "iss_01m43shrzpfe49x74ga7sj1c6v",
-                  "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "number": 12,
                   "title": "Greeting should name the caller",
                   "body": "Take a name from the first argument; fall back to world.",
@@ -2860,7 +2868,7 @@
                   ],
                   "state": "open",
                   "reason": null,
-                  "resolvedBy": null,
+                  "resolved_by": null,
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
@@ -2868,15 +2876,15 @@
                     "verified": false,
                     "workspaces": []
                   },
-                  "createdAt": "2026-10-01T18:04:11.482Z",
-                  "updatedAt": "2026-10-01T18:09:47.305Z",
-                  "closedAt": null,
-                  "pullCount": 0,
-                  "commentCount": 0,
+                  "created_at": "2026-10-01T18:04:11.482Z",
+                  "updated_at": "2026-10-01T18:09:47.305Z",
+                  "closed_at": null,
+                  "pull_count": 0,
+                  "comment_count": 0,
                   "assignees": [
                     "syntaqx"
                   ],
-                  "blockedBy": [],
+                  "blocked_by": [],
                   "queued": false,
                   "agent": null
                 }
@@ -3027,7 +3035,7 @@
                 "schema": {},
                 "example": {
                   "id": "iss_01m43shrzpfe49x74ga7sj1c6v",
-                  "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "number": 12,
                   "title": "Greeting should name the caller",
                   "body": "Take a name from the first argument; fall back to world.",
@@ -3039,7 +3047,7 @@
                   ],
                   "state": "closed",
                   "reason": "not_planned",
-                  "resolvedBy": null,
+                  "resolved_by": null,
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
@@ -3047,13 +3055,13 @@
                     "verified": false,
                     "workspaces": []
                   },
-                  "createdAt": "2026-10-01T18:04:11.482Z",
-                  "updatedAt": "2026-10-01T19:30:00.214Z",
-                  "closedAt": "2026-10-01T19:30:00.214Z",
-                  "pullCount": 0,
-                  "commentCount": 0,
+                  "created_at": "2026-10-01T18:04:11.482Z",
+                  "updated_at": "2026-10-01T19:30:00.214Z",
+                  "closed_at": "2026-10-01T19:30:00.214Z",
+                  "pull_count": 0,
+                  "comment_count": 0,
                   "assignees": [],
-                  "blockedBy": [],
+                  "blocked_by": [],
                   "queued": false,
                   "agent": null
                 }
@@ -3187,7 +3195,7 @@
                 "schema": {},
                 "example": {
                   "id": "iss_01m43shrzpfe49x74ga7sj1c6v",
-                  "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "number": 12,
                   "title": "Greeting should name the caller",
                   "body": "Take a name from the first argument; fall back to world.",
@@ -3199,7 +3207,7 @@
                   ],
                   "state": "open",
                   "reason": null,
-                  "resolvedBy": null,
+                  "resolved_by": null,
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
@@ -3207,13 +3215,13 @@
                     "verified": false,
                     "workspaces": []
                   },
-                  "createdAt": "2026-10-01T18:04:11.482Z",
-                  "updatedAt": "2026-10-01T19:41:52.830Z",
-                  "closedAt": null,
-                  "pullCount": 0,
-                  "commentCount": 0,
+                  "created_at": "2026-10-01T18:04:11.482Z",
+                  "updated_at": "2026-10-01T19:41:52.830Z",
+                  "closed_at": null,
+                  "pull_count": 0,
+                  "comment_count": 0,
                   "assignees": [],
-                  "blockedBy": [],
+                  "blocked_by": [],
                   "queued": false,
                   "agent": null
                 }
@@ -3324,7 +3332,7 @@
                 "schema": {},
                 "example": {
                   "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
-                  "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "number": 14,
                   "issue": 12,
                   "title": "Greeting should name the caller",
@@ -3336,14 +3344,14 @@
                     "namespace": "pulls",
                     "name": "pr_01m43smh3vexsr5pmp60qwv0vs"
                   },
-                  "forkRepoId": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+                  "fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
                   "branch": null,
-                  "headCommit": null,
-                  "mergeBase": null,
-                  "mergedBy": null,
-                  "mergedAt": null,
-                  "supersededBy": null,
-                  "checkStatus": null,
+                  "head_commit": null,
+                  "merge_base": null,
+                  "merged_by": null,
+                  "merged_at": null,
+                  "superseded_by": null,
+                  "check_status": null,
                   "files": [],
                   "assignees": [],
                   "reviewers": [],
@@ -3354,8 +3362,8 @@
                     "verified": false,
                     "workspaces": []
                   },
-                  "createdAt": "2026-10-01T18:20:02.117Z",
-                  "updatedAt": "2026-10-01T18:20:02.117Z"
+                  "created_at": "2026-10-01T18:20:02.117Z",
+                  "updated_at": "2026-10-01T18:20:02.117Z"
                 }
               }
             }
@@ -3491,7 +3499,7 @@
                     "url": "https://acme.atlassian.net/browse/TECH-1234",
                     "status": "In Progress",
                     "body": "Customers with 3DS cards see a 500 at /pay.",
-                    "fetchedAt": "2026-10-04T15:42:07.318Z"
+                    "fetched_at": "2026-10-04T15:42:07.318Z"
                   },
                   "created": true
                 }
@@ -3633,7 +3641,7 @@
                   "url": "https://acme.atlassian.net/browse/TECH-1234",
                   "status": "In Progress",
                   "body": "Customers with 3DS cards see a 500 at /pay.",
-                  "fetchedAt": "2026-10-04T15:42:07.318Z"
+                  "fetched_at": "2026-10-04T15:42:07.318Z"
                 }
               }
             }
@@ -3684,6 +3692,364 @@
         }
       }
     },
+    "/workspaces/{workspace}/context/search": {
+      "get": {
+        "operationId": "search_context",
+        "tags": [
+          "Context"
+        ],
+        "summary": "Search the context hub",
+        "description": "One search across a workspace's context hub: its catalog (projects, apps, APIs, packages, languages, owners, environments, integrations, docs), the text of its docs, its issues and pull requests, and, for members and g1t's agents, its kept memory. Results are ranked by meaning, each labelled with its kind, where it came from, who wrote it and how fresh it is; matching words answers when meaning cannot. Give the workspace, or a repository in it. Narrow with project (a project's slug) and kinds. Reads only what you may see: memory and private projects are for members.\n\nGive `workspace`, or `repo` as `owner/name` for its workspace. `kinds` narrows to some of `project`, `app`, `api`, `package`, `language`, `owner`, `environment`, `integration`, `doc`, `memory`, `issue` and `pull`; in a URL, comma-separated. `mode` is `text` when the search index could not answer and words were matched instead. Memory, and anything from a private project, is returned only to members of the workspace and its agents. A g1t agent searches its own workspace only.",
+        "x-mcp-tool": "search_context",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"syntaqx\"."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "What you want to know, in words: \"how do we deploy the api\", \"who owns billing\"."
+          },
+          {
+            "name": "project",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only what is about this project, by its slug."
+          },
+          {
+            "name": "kinds",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "project",
+                  "app",
+                  "api",
+                  "package",
+                  "language",
+                  "owner",
+                  "environment",
+                  "integration",
+                  "doc",
+                  "memory",
+                  "issue",
+                  "pull"
+                ]
+              }
+            },
+            "description": "Only these kinds. All of them if not given."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "At most 50; 20 if not given."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "query": "how do we run the web tests",
+                  "mode": "semantic",
+                  "hits": [
+                    {
+                      "kind": "memory",
+                      "id": "mem_01m4a0c2b7k3f9d1e5g8h2j6k4",
+                      "title": "Gotcha",
+                      "snippet": "The date tests fail unless TZ=UTC.",
+                      "project": "web",
+                      "url": "/acme/web/memory",
+                      "score": 0.82,
+                      "source": "AGENTS.md",
+                      "by": "g1t",
+                      "updated_at": "2026-10-04T21:10:02.000Z"
+                    },
+                    {
+                      "kind": "doc",
+                      "id": "ent_5f0c2a9e41d7b3c86a1e2f40:2",
+                      "title": "Web (README.md)",
+                      "snippet": "## Testing Run npm test. The end-to-end tests need the api running locally…",
+                      "project": "web",
+                      "url": "/acme/web/blob/main/README.md",
+                      "score": 0.77,
+                      "source": "README.md",
+                      "by": null,
+                      "updated_at": "2026-10-04T20:58:41.000Z"
+                    },
+                    {
+                      "kind": "project",
+                      "id": "ent_9b1d6f0a2c3e4b5d6e7f8a9b",
+                      "title": "web",
+                      "snippet": "The storefront. Written in TypeScript. Packages: @acme/web. Uses api. Owned by ana.",
+                      "project": "web",
+                      "url": "/acme/web",
+                      "score": 0.71,
+                      "source": "catalog",
+                      "by": null,
+                      "updated_at": "2026-10-04T20:58:41.000Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme"
+        },
+        "x-example-query": {
+          "q": "how do we run the web tests",
+          "project": "web"
+        }
+      }
+    },
+    "/workspaces/{workspace}/context/{kind}/{id}": {
+      "get": {
+        "operationId": "get_entity",
+        "tags": [
+          "Context"
+        ],
+        "summary": "Get a catalog entry",
+        "description": "One entry of a workspace's catalog, by kind and its id or key (a project's slug, a package as npm:<name>, an owner's username), with every relation it has: what it depends on, who owns it, where it deploys, what documents it, what it exposes and uses. search_context finds entries.\n\n`id` is the entry's id, or its key: a project's or app's slug, `npm:<name>` (or `cargo:`, `go:`, `pypi:`) for a package, a username for an owner, `<project>/production` for an environment. `data` depends on the kind: a package's version and dependencies, an API's routes, an app's production address.",
+        "x-mcp-tool": "get_entity",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"syntaqx\"."
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "project",
+                "app",
+                "api",
+                "package",
+                "language",
+                "owner",
+                "environment",
+                "integration",
+                "doc"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Its id (ent_…), or its key: a project's slug, npm:<name>, a username."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "entity": {
+                    "id": "ent_9b1d6f0a2c3e4b5d6e7f8a9b",
+                    "workspace": "acme",
+                    "kind": "project",
+                    "key": "web",
+                    "name": "web",
+                    "summary": "The storefront. Written in TypeScript. Packages: @acme/web. Uses api. Owned by ana.",
+                    "project": "web",
+                    "private": true,
+                    "data": {
+                      "repo": "acme/web",
+                      "root_dir": "",
+                      "default_branch": "main",
+                      "languages": [
+                        "TypeScript"
+                      ],
+                      "owners": [
+                        "ana"
+                      ],
+                      "tests": true,
+                      "test_commands": [
+                        "npm test"
+                      ],
+                      "production_url": "https://web--acme.g1t.page"
+                    },
+                    "source": "scan",
+                    "ref": "/acme/web",
+                    "updated_at": "2026-10-04T20:58:41.000Z"
+                  },
+                  "relations": [
+                    {
+                      "kind": "depends_on",
+                      "direction": "out",
+                      "entity": {
+                        "id": "ent_0a7c3e5b9d1f2a4c6e8b0d2f",
+                        "workspace": "acme",
+                        "kind": "project",
+                        "key": "api",
+                        "name": "api",
+                        "summary": "The public API. Written in Rust.",
+                        "project": "api",
+                        "private": true,
+                        "data": {},
+                        "source": "scan",
+                        "ref": "/acme/api",
+                        "updated_at": "2026-10-04T20:57:12.000Z"
+                      }
+                    },
+                    {
+                      "kind": "owned_by",
+                      "direction": "out",
+                      "entity": {
+                        "id": "ent_3c5e7a9b1d2f4a6c8e0b2d4f",
+                        "workspace": "acme",
+                        "kind": "owner",
+                        "key": "ana",
+                        "name": "ana",
+                        "summary": null,
+                        "project": null,
+                        "private": false,
+                        "data": {},
+                        "source": "scan",
+                        "ref": "/u/ana",
+                        "updated_at": "2026-10-04T20:58:41.000Z"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "kind": "project",
+          "id": "web"
+        }
+      }
+    },
     "/workspaces/{workspace}/integrations": {
       "get": {
         "operationId": "list_integrations",
@@ -3691,7 +4057,7 @@
           "Integrations"
         ],
         "summary": "List integrations",
-        "description": "A workspace's integrations: its own model provider, the alert sources that open issues (Sentry, Datadog, webhooks), and the trackers whose tickets agents can read (Jira, Linear). Secrets are never returned. Members only.\n\n`kind` is `models`, `alerts` or `tracker`. `secretHint` shows the end of the secret; the secret itself is never returned. `webhookUrl` is where an alert source sends its alerts.",
+        "description": "A workspace's integrations: its own model provider, the alert sources that open issues (Sentry, Datadog, webhooks), and the trackers whose tickets agents can read (Jira, Linear). Secrets are never returned. Members only.\n\n`kind` is `models`, `alerts` or `tracker`. `secret_hint` shows the end of the secret; the secret itself is never returned. `webhook_url` is where an alert source sends its alerts.",
         "x-mcp-tool": "list_integrations",
         "security": [
           {
@@ -3724,14 +4090,14 @@
                     "name": "Anthropic",
                     "config": {
                       "assign": false,
-                      "writeBack": true
+                      "write_back": true
                     },
-                    "secretHint": "…3f9a",
-                    "webhookUrl": null,
-                    "createdBy": "syntaqx",
-                    "createdAt": "2026-10-04T15:42:07.318Z",
-                    "lastUsedAt": "2026-10-04T15:42:08.102Z",
-                    "lastError": null,
+                    "secret_hint": "…3f9a",
+                    "webhook_url": null,
+                    "created_by": "syntaqx",
+                    "created_at": "2026-10-04T15:42:07.318Z",
+                    "last_used_at": "2026-10-04T15:42:08.102Z",
+                    "last_error": null,
                     "models": [
                       "claude-haiku-4-5",
                       "claude-sonnet-4-5"
@@ -3745,19 +4111,19 @@
                     "name": "Jira",
                     "config": {
                       "assign": false,
-                      "writeBack": true,
+                      "write_back": true,
                       "site": "https://acme.atlassian.net",
                       "email": "syntaqx@example.com",
                       "keys": [
                         "TECH"
                       ]
                     },
-                    "secretHint": "…x7Qe",
-                    "webhookUrl": null,
-                    "createdBy": "syntaqx",
-                    "createdAt": "2026-10-04T15:42:07.318Z",
-                    "lastUsedAt": null,
-                    "lastError": null,
+                    "secret_hint": "…x7Qe",
+                    "webhook_url": null,
+                    "created_by": "syntaqx",
+                    "created_at": "2026-10-04T15:42:07.318Z",
+                    "last_used_at": null,
+                    "last_error": null,
                     "models": []
                   }
                 ]
@@ -3815,7 +4181,7 @@
           "Integrations"
         ],
         "summary": "Connect an integration",
-        "description": "Connect a workspace to an outside system. provider is a model provider (anthropic, openai, gemini, xai, mistral, deepseek, azure_openai, openrouter, groq, together, fireworks, cerebras, anthropic_endpoint or openai_endpoint: your own key, billed by that provider, and free on g1t while it is being built out; a workspace can connect several and route each kind of work with set_model_routes), or sentry, datadog, webhook, jira or linear. config holds the settings each needs; secret is the API key or token. For datadog and webhook, g1t makes the signing secret and returns it once. Owners only.\n\n`signingSecret` is set only when g1t made it, for `datadog` and `webhook`, and is shown only this once. A model provider is tested as it is connected. See [integrations](/guides/integrations/) and [model providers](/guides/models/).",
+        "description": "Connect a workspace to an outside system. provider is a model provider (anthropic, openai, gemini, xai, mistral, deepseek, azure_openai, openrouter, groq, together, fireworks, cerebras, anthropic_endpoint or openai_endpoint: your own key, billed by that provider, and free on g1t while it is being built out; a workspace can connect several and route each kind of work with set_model_routes), or sentry, datadog, webhook, jira or linear. config holds the settings each needs; secret is the API key or token. For datadog and webhook, g1t makes the signing secret and returns it once. Owners only.\n\n`signing_secret` is set only when g1t made it, for `datadog` and `webhook`, and is shown only this once. A model provider is tested as it is connected. See [integrations](/guides/integrations/) and [model providers](/guides/models/).",
         "x-mcp-tool": "connect_integration",
         "security": [
           {
@@ -3850,17 +4216,17 @@
                       "repo": "syntaqx/hello",
                       "label": "bug",
                       "assign": false,
-                      "writeBack": true
+                      "write_back": true
                     },
-                    "secretHint": null,
-                    "webhookUrl": "https://api.g1t.sh/hooks/con_01kpx4n8r3g9s0v5w7x1z2a3bd",
-                    "createdBy": "syntaqx",
-                    "createdAt": "2026-10-04T15:42:07.318Z",
-                    "lastUsedAt": null,
-                    "lastError": null,
+                    "secret_hint": null,
+                    "webhook_url": "https://api.g1t.sh/hooks/con_01kpx4n8r3g9s0v5w7x1z2a3bd",
+                    "created_by": "syntaqx",
+                    "created_at": "2026-10-04T15:42:07.318Z",
+                    "last_used_at": null,
+                    "last_error": null,
                     "models": []
                   },
-                  "signingSecret": "g1ts_9f2c4a7e1b0d3c6f8a2e5b7d9c1f4a6e8b0d2c4f6a8e1b3d"
+                  "signing_secret": "g1ts_9f2c4a7e1b0d3c6f8a2e5b7d9c1f4a6e8b0d2c4f6a8e1b3d"
                 }
               }
             }
@@ -4035,11 +4401,11 @@
                       "pull.merged"
                     ],
                     "active": true,
-                    "secretHint": "…9c2e",
-                    "createdBy": "syntaqx",
-                    "createdAt": "2026-10-04T15:42:07.318Z",
-                    "lastStatus": "delivered",
-                    "lastDeliveredAt": "2026-10-04T15:42:07.611Z"
+                    "secret_hint": "…9c2e",
+                    "created_by": "syntaqx",
+                    "created_at": "2026-10-04T15:42:07.318Z",
+                    "last_status": "delivered",
+                    "last_delivered_at": "2026-10-04T15:42:07.611Z"
                   }
                 ]
               }
@@ -4093,7 +4459,7 @@
           "Webhooks"
         ],
         "summary": "Create a webhook",
-        "description": "Register an HTTPS address to be sent events as they happen: a signed JSON POST for each, retried for hours if the receiver does not answer with a 2xx. events lists the event types, or leave it out for all. Without a secret, g1t makes one and returns it once. A ping is sent at once. Members, for a repository; owners, for a workspace.\n\nA ping is sent before the response, so `lastStatus` is usually set already. When g1t made the signing secret, `secret` holds it: it is shown only this once. See [webhooks](/guides/webhooks/).",
+        "description": "Register an HTTPS address to be sent events as they happen: a signed JSON POST for each, retried for hours if the receiver does not answer with a 2xx. events lists the event types, or leave it out for all. Without a secret, g1t makes one and returns it once. A ping is sent at once. Members, for a repository; owners, for a workspace.\n\nA ping is sent before the response, so `last_status` is usually set already. When g1t made the signing secret, `secret` holds it: it is shown only this once. See [webhooks](/guides/webhooks/).",
         "x-mcp-tool": "create_webhook",
         "security": [
           {
@@ -4138,11 +4504,11 @@
                       "pull.merged"
                     ],
                     "active": true,
-                    "secretHint": "…9c2e",
-                    "createdBy": "syntaqx",
-                    "createdAt": "2026-10-04T15:42:07.318Z",
-                    "lastStatus": "delivered",
-                    "lastDeliveredAt": "2026-10-04T15:42:07.611Z"
+                    "secret_hint": "…9c2e",
+                    "created_by": "syntaqx",
+                    "created_at": "2026-10-04T15:42:07.318Z",
+                    "last_status": "delivered",
+                    "last_delivered_at": "2026-10-04T15:42:07.611Z"
                   },
                   "secret": "whsec_…"
                 }
@@ -4326,11 +4692,11 @@
                     "pull.merged"
                   ],
                   "active": false,
-                  "secretHint": "…9c2e",
-                  "createdBy": "syntaqx",
-                  "createdAt": "2026-10-04T15:42:07.318Z",
-                  "lastStatus": "delivered",
-                  "lastDeliveredAt": "2026-10-04T15:42:07.611Z"
+                  "secret_hint": "…9c2e",
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-04T15:42:07.318Z",
+                  "last_status": "delivered",
+                  "last_delivered_at": "2026-10-04T15:42:07.611Z"
                 }
               }
             }
@@ -4619,19 +4985,19 @@
                 "schema": {},
                 "example": {
                   "id": "dlv_01kpx5p9v2j7k3m8n4p5q6r7st",
-                  "hookId": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
-                  "eventId": "",
+                  "hook_id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+                  "event_id": "",
                   "event": "ping",
                   "status": "delivered",
                   "attempts": 1,
-                  "responseStatus": 200,
-                  "responseBody": "ok",
+                  "response_status": 200,
+                  "response_body": "ok",
                   "error": null,
-                  "durationMs": 184,
+                  "duration_ms": 184,
                   "payload": "{\"hook\":{\"events\":[\"git.push\",\"pull.merged\"],\"id\":\"hk_01kpx5p9s4h0t1w6x8y2a3b4cd\",\"url\":\"https://hooks.example.com/g1t\"},\"message\":\"g1t will send this webhook's events here.\",\"time\":\"2026-10-04T16:01:12.440Z\",\"type\":\"ping\"}",
-                  "createdAt": "2026-10-04T16:01:12.440Z",
-                  "deliveredAt": "2026-10-04T16:01:12.631Z",
-                  "nextAttemptAt": null
+                  "created_at": "2026-10-04T16:01:12.440Z",
+                  "delivered_at": "2026-10-04T16:01:12.631Z",
+                  "next_attempt_at": null
                 }
               }
             }
@@ -4715,7 +5081,7 @@
           "Webhooks"
         ],
         "summary": "List webhook deliveries",
-        "description": "A webhook's latest deliveries, newest first: what was sent, how the receiver answered, and when it will be tried again.\n\nReturns at most 50, newest first. `status` is `pending`, `delivered` or `failed`; `nextAttemptAt` is set while it is pending.",
+        "description": "A webhook's latest deliveries, newest first: what was sent, how the receiver answered, and when it will be tried again.\n\nReturns at most 50, newest first. `status` is `pending`, `delivered` or `failed`; `next_attempt_at` is set while it is pending.",
         "x-mcp-tool": "list_webhook_deliveries",
         "security": [
           {
@@ -4760,35 +5126,35 @@
                 "example": [
                   {
                     "id": "dlv_01kpx6a2b3c4d5e6f7g8h9j0kz",
-                    "hookId": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
-                    "eventId": "",
+                    "hook_id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+                    "event_id": "",
                     "event": "ping",
                     "status": "pending",
                     "attempts": 1,
-                    "responseStatus": 503,
-                    "responseBody": "Service Unavailable",
+                    "response_status": 503,
+                    "response_body": "Service Unavailable",
                     "error": null,
-                    "durationMs": 212,
+                    "duration_ms": 212,
                     "payload": "{\"hook\":{\"events\":[\"git.push\",\"pull.merged\"],\"id\":\"hk_01kpx5p9s4h0t1w6x8y2a3b4cd\",\"url\":\"https://hooks.example.com/g1t\"},\"message\":\"g1t will send this webhook's events here.\",\"time\":\"2026-10-04T16:01:12.440Z\",\"type\":\"ping\"}",
-                    "createdAt": "2026-10-04T16:20:03.100Z",
-                    "deliveredAt": null,
-                    "nextAttemptAt": "2026-10-04T16:21:03.312Z"
+                    "created_at": "2026-10-04T16:20:03.100Z",
+                    "delivered_at": null,
+                    "next_attempt_at": "2026-10-04T16:21:03.312Z"
                   },
                   {
                     "id": "dlv_01kpx5p9v2j7k3m8n4p5q6r7st",
-                    "hookId": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
-                    "eventId": "",
+                    "hook_id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+                    "event_id": "",
                     "event": "ping",
                     "status": "delivered",
                     "attempts": 1,
-                    "responseStatus": 200,
-                    "responseBody": "ok",
+                    "response_status": 200,
+                    "response_body": "ok",
                     "error": null,
-                    "durationMs": 184,
+                    "duration_ms": 184,
                     "payload": "{\"hook\":{\"events\":[\"git.push\",\"pull.merged\"],\"id\":\"hk_01kpx5p9s4h0t1w6x8y2a3b4cd\",\"url\":\"https://hooks.example.com/g1t\"},\"message\":\"g1t will send this webhook's events here.\",\"time\":\"2026-10-04T16:01:12.440Z\",\"type\":\"ping\"}",
-                    "createdAt": "2026-10-04T16:01:12.440Z",
-                    "deliveredAt": "2026-10-04T16:01:12.631Z",
-                    "nextAttemptAt": null
+                    "created_at": "2026-10-04T16:01:12.440Z",
+                    "delivered_at": "2026-10-04T16:01:12.631Z",
+                    "next_attempt_at": null
                   }
                 ]
               }
@@ -4900,19 +5266,19 @@
                 "schema": {},
                 "example": {
                   "id": "dlv_01kpx6c8d1e2f3g4h5j6k7m8np",
-                  "hookId": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
-                  "eventId": "",
+                  "hook_id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+                  "event_id": "",
                   "event": "ping",
                   "status": "delivered",
                   "attempts": 1,
-                  "responseStatus": 200,
-                  "responseBody": "ok",
+                  "response_status": 200,
+                  "response_body": "ok",
                   "error": null,
-                  "durationMs": 171,
+                  "duration_ms": 171,
                   "payload": "{\"hook\":{\"events\":[\"git.push\",\"pull.merged\"],\"id\":\"hk_01kpx5p9s4h0t1w6x8y2a3b4cd\",\"url\":\"https://hooks.example.com/g1t\"},\"message\":\"g1t will send this webhook's events here.\",\"time\":\"2026-10-04T16:01:12.440Z\",\"type\":\"ping\"}",
-                  "createdAt": "2026-10-04T16:25:40.007Z",
-                  "deliveredAt": "2026-10-04T16:25:40.178Z",
-                  "nextAttemptAt": null
+                  "created_at": "2026-10-04T16:25:40.007Z",
+                  "delivered_at": "2026-10-04T16:25:40.178Z",
+                  "next_attempt_at": null
                 }
               }
             }
@@ -5033,11 +5399,11 @@
                       "pull.merged"
                     ],
                     "active": true,
-                    "secretHint": "…9c2e",
-                    "createdBy": "syntaqx",
-                    "createdAt": "2026-10-04T15:42:07.318Z",
-                    "lastStatus": "delivered",
-                    "lastDeliveredAt": "2026-10-04T15:42:07.611Z"
+                    "secret_hint": "…9c2e",
+                    "created_by": "syntaqx",
+                    "created_at": "2026-10-04T15:42:07.318Z",
+                    "last_status": "delivered",
+                    "last_delivered_at": "2026-10-04T15:42:07.611Z"
                   }
                 ]
               }
@@ -5094,7 +5460,7 @@
           "Webhooks"
         ],
         "summary": "Create a webhook for a workspace",
-        "description": "Register an HTTPS address to be sent events as they happen: a signed JSON POST for each, retried for hours if the receiver does not answer with a 2xx. events lists the event types, or leave it out for all. Without a secret, g1t makes one and returns it once. A ping is sent at once. Members, for a repository; owners, for a workspace.\n\nA ping is sent before the response, so `lastStatus` is usually set already. When g1t made the signing secret, `secret` holds it: it is shown only this once. See [webhooks](/guides/webhooks/).",
+        "description": "Register an HTTPS address to be sent events as they happen: a signed JSON POST for each, retried for hours if the receiver does not answer with a 2xx. events lists the event types, or leave it out for all. Without a secret, g1t makes one and returns it once. A ping is sent at once. Members, for a repository; owners, for a workspace.\n\nA ping is sent before the response, so `last_status` is usually set already. When g1t made the signing secret, `secret` holds it: it is shown only this once. See [webhooks](/guides/webhooks/).",
         "x-mcp-tool": "create_webhook",
         "security": [
           {
@@ -5129,11 +5495,11 @@
                       "*"
                     ],
                     "active": true,
-                    "secretHint": "…9c2e",
-                    "createdBy": "syntaqx",
-                    "createdAt": "2026-10-04T15:42:07.318Z",
-                    "lastStatus": "delivered",
-                    "lastDeliveredAt": "2026-10-04T15:42:07.611Z"
+                    "secret_hint": "…9c2e",
+                    "created_by": "syntaqx",
+                    "created_at": "2026-10-04T15:42:07.318Z",
+                    "last_status": "delivered",
+                    "last_delivered_at": "2026-10-04T15:42:07.611Z"
                   },
                   "secret": "whsec_…"
                 }
@@ -5303,11 +5669,11 @@
                     "pull.merged"
                   ],
                   "active": false,
-                  "secretHint": "…9c2e",
-                  "createdBy": "syntaqx",
-                  "createdAt": "2026-10-04T15:42:07.318Z",
-                  "lastStatus": "delivered",
-                  "lastDeliveredAt": "2026-10-04T15:42:07.611Z"
+                  "secret_hint": "…9c2e",
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-04T15:42:07.318Z",
+                  "last_status": "delivered",
+                  "last_delivered_at": "2026-10-04T15:42:07.611Z"
                 }
               }
             }
@@ -5560,19 +5926,19 @@
                 "schema": {},
                 "example": {
                   "id": "dlv_01kpx5p9v2j7k3m8n4p5q6r7st",
-                  "hookId": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
-                  "eventId": "",
+                  "hook_id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+                  "event_id": "",
                   "event": "ping",
                   "status": "delivered",
                   "attempts": 1,
-                  "responseStatus": 200,
-                  "responseBody": "ok",
+                  "response_status": 200,
+                  "response_body": "ok",
                   "error": null,
-                  "durationMs": 184,
+                  "duration_ms": 184,
                   "payload": "{\"hook\":{\"events\":[\"git.push\",\"pull.merged\"],\"id\":\"hk_01kpx5p9s4h0t1w6x8y2a3b4cd\",\"url\":\"https://hooks.example.com/g1t\"},\"message\":\"g1t will send this webhook's events here.\",\"time\":\"2026-10-04T16:01:12.440Z\",\"type\":\"ping\"}",
-                  "createdAt": "2026-10-04T16:01:12.440Z",
-                  "deliveredAt": "2026-10-04T16:01:12.631Z",
-                  "nextAttemptAt": null
+                  "created_at": "2026-10-04T16:01:12.440Z",
+                  "delivered_at": "2026-10-04T16:01:12.631Z",
+                  "next_attempt_at": null
                 }
               }
             }
@@ -5677,35 +6043,35 @@
                 "example": [
                   {
                     "id": "dlv_01kpx6a2b3c4d5e6f7g8h9j0kz",
-                    "hookId": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
-                    "eventId": "",
+                    "hook_id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+                    "event_id": "",
                     "event": "ping",
                     "status": "pending",
                     "attempts": 1,
-                    "responseStatus": 503,
-                    "responseBody": "Service Unavailable",
+                    "response_status": 503,
+                    "response_body": "Service Unavailable",
                     "error": null,
-                    "durationMs": 212,
+                    "duration_ms": 212,
                     "payload": "{\"hook\":{\"events\":[\"git.push\",\"pull.merged\"],\"id\":\"hk_01kpx5p9s4h0t1w6x8y2a3b4cd\",\"url\":\"https://hooks.example.com/g1t\"},\"message\":\"g1t will send this webhook's events here.\",\"time\":\"2026-10-04T16:01:12.440Z\",\"type\":\"ping\"}",
-                    "createdAt": "2026-10-04T16:20:03.100Z",
-                    "deliveredAt": null,
-                    "nextAttemptAt": "2026-10-04T16:21:03.312Z"
+                    "created_at": "2026-10-04T16:20:03.100Z",
+                    "delivered_at": null,
+                    "next_attempt_at": "2026-10-04T16:21:03.312Z"
                   },
                   {
                     "id": "dlv_01kpx5p9v2j7k3m8n4p5q6r7st",
-                    "hookId": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
-                    "eventId": "",
+                    "hook_id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+                    "event_id": "",
                     "event": "ping",
                     "status": "delivered",
                     "attempts": 1,
-                    "responseStatus": 200,
-                    "responseBody": "ok",
+                    "response_status": 200,
+                    "response_body": "ok",
                     "error": null,
-                    "durationMs": 184,
+                    "duration_ms": 184,
                     "payload": "{\"hook\":{\"events\":[\"git.push\",\"pull.merged\"],\"id\":\"hk_01kpx5p9s4h0t1w6x8y2a3b4cd\",\"url\":\"https://hooks.example.com/g1t\"},\"message\":\"g1t will send this webhook's events here.\",\"time\":\"2026-10-04T16:01:12.440Z\",\"type\":\"ping\"}",
-                    "createdAt": "2026-10-04T16:01:12.440Z",
-                    "deliveredAt": "2026-10-04T16:01:12.631Z",
-                    "nextAttemptAt": null
+                    "created_at": "2026-10-04T16:01:12.440Z",
+                    "delivered_at": "2026-10-04T16:01:12.631Z",
+                    "next_attempt_at": null
                   }
                 ]
               }
@@ -5809,19 +6175,19 @@
                 "schema": {},
                 "example": {
                   "id": "dlv_01kpx6c8d1e2f3g4h5j6k7m8np",
-                  "hookId": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
-                  "eventId": "",
+                  "hook_id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
+                  "event_id": "",
                   "event": "ping",
                   "status": "delivered",
                   "attempts": 1,
-                  "responseStatus": 200,
-                  "responseBody": "ok",
+                  "response_status": 200,
+                  "response_body": "ok",
                   "error": null,
-                  "durationMs": 171,
+                  "duration_ms": 171,
                   "payload": "{\"hook\":{\"events\":[\"git.push\",\"pull.merged\"],\"id\":\"hk_01kpx5p9s4h0t1w6x8y2a3b4cd\",\"url\":\"https://hooks.example.com/g1t\"},\"message\":\"g1t will send this webhook's events here.\",\"time\":\"2026-10-04T16:01:12.440Z\",\"type\":\"ping\"}",
-                  "createdAt": "2026-10-04T16:25:40.007Z",
-                  "deliveredAt": "2026-10-04T16:25:40.178Z",
-                  "nextAttemptAt": null
+                  "created_at": "2026-10-04T16:25:40.007Z",
+                  "delivered_at": "2026-10-04T16:25:40.178Z",
+                  "next_attempt_at": null
                 }
               }
             }
@@ -5918,12 +6284,12 @@
                 "example": [
                   {
                     "task": "default",
-                    "connectionId": "con_01kpx3m7q2f8r9t4v6w0y1z2ab",
+                    "connection_id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab",
                     "model": "claude-sonnet-4-5"
                   },
                   {
                     "task": "review",
-                    "connectionId": null,
+                    "connection_id": null,
                     "model": null
                   }
                 ]
@@ -6008,12 +6374,12 @@
                 "example": [
                   {
                     "task": "default",
-                    "connectionId": "con_01kpx3m7q2f8r9t4v6w0y1z2ab",
+                    "connection_id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab",
                     "model": "claude-sonnet-4-5"
                   },
                   {
                     "task": "review",
-                    "connectionId": null,
+                    "connection_id": null,
                     "model": null
                   }
                 ]
@@ -6410,9 +6776,9 @@
                         "default": false
                       }
                     },
-                    "lastRun": {
+                    "last_run": {
                       "id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
-                      "workflowId": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+                      "workflow_id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
                       "path": ".g1t/workflows/ci.yml",
                       "name": "CI",
                       "title": "Greeting should name the caller",
@@ -6426,9 +6792,9 @@
                       "conclusion": "success",
                       "error": null,
                       "actor": "syntaqx",
-                      "createdAt": "2026-10-04T15:42:07.318Z",
-                      "startedAt": "2026-10-04T15:42:09.020Z",
-                      "finishedAt": "2026-10-04T15:44:31.877Z"
+                      "created_at": "2026-10-04T15:42:07.318Z",
+                      "started_at": "2026-10-04T15:42:09.020Z",
+                      "finished_at": "2026-10-04T15:44:31.877Z"
                     }
                   },
                   {
@@ -6442,7 +6808,7 @@
                     "error": null,
                     "notes": [],
                     "dispatch": null,
-                    "lastRun": null
+                    "last_run": null
                   }
                 ]
               }
@@ -6569,7 +6935,7 @@
                 "example": [
                   {
                     "id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
-                    "workflowId": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+                    "workflow_id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
                     "path": ".g1t/workflows/ci.yml",
                     "name": "CI",
                     "title": "Greeting should name the caller",
@@ -6583,9 +6949,9 @@
                     "conclusion": "success",
                     "error": null,
                     "actor": "syntaqx",
-                    "createdAt": "2026-10-04T15:42:07.318Z",
-                    "startedAt": "2026-10-04T15:42:09.020Z",
-                    "finishedAt": "2026-10-04T15:44:31.877Z"
+                    "created_at": "2026-10-04T15:42:07.318Z",
+                    "started_at": "2026-10-04T15:42:09.020Z",
+                    "finished_at": "2026-10-04T15:44:31.877Z"
                   }
                 ]
               }
@@ -6692,7 +7058,7 @@
                 "schema": {},
                 "example": {
                   "id": "run_01kpx8d4e7f0g3h6j9k2m5n8pq",
-                  "workflowId": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+                  "workflow_id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
                   "path": ".g1t/workflows/ci.yml",
                   "name": "CI",
                   "title": "CI run by syntaqx",
@@ -6706,9 +7072,9 @@
                   "conclusion": null,
                   "error": null,
                   "actor": "syntaqx",
-                  "createdAt": "2026-10-04T16:30:00.512Z",
-                  "startedAt": null,
-                  "finishedAt": null
+                  "created_at": "2026-10-04T16:30:00.512Z",
+                  "started_at": null,
+                  "finished_at": null
                 }
               }
             }
@@ -6855,7 +7221,7 @@
                   "error": null,
                   "notes": [],
                   "dispatch": null,
-                  "lastRun": null
+                  "last_run": null
                 }
               }
             }
@@ -6997,7 +7363,7 @@
                   "error": null,
                   "notes": [],
                   "dispatch": null,
-                  "lastRun": null
+                  "last_run": null
                 }
               }
             }
@@ -7136,7 +7502,7 @@
                   "error": null,
                   "notes": [],
                   "dispatch": null,
-                  "lastRun": null
+                  "last_run": null
                 }
               }
             }
@@ -7311,7 +7677,7 @@
                 "example": [
                   {
                     "id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
-                    "workflowId": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+                    "workflow_id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
                     "path": ".g1t/workflows/ci.yml",
                     "name": "CI",
                     "title": "Greeting should name the caller",
@@ -7325,9 +7691,9 @@
                     "conclusion": "success",
                     "error": null,
                     "actor": "syntaqx",
-                    "createdAt": "2026-10-04T15:42:07.318Z",
-                    "startedAt": "2026-10-04T15:42:09.020Z",
-                    "finishedAt": "2026-10-04T15:44:31.877Z"
+                    "created_at": "2026-10-04T15:42:07.318Z",
+                    "started_at": "2026-10-04T15:42:09.020Z",
+                    "finished_at": "2026-10-04T15:44:31.877Z"
                   }
                 ]
               }
@@ -7433,7 +7799,7 @@
                 "example": {
                   "run": {
                     "id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
-                    "workflowId": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+                    "workflow_id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
                     "path": ".g1t/workflows/ci.yml",
                     "name": "CI",
                     "title": "Greeting should name the caller",
@@ -7447,14 +7813,14 @@
                     "conclusion": "failure",
                     "error": null,
                     "actor": "syntaqx",
-                    "createdAt": "2026-10-04T15:42:07.318Z",
-                    "startedAt": "2026-10-04T15:42:09.020Z",
-                    "finishedAt": "2026-10-04T15:44:31.877Z"
+                    "created_at": "2026-10-04T15:42:07.318Z",
+                    "started_at": "2026-10-04T15:42:09.020Z",
+                    "finished_at": "2026-10-04T15:44:31.877Z"
                   },
                   "jobs": [
                     {
                       "id": "job_01kpx7b3d0e4f8g2h6j0k4m8ns",
-                      "runId": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
+                      "run_id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
                       "key": "test",
                       "name": "test",
                       "needs": [],
@@ -7466,16 +7832,16 @@
                           "name": "Run actions/checkout@v4",
                           "status": "completed",
                           "conclusion": "success",
-                          "startedAt": "2026-10-04T15:42:10.101Z",
-                          "finishedAt": "2026-10-04T15:42:12.433Z"
+                          "started_at": "2026-10-04T15:42:10.101Z",
+                          "finished_at": "2026-10-04T15:42:12.433Z"
                         },
                         {
                           "number": 2,
                           "name": "Run cargo test",
                           "status": "completed",
                           "conclusion": "failure",
-                          "startedAt": "2026-10-04T15:42:12.440Z",
-                          "finishedAt": "2026-10-04T15:44:30.902Z"
+                          "started_at": "2026-10-04T15:42:12.440Z",
+                          "finished_at": "2026-10-04T15:44:30.902Z"
                         }
                       ],
                       "annotations": [
@@ -7488,12 +7854,12 @@
                         }
                       ],
                       "reason": null,
-                      "startedAt": "2026-10-04T15:42:09.020Z",
-                      "finishedAt": "2026-10-04T15:44:31.002Z"
+                      "started_at": "2026-10-04T15:42:09.020Z",
+                      "finished_at": "2026-10-04T15:44:31.002Z"
                     },
                     {
                       "id": "job_01kpx7b3d0e4f8g2h6j0k4m8nt",
-                      "runId": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
+                      "run_id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
                       "key": "deploy",
                       "name": "deploy",
                       "needs": [
@@ -7504,8 +7870,8 @@
                       "steps": [],
                       "annotations": [],
                       "reason": "A job it needs did not succeed.",
-                      "startedAt": null,
-                      "finishedAt": "2026-10-04T15:44:31.877Z"
+                      "started_at": null,
+                      "finished_at": "2026-10-04T15:44:31.877Z"
                     }
                   ],
                   "notes": [
@@ -7616,7 +7982,7 @@
                 "schema": {},
                 "example": {
                   "id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
-                  "workflowId": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+                  "workflow_id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
                   "path": ".g1t/workflows/ci.yml",
                   "name": "CI",
                   "title": "Greeting should name the caller",
@@ -7630,9 +7996,9 @@
                   "conclusion": "cancelled",
                   "error": null,
                   "actor": "syntaqx",
-                  "createdAt": "2026-10-04T15:42:07.318Z",
-                  "startedAt": "2026-10-04T15:42:09.020Z",
-                  "finishedAt": "2026-10-04T15:44:31.877Z"
+                  "created_at": "2026-10-04T15:42:07.318Z",
+                  "started_at": "2026-10-04T15:42:09.020Z",
+                  "finished_at": "2026-10-04T15:44:31.877Z"
                 }
               }
             }
@@ -7744,7 +8110,7 @@
                 "schema": {},
                 "example": {
                   "id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
-                  "workflowId": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+                  "workflow_id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
                   "path": ".g1t/workflows/ci.yml",
                   "name": "CI",
                   "title": "Greeting should name the caller",
@@ -7758,9 +8124,9 @@
                   "conclusion": null,
                   "error": null,
                   "actor": "syntaqx",
-                  "createdAt": "2026-10-04T15:42:07.318Z",
-                  "startedAt": null,
-                  "finishedAt": null
+                  "created_at": "2026-10-04T15:42:07.318Z",
+                  "started_at": null,
+                  "finished_at": null
                 }
               }
             }
@@ -7891,7 +8257,7 @@
                 "schema": {},
                 "example": {
                   "id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
-                  "workflowId": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+                  "workflow_id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
                   "path": ".g1t/workflows/ci.yml",
                   "name": "CI",
                   "title": "Greeting should name the caller",
@@ -7905,9 +8271,9 @@
                   "conclusion": null,
                   "error": null,
                   "actor": "syntaqx",
-                  "createdAt": "2026-10-04T15:42:07.318Z",
-                  "startedAt": null,
-                  "finishedAt": null
+                  "created_at": "2026-10-04T15:42:07.318Z",
+                  "started_at": null,
+                  "finished_at": null
                 }
               }
             }
@@ -8156,14 +8522,14 @@
                     "kind": "secret",
                     "value": null,
                     "scope": "workspace",
-                    "updatedAt": "2026-10-01T09:12:44.020Z",
-                    "availableTo": [
+                    "updated_at": "2026-10-01T09:12:44.020Z",
+                    "available_to": [
                       "workflows"
                     ],
                     "environments": [],
                     "projects": [],
                     "note": null,
-                    "updatedBy": "syntaqx"
+                    "updated_by": "syntaqx"
                   },
                   {
                     "id": "set_01kpv9q4r7s0t3v6w9x2y5z8ac",
@@ -8171,8 +8537,8 @@
                     "kind": "secret",
                     "value": null,
                     "scope": "project",
-                    "updatedAt": "2026-10-04T15:42:07.318Z",
-                    "availableTo": [
+                    "updated_at": "2026-10-04T15:42:07.318Z",
+                    "available_to": [
                       "workflows",
                       "deployments"
                     ],
@@ -8181,7 +8547,7 @@
                     ],
                     "projects": [],
                     "note": "Rotate in the Stripe dashboard.",
-                    "updatedBy": "syntaqx"
+                    "updated_by": "syntaqx"
                   }
                 ]
               }
@@ -8285,8 +8651,8 @@
                   "kind": "secret",
                   "value": null,
                   "scope": "project",
-                  "updatedAt": "2026-10-04T15:42:07.318Z",
-                  "availableTo": [
+                  "updated_at": "2026-10-04T15:42:07.318Z",
+                  "available_to": [
                     "workflows",
                     "deployments"
                   ],
@@ -8295,7 +8661,7 @@
                   ],
                   "projects": [],
                   "note": null,
-                  "updatedBy": "syntaqx"
+                  "updated_by": "syntaqx"
                 }
               }
             }
@@ -8593,15 +8959,15 @@
                     "kind": "variable",
                     "value": "20",
                     "scope": "project",
-                    "updatedAt": "2026-10-04T15:42:07.318Z",
-                    "availableTo": [
+                    "updated_at": "2026-10-04T15:42:07.318Z",
+                    "available_to": [
                       "workflows",
                       "deployments"
                     ],
                     "environments": [],
                     "projects": [],
                     "note": null,
-                    "updatedBy": "syntaqx"
+                    "updated_by": "syntaqx"
                   }
                 ]
               }
@@ -8694,15 +9060,15 @@
                   "kind": "variable",
                   "value": "20",
                   "scope": "project",
-                  "updatedAt": "2026-10-04T15:42:07.318Z",
-                  "availableTo": [
+                  "updated_at": "2026-10-04T15:42:07.318Z",
+                  "available_to": [
                     "workflows",
                     "deployments"
                   ],
                   "environments": [],
                   "projects": [],
                   "note": null,
-                  "updatedBy": "syntaqx"
+                  "updated_by": "syntaqx"
                 }
               }
             }
@@ -8879,15 +9245,15 @@
                   "kind": "variable",
                   "value": "22",
                   "scope": "project",
-                  "updatedAt": "2026-10-04T15:42:07.318Z",
-                  "availableTo": [
+                  "updated_at": "2026-10-04T15:42:07.318Z",
+                  "available_to": [
                     "workflows",
                     "deployments"
                   ],
                   "environments": [],
                   "projects": [],
                   "note": null,
-                  "updatedBy": "syntaqx"
+                  "updated_by": "syntaqx"
                 }
               }
             }
@@ -9169,14 +9535,14 @@
                     "kind": "secret",
                     "value": null,
                     "scope": "workspace",
-                    "updatedAt": "2026-10-04T15:42:07.318Z",
-                    "availableTo": [
+                    "updated_at": "2026-10-04T15:42:07.318Z",
+                    "available_to": [
                       "workflows"
                     ],
                     "environments": [],
                     "projects": [],
                     "note": null,
-                    "updatedBy": "syntaqx"
+                    "updated_by": "syntaqx"
                   }
                 ]
               }
@@ -9274,8 +9640,8 @@
                   "kind": "secret",
                   "value": null,
                   "scope": "workspace",
-                  "updatedAt": "2026-10-04T15:42:07.318Z",
-                  "availableTo": [
+                  "updated_at": "2026-10-04T15:42:07.318Z",
+                  "available_to": [
                     "workflows"
                   ],
                   "environments": [],
@@ -9283,7 +9649,7 @@
                     "hello"
                   ],
                   "note": null,
-                  "updatedBy": "syntaqx"
+                  "updated_by": "syntaqx"
                 }
               }
             }
@@ -9553,15 +9919,15 @@
                     "kind": "variable",
                     "value": "20",
                     "scope": "workspace",
-                    "updatedAt": "2026-10-04T15:42:07.318Z",
-                    "availableTo": [
+                    "updated_at": "2026-10-04T15:42:07.318Z",
+                    "available_to": [
                       "workflows",
                       "deployments"
                     ],
                     "environments": [],
                     "projects": [],
                     "note": null,
-                    "updatedBy": "syntaqx"
+                    "updated_by": "syntaqx"
                   }
                 ]
               }
@@ -9648,15 +10014,15 @@
                   "kind": "variable",
                   "value": "20",
                   "scope": "workspace",
-                  "updatedAt": "2026-10-04T15:42:07.318Z",
-                  "availableTo": [
+                  "updated_at": "2026-10-04T15:42:07.318Z",
+                  "available_to": [
                     "workflows",
                     "deployments"
                   ],
                   "environments": [],
                   "projects": [],
                   "note": null,
-                  "updatedBy": "syntaqx"
+                  "updated_by": "syntaqx"
                 }
               }
             }
@@ -9823,15 +10189,15 @@
                   "kind": "variable",
                   "value": "22",
                   "scope": "workspace",
-                  "updatedAt": "2026-10-04T15:42:07.318Z",
-                  "availableTo": [
+                  "updated_at": "2026-10-04T15:42:07.318Z",
+                  "available_to": [
                     "workflows",
                     "deployments"
                   ],
                   "environments": [],
                   "projects": [],
                   "note": null,
-                  "updatedBy": "syntaqx"
+                  "updated_by": "syntaqx"
                 }
               }
             }
@@ -10101,7 +10467,7 @@
               "application/json": {
                 "schema": {},
                 "example": {
-                  "planId": "pln_01m43s9c4e8g2j6m0q4t8x2b6d"
+                  "plan_id": "pln_01m43s9c4e8g2j6m0q4t8x2b6d"
                 }
               }
             }
@@ -10242,7 +10608,7 @@
                 "schema": {},
                 "example": {
                   "id": "pln_01m43s9c4e8g2j6m0q4t8x2b6d",
-                  "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "brief": "Greet people by name, from the command line and the web page.",
                   "status": "ready",
                   "summary": "Name parsing first, then the two places that print the greeting.",
@@ -10259,7 +10625,7 @@
                       "files": [
                         "src/greet.rs"
                       ],
-                      "dependsOn": [],
+                      "depends_on": [],
                       "number": null
                     },
                     {
@@ -10274,7 +10640,7 @@
                       "files": [
                         "src/web.rs"
                       ],
-                      "dependsOn": [
+                      "depends_on": [
                         1
                       ],
                       "number": null
@@ -10288,8 +10654,8 @@
                     "verified": false,
                     "workspaces": []
                   },
-                  "createdAt": "2026-10-01T17:58:40.006Z",
-                  "finishedAt": "2026-10-01T18:01:12.774Z",
+                  "created_at": "2026-10-01T17:58:40.006Z",
+                  "finished_at": "2026-10-01T18:01:12.774Z",
                   "progress": [],
                   "exchanges": []
                 }
@@ -10393,7 +10759,7 @@
                 "schema": {},
                 "example": {
                   "id": "pln_01m43s9c4e8g2j6m0q4t8x2b6d",
-                  "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "brief": "Greet people by name, from the command line and the web page.",
                   "status": "applied",
                   "summary": "Name parsing first, then the two places that print the greeting.",
@@ -10410,7 +10776,7 @@
                       "files": [
                         "src/greet.rs"
                       ],
-                      "dependsOn": [],
+                      "depends_on": [],
                       "number": 12
                     },
                     {
@@ -10425,7 +10791,7 @@
                       "files": [
                         "src/web.rs"
                       ],
-                      "dependsOn": [
+                      "depends_on": [
                         1
                       ],
                       "number": 13
@@ -10439,8 +10805,8 @@
                     "verified": false,
                     "workspaces": []
                   },
-                  "createdAt": "2026-10-01T17:58:40.006Z",
-                  "finishedAt": "2026-10-01T18:01:12.774Z",
+                  "created_at": "2026-10-01T17:58:40.006Z",
+                  "finished_at": "2026-10-01T18:01:12.774Z",
                   "progress": [],
                   "exchanges": []
                 }
@@ -10607,7 +10973,7 @@
                   "path": null,
                   "line": null,
                   "verdict": null,
-                  "createdAt": "2026-10-01T18:12:30.551Z"
+                  "created_at": "2026-10-01T18:12:30.551Z"
                 }
               }
             }
@@ -10702,7 +11068,7 @@
           "Pull requests"
         ],
         "summary": "List pull requests",
-        "description": "Pull requests on a repository, newest first. State open covers drafts and those ready for review; closed covers merged and closed.\n\nReturns at most 100 pull requests, newest first. `checkStatus` is `queued`, `running`, `passed`, `failed`, `errored`, or `null` when no checks have run against the head.",
+        "description": "Pull requests on a repository, newest first. State open covers drafts and those ready for review; closed covers merged and closed.\n\nReturns at most 100 pull requests, newest first. `check_status` is `queued`, `running`, `passed`, `failed`, `errored`, or `null` when no checks have run against the head.",
         "x-mcp-tool": "list_pull_requests",
         "security": [
           {
@@ -10751,7 +11117,7 @@
                 "example": [
                   {
                     "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
-                    "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                     "number": 14,
                     "issue": 12,
                     "title": "Greeting should name the caller",
@@ -10763,14 +11129,14 @@
                       "namespace": "pulls",
                       "name": "pr_01m43smh3vexsr5pmp60qwv0vs"
                     },
-                    "forkRepoId": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+                    "fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
                     "branch": null,
-                    "headCommit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
-                    "mergeBase": null,
-                    "mergedBy": null,
-                    "mergedAt": null,
-                    "supersededBy": null,
-                    "checkStatus": "passed",
+                    "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                    "merge_base": null,
+                    "merged_by": null,
+                    "merged_at": null,
+                    "superseded_by": null,
+                    "check_status": "passed",
                     "files": [
                       {
                         "path": "src/main.rs",
@@ -10789,8 +11155,8 @@
                       "verified": false,
                       "workspaces": []
                     },
-                    "createdAt": "2026-10-01T18:20:02.117Z",
-                    "updatedAt": "2026-10-01T18:35:44.902Z"
+                    "created_at": "2026-10-01T18:20:02.117Z",
+                    "updated_at": "2026-10-01T18:35:44.902Z"
                   }
                 ]
               }
@@ -10883,7 +11249,7 @@
                 "example": {
                   "pull": {
                     "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
-                    "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                     "number": 14,
                     "issue": 12,
                     "title": "Greeting should name the caller",
@@ -10895,14 +11261,14 @@
                       "namespace": "pulls",
                       "name": "pr_01m43smh3vexsr5pmp60qwv0vs"
                     },
-                    "forkRepoId": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+                    "fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
                     "branch": null,
-                    "headCommit": null,
-                    "mergeBase": null,
-                    "mergedBy": null,
-                    "mergedAt": null,
-                    "supersededBy": null,
-                    "checkStatus": null,
+                    "head_commit": null,
+                    "merge_base": null,
+                    "merged_by": null,
+                    "merged_at": null,
+                    "superseded_by": null,
+                    "check_status": null,
                     "files": [],
                     "assignees": [],
                     "reviewers": [],
@@ -10913,8 +11279,8 @@
                       "verified": false,
                       "workspaces": []
                     },
-                    "createdAt": "2026-10-01T18:20:02.117Z",
-                    "updatedAt": "2026-10-01T18:20:02.117Z"
+                    "created_at": "2026-10-01T18:20:02.117Z",
+                    "updated_at": "2026-10-01T18:20:02.117Z"
                   },
                   "git": {
                     "remote": "https://g1t.sh/pulls/pr_01m43smh3vexsr5pmp60qwv0vs.git",
@@ -11067,7 +11433,7 @@
                 "example": {
                   "pull": {
                     "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
-                    "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                     "number": 14,
                     "issue": 12,
                     "title": "Greeting should name the caller",
@@ -11079,14 +11445,14 @@
                       "namespace": "pulls",
                       "name": "pr_01m43smh3vexsr5pmp60qwv0vs"
                     },
-                    "forkRepoId": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+                    "fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
                     "branch": null,
-                    "headCommit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
-                    "mergeBase": null,
-                    "mergedBy": null,
-                    "mergedAt": null,
-                    "supersededBy": null,
-                    "checkStatus": "passed",
+                    "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                    "merge_base": null,
+                    "merged_by": null,
+                    "merged_at": null,
+                    "superseded_by": null,
+                    "check_status": "passed",
                     "files": [
                       {
                         "path": "src/main.rs",
@@ -11105,12 +11471,12 @@
                       "verified": false,
                       "workspaces": []
                     },
-                    "createdAt": "2026-10-01T18:20:02.117Z",
-                    "updatedAt": "2026-10-01T18:35:44.902Z"
+                    "created_at": "2026-10-01T18:20:02.117Z",
+                    "updated_at": "2026-10-01T18:35:44.902Z"
                   },
                   "issue": {
                     "id": "iss_01m43shrzpfe49x74ga7sj1c6v",
-                    "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                     "number": 12,
                     "title": "Greeting should name the caller",
                     "body": "Take a name from the first argument; fall back to world.",
@@ -11122,7 +11488,7 @@
                     ],
                     "state": "open",
                     "reason": null,
-                    "resolvedBy": null,
+                    "resolved_by": null,
                     "author": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
@@ -11130,13 +11496,13 @@
                       "verified": false,
                       "workspaces": []
                     },
-                    "createdAt": "2026-10-01T18:04:11.482Z",
-                    "updatedAt": "2026-10-01T18:20:02.117Z",
-                    "closedAt": null,
-                    "pullCount": 1,
-                    "commentCount": 0,
+                    "created_at": "2026-10-01T18:04:11.482Z",
+                    "updated_at": "2026-10-01T18:20:02.117Z",
+                    "closed_at": null,
+                    "pull_count": 1,
+                    "comment_count": 0,
                     "assignees": [],
-                    "blockedBy": [],
+                    "blocked_by": [],
                     "queued": false,
                     "agent": "claude-code"
                   },
@@ -11155,25 +11521,25 @@
                       "path": null,
                       "line": null,
                       "verdict": null,
-                      "createdAt": "2026-10-01T18:33:10.420Z"
+                      "created_at": "2026-10-01T18:33:10.420Z"
                     }
                   ],
                   "checks": {
                     "id": "chk_01m43sw8e2g6j0m4q8t2x6a0c4",
-                    "headCommit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                    "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
                     "status": "passed",
                     "results": [
                       {
                         "command": "cargo test",
                         "passed": true,
-                        "exitCode": 0,
+                        "exit_code": 0,
                         "output": "test result: ok. 3 passed; 0 failed",
-                        "durationMs": 18234
+                        "duration_ms": 18234
                       }
                     ],
                     "error": null,
-                    "createdAt": "2026-10-01T18:33:11.002Z",
-                    "finishedAt": "2026-10-01T18:35:44.902Z"
+                    "created_at": "2026-10-01T18:33:11.002Z",
+                    "finished_at": "2026-10-01T18:35:44.902Z"
                   },
                   "overlaps": [],
                   "behind": false,
@@ -11186,11 +11552,11 @@
                       "id": "msg_01m43tx5egeh4t3f9zcnjenqvz",
                       "author": "syntaqx",
                       "body": "Keep \"world\" as the default when no name is given.",
-                      "createdAt": "2026-10-01T18:25:00.310Z",
-                      "deliveredAt": "2026-10-01T18:25:31.007Z",
+                      "created_at": "2026-10-01T18:25:00.310Z",
+                      "delivered_at": "2026-10-01T18:25:31.007Z",
                       "kind": "message",
-                      "fromNumber": null,
-                      "toNumber": 14,
+                      "from_number": null,
+                      "to_number": 14,
                       "answer": null,
                       "declined": false
                     }
@@ -11451,7 +11817,7 @@
                   "path": null,
                   "line": null,
                   "verdict": "request_changes",
-                  "createdAt": "2026-10-01T18:40:05.019Z"
+                  "created_at": "2026-10-01T18:40:05.019Z"
                 }
               }
             }
@@ -11879,7 +12245,7 @@
                 "schema": {},
                 "example": {
                   "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
-                  "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "number": 14,
                   "issue": 12,
                   "title": "Greeting should name the caller",
@@ -11891,14 +12257,14 @@
                     "namespace": "pulls",
                     "name": "pr_01m43smh3vexsr5pmp60qwv0vs"
                   },
-                  "forkRepoId": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+                  "fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
                   "branch": null,
-                  "headCommit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
-                  "mergeBase": null,
-                  "mergedBy": null,
-                  "mergedAt": null,
-                  "supersededBy": null,
-                  "checkStatus": null,
+                  "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                  "merge_base": null,
+                  "merged_by": null,
+                  "merged_at": null,
+                  "superseded_by": null,
+                  "check_status": null,
                   "files": [
                     {
                       "path": "src/main.rs",
@@ -11915,8 +12281,8 @@
                     "verified": false,
                     "workspaces": []
                   },
-                  "createdAt": "2026-10-01T18:20:02.117Z",
-                  "updatedAt": "2026-10-01T18:33:10.398Z"
+                  "created_at": "2026-10-01T18:20:02.117Z",
+                  "updated_at": "2026-10-01T18:33:10.398Z"
                 }
               }
             }
@@ -12047,7 +12413,7 @@
                 "schema": {},
                 "example": {
                   "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
-                  "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "number": 14,
                   "issue": 12,
                   "title": "Greeting should name the caller",
@@ -12059,14 +12425,14 @@
                     "namespace": "pulls",
                     "name": "pr_01m43smh3vexsr5pmp60qwv0vs"
                   },
-                  "forkRepoId": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+                  "fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
                   "branch": null,
-                  "headCommit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
-                  "mergeBase": null,
-                  "mergedBy": null,
-                  "mergedAt": null,
-                  "supersededBy": null,
-                  "checkStatus": null,
+                  "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                  "merge_base": null,
+                  "merged_by": null,
+                  "merged_at": null,
+                  "superseded_by": null,
+                  "check_status": null,
                   "files": [
                     {
                       "path": "src/main.rs",
@@ -12083,8 +12449,8 @@
                     "verified": false,
                     "workspaces": []
                   },
-                  "createdAt": "2026-10-01T18:20:02.117Z",
-                  "updatedAt": "2026-10-01T19:02:48.760Z"
+                  "created_at": "2026-10-01T18:20:02.117Z",
+                  "updated_at": "2026-10-01T19:02:48.760Z"
                 }
               }
             }
@@ -12149,7 +12515,7 @@
           "Pull requests"
         ],
         "summary": "Merge a pull request",
-        "description": "Land a pull request on the repository's main branch. Only members of the repository's workspace can merge, and only once it is marked ready and its acceptance checks have passed. Merging resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded. Where the repository has a merge queue, it joins the queue instead of landing at once. If main has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests to be up to date refuses instead, so pull main into its fork or branch, push, and merge again. Check status in the result to see whether it has landed.\n\nA draft, or one whose checks have not passed, answers `409`. A pull request still `open` in the response has not landed yet: `landing` is true on it while it is brought up to date, and [get the merge queue](/reference/api/pull-requests/get-merge-queue/) shows it waiting in the [merge queue](/guides/merge-queue/). Merging records the pull request in the issue's `resolvedBy` and sets `supersededBy` on the pull requests it closes.",
+        "description": "Land a pull request on the repository's main branch. Only members of the repository's workspace can merge, and only once it is marked ready and its acceptance checks have passed. Merging resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded. Where the repository has a merge queue, it joins the queue instead of landing at once. If main has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests to be up to date refuses instead, so pull main into its fork or branch, push, and merge again. Check status in the result to see whether it has landed.\n\nA draft, or one whose checks have not passed, answers `409`. A pull request still `open` in the response has not landed yet: `landing` is true on it while it is brought up to date, and [get the merge queue](/reference/api/pull-requests/get-merge-queue/) shows it waiting in the [merge queue](/guides/merge-queue/). Merging records the pull request in the issue's `resolved_by` and sets `superseded_by` on the pull requests it closes.",
         "x-mcp-tool": "merge_pull_request",
         "security": [
           {
@@ -12193,7 +12559,7 @@
                 "schema": {},
                 "example": {
                   "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
-                  "repoId": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "number": 14,
                   "issue": 12,
                   "title": "Greeting should name the caller",
@@ -12205,14 +12571,14 @@
                     "namespace": "pulls",
                     "name": "pr_01m43smh3vexsr5pmp60qwv0vs"
                   },
-                  "forkRepoId": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+                  "fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
                   "branch": null,
-                  "headCommit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
-                  "mergeBase": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
-                  "mergedBy": "syntaqx",
-                  "mergedAt": "2026-10-01T18:52:17.093Z",
-                  "supersededBy": null,
-                  "checkStatus": "passed",
+                  "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                  "merge_base": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
+                  "merged_by": "syntaqx",
+                  "merged_at": "2026-10-01T18:52:17.093Z",
+                  "superseded_by": null,
+                  "check_status": "passed",
                   "files": [
                     {
                       "path": "src/main.rs",
@@ -12231,8 +12597,8 @@
                     "verified": false,
                     "workspaces": []
                   },
-                  "createdAt": "2026-10-01T18:20:02.117Z",
-                  "updatedAt": "2026-10-01T18:52:17.093Z"
+                  "created_at": "2026-10-01T18:20:02.117Z",
+                  "updated_at": "2026-10-01T18:52:17.093Z"
                 }
               }
             }

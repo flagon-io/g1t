@@ -45,10 +45,9 @@ export default defineConfig({
 			customCss: ['@g1t/theme/tokens.css', './src/styles/g1t.css'],
 			social: [
 				{ icon: 'seti:git', label: 'Source on g1t', href: 'https://g1t.sh/syntaqx/g1t' },
-				{ icon: 'github', label: 'Source on GitHub', href: 'https://github.com/syntaqx/g1t' },
 			],
 			editLink: {
-				baseUrl: 'https://github.com/syntaqx/g1t/edit/main/apps/docs/',
+				baseUrl: 'https://g1t.sh/syntaqx/g1t/blob/main/apps/docs/',
 			},
 			lastUpdated: true,
 			head: [
@@ -82,15 +81,18 @@ export default defineConfig({
 						{ label: 'Projects', slug: 'guides/projects' },
 						{ label: 'Deployments', slug: 'guides/deployments' },
 						{ label: 'Secrets and variables', slug: 'guides/secrets-and-variables' },
+						{ label: 'Security', slug: 'guides/security' },
 					],
 				},
 				{
 					label: 'Agents',
 					items: [
 						{ label: 'g1t agents', slug: 'guides/g1t-agents' },
+						{ label: 'Guardrails', slug: 'guides/guardrails' },
 						{ label: 'Outcomes and plans', slug: 'guides/outcomes' },
 						{ label: 'Talking to agents', slug: 'guides/talking-to-agents' },
 						{ label: 'Agents, sessions and memory', slug: 'guides/agents-and-memory' },
+						{ label: 'Context hub', slug: 'guides/context-hub' },
 						{ label: 'Bring your own agent', slug: 'guides/bring-your-own-agent' },
 					],
 				},
@@ -117,6 +119,7 @@ export default defineConfig({
 					items: [
 						{ label: 'Accounts and sign-in', slug: 'guides/authentication' },
 						{ label: 'Workspaces and tokens', slug: 'guides/workspaces' },
+						{ label: 'Audit log', slug: 'guides/audit-log' },
 						{ label: 'Usage and billing', slug: 'guides/usage-and-billing' },
 						{ label: 'Git', slug: 'guides/git' },
 					],

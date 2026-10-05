@@ -99,6 +99,9 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     createAgentToken: (onBehalfOf, scope, ttlSeconds) =>
       call("create_agent_token", { onBehalfOf, scope, ttlSeconds }),
     removeAccessToken: (user, id) => call("remove_access_token", { user, id }),
+    createRunCredential: (input) => call("create_run_credential", input),
+    bindRunCredentials: (tokenHashes, runId) => call("bind_run_credentials", { tokenHashes, runId }),
+    revokeRunCredentials: (target) => call("revoke_run_credentials", target),
   };
 }
 

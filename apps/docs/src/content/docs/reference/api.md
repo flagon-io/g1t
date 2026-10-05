@@ -78,9 +78,9 @@ for accounts.
 
 Request bodies are JSON.
 
-Responses use `camelCase`. Request bodies take the same names as the MCP
-tools, in `snake_case`, and also accept `camelCase`, so you can send back a
-field exactly as you read it:
+Every name in a body is `snake_case`, both ways: responses, errors, MCP
+results and [webhook](/guides/webhooks/) payloads. Request bodies take the
+same names as the MCP tools, and also accept the `camelCase` spelling:
 
 ```sh
 # Both turn off counting agents' approvals.
@@ -91,6 +91,10 @@ curl -X PATCH https://api.g1t.sh/repos/syntaqx/hello/settings \
 ```
 
 When a body gives a field both ways, the `snake_case` one is used.
+
+Names you chose are never changed: a workflow's `inputs`, the names of
+secrets and variables, an environment's `env`, a job's `outputs` and
+`matrix`, labels and headers come back exactly as they were written.
 
 A successful request answers `200` with the result as the body: an object,
 a list, or `true` for a deletion. There is no envelope around it.

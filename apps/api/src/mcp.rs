@@ -68,11 +68,16 @@ async fn answer(services: &Services, viewer: &Viewer, request: &Value) -> Result
             let Some(op) = Op::by_name(params["name"].as_str().unwrap_or_default()) else {
                 return Ok(Some(error(id, -32602, "Unknown tool.")));
             };
-            let outcome = op.run(services, viewer, &params["arguments"]).await?;
+            let outcome = crate::audit::run(op, services, viewer, &params["arguments"]).await?;
             // A failed operation is a tool result the model can read and
             // act on, not a protocol error.
             let (text, failed) = match outcome {
-                Outcome::Ok(value) => (serde_json::to_string_pretty(&value)?, false),
+                // In `snake_case`, as the REST API answers; the protocol's
+                // own envelope keeps MCP's spelling.
+                Outcome::Ok(value) => (
+                    serde_json::to_string_pretty(&g1t_kit::wire::snake_case(value))?,
+                    false,
+                ),
                 Outcome::Fail(failure) => (failure.message, true),
             };
             result(

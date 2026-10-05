@@ -42,6 +42,12 @@ curl -X POST https://api.g1t.sh/repos/<workspace>/<repo>/issues/12/assign \
 The same thing is the `assign_issue` tool on the MCP server, so an agent
 planning work can hand issues to g1t agents itself.
 
+In a comment: write `@g1t-agent take this` on the issue. See
+[mentioning g1t-agent](#mentioning-g1t-agent).
+
+By label: a project can hand every issue given a label to the agent. See
+[the label rule](#the-label-rule).
+
 Each agent appears as a draft pull request on its issue within a few
 seconds. The pages update on their own while they work.
 
@@ -67,6 +73,52 @@ The **Changes** tab shows the resulting diff.
 
 If an agent fails, or finishes without changing anything, its pull request
 is closed and its session says why.
+
+## Repository instructions
+
+Every g1t agent run reads the repository's own instructions for agents
+and is told them, labelled as the repository's, before it starts: making a
+change, revising it, reviewing, catching up, answering, and planning.
+
+| File | Read by |
+| --- | --- |
+| `AGENTS.md` and `CLAUDE.md` at the root | Every run. |
+| `AGENTS.md` and `CLAUDE.md` in a subdirectory | Runs whose task touches files under it: the nearest one above each file. Where it disagrees with the root's, it wins for the files under it. |
+| `.g1t/review.md` | Reviews: what to check, house rules, paths that need extra care. |
+
+Write them for an agent that knows nothing about the project: how to build
+and test, how things are named, what never to touch. For example:
+
+```md
+# AGENTS.md
+- Run `npm test` and `npm run typecheck` before you finish.
+- API handlers return a Result; they never throw.
+- Never edit files under `vendor/`.
+```
+
+Which directories a task touches comes from the pull request's changed
+files, and for new work from the paths the issue names, so naming the
+files in an issue helps the right instructions reach the agent.
+
+**Where they are read from.** The default branch, as it is when the run
+starts. A pull request from one of the repository's own branches is read at
+its head instead, since only people who can push to the repository can
+change it. A pull request from a fork, which includes every change a g1t
+agent makes, is never followed: the agent keeps the default branch's
+instructions, and if the fork changes them, it is shown the changed text as
+part of the change, marked as not instructions. That way nobody can steer
+an agent, or the review of their own change, by editing these files in a
+pull request. Treat what a fork's head says as untrusted, as you would its
+code.
+
+**Limits.** Each file is cut at 8,000 characters and all of them together
+at 24,000; what is left out is named in the prompt. Files are read once per
+commit and reused.
+
+The project's **Agents** page lists the files its runs read, what they say
+and when each last changed, with a link to each in the code. Each run's
+session starts with a note of which files it read. To change them, change
+the files and merge to the default branch.
 
 ## Seeing it through
 
@@ -172,6 +224,54 @@ the issue close as superseded. See
 
 Both run in sandboxes of their own.
 
+## Mentioning g1t-agent
+
+Write `@g1t-agent` in a comment on an issue or a pull request, with what
+you want, and it does it. The comment box offers to complete the name as
+you type `@`.
+
+| Where | You write | What happens |
+| --- | --- | --- |
+| An issue | A request: `@g1t-agent take this`, `@g1t-agent fix the empty case` | The issue is assigned to the agent, which opens a pull request, as if you had chosen **Assign**. |
+| An issue | A question: `@g1t-agent why does search time out?` | The agent reads the code on the default branch and answers in the thread. It changes nothing. |
+| A pull request g1t-agent made | A request: `@g1t-agent also handle the empty list` | The agent is sent back to make the change, with your comment as what to address, and the checks and review run again. If it is still working, it gets your comment as a message at its next step. |
+| Any pull request | `@g1t-agent review` | A review by a g1t agent, as with **Review by a g1t agent**. |
+| Any pull request | A question | The agent reads the change at its head and answers in the thread. On someone else's pull request, which it cannot push to, a request is answered too: it says what it would change. |
+
+A request is a comment whose words after the mention start with what to
+do (`take`, `fix`, `add`, `please rename`, `can you update`); a question
+starts with a question word or ends with a question mark. `review` near the
+start asks for a review.
+
+g1t-agent always replies in the thread, saying what it started or why it
+did not. Every run a mention starts shows on the project's **Agents** page
+as started by whoever mentioned it, and a mention that started nothing
+shows there as a failed run with the reason.
+
+**What does not count.** Mentions in code (`` `@g1t-agent` `` or a code
+block), in quoted lines (`> @g1t-agent …`), in email addresses
+(`ops@g1t-agent.dev`) and in longer names (`@g1t-agents`) are ignored.
+Matching ignores case. Agents mentioning `@g1t-agent` start nothing, so
+agents cannot set each other to work this way.
+
+**Who can.** Members of the project's workspace. Anyone else who mentions
+it gets a short reply saying only members can, and nothing starts. When
+the workspace cannot run agents (for example, its free allowance is used
+up and it has no model provider of its own), g1t-agent replies with why.
+
+Each comment starts one run at most; to ask again, write a new comment.
+
+## The label rule
+
+Under a project's **Settings → Agents**, a member sets a label, such as
+`agent`. From then on, when a member gives an open issue that label, either
+when opening it or later, g1t-agent takes it: the issue is queued for an
+agent, the conversation says so, and the agent starts as soon as the
+project has room and nothing the issue depends on is still open, exactly as
+for a [plan's](/guides/outcomes/) issues. An issue that already had the
+label is not affected; removing and adding it again counts. **Turn off**
+removes the rule.
+
 ## Which model runs
 
 You do not pick one. You assign the work to `g1t-agent`, the way you would
@@ -234,14 +334,83 @@ else, the agent will say in its summary what it could not run.
   [its own model provider](/guides/models/), and, until October 22, in any
   workspace on its free $1 of g1t's own models. See
   [the free allowance](/guides/usage-and-billing/#the-free-allowance).
-- An agent is given one fork and the issue. Its credential, though, is your
-  account's for the length of the run; credentials limited to the pull
-  request are planned.
-- A run has two hours. After that its credential expires and it can no
+- A run has two hours. After that its credentials expire and it can no
   longer push or report.
+
+## Credentials
+
+Every sandbox run gets credentials of its own, made when it starts and
+revoked the moment it stops. They are not your access tokens, and they are
+not listed with them.
+
+Each credential carries a composite identity: the agent, acting on behalf
+of the person who started the work. A run you started by assigning an issue
+is `g1t-agent on behalf of you`, and that is how it appears in the
+[audit log](/guides/audit-log/), on the run's page and in the pull
+request's **Agent** panel.
+
+What it may do is the intersection of two things:
+
+- **The run's scope.** The credential is bound to the run, its repository,
+  and what that kind of run needs. It expires no later than the run's
+  timeout.
+- **What you may do now.** It works only in the repository's workspace, and
+  only while you are still a member of it. If you leave the workspace, every
+  agent working on your behalf there stops being able to do anything. Your
+  role does not carry over: an owner's agent is only ever a member.
+
+A sandbox holds two credentials. One is for g1t's runner, which clones,
+pushes the result and records the session; downstream it acts as you, so
+what it pushes is yours, within the run's scope. The other is for the
+agent's own tools over MCP, and acts as the agent; it cannot be used with
+git at all.
+
+| Kind of run | Git | API and MCP tools |
+| --- | --- | --- |
+| Implement | Reads the repository; pushes to its pull request's fork only | Records the session and marks its own pull request ready; tools to read issues, pull requests, the merge queue, workflow runs and memory, open issues, comment, remember, and message other agents |
+| Revise, answer | Reads the repository; pushes to the pull request's fork, or to its branch only when the change is a branch of the repository | Records the session of its own pull request; the same tools as implement |
+| Catch up | Reads the repository; pushes to the pull request's fork or branch only | Records the session of its own pull request |
+| Review | Reads the change and the repository; pushes nothing | Reports its review through its own run |
+| Plan | Reads the repository; pushes nothing | Reports its plan through its own run, for a person to apply; it can create issues in its repository only |
+| Checks, merge check | Reads the change; pushes nothing | None |
+| Merge queue | Reads each queued change; pushes the queue's own branch only | None |
+| Deploy | Reads the commit it builds; pushes nothing | None |
+
+Nothing an agent's credential holds can reach another repository, or a
+workspace's settings, members, access tokens, billing, integrations,
+webhooks, secrets and variables, or workflows' controls. It cannot merge a
+pull request or put more agents to work. A call that would is refused, and
+the refusal is recorded with the rule that refused it:
+
+| Rule | Refused because |
+| --- | --- |
+| `never` | No agent's credential may ever do this. |
+| `scope:operation` | The run's kind does not include this operation. |
+| `scope:repository` | It names a repository other than the run's. |
+| `scope:pull` | The runner tried to change a pull request other than its own. |
+| `on-behalf-of:membership` | The person the agent works for is no longer a member of the workspace. |
+| `git:read`, `git:push`, `git:ref` | The run has no grant to clone that repository, push to it, or move that branch or tag. |
+| `git:not-a-run` | An agent's tools credential was used with git. |
+
+Personal and workspace access tokens are unchanged by any of this.
 
 ## What a sandbox can reach
 
-A sandbox holds one fork and a credential that expires two hours after the
-run starts. That credential, and the model key the agent runs on, are
-removed from anything recorded in the session.
+A sandbox holds one fork and its run's credentials, which expire when the
+run's time is up and are revoked as soon as it stops. Those credentials,
+and the model key the agent runs on, are removed from anything recorded in
+the session.
+
+## Guardrails
+
+A workspace decides what its agents may do in their sandboxes, and each
+project can override it: which hosts a sandbox can reach (g1t, the package
+registries the project needs, and domains you list; enforced outside the
+sandbox), which commands the harness refuses (force-pushing, rewriting the
+default branch, reading outside the project, printing the environment,
+sudo, and your own patterns), and how much one run may cost and how long it
+may take. A run that is refused something shows it as a step; one that
+reaches a cap is stopped and its pull request waits for you. A run on a
+fork's head loads none of the fork's `CLAUDE.md`, `.claude` settings,
+hooks, MCP servers or commands. See [guardrails](/guides/guardrails/) for
+every rule and exactly how each is enforced.

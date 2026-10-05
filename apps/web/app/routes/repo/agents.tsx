@@ -1,9 +1,11 @@
+import { env } from "cloudflare:workers";
 import { Bot } from "lucide-react";
 import { Link } from "react-router";
 
 import type { Route } from "./+types/agents";
 import { page } from "../../lib/meta";
 import { Idle, RunCard, splitRuns, useLiveRefresh } from "../../components/agents";
+import { AgentInstructions } from "../../components/agent-instructions";
 import { agents } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
 
@@ -14,12 +16,20 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const repo = { namespace: params.owner, name: params.repo };
-  const runs = await agents.listRuns(viewer, { repo, limit: 60 });
-  return { runs: unwrap(runs), member: roleIn(viewer, params.owner) != null };
+  const [runs, instructions] = await Promise.all([
+    agents.listRuns(viewer, { repo, limit: 60 }),
+    // What every run here reads; never holds up the page.
+    env.RUNNER.instructions(viewer, repo).catch(() => null),
+  ]);
+  return {
+    runs: unwrap(runs),
+    member: roleIn(viewer, params.owner) != null,
+    instructions: instructions?.ok ? instructions.value : null,
+  };
 }
 
 export default function AgentsAtWork({ loaderData, params }: Route.ComponentProps) {
-  const { runs, member } = loaderData;
+  const { runs, member, instructions } = loaderData;
   const { live, done } = splitRuns(runs);
   useLiveRefresh(live.length > 0);
   const base = `/${params.owner}/${params.repo}`;
@@ -77,6 +87,8 @@ export default function AgentsAtWork({ loaderData, params }: Route.ComponentProp
           </ul>
         </section>
       )}
+
+      {instructions && <AgentInstructions instructions={instructions} base={base} />}
     </div>
   );
 }

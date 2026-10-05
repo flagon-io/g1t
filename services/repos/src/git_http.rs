@@ -239,19 +239,49 @@ fn refusal(body: &[u8], protected: &str) -> Option<Vec<u8>> {
         ));
     }
     report.extend_from_slice(b"0000");
-    // With side-band the report travels inside channel 1.
+    Some(framed(report, &capabilities, &[]))
+}
+
+/// A report-status as git expects it: inside channel 1 when the client
+/// asked for side-band, after `messages` on channel 2, which git prints as
+/// `remote:` lines. Without side-band the messages cannot be shown.
+fn framed(report: Vec<u8>, capabilities: &str, messages: &[String]) -> Vec<u8> {
     let sideband = capabilities
         .split(' ')
         .any(|capability| capability.starts_with("side-band"));
-    Some(if sideband {
-        let mut framed = vec![1u8];
-        framed.extend(report);
-        let mut body = pkt_line(&framed);
-        body.extend_from_slice(b"0000");
-        body
-    } else {
-        report
-    })
+    if !sideband {
+        return report;
+    }
+    let mut body = Vec::new();
+    for message in messages {
+        let mut packet = vec![2u8];
+        packet.extend_from_slice(message.as_bytes());
+        packet.push(b'\n');
+        body.extend(pkt_line(&packet));
+    }
+    // side-band (not -64k) packets carry at most 1000 bytes.
+    for chunk in report.chunks(990) {
+        let mut packet = vec![1u8];
+        packet.extend_from_slice(chunk);
+        body.extend(pkt_line(&packet));
+    }
+    body.extend_from_slice(b"0000");
+    body
+}
+
+/// Declines every ref in a push with `reason`, explaining why in
+/// `messages`: what push protection answers when a push adds a secret.
+pub fn declined(body: &[u8], reason: &str, messages: &[String]) -> Result<Response> {
+    let (commands, capabilities) = commands(body);
+    let mut report = pkt_line(b"unpack ok\n");
+    for command in &commands {
+        report.extend(pkt_line(format!("ng {} {reason}\n", command.name).as_bytes()));
+    }
+    report.extend_from_slice(b"0000");
+    let headers = Headers::new();
+    headers.set("content-type", "application/x-git-receive-pack-result")?;
+    headers.set("cache-control", "no-cache")?;
+    Ok(Response::from_bytes(framed(report, &capabilities, messages))?.with_headers(headers))
 }
 
 /// A branch or tag a push asks to move.
@@ -299,15 +329,19 @@ pub enum Push {
     Forwarded(Forwarded),
     /// A push to a protected branch, answered here without reaching the store.
     Refused(Response),
+    /// A push that adds a secret nobody allowed, answered the same way.
+    Blocked(Response),
 }
 
 /// Sends the request on to the git store and returns its response as is,
-/// unless it is a push that would change the `protected` branch.
+/// unless it is a push that would change the `protected` branch, or one
+/// that `scan` (push protection) answers itself.
 pub async fn forward(
     mut request: Request,
     git: &GitRequest,
     access: &GitAccess,
     protected: Option<&str>,
+    scan: impl AsyncFnOnce(&[u8]) -> Result<Option<Response>>,
 ) -> Result<Push> {
     let headers = Headers::new();
     headers.set("authorization", &format!("Bearer {}", access.token))?;
@@ -336,6 +370,9 @@ pub async fn forward(
                     Response::from_bytes(report)?.with_headers(headers),
                 ));
             }
+            if let Some(response) = scan(&body).await? {
+                return Ok(Push::Blocked(response));
+            }
             pushed = pushed_branches(&body);
         }
         init.with_body(Some(Uint8Array::from(body.as_slice()).into()));
@@ -350,7 +387,7 @@ pub async fn forward(
 
 #[cfg(test)]
 mod tests {
-    use super::{Pushed, ZERO_ID, pushed_branches, refusal, with_namespace};
+    use super::{Pushed, ZERO_ID, framed, pushed_branches, refusal, with_namespace};
 
     #[test]
     fn a_renamed_workspace_keeps_the_rest_of_the_address() {
@@ -460,6 +497,21 @@ mod tests {
         ]
         .concat();
         assert!(refusal(&first, "main").is_none());
+    }
+
+    #[test]
+    fn a_blocked_push_explains_itself_on_the_progress_channel() {
+        let report = b"000eunpack ok\n0000".to_vec();
+        let messages = vec!["g1t found a secret in this push, so nothing was pushed.".to_owned()];
+        let body = framed(report.clone(), "report-status side-band-64k", &messages);
+        // Channel 2 first, which git prints as `remote:` lines.
+        assert_eq!(body[4], 2);
+        assert!(String::from_utf8_lossy(&body).contains("so nothing was pushed.\n"));
+        let at = body.windows(5).position(|w| w == b"000eu").unwrap();
+        assert_eq!(body[at - 1], 1);
+        assert!(body.ends_with(b"0000"));
+        // A client without side-band gets the bare report.
+        assert_eq!(framed(report.clone(), "report-status", &messages), report);
     }
 
     #[test]

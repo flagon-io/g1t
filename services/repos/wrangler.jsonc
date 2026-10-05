@@ -20,7 +20,9 @@
 	"artifacts": [{ "binding": "ARTIFACTS", "namespace": "g1t" }],
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
-		{ "binding": "EVENTS", "service": "g1t-events" }
+		{ "binding": "EVENTS", "service": "g1t-events" },
+		// Push protection asks which secrets were allowed, and records the rest.
+		{ "binding": "SECURITY", "service": "g1t-security" }
 	],
 	// A workspace renamed moves its repositories to the new slug.
 	"queues": {

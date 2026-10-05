@@ -1,0 +1,944 @@
+//! Run credentials: the least-privilege tokens a sandbox works with.
+//!
+//! Every sandbox run gets its own tokens, bound to the run, its repository
+//! (and the pull request's fork), what that kind of run needs to do, and an
+//! expiry no later than the run's timeout. Each carries a composite
+//! identity: an agent acting on behalf of the person who started the work.
+//! What it may do is the intersection of the two: the run's scope, and what
+//! that person may do right now.
+//!
+//! The policy lives here, as pure functions, so that identity (which mints
+//! the tokens), the API (which serves REST and MCP) and repos (which serves
+//! git) all enforce the same rules, and so the rules can be tested.
+
+use serde::{Deserialize, Serialize};
+
+use crate::identity::AgentScope;
+use crate::repos::RepoPath;
+use crate::{Membership, PrincipalKind, Role, User};
+
+/// What a run does, as far as its credentials are concerned. The same names
+/// as [`crate::agents::RunKind`], plus `deploy`, a build of one commit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunCredentialKind {
+    Implement,
+    Revise,
+    Review,
+    Answer,
+    Update,
+    Plan,
+    Checks,
+    Queue,
+    Mergecheck,
+    Deploy,
+}
+
+impl RunCredentialKind {
+    pub const ALL: [RunCredentialKind; 10] = [
+        RunCredentialKind::Implement,
+        RunCredentialKind::Revise,
+        RunCredentialKind::Review,
+        RunCredentialKind::Answer,
+        RunCredentialKind::Update,
+        RunCredentialKind::Plan,
+        RunCredentialKind::Checks,
+        RunCredentialKind::Queue,
+        RunCredentialKind::Mergecheck,
+        RunCredentialKind::Deploy,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RunCredentialKind::Implement => "implement",
+            RunCredentialKind::Revise => "revise",
+            RunCredentialKind::Review => "review",
+            RunCredentialKind::Answer => "answer",
+            RunCredentialKind::Update => "update",
+            RunCredentialKind::Plan => "plan",
+            RunCredentialKind::Checks => "checks",
+            RunCredentialKind::Queue => "queue",
+            RunCredentialKind::Mergecheck => "mergecheck",
+            RunCredentialKind::Deploy => "deploy",
+        }
+    }
+
+    /// Whether the run works on one pull request, whose session and
+    /// readiness it reports.
+    fn works_on_a_pull(self) -> bool {
+        matches!(
+            self,
+            RunCredentialKind::Implement
+                | RunCredentialKind::Revise
+                | RunCredentialKind::Answer
+                | RunCredentialKind::Update
+        )
+    }
+}
+
+/// Which part of a sandbox a credential is for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CredentialUse {
+    /// g1t's runner: cloning, pushing the result, recording the session.
+    /// It acts as the person downstream, so that what it pushes and records
+    /// is theirs, within the run's scope.
+    Runner,
+    /// The agent's own tools, over MCP. It acts as the agent.
+    Tools,
+}
+
+impl CredentialUse {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CredentialUse::Runner => "runner",
+            CredentialUse::Tools => "tools",
+        }
+    }
+}
+
+/// A repository a run may push to, and the one branch, if only one.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitGrant {
+    pub repo: RepoPath,
+    /// Null: any branch. A pull request's fork is its own repository, so
+    /// the whole of it is the pull request's.
+    #[serde(default)]
+    pub branch: Option<String>,
+}
+
+/// What binds an agent's token to one run. Absent on agent tokens made
+/// before run credentials, which keep working for the API only.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunBinding {
+    pub kind: RunCredentialKind,
+    #[serde(rename = "use")]
+    pub usage: CredentialUse,
+    /// The agent run, once the sandbox has recorded it.
+    #[serde(default)]
+    pub run_id: Option<String>,
+    /// The pull request the run works on, for the kinds that work on one.
+    #[serde(default)]
+    pub number: Option<u32>,
+    /// The agent's name, such as `g1t-agent`.
+    pub agent: String,
+    /// Repositories it may clone and fetch, besides those it may push to.
+    #[serde(default)]
+    pub read: Vec<RepoPath>,
+    /// Where it may push.
+    #[serde(default)]
+    pub push: Vec<GitGrant>,
+}
+
+/// A person, by id and name.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Principal {
+    pub id: String,
+    pub username: String,
+}
+
+/// Set on a [`User`] resolved from an agent's token: the composite
+/// identity, "g1t-agent on behalf of syntaqx", and what it may do.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Acting {
+    /// The token's id, as audit entries name it.
+    pub credential_id: String,
+    pub agent: String,
+    pub on_behalf_of: Principal,
+    pub scope: AgentScope,
+}
+
+impl Acting {
+    pub fn run(&self) -> Option<&RunBinding> {
+        self.scope.run.as_ref()
+    }
+}
+
+/// `create_run_credential`: a token for one sandbox run. It acts as
+/// `agent` on behalf of `on_behalf_of`, can do only what `kind` and `usage`
+/// allow in `repo`, and expires after `ttl_seconds`, which should be the
+/// run's timeout. Returns `CreatedAccessToken`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateRunCredentialArgs {
+    pub on_behalf_of: User,
+    pub repo: RepoPath,
+    pub kind: RunCredentialKind,
+    #[serde(rename = "use")]
+    pub usage: CredentialUse,
+    #[serde(default)]
+    pub number: Option<u32>,
+    #[serde(default)]
+    pub read: Vec<RepoPath>,
+    #[serde(default)]
+    pub push: Vec<GitGrant>,
+    pub ttl_seconds: u64,
+    /// Defaults to `g1t-agent`.
+    #[serde(default)]
+    pub agent: Option<String>,
+}
+
+/// `bind_run_credentials`: ties tokens, named by the SHA-256 of their
+/// text in hex, to the agent run their sandbox recorded. Returns how many.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BindRunCredentialsArgs {
+    pub token_hashes: Vec<String>,
+    pub run_id: String,
+}
+
+/// `revoke_run_credentials`: ends tokens when their sandbox stops, by hash
+/// or by run. Only run credentials are touched, never a token a person
+/// made. Returns how many.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevokeRunCredentialsArgs {
+    #[serde(default)]
+    pub token_hashes: Vec<String>,
+    #[serde(default)]
+    pub run_id: Option<String>,
+}
+
+// --- Policy --------------------------------------------------------------
+
+/// Operations that only read.
+pub const READ_OPERATIONS: &[&str] = &[
+    "whoami",
+    "list_repos",
+    "get_repo",
+    "get_repo_settings",
+    "get_merge_queue",
+    "recall",
+    "list_issues",
+    "get_issue",
+    "get_plan",
+    "list_labels",
+    "list_pull_requests",
+    "get_pull_request",
+    "read_session",
+    "get_pull_request_changes",
+    "list_events",
+    "get_context",
+    "search_context",
+    "get_entity",
+    "list_workflows",
+    "list_workflow_runs",
+    "get_workflow_run",
+    "get_job_logs",
+    "list_integrations",
+    "get_model_routes",
+    "list_webhooks",
+    "list_webhook_deliveries",
+    "list_actions_secrets",
+    "list_actions_variables",
+];
+
+/// What no agent's token may ever do, whatever its scope says: workspaces,
+/// repositories' settings, members, tokens, billing, integrations,
+/// webhooks, secrets, workflows' controls, merging, and putting more agents
+/// to work.
+pub const NEVER: &[&str] = &[
+    "create_workspace",
+    "create_repo",
+    "update_repo",
+    "update_repo_settings",
+    "merge_pull_request",
+    "assign_issue",
+    "plan_work",
+    "apply_plan",
+    "import_issue",
+    "list_integrations",
+    "connect_integration",
+    "disconnect_integration",
+    "test_integration",
+    "get_model_routes",
+    "set_model_routes",
+    "list_webhooks",
+    "create_webhook",
+    "update_webhook",
+    "delete_webhook",
+    "ping_webhook",
+    "list_webhook_deliveries",
+    "redeliver_webhook",
+    "dispatch_workflow",
+    "cancel_workflow_run",
+    "rerun_workflow_run",
+    "update_workflow",
+    "list_actions_secrets",
+    "set_actions_secret",
+    "delete_actions_secret",
+    "list_actions_variables",
+    "set_actions_variable",
+    "delete_actions_variable",
+];
+
+/// Reading what an agent needs to know about its repository.
+const TOOLS_READ: &[&str] = &[
+    "get_repo",
+    "list_issues",
+    "get_issue",
+    "list_labels",
+    "list_pull_requests",
+    "get_pull_request",
+    "get_pull_request_changes",
+    "read_session",
+    "get_merge_queue",
+    "list_events",
+    "recall",
+    "search_context",
+    "get_entity",
+    "list_workflows",
+    "list_workflow_runs",
+    "get_workflow_run",
+    "get_job_logs",
+];
+
+pub fn is_read(operation: &str) -> bool {
+    READ_OPERATIONS.contains(&operation)
+}
+
+/// The API and MCP operations a run of `kind` may use with a credential
+/// for `usage`. Git is separate: see [`decide_git`].
+pub fn operations_for(kind: RunCredentialKind, usage: CredentialUse) -> Vec<&'static str> {
+    use RunCredentialKind as K;
+    let mut operations: Vec<&'static str> = Vec::new();
+    match usage {
+        CredentialUse::Runner => {
+            if kind.works_on_a_pull() {
+                operations.extend(["get_repo", "get_pull_request", "record_session"]);
+            }
+            if kind == K::Implement {
+                operations.push("mark_pull_request_ready");
+            }
+        }
+        CredentialUse::Tools => match kind {
+            K::Implement | K::Revise | K::Answer => {
+                operations.extend(TOOLS_READ.iter().copied());
+                operations.extend([
+                    "create_issue",
+                    "add_comment",
+                    "take_messages",
+                    "remember",
+                    "message_agent",
+                    "answer_message",
+                    "get_context",
+                ]);
+            }
+            K::Review => {
+                operations.extend(TOOLS_READ.iter().copied());
+                operations.extend(["add_comment", "review_pull_request", "get_context"]);
+            }
+            K::Plan => {
+                operations.extend(TOOLS_READ.iter().copied());
+                operations.extend(["create_issue", "get_context"]);
+            }
+            K::Update => operations.extend(TOOLS_READ.iter().copied()),
+            K::Checks | K::Queue | K::Mergecheck | K::Deploy => {}
+        },
+    }
+    operations
+}
+
+/// Operations that change a pull request, which a runner may do only to
+/// the pull request its run works on.
+const PULL_WRITES: &[&str] = &["record_session", "mark_pull_request_ready"];
+
+/// Whether something was allowed, and the rule that decided it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Decision {
+    pub allowed: bool,
+    /// A short, stable name: `run:implement/tools`, `never`,
+    /// `scope:repository` and so on. Shown in the audit log.
+    pub rule: String,
+    /// Why it was refused, for the caller.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl Decision {
+    pub fn allow(rule: impl Into<String>) -> Self {
+        Decision {
+            allowed: true,
+            rule: rule.into(),
+            reason: None,
+        }
+    }
+
+    pub fn deny(rule: impl Into<String>, reason: impl Into<String>) -> Self {
+        Decision {
+            allowed: false,
+            rule: rule.into(),
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+fn same_repo(a: &RepoPath, b: &RepoPath) -> bool {
+    a.namespace.eq_ignore_ascii_case(&b.namespace) && a.name.eq_ignore_ascii_case(&b.name)
+}
+
+fn scope_rule(scope: &AgentScope) -> String {
+    match &scope.run {
+        Some(run) => format!("run:{}/{}", run.kind.as_str(), run.usage.as_str()),
+        None => "agent-token".to_owned(),
+    }
+}
+
+/// Whether `user`, resolved from an agent's token with `scope`, may use
+/// `operation`. `repo` is the repository the call names, if any, and
+/// `needs_repo` whether the operation is about one; `number` the issue or
+/// pull request it names.
+pub fn decide_operation(
+    user: &User,
+    scope: &AgentScope,
+    operation: &str,
+    repo: Option<&RepoPath>,
+    needs_repo: bool,
+    number: Option<u32>,
+) -> Decision {
+    let who = "A g1t agent's token";
+    if NEVER.contains(&operation) {
+        return Decision::deny(
+            "never",
+            format!(
+                "{who} can never use {operation}: settings, members, tokens, billing, integrations, webhooks, secrets and merging are for people."
+            ),
+        );
+    }
+    if !scope.operations.iter().any(|name| name == operation) {
+        return Decision::deny(
+            "scope:operation",
+            format!("{who} for this run cannot use {operation}."),
+        );
+    }
+    if needs_repo && !repo.is_some_and(|asked| same_repo(asked, &scope.repo)) {
+        return Decision::deny(
+            "scope:repository",
+            format!(
+                "{who} works in {}/{} only.",
+                scope.repo.namespace, scope.repo.name
+            ),
+        );
+    }
+    // The intersection: the person it acts for must still be able to work
+    // in the repository's workspace.
+    if !user.is_member(&scope.repo.namespace.to_lowercase()) {
+        return Decision::deny(
+            "on-behalf-of:membership",
+            format!(
+                "The person this agent works for is no longer a member of {}.",
+                scope.repo.namespace
+            ),
+        );
+    }
+    if let Some(run) = &scope.run
+        && run.usage == CredentialUse::Runner
+        && PULL_WRITES.contains(&operation)
+        && run.number.is_some()
+        && number != run.number
+    {
+        return Decision::deny(
+            "scope:pull",
+            format!(
+                "{who} can change pull request #{} only.",
+                run.number.unwrap_or_default()
+            ),
+        );
+    }
+    Decision::allow(scope_rule(scope))
+}
+
+/// Whether a run credential may clone or fetch (`write` false), or push to
+/// (`write` true), the repository at `repo`.
+pub fn decide_git(scope: &AgentScope, repo: &RepoPath, write: bool) -> Decision {
+    let Some(run) = scope
+        .run
+        .as_ref()
+        .filter(|run| run.usage == CredentialUse::Runner)
+    else {
+        return Decision::deny(
+            "git:not-a-run",
+            "A g1t agent's tools token cannot be used with git.",
+        );
+    };
+    let pushable = run.push.iter().any(|grant| same_repo(&grant.repo, repo));
+    if write {
+        return if pushable {
+            Decision::allow(format!("{}:push", scope_rule(scope)))
+        } else {
+            Decision::deny(
+                "git:push",
+                format!(
+                    "A {} run cannot push to {}/{}.",
+                    run.kind.as_str(),
+                    repo.namespace,
+                    repo.name
+                ),
+            )
+        };
+    }
+    let readable = pushable
+        || same_repo(&scope.repo, repo)
+        || run.read.iter().any(|path| same_repo(path, repo));
+    if readable {
+        Decision::allow(format!("{}:read", scope_rule(scope)))
+    } else {
+        Decision::deny(
+            "git:read",
+            format!(
+                "A {} run cannot read {}/{}.",
+                run.kind.as_str(),
+                repo.namespace,
+                repo.name
+            ),
+        )
+    }
+}
+
+/// Whether a push to `repo` is limited to certain branches, so that the
+/// refs it moves have to be read and checked with [`decide_refs`].
+pub fn limits_branches(scope: &AgentScope, repo: &RepoPath) -> bool {
+    scope
+        .run
+        .iter()
+        .flat_map(|run| run.push.iter())
+        .any(|grant| same_repo(&grant.repo, repo) && grant.branch.is_some())
+}
+
+/// Whether a push to `repo` may move `refs` (full refs, such as
+/// `refs/heads/main`). Tags are never a run's to move.
+pub fn decide_refs(scope: &AgentScope, repo: &RepoPath, refs: &[String]) -> Decision {
+    let repo_decision = decide_git(scope, repo, true);
+    if !repo_decision.allowed {
+        return repo_decision;
+    }
+    let grants: Vec<&GitGrant> = scope
+        .run
+        .iter()
+        .flat_map(|run| run.push.iter())
+        .filter(|grant| same_repo(&grant.repo, repo))
+        .collect();
+    for git_ref in refs {
+        let Some(branch) = git_ref.strip_prefix("refs/heads/") else {
+            return Decision::deny("git:ref", format!("A run cannot push {git_ref}."));
+        };
+        let allowed = grants
+            .iter()
+            .any(|grant| grant.branch.as_deref().is_none_or(|only| only == branch));
+        if !allowed {
+            return Decision::deny(
+                "git:ref",
+                format!(
+                    "A run cannot push to {branch} in {}/{}.",
+                    repo.namespace, repo.name
+                ),
+            );
+        }
+    }
+    repo_decision
+}
+
+/// The memberships an agent working for `person` has: the run's
+/// workspace, as a member, only if the person is in it now.
+pub fn intersect(person: &[Membership], namespace: &str) -> Vec<Membership> {
+    let namespace = namespace.to_lowercase();
+    person
+        .iter()
+        .filter(|membership| membership.slug == namespace)
+        .map(|membership| Membership {
+            role: Role::Member,
+            ..membership.clone()
+        })
+        .collect()
+}
+
+/// Who a runner's credential acts as downstream: the person, with only the
+/// agent's (already intersected) memberships. `None` for anything else.
+pub fn as_person(user: &User) -> Option<User> {
+    let acting = user.acting.as_ref()?;
+    if user.kind != PrincipalKind::Agent {
+        return None;
+    }
+    let run = acting.run()?;
+    if run.usage != CredentialUse::Runner {
+        return None;
+    }
+    Some(User {
+        id: acting.on_behalf_of.id.clone(),
+        username: acting.on_behalf_of.username.clone(),
+        kind: PrincipalKind::User,
+        verified: user.verified,
+        workspaces: user.workspaces.clone(),
+        avatar: None,
+        acting: None,
+    })
+}
+
+/// How an actor is described: "g1t-agent on behalf of syntaqx".
+pub fn describe(user: &User) -> String {
+    match &user.acting {
+        Some(acting) => format!(
+            "{} on behalf of {}",
+            acting.agent, acting.on_behalf_of.username
+        ),
+        None => user.username.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn agents_can_search_the_context_hub() {
+        for kind in [RunCredentialKind::Implement, RunCredentialKind::Review, RunCredentialKind::Plan] {
+            let tools = operations_for(kind, CredentialUse::Tools);
+            assert!(tools.contains(&"search_context") && tools.contains(&"get_entity"));
+        }
+        assert!(is_read("search_context") && is_read("get_entity"));
+    }
+
+    fn path(namespace: &str, name: &str) -> RepoPath {
+        RepoPath {
+            namespace: namespace.to_owned(),
+            name: name.to_owned(),
+        }
+    }
+
+    fn scope(kind: RunCredentialKind, usage: CredentialUse) -> AgentScope {
+        AgentScope {
+            repo: path("acme", "rocket"),
+            operations: operations_for(kind, usage)
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+            run: Some(RunBinding {
+                kind,
+                usage,
+                run_id: Some("run_1".to_owned()),
+                number: Some(7),
+                agent: "g1t-agent".to_owned(),
+                read: vec![path("acme", "rocket")],
+                push: match kind {
+                    RunCredentialKind::Implement
+                    | RunCredentialKind::Revise
+                    | RunCredentialKind::Answer => vec![GitGrant {
+                        repo: path("pulls", "pul_7"),
+                        branch: None,
+                    }],
+                    RunCredentialKind::Update => vec![GitGrant {
+                        repo: path("acme", "rocket"),
+                        branch: Some("fix-login".to_owned()),
+                    }],
+                    _ => vec![],
+                },
+            }),
+        }
+    }
+
+    fn agent(member_of: &[&str], scope: AgentScope) -> User {
+        User {
+            id: "usr_g1t_agent".to_owned(),
+            username: "g1t-agent".to_owned(),
+            kind: PrincipalKind::Agent,
+            verified: true,
+            workspaces: member_of
+                .iter()
+                .map(|slug| Membership::member(*slug))
+                .collect(),
+            avatar: None,
+            acting: Some(Box::new(Acting {
+                credential_id: "tok_1".to_owned(),
+                agent: "g1t-agent".to_owned(),
+                on_behalf_of: Principal {
+                    id: "usr_1".to_owned(),
+                    username: "syntaqx".to_owned(),
+                },
+                scope,
+            })),
+        }
+    }
+
+    fn op(kind: RunCredentialKind, usage: CredentialUse, operation: &str) -> Decision {
+        let scope = scope(kind, usage);
+        let user = agent(&["acme"], scope.clone());
+        decide_operation(
+            &user,
+            &scope,
+            operation,
+            Some(&path("acme", "rocket")),
+            true,
+            Some(7),
+        )
+    }
+
+    use CredentialUse::{Runner, Tools};
+    use RunCredentialKind as K;
+
+    /// Which operations each kind of run may use through its tools: the
+    /// allowed and denied matrix.
+    #[test]
+    fn tools_matrix() {
+        let cases: [(&str, [bool; 6]); 12] = [
+            //                       implement revise answer review plan checks
+            ("get_issue", [true, true, true, true, true, false]),
+            ("create_issue", [true, true, true, false, true, false]),
+            ("add_comment", [true, true, true, true, false, false]),
+            (
+                "review_pull_request",
+                [false, false, false, true, false, false],
+            ),
+            ("remember", [true, true, true, false, false, false]),
+            ("take_messages", [true, true, true, false, false, false]),
+            ("record_session", [false, false, false, false, false, false]),
+            (
+                "merge_pull_request",
+                [false, false, false, false, false, false],
+            ),
+            (
+                "update_repo_settings",
+                [false, false, false, false, false, false],
+            ),
+            ("create_webhook", [false, false, false, false, false, false]),
+            (
+                "set_actions_secret",
+                [false, false, false, false, false, false],
+            ),
+            ("assign_issue", [false, false, false, false, false, false]),
+        ];
+        let kinds = [
+            K::Implement,
+            K::Revise,
+            K::Answer,
+            K::Review,
+            K::Plan,
+            K::Checks,
+        ];
+        for (operation, expected) in cases {
+            for (kind, allowed) in kinds.into_iter().zip(expected) {
+                assert_eq!(
+                    op(kind, Tools, operation).allowed,
+                    allowed,
+                    "{operation} by a {} run's tools",
+                    kind.as_str()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn runner_matrix() {
+        assert!(op(K::Implement, Runner, "record_session").allowed);
+        assert!(op(K::Implement, Runner, "mark_pull_request_ready").allowed);
+        assert!(op(K::Revise, Runner, "record_session").allowed);
+        assert!(!op(K::Revise, Runner, "mark_pull_request_ready").allowed);
+        assert!(!op(K::Implement, Runner, "create_issue").allowed);
+        assert!(!op(K::Review, Runner, "record_session").allowed);
+        assert!(!op(K::Checks, Runner, "get_issue").allowed);
+    }
+
+    #[test]
+    fn settings_billing_tokens_and_members_are_never_reachable() {
+        for kind in RunCredentialKind::ALL {
+            for usage in [Runner, Tools] {
+                for operation in NEVER.iter().copied() {
+                    let decision = op(kind, usage, operation);
+                    assert!(!decision.allowed);
+                    assert_eq!(decision.rule, "never");
+                }
+            }
+        }
+        // Even a scope that lists one is refused.
+        let mut wide = scope(K::Implement, Tools);
+        wide.operations.push("merge_pull_request".to_owned());
+        let user = agent(&["acme"], wide.clone());
+        let decision = decide_operation(
+            &user,
+            &wide,
+            "merge_pull_request",
+            Some(&path("acme", "rocket")),
+            true,
+            Some(7),
+        );
+        assert_eq!(decision.rule, "never");
+    }
+
+    #[test]
+    fn another_repository_is_refused() {
+        let scope = scope(K::Implement, Tools);
+        let user = agent(&["acme"], scope.clone());
+        let decision = decide_operation(
+            &user,
+            &scope,
+            "create_issue",
+            Some(&path("acme", "other")),
+            true,
+            None,
+        );
+        assert!(!decision.allowed);
+        assert_eq!(decision.rule, "scope:repository");
+        let decision = decide_operation(&user, &scope, "create_issue", None, true, None);
+        assert_eq!(decision.rule, "scope:repository");
+        // The repository's name is matched without regard to case.
+        let decision = decide_operation(
+            &user,
+            &scope,
+            "create_issue",
+            Some(&path("Acme", "Rocket")),
+            true,
+            None,
+        );
+        assert!(decision.allowed);
+        assert_eq!(decision.rule, "run:implement/tools");
+    }
+
+    #[test]
+    fn the_permission_is_the_intersection_with_the_person() {
+        let scope = scope(K::Implement, Tools);
+        // The person left the workspace: their agent can do nothing there.
+        let user = agent(&[], scope.clone());
+        let decision = decide_operation(
+            &user,
+            &scope,
+            "get_issue",
+            Some(&path("acme", "rocket")),
+            true,
+            Some(1),
+        );
+        assert!(!decision.allowed);
+        assert_eq!(decision.rule, "on-behalf-of:membership");
+        // And an owner's agent is only ever a member.
+        let owner = vec![
+            Membership {
+                slug: "acme".to_owned(),
+                role: Role::Owner,
+                name: None,
+                avatar: None,
+            },
+            Membership::member("elsewhere"),
+        ];
+        let memberships = intersect(&owner, "Acme");
+        assert_eq!(memberships.len(), 1);
+        assert_eq!(memberships[0].slug, "acme");
+        assert_eq!(memberships[0].role, Role::Member);
+        assert!(intersect(&owner, "nowhere").is_empty());
+    }
+
+    #[test]
+    fn a_runner_changes_only_its_own_pull_request() {
+        let scope = scope(K::Implement, Runner);
+        let user = agent(&["acme"], scope.clone());
+        let repo = path("acme", "rocket");
+        let other = decide_operation(&user, &scope, "record_session", Some(&repo), true, Some(8));
+        assert!(!other.allowed);
+        assert_eq!(other.rule, "scope:pull");
+        let own = decide_operation(&user, &scope, "record_session", Some(&repo), true, Some(7));
+        assert!(own.allowed);
+        // Reading another is fine.
+        assert!(
+            decide_operation(
+                &user,
+                &scope,
+                "get_pull_request",
+                Some(&repo),
+                true,
+                Some(8)
+            )
+            .allowed
+        );
+    }
+
+    #[test]
+    fn git_matrix() {
+        let fork = path("pulls", "pul_7");
+        let upstream = path("acme", "rocket");
+        let elsewhere = path("acme", "billing");
+        let implement = scope(K::Implement, Runner);
+        assert!(decide_git(&implement, &fork, true).allowed);
+        assert!(decide_git(&implement, &fork, false).allowed);
+        assert!(decide_git(&implement, &upstream, false).allowed);
+        assert_eq!(decide_git(&implement, &upstream, true).rule, "git:push");
+        assert_eq!(decide_git(&implement, &elsewhere, false).rule, "git:read");
+        let review = scope(K::Review, Runner);
+        assert!(decide_git(&review, &upstream, false).allowed);
+        assert!(!decide_git(&review, &upstream, true).allowed);
+        assert!(!decide_git(&review, &fork, true).allowed);
+        // A tools token made before run credentials never reaches git.
+        let old = AgentScope {
+            repo: upstream.clone(),
+            operations: vec!["get_issue".to_owned()],
+            run: None,
+        };
+        assert_eq!(decide_git(&old, &upstream, false).rule, "git:not-a-run");
+        // Nor does an agent's tools token.
+        assert_eq!(
+            decide_git(&scope(K::Implement, Tools), &upstream, false).rule,
+            "git:not-a-run"
+        );
+    }
+
+    #[test]
+    fn a_push_moves_only_granted_branches() {
+        let update = scope(K::Update, Runner);
+        let repo = path("acme", "rocket");
+        let refs = |names: &[&str]| {
+            names
+                .iter()
+                .map(|name| (*name).to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert!(decide_refs(&update, &repo, &refs(&["refs/heads/fix-login"])).allowed);
+        assert_eq!(
+            decide_refs(&update, &repo, &refs(&["refs/heads/main"])).rule,
+            "git:ref"
+        );
+        assert_eq!(
+            decide_refs(
+                &update,
+                &repo,
+                &refs(&["refs/heads/fix-login", "refs/tags/v1"])
+            )
+            .rule,
+            "git:ref"
+        );
+        let implement = scope(K::Implement, Runner);
+        assert!(
+            decide_refs(
+                &implement,
+                &path("pulls", "pul_7"),
+                &refs(&["refs/heads/main"])
+            )
+            .allowed
+        );
+    }
+
+    #[test]
+    fn a_runner_acts_downstream_as_the_person() {
+        let user = agent(&["acme"], scope(K::Implement, Runner));
+        let person = as_person(&user).unwrap();
+        assert_eq!(person.id, "usr_1");
+        assert_eq!(person.username, "syntaqx");
+        assert_eq!(person.kind, PrincipalKind::User);
+        assert!(person.is_member("acme"));
+        assert!(person.acting.is_none());
+        assert_eq!(describe(&user), "g1t-agent on behalf of syntaqx");
+        // The tools act as the agent.
+        assert!(as_person(&agent(&["acme"], scope(K::Implement, Tools))).is_none());
+    }
+
+    #[test]
+    fn scopes_without_a_run_still_parse() {
+        let old: AgentScope = serde_json::from_str(
+            r#"{"repo":{"namespace":"acme","name":"rocket"},"operations":["get_issue"]}"#,
+        )
+        .unwrap();
+        assert!(old.run.is_none());
+        let written = serde_json::to_string(&scope(K::Review, Tools)).unwrap();
+        assert!(written.contains(r#""use":"tools""#));
+        assert!(written.contains(r#""kind":"review""#));
+        let back: AgentScope = serde_json::from_str(&written).unwrap();
+        assert_eq!(back.run.unwrap().kind, K::Review);
+    }
+}

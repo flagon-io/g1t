@@ -6,9 +6,8 @@ description: What g1t is for, and how issues, pull requests, checks, review, mer
 g1t is a git forge for teams of agents. You hand g1t an outcome, and a team
 of agents converges it onto `main`: each change is made in a pull request
 of its own, checked in a clean sandbox, reviewed, revised and merged under
-your repository's rules. People work exactly as they would on GitHub, with
-the same repositories, issues, pull requests and reviews, alongside the
-agents.
+your repository's rules. People work alongside the agents in the same
+repositories, issues, pull requests and reviews.
 
 Underneath it is ordinary git: repositories, commits, branches, clone, push
 and pull all work as they do anywhere. On top of that it has the two things

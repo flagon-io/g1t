@@ -12,6 +12,8 @@ mod import;
 mod land;
 mod refs;
 mod registry;
+mod run_access;
+mod secret_scan;
 mod store;
 
 use g1t_contracts::events::{
@@ -129,6 +131,8 @@ struct Repos<S: GitStore> {
     registry: Registry,
     store: S,
     events: Fetcher,
+    /// Asked during a push which secrets have been allowed.
+    security: Option<Fetcher>,
 }
 
 impl<S: GitStore> Repos<S> {
@@ -937,6 +941,12 @@ impl<S: GitStore> Repos<S> {
             return git_http::moved(&location, request.method() == Method::Get);
         }
         let viewer = git_http::viewer(&request, &env.service("IDENTITY")?).await?;
+        // A run credential is checked against its grants, then acts as the
+        // person it works for. See run_access.rs.
+        let (request, viewer, audit) = match self.admit_git(request, &git, viewer).await? {
+            run_access::Admitted::Go { request, viewer, entry } => (request, viewer, entry),
+            run_access::Admitted::Refused(response) => return Ok(response),
+        };
         let access = self
             .git_access(GitAccessArgs {
                 path: git.path.clone(),
@@ -946,7 +956,11 @@ impl<S: GitStore> Repos<S> {
             .await?;
         let access = match access {
             Outcome::Ok(access) => access,
-            refused => return git_http::refuse(refused),
+            refused => {
+                let response = git_http::refuse(refused)?;
+                self.finish_git(audit, response.status_code(), None).await;
+                return Ok(response);
+            }
         };
         // A protected default branch takes changes only from a merged pull
         // request, which lands without going through here.
@@ -954,11 +968,21 @@ impl<S: GitStore> Repos<S> {
             Some(repo) if repo.protected && repo.fork_of.is_none() => Some(repo.default_branch),
             _ => None,
         };
+        // Push protection: a push that adds a secret is refused. See secret_scan.rs.
+        let scan = async |body: &[u8]| self.protect(&git.path, viewer.as_ref(), body).await;
         let forwarded =
-            match git_http::forward(request, &git, &access, protected.as_deref()).await? {
+            match git_http::forward(request, &git, &access, protected.as_deref(), scan).await? {
                 git_http::Push::Forwarded(forwarded) => forwarded,
-                git_http::Push::Refused(response) => return Ok(response),
+                git_http::Push::Refused(response) => {
+                    self.finish_git(audit, 403, Some("The push would change a protected branch.".to_owned())).await;
+                    return Ok(response);
+                }
+                git_http::Push::Blocked(response) => {
+                    self.finish_git(audit, 403, Some("The push adds a secret.".to_owned())).await;
+                    return Ok(response);
+                }
             };
+        self.finish_git(audit, forwarded.response.status_code(), None).await;
 
         // Artifacts' own push notifications are per repository, which does
         // not fit a repo per pull request, so the front end reports pushes
@@ -1003,6 +1027,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         registry: Registry { db: env.d1("DB")? },
         store: ArtifactsStore::new(&env)?,
         events: env.service("EVENTS")?,
+        security: env.service("SECURITY").ok(),
     };
     let Some(method) = rpc_method(&request) else {
         return repos.git_http(request, &env).await;
@@ -1063,6 +1088,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "land" => reply(&repos.land(args(body)?).await?),
         "delete_branch" => reply(&repos.delete_branch(args(body)?).await?),
         "compare" => reply(&repos.compare(args(body)?).await?),
+        "scan_history" => reply(&repos.scan_history(args(body)?).await?),
+        "find_lockfiles" => reply(&repos.find_lockfiles(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }

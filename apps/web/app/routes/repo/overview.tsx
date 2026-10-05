@@ -1,39 +1,233 @@
-import { ArrowDownLeft, ArrowUpRight, Box, CircleDot, Code2, GitBranch, GitCommitHorizontal, GitPullRequest, Lock, Network, Rocket, RotateCw } from "lucide-react";
+import {
+  Activity as ActivityIcon,
+  ArrowDownLeft,
+  ArrowRight,
+  ArrowUpRight,
+  Bot,
+  Brain,
+  Code2,
+  GitBranch,
+  GitCommitHorizontal,
+  GitMerge,
+  Hand,
+  HeartPulse,
+  Loader2,
+  Lock,
+  Network,
+  Pin,
+  Rocket,
+  RotateCw,
+} from "lucide-react";
+import type { ReactNode } from "react";
 import { Form, Link, useNavigation } from "react-router";
+
+import { type AgentRun, type G1tEvent, type Memory, type Pull, RUN_KIND_LABEL, isActiveRun } from "@g1t/contracts";
 
 import type { Route } from "./+types/overview";
 import { host, StatusDot } from "../../components/deploy";
-import { Button, ButtonLink, CopyLine, EmptyState, TimeAgo } from "../../components/ui";
-import { PullIcon } from "../../components/work";
-import { deployments, projects, repos, work } from "../../lib/services.server";
+import { CheckBadge } from "../../components/checks";
+import { Elapsed, formatCost, useLiveRefresh } from "../../components/agents";
+import { ActivityFeed, DeployStrip, Meter, NeedsList, Panel, Quiet, Unavailable, percent } from "../../components/mission";
+import { Avatar, Button, ButtonLink, CopyLine, TimeAgo } from "../../components/ui";
+import { ChangeSize } from "../../components/work";
+import {
+  type ActivityItem,
+  type Need,
+  type PipelineStage,
+  PIPELINE,
+  TIME,
+  ageBuckets,
+  eventItem,
+  firstPassRate,
+  groupActivity,
+  passRate,
+  pipelineStage,
+  queuedNumbers,
+  rankNeeds,
+  stuckMinutes,
+} from "../../lib/mission";
+import { agents, deployments, events as eventLog, projects, repos, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 
-const MAX_PULLS = 5;
+const MAX_LANDED = 6;
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const member = roleIn(viewer, params.owner) != null;
   const path = { namespace: params.owner, name: params.repo };
   const ref = { workspace: params.owner, slug: params.repo };
-  const [project, settings, list, pulls, log, counts, deps] = await Promise.all([
-    projects.get(params.owner, params.repo, viewer),
-    member ? deployments.settings(ref, viewer) : null,
-    member ? deployments.list(ref, viewer) : null,
-    work.listPulls(path, viewer, "open"),
-    repos.log(path, viewer, null, 1),
-    work.counts(path, viewer),
-    projects.dependencies(params.owner, params.repo, viewer),
+  const now = Date.now();
+  // A section whose service fails shows its own empty state; the page stays up.
+  const soft = <T,>(promise: Promise<T> | null): Promise<T | null> =>
+    promise ? promise.catch((error) => (console.warn("overview:", error), null)) : Promise.resolve(null);
+  const repoP = soft(repos.get(path, viewer));
+  const eventsP = repoP.then((repo) => (repo?.ok ? soft(eventLog.list({ repoId: repo.value.id, limit: 150 })) : null));
+  const minePullsP = repoP.then((repo) =>
+    repo?.ok && viewer
+      ? soft(work.listActivePulls(viewer)).then((list) => (list ?? []).filter((item) => item.pull.repoId === repo.value.id))
+      : null,
+  );
+  const [project, settings, list, open, closed, log, counts, deps, runs, queue, issues, memories, recent, mine] = await Promise.all([
+    soft(projects.get(params.owner, params.repo, viewer)),
+    soft(member ? deployments.settings(ref, viewer) : null),
+    soft(member ? deployments.list(ref, viewer) : null),
+    soft(work.listPulls(path, viewer, "open")),
+    soft(work.listPulls(path, viewer, "closed")),
+    soft(repos.log(path, viewer, null, 1)),
+    soft(work.counts(path, viewer)),
+    soft(projects.dependencies(params.owner, params.repo, viewer)),
+    soft(agents.listRuns(viewer, { repo: path, limit: 60 })),
+    soft(work.queue(path, viewer)),
+    soft(work.listIssues(path, viewer, { state: "open" })),
+    soft(member ? agents.listMemories(viewer, params.owner, path) : null),
+    eventsP,
+    minePullsP,
   ]);
+  const ok = <T,>(result: { ok: true; value: T } | { ok: false } | null): T | null => (result?.ok ? result.value : null);
+
+  const openPulls = ok(open) ?? [];
+  const runList = ok(runs) ?? [];
+  const live = runList.filter((run) => isActiveRun(run.status));
+  const builds = ok(list)?.deployments ?? [];
+  const landed = (ok(closed) ?? [])
+    .filter((pull) => pull.status === "merged")
+    .sort((a, b) => Date.parse(b.mergedAt ?? b.updatedAt) - Date.parse(a.mergedAt ?? a.updatedAt));
+  const queued = queuedNumbers(ok(queue)?.active ?? []);
+  const runOn = new Map<number, AgentRun>();
+  for (const run of live) if (run.number != null && !runOn.has(run.number)) runOn.set(run.number, run);
+  const lifecycleOf = new Map((mine ?? []).map((item) => [item.pull.number, item.lifecycle]));
+
+  // --- The pipeline -----------------------------------------------------------
+  type Card = {
+    number: number;
+    title: string;
+    agent: string;
+    status: Pull["status"];
+    checkStatus: Pull["checkStatus"];
+    step: string | null;
+    runKind: string | null;
+    runStarted: string | null;
+    needsYou: boolean;
+    at: string;
+  };
+  const columns: Record<PipelineStage, Card[]> = { working: [], checking: [], reviewing: [], queue: [], landed: [] };
+  for (const pull of openPulls.slice(0, 40)) {
+    const run = runOn.get(pull.number);
+    columns[pipelineStage(pull, run, queued)].push({
+      number: pull.number,
+      title: pull.title,
+      agent: pull.agent,
+      status: pull.status,
+      checkStatus: pull.checkStatus,
+      step: run?.step ?? null,
+      runKind: run ? RUN_KIND_LABEL[run.kind] : null,
+      runStarted: run ? (run.startedAt ?? run.createdAt) : null,
+      needsYou: lifecycleOf.get(pull.number)?.stage === "needs_you",
+      at: pull.updatedAt,
+    });
+  }
+  for (const pull of landed.filter((p) => now - Date.parse(p.mergedAt ?? p.updatedAt) < 3 * TIME.DAY).slice(0, 5)) {
+    columns.landed.push({
+      number: pull.number,
+      title: pull.title,
+      agent: pull.agent,
+      status: pull.status,
+      checkStatus: pull.checkStatus,
+      step: null,
+      runKind: null,
+      runStarted: null,
+      needsYou: false,
+      at: pull.mergedAt ?? pull.updatedAt,
+    });
+  }
+
+  // --- Needs you ---------------------------------------------------------------
+  const base = `/${params.owner}/${params.repo}`;
+  const needs: Need[] = [];
+  const latestProduction = builds.find((build) => build.kind === "production") ?? null;
+  if (latestProduction?.status === "failed") {
+    needs.push({
+      key: "deploy",
+      kind: "deploy",
+      title: "The production build failed",
+      detail: latestProduction.error ?? "Production still serves the build before it.",
+      to: `${base}/deployments/${latestProduction.id}`,
+      action: "See the build",
+      at: Date.parse(latestProduction.finishedAt ?? latestProduction.createdAt),
+      where: latestProduction.commit.slice(0, 7),
+    });
+  }
+  const me = viewer?.username.toLowerCase();
+  for (const pull of openPulls) {
+    const to = `${base}/pull/${pull.number}`;
+    const where = `#${pull.number}`;
+    const lifecycle = lifecycleOf.get(pull.number);
+    if (lifecycle?.stage === "needs_you") {
+      const conflict = /conflict/i.test(lifecycle.detail);
+      needs.push({ key: `pull:${pull.number}`, kind: conflict ? "conflict" : "stalled", title: pull.title, detail: lifecycle.detail, to, action: conflict ? "Resolve" : "Decide", at: Date.parse(pull.updatedAt), where });
+    } else if (lifecycle?.stage === "ready") {
+      needs.push({ key: `pull:${pull.number}`, kind: "ready", title: pull.title, detail: "Ready to land when you merge it.", to, action: "Merge", at: Date.parse(pull.updatedAt), where });
+    }
+    if (me && pull.status === "open" && pull.author.username.toLowerCase() !== me && pull.reviewers.some((name) => name.toLowerCase() === me)) {
+      needs.push({ key: `review:${pull.number}`, kind: "review", title: pull.title, detail: `${pull.author.username} asked for your review.`, to, action: "Review", at: Date.parse(pull.updatedAt), where });
+    }
+    if (member && pull.status === "open" && pull.checkStatus === "failed" && !runOn.has(pull.number) && !lifecycle) {
+      needs.push({ key: `checks:${pull.number}`, kind: "checks", title: pull.title, detail: "Its acceptance checks failed and no agent is fixing them.", to, action: "See checks", at: Date.parse(pull.updatedAt), where });
+    }
+  }
+  for (const run of live) {
+    const minutes = stuckMinutes(run, now);
+    if (minutes == null) continue;
+    needs.push({
+      key: `run:${run.id}`,
+      kind: "stuck",
+      title: run.title ?? `${run.agent}'s run`,
+      detail: `${run.agent} has reported nothing for ${minutes} min${run.step ? `. Last: ${run.step}` : ""}.`,
+      to: `${base}/agents/runs/${run.id}`,
+      action: "Look",
+      at: Date.parse(run.updatedAt),
+      where: run.number != null ? `#${run.number}` : null,
+    });
+  }
+
+  // --- Activity and health -------------------------------------------------------
+  const eventList: G1tEvent[] = recent ?? [];
+  const items = eventList
+    .map((event) => eventItem(event, path))
+    .filter((item): item is ActivityItem => item != null);
+  const checkEvents = eventList.flatMap((event) =>
+    event.type === "checks.completed" ? [{ repo: "", number: event.data.number, at: Date.parse(event.time), passed: event.data.status === "passed" }] : [],
+  );
+  const memoryList = ok(memories)?.project ?? [];
+  const knows = [...memoryList.filter((m) => m.pinned), ...memoryList.filter((m) => !m.pinned).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))].slice(0, 5);
+  const openIssues = ok(issues);
+
   return {
     member,
-    project: project.ok ? project.value : null,
-    settings: settings?.ok ? settings.value : null,
-    builds: list?.ok ? list.value.deployments : [],
-    live: list?.ok ? list.value.live : [],
-    pulls: pulls.ok ? pulls.value.slice(0, MAX_PULLS) : [],
-    commit: log.ok ? (log.value[0] ?? null) : null,
-    open: counts.ok ? counts.value : { issues: 0, pulls: 0 },
-    dependencies: deps.ok ? deps.value : { dependsOn: [], usedBy: [] },
+    project: ok(project),
+    settings: ok(settings),
+    builds: builds.slice(0, 30),
+    live: ok(list)?.live ?? [],
+    commit: ok(log)?.[0] ?? null,
+    open: ok(counts) ?? { issues: openIssues?.length ?? 0, pulls: openPulls.length },
+    dependencies: ok(deps),
+    agentsLive: live.slice(0, 6),
+    runsLoaded: runs?.ok ?? false,
+    pullsLoaded: open?.ok ?? false,
+    columns,
+    needs: rankNeeds(needs),
+    landed: landed.slice(0, MAX_LANDED),
+    groups: groupActivity(items).slice(0, 30),
+    eventsLoaded: recent != null,
+    health: {
+      passRate: passRate(checkEvents.map((c) => c.passed)),
+      firstPass: firstPassRate(checkEvents),
+      checkRuns: checkEvents.length,
+      ages: openIssues ? ageBuckets(openIssues.map((issue) => issue.createdAt), now) : null,
+    },
+    knows: knows as Memory[],
+    memoryCount: memoryList.length,
+    memoriesLoaded: memories?.ok ?? false,
   };
 }
 
@@ -44,8 +238,114 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   return started.ok ? { notice: "Production is building." } : { error: started.error.message };
 }
 
+type Loaded = Route.ComponentProps["loaderData"];
+type Card = Loaded["columns"]["working"][number];
+
+const STAGE_TONE: Record<PipelineStage, string> = {
+  working: "bg-merged",
+  checking: "bg-info",
+  reviewing: "bg-warn",
+  queue: "bg-accent-dim",
+  landed: "bg-accent",
+};
+
+function PipelineCard({ card, base, stage }: { card: Card; base: string; stage: PipelineStage }) {
+  return (
+    <li>
+      <Link
+        to={`${base}/pull/${card.number}`}
+        prefetch="intent"
+        className={`block rounded-lg border bg-bg/60 p-2.5 transition-colors hover:border-line-strong hover:bg-raised ${
+          card.needsYou ? "border-warn/50" : card.step ? "border-merged/30" : "border-line"
+        }`}
+      >
+        <span className="line-clamp-2 text-[0.8125rem] leading-snug font-medium">{card.title}</span>
+        <span className="mt-1.5 flex items-center gap-1.5 text-[0.6875rem] text-muted">
+          <Avatar name={card.agent} size={14} />
+          <span className="font-mono text-faint">#{card.number}</span>
+          <span className="grow" />
+          {card.needsYou ? (
+            <span className="inline-flex items-center gap-1 text-warn" title="Stopped: a person decides what happens next">
+              <Hand size={11} /> you
+            </span>
+          ) : stage === "landed" ? (
+            <TimeAgo at={card.at} />
+          ) : card.runStarted ? (
+            <span className="inline-flex items-center gap-1 text-merged">
+              <Loader2 size={11} className="animate-spin" />
+              <Elapsed from={card.runStarted} />
+            </span>
+          ) : (
+            <CheckBadge status={card.checkStatus} />
+          )}
+        </span>
+        {card.step && (
+          <span className="mt-1.5 block truncate font-mono text-[0.6875rem] text-fg/70" title={card.step}>
+            {card.runKind}: {card.step}
+          </span>
+        )}
+      </Link>
+    </li>
+  );
+}
+
+/** Open pull requests moving through Working → Checking → Reviewing → Queue → Landed. */
+function Pipeline({ columns, base }: { columns: Loaded["columns"]; base: string }) {
+  return (
+    <div className="relative -mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
+      <ol className="grid min-w-176 grid-cols-5 gap-2">
+        {PIPELINE.map(({ stage, label }, index) => {
+          const cards = columns[stage];
+          return (
+            <li key={stage} className="flex min-w-0 flex-col rounded-xl border border-line bg-surface p-2">
+              <p className="flex items-center gap-2 px-1 pt-0.5 pb-2 text-xs font-medium text-muted">
+                <span className={`size-1.5 rounded-full ${STAGE_TONE[stage]} ${cards.length && stage !== "landed" ? "animate-pulse" : ""}`} />
+                {label}
+                <span className="tabular-nums text-faint">{cards.length}</span>
+                {index < PIPELINE.length - 1 && <ArrowRight size={11} className="ml-auto text-line-strong" />}
+              </p>
+              {cards.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-line/70 px-2 py-3 text-center text-[0.6875rem] text-faint">Empty</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {cards.slice(0, 6).map((card) => (
+                    <PipelineCard key={card.number} card={card} base={base} stage={stage} />
+                  ))}
+                  {cards.length > 6 && (
+                    <li className="px-1 text-[0.6875rem] text-muted">
+                      <Link to={`${base}/pulls`} className="hover:text-fg">
+                        {cards.length - 6} more
+                      </Link>
+                    </li>
+                  )}
+                </ul>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+function Stat({ label, value, to }: { label: string; value: ReactNode; to?: string }) {
+  const body = (
+    <>
+      <span className="block text-[0.6875rem] text-faint">{label}</span>
+      <span className="mt-0.5 block truncate text-[0.8125rem] font-medium">{value}</span>
+    </>
+  );
+  return to ? (
+    <Link to={to} className="min-w-0 px-5 py-3 transition-colors hover:bg-raised/50">
+      {body}
+    </Link>
+  ) : (
+    <div className="min-w-0 px-5 py-3">{body}</div>
+  );
+}
+
 export default function ProjectOverview({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { member, project, settings, builds, live, pulls, commit, open, dependencies } = loaderData;
+  const { member, project, settings, builds, live, commit, open, dependencies, agentsLive, columns, needs, landed, groups, health, knows } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const production = live.find((app) => app.kind === "production") ?? null;
   // The project's own domain, once it is active, is where production is visited.
@@ -54,330 +354,498 @@ export default function ProjectOverview({ loaderData, actionData, params }: Rout
   const latestProduction = builds.find((build) => build.kind === "production") ?? null;
   const busy = useNavigation().state === "submitting";
   const source = project?.source.kind === "hosted" ? project.source : null;
+  const moving = agentsLive.length > 0 || columns.working.length + columns.checking.length > 0;
+  useLiveRefresh(moving);
+  const ages = health.ages;
+  const oldest = ages ? Math.max(1, ...ages.map((a) => a.count)) : 1;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-      <div className="min-w-0 space-y-6">
-        {/* Production: what the project is, running. */}
-        <section className="overflow-hidden rounded-2xl border border-line bg-surface">
-          <div className="flex flex-wrap items-start justify-between gap-4 p-6">
-            <div className="min-w-0">
-              <p className="flex items-center gap-2 text-xs font-medium tracking-wide text-muted uppercase">
-                <Rocket size={13} className="text-accent" />
-                Production
-              </p>
-              {production ? (
-                <>
-                  <a
-                    href={productionUrl ?? production.url}
-                    className="mt-2 flex items-center gap-1.5 truncate font-mono text-lg font-medium hover:text-accent"
-                  >
-                    {host(productionUrl ?? production.url)}
-                    <ArrowUpRight size={16} className="shrink-0 text-faint" />
-                  </a>
-                  <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-                    {latestProduction && <StatusDot status={latestProduction.status} />}
-                    <span className="inline-flex items-center gap-1 font-mono">
-                      <GitCommitHorizontal size={13} className="text-faint" />
-                      {production.commit.slice(0, 7)}
-                    </span>
-                    <span>
-                      deployed <TimeAgo at={production.deployedAt} />
-                    </span>
-                  </p>
-                </>
-              ) : settings?.enabled ? (
-                <>
-                  <p className="mt-2 font-mono text-lg text-muted">{host(settings.productionUrl)}</p>
-                  <p className="mt-1.5 text-xs text-muted">
-                    {latestProduction ? (
-                      <StatusDot status={latestProduction.status} label={latestProduction.status === "failed" ? "The last build failed" : undefined} />
-                    ) : (
-                      "Not deployed yet. Push to the default branch, or deploy it now."
-                    )}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="mt-2 text-lg font-medium">Not deployed</p>
-                  <p className="mt-1 max-w-lg text-sm text-muted">
-                    Put {project?.name ?? params.repo} on g1t.page: production from the default branch, and a live
-                    preview for every pull request. It runs only while someone visits.
-                  </p>
-                </>
-              )}
-            </div>
-            {member && (
-              <div className="flex shrink-0 items-center gap-2">
-                {production && (
-                  <ButtonLink to={productionUrl ?? production.url} variant="accent" reloadDocument>
-                    Visit
-                    <ArrowUpRight size={14} />
-                  </ButtonLink>
-                )}
-                {settings?.enabled ? (
-                  <Form method="post">
-                    <Button type="submit" variant="quiet" disabled={busy} title="Build production again from the default branch">
-                      <RotateCw size={14} />
-                      Redeploy
-                    </Button>
-                  </Form>
-                ) : (
-                  <ButtonLink to={`${base}/settings/deployments`} variant="accent">
-                    <Rocket size={14} />
-                    Deploy
-                  </ButtonLink>
-                )}
-              </div>
+    <div className="space-y-8">
+      {/* What the project is, running, and where its code is. */}
+      <section className="overflow-hidden rounded-2xl border border-line bg-surface">
+        <div className="flex flex-wrap items-start justify-between gap-4 p-5 sm:p-6">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-xs font-medium tracking-wide text-muted uppercase">
+              <Rocket size={13} className="text-accent" />
+              Production
+            </p>
+            {production ? (
+              <>
+                <a
+                  href={productionUrl ?? production.url}
+                  className="mt-2 flex items-center gap-1.5 truncate font-mono text-lg font-medium hover:text-accent"
+                >
+                  {host(productionUrl ?? production.url)}
+                  <ArrowUpRight size={16} className="shrink-0 text-faint" />
+                </a>
+                <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                  {latestProduction && <StatusDot status={latestProduction.status} label={latestProduction.status === "ready" ? "Live" : undefined} />}
+                  <span className="inline-flex items-center gap-1 font-mono">
+                    <GitCommitHorizontal size={13} className="text-faint" />
+                    {production.commit.slice(0, 7)}
+                  </span>
+                  <span>
+                    deployed <TimeAgo at={production.deployedAt} />
+                  </span>
+                  {settings?.primaryDomain && <span className="text-faint">also at {host(production.url)}</span>}
+                </p>
+              </>
+            ) : settings?.enabled ? (
+              <>
+                <p className="mt-2 font-mono text-lg text-muted">{host(settings.productionUrl)}</p>
+                <p className="mt-1.5 text-xs text-muted">
+                  {latestProduction ? (
+                    <StatusDot status={latestProduction.status} label={latestProduction.status === "failed" ? "The last build failed" : undefined} />
+                  ) : (
+                    "Not deployed yet. Push to the default branch, or deploy it now."
+                  )}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="mt-2 text-lg font-medium">Not deployed</p>
+                <p className="mt-1 max-w-lg text-sm text-muted">
+                  Put {project?.name ?? params.repo} on g1t.page: production from the default branch, and a live preview for
+                  every pull request. It runs only while someone visits.
+                </p>
+              </>
             )}
           </div>
-          {(actionData && "notice" in actionData) || (actionData && "error" in actionData) ? (
-            <p className={`border-t border-line px-6 py-2.5 text-sm ${"error" in actionData ? "text-danger" : "text-accent"}`}>
-              {"error" in actionData ? actionData.error : actionData.notice}
-            </p>
-          ) : null}
-          {member && settings?.enabled && (
-            <div className="grid border-t border-line text-sm sm:grid-cols-3 sm:divide-x sm:divide-line">
-              <Link to={`${base}/deployments`} className="px-6 py-3 hover:bg-raised/50">
-                <span className="block text-xs text-muted">Previews up</span>
-                <span className="font-medium tabular-nums">{previews.length}</span>
-              </Link>
-              <Link to={`${base}/deployments`} className="px-6 py-3 hover:bg-raised/50">
-                <span className="block text-xs text-muted">Builds</span>
-                <span className="font-medium tabular-nums">{builds.length}</span>
-              </Link>
-              <Link to={`${base}/settings/secrets`} className="px-6 py-3 hover:bg-raised/50">
-                <span className="block text-xs text-muted">Secrets and variables</span>
-                <span className="font-medium">Manage</span>
-              </Link>
+          {member && (
+            <div className="flex shrink-0 items-center gap-2">
+              {production && (
+                <ButtonLink to={productionUrl ?? production.url} variant="accent" reloadDocument>
+                  Visit
+                  <ArrowUpRight size={14} />
+                </ButtonLink>
+              )}
+              {settings?.enabled ? (
+                <Form method="post">
+                  <Button type="submit" variant="quiet" disabled={busy} title="Build production again from the default branch">
+                    <RotateCw size={14} />
+                    Redeploy
+                  </Button>
+                </Form>
+              ) : (
+                <ButtonLink to={`${base}/settings/deployments`} variant="accent">
+                  <Rocket size={14} />
+                  Deploy
+                </ButtonLink>
+              )}
             </div>
           )}
-        </section>
-
-        {previews.length > 0 && (
-          <section>
-            <h2 className="text-sm font-medium text-muted">Previews</h2>
-            <ul className="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-              {previews.map((app) => (
-                <li key={app.url} className="flex items-center gap-3 px-4 py-3 text-sm">
-                  <GitBranch size={14} className="shrink-0 text-faint" />
-                  <span className="min-w-0 grow">
-                    <a href={app.url} className="block truncate font-mono text-[0.8125rem] hover:text-accent">
-                      {host(app.url)}
-                    </a>
-                    <span className="text-xs text-muted">
-                      {app.branch}
-                      {app.number != null && (
-                        <>
-                          {" · "}
-                          <Link to={`${base}/pull/${app.number}`} className="hover:underline">
-                            #{app.number}
-                          </Link>
-                        </>
-                      )}
+        </div>
+        {actionData && (
+          <p className={`border-t border-line px-6 py-2.5 text-sm ${"error" in actionData ? "text-danger" : "text-accent"}`}>
+            {"error" in actionData ? actionData.error : actionData.notice}
+          </p>
+        )}
+        <div className="grid grid-cols-2 divide-line border-t border-line text-sm sm:grid-cols-4 sm:divide-x">
+          <Stat
+            label="Source"
+            to={`${base}/code`}
+            value={
+              source ? (
+                <span className="inline-flex items-center gap-1.5 font-mono">
+                  {project?.private ? <Lock size={12} className="text-faint" /> : <Code2 size={12} className="text-faint" />}
+                  {source.repo.name}
+                  {source.rootDir ? `/${source.rootDir}` : ""}
+                </span>
+              ) : (
+                "—"
+              )
+            }
+          />
+          <Stat
+            label="Default branch"
+            to={`${base}/commits`}
+            value={
+              <span className="inline-flex items-center gap-1.5 font-mono">
+                <GitBranch size={12} className="text-faint" />
+                {source?.defaultBranch ?? "main"}
+              </span>
+            }
+          />
+          <Stat
+            label="Latest commit"
+            to={commit ? `${base}/commit/${commit.hash}` : undefined}
+            value={
+              commit ? (
+                <span title={commit.message.split("\n")[0]}>
+                  <span className="font-mono">{commit.hash.slice(0, 7)}</span>{" "}
+                  <span className="font-normal text-muted">
+                    <TimeAgo at={commit.authoredAt} />
+                  </span>
+                </span>
+              ) : (
+                "No commits yet"
+              )
+            }
+          />
+          <Stat
+            label={member && settings?.enabled ? "Last deploy" : "Open"}
+            to={member && settings?.enabled ? `${base}/deployments` : `${base}/pulls`}
+            value={
+              member && settings?.enabled ? (
+                latestProduction ? (
+                  <span className="inline-flex items-center gap-2">
+                    <StatusDot status={latestProduction.status} />
+                    <span className="font-normal text-muted">
+                      <TimeAgo at={latestProduction.createdAt} />
                     </span>
                   </span>
-                  <span className="shrink-0 text-xs text-faint">
-                    <TimeAgo at={app.deployedAt} />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
+                ) : (
+                  "None yet"
+                )
+              ) : (
+                `${open.pulls} pull requests · ${open.issues} issues`
+              )
+            }
+          />
+        </div>
+        {commit && (
+          <p className="truncate border-t border-line px-5 py-2.5 text-xs text-muted sm:px-6">
+            <GitCommitHorizontal size={12} className="mr-1.5 inline text-faint" />
+            {commit.message.split("\n")[0]} <span className="text-faint">· {commit.author.name}</span>
+          </p>
         )}
+      </section>
 
-        <section>
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-medium text-muted">In progress</h2>
-            <Link to={`${base}/pulls`} className="text-xs text-muted hover:text-fg">
-              All pull requests
-            </Link>
-          </div>
-          <div className="mt-3">
-            {pulls.length === 0 ? (
-              <EmptyState title="Nothing in progress">
-                Open an issue and assign it to g1t-agent, or push a branch and open a pull request.
-              </EmptyState>
+      <Panel
+        title="Right now"
+        icon={<span className={`block size-2 rounded-full ${agentsLive.length > 0 ? "animate-pulse bg-merged" : "bg-line-strong"}`} />}
+        count={agentsLive.length}
+        all={{ to: `${base}/agents`, label: "Agents" }}
+      >
+        {agentsLive.length > 0 && (
+          <ul className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {agentsLive.map((run) => (
+              <li key={run.id} className="min-w-0 rounded-xl border border-merged/30 bg-surface px-3.5 py-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <Avatar name={run.agent} size={18} />
+                  <span className="font-medium">{run.agent}</span>
+                  <span className="text-xs text-muted">{RUN_KIND_LABEL[run.kind].toLowerCase()}</span>
+                  <span className="grow" />
+                  <span className="text-xs text-muted">
+                    <Elapsed from={run.startedAt ?? run.createdAt} />
+                  </span>
+                </div>
+                <Link
+                  to={run.number != null ? `${base}/pull/${run.number}` : `${base}/agents/runs/${run.id}`}
+                  className="mt-1 block truncate text-[0.8125rem] hover:text-accent"
+                >
+                  {run.title ?? "A run"} {run.number != null && <span className="text-faint">#{run.number}</span>}
+                </Link>
+                {run.step && (
+                  <p className="mt-1 truncate font-mono text-[0.6875rem] text-fg/70" title={run.step}>
+                    <span className="mr-1.5 inline-block size-1.5 animate-pulse rounded-full bg-merged align-middle" />
+                    {run.step}
+                  </p>
+                )}
+                <p className="mt-1.5 flex items-center gap-3 text-[0.6875rem] text-faint">
+                  {formatCost(run.costUsd) && <span>{formatCost(run.costUsd)} so far</span>}
+                  <Link to={`${base}/agents/runs/${run.id}`} className="hover:text-fg">
+                    {run.stepCount} steps
+                  </Link>
+                  {run.number != null && (
+                    <Link to={`${base}/sessions/${run.number}`} className="hover:text-fg">
+                      Session
+                    </Link>
+                  )}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+        {!loaderData.pullsLoaded ? (
+          <Unavailable what="Pull requests" />
+        ) : Object.values(columns).every((c) => c.length === 0) ? (
+          <Quiet
+            action={
+              member ? (
+                <Link to={`${base}/issues/new`} className="inline-flex items-center gap-1.5 rounded-md bg-fg px-3 py-1.5 text-xs font-medium text-bg hover:bg-white">
+                  <Bot size={12} /> Open an issue for an agent
+                </Link>
+              ) : null
+            }
+          >
+            Nothing is moving. Open an issue and hand it to g1t-agent, or push a branch and open a pull request.
+          </Quiet>
+        ) : (
+          <Pipeline columns={columns} base={base} />
+        )}
+      </Panel>
+
+      <div className="grid gap-x-8 gap-y-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="min-w-0 space-y-8">
+          {needs.length > 0 && (
+            <Panel title="Needs you" icon={<Hand size={14} className="text-warn" />} count={needs.length}>
+              <NeedsList needs={needs} limit={5} />
+            </Panel>
+          )}
+
+          <Panel title="Recent changes" icon={<GitMerge size={14} />} all={{ to: `${base}/pulls?state=closed`, label: "All landed" }}>
+            {landed.length === 0 ? (
+              <Quiet>Nothing has landed yet. Merged pull requests show here with who made them and why.</Quiet>
             ) : (
               <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-                {pulls.map((pull) => {
-                  const preview = previews.find((app) => app.number === pull.number);
+                {landed.map((pull) => {
+                  const byAgent = pull.runtime === "hosted" || pull.agent === "g1t-agent";
                   return (
-                    <li key={pull.id}>
-                      <Link
-                        prefetch="intent"
-                        to={`${base}/pull/${pull.number}`}
-                        className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-raised"
-                      >
-                        <PullIcon status={pull.status} />
-                        <span className="min-w-0 grow">
-                          <span className="block truncate font-medium">{pull.title}</span>
-                          <span className="font-mono text-xs text-muted">
-                            #{pull.number} · {pull.author.username}
+                    <li key={pull.id} className="flex items-start gap-3 px-4 py-3">
+                      <GitMerge size={15} className="mt-0.5 shrink-0 text-merged" />
+                      <span className="min-w-0 grow">
+                        <Link to={`${base}/pull/${pull.number}`} prefetch="intent" className="block truncate text-sm font-medium hover:text-accent">
+                          {pull.title}
+                        </Link>
+                        <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
+                          <span className="font-mono text-faint">#{pull.number}</span>
+                          <span>·</span>
+                          <span className="inline-flex items-center gap-1">
+                            <Avatar name={pull.agent} size={13} />
+                            {byAgent ? `made by ${pull.agent}` : `by ${pull.author.username}`}
+                          </span>
+                          {pull.issue != null && (
+                            <>
+                              <span>· for</span>
+                              <Link to={`${base}/issues/${pull.issue}`} className="hover:text-fg">
+                                #{pull.issue}
+                              </Link>
+                            </>
+                          )}
+                          {pull.mergedBy && <span>· landed by {pull.mergedBy}</span>}
+                          <span>
+                            · <TimeAgo at={pull.mergedAt ?? pull.updatedAt} />
                           </span>
                         </span>
-                        {preview && <span className="hidden text-xs text-accent sm:block">Preview live</span>}
-                        <span className="w-14 shrink-0 text-right text-xs text-faint">
-                          <TimeAgo at={pull.updatedAt} />
-                        </span>
-                      </Link>
+                      </span>
+                      <span className="hidden shrink-0 text-xs text-faint sm:block">
+                        <ChangeSize files={pull.files} />
+                      </span>
+                      {byAgent && (
+                        <Link to={`${base}/sessions/${pull.number}`} className="shrink-0 text-xs text-muted hover:text-fg">
+                          Session
+                        </Link>
+                      )}
                     </li>
                   );
                 })}
               </ul>
             )}
-          </div>
-        </section>
+          </Panel>
 
-        {member && builds.length > 0 && (
-          <section>
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium text-muted">Recent builds</h2>
-              <Link to={`${base}/deployments`} className="text-xs text-muted hover:text-fg">
-                All deployments
-              </Link>
-            </div>
-            <ul className="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-              {builds.slice(0, 4).map((build) => (
-                <li key={build.id}>
-                  <Link to={`${base}/deployments/${build.id}`} className="flex items-center gap-4 px-4 py-3 text-sm hover:bg-raised">
-                    <span className="w-20 shrink-0">
-                      <StatusDot status={build.status} />
-                    </span>
-                    <span className="min-w-0 grow truncate">
-                      {build.kind === "production" ? "Production" : `Preview of ${build.branch}`}
-                      <span className="ml-2 font-mono text-xs text-faint">{build.commit.slice(0, 7)}</span>
+          <Panel title="Activity" icon={<ActivityIcon size={14} />}>
+            {loaderData.eventsLoaded ? (
+              <ActivityFeed groups={groups} showRepo={false} limit={8} empty="Nothing has happened here yet." />
+            ) : (
+              <Unavailable what="Activity" />
+            )}
+          </Panel>
+
+          {previews.length > 0 && (
+            <Panel title="Previews" icon={<GitBranch size={14} />} count={previews.length} all={{ to: `${base}/deployments`, label: "Deployments" }}>
+              <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+                {previews.map((app) => (
+                  <li key={app.url} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                    <span className="min-w-0 grow">
+                      <a href={app.url} className="block truncate font-mono text-[0.8125rem] hover:text-accent">
+                        {host(app.url)}
+                      </a>
+                      <span className="text-xs text-muted">
+                        {app.branch}
+                        {app.number != null && (
+                          <>
+                            {" · "}
+                            <Link to={`${base}/pull/${app.number}`} className="hover:underline">
+                              #{app.number}
+                            </Link>
+                          </>
+                        )}
+                      </span>
                     </span>
                     <span className="shrink-0 text-xs text-faint">
-                      <TimeAgo at={build.createdAt} />
+                      <TimeAgo at={app.deployedAt} />
                     </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-      </div>
-
-      <aside className="space-y-4 text-sm">
-        <section className="rounded-xl border border-line bg-surface p-5">
-          <h2 className="text-xs font-medium tracking-wide text-muted uppercase">Source</h2>
-          {source && (
-            <>
-              <Link to={`${base}/code`} className="mt-3 flex items-center gap-2 font-mono text-[0.8125rem] hover:text-accent">
-                {project?.private ? <Lock size={14} className="text-faint" /> : <Code2 size={14} className="text-faint" />}
-                {source.repo.namespace}/{source.repo.name}
-              </Link>
-              <p className="mt-1 text-xs text-muted">Hosted on g1t{source.rootDir ? ` · in ${source.rootDir}/` : ""}</p>
-              <dl className="mt-4 space-y-2 text-xs">
-                <div className="flex justify-between gap-3">
-                  <dt className="text-muted">Default branch</dt>
-                  <dd className="font-mono">{source.defaultBranch}</dd>
-                </div>
-                {commit && (
-                  <div className="flex justify-between gap-3">
-                    <dt className="text-muted">Latest commit</dt>
-                    <dd className="min-w-0 truncate text-right">
-                      <Link to={`${base}/commit/${commit.hash}`} className="font-mono hover:underline">
-                        {commit.hash.slice(0, 7)}
-                      </Link>
-                    </dd>
-                  </div>
-                )}
-              </dl>
-              {commit && <p className="mt-2 line-clamp-2 text-xs text-muted">{commit.message.split("\n")[0]}</p>}
-              <div className="mt-4">
-                <CopyLine text={`git clone https://g1t.sh/${source.repo.namespace}/${source.repo.name}.git`} />
-              </div>
-            </>
+                  </li>
+                ))}
+              </ul>
+            </Panel>
           )}
-        </section>
+        </div>
 
-        <section className="grid grid-cols-2 gap-3">
-          <Link to={`${base}/issues`} className="rounded-xl border border-line bg-surface p-4 hover:border-line-strong">
-            <CircleDot size={14} className="text-faint" />
-            <p className="mt-2 text-xl font-semibold tabular-nums">{open.issues}</p>
-            <p className="text-xs text-muted">Open issues</p>
-          </Link>
-          <Link to={`${base}/pulls`} className="rounded-xl border border-line bg-surface p-4 hover:border-line-strong">
-            <GitPullRequest size={14} className="text-faint" />
-            <p className="mt-2 text-xl font-semibold tabular-nums">{open.pulls}</p>
-            <p className="text-xs text-muted">Pull requests</p>
-          </Link>
-        </section>
+        <aside className="space-y-4 text-sm">
+          {member && (
+            <section className="rounded-xl border border-line bg-surface p-5">
+              <div className="flex items-center justify-between">
+                <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+                  <Brain size={14} className="text-merged" />
+                  What agents know here
+                </h2>
+                <Link to={`${base}/memory`} className="text-xs text-muted hover:text-fg">
+                  Memory
+                </Link>
+              </div>
+              {!loaderData.memoriesLoaded ? (
+                <p className="mt-3 text-xs text-muted">Memory could not be loaded just now.</p>
+              ) : knows.length === 0 ? (
+                <p className="mt-3 text-xs leading-5 text-muted">
+                  Nothing yet. Agents note conventions, decisions and traps as they work, and every agent starting here reads them.
+                </p>
+              ) : (
+                <ul className="mt-3 space-y-2.5">
+                  {knows.map((memory) => (
+                    <li key={memory.id} className="text-xs leading-5">
+                      <p className="line-clamp-3 text-fg-soft">
+                        {memory.pinned && <Pin size={11} className="mr-1 inline text-accent" />}
+                        {memory.text}
+                      </p>
+                      <p className="text-faint">
+                        {memory.kind} · {memory.createdBy} · <TimeAgo at={memory.createdAt} />
+                      </p>
+                    </li>
+                  ))}
+                  {loaderData.memoryCount > knows.length && (
+                    <li>
+                      <Link to={`${base}/memory`} className="text-xs text-muted hover:text-fg">
+                        {loaderData.memoryCount - knows.length} more
+                      </Link>
+                    </li>
+                  )}
+                </ul>
+              )}
+            </section>
+          )}
 
-        <section className="rounded-xl border border-line bg-surface p-5">
-          <div className="flex items-center justify-between">
-            <h2 className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted uppercase">
-              <Network size={13} />
-              Dependencies
+          <section className="rounded-xl border border-line bg-surface p-5">
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+              <HeartPulse size={14} className="text-faint" />
+              Health
             </h2>
-            {member && (
-              <Link to={`${base}/settings/dependencies`} className="text-xs text-muted hover:text-fg">
-                Manage
-              </Link>
-            )}
-          </div>
-          {dependencies.dependsOn.length === 0 && dependencies.usedBy.length === 0 ? (
-            <p className="mt-3 text-xs text-muted">
-              Uses no other project, and none uses it. Declare one, and builds get its address and agents know what
-              depends on what.
-            </p>
-          ) : (
-            <div className="mt-3 space-y-3 text-xs">
-              {dependencies.dependsOn.length > 0 && (
+            <div className="mt-4 space-y-4 text-xs">
+              <div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-muted">Checks passing</span>
+                  <span className="font-medium tabular-nums">{percent(health.passRate)}</span>
+                </div>
+                <div className="mt-1.5">
+                  <Meter value={health.passRate} tone={health.passRate != null && health.passRate < 0.7 ? "bg-warn" : "bg-accent"} />
+                </div>
+                <p className="mt-1 text-faint">
+                  {health.checkRuns
+                    ? `${health.checkRuns} recent runs · ${percent(health.firstPass.rate)} pass on the first try`
+                    : "No checks have run recently."}
+                </p>
+              </div>
+              {member && (
                 <div>
-                  <p className="flex items-center gap-1 text-muted">
-                    <ArrowUpRight size={12} /> Depends on
-                  </p>
-                  <ul className="mt-1.5 space-y-1">
-                    {dependencies.dependsOn.map((d) => (
-                      <li key={d.slug} className="flex items-center justify-between gap-2">
-                        <Link to={`/${params.owner}/${d.slug}`} className="font-medium hover:underline">
-                          {d.name}
-                        </Link>
-                        {d.as && <code className="font-mono text-faint">{d.as}</code>}
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-muted">Deploys</span>
+                    <Link to={`${base}/deployments`} className="text-faint hover:text-fg">
+                      {builds.length ? `last ${Math.min(builds.length, 20)}` : "none yet"}
+                    </Link>
+                  </div>
+                  <div className="mt-1.5">
+                    <DeployStrip builds={builds} base={base} />
+                  </div>
                 </div>
               )}
-              {dependencies.usedBy.length > 0 && (
-                <div>
-                  <p className="flex items-center gap-1 text-muted">
-                    <ArrowDownLeft size={12} /> Used by
-                  </p>
-                  <ul className="mt-1.5 space-y-1">
-                    {dependencies.usedBy.map((d) => (
-                      <li key={d.slug}>
-                        <Link to={`/${params.owner}/${d.slug}`} className="font-medium hover:underline">
-                          {d.name}
-                        </Link>
+              <div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-muted">Open issues by age</span>
+                  <Link to={`${base}/issues`} className="font-medium tabular-nums hover:text-accent">
+                    {open.issues}
+                  </Link>
+                </div>
+                {ages ? (
+                  <ul className="mt-2 space-y-1.5">
+                    {ages.map((bucket) => (
+                      <li key={bucket.label} className="grid grid-cols-[6.5rem_1fr_1.5rem] items-center gap-2">
+                        <span className="text-faint">{bucket.label}</span>
+                        <span className="block h-1.5 overflow-hidden rounded-full bg-line">
+                          <span
+                            className={`block h-full rounded-full ${bucket.label === "Older" ? "bg-warn" : "bg-fg-soft/60"}`}
+                            style={{ width: `${(bucket.count / oldest) * 100}%` }}
+                          />
+                        </span>
+                        <span className="text-right tabular-nums text-muted">{bucket.count}</span>
                       </li>
                     ))}
                   </ul>
-                </div>
+                ) : (
+                  <p className="mt-1 text-faint">Issues could not be loaded just now.</p>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-line bg-surface p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+                <Network size={14} className="text-faint" />
+                Dependencies
+              </h2>
+              {member && (
+                <Link to={`${base}/settings/dependencies`} className="text-xs text-muted hover:text-fg">
+                  Manage
+                </Link>
               )}
             </div>
-          )}
-        </section>
-
-        {project && (
-          <section className="rounded-xl border border-line p-5 text-xs text-muted">
-            <p className="flex items-center gap-2 font-medium text-fg">
-              <Box size={14} className="text-faint" />
-              About projects
-            </p>
-            <p className="mt-1.5">
-              A project is what you build and run. Its deployments, environments, secrets and variables belong to it;
-              its code lives in its source.{" "}
-              <a href="https://docs.g1t.sh/guides/projects/" className="text-fg hover:underline">
-                Learn more
-              </a>
-            </p>
+            {!dependencies ? (
+              <p className="mt-3 text-xs text-muted">Dependencies could not be loaded just now.</p>
+            ) : dependencies.dependsOn.length === 0 && dependencies.usedBy.length === 0 ? (
+              <p className="mt-3 text-xs leading-5 text-muted">
+                Uses no other project, and none uses it. Declare one, and builds get its address and agents know what depends on
+                what.
+              </p>
+            ) : (
+              <div className="mt-3 space-y-3 text-xs">
+                {dependencies.dependsOn.length > 0 && (
+                  <div>
+                    <p className="flex items-center gap-1 text-muted">
+                      <ArrowUpRight size={12} /> Uses
+                    </p>
+                    <ul className="mt-1.5 space-y-1">
+                      {dependencies.dependsOn.map((d) => (
+                        <li key={d.slug} className="flex items-center justify-between gap-2">
+                          <Link to={`/${params.owner}/${d.slug}`} className="font-medium hover:underline">
+                            {d.name}
+                          </Link>
+                          {d.as && <code className="font-mono text-faint">{d.as}</code>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {dependencies.usedBy.length > 0 && (
+                  <div>
+                    <p className="flex items-center gap-1 text-muted">
+                      <ArrowDownLeft size={12} /> Used by
+                    </p>
+                    <ul className="mt-1.5 space-y-1">
+                      {dependencies.usedBy.map((d) => (
+                        <li key={d.slug}>
+                          <Link to={`/${params.owner}/${d.slug}`} className="font-medium hover:underline">
+                            {d.name}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
           </section>
-        )}
-      </aside>
+
+          {source && (
+            <section className="rounded-xl border border-line bg-surface p-5">
+              <h2 className="text-sm font-semibold">Clone</h2>
+              <div className="mt-3">
+                <CopyLine text={`git clone https://g1t.sh/${source.repo.namespace}/${source.repo.name}.git`} />
+              </div>
+            </section>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }

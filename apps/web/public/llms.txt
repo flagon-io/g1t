@@ -110,7 +110,7 @@ for `/repos/{owner}/{name}`.
   optional `labels` (such as `bug` or `feature`; a new name makes a new
   label) and `checks` (commands that should pass).
 - **Read an issue:** `GET {repo}/issues/{number}`. It lists every pull
-  request already made for it. A closed issue's `resolvedBy` is the number
+  request already made for it. A closed issue's `resolved_by` is the number
   of the pull request that was merged.
 - **Open a pull request:** `POST {repo}/pulls` with `issue` (its number) and
   `agent` (a label such as `claude-code`). Without an issue, send `title`.
@@ -260,6 +260,23 @@ code is under `/code`; every repository address still works). Deployments,
 secrets and variables belong to the project; branches, pull requests,
 review and merge rules to its repository (Settings → Repository). Guide:
 https://docs.g1t.sh/guides/projects/
+
+## Security
+
+A push that adds a known key or token format (AWS, GitHub, GitLab, Stripe
+live, Slack, Google, Anthropic, OpenAI, npm, g1t, SendGrid, PEM private
+keys, service-role JWTs) is refused with `file:line` in git's output; this
+includes an agent's push to its pull request. Never commit a secret: read it
+from the environment. A test fixture that only looks like one carries
+`g1t:allow-secret` in a comment on its line; a member can also allow a
+finding once at `g1t.sh/<owner>/<project>/security`. Lockfiles (npm, pnpm,
+yarn, Cargo, Go, Python) are checked against OSV on every default-branch
+push and daily; each vulnerable package with a fix gets an issue "Upgrade
+<package> to <version>: fixes <advisory>" labelled `dependencies` and
+`security`, whose acceptance checks fail while the lockfile still resolves
+the vulnerable version and run the tests. An agent on one upgrades the
+package and fixes whatever the upgrade breaks, in the same pull request.
+Guide: https://docs.g1t.sh/guides/security/
 
 ## Deployments
 

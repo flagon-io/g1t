@@ -83,7 +83,7 @@ fn encode_client(name: &str, redirect_uris: &[String]) -> Option<(String, String
 
 fn oauth_error(error: &str, description: &str) -> Result<Response> {
     let mut response =
-        Response::from_json(&json!({ "error": error, "error_description": description }))?
+        crate::reply(&json!({ "error": error, "error_description": description }))?
             .with_status(400);
     response.headers_mut().set("cache-control", "no-store")?;
     Ok(response)
@@ -144,7 +144,7 @@ async fn register(request: &mut Request) -> Result<Response> {
             "Give one to five redirect_uris: https addresses, http on localhost, or the application's own scheme.",
         );
     };
-    Ok(Response::from_json(&json!({
+    Ok(crate::reply(&json!({
         "client_id": client_id,
         "client_name": client_name,
         "redirect_uris": redirect_uris,
@@ -214,7 +214,7 @@ async fn token(request: &mut Request, services: &Services) -> Result<Response> {
         Outcome::Ok(tokens) => tokens,
         Outcome::Fail(failure) => return oauth_error("invalid_grant", &failure.message),
     };
-    let mut response = Response::from_json(&json!({
+    let mut response = crate::reply(&json!({
         "access_token": tokens.access_token,
         "token_type": "Bearer",
         "expires_in": tokens.expires_in,
@@ -234,11 +234,11 @@ pub async fn handle(
 ) -> Result<Option<Response>> {
     let response = match (method, path) {
         ("GET", "/.well-known/oauth-authorization-server") => {
-            Response::from_json(&server_metadata())?
+            crate::reply(&server_metadata())?
         }
         // Asked for with or without the MCP server's path appended.
         ("GET", path) if path.starts_with("/.well-known/oauth-protected-resource") => {
-            Response::from_json(&json!({
+            crate::reply(&json!({
                 "resource": MCP_RESOURCE,
                 "authorization_servers": [ISSUER],
                 "bearer_methods_supported": ["header"],

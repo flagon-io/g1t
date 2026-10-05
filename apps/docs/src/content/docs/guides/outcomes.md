@@ -132,7 +132,7 @@ The same flow is three operations. They are members only.
 
 | Tool | Route | |
 | --- | --- | --- |
-| `plan_work` | `POST /repos/{owner}/{name}/plans` | Start a plan. Body: `brief`. Returns `planId` at once. |
+| `plan_work` | `POST /repos/{owner}/{name}/plans` | Start a plan. Body: `brief`. Returns `plan_id` at once. |
 | `get_plan` | `GET /repos/{owner}/{name}/plans/{plan}` | The plan, its `status` and the issues it proposes. |
 | `apply_plan` | `POST /repos/{owner}/{name}/plans/{plan}/apply` | Open its issues. Body: `assign`, `keep`. |
 
@@ -156,7 +156,7 @@ curl -X POST https://api.g1t.sh/repos/acme/greeter/plans/pln_01…/apply \
 
 A plan's `status` is `planning`, `ready`, `failed` or `applied`. Each
 proposed issue has `title`, `body`, `labels`, `checks`, `files`,
-`dependsOn` (positions in the plan, counting from 1) and, once applied,
+`depends_on` (positions in the plan, counting from 1) and, once applied,
 `number`. `keep` takes positions counting from 1; leave it out to open
 every issue.
 
@@ -164,5 +164,5 @@ Once a plan is applied, `get_plan` also returns:
 
 | Field | |
 | --- | --- |
-| `progress` | Each opened issue with `state` (the values in the table above, written `blocked`, `waiting`, `open`, `working`, `checking`, `reviewing`, `revising`, `catching_up`, `queued`, `ready`, `needs_you`, `landed`, `closed`), a `detail` sentence, `blockedBy`, `pull` and `agent`. |
+| `progress` | Each opened issue with `state` (the values in the table above, written `blocked`, `waiting`, `open`, `working`, `checking`, `reviewing`, `revising`, `catching_up`, `queued`, `ready`, `needs_you`, `landed`, `closed`), a `detail` sentence, `blocked_by`, `pull` and `agent`. |
 | `exchanges` | The questions and handoffs between the agents on its pull requests. |

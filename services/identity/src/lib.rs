@@ -11,6 +11,7 @@ mod email;
 mod oauth;
 mod profiles;
 mod rename;
+mod run_credentials;
 mod tokens;
 mod workspaces;
 
@@ -590,6 +591,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "create_access_token" => reply(&identity.create_access_token(args(body)?).await?),
         "create_agent_token" => reply(&identity.create_agent_token(args(body)?).await?),
         "agent_scope" => reply(&identity.agent_scope(args(body)?).await?),
+        "create_run_credential" => reply(&identity.create_run_credential(args(body)?).await?),
+        "bind_run_credentials" => reply(&identity.bind_run_credentials(args(body)?).await?),
+        "revoke_run_credentials" => reply(&identity.revoke_run_credentials(args(body)?).await?),
         "remove_access_token" => reply(&identity.remove("access_tokens", args(body)?).await?),
         // Staff only: sudo.g1t.sh, over its service binding. See admin.rs.
         "notify_owners" => reply(&identity.notify_owners(args(body)?).await?),

@@ -450,7 +450,12 @@ fn setup(spec: Value, api: Api) -> Result<Job> {
         .or_else(|| contexts.get("vars").and_then(|v| v.get("ACTIONS_STEP_DEBUG")))
         .is_some_and(|v| expr::to_text(v) == "true");
 
-    let timeout = spec["timeoutMinutes"].as_u64().unwrap_or(60);
+    // `timeoutMinutes` is how the API spelled it before its bodies were
+    // `snake_case`.
+    let timeout = spec["timeout_minutes"]
+        .as_u64()
+        .or_else(|| spec["timeoutMinutes"].as_u64())
+        .unwrap_or(60);
     let mut job = Job {
         log,
         spec,

@@ -1,0 +1,14 @@
+[package]
+name = "g1t-scan"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "What g1t looks for in code: secrets, dependency lockfiles and OSV advisories, and git packs to find them in."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+miniz_oxide = "0.9"
+sha1 = "0.11"
+sha2 = "0.10"
+similar = "2"

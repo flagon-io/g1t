@@ -4,7 +4,8 @@ import { Link, data } from "react-router";
 import type { Route } from "./+types/memory";
 import { page } from "../../lib/meta";
 import { AddMemory, MemoryList, memoryAction } from "../../components/memory";
-import { agents } from "../../lib/services.server";
+import { ReviewQueue, reviewAction } from "../../components/context";
+import { agents, memoryReview } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -15,18 +16,27 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   // Memory can hold what a workspace keeps to itself: members only.
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
-  const memories = await agents.listMemories(viewer, params.owner, { namespace: params.owner, name: params.repo });
-  return unwrap(memories);
+  const path = { namespace: params.owner, name: params.repo };
+  const [memories, candidates] = await Promise.all([
+    agents.listMemories(viewer, params.owner, path),
+    // Candidates waiting for review (the context hub); none if the service is not there yet.
+    memoryReview.listCandidates(viewer, params.owner, path).catch(() => null),
+  ]);
+  return { ...unwrap(memories), candidates: candidates?.ok ? candidates.value : [] };
 }
 
 export async function action({ params, context, request }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
-  return memoryAction(agents, user, params.owner, { namespace: params.owner, name: params.repo }, await request.formData());
+  const form = await request.formData();
+  return (
+    (await reviewAction(memoryReview, user, params.owner, form)) ??
+    memoryAction(agents, user, params.owner, { namespace: params.owner, name: params.repo }, form)
+  );
 }
 
 export default function ProjectMemory({ loaderData, params }: Route.ComponentProps) {
-  const { project, workspace } = loaderData;
+  const { project, workspace, candidates } = loaderData;
   const action = `/${params.owner}/${params.repo}/memory`;
   return (
     <div className="max-w-4xl">
@@ -44,6 +54,21 @@ export default function ProjectMemory({ loaderData, params }: Route.ComponentPro
       <div className="mt-6">
         <AddMemory scope="project" action={action} placeholder="The tests need TZ=UTC or the date tests fail." />
       </div>
+
+      {candidates.length > 0 && (
+        <section className="mt-8">
+          <div className="flex items-baseline justify-between">
+            <h3 className="text-sm font-medium">Review</h3>
+            <span className="text-xs text-muted">{candidates.length} waiting</span>
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            Learned by agents, from reviews and merges, and from this project's docs. No agent is given one until it is kept.
+          </p>
+          <div className="mt-3">
+            <ReviewQueue candidates={candidates} action={action} empty="" />
+          </div>
+        </section>
+      )}
 
       <section className="mt-8">
         <div className="flex items-baseline justify-between">

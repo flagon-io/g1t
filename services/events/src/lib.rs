@@ -8,6 +8,8 @@
 //! Other services reach it over `POST /rpc/<method>`; see
 //! `g1t_contracts::events` for the methods and their arguments.
 
+mod audit;
+
 use g1t_contracts::events::{Event, ListArgs, PublishArgs};
 use g1t_contracts::new_id;
 use g1t_contracts::time::rfc3339;
@@ -154,6 +156,7 @@ impl Events {
             );
         }
         self.db.batch(statements).await?;
+        audit::follow_renames(&self.db, events).await?;
 
         let bindings: &JsValue = self.env.as_ref();
         for name in Object::keys(bindings.unchecked_ref::<Object>()).iter() {
@@ -182,6 +185,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     match method.as_str() {
         "publish" => reply(&events.publish(args(body)?).await?),
         "list" => reply(&events.list(args(body)?).await?),
+        "audit_record" => reply(&audit::record(&events.db, args(body)?).await?),
+        "audit_list" => reply(&audit::list(&events.db, args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }

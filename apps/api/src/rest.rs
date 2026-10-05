@@ -130,6 +130,18 @@ pub const ROUTES: &[Route] = &[
     ),
     route(
         "GET",
+        "/workspaces/:workspace/context/search",
+        Op::SearchContext,
+        &[("q", "query"), ("project", "project"), ("kinds", "kinds"), ("limit", "limit")],
+    ),
+    route(
+        "GET",
+        "/workspaces/:workspace/context/:kind/:id",
+        Op::GetEntity,
+        &[],
+    ),
+    route(
+        "GET",
         "/workspaces/:workspace/integrations",
         Op::ListIntegrations,
         &[],

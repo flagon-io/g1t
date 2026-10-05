@@ -322,12 +322,14 @@ fn collect(root: &Path, dir: &Path, skip_project: bool, out: &mut Vec<Asset>) ->
     Ok(())
 }
 
+/// The upload, as the API sends it: `snake_case`, or `uploadUrl` from
+/// before its bodies were.
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct UploadSession {
     jwt: String,
     #[serde(default)]
     buckets: Vec<Vec<String>>,
+    #[serde(alias = "uploadUrl")]
     upload_url: String,
 }
 
@@ -660,6 +662,17 @@ pub fn main() -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_upload_session_is_read_in_either_spelling() {
+        for answer in [
+            json!({ "jwt": "j", "buckets": [["a"]], "upload_url": "https://u" }),
+            json!({ "jwt": "j", "uploadUrl": "https://u" }),
+        ] {
+            let session: UploadSession = serde_json::from_value(answer).unwrap();
+            assert_eq!(session.upload_url, "https://u");
+        }
+    }
 
     #[test]
     fn jsonc_comments_and_trailing_commas_are_dropped() {

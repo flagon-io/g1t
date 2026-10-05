@@ -19,6 +19,7 @@ import {
   takesMessages,
 } from "@g1t/contracts";
 
+import { RunAudit } from "./audit";
 import { STAGE_LABEL, StageDots } from "./lifecycle";
 import { Avatar, TimeAgo } from "./ui";
 import {
@@ -361,6 +362,11 @@ export function AgentPanel({
         <Avatar name={current.agent} size={24} />
         <p className="text-sm">
           <span className="font-medium">{current.agent}</span>{" "}
+          {current.startedBy && current.startedBy !== current.agent && (
+            <span className="text-muted">
+              on behalf of <span className="text-fg">{current.startedBy}</span>{" "}
+            </span>
+          )}
           <span className="text-muted">
             {active
               ? `is ${RUN_KIND_LABEL[current.kind].toLowerCase()}`
@@ -406,6 +412,7 @@ export function AgentPanel({
         {member && active && <MessageRun run={current} />}
         {member && active && <StopRun run={current} />}
       </div>
+      {member && <RunAudit owner={owner} repo={repo} runIds={runs.map((run) => run.id)} live={active} />}
     </section>
   );
 }

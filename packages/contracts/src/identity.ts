@@ -1,3 +1,4 @@
+import type { Acting, CreateRunCredentialInput, RunBinding } from "./audit";
 import type { RepoPath } from "./repos";
 import type { Result } from "./result";
 
@@ -26,6 +27,11 @@ export type User = {
    * the generated letter avatar.
    */
   avatar?: string;
+  /**
+   * Set on an agent resolved from its token: who it acts for ("g1t-agent
+   * on behalf of syntaqx"), with which credential, and what it may do.
+   */
+  acting?: Acting;
 };
 
 /** What a member may do: an owner also manages the workspace's members. */
@@ -314,11 +320,21 @@ export interface IdentityApi {
     ttlSeconds: number,
   ): Promise<{ token: string; info: AccessToken }>;
   removeAccessToken(user: User, id: string): Promise<void>;
+  /**
+   * A token for one sandbox run: it acts as the agent on behalf of
+   * `onBehalfOf`, can do only what the run's kind needs in `repo`, and
+   * expires after `ttlSeconds`. See `audit.ts`.
+   */
+  createRunCredential(input: CreateRunCredentialInput): Promise<{ token: string; info: AccessToken }>;
+  /** Ties tokens, by the SHA-256 of their text in hex, to the agent run their sandbox recorded. */
+  bindRunCredentials(tokenHashes: string[], runId: string): Promise<boolean>;
+  /** Ends a sandbox's run credentials, by hash or by run. Never touches another token. */
+  revokeRunCredentials(target: { tokenHashes?: string[]; runId?: string | null }): Promise<boolean>;
 }
 
 
 /** What an agent's token may do: these operations, in this repository. */
-export type AgentScope = { repo: RepoPath; operations: string[] };
+export type AgentScope = { repo: RepoPath; operations: string[]; run?: RunBinding };
 
 /** The most characters each profile field takes. Mirrors `crates/contracts/src/identity.rs`. */
 export const PROFILE_LIMITS = { name: 80, bio: 160, location: 80, website: 200, pronouns: 40 } as const;

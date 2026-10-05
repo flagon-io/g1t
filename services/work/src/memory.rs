@@ -39,9 +39,10 @@ const MAX_BUDGET: u32 = 20_000;
 const DEFAULT_RECALL: u32 = 20;
 
 #[derive(Deserialize)]
-struct MemoryRow {
+pub(crate) struct MemoryRow {
     id: String,
-    scope: String,
+    pub(crate) scope: String,
+    pub(crate) scope_key: String,
     workspace: String,
     repo: Option<String>,
     text: String,
@@ -55,6 +56,17 @@ struct MemoryRow {
     created_at: String,
     updated_at: String,
     last_used_at: Option<String>,
+    // What capture adds (capture.rs, migration 0019).
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    confidence: Option<f64>,
+    #[serde(default)]
+    source_ref: Option<String>,
+    #[serde(default)]
+    evidence: Option<String>,
+    #[serde(default)]
+    sources: Option<String>,
 }
 
 fn path(text: &str) -> Option<RepoPath> {
@@ -83,12 +95,21 @@ impl From<MemoryRow> for Memory {
                 run_id: row.source_run,
                 repo: row.source_repo.as_deref().and_then(path),
                 number: row.source_number,
+                reference: row.source_ref,
+                evidence: row.evidence,
             },
             created_by: row.created_by,
             pinned: row.pinned != 0,
             created_at: row.created_at,
             updated_at: row.updated_at,
             last_used_at: row.last_used_at,
+            status: row.status.as_deref().and_then(MemoryStatus::parse).unwrap_or_default(),
+            confidence: row.confidence,
+            seen: row
+                .sources
+                .as_deref()
+                .and_then(|sources| serde_json::from_str::<Vec<String>>(sources).ok())
+                .map_or(1, |sources| sources.len().max(1) as u32),
         }
     }
 }
@@ -193,7 +214,8 @@ impl Work {
         Ok(self
             .db
             .prepare(format!(
-                "SELECT * FROM memories WHERE scope = ? AND scope_key = ? ORDER BY {ORDER} LIMIT ?"
+                // Only what is kept: candidates wait for review (capture.rs).
+                "SELECT * FROM memories WHERE scope = ? AND scope_key = ? AND status = 'kept' ORDER BY {ORDER} LIMIT ?"
             ))
             .bind(&[scope.as_str().into(), key.into(), limit.into()])?
             .all()
@@ -212,6 +234,16 @@ impl Work {
             .first::<MemoryRow>(None)
             .await?
             .map(Memory::from))
+    }
+
+    /// The repository a project's memory is about; none for the workspace's.
+    async fn memory_repo_id(&self, id: &str) -> Result<Option<String>> {
+        Ok(self
+            .db
+            .prepare("SELECT scope_key AS value FROM memories WHERE id = ? AND scope = 'project'")
+            .bind(&[id.into()])?
+            .first::<String>(Some("value"))
+            .await?)
     }
 
     async fn mark_used(&self, ids: &[String]) -> Result<()> {
@@ -277,15 +309,23 @@ impl Work {
                 return Ok(Outcome::fail(FailureCode::Invalid, "Name the project this memory is about."));
             }
         };
-        // The same thing remembered twice is one memory, freshened.
+        // The same thing remembered twice is one memory, freshened; written
+        // by hand, a candidate or a dismissed one with the same words is
+        // kept.
         let now = rfc3339(now_ms());
+        let print = g1t_contracts::capture::fingerprint(&text);
         let same = self
             .db
-            .prepare("UPDATE memories SET updated_at = ? WHERE scope = ? AND scope_key = ? AND text = ? RETURNING id AS value")
-            .bind(&[now.as_str().into(), a.scope.as_str().into(), key.as_str().into(), text.as_str().into()])?
+            .prepare(
+                "UPDATE memories SET updated_at = ?, status = 'kept'
+                 WHERE scope = ? AND scope_key = ? AND (text = ? OR fingerprint = ?) RETURNING id AS value",
+            )
+            .bind(&[now.as_str().into(), a.scope.as_str().into(), key.as_str().into(), text.as_str().into(), print.as_str().into()])?
             .first::<String>(Some("value"))
             .await?;
         if let Some(id) = same {
+            let repo_id = repo.as_ref().filter(|_| a.scope == MemoryScope::Project).map(|repo| repo.id.clone());
+            self.memory_changed(&id, &workspace, "kept", repo_id.as_deref()).await;
             return Ok(match self.memory_row(&workspace, &id).await? {
                 Some(memory) => Outcome::Ok(memory),
                 None => Outcome::fail(FailureCode::NotFound, "Memory not found."),
@@ -293,7 +333,7 @@ impl Work {
         }
         let count = self
             .db
-            .prepare("SELECT count(*) AS value FROM memories WHERE scope = ? AND scope_key = ?")
+            .prepare("SELECT count(*) AS value FROM memories WHERE scope = ? AND scope_key = ? AND status != 'dismissed'")
             .bind(&[a.scope.as_str().into(), key.as_str().into()])?
             .first::<u32>(Some("value"))
             .await?
@@ -320,17 +360,24 @@ impl Work {
         };
         let id = new_id("mem", now_ms());
         let repo_text = repo.as_ref().map(|repo| format!("{}/{}", repo.namespace, repo.name));
+        // Its source, as capture counts sources (capture.rs).
+        let reference = match &run {
+            Some(run) => format!("run:{run}"),
+            None => format!("{source_kind}:{}", a.actor.username),
+        };
+        let changed_repo = repo.as_ref().filter(|_| a.scope == MemoryScope::Project).map(|repo| repo.id.clone());
         self.db
             .prepare(
                 "INSERT INTO memories
                    (id, scope, scope_key, workspace, repo, text, kind, source_kind, source_run,
-                    source_repo, source_number, created_by, pinned, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    source_repo, source_number, created_by, pinned, created_at, updated_at,
+                    status, fingerprint, sources, source_ref)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'kept', ?, ?, ?)",
             )
             .bind(&[
                 id.as_str().into(),
                 a.scope.as_str().into(),
-                key.into(),
+                key.clone().into(),
                 workspace.as_str().into(),
                 // A workspace's memory belongs to no one project, though it
                 // remembers which it was learned in.
@@ -345,9 +392,13 @@ impl Work {
                 u32::from(a.pinned).into(),
                 now.as_str().into(),
                 now.as_str().into(),
+                print.as_str().into(),
+                serde_json::to_string(&[&reference])?.into(),
+                reference.as_str().into(),
             ])?
             .run()
             .await?;
+        self.memory_changed(&id, &workspace, "kept", changed_repo.as_deref()).await;
         Ok(match self.memory_row(&workspace, &id).await? {
             Some(memory) => Outcome::Ok(memory),
             None => Outcome::fail(FailureCode::NotFound, "Memory not found."),
@@ -359,30 +410,34 @@ impl Work {
         if !may_write(&a.actor, &workspace) || a.actor.kind == PrincipalKind::Agent {
             return Ok(Outcome::fail(FailureCode::Forbidden, "Only members of the workspace can change its memory."));
         }
-        if self.memory_row(&workspace, &a.id).await?.is_none() {
+        let Some(before) = self.memory_row(&workspace, &a.id).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Memory not found."));
-        }
+        };
         let text = match a.text.as_deref().map(valid_text) {
             Some(Err(message)) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
             Some(Ok(text)) => Some(text),
             None => None,
         };
+        let print = text.as_deref().map(g1t_contracts::capture::fingerprint);
         self.db
             .prepare(
                 "UPDATE memories SET text = COALESCE(?, text), kind = COALESCE(?, kind),
-                   pinned = COALESCE(?, pinned), updated_at = ?
+                   pinned = COALESCE(?, pinned), fingerprint = COALESCE(?, fingerprint), updated_at = ?
                  WHERE id = ? AND workspace = ?",
             )
             .bind(&[
                 text.map_or(JsValue::NULL, JsValue::from),
                 a.kind.map_or(JsValue::NULL, |kind| kind.as_str().into()),
                 a.pinned.map_or(JsValue::NULL, |pinned| u32::from(pinned).into()),
+                print.map_or(JsValue::NULL, JsValue::from),
                 rfc3339(now_ms()).into(),
                 a.id.as_str().into(),
                 workspace.as_str().into(),
             ])?
             .run()
             .await?;
+        let repo_id = self.memory_repo_id(&a.id).await?;
+        self.memory_changed(&a.id, &workspace, before.status.as_str(), repo_id.as_deref()).await;
         Ok(match self.memory_row(&workspace, &a.id).await? {
             Some(memory) => Outcome::Ok(memory),
             None => Outcome::fail(FailureCode::NotFound, "Memory not found."),
@@ -394,6 +449,7 @@ impl Work {
         if !may_write(&a.actor, &workspace) || a.actor.kind == PrincipalKind::Agent {
             return Ok(Outcome::fail(FailureCode::Forbidden, "Only members of the workspace can change its memory."));
         }
+        let repo_id = self.memory_repo_id(&a.id).await?;
         let gone = self
             .db
             .prepare("DELETE FROM memories WHERE id = ? AND workspace = ? RETURNING id AS value")
@@ -401,7 +457,10 @@ impl Work {
             .first::<String>(Some("value"))
             .await?;
         Ok(match gone {
-            Some(_) => Outcome::Ok(true),
+            Some(_) => {
+                self.memory_changed(&a.id, &workspace, "deleted", repo_id.as_deref()).await;
+                Outcome::Ok(true)
+            }
             None => Outcome::fail(FailureCode::NotFound, "Memory not found."),
         })
     }
@@ -492,6 +551,9 @@ mod tests {
             created_at: String::new(),
             updated_at: String::new(),
             last_used_at: None,
+            status: MemoryStatus::Kept,
+            confidence: None,
+            seen: 1,
         }
     }
 
@@ -536,7 +598,9 @@ mod tests {
 
     #[test]
     fn secrets_are_refused_with_a_way_out() {
-        let refused = valid_text("deploy with ghp_abcdefghijklmnopqrstuvwxyz0123456789").unwrap_err();
+        // Joined at run time, so no whole key sits in the source for scanners to flag.
+        let key = ["ghp", "_", "abcdefghijklmnopqrstuvwxyz0123456789"].concat();
+        let refused = valid_text(&format!("deploy with {key}")).unwrap_err();
         assert!(refused.contains("never holds secrets"));
         assert_eq!(valid_text("  We use pnpm. ").unwrap(), "We use pnpm.");
         assert!(valid_text("   ").is_err());

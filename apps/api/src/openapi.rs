@@ -84,6 +84,11 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         &[Op::Remember, Op::Recall],
     ),
     (
+        "Context",
+        "A workspace's context hub: a catalog of what it builds and runs, built from its repositories, deployments and integrations, and one search across the catalog, docs, issues, pull requests and memory.",
+        &[Op::SearchContext, Op::GetEntity],
+    ),
+    (
         "Actions",
         "GitHub Actions workflows in .g1t/workflows, their runs, and their jobs' logs.",
         &[
@@ -163,6 +168,8 @@ fn title(op: Op) -> &'static str {
         Op::TakeMessages => "Take new messages",
         Op::Remember => "Remember something",
         Op::Recall => "Recall memory",
+        Op::SearchContext => "Search the context hub",
+        Op::GetEntity => "Get a catalog entry",
         Op::ListIssues => "List issues",
         Op::GetIssue => "Get an issue",
         Op::CreateIssue => "Create an issue",
@@ -555,7 +562,7 @@ pub fn document() -> Value {
         "info": {
             "title": "g1t API",
             "version": "1",
-            "description": "The REST API for g1t, a git forge built for agents. The same operations are available to agents as MCP tools at https://mcp.g1t.sh.",
+            "description": "The REST API for g1t, a git forge built for agents. The same operations are available to agents as MCP tools at https://mcp.g1t.sh. Every name in a request or response body is `snake_case`; names you chose, such as a workflow's inputs or a secret's name, are returned as you wrote them.",
             "license": { "name": "MIT", "identifier": "MIT" },
         },
         "servers": [{ "url": "https://api.g1t.sh" }],
@@ -694,6 +701,19 @@ mod tests {
             copy == current,
             "apps/docs/src/data/openapi.json is out of date: run G1T_WRITE_OPENAPI=1 cargo test -p g1t-api openapi"
         );
+    }
+
+    /// The reference shows responses as they are sent: `snake_case`.
+    #[test]
+    fn example_responses_are_snake_case() {
+        let document = document();
+        for (path, methods) in document["paths"].as_object().unwrap() {
+            for (method, operation) in methods.as_object().unwrap() {
+                let example = &operation["responses"]["200"]["content"]["application/json"]["example"];
+                let leaked = g1t_kit::wire::camel_case_keys(example);
+                assert!(leaked.is_empty(), "{method} {path} shows {leaked:?}");
+            }
+        }
     }
 
     /// Examples never hold anything that reads as a real credential, which

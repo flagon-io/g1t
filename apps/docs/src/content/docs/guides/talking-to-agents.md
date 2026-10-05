@@ -50,7 +50,7 @@ curl -X POST https://api.g1t.sh/repos/acme/web/pulls/44/messages \
   -d '{"body": "Keep the old flag working too."}'
 ```
 
-The response is the message. `deliveredAt` is null until the agent has
+The response is the message. `delivered_at` is null until the agent has
 received it.
 
 ## Ask for changes

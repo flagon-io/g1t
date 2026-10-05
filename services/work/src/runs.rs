@@ -40,7 +40,7 @@ const SESSION_ENTRIES: u32 = 2000;
 /// Every column but the steps, which only a run's own page needs.
 const COLUMNS: &str = "id, workspace, repo_id, repo, number, pull_id, kind, agent, model, status,
   step, step_count, cost_usd, turns, sandbox, token_hash, started_by, error, created_at,
-  started_at, finished_at, updated_at,
+  started_at, finished_at, updated_at, budget_usd, time_cap_minutes, halted,
   COALESCE((SELECT title FROM pulls WHERE pulls.id = agent_runs.pull_id), agent_runs.title) AS title";
 
 #[derive(Deserialize)]
@@ -72,6 +72,12 @@ pub(crate) struct RunRow {
     finished_at: Option<String>,
     updated_at: String,
     title: Option<String>,
+    #[serde(default)]
+    budget_usd: Option<f64>,
+    #[serde(default)]
+    time_cap_minutes: Option<u32>,
+    #[serde(default)]
+    halted: Option<String>,
 }
 
 impl RunRow {
@@ -106,6 +112,9 @@ impl RunRow {
             error: self.error,
             cost_usd: self.cost_usd.filter(|_| member),
             turns: self.turns,
+            budget_usd: self.budget_usd.filter(|_| member),
+            time_cap_minutes: self.time_cap_minutes,
+            halted: self.halted,
             created_at: self.created_at,
             started_at: self.started_at,
             finished_at: self.finished_at,
@@ -223,8 +232,8 @@ impl Work {
             .prepare(
                 "INSERT INTO agent_runs
                    (id, workspace, repo_id, repo, number, pull_id, title, kind, agent, model, status,
-                    sandbox, token_hash, started_by, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)",
+                    sandbox, token_hash, started_by, created_at, updated_at, budget_usd, time_cap_minutes)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 id.as_str().into(),
@@ -242,6 +251,8 @@ impl Work {
                 optional(&a.started_by),
                 timestamp.as_str().into(),
                 timestamp.as_str().into(),
+                a.budget_usd.filter(|usd| usd.is_finite() && *usd > 0.0).map_or(JsValue::NULL, JsValue::from),
+                a.time_cap_minutes.map_or(JsValue::NULL, JsValue::from),
             ])?
             .run()
             .await?;
@@ -249,7 +260,7 @@ impl Work {
     }
 
     /// Adds `text` to a run's steps, keeping the latest `MAX_STEPS`.
-    fn add_step(&self, run_id: &str, at: &str, text: &str) -> Result<worker::D1PreparedStatement> {
+    pub(crate) fn add_step(&self, run_id: &str, at: &str, text: &str) -> Result<worker::D1PreparedStatement> {
         self.db
             .prepare(
                 "UPDATE agent_runs SET
@@ -274,6 +285,13 @@ impl Work {
         // sandbox learns why.
         if run.finished_at.is_some() {
             return Ok(Outcome::Ok(run.status()));
+        }
+        // It reached a cap of its guardrails (guardrails.rs).
+        if let Some(halt) = a.halt {
+            let pull_id = run.pull_id.as_deref();
+            return self
+                .halt_run(&run.id, &run.repo_id, pull_id, run.number, &run.kind, halt, a.error, a.cost_usd)
+                .await;
         }
         let now = rfc3339(now_ms());
         let steps: Vec<String> = a

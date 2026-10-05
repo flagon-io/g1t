@@ -72,6 +72,12 @@ export type AgentRun = {
   /** Members only. */
   costUsd: number | null;
   turns: number | null;
+  /** The most it may cost, from its guardrails. Null: no cap, or not a member. */
+  budgetUsd?: number | null;
+  /** The longest it may take, in minutes, from its guardrails. */
+  timeCapMinutes?: number | null;
+  /** `budget` or `time` when g1t stopped it for reaching that cap. */
+  halted?: "budget" | "time" | null;
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
@@ -91,6 +97,9 @@ export type OpenRunInput = {
   model?: string | null;
   sandbox: string;
   startedBy?: string | null;
+  /** Its caps, from its guardrails. */
+  budgetUsd?: number | null;
+  timeCapMinutes?: number | null;
 };
 
 export type RunFilter = {
@@ -133,12 +142,19 @@ export type MemoryKind = "fact" | "convention" | "decision" | "gotcha";
 export const MEMORY_KINDS: MemoryKind[] = ["fact", "convention", "decision", "gotcha"];
 
 export type MemorySource = {
-  /** `person`, `agent` or `run`. */
+  /** `person`, `agent` or `run`; for captured memory `review`, `pr` or `doc` too (see `./context`). */
   kind: string;
   runId: string | null;
   repo: RepoPath | null;
   number: number | null;
+  /** What it was captured from: `run:<id>`, `comment:<id>`, `pull:<repo id>#<n>`, `doc:<repo id>:<path>`. */
+  reference?: string | null;
+  /** What it was learned from, quoted. */
+  evidence?: string | null;
 };
+
+/** Kept memories are given to agents; candidates wait for review; dismissed ones are never suggested again. */
+export type MemoryStatus = "candidate" | "kept" | "dismissed";
 
 export type Memory = {
   id: string;
@@ -153,6 +169,12 @@ export type Memory = {
   createdAt: string;
   updatedAt: string;
   lastUsedAt: string | null;
+  /** Absent from services that predate capture: `kept`. */
+  status?: MemoryStatus;
+  /** 0 to 1: how sure its source was. Null for what people wrote. */
+  confidence?: number | null;
+  /** How many independent sources said it. */
+  seen?: number;
 };
 
 export type Memories = { project: Memory[]; workspace: Memory[] };
