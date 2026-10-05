@@ -4,9 +4,11 @@
  * the two behind it fade into lavender. The same shapes as the favicon and
  * the brand files in .g1t/brand and public/brand.
  */
-export function Mark({ className }: { className?: string }) {
+export function Mark({ className, tight = false }: { className?: string; tight?: boolean }) {
   return (
-    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+    // Square for icons; `tight` crops to the figure itself, for setting it
+    // beside type, where it must stand on the baseline.
+    <svg viewBox={tight ? "6.9 5 18.2 22" : "0 0 32 32"} className={className} aria-hidden="true">
       <g transform="translate(0.7 0.5)">
         {/* The agents behind */}
         <rect x="6.2" y="9.5" width="4.4" height="17" rx="2.2" fill="var(--g1t-merged)" fillOpacity="0.35" />
@@ -19,11 +21,15 @@ export function Mark({ className }: { className?: string }) {
   );
 }
 
-export function Logo() {
+/**
+ * The lockup, as in the brand files: the mark as tall as the wordmark's
+ * capitals, standing on its baseline. Sized by its font size.
+ */
+export function Logo({ className = "text-[1.3rem]" }: { className?: string }) {
   return (
-    <span className="inline-flex items-center gap-2 text-fg">
-      <Mark className="size-6" />
-      <span className="text-[1.15rem] leading-none font-bold tracking-[-0.035em]">g1t</span>
+    <span className={`inline-flex items-baseline gap-[0.3em] leading-none font-bold text-fg ${className}`}>
+      <Mark tight className="h-[0.74em] w-auto shrink-0 self-baseline" />
+      <span className="tracking-[-0.045em]">g1t</span>
     </span>
   );
 }
