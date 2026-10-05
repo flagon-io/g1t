@@ -742,6 +742,94 @@ by the project.
 1 and 2 serve the competition directly (multi-agent coordination across
 projects is 25% of the score); 3 is the demo's best moment if time allows.
 
+## Billing model
+
+> **2026-10-04:** "Some things just require you to have a card on file …
+> some things will be something you give us an initial amount of money
+> per month just to activate, tons of things additionally will be usage
+> based, some things will just be usage based only … at minimum a
+> breakeven with Cloudflare costs, or in some cases a value add." Stripe
+> moves to Flagon, Inc. (g1t.sh is its product). Proposed below; the
+> prices are the user's to confirm.
+
+### Four kinds of charge
+
+Every feature is exactly one of these, and the Billing page says which:
+
+| Kind | What the workspace does | Example |
+| --- | --- | --- |
+| **Free** | Nothing | Hosting code, issues, pull requests, review, the merge queue, bringing your own agent over MCP |
+| **Card on file** | Adds a card; pays only for what it uses | Previews, g1t's agents, workflow minutes past the free ones |
+| **Activation** | Turns a feature on for a monthly fee that includes an allowance; usage past it is metered | Production deployments, Security and quality |
+| **Usage only** | Nothing up front; every unit is metered | Model tokens, build minutes, storage past the free amount |
+
+A card is needed before anything that can cost money starts. Nothing is
+ever switched on without the workspace choosing it.
+
+### Postpaid, with spend limits
+
+- **One Stripe customer and one subscription per workspace**, on Flagon,
+  Inc.'s account. Activations are licensed line items; every usage
+  dimension is a metered price backed by a Stripe Meter. Stripe invoices
+  monthly in arrears and charges the card on file; failed payments go
+  through Stripe's retries and emails, and g1t hears of them by webhook.
+- **Spend limits instead of prepaid credit.** A workspace sets a monthly
+  limit overall and per feature (Vercel's spend management). g1t counts
+  usage as it happens and stops starting new paid work at the limit,
+  with a warning at 50%, 80% and 100%. Prepaid top-ups go away; promotions
+  (the free model allowance) become Stripe credit on the customer.
+- **Usage reaches Stripe from billing alone.** Every service reports
+  usage to the billing service as it happens (it already records agent
+  runs and builds); billing batches them into Stripe meter events every
+  few minutes, idempotently by g1t's own ids, and keeps the ledger g1t's
+  pages show. Nothing else talks to Stripe.
+
+### Scope: workspace, then projects
+
+- A feature is turned on for the **workspace** (by an owner, with the
+  activation if it has one), then allowed for **all projects** or
+  **selected projects**.
+- Every **project** can opt out on its own page. A project with nothing
+  to deploy (no Workers config, no build script, no `index.html`) is
+  detected, says so on its Deployments page, and never builds or costs
+  anything.
+- Agents and workflows are allowed per project the same way, so a
+  workspace can keep spend to the projects that matter.
+
+### Prices: at least cost, usually more
+
+Cloudflare's list prices are the floor; the margin pays for Stripe
+(about 3%), support and g1t itself.
+
+| Feature | Kind | Price (proposed) | Cloudflare cost behind it |
+| --- | --- | --- | --- |
+| Code hosting, issues, pull requests, review | Free | Up to 1 GB per workspace; then $0.10 / GB-month | Artifacts storage, D1 |
+| Bring your own agent (MCP) | Free | | Workers requests |
+| g1t agents on g1t's models | Card on file, usage | Model cost + 20% | Model provider |
+| g1t agents on your own provider | Card on file, usage | $0.10 per run | Sandbox minutes, orchestration |
+| Workflow (Actions) minutes | Free, then usage | 1,000 minutes a month free; then $0.006 / minute | Containers ≈ $0.0013 / minute (standard-1) |
+| Previews | Card on file, usage | $0.0015 / build minute; apps, requests and CPU as below | Containers, Workers for Platforms |
+| Production deployments | Activation | $5 / month: 10 apps, 1M requests, 3M CPU-ms; then $0.024 / app-month, $0.36 / million requests, $0.024 / million CPU-ms | Workers for Platforms $25 / month shared, plus usage |
+| Security and quality (when built) | Activation | $10 / month per workspace; the agents' fixes as agent usage | Sandbox minutes, models |
+| Custom domains (when built) | Included with production | | Cloudflare for SaaS hostnames |
+
+No seat price: people are free; the work is what costs. That is part of
+the pitch against GitHub's per-seat plans.
+
+### Build order
+
+1. Stripe customer per workspace and card on file (Checkout in setup
+   mode), webhooks (invoice paid and failed, subscription changes,
+   payment method changes), the Billing page rebuilt around the four
+   kinds.
+2. One subscription per workspace with activations as items; Deployments
+   moves onto it.
+3. Meters for each usage dimension, fed from billing's ledger; spend
+   limits and their warnings; prepaid credit retired.
+4. Per-workspace allow-lists of projects for each feature, and per-project
+   opt-out; "nothing to deploy" detection.
+5. Turn off FREE_WHILE_BUILDING when the user says so.
+
 ## Agents and models
 
 ### Defining an agent
