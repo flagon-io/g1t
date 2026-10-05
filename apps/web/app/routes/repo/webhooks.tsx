@@ -1,6 +1,6 @@
 import type { Route } from "./+types/webhooks";
 import { page } from "../../lib/meta";
-import { RepoSettingsTabs } from "../../components/repo-settings-tabs";
+import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { WebhooksPanel } from "../../components/webhooks";
 import { actOnWebhooks, loadWebhooks } from "../../lib/webhooks.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
@@ -29,7 +29,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 export default function RepoWebhooks({ loaderData, actionData, params }: Route.ComponentProps) {
   return (
     <div>
-      <RepoSettingsTabs base={`/${params.owner}/${params.repo}`} />
+      <RepoSettingsHeading base={`/${params.owner}/${params.repo}`} />
       <WebhooksPanel data={loaderData} action={actionData} manage scope={`${params.owner}/${params.repo}`} />
     </div>
   );

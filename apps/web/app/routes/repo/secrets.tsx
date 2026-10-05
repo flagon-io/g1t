@@ -1,6 +1,6 @@
 import type { Route } from "./+types/secrets";
 import { page } from "../../lib/meta";
-import { RepoSettingsTabs } from "../../components/repo-settings-tabs";
+import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { SecretsPanel } from "../../components/secrets";
 import { actOnSecrets, loadSecrets } from "../../lib/secrets.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
@@ -27,7 +27,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 export default function RepoSecrets({ loaderData, actionData, params }: Route.ComponentProps) {
   return (
     <div>
-      <RepoSettingsTabs base={`/${params.owner}/${params.repo}`} />
+      <RepoSettingsHeading base={`/${params.owner}/${params.repo}`} />
       <SecretsPanel data={loaderData} action={actionData} scope="project" manage />
     </div>
   );

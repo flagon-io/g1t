@@ -6,7 +6,7 @@ import type { Domain, DomainRecord, DomainStatus } from "@g1t/contracts";
 
 import type { Route } from "./+types/settings-domains";
 import { page } from "../../lib/meta";
-import { RepoSettingsTabs } from "../../components/repo-settings-tabs";
+import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { Button, CopyLine, EmptyState, ErrorText, Field, Input } from "../../components/ui";
 import {
   AlertDialog,
@@ -113,7 +113,7 @@ export default function DomainSettings({ loaderData, actionData, params }: Route
 
   return (
     <div className="max-w-4xl">
-      <RepoSettingsTabs base={base} />
+      <RepoSettingsHeading base={base} />
       <div className="min-h-6">
         {actionData && "notice" in actionData && <p className="text-sm text-accent">{actionData.notice}</p>}
         <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>

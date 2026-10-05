@@ -2,7 +2,7 @@ import { Form, Link, data, useNavigation } from "react-router";
 
 import type { Route } from "./+types/settings-deployments";
 import { page } from "../../lib/meta";
-import { RepoSettingsTabs } from "../../components/repo-settings-tabs";
+import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { Button, ErrorText, Field, Input } from "../../components/ui";
 import { SwitchCard } from "../../components/ui/switch";
 import { deployments } from "../../lib/services.server";
@@ -56,7 +56,7 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
   const base = `/${params.owner}/${params.repo}`;
   return (
     <div className="max-w-4xl">
-      <RepoSettingsTabs base={base} />
+      <RepoSettingsHeading base={base} />
       <div className="min-h-6">
         {actionData && "notice" in actionData && <p className="text-sm text-accent">{actionData.notice}</p>}
         <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>

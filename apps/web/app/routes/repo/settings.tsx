@@ -3,7 +3,7 @@ import { Form, Link, data, useNavigation } from "react-router";
 
 import type { Route } from "./+types/settings";
 import { page } from "../../lib/meta";
-import { RepoSettingsTabs } from "../../components/repo-settings-tabs";
+import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { Button, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
 import { projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
@@ -38,7 +38,7 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
   const source = project.source.kind === "hosted" ? project.source : null;
   return (
     <div className="max-w-4xl">
-      <RepoSettingsTabs base={base} />
+      <RepoSettingsHeading base={base} />
       <Form method="post" className="space-y-8">
         <section className="space-y-4">
           <h2 className="flex items-center gap-2 text-sm font-medium">

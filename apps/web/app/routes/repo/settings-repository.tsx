@@ -2,7 +2,7 @@ import { Globe, Lock } from "lucide-react";
 import type { ReactNode } from "react";
 import { Form, data, useNavigation } from "react-router";
 
-import { RepoSettingsTabs } from "../../components/repo-settings-tabs";
+import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import type { Route } from "./+types/settings-repository";
 import { page } from "../../lib/meta";
 import { Button, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
@@ -155,7 +155,7 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
   const branch = repo.defaultBranch;
   return (
     <>
-      <RepoSettingsTabs base={`/${repo.namespace}/${repo.name}`} />
+      <RepoSettingsHeading base={`/${repo.namespace}/${repo.name}`} />
       <Form method="post" className="max-w-4xl space-y-8">
         <Section title="General" about="What the repository is and who can see it.">
           <Field label="Description">

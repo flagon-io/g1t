@@ -4,7 +4,7 @@ import { RUN_KINDS } from "@g1t/contracts";
 
 import type { Route } from "./+types/settings-guardrails";
 import { GuardrailsForm } from "../../components/guardrails";
-import { RepoSettingsTabs } from "../../components/repo-settings-tabs";
+import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { settingsFromForm } from "../../lib/guardrails";
 import { page } from "../../lib/meta";
 import { guardrails } from "../../lib/services.server";
@@ -42,7 +42,7 @@ export default function RepoGuardrails({ loaderData, actionData, params }: Route
   const base = `/${params.owner}/${params.repo}`;
   return (
     <>
-      <RepoSettingsTabs base={base} />
+      <RepoSettingsHeading base={base} />
       <p className="mb-8 max-w-3xl text-sm text-muted">
         What g1t's agents, checks and merge queue may do in this project's sandboxes. Anything left as the
         workspace's follows the{" "}

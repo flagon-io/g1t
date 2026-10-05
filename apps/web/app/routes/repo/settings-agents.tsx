@@ -6,7 +6,7 @@ import { AGENT_HANDLE, mentionsClient } from "@g1t/contracts";
 
 import type { Route } from "./+types/settings-agents";
 import { page } from "../../lib/meta";
-import { RepoSettingsTabs } from "../../components/repo-settings-tabs";
+import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { Button, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
 import { work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
@@ -48,7 +48,7 @@ export default function AgentSettings({ loaderData, actionData, params }: Route.
   const base = `/${params.owner}/${params.repo}`;
   return (
     <div className="max-w-4xl">
-      <RepoSettingsTabs base={base} />
+      <RepoSettingsHeading base={base} />
       <div className="min-h-6">
         {actionData?.notice && <p className="text-sm text-accent">{actionData.notice}</p>}
         <ErrorText>{actionData?.error ?? null}</ErrorText>

@@ -5,7 +5,7 @@ import type { DependencyLink } from "@g1t/contracts";
 
 import type { Route } from "./+types/settings-dependencies";
 import { page } from "../../lib/meta";
-import { RepoSettingsTabs } from "../../components/repo-settings-tabs";
+import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { Avatar, Button, EmptyState, ErrorText, Field, Input } from "../../components/ui";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { projects } from "../../lib/services.server";
@@ -81,7 +81,7 @@ export default function DependencySettings({ loaderData, actionData, params }: R
   const choices = all.filter((project) => !taken.has(project.slug));
   return (
     <div className="max-w-4xl">
-      <RepoSettingsTabs base={base} />
+      <RepoSettingsHeading base={base} />
       <header>
         <h2 className="flex items-center gap-2 text-sm font-medium">
           <Network size={15} className="text-accent" />

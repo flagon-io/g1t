@@ -32,6 +32,8 @@ import {
   Settings,
   Users,
   Webhook,
+  Globe,
+  GitBranch,
   PlayCircle,
   Bot,
   Brain,
@@ -364,7 +366,9 @@ function AccountMenu({ user }: { user: User }) {
 }
 
 /** A workspace's settings pages, which the sidebar slides over to. */
-const SETTINGS_PAGE = /^\/([^/]+)\/-\/(settings|people|tokens|billing|integrations|webhooks|secrets|audit)(\/|$)/;
+const SETTINGS_PAGE = /^\/([^/]+)\/-\/(settings|people|tokens|billing|integrations|webhooks|secrets|guardrails|audit)(\/|$)/;
+/** A project's settings pages, which the project's menu gives way to. */
+const REPO_SETTINGS_PAGE = /^\/([^/]+)\/([^/-][^/]*)\/settings(\/|$)/;
 
 /**
  * The sidebar's menus are two layers, the way a phone pushes a screen: the
@@ -526,6 +530,64 @@ function RepoMenu({ repo, isPrivate, open }: { repo: MenuRepo; isPrivate: boolea
   );
 }
 
+/**
+ * A project's settings, as the sidebar shows them in place of the project's
+ * menu: what is about running it, then its agents, then its code and who
+ * can reach it. The way back leads to the project.
+ */
+function RepoSettingsMenu({ repo, open }: { repo: MenuRepo; open: boolean }) {
+  const base = `/${repo.namespace}/${repo.name}`;
+  return (
+    <nav aria-label={`${repo.namespace}/${repo.name} settings`} inert={!open} className={PANEL}>
+      <Link
+        to={base}
+        className="group mt-3 flex h-8 items-center gap-2 rounded-md px-2 text-[0.8125rem] text-muted transition-colors hover:bg-raised/60 hover:text-fg"
+      >
+        <ArrowLeft size={15} className="text-faint transition-transform group-hover:-translate-x-0.5 group-hover:text-muted" />
+        <span className="min-w-0 truncate font-mono">
+          <span className="text-faint">{repo.namespace}/</span>
+          {repo.name}
+        </span>
+      </Link>
+      <SidebarGroup title="Settings">
+        <SidebarLink to={`${base}/settings`} end icon={<Settings size={15} />}>
+          General
+        </SidebarLink>
+      </SidebarGroup>
+      <SidebarGroup title="Running">
+        <SidebarLink to={`${base}/settings/deployments`} icon={<Rocket size={15} />}>
+          Deployments
+        </SidebarLink>
+        <SidebarLink to={`${base}/settings/domains`} icon={<Globe size={15} />}>
+          Domains
+        </SidebarLink>
+        <SidebarLink to={`${base}/settings/dependencies`} icon={<Network size={15} />}>
+          Dependencies
+        </SidebarLink>
+      </SidebarGroup>
+      <SidebarGroup title="Agents">
+        <SidebarLink to={`${base}/settings/agents`} icon={<Bot size={15} />}>
+          Agents
+        </SidebarLink>
+        <SidebarLink to={`${base}/settings/guardrails`} icon={<ShieldCheck size={15} />}>
+          Guardrails
+        </SidebarLink>
+      </SidebarGroup>
+      <SidebarGroup title="Code and access">
+        <SidebarLink to={`${base}/settings/repository`} icon={<GitBranch size={15} />}>
+          Repository
+        </SidebarLink>
+        <SidebarLink to={`${base}/settings/secrets`} icon={<Lock size={15} />}>
+          Secrets and variables
+        </SidebarLink>
+        <SidebarLink to={`${base}/settings/webhooks`} icon={<Webhook size={15} />}>
+          Webhooks
+        </SidebarLink>
+      </SidebarGroup>
+    </nav>
+  );
+}
+
 /** Your own settings, as the sidebar shows them on the settings page. */
 function AccountSettingsMenu({ open }: { open: boolean }) {
   const { hash } = useLocation();
@@ -576,6 +638,8 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
   const repoPath = /^\/([^/]+)\/([^/-][^/]*)(\/|$)/.exec(target);
   const reserved = new Set(["settings", "explore", "search", "new", "u", "pricing", "avatars", "workspaces", "login", "logout", "register", "verify", "forgot", "reset", "device", "oauth"]);
   const inRepo = repoPath != null && !reserved.has(repoPath[1]) && repoPath[2] !== "-";
+  // A project's settings take its menu over in turn.
+  const inRepoSettings = inRepo && REPO_SETTINGS_PAGE.test(target);
   const away = inSettings || inAccount || inRepo;
   // The repository the menu is for: the one loaded if it is the one being
   // gone to, else what the address says, at once.
@@ -590,16 +654,20 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
     : null;
   // What sits on the far side of the track. Kept while sliding back, so it
   // does not vanish on the way out.
-  const side = useRef<"workspace" | "account" | "repo">("workspace");
+  const side = useRef<"workspace" | "account" | "repo" | "repo-settings">("workspace");
   if (inAccount) side.current = "account";
   else if (inSettings) side.current = "workspace";
+  else if (inRepoSettings) side.current = "repo-settings";
   else if (inRepo) side.current = "repo";
   // The repository last shown, kept for the slide back.
   const shown = useRef<MenuRepo | null>(menuRepo);
   if (menuRepo) shown.current = menuRepo;
   // Moving between two of the far-side menus (settings to a repository,
   // one repository to another) crossfades in place instead of sliding.
-  const detailKey = side.current === "repo" ? `repo:${shown.current?.namespace}/${shown.current?.name}` : side.current;
+  const detailKey =
+    side.current === "repo" || side.current === "repo-settings"
+      ? `${side.current}:${shown.current?.namespace}/${shown.current?.name}`
+      : side.current;
   const lastAway = useRef(away);
   const lastKey = useRef(detailKey);
   const swapped = lastAway.current && away && lastKey.current !== detailKey;
@@ -713,7 +781,9 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
       </div>
       <div className={`${LAYER} ${away ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-full opacity-0"}`}>
         <div key={detailKey} className={`h-full ${swapped ? "animate-[g1t-swap_220ms_ease-out]" : ""}`}>
-          {side.current === "repo" && shown.current ? (
+          {side.current === "repo-settings" && shown.current ? (
+            <RepoSettingsMenu repo={shown.current} open={inRepoSettings} />
+          ) : side.current === "repo" && shown.current ? (
             <RepoMenu
               repo={shown.current}
               isPrivate={shell.repos.some((repo) => sameRepo(repo, shown.current) && repo.isPrivate)}
