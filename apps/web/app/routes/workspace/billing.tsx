@@ -1,4 +1,4 @@
-import { CreditCard, Rocket } from "lucide-react";
+import { ArrowUpRight, CreditCard, FileText, Receipt, Rocket } from "lucide-react";
 import { Form, Link, data, redirect, useNavigation } from "react-router";
 
 import {
@@ -145,11 +145,38 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
             </p>
           </div>
         )}
+        {account.status.enabled && (
+          <section className="mb-8 flex flex-wrap items-center gap-4 rounded-xl border border-line bg-surface p-5">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent ring-1 ring-accent/30">
+              <Receipt size={18} />
+            </span>
+            <div className="min-w-0 grow">
+              <h2 className="font-medium">Billing on Stripe</h2>
+              <p className="mt-0.5 text-sm text-muted">
+                {account.card
+                  ? `${account.card.brand[0].toUpperCase()}${account.card.brand.slice(1)} ending ${account.card.last4}. `
+                  : "No card yet. "}
+                Your card, invoices and receipts, and the billing email, address and tax ID.
+              </p>
+            </div>
+            {role === "owner" ? (
+              <Form method="post">
+                <Button variant="accent" type="submit" name="intent" value="portal" disabled={paying}>
+                  Open Stripe billing
+                  <ArrowUpRight size={14} />
+                </Button>
+              </Form>
+            ) : (
+              <p className="text-xs text-faint">An owner manages billing.</p>
+            )}
+          </section>
+        )}
+
         {limit && account.status.enabled && (
           <LimitCard limit={limit} owner={role === "owner"} busy={paying} error={actionData?.error} />
         )}
 
-        {account.status.enabled && limit?.trust !== "internal" && (
+        {account.status.enabled && (
           <section className="mb-10 rounded-xl border border-line bg-surface p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -333,31 +360,37 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
           <h3 className="font-medium">How it is charged</h3>
           <ul className="mt-2 list-disc space-y-1.5 pl-4 text-muted">
             <li>
-              Each run is charged when it finishes, to the workspace that owns the
-              repository, whoever assigned the issue.
+              Usage is charged after it runs, to the workspace that owns the repository: agents at what the model cost
+              plus {account.marginPercent}%, and sandbox time, builds and apps at what they cost g1t plus a set markup.
             </li>
             <li>
-              A change, a review, a revision and a catch-up are each a run. The
-              statement links each to its pull request.
-            </li>
-            <li>
-              Every pull request's session ends with what that run cost before
-              the margin.
+              Each month closes with an itemised invoice, charged to the card on file. Near your limit, g1t sends one
+              sooner, so work keeps going.
             </li>
             <li>
               With your own model provider, connected under{" "}
               <Link to={`/${slug}/-/integrations`} className="text-fg hover:underline">
                 Integrations
               </Link>
-              , the provider bills you for the model and each run here is a flat{" "}
-              {dollars(account.orchestrationFeeMicros)}
-              {status.free && " once pricing starts; nothing while g1t is being built out"}.
+              , the provider bills you for the model and each run here is {dollars(account.orchestrationFeeMicros)}, plus
+              its sandbox time.
             </li>
-            <li>
-              Only members of <span className="font-mono text-fg">{slug}</span> can
-              put agents to work on its repositories.
-            </li>
+            <li>No seats: add as many people and agents as you like.</li>
           </ul>
+          <div className="mt-4 space-y-1.5 border-t border-line pt-4 text-sm">
+            <Link to={`/${slug}/-/usage`} className="flex items-center gap-2 text-muted hover:text-fg">
+              <FileText size={14} /> Usage, run by run
+            </Link>
+            <a href="https://g1t.sh/pricing" className="flex items-center gap-2 text-muted hover:text-fg">
+              <CreditCard size={14} /> Today's prices
+            </a>
+            <a
+              href="https://docs.g1t.sh/guides/usage-and-billing/"
+              className="flex items-center gap-2 text-muted hover:text-fg"
+            >
+              <ArrowUpRight size={14} /> How usage and billing work
+            </a>
+          </div>
         </section>
       </aside>
     </div>

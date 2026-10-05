@@ -1,6 +1,9 @@
 import {
   ArrowLeft,
-  ChevronRight,
+  GanttChart,
+  KanbanSquare,
+  Package,
+  Sparkles,
   BarChart3,
   BookMarked,
   BookOpen,
@@ -30,9 +33,7 @@ import {
   Users,
   Webhook,
   PlayCircle,
-  Activity,
   Bot,
-  Kanban,
   ShieldCheck,
   Rocket,
   X,
@@ -149,143 +150,37 @@ function SidebarSoon({ icon, children, about }: { icon: ReactNode; children: Rea
 }
 
 /**
- * A section of the project menu that opens to show its pages, as GitLab's
- * does: one row with an icon, and its pages indented under it. It opens
- * by itself when one of its pages is the current one, and otherwise
- * remembers whether it was left open.
+ * A page that is coming, as a link to its roadmap page: faint, with Soon,
+ * and marked current on any of its section's Soon pages.
  */
-function SidebarSection({
-  title,
-  icon,
-  paths = [],
-  soon = false,
-  children,
-}: {
-  title: string;
-  icon: ReactNode;
-  /** Path prefixes of its pages: one being current opens it. */
-  paths?: string[];
-  /** Nothing in it is built yet. */
-  soon?: boolean;
-  children: ReactNode;
-}) {
-  const { pathname } = useLocation();
-  const current = paths.some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"));
-  const key = `g1t.sidebar.${title}`;
-  const [open, setOpen] = useState<boolean>(current);
-  // What the person left it as, once the page is in the browser.
-  useEffect(() => {
-    if (current) {
-      setOpen(true);
-      return;
-    }
-    try {
-      const saved = localStorage.getItem(key);
-      if (saved != null) setOpen(saved === "1");
-    } catch {
-      // No storage: it stays as it is.
-    }
-  }, [current, key]);
-  const toggle = () => {
-    const next = !open;
-    setOpen(next);
-    try {
-      localStorage.setItem(key, next ? "1" : "0");
-    } catch {
-      // Remembered for this page only.
-    }
-  };
-  return (
-    <section>
-      <button
-        type="button"
-        onClick={toggle}
-        aria-expanded={open}
-        className={`group flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-left text-[0.8125rem] transition-colors hover:bg-raised/60 ${
-          current ? "text-fg" : soon ? "text-faint hover:text-muted" : "text-muted hover:text-fg"
-        }`}
-      >
-        <span className={`shrink-0 ${current ? "text-muted" : "text-faint group-hover:text-muted"}`}>{icon}</span>
-        <span className={`min-w-0 grow truncate ${current ? "font-medium" : ""}`}>{title}</span>
-        {soon && !open && (
-          <span className="rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">
-            Soon
-          </span>
-        )}
-        <ChevronRight
-          size={14}
-          className={`shrink-0 text-faint transition-transform duration-150 ${open ? "rotate-90" : ""}`}
-          aria-hidden="true"
-        />
-      </button>
-      {open && (
-        <div className="relative mt-px mb-1 space-y-px before:absolute before:top-1 before:bottom-1 before:left-[1.1875rem] before:w-px before:bg-line">
-          {children}
-        </div>
-      )}
-    </section>
-  );
-}
-
-/** A page inside a section: indented, without an icon of its own. */
-function SidebarSubLink({
+function SidebarSoonLink({
   to,
-  end,
-  count,
   also,
+  icon,
+  about,
   children,
 }: {
   to: string;
-  end?: boolean;
-  count?: number;
-  also?: string | string[];
+  also?: string[];
+  icon: ReactNode;
+  about: string;
   children: ReactNode;
 }) {
   const { pathname } = useLocation();
-  return (
-    <NavLink
-      to={to}
-      end={end}
-      prefetch="intent"
-      className={({ isActive, isPending }) => {
-        const current =
-          isActive || [also ?? []].flat().some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"));
-        return `relative flex h-8 items-center gap-2 rounded-md pr-2 pl-[2.375rem] text-[0.8125rem] transition-colors ${
-          current
-            ? "bg-raised font-medium text-fg before:absolute before:top-1.5 before:bottom-1.5 before:left-[1.1875rem] before:z-10 before:w-px before:bg-accent"
-            : isPending
-              ? "bg-raised/60 text-fg"
-              : "text-muted hover:bg-raised/60 hover:text-fg"
-        }`;
-      }}
-    >
-      <span className="min-w-0 grow truncate">{children}</span>
-      {count != null && count > 0 && (
-        <span className="rounded bg-line px-1.5 text-[0.6875rem] tabular-nums text-muted">{count}</span>
-      )}
-    </NavLink>
-  );
-}
-
-/**
- * A page a section will have: a link to a page saying what it will be,
- * so people can see where g1t is going, and read about it.
- */
-function SidebarSubSoon({ to, about, children }: { to: string; about: string; children: ReactNode }) {
   return (
     <NavLink
       to={to}
       title={about}
       prefetch="intent"
-      className={({ isActive }) =>
-        `relative flex h-8 items-center gap-2 rounded-md pr-2 pl-[2.375rem] text-[0.8125rem] transition-colors ${
-          isActive
-            ? "bg-raised text-fg before:absolute before:top-1.5 before:bottom-1.5 before:left-[1.1875rem] before:z-10 before:w-px before:bg-accent"
-            : "text-faint hover:bg-raised/60 hover:text-muted"
-        }`
-      }
+      className={({ isActive }) => {
+        const current = isActive || (also ?? []).some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"));
+        return `group flex h-8 items-center gap-2.5 rounded-md px-2 text-[0.8125rem] transition-colors ${
+          current ? "bg-raised font-medium text-fg" : "text-faint hover:bg-raised/60 hover:text-muted"
+        }`;
+      }}
     >
-      <span className="grow truncate">{children}</span>
+      <span className="shrink-0 opacity-80">{icon}</span>
+      <span className="min-w-0 grow truncate">{children}</span>
       <span className="rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">
         Soon
       </span>
@@ -293,22 +188,17 @@ function SidebarSubSoon({ to, about, children }: { to: string; about: string; ch
   );
 }
 
-/** A section's Soon pages, from the roadmap. */
-function SoonItems({ base, section }: { base: string; section: RoadmapItem["section"] }) {
-  return (
-    <>
-      {roadmapIn(section).map((item) => (
-        <SidebarSubSoon key={item.key} to={`${base}/soon/${item.key}`} about={item.summary}>
-          {item.title}
-        </SidebarSubSoon>
-      ))}
-    </>
-  );
-}
+/** Icons for what spans projects. */
+const WORKSPACE_ICONS: Record<string, ReactNode> = {
+  board: <KanbanSquare size={15} />,
+  roadmap: <GanttChart size={15} />,
+  packages: <Package size={15} />,
+  fleet: <Bot size={15} />,
+};
 
-/** A section's own pages and its Soon pages, for opening it when current. */
-function sectionPaths(base: string, section: RoadmapItem["section"], own: string[]): string[] {
-  return [...own, ...roadmapIn(section).map((item) => `${base}/soon/${item.key}`)];
+/** The Soon pages of a section, as paths, so its link is current on them. */
+function soonPaths(base: string, section: RoadmapItem["section"]): string[] {
+  return roadmapIn(section).map((item) => `${base}/soon/${item.key}`);
 }
 
 function SidebarGroup({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
@@ -555,9 +445,13 @@ function RepoMenu({ repo, isPrivate, open }: { repo: MenuRepo; isPrivate: boolea
         <ArrowLeft size={15} className="text-faint transition-transform group-hover:-translate-x-0.5 group-hover:text-muted" />
         Mission control
       </Link>
-      <Link
+      <NavLink
         to={base}
-        className="mt-3 flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-raised/60"
+        end
+        title="Overview"
+        className={({ isActive }) =>
+          `mt-3 flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors ${isActive ? "bg-raised" : "hover:bg-raised/60"}`
+        }
       >
         <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-raised text-muted ring-1 ring-line">
           {isPrivate ? <Lock size={13} /> : <Box size={13} />}
@@ -566,79 +460,40 @@ function RepoMenu({ repo, isPrivate, open }: { repo: MenuRepo; isPrivate: boolea
           <span className="text-faint">{repo.namespace}/</span>
           <span className="font-semibold text-fg">{repo.name}</span>
         </span>
-      </Link>
+      </NavLink>
+      {/* A project's pages, flat and in the order people use them. A page
+          with more than one view shows them as tabs across its top. */}
       <div className="mt-3 space-y-px">
-        <SidebarLink to={base} end icon={<LayoutGrid size={15} />}>
-          Overview
+        <SidebarLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`, ...soonPaths(base, "Code")]} icon={<Code2 size={15} />}>
+          Code
         </SidebarLink>
-
-        <SidebarSection
-          title="Work"
-          icon={<Kanban size={15} />}
-          paths={sectionPaths(base, "Work", [`${base}/issues`, `${base}/pulls`, `${base}/pull`, `${base}/queue`, `${base}/plans`])}
-        >
-          <SidebarSubLink to={`${base}/issues`} count={repo.issues}>
-            Issues
-          </SidebarSubLink>
-          <SidebarSubLink to={`${base}/pulls`} also={`${base}/pull`} count={repo.pulls}>
-            Pull requests
-          </SidebarSubLink>
-          <SidebarSubLink to={`${base}/queue`}>Merge queue</SidebarSubLink>
-          {repo.member && <SidebarSubLink to={`${base}/plans`}>Outcomes</SidebarSubLink>}
-          <SoonItems base={base} section="Work" />
-        </SidebarSection>
-
-        <SidebarSection
-          title="Code"
-          icon={<Code2 size={15} />}
-          paths={sectionPaths(base, "Code", [`${base}/code`, `${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`])}
-        >
-          <SidebarSubLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`]}>
-            Files
-          </SidebarSubLink>
-          <SidebarSubLink to={`${base}/commits`} also={`${base}/commit`}>
-            Commits
-          </SidebarSubLink>
-          <SoonItems base={base} section="Code" />
-        </SidebarSection>
-
-        <SidebarSection title="Agents" icon={<Bot size={15} />} paths={sectionPaths(base, "Agents", [])} soon>
-          <SoonItems base={base} section="Agents" />
-        </SidebarSection>
-
-        <SidebarSection
-          title="Ship"
-          icon={<Rocket size={15} />}
-          paths={sectionPaths(base, "Ship", [`${base}/actions`, ...(repo.member ? [`${base}/deployments`] : [])])}
-        >
-          <SidebarSubLink to={`${base}/actions`}>Workflows</SidebarSubLink>
-          {repo.member && <SidebarSubLink to={`${base}/deployments`}>Deployments</SidebarSubLink>}
-          <SoonItems base={base} section="Ship" />
-        </SidebarSection>
-
-        <SidebarSection title="Security" icon={<ShieldCheck size={15} />} paths={sectionPaths(base, "Security", [])} soon>
-          <SoonItems base={base} section="Security" />
-        </SidebarSection>
-
-        <SidebarSection title="Observe" icon={<Activity size={15} />} paths={sectionPaths(base, "Observe", [])} soon>
-          <SoonItems base={base} section="Observe" />
-        </SidebarSection>
-
-        <SidebarSection title="Insights" icon={<BarChart3 size={15} />} paths={sectionPaths(base, "Insights", [])} soon>
-          <SoonItems base={base} section="Insights" />
-        </SidebarSection>
-
+        <SidebarLink to={`${base}/issues`} also={[`${base}/plans`, ...soonPaths(base, "Issues")]} icon={<CircleDot size={15} />} count={repo.issues}>
+          Issues
+        </SidebarLink>
+        <SidebarLink to={`${base}/pulls`} also={[`${base}/pull`, `${base}/queue`]} icon={<GitPullRequest size={15} />} count={repo.pulls}>
+          Pull requests
+        </SidebarLink>
+        <SidebarSoonLink to={`${base}/soon/agents`} also={soonPaths(base, "Agents")} icon={<Bot size={15} />} about="Every agent at work on this project, its sessions, playbooks and memory.">
+          Agents
+        </SidebarSoonLink>
+        <SidebarLink to={`${base}/actions`} icon={<PlayCircle size={15} />}>
+          Workflows
+        </SidebarLink>
+        {repo.member ? (
+          <SidebarLink to={`${base}/deployments`} also={soonPaths(base, "Deployments")} icon={<Rocket size={15} />}>
+            Deployments
+          </SidebarLink>
+        ) : null}
+        <SidebarSoonLink to={`${base}/soon/security`} also={soonPaths(base, "Security")} icon={<ShieldCheck size={15} />} about="Findings, secret scanning, dependency updates and code scanning, each fixed by an agent.">
+          Security
+        </SidebarSoonLink>
+        <SidebarSoonLink to={`${base}/soon/delivery`} also={soonPaths(base, "Insights")} icon={<BarChart3 size={15} />} about="Delivery metrics, costs and the work agents do.">
+          Insights
+        </SidebarSoonLink>
         {repo.member && (
-          <SidebarSection title="Settings" icon={<Settings size={15} />} paths={[`${base}/settings`]}>
-            <SidebarSubLink to={`${base}/settings`} end>
-              General
-            </SidebarSubLink>
-            <SidebarSubLink to={`${base}/settings/repository`}>Repository</SidebarSubLink>
-            <SidebarSubLink to={`${base}/settings/deployments`}>Deployments</SidebarSubLink>
-            <SidebarSubLink to={`${base}/settings/dependencies`}>Dependencies</SidebarSubLink>
-            <SidebarSubLink to={`${base}/settings/secrets`}>Secrets and variables</SidebarSubLink>
-            <SidebarSubLink to={`${base}/settings/webhooks`}>Webhooks</SidebarSubLink>
-          </SidebarSection>
+          <SidebarLink to={`${base}/settings`} icon={<Settings size={15} />}>
+            Settings
+          </SidebarLink>
         )}
       </div>
     </nav>
@@ -802,6 +657,20 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
             );
           })}
         </SidebarGroup>
+        {ws && (
+          <SidebarGroup title="Across projects">
+            {roadmapIn("Workspace").map((item) => (
+              <SidebarSoonLink
+                key={item.key}
+                to={`/${ws.slug}/-/soon/${item.key}`}
+                icon={WORKSPACE_ICONS[item.key] ?? <Sparkles size={15} />}
+                about={item.summary}
+              >
+                {item.title === "Board" ? "Boards" : item.title}
+              </SidebarSoonLink>
+            ))}
+          </SidebarGroup>
+        )}
       </nav>
       </div>
       <div className={`${LAYER} ${away ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-full opacity-0"}`}>

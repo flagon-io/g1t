@@ -11,8 +11,11 @@ export type RoadmapItem = {
   /** In the address: `/<owner>/<project>/soon/<key>`. */
   key: string;
   title: string;
-  /** The menu section it sits in. */
-  section: "Work" | "Code" | "Agents" | "Ship" | "Security" | "Observe" | "Insights";
+  /**
+   * Where it lives: a project page whose tabs it joins, or the workspace,
+   * for what spans projects (boards, the roadmap, packages, the fleet).
+   */
+  section: "Code" | "Issues" | "Agents" | "Deployments" | "Security" | "Insights" | "Workspace";
   /** One line, for the menu's tooltip and the page's lead. */
   summary: string;
   /** Why it matters, in two or three sentences. */
@@ -28,7 +31,7 @@ export const ROADMAP: RoadmapItem[] = [
   {
     key: "board",
     title: "Board",
-    section: "Work",
+    section: "Workspace",
     summary: "Issues and pull requests as a board, a table or a roadmap, with fields of your own.",
     why: "Like GitHub Projects: one view of everything in flight, arranged the way your team thinks about it. Agents move the cards as they work, so the board is never out of date.",
     plans: [
@@ -36,14 +39,14 @@ export const ROADMAP: RoadmapItem[] = [
       "Custom fields: status, priority, size, iteration, dates, anything",
       "Group and filter by owner, outcome, label, agent or state",
       "Cards move by themselves as agents open, revise and land changes",
-      "Boards across projects, for a workspace's whole portfolio",
+      "Across projects: one board can hold work from any of the workspace's projects",
+      "Attach a board to a project, so it shows on that project too",
     ],
-    today: { label: "Issues", path: "issues" },
   },
   {
     key: "roadmap",
     title: "Roadmap",
-    section: "Work",
+    section: "Workspace",
     summary: "Outcomes on a timeline, with their dependencies across projects.",
     why: "An outcome is what should be true when the work is done. On a roadmap you see when each is expected, what it waits on in other projects, and how much has landed.",
     plans: [
@@ -57,7 +60,7 @@ export const ROADMAP: RoadmapItem[] = [
   {
     key: "milestones",
     title: "Milestones",
-    section: "Work",
+    section: "Issues",
     summary: "Dates to land outcomes by, with what is left and what is at risk.",
     why: "A milestone groups the issues that must land together, by a date. g1t shows what remains and which agent or person holds each part.",
     plans: [
@@ -168,11 +171,25 @@ export const ROADMAP: RoadmapItem[] = [
     plans: ["Facts agents learned, with where they learned them", "Edit or remove anything", "Shared across every agent on the project"],
   },
 
-  // --- Ship ---------------------------------------------------------------
+  {
+    key: "fleet",
+    title: "Agent fleet",
+    section: "Workspace",
+    summary: "Every agent at work across the workspace, and what each is costing.",
+    why: "Agents work on many projects at once. The fleet shows them all: what each holds, how far along it is, and where people are needed.",
+    plans: [
+      "Every running agent across projects, live",
+      "Queue of work waiting for an agent, by priority",
+      "Spend by agent, project and kind of work",
+      "Pause or redirect agents across the workspace",
+    ],
+  },
+
+  // --- Deployments ----------------------------------------------------------
   {
     key: "environments",
     title: "Environments",
-    section: "Ship",
+    section: "Deployments",
     summary: "Staging, production and others, with approvers and branch rules.",
     why: "Production and previews exist today. Environments add the rest: staging, QA, per-customer, each with its own variables, approvers and rules for what may deploy there.",
     plans: [
@@ -186,7 +203,7 @@ export const ROADMAP: RoadmapItem[] = [
   {
     key: "releases",
     title: "Releases",
-    section: "Ship",
+    section: "Deployments",
     summary: "Tagged releases with notes written from what landed.",
     why: "Release notes from the pull requests and sessions that made the release: what changed, why, and who or what changed it.",
     plans: ["Notes drafted from merged work", "Assets and checksums attached", "Published to the project's page and a feed"],
@@ -195,16 +212,15 @@ export const ROADMAP: RoadmapItem[] = [
   {
     key: "packages",
     title: "Packages",
-    section: "Ship",
-    summary: "npm, container and other packages published from the project.",
+    section: "Workspace",
+    summary: "The workspace's package registry: npm, containers and more.",
     why: "Publish packages from workflows to g1t's registry, with the same access as the code.",
-    plans: ["npm, OCI containers, Cargo, PyPI and Go modules", "Published from workflows", "Private packages for the workspace"],
-    today: { label: "Workflows", path: "actions" },
+    plans: ["npm, OCI containers, Cargo, PyPI and Go modules", "Published from any project's workflows", "Private packages for the workspace"],
   },
   {
     key: "flags",
     title: "Feature flags",
-    section: "Ship",
+    section: "Deployments",
     summary: "Turn features on per environment or per user, without a deploy.",
     why: "Ship code dark and turn it on when ready, for some users first, at the edge, with no deploy.",
     plans: ["Flags read at the edge by deployed apps", "Rollouts by percentage, user or environment", "Flags cleaned up by agents when fully on"],
@@ -258,7 +274,7 @@ export const ROADMAP: RoadmapItem[] = [
   {
     key: "logs",
     title: "Logs and metrics",
-    section: "Observe",
+    section: "Deployments",
     summary: "Requests, errors and CPU time of each deployment, and its logs.",
     why: "Every deployed app's logs and numbers, by deployment, so a regression points at the change that caused it.",
     plans: ["Live and searchable logs", "Requests, errors, latency and CPU by deployment", "Compare a preview with production"],
@@ -267,7 +283,7 @@ export const ROADMAP: RoadmapItem[] = [
   {
     key: "errors",
     title: "Errors and incidents",
-    section: "Observe",
+    section: "Deployments",
     summary: "Errors from the running app, each becoming an issue an agent can take.",
     why: "An error in production should become a fix, not a dashboard. Each new error is grouped, explained, and turned into an issue with the context an agent needs.",
     plans: ["Errors grouped with stack and request", "One click to an issue for an agent", "Incidents with a timeline and who was told"],
@@ -276,7 +292,7 @@ export const ROADMAP: RoadmapItem[] = [
   {
     key: "uptime",
     title: "Uptime",
-    section: "Observe",
+    section: "Deployments",
     summary: "Checks that the app answers, from around the world.",
     why: "Know the app is down before your users tell you, and who was told.",
     plans: ["Checks from many places", "Alerts by email and webhook", "A public status page"],
@@ -284,7 +300,7 @@ export const ROADMAP: RoadmapItem[] = [
   {
     key: "analytics",
     title: "Web analytics",
-    section: "Observe",
+    section: "Deployments",
     summary: "Who visits the deployed apps, without cookies.",
     why: "Visits, pages and referrers for each app, private by design, from Cloudflare's own analytics.",
     plans: ["Visits, pages, referrers and countries", "No cookies, no personal data", "Per deployment and per preview"],

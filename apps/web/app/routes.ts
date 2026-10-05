@@ -27,6 +27,8 @@ export default [
     route("-/webhooks", "routes/workspace/webhooks.tsx"),
     route("-/secrets", "routes/workspace/secrets.tsx"),
     route("-/settings", "routes/workspace/settings.tsx"),
+    // What the workspace will have across its projects.
+    route("-/soon/:feature", "routes/workspace/soon.tsx"),
   ]),
   // Why a line is the way it is, fetched by the blame view.
   route(":owner/:repo/why/:hash", "routes/repo/why.ts"),

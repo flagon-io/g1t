@@ -3,7 +3,7 @@ import { Link, data } from "react-router";
 
 import type { Route } from "./+types/soon";
 import { page } from "../../lib/meta";
-import { ROADMAP, roadmapIn, roadmapItem } from "../../lib/roadmap";
+import { ROADMAP, type RoadmapItem, roadmapIn, roadmapItem } from "../../lib/roadmap";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   const item = roadmapItem(params.feature);
@@ -25,13 +25,20 @@ export function loader({ params }: Route.LoaderArgs) {
  * to use until then. Reached from the project menu's Soon items.
  */
 export default function Soon({ loaderData, params }: Route.ComponentProps) {
-  const { item } = loaderData;
-  const base = `/${params.owner}/${params.repo}`;
+  return <SoonView item={loaderData.item} base={`/${params.owner}/${params.repo}`} />;
+}
+
+/**
+ * A Soon page, for a project's (under `base`, `/<owner>/<project>`) or the
+ * workspace's (`/<owner>/-`).
+ */
+export function SoonView({ item, base }: { item: RoadmapItem; base: string }) {
   const siblings = roadmapIn(item.section).filter((other) => other.key !== item.key);
+  const inWorkspace = item.section === "Workspace";
   return (
     <div className="mx-auto max-w-3xl">
       <p className="flex items-center gap-2 text-sm text-muted">
-        <span>{item.section}</span>
+        <span>{inWorkspace ? "Across projects" : item.section}</span>
         <span className="text-line-strong">/</span>
         <span className="text-fg">{item.title}</span>
       </p>
@@ -72,7 +79,9 @@ export default function Soon({ loaderData, params }: Route.ComponentProps) {
 
       {siblings.length > 0 && (
         <section className="mt-10">
-          <h2 className="text-sm font-medium text-muted">Also coming to {item.section}</h2>
+          <h2 className="text-sm font-medium text-muted">
+            Also coming {inWorkspace ? "across projects" : `to ${item.section}`}
+          </h2>
           <ul className="mt-3 grid gap-3 sm:grid-cols-2">
             {siblings.map((other) => (
               <li key={other.key}>

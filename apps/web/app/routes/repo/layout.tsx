@@ -1,10 +1,11 @@
 import { Box, CircleDot, Code2, GitPullRequest, History, LayoutGrid, ListTree, Lock, Rocket, Settings } from "lucide-react";
-import { Link, Outlet, data, useRouteLoaderData } from "react-router";
+import { Link, NavLink, Outlet, data, useLocation, useRouteLoaderData } from "react-router";
 
 import type { Project } from "@g1t/contracts";
 
 import type { Route } from "./+types/layout";
 import { page } from "../../lib/meta";
+import { type Tab as PageTab, tabsFor } from "../../lib/project-nav";
 import { Pill, TabLink as Tab } from "../../components/ui";
 import { projects, repos, work } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
@@ -72,16 +73,56 @@ function Header({ project, isPrivate, namespace, name, description, large }: {
   );
 }
 
+/**
+ * The views of the page the project is on, as tabs across its top: Files,
+ * Commits and what is coming under Code, and so on. Soon tabs open their
+ * roadmap page, under the same tabs.
+ */
+function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
+  const { pathname } = useLocation();
+  const rest = pathname.slice(base.length + 1);
+  const current = (tab: PageTab) =>
+    [tab.path, ...(tab.also ?? [])].some((path) => rest === path || rest.startsWith(`${path}/`));
+  return (
+    <nav aria-label="Views" className="-mb-px flex gap-1 overflow-x-auto">
+      {tabs.map((tab) => (
+        <NavLink
+          key={tab.path}
+          to={`${base}/${tab.path}`}
+          title={tab.about}
+          prefetch="intent"
+          className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 pt-1 pb-2.5 text-sm transition-colors ${
+            current(tab)
+              ? "border-accent font-medium text-fg"
+              : tab.soon
+                ? "border-transparent text-faint hover:text-muted"
+                : "border-transparent text-muted hover:text-fg"
+          }`}
+        >
+          {tab.label}
+          {tab.soon && (
+            <span className="rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">
+              Soon
+            </span>
+          )}
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
+
 export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
   const { repo, project, open, member } = loaderData;
   const base = `/${repo.namespace}/${repo.name}`;
   const signedIn = useRouteLoaderData("root")?.user != null;
   const description = project?.description ?? repo.description;
+  const { pathname } = useLocation();
+  const tabs = tabsFor(pathname.slice(base.length + 1), member);
   if (signedIn) {
     return (
       <>
         <div className="border-b border-line">
-          <div className="mx-auto max-w-6xl px-4 py-3 sm:px-6">
+          <div className={`mx-auto max-w-6xl px-4 sm:px-6 ${tabs ? "pt-3" : "py-3"}`}>
             <Header
               project={project}
               isPrivate={repo.isPrivate}
@@ -89,6 +130,11 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
               name={repo.name}
               description={description}
             />
+            {tabs && (
+              <div className="mt-3">
+                <PageTabs base={base} tabs={tabs} />
+              </div>
+            )}
           </div>
         </div>
         <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
