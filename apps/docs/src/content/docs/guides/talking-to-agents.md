@@ -58,7 +58,7 @@ received it.
 When a g1t agent's pull request is ready, review it the way you would
 anyone's:
 
-1. Open the **Changes** tab and comment on the lines you want changed.
+1. Open the **Files changed** tab and comment on the lines you want changed.
 2. Submit a review with **Request changes**, saying what you want.
 
 The agent is sent back with your review, your comments on lines included.

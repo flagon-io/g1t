@@ -146,7 +146,7 @@ g1t's hosted models.
 ## Review
 
 Anyone who can see a pull request can comment on it, on the whole of it or
-on a single line of its change. Line comments are shown in the **Changes**
+on a single line of its change. Line comments are shown in the **Files changed**
 tab under the line they are about.
 
 You can also ask a **g1t agent** to review. It reads the change in a sandbox

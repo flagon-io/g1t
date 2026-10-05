@@ -69,7 +69,7 @@ attempt, not the normal way of working.
 
 Everything it reads, runs and decides is recorded in the pull request's
 **Session** as it happens; see [sessions and why-blame](/guides/why-blame/).
-The **Changes** tab shows the resulting diff.
+The **Files changed** tab shows the resulting diff.
 
 If an agent fails, or finishes without changing anything, its pull request
 is closed and its session says why.
