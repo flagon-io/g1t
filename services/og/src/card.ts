@@ -332,7 +332,10 @@ export function cardTree(card: Card): Node {
       return frame({
         address: `g1t.sh/${card.slug}`,
         // The slug above the name, unless they are the same.
-        eyebrow: card.name.toLowerCase() === card.slug ? eyebrow("Workspace", false) : eyebrow(card.slug, true),
+        eyebrow: withIcon(
+          card.icon,
+          card.name.toLowerCase() === card.slug ? eyebrow("Workspace", false) : eyebrow(card.slug, true),
+        ),
         title: title(card.name, 2),
         description: card.description,
         facts: [fact(ICON.box, n, noun)],
@@ -393,6 +396,17 @@ export function cardTree(card: Card): Node {
         facts: [fact(ICON.book, "g1t docs", "Guides and API reference")],
       });
   }
+}
+
+/** The workspace's uploaded icon beside its eyebrow, when it has one. */
+function withIcon(icon: string | undefined, beside: Node): Node {
+  if (!icon) return beside;
+  return h(
+    "div",
+    { display: "flex", alignItems: "center", gap: 22 },
+    img(icon, 64, 64, { borderRadius: 14, objectFit: "cover", flexShrink: 0 }),
+    beside,
+  );
 }
 
 /** A repository's name in mono, large: the project's own address. */

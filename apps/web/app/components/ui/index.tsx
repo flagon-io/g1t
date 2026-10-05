@@ -153,19 +153,45 @@ const AVATAR_HUES = [82, 200, 262, 28, 330, 160];
 /** How g1t's agents are named: as reviewers and assignees, and as commit authors. */
 const AGENT_NAMES = new Set(["g1t-agent", "g1t agent", "g1t"]);
 
+/** Where an uploaded avatar is served, from the hash it is stored by. */
+export function avatarUrl(avatar: string): string {
+  return `/avatars/${avatar}`;
+}
+
 /**
- * A letter avatar whose colour is stable for a given name. People are
- * round; a workspace is `square`.
+ * An uploaded avatar if there is one, else a letter avatar whose colour is
+ * stable for a given name. People are round; a workspace is `square`. An
+ * image that fails to load falls back to the letter.
  */
 export function Avatar({
   name,
   size = 20,
   square,
+  image,
 }: {
   name: string;
   size?: number;
   square?: boolean;
+  /** The uploaded avatar's hash, as identity returns it. */
+  image?: string | null;
 }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  if (image && failed !== image) {
+    return (
+      <img
+        src={avatarUrl(image)}
+        alt=""
+        aria-hidden="true"
+        width={size}
+        height={size}
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(image)}
+        className="inline-block shrink-0 bg-raised object-cover"
+        style={{ width: size, height: size, borderRadius: square ? size * 0.24 : size }}
+      />
+    );
+  }
   // g1t's own agents wear the agent colour and mark everywhere they appear.
   if (AGENT_NAMES.has(name)) {
     return (

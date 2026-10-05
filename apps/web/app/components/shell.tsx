@@ -41,7 +41,7 @@ import {
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Form, Link, NavLink, useLocation, useNavigate, useNavigation, useSubmit } from "react-router";
 
-import type { User } from "@g1t/contracts";
+import type { Membership, User } from "@g1t/contracts";
 import { MICROS_PER_DOLLAR } from "@g1t/contracts";
 
 import { Mark } from "./logo";
@@ -59,7 +59,7 @@ import { type RoadmapItem, roadmapIn } from "../lib/roadmap";
 /** What the sidebar needs, worked out by the root loader for a signed-in person. */
 export type ShellData = {
   /** The workspace the sidebar is about: the one being looked at, or their first. */
-  workspace: { slug: string; role: "owner" | "member" } | null;
+  workspace: Membership | null;
   /** Its projects, by name: `name` is the slug in their address. */
   repos: { namespace: string; name: string; title?: string; isPrivate: boolean }[];
   /** The project being looked at, if any, whoever owns it. */
@@ -213,41 +213,53 @@ function SidebarGroup({ title, action, children }: { title: string; action?: Rea
   );
 }
 
+/** What a workspace is called where people read it: its display name, else its slug. */
+function displayName(membership: Membership): string {
+  return membership.name?.trim() || membership.slug;
+}
+
 function WorkspaceSwitcher({ user, shell }: { user: User; shell: ShellData }) {
-  const current = shell.workspace?.slug;
+  const workspace = shell.workspace;
+  const current = workspace?.slug;
+  const label = workspace ? displayName(workspace) : "Choose a workspace";
   return (
     <DropdownMenu>
-      {/* The name goes to the workspace; only the arrows switch it. */}
+      {/* The name goes to the workspace; only the arrows switch it. The
+          name gets all the room there is, and the whole of it on hover. */}
       <Link
         to={current ? `/${current}` : "/workspaces/new"}
-        className="flex h-8 min-w-0 items-center gap-2 rounded-md px-1.5 transition-colors hover:bg-raised"
+        title={workspace ? `${label} · g1t.sh/${workspace.slug}` : undefined}
+        className="flex h-8 min-w-0 grow items-center gap-1.5 rounded-md px-1 transition-colors hover:bg-raised"
       >
-        {current ? (
-          <Avatar name={current} size={20} square />
+        {workspace ? (
+          <Avatar name={workspace.slug} image={workspace.avatar} size={20} square />
         ) : (
-          <span className="size-5 rounded-md border border-dashed border-line-strong" />
+          <span className="size-5 shrink-0 rounded-md border border-dashed border-line-strong" />
         )}
-        <span className="min-w-0 truncate text-sm font-medium">{current ?? "Choose a workspace"}</span>
-        {shell.workspace && (
-          <span className="shrink-0 rounded-full bg-raised px-1.5 py-px text-[0.625rem] font-medium text-muted ring-1 ring-line capitalize">
-            {shell.workspace.role}
-          </span>
-        )}
+        <span className="min-w-0 truncate text-[0.8125rem] font-medium">{label}</span>
       </Link>
       <DropdownMenuTrigger
         aria-label="Switch workspace"
-        className="ml-auto flex h-8 w-6 shrink-0 items-center justify-center rounded-md text-faint outline-none transition-colors hover:bg-raised hover:text-fg data-[state=open]:bg-raised data-[state=open]:text-fg"
+        className="flex h-8 w-5 shrink-0 items-center justify-center rounded-md text-faint outline-none transition-colors hover:bg-raised hover:text-fg data-[state=open]:bg-raised data-[state=open]:text-fg"
       >
         <ChevronsUpDown size={14} />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-60">
+      <DropdownMenuContent align="start" className="w-64">
         <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
         {(user.workspaces ?? []).map((membership) => (
           <DropdownMenuItem asChild key={membership.slug}>
-            <Link to={`/${membership.slug}`}>
-              <Avatar name={membership.slug} size={16} square />
-              <span className="grow">{membership.slug}</span>
-              {membership.slug === current && <Check className="text-accent" />}
+            <Link to={`/${membership.slug}`} title={displayName(membership)}>
+              <Avatar name={membership.slug} image={membership.avatar} size={24} square />
+              <span className="flex min-w-0 grow flex-col leading-tight">
+                <span className="truncate">{displayName(membership)}</span>
+                <span className="truncate font-mono text-[0.6875rem] text-faint">{membership.slug}</span>
+              </span>
+              <span className="shrink-0 text-[0.6875rem] text-faint capitalize">{membership.role}</span>
+              {membership.slug === current ? (
+                <Check className="shrink-0 text-accent" />
+              ) : (
+                <span className="size-4 shrink-0" aria-hidden="true" />
+              )}
             </Link>
           </DropdownMenuItem>
         ))}
@@ -315,7 +327,7 @@ function AccountMenu({ user }: { user: User }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex h-10 w-full items-center gap-2.5 rounded-md px-2 text-left outline-none transition-colors hover:bg-raised data-[state=open]:bg-raised">
-        <Avatar name={user.username} size={22} />
+        <Avatar name={user.username} image={user.avatar} size={22} />
         <span className="min-w-0 grow truncate text-[0.8125rem] font-medium">{user.username}</span>
         <Ellipsis size={15} className="shrink-0 text-faint" />
       </DropdownMenuTrigger>
@@ -589,8 +601,8 @@ function Sidebar({ user, shell, onFind }: { user: User; shell: ShellData; onFind
   return (
     <div className="flex h-full flex-col">
       {/* The same height and rule as the top bar, so the two read as one line. */}
-      <div className="flex h-16 shrink-0 items-center gap-2 border-b border-line px-3">
-        <Link to="/" aria-label="g1t home" className="shrink-0 rounded-md p-2 hover:bg-raised">
+      <div className="flex h-16 shrink-0 items-center gap-1 border-b border-line pr-2 pl-2.5">
+        <Link to="/" aria-label="g1t home" className="shrink-0 rounded-md p-1.5 hover:bg-raised">
           <Mark className="size-6" />
         </Link>
         <span className="shrink-0 text-line-strong" aria-hidden="true">
@@ -835,7 +847,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
   }
   for (const membership of user.workspaces ?? []) {
     commands.push(
-      { label: membership.slug, hint: "Workspace", to: `/${membership.slug}`, icon: <Avatar name={membership.slug} size={15} square /> },
+      { label: displayName(membership), hint: `Workspace · ${membership.slug}`, to: `/${membership.slug}`, icon: <Avatar name={membership.slug} image={membership.avatar} size={15} square /> },
       { label: "Usage", hint: membership.slug, to: `/${membership.slug}/-/usage`, icon: <BarChart3 size={15} /> },
       { label: "Billing and plans", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/billing`, icon: <CreditCard size={15} /> },
       { label: "Access tokens", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/tokens`, icon: <KeyRound size={15} /> },

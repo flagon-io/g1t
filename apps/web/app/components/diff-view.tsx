@@ -22,6 +22,7 @@ import type {
 } from "../lib/diff";
 import { Markdown } from "./markdown";
 import { Avatar, Button, EmptyState, Textarea, TimeAgo } from "./ui";
+import { Checkbox } from "./ui/checkbox";
 
 const ROW_STYLES: Record<DiffLine["kind"], string> = {
   context: "",
@@ -440,11 +441,10 @@ function FileSection({
             viewed ? "border-accent/40 bg-accent/10 text-accent" : "border-line text-muted hover:text-fg"
           }`}
         >
-          <input
-            type="checkbox"
+          <Checkbox
             checked={viewed}
-            onChange={(event) => onViewed(event.target.checked)}
-            className="accent-accent"
+            onCheckedChange={(checked) => onViewed(checked === true)}
+            className="size-3.5 rounded-[4px] [&_svg]:size-2.5"
           />
           Viewed
         </label>

@@ -21,7 +21,17 @@ export type Card =
   | { kind: "brand"; failed?: true }
   /** A page of the site that says what g1t is. */
   | { kind: "page"; address: string; eyebrow: string; title: string; description: string }
-  | { kind: "workspace"; slug: string; name: string; description: string | null; projects: number }
+  | {
+      kind: "workspace";
+      slug: string;
+      name: string;
+      description: string | null;
+      projects: number;
+      /** The uploaded icon's hash, if it has one. */
+      avatar?: string | null;
+      /** That icon as a data URI, once loaded; see `index.ts`. */
+      icon?: string;
+    }
   | {
       kind: "project";
       owner: string;
@@ -116,6 +126,7 @@ const RESERVED = new Set([
   "search",
   "workspaces",
   "brand",
+  "avatars",
   "llms.txt",
   "favicon.ico",
   "favicon.svg",
@@ -167,6 +178,7 @@ async function lookUp(parts: string[], { identity, repos, work, projects }: Sour
       name: workspace.name || workspace.slug,
       description: workspace.description,
       projects: listed?.ok ? listed.value.filter((p) => !p.private).length : 0,
+      avatar: workspace.avatar ?? null,
     };
   }
 

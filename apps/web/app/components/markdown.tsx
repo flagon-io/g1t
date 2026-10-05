@@ -15,6 +15,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
+import { Checkbox } from "./ui/checkbox";
 import { type AlertKind, type MarkdownRepo, rehypeAlerts, rehypeReferences } from "../lib/markdown-plugins";
 
 /** The text inside a React tree, for anchors and copying. */
@@ -225,7 +226,12 @@ export function Markdown({
           input({ type, checked, disabled }) {
             // Task list boxes: shown, not editable.
             return type === "checkbox" ? (
-              <input type="checkbox" checked={checked} disabled={disabled} readOnly className="mr-1.5 translate-y-0.5 accent-accent" />
+              <Checkbox
+                checked={checked === true}
+                disabled={disabled !== false}
+                aria-label={checked ? "Done" : "Not done"}
+                className="mr-1.5 inline-flex translate-y-0.5 disabled:cursor-default disabled:opacity-100"
+              />
             ) : null;
           },
           img({ src, alt }) {

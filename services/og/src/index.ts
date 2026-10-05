@@ -26,6 +26,8 @@ import { cacheKey } from "./cache.ts";
 import { BRAND, type Card, docsCard, resolve } from "./resolve.ts";
 
 interface Env {
+  /** Uploaded avatars by hash, with `{ contentType }`; written by identity. */
+  AVATARS: KVNamespace;
   IDENTITY: ServiceBinding;
   REPOS: ServiceBinding;
   WORK: ServiceBinding;
@@ -82,7 +84,13 @@ export default {
       png = await cardPng(card, ASSETS);
     } catch (error) {
       console.error("og: rendering failed", url.pathname, error);
-      return Response.redirect(FALLBACK, 302);
+      // An icon it could not draw is left out rather than losing the card.
+      if (card.kind !== "workspace" || !card.icon) return Response.redirect(FALLBACK, 302);
+      try {
+        png = await cardPng({ ...card, icon: undefined }, ASSETS);
+      } catch {
+        return Response.redirect(FALLBACK, 302);
+      }
     }
     const response = new Response(png, {
       headers: {
@@ -109,7 +117,34 @@ function withCacheControl(response: Response, failed: boolean): Response {
   return brief;
 }
 
+/** What satori can draw: PNG and JPEG. A WebP or GIF icon is left off the card. */
+const DRAWABLE = new Set(["image/png", "image/jpeg"]);
+
+/** A workspace's uploaded icon as a data URI, if it has one satori can draw. */
+async function iconFor(env: Env, avatar: string | null | undefined): Promise<string | undefined> {
+  if (!avatar || !/^[0-9a-f]{64}$/.test(avatar)) return undefined;
+  try {
+    const { value, metadata } = await env.AVATARS.getWithMetadata<{ contentType?: string }>(avatar, {
+      type: "arrayBuffer",
+    });
+    const type = metadata?.contentType;
+    if (!value || !type || !DRAWABLE.has(type)) return undefined;
+    const bytes = new Uint8Array(value);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return `data:${type};base64,${btoa(binary)}`;
+  } catch {
+    return undefined;
+  }
+}
+
 async function cardFor(url: URL, env: Env): Promise<Card> {
+  const card = await lookUpCard(url, env);
+  if (card.kind === "workspace") return { ...card, icon: await iconFor(env, card.avatar) };
+  return card;
+}
+
+async function lookUpCard(url: URL, env: Env): Promise<Card> {
   if (url.pathname === "/docs") return docsCard(url.searchParams);
   if (url.pathname === "/") return BRAND;
   return resolve(url.searchParams.get("path") ?? "/", {

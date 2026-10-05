@@ -25,7 +25,9 @@ import {
 import type { Route } from "./+types/integrations";
 import { page } from "../../lib/meta";
 import { MODEL_CATALOG, ModelCatalog, ModelProviderFields, ProviderMark, ProviderTiles, Routing } from "../../components/model-providers";
-import { Button, CopyLine, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
+import { Avatar, Button, CopyLine, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
+import { CheckboxOption } from "../../components/ui/checkbox";
+import { Combobox } from "../../components/ui/combobox";
 import { billing, integrations, repos } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
@@ -487,35 +489,35 @@ function Choices({ kind, slug, adding }: { kind: ProviderKind; slug: string; add
 function RepoField({ repos, required, hint }: { repos: string[]; required?: boolean; hint: string }) {
   return (
     <Field label="Repository" hint={hint}>
-      <select
+      <Combobox
         name="repo"
-        required={required}
         defaultValue={repos[0] ?? ""}
-        className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none hover:border-line-strong focus:border-accent-dim"
-      >
-        {!required && <option value="">None</option>}
-        {repos.map((repo) => (
-          <option key={repo} value={repo}>
-            {repo}
-          </option>
-        ))}
-      </select>
+        aria-label="Repository"
+        placeholder={repos.length === 0 ? "No repositories yet" : "Choose a repository"}
+        searchPlaceholder="Find a repository"
+        emptyText="No repository by that name."
+        options={[
+          ...(required ? [] : [{ value: "", label: "None" }]),
+          ...repos.map((repo) => ({ value: repo, label: repo, icon: <Avatar name={repo.split("/").pop() ?? repo} size={16} square /> })),
+        ]}
+        className="font-mono text-[0.8125rem]"
+      />
     </Field>
   );
 }
 
 function AssignField() {
   return (
-    <label className="flex items-start gap-2.5 text-sm">
-      <input type="checkbox" name="assign" className="mt-1 accent-[var(--color-accent)]" />
-      <span>
-        <span className="font-medium">Put a g1t agent on each new issue</span>
-        <span className="block text-xs text-muted">
-          It opens a pull request, gets reviewed, and lands through your merge rules, before anyone has
-          to look. Agents run only where g1t agents are enabled.
+    <CheckboxOption
+      name="assign"
+      label={<span className="font-medium">Put a g1t agent on each new issue</span>}
+      description={
+        <span className="text-muted">
+          It opens a pull request, gets reviewed, and lands through your merge rules, before anyone has to look.
+          Agents run only where g1t agents are enabled.
         </span>
-      </span>
-    </label>
+      }
+    />
   );
 }
 

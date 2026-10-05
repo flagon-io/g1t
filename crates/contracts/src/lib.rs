@@ -40,6 +40,27 @@ pub struct Membership {
     /// The workspace's name in URLs: `g1t.sh/<slug>`.
     pub slug: String,
     pub role: Role,
+    /// The workspace's display name, for showing it to people. Set when a
+    /// user is resolved from credentials; absent on principals made up by
+    /// a service.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// The workspace's uploaded icon: the SHA-256 of its bytes, served at
+    /// `/avatars/<avatar>`. Absent means the generated letter avatar.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
+}
+
+impl Membership {
+    /// A plain member of `slug`, as services act inside one workspace.
+    pub fn member(slug: impl Into<String>) -> Self {
+        Membership {
+            slug: slug.into(),
+            role: Role::Member,
+            name: None,
+            avatar: None,
+        }
+    }
 }
 
 /// What a set of credentials resolved to.
@@ -73,6 +94,10 @@ pub struct User {
     /// resolved from credentials, so any service can authorize from it.
     #[serde(default)]
     pub workspaces: Vec<Membership>,
+    /// The person's uploaded avatar: the SHA-256 of its bytes, served at
+    /// `/avatars/<avatar>`. Absent means the generated letter avatar.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
 }
 
 impl User {

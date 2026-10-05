@@ -23,7 +23,7 @@ const MAX_NAME_LENGTH: usize = 80;
 const MAX_DESCRIPTION_LENGTH: usize = 160;
 
 const WORKSPACE_COLUMNS: &str = "workspaces.id, workspaces.slug, workspaces.name,
-  workspaces.description, workspaces.created_at,
+  workspaces.description, workspaces.avatar, workspaces.created_at,
   (SELECT count(*) FROM workspace_members
    WHERE workspace_members.workspace_id = workspaces.id) AS member_count";
 
@@ -33,6 +33,7 @@ struct WorkspaceRow {
     slug: String,
     name: String,
     description: Option<String>,
+    avatar: Option<String>,
     created_at: String,
     member_count: u32,
 }
@@ -46,6 +47,7 @@ impl From<WorkspaceRow> for Workspace {
             description: row.description,
             created_at: row.created_at,
             member_count: row.member_count,
+            avatar: row.avatar,
         }
     }
 }
@@ -58,11 +60,13 @@ struct MemberRow {
 
 impl Identity {
     /// The workspaces a user belongs to, attached to every user resolved
-    /// from credentials.
+    /// from credentials, with what the site needs to show each one.
     pub async fn memberships(&self, user_id: &str) -> Result<Vec<Membership>> {
         self.db
             .prepare(
-                "SELECT workspaces.slug, workspace_members.role FROM workspace_members
+                "SELECT workspaces.slug, workspace_members.role, workspaces.name,
+                   workspaces.avatar
+                 FROM workspace_members
                  JOIN workspaces ON workspaces.id = workspace_members.workspace_id
                  WHERE workspace_members.user_id = ? ORDER BY workspaces.slug",
             )
@@ -129,6 +133,7 @@ impl Identity {
             slug,
             created_at: rfc3339(now),
             member_count: 1,
+            avatar: None,
         };
         self.db
             .batch(vec![

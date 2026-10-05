@@ -3,6 +3,7 @@ import { Form, redirect } from "react-router";
 
 import type { Route } from "./+types/pull-new";
 import { page } from "../../lib/meta";
+import { Combobox } from "../../components/ui/combobox";
 import {
   Button,
   CopyLine,
@@ -93,18 +94,15 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-sm">
         <GitBranch size={15} className="text-faint" />
         <span className="text-muted">Merge</span>
-        <select
+        <Combobox
           name="branch"
           defaultValue={branches.includes(selected) ? selected : branches[0]}
           aria-label="Branch to merge"
-          className="rounded-md border border-line bg-bg px-2 py-1 font-mono text-sm"
-        >
-          {branches.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
+          searchPlaceholder="Find a branch"
+          emptyText="No branch by that name."
+          options={branches.map((name) => ({ value: name, label: name, icon: <GitBranch /> }))}
+          className="h-8 w-auto max-w-full min-w-40 font-mono"
+        />
         <span className="text-muted">into</span>
         <span className="font-mono">{defaultBranch}</span>
       </div>

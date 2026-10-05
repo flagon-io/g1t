@@ -3,7 +3,9 @@ import { Form, Link } from "react-router";
 
 import type { Route } from "./+types/settings";
 import { page } from "../lib/meta";
+import { AvatarField } from "../components/avatar-field";
 import { Button, ErrorText, Field, Input, TimeAgo } from "../components/ui";
+import { readAvatarUpload } from "../lib/avatar-upload";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
 
 export function meta(args: Route.MetaArgs) {
@@ -27,6 +29,17 @@ export async function action({ request, context }: Route.ActionArgs) {
   const id = String(form.get("id") ?? "");
 
   switch (form.get("intent")) {
+    // The picture: identity checks the image's bytes again.
+    case "avatar": {
+      const upload = await readAvatarUpload(form);
+      if ("error" in upload) return { avatarError: upload.error };
+      const result = await identity.setUserAvatar(user, upload.image);
+      return result.ok ? null : { avatarError: result.error.message };
+    }
+    case "remove-avatar": {
+      const result = await identity.setUserAvatar(user, null);
+      return result.ok ? null : { avatarError: result.error.message };
+    }
     case "add-key": {
       const result = await identity.addSshKey(
         user,
@@ -89,6 +102,17 @@ export default function Settings({
         </p>
       </header>
       <div className="max-w-2xl space-y-12">
+      <section id="picture" className="scroll-mt-20">
+        <h2 className="font-medium">Picture</h2>
+        <div className="mt-4">
+          <AvatarField
+            name={user.username}
+            image={user.avatar}
+            error={actionData && "avatarError" in actionData ? actionData.avatarError : undefined}
+            about="Shown beside your username in the sidebar and on mission control. Without one, g1t draws your first letter."
+          />
+        </div>
+      </section>
       <section id="ssh-keys" className="scroll-mt-20">
         <h2 className="font-medium">SSH keys</h2>
         <ul className="mt-4 divide-y divide-line rounded-md border border-line empty:hidden">

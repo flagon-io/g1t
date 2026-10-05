@@ -16,6 +16,7 @@ import type { Comment, Issue, Pull, State } from "@g1t/contracts";
 import { repoAt } from "../lib/markdown-plugins";
 import { Markdown } from "./markdown";
 import { Avatar, Button, Textarea, TimeAgo } from "./ui";
+import { CheckboxOption } from "./ui/checkbox";
 
 /** Hues for the labels every repository starts with. */
 const LABEL_HUES: Record<string, number> = {
@@ -426,17 +427,20 @@ export function PeoplePicker({
       {people.length > 0 && (
         <div className="space-y-1.5">
           {people.map((person) => (
-            <label key={person} className="flex cursor-pointer items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                name={name}
-                value={person}
-                defaultChecked={chosen.includes(person)}
-                className="accent-accent"
-              />
-              <Avatar name={person} size={18} />
-              <span className="font-mono text-xs">{person}</span>
-            </label>
+            <CheckboxOption
+              key={person}
+              name={name}
+              value={person}
+              defaultChecked={chosen.includes(person)}
+              className="items-center"
+              labelClassName="flex items-center gap-2"
+              label={
+                <>
+                  <Avatar name={person} size={18} />
+                  <span className="font-mono text-xs">{person}</span>
+                </>
+              }
+            />
           ))}
         </div>
       )}

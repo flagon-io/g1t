@@ -570,10 +570,8 @@ impl Integrations {
             username: workspace.slug.clone(),
             kind: PrincipalKind::Workspace,
             verified: true,
-            workspaces: vec![Membership {
-                slug: workspace.slug,
-                role: Role::Member,
-            }],
+            workspaces: vec![Membership::member(workspace.slug)],
+            ..User::default()
         }))
     }
 

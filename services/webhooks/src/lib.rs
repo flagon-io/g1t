@@ -154,10 +154,8 @@ fn workspace_viewer(slug: &str) -> Viewer {
         username: slug.to_owned(),
         kind: PrincipalKind::Workspace,
         verified: true,
-        workspaces: vec![Membership {
-            slug: slug.to_owned(),
-            role: Role::Member,
-        }],
+        workspaces: vec![Membership::member(slug.to_owned())],
+        ..User::default()
     })
 }
 

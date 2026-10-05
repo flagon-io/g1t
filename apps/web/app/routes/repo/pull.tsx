@@ -50,6 +50,7 @@ import {
   Textarea,
   TimeAgo,
 } from "../../components/ui";
+import { CheckboxOption } from "../../components/ui/checkbox";
 import { WorkflowStatuses } from "../../components/actions";
 import { ChecksPanel } from "../../components/checks";
 import {
@@ -850,27 +851,18 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   {canMerge && !landing && lifecycle?.stage !== "queued" && (
                     <Form method="post" className="space-y-3 px-4 py-3">
                       {issue?.state === "open" && (
-                        <label className="flex items-start gap-2 text-xs text-muted">
-                          <input
-                            type="checkbox"
-                            name="keepIssueOpen"
-                            className="mt-0.5 accent-accent"
-                          />
-                          <span>Keep #{issue.number} open. This is only part of the work.</span>
-                        </label>
+                        <CheckboxOption
+                          name="keepIssueOpen"
+                          label={`Keep #${issue.number} open. This is only part of the work.`}
+                          labelClassName="text-xs text-muted"
+                        />
                       )}
                       {unchecked && canIgnoreChecks && (
-                        <label className="flex items-start gap-2 text-xs text-muted">
-                          <input
-                            type="checkbox"
-                            name="ignoreChecks"
-                            className="mt-0.5 accent-accent"
-                          />
-                          <span>
-                            Merge although the checks{" "}
-                            {checking ? "have not finished" : "did not pass"}.
-                          </span>
-                        </label>
+                        <CheckboxOption
+                          name="ignoreChecks"
+                          label={`Merge although the checks ${checking ? "have not finished" : "did not pass"}.`}
+                          labelClassName="text-xs text-muted"
+                        />
                       )}
                       <div className="flex flex-wrap items-center gap-3">
                         <Button

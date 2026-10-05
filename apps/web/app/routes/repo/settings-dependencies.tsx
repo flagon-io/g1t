@@ -6,7 +6,8 @@ import type { DependencyLink } from "@g1t/contracts";
 import type { Route } from "./+types/settings-dependencies";
 import { page } from "../../lib/meta";
 import { RepoSettingsTabs } from "../../components/repo-settings-tabs";
-import { Button, EmptyState, ErrorText, Field, Input } from "../../components/ui";
+import { Avatar, Button, EmptyState, ErrorText, Field, Input } from "../../components/ui";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
@@ -121,13 +122,23 @@ export default function DependencySettings({ loaderData, actionData, params }: R
           <Form method="post" className="mt-4 grid items-end gap-3 rounded-xl border border-line bg-surface p-4 sm:grid-cols-[1fr_1fr_auto]">
             <input type="hidden" name="intent" value="add" />
             <Field label="Project">
-              <select name="on" required className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm">
-                {choices.map((project) => (
-                  <option key={project.slug} value={project.slug}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
+              <Select name="on" required defaultValue={choices[0].slug}>
+                <SelectTrigger aria-label="Project" className="h-auto py-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {choices.map((project) => (
+                    <SelectItem
+                      key={project.slug}
+                      value={project.slug}
+                      icon={<Avatar name={project.name} size={16} square />}
+                      description={project.slug !== project.name ? project.slug : undefined}
+                    >
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
             <Field label="Its address as">
               <Input name="as" placeholder="API_URL" className="font-mono" />

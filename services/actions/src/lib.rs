@@ -25,7 +25,7 @@ mod views;
 use g1t_contracts::events::Event;
 use g1t_contracts::identity::{SlugArgs, Workspace};
 use g1t_contracts::repos::{GetArgs, GetByIdArgs, Repo, RepoPath};
-use g1t_contracts::{FailureCode, Membership, Outcome, PrincipalKind, Role, User, Viewer};
+use g1t_contracts::{FailureCode, Membership, Outcome, PrincipalKind, User, Viewer};
 use g1t_kit::{args, reply, rpc_method};
 use g1t_secrets::Sealer;
 use serde::Deserialize;
@@ -102,10 +102,8 @@ impl Actions {
             username: workspace.slug.clone(),
             kind: PrincipalKind::Workspace,
             verified: true,
-            workspaces: vec![Membership {
-                slug: workspace.slug,
-                role: Role::Member,
-            }],
+            workspaces: vec![Membership::member(workspace.slug)],
+            ..User::default()
         }))
     }
 

@@ -3,13 +3,14 @@
  * fields each one asks for, and the routing of each kind of work to a
  * provider and model.
  */
-import { Bot, ChevronRight, Webhook } from "lucide-react";
+import { Bot, ChevronRight, Sparkles, Webhook } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Form, Link } from "react-router";
 
 import { type Connection, MODEL_TASKS, type ModelRoute, type ModelTask, type Provider, PROVIDERS } from "@g1t/contracts";
 
 import { Button, Field, Input } from "./ui";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "./ui/select";
 
 type Group = "labs" | "platforms" | "any";
 
@@ -244,6 +245,9 @@ export function ModelCatalog({ slug, adding }: { slug: string; adding: Provider 
   );
 }
 
+/** Radix Select items cannot be "": the routing value for "same as everything". */
+const SAME = "same";
+
 const SELECT =
   "w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none hover:border-line-strong focus:border-accent-dim disabled:opacity-60";
 
@@ -289,10 +293,19 @@ export function ModelProviderFields({ provider }: { provider: Provider }): React
           <Input name="secret" type="password" />
         </Field>
         <Field label="Send the key as">
-          <select name="authHeader" className={SELECT} defaultValue={anthropic ? "x-api-key" : "authorization"}>
-            <option value="x-api-key">x-api-key</option>
-            <option value="authorization">Authorization: Bearer</option>
-          </select>
+          <Select name="authHeader" defaultValue={anthropic ? "x-api-key" : "authorization"}>
+            <SelectTrigger aria-label="Send the key as" className="font-mono text-[0.8125rem]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="x-api-key" description="Anthropic's header" className="font-mono text-[0.8125rem]">
+                x-api-key
+              </SelectItem>
+              <SelectItem value="authorization" description="OpenAI's header, and most others" className="font-mono text-[0.8125rem]">
+                Authorization: Bearer
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
         {GATEWAY_TOKEN}
         <Field
@@ -399,23 +412,43 @@ export function Routing({
                 <p className="text-xs text-faint">{TASK_LABELS[task].hint}</p>
               </div>
               <input type="hidden" name={`route-${task}`} value={value} />
-              <select
-                aria-label={`${TASK_LABELS[task].label}: provider`}
+              <Select
                 disabled={!owner}
-                value={choice.target}
-                onChange={(event) => set(task, { target: event.target.value, model: "" })}
-                className={SELECT}
+                value={choice.target || SAME}
+                onValueChange={(target) => set(task, { target: target === SAME ? "" : target, model: "" })}
               >
-                {task !== "default" && <option value="">Same as everything</option>}
-                <option value="g1t" disabled={!hostedOpen}>
-                  g1t's models{hostedOpen ? ` · credit at cost + ${marginPercent}%` : " · not open to this workspace yet"}
-                </option>
-                {connections.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger aria-label={`${TASK_LABELS[task].label}: provider`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {task !== "default" && (
+                    <>
+                      <SelectItem value={SAME} description="Follows the choice for everything">
+                        Same as everything
+                      </SelectItem>
+                      <SelectSeparator />
+                    </>
+                  )}
+                  <SelectItem
+                    value="g1t"
+                    disabled={!hostedOpen}
+                    icon={<Sparkles />}
+                    description={hostedOpen ? `Credit at cost + ${marginPercent}%` : "Not open to this workspace yet"}
+                  >
+                    g1t's models
+                  </SelectItem>
+                  {connections.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>Your providers</SelectLabel>
+                      {connections.map((c) => (
+                        <SelectItem key={c.id} value={c.id} icon={<Bot />} description={PROVIDERS[c.provider]?.label}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
+                </SelectContent>
+              </Select>
               <div>
                 <input
                   aria-label={`${TASK_LABELS[task].label}: model`}

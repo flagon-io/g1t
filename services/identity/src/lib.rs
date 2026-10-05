@@ -4,6 +4,7 @@
 //! the methods and their arguments.
 
 mod admin;
+mod avatars;
 mod crypto;
 mod device;
 mod email;
@@ -32,6 +33,9 @@ struct Account {
     id: String,
     username: String,
     verified: u8,
+    /// Selected only where the person is being shown to themselves.
+    #[serde(default)]
+    avatar: Option<String>,
 }
 
 impl From<Account> for User {
@@ -40,6 +44,7 @@ impl From<Account> for User {
             id: row.id,
             username: row.username,
             verified: row.verified != 0,
+            avatar: row.avatar,
             ..User::default()
         }
     }
@@ -389,7 +394,8 @@ impl Identity {
     async fn user_for_session(&self, a: SessionArgs) -> Result<Viewer> {
         self.find_user(
             &format!(
-                "SELECT users.id, users.username, users.email_verified_at IS NOT NULL AS verified
+                "SELECT users.id, users.username, users.email_verified_at IS NOT NULL AS verified,
+                   users.avatar
                  FROM sessions JOIN users ON users.id = sessions.user_id
                  WHERE sessions.id = ? AND sessions.expires_at > {SQL_NOW}"
             ),
@@ -540,6 +546,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "add_member" => reply(&identity.add_member(args(body)?).await?),
         "remove_member" => reply(&identity.remove_member(args(body)?).await?),
         "update_workspace" => reply(&identity.update_workspace(args(body)?).await?),
+        "set_workspace_avatar" => reply(&identity.set_workspace_avatar(args(body)?).await?),
+        "set_user_avatar" => reply(&identity.set_user_avatar(args(body)?).await?),
         "list_workspace_tokens" => reply(&identity.list_workspace_tokens(args(body)?).await?),
         "create_workspace_token" => reply(&identity.create_workspace_token(args(body)?).await?),
         "remove_workspace_token" => reply(&identity.remove_workspace_token(args(body)?).await?),

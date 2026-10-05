@@ -13,7 +13,7 @@ use g1t_contracts::events::PullEvent;
 use g1t_contracts::repos::{GetByIdArgs, Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
-use g1t_contracts::{FailureCode, Membership, Outcome, Role, User, Viewer};
+use g1t_contracts::{FailureCode, Membership, Outcome, User, Viewer};
 use g1t_kit::now_ms;
 use std::collections::HashMap;
 
@@ -880,10 +880,7 @@ impl Work {
             id: POLICY_ACTOR_ID.to_owned(),
             username: POLICY_ACTOR_NAME.to_owned(),
             verified: true,
-            workspaces: vec![Membership {
-                slug: repo.namespace.clone(),
-                role: Role::Member,
-            }],
+            workspaces: vec![Membership::member(repo.namespace.clone())],
             ..User::default()
         };
         let merged = self

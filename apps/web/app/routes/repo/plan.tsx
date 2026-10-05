@@ -10,6 +10,7 @@ import { Markdown } from "../../components/markdown";
 import { Activity, Exchanges } from "../../components/activity";
 import { Outcome } from "../../components/outcome";
 import { Button, ErrorText, TimeAgo } from "../../components/ui";
+import { Checkbox } from "../../components/ui/checkbox";
 import { Label } from "../../components/work";
 import { billing, events, identity, work } from "../../lib/services.server";
 import {
@@ -185,13 +186,12 @@ export default function PlanPage({ loaderData, actionData, params }: Route.Compo
                   className="flex gap-3 rounded-xl border border-line bg-surface p-4"
                 >
                   {plan.status === "ready" ? (
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       name="keep"
-                      value={position}
+                      value={String(position)}
                       defaultChecked
                       aria-label={`Open issue ${position}`}
-                      className="mt-1.5 accent-accent"
+                      className="mt-1"
                     />
                   ) : (
                     <span className="mt-0.5 w-5 shrink-0 text-center font-mono text-sm text-faint">

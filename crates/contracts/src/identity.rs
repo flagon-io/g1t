@@ -242,6 +242,10 @@ pub struct Workspace {
     /// RFC 3339.
     pub created_at: String,
     pub member_count: u32,
+    /// The workspace's uploaded icon: the SHA-256 of its bytes, served at
+    /// `/avatars/<avatar>`. Null means the generated letter avatar.
+    #[serde(default)]
+    pub avatar: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -290,6 +294,27 @@ pub struct UpdateWorkspaceArgs {
     pub name: String,
     pub description: String,
 }
+
+/// `set_workspace_avatar`: owners only. `image` is the file's bytes in
+/// base64: PNG, JPEG, WebP or GIF, at most `MAX_AVATAR_BYTES`. Null removes
+/// the icon. Returns `Outcome<Workspace>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetWorkspaceAvatarArgs {
+    pub actor: User,
+    pub slug: String,
+    pub image: Option<String>,
+}
+
+/// `set_user_avatar`: a person's own avatar, as `SetWorkspaceAvatarArgs`.
+/// Returns `Outcome<Option<String>>`: the new avatar, or null once removed.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetUserAvatarArgs {
+    pub user: User,
+    pub image: Option<String>,
+}
+
+/// The largest avatar that can be uploaded, in bytes.
+pub const MAX_AVATAR_BYTES: usize = 1024 * 1024;
 
 /// `list_workspace_tokens`: members only. Returns
 /// `Outcome<Vec<AccessToken>>`.

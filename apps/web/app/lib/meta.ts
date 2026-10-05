@@ -40,7 +40,7 @@ type ProjectData = {
   project?: { name?: string; description?: string | null } | null;
   open?: { issues?: number; pulls?: number };
 };
-type WorkspaceData = { workspace?: { name?: string; description?: string | null } };
+type WorkspaceData = { workspace?: { name?: string; description?: string | null; avatar?: string | null } };
 
 function loaded<T>(args: PageArgs, id: string): T | undefined {
   return args.matches.find((match) => match?.id === id)?.loaderData as T | undefined;
@@ -101,7 +101,12 @@ export function page(args: PageArgs, meta: PageMeta): MetaDescriptor[] {
     (project
       ? [project.project?.name, project.project?.description ?? project.repo?.description, project.open]
       : workspace
-        ? [workspace.workspace?.name, workspace.workspace?.description]
+        ? [
+            workspace.workspace?.name,
+            workspace.workspace?.description,
+            // Only when there is one, so cards without an icon keep their address.
+            ...(workspace.workspace?.avatar ? [workspace.workspace.avatar] : []),
+          ]
         : undefined);
   const pathname = args.location.pathname.replace(/\/+$/, "") || "/";
   // The title a preview shows needs no "· g1t": the site name is beside it.

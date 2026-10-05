@@ -5,6 +5,7 @@ import { Form, Link, useNavigation } from "react-router";
 import type { Route } from "./+types/issues";
 import { page } from "../../lib/meta";
 import { Button, ButtonLink, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
+import { Checkbox } from "../../components/ui/checkbox";
 import {
   Assignee,
   AssigneeStack,
@@ -153,14 +154,13 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
             {issues.map((issue) => (
               <li key={issue.id} className="flex items-start transition-colors hover:bg-surface">
                 {assignable && (
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     name="issue"
-                    value={issue.number}
+                    value={String(issue.number)}
                     // Already being worked on: nothing more to hand over.
                     disabled={issue.agent != null || issue.queued}
                     aria-label={`Select issue #${issue.number}`}
-                    className="mt-4 ml-4 accent-accent disabled:opacity-30"
+                    className="mt-4 ml-4 disabled:opacity-30"
                   />
                 )}
                 <Link

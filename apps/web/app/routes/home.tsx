@@ -153,7 +153,21 @@ type Step = { done: boolean; title: string; about: string; to: string | null; ac
  * what is moving in it, and the way to its people and settings. The rest of
  * the page stays the viewer's own, across every workspace.
  */
-function WorkspaceCard({ slug, role, repos, active }: { slug: string; role: string; repos: Repo[]; active: Active[] }) {
+function WorkspaceCard({
+  slug,
+  name,
+  avatar,
+  role,
+  repos,
+  active,
+}: {
+  slug: string;
+  name: string;
+  avatar?: string | null;
+  role: string;
+  repos: Repo[];
+  active: Active[];
+}) {
   const mine = active.filter((item) => item.repo.namespace.toLowerCase() === slug);
   const stats = [
     { value: repos.filter((repo) => repo.namespace.toLowerCase() === slug).length, label: "repositories" },
@@ -163,12 +177,14 @@ function WorkspaceCard({ slug, role, repos, active }: { slug: string; role: stri
   return (
     <div className="rounded-xl border border-line bg-surface p-5">
       <div className="flex items-center gap-3">
-        <Avatar name={slug} size={32} square />
+        <Avatar name={slug} image={avatar} size={32} square />
         <div className="min-w-0">
-          <Link to={`/${slug}`} className="block truncate font-medium hover:underline">
-            {slug}
+          <Link to={`/${slug}`} title={name} className="block truncate font-medium hover:underline">
+            {name}
           </Link>
-          <p className="text-xs text-muted">Workspace · {role}</p>
+          <p className="truncate text-xs text-muted">
+            <span className="font-mono">g1t.sh/{slug}</span> · <span className="capitalize">{role}</span>
+          </p>
         </div>
       </div>
       <dl className="mt-4 grid grid-cols-3 gap-2">
@@ -339,7 +355,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       <div className="min-w-0 space-y-10">
         <section>
           <div className="flex items-center gap-3">
-            <Avatar name={viewer.username} size={36} />
+            <Avatar name={viewer.username} image={viewer.avatar} size={36} />
             <div>
               <h1 className="text-xl font-semibold tracking-tight">
                 Mission control
@@ -429,6 +445,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         {shell?.workspace && (
           <WorkspaceCard
             slug={shell.workspace.slug.toLowerCase()}
+            name={shell.workspace.name || shell.workspace.slug}
+            avatar={shell.workspace.avatar}
             role={shell.workspace.role}
             repos={repos}
             active={active}

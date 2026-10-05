@@ -19,5 +19,8 @@
 		}
 	],
 	"send_email": [{ "name": "EMAIL", "remote": true }],
+	// Uploaded avatars, keyed by the SHA-256 of their bytes. Only this
+	// service writes them; the site reads them to serve /avatars/<hash>.
+	"kv_namespaces": [{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }],
 	"observability": { "enabled": true }
 }

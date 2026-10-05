@@ -67,6 +67,8 @@ export function identityClient(service: ServiceBinding): IdentityApi {
       call("remove_member", { actor, slug, username }),
     updateWorkspace: (actor, slug, details) =>
       call("update_workspace", { actor, slug, ...details }),
+    setWorkspaceAvatar: (actor, slug, image) => call("set_workspace_avatar", { actor, slug, image }),
+    setUserAvatar: (user, image) => call("set_user_avatar", { user, image }),
     listWorkspaceTokens: (slug, viewer) => call("list_workspace_tokens", { slug, viewer }),
     createWorkspaceToken: (actor, slug, name) =>
       call("create_workspace_token", { actor, slug, name }),

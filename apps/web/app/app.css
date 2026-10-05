@@ -27,6 +27,54 @@
 
   --animate-fade-up: fade-up 0.6s ease-out both;
   --animate-dash: dash 1.2s linear infinite;
+
+  /* Menus, popovers and dialogs (components/ui): in quickly, out quicker. */
+  --animate-pop-in: pop-in 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-pop-out: pop-out 0.1s ease-in forwards;
+  --animate-fade-in: fade-in 0.16s ease-out;
+  --animate-fade-out: fade-out 0.12s ease-in forwards;
+  --animate-dialog-in: dialog-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-dialog-out: dialog-out 0.12s ease-in forwards;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-2px);
+  }
+}
+
+@keyframes pop-out {
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+}
+
+@keyframes dialog-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
 }
 
 @keyframes fade-up {

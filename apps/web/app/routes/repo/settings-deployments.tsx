@@ -4,6 +4,7 @@ import type { Route } from "./+types/settings-deployments";
 import { page } from "../../lib/meta";
 import { RepoSettingsTabs } from "../../components/repo-settings-tabs";
 import { Button, ErrorText, Field, Input } from "../../components/ui";
+import { SwitchCard } from "../../components/ui/switch";
 import { deployments } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
@@ -43,13 +44,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 function Check({ name, on, title, children }: { name: string; on: boolean; title: string; children: string }) {
   return (
-    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface p-4 hover:border-line-strong">
-      <input type="checkbox" name={name} defaultChecked={on} className="mt-1 accent-accent" />
-      <span>
-        <span className="block text-sm font-medium">{title}</span>
-        <span className="mt-1 block text-sm text-muted">{children}</span>
-      </span>
-    </label>
+    <SwitchCard name={name} defaultChecked={on} title={title}>
+      {children}
+    </SwitchCard>
   );
 }
 

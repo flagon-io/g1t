@@ -191,7 +191,7 @@ function Header({ user }: { user: User | null | undefined }) {
                   aria-label="Account menu"
                   className="flex items-center gap-1.5 rounded-md p-1 outline-none transition-colors hover:bg-raised data-[state=open]:bg-raised"
                 >
-                  <Avatar name={user.username} size={24} />
+                  <Avatar name={user.username} image={user.avatar} size={24} />
                   <ChevronDown size={14} className="text-faint" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
@@ -205,8 +205,8 @@ function Header({ user }: { user: User | null | undefined }) {
                   {(user.workspaces ?? []).map((membership) => (
                     <DropdownMenuItem asChild key={membership.slug}>
                       <Link to={`/${membership.slug}`}>
-                        <Avatar name={membership.slug} size={16} square />
-                        {membership.slug}
+                        <Avatar name={membership.slug} image={membership.avatar} size={16} square />
+                        <span className="min-w-0 truncate">{membership.name || membership.slug}</span>
                       </Link>
                     </DropdownMenuItem>
                   ))}

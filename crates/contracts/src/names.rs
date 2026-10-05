@@ -14,6 +14,7 @@ const RESERVED: &[&str] = &[
     "issues",
     "oauth",
     "assets",
+    "avatars",
     "docs",
     "explore",
     "g1t",

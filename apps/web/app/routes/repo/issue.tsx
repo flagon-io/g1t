@@ -18,6 +18,7 @@ import {
   Textarea,
   TimeAgo,
 } from "../../components/ui";
+import { CheckboxOption } from "../../components/ui/checkbox";
 import { CheckBadge } from "../../components/checks";
 import {
   Assignee,
@@ -609,16 +610,14 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
               <input type="hidden" name="action" value="labels" />
               <div className="flex flex-wrap gap-x-3 gap-y-2">
                 {labels.map((name) => (
-                  <label key={name} className="flex cursor-pointer items-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      name="label"
-                      value={name}
-                      defaultChecked={issue.labels.includes(name)}
-                      className="accent-accent"
-                    />
-                    <Label name={name} />
-                  </label>
+                  <CheckboxOption
+                    key={name}
+                    name="label"
+                    value={name}
+                    defaultChecked={issue.labels.includes(name)}
+                    label={<Label name={name} />}
+                    className="items-center gap-1.5"
+                  />
                 ))}
               </div>
               <Input name="labels" placeholder="New labels, comma separated" />

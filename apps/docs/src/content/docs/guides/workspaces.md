@@ -1,6 +1,6 @@
 ---
 title: Workspaces
-description: Workspaces, members and roles, and access tokens that belong to a workspace.
+description: Workspaces, their names and icons, members and roles, and access tokens that belong to a workspace.
 ---
 
 A workspace owns repositories and is the first part of their address:
@@ -37,6 +37,36 @@ thing wherever it appears. Your username is reserved for you: only you can
 create a workspace with that name, and nobody can register a username that
 is already a workspace.
 
+## Display name, slug and icon
+
+A workspace has two names:
+
+| | Example | Where it appears | Changes |
+| --- | --- | --- | --- |
+| **Display name** | `Flagon Industries` | The sidebar, the top of its page, mission control and link previews | Any time, up to 80 characters; spaces and capitals are fine |
+| **Slug** | `flagon` | Every address: `g1t.sh/flagon/<repo>` and clone URLs | Never, so links and clones keep working |
+
+Without a display name, the slug is shown. Where an address is shown, the
+slug is in monospace beside the name. Owners change the display name and
+description on **Settings → General**; from the API, `update_workspace`.
+
+A workspace also has an icon, as an organization does on GitHub. Without
+one, g1t draws its first letter in a colour of its own. To upload one, an
+owner opens **Settings → General** and picks an image:
+
+- PNG, JPEG, WebP or GIF, at most 1 MB. Square images look best.
+- An image is checked by its contents, not its name. SVG is refused,
+  because it can carry script.
+- **Remove** goes back to the letter.
+
+The icon then shows wherever the workspace does, and on its link previews
+(PNG and JPEG icons only). Each image is served from
+`g1t.sh/avatars/<sha256>`, an address named after its contents, so an icon
+that changes gets a new address and nothing shows the old one.
+
+You can upload a picture of yourself the same way, under
+[Settings → Picture](https://g1t.sh/settings#picture).
+
 ## Members and roles
 
 | Role | Can |
@@ -58,7 +88,7 @@ slides the sidebar over to the workspace's settings:
 
 | Settings | Who | |
 | --- | --- | --- |
-| **General** | Owners | The display name and a one-line description. |
+| **General** | Owners | The icon, the display name and a one-line description. The slug is shown, and cannot be changed. |
 | **Members** | Members | Who belongs, and their roles. Owners add and remove people. |
 | **Access tokens** | Members | The workspace's own tokens. Owners create and delete them. |
 | **Billing and plans** | Members | [Plans](/guides/usage-and-billing/#plans), the balance and the statement. Owners turn plans on and add credit. |

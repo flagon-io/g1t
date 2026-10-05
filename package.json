@@ -2,7 +2,11 @@
   "name": "g1t-monorepo",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*", "services/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
     "deploy": "npm run deploy -w @g1t/web"
@@ -10,5 +14,8 @@
   "devDependencies": {
     "typescript": "^5.9.3",
     "wrangler": "^4.146.0"
+  },
+  "overrides": {
+    "fflate": "^0.7.5"
   }
 }

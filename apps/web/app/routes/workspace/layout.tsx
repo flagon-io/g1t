@@ -19,7 +19,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
 /** A workspace's own pages, each with its title and what it is for. */
 const PAGES: Record<string, { title: string; about: string }> = {
-  settings: { title: "General", about: "The workspace's name, address and description." },
+  settings: { title: "General", about: "The workspace's name, icon, address and description." },
   people: {
     title: "Members",
     about: "Members create repositories, push, manage issues and merge pull requests. Owners also manage members, tokens, billing and integrations.",
@@ -68,7 +68,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
       <div className="border-b border-line bg-surface/60">
         <div className="mx-auto max-w-6xl px-4 pt-8">
           <div className="flex flex-wrap items-center gap-4">
-            <Avatar name={workspace.slug} size={52} square />
+            <Avatar name={workspace.slug} image={workspace.avatar} size={52} square />
             <div className="min-w-0 grow">
               <div className="flex flex-wrap items-center gap-2.5">
                 <h1 className="truncate text-2xl font-semibold tracking-tight">

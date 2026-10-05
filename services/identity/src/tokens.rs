@@ -105,10 +105,8 @@ impl Identity {
                 username: AGENT_NAME.to_owned(),
                 kind: PrincipalKind::Agent,
                 verified: true,
-                workspaces: vec![Membership {
-                    slug: scope.repo.namespace,
-                    role: Role::Member,
-                }],
+                workspaces: vec![Membership::member(scope.repo.namespace)],
+                ..User::default()
             }));
         }
         let viewer = match (&presented.user_id, &presented.workspace_id) {
@@ -143,10 +141,8 @@ impl Identity {
             username: workspace.slug.clone(),
             kind: PrincipalKind::Workspace,
             verified: true,
-            workspaces: vec![Membership {
-                slug: workspace.slug,
-                role: Role::Member,
-            }],
+            workspaces: vec![Membership::member(workspace.slug)],
+            ..User::default()
         }))
     }
 

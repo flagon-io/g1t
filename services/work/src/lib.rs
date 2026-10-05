@@ -132,10 +132,7 @@ impl Work {
         if let Some(path) = path
             && !author.is_member(&path.namespace.to_lowercase())
         {
-            author.workspaces.push(g1t_contracts::Membership {
-                slug: path.namespace.to_lowercase(),
-                role: g1t_contracts::Role::Member,
-            });
+            author.workspaces.push(g1t_contracts::Membership::member(path.namespace.to_lowercase()));
         }
         Ok(Some(author))
     }

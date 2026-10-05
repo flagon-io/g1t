@@ -20,12 +20,29 @@ export type User = {
    * credentials, so any service can authorize from it.
    */
   workspaces?: Membership[];
+  /**
+   * The person's uploaded avatar: the SHA-256 of its bytes, served at
+   * `/avatars/<avatar>`. Only set on the signed-in person; absent means
+   * the generated letter avatar.
+   */
+  avatar?: string;
 };
 
 /** What a member may do: an owner also manages the workspace's members. */
 export type Role = "owner" | "member";
 
-export type Membership = { slug: string; role: Role };
+export type Membership = {
+  /** The workspace's name in URLs: `g1t.sh/<slug>`. */
+  slug: string;
+  role: Role;
+  /** Its display name. Set on users resolved from credentials. */
+  name?: string;
+  /** Its uploaded icon, as `Workspace.avatar`. */
+  avatar?: string;
+};
+
+/** The largest avatar that can be uploaded, in bytes. */
+export const MAX_AVATAR_BYTES = 1024 * 1024;
 
 /**
  * A workspace: the owner of repositories, and the first segment of their
@@ -40,6 +57,11 @@ export type Workspace = {
   /** RFC 3339. */
   createdAt: string;
   memberCount: number;
+  /**
+   * The workspace's uploaded icon: the SHA-256 of its bytes, served at
+   * `/avatars/<avatar>`. Null means the generated letter avatar.
+   */
+  avatar: string | null;
 };
 
 export type Member = { username: string; role: Role };
@@ -209,6 +231,13 @@ export interface IdentityApi {
   removeMember(actor: User, slug: string, username: string): Promise<Result<boolean>>;
   /** Owners only. An empty name falls back to the slug. */
   updateWorkspace(actor: User, slug: string, details: { name: string; description: string }): Promise<Result<Workspace>>;
+  /**
+   * Owners only. `image` is the file in base64: PNG, JPEG, WebP or GIF, at
+   * most `MAX_AVATAR_BYTES`, checked by its bytes. Null removes the icon.
+   */
+  setWorkspaceAvatar(actor: User, slug: string, image: string | null): Promise<Result<Workspace>>;
+  /** A person's own avatar, as `setWorkspaceAvatar`: the new one, or null. */
+  setUserAvatar(user: User, image: string | null): Promise<Result<string | null>>;
 
   /**
    * A workspace's own access tokens. They belong to the workspace, act as

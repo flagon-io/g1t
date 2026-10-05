@@ -13,6 +13,9 @@ import type { Setting } from "@g1t/contracts";
 
 import type { SecretsAction, SecretsData } from "../lib/secrets.server";
 import { Button, ButtonLink, EmptyState, ErrorText, TimeAgo } from "./ui";
+import { CheckboxOption } from "./ui/checkbox";
+import { RadioCard, RadioGroup, RadioOption } from "./ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "./ui/select";
 
 /** The environments every deployment knows; workflow jobs may name others. */
 const KNOWN_ENVIRONMENTS = ["production", "preview"];
@@ -100,19 +103,31 @@ export function SecretsPanel({
             className={`${SELECT} w-full pl-9`}
           />
         </label>
-        <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Type" className={SELECT}>
-          <option value="all">All types</option>
-          <option value="secret">Secret</option>
-          <option value="variable">Config</option>
-        </select>
-        <select value={environment} onChange={(e) => setEnvironment(e.target.value)} aria-label="Environment" className={SELECT}>
-          <option value="all">All environments</option>
-          {environments.map((env) => (
-            <option key={env} value={env}>
-              {environmentsLabel([env])}
-            </option>
-          ))}
-        </select>
+        <Select value={type} onValueChange={setType}>
+          <SelectTrigger aria-label="Type" className="h-auto w-auto py-2">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent align="end">
+            <SelectItem value="all">All types</SelectItem>
+            <SelectSeparator />
+            <SelectItem value="secret" icon={<Lock />}>Secret</SelectItem>
+            <SelectItem value="variable" icon={<SlidersHorizontal />}>Config</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={environment} onValueChange={setEnvironment}>
+          <SelectTrigger aria-label="Environment" className="h-auto w-auto py-2">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent align="end">
+            <SelectItem value="all">All environments</SelectItem>
+            {environments.length > 0 && <SelectSeparator />}
+            {environments.map((env) => (
+              <SelectItem key={env} value={env}>
+                {environmentsLabel([env])}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <ErrorText>{data.error}</ErrorText>
@@ -238,39 +253,30 @@ function Drawer({
 
           <fieldset>
             <legend className="mb-2 text-sm font-medium text-muted">Type</legend>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <RadioGroup
+              name="type"
+              value={type}
+              onValueChange={(value) => setType(value as typeof type)}
+              aria-label="Type"
+              className="gap-3 sm:grid-cols-2"
+            >
               {(
                 [
-                  ["secret", "Secret", "You can't read it again after saving. For passwords, API keys and tokens."],
-                  ["config", "Config", "Readable by members after saving. For values that are not sensitive."],
+                  ["secret", "Secret", "You can't read it again after saving. For passwords, API keys and tokens.", <Lock key="i" />],
+                  ["config", "Config", "Readable by members after saving. For values that are not sensitive.", <SlidersHorizontal key="i" />],
                 ] as const
-              ).map(([value, title, text]) => {
+              ).map(([value, title, text, icon]) => (
                 // A secret's value is sealed: it can never become config.
-                const locked = value === "config" && row?.kind === "secret";
-                return (
-                  <label
-                    key={value}
-                    className={`rounded-xl border p-3.5 transition-colors ${
-                      type === value ? "border-accent bg-accent/5" : "border-line hover:border-line-strong"
-                    } ${locked ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
-                  >
-                    <span className="flex items-center justify-between">
-                      <span className="text-sm font-medium">{title}</span>
-                      <input
-                        type="radio"
-                        name="type"
-                        value={value}
-                        checked={type === value}
-                        disabled={locked}
-                        onChange={() => setType(value)}
-                        className="accent-accent"
-                      />
-                    </span>
-                    <span className="mt-1 block text-xs text-muted">{text}</span>
-                  </label>
-                );
-              })}
-            </div>
+                <RadioCard
+                  key={value}
+                  value={value}
+                  title={title}
+                  description={text}
+                  icon={icon}
+                  disabled={value === "config" && row?.kind === "secret"}
+                />
+              ))}
+            </RadioGroup>
             {row?.kind === "variable" && (
               <p className="mt-2 text-xs text-faint">Config can become a secret; a secret cannot become config.</p>
             )}
@@ -316,27 +322,20 @@ function Drawer({
           <fieldset>
             <legend className="mb-2 text-sm font-medium text-muted">Environments</legend>
             <div className="space-y-2 text-sm">
-              <label className="flex items-center gap-2">
-                <input type="radio" name="scope" value="all" checked={!some} onChange={() => setSome(false)} className="accent-accent" />
-                All environments
-              </label>
-              <label className="flex items-center gap-2">
-                <input type="radio" name="scope" value="some" checked={some} onChange={() => setSome(true)} className="accent-accent" />
-                Only some
-              </label>
+              <RadioGroup name="scope" value={some ? "some" : "all"} onValueChange={(value) => setSome(value === "some")} aria-label="Environments">
+                <RadioOption value="all" label="All environments" />
+                <RadioOption value="some" label="Only some" />
+              </RadioGroup>
               {some && (
                 <div className="ml-6 space-y-2">
                   {KNOWN_ENVIRONMENTS.map((env) => (
-                    <label key={env} className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        name="env"
-                        value={env}
-                        defaultChecked={row?.environments.includes(env)}
-                        className="accent-accent"
-                      />
-                      {environmentsLabel([env])}
-                    </label>
+                    <CheckboxOption
+                      key={env}
+                      name="env"
+                      value={env}
+                      defaultChecked={row?.environments.includes(env)}
+                      label={environmentsLabel([env])}
+                    />
                   ))}
                   <input
                     name="envCustom"
@@ -362,19 +361,14 @@ function Drawer({
                   ["deployments", "Deployments", "The build's environment, and env.KEY in the running app"],
                 ] as const
               ).map(([value, title, text]) => (
-                <label key={value} className="flex items-start gap-2">
-                  <input
-                    type="checkbox"
-                    name="availableTo"
-                    value={value}
-                    defaultChecked={row ? row.availableTo.includes(value) : true}
-                    className="mt-1 accent-accent"
-                  />
-                  <span>
-                    {title}
-                    <span className="block text-xs text-faint">{text}</span>
-                  </span>
-                </label>
+                <CheckboxOption
+                  key={value}
+                  name="availableTo"
+                  value={value}
+                  defaultChecked={row ? row.availableTo.includes(value) : true}
+                  label={title}
+                  description={text}
+                />
               ))}
             </div>
           </fieldset>
@@ -383,27 +377,22 @@ function Drawer({
             <fieldset>
               <legend className="mb-2 text-sm font-medium text-muted">Projects</legend>
               <div className="space-y-2 text-sm">
-                <label className="flex items-center gap-2">
-                  <input type="radio" name="reach" value="all" checked={reach === "all"} onChange={() => setReach("all")} className="accent-accent" />
-                  Every project
-                </label>
-                <label className="flex items-center gap-2">
-                  <input type="radio" name="reach" value="some" checked={reach === "some"} onChange={() => setReach("some")} className="accent-accent" />
-                  Only these
-                </label>
+                <RadioGroup name="reach" value={reach} onValueChange={(value) => setReach(value as typeof reach)} aria-label="Projects">
+                  <RadioOption value="all" label="Every project" />
+                  <RadioOption value="some" label="Only these" />
+                </RadioGroup>
                 {reach === "some" && (
-                  <div className="ml-6 grid max-h-48 gap-1.5 overflow-y-auto sm:grid-cols-2">
+                  <div className="ml-6 grid max-h-48 gap-1.5 overflow-y-auto p-0.5 sm:grid-cols-2">
                     {projects.map((name) => (
-                      <label key={name} className="flex items-center gap-2 font-mono text-xs">
-                        <input
-                          type="checkbox"
-                          name="project"
-                          value={name}
-                          defaultChecked={row?.projects.includes(name)}
-                          className="accent-accent"
-                        />
-                        {name}
-                      </label>
+                      <CheckboxOption
+                        key={name}
+                        name="project"
+                        value={name}
+                        defaultChecked={row?.projects.includes(name)}
+                        label={name}
+                        className="items-center"
+                        labelClassName="font-mono text-xs"
+                      />
                     ))}
                   </div>
                 )}

@@ -6,6 +6,7 @@ import { PROVIDERS } from "@g1t/contracts";
 import type { Route } from "./+types/issue-new";
 import { page } from "../../lib/meta";
 import { Button, ErrorText, Field, Input, Textarea } from "../../components/ui";
+import { CheckboxOption } from "../../components/ui/checkbox";
 import { Label } from "../../components/work";
 import { integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, unwrap } from "../../lib/session.server";
@@ -79,10 +80,7 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
             <div className="min-w-56 grow">
               <Input name="reference" required placeholder="TECH-1234" aria-label="Ticket key or address" />
             </div>
-            <label className="flex items-center gap-1.5 text-sm text-muted">
-              <input type="checkbox" name="assign" className="accent-accent" />
-              Put an agent on it
-            </label>
+            <CheckboxOption name="assign" label="Put an agent on it" className="items-center" labelClassName="text-muted" />
             <Button type="submit" variant="quiet" disabled={busy}>
               Import
             </Button>
@@ -114,10 +112,7 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
           <legend className="mb-1.5 text-sm font-medium text-muted">Labels</legend>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             {loaderData.labels.map((name) => (
-              <label key={name} className="flex cursor-pointer items-center gap-1.5">
-                <input type="checkbox" name="label" value={name} className="accent-accent" />
-                <Label name={name} />
-              </label>
+              <CheckboxOption key={name} name="label" value={name} label={<Label name={name} />} className="items-center gap-1.5" />
             ))}
           </div>
           <div className="mt-2">

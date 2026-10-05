@@ -10,7 +10,12 @@
 	"routes": [{ "pattern": "g1t.sh", "custom_domain": true }],
 	// The site holds no data of its own; everything goes through services.
 	// GitHub Actions artifacts, as the API keeps them, for download from a run.
-	"kv_namespaces": [{ "binding": "BLOBS", "id": "16a4232cb746418db53782aa068be693" }],
+	// Uploaded avatars (g1t-avatars), served at /avatars/<sha256>. Read
+	// only here: the identity service checks and writes them.
+	"kv_namespaces": [
+		{ "binding": "BLOBS", "id": "16a4232cb746418db53782aa068be693" },
+		{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }
+	],
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "REPOS", "service": "g1t-repos" },

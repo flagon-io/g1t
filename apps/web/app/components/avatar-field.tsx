@@ -1,0 +1,73 @@
+import { ImageUp, Trash2 } from "lucide-react";
+import { useRef } from "react";
+import { Form, useNavigation } from "react-router";
+
+import { AVATAR_ACCEPT } from "../lib/avatar-upload";
+import { Avatar, Button, ErrorText } from "./ui";
+
+/**
+ * Uploading an avatar, as GitHub's settings do: the one shown now, a
+ * button to pick a new image, which is sent as soon as it is picked, and
+ * a way back to the letter. Posts `intent=avatar` with the file in
+ * `avatar`, or `intent=remove-avatar`.
+ */
+export function AvatarField({
+  name,
+  image,
+  square,
+  error,
+  about,
+}: {
+  /** What the letter avatar is drawn from. */
+  name: string;
+  image?: string | null;
+  square?: boolean;
+  error?: string;
+  about: string;
+}) {
+  const navigation = useNavigation();
+  const form = useRef<HTMLFormElement>(null);
+  const intent = navigation.formData?.get("intent");
+  const busy = navigation.state === "submitting" && (intent === "avatar" || intent === "remove-avatar");
+  return (
+    <div className="flex items-start gap-4">
+      <Avatar name={name} image={image} size={64} square={square} />
+      <div className="min-w-0 space-y-2">
+        <p className="text-sm text-muted">{about}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Form method="post" encType="multipart/form-data" ref={form}>
+            <input type="hidden" name="intent" value="avatar" />
+            <label
+              className={`inline-flex cursor-pointer items-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium ring-1 ring-line transition-colors hover:ring-line-strong ${
+                busy ? "pointer-events-none opacity-50" : ""
+              }`}
+            >
+              <ImageUp size={15} />
+              {busy && intent === "avatar" ? "Uploading…" : image ? "Upload a new image" : "Upload an image"}
+              <input
+                type="file"
+                name="avatar"
+                accept={AVATAR_ACCEPT}
+                className="sr-only"
+                onChange={(event) => {
+                  if (event.currentTarget.files?.length) form.current?.requestSubmit();
+                }}
+              />
+            </label>
+          </Form>
+          {image && (
+            <Form method="post">
+              <input type="hidden" name="intent" value="remove-avatar" />
+              <Button type="submit" variant="quiet" disabled={busy}>
+                <Trash2 size={15} />
+                Remove
+              </Button>
+            </Form>
+          )}
+        </div>
+        <p className="text-xs text-faint">PNG, JPEG, WebP or GIF, at most 1 MB. Square images look best.</p>
+        <ErrorText>{error}</ErrorText>
+      </div>
+    </div>
+  );
+}

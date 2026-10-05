@@ -1,3 +1,4 @@
+import { Globe, Lock } from "lucide-react";
 import type { ReactNode } from "react";
 import { Form, data, useNavigation } from "react-router";
 
@@ -5,6 +6,9 @@ import { RepoSettingsTabs } from "../../components/repo-settings-tabs";
 import type { Route } from "./+types/settings-repository";
 import { page } from "../../lib/meta";
 import { Button, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
+import { RadioCard, RadioGroup } from "../../components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { SwitchCard } from "../../components/ui/switch";
 import { repos, work } from "../../lib/services.server";
 import {
   assertSameOrigin,
@@ -99,13 +103,9 @@ function Toggle({
   children: ReactNode;
 }) {
   return (
-    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface p-4 transition-colors hover:border-line-strong">
-      <input type="checkbox" name={name} defaultChecked={on} className="mt-1 accent-accent" />
-      <span>
-        <span className="block text-sm font-medium">{title}</span>
-        <span className="mt-1 block text-sm text-muted">{children}</span>
-      </span>
-    </label>
+    <SwitchCard name={name} defaultChecked={on} title={title}>
+      {children}
+    </SwitchCard>
   );
 }
 
@@ -129,18 +129,18 @@ function Choice({
         <p className="text-sm font-medium">{title}</p>
         <p className="mt-1 text-sm text-muted">{children}</p>
       </div>
-      <select
-        name={name}
-        defaultValue={value}
-        aria-label={title}
-        className="shrink-0 rounded-md border border-line bg-bg px-2 py-1.5 text-sm"
-      >
-        {options.map(([option, label]) => (
-          <option key={option} value={option}>
-            {label}
-          </option>
-        ))}
-      </select>
+      <Select name={name} defaultValue={String(value)}>
+        <SelectTrigger size="sm" aria-label={title} className="w-auto min-w-28 shrink-0">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent align="end">
+          {options.map(([option, label]) => (
+            <SelectItem key={option} value={String(option)}>
+              {label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
@@ -157,34 +157,17 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
           <Field label="Description">
             <Input name="description" maxLength={200} defaultValue={repo.description ?? ""} />
           </Field>
-          <fieldset className="space-y-2 rounded-xl border border-line bg-surface p-4 text-sm">
+          <fieldset>
             <legend className="sr-only">Visibility</legend>
-            <label className="flex items-start gap-3">
-              <input
-                type="radio"
-                name="visibility"
-                value="public"
-                defaultChecked={!repo.isPrivate}
-                className="mt-1 accent-accent"
-              />
-              <span>
-                <span className="block font-medium">Public</span>
-                <span className="text-muted">Anyone can see and clone it.</span>
-              </span>
-            </label>
-            <label className="flex items-start gap-3">
-              <input
-                type="radio"
-                name="visibility"
-                value="private"
-                defaultChecked={repo.isPrivate}
-                className="mt-1 accent-accent"
-              />
-              <span>
-                <span className="block font-medium">Private</span>
-                <span className="text-muted">Only members of the workspace can see it.</span>
-              </span>
-            </label>
+            <RadioGroup
+              name="visibility"
+              defaultValue={repo.isPrivate ? "private" : "public"}
+              aria-label="Visibility"
+              className="gap-3 sm:grid-cols-2"
+            >
+              <RadioCard value="public" icon={<Globe />} title="Public" description="Anyone can see and clone it." />
+              <RadioCard value="private" icon={<Lock />} title="Private" description="Only members of the workspace can see it." />
+            </RadioGroup>
           </fieldset>
         </Section>
 

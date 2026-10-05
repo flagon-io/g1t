@@ -20,6 +20,7 @@ export function DropdownMenuContent({
         sideOffset={sideOffset}
         className={cn(
           "z-50 min-w-48 origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-lg border border-line-strong bg-raised p-1 text-sm shadow-xl shadow-black/40",
+          "data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out motion-reduce:animate-none",
           className,
         )}
         {...props}

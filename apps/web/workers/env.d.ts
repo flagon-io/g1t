@@ -16,6 +16,8 @@ declare global {
       DEPLOYMENTS: ServiceBinding;
       PROJECTS: ServiceBinding;
       BLOBS: KVNamespace;
+      /** Uploaded avatars by SHA-256, with `{ contentType }`; written by identity. */
+      AVATARS: KVNamespace;
     }
   }
   interface Env extends Cloudflare.Env {}

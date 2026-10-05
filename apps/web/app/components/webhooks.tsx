@@ -10,6 +10,8 @@ import { EVENT_TYPES, type Hook, type HookDelivery } from "@g1t/contracts";
 
 import type { WebhooksAction, WebhooksData } from "../lib/webhooks.server";
 import { Button, CopyLine, EmptyState, ErrorText, Field, Input, TimeAgo } from "./ui";
+import { CheckboxOption } from "./ui/checkbox";
+import { RadioGroup, RadioOption } from "./ui/radio-group";
 
 /** The events, in groups people recognise. */
 const GROUPS: { title: string; events: string[] }[] = [
@@ -183,16 +185,16 @@ function AddWebhook() {
       </Field>
       <fieldset>
         <legend className="mb-1.5 text-sm font-medium text-muted">Which events</legend>
-        <div className="flex flex-wrap gap-4 text-sm">
-          <label className="flex items-center gap-2">
-            <input type="radio" name="which" value="all" checked={which === "all"} onChange={() => setWhich("all")} />
-            Everything, including events added later
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="radio" name="which" value="some" checked={which === "some"} onChange={() => setWhich("some")} />
-            Let me choose
-          </label>
-        </div>
+        <RadioGroup
+          name="which"
+          value={which}
+          onValueChange={(value) => setWhich(value as typeof which)}
+          aria-label="Which events"
+          className="flex flex-wrap gap-x-6 gap-y-2"
+        >
+          <RadioOption value="all" label="Everything, including events added later" />
+          <RadioOption value="some" label="Let me choose" />
+        </RadioGroup>
         {which === "some" && (
           <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {GROUPS.map((group) => (
@@ -202,10 +204,14 @@ function AddWebhook() {
                   {group.events
                     .filter((event) => (EVENT_TYPES as readonly string[]).includes(event))
                     .map((event) => (
-                      <label key={event} className="flex items-center gap-2 font-mono text-[0.8125rem]">
-                        <input type="checkbox" name="event" value={event} />
-                        {event}
-                      </label>
+                      <CheckboxOption
+                        key={event}
+                        name="event"
+                        value={event}
+                        label={event}
+                        className="items-center"
+                        labelClassName="font-mono text-[0.8125rem]"
+                      />
                     ))}
                 </div>
               </div>

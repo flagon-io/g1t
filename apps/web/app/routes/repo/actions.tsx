@@ -9,6 +9,8 @@ import type { Route } from "./+types/actions";
 import { page } from "../../lib/meta";
 import { Notes, StatusIcon, duration, shortRef } from "../../components/actions";
 import { Button, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
+import { CheckboxOption } from "../../components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
@@ -124,22 +126,31 @@ function InputField({ name, spec }: { name: string; spec: DispatchInput }) {
   const control = "w-full rounded-md border border-line bg-bg px-2.5 py-1.5 text-sm outline-none focus:border-accent-dim";
   if (spec.type === "boolean") {
     return (
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" name={`input.${name}`} defaultChecked={spec.default === true || spec.default === "true"} />
-        {spec.description || name}
-      </label>
+      <CheckboxOption
+        name={`input.${name}`}
+        defaultChecked={spec.default === true || spec.default === "true"}
+        label={spec.description || name}
+      />
     );
   }
   if (spec.type === "choice" && spec.options) {
     return (
-      <label className="block">
+      <div>
         {label}
-        <select name={`input.${name}`} defaultValue={String(spec.default ?? spec.options[0] ?? "")} className={control}>
-          {spec.options.map((option) => (
-            <option key={option}>{option}</option>
-          ))}
-        </select>
-      </label>
+        <Select name={`input.${name}`} defaultValue={String(spec.default ?? spec.options[0] ?? "") || undefined}>
+          <SelectTrigger size="sm" aria-label={spec.description || name}>
+            <SelectValue placeholder="Choose" />
+          </SelectTrigger>
+          <SelectContent>
+            {/* A Radix item cannot have the value "". */}
+            {spec.options.filter((option) => option !== "").map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
     );
   }
   return (

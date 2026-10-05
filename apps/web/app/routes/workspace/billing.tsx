@@ -13,6 +13,7 @@ import {
 
 import type { Route } from "./+types/billing";
 import { page } from "../../lib/meta";
+import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import { Button, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
 import { billing, deployments } from "../../lib/services.server";
 import {
@@ -636,13 +637,13 @@ function LimitCard({ limit, owner, busy, error }: { limit: Limit; owner: boolean
         <Form method="post" className="mt-5 border-t border-line pt-4">
           <fieldset>
             <legend className="text-xs text-muted">Your monthly spend limit</legend>
-            <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-              <label className="flex items-center gap-2">
-                <input type="radio" name="mode" value="automatic" defaultChecked={mode === "automatic"} className="accent-accent" />
+            <RadioGroup name="mode" defaultValue={mode} className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+              <label className="flex cursor-pointer items-center gap-2">
+                <RadioGroupItem value="automatic" />
                 Automatic
               </label>
-              <label className="flex items-center gap-2">
-                <input type="radio" name="mode" value="fixed" defaultChecked={mode === "fixed"} className="accent-accent" />
+              <label className="flex cursor-pointer items-center gap-2">
+                <RadioGroupItem value="fixed" />
                 Fixed at
                 <span className="flex items-center rounded-md border border-line bg-bg px-2 focus-within:border-accent">
                   <span className="text-muted">$</span>
@@ -657,14 +658,14 @@ function LimitCard({ limit, owner, busy, error }: { limit: Limit; owner: boolean
                   />
                 </span>
               </label>
-              <label className="flex items-center gap-2">
-                <input type="radio" name="mode" value="none" defaultChecked={mode === "none"} className="accent-accent" />
+              <label className="flex cursor-pointer items-center gap-2">
+                <RadioGroupItem value="none" />
                 None
               </label>
               <Button variant="quiet" type="submit" name="intent" value="spend-limit" disabled={busy}>
                 Save
               </Button>
-            </div>
+            </RadioGroup>
           </fieldset>
           <ErrorText>{error}</ErrorText>
           <p className="mt-3 text-xs text-faint">

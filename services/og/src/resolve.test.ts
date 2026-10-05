@@ -47,7 +47,7 @@ function sources(overrides: Partial<Sources> = {}) {
   const base: Sources = {
     identity: {
       getWorkspace: async (slug) =>
-        slug === "acme" ? ({ slug: "acme", name: "Acme", description: "Rockets", id: "w", createdAt: "", memberCount: 3 } as Workspace) : null,
+        slug === "acme" ? ({ slug: "acme", name: "Acme", description: "Rockets", id: "w", createdAt: "", memberCount: 3, avatar: null } as Workspace) : null,
     },
     repos: {
       // Like the service: a private repository can come back to a member,
@@ -99,6 +99,7 @@ test("a workspace shows its name and how many projects are public", async () => 
     name: "Acme",
     description: "Rockets",
     projects: 2,
+    avatar: null,
   });
   // Its members-only pages show the same public card.
   assert.equal((await resolve("/acme/-/billing", s)).kind, "workspace");
