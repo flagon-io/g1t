@@ -48,7 +48,7 @@
 		// provider (under Integrations) or g1t's hosted models, paid from its
 		// credit. While billing takes no real money, hosted models are open
 		// only to these workspaces; once it does, to every workspace.
-		"HOSTED_AGENT_WORKSPACES": "syntaqx",
+		"HOSTED_AGENT_WORKSPACES": "syntaqx, flagon-io",
 		// Which model each kind of work runs on. Nobody assigning an agent
 		// chooses; this is g1t's policy. "modelName" is shown to people in the
 		// session; "model" is sent to the provider.
