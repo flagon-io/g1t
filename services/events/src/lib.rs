@@ -209,19 +209,47 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
     Ok(())
 }
 
-/// Once a day: audit entries older than the audit log keeps are removed
-/// (`AUDIT_KEEP_DAYS`, 90 days by default, the same on every plan).
+/// Once a day, old audit entries are removed: first everything older than
+/// any workspace keeps (`AUDIT_MAX_DAYS`, 400 days), then each workspace's
+/// entries older than its own plan keeps, as billing says (7 days free, 90
+/// on the plan, or what staff set). Workspaces with nothing older than the
+/// shortest (`AUDIT_MIN_DAYS`, 7) are left alone.
 #[event(scheduled)]
 async fn scheduled(_event: worker::ScheduledEvent, env: Env, _ctx: worker::ScheduleContext) {
-    let keep_days = env
-        .var("AUDIT_KEEP_DAYS")
-        .ok()
-        .and_then(|v| v.to_string().parse().ok())
-        .unwrap_or(audit::DEFAULT_KEEP_DAYS);
+    let days = |name: &str, default: u32| {
+        env.var(name)
+            .ok()
+            .and_then(|v| v.to_string().trim().parse::<u32>().ok())
+            .filter(|days| *days > 0)
+            .unwrap_or(default)
+    };
+    let max_days = days("AUDIT_MAX_DAYS", audit::DEFAULT_MAX_DAYS);
+    let min_days = days("AUDIT_MIN_DAYS", audit::DEFAULT_MIN_DAYS).min(max_days);
     let Ok(db) = env.d1("DB") else { return };
-    match audit::purge(&db, &audit::keep_from(now_ms(), keep_days), 20).await {
-        Ok(removed) if removed > 0 => worker::console_log!("removed {removed} audit entries older than {keep_days} days"),
+    let now = now_ms();
+    match audit::purge(&db, &audit::keep_from(now, max_days), 20).await {
+        Ok(removed) if removed > 0 => {
+            worker::console_log!("removed {removed} audit entries older than {max_days} days")
+        }
         Ok(_) => {}
         Err(error) => worker::console_error!("could not remove old audit entries: {error}"),
+    }
+    // Without billing nobody's plan is known, so nothing younger than the
+    // ceiling is removed.
+    let billing = match env.service("BILLING") {
+        Ok(billing) => billing,
+        Err(error) => {
+            worker::console_error!(
+                "audit entries kept past their plan's days: no billing: {error}"
+            );
+            return;
+        }
+    };
+    match audit::purge_by_plan(&db, &billing, now, min_days, max_days).await {
+        Ok(removed) if removed > 0 => {
+            worker::console_log!("removed {removed} audit entries older than their plan keeps")
+        }
+        Ok(_) => {}
+        Err(error) => worker::console_error!("audit entries kept past their plan's days: {error}"),
     }
 }

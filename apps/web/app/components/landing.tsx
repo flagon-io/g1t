@@ -157,7 +157,7 @@ const SECURE: { icon: ReactNode; title: string; about: string; to: string }[] = 
   {
     icon: <ScrollText size={18} />,
     title: "Audit log on every workspace",
-    about: "Every action by people, tokens and agents, with whether it was allowed and the rule that decided. Kept 90 days, with export.",
+    about: "Every action by people, tokens and agents, with whether it was allowed and the rule that decided. Kept 90 days on the plan and 7 free, with export.",
     to: `${DOCS}/guides/audit-log/`,
   },
 ];

@@ -75,9 +75,26 @@ runs did. Both link to the full log, filtered to the run.
 
 ## How long it is kept
 
-The log can be read and exported back **90 days**, on every workspace,
-with or without the [g1t plan](/guides/usage-and-billing/#the-g1t-plan).
-Entries older than 90 days are removed.
+How far back the log goes depends on the workspace's plan:
+
+| Workspace | Kept |
+| --- | --- |
+| Free | **7 days** |
+| On the [g1t plan](/guides/usage-and-billing/#the-g1t-plan) | **90 days** |
+| Paid for by an [enterprise](/guides/usage-and-billing/#enterprises-and-custom-terms) | **90 days** |
+| Longer, by arrangement | Up to **400 days** |
+
+The log can be read and exported back that far, and no further. Once a
+day, entries older than that are **deleted**, and cannot be brought back:
+export what you need to keep before then. Starting the plan keeps 90 days
+from then on; entries already deleted stay deleted. Ending it goes back to
+7 days, and the next daily pass deletes what is older.
+
+For a longer log, such as for a compliance requirement, email
+[support@g1t.sh](mailto:support@g1t.sh). g1t can set the workspace's
+account to keep up to 400 days, and what is set there takes the place of
+the plan's. A [self-hosted](/guides/self-hosting/) g1t that does not charge
+keeps 90 days for every workspace.
 
 ## Export
 

@@ -716,8 +716,12 @@ pub struct FreeTier {
     /// it, the plan pays at cost plus the margin; a free workspace's pushes
     /// to private repositories stop instead.
     pub free_private_storage_bytes: i64,
-    /// Days of audit log, the same on every plan.
+    /// Days of audit log a free workspace keeps.
     pub audit_retention_days: u32,
+    /// Days of audit log the g1t plan keeps, and g1t's own and enterprise
+    /// workspaces. Longer is by arrangement, set per account in sudo.
+    #[serde(default)]
+    pub plan_audit_retention_days: u32,
     /// The smallest amount a card is charged when a month closes; less
     /// carries over. Charges at a limit always go through.
     pub min_charge_micros: i64,
@@ -788,6 +792,10 @@ pub struct Allowances {
     /// `ISSUE_CAP_MICROS` and the owners' own. None: theirs, or the default.
     #[serde(default)]
     pub issue_cap_micros: Option<i64>,
+    /// Days of audit log its workspaces keep, in place of the plan's (7
+    /// free, 90 on the plan), longer or shorter. None: the plan's.
+    #[serde(default)]
+    pub audit_retention_days: Option<u32>,
     /// A hold g1t staff put on new compute, with why. None: no hold.
     #[serde(default)]
     pub hold: Option<String>,
@@ -921,6 +929,20 @@ pub struct EntitlementsArgs {
     pub workspace: String,
 }
 
+/// `audit_retention`: how many days of audit log each workspace keeps, for
+/// the events service's daily purge. Takes `AuditRetentionArgs`; returns
+/// `Vec<AuditRetention>`, one for each workspace asked about.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AuditRetentionArgs {
+    pub workspaces: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AuditRetention {
+    pub workspace: String,
+    pub days: u32,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Entitlements {
@@ -973,9 +995,13 @@ pub struct Entitlements {
     pub included_micros: i64,
     #[serde(default)]
     pub included_used_micros: i64,
-    /// How far back the audit log can be read and exported: the same on
-    /// every plan.
+    /// How far back the audit log can be read and exported, and what is
+    /// kept: the plan's days, or what g1t staff set for the account.
     pub audit_retention_days: u32,
+    /// Whether `audit_retention_days` is what staff set for the account
+    /// rather than the plan's.
+    #[serde(default)]
+    pub audit_retention_custom: bool,
     /// Private repository storage that is free for every workspace: past
     /// it, the plan pays for it and a free workspace's pushes stop.
     pub free_private_storage_bytes: i64,

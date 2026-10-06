@@ -184,6 +184,11 @@ export const MAX_AGENTS_AT_ONCE = 100;
 /** Staff's overrides of the owners' caps: one run, and one issue's agents in all. */
 export const MAX_RUN_CAP_MICROS = 1_000 * MICROS_PER_DOLLAR;
 export const MAX_ISSUE_CAP_MICROS = 10_000 * MICROS_PER_DOLLAR;
+/**
+ * The most days of audit log staff can give one account: billing's
+ * AUDIT_MAX_DAYS. The events service deletes anything older for everyone.
+ */
+export const MAX_AUDIT_DAYS = 400;
 /** The smallest cap: ten cents, as owners may set. */
 const MIN_CAP_MICROS = 100_000;
 const MAX_HOLD = 200;
@@ -191,9 +196,10 @@ const MAX_HOLD = 200;
 /**
  * Allowances from the plan-and-pools form: the g1t plan without its price,
  * the account's share of the open-source pool and of trials, and staff's
- * overrides of agents at once, the run cap and the issue cap. A blank
- * amount means the default (for a cap, no override). A hold is a line
- * saying why new compute is held; blank is no hold.
+ * overrides of agents at once, the run cap, the issue cap and the days of
+ * audit log kept. A blank amount means the default (for a cap, no
+ * override; for the audit log, the plan's). A hold is a line saying why
+ * new compute is held; blank is no hold.
  */
 export function parseAllowances(form: FormData): Parsed<Allowances> {
   const amount = (name: string, what: string, max: number, maxText: string, min = 0): Parsed<number | null> => {
@@ -223,6 +229,15 @@ export function parseAllowances(form: FormData): Parsed<Allowances> {
     maxConcurrentAgents = Number(rawAgents);
   }
 
+  let auditRetentionDays: number | null = null;
+  const rawAudit = text(form, "auditDays");
+  if (rawAudit) {
+    if (!/^\d{1,3}$/.test(rawAudit) || Number(rawAudit) < 1 || Number(rawAudit) > MAX_AUDIT_DAYS) {
+      return { ok: false, error: `Audit log days is a whole number from 1 to ${MAX_AUDIT_DAYS}, or blank for the plan's.` };
+    }
+    auditRetentionDays = Number(rawAudit);
+  }
+
   const hold = text(form, "hold").replace(/\s+/g, " ");
   if (hold.length > MAX_HOLD) return { ok: false, error: `Keep the hold's reason under ${MAX_HOLD} characters.` };
 
@@ -235,6 +250,7 @@ export function parseAllowances(form: FormData): Parsed<Allowances> {
       maxConcurrentAgents,
       runCapMicros: runCap.value,
       issueCapMicros: issueCap.value,
+      auditRetentionDays,
       hold: hold || null,
     },
   };

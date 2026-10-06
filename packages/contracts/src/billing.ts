@@ -127,6 +127,8 @@ export type Allowances = {
   runCapMicros?: number | null;
   /** What one issue's agents may spend in all, in place of the owners' and the default $10; null for none. */
   issueCapMicros?: number | null;
+  /** Days of audit log its workspaces keep, in place of the plan's (7 free, 90 on the plan), longer or shorter; null for the plan's. */
+  auditRetentionDays?: number | null;
   /** A hold on new compute, with why; null for none. */
   hold?: string | null;
 };
@@ -209,8 +211,10 @@ export type Entitlements = {
   /** The plan's included usage each month, and what of it is used. */
   includedMicros?: number;
   includedUsedMicros?: number;
-  /** How far back the audit log can be read and exported: the same on every plan. */
+  /** How far back the audit log can be read and exported, and what is kept: the plan's days, or what g1t staff set for the account. */
   auditRetentionDays: number;
+  /** Whether `auditRetentionDays` is what staff set for the account rather than the plan's. */
+  auditRetentionCustom?: boolean;
   /** Private repository storage free for every workspace: past it, the plan pays and a free workspace's pushes stop. */
   freePrivateStorageBytes: number;
   /** The last daily measure of the workspace's private repositories (a lower bound). */
@@ -680,8 +684,10 @@ export type FreeTier = {
   ossRepoMicros: number;
   /** Private repository storage free for every workspace. Past it, the plan pays; a free workspace's pushes stop. */
   freePrivateStorageBytes: number;
-  /** Days of audit log, the same on every plan. */
+  /** Days of audit log a free workspace keeps. */
   auditRetentionDays: number;
+  /** Days of audit log the g1t plan keeps, and g1t's own and enterprise workspaces; longer by arrangement. */
+  planAuditRetentionDays?: number;
   /** The smallest amount a card is charged when a month closes; less carries over. */
   minChargeMicros: number;
   /** Git operations free for every workspace each month. Past it, the plan pays; a free workspace is slowed down. */

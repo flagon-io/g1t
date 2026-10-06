@@ -8,13 +8,14 @@ use g1t_contracts::audit::{
     AuditEntry, AuditPage, AuditVisibility, ListAuditArgs, MAX_AUDIT_PAGE, NewAuditEntry,
     RecordAuditArgs,
 };
+use g1t_contracts::billing::{AuditRetention, AuditRetentionArgs};
 use g1t_contracts::events::{Event, WorkspaceRenamed};
 use g1t_contracts::new_id;
 use g1t_contracts::time::rfc3339;
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::wasm_bindgen::JsValue;
-use worker::{D1Database, Result};
+use worker::{D1Database, Fetcher, Result};
 
 const DEFAULT_PAGE: u32 = 100;
 /// More than one request ever records.
@@ -277,15 +278,44 @@ pub async fn list(db: &D1Database, a: ListAuditArgs) -> Result<AuditPage> {
     Ok(AuditPage { entries, next })
 }
 
-/// Entries are kept this many days unless `AUDIT_KEEP_DAYS` says otherwise:
-/// what the audit log reads back, the same on every plan (90 days).
-pub const DEFAULT_KEEP_DAYS: u32 = 90;
+/// No entry is kept longer than this, whatever its workspace's plan, unless
+/// `AUDIT_MAX_DAYS` says otherwise. Keep it at least billing's
+/// `AUDIT_MAX_DAYS`, the most staff can set for an account.
+pub const DEFAULT_MAX_DAYS: u32 = 400;
+/// The shortest any workspace keeps (`AUDIT_MIN_DAYS`, a free workspace's
+/// 7 days): only workspaces with entries older than this are asked about.
+pub const DEFAULT_MIN_DAYS: u32 = 7;
+/// Workspaces looked at in one daily run, so one run never runs long; the
+/// next run carries on after the last one.
+pub const WORKSPACES_PER_RUN: u32 = 200;
+/// Workspaces asked about in one call to billing, which reads each one's
+/// account and plan.
+const ASK_AT_ONCE: usize = 50;
 /// Rows removed per statement, so one purge never runs long.
 const PURGE_BATCH: u32 = 5_000;
 
 /// The oldest time an entry is kept from, `keep_days` before `now_ms`.
 pub fn keep_from(now_ms: u64, keep_days: u32) -> String {
     g1t_contracts::time::rfc3339(now_ms.saturating_sub(u64::from(keep_days) * 24 * 60 * 60 * 1000))
+}
+
+/// Each workspace with the time its entries are kept from. Its days are
+/// held between the shortest and the longest any workspace keeps: fewer
+/// than the shortest would not be looked for, and more than the longest
+/// are deleted anyway.
+pub fn cutoffs(
+    now_ms: u64,
+    retention: &[AuditRetention],
+    min_days: u32,
+    max_days: u32,
+) -> Vec<(String, String)> {
+    retention
+        .iter()
+        .map(|r| {
+            let days = r.days.max(min_days).min(max_days);
+            (r.workspace.clone(), keep_from(now_ms, days))
+        })
+        .collect()
 }
 
 /// Removes entries older than every plan keeps, a batch at a time, up to
@@ -307,6 +337,122 @@ pub async fn purge(db: &D1Database, before: &str, rounds: u32) -> Result<u32> {
             break;
         }
     }
+    Ok(removed)
+}
+
+/// Removes one workspace's entries older than `before`, the same way.
+async fn purge_workspace(
+    db: &D1Database,
+    workspace: &str,
+    before: &str,
+    rounds: u32,
+) -> Result<u32> {
+    let mut removed = 0;
+    for _ in 0..rounds {
+        let result = db
+            .prepare(
+                "DELETE FROM audit_entries WHERE id IN
+                   (SELECT id FROM audit_entries WHERE workspace = ? AND time < ? ORDER BY time LIMIT ?)",
+            )
+            .bind(&[workspace.into(), before.into(), PURGE_BATCH.into()])?
+            .run()
+            .await?;
+        let changed = result.meta()?.and_then(|meta| meta.changes).unwrap_or(0) as u32;
+        removed += changed;
+        if changed < PURGE_BATCH {
+            break;
+        }
+    }
+    Ok(removed)
+}
+
+/// Up to `limit` workspaces after `after`, in order, that have entries
+/// older than `before`. Each step seeks the next workspace in the index on
+/// (workspace, time) rather than reading every row, which a DISTINCT over
+/// the rows older than a week would: a workspace on the plan always has
+/// weeks of them.
+async fn workspaces_past(
+    db: &D1Database,
+    after: &str,
+    before: &str,
+    limit: u32,
+) -> Result<Vec<String>> {
+    #[derive(Deserialize)]
+    struct Found {
+        workspace: String,
+    }
+    Ok(db
+        .prepare(
+            "WITH RECURSIVE w(workspace) AS (
+               SELECT (SELECT MIN(workspace) FROM audit_entries WHERE workspace > ?1)
+               UNION ALL
+               SELECT (SELECT MIN(e.workspace) FROM audit_entries e WHERE e.workspace > w.workspace)
+               FROM w WHERE w.workspace IS NOT NULL
+             )
+             SELECT workspace FROM w
+             WHERE workspace IS NOT NULL
+               AND EXISTS (SELECT 1 FROM audit_entries a WHERE a.workspace = w.workspace AND a.time < ?2)
+             LIMIT ?3",
+        )
+        .bind(&[after.into(), before.into(), limit.into()])?
+        .all()
+        .await?
+        .results::<Found>()?
+        .into_iter()
+        .map(|found| found.workspace)
+        .collect())
+}
+
+/// Removes each workspace's entries older than its plan keeps, for up to
+/// `WORKSPACES_PER_RUN` workspaces after where the last run stopped. Their
+/// days come from billing; if it cannot be reached, nothing is removed and
+/// the next run tries the same workspaces again. Returns how many went.
+pub async fn purge_by_plan(
+    db: &D1Database,
+    billing: &Fetcher,
+    now_ms: u64,
+    min_days: u32,
+    max_days: u32,
+) -> Result<u32> {
+    #[derive(Deserialize)]
+    struct Cursor {
+        after: String,
+    }
+    let after = db
+        .prepare("SELECT after FROM audit_purge_cursor WHERE id = 1")
+        .first::<Cursor>(None)
+        .await?
+        .map_or_else(String::new, |cursor| cursor.after);
+    let found =
+        workspaces_past(db, &after, &keep_from(now_ms, min_days), WORKSPACES_PER_RUN).await?;
+    // Every workspace's days are asked for before anything is removed, so a
+    // billing that cannot be reached removes nothing at all.
+    let mut retention: Vec<AuditRetention> = Vec::with_capacity(found.len());
+    for chunk in found.chunks(ASK_AT_ONCE) {
+        let args = AuditRetentionArgs {
+            workspaces: chunk.to_vec(),
+        };
+        let answered: Vec<AuditRetention> =
+            g1t_kit::call(billing, "audit_retention", &args).await?;
+        retention.extend(answered);
+    }
+    let mut removed = 0;
+    for (workspace, before) in cutoffs(now_ms, &retention, min_days, max_days) {
+        removed += purge_workspace(db, &workspace, &before, 4).await?;
+    }
+    // A short page means the end was reached: the next run starts over.
+    let next = if found.len() < WORKSPACES_PER_RUN as usize {
+        String::new()
+    } else {
+        found.last().cloned().unwrap_or_default()
+    };
+    db.prepare(
+        "INSERT INTO audit_purge_cursor (id, after) VALUES (1, ?1)
+         ON CONFLICT (id) DO UPDATE SET after = ?1",
+    )
+    .bind(&[next.into()])?
+    .run()
+    .await?;
     Ok(removed)
 }
 
@@ -352,7 +498,39 @@ mod tests {
         // 2026-10-05T00:00:00Z, a year back.
         let now = 1_791_158_400_000;
         assert_eq!(keep_from(now, 365), "2025-10-05T00:00:00.000Z");
-        assert_eq!(DEFAULT_KEEP_DAYS, 90);
+        assert_eq!(DEFAULT_MAX_DAYS, 400);
+        assert_eq!(DEFAULT_MIN_DAYS, 7);
+    }
+
+    #[test]
+    fn each_workspace_is_cut_off_at_its_own_days() {
+        // 2026-10-05T00:00:00Z.
+        let now = 1_791_158_400_000;
+        let kept = |workspace: &str, days: u32| AuditRetention {
+            workspace: workspace.into(),
+            days,
+        };
+        let retention = [
+            kept("free", 7),
+            kept("plan", 90),
+            kept("longer", 365),
+            kept("shorter", 1),
+            kept("past-the-most", 1_000),
+        ];
+        let expected = [
+            ("free", "2026-09-28T00:00:00.000Z"),
+            ("plan", "2026-07-07T00:00:00.000Z"),
+            ("longer", "2025-10-05T00:00:00.000Z"),
+            // Fewer days than the shortest are never looked for.
+            ("shorter", "2026-09-28T00:00:00.000Z"),
+            // More than the most are deleted by the ceiling anyway.
+            ("past-the-most", "2025-08-31T00:00:00.000Z"),
+        ];
+        let expected: Vec<(String, String)> = expected
+            .iter()
+            .map(|(w, t)| ((*w).to_owned(), (*t).to_owned()))
+            .collect();
+        assert_eq!(cutoffs(now, &retention, 7, 400), expected);
     }
 
     fn args() -> ListAuditArgs {

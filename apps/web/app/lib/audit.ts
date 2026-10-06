@@ -26,8 +26,8 @@ export function visibilityFor(role: Role | null, username: string): AuditVisibil
 
 /**
  * The earliest time a workspace's log can be read from, given how many
- * days are kept (90 on every plan): the later of what was asked
- * for and the start of the window.
+ * days are kept (7 free, 90 on the plan, or what staff set): the later of
+ * what was asked for and the start of the window.
  */
 export function retainedSince(since: string | null | undefined, days: number, now = Date.now()): string {
   const start = new Date(now - days * 24 * 60 * 60 * 1000).toISOString();

@@ -91,7 +91,7 @@ export default function WorkspaceAudit({ loaderData }: Route.ComponentProps) {
           ? " As an owner you see the whole workspace."
           : " As a member you see what was done to the workspace's projects, and what was done by you or on your behalf."}
         {retention != null &&
-          ` The log goes back ${retention} days, and exports the same, on every plan.`}
+          ` The log goes back ${retention} days, and exports the same; older entries are deleted each day.`}
       </p>
 
       <Form method="get" className="mt-6 rounded-xl border border-line bg-surface p-4">

@@ -102,10 +102,19 @@ test("a sales note is required, and not endless", () => {
 test("allowances: the plan without its price, pool shares, and staff's overrides", () => {
   assert.deepEqual(parseAllowances(form({})), {
     ok: true,
-    value: { plan: false, ossRepoMicros: null, trialMicros: null, maxConcurrentAgents: null, runCapMicros: null, issueCapMicros: null, hold: null },
+    value: {
+      plan: false,
+      ossRepoMicros: null,
+      trialMicros: null,
+      maxConcurrentAgents: null,
+      runCapMicros: null,
+      issueCapMicros: null,
+      auditRetentionDays: null,
+      hold: null,
+    },
   });
   assert.deepEqual(
-    parseAllowances(form({ plan: "on", oss: "5", trial: "2.50", agents: "20", runCap: "25", issueCap: "500", hold: "  Card  disputed;\nwaiting on the bank " })),
+    parseAllowances(form({ plan: "on", oss: "5", trial: "2.50", agents: "20", runCap: "25", issueCap: "500", auditDays: "365", hold: "  Card  disputed;\nwaiting on the bank " })),
     {
       ok: true,
       value: {
@@ -115,6 +124,7 @@ test("allowances: the plan without its price, pool shares, and staff's overrides
         maxConcurrentAgents: 20,
         runCapMicros: 25_000_000,
         issueCapMicros: 500_000_000,
+        auditRetentionDays: 365,
         hold: "Card disputed; waiting on the bank",
       },
     },
@@ -127,6 +137,13 @@ test("allowances: the plan without its price, pool shares, and staff's overrides
   assert.equal(parseAllowances(form({ runCap: "0.05" })).ok, false);
   assert.equal(parseAllowances(form({ runCap: "1000.01" })).ok, false);
   assert.equal(parseAllowances(form({ issueCap: "10000.01" })).ok, false);
+  // Audit log days: shorter or longer than the plan's, up to 400.
+  assert.equal((parseAllowances(form({ auditDays: "3" })) as { value: { auditRetentionDays: number } }).value.auditRetentionDays, 3);
+  assert.equal((parseAllowances(form({ auditDays: "400" })) as { value: { auditRetentionDays: number } }).value.auditRetentionDays, 400);
+  assert.equal(parseAllowances(form({ auditDays: "0" })).ok, false);
+  assert.equal(parseAllowances(form({ auditDays: "401" })).ok, false);
+  assert.equal(parseAllowances(form({ auditDays: "30.5" })).ok, false);
+  assert.equal(parseAllowances(form({ auditDays: "a year" })).ok, false);
   assert.equal(parseAllowances(form({ hold: "x".repeat(201) })).ok, false);
 });
 

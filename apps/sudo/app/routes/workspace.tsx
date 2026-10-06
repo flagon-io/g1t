@@ -538,7 +538,7 @@ function PlanSection({ entitlements: e, unavailable }: { entitlements: Entitleme
         ? `${e.gitOperations.toLocaleString("en-US")}${e.gitOperationsIncluded ? ` (${e.gitOperationsIncluded.toLocaleString("en-US")} free)` : ""}`
         : "—",
     ],
-    ["Audit log", `${e.auditRetentionDays} days`],
+    ["Audit log", `${e.auditRetentionDays} days${e.auditRetentionCustom ? ", set by staff" : ""}`],
   ];
   return (
     <Section

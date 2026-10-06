@@ -38,10 +38,14 @@
 		],
 		"consumers": [{ "queue": "g1t-events", "max_batch_size": 100, "max_batch_timeout": 1 }]
 	},
-	// Once a day, audit entries older than the audit log reads back are
-	// removed. The same on every plan: keep it at least billing's
-	// AUDIT_RETENTION_DAYS.
+	// Each workspace's audit log keeps as many days as billing says (7 free,
+	// 90 on the plan, or what staff set), asked for over this binding.
+	"services": [{ "binding": "BILLING", "service": "g1t-billing" }],
+	// Once a day, audit entries older than AUDIT_MAX_DAYS are removed for
+	// everyone (keep it at least billing's AUDIT_MAX_DAYS), then each
+	// workspace's older than its own days. Only workspaces with entries
+	// older than AUDIT_MIN_DAYS, the shortest any plan keeps, are asked about.
 	"triggers": { "crons": ["41 3 * * *"] },
-	"vars": { "AUDIT_KEEP_DAYS": "90" },
+	"vars": { "AUDIT_MAX_DAYS": "400", "AUDIT_MIN_DAYS": "7" },
 	"observability": { "enabled": true }
 }

@@ -49,7 +49,8 @@ const DEFAULT_FREE: Required<FreeTier> = {
   ossPoolMicros: 25_000_000,
   ossRepoMicros: 2_000_000,
   freePrivateStorageBytes: 1_000_000_000,
-  auditRetentionDays: 90,
+  auditRetentionDays: 7,
+  planAuditRetentionDays: 90,
   minChargeMicros: 5_000_000,
   gitOperationsIncluded: 50_000,
   paidStartCeilingMicros: 100_000_000,
@@ -143,7 +144,8 @@ function rows(tier: Required<FreeTier>): Row[] {
     {
       what: "Audit log",
       free: `${tier.auditRetentionDays} days, with export`,
-      plan: `${tier.auditRetentionDays} days, with export`,
+      plan: `${tier.planAuditRetentionDays} days, with export`,
+      note: "Longer by arrangement. Older entries are deleted each day.",
     },
     { what: "Secret push protection", free: "Included", plan: "Included" },
     { what: "Single sign-on", free: "On every plan, once it is built", plan: "On every plan, once it is built" },
@@ -460,7 +462,8 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           <li>
             <p className="font-medium">Security on every plan</p>
             <p className="text-muted">
-              The audit log for {tier.auditRetentionDays} days with export, and secret push protection, for every workspace.
+              The audit log with export, {tier.planAuditRetentionDays} days or longer by arrangement, and secret push
+              protection, for every workspace.
             </p>
           </li>
           <li>

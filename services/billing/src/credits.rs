@@ -59,8 +59,13 @@ pub(crate) struct Config {
     /// free for every workspace. Past it, the plan pays at cost plus the
     /// margin; a free workspace's pushes to private repositories stop.
     pub free_storage_bytes: i64,
-    /// `AUDIT_RETENTION_DAYS`: the same on every plan.
+    /// `FREE_AUDIT_RETENTION_DAYS`: days of audit log a free workspace
+    /// keeps. `AUDIT_RETENTION_DAYS`: the plan's, g1t's own and an
+    /// enterprise's. `AUDIT_MAX_DAYS`: the most staff can set for an
+    /// account; the events service deletes everything older regardless.
+    pub free_audit_days: u32,
     pub audit_days: u32,
+    pub audit_max_days: u32,
     /// `RUN_CAP_MICROS` and `ISSUE_CAP_MICROS`: one run's spend cap, and
     /// agents' spend on one issue in all.
     pub run_cap_micros: i64,
@@ -93,7 +98,9 @@ impl Default for Config {
             trial_monthly_pool_micros: 100_000_000,
             min_charge_micros: 5_000_000,
             free_storage_bytes: 1_000_000_000,
+            free_audit_days: 7,
             audit_days: 90,
+            audit_max_days: 400,
             run_cap_micros: g1t_contracts::guardrails::DEFAULT_RUN_CAP_MICROS,
             issue_cap_micros: 10_000_000,
             paid_start_micros: 100_000_000,
@@ -120,7 +127,9 @@ impl Config {
             trial_monthly_pool_micros: number("TRIAL_MONTHLY_POOL_MICROS", d.trial_monthly_pool_micros),
             min_charge_micros: number("MIN_CHARGE_MICROS", d.min_charge_micros),
             free_storage_bytes: number("FREE_PRIVATE_STORAGE_BYTES", d.free_storage_bytes),
-            audit_days: number("AUDIT_RETENTION_DAYS", d.audit_days.into()) as u32,
+            free_audit_days: number("FREE_AUDIT_RETENTION_DAYS", d.free_audit_days.into()).max(1) as u32,
+            audit_days: number("AUDIT_RETENTION_DAYS", d.audit_days.into()).max(1) as u32,
+            audit_max_days: number("AUDIT_MAX_DAYS", d.audit_max_days.into()).max(1) as u32,
             run_cap_micros: number("RUN_CAP_MICROS", d.run_cap_micros),
             issue_cap_micros: number("ISSUE_CAP_MICROS", d.issue_cap_micros),
             paid_start_micros: number("LIMIT_PAID_START_MICROS", d.paid_start_micros),
@@ -760,7 +769,9 @@ mod tests {
         assert_eq!(c.trial_monthly_pool_micros, 100_000_000);
         assert_eq!(c.min_charge_micros, 5_000_000);
         assert_eq!(c.free_storage_bytes, 1_000_000_000);
+        assert_eq!(c.free_audit_days, 7);
         assert_eq!(c.audit_days, 90);
+        assert_eq!(c.audit_max_days, 400);
         assert_eq!(c.run_cap_micros, g1t_contracts::guardrails::DEFAULT_RUN_CAP_MICROS);
         assert_eq!(c.issue_cap_micros, 10_000_000);
         assert_eq!(c.paid_start_micros, 100_000_000);

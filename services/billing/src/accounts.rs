@@ -56,6 +56,8 @@ struct AccountRow {
     #[serde(default)]
     issue_cap_micros: Option<i64>,
     #[serde(default)]
+    audit_retention_days: Option<u32>,
+    #[serde(default)]
     hold: Option<String>,
 }
 
@@ -69,6 +71,7 @@ impl AccountRow {
             max_concurrent_agents: self.max_concurrent_agents,
             run_cap_micros: self.run_cap_micros,
             issue_cap_micros: self.issue_cap_micros,
+            audit_retention_days: self.audit_retention_days,
             hold: self.hold.clone().filter(|h| !h.trim().is_empty()),
         }
     }
@@ -505,6 +508,9 @@ impl Billing {
         if a.allowances.max_concurrent_agents.is_some_and(|n| n == 0 || n > 1_000) {
             return Ok(Outcome::fail(FailureCode::Invalid, "Agents at once is between 1 and 1,000."));
         }
+        if let Some(why) = crate::retention::invalid_days(&self.plans, a.allowances.audit_retention_days) {
+            return Ok(Outcome::fail(FailureCode::Invalid, why));
+        }
         let Some(account) = self.find_account(&a.id).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "No such account."));
         };
@@ -514,10 +520,12 @@ impl Billing {
         self.db
             .prepare(
                 "INSERT INTO billing_accounts (id, kind, name, terms_kind, discount_percent, note, created_by, created_at,
-                   team_granted, oss_repo_micros, trial_micros, max_concurrent_agents, run_cap_micros, hold, issue_cap_micros)
-                 VALUES (?1, ?2, ?3, 'standard', 0, '', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                   team_granted, oss_repo_micros, trial_micros, max_concurrent_agents, run_cap_micros, hold, issue_cap_micros,
+                   audit_retention_days)
+                 VALUES (?1, ?2, ?3, 'standard', 0, '', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
                  ON CONFLICT (id) DO UPDATE SET team_granted = ?6, oss_repo_micros = ?7, trial_micros = ?8,
-                   max_concurrent_agents = ?9, run_cap_micros = ?10, hold = ?11, issue_cap_micros = ?12",
+                   max_concurrent_agents = ?9, run_cap_micros = ?10, hold = ?11, issue_cap_micros = ?12,
+                   audit_retention_days = ?13",
             )
             .bind(&[
                 account.id.as_str().into(),
@@ -532,6 +540,7 @@ impl Billing {
                 opt(a.allowances.run_cap_micros),
                 optional(a.allowances.hold.as_deref().map(str::trim).filter(|h| !h.is_empty())),
                 opt(a.allowances.issue_cap_micros),
+                a.allowances.audit_retention_days.map_or(JsValue::NULL, JsValue::from),
             ])?
             .run()
             .await?;
@@ -713,6 +722,9 @@ fn describe_allowances(a: &Allowances) -> String {
     if let Some(m) = a.issue_cap_micros {
         parts.push(format!("issue cap {}", crate::features::dollars(m)));
     }
+    if let Some(days) = a.audit_retention_days {
+        parts.push(format!("audit log {days} days"));
+    }
     if let Some(hold) = &a.hold {
         parts.push(format!("hold: {hold}"));
     }
@@ -764,11 +776,12 @@ mod tests {
             max_concurrent_agents: Some(4),
             run_cap_micros: Some(3_000_000),
             issue_cap_micros: None,
+            audit_retention_days: Some(365),
             hold: Some("mining".into()),
         };
         assert_eq!(
             describe_allowances(&given),
-            "plan given, open-source share $5.00 a repository, trial $2.00, 4 agents at once, run cap $3.00, hold: mining"
+            "plan given, open-source share $5.00 a repository, trial $2.00, 4 agents at once, run cap $3.00, audit log 365 days, hold: mining"
         );
     }
 

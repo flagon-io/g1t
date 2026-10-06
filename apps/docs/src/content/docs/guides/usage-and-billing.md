@@ -20,7 +20,8 @@ Every workspace, with or without the plan, has the whole forge:
 - [Security scans](#storage-search-embeddings-and-scans) of history and
   dependencies, which g1t pays for on a free workspace.
 - Search and Explore.
-- The [audit log](/guides/audit-log/), kept 90 days, with export.
+- The [audit log](/guides/audit-log/), with export: kept 7 days, or 90 on
+  the plan.
 - Your own agent through [MCP](/reference/mcp/).
 - 1 GB of private repository storage, and 50,000
   [git operations](#git-operations) a month.
@@ -52,6 +53,8 @@ are in it. It is never priced per person.
 - **Unlimited** projects, previews and repositories.
 - Agents, workflows, the merge queue,
   [deployments](/guides/deployments/) and semantic search.
+- **90 days** of [audit log](/guides/audit-log/#how-long-it-is-kept), in
+  place of a free workspace's 7.
 - Usage past $10 is charged at cost plus 20%, **up to your
   [spend limit](#limits)**.
 
@@ -576,8 +579,10 @@ Runs already under way finish, so usage can go slightly past a limit.
 ## Security on every plan
 
 Security is never a paid extra. Every workspace, free or on the plan, has
-the same [audit log](/guides/audit-log/), kept 90 days, and the same CSV
-and JSON export. Single sign-on through your identity provider is not
+the [audit log](/guides/audit-log/), with the same CSV and JSON export,
+and secret push protection. What the plan changes is how long the log is
+kept: [7 days free, 90 on the plan](/guides/audit-log/#how-long-it-is-kept),
+and longer by arrangement. Single sign-on through your identity provider is not
 built yet; when it is, it will be on every plan.
 
 ## Enterprises and custom terms
@@ -597,6 +602,9 @@ is public; custom terms change how you pay, not what things cost.
   stays accurate.
 - **Custom**: a discount on usage, a limit of its own, or a larger share
   of the pools, sometimes until a date.
+- **A longer audit log**: up to 400 days for every workspace the account
+  pays for, in place of the plan's 7 or 90. See
+  [how long it is kept](/guides/audit-log/#how-long-it-is-kept).
 
 g1t's own workspaces and those of Flagon, Inc., the company that makes g1t,
 run comped. Their usage is recorded at cost, apart from what customers

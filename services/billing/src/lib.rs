@@ -37,6 +37,7 @@ mod features;
 mod keeper;
 mod limits;
 mod rename;
+mod retention;
 mod stripe;
 mod stripe_sync;
 
@@ -1153,6 +1154,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_credit" => reply(&billing.admin_credit(args(body)?).await?),
         "admin_set_allowances" => reply(&billing.admin_set_allowances(args(body)?).await?),
         "entitlements" => reply(&billing.entitlements(args(body)?).await?),
+        "audit_retention" => reply(&billing.audit_retention(args(body)?).await?),
         "reserve" => reply(&billing.reserve(args(body)?).await?),
         "settle" => reply(&billing.settle_reservation(args(body)?).await?),
         "card_check" => reply(&billing.card_check(args(body)?).await?),

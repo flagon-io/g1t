@@ -284,6 +284,7 @@ export function allowanceLines(allowances: Allowances | undefined, comped: boole
   }
   if (allowances.runCapMicros != null) lines.push(`Run cap: ${usd(allowances.runCapMicros)} a run`);
   if (allowances.issueCapMicros != null) lines.push(`Issue cap: ${usd(allowances.issueCapMicros)} an issue`);
+  if (allowances.auditRetentionDays != null) lines.push(`Audit log: ${allowances.auditRetentionDays} days, in place of the plan's`);
   if (allowances.hold) lines.push(`Held: ${allowances.hold}`);
   return lines;
 }
@@ -291,7 +292,9 @@ export function allowanceLines(allowances: Allowances | undefined, comped: boole
 /**
  * The g1t plan without its price, the account's share of g1t's pools, and
  * staff's overrides of what owners set: agents at once, the run and issue
- * caps, and a hold on new compute. Comped accounts have the plan anyway.
+ * caps, the days of audit log kept (such as for an organization that pays
+ * for longer), and a hold on new compute. Comped accounts have the plan
+ * anyway.
  */
 export function AllowancesForm({
   allowances,
@@ -364,6 +367,15 @@ export function AllowancesForm({
           </Field>
           <Field label="Issue cap $" hint="One issue's agents in all, over the owners'. Blank: theirs, or $10.">
             <Input name="issueCap" inputMode="decimal" placeholder="Owners'" defaultValue={values?.issueCap ?? dollarsField(current.issueCapMicros)} />
+          </Field>
+          <Field label="Audit log days" hint="Kept, in place of the plan's, longer or shorter, up to 400. Blank: the plan's (7 free, 90 on the plan).">
+            <Input
+              name="auditDays"
+              inputMode="numeric"
+              pattern="\d{1,3}"
+              placeholder="Plan's"
+              defaultValue={values?.auditDays ?? (current.auditRetentionDays != null ? String(current.auditRetentionDays) : "")}
+            />
           </Field>
           <Field label="Hold" hint="Pauses new compute and tells the owners why. Blank: no hold.">
             <Input name="hold" maxLength={200} placeholder="No hold" defaultValue={values?.hold ?? current.hold ?? ""} />

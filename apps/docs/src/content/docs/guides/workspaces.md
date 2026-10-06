@@ -193,7 +193,7 @@ A comped workspace owes nothing; only its plan is ended.
 | Webhooks, integrations, secrets and variables | The workspace's own are removed. |
 | Memory and guardrails | The workspace's own are removed. |
 | Statements, invoices and the ledger | Kept, for accounting. |
-| The audit log | Kept for its usual [90 days](/guides/audit-log/#how-long-it-is-kept), with the deletion as its last entry. With no owners left, ask support@g1t.sh for an export. |
+| The audit log | Kept as [long as its account keeps it](/guides/audit-log/#how-long-it-is-kept), with the deletion as its last entry: once the plan ends with the workspace, that is 7 days, unless an enterprise pays for it or longer was arranged. With no owners left, ask support@g1t.sh for an export. |
 | Recently deleted repositories | Purged with it, their git data with them. |
 | Old addresses | Redirects for repositories transferred out keep working. The workspace's own pages answer 404. |
 
