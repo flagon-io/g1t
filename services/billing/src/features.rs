@@ -105,6 +105,12 @@ pub(crate) fn dollars(micros: i64) -> String {
     format!("${whole}.{fraction:0<2}")
 }
 
+/// An amount of money to the cent, as balances and amounts owed read:
+/// `$3.99`, never `$3.987`. Prices use [`dollars`].
+pub(crate) fn cents(micros: i64) -> String {
+    format!("${:.2}", micros as f64 / MICROS_PER_DOLLAR as f64)
+}
+
 /// `units` at `each` micros a unit, as the pricing page writes it: a
 /// build second's price times 60 is the build minute both quote.
 pub(crate) fn per_units(each: f64, units: f64) -> String {
@@ -682,6 +688,13 @@ mod tests {
         assert_eq!(bytes(50_000_000_000), "50 GB");
         assert_eq!(bytes(1_500_000_000), "1.5 GB");
         assert_eq!(bytes(500_000_000), "500 MB");
+    }
+
+    #[test]
+    fn amounts_of_money_read_to_the_cent() {
+        assert_eq!(cents(3_986_990), "$3.99");
+        assert_eq!(cents(5_000_000), "$5.00");
+        assert_eq!(cents(4_000), "$0.00");
     }
 
     #[test]

@@ -161,7 +161,11 @@ export function pendingFrom(out) {
 
 /** Pending migrations of a unit's database: { pending } or { error }. */
 export async function pendingMigrations(unit) {
-  const found = await wrangler(["d1", "migrations", "list", unit.d1.database, "--remote"], { cwd: join(ROOT, unit.path) });
+  const list = () => wrangler(["d1", "migrations", "list", unit.d1.database, "--remote"], { cwd: join(ROOT, unit.path) });
+  // Once more after a failure: Cloudflare's API sometimes answers 403
+  // while Wrangler's login refreshes (seen on 2026-10-06).
+  let found = await list();
+  if (found.code !== 0) found = await list();
   if (found.code !== 0) return { error: lastLines(found.out) };
   return { pending: pendingFrom(found.out) };
 }

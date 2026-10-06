@@ -27,7 +27,7 @@ use worker::Result;
 
 use crate::Billing;
 use crate::accounts::own_account;
-use crate::features::dollars;
+use crate::features::cents;
 
 /// `repo.transferred` (see `g1t_kit::transfer`): `?1` the repository's
 /// path now, `?2` a path it had. Ledger rows, runs and holds keep the path
@@ -79,13 +79,13 @@ pub(crate) fn decide(facts: &Facts) -> std::result::Result<Settle, String> {
     if facts.balance_micros > 0 {
         return Err(format!(
             "{ws} has {} of prepaid credit left, which would be lost. Spend it, or write to support@g1t.sh about a refund, first.",
-            dollars(facts.balance_micros)
+            cents(facts.balance_micros)
         ));
     }
     if facts.metering_micros > 0 {
         return Err(format!(
             "{ws} has {} of usage this month (storage and git operations) that is charged when the month closes. You can delete it from {}.",
-            dollars(facts.metering_micros),
+            cents(facts.metering_micros),
             facts.next_month
         ));
     }
@@ -94,7 +94,7 @@ pub(crate) fn decide(facts: &Facts) -> std::result::Result<Settle, String> {
         if !facts.has_card {
             return Err(format!(
                 "{ws} owes {}. Add a card or pay it from the workspace's Billing page first.",
-                dollars(owed)
+                cents(owed)
             ));
         }
         return Ok(Settle::Charge(owed));
@@ -176,7 +176,7 @@ impl Billing {
                         FailureCode::PaymentRequired,
                         format!(
                             "The card on file was declined for the {} {workspace} owes. Pay it from the workspace's Billing page first.",
-                            dollars(owed)
+                            cents(owed)
                         ),
                     ));
                 }
