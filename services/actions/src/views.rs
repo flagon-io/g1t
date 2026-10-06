@@ -92,14 +92,21 @@ impl Actions {
         {
             self.sync(&repo, &ws).await?;
         }
+        // A file that is gone stays listed while it has runs, unless one in
+        // the folder now has its name: then it would read as a second copy.
+        // Files outside the folder are from before g1t stopped reading
+        // `.github`; their runs stay under All workflows.
         let rows = self
             .db
             .prepare(
-                "SELECT * FROM workflows WHERE repo_id = ?
-                   AND (error IS NULL OR error NOT LIKE 'Its file is%' OR id IN (SELECT workflow_id FROM runs WHERE repo_id = ?))
-                 ORDER BY name",
+                "SELECT * FROM workflows w WHERE w.repo_id = ?1 AND w.path LIKE ?2
+                   AND (w.error IS NULL OR w.error NOT LIKE 'Its file is%'
+                        OR (w.id IN (SELECT workflow_id FROM runs WHERE repo_id = ?1)
+                            AND NOT EXISTS (SELECT 1 FROM workflows o WHERE o.repo_id = ?1 AND o.id <> w.id
+                                            AND o.name = w.name AND (o.error IS NULL OR o.error NOT LIKE 'Its file is%'))))
+                 ORDER BY w.name",
             )
-            .bind(&[repo.id.as_str().into(), repo.id.as_str().into()])?
+            .bind(&[repo.id.as_str().into(), format!("{}/%", g1t_actions::workflow::FOLDER).into()])?
             .all()
             .await?
             .results::<WorkflowRow>()?;
