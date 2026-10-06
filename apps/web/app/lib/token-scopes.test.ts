@@ -34,7 +34,7 @@ test("every scope is on the checklist exactly once, admin ones under Dangerous",
   const listed = [...SCOPE_GROUPS.flatMap((group) => group.scopes), ...DANGEROUS_SCOPES];
   assert.deepEqual([...listed].sort(), SCOPES.map((row) => row.scope).sort());
   assert.equal(new Set(listed).size, listed.length);
-  assert.ok(DANGEROUS_SCOPES.every((scope) => scope.endsWith(":admin")));
+  assert.ok(DANGEROUS_SCOPES.every((scope) => scope.endsWith(":admin") || scope.endsWith(":delete")));
 });
 
 test("ticked boxes store the highest level of each resource", () => {
@@ -70,7 +70,7 @@ test("full access ticks the top level of everything", () => {
 
 test("presets are recognised however their scopes are written", () => {
   assert.equal(matchingPreset(null), "full");
-  assert.equal(matchingPreset(["repo:read", "code:write", "workflows:write"]), "ci");
+  assert.equal(matchingPreset(["repo:read", "code:write", "packages:write", "workflows:write"]), "ci");
   assert.equal(matchingPreset([...OAUTH_DEFAULT_SCOPES]), "agent");
   assert.equal(matchingPreset(["issues:read"]), null);
 });
@@ -78,7 +78,7 @@ test("presets are recognised however their scopes are written", () => {
 test("a token's access reads plainly", () => {
   assert.equal(accessSummary({ scopes: null, legacy: true }), "Legacy · full access");
   assert.equal(accessSummary({ scopes: null, legacy: false }), "Full access");
-  assert.equal(accessSummary({ scopes: ["code:read", "code:write", "workflows:write", "repo:read"], legacy: false }), "CI");
+  assert.equal(accessSummary({ scopes: ["code:read", "code:write", "packages:write", "workflows:write", "repo:read"], legacy: false }), "CI");
   assert.equal(accessSummary({ scopes: ["issues:read", "issues:write", "memory:read"], legacy: false }), "2 scopes");
   assert.equal(accessSummary({ scopes: [], legacy: false }), "No scopes");
 });

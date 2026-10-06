@@ -27,6 +27,7 @@ import {
   identityClient,
   staleSlugs,
   needs,
+  isProtectedWorkspace,
   newId,
   ok,
   openD1,
@@ -246,15 +247,10 @@ class Projects {
     return ok(toProject(row));
   }
 
-  /**
-   * How many of a workspace's projects build from a repository in another
-   * workspace: those transferring its own repositories would not move, so
-   * they stand in the way of deleting it. One whose repository was deleted
-   * is hidden, and does not.
-   */
-  async held(a: { workspace: string }): Promise<number> {
+  /** How many projects a workspace shows: what deleting it would take with it. */
+  async count(a: { workspace: string }): Promise<number> {
     const row = await this.db
-      .prepare("SELECT count(*) AS n FROM projects WHERE workspace = ?1 AND repo_namespace <> ?1 AND repo_deleted_at IS NULL")
+      .prepare("SELECT count(*) AS n FROM projects WHERE workspace = ? AND repo_deleted_at IS NULL")
       .bind(a.workspace.toLowerCase())
       .first<{ n: number }>();
     return row?.n ?? 0;
@@ -643,9 +639,40 @@ class Projects {
         .run();
       return;
     }
+    if (event.type === "workspace.deleting") {
+      // Hidden, not gone: every project it shows, including any building
+      // from a repository it transferred away, until staff restore it or it
+      // is purged. Those already hidden stay as they were.
+      if (isProtectedWorkspace(event.data.slug)) return;
+      const at = now();
+      await this.db
+        .prepare(
+          "UPDATE projects SET repo_deleted_at = ?1, workspace_deleted_at = ?1 WHERE workspace = ?2 AND repo_deleted_at IS NULL",
+        )
+        .bind(at, event.data.slug.toLowerCase())
+        .run();
+      return;
+    }
+    if (event.type === "workspace.restored") {
+      await this.db
+        .prepare(
+          "UPDATE projects SET repo_deleted_at = NULL, workspace_deleted_at = NULL WHERE workspace = ? AND workspace_deleted_at IS NOT NULL",
+        )
+        .bind(event.data.slug.toLowerCase())
+        .run();
+      return;
+    }
     if (event.type === "workspace.deleted") {
-      // Its projects went with its repositories; it is not backfilled again.
-      await this.db.prepare("DELETE FROM backfilled WHERE workspace = ?").bind(event.data.slug).run();
+      // Its own repositories' projects go with them (`repo.purged`); any
+      // building from a repository it transferred away goes now. It is not
+      // backfilled again.
+      const slug = event.data.slug.toLowerCase();
+      const ids = "SELECT id FROM projects WHERE workspace = ?1";
+      await this.db.batch([
+        this.db.prepare(`DELETE FROM dependencies WHERE project_id IN (${ids}) OR depends_on_id IN (${ids})`).bind(slug),
+        this.db.prepare("DELETE FROM projects WHERE workspace = ?").bind(slug),
+        this.db.prepare("DELETE FROM backfilled WHERE workspace = ?").bind(slug),
+      ]);
       return;
     }
     if (event.type === "git.push" && event.data.defaultBranch) {
@@ -670,8 +697,8 @@ async function answer(service: Projects, method: string, args: any): Promise<Res
       return Response.json(await service.get(args));
     case "by_repo":
       return Response.json(await service.byRepo(args));
-    case "held":
-      return Response.json(await service.held(args));
+    case "count":
+      return Response.json(await service.count(args));
     case "create":
       return Response.json(await service.create(args));
     case "update":

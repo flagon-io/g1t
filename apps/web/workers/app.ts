@@ -1,13 +1,13 @@
 import { createRequestHandler } from "react-router";
 
 import { finishResponse, withRequestPerf } from "../app/lib/perf.server";
+import { servicePath } from "../app/lib/registry-paths";
 
 const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),
   import.meta.env.MODE,
 );
 
-const GIT_PATH = /\/(info\/refs|git-upload-pack|git-receive-pack)$/;
 /** An uploaded avatar, by the SHA-256 of its bytes. */
 const AVATAR_PATH = /^\/avatars\/([0-9a-f]{64})$/;
 /** The only types identity stores, having checked each image's bytes. */
@@ -33,8 +33,14 @@ export default {
     // Its answer goes back to the git client as it is: a repository under a
     // renamed workspace's old name answers with a 301, which git follows and
     // must see, so the redirect is never followed here.
-    if (GIT_PATH.test(pathname)) {
+    // The container registry (`docker login g1t.sh`) is the packages
+    // service's, handed over the same way.
+    const service = servicePath(pathname);
+    if (service === "git") {
       return proxyGit(env, request);
+    }
+    if (service === "packages") {
+      return proxyPackages(env, request);
     }
     const avatar = AVATAR_PATH.exec(pathname);
     if (avatar) {
@@ -117,6 +123,19 @@ async function proxyGit(env: Env, request: Request): Promise<Response> {
   const answer = await env.REPOS.fetch(new Request(request, { redirect: "manual" }));
   const response = new Response(answer.body, answer);
   response.headers.append("server-timing", `repos;dur=${Date.now() - started}`);
+  return response;
+}
+
+/**
+ * A registry request, answered by the packages service as it is: its
+ * redirects (a large blob sent to storage) go back to the client, which
+ * follows them itself.
+ */
+async function proxyPackages(env: Env, request: Request): Promise<Response> {
+  const started = Date.now();
+  const answer = await env.PACKAGES.fetch(new Request(request, { redirect: "manual" }));
+  const response = new Response(answer.body, answer);
+  response.headers.append("server-timing", `packages;dur=${Date.now() - started}`);
   return response;
 }
 

@@ -13,7 +13,9 @@ Every workspace keeps an audit log. It records:
 
 - **A repository's lifecycle**, wherever the change was made, g1t.sh
   included. A transfer is recorded in both workspaces' logs, and a
-  workspace's deletion as `workspace.deleted`, its log's last entry.
+  workspace's deletion as `workspace.deleted`. A restore by g1t's support
+  is recorded as `workspace.restored`, and the purge 30 days after a
+  deletion as `workspace.purged`, its log's last entry.
 
 | Action | Recorded when |
 | --- | --- |
@@ -27,6 +29,7 @@ Every workspace keeps an audit log. It records:
 | `repo.collaborator_added`, `repo.collaborator_role_changed`, `repo.collaborator_removed` | Someone was given a role on it, had it changed, or lost it. See [access and roles](/guides/access-and-roles/). |
 | `repo.invitation_created`, `repo.invitation_revoked` | Someone was invited to it, or an invitation was withdrawn. |
 | `workspace.base_permission_changed` | An owner changed what members get on every repository. |
+| `workspace.deleted`, `workspace.restored`, `workspace.purged` | An owner deleted the workspace, g1t's support restored it, or it was removed for good. See [deleting a workspace](/guides/workspaces/#delete-a-workspace). |
 
 Through the API and the MCP server, the call itself is recorded under its
 operation's name too, such as `delete_repo`. See

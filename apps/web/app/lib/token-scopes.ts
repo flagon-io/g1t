@@ -27,7 +27,7 @@ import {
   type ScopeResource,
 } from "@g1t/contracts/scopes";
 
-const RANK: Record<ScopeLevel, number> = { read: 0, write: 1, run: 2, admin: 3 };
+const RANK: Record<ScopeLevel, number> = { read: 0, write: 1, run: 2, delete: 3, admin: 4 };
 
 /** Anything with FormData's getters, so tests can pass a plain map. */
 export type FormLike = { get(name: string): unknown; getAll(name: string): unknown[] };

@@ -600,7 +600,7 @@
           "Workspaces"
         ],
         "summary": "Delete a workspace",
-        "description": "Delete a workspace. Owners only, signed in as a person, and confirm must be the workspace's slug. It must hold no repositories (move them with transfer_repo first) and no projects, and billing must be able to settle it: no unpaid invoice, no prepaid credit left, and no usage this month still being metered; what it owes is charged to its card at once. Its members, access tokens, webhooks, integrations and workspace secrets are removed; its statements, invoices and audit log are kept. The slug is never given to another workspace; the person whose username it is may create it again.\n\nRefused with `409` while the workspace holds repositories or projects, and with `402` while billing cannot settle it, each with a message that says what to do. See [Delete a workspace](/guides/workspaces/#delete-a-workspace).",
+        "description": "Delete a workspace and everything in it. Owners only, signed in as a person, and confirm must be the workspace's slug. Billing must be able to settle it: no unpaid invoice, no prepaid credit left, and no usage this month still being metered; what it owes is charged to its card at once and its plan ends. Its repositories, projects and apps go with it at once, nobody can reach it, and its access tokens stop working. It is kept for 30 days, when g1t's support can restore it as it was; then it is purged, with its webhooks, integrations and workspace secrets. Its statements, invoices and audit log are kept. The slug is never given to another workspace; the person whose username it is may create it again once it is purged. Some workspaces, such as Flagon's, can never be deleted.\n\nRefused with `402` while billing cannot settle it, with a message that says what to do, and with `403` for anyone but an owner signed in as a person, or for a protected workspace. Its repositories, projects and apps go with it; g1t's support can restore it for 30 days. See [Delete a workspace](/guides/workspaces/#delete-a-workspace).",
         "x-operation": "delete_workspace",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "delete",
@@ -10201,7 +10201,11 @@
                         "review.completed",
                         "workflow.completed",
                         "queue.changed",
-                        "session.appended"
+                        "session.appended",
+                        "package.published",
+                        "package.version_deleted",
+                        "package.deleted",
+                        "package.visibility_changed"
                       ]
                     },
                     "description": "Event types to send. All of them if left out."
@@ -10405,7 +10409,11 @@
                         "review.completed",
                         "workflow.completed",
                         "queue.changed",
-                        "session.appended"
+                        "session.appended",
+                        "package.published",
+                        "package.version_deleted",
+                        "package.deleted",
+                        "package.visibility_changed"
                       ]
                     }
                   },
@@ -11255,7 +11263,11 @@
                         "review.completed",
                         "workflow.completed",
                         "queue.changed",
-                        "session.appended"
+                        "session.appended",
+                        "package.published",
+                        "package.version_deleted",
+                        "package.deleted",
+                        "package.visibility_changed"
                       ]
                     },
                     "description": "Event types to send. All of them if left out."
@@ -11445,7 +11457,11 @@
                         "review.completed",
                         "workflow.completed",
                         "queue.changed",
-                        "session.appended"
+                        "session.appended",
+                        "package.published",
+                        "package.version_deleted",
+                        "package.deleted",
+                        "package.visibility_changed"
                       ]
                     }
                   },

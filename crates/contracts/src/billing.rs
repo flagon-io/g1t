@@ -1080,6 +1080,16 @@ pub struct Entitlements {
     pub free_private_storage_bytes: i64,
     /// The last daily measure of the workspace's private repositories.
     pub private_storage_bytes: i64,
+    /// On a paid plan (not Free): storage past the free amounts below is
+    /// charged, so nothing is refused for it.
+    #[serde(default)]
+    pub has_plan: bool,
+    /// Package storage free for every workspace, public and private: past
+    /// it, the plan pays for it and a free workspace's pushes are refused.
+    #[serde(default)]
+    pub package_public_free_bytes: i64,
+    #[serde(default)]
+    pub package_private_free_bytes: i64,
     /// What g1t's open-source pool paid for the workspace this month.
     pub oss_paid_micros: i64,
     /// Deploy build time this month, every second of it metered.
@@ -2243,6 +2253,18 @@ pub struct ConfirmSubscriptionArgs {
     pub workspace: String,
     pub viewer: Viewer,
     pub session: String,
+}
+
+/// `admin_log`: a staff change another service made to a workspace, kept
+/// in sudo's audit log with billing's own (`admin_audit`). For identity's
+/// restores and purges of deleted workspaces. Returns `bool`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminLogArgs {
+    pub workspace: String,
+    pub action: String,
+    pub detail: String,
+    /// The staff member's email.
+    pub by: String,
 }
 
 /// `close_workspace`: settles a workspace that is about to be deleted.

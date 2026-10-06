@@ -5,6 +5,7 @@ import { soonItems } from "./lib/nav.ts";
 export default [
   index("routes/overview.tsx"),
   route("workspaces", "routes/workspaces.tsx"),
+  route("workspaces/deleted", "routes/deleted-workspaces.tsx"),
   route("workspaces/:slug", "routes/workspace.tsx"),
   route("users/:username", "routes/user.tsx"),
   route("enterprises", "routes/enterprises.tsx"),

@@ -577,6 +577,18 @@ impl Webhooks {
             self.remember(id, namespace, name).await?;
         }
         let Some(repo_id) = event.repo_id.as_deref().or_else(|| event.data["repoId"].as_str()) else {
+            // About no repository: a workspace's own package, for its
+            // workspace's webhooks.
+            if let Some(workspace) = deliver::workspace_scoped(event) {
+                let hooks = self
+                    .db
+                    .prepare("SELECT * FROM hooks WHERE active = 1 AND scope = 'workspace' AND workspace = ?")
+                    .bind(&[workspace.as_str().into()])?
+                    .all()
+                    .await?
+                    .results::<HookRow>()?;
+                self.send_all(event, hooks, None).await?;
+            }
             return Ok(());
         };
         let mut hooks = self
@@ -614,6 +626,12 @@ impl Webhooks {
                     .results::<HookRow>()?,
             );
         }
+        self.send_all(event, hooks, Some((repo_id, name.as_ref()))).await
+    }
+
+    /// Sends `event` to each of `hooks` that wants it. `repo` is the
+    /// repository it is about, and its name when known.
+    async fn send_all(&self, event: &Event, hooks: Vec<HookRow>, repo: Option<(&str, Option<&NameRow>)>) -> Result<()> {
         let wanted: Vec<&HookRow> = hooks.iter().filter(|hook| deliver::wants(&hook.events(), &event.kind)).collect();
         if wanted.is_empty() {
             return Ok(());
@@ -628,12 +646,14 @@ impl Webhooks {
             None => None,
         };
         for hook in wanted {
-            let full_name = hook
-                .repo
-                .clone()
-                .or_else(|| name.as_ref().map(|name| format!("{}/{}", name.namespace, name.name)))
-                .unwrap_or_default();
-            let payload = deliver::payload(event, &hook.workspace, Some((repo_id, &full_name)), actor_name.as_deref()).to_string();
+            let full_name = repo.map(|(_, name)| {
+                hook.repo
+                    .clone()
+                    .or_else(|| name.map(|name| format!("{}/{}", name.namespace, name.name)))
+                    .unwrap_or_default()
+            });
+            let named = repo.zip(full_name.as_deref()).map(|((id, _), full)| (id, full));
+            let payload = deliver::payload(event, &hook.workspace, named, actor_name.as_deref()).to_string();
             if let Some(id) = self.enqueue(hook, &event.id, &event.kind, &payload).await? {
                 self.attempt(hook, &id).await?;
             }

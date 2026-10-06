@@ -190,7 +190,8 @@ impl Identity {
     pub(crate) async fn workspace_principal(&self, workspace_id: &str) -> Result<Viewer> {
         let workspace = self
             .db
-            .prepare("SELECT id, slug FROM workspaces WHERE id = ?")
+            // A deleted workspace's tokens are refused until it is restored.
+            .prepare("SELECT id, slug FROM workspaces WHERE id = ? AND deleted_at IS NULL")
             .bind(&[workspace_id.into()])?
             .first::<WorkspaceRef>(None)
             .await?;

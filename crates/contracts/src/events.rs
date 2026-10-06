@@ -365,6 +365,11 @@ pub struct RepoDeleted {
     /// RFC 3339: when it is purged unless restored first.
     #[serde(default)]
     pub purge_after: String,
+    /// It went with its workspace (`workspace.deleting`). Services that
+    /// handle the workspace as a whole (deployments pauses its apps rather
+    /// than taking them down) leave this one to that.
+    #[serde(default)]
+    pub with_workspace: bool,
 }
 
 /// `repo.restored`: a deleted repository is back, at its path, as it was.
@@ -377,6 +382,9 @@ pub struct RepoRestored {
     pub namespace: String,
     pub name: String,
     pub is_private: bool,
+    /// It came back with its workspace (`workspace.restored`).
+    #[serde(default)]
+    pub with_workspace: bool,
 }
 
 /// `repo.purged`: a deleted repository is gone for good, its git data
@@ -475,6 +483,35 @@ pub struct WorkspaceDeleted {
     pub slug: String,
 }
 
+/// `workspace.deleting`: an owner deleted a workspace, and it can be
+/// restored by g1t's staff until `purge_after`. Nobody can reach it in the
+/// meantime. Services hide what they keep for it and stop what runs for it,
+/// keeping their rows: repos deletes its repositories softly (each with a
+/// `repo.deleted` whose `with_workspace` is set), deployments pauses its
+/// apps, search drops it from results. `workspace.restored` undoes exactly
+/// that; once `purge_after` passes, `workspace.deleted` follows and
+/// services purge as for any deleted workspace.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceDeleting {
+    pub workspace_id: String,
+    pub slug: String,
+    /// The username of the owner who deleted it.
+    pub by: String,
+    /// RFC 3339: when it is purged unless restored first.
+    pub purge_after: String,
+}
+
+/// `workspace.restored`: staff brought a deleted workspace back, with its
+/// members and tokens. Services undo what they did on `workspace.deleting`,
+/// and only that: a repository deleted on its own before stays deleted.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceRestored {
+    pub workspace_id: String,
+    pub slug: String,
+}
+
 /// `user.updated`: an account was made, or changed what its profile shows
 /// (name, bio, avatar). Nothing private: ask identity for the profile.
 #[derive(Debug, Serialize, serde::Deserialize)]
@@ -537,6 +574,33 @@ pub struct InviteRedeemed {
 #[serde(rename_all = "camelCase")]
 pub struct WaitlistRequested {
     pub entry_id: String,
+}
+
+/// The payload of `package.published`, `package.version_deleted`,
+/// `package.deleted` and `package.visibility_changed`; each uses the fields
+/// that apply to it. `repo_id` is the repository the package is linked to.
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackageEvent {
+    pub package_id: String,
+    pub workspace: String,
+    pub ecosystem: String,
+    pub name: String,
+    pub repo_id: Option<String>,
+    /// The version published or deleted: for a container image, its
+    /// manifest's digest.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+    /// On publish: the tags that now point to the version.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+    /// On `package.visibility_changed`: `public` or `private`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<String>,
 }
 
 /// `queue.changed`: a repository's merge queue gained, lost or settled an

@@ -5,6 +5,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
+HERE="$(pwd)"
 DATA="${G1T_DATA:-/data}"
 STATE="$DATA/state"
 KEYS="$DATA/keys.env"
@@ -26,6 +27,10 @@ fi
 # made before it existed.
 if ! grep -q '^IDENTITY_KEY=' "$KEYS"; then
   echo "IDENTITY_KEY=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')" >> "$KEYS"
+fi
+# The packages service's key, which signs registry tokens.
+if ! grep -q '^PACKAGES_TOKEN_SECRET=' "$KEYS"; then
+  echo "PACKAGES_TOKEN_SECRET=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')" >> "$KEYS"
 fi
 set -a
 # shellcheck disable=SC1090
@@ -54,6 +59,11 @@ done
 
 args=()
 while read -r config; do args+=(-c "$config"); done < workers.txt
+
+# workerd fires no cron triggers: the scheduler runs the services' crons
+# (schedules.json, from configs.mjs) once a minute through Wrangler's local
+# API, which answers only here, on localhost.
+node "$HERE/scheduler.mjs" schedules.json http://127.0.0.1:8787 &
 echo "g1t is starting on ${PUBLIC_URL:-http://localhost:8787}"
 exec "$WRANGLER" dev "${args[@]}" \
   --ip 0.0.0.0 --port 8787 \

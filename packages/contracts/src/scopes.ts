@@ -11,6 +11,7 @@
 export type ScopeResource =
   | "repo"
   | "code"
+  | "packages"
   | "issues"
   | "pull_requests"
   | "agents"
@@ -23,7 +24,7 @@ export type ScopeResource =
   | "secrets"
   | "runners";
 
-export type ScopeLevel = "read" | "write" | "run" | "admin";
+export type ScopeLevel = "read" | "write" | "run" | "delete" | "admin";
 
 /** Every scope, grouped by resource, least first. */
 export const SCOPES = [
@@ -32,6 +33,9 @@ export const SCOPES = [
   { scope: "repo:admin", description: "Rename, archive, transfer, delete or change who can see a repository, and dismiss security alerts" },
   { scope: "code:read", description: "Clone and fetch private repositories with git" },
   { scope: "code:write", description: "Push commits with git" },
+  { scope: "packages:read", description: "Pull container images and install private packages" },
+  { scope: "packages:write", description: "Push container images and publish packages" },
+  { scope: "packages:delete", description: "Delete packages and their versions" },
   { scope: "issues:read", description: "Read issues, comments and plans" },
   { scope: "issues:write", description: "Open, edit, close and comment on issues" },
   { scope: "pull_requests:read", description: "Read pull requests, their changes, sessions and merge queues" },
@@ -61,6 +65,7 @@ export type Scope = (typeof SCOPES)[number]["scope"];
 export const SCOPE_RESOURCES: { resource: ScopeResource; label: string }[] = [
   { resource: "repo", label: "Repositories" },
   { resource: "code", label: "Code" },
+  { resource: "packages", label: "Packages" },
   { resource: "issues", label: "Issues" },
   { resource: "pull_requests", label: "Pull requests" },
   { resource: "agents", label: "g1t agents" },
@@ -74,7 +79,7 @@ export const SCOPE_RESOURCES: { resource: ScopeResource; label: string }[] = [
   { resource: "runners", label: "Self-hosted runners" },
 ];
 
-const LEVEL_ORDER: Record<ScopeLevel, number> = { read: 0, write: 1, run: 2, admin: 3 };
+const LEVEL_ORDER: Record<ScopeLevel, number> = { read: 0, write: 1, run: 2, delete: 3, admin: 4 };
 
 export function scopeResource(scope: Scope): ScopeResource {
   return scope.split(":")[0] as ScopeResource;
@@ -90,7 +95,8 @@ export function isScope(text: string): text is Scope {
 
 /** Changes that are hard to undo, or decide who can reach what. */
 export function isDangerous(scope: Scope): boolean {
-  return scopeLevel(scope) === "admin";
+  const level = scopeLevel(scope);
+  return level === "admin" || level === "delete";
 }
 
 export function describeScope(scope: Scope): string {
@@ -124,13 +130,13 @@ export type PresetId = "read_only" | "agent" | "ci" | "full";
 /** Starting points for choosing scopes. `*` is full access. */
 export const PRESET_SCOPES = {
   read_only: [
-    "repo:read", "code:read", "issues:read", "pull_requests:read", "workflows:read", "memory:read", "account:read", "workspace:read", "access:read", "webhooks:read", "secrets:read", "runners:read",
+    "repo:read", "code:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "memory:read", "account:read", "workspace:read", "access:read", "webhooks:read", "secrets:read", "runners:read",
   ] as const,
   agent: [
-    "repo:read", "code:read", "code:write", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "agents:run", "workflows:read", "memory:read", "memory:write", "account:read", "workspace:read", "access:read", "webhooks:read", "secrets:read",
+    "repo:read", "code:read", "code:write", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "agents:run", "workflows:read", "memory:read", "memory:write", "account:read", "workspace:read", "access:read", "webhooks:read", "secrets:read",
   ] as const,
   ci: [
-    "repo:read", "code:read", "code:write", "workflows:read", "workflows:write",
+    "repo:read", "code:read", "code:write", "packages:read", "packages:write", "workflows:read", "workflows:write",
   ] as const,
   full: [
     "*",
@@ -140,7 +146,7 @@ export const PRESET_SCOPES = {
 export const PRESETS: { id: PresetId; label: string; description: string }[] = [
   { id: "read_only", label: "Read only", description: "Read everything you can read; change nothing." },
   { id: "agent", label: "Agent", description: "Read everything, work on issues and pull requests, push code and run g1t agents." },
-  { id: "ci", label: "CI", description: "Clone and push code, and run workflows." },
+  { id: "ci", label: "CI", description: "Clone and push code, push and pull packages, and run workflows." },
   { id: "full", label: "Full access", description: "Everything you can do, including deleting repositories and changing who has access." },
 ];
 
@@ -291,6 +297,7 @@ export type TokenScopes = {
  */
 export const SCOPE_GROUPS: { id: string; label: string; scopes: Scope[] }[] = [
   { id: "code", label: "Repositories & code", scopes: ["repo:read", "repo:write", "code:read", "code:write"] },
+  { id: "packages", label: "Packages", scopes: ["packages:read", "packages:write"] },
   { id: "work", label: "Issues & pull requests", scopes: ["issues:read", "issues:write", "pull_requests:read", "pull_requests:write"] },
   { id: "agents", label: "Agents", scopes: ["agents:run"] },
   { id: "workflows", label: "Workflows", scopes: ["workflows:read", "workflows:write"] },
@@ -300,5 +307,5 @@ export const SCOPE_GROUPS: { id: string; label: string; scopes: Scope[] }[] = [
   { id: "runners", label: "Runners", scopes: ["runners:read"] },
 ];
 
-/** The admin scopes, shown under "Dangerous" behind a warning. */
+/** The admin and delete scopes, shown under "Dangerous" behind a warning. */
 export const DANGEROUS_SCOPES: Scope[] = SCOPES.map((row) => row.scope).filter(isDangerous);

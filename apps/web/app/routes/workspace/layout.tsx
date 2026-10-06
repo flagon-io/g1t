@@ -49,6 +49,10 @@ const PAGES: Record<string, { title: string; about: string }> = {
     title: "Access tokens",
     about: "Tokens that belong to the workspace, not a person: for CI, integrations and agents that work for the whole team.",
   },
+  packages: {
+    title: "Packages",
+    about: "What the workspace publishes and installs: container images today, with the same people, tokens and access as its code.",
+  },
   usage: { title: "Usage", about: "What the workspace's agents cost, run by run, by repository, pull request and model." },
   billing: { title: "Billing and plans", about: "The g1t plan, the trial, your spend limit and caps, prepaying, and every charge." },
   agents: {
@@ -93,7 +97,16 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
   const { workspace, role, welcome } = loaderData;
   // The sidebar finds the workspace's pages, for everyone, so its pages
   // need a title, not the workspace's whole header again.
-  const page = PAGES[useLocation().pathname.split("/-/")[1]?.split("/")[0] ?? ""];
+  const parts = (useLocation().pathname.split("/-/")[1] ?? "").split("/").filter(Boolean);
+  const page = PAGES[parts[0] ?? ""];
+  // A page within one (a single package) has its own heading.
+  if (page && parts.length > 1) {
+    return (
+      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
+        <Outlet />
+      </div>
+    );
+  }
   if (page) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">

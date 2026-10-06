@@ -1,0 +1,26 @@
+[package]
+name = "g1t-packages"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Package registries beside the code: container images over OCI Distribution, then npm, Composer, Cargo and Go."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+g1t-contracts.workspace = true
+g1t-kit.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+worker.workspace = true
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
+base64 = "0.22"
+hex = "0.4"
+hmac = "0.12"
+sha2 = { version = "0.10", features = ["compress"] }
+
+# wasm-opt at -O1: about the same gzipped size as -O in a tenth of the
+# time (docs/DEPLOYING.md, "Build speed").
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-O1"]

@@ -68,6 +68,8 @@ export default [
     route("-/webhooks", "routes/workspace/webhooks.tsx"),
     route("-/secrets", "routes/workspace/secrets.tsx"),
     route("-/runners", "routes/workspace/runners.tsx"),
+    route("-/packages", "routes/workspace/packages.tsx"),
+    route("-/packages/:ecosystem/*", "routes/workspace/package.tsx"),
     route("-/settings", "routes/workspace/settings.tsx"),
     route("-/repositories", "routes/workspace/repositories.tsx"),
     route("-/agents", "routes/workspace/agents.tsx"),

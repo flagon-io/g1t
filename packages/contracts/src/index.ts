@@ -20,6 +20,7 @@ export * from "./mentions";
 export * from "./names";
 export * from "./oauth";
 export * from "./og";
+export * from "./packages";
 export * from "./projects";
 export * from "./repos";
 export * from "./result";

@@ -19,16 +19,17 @@ a private network, not yet for an installation on the open internet.
 | Workspaces, members, access tokens | Works |
 | Repositories: create, push and clone over HTTP, browse code, commits | Works |
 | Issues, comments, labels | Works |
+| [Container images](/guides/containers/): `docker login`, push and pull at your `PUBLIC_URL` | Works, kept in the bundled MinIO, with no limit on a layer's size or on pulls |
 | Site search | Works |
 | A status page of your own | Works, at `http://localhost:8788` ([below](#the-status-page)) |
-| Webhooks, integrations | Run, but scheduled retries do not (see below) |
+| Webhooks, integrations | Work, retries included |
 | Sign in with GitHub, import from GitHub | Off until you register a GitHub App of your own ([below](#sign-in-with-github-and-import-from-github)). Mirrors sync with **Sync now**: GitHub's webhook needs the REST API. |
 | g1t's agent: changes, plans and reviews | Off |
 | Context hub search | Off |
 | Deployments on `g1t.page` | Off |
 | Billing | Off. Nothing is charged, and no usage limit stops work. |
 | Git over SSH, the REST API, MCP and the `g1t` CLI | Not available yet |
-| Scheduled jobs (webhook retries, Actions schedules) | Not run yet |
+| Scheduled jobs | Run once a minute inside the g1t container: webhook retries, purging deleted repositories, the packages sweep, security sweeps, audit log retention and access request summaries. Actions schedules (`on: schedule`) are not run. |
 
 What hosted g1t cannot do yet either is on
 [What g1t can't do yet](/about/limitations/).
@@ -105,6 +106,8 @@ Set these in the environment, or in a `.env` file next to
 | `REGISTRATION_MODE` | `open` | `open`: anyone can make an account. `invite`: every new account needs an [invite](/guides/authentication/#invites), as on g1t.sh. |
 | `INVITES_PER_USER` | `5` | How many invites each person can have out, while `REGISTRATION_MODE` is `invite` |
 | `WAITLIST_NOTIFY_EMAIL` | (none) | Where a summary of new access requests goes, at most every 15 minutes. Empty sends none; requests still wait for you in the database. |
+| `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | the bundled MinIO, bucket `g1t-packages` | Where packages' files are kept: any S3-compatible store. Change the two keys before first start; MinIO is made with them. |
+| `S3_PUBLIC_ENDPOINT` | (none) | The store's address as clients reach it. When set, large layers are downloaded from it directly with a signed URL. |
 | `STATUS_PORT` | `8788` | The port the status page is published on |
 | `STATUS_PROBE_REPO` | (none) | A public repository, `workspace/repo`, whose branches the status page lists every minute as a clone would. Empty: git is not checked. |
 | `INVITE_STAFF_WORKSPACES` | (none) | Workspace slugs, comma separated, whose owners can make invites without a limit. Set it to your own workspace before you switch to `invite`, so someone can invite the first people. |
@@ -183,6 +186,7 @@ across from GitHub, is in [GitHub](/guides/github/).
 | --- | --- |
 | `g1t_g1t-data` | Accounts, workspaces, issues and every other record, as SQLite files; the keys that seal stored secrets (`keys.env`) |
 | `g1t_g1t-git` | Your repositories, one bare git repository each |
+| `g1t_g1t-packages` | Container images' layers and other package files (MinIO) |
 | `g1t_g1t-secrets` | The key the site and the git store share |
 
 To back up, stop g1t and copy the volumes:

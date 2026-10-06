@@ -219,6 +219,11 @@ export type Entitlements = {
   freePrivateStorageBytes: number;
   /** The last daily measure of the workspace's private repositories (a lower bound). */
   privateStorageBytes: number;
+  /** On a paid plan: package storage past the free amounts is charged, never refused. */
+  hasPlan?: boolean;
+  /** Package storage free for every workspace (public, and private): past it a free workspace's pushes are refused. */
+  packagePublicFreeBytes?: number;
+  packagePrivateFreeBytes?: number;
   /** What g1t's open-source pool paid for the workspace this month. */
   ossPaidMicros: number;
   /** Deploy build time this month, every second of it metered. */

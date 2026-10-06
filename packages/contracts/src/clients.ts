@@ -5,6 +5,7 @@ import type { ProjectsApi } from "./projects";
 import type { EventsApi } from "./events";
 import type { IdentityAdminApi, IdentityApi } from "./identity";
 import type { IntegrationsApi } from "./integrations";
+import type { PackagesApi } from "./packages";
 import type { WebhooksApi } from "./webhooks";
 import type { ReposApi } from "./repos";
 import type { WorkApi } from "./work";
@@ -244,6 +245,9 @@ export function identityAdminClient(service: ServiceBinding): IdentityAdminApi {
       call("admin_grant_invites", { target, name, amount, note, staff }),
     inviteTree: (username) => call("admin_invite_tree", { username }),
     workspaceInvites: (slug) => call("admin_workspace_invites", { slug }),
+    deletedWorkspaces: () => call("admin_deleted_workspaces", {}),
+    restoreWorkspace: (workspaceId, staff) => call("admin_restore_workspace", { workspaceId, staff }),
+    purgeWorkspace: (workspaceId, staff, confirm) => call("admin_purge_workspace", { workspaceId, staff, confirm }),
   };
 }
 
@@ -573,6 +577,39 @@ export function deploymentsClient(service: ServiceBinding): DeploymentsApi {
       call("add_domain", { actor, project, hostname, twin: !!options.twin }),
     removeDomain: (actor, project, id) => call("remove_domain", { actor, project, id }),
     refreshDomain: (actor, project, id) => call("refresh_domain", { actor, project, id }),
+  };
+}
+
+/** Packages: the registries beside the code (services/packages). */
+export function packagesClient(service: ServiceBinding): PackagesApi {
+  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
+  return {
+    list: (workspace, viewer, filter = {}) =>
+      call("list_packages", {
+        workspace,
+        viewer,
+        ecosystem: filter.ecosystem ?? null,
+        repo_id: filter.repoId ?? null,
+        query: filter.query ?? null,
+      }),
+    get: (workspace, ecosystem, name, viewer) => call("get_package", { workspace, ecosystem, name, viewer }),
+    deleteVersion: (actor, workspace, ecosystem, name, version, surface) =>
+      call("delete_version", { actor, workspace, ecosystem, name, version, surface: surface ?? null }),
+    deletePackage: (actor, workspace, ecosystem, name, surface) =>
+      call("delete_package", { actor, workspace, ecosystem, name, surface: surface ?? null }),
+    set: (actor, workspace, ecosystem, name, change, surface) =>
+      call("set_package", {
+        actor,
+        workspace,
+        ecosystem,
+        name,
+        visibility: change.visibility ?? null,
+        link: change.link ?? null,
+        unlink: change.unlink ?? false,
+        surface: surface ?? null,
+      }),
+    storage: (workspace) => call("storage", { workspace }),
+    storageAll: () => call("storage_all", {}),
   };
 }
 

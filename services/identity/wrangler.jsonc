@@ -7,7 +7,8 @@
 	// and each would otherwise cross the distance to it.
 	"placement": { "mode": "off" },
 	"main": "build/index.js",
-	// Staff waitlist summaries (src/lib.rs `scheduled`).
+	// Staff waitlist summaries, and purging deleted workspaces once their
+	// restore window passes (src/lib.rs `scheduled`).
 	"triggers": { "crons": ["*/15 * * * *"] },
 	"build": { "command": "node ../../scripts/build-rust-worker.mjs" },
 	// Reached only through service bindings.
@@ -28,8 +29,9 @@
 	// moves what it keeps under the old slug.
 	"services": [
 		{ "binding": "EVENTS", "service": "g1t-events" },
-		// Deleting a workspace asks whether it still holds repositories or
-		// projects, and has billing settle it first (src/deletion.rs).
+		// Deleting a workspace counts what goes with it, and has billing
+		// settle it first; staff restores and purges are recorded in sudo's
+		// audit log, which billing keeps (src/deletion.rs).
 		{ "binding": "REPOS", "service": "g1t-repos" },
 		{ "binding": "PROJECTS", "service": "g1t-projects" },
 		{ "binding": "BILLING", "service": "g1t-billing" }
@@ -50,7 +52,12 @@
 	// The waitlist: whoever asks for access gets one confirmation, and
 	// WAITLIST_NOTIFY_EMAIL gets a summary of new requests at most every
 	// 15 minutes, linking to sudo's Waitlist. Empty sends none.
+	//
+	// PROTECTED_WORKSPACES: workspaces nobody can ever delete, by owner,
+	// token or staff, as comma-separated slugs or workspace ids. flagon-io
+	// is protected whatever this says (src/deletion.rs).
 	"vars": {
+		"PROTECTED_WORKSPACES": "flagon-io",
 		"GITHUB_APP_CLIENT_ID": "Iv23liZS94alfjIUn1eW",
 		"REGISTRATION_MODE": "invite",
 		"INVITES_PER_USER": "5",

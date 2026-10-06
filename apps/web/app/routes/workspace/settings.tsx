@@ -4,6 +4,7 @@ import { Form, data, redirect, useFetcher, useNavigation } from "react-router";
 import {
   RENAME_COOLDOWN_HOURS,
   SLUG_HOLD_DAYS,
+  WORKSPACE_RESTORE_DAYS,
   type Workspace,
   type WorkspaceDeletion,
   isValidNamespace,
@@ -26,9 +27,10 @@ import {
 import { FieldDescription, FieldLabel, Field as FormField } from "../../components/ui/field";
 import { InputAddon, InputGroup, Input as TextInput } from "../../components/ui/input";
 import { readAvatarUpload } from "../../lib/avatar-upload";
-import { identity } from "../../lib/services.server";
+import { deployments, identity } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 import { forgetWorkspace } from "../../lib/workspace-choice";
+import { confirmsSlug, deletionRefusal, whatGoes } from "../../lib/workspace-deletion";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Settings · ${params.owner} · g1t` });
@@ -56,13 +58,19 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       ? { slug, available: result.value, message: result.value ? null : "That address is not available." }
       : { slug, available: false, message: result.error.message };
   }
-  // What stands in the way of deleting it, shown before anyone types.
+  // What deleting it would take with it, and anything in the way, shown
+  // before anyone types. Its apps are counted by deployments.
   let deletion: WorkspaceDeletion | null = null;
+  let apps: number | null = null;
   if (viewer) {
-    const found = await identity.checkWorkspaceDeletion(viewer, params.owner).catch(() => null);
+    const [found, usage] = await Promise.all([
+      identity.checkWorkspaceDeletion(viewer, params.owner).catch(() => null),
+      deployments.usage(params.owner, viewer).catch(() => null),
+    ]);
     deletion = found?.ok ? found.value : null;
+    apps = usage?.ok ? usage.value.apps : null;
   }
-  return { workspace, check, deletion };
+  return { workspace, check, deletion, apps };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -84,8 +92,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   }
   // A new address: identity checks the owner, the name and the cooldown,
   // and keeps the old one as a redirect.
-  // Deletion: identity checks the owner, the typed name, that nothing is
-  // left in it and that billing has settled it.
+  // Deletion: identity checks the owner, the typed name, that it is not
+  // protected and that billing has settled it. Everything in it goes with
+  // it; the owner goes back to their own home, where it is no longer listed.
   if (intent === "delete") {
     const result = await identity.deleteWorkspace(user, params.owner, String(form.get("confirm") ?? ""));
     if (!result.ok) return { deleteError: result.error.message };
@@ -149,6 +158,7 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
         <DeleteAction
           workspace={workspace}
           deletion={loaderData.deletion}
+          apps={loaderData.apps}
           error={actionData && "deleteError" in actionData ? actionData.deleteError : undefined}
         />
       </DangerZone>
@@ -156,50 +166,52 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
   );
 }
 
-/** Why a workspace cannot be deleted yet, as a sentence, or null. */
-function blockedBy(slug: string, deletion: WorkspaceDeletion | null): string | null {
-  if (!deletion) return null;
-  const held: string[] = [];
-  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-  if (deletion.repositories > 0) held.push(plural(deletion.repositories, "repository", "repositories"));
-  if (deletion.projects > 0) held.push(plural(deletion.projects, "project", "projects"));
-  if (held.length) {
-    return `${slug} still holds ${held.join(" and ")}. Transfer each repository to another workspace or delete it first, under Repositories. Recently deleted repositories are removed with the workspace.`;
-  }
-  return deletion.billing;
-}
-
 /**
- * Deleting the workspace, once it holds nothing and billing has settled
- * it. Owners only, as the whole page is; typed out to confirm.
+ * Deleting the workspace, with everything in it, in one step. Owners only,
+ * as the whole page is; typed out to confirm. It is kept for
+ * `WORKSPACE_RESTORE_DAYS`, when support can restore it. A protected
+ * workspace says so instead of offering the button.
  */
 function DeleteAction({
   workspace,
   deletion,
+  apps,
   error,
 }: {
   workspace: Workspace;
   deletion: WorkspaceDeletion | null;
+  apps: number | null;
   error?: string;
 }) {
   const [open, setOpen] = useState(Boolean(error));
   const [confirm, setConfirm] = useState("");
   const navigation = useNavigation();
   const deleting = navigation.state !== "idle" && navigation.formData?.get("intent") === "delete";
-  const blocked = blockedBy(workspace.slug, deletion);
+  const refusal = deletionRefusal(workspace.slug, deletion);
+  const goes = deletion ? whatGoes(deletion, apps) : [];
+  if (deletion?.protected) {
+    return (
+      <DangerAction title="Delete this workspace" action={null}>
+        <span role="status">{refusal}</span>
+      </DangerAction>
+    );
+  }
   return (
     <DangerAction
       title="Delete this workspace"
       action={
-        <Button type="button" variant="danger" disabled={Boolean(blocked)} onClick={() => setOpen(true)}>
+        <Button type="button" variant="danger" disabled={Boolean(refusal)} onClick={() => setOpen(true)}>
           Delete workspace
         </Button>
       }
     >
-      {blocked ? (
-        <span role="status">{blocked}</span>
+      {refusal ? (
+        <span role="status">{refusal}</span>
       ) : (
-        <>Its members, tokens, webhooks, integrations and secrets are removed. Statements and the audit log are kept.</>
+        <>
+          Everything in it goes with it: repositories, projects, apps, members' access and tokens. It is kept for{" "}
+          {WORKSPACE_RESTORE_DAYS} days, and support can restore it until then.
+        </>
       )}
       <AlertDialog
         open={open}
@@ -213,14 +225,31 @@ function DeleteAction({
             <input type="hidden" name="intent" value="delete" />
             <AlertDialogHeader>
               <AlertDialogTitle>Delete {workspace.slug}?</AlertDialogTitle>
-              <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+              <AlertDialogDescription>
+                Everything in it goes now. For {WORKSPACE_RESTORE_DAYS} days, support can restore all of it; after
+                that it is gone for good.
+              </AlertDialogDescription>
             </AlertDialogHeader>
+            {goes.length > 0 ? (
+              <div className="grid gap-1.5">
+                <p className="text-sm font-medium">What goes with it</p>
+                <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
+                  {goes.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted">
-              <li>Everyone loses access to it, and its access tokens stop working at once.</li>
-              <li>Its webhooks, integrations, workspace secrets and memory are removed.</li>
+              <li>Everyone loses access to it at once, and its access tokens stop working.</li>
+              <li>Its pages, repositories and apps are no longer found, and nothing builds or runs for it.</li>
               <li>
                 Anything it owes is charged to its card now, and its plan ends today. Its statements, invoices and
                 audit log are kept.
+              </li>
+              <li>
+                To get it back within {WORKSPACE_RESTORE_DAYS} days, an owner writes to support. After that its
+                repositories, projects, apps, webhooks, integrations, secrets and memory are removed for good.
               </li>
               <li>
                 The name <span className="font-mono text-fg">{workspace.slug}</span> is never given to another
@@ -246,11 +275,7 @@ function DeleteAction({
             <ErrorText>{error}</ErrorText>
             <AlertDialogFooter>
               <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-              <Button
-                type="submit"
-                variant="danger"
-                disabled={confirm.trim().toLowerCase() !== workspace.slug || deleting}
-              >
+              <Button type="submit" variant="danger" disabled={!confirmsSlug(workspace.slug, confirm) || deleting}>
                 {deleting ? "Deleting…" : "Delete workspace"}
               </Button>
             </AlertDialogFooter>

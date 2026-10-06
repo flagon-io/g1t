@@ -375,17 +375,21 @@ pub struct RenameWorkspaceArgs {
 }
 
 /// `delete_workspace`: owners only, and only a person. `confirm` must be
-/// the workspace's slug, typed out. Refused while the workspace still
-/// holds repositories or projects, or while billing cannot settle it
-/// (`close_workspace`). Removes its memberships, its access tokens and its
-/// old-slug redirects; billing's ledger and the audit log keep its
-/// history. The slug is never given to another workspace; the person
-/// whose username it is may make a workspace of that name again.
-/// Publishes `workspace.deleted`. Returns `Outcome<bool>`.
+/// the workspace's slug, typed out. Refused for a protected workspace
+/// ([`protected_names`]), whoever asks, and while billing cannot settle it
+/// (`close_workspace`). Everything in it goes with it at once: nobody can
+/// reach it, its tokens stop working, its pages are not found, and its
+/// repositories, projects and apps are deleted with it. It is kept for
+/// [`WORKSPACE_RESTORE_DAYS`] so g1t's staff can restore it, then purged:
+/// its memberships, access tokens and old-slug redirects go, and billing's
+/// ledger and the audit log keep its history. The slug is never given to
+/// another workspace; the person whose username it is may make a workspace
+/// of that name again once it is purged. Publishes `workspace.deleting`,
+/// and `workspace.deleted` at the purge. Returns `Outcome<bool>`.
 ///
 /// `check_workspace_deletion` takes the same arguments (with `confirm`
-/// ignored) and says what stands in the way, changing nothing. Returns
-/// `Outcome<WorkspaceDeletion>`.
+/// ignored) and says what would go and whether anything stands in the way,
+/// changing nothing. Returns `Outcome<WorkspaceDeletion>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeleteWorkspaceArgs {
     pub actor: User,
@@ -397,41 +401,102 @@ pub struct DeleteWorkspaceArgs {
     pub surface: Option<crate::audit::Surface>,
 }
 
-/// What stands between a workspace and its deletion. Nothing does when
-/// both counts are zero and `billing` is null.
+/// What deleting a workspace takes with it, and what stands in the way.
+/// Nothing does when `billing` is null and it is not `protected`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceDeletion {
+    /// Its live repositories, which are deleted with it.
     pub repositories: u32,
+    /// Its projects, hidden with it.
     pub projects: u32,
+    #[serde(default)]
+    pub members: u32,
     /// Why billing cannot close the workspace yet, in words for its owner.
     pub billing: Option<String>,
+    /// It can never be deleted, by anyone ([`protected_names`]).
+    #[serde(default)]
+    pub protected: bool,
 }
 
 impl WorkspaceDeletion {
     pub fn blocked(&self) -> bool {
-        self.repositories > 0 || self.projects > 0 || self.billing.is_some()
+        self.protected || self.billing.is_some()
     }
 
-    /// Why the workspace cannot be deleted yet, as one sentence, or `None`.
+    /// Why the workspace cannot be deleted, as one sentence, or `None`.
     pub fn reason(&self, slug: &str) -> Option<String> {
-        let plural = |n: u32, one: &str, many: &str| {
-            format!("{n} {}", if n == 1 { one } else { many })
-        };
-        let mut held = Vec::new();
-        if self.repositories > 0 {
-            held.push(plural(self.repositories, "repository", "repositories"));
-        }
-        if self.projects > 0 {
-            held.push(plural(self.projects, "project", "projects"));
-        }
-        if !held.is_empty() {
-            return Some(format!(
-                "{slug} still holds {}. Transfer them to another workspace first.",
-                held.join(" and ")
-            ));
+        if self.protected {
+            return Some(protected_refusal(slug));
         }
         self.billing.clone()
     }
+}
+
+/// How long a deleted workspace is kept, for staff to restore, before it is
+/// purged.
+pub const WORKSPACE_RESTORE_DAYS: u64 = 30;
+
+/// Workspaces nobody can delete, whatever identity's `PROTECTED_WORKSPACES`
+/// says: Flagon's, which runs g1t.
+pub const ALWAYS_PROTECTED: &[&str] = &["flagon-io"];
+
+/// The protected workspaces: `configured` (comma-separated slugs or
+/// workspace ids, as identity's `PROTECTED_WORKSPACES` holds them), and
+/// [`ALWAYS_PROTECTED`] whatever it says, so an empty or missing variable
+/// still protects them. Lowercased, without duplicates.
+pub fn protected_names(configured: Option<&str>) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    let given = configured.unwrap_or_default().split(',');
+    for name in ALWAYS_PROTECTED.iter().copied().chain(given) {
+        let name = name.trim().to_lowercase();
+        if !name.is_empty() && !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    names
+}
+
+/// Why a protected workspace is not deleted, purged or acted on.
+pub fn protected_refusal(slug: &str) -> String {
+    format!("{slug} is protected and can never be deleted.")
+}
+
+/// `admin_deleted_workspaces` takes no arguments (`{}`) and returns
+/// `Vec<DeletedWorkspace>`, newest first. Staff only.
+///
+/// A workspace an owner deleted, kept until `purge_after` for staff to
+/// restore.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletedWorkspace {
+    pub workspace_id: String,
+    pub slug: String,
+    pub name: String,
+    /// RFC 3339.
+    pub deleted_at: String,
+    /// The username of the owner who deleted it.
+    pub deleted_by: String,
+    /// RFC 3339: when it is purged unless restored first.
+    pub purge_after: String,
+    /// What went with it, counted when it was deleted.
+    pub went: WorkspaceDeletion,
+    /// Whether staff can still restore it.
+    pub restorable: bool,
+}
+
+/// `admin_restore_workspace` and `admin_purge_workspace`: staff restore a
+/// deleted workspace within [`WORKSPACE_RESTORE_DAYS`], or purge it now.
+/// `staff` is who, for the audit logs. Purging needs `confirm`, the slug
+/// typed out, and is refused for a protected workspace. Restoring publishes
+/// `workspace.restored`; purging, `workspace.deleted`. Both return
+/// `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminDeletedWorkspaceArgs {
+    pub workspace_id: String,
+    pub staff: String,
+    #[serde(default)]
+    pub confirm: String,
 }
 
 /// `transfer_repo_scopes`: a repository moved from `from` to `to`; the
@@ -700,6 +765,9 @@ pub struct AdminWorkspaceDetail {
     pub created_at: String,
     /// Owners first, then by username.
     pub members: Vec<AdminMember>,
+    /// It can never be deleted ([`protected_names`]).
+    #[serde(default)]
+    pub protected: bool,
 }
 
 /// A member of a workspace, as staff see them.
@@ -1305,27 +1373,44 @@ pub struct InviteTree {
 
 #[cfg(test)]
 mod deletion_tests {
-    use super::WorkspaceDeletion;
+    use super::{WorkspaceDeletion, protected_names};
 
     #[test]
-    fn says_what_is_left_to_move() {
-        let clear = WorkspaceDeletion::default();
-        assert!(!clear.blocked());
-        assert_eq!(clear.reason("acme"), None);
-        let held = WorkspaceDeletion {
+    fn only_billing_or_protection_stands_in_the_way() {
+        let clear = WorkspaceDeletion {
             repositories: 2,
             projects: 1,
-            billing: Some("Pay first.".into()),
+            members: 3,
+            ..WorkspaceDeletion::default()
         };
-        assert!(held.blocked());
-        assert_eq!(
-            held.reason("acme").as_deref(),
-            Some("acme still holds 2 repositories and 1 project. Transfer them to another workspace first.")
-        );
+        assert!(!clear.blocked());
+        assert_eq!(clear.reason("acme"), None);
         let owing = WorkspaceDeletion {
             billing: Some("Pay first.".into()),
             ..WorkspaceDeletion::default()
         };
+        assert!(owing.blocked());
         assert_eq!(owing.reason("acme").as_deref(), Some("Pay first."));
+        let protected = WorkspaceDeletion {
+            billing: Some("Pay first.".into()),
+            protected: true,
+            ..WorkspaceDeletion::default()
+        };
+        assert!(protected.blocked());
+        assert_eq!(
+            protected.reason("flagon-io").as_deref(),
+            Some("flagon-io is protected and can never be deleted.")
+        );
+    }
+
+    #[test]
+    fn flagon_is_protected_whatever_the_variable_says() {
+        assert_eq!(protected_names(None), ["flagon-io"]);
+        assert_eq!(protected_names(Some("")), ["flagon-io"]);
+        assert_eq!(protected_names(Some(" , ")), ["flagon-io"]);
+        assert_eq!(
+            protected_names(Some("Flagon-IO, acme ,wsp_1")),
+            ["flagon-io", "acme", "wsp_1"]
+        );
     }
 }

@@ -33,7 +33,7 @@ mod transfer;
 
 use g1t_contracts::events::{
     Event, GitPush, NewEvent, Publish, RepoCreated, RepoForked, RepoUpdated, WorkspaceDeleted,
-    WorkspaceRenamed,
+    WorkspaceDeleting, WorkspaceRenamed, WorkspaceRestored,
 };
 use g1t_contracts::access::{self, Capability};
 use g1t_contracts::repos::*;
@@ -1984,8 +1984,8 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
 /// Events from the bus. A workspace's rename: its repositories move to the
 /// workspace's current slug, asked of identity by id, so a repeated or late
 /// delivery lands in the same place; their git store keys stay as they
-/// were. A workspace's deletion: what it left in Recently deleted is
-/// purged with it.
+/// were. A workspace's deletion: its repositories are deleted with it,
+/// restored with it, or purged with it.
 #[event(queue)]
 async fn queue(batch: MessageBatch<Event>, env: Env, ctx: Context) -> Result<()> {
     let registry = Registry { db: env.d1("DB")? };
@@ -2012,9 +2012,25 @@ async fn handle_events(batch: &MessageBatch<Event>, env: &Env, registry: &Regist
             }
             continue;
         }
+        // A workspace deleted, restored or purged: its repositories go with
+        // it, come back with it, or are purged with it (lifecycle.rs).
+        if event.kind == "workspace.deleting" {
+            match serde_json::from_value::<WorkspaceDeleting>(event.data.clone()) {
+                Ok(deleting) => service(env)?.delete_with_workspace(&deleting, &protected_workspaces(env)).await?,
+                Err(_) => worker::console_error!("workspace.deleting {} could not be read", event.id),
+            }
+            continue;
+        }
+        if event.kind == "workspace.restored" {
+            match serde_json::from_value::<WorkspaceRestored>(event.data.clone()) {
+                Ok(restored) => service(env)?.restore_with_workspace(&restored).await?,
+                Err(_) => worker::console_error!("workspace.restored {} could not be read", event.id),
+            }
+            continue;
+        }
         if event.kind == "workspace.deleted" {
             match serde_json::from_value::<WorkspaceDeleted>(event.data.clone()) {
-                Ok(deleted) => service(env)?.purge_workspace(&deleted.slug.to_lowercase()).await?,
+                Ok(deleted) => service(env)?.purge_workspace(&deleted, &protected_workspaces(env)).await?,
                 Err(_) => worker::console_error!("workspace.deleted {} could not be read", event.id),
             }
             continue;
@@ -2050,6 +2066,13 @@ async fn handle_events(batch: &MessageBatch<Event>, env: &Env, registry: &Regist
         }
     }
     Ok(())
+}
+
+/// The workspaces whose repositories never go with a deletion, whatever is
+/// published: `PROTECTED_WORKSPACES` if set here, and Flagon's always.
+fn protected_workspaces(env: &Env) -> Vec<String> {
+    let configured = env.var("PROTECTED_WORKSPACES").ok().map(|v| v.to_string());
+    g1t_contracts::identity::protected_names(configured.as_deref())
 }
 
 /// The repository a push to a path that does not exist yet creates: private,

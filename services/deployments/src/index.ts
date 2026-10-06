@@ -42,6 +42,7 @@ import {
   currentWorkspaceSlug,
   fail,
   identityClient,
+  isProtectedWorkspace,
   newId,
   ok,
   openD1,
@@ -182,6 +183,8 @@ type SettingsRow = {
   idle_days: number;
   /** Set while its repository is deleted (restorable); see `repoDeleted`. */
   repo_deleted_at: string | null;
+  /** Set while its workspace is deleted (restorable); see `workspaceDeleting`. */
+  workspace_deleted_at?: string | null;
 };
 
 type DeploymentRow = {
@@ -876,7 +879,7 @@ class Deployments {
 
   private async deployProduction(project: Project, commit: string | null, createdBy: string): Promise<Result<Deployment> | null> {
     const settings = await this.settingsRow(project.id);
-    if (!settings?.enabled || !settings.production || settings.repo_deleted_at) return null;
+    if (!settings?.enabled || !settings.production || settings.repo_deleted_at || settings.workspace_deleted_at) return null;
     const actor = await this.workspaceActor(project.workspace);
     if (!actor) return null;
     const repo = repoOf(project);
@@ -903,7 +906,7 @@ class Deployments {
 
   private async deployPreview(project: Project, number: number, createdBy: string, force = false): Promise<Result<Deployment> | null> {
     const settings = await this.settingsRow(project.id);
-    if (!settings?.enabled || !settings.previews || settings.repo_deleted_at) return null;
+    if (!settings?.enabled || !settings.previews || settings.repo_deleted_at || settings.workspace_deleted_at) return null;
     const actor = await this.workspaceActor(project.workspace);
     if (!actor) return null;
     const repo = repoOf(project);
@@ -1254,11 +1257,22 @@ class Deployments {
       case "repo.renamed":
         await this.moved(repoMove(event)!, attempts);
         break;
+      // A repository that went or came back with its workspace is the
+      // workspace's to handle: its apps are paused, not taken down.
       case "repo.deleted":
-        await this.repoDeleted(event.data.repoId);
+        if (!event.data.withWorkspace) await this.repoDeleted(event.data.repoId);
         break;
       case "repo.restored":
-        await this.repoRestored(event.data.repoId, attempts);
+        if (!event.data.withWorkspace) await this.repoRestored(event.data.repoId, attempts);
+        break;
+      case "workspace.deleting":
+        await this.workspaceDeleting(event.data.slug);
+        break;
+      case "workspace.restored":
+        await this.workspaceRestored(event.data.slug);
+        break;
+      case "workspace.deleted":
+        await this.workspacePurged(event.data.slug);
         break;
       case "repo.purged":
         await this.repoPurged(event.data.repoId);
@@ -1713,6 +1727,86 @@ class Deployments {
   }
 
   /**
+   * A workspace was deleted, restorable by g1t's staff for a while: every
+   * app of its projects (production and previews) is paused, answering with
+   * a notice and running nothing, builds under way are dropped, and nothing
+   * builds for it until it is restored. Nothing is taken down: scripts,
+   * settings and custom domains are kept for the restore. Never for a
+   * protected workspace, whatever was published.
+   */
+  private async workspaceDeleting(slug: string): Promise<void> {
+    const workspace = slug.toLowerCase();
+    if (isProtectedWorkspace(workspace)) {
+      console.error("workspace.deleting ignored for protected", workspace);
+      return;
+    }
+    const at = now();
+    await this.db.batch([
+      this.db
+        .prepare("UPDATE settings SET workspace_deleted_at = COALESCE(workspace_deleted_at, ?) WHERE workspace = ?")
+        .bind(at, workspace),
+      this.db
+        .prepare(
+          `UPDATE deployments SET status = 'skipped', error = 'The workspace was deleted.', finished_at = ?
+           WHERE workspace = ? AND status IN ('queued', 'building')`,
+        )
+        .bind(at, workspace),
+    ]);
+    const cloudflare = this.cloudflare;
+    for (const app of await this.appsOfWorkspace(workspace)) {
+      if (app.paused_at) continue;
+      await cloudflare?.pauseScript(app.script);
+      await this.db.prepare("UPDATE apps SET paused_at = ? WHERE script = ?").bind(at, app.script).run();
+    }
+  }
+
+  /**
+   * A deleted workspace is back: it builds again, and its paused apps are
+   * resumed as the workspace's limit allows, as `holdToLimits` resumes any
+   * (the sweep tries again any it could not).
+   */
+  private async workspaceRestored(slug: string): Promise<void> {
+    const workspace = slug.toLowerCase();
+    await this.db.prepare("UPDATE settings SET workspace_deleted_at = NULL WHERE workspace = ?").bind(workspace).run();
+    const rows = await this.db.prepare("SELECT * FROM settings WHERE workspace = ?").bind(workspace).all<SettingsRow>();
+    const settings = new Map(rows.results.map((row) => [row.project_id, row]));
+    await this.holdToLimits(await this.appsOfWorkspace(workspace), settings);
+  }
+
+  /**
+   * A deleted workspace is purged: whatever its projects still have up
+   * comes down and their custom domains go, as for a purged repository.
+   * Its own repositories' projects are purged with them (`repo.purged`);
+   * this catches any building from a repository it had transferred away.
+   */
+  private async workspacePurged(slug: string): Promise<void> {
+    const workspace = slug.toLowerCase();
+    if (isProtectedWorkspace(workspace)) return;
+    const rows = await this.db.prepare("SELECT project_id FROM settings WHERE workspace = ?").bind(workspace).all<{ project_id: string }>();
+    for (const { project_id } of rows.results) {
+      await this.takeDownWhere(project_id, null);
+      await this.domains.removeWhere("project_id", project_id);
+    }
+    for (const app of await this.appsOfWorkspace(workspace)) await this.removeApp(app.script);
+    await this.db.batch([
+      this.db.prepare("DELETE FROM deployments WHERE workspace = ?").bind(workspace),
+      this.db.prepare("DELETE FROM settings WHERE workspace = ?").bind(workspace),
+    ]);
+  }
+
+  /** The apps of a workspace's projects, and any still under its name. */
+  private async appsOfWorkspace(workspace: string): Promise<AppRow[]> {
+    const rows = await this.db
+      .prepare(
+        `SELECT * FROM apps WHERE workspace = ?1
+           OR project_id IN (SELECT project_id FROM settings WHERE workspace = ?1)`,
+      )
+      .bind(workspace)
+      .all<AppRow>();
+    return rows.results;
+  }
+
+  /**
    * A deleted repository is gone for good: its projects' custom domains are
    * removed (from the dispatcher and from Cloudflare), any app or redirect
    * still up comes down, and every row kept for them goes. What they used
@@ -1849,15 +1943,19 @@ class Deployments {
       (await this.db.prepare("SELECT * FROM settings").all<SettingsRow>()).results.map((row) => [row.project_id, row]),
     );
     const owners = new Map([...settings].map(([id, row]) => [id, row.workspace]));
-    const workspaces = [...new Set(apps.map((app) => ownerOf(app, owners)))];
+    // A deleted workspace's apps stay paused as they are, for a restore:
+    // its plan ended with the deletion, and that must not take them down.
+    const held = (app: AppRow) => Boolean(settings.get(app.project_id)?.workspace_deleted_at);
+    const live = apps.filter((app) => !held(app));
+    const workspaces = [...new Set(live.map((app) => ownerOf(app, owners)))];
 
     // Apps of workspaces whose plan has ended come down.
     const billing = billingClient(this.env.BILLING);
-    await this.holdToLimits(apps, settings).catch((error) => console.error("could not apply limits", error));
+    await this.holdToLimits(live, settings).catch((error) => console.error("could not apply limits", error));
     for (const workspace of workspaces) {
       const plan = await billing.hasFeature(workspace, "deployments");
       if (!plan.ok && plan.error.code === "payment_required") {
-        for (const app of apps.filter((a) => ownerOf(a, owners) === workspace)) await this.removeApp(app.script);
+        for (const app of live.filter((a) => ownerOf(a, owners) === workspace)) await this.removeApp(app.script);
         // Custom domains cost g1t by the month: they go with the plan.
         await this.domains.removeWhere("workspace", workspace).catch((error) => console.error("could not remove domains", error));
       }
@@ -2019,7 +2117,7 @@ class Deployments {
     const idle = await this.db
       .prepare(
         `SELECT apps.script FROM apps JOIN settings ON settings.project_id = apps.project_id
-         WHERE apps.kind = 'preview'
+         WHERE apps.kind = 'preview' AND settings.workspace_deleted_at IS NULL
            AND COALESCE(apps.last_request_at, apps.deployed_at) < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-' || settings.idle_days || ' days')`,
       )
       .all<{ script: string }>();

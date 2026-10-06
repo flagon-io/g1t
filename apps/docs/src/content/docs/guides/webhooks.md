@@ -13,7 +13,7 @@ A webhook belongs to one of two things:
 | | Sent the events of | Managed by | Where |
 | --- | --- | --- | --- |
 | A repository's | That repository | People with the Admin [role](/guides/access-and-roles/) on it | The project's **Settings → Webhooks** |
-| A workspace's | Every repository in the workspace | Owners | The workspace's **Settings → Webhooks** |
+| A workspace's | Every repository in the workspace, and the workspace's own [packages](/guides/packages/) | Owners | The workspace's **Settings → Webhooks** |
 
 Seeing a repository's webhooks, and their deliveries, needs Admin too: the
 page is not shown to anyone else, since a webhook's address and secret are

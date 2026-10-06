@@ -59,6 +59,12 @@ pub(crate) struct Config {
     /// free for every workspace. Past it, the plan pays at cost plus the
     /// margin; a free workspace's pushes to private repositories stop.
     pub free_storage_bytes: i64,
+    /// `PUBLIC_PACKAGES_FREE_BYTES` and `PRIVATE_PACKAGES_FREE_BYTES`: what
+    /// a workspace's public and private packages may hold for free (10 GB
+    /// and 500 MB). Past them a free workspace's pushes are refused (the
+    /// packages service asks); the plan pays at cost plus the margin.
+    pub public_package_free_bytes: i64,
+    pub private_package_free_bytes: i64,
     /// `FREE_AUDIT_RETENTION_DAYS`: days of audit log a free workspace
     /// keeps. `AUDIT_RETENTION_DAYS`: the plan's, g1t's own and an
     /// enterprise's. `AUDIT_MAX_DAYS`: the most staff can set for an
@@ -98,6 +104,8 @@ impl Default for Config {
             trial_monthly_pool_micros: 100_000_000,
             min_charge_micros: 5_000_000,
             free_storage_bytes: 1_000_000_000,
+            public_package_free_bytes: 10_000_000_000,
+            private_package_free_bytes: 500_000_000,
             free_audit_days: 7,
             audit_days: 90,
             audit_max_days: 400,
@@ -127,6 +135,8 @@ impl Config {
             trial_monthly_pool_micros: number("TRIAL_MONTHLY_POOL_MICROS", d.trial_monthly_pool_micros),
             min_charge_micros: number("MIN_CHARGE_MICROS", d.min_charge_micros),
             free_storage_bytes: number("FREE_PRIVATE_STORAGE_BYTES", d.free_storage_bytes),
+            public_package_free_bytes: number("PUBLIC_PACKAGES_FREE_BYTES", d.public_package_free_bytes),
+            private_package_free_bytes: number("PRIVATE_PACKAGES_FREE_BYTES", d.private_package_free_bytes),
             free_audit_days: number("FREE_AUDIT_RETENTION_DAYS", d.free_audit_days.into()).max(1) as u32,
             audit_days: number("AUDIT_RETENTION_DAYS", d.audit_days.into()).max(1) as u32,
             audit_max_days: number("AUDIT_MAX_DAYS", d.audit_max_days.into()).max(1) as u32,

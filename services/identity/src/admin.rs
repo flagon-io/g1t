@@ -41,6 +41,8 @@ struct DetailRow {
     name: String,
     description: Option<String>,
     created_at: String,
+    #[serde(default)]
+    protected: u8,
 }
 
 #[derive(Deserialize)]
@@ -106,7 +108,7 @@ impl Identity {
                 "SELECT u.email FROM workspace_members m
                  JOIN users u ON u.id = m.user_id
                  JOIN workspaces w ON w.id = m.workspace_id
-                 WHERE w.slug = ? AND m.role = 'owner' AND u.email_verified_at IS NOT NULL",
+                 WHERE w.slug = ? AND w.deleted_at IS NULL AND m.role = 'owner' AND u.email_verified_at IS NOT NULL",
             )
             .bind(&[a.workspace.to_lowercase().into()])?
             .all()
@@ -125,13 +127,14 @@ impl Identity {
     pub async fn admin_workspaces(&self, a: AdminWorkspacesArgs) -> Result<Vec<AdminWorkspace>> {
         let pattern = like_pattern(a.query.as_deref());
         // The same filter picks the workspaces and, below, their owners.
+        // Deleted ones are listed apart (`admin_deleted_workspaces`).
         let filter = if pattern.is_some() {
-            "WHERE w.slug LIKE ?1 ESCAPE '\\' OR lower(w.name) LIKE ?1 ESCAPE '\\'
+            "WHERE w.deleted_at IS NULL AND (w.slug LIKE ?1 ESCAPE '\\' OR lower(w.name) LIKE ?1 ESCAPE '\\'
                OR EXISTS (SELECT 1 FROM workspace_members om JOIN users ou ON ou.id = om.user_id
                           WHERE om.workspace_id = w.id AND om.role = 'owner'
-                            AND (lower(ou.username) LIKE ?1 ESCAPE '\\' OR lower(ou.email) LIKE ?1 ESCAPE '\\'))"
+                            AND (lower(ou.username) LIKE ?1 ESCAPE '\\' OR lower(ou.email) LIKE ?1 ESCAPE '\\')))"
         } else {
-            ""
+            "WHERE w.deleted_at IS NULL"
         };
         let chosen = format!(
             "SELECT w.id FROM workspaces w {filter}
@@ -170,7 +173,7 @@ impl Identity {
     pub async fn admin_workspace(&self, a: SlugArgs) -> Result<Option<AdminWorkspaceDetail>> {
         let Some(row) = self
             .db
-            .prepare("SELECT id, slug, name, description, created_at FROM workspaces WHERE slug = ?")
+            .prepare("SELECT id, slug, name, description, created_at, protected FROM workspaces WHERE slug = ?")
             .bind(&[a.slug.trim().to_lowercase().into()])?
             .first::<DetailRow>(None)
             .await?
@@ -197,7 +200,9 @@ impl Identity {
                 joined: m.joined,
             })
             .collect();
+        let protected = self.is_protected(&row.id, &row.slug, row.protected != 0).await?;
         Ok(Some(AdminWorkspaceDetail {
+            protected,
             slug: row.slug,
             name: row.name,
             description: row.description,

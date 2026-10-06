@@ -155,7 +155,7 @@ const INVITATION_COLUMNS: &str = "ri.id, ri.repo_id, w.slug AS workspace, ri.wor
   ri.invitee_id, invitee.username AS invitee, ri.email, ri.invite_id, ri.role, ri.inviter_id, inviter.username AS inviter, inviter.avatar AS inviter_avatar,
   ri.created_at, ri.expires_at, ri.accepted_at, ri.declined_at, ri.revoked_at
   FROM repo_invitations ri
-  JOIN workspaces w ON w.id = ri.workspace_id
+  JOIN workspaces w ON w.id = ri.workspace_id AND w.deleted_at IS NULL
   LEFT JOIN users invitee ON invitee.id = ri.invitee_id
   LEFT JOIN users inviter ON inviter.id = ri.inviter_id";
 
@@ -223,7 +223,7 @@ impl Identity {
             .db
             .prepare(format!(
                 "SELECT g.repo_id, w.slug AS workspace, g.role FROM repo_grants g
-                 JOIN workspaces w ON w.id = g.workspace_id
+                 JOIN workspaces w ON w.id = g.workspace_id AND w.deleted_at IS NULL
                  WHERE g.principal_kind = 'user' AND g.principal_id = ?
                  ORDER BY g.created_at LIMIT {MAX_GRANTS}"
             ))
@@ -266,7 +266,8 @@ impl Identity {
     pub(crate) async fn workspace_id_of(&self, slug: &str) -> Result<Option<String>> {
         Ok(self
             .db
-            .prepare("SELECT id FROM workspaces WHERE slug = ?")
+            // A deleted workspace's repositories are nobody's to share.
+            .prepare("SELECT id FROM workspaces WHERE slug = ? AND deleted_at IS NULL")
             .bind(&[slug.to_lowercase().into()])?
             .first::<Id>(None)
             .await?

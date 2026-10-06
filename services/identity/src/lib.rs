@@ -622,13 +622,18 @@ impl Identity {
 }
 
 /// Every 15 minutes: staff hear about waitlist requests that arrived while
-/// the last summary's window was still open, so none waits on a later one.
+/// the last summary's window was still open, so none waits on a later one;
+/// and deleted workspaces past their restore window are purged
+/// (deletion.rs).
 #[event(scheduled)]
 async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     let Ok(db) = env.d1("DB") else { return };
     let identity = Identity { db, env };
     if let Err(error) = identity.notify_staff_of_requests().await {
         worker::console_error!("waitlist summary: {error}");
+    }
+    if let Err(error) = identity.purge_due_workspaces().await {
+        worker::console_error!("workspace purge: {error}");
     }
 }
 
@@ -801,6 +806,10 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_grant_invites" => reply(&identity.admin_grant_invites(args(body)?).await?),
         "admin_invite_tree" => reply(&identity.admin_invite_tree(args(body)?).await?),
         "admin_workspace_invites" => reply(&identity.admin_workspace_invites(args(body)?).await?),
+        // Deleted workspaces, restored or purged by staff; see deletion.rs.
+        "admin_deleted_workspaces" => reply(&identity.admin_deleted_workspaces().await?),
+        "admin_restore_workspace" => reply(&identity.admin_restore_workspace(args(body)?).await?),
+        "admin_purge_workspace" => reply(&identity.admin_purge_workspace(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     };
     served.finish(answered)

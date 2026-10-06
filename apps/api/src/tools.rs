@@ -231,7 +231,7 @@ pub const TOOLS: &[Tool] = &[
         default_action: None,
         actions: &[
             a("create", Op::CreateWorkspace, "Create a workspace"),
-            a("delete", Op::DeleteWorkspace, "Delete an empty workspace"),
+            a("delete", Op::DeleteWorkspace, "Delete a workspace and everything in it (support can restore it for 30 days)"),
             a("update", Op::UpdateWorkspace, "Change its name, description or base permission"),
             a("list_invites", Op::ListWorkspaceInvites, "Its invites"),
             a("invite_member", Op::InviteMember, "Invite an email address"),

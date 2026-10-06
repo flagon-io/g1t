@@ -509,6 +509,11 @@ impl Billing {
             audit_retention_days: crate::retention::effective_days(&self.plans, plan, account.allowances.audit_retention_days),
             audit_retention_custom: account.allowances.audit_retention_days.is_some(),
             free_private_storage_bytes: self.plans.free_storage_bytes,
+            // For the packages service: on the plan nothing is refused; without it,
+            // pushes past these amounts are.
+            has_plan,
+            package_public_free_bytes: self.plans.public_package_free_bytes,
+            package_private_free_bytes: self.plans.private_package_free_bytes,
             private_storage_bytes: stored,
             oss_paid_micros: oss,
             build_seconds_used: build_seconds.max(0) as u32,

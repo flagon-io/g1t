@@ -9,6 +9,8 @@
 // - ARTIFACTS (git storage) becomes a service binding to workers/artifacts,
 //   which keeps repositories in the git store (gitstore/server.mjs);
 // - EMAIL (Email Sending) becomes a service binding to workers/mail;
+// - the packages service keeps files in S3-compatible storage (MinIO)
+//   instead of R2;
 // - services that are off in this phase (agents, the context hub, the
 //   g1t.page dispatcher, model proxy) are bound to workers/off instead, and
 //   events stop queueing work for them;
@@ -16,7 +18,9 @@
 //
 // Usage: node configs.mjs [outDir]
 // Environment: PUBLIC_URL, GITSTORE_URL, GITSTORE_SECRET, MAIL_URL,
-// ACTIONS_KEY, INTEGRATIONS_KEY, WEBHOOKS_KEY, IDENTITY_KEY, and optionally
+// ACTIONS_KEY, INTEGRATIONS_KEY, WEBHOOKS_KEY, IDENTITY_KEY,
+// PACKAGES_TOKEN_SECRET, S3_ENDPOINT, S3_BUCKET, S3_REGION,
+// S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_PUBLIC_ENDPOINT, and optionally
 // your own GitHub App: GITHUB_APP_ID, GITHUB_APP_SLUG, GITHUB_APP_CLIENT_ID,
 // GITHUB_APP_CLIENT_SECRET, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_WEBHOOK_SECRET.
 //
@@ -69,6 +73,15 @@ const GITHUB_SECRETS = {
   "g1t-identity": ["GITHUB_APP_CLIENT_SECRET", "IDENTITY_KEY", "REGISTRATION_MODE"],
   "g1t-integrations": ["GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_WEBHOOK_SECRET"],
 };
+
+/**
+ * Services whose cron triggers scheduler.mjs runs here: sweeps and
+ * reminders that need nothing self-hosting lacks. Not run: actions (its
+ * minute would start scheduled workflows with no runner to take them),
+ * billing (reconciles against Cloudflare and Stripe), deployments (calls
+ * Cloudflare's API) and the services that are off.
+ */
+const SELF_HOST_CRONS = new Set(["g1t-repos", "g1t-events", "g1t-identity", "g1t-security", "g1t-webhooks", "g1t-packages"]);
 
 /** Queues whose consumers are off: events stops sending to them. */
 const OFF_QUEUES = new Set(["g1t-events-runner", "g1t-events-context"]);
@@ -183,6 +196,26 @@ function selfHosted(service) {
     // Access requests are summarised to your own address, not g1t.sh's.
     config.vars.WAITLIST_NOTIFY_EMAIL = process.env.WAITLIST_NOTIFY_EMAIL ?? "";
   }
+  // Packages' files go to the compose file's MinIO (or any S3-compatible
+  // store) instead of R2, with no request size limit, and package
+  // addresses start with this installation's host.
+  if (hosted.name === "g1t-packages") {
+    Object.assign(config.vars, {
+      BLOB_STORE: "s3",
+      S3_ENDPOINT: process.env.S3_ENDPOINT ?? "http://minio:9000",
+      S3_BUCKET: process.env.S3_BUCKET ?? "g1t-packages",
+      S3_REGION: process.env.S3_REGION ?? "us-east-1",
+      S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID ?? "",
+      S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY ?? "",
+      S3_PUBLIC_ENDPOINT: process.env.S3_PUBLIC_ENDPOINT ?? "",
+      MAX_REQUEST_BYTES: "0",
+      STORAGE_LIMITS: "off",
+      REGISTRY_HOST: new URL(PUBLIC_URL).host,
+      PACKAGES_TOKEN_SECRET: process.env.PACKAGES_TOKEN_SECRET ?? "",
+    });
+    delete config.vars.R2_ACCOUNT_ID;
+    delete config.vars.R2_BUCKET;
+  }
   // Nothing to deploy to: deployments are off (no Cloudflare API token).
   if (hosted.name === "g1t-deployments") delete config.vars.CUSTOM_HOSTNAMES_ZONE_ID;
 
@@ -239,6 +272,16 @@ for (const [service, feature] of Object.entries(OFF)) {
 
 // The order Wrangler takes them in: the site first, as the one that serves.
 writeFileSync(join(out, "workers.txt"), `${files.map((file) => relative(out, file)).join("\n")}\n`);
+
+// What scheduler.mjs runs: each service's own crons, as hosted g1t's Cron
+// Triggers run them, for the services in SELF_HOST_CRONS.
+const schedules = RUNNING.filter((service) => SELF_HOST_CRONS.has(service.name))
+  .map((service) => ({
+    worker: service.name,
+    crons: parseJsonc(readFileSync(join(root, service.dir, "wrangler.jsonc"), "utf8")).triggers?.crons ?? [],
+  }))
+  .filter((schedule) => schedule.crons.length > 0);
+writeFileSync(join(out, "schedules.json"), `${JSON.stringify(schedules, null, 2)}\n`);
 
 // The status page runs in a workerd of its own (status.sh, the `status`
 // service in docker-compose.yml), so it stays up when the site does not:

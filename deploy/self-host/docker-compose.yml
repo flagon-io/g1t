@@ -6,7 +6,8 @@
 # lands in Mailpit at http://localhost:8025.
 #
 # What runs: the site and every core service in one workerd (g1t), git
-# repositories as bare repos on a volume (gitstore), and Mailpit for mail.
+# repositories as bare repos on a volume (gitstore), packages' files in
+# MinIO, and Mailpit for mail.
 # Agents, deployments, context search and billing are off. See
 # docs/SELF_HOSTING.md.
 name: g1t
@@ -41,6 +42,15 @@ services:
       INVITES_PER_USER: ${INVITES_PER_USER:-}
       # Where summaries of new access requests go; empty sends none.
       WAITLIST_NOTIFY_EMAIL: ${WAITLIST_NOTIFY_EMAIL:-}
+      # Packages' files (container images and the rest), in MinIO below or
+      # any S3-compatible store. S3_PUBLIC_ENDPOINT, when clients can reach
+      # the store, sends large downloads there directly.
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_BUCKET: ${S3_BUCKET:-g1t-packages}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-g1t}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-g1t-packages-secret}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
     volumes:
       - g1t-data:/data
       - g1t-secrets:/secrets:ro
@@ -49,6 +59,8 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
+      minio-setup:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   # The status page, in a process of its own so it stays up when the site
@@ -83,6 +95,37 @@ services:
     # Not published: only the g1t container reaches it.
     restart: unless-stopped
 
+  # Packages' files. Not published: only the g1t container reaches it,
+  # unless you publish 9000 and set S3_PUBLIC_ENDPOINT.
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-g1t}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-g1t-packages-secret}
+    volumes:
+      - g1t-packages:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # Makes the bucket once, then exits.
+  minio-setup:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - sh
+      - -c
+      - mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" && mc mb --ignore-existing "local/$$S3_BUCKET"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-g1t}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-g1t-packages-secret}
+      S3_BUCKET: ${S3_BUCKET:-g1t-packages}
+
   mailpit:
     image: axllent/mailpit:latest
     ports:
@@ -98,6 +141,7 @@ services:
 
 volumes:
   g1t-data:
+  g1t-packages:
   g1t-status:
   g1t-git:
   g1t-secrets:

@@ -51,7 +51,25 @@ roadmap.
   with Stripe's page and PDF), its terms, who it is billed to (move it onto or off an
   enterprise), a credit form, a Stripe billing link, its ledger and its
   audit log. If billing does not answer for sales or invoices, the page
-  still opens and says so in those sections.
+  still opens and says so in those sections. A protected workspace (one
+  nobody can ever delete: identity's `PROTECTED_WORKSPACES`, and
+  flagon-io always) says so beside its name.
+- **Deleted workspaces** (`/workspaces/deleted`, linked from Workspaces):
+  workspaces their owners deleted, newest first (`admin_deleted_workspaces`),
+  each with who deleted it and when, when it is purged, what went with it
+  (repositories, projects, members, counted at the deletion) and the days
+  left. An owner deletes a workspace with everything in it in one step, and
+  identity keeps it 30 days (`WORKSPACE_RESTORE_DAYS`) so support can undo a
+  deletion that was a mistake or not theirs to make. **Restore**
+  (`admin_restore_workspace`) brings it back with its members and tokens,
+  and its repositories, projects and apps with `workspace.restored`; its
+  plan stays ended, so its owners start it again from Billing. Check that
+  whoever asks is an owner of it before restoring. **Purge now**
+  (`admin_purge_workspace`, the slug typed to confirm) removes it at once,
+  as the sweep does every 15 minutes once its 30 days are up; never for a
+  protected workspace. Both go in the workspace's audit log, as g1t, and in
+  sudo's (`workspace_restored`, `workspace_purged`), naming the staff
+  member.
 - **Enterprises**: customers that pay for several workspaces with one
   bill, one limit and one set of terms. Each has its workspaces (add or
   remove them), combined usage, terms, credits, ledger and audit log, and

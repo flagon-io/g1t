@@ -43,6 +43,8 @@ const RESERVED: &[&str] = &[
     "invite",
     "invites",
     "waitlist",
+    // g1t.sh/v2/: the container registry; `-` paths hold the others.
+    "v2",
 ];
 
 /// Whether `value`, whatever its case, is a name nobody can register or

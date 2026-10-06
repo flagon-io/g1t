@@ -1,0 +1,76 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-packages",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	// Runs next to its database: a request makes several queries in turn,
+	// and each would otherwise cross the distance to it.
+	"placement": { "mode": "off" },
+	"main": "build/index.js",
+	"build": { "command": "node ../../scripts/build-rust-worker.mjs" },
+	"workers_dev": false,
+	// Made by `npx wrangler d1 create g1t-packages`; put its id here.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "g1t-packages",
+			"database_id": "e541c872-a2a8-47aa-bfe8-419d0d50fe3c",
+			"migrations_dir": "migrations"
+		}
+	],
+	// Every package's files, by digest (src/store). Made by
+	// `npx wrangler r2 bucket create g1t-packages`.
+	"r2_buckets": [{ "binding": "BLOBS", "bucket_name": "g1t-packages" }],
+	// Pulls and token requests (src/limits.rs): anonymous ones per client
+	// address, signed-in ones per person, workspace or agent. Self-hosted
+	// installations have neither binding, and no limit.
+	"ratelimits": [
+		{ "name": "ANONYMOUS_LIMIT", "namespace_id": "4101", "simple": { "limit": 300, "period": 60 } },
+		{ "name": "SIGNED_LIMIT", "namespace_id": "4102", "simple": { "limit": 5000, "period": 60 } }
+	],
+	"services": [
+		// Who a token or password belongs to.
+		{ "binding": "IDENTITY", "service": "g1t-identity" },
+		// The repository an image is linked to, by name.
+		{ "binding": "REPOS", "service": "g1t-repos" },
+		// package.* events and the audit log.
+		{ "binding": "EVENTS", "service": "g1t-events" },
+		// Whether a workspace is on the plan, and its free package storage
+		// (src/quota.rs); asked at most every five minutes per workspace.
+		{ "binding": "BILLING", "service": "g1t-billing" }
+	],
+	// BLOB_STORE: r2 (the BLOBS binding) or s3 (S3_ENDPOINT, S3_BUCKET,
+	//   S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_REGION, and optionally
+	//   S3_PUBLIC_ENDPOINT for signed downloads), as self-hosting uses.
+	// MAX_REQUEST_BYTES: the most a request body may hold: the zone plan's
+	//   limit (Free: 100 MB). A layer pushed in one request over it is
+	//   refused with a message naming it (docs: guides/containers).
+	// REGISTRY_HOST: what package addresses start with.
+	// PROTECTED_WORKSPACES: as identity's; their packages are never hidden
+	//   by a workspace.deleting (flagon-io always, whatever it says).
+	// STORAGE_LIMITS: "on" refuses a free workspace's pushes past its free
+	//   package storage (billing's entitlements); self-hosting turns it off.
+	// Secrets: PACKAGES_TOKEN_SECRET (at least 32 characters) signs the
+	// registry's tokens. R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY
+	// (optional), with R2_ACCOUNT_ID and R2_BUCKET below, let large
+	// downloads go straight to R2 with a signed URL; without them they
+	// stream through the Worker.
+	"vars": {
+		"BLOB_STORE": "r2",
+		"R2_ACCOUNT_ID": "1e6f2cffa3f445920836e8ebe446bb58",
+		"R2_BUCKET": "g1t-packages",
+		"MAX_REQUEST_BYTES": "100000000",
+		"REGISTRY_HOST": "g1t.sh",
+		"STORAGE_LIMITS": "on",
+		"PROTECTED_WORKSPACES": "flagon-io"
+	},
+	// Every hour, expired uploads are let go, and blobs no version has used
+	// for a day are deleted.
+	"triggers": { "crons": ["37 * * * *"] },
+	// Workspaces renamed or deleted, repositories that change visibility,
+	// are renamed, move or are purged.
+	"queues": {
+		"consumers": [{ "queue": "g1t-events-packages", "max_batch_size": 20, "max_batch_timeout": 1 }]
+	},
+	"observability": { "enabled": true }
+}

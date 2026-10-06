@@ -26,6 +26,8 @@
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "REPOS", "service": "g1t-repos" },
+		// The package registries, on g1t.sh/v2/ (workers/app.ts).
+		{ "binding": "PACKAGES", "service": "g1t-packages" },
 		{ "binding": "WORK", "service": "g1t-work" },
 		{ "binding": "RUNNER", "service": "g1t-runner" },
 		{ "binding": "BILLING", "service": "g1t-billing" },

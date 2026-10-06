@@ -72,6 +72,8 @@ pub enum Surface {
     Git,
     /// g1t.sh itself: settings changed on its pages.
     Web,
+    /// The package registries: `docker push`, `npm publish` and the like.
+    Registry,
 }
 
 /// The actor of an entry, from whoever made the request.

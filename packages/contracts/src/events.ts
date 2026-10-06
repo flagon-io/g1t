@@ -10,6 +10,15 @@
 import type { RepoRole } from "./access";
 import type { Confidence, Verdict } from "./work";
 
+/** What every `package.*` event names. */
+export type PackageEventData = {
+  packageId: string;
+  workspace: string;
+  ecosystem: string;
+  name: string;
+  repoId: string | null;
+};
+
 /** The payload of the `repo.collaborator_*` events. */
 export type RepoCollaboratorData = {
   repoId: string;
@@ -41,9 +50,24 @@ export type EventPayloads = {
    * be restored until `purgeAfter`: services stop what runs for it and hide
    * it, and keep their rows until `repo.purged`.
    */
-  "repo.deleted": { repoId: string; namespace: string; name: string; isPrivate: boolean; purgeAfter: string };
+  "repo.deleted": {
+    repoId: string;
+    namespace: string;
+    name: string;
+    isPrivate: boolean;
+    purgeAfter: string;
+    /** It went with its workspace (`workspace.deleting`); deployments leaves it to that. */
+    withWorkspace?: boolean;
+  };
   /** A deleted repository is back, as it was. Services start again what they stopped. */
-  "repo.restored": { repoId: string; namespace: string; name: string; isPrivate: boolean };
+  "repo.restored": {
+    repoId: string;
+    namespace: string;
+    name: string;
+    isPrivate: boolean;
+    /** It came back with its workspace (`workspace.restored`). */
+    withWorkspace?: boolean;
+  };
   /**
    * A deleted repository is gone for good, its git data with it. Services
    * drop every row they keep for it, except a workspace's history (ledgers,
@@ -172,6 +196,18 @@ export type EventPayloads = {
   };
   "session.appended": { pullId: string; repoId: string; number: number; count: number };
   /**
+   * A package version was published, such as an image pushed by
+   * `docker push`. `tags` are the tags that now point to it; `repoId` (and
+   * the event's) is the repository the package is linked to, if any.
+   */
+  "package.published": PackageEventData & { version: string; digest: string; size: number; tags: string[] };
+  /** One version of a package was deleted, with the tags that pointed to it. */
+  "package.version_deleted": PackageEventData & { version: string; digest: string };
+  /** A package was deleted with every version it had. */
+  "package.deleted": PackageEventData;
+  /** A package became public or private. */
+  "package.visibility_changed": PackageEventData & { visibility: "public" | "private" };
+  /**
    * A workspace's slug changed from `from` to `to`. Services that store a
    * slug move their rows to the workspace's *current* slug (see
    * `currentWorkspaceSlug`), so a repeated or late delivery after a second
@@ -190,6 +226,21 @@ export type EventPayloads = {
    * invoices and the audit log stay under its slug, which is never reused.
    */
   "workspace.deleted": { workspaceId: string; slug: string };
+  /**
+   * An owner deleted a workspace; staff can restore it until `purgeAfter`,
+   * and nobody can reach it meanwhile. Services hide what they keep for it
+   * and stop what runs for it, keeping their rows: repos deletes its
+   * repositories softly (`repo.deleted` with `withWorkspace`), deployments
+   * pauses its apps, search drops it. `workspace.restored` undoes exactly
+   * that; `workspace.deleted` follows once `purgeAfter` passes. `by` is the
+   * owner's username.
+   */
+  "workspace.deleting": { workspaceId: string; slug: string; by: string; purgeAfter: string };
+  /**
+   * Staff brought a deleted workspace back with its members and tokens.
+   * Services undo what they did on `workspace.deleting`, and only that.
+   */
+  "workspace.restored": { workspaceId: string; slug: string };
   /**
    * A memory was added, changed, reviewed or forgotten. No text: ask the
    * work service for it by id. `repoId` is the project's, or null for the

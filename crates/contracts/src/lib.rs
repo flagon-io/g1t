@@ -20,6 +20,7 @@ pub mod integrations;
 mod ids;
 mod names;
 mod outcome;
+pub mod packages;
 pub mod projects;
 pub mod repos;
 pub mod runners;

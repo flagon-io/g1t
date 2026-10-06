@@ -63,6 +63,20 @@ pub fn named_in(event: &Event) -> Option<(String, String)> {
     }
 }
 
+/// The workspace an event belongs to when it is about no repository: a
+/// package of the workspace's own, unlinked from any repository. Such an
+/// event goes to the workspace's webhooks only. Events about a repository,
+/// and every other kind, are `None`: they are routed by their repository.
+pub fn workspace_scoped(event: &Event) -> Option<String> {
+    if event.repo_id.as_deref().is_some_and(|id| !id.is_empty()) || !event.kind.starts_with("package.") {
+        return None;
+    }
+    event.data["workspace"]
+        .as_str()
+        .map(|slug| slug.trim().to_lowercase())
+        .filter(|slug| !slug.is_empty())
+}
+
 /// What is sent to check a webhook works.
 pub fn ping(hook_id: &str, url: &str, events: &[String], time: &str) -> Value {
     json!({
@@ -210,6 +224,27 @@ mod tests {
             actor: None,
             data,
         }
+    }
+
+    #[test]
+    fn a_workspaces_own_package_events_go_to_its_webhooks() {
+        let mut event = repo_event("package.published", json!({ "packageId": "pkg_1", "workspace": "Acme", "name": "tools", "repoId": null }));
+        event.repo_id = None;
+        assert_eq!(workspace_scoped(&event).as_deref(), Some("acme"));
+        let sent = payload(&event, "acme", None, Some("ana"));
+        assert_eq!(sent["repository"], Value::Null);
+        assert_eq!(sent["workspace"], "acme");
+        assert_eq!(sent["data"]["package_id"], "pkg_1", "snake_case as everything sent");
+        // A linked package's events go by its repository.
+        let linked = repo_event("package.published", json!({ "workspace": "acme", "repoId": "rep_1" }));
+        assert_eq!(workspace_scoped(&linked), None);
+        // Other events without a repository are not workspace events.
+        let mut other = repo_event("issue.opened", json!({ "workspace": "acme" }));
+        other.repo_id = None;
+        assert_eq!(workspace_scoped(&other), None);
+        let mut nameless = repo_event("package.deleted", json!({ "workspace": "" }));
+        nameless.repo_id = None;
+        assert_eq!(workspace_scoped(&nameless), None);
     }
 
     #[test]

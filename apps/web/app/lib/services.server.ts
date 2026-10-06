@@ -8,6 +8,7 @@ import {
   contextClient,
   deploymentsClient,
   memoryReviewClient,
+  packagesClient,
   projectsClient,
   eventsClient,
   guardrailsClient,
@@ -39,6 +40,7 @@ const PROJECTS = instrumented("projects", env.PROJECTS);
 const SECURITY = instrumented("security", env.SECURITY);
 const CONTEXT = instrumented("context", env.CONTEXT);
 const SEARCH = instrumented("search", env.SEARCH);
+const PACKAGES = instrumented("packages", env.PACKAGES);
 
 export const identity = identityClient(IDENTITY);
 /** A person's email addresses and account security: methods of identity. */
@@ -61,5 +63,7 @@ export const guardrails = guardrailsClient(WORK);
 export const context = contextClient(CONTEXT);
 /** Search across all of g1t, and Explore. */
 export const search = searchClient(SEARCH);
+/** The workspace's registries: container images, and more to come. */
+export const packages = packagesClient(PACKAGES);
 /** Memory candidates and their review: methods of the work service. */
 export const memoryReview = memoryReviewClient(WORK);

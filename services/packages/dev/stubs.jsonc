@@ -1,0 +1,7 @@
+// The stand-in services for running packages on its own (dev/stubs.js).
+{
+	"name": "g1t-packages-stubs",
+	"main": "stubs.js",
+	"compatibility_date": "2026-09-26",
+	"vars": { "DEV_TOKEN": "g1t_devtoken", "OUTSIDER_TOKEN": "g1t_outsider", "FREE_PRIVATE_BYTES": "50000000" }
+}

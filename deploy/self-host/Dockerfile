@@ -18,7 +18,7 @@ COPY services services
 # No cache mount for target/: cargo trusts file times, and a cached build
 # from a newer tree would be taken as fresh for an older one.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    for service in identity repos work events search billing security actions webhooks integrations; do \
+    for service in identity repos work events search billing security actions webhooks integrations packages; do \
       (cd services/$service && worker-build --release) || exit 1; \
     done
 
@@ -39,7 +39,7 @@ RUN apt-get update \
 WORKDIR /app
 COPY --from=node --chown=node:node /app /app
 COPY --from=rust /src/services /tmp/rust-services
-RUN for service in identity repos work events search billing security actions webhooks integrations; do \
+RUN for service in identity repos work events search billing security actions webhooks integrations packages; do \
       cp -r /tmp/rust-services/$service/build services/$service/build; \
     done \
  && rm -rf /tmp/rust-services \

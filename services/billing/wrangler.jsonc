@@ -23,7 +23,9 @@
 	// for work on those) and what private ones hold (the storage meter).
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
-		{ "binding": "REPOS", "service": "g1t-repos" }
+		{ "binding": "REPOS", "service": "g1t-repos" },
+		// What each workspace's packages hold, measured daily (src/storage.rs).
+		{ "binding": "PACKAGES", "service": "g1t-packages" }
 	],
 	// Margin alerts to staff (src/margin.rs), through Cloudflare Email
 	// Sending like identity's and the status page's mail.
@@ -56,6 +58,10 @@
 		// pays at cost plus the margin, and a free workspace's pushes to
 		// private repositories stop.
 		"FREE_PRIVATE_STORAGE_BYTES": "1000000000",
+		// What public and private packages may hold for free; past them a free
+		// workspace's pushes are refused, and the plan pays at cost plus the margin.
+		"PUBLIC_PACKAGES_FREE_BYTES": "10000000000",
+		"PRIVATE_PACKAGES_FREE_BYTES": "500000000",
 		// The audit log (src/retention.rs): 7 days for a free workspace, 90 on
 		// the plan, for g1t's own and for an enterprise. Staff can set an
 		// account's own days in sudo, up to AUDIT_MAX_DAYS; keep that at most

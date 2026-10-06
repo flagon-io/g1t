@@ -34,7 +34,8 @@
 			{ "binding": "SUBSCRIBER_BILLING", "queue": "g1t-events-billing" },
 			{ "binding": "SUBSCRIBER_SECURITY", "queue": "g1t-events-security" },
 			{ "binding": "SUBSCRIBER_CONTEXT", "queue": "g1t-events-context" },
-			{ "binding": "SUBSCRIBER_SEARCH", "queue": "g1t-events-search" }
+			{ "binding": "SUBSCRIBER_SEARCH", "queue": "g1t-events-search" },
+			{ "binding": "SUBSCRIBER_PACKAGES", "queue": "g1t-events-packages" }
 		],
 		"consumers": [{ "queue": "g1t-events", "max_batch_size": 100, "max_batch_timeout": 1 }]
 	},

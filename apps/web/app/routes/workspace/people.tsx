@@ -27,7 +27,7 @@ import {
 } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
-  return page(args, { title: `People · ${params.owner} · g1t` });
+  return page(args, { title: `Members · ${params.owner} · g1t` });
 }
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {

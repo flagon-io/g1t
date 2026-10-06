@@ -464,10 +464,10 @@ test("the plan as data: migrations, and each stage's units in jobs that share a 
   ]);
   assert.deepEqual(data.stage_order, ["core", "edge", "front"]);
   assert.deepEqual(buildGroups([]), []);
-  // Ten Rust workers go to three jobs; a unit whose image rebuilds gets its own.
+  // Eleven Rust workers go to three jobs; a unit whose image rebuilds gets its own.
   const core = stack.units.filter((u) => u.stage === "core");
   const jobs = buildGroups(core, ["runner"]);
-  assert.deepEqual(jobs.filter((j) => j.rust).map((j) => j.units.split(",").length), [4, 3, 3]);
+  assert.deepEqual(jobs.filter((j) => j.rust).map((j) => j.units.split(",").length), [4, 4, 3]);
   assert.ok(jobs.some((j) => j.group === "runner-image" && j.units === "runner"));
   assert.ok(!jobs.find((j) => j.group === "ts").units.includes("runner"));
 });

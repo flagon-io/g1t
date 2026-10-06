@@ -1,54 +1,4 @@
-import {
-  Activity,
-  ServerCog,
-  GanttChart,
-  KanbanSquare,
-  Package,
-  Sparkles,
-  BarChart3,
-  BookMarked,
-  BookOpen,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsUpDown,
-  CircleUserRound,
-  Mail,
-  Ticket,
-  CircleDot,
-  Code2,
-  Compass,
-  CreditCard,
-  GitPullRequest,
-  History,
-  House,
-  Fingerprint,
-  Gauge,
-  KeyRound,
-  LifeBuoy,
-  Box,
-  LayoutGrid,
-  ListTree,
-  Lock,
-  LogIn,
-  LogOut,
-  Menu,
-  Plus,
-  Search,
-  Plug,
-  Settings,
-  Users,
-  Webhook,
-  Globe,
-  GitBranch,
-  PlayCircle,
-  Bot,
-  Brain,
-  Network,
-  ShieldCheck,
-  Rocket,
-  X,
-} from "lucide-react";
+import { Activity, BarChart3, BookMarked, BookOpen, Bot, Box, Brain, Check, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, KanbanSquare, KeyRound, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Sparkles, Ticket, Users, UsersRound, Webhook, X } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Form, Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -232,6 +182,7 @@ function SidebarSoonLink({
 const WORKSPACE_ICONS: Record<string, ReactNode> = {
   board: <KanbanSquare size={15} />,
   roadmap: <GanttChart size={15} />,
+  teams: <UsersRound size={15} />,
   packages: <Package size={15} />,
   fleet: <Bot size={15} />,
 };
@@ -488,11 +439,12 @@ function AccountMenu({ user }: { user: User }) {
 }
 
 /**
- * A workspace's settings pages, which the sidebar drills into: who belongs,
- * what it pays, and its record. What it builds and runs with (secrets,
- * integrations, webhooks, guardrails) sits in the main list.
+ * A workspace's settings pages, which the sidebar drills into: what it
+ * pays, its repositories, tokens and record. Who belongs (Members, Teams)
+ * and what it builds and runs with (secrets, integrations, webhooks,
+ * guardrails) sit in the main list, for every member to see.
  */
-const SETTINGS_PAGE = /^\/([^/]+)\/-\/(settings|people|repositories|tokens|billing|audit)(\/|$)/;
+const SETTINGS_PAGE = /^\/([^/]+)\/-\/(settings|repositories|tokens|billing|audit)(\/|$)/;
 /** A project's settings pages, which the project's menu drills into. */
 const REPO_SETTINGS_PAGE = /^\/([^/]+)\/([^/-][^/]*)\/settings(\/|$)/;
 
@@ -683,6 +635,20 @@ function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
         <>
           <Rule />
           <div className="space-y-px">
+            {/* Who belongs, for every member to see; owners invite and manage there. */}
+            <SidebarLink to={`/${ws.slug}/-/people`} icon={<Users size={15} />}>
+              Members
+            </SidebarLink>
+            {roadmapIn("Workspace")
+              .filter((item) => item.key === "teams")
+              .map((item) => (
+                <SidebarSoonLink key={item.key} to={`/${ws.slug}/-/soon/${item.key}`} icon={WORKSPACE_ICONS[item.key]} about={item.summary}>
+                  {item.title}
+                </SidebarSoonLink>
+              ))}
+          </div>
+          <Rule />
+          <div className="space-y-px">
             <SidebarLink to={`/${ws.slug}/-/agents`} icon={<Bot size={15} />}>
               Agent fleet
             </SidebarLink>
@@ -704,13 +670,16 @@ function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
             <SidebarLink to={`/${ws.slug}/-/runners`} icon={<ServerCog size={15} />}>
               Runners
             </SidebarLink>
+            <SidebarLink to={`/${ws.slug}/-/packages`} icon={<Package size={15} />}>
+              Packages
+            </SidebarLink>
             <SidebarLink to={`/${ws.slug}/-/integrations`} icon={<Plug size={15} />}>
               Integrations
             </SidebarLink>
             <SidebarLink to={`/${ws.slug}/-/webhooks`} icon={<Webhook size={15} />}>
               Webhooks
             </SidebarLink>
-            {roadmapIn("Workspace").map((item) => (
+            {roadmapIn("Workspace").filter((item) => item.key !== "teams").map((item) => (
               <SidebarSoonLink
                 key={item.key}
                 to={`/${ws.slug}/-/soon/${item.key}`}
@@ -732,7 +701,7 @@ function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
             </SidebarLink>
             {/* Who belongs, what it pays and its record: a list of their own. */}
             <SidebarLink
-              to={ws.role === "owner" ? `/${ws.slug}/-/settings` : `/${ws.slug}/-/people`}
+              to={ws.role === "owner" ? `/${ws.slug}/-/settings` : `/${ws.slug}/-/repositories`}
               icon={<Settings size={15} />}
               drill
             >
@@ -756,9 +725,6 @@ function SettingsMenu({ slug, owner }: { slug: string; owner: boolean }) {
             General
           </SidebarLink>
         )}
-        <SidebarLink to={`/${slug}/-/people`} icon={<Users size={15} />}>
-          Members
-        </SidebarLink>
         <SidebarLink to={`/${slug}/-/repositories`} icon={<BookMarked size={15} />}>
           Repositories
         </SidebarLink>

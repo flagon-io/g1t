@@ -79,12 +79,13 @@ is graded:
 | **Cloudflare REST API** | deployments: script upload, list, delete, assets, GraphQL usage. Billing keeper: AI Gateway logs, `billable-usage`, GraphQL container usage. Ops scripts in `scripts/`. | thin (deployments), woven (keeper pricing) | Deployments: the app-host adapter. Keeper: off when self-hosted, because there is no bill to reconcile. |
 | **Email Sending** | `services/identity/src/email.rs` (`EMAIL.send({to, from, subject, text, html})`); callers: verification, password reset, `admin.rs` limit warnings | thin | Built in phase 1: a shim that logs and hands mail to Mailpit, which relays over SMTP. Later: a `Mailer` port with an SMTP adapter. |
 | **Cloudflare Access** | `apps/sudo/app/lib/access.ts` (verifies `Cf-Access-Jwt-Assertion` against `/cdn-cgi/access/certs`, `ACCESS_AUD`, `STAFF_EMAILS`) | woven, in sudo only | A local admin flag: `G1T_ADMINS` usernames checked against the normal g1t session. Self-hosters rarely need sudo, which is about billing. |
-| **Cron Triggers** | actions (every minute), webhooks (every minute), security (`*/30`), billing (`*/15` and daily), deployments (`*/10`), runner (`*/5`) | thin | workerd runs `scheduled()` when asked. Phase 1 does not yet fire them; phase 2 adds a scheduler that does (see the risks). |
+| **Cron Triggers** | actions (every minute), webhooks (every minute), identity (`*/15`), security (`*/30`), repos and packages (hourly), events (daily), billing (`*/15` and daily), deployments (`*/10`), runner (`*/5`) | thin | workerd runs `scheduled()` when asked, but never on its own. `deploy/self-host/scheduler.mjs` asks: once a minute, inside the g1t container, it runs each due cron through Wrangler's local API (`POST /cdn-cgi/local/explorer/api/local/scheduled?worker=<name>`, answered only on localhost), the same handler Cron Triggers run. The services and crons come from `schedules.json`, which `configs.mjs` writes from each `wrangler.jsonc` for the services in its `SELF_HOST_CRONS`: repos, events, identity, security, webhooks and packages. Not run: actions (it would start scheduled workflows with no runner), billing (Cloudflare and Stripe) and deployments (Cloudflare's API). The status page has its own loop (`status.sh`). |
 | **`cloudflare:workers` imports** | `apps/web` (`env` in 15 files), `apps/sudo`, `services/runner` (`WorkerEntrypoint`) | thin | Provided by workerd. A Node port would pass `env` through context instead. |
 | **Static Assets** | `apps/web` (Vite plugin build), `apps/docs`, `apps/sudo` (`run_worker_first`) | thin | workerd serves them. |
 | **`placement`, `observability`, routes, custom domains** | every `wrangler.jsonc` | config only | Dropped by `deploy/self-host/configs.mjs`. |
 | **`cf-ray`** | Used as an audit request id, with a fallback: `services/repos/src/run_access.rs:131`, `apps/api/src/audit.rs:37` | thin | Falls back already. |
-| **Not used** | R2, Hyperdrive, Workflows, Analytics Engine, Browser Rendering, Images, Turnstile, Secrets Store, `connect()`, HTMLRewriter, `request.cf` | — | — |
+| **R2** | `services/packages` (`BLOBS`: container layers and other package files, `src/store/r2.rs`), the API's Actions cache (`ACTIONS_CACHE`), the runner's downloads | thin | **S3-compatible storage**: the packages service's `BlobStore` port has an S3 adapter (`src/store/s3.rs`, SigV4 over fetch), run against MinIO in the compose file. |
+| **Not used** | Hyperdrive, Workflows, Analytics Engine, Browser Rendering, Images, Turnstile, Secrets Store, `connect()`, HTMLRewriter, `request.cf` | — | — |
 
 ### By service
 
@@ -107,10 +108,11 @@ checks this table names every unit.
 | `services/projects` | TS | Queue consumer | Runs unchanged |
 | `services/search` | Rust | Queues (events and its own jobs); FTS5 | Runs unchanged |
 | `services/billing` | Rust | Cron, Cloudflare REST API (keeper), Stripe | Runs with `FREE_WHILE_BUILDING=true` and no Stripe key: nothing is charged |
-| `services/security` | Rust | Queue, cron | Runs unchanged (cron not fired) |
+| `services/security` | Rust | Queue, cron | Runs unchanged; its cron through `scheduler.mjs` |
 | `services/actions` | Rust | Queue, cron, `ACTIONS_KEY` | Runs; jobs need the runner, which is off |
-| `services/webhooks` | Rust | Queue, cron, `WEBHOOKS_KEY` | Runs; first delivery works, retries need cron |
+| `services/webhooks` | Rust | Queue, cron, `WEBHOOKS_KEY` | Runs; retries through `scheduler.mjs` |
 | `services/integrations` | Rust | Queue, `INTEGRATIONS_KEY` | Runs unchanged |
+| `services/packages` | Rust | **R2** (`BLOBS`), cron, queue, `PACKAGES_TOKEN_SECRET` | Runs with `BLOB_STORE=s3` against the compose file's MinIO (`deploy/self-host/configs.mjs`); no request size limit (`MAX_REQUEST_BYTES` 0 means none) |
 | `services/deployments` | TS | Workers for Platforms, REST API, KV `DOMAINS`, cron | Runs with no API token: nothing deploys |
 | `services/runner` | TS | **Containers**, Durable Objects, outbound interception, AI Gateway, cron | Off: bound to the off Worker |
 | `services/context` | TS | **Vectorize**, **Workers AI**, Queues | Off: bound to the off Worker |
@@ -175,7 +177,7 @@ docs links and copy, and need no change.
 | `Bus` | Queues | Miniflare Queues now; SQLite outbox later | `services/events`, `g1t_kit` | Works (runtime) |
 | `Database` | D1 | SQLite files through workerd | — | Works (runtime) |
 | `Blobs` | KV | Miniflare KV now; filesystem/S3 later | — | Works (runtime) |
-| `Scheduler` | Cron Triggers | A ticker that calls `scheduled()` | `deploy/self-host` | Phase 2 |
+| `Scheduler` | Cron Triggers | `scheduler.mjs`: a ticker that calls `scheduled()` through Wrangler's local API | `deploy/self-host` | Works for the services in `SELF_HOST_CRONS` |
 | `UsageKeeper` | Cloudflare bill plus AI Gateway logs | None (billing off) | `services/billing` | Off |
 
 For Rust, the code-level ports go in `crates/kit` as traits (`g1t_kit::ports`),
@@ -316,7 +318,7 @@ on every page, but with `FREE_WHILE_BUILDING=true` and no Stripe key.
 | Issues, pull requests, review, merge queue | On | On | — |
 | Site search (FTS5) | On | On | — |
 | Email | Email Sending | Mailpit, logged | SMTP relay |
-| Webhooks, integrations | On | On (no scheduled retries yet) | — |
+| Webhooks, integrations | On | On (retries through `scheduler.mjs`) | — |
 | g1t's agent | On | Off | Phase 2: Docker sandboxes plus your own model provider |
 | Guardrails egress | Containers interception | n/a | Phase 2: allow-list proxy |
 | Hosted models (g1t's key) | On (billed) | Off | Never: bring your own |
@@ -424,7 +426,7 @@ On this machine (Windows 11, Docker Desktop 29.8, engine on Linux):
 - Pull requests between branches and forks, the merge queue and catch-up.
   They use `fork` and smart-HTTP pushes, which the git store implements,
   but they have not been exercised end to end.
-- Cron work: webhook retries, Actions schedules, security sweeps.
+- Actions schedules (`on: schedule`), and billing's and deployments' crons.
 - The REST API, MCP, the CLI, and git over SSH.
 - Anything on an address other than `localhost` without HTTPS (the
   session cookie is `Secure`).
@@ -454,9 +456,10 @@ Total to parity: about 10–13 weeks. Phase 1 alone is already a credible
   network only** until the launcher in phase 2 replaces it. Its flags and
   behaviour can also change between Wrangler releases. Pin the Wrangler
   version, as the lockfile already does.
-- **No cron yet.** Webhook retries, Actions schedules, security sweeps and
-  deployments' sweeps do not run. Anything that relies on a sweep to
-  recover from a missed event stays stuck until phase 2 adds a ticker.
+- **Cron goes through Wrangler's local API.** `scheduler.mjs` asks
+  `/cdn-cgi/local/explorer/api/local/scheduled`, a development endpoint
+  that may change between Wrangler releases (pinned by the lockfile).
+  Actions schedules, billing and deployments are not run.
 - **New Cloudflare-only bindings break self-hosting silently.**
   `configs.mjs` passes unknown keys through untouched. A new binding type
   could make `wrangler dev` reach for a remote resource (for example

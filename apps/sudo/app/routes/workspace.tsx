@@ -208,6 +208,7 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
             </p>
             {person?.description && <p className="mt-1 text-sm text-muted">{person.description}</p>}
             <div className="mt-2 flex flex-wrap gap-1.5">
+              {person?.protected && <Badge tone="info">Protected: can never be deleted</Badge>}
               {billedTo && <Badge tone="lavender">Billed to {billedTo.name}</Badge>}
               <TermsBadge terms={terms} />
               {terms.kind !== "comped" && <TrustBadge trust={limit.trust} />}

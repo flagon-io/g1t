@@ -985,6 +985,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "g1t-packages"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "futures-util",
+ "g1t-contracts",
+ "g1t-kit",
+ "hex",
+ "hmac 0.12.1",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "worker",
+]
+
+[[package]]
 name = "g1t-repos"
 version = "0.1.0"
 dependencies = [

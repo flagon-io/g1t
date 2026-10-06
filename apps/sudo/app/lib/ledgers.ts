@@ -105,6 +105,10 @@ export const AUDIT_ACTIONS: Record<string, string> = {
   note: "Sales note added",
   stripe: "From Stripe",
   webhook: "Stripe webhook registered",
+  close: "Billing closed",
+  // From identity: deleted workspaces staff restored or purged.
+  workspace_restored: "Workspace restored",
+  workspace_purged: "Workspace purged",
   // From the status page (apps/status), merged in by the Audit log page.
   incident_declared: "Incident declared",
   incident_detected: "Incident detected",

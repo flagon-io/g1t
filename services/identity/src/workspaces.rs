@@ -81,7 +81,8 @@ impl Identity {
                    workspaces.avatar, workspaces.base_permission
                  FROM workspace_members
                  JOIN workspaces ON workspaces.id = workspace_members.workspace_id
-                 WHERE workspace_members.user_id = ? ORDER BY workspaces.slug",
+                 WHERE workspace_members.user_id = ? AND workspaces.deleted_at IS NULL
+                 ORDER BY workspaces.slug",
             )
             .bind(&[user_id.into()])?
             .all()
@@ -124,10 +125,8 @@ impl Identity {
             .await?
             .is_some();
         if someone_elses_username
-            || self
-                .get_workspace(SlugArgs { slug: slug.clone() })
-                .await?
-                .is_some()
+            // A deleted workspace still holds its slug until it is purged.
+            || self.slug_in_use(&slug).await?
             // A renamed workspace's old slug stays reserved for it a while.
             || self.slug_held(&slug).await?
             // A deleted workspace's slug is never given to anyone else; the
@@ -188,7 +187,7 @@ impl Identity {
         Ok(self
             .db
             .prepare(format!(
-                "SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE slug = ?"
+                "SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE slug = ? AND deleted_at IS NULL"
             ))
             .bind(&[a.slug.to_lowercase().into()])?
             .first::<WorkspaceRow>(None)
@@ -247,7 +246,7 @@ impl Identity {
                 "SELECT users.username, workspace_members.role, users.display_name AS name, users.avatar FROM workspace_members
                  JOIN users ON users.id = workspace_members.user_id
                  JOIN workspaces ON workspaces.id = workspace_members.workspace_id
-                 WHERE workspaces.slug = ?
+                 WHERE workspaces.slug = ? AND workspaces.deleted_at IS NULL
                  ORDER BY workspace_members.role DESC, users.username",
             )
             .bind(&[slug.into()])?

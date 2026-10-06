@@ -1,0 +1,45 @@
+// The packages service as `wrangler dev` runs it on its own: local D1 and
+// R2, its other services stubbed (stubs.js). From services/packages:
+//
+//   node ../../scripts/build-rust-worker.mjs
+//   npx wrangler d1 migrations apply g1t-packages --local -c dev/packages.jsonc
+//   npx wrangler dev -c dev/packages.jsonc -c dev/stubs.jsonc --local --port 8790
+//
+// Then `docker login localhost:8790 -u dev` with g1t_devtoken as the
+// password, and push to localhost:8790/acme/<name> (`acme/web` is linked to
+// a private repository, `acme/site` to a public one). With Docker Desktop
+// the daemon's localhost is its VM's: forward it to this machine first,
+//
+//   docker run -d --name g1t-registry-forward --network host alpine/socat \
+//     tcp-listen:8790,fork,reuseaddr tcp-connect:host.docker.internal:8790
+//
+// Add --test-scheduled to `wrangler dev` to run the sweep with
+// `curl "http://localhost:8790/cdn-cgi/handler/scheduled?cron=37+*+*+*+*"`.
+{
+	"name": "g1t-packages",
+	"main": "../build/index.js",
+	"compatibility_date": "2026-09-26",
+	"d1_databases": [
+		{ "binding": "DB", "database_name": "g1t-packages", "database_id": "local", "migrations_dir": "../migrations" }
+	],
+	"r2_buckets": [{ "binding": "BLOBS", "bucket_name": "g1t-packages" }],
+	// Low, so the 429 can be seen by hand: about 30 requests a minute.
+	"ratelimits": [
+		{ "name": "ANONYMOUS_LIMIT", "namespace_id": "1", "simple": { "limit": 30, "period": 60 } },
+		{ "name": "SIGNED_LIMIT", "namespace_id": "2", "simple": { "limit": 5000, "period": 60 } }
+	],
+	"services": [
+		{ "binding": "IDENTITY", "service": "g1t-packages-stubs" },
+		{ "binding": "REPOS", "service": "g1t-packages-stubs" },
+		{ "binding": "EVENTS", "service": "g1t-packages-stubs" },
+		{ "binding": "BILLING", "service": "g1t-packages-stubs" }
+	],
+	"vars": {
+		"BLOB_STORE": "r2",
+		"MAX_REQUEST_BYTES": "100000000",
+		"REGISTRY_HOST": "localhost:8790",
+		"STORAGE_LIMITS": "on",
+		"PACKAGES_TOKEN_SECRET": "a-local-secret-that-is-long-enough-to-sign"
+	},
+	"triggers": { "crons": ["37 * * * *"] }
+}

@@ -29,6 +29,14 @@ export type RoadmapItem = {
 export const ROADMAP: RoadmapItem[] = [
   // --- Work ---------------------------------------------------------------
   {
+    key: "teams",
+    title: "Teams",
+    section: "Workspace",
+    summary: "Groups of members, given roles on repositories together.",
+    why: "Give a group a role on many repositories at once, mention it, and request its review, instead of adding people one by one.",
+    plans: ["Teams with members and maintainers", "Repository roles for a team", "@team mentions and review requests"],
+  },
+  {
     key: "board",
     title: "Board",
     section: "Workspace",
@@ -161,14 +169,7 @@ export const ROADMAP: RoadmapItem[] = [
     plans: ["Notes drafted from merged work", "Assets and checksums attached", "Published to the project's page and a feed"],
     today: { label: "Commits", path: "commits" },
   },
-  {
-    key: "packages",
-    title: "Packages",
-    section: "Workspace",
-    summary: "The workspace's package registry: npm, containers and more.",
-    why: "Publish packages from workflows to g1t's registry, with the same access as the code.",
-    plans: ["npm, OCI containers, Cargo, PyPI and Go modules", "Published from any project's workflows", "Private packages for the workspace"],
-  },
+
   {
     key: "flags",
     title: "Feature flags",

@@ -143,6 +143,21 @@
 			"secrets": ["ACTIONS_KEY"],
 			"self_host": "run"
 		},
+		"packages": {
+			"path": "services/packages",
+			"kind": "rust-worker",
+			"worker": "g1t-packages",
+			"d1": { "database": "g1t-packages", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": ["PACKAGES_TOKEN_SECRET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"],
+			"setup": [
+				"The D1 database: npx wrangler d1 create g1t-packages, its id in services/packages/wrangler.jsonc",
+				"The R2 bucket for packages' files: npx wrangler r2 bucket create g1t-packages",
+				"The events queue: npx wrangler queues create g1t-events-packages",
+				"For signed downloads: an R2 API token with read access to g1t-packages, as R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY"
+			],
+			"self_host": "run"
+		},
 		"security": {
 			"path": "services/security",
 			"kind": "rust-worker",

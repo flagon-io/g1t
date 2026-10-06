@@ -23,7 +23,8 @@ use g1t_contracts::audit::{
 };
 use g1t_contracts::events::{
     BranchRenamed, NewEvent, RepoArchived, RepoDefaultBranchChanged, RepoDeleted, RepoPurged,
-    RepoRenamed, RepoRestored, RepoUpdated, RepoVisibilityChanged,
+    RepoRenamed, RepoRestored, RepoUpdated, RepoVisibilityChanged, WorkspaceDeleted,
+    WorkspaceDeleting, WorkspaceRestored,
 };
 use g1t_contracts::identity::TransferRepoScopesArgs;
 use g1t_contracts::repos::{
@@ -174,6 +175,23 @@ pub fn restorable(purge_after: &str, now: &str) -> bool {
     now < purge_after
 }
 
+/// Whether a workspace's repositories may go with it: never a protected
+/// workspace's (`protected` is `g1t_contracts::identity::protected_names`),
+/// however the event came to be published.
+pub fn may_go_with_workspace(namespace: &str, protected: &[String]) -> std::result::Result<(), String> {
+    if protected.iter().any(|name| name.eq_ignore_ascii_case(namespace)) {
+        return Err(g1t_contracts::identity::protected_refusal(namespace));
+    }
+    Ok(())
+}
+
+/// Whether a deleted repository comes back when the workspace
+/// `workspace_id` is restored: only if it went with that workspace
+/// (`deleted_with`), not if it was deleted on its own before.
+pub fn comes_back_with(deleted_with: Option<&str>, workspace_id: &str) -> bool {
+    deleted_with == Some(workspace_id)
+}
+
 /// Where a repository is in its life, from its row.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum State {
@@ -303,6 +321,8 @@ struct DeletedRow {
     #[serde(default)]
     deleted_by: Option<String>,
     purge_after: String,
+    #[serde(default)]
+    deleted_with: Option<String>,
 }
 
 impl From<DeletedRow> for DeletedRepo {
@@ -321,7 +341,7 @@ impl From<DeletedRow> for DeletedRepo {
 }
 
 const DELETED_COLUMNS: &str =
-    "id, namespace, name, description, is_private, deleted_at, deleted_by, purge_after";
+    "id, namespace, name, description, is_private, deleted_at, deleted_by, purge_after, deleted_with";
 
 impl Registry {
     /// Deletes a repository and its pull requests' working copies, softly.
@@ -345,6 +365,62 @@ impl Registry {
                  WHERE id = ?1 OR fork_of = ?1",
             )
             .bind(&[id.into()])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    /// Deletes every live repository of `namespace`, and the working
+    /// copies of its repositories, softly, each marked as gone with the
+    /// workspace `workspace_id`. Those already deleted are left as they
+    /// are. Returns every repository so marked, this time or before, so a
+    /// delivery again tells services again.
+    pub async fn delete_with_workspace(
+        &self,
+        namespace: &str,
+        workspace_id: &str,
+        by: &str,
+        at: &str,
+        purge_after: &str,
+    ) -> Result<Vec<DeletedRepo>> {
+        self.db
+            .prepare(
+                "UPDATE repos SET deleted_at = ?1, deleted_by = ?2, purge_after = ?3, deleted_with = ?4
+                 WHERE deleted_at IS NULL
+                   AND (namespace = ?5 OR fork_of IN (SELECT id FROM repos WHERE namespace = ?5))",
+            )
+            .bind(&[at.into(), by.into(), purge_after.into(), workspace_id.into(), namespace.into()])?
+            .run()
+            .await?;
+        self.deleted_with(workspace_id).await
+    }
+
+    /// The repositories deleted with the workspace `workspace_id`.
+    pub async fn deleted_with(&self, workspace_id: &str) -> Result<Vec<DeletedRepo>> {
+        Ok(self
+            .db
+            .prepare(format!(
+                "SELECT {DELETED_COLUMNS} FROM repos WHERE deleted_with = ? AND fork_of IS NULL"
+            ))
+            .bind(&[workspace_id.into()])?
+            .all()
+            .await?
+            .results::<DeletedRow>()?
+            .into_iter()
+            .filter(|row| comes_back_with(row.deleted_with.as_deref(), workspace_id))
+            .map(DeletedRepo::from)
+            .collect())
+    }
+
+    /// Brings back the repositories, and their working copies, deleted
+    /// with the workspace `workspace_id`, and only those.
+    pub async fn undelete_with_workspace(&self, workspace_id: &str) -> Result<()> {
+        self.db
+            .prepare(
+                "UPDATE repos SET deleted_at = NULL, deleted_by = NULL, purge_after = NULL, deleted_with = NULL
+                 WHERE deleted_with = ?",
+            )
+            .bind(&[workspace_id.into()])?
             .run()
             .await?;
         Ok(())
@@ -678,6 +754,7 @@ impl<S: GitStore> Repos<S> {
                 name: repo.name.clone(),
                 is_private: repo.is_private,
                 purge_after: purge.clone(),
+                with_workspace: false,
             },
         })
         .await?;
@@ -768,6 +845,7 @@ impl<S: GitStore> Repos<S> {
                 namespace: repo.namespace.clone(),
                 name: repo.name.clone(),
                 is_private: repo.is_private,
+                with_workspace: false,
             },
         })
         .await?;
@@ -873,11 +951,101 @@ impl<S: GitStore> Repos<S> {
         Ok(purged)
     }
 
-    /// Purges whatever deleted repositories a deleted workspace left.
-    pub(crate) async fn purge_workspace(&self, namespace: &str) -> Result<()> {
-        for deleted in self.registry.deleted_ids_in(namespace).await? {
-            if let Err(error) = self.purge_now(&deleted, None).await {
-                worker::console_error!("{} not purged with its workspace: {error}", deleted.id);
+    /// `workspace.deleting`: every live repository of the workspace is
+    /// deleted with it, marked so its restore brings back exactly these,
+    /// and `repo.deleted` (with `with_workspace`) tells services to stop
+    /// what runs for each and hide it. They are purged with the workspace,
+    /// or by the sweep at the same `purge_after`. Never for a protected
+    /// workspace, whoever published it.
+    pub(crate) async fn delete_with_workspace(&self, deleting: &WorkspaceDeleting, protected: &[String]) -> Result<()> {
+        let namespace = deleting.slug.to_lowercase();
+        if let Err(why) = may_go_with_workspace(&namespace, protected) {
+            worker::console_error!("workspace.deleting for {namespace} ignored: {why}");
+            return Ok(());
+        }
+        let marked = self
+            .registry
+            .delete_with_workspace(
+                &namespace,
+                &deleting.workspace_id,
+                &deleting.by,
+                &rfc3339(now_ms()),
+                &deleting.purge_after,
+            )
+            .await?;
+        for repo in marked {
+            self.publish(NewEvent {
+                kind: "repo.deleted",
+                source: SOURCE,
+                repo_id: Some(repo.id.clone()),
+                actor: None,
+                data: RepoDeleted {
+                    repo_id: repo.id.clone(),
+                    namespace: repo.namespace.clone(),
+                    name: repo.name.clone(),
+                    is_private: repo.is_private,
+                    purge_after: repo.purge_after.clone(),
+                    with_workspace: true,
+                },
+            })
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// `workspace.restored`: the repositories deleted with the workspace
+    /// come back, and `repo.restored` (with `with_workspace`) says so for
+    /// each. Ones deleted on their own before stay deleted.
+    pub(crate) async fn restore_with_workspace(&self, restored: &WorkspaceRestored) -> Result<()> {
+        let marked = self.registry.deleted_with(&restored.workspace_id).await?;
+        self.registry.undelete_with_workspace(&restored.workspace_id).await?;
+        for deleted in marked {
+            let Some(repo) = self.registry.by_id(&deleted.id).await? else {
+                continue;
+            };
+            self.publish(NewEvent {
+                kind: "repo.restored",
+                source: SOURCE,
+                repo_id: Some(repo.id.clone()),
+                actor: None,
+                data: RepoRestored {
+                    repo_id: repo.id.clone(),
+                    namespace: repo.namespace.clone(),
+                    name: repo.name.clone(),
+                    is_private: repo.is_private,
+                    with_workspace: true,
+                },
+            })
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// `workspace.deleted`: the workspace is purged, and every repository
+    /// it had goes with it: those deleted with it, those deleted before,
+    /// and any still live (a `workspace.deleting` that never arrived).
+    pub(crate) async fn purge_workspace(&self, deleted: &WorkspaceDeleted, protected: &[String]) -> Result<()> {
+        let namespace = deleted.slug.to_lowercase();
+        if let Err(why) = may_go_with_workspace(&namespace, protected) {
+            worker::console_error!("workspace.deleted for {namespace} ignored: {why}");
+            return Ok(());
+        }
+        let now = rfc3339(now_ms());
+        self.registry
+            .delete_with_workspace(&namespace, &deleted.workspace_id, "g1t", &now, &now)
+            .await?;
+        // A page at a time; one that fails is left to the hourly sweep.
+        loop {
+            let page = self.registry.deleted_ids_in(&namespace).await?;
+            let mut purged = 0;
+            for repo in &page {
+                match self.purge_now(repo, None).await {
+                    Ok(()) => purged += 1,
+                    Err(error) => worker::console_error!("{} not purged with its workspace: {error}", repo.id),
+                }
+            }
+            if purged == 0 {
+                break;
             }
         }
         Ok(())
@@ -1380,6 +1548,28 @@ mod tests {
         let stranger = Asker { role: None, repo_role: None, ..owner() };
         assert_eq!(admin_only(stranger, "acme", "archive", Capability::Administer).unwrap_err().0, FailureCode::NotFound);
         assert_eq!(admin_only(Asker { person: false, ..owner() }, "acme", "rename", Capability::Administer).unwrap_err().0, FailureCode::Forbidden);
+    }
+
+    #[test]
+    fn a_workspace_restore_brings_back_only_what_went_with_it() {
+        assert!(comes_back_with(Some("wsp_1"), "wsp_1"));
+        // Deleted on its own before the workspace was.
+        assert!(!comes_back_with(None, "wsp_1"));
+        // Went with another workspace (it was transferred since).
+        assert!(!comes_back_with(Some("wsp_2"), "wsp_1"));
+    }
+
+    #[test]
+    fn a_protected_workspace_keeps_its_repositories_whatever_is_published() {
+        let protected = g1t_contracts::identity::protected_names(None);
+        assert_eq!(
+            may_go_with_workspace("flagon-io", &protected).unwrap_err(),
+            "flagon-io is protected and can never be deleted."
+        );
+        assert!(may_go_with_workspace("FLAGON-IO", &protected).is_err());
+        assert!(may_go_with_workspace("acme", &protected).is_ok());
+        let configured = g1t_contracts::identity::protected_names(Some("acme"));
+        assert!(may_go_with_workspace("acme", &configured).is_err());
     }
 
     #[test]

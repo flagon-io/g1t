@@ -6,6 +6,8 @@ declare global {
       IDENTITY: ServiceBinding;
       /** Also serves git over HTTPS through `fetch`. */
       REPOS: ServiceBinding & { fetch(request: Request): Promise<Response> };
+      /** Also serves the container registry (`/v2/`) through `fetch`. */
+      PACKAGES: ServiceBinding & { fetch(request: Request): Promise<Response> };
       WORK: ServiceBinding;
       RUNNER: RunnerApi;
       BILLING: ServiceBinding;

@@ -143,33 +143,34 @@ READMEs and docs, CI configuration, API clients and MCP clients.
 
 ## Delete a workspace
 
-Deleting a workspace removes it for good. Only an owner can, signed in as a
-person, and only once nothing is left in it.
+Deleting a workspace takes everything in it with it, in one step: its
+repositories, projects, apps, members' access and tokens. Only an owner can,
+signed in as a person, typing the workspace's slug to confirm.
 
-Before you start:
-
-1. **Move or delete its repositories.** [Transfer](/guides/transferring-repositories/)
-   each one you want to keep to another workspace you own; their old
-   addresses keep redirecting after the workspace is gone.
-   [Delete](/guides/managing-repositories/#delete-a-repository) the ones
-   you do not. Recently deleted repositories do not stand in the way: they
-   are purged with the workspace, and cannot be restored afterwards.
-2. **Move its projects out.** A project that builds from a repository in
-   another workspace does not move with a transfer; it stops the deletion
-   until it is gone.
-3. **Settle billing.** See [what billing needs](#what-billing-needs).
-
-Then:
+It is not gone at once. For **30 days** g1t keeps all of it, so that a
+deletion you did not mean, or did not make, can be undone: an owner writes
+to support@g1t.sh, and support restores the workspace as it was. After 30
+days it is purged for good.
 
 1. Open the workspace's **Settings → General** and go to **Danger zone**.
-   It says what is still in the way, if anything.
+   It lists what will go with the workspace: its repositories, projects,
+   live apps and members.
 2. Choose **Delete workspace**, read what happens, type the workspace's
-   slug to confirm, and choose **Delete workspace** again.
+   slug to confirm, and choose **Delete workspace** again. You are taken
+   back to your own home.
+
+The one thing that can stand in the way is billing: see
+[what billing needs](#what-billing-needs). Repositories you want to keep in
+another workspace, [transfer](/guides/transferring-repositories/) first;
+their old addresses keep redirecting after the workspace is gone.
 
 From the API, call
 [`DELETE /workspaces/{workspace}`](/reference/api/workspaces/delete-workspace/)
 with the slug in `confirm`; over MCP, the `workspace` tool's `delete`
 action.
+
+Some workspaces can never be deleted, by anyone, such as Flagon's, which
+runs g1t. Their Danger zone says so instead of offering the button.
 
 ### What billing needs
 
@@ -186,26 +187,46 @@ A comped workspace owes nothing; only its plan is ended.
 
 ### What happens
 
+At once, when an owner deletes it:
+
 | | |
 | --- | --- |
-| Members | Lose access. Their own accounts are not touched: a person with no workspace left can still sign in, and create or join one. |
-| Access tokens | The workspace's own tokens stop working at once. Personal tokens are not affected. |
+| Members | Lose access, and the workspace leaves their list. Their own accounts are not touched: a person with no workspace left can still sign in, and create or join one. |
+| Access tokens | The workspace's own tokens stop working. Personal tokens are not affected. |
+| Repositories | Deleted with it: git refuses them, and their pages answer 404. Agents and workflow runs stop. Ones deleted on their own earlier stay deleted. |
+| Projects and apps | Hidden. Its apps are taken offline and nothing builds. Custom domains are kept for a restore. |
+| Its pages | Answer 404, and it drops out of search. |
+| Billing | What it owes is charged, and its plan ends, as [billing needs](#what-billing-needs). Nothing more is charged. |
+| The audit log | Records the deletion. |
+
+Within 30 days, support can restore it: its members, tokens, repositories,
+projects and apps come back as they were, and its apps go back up as its
+limit allows. Its plan does not come back by itself: an owner starts it
+again from **Billing**. A repository deleted on its own before the
+workspace was stays in **Recently deleted**.
+
+After 30 days it is purged:
+
+| | |
+| --- | --- |
+| Repositories | Purged, their git data with them, including any that were in Recently deleted. |
+| Projects, apps and custom domains | Removed. |
 | Webhooks, integrations, secrets and variables | The workspace's own are removed. |
 | Memory and guardrails | The workspace's own are removed. |
 | Statements, invoices and the ledger | Kept, for accounting. |
-| The audit log | Kept as [long as its account keeps it](/guides/audit-log/#how-long-it-is-kept), with the deletion as its last entry: once the plan ends with the workspace, that is 7 days, unless an enterprise pays for it or longer was arranged. With no owners left, ask support@g1t.sh for an export. |
-| Recently deleted repositories | Purged with it, their git data with them. |
+| The audit log | Kept as [long as its account keeps it](/guides/audit-log/#how-long-it-is-kept), with the purge as its last entry: once the plan ends with the workspace, that is 7 days, unless an enterprise pays for it or longer was arranged. With no owners left, ask support@g1t.sh for an export. |
 | Old addresses | Redirects for repositories transferred out keep working. The workspace's own pages answer 404. |
 
 ### The name afterwards
 
 A deleted workspace's slug is never given to another workspace or used as
-someone else's username. Links and git remotes that still use it keep
+someone else's username. While it can still be restored, the slug is held
+for it. Links and git remotes that still use it keep
 meaning what they meant: a transferred repository's old address keeps
 redirecting to it, and nobody can take the name in the meantime.
 
 The one exception: when the slug is your own username, you may create a
-workspace with that name again. It starts empty, on standard billing terms,
+workspace with that name again once the old one is purged. It starts empty, on standard billing terms,
 and a repository made in it at an old address ends that address's redirect.
 
 ## Members and roles
@@ -216,7 +237,7 @@ and a repository made in it at an old address ends that address's redirect.
 | Owner | Everything a member can, and manage members, the base permission, the workspace's access tokens, its details, and billing: the plan, card checks, prepayment and limits. Admin on every repository, and the only ones who can transfer and delete them; see [access and roles](/guides/access-and-roles/). |
 
 Whoever creates a workspace is its owner. An owner adds people on the
-workspace's **Settings → Members**, `g1t.sh/<workspace>/-/people`:
+workspace's **Members** (in the sidebar), `g1t.sh/<workspace>/-/people`:
 
 - **By username**: someone already on g1t joins at once, as a member.
 - **By email address**: g1t emails an invite that only that address can

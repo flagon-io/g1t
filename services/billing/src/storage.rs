@@ -100,6 +100,20 @@ pub(crate) fn storage_gb_months(days: &[(i64, i64)]) -> f64 {
     days.iter().map(|(private, free)| (private - free).max(0) as f64).sum::<f64>() / GB / 30.0
 }
 
+/// GB-months of package storage past the free amounts from a month's
+/// daily measures, each `(public, private, public_free, private_free)`:
+/// public and private past their own amounts, over 30 days.
+pub(crate) fn package_gb_months(days: &[(i64, i64, i64, i64)]) -> f64 {
+    days.iter()
+        .map(|(public, private, public_free, private_free)| ((public - public_free).max(0) + (private - private_free).max(0)) as f64)
+        .sum::<f64>()
+        / GB
+        / 30.0
+}
+
+/// What R2 charges g1t a GB-month, when the price book cannot be read.
+pub(crate) const PACKAGE_MICROS_PER_GB_MONTH: i64 = 15_000;
+
 /// What `gb_months` cost g1t at `micros_per_gb_month`, rounded up.
 pub(crate) fn storage_cost(gb_months: f64, micros_per_gb_month: f64) -> i64 {
     (gb_months * micros_per_gb_month).ceil() as i64
@@ -111,6 +125,7 @@ pub(crate) fn title(source: &str) -> &'static str {
         "security" => "Security scans",
         "context" => "Search embeddings",
         "storage" => "Private repository storage past the free amount",
+        "package_storage" => "Package storage past the free amounts",
         "git" => "Git operations past the free amount",
         "cache" => "Actions cache storage",
         "domains" => "Custom domains",
@@ -333,6 +348,76 @@ impl Billing {
         Ok(())
     }
 
+    /// Once a day: what each workspace's packages hold, public and private,
+    /// from the packages service, and for the plan what this month's
+    /// storage past the free amounts comes to so far. A free workspace is
+    /// never charged: the packages service refuses its pushes past them.
+    pub(crate) async fn measure_packages(&self) -> Result<()> {
+        #[derive(Deserialize)]
+        struct Held {
+            workspace: String,
+            public_bytes: i64,
+            private_bytes: i64,
+        }
+        #[derive(Deserialize)]
+        struct Day {
+            public_bytes: i64,
+            private_bytes: i64,
+            public_free_bytes: i64,
+            private_free_bytes: i64,
+        }
+        let Some(packages) = &self.packages else { return Ok(()) };
+        let list: Vec<Held> = g1t_kit::call(packages, "storage_all", &serde_json::json!({})).await?;
+        let now = rfc3339(now_ms());
+        let (day, month) = (&now[..10], credits::month_of(&now));
+        let price = self.price("package_storage").await?.map_or(PACKAGE_MICROS_PER_GB_MONTH as f64, |(cost, _)| cost);
+        let (public_free, private_free) = (self.plans.public_package_free_bytes, self.plans.private_package_free_bytes);
+        for held in list {
+            let slug = held.workspace.to_lowercase();
+            self.db
+                .prepare(
+                    "INSERT INTO package_storage_days (workspace, day, public_bytes, private_bytes, public_free_bytes, private_free_bytes)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                     ON CONFLICT (workspace, day) DO UPDATE SET public_bytes = ?3, private_bytes = ?4, public_free_bytes = ?5, private_free_bytes = ?6",
+                )
+                .bind(&[
+                    slug.as_str().into(),
+                    day.into(),
+                    (held.public_bytes as f64).into(),
+                    (held.private_bytes as f64).into(),
+                    (public_free as f64).into(),
+                    (private_free as f64).into(),
+                ])?
+                .run()
+                .await?;
+            if !self.has_plan(&slug).await? {
+                continue;
+            }
+            let days = self
+                .db
+                .prepare(
+                    "SELECT public_bytes, private_bytes, public_free_bytes, private_free_bytes FROM package_storage_days
+                     WHERE workspace = ? AND substr(day, 1, 7) = ?",
+                )
+                .bind(&[slug.as_str().into(), month.as_str().into()])?
+                .all()
+                .await?
+                .results::<Day>()?;
+            let gb_months = package_gb_months(
+                &days.iter().map(|d| (d.public_bytes, d.private_bytes, d.public_free_bytes, d.private_free_bytes)).collect::<Vec<_>>(),
+            );
+            if gb_months > 0.0 {
+                let detail = format!(
+                    "{gb_months:.2} GB-months past the free {} public and {} private",
+                    crate::features::bytes(public_free),
+                    crate::features::bytes(private_free)
+                );
+                self.set_pending(&slug, "package_storage", &month, storage_cost(gb_months, price), Some(&detail)).await?;
+            }
+        }
+        Ok(())
+    }
+
     /// Git operations this month for each workspace, from the repos
     /// service: what is past the free amount goes to the month's pending
     /// usage for workspaces on the plan, which are never slowed or refused
@@ -410,6 +495,18 @@ mod tests {
         // Ten days of 4 GB past it: a third of 4 GB-months.
         let days = vec![(5_000_000_000, 1_000_000_000); 10];
         assert!((storage_gb_months(&days) - 4.0 / 3.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn package_storage_counts_public_and_private_past_their_own_free_amounts() {
+        let gb = GB as i64;
+        // 12 GB public with 10 free, 0.5 GB private with 0.5 free: 2 GB past, for 15 days.
+        let days = vec![(12 * gb, gb / 2, 10 * gb, gb / 2); 15];
+        assert!((package_gb_months(&days) - 1.0).abs() < 1e-9);
+        // Under both amounts: nothing.
+        assert_eq!(package_gb_months(&[(gb, gb / 4, 10 * gb, gb / 2)]), 0.0);
+        // At R2's rate, a GB-month is $0.015.
+        assert_eq!(storage_cost(1.0, PACKAGE_MICROS_PER_GB_MONTH as f64), 15_000);
     }
 
     #[test]

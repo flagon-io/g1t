@@ -26,6 +26,7 @@ pub enum Resource {
     Workspace,
     Repo,
     Code,
+    Packages,
     Issues,
     PullRequests,
     Agents,
@@ -38,9 +39,10 @@ pub enum Resource {
 }
 
 impl Resource {
-    pub const ALL: [Resource; 13] = [
+    pub const ALL: [Resource; 14] = [
         Resource::Repo,
         Resource::Code,
+        Resource::Packages,
         Resource::Issues,
         Resource::PullRequests,
         Resource::Agents,
@@ -60,6 +62,7 @@ impl Resource {
             Resource::Workspace => "workspace",
             Resource::Repo => "repo",
             Resource::Code => "code",
+            Resource::Packages => "packages",
             Resource::Issues => "issues",
             Resource::PullRequests => "pull_requests",
             Resource::Agents => "agents",
@@ -79,6 +82,7 @@ impl Resource {
             Resource::Workspace => "Workspaces",
             Resource::Repo => "Repositories",
             Resource::Code => "Code",
+            Resource::Packages => "Packages",
             Resource::Issues => "Issues",
             Resource::PullRequests => "Pull requests",
             Resource::Agents => "g1t agents",
@@ -99,6 +103,8 @@ pub enum Level {
     Write,
     /// Starting g1t's agents, which spends the workspace's money.
     Run,
+    /// Deleting what cannot be brought back, such as a package's versions.
+    Delete,
     Admin,
 }
 
@@ -108,6 +114,7 @@ impl Level {
             Level::Read => "read",
             Level::Write => "write",
             Level::Run => "run",
+            Level::Delete => "delete",
             Level::Admin => "admin",
         }
     }
@@ -122,6 +129,9 @@ pub enum Scope {
     RepoAdmin,
     CodeRead,
     CodeWrite,
+    PackagesRead,
+    PackagesWrite,
+    PackagesDelete,
     IssuesRead,
     IssuesWrite,
     PullRequestsRead,
@@ -147,12 +157,15 @@ pub enum Scope {
 
 impl Scope {
     /// Every scope, grouped by resource, least first.
-    pub const ALL: [Scope; 26] = [
+    pub const ALL: [Scope; 29] = [
         Scope::RepoRead,
         Scope::RepoWrite,
         Scope::RepoAdmin,
         Scope::CodeRead,
         Scope::CodeWrite,
+        Scope::PackagesRead,
+        Scope::PackagesWrite,
+        Scope::PackagesDelete,
         Scope::IssuesRead,
         Scope::IssuesWrite,
         Scope::PullRequestsRead,
@@ -183,6 +196,9 @@ impl Scope {
             Scope::RepoAdmin => "repo:admin",
             Scope::CodeRead => "code:read",
             Scope::CodeWrite => "code:write",
+            Scope::PackagesRead => "packages:read",
+            Scope::PackagesWrite => "packages:write",
+            Scope::PackagesDelete => "packages:delete",
             Scope::IssuesRead => "issues:read",
             Scope::IssuesWrite => "issues:write",
             Scope::PullRequestsRead => "pull_requests:read",
@@ -224,6 +240,7 @@ impl Scope {
         match self.as_str().rsplit_once(':').map_or("", |(_, level)| level) {
             "write" => Level::Write,
             "run" => Level::Run,
+            "delete" => Level::Delete,
             "admin" => Level::Admin,
             _ => Level::Read,
         }
@@ -238,7 +255,7 @@ impl Scope {
     /// Changes that are hard or impossible to undo, or that decide who can
     /// reach what. Shown behind a warning wherever scopes are chosen.
     pub fn dangerous(self) -> bool {
-        self.level() == Level::Admin
+        matches!(self.level(), Level::Admin | Level::Delete)
     }
 
     /// What it lets a token do, in plain words.
@@ -249,6 +266,9 @@ impl Scope {
             Scope::RepoAdmin => "Rename, archive, transfer, delete or change who can see a repository, and dismiss security alerts",
             Scope::CodeRead => "Clone and fetch private repositories with git",
             Scope::CodeWrite => "Push commits with git",
+            Scope::PackagesRead => "Pull container images and install private packages",
+            Scope::PackagesWrite => "Push container images and publish packages",
+            Scope::PackagesDelete => "Delete packages and their versions",
             Scope::IssuesRead => "Read issues, comments and plans",
             Scope::IssuesWrite => "Open, edit, close and comment on issues",
             Scope::PullRequestsRead => "Read pull requests, their changes, sessions and merge queues",
@@ -367,6 +387,8 @@ impl Preset {
                 Scope::RepoRead,
                 Scope::CodeRead,
                 Scope::CodeWrite,
+                Scope::PackagesRead,
+                Scope::PackagesWrite,
                 Scope::WorkflowsRead,
                 Scope::WorkflowsWrite,
             ]),
@@ -637,6 +659,24 @@ pub fn decide_git(access: &TokenAccess, write: bool, public: bool) -> Decision {
     Decision::allow(if access.legacy { "token:legacy" } else { "token:scope" })
 }
 
+/// Whether a token may pull (`Level::Read`), push or publish
+/// (`Level::Write`), or delete (`Level::Delete`) packages. `public` is
+/// whether anyone may pull the package, which needs no scope.
+pub fn decide_packages(access: &TokenAccess, level: Level, public: bool) -> Decision {
+    let (needed, doing) = match level {
+        Level::Read => (Scope::PackagesRead, "pull a private package"),
+        Level::Delete | Level::Admin => (Scope::PackagesDelete, "delete packages"),
+        Level::Write | Level::Run => (Scope::PackagesWrite, "push or publish packages"),
+    };
+    if !access.allows(needed) && !(level == Level::Read && public) {
+        return Decision::deny(
+            "token:scope",
+            format!("This access token needs the {} scope to {doing}.", needed.as_str()),
+        );
+    }
+    Decision::allow(if access.legacy { "token:legacy" } else { "token:scope" })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -770,6 +810,27 @@ mod tests {
         assert!(decide_git(&writer, true, false).allowed);
         assert!(decide_git(&writer, false, false).allowed, "code:write includes code:read");
         assert!(decide_git(&TokenAccess::full(), true, false).allowed);
+    }
+
+    #[test]
+    fn packages_need_their_own_scopes_and_public_pulls_none() {
+        let reader = token(&[Scope::PackagesRead]);
+        assert!(decide_packages(&reader, Level::Read, false).allowed);
+        assert!(!decide_packages(&reader, Level::Write, false).allowed);
+        let code = token(&[Scope::CodeWrite]);
+        assert!(!decide_packages(&code, Level::Read, false).allowed, "code scopes are not package scopes");
+        assert!(decide_packages(&code, Level::Read, true).allowed, "public packages pull with any token");
+        let writer = token(&[Scope::PackagesWrite]);
+        assert!(decide_packages(&writer, Level::Write, false).allowed);
+        assert!(decide_packages(&writer, Level::Read, false).allowed, "packages:write includes packages:read");
+        let refused = decide_packages(&writer, Level::Delete, false);
+        assert!(refused.reason.unwrap().contains("packages:delete"));
+        assert!(decide_packages(&token(&[Scope::PackagesDelete]), Level::Write, false).allowed);
+        assert!(Scope::PackagesDelete.dangerous());
+        // Tokens made before these scopes, and full-access ones, keep working.
+        let legacy = TokenAccess { legacy: true, ..TokenAccess::full() };
+        assert!(decide_packages(&legacy, Level::Delete, false).allowed);
+        assert!(decide_packages(&TokenAccess::full(), Level::Write, false).allowed);
     }
 
     #[test]

@@ -250,7 +250,7 @@ const COLUMNS: &str = "i.id, i.hint, i.sealed_code, i.email, i.kind, i.workspace
   i.inviter_id, iu.username AS inviter, i.staff, i.charged_to, i.charged_workspace_id, i.created_at, i.expires_at,
   i.revoked_at, i.redeemed_by, ru.username AS redeemer, i.redeemed_at
   FROM invites i
-  LEFT JOIN workspaces w ON w.id = i.workspace_id
+  LEFT JOIN workspaces w ON w.id = i.workspace_id AND w.deleted_at IS NULL
   LEFT JOIN users iu ON iu.id = i.inviter_id
   LEFT JOIN users ru ON ru.id = i.redeemed_by";
 
@@ -562,7 +562,7 @@ impl Identity {
             .db
             .prepare(format!(
                 "SELECT count(*) AS n FROM workspace_members m JOIN workspaces w ON w.id = m.workspace_id
-                 WHERE m.user_id = ? AND m.role = 'owner' AND w.slug IN ({marks})"
+                 WHERE m.user_id = ? AND m.role = 'owner' AND w.deleted_at IS NULL AND w.slug IN ({marks})"
             ))
             .bind(&binds)?
             .first::<Count>(None)
@@ -601,7 +601,7 @@ impl Identity {
     async fn workspace_id(&self, slug: &str) -> Result<Option<String>> {
         Ok(self
             .db
-            .prepare("SELECT id FROM workspaces WHERE slug = ?")
+            .prepare("SELECT id FROM workspaces WHERE slug = ? AND deleted_at IS NULL")
             .bind(&[slug.trim().to_lowercase().into()])?
             .first::<Id>(None)
             .await?

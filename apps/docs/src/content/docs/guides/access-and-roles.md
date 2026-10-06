@@ -105,7 +105,7 @@ of its repositories:
 
 Owners always have Admin, whatever it says. Only owners can change it:
 
-1. Open the workspace's **Settings → Members**, `g1t.sh/<workspace>/-/people`.
+1. Open the workspace's **Members** in the sidebar, `g1t.sh/<workspace>/-/people`. Every member can see it; owners manage it.
 2. Under **Base permission**, choose one.
 
 It takes effect on everyone's next request. To give one member more on
@@ -178,7 +178,7 @@ without being a member of it. They:
 
 Owners see every outside collaborator, and the repositories and roles each
 has, on the **Outside collaborators** tab of the workspace's
-**Settings → Members**. **Convert to member** adds one to the workspace
+**Members**. **Convert to member** adds one to the workspace
 (see [members and roles](/guides/workspaces/#members-and-roles)); the
 roles they have stay, and the base permission adds to them.
 

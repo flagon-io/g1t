@@ -317,6 +317,7 @@ On the form, scopes are a checklist grouped by area:
 | Group | Scopes |
 | --- | --- |
 | Repositories & code | `repo:read`, `repo:write`, `code:read`, `code:write` |
+| Packages | `packages:read`, `packages:write` |
 | Issues & pull requests | `issues:read`, `issues:write`, `pull_requests:read`, `pull_requests:write` |
 | Agents | `agents:run` |
 | Workflows | `workflows:read`, `workflows:write` |
@@ -324,7 +325,7 @@ On the form, scopes are a checklist grouped by area:
 | Account | `account:read`, `account:write` |
 | Workspace | `workspace:read`, `access:read`, `webhooks:read`, `secrets:read` |
 | Runners | `runners:read` |
-| Dangerous | `repo:admin`, `workspace:admin`, `access:admin`, `webhooks:admin`, `secrets:admin`, `runners:admin` |
+| Dangerous | `repo:admin`, `packages:delete`, `workspace:admin`, `access:admin`, `webhooks:admin`, `secrets:admin`, `runners:admin` |
 
 Ticking a higher level ticks the lower ones of its resource and greys
 them out: tick `issues:write` and `issues:read` is ticked too. Untick
@@ -337,6 +338,9 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 | `repo:admin` | Rename, archive, transfer, delete or change who can see a repository, and dismiss security alerts |
 | `code:read` | Clone and fetch private repositories with git |
 | `code:write` | Push commits with git |
+| `packages:read` | Pull container images and install private [packages](/guides/packages/). Public ones need no scope. |
+| `packages:write` | Push container images and publish packages |
+| `packages:delete` | Delete packages and their versions |
 | `issues:read` | Read issues, comments and plans |
 | `issues:write` | Open, edit, close and comment on issues |
 | `pull_requests:read` | Read pull requests, their changes, sessions and merge queues |
@@ -395,7 +399,7 @@ any box.
 | --- | --- |
 | Read only | Every `read` scope. Changes nothing. |
 | Agent | Every `read` scope except `runners:read`, and `code:write`, `issues:write`, `pull_requests:write`, `agents:run` and `memory:write`. Reads everything, works on issues and pull requests, pushes code and puts g1t to work. No admin scope. |
-| CI | `repo:read`, `code:read`, `code:write`, `workflows:read` and `workflows:write`. Clones and pushes code, and runs workflows. |
+| CI | `repo:read`, `code:read`, `code:write`, `packages:read`, `packages:write`, `workflows:read` and `workflows:write`. Clones and pushes code, pushes and pulls packages, and runs workflows. |
 | Full access | Everything you can do, including deleting repositories and changing who has access. Marked **Dangerous**. |
 
 Admin scopes change things that are hard to undo, or decide who can reach

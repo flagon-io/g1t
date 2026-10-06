@@ -183,6 +183,8 @@ struct Billing {
     /// The repos service: which repositories are public, what private ones
     /// hold, and their git operations. Absent where it is not bound.
     repos: Option<worker::Fetcher>,
+    /// The packages service: what each workspace's packages hold.
+    packages: Option<worker::Fetcher>,
     /// The identity service, which emails owners. Absent where it is not
     /// bound.
     identity: Option<worker::Fetcher>,
@@ -982,6 +984,7 @@ impl Billing {
             },
             plans: credits::Config::from_env(env),
             repos: env.service("REPOS").ok(),
+            packages: env.service("PACKAGES").ok(),
             identity: env.service("IDENTITY").ok(),
             caps: budget::Caps::from_env(env),
             env: env.clone(),
@@ -1056,6 +1059,9 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     // operations, Deployments plans from before the g1t plan set to end,
     // and old reservations cleared.
     if event.cron() == keeper::DAILY {
+        if let Err(error) = billing.measure_packages().await {
+            worker::console_error!("measuring package storage failed: {error}");
+        }
         if let Err(error) = billing.measure_storage().await {
             worker::console_error!("measuring storage failed: {error}");
         }
@@ -1148,6 +1154,15 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_add_note" => reply(&billing.admin_add_note(args(body)?).await?),
         "admin_invoices" => reply(&billing.admin_invoices(args(body)?).await?),
         "admin_audit" => reply(&billing.admin_audit(args(body)?).await?),
+        // A staff change made in another service, for sudo's audit log:
+        // identity's restores and purges of deleted workspaces.
+        "admin_log" => {
+            let a: AdminLogArgs = args(body)?;
+            billing
+                .audit(&accounts::own_account(&a.workspace), &a.action, &a.detail, &a.by)
+                .await?;
+            reply(&true)
+        }
         "note_pending" => reply(&billing.note_pending(args(body)?).await?),
         "admin_accounts" => reply(&billing.admin_accounts(args(body)?).await?),
         "admin_account" => reply(&billing.admin_account(args(body)?).await?),

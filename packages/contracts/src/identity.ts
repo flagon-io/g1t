@@ -129,6 +129,8 @@ export type AdminWorkspaceDetail = {
   createdAt: string;
   /** Owners first, then by username. */
   members: AdminMember[];
+  /** It can never be deleted, by anyone (identity's `PROTECTED_WORKSPACES`). */
+  protected: boolean;
 };
 
 /** The most workspaces one `workspaces` call returns. */
@@ -288,6 +290,20 @@ export interface IdentityAdminApi {
   inviteTree(username: string): Promise<InviteTree | null>;
   /** A workspace's granted invites and the invites made for it, or null. */
   workspaceInvites(slug: string): Promise<InviteTree | null>;
+
+  /** Workspaces owners deleted that are not purged yet, newest first. */
+  deletedWorkspaces(): Promise<DeletedWorkspace[]>;
+  /**
+   * Brings a deleted workspace back, with its members, tokens and what went
+   * with it, while it is still restorable. Publishes `workspace.restored`.
+   */
+  restoreWorkspace(workspaceId: string, staff: string): Promise<Result<boolean>>;
+  /**
+   * Purges a deleted workspace now rather than at `purgeAfter`. `confirm` is
+   * its slug, typed out. Refused for a protected workspace. Publishes
+   * `workspace.deleted`.
+   */
+  purgeWorkspace(workspaceId: string, staff: string, confirm: string): Promise<Result<boolean>>;
 }
 
 /** Who is asking. Every read and write in every service takes one. */
@@ -381,12 +397,52 @@ export type OAuthGrant = {
 };
 
 /** Accounts, credentials and sessions. */
-/** What stands between a workspace and its deletion; nothing when both counts are 0 and `billing` is null. */
+/**
+ * What deleting a workspace takes with it, and what stands in the way:
+ * nothing does while `billing` is null and it is not `protected`.
+ */
 export type WorkspaceDeletion = {
+  /** Its live repositories, deleted with it. */
   repositories: number;
+  /** Its projects, hidden with it. */
   projects: number;
+  members: number;
   /** Why billing cannot close it yet, in words for its owner. */
   billing: string | null;
+  /** It can never be deleted, by anyone. */
+  protected: boolean;
+};
+
+/** How long a deleted workspace is kept, for g1t's staff to restore, before it is purged. */
+export const WORKSPACE_RESTORE_DAYS = 30;
+
+/**
+ * Workspaces nobody can delete, whatever identity's `PROTECTED_WORKSPACES`
+ * says: Flagon's, which runs g1t. Services that act on `workspace.deleting`
+ * check it too, so one published for it by mistake changes nothing.
+ */
+export const ALWAYS_PROTECTED_WORKSPACES: readonly string[] = ["flagon-io"];
+
+/** Whether `slug` is one of `ALWAYS_PROTECTED_WORKSPACES`, in any case. */
+export function isProtectedWorkspace(slug: string): boolean {
+  return ALWAYS_PROTECTED_WORKSPACES.includes(slug.trim().toLowerCase());
+}
+
+/** A workspace an owner deleted, kept until `purgeAfter` for staff to restore. */
+export type DeletedWorkspace = {
+  workspaceId: string;
+  slug: string;
+  name: string;
+  /** RFC 3339. */
+  deletedAt: string;
+  /** The username of the owner who deleted it. */
+  deletedBy: string;
+  /** RFC 3339: when it is purged unless restored first. */
+  purgeAfter: string;
+  /** What went with it, counted when it was deleted. */
+  went: WorkspaceDeletion;
+  /** Whether staff can still restore it. */
+  restorable: boolean;
 };
 
 export interface IdentityApi extends AccessClient {
@@ -479,12 +535,14 @@ export interface IdentityApi extends AccessClient {
   resolveSlug(slug: string): Promise<string | null>;
   /**
    * Owners only, a person only. `confirm` is the slug, typed out. Refused
-   * while the workspace holds repositories or projects, or billing cannot
-   * settle it. Its slug is never given to anyone else; the person whose
-   * username it is may make it again. Publishes `workspace.deleted`.
+   * for a protected workspace, and while billing cannot settle it. Its
+   * repositories, projects and apps go with it; it is kept for
+   * `WORKSPACE_RESTORE_DAYS`, when g1t's staff can restore it, then purged.
+   * Its slug is never given to anyone else; the person whose username it is
+   * may make it again once it is purged. Publishes `workspace.deleting`.
    */
   deleteWorkspace(actor: User, slug: string, confirm: string): Promise<Result<boolean>>;
-  /** What stands in the way of `deleteWorkspace`, changing nothing. */
+  /** What `deleteWorkspace` would take with it, and what stands in its way, changing nothing. */
   checkWorkspaceDeletion(actor: User, slug: string): Promise<Result<WorkspaceDeletion>>;
   /**
    * Owners only. `image` is the file in base64: PNG, JPEG, WebP or GIF, at

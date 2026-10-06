@@ -225,8 +225,14 @@ impl Identity {
         };
         let from = a.slug.trim().to_lowercase();
         let now = rfc3339(now_ms());
+        // A workspace protected by its slug stays protected under the new
+        // one: the protection goes on its row (deletion.rs).
+        let protected = self.is_protected(&workspace_id, &from, false).await?;
         self.db
             .batch(vec![
+                self.db
+                    .prepare("UPDATE workspaces SET protected = 1 WHERE id = ? AND ? = 1")
+                    .bind(&[workspace_id.as_str().into(), u8::from(protected).into()])?,
                 // A redirect the workspace is renaming back to, or one whose
                 // hold has ended, gives way to the slug in use.
                 self.db

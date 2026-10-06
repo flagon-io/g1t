@@ -36,7 +36,7 @@ impl Identity {
             }
             "workspace" => {
                 "SELECT id, slug, name, description AS bio, avatar, created_at
-                 FROM workspaces WHERE slug > ? ORDER BY slug LIMIT ?"
+                 FROM workspaces WHERE slug > ? AND deleted_at IS NULL ORDER BY slug LIMIT ?"
             }
             _ => return Ok(DirectoryPage::default()),
         };

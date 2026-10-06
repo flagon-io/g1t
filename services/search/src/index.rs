@@ -791,6 +791,23 @@ impl Search {
                     self.index_workspace(&workspace.slug).await?;
                 }
             }
+            // A deleted workspace drops out of results at once, and comes
+            // back if staff restore it. Its repositories come and go with
+            // their own `repo.deleted` and `repo.restored`.
+            "workspace.deleting" => {
+                if let Ok(workspace) = serde_json::from_value::<WorkspaceEvent>(data.clone()) {
+                    self.db
+                        .prepare("DELETE FROM people WHERE kind = 'workspace' AND slug = ?1")
+                        .bind(&[workspace.slug.to_lowercase().into()])?
+                        .run()
+                        .await?;
+                }
+            }
+            "workspace.restored" => {
+                if let Ok(workspace) = serde_json::from_value::<WorkspaceEvent>(data.clone()) {
+                    self.index_workspace(&workspace.slug).await?;
+                }
+            }
             "workspace.deleted" => {
                 g1t_kit::deleted::on_event(
                     &self.db,

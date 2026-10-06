@@ -44,6 +44,10 @@ export const EVENT_TYPES = [
   "workflow.completed",
   "queue.changed",
   "session.appended",
+  "package.published",
+  "package.version_deleted",
+  "package.deleted",
+  "package.visibility_changed",
 ] as const;
 
 export type Hook = {

@@ -88,7 +88,7 @@
 			"confirm": "acme-labs"
 		},
 		"response": true,
-		"notes": "Refused with `409` while the workspace holds repositories or projects, and with `402` while billing cannot settle it, each with a message that says what to do. See [Delete a workspace](/guides/workspaces/#delete-a-workspace)."
+		"notes": "Refused with `402` while billing cannot settle it, with a message that says what to do, and with `403` for anyone but an owner signed in as a person, or for a protected workspace. Its repositories, projects and apps go with it; g1t's support can restore it for 30 days. See [Delete a workspace](/guides/workspaces/#delete-a-workspace)."
 	},
 	"list_emails": {
 		"response": {
