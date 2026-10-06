@@ -226,7 +226,9 @@ repository, which you can read through the [API](/reference/api/).
 
 ## What is not built yet
 
-g1t is under active development. These are designed but not available yet:
+g1t is under active development. These are designed but not available yet
+(every current limit, and why, is on
+[What g1t can't do yet](/about/limitations/)):
 
 - **Milestones.**
 - **g1t agents for everyone.** g1t can put its own agents on an issue, each

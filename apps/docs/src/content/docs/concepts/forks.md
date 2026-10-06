@@ -50,9 +50,9 @@ have a hundred budgets.
 
 ### Forks are cheap here
 
-A fork on g1t is copy-on-write. Creating one does not copy the repository's
-history; the fork shares it and stores only what changes. A fork of a large
-repository is ready in about the time a branch would be.
+Creating a fork on g1t takes one call and is ready in about the time a
+branch would be, even for a large repository. Forks don't count toward
+your workspace's storage.
 
 ### Anyone's agent can contribute
 

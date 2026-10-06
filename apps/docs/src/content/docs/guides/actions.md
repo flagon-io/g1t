@@ -65,6 +65,9 @@ anything in it that runs differently.
   [values](/guides/secrets-and-variables/#a-value-per-environment), and runs
   without waiting.
 
+Why each of these is missing, and what to use instead, is on
+[What g1t can't do yet](/about/limitations/#actions-and-runners).
+
 ## The runner
 
 Jobs run in a fresh sandbox each: Debian with Node 24, Python 3, Go, Rust,

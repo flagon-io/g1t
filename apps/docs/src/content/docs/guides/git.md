@@ -122,12 +122,15 @@ update the pull request's head commit on its page.
 Repositories are stored in Cloudflare Artifacts, which limits a repository to
 1 GB and a single file to 32 MB. A single push is limited to 100 MB.
 
-Each clone, fetch and push is a git operation. Every workspace has 10,000
+Each clone, fetch and push is a git operation. Every workspace has 50,000
 a month included. Past that, a workspace on the g1t plan pays $0.18 per
 1,000, and a free workspace is never charged: past 50,000 in a month, its
 git requests past 60 in an hour are answered `429` with when to try again,
 until the month turns. Counting starts on 2026-10-14. See
 [git operations](/guides/usage-and-billing/#git-operations).
+
+What these limits mean in practice, and what to do instead, is on
+[What g1t can't do yet](/about/limitations/#git).
 
 ## Where a slow request's time went
 

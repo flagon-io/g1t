@@ -30,6 +30,9 @@ a private network, not yet for an installation on the open internet.
 | Git over SSH, the REST API, MCP and the `g1t` CLI | Not available yet |
 | Scheduled jobs (webhook retries, Actions schedules) | Not run yet |
 
+What hosted g1t cannot do yet either is on
+[What g1t can't do yet](/about/limitations/).
+
 ## Before you start
 
 - Docker with Compose v2 (`docker compose version`).

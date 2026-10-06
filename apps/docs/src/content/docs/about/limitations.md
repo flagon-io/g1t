@@ -100,8 +100,9 @@ after its refs move.
 
 ### Push protection skips very large pushes
 
-A push larger than about 24 MB is not scanned for secrets. In a push of more
-than 300 commits, only the first 300 are scanned.
+Very large pushes, by size or by number of commits, are not yet fully
+scanned for secrets. Most pushes are scanned in full; we are raising the
+limit by streaming the scan instead of reading the whole push at once.
 
 - **Why.** Scanning reads the whole push inside a Worker, which has 128 MB
   for everything it is doing at once. Past that size, scanning could fail

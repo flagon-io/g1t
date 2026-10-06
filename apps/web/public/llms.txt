@@ -485,7 +485,9 @@ https://docs.g1t.sh/guides/search/
 - Git remote: `https://g1t.sh/{workspace}/{repo}.git`. In API paths,
   `{owner}` is the workspace. Pull request forks:
   `https://g1t.sh/pulls/{pull_request_id}.git`. SSH is not available.
-- Limits: 1 GB per repository, 32 MB per file, 100 MB per push.
+- Limits: 1 GB per repository, 32 MB per file, 100 MB per push. Every
+  current limit, why it exists and the workaround:
+  https://docs.g1t.sh/about/limitations/
 - Forgotten password: https://g1t.sh/forgot (the person does this, in a
   browser).
 - Times are RFC 3339 in UTC.
@@ -541,6 +543,8 @@ https://docs.g1t.sh/guides/search/
 - [Git](https://docs.g1t.sh/guides/git/)
 - [MCP tools](https://docs.g1t.sh/reference/mcp/)
 - [API reference](https://docs.g1t.sh/reference/api/)
+- [What g1t can't do yet](https://docs.g1t.sh/about/limitations/)
+- [An open letter to Cloudflare](https://docs.g1t.sh/about/open-letter-to-cloudflare/)
 - [Source](https://g1t.sh/flagon-io/g1t), MIT licensed
 
 ## Help, status and policies

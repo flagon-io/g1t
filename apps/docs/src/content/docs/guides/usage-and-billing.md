@@ -253,6 +253,10 @@ Prices keep themselves current as those costs move:
   measurement far from the current cost is not adopted, only logged, so
   one odd day cannot reprice anything.
 
+Some of the Cloudflare products g1t pays for are in beta and do not yet
+define exactly what they bill; see
+[What g1t can't do yet](/about/limitations/#billing).
+
 ### Sandbox time
 
 Every sandbox g1t starts runs on Cloudflare Containers, and Cloudflare

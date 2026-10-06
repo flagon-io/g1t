@@ -106,6 +106,9 @@ build: `dist`, `build`, `out`, `public`, `_site`, `.output/public`. Set
   lists each one it left out. Code that needs them should check that the
   binding is there.
 
+What Deployments cannot run yet, such as long-running servers, is on
+[What g1t can't do yet](/about/limitations/#deployments).
+
 ## Addresses of other projects
 
 A project that [depends on another](/guides/projects/#dependencies) with
