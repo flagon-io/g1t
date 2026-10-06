@@ -304,7 +304,8 @@ async function ship(unit, decision, { head, subject, dirty, dryRun, docker, rebu
   const result = { unit: unit.id, stage: unit.stage, ok: false, version: null, ms: 0, note: "" };
   try {
     if (unit.kind === "react-router" || unit.kind === "astro") {
-      const built = await exec("npm", ["run", "build"], { cwd, onLine: out.line, shell: true, env: wranglerEnv() });
+      // One command string: Node warns about arguments passed beside shell: true.
+      const built = await exec("npm run build", [], { cwd, onLine: out.line, shell: true, env: wranglerEnv() });
       if (built.code !== 0) throw new Error(`npm run build failed:\n${lastLines(built.out)}`);
     }
     const args = ["deploy"];
@@ -438,7 +439,7 @@ async function install(stack, opts) {
   const units = selected(stack, opts);
   const args = npmCiArgs(units, npmWorkspace());
   log(`npm ${args.join(" ")}`);
-  const done = await exec("npm", args, { cwd: ROOT, shell: true, onLine: (line) => log(line) });
+  const done = await exec(`npm ${args.join(" ")}`, [], { cwd: ROOT, shell: true, onLine: (line) => log(line) });
   return done.code === 0;
 }
 
