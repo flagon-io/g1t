@@ -84,7 +84,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
            /home/node/.rustup/toolchains/*/share/doc \
            /home/node/.rustup/toolchains/*/share/man
 
-# Commits are g1t's; the harness does not sign them as its own.
+# Commits are the g1t agent's; the harness does not sign them as its own.
 RUN mkdir -p /home/node/.claude \
  && echo '{"includeCoAuthoredBy": false}' > /home/node/.claude/settings.json
 
