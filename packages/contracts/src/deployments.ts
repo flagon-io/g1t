@@ -108,13 +108,13 @@ export type ProjectDeploys = {
   latest: Deployment | null;
 };
 
-/** What a workspace's apps used this month against its plan. */
+/** What a workspace's apps used this month. Every request, CPU millisecond and build second is metered; apps are not. */
 export type DeployUsage = {
   /** `YYYY-MM`. */
   month: string;
   requests: number;
   cpuMs: number;
-  /** Apps up now, and the most at once this month. */
+  /** Apps up now (production and previews), and the most at once this month: for information, never charged. */
   apps: number;
   peakApps: number;
   buildSeconds: number;
@@ -175,8 +175,8 @@ export type ProjectDomains = {
   /** False until custom domains are switched on for g1t.page; `notice` says so. */
   available: boolean;
   notice: string | null;
-  /** Custom domains the Deployments plan includes, across the workspace; more are charged by the month. */
-  included: number;
+  /** What one custom domain costs a month on the plan, in millionths of a dollar: g1t's cost plus 20%. */
+  monthlyMicros: number;
   /** The workspace's custom domains now. */
   used: number;
 };

@@ -381,8 +381,6 @@ impl Billing {
                 audit_retention_days: self.plans.audit_days,
                 min_charge_micros: self.plans.min_charge_micros,
                 git_operations_included: self.plans.git_included,
-                git_operations_free_cap: self.plans.git_free_cap,
-                plan_private_storage_bytes: self.plans.plan_storage_bytes,
                 paid_start_ceiling_micros: self.plans.paid_start_micros,
                 overage_forgive_cost_micros: self.plans.forgive_cost_micros,
             }),

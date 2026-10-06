@@ -182,11 +182,21 @@ export type InvitesOverview = {
 /** What a valid code is for, before it is used. */
 export type InvitePreview = {
   kind: "account" | "workspace";
+  /** Pending, unless `anyStatus` asked about a code that is spent. */
+  status: InviteStatus;
   /** Null when g1t staff sent it. */
   invitedBy: { username: string; name: string | null; avatar: string | null } | null;
   workspace: ProfileWorkspace | null;
+  /** The repository it accepts an invitation to, such as `{ name: "flagon-io/g1t", role: "write" }`. */
+  repository: { name: string; role: string } | null;
   /** Partly hidden, such as `a•••@example.com`. */
   email: string | null;
+  /** The bound address in full, while the invite is pending: it fills in and locks the sign-up form. */
+  address: string | null;
+  /** Whether the bound address has a g1t account already: sign in to accept. */
+  hasAccount: boolean;
+  /** With a viewer: whether it is theirs (for one of their confirmed addresses, or used by them). */
+  forViewer: boolean | null;
   expiresAt: string;
 };
 
@@ -200,6 +210,10 @@ export type WaitlistEntry = {
   inviteId: string | null;
   decidedBy: string | null;
   decidedAt: string | null;
+  /** What staff wrote when approving; it went in the invite email. */
+  note: string | null;
+  /** The account made with the invite, once it was used. */
+  joinedAs: string | null;
   /** When they first asked. */
   createdAt: string;
   /** When they last asked. */
@@ -238,10 +252,15 @@ export interface IdentityAdminApi {
   /** One workspace with all its members, or null. */
   workspace(slug: string): Promise<AdminWorkspaceDetail | null>;
 
-  /** The waitlist, oldest first; `query` matches the address or what they said. */
+  /** The waitlist, newest first; `query` matches the address or what they said. */
   waitlist(query?: string | null, status?: WaitlistStatus | null): Promise<WaitlistEntry[]>;
-  /** Approving mints an invite bound to the address and emails it; dismissing only marks it. */
-  decideWaitlist(id: string, approve: boolean, staff: string): Promise<Result<WaitlistEntry>>;
+  /** How many requests are waiting, for the navigation's badge. */
+  waitlistPending(): Promise<number>;
+  /**
+   * Approving mints an invite bound to the address and emails it, with
+   * `note` (up to 500 characters) if given; dismissing only marks it.
+   */
+  decideWaitlist(id: string, approve: boolean, staff: string, note?: string | null): Promise<Result<WaitlistEntry>>;
   /** Invites, newest first; `query` is a code's start, or part of an email, inviter or redeemer. */
   invites(query?: string | null): Promise<Invite[]>;
   revokeInvite(id: string, staff: string): Promise<Result<Invite>>;
@@ -467,9 +486,21 @@ export interface IdentityApi extends AccessClient {
   createInvite(user: User, options?: { email?: string | null; workspace?: string | null }): Promise<Result<Invite>>;
   /** Its maker, or an owner of its workspace, revokes a pending invite; the invite comes back. */
   revokeInvite(user: User, id: string): Promise<Result<Invite>>;
-  /** What a code is for. Unknown, used, revoked and expired codes all get the same answer. */
-  checkInvite(code: string, client?: string | null): Promise<Result<InvitePreview>>;
-  /** A signed-in person uses a workspace invite sent to their address; returns the workspace's slug. */
+  /**
+   * What a code is for. Unknown, used, revoked and expired codes all get the
+   * same answer, unless `anyStatus`: then a real code that is spent is
+   * described, with its `status`. `viewer` sets `forViewer`.
+   */
+  checkInvite(
+    code: string,
+    client?: string | null,
+    options?: { viewer?: User | null; anyStatus?: boolean },
+  ): Promise<Result<InvitePreview>>;
+  /**
+   * A signed-in person uses a workspace invite sent to their address, or one
+   * sent with a repository invitation; returns the workspace's slug, or
+   * `workspace/repo`.
+   */
   acceptInvite(user: User, code: string): Promise<Result<string>>;
   /** Owners only. Invites an address into a workspace, always with an invite bound to it. */
   inviteMember(actor: User, slug: string, email: string): Promise<Result<Invite>>;

@@ -948,6 +948,23 @@ impl Identity {
         Ok(())
     }
 
+    /// The repository an invite code was sent with, for the invite's page
+    /// (invites.rs): whatever became of the invitation since.
+    pub(crate) async fn repository_of_code(
+        &self,
+        invite_id: &str,
+    ) -> Result<Option<g1t_contracts::identity::InviteRepository>> {
+        Ok(self
+            .invitations("WHERE ri.invite_id = ?", &[invite_id.into()])
+            .await?
+            .into_iter()
+            .next()
+            .map(|row| g1t_contracts::identity::InviteRepository {
+                name: format!("{}/{}", row.workspace, row.repo_name),
+                role: row.role().as_str().to_owned(),
+            }))
+    }
+
     /// Accepts the repository invitations sent with an invite code, once
     /// the code made `user`'s account (invites.rs).
     pub(crate) async fn accept_invitations_of_code(&self, invite_id: &str, user: &User) -> Result<()> {

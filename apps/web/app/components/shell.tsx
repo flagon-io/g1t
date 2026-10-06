@@ -11,7 +11,9 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronsUpDown,
-  Ellipsis,
+  CircleUserRound,
+  Mail,
+  Ticket,
   CircleDot,
   Code2,
   Compass,
@@ -47,17 +49,18 @@ import {
   X,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { Form, Link, NavLink, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
+import { Form, Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
 import type { Abilities, Membership, Spike, User } from "@g1t/contracts";
 
 import { CommandPalette, type PaletteCommand, usePaletteShortcut } from "./command-palette";
-import { LegalRow } from "./footer";
-import { Logo, Mark } from "./logo";
+import { StatusDot, useSiteStatus } from "./footer";
+import { Logo } from "./logo";
 import { Avatar, notACredential } from "./ui";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -66,8 +69,12 @@ import {
 import { type RoadmapItem, roadmapIn } from "../lib/roadmap";
 import { SETTINGS_CAPABILITY, type ViewerAccess, seesSettings } from "../lib/access";
 import { VISITOR_LINKS, projectPages } from "../lib/chrome";
+import { ACCOUNT_SETTINGS, type AccountSettingsPage, FIRST_SETTINGS_PAGE, accountSettingsPage } from "../lib/account-settings";
+import { GithubMark } from "./github";
 import { withNext } from "../lib/next";
 import { useSignUpCopy } from "../lib/registration";
+import { STATUS_URL, statusTitle } from "../lib/status";
+import type { AccountMenuData } from "../routes/settings-menu-json";
 
 /**
  * What the sidebar needs, worked out by the root loader. For a visitor who
@@ -316,45 +323,144 @@ function WorkspaceSwitcher({ user, shell }: { user: User; shell: ShellData }) {
   );
 }
 
+/**
+ * The fine print, as one quiet row at the foot of the account menu and the
+ * visitor's panel: each link a full-height target, left-aligned. In the
+ * menu each is a menu item, so the arrow keys reach it.
+ */
+const LEGAL_LINKS: [string, string][] = [
+  ["Policies", "/policies"],
+  ["Privacy", "/policies/privacy"],
+  ["Security", "/security"],
+];
+const LEGAL_LINK = "flex h-7 items-center rounded px-1.5 text-xs text-faint outline-none transition-colors";
+
+function MenuLegalRow() {
+  return (
+    <div role="group" aria-label="Legal" className="flex items-center gap-0.5 px-0.5 pt-0.5">
+      {LEGAL_LINKS.map(([label, to], index) => (
+        <span key={to} className="flex items-center gap-0.5">
+          {index > 0 && (
+            <span aria-hidden="true" className="text-[0.625rem] text-line-strong">
+              ·
+            </span>
+          )}
+          <DropdownMenuItem asChild className={`${LEGAL_LINK} py-0 data-highlighted:bg-line data-highlighted:text-fg`}>
+            <Link to={to}>{label}</Link>
+          </DropdownMenuItem>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Status's row: the live dot and two or three words, fetched when the menu opens. */
+function StatusSummary({ open }: { open: boolean }) {
+  const status = useSiteStatus(open);
+  const words = statusTitle(status);
+  return (
+    <span className="ml-auto flex min-w-0 items-center gap-1.5 pl-2 text-xs text-faint">
+      {/* The words say it; the dot's own words for screen readers would repeat them. */}
+      <span aria-hidden="true" className="flex">
+        <StatusDot state={status?.overall.state ?? null} />
+      </span>
+      <span className="truncate">{words ?? "Checking…"}</span>
+    </span>
+  );
+}
+
+/** A menu row: an icon, words, and whatever sits at its end. */
+const MENU_ROW = "h-9 gap-2.5 px-2.5 text-[0.8125rem]";
+
 function AccountMenu({ user }: { user: User }) {
   const submit = useSubmit();
+  const [open, setOpen] = useState(false);
+  // Name, primary address and invites left: asked for once, when first opened.
+  const details = useFetcher<AccountMenuData | null>({ key: "account-menu" });
+  useEffect(() => {
+    if (open && details.state === "idle" && details.data === undefined) details.load("/settings/menu.json");
+  }, [open, details]);
+  const me = details.data ?? null;
+  const profile = `/u/${user.username}`;
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger className="flex h-10 w-full items-center gap-2.5 rounded-md px-2 text-left outline-none transition-colors hover:bg-raised data-[state=open]:bg-raised">
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger
+        aria-label={`Account menu for ${user.username}`}
+        className="flex h-10 w-full items-center gap-2.5 rounded-md px-2 text-left outline-none transition-colors hover:bg-raised focus-visible:ring-2 focus-visible:ring-merged/60 data-[state=open]:bg-raised"
+      >
         <Avatar name={user.username} image={user.avatar} size={22} />
         <span className="min-w-0 grow truncate text-[0.8125rem] font-medium">{user.username}</span>
-        <Ellipsis size={15} className="shrink-0 text-faint" />
+        <ChevronsUpDown size={14} className="shrink-0 text-faint" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" side="top" className="w-64">
-        <DropdownMenuLabel>
-          Signed in as <span className="font-mono font-medium text-fg">{user.username}</span>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link to="/settings">
-            <Settings />
-            Your settings
+      <DropdownMenuContent align="start" side="top" collisionPadding={8} className="w-[17.5rem] p-1.5">
+        {/* Who is signed in, and a way to their profile. */}
+        <DropdownMenuItem asChild className="gap-3 px-2 py-2">
+          <Link to={profile} aria-label={`${me?.name ?? user.username} (@${user.username}), your profile`}>
+            <Avatar name={user.username} image={user.avatar} size={36} />
+            <span className="flex min-w-0 flex-col leading-tight">
+              <span className="truncate text-sm font-medium text-fg">{me?.name ?? user.username}</span>
+              <span className="truncate font-mono text-xs text-muted">@{user.username}</span>
+              {me?.email && <span className="mt-0.5 truncate text-xs text-faint">{me.email}</span>}
+            </span>
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <a href="https://docs.g1t.sh/">
-            <BookOpen />
-            Documentation
-          </a>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
+        <DropdownMenuSeparator className="my-1.5" />
+        <DropdownMenuGroup>
+          <DropdownMenuItem asChild className={MENU_ROW}>
+            <Link to={profile}>
+              <CircleUserRound />
+              Your profile
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild className={MENU_ROW}>
+            <Link to={FIRST_SETTINGS_PAGE}>
+              <Settings />
+              Your settings
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild className={MENU_ROW}>
+            <Link to="/settings/invites">
+              <Ticket />
+              Invites
+              {me?.invites_left != null && (
+                <span className="ml-auto rounded-full bg-line px-1.5 text-[0.6875rem] tabular-nums text-muted">
+                  {me.invites_left} left
+                </span>
+              )}
+            </Link>
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator className="my-1.5" />
+        <DropdownMenuGroup>
+          <DropdownMenuItem asChild className={MENU_ROW}>
+            <a href="https://docs.g1t.sh/">
+              <BookOpen />
+              Documentation
+            </a>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild className={MENU_ROW}>
+            <Link to="/support">
+              <LifeBuoy />
+              Support
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild className={MENU_ROW}>
+            <a href={STATUS_URL}>
+              <Activity />
+              Status
+              <StatusSummary open={open} />
+            </a>
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator className="my-1.5" />
         {/* Submitted from here: the menu closes on select, and a button
             that has left the page cannot submit a form. */}
-        <DropdownMenuItem onSelect={() => submit(null, { method: "post", action: "/logout" })}>
+        <DropdownMenuItem className={MENU_ROW} onSelect={() => submit(null, { method: "post", action: "/logout" })}>
           <LogOut />
           Sign out
         </DropdownMenuItem>
-        {/* The site footer's row, slim: the app has no footer of its own.
-            Rendered only while the menu is open, so status is fetched then. */}
-        <DropdownMenuSeparator />
-        <div className="px-1.5 pt-1 pb-1.5">
-          <LegalRow user={user} compact />
-        </div>
+        <DropdownMenuSeparator className="my-1.5" />
+        <MenuLegalRow />
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -849,27 +955,34 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
   );
 }
 
-/** Your own settings, as the sidebar shows them on the settings page. */
-function AccountSettingsMenu() {
-  const { hash } = useLocation();
-  const item = (id: string, icon: ReactNode, label: string) => (
-    <Link
-      to={`/settings#${id}`}
-      className={`group flex h-8 items-center gap-2.5 rounded-md px-2 text-[0.8125rem] transition-colors ${
-        hash === `#${id}` ? "bg-raised font-medium text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"
-      }`}
-    >
-      <span className="shrink-0 text-faint group-hover:text-muted">{icon}</span>
-      {label}
-    </Link>
+/** Your own settings, drilled into from Your settings: one page each. */
+function AccountSettingsMenu({ username }: { username: string }) {
+  const link = (page: AccountSettingsPage, icon: ReactNode) => (
+    <SidebarLink to={`/settings/${page}`} icon={icon}>
+      {ACCOUNT_SETTINGS[page].title}
+    </SidebarLink>
   );
   return (
     <nav aria-label="Your settings" className={PANEL}>
-      <BackRow to="/" label="Your settings" />
+      <BackRow to="/" label="Your settings" context={username} />
       <div className="mt-2 space-y-px">
-        {item("ssh-keys", <Fingerprint size={15} />, "SSH keys")}
-        {item("tokens", <KeyRound size={15} />, "Access tokens")}
-        {item("applications", <Plug size={15} />, "Connected applications")}
+        {link("profile", <CircleUserRound size={15} />)}
+        {link("emails", <Mail size={15} />)}
+        {link("invites", <Ticket size={15} />)}
+      </div>
+      <Rule />
+      <div className="space-y-px">
+        {link("keys", <Fingerprint size={15} />)}
+        {link("tokens", <KeyRound size={15} />)}
+      </div>
+      <Rule />
+      <div className="space-y-px">
+        {link("github", <GithubMark className="size-[15px]" />)}
+        {link("applications", <Plug size={15} />)}
+      </div>
+      <Rule />
+      <div className="space-y-px">
+        {link("security-log", <History size={15} />)}
       </div>
     </nav>
   );
@@ -879,6 +992,42 @@ function AccountSettingsMenu() {
  * Signing in and signing up, in place of the account for a visitor. Signing
  * in brings them back to the page they are on.
  */
+/** Help, status and the fine print under a visitor's sign-in buttons. */
+function VisitorLinks() {
+  const status = useSiteStatus();
+  const quiet = `${LEGAL_LINK} hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-merged/60`;
+  const dot = (
+    <span aria-hidden="true" className="text-[0.625rem] text-line-strong">
+      ·
+    </span>
+  );
+  return (
+    // Two short rows, so a narrow sidebar never starts a line with a dot.
+    <nav aria-label="About g1t" className="pt-0.5">
+      <div className="flex items-center gap-0.5">
+        <a href={STATUS_URL} className={`${quiet} gap-1.5`}>
+          <StatusDot state={status?.overall.state ?? null} />
+          Status
+        </a>
+        {dot}
+        <Link to="/support" className={quiet}>
+          Support
+        </Link>
+      </div>
+      <div className="flex items-center gap-0.5">
+        {LEGAL_LINKS.map(([label, to], index) => (
+          <span key={to} className="flex items-center gap-0.5">
+            {index > 0 && dot}
+            <Link to={to} className={quiet}>
+              {label}
+            </Link>
+          </span>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
 function VisitorPanel() {
   const { pathname, search } = useLocation();
   const signUp = useSignUpCopy();
@@ -900,13 +1049,7 @@ function VisitorPanel() {
           {signUp.primary}
         </Link>
       </div>
-      <nav aria-label="About g1t" className="flex flex-wrap justify-center gap-x-2 gap-y-0.5 px-1 pt-1 text-[0.6875rem] text-faint">
-        <Link to="/status" className="hover:text-fg">Status</Link>
-        <Link to="/support" className="hover:text-fg">Support</Link>
-        <Link to="/policies" className="hover:text-fg">Policies</Link>
-        <Link to="/policies/privacy" className="hover:text-fg">Privacy</Link>
-        <Link to="/security" className="hover:text-fg">Security</Link>
-      </nav>
+      <VisitorLinks />
     </div>
   );
 }
@@ -914,11 +1057,14 @@ function VisitorPanel() {
 function Sidebar({
   user,
   shell,
+  missing = false,
   onFind,
   onClose,
 }: {
   user: User | null;
   shell: ShellData;
+  /** The page is a 404: the address names nothing the viewer can see. */
+  missing?: boolean;
   onFind: () => void;
   /** In the sheet on a small screen: closing it, at the end of the top row. */
   onClose?: () => void;
@@ -929,15 +1075,23 @@ function Sidebar({
   // Where the sidebar is drilled to follows the page being gone to, so it
   // moves as the link is followed, not once the page arrives.
   const target = going ?? pathname;
-  const inSettings = ws != null && SETTINGS_PAGE.exec(target)?.[1]?.toLowerCase() === ws.slug;
-  const inAccount = target === "/settings";
+  // On a 404, the address is not a place: no list is drilled into from it,
+  // except the project's own when the project is real and visible and only
+  // something inside it is missing (a file, a commit, an issue).
+  const lost = missing && going == null;
+  const inSettings = !lost && ws != null && SETTINGS_PAGE.exec(target)?.[1]?.toLowerCase() === ws.slug;
+  const inAccount = !lost && target === "/settings" || target.startsWith("/settings/");
   const active = shell.repo;
   // In a repository, or on the way into one, its own list.
   const repoPath = /^\/([^/]+)\/([^/-][^/]*)(\/|$)/.exec(target);
   const reserved = new Set(["settings", "explore", "search", "new", "u", "pricing", "avatars", "workspaces", "login", "logout", "register", "verify", "forgot", "reset", "device", "oauth", "policies", "security", "support", "status", "invite", ".well-known"]);
   // An invitation to a repository is answered before its menu means anything.
   const inRepo =
-    repoPath != null && !reserved.has(repoPath[1]) && repoPath[2] !== "-" && !/^\/[^/]+\/[^/]+\/invitations\/?$/.test(target);
+    repoPath != null &&
+    !reserved.has(repoPath[1]) &&
+    repoPath[2] !== "-" &&
+    !/^\/[^/]+\/[^/]+\/invitations\/?$/.test(target) &&
+    (!lost || sameRepo(active, { namespace: repoPath[1]!, name: repoPath[2]! }));
   // A project's settings, one level further in.
   const inRepoSettings = inRepo && REPO_SETTINGS_PAGE.test(target);
   // The repository the menu is for: the one loaded if it is the one being
@@ -963,7 +1117,7 @@ function Sidebar({
   // The way from the main list to the one shown.
   const trail: Level[] = [{ key: "main", node: <MainMenu user={user} shell={shell} /> }];
   if (user && inAccount) {
-    trail.push({ key: "account", node: <AccountSettingsMenu /> });
+    trail.push({ key: "account", node: <AccountSettingsMenu username={user.username} /> });
   } else if (ws && inSettings) {
     trail.push({ key: `settings:${ws.slug}`, node: <SettingsMenu slug={ws.slug} owner={ws.role === "owner"} /> });
   } else if (menuRepo) {
@@ -994,8 +1148,8 @@ function Sidebar({
       <div className="flex h-16 shrink-0 items-center gap-1 border-b border-line pr-2 pl-2.5">
         {user ? (
           <>
-            <Link to="/" aria-label="g1t home" className="shrink-0 rounded-md p-1.5 hover:bg-raised">
-              <Mark className="size-6" />
+            <Link to="/" aria-label="g1t home" className="flex h-9 shrink-0 items-center rounded-md px-2 transition-colors hover:bg-raised">
+              <Logo className="text-[1.25rem]" />
             </Link>
             <span className="shrink-0 text-line-strong" aria-hidden="true">
               /
@@ -1003,8 +1157,8 @@ function Sidebar({
             <WorkspaceSwitcher user={user} shell={shell} />
           </>
         ) : (
-          <Link to="/" aria-label="g1t home" className="mr-auto flex rounded-md px-1.5 py-1.5 hover:bg-raised">
-            <Logo />
+          <Link to="/" aria-label="g1t home" className="mr-auto flex h-9 items-center rounded-md px-2 transition-colors hover:bg-raised">
+            <Logo className="text-[1.25rem]" />
           </Link>
         )}
         {onClose && (
@@ -1071,10 +1225,38 @@ const SECTIONS: Record<string, string> = {
 };
 
 /** Where the page is, as a trail of links: workspace / repository / section. */
-function Breadcrumbs({ pathname }: { pathname: string }) {
+function Breadcrumbs({ pathname, missing, repo }: { pathname: string; missing?: boolean; repo?: ShellData["repo"] }) {
+  // A 404 names nothing from the address, unless the project is real and
+  // visible and only something inside it is missing.
+  const visibleRepo = /^\/([^/]+)\/([^/-][^/]*)(\/|$)/.exec(pathname);
+  if (missing && !(visibleRepo && sameRepo(repo ?? null, { namespace: visibleRepo[1]!, name: visibleRepo[2]! }))) {
+    return <span className="text-sm font-medium">Not found</span>;
+  }
   const parts = pathname.split("/").filter(Boolean);
   const reserved = ["settings", "explore", "new", "search", "workspaces", "policies", "security", "support", "status", "invite"];
   if (parts.length === 0) return <span className="text-sm font-medium">Mission control</span>;
+  // Your settings: Settings / Emails.
+  if (parts[0] === "settings") {
+    const page = accountSettingsPage(pathname);
+    const trail = [{ label: "Settings", to: FIRST_SETTINGS_PAGE }, ...(page ? [{ label: ACCOUNT_SETTINGS[page].title, to: `/settings/${page}` }] : [])];
+    return (
+      <nav aria-label="Where you are" className="flex min-w-0 items-center gap-1.5 text-sm">
+        {trail.map((crumb, index) => (
+          <span key={crumb.to + index} className="flex min-w-0 items-center gap-1.5">
+            {index > 0 && <span className="text-line-strong">/</span>}
+            <Link
+              to={crumb.to}
+              className={`truncate rounded px-1 py-0.5 transition-colors hover:bg-raised ${
+                index === trail.length - 1 ? "font-medium text-fg" : "text-muted hover:text-fg"
+              }`}
+            >
+              {crumb.label}
+            </Link>
+          </span>
+        ))}
+      </nav>
+    );
+  }
   if (reserved.includes(parts[0]!)) {
     const words: Record<string, string> = {
       settings: "Account",
@@ -1146,7 +1328,10 @@ function commandsFor(user: User | null, shell: ShellData, here: string, signUpLa
     { label: "Search g1t", hint: "Repositories, code, issues, people", to: "/search", icon: <Search size={15} /> },
     { label: "New project", to: "/new", icon: <Plus size={15} /> },
     { label: "New workspace", to: "/workspaces/new", icon: <Plus size={15} /> },
-    { label: "Your settings", to: "/settings", icon: <Settings size={15} /> },
+    { label: "Your settings", to: FIRST_SETTINGS_PAGE, icon: <Settings size={15} /> },
+    ...(Object.keys(ACCOUNT_SETTINGS) as AccountSettingsPage[])
+      .filter((page) => page !== "profile")
+      .map((page) => ({ label: ACCOUNT_SETTINGS[page].title, hint: "Your settings", to: `/settings/${page}`, icon: <Settings size={15} /> })),
   ];
   const repo = shell.repo;
   if (repo) {
@@ -1267,11 +1452,14 @@ export function Progress() {
 export function AppShell({
   user,
   shell,
+  missing = false,
   banner,
   children,
 }: {
   user: User | null;
   shell: ShellData;
+  /** The page is a 404 (see Sidebar). */
+  missing?: boolean;
   banner?: ReactNode;
   children: ReactNode;
 }) {
@@ -1290,7 +1478,7 @@ export function AppShell({
     <div className="min-h-screen">
       <Progress />
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-line bg-[color-mix(in_srgb,var(--color-surface)_70%,var(--color-bg))] lg:block">
-        <Sidebar user={user} shell={shell} onFind={() => setPalette(true)} />
+        <Sidebar user={user} shell={shell} missing={missing} onFind={() => setPalette(true)} />
       </aside>
       {drawer && (
         <div className="fixed inset-0 z-50 lg:hidden">
@@ -1301,7 +1489,7 @@ export function AppShell({
             onClick={() => setDrawer(false)}
           />
           <aside className="absolute inset-y-0 left-0 w-72 border-r border-line bg-surface">
-            <Sidebar user={user} shell={shell} onFind={() => setPalette(true)} onClose={() => setDrawer(false)} />
+            <Sidebar user={user} shell={shell} missing={missing} onFind={() => setPalette(true)} onClose={() => setDrawer(false)} />
           </aside>
         </div>
       )}
@@ -1316,7 +1504,7 @@ export function AppShell({
           >
             <Menu size={18} />
           </button>
-          <Breadcrumbs pathname={pathname} />
+          <Breadcrumbs pathname={pathname} missing={missing} repo={shell.repo} />
           <Form action="/search" role="search" className="relative ml-auto hidden w-full max-w-64 md:block">
             <Search size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
             <input

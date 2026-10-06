@@ -110,10 +110,17 @@ its name is never given to anyone else, so the redirects keep working.
 ## Deployments
 
 A `g1t.page` address ends in its workspace's name: production is at
-`<project>-<workspace>.g1t.page`. After a transfer, each app that is up is
-built again from the same commit under the new workspace's name. The old
-address keeps serving until the new one is live, then redirects to it for
-90 days. Custom domains move with the project and serve the new build.
+`<project>-<workspace>.g1t.page`. After a transfer, each of the project's
+apps (production and every open preview, including one paused by the old
+workspace's usage limit) is built again from the same commit under the new
+workspace's name. The old address keeps serving until the new one is live,
+then redirects to it for 90 days, whatever the old workspace's plan or
+limit. Custom domains move with the project and serve the new build.
+
+From the transfer on, the apps are the new workspace's: its plan and usage
+limit decide whether they build and serve. If the new workspace cannot
+build yet (Deployments are off, or it reached its limit), the rebuild waits
+and is tried again until it can.
 
 ## Billing
 

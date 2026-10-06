@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import type { Route } from "./+types/support";
 import { TrustPage } from "../components/trust-page";
 import { StatusDot, useSiteStatus } from "../components/footer";
+import { STATUS_URL, statusTitle } from "../lib/status";
 import { CONTACT } from "../lib/legal";
 import { page } from "../lib/meta";
 
@@ -96,20 +97,21 @@ export default function Support() {
               <span className="mt-1 block text-sm text-muted">Guides for every part of g1t, and the API and MCP reference.</span>
             </span>
           </a>
-          <Link
-            to="/status"
+          <a
+            href={STATUS_URL}
             className="group flex gap-3 rounded-xl border border-line bg-surface p-5 transition-colors hover:border-line-strong hover:bg-raised"
           >
             <Activity size={18} className="mt-0.5 shrink-0 text-accent" />
             <span>
               <span className="flex items-center gap-2 font-medium">
                 Check the status <StatusDot state={status?.overall.state ?? null} />
+                <ArrowUpRight size={14} className="text-faint group-hover:text-fg" />
               </span>
               <span className="mt-1 block text-sm text-muted">
-                {status ? status.overall.line : "Whether each part of g1t is working right now."}
+                {status ? `${statusTitle(status)}. ` : ""}Whether each part of g1t is working, at status.g1t.sh.
               </span>
             </span>
-          </Link>
+          </a>
         </div>
 
         <ul className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted">
@@ -200,7 +202,7 @@ export default function Support() {
           </ul>
           <p className="mt-3 text-sm text-muted">
             Business days are Monday to Friday, US time, apart from public holidays. If something seems down, the{" "}
-            <Link to="/status" className="text-accent hover:underline">status page</Link> checks every part of g1t each
+            <a href={STATUS_URL} className="text-accent hover:underline">status page</a> checks every part of g1t each
             minute.
           </p>
         </Section>

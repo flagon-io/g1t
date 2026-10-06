@@ -88,3 +88,61 @@ export function looksAutomated(form: { get(name: string): unknown }, now = Date.
   const started = Number(form.get("started"));
   return Number.isFinite(started) && started > 0 && now - started < 1500;
 }
+
+/**
+ * A username to offer someone signing up with `email`: its local part, as
+ * usernames are written (lowercase letters, digits and single hyphens, up
+ * to 39). Empty when nothing usable is left. Identity checks it is free.
+ */
+export function suggestUsername(email: string | null | undefined): string {
+  const local = (email ?? "").split("@")[0]?.split("+")[0] ?? "";
+  return local
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 39)
+    .replace(/-+$/g, "");
+}
+
+type Lands = { workspace: { slug: string } | null; repository: { name: string } | null };
+
+/**
+ * Where using an invite lands: the workspace it joins, the repository it
+ * gives access to, or nowhere in particular.
+ */
+export function landingFor(invite: Lands): string | null {
+  if (invite.workspace) return invite.workspace.slug.toLowerCase();
+  if (invite.repository) return invite.repository.name.toLowerCase();
+  return null;
+}
+
+/** What someone who just joined is welcomed into, for one page view. */
+export const WELCOME_COOKIE = "g1t_welcome";
+
+const TARGET = /^[a-z0-9][a-z0-9._-]*(\/[a-z0-9._-]+)?$/;
+
+/** The `Set-Cookie` value that welcomes the next view of `target` (a slug or `workspace/repo`). */
+export function welcomeCookie(target: string, secure: boolean): string {
+  return `${WELCOME_COOKIE}=${encodeURIComponent(target.toLowerCase())}; Path=/; Max-Age=300; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`;
+}
+
+/** The `Set-Cookie` value that ends the welcome, once it has been shown. */
+export function clearWelcome(secure: boolean): string {
+  return `${WELCOME_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`;
+}
+
+/** Whether the request's cookies welcome someone into `target`. */
+export function welcomes(cookieHeader: string | null, target: string): boolean {
+  for (const part of (cookieHeader ?? "").split(";")) {
+    const [key, ...rest] = part.trim().split("=");
+    if (key !== WELCOME_COOKIE) continue;
+    let value: string;
+    try {
+      value = decodeURIComponent(rest.join("="));
+    } catch {
+      return false;
+    }
+    return TARGET.test(value) && value === target.toLowerCase();
+  }
+  return false;
+}

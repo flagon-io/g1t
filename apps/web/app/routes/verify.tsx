@@ -46,7 +46,7 @@ export default function Verify({ loaderData }: Route.ComponentProps) {
                 your primary address in your settings.
               </p>
               <div className="mt-8">
-                <ButtonLink to="/settings#emails">Back to settings</ButtonLink>
+                <ButtonLink to="/settings/emails">Back to settings</ButtonLink>
               </div>
             </>
           ) : (

@@ -52,7 +52,8 @@ are created and approved only in their browser.
    start again from step 1. `approved` comes with `token`, `username` and
    `verified`. The token is returned once. It is the password for git and
    the bearer token for the API and the MCP server. Store it as `G1T_TOKEN`;
-   never write it into a repository. If `verified` is `false`, the
+   never write it into a repository. Your person can see and delete it at
+   g1t.sh/settings/tokens. If `verified` is `false`, the
    confirmation email has not been followed yet.
 
 4. **Connect the MCP server** (any MCP client with HTTP transport works).
@@ -375,8 +376,10 @@ Guide: https://docs.g1t.sh/guides/security/
 ## Deployments
 
 Part of the g1t plan ($20 a month per workspace, started by an owner
-under the workspace's Billing): 10 apps, 1M requests, 3M CPU ms, 3 custom
-domains and 200 build minutes a month; past that at cost + 20%. The trial
+under the workspace's Billing). No quotas: unlimited projects and
+previews (never charged); builds by the second, requests ($0.36/M), CPU
+($0.024/M ms) and custom domains ($0.12 a month each) metered from the
+first at cost + 20%, from the plan's $10 first. The trial
 never covers deployments. Then someone with admin on the repository
 turns deployments on for a project (Settings → Deployments, or Deploy on
 its overview). Production deploys from the default branch to
@@ -436,8 +439,12 @@ https://docs.g1t.sh/guides/search/
   $20 a month per workspace with unlimited members, includes $10 of usage
   at cost + 20% (unused does not roll over). Compute needs the plan or a
   card check (never charged); the $5 trial needs a credit or debit card,
-  not a prepaid one. Private storage: 1 GB free, never charged (pushes to
-  private repositories stop past it), 10 GB on the plan. Limits: $100 in a
+  not a prepaid one. No quotas on the plan: everything is metered from the
+  first unit at cost + 20%, and only the spend limit stops work. Every
+  workspace has 1 GB of private storage and 50,000 git operations a month
+  free; past them, the plan pays ($0.60/GB-month, $0.18/1,000) and a free
+  workspace is held (pushes to private repositories stop; git slowed to 60
+  an hour). Limits: $100 in a
   paid workspace's first month, rising as payments clear; owners set a
   spend limit, prepay, or ask with Raise my limit. Caps: $2 a run and $10
   an issue by default. A spend spike pauses new compute until an owner
@@ -472,7 +479,7 @@ https://docs.g1t.sh/guides/search/
 
 ## Help, status and policies
 
-- [Status](https://g1t.sh/status): whether each part of g1t is working now; the same as JSON at https://g1t.sh/status.json
+- [Status](https://status.g1t.sh/): whether each part of g1t is working now, 90 days of uptime, and incidents; the same as JSON at https://status.g1t.sh/status.json
 - [Support](https://g1t.sh/support): where to get help (hey@flagon.io, hey@flagon.io)
 - [Security](https://g1t.sh/security): how g1t protects code and accounts, and responsible disclosure (hey@flagon.io, https://g1t.sh/.well-known/security.txt)
 - [Policies](https://g1t.sh/policies): [Terms of Service](https://g1t.sh/policies/terms), [Privacy Policy](https://g1t.sh/policies/privacy), [Acceptable Use](https://g1t.sh/policies/acceptable-use), [Refunds and Cancellation](https://g1t.sh/policies/refunds), [Subprocessors](https://g1t.sh/policies/subprocessors)

@@ -18,7 +18,7 @@
  * the moment it is.
  */
 
-import { CUSTOM_DOMAIN_TARGET, DEPLOYMENTS_ALLOWANCE, newId, type Domain, type DomainRecord, type DomainStatus } from "@g1t/contracts";
+import { CUSTOM_DOMAIN_TARGET, newId, type Domain, type DomainRecord, type DomainStatus } from "@g1t/contracts";
 
 import { CustomHostnames, NotEnabled, Refused, recordsOf, statusOf, type CustomHostname } from "./custom-hostnames";
 import { checkHostname, isApex, twinOf } from "./hostname";
@@ -422,9 +422,4 @@ export class Domains {
   rename(from: string, to: string): D1PreparedStatement {
     return this.db.prepare("UPDATE domains SET workspace = ?1 WHERE workspace = ?2").bind(to, from);
   }
-}
-
-/** Custom domains past the plan's, for a month's charge. */
-export function extraDomains(peak: number): number {
-  return Math.max(0, peak - DEPLOYMENTS_ALLOWANCE.customDomains);
 }

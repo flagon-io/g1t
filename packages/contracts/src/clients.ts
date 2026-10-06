@@ -86,7 +86,13 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     createInvite: (user, options = {}) =>
       call("create_invite", { user, email: options.email ?? null, workspace: options.workspace ?? null }),
     revokeInvite: (user, id) => call("revoke_invite", { user, id }),
-    checkInvite: (code, client) => call("check_invite", { code, client: client ?? null }),
+    checkInvite: (code, client, options = {}) =>
+      call("check_invite", {
+        code,
+        client: client ?? null,
+        viewer: options.viewer ?? null,
+        any_status: options.anyStatus ?? false,
+      }),
     acceptInvite: (user, code) => call("accept_invite", { user, code }),
     inviteMember: (actor, slug, email) => call("invite_member", { actor, slug, email }),
     workspaceInvites: (slug, viewer) => call("workspace_invites", { slug, viewer }),
@@ -212,7 +218,8 @@ export function identityAdminClient(service: ServiceBinding): IdentityAdminApi {
     workspaces: (query) => call("admin_workspaces", { query: query ?? null }),
     workspace: (slug) => call("admin_workspace", { slug }),
     waitlist: (query, status) => call("admin_waitlist", { query: query ?? null, status: status ?? null }),
-    decideWaitlist: (id, approve, staff) => call("admin_decide_waitlist", { id, approve, staff }),
+    waitlistPending: () => call("admin_waitlist_pending", {}),
+    decideWaitlist: (id, approve, staff, note) => call("admin_decide_waitlist", { id, approve, staff, note: note ?? null }),
     invites: (query) => call("admin_invites", { query: query ?? null }),
     revokeInvite: (id, staff) => call("admin_revoke_invite", { id, staff }),
     mintInvite: (email, staff) => call("admin_mint_invite", { email, staff }),
@@ -364,7 +371,8 @@ export function billingClient(service: ServiceBinding): BillingApi {
     limit: (workspace, viewer) => call("limit", { workspace, viewer }),
     checkLimit: (workspace) => call("check_limit", { workspace }),
     prices: () => call("prices", {}),
-    notePending: (workspace, source, costMicros) => call("note_pending", { workspace, source, costMicros }),
+    notePending: (workspace, source, costMicros, detail = null) => call("note_pending", { workspace, source, costMicros, detail }),
+    usageMeters: (workspace, viewer) => call("usage_meters", { workspace, viewer }),
     setSpendLimit: (actor, workspace, spendLimitMicros, useFullLimit = false, raiseOnce = false) =>
       call("set_spend_limit", { actor, workspace, spendLimitMicros, use_full_limit: useFullLimit, raise_once: raiseOnce }),
     invoices: (workspace, viewer) => call("invoices", { workspace, viewer }),

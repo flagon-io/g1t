@@ -53,13 +53,15 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "DELETE FROM accounts WHERE workspace = ?2",
     // Replaced on each report with the month's whole figure: the newer
     // report wins.
-    "INSERT INTO pending_usage (workspace, source, month, charge_micros, cost_micros, charged_at, updated_at)
-     SELECT ?1, source, month, charge_micros, cost_micros, charged_at, updated_at FROM pending_usage WHERE workspace = ?2
+    "INSERT INTO pending_usage (workspace, source, month, charge_micros, cost_micros, charged_at, updated_at, detail)
+     SELECT ?1, source, month, charge_micros, cost_micros, charged_at, updated_at, detail FROM pending_usage WHERE workspace = ?2
      ON CONFLICT (workspace, source, month) DO UPDATE SET
        charge_micros = CASE WHEN excluded.updated_at > pending_usage.updated_at
                             THEN excluded.charge_micros ELSE pending_usage.charge_micros END,
        cost_micros = CASE WHEN excluded.updated_at > pending_usage.updated_at
                           THEN excluded.cost_micros ELSE pending_usage.cost_micros END,
+       detail = CASE WHEN excluded.updated_at > pending_usage.updated_at
+                     THEN excluded.detail ELSE pending_usage.detail END,
        charged_at = COALESCE(pending_usage.charged_at, excluded.charged_at),
        updated_at = MAX(pending_usage.updated_at, excluded.updated_at)",
     "DELETE FROM pending_usage WHERE workspace = ?2",

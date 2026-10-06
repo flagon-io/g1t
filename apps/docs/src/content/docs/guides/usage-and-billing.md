@@ -6,10 +6,10 @@ description: What is free on g1t, what the g1t plan costs and includes, how comp
 The forge is free: repositories, git, issues, pull requests and review cost
 nothing, for public and private work. What costs money is compute, the
 things g1t runs for you: agents, the sandboxes they and your checks run in,
-deployed apps, and, on the plan, storage and git traffic past what is
-included. Each is
-charged at what it costs g1t plus 20%, to the workspace that owns the
-repository. There is no seat price.
+deployed apps, and, on the plan, storage and git traffic past the free
+amounts. Each is charged at what it costs g1t plus 20%, to the workspace
+that owns the repository. There is no seat price, and on the plan there
+are no quotas: only your spend limit stops anything.
 
 ## What is free
 
@@ -20,14 +20,15 @@ Every workspace, with or without the plan, has the whole forge:
 - Search and Explore.
 - The [audit log](/guides/audit-log/), kept 90 days, with export.
 - Your own agent through [MCP](/reference/mcp/).
-- 1 GB of private repository storage, and 10,000
+- 1 GB of private repository storage, and 50,000
   [git operations](#git-operations) a month.
 
-None of this is charged. A free workspace is never charged for storage:
-once its private repositories hold 1 GB, pushes to them are refused at the
-start of the push, with what to do: make the repository public, delete what
-you do not need, or start the plan for 10 GB. Public repositories are never
-charged for storage.
+None of this is charged, on the plan or not. A free workspace is never
+charged for storage: once its private repositories hold 1 GB, pushes to
+them are refused at the start of the push, with what to do: make the
+repository public, delete what you do not need, or start the plan, where
+storage past 1 GB is usage and pushes never stop. Public repositories are
+never charged for storage.
 
 Compute is not free. Agents, checks, workflows, the merge queue,
 deployments and semantic search need [the g1t plan](#the-g1t-plan), or a
@@ -38,20 +39,49 @@ deployments and semantic search need [the g1t plan](#the-g1t-plan), or a
 One plan, **$20 a month per workspace**, however many people and agents
 are in it. It is never priced per person.
 
-| Each month (UTC) | |
-| --- | --- |
-| Included usage | $10, at cost plus 20% |
-| Members | Unlimited |
-| Private repository storage | 10 GB |
-| Git operations | 10,000 |
-| [Deployments](/guides/deployments/) | 10 apps, 1 million requests, 3 million CPU milliseconds, 3 custom domains and 200 build minutes |
+- **$10 of usage each month** at cost plus 20%, used first.
+- **Everyone in the workspace** at one price, never per person.
+- **Unlimited** projects, previews and repositories.
+- Agents, checks, workflows, the merge queue,
+  [deployments](/guides/deployments/) and semantic search.
+- Usage past $10 is charged at cost plus 20%, **up to your
+  [spend limit](#limits)**.
+
+There are **no quotas** on the plan: no count of projects, previews,
+build minutes, requests, custom domains, git operations or gigabytes
+stops a workspace. Everything that costs g1t money is metered from the
+first unit (past the free 1 GB of private storage and 50,000 git
+operations that every workspace has), and only your spend limit stops
+work.
 
 **Included usage** pays for the month's usage first, at the same prices as
-everything else: agents, sandbox time, builds, storage, git operations,
-search embeddings and security scans. Past it, usage is charged at cost
-plus 20%. It starts again on the 1st of each month (UTC). **Unused
-included usage does not roll over.** Billing shows how much of it this
-month's usage has drawn.
+everything else: agents, sandbox time, builds, app traffic, custom domains,
+storage, git operations, search embeddings and security scans. Past it,
+usage is charged at cost plus 20%. It starts again on the 1st of each
+month (UTC). **Unused included usage does not roll over.** Billing shows
+how much of it this month's usage has drawn.
+
+### What it costs
+
+Every price is what g1t pays plus 20%. The live figures are on
+[g1t.sh/pricing](https://g1t.sh/pricing).
+
+| What | Unit | Costs g1t | You pay |
+| --- | --- | --- | --- |
+| Models | A run | What the provider charged | Cost + 20% |
+| Sandbox time (agents, checks, workflows, the merge queue) | Second | About $0.000016 | About $0.000019 |
+| Deploy builds | Second | About $0.000016 | About $0.000019 ($0.0012 a minute) |
+| App requests | Million | $0.30 | $0.36 |
+| App CPU time | Million CPU milliseconds | $0.02 | $0.024 |
+| Custom domains | Domain-month | $0.10 | $0.12 |
+| Private storage, past the free 1 GB | GB-month | $0.50 | $0.60 |
+| Git operations, past the free 50,000 a month | 1,000 | $0.15 | $0.18 |
+| Search embeddings | Million tokens | $0.067 | $0.0804 |
+| Security scans | Million CPU ms / million rows | $0.02 / $1.00 | $0.024 / $1.20 |
+| Projects, previews, apps and repositories | | Next to nothing | Not charged |
+
+Sandbox and build seconds follow what Cloudflare bills g1t, so the
+figures above move a little; the pricing page always has today's.
 
 **The other $10** pays for running g1t, the free forge everyone uses, and
 the people building it.
@@ -70,7 +100,11 @@ Only an owner can start or end the plan.
 
 Back on Billing, the card says **On the g1t plan** (**first month** in
 the first billing cycle), with a meter for the month's included usage and
-one for deployments. **Manage on Stripe** opens the card, invoices and
+**This month's usage**: what each kind of usage has come to so far, in
+dollars and in what was used (*Agents & sandboxes*, *Builds*, *Requests &
+CPU*, *Custom domains*, *Git operations & storage*, *Search & security
+scans*). App traffic, custom domains, storage and git operations are
+counted through the month and charged when it closes. **Manage on Stripe** opens the card, invoices and
 billing details. **End at the end of the period** ends the plan then, with
 nothing more charged after; **Keep the plan** takes that back until then.
 If a renewal payment fails, the card says **Payment failed**, with
@@ -155,9 +189,9 @@ pool**.
 | Acceptance checks | [Sandbox time](#sandbox-time) |
 | The [merge queue](/guides/merge-queue/) | [Sandbox time](#sandbox-time) |
 | [Workflow](/guides/actions/) jobs | [Sandbox time](#sandbox-time) |
-| [Deployments](/guides/deployments/) | Past what the plan includes |
-| [Private repository storage](#storage-search-embeddings-and-scans) | Past 10 GB, on the plan only |
-| [Git operations](#git-operations) | Past 10,000 a month, on the plan only |
+| [Deployments](/guides/deployments/) | Builds, requests, CPU time and custom domains, from the first. Projects and previews are not charged. |
+| [Private repository storage](#storage-search-embeddings-and-scans) | Past the free 1 GB, on the plan only |
+| [Git operations](#git-operations) | Past the free 50,000 a month, on the plan only |
 | [Search embeddings](#storage-search-embeddings-and-scans) | For private text |
 | [Security scans](#storage-search-embeddings-and-scans) | Yes |
 | Repositories, issues, pull requests, review, search, the API and MCP | No |
@@ -185,10 +219,10 @@ billing charges from.
 | Models | What the provider charged for the run |
 | Sandbox time | Per second: memory, disk and the Durable Object behind each container, plus CPU |
 | Deploy builds | Per second |
-| App requests, CPU and apps | Per million requests, per million CPU milliseconds, per app-month |
-| Custom domains past the plan | Per domain-month |
-| Private storage | Per GB-month |
-| Git operations | Per 1,000 |
+| App requests and CPU | Per million requests, per million CPU milliseconds |
+| Custom domains | Per domain-month |
+| Private storage past the free 1 GB | Per GB-month |
+| Git operations past the free 50,000 a month | Per 1,000 |
 | Search embeddings | Per million tokens |
 | Security scans | Per million CPU milliseconds and per million rows written |
 
@@ -226,7 +260,7 @@ that does not is priced at the average CPU sandboxes use.
 Each sandbox is one line on the [statement](#the-statement), such as
 *Checks on acme/api#12: 3m 12s of sandbox time*. Deploy builds are not
 counted here: [Deployments](/guides/deployments/) charges them by the
-second, after the plan's 200 build minutes.
+second, from the first, under **Builds**.
 
 ## Git operations
 
@@ -236,17 +270,18 @@ Pushes from agents' sandboxes go to the store directly and are not counted.
 
 | | Each month (UTC) |
 | --- | --- |
-| Included, on every workspace | 10,000 |
-| On the plan, past 10,000 | $0.18 per 1,000 (cost plus 20%) |
+| Free, on every workspace | 50,000 |
+| On the plan, past 50,000 | $0.18 per 1,000 (cost plus 20%). Never slowed or refused. |
 | Free workspace, past 50,000 | Not charged. Slowed to 60 an hour until the month turns. |
 
-10,000 is about twenty times what an active workspace uses; an agent run
-takes two to four. A free workspace is never charged for git operations.
-Past 50,000 in a month, its git requests past 60 in an hour are answered
-`429` with when to try again.
+50,000 is far more than an active workspace uses; an agent run takes two
+to four. A workspace on the plan pushes and clones on past it and pays for
+what it uses, up to its spend limit. A free workspace is never charged for
+git operations: past 50,000 in a month, its git requests past 60 in an
+hour are answered `429` with when to try again.
 
-Counting starts on 2026-10-14. **Billing** shows this month's count
-against what is included.
+Counting starts on 2026-10-14. **Billing** shows this month's count under
+**Git operations & storage**.
 
 ## Storage, search embeddings and scans
 
@@ -256,7 +291,7 @@ The plan's included usage and the trial pay for them first.
 
 | | What it costs g1t | What is counted |
 | --- | --- | --- |
-| Private repository storage | $0.50 a GB-month (Cloudflare Artifacts) | On the plan, each day, what the workspace's private repositories hold past 10 GB. A month's GB-months are those days added up, divided by 30. |
+| Private repository storage | $0.50 a GB-month (Cloudflare Artifacts) | On the plan, each day, what the workspace's private repositories hold past the free 1 GB. A month's GB-months are those days added up, divided by 30. |
 | Search embeddings | $0.067 per million tokens (Workers AI) | The text of private repositories, issues and pull requests put in the search index. Public text and searches are not charged. |
 | Security scans | $0.02 per million CPU milliseconds and $1.00 per million rows written (Workers and D1) | The CPU each history scan and dependency check takes and the rows it writes. |
 
@@ -264,7 +299,8 @@ Storage is charged at $0.60 a GB-month (cost plus 20%). It is measured from
 the packs pushed through g1t's git endpoints to each repository and its
 pull requests' working copies, so what is charged is never more than what
 is stored. Public repositories are never charged, and neither is a free
-workspace: its pushes to private repositories stop at 1 GB instead.
+workspace: its pushes to private repositories stop at 1 GB instead. On the
+plan they never stop.
 
 ## Limits
 
@@ -542,9 +578,9 @@ time. Every member can see it.
   | Agent runs | Runs on g1t's models: the model's cost plus the margin. |
   | Runs on your own model provider | Older months only: the flat fee runs on your own provider used to carry. |
   | Sandbox time | Each sandbox's time. |
-  | Deployments | Builds and apps past what the plan includes. |
-  | Private storage | Storage past what is included, once a month. |
-  | Git operations | Operations past what is included, once a month. |
+  | Deployments | Builds as they finish; each month's requests, CPU time and custom domains when it closes. |
+  | Private storage | Storage past the free 1 GB, once a month. |
+  | Git operations | Operations past the free 50,000, once a month. |
   | Search embeddings | Private text put in the search index, once a month. |
   | Security scans | History scans and dependency checks, once a month. |
   | Payments | Card payments and invoices paid. |
@@ -597,7 +633,16 @@ can be traced.
 `maxConcurrentAgents`, `maxRunMinutes`, `runCapMicros`, `issueCapMicros`,
 `ceilingMicros`, `exposureMicros`, `heldMicros`, `prepaidMicros`,
 `includedMicros`, `includedUsedMicros`, `paused` (why compute is paused,
-or none), `spike`, `alerts`, `gitOperations` and `gitOperationsIncluded`.
+or none), `spike`, `alerts`, `gitOperations` and `gitOperationsIncluded`
+(the git operations free for every workspace), `freePrivateStorageBytes`
+(the private storage free for every workspace) and `buildSecondsUsed`.
+None of these is a quota on the plan.
+
+**`usage_meters`** (`workspace`, `viewer`; members only) returns this
+month's usage in six lines, `agents`, `builds`, `requests`, `domains`,
+`git_storage` and `search_scans`, each with `micros` (at cost plus 20%,
+before included usage or a pool paid for it) and a `quantity` such as
+*42 build minutes*. It is what **This month's usage** on Billing shows.
 
 **`reserve`** holds the work's estimated cost before it starts, so starts
 at the same moment cannot overshoot together. `kind` is `agent`, `check`,

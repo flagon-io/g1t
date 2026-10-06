@@ -3,9 +3,12 @@
  *
  * The hostname's first label is the app's script name in the Workers for
  * Platforms namespace (`web-git-fix-login-acme.g1t.page` is the fix-login
- * branch's preview of acme's web project), so a request needs no lookup:
- * the app is fetched by name and runs only for as long as it answers. An app no one visits
- * runs nothing and costs nothing.
+ * branch's preview of acme's web project), so the app is fetched by name
+ * and runs only for as long as it answers. An app no one visits runs
+ * nothing and costs nothing. The one lookup is for an address an app
+ * had before its project moved: `DOMAINS` holds a redirect under the old
+ * hostname for as long as the old name is held, and it is followed before
+ * anything the old script would answer (such as a paused notice).
  *
  * Any other hostname is a project's custom domain, reaching here through
  * Cloudflare for SaaS: the `DOMAINS` KV namespace, written by the
@@ -19,7 +22,7 @@ import { DOMAIN, FALLBACK, parseEntry, redirectTo, route, type DomainEntry } fro
 
 type Env = {
   APPS: DispatchNamespace;
-  /** Custom hostname to `{ script, redirect }`. */
+  /** Custom hostname, or an app's old g1t.page hostname, to `{ script, redirect }`. */
   DOMAINS?: KVNamespace;
 };
 
@@ -115,6 +118,11 @@ export default {
         return custom(request, env, where.hostname);
       case "app": {
         const label = where.label;
+        // An address the app had before its project moved (its workspace or
+        // repository was renamed or transferred) redirects to where it is
+        // now, whatever the app it named answers, paused or not.
+        const moved = await appRedirect(request, env, label);
+        if (moved) return moved;
         let response = await dispatch(env, request, label, `${label}.${DOMAIN}`, () => missing(label));
         // Previews are for the people reviewing a change, not search engines.
         if (isPreview(label)) {
@@ -126,6 +134,32 @@ export default {
     }
   },
 } satisfies ExportedHandler<Env>;
+
+/**
+ * The redirect for an app's old address, if the deployments service left
+ * one (in `DOMAINS`, under the old hostname, as `{ script, redirect }`),
+ * else null. A lookup that fails serves the app as it is rather than an
+ * error.
+ */
+async function appRedirect(request: Request, env: Env, label: string): Promise<Response | null> {
+  const hostname = `${label}.${DOMAIN}`;
+  let entry: DomainEntry | null;
+  try {
+    entry = await lookup(env, hostname);
+  } catch (error) {
+    console.error("could not read redirect", label, error);
+    return null;
+  }
+  if (!entry?.redirect || entry.redirect === hostname) return null;
+  return new Response(null, {
+    status: 301,
+    headers: {
+      location: redirectTo(request.url, entry.redirect),
+      "x-robots-tag": "noindex",
+      "cache-control": "public, max-age=3600",
+    },
+  });
+}
 
 /** A custom domain: its app, or a 308 to the hostname it is paired with. */
 async function custom(request: Request, env: Env, hostname: string): Promise<Response> {

@@ -12,6 +12,9 @@ export const WIDTH = 1200;
 export const HEIGHT = 630;
 const PAD = 80;
 
+/** The launch line: what g1t is, on the brand card and under every page card. */
+export const TAGLINE = "Where people and agents ship software together.";
+
 /** An element as satori reads it. */
 export type Node = { type: string; props: Record<string, unknown> & { style?: Style; children?: Child } };
 type Child = Node | string | (Node | string | null | false)[] | null;
@@ -286,7 +289,7 @@ function brandCard(): Node {
           letterSpacing: -0.5,
           color: COLOR.fgSoft,
         },
-        "A git forge for teams of agents",
+        TAGLINE,
       ),
       h(
         "div",
@@ -326,7 +329,7 @@ export function cardTree(card: Card): Node {
         eyebrow: eyebrow(card.eyebrow, false),
         title: title(card.title),
         description: card.description,
-        facts: [plain("A git forge for teams of agents")],
+        facts: [plain(TAGLINE)],
       });
 
     case "workspace": {

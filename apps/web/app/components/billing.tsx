@@ -8,8 +8,7 @@ import { AlertTriangle, ArrowUpRight, CreditCard, Gauge, Landmark, OctagonX, Pla
 import type { ReactNode } from "react";
 import { Form } from "react-router";
 
-import type { DeployUsage, Entitlements, FeatureState, Limit, LimitRequest, UsageAlert } from "@g1t/contracts";
-import { DEPLOYMENTS_ALLOWANCE } from "@g1t/contracts";
+import type { Entitlements, FeatureState, Limit, LimitRequest, MeterUsage, UsageAlert } from "@g1t/contracts";
 
 import {
   CAPS,
@@ -18,8 +17,10 @@ import {
   alertText,
   alertTone,
   dollars,
+  gigabytes,
   requestStatus,
   share,
+  shownMeters,
   spendRange,
   wholeDollars,
 } from "../lib/billing";
@@ -98,9 +99,22 @@ export function Card({
 }
 
 /** One meter: how much of something is used. */
-export function Meter({ used, of, label, detail }: { used: number; of: number | null; label: string; detail?: ReactNode }) {
+export function Meter({
+  used,
+  of,
+  label,
+  detail,
+  calm = false,
+}: {
+  used: number;
+  of: number | null;
+  label: string;
+  detail?: ReactNode;
+  /** Reaching the end is ordinary, not a warning: the plan's included usage, past which usage simply goes on demand. */
+  calm?: boolean;
+}) {
   const part = share(used, of);
-  const bar = of != null && used >= of ? "bg-danger" : part >= 0.75 ? "bg-warn" : "bg-accent";
+  const bar = calm ? "bg-accent" : of != null && used >= of ? "bg-danger" : part >= 0.75 ? "bg-warn" : "bg-accent";
   return (
     <div className="mt-4">
       <div className="flex flex-wrap justify-between gap-x-4 text-sm">
@@ -229,7 +243,7 @@ export function PlanCard({
   enabled,
   live,
   busy,
-  deployUsage,
+  meters,
   error,
 }: {
   state: FeatureState | null;
@@ -239,7 +253,8 @@ export function PlanCard({
   enabled: boolean;
   live: boolean;
   busy: boolean;
-  deployUsage: DeployUsage | null;
+  /** This month's usage by meter, from billing's `usage_meters`. */
+  meters: MeterUsage[] | null;
   error?: string;
 }) {
   const plan = state?.plan;
@@ -297,10 +312,11 @@ export function PlanCard({
           label="Included usage this month"
           used={entitlements.includedUsedMicros ?? 0}
           of={entitlements.includedMicros}
-          detail="Used first, at cost plus 20%. It starts again on the 1st; what is unused does not carry over."
+          calm
+          detail="Used first, at cost plus 20%. Past it, usage goes on at the same prices. It starts again on the 1st; what is unused does not carry over."
         />
       ) : null}
-      {on && deployUsage && <DeployMeter usage={deployUsage} entitlements={entitlements} />}
+      {meters && <MonthUsage meters={meters} on={on} comped={status.kind === "comped"} entitlements={entitlements} />}
 
       {status.kind === "comped" || status.kind === "enterprise" ? (
         <p className="mt-4 text-sm text-muted">
@@ -352,34 +368,55 @@ export function PlanCard({
   );
 }
 
-/** This month's deployments against what the plan includes. */
-function DeployMeter({ usage, entitlements }: { usage: DeployUsage; entitlements: Entitlements | null }) {
-  const a = DEPLOYMENTS_ALLOWANCE;
-  const buildMinutes = (entitlements?.buildSecondsIncluded ?? a.buildSeconds) / 60;
-  const rows: [string, number, number][] = [
-    ["Apps up at once (most this month)", usage.peakApps, a.apps],
-    ["Build minutes", Math.ceil(usage.buildSeconds / 60), buildMinutes],
-    ["Requests", usage.requests, a.requests],
-    ["CPU milliseconds", usage.cpuMs, a.cpuMs],
-  ];
+/**
+ * This month's usage, one line per meter, in dollars at cost plus 20% and
+ * in what was used. No quotas: every line is metered from the first unit.
+ */
+function MonthUsage({
+  meters,
+  on,
+  comped,
+  entitlements,
+}: {
+  meters: MeterUsage[];
+  on: boolean;
+  comped: boolean;
+  entitlements: Entitlements | null;
+}) {
+  const freeStorage = gigabytes(entitlements?.freePrivateStorageBytes ?? 1_000_000_000);
+  const freeGit = (entitlements?.gitOperationsIncluded ?? 50_000).toLocaleString("en-US");
+  const rows = shownMeters(meters, on);
+  const total = rows.reduce((sum, row) => sum + row.micros, 0);
   return (
     <div className="mt-4 rounded-lg border border-line bg-bg/40 p-4">
-      <p className="text-xs font-medium text-muted">Deployments this month ({usage.month})</p>
-      <ul className="mt-2 space-y-2.5">
-        {rows.map(([label, used, included]) => (
-          <li key={label} className="text-sm">
-            <div className="flex justify-between gap-4">
-              <span className="text-muted">{label}</span>
-              <span className={`tabular-nums ${used > included ? "text-warn" : ""}`}>
-                {used.toLocaleString("en-US")} <span className="text-faint">of {included.toLocaleString("en-US")}</span>
-              </span>
-            </div>
-            <div className="mt-1 h-1 overflow-hidden rounded-full bg-line">
-              <div className={`h-full rounded-full ${used > included ? "bg-warn" : "bg-accent"}`} style={{ width: `${share(used, included) * 100}%` }} />
-            </div>
+      <div className="flex items-baseline justify-between gap-4">
+        <p className="text-xs font-medium text-muted">This month's usage</p>
+        <p className="text-xs text-faint">At cost plus 20%</p>
+      </div>
+      <ul className="mt-2 divide-y divide-line/60">
+        {rows.map((row) => (
+          <li key={row.key} className="flex items-baseline justify-between gap-4 py-2 text-sm">
+            <span className="min-w-0">
+              <span>{row.label}</span>
+              {(row.quantity || row.micros === 0) && (
+                <span className="block truncate text-xs text-faint">{row.quantity ?? "None yet"}</span>
+              )}
+            </span>
+            <span className={`shrink-0 tabular-nums ${row.micros > 0 ? "" : "text-faint"}`}>{dollars(row.micros)}</span>
           </li>
         ))}
       </ul>
+      <div className="mt-1 flex items-baseline justify-between gap-4 border-t border-line pt-2.5 text-sm">
+        <span className="font-medium">Total</span>
+        <span className="font-medium tabular-nums">{dollars(total)}</span>
+      </div>
+      <p className="mt-2 text-xs text-faint">
+        {comped
+          ? "What this workspace's usage would cost. g1t covers it."
+          : on
+            ? `Drawn from the included usage first, then charged up to your spend limit. Projects, previews and repositories are never charged, and the first ${freeStorage} of private storage and ${freeGit} git operations a month are free. App traffic, custom domains, storage and git operations are counted through the month and charged when it closes.`
+            : `The forge is free: ${freeStorage} of private storage and ${freeGit} git operations a month. Agents run from the trial or the open-source pool.`}
+      </p>
     </div>
   );
 }

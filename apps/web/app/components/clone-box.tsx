@@ -17,7 +17,7 @@ export function CloneBox({ path }: { path: string }) {
         <CopyLine text={`https://g1t.sh/${path}.git`} />
         <p className="mt-2 text-xs text-muted">
           To push, use your username and an{" "}
-          <Link to="/settings" className="text-fg underline underline-offset-4">
+          <Link to="/settings/tokens" className="text-fg underline underline-offset-4">
             access token
           </Link>{" "}
           as the password.
@@ -26,7 +26,7 @@ export function CloneBox({ path }: { path: string }) {
       <TabsContent value="ssh">
         <p className="rounded-lg border border-dashed border-line p-3 text-xs text-muted">
           Git over SSH is waiting on inbound TCP on Cloudflare, which g1t has applied for. Use HTTPS for now: it
-          clones, fetches and pushes the same. Keys you add under Settings will work as soon as SSH is on.
+          clones, fetches and pushes the same. Keys you add under Settings → SSH keys will work as soon as SSH is on.
         </p>
       </TabsContent>
       <TabsContent value="agent">

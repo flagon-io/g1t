@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@astrojs/starlight": "^0.42.5",
+    "@g1t/contracts": "*",
     "@g1t/theme": "*",
     "@lucide/astro": "^1.52.0",
     "astro": "^7.2.10",

@@ -33,6 +33,8 @@ ORDER=(
   apps/api
   services/pages
   services/og
+  # The status page: binds only to billing, checks the rest over the internet.
+  apps/status
   apps/web
   apps/sudo
   apps/docs

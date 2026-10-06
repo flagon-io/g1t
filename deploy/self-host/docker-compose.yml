@@ -39,6 +39,8 @@ services:
       REGISTRATION_MODE: ${REGISTRATION_MODE:-open}
       INVITE_STAFF_WORKSPACES: ${INVITE_STAFF_WORKSPACES:-}
       INVITES_PER_USER: ${INVITES_PER_USER:-}
+      # Where summaries of new access requests go; empty sends none.
+      WAITLIST_NOTIFY_EMAIL: ${WAITLIST_NOTIFY_EMAIL:-}
     volumes:
       - g1t-data:/data
       - g1t-secrets:/secrets:ro
@@ -47,6 +49,26 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
+    restart: unless-stopped
+
+  # The status page, in a process of its own so it stays up when the site
+  # does not: http://localhost:8788. It checks the site every minute.
+  status:
+    build:
+      context: ../..
+      dockerfile: deploy/self-host/Dockerfile
+    command: ["bash", "deploy/self-host/status.sh"]
+    ports:
+      - "${STATUS_PORT:-8788}:8788"
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8787}
+      # How the status page reaches the site, from inside Compose.
+      STATUS_CHECK_URL: http://g1t:8787
+      # A public repository, `workspace/repo`, whose branches it lists as a
+      # clone would. Empty: git is not checked.
+      STATUS_PROBE_REPO: ${STATUS_PROBE_REPO:-}
+    volumes:
+      - g1t-status:/data
     restart: unless-stopped
 
   gitstore:
@@ -76,5 +98,6 @@ services:
 
 volumes:
   g1t-data:
+  g1t-status:
   g1t-git:
   g1t-secrets:

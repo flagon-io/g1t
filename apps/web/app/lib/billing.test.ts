@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  gigabytes,
+  shownMeters,
   alertText,
   alertTone,
   cardCheckResult,
@@ -200,4 +202,35 @@ test("a request says where it stands", () => {
   assert.equal(requestStatus(request), "Waiting for an answer");
   assert.equal(requestStatus({ ...request, status: "approved", decidedMicros: 2_000_000_000 }), "Approved at $2,000");
   assert.equal(requestStatus({ ...request, status: "declined" }), "Declined");
+});
+
+const METERS = [
+  { key: "agents", label: "Agents & sandboxes", micros: 1_200_000, quantity: "4 runs" },
+  { key: "builds", label: "Builds", micros: 0, quantity: null },
+  { key: "requests", label: "Requests & CPU", micros: 0, quantity: null },
+  { key: "domains", label: "Custom domains", micros: 120_000, quantity: "1 custom domain" },
+  { key: "git_storage", label: "Git operations & storage", micros: 0, quantity: "1,200 git operations" },
+  { key: "search_scans", label: "Search & security scans", micros: 3_000, quantity: null },
+];
+
+test("the plan shows every meter, with no quota beside any of them", () => {
+  const shown = shownMeters(METERS, true);
+  assert.deepEqual(
+    shown.map((m) => m.key),
+    ["agents", "builds", "requests", "domains", "git_storage", "search_scans"],
+  );
+  for (const meter of shown) assert.ok(!/ of |apps up/i.test(`${meter.label} ${meter.quantity ?? ""}`));
+});
+
+test("a free workspace sees only what it can use, and anything it used anyway", () => {
+  assert.deepEqual(
+    shownMeters(METERS, false).map((m) => m.key),
+    ["agents", "domains", "git_storage", "search_scans"],
+  );
+});
+
+test("storage reads in powers of ten", () => {
+  assert.equal(gigabytes(1_000_000_000), "1 GB");
+  assert.equal(gigabytes(1_500_000_000), "1.5 GB");
+  assert.equal(gigabytes(500_000_000), "500 MB");
 });

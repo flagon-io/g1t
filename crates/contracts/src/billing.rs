@@ -393,17 +393,17 @@ impl Feature {
     }
 }
 
-/// What the g1t plan includes for deployments each month; usage past it is
-/// charged at cost plus the margin. The billing service describes the plan
-/// with these and the deployments service meters against them.
-pub mod deployments_allowance {
-    /// Apps deployed at once: production and previews together.
-    pub const APPS: u32 = 10;
-    pub const REQUESTS: u64 = 1_000_000;
-    pub const CPU_MS: u64 = 3_000_000;
-    /// What Cloudflare charges g1t past that, in millionths of a dollar.
-    pub const MICROS_PER_APP_MONTH: i64 = 20_000;
+/// What deployments cost g1t, in millionths of a dollar: fallbacks for
+/// when billing's price book cannot be read. Nothing here is an allowance:
+/// on the plan every unit is metered from the first, at cost plus the
+/// margin, and drawn from the plan's included usage before anything is
+/// charged. Projects, previews and the apps behind them are not metered at
+/// all: Cloudflare's Workers for Platforms includes far more scripts than
+/// g1t runs, so an app costs g1t only the requests and CPU it answers with.
+pub mod deployment_costs {
+    /// Workers for Platforms: $0.30 per million requests.
     pub const MICROS_PER_MILLION_REQUESTS: i64 = 300_000;
+    /// $0.02 per million CPU milliseconds.
     pub const MICROS_PER_MILLION_CPU_MS: i64 = 20_000;
     /// What one second of a build's sandbox costs g1t (Cloudflare
     /// Containers, standard-1: half a vCPU, 4 GiB, 8 GB disk), rounded up,
@@ -411,14 +411,8 @@ pub mod deployments_allowance {
     /// fallback: billing charges builds at the price book's `build_second`,
     /// which the keeper keeps current.
     pub const MICROS_PER_BUILD_SECOND: i64 = 15;
-    /// Build time the plan includes each month: 200 minutes, about $0.17
-    /// at cost. Builds past it are charged by the second at cost plus the
-    /// margin. Billing's `DEPLOYMENTS_BUILD_SECONDS` overrides it.
-    pub const BUILD_SECONDS: u32 = 12_000;
-    /// Custom domains across the workspace (Cloudflare for SaaS custom
-    /// hostnames); each one past these is charged by the month.
-    pub const CUSTOM_DOMAINS: u32 = 3;
-    /// What one custom hostname costs g1t a month: $0.10.
+    /// What one custom hostname costs g1t a month (Cloudflare for SaaS):
+    /// $0.10.
     pub const MICROS_PER_DOMAIN_MONTH: i64 = 100_000;
 }
 
@@ -576,6 +570,37 @@ pub struct NotePendingArgs {
     pub source: String,
     /// What it cost g1t so far this month, before the margin.
     pub cost_micros: i64,
+    /// How much of it, for the Billing page: `1.2 million requests and
+    /// 3.4 million CPU ms`, `2 custom domains`.
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+/// `usage_meters`: this month's usage for a workspace, one line per kind
+/// of meter, at what it is charged (cost plus the margin, on the account's
+/// terms) before the plan's included usage, the trial or g1t's pools paid
+/// for any of it. Members only. Returns `Outcome<Vec<MeterUsage>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UsageMetersArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+}
+
+/// One kind of meter's usage this month.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeterUsage {
+    /// `agents` (agent runs, models and sandboxes for checks, workflows
+    /// and the merge queue), `builds`, `requests` (app requests and CPU),
+    /// `domains`, `git_storage` (git operations and private storage) or
+    /// `search_scans` (search embeddings and security scans).
+    pub key: String,
+    pub label: String,
+    /// At price, before what paid for it.
+    pub micros: i64,
+    /// How much, when it is known: `12 runs`, `41 build minutes`.
+    #[serde(default)]
+    pub quantity: Option<String>,
 }
 
 /// `set_spend_limit`: the owner's own monthly ceiling, under g1t's; None
@@ -670,25 +695,21 @@ pub struct FreeTier {
     /// g1t's open-source pool each month, and any one repository's share.
     pub oss_pool_micros: i64,
     pub oss_repo_micros: i64,
-    /// Private repository storage before it is charged.
+    /// Private repository storage that is free for every workspace. Past
+    /// it, the plan pays at cost plus the margin; a free workspace's pushes
+    /// to private repositories stop instead.
     pub free_private_storage_bytes: i64,
     /// Days of audit log, the same on every plan.
     pub audit_retention_days: u32,
     /// The smallest amount a card is charged when a month closes; less
     /// carries over. Charges at a limit always go through.
     pub min_charge_micros: i64,
-    /// Git operations (clones, fetches and pushes through g1t) included
-    /// each month, on every plan. Past it, the plan pays at cost plus the
-    /// margin; a free workspace is slowed down, never charged.
+    /// Git operations (clones, fetches and pushes through g1t) that are
+    /// free for every workspace each month. Past it, the plan pays at cost
+    /// plus the margin and is never slowed; a free workspace is slowed
+    /// down, never charged.
     #[serde(default)]
     pub git_operations_included: u64,
-    /// Past this many in a month, a free workspace's git operations are
-    /// rate-limited.
-    #[serde(default)]
-    pub git_operations_free_cap: u64,
-    /// Private storage on the plan before it is charged.
-    #[serde(default)]
-    pub plan_private_storage_bytes: i64,
     /// A new paid workspace's ceiling in its first month.
     #[serde(default)]
     pub paid_start_ceiling_micros: i64,
@@ -938,16 +959,18 @@ pub struct Entitlements {
     /// How far back the audit log can be read and exported: the same on
     /// every plan.
     pub audit_retention_days: u32,
-    /// Private repository storage included before it is charged.
+    /// Private repository storage that is free for every workspace: past
+    /// it, the plan pays for it and a free workspace's pushes stop.
     pub free_private_storage_bytes: i64,
     /// The last daily measure of the workspace's private repositories.
     pub private_storage_bytes: i64,
     /// What g1t's open-source pool paid for the workspace this month.
     pub oss_paid_micros: i64,
-    /// Build time the plan includes each month, and used.
-    pub build_seconds_included: u32,
+    /// Deploy build time this month, every second of it metered.
+    #[serde(default)]
     pub build_seconds_used: u32,
-    /// Git operations this month, and how many are included.
+    /// Git operations this month, and how many are free for every
+    /// workspace (past it: metered on the plan, slowed when free).
     #[serde(default)]
     pub git_operations: u64,
     #[serde(default)]

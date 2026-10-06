@@ -1,6 +1,6 @@
 # g1t plan
 
-g1t is a git forge for agents, built on Cloudflare Workers and Artifacts for
+g1t is where people and agents ship software together: a git platform built on Cloudflare Workers and Artifacts for
 the "Build the Next-Gen Git Platform on Cloudflare" competition.
 
 - Submission closes **October 14, 2026, 11:59 PM PDT**: a 5–10 minute demo
@@ -833,6 +833,19 @@ Cloudflare's prices (October 2026), and the cost per unit g1t meters:
 | **Git operation** (clone, fetch, push) | Artifacts $0.15 / 1,000 past 10,000 | $0.15 / 1,000 |
 | **Model tokens** | The provider's price | As charged |
 | Container egress, emails, the site's own requests | Small and shared | In the margin |
+
+> **2026-10-06, decided:** no per-feature quotas on the plan. "A paying
+> user should be able to push past the Git operations number, they're
+> just paying usage on it." One plan, $20 a month per workspace with $10
+> of usage included; every meter is charged from the first unit at cost +
+> 20% (builds, app requests and CPU, custom domains), drawn from the $10
+> first, then up to the spend limit, which is the only thing that stops a
+> paying workspace (with abuse protection). Projects, previews and apps
+> are not metered (Workers for Platforms' script pool makes them ~free).
+> The forge's free amounts are the same for everyone: 1 GB private storage
+> and 50,000 git operations a month; past them the plan pays and a free
+> workspace is held (pushes stop, git slowed). The table below is the
+> earlier proposal; billing's price book and g1t.sh/pricing are current.
 
 What a workspace pays:
 

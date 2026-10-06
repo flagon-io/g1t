@@ -1,37 +1,58 @@
 /**
  * The site's footer: a few links worth having, who makes g1t, and a row of
  * the trust pages with the live status dot, the account, and the legal
- * line. Marketing and signed-out pages show it whole; the app's account
- * menu shows the slim row (`LegalRow`).
+ * line. Marketing and signed-out pages show it; the app's account menu
+ * has its own rows (components/shell.tsx).
  */
-import { useEffect } from "react";
-import { Link, useFetcher } from "react-router";
+import { useEffect, useState } from "react";
+import { Link } from "react-router";
 
 import type { User } from "@g1t/contracts";
 
 import { Mark } from "./logo";
 import { COMPANY, MAKER_PRODUCTS, copyright, listed } from "../lib/legal";
-import { type OverallState, type StatusReport, dotClass } from "../lib/status";
+import { type OverallState, STATUS_JSON_URL, STATUS_URL, STATUS_WORDS, type StatusReport, dotClass } from "../lib/status";
 
-/**
- * The live status, fetched from /status.json once the page is up, so no
- * page waits on the checks. Null until it arrives, or if it cannot.
- */
-export function useSiteStatus(): StatusReport | null {
-  const fetcher = useFetcher<StatusReport>({ key: "site-status" });
-  useEffect(() => {
-    if (fetcher.state === "idle" && fetcher.data == null) fetcher.load("/status.json");
-    // Once per page view is enough: the report itself changes once a minute.
-  }, []);
-  return fetcher.data ?? null;
+/** How long one fetched report is reused across the pages of one visit. */
+const STATUS_REUSE_MS = 60_000;
+let lastStatus: { report: StatusReport; at: number } | null = null;
+let pendingStatus: Promise<StatusReport | null> | null = null;
+
+function fetchStatus(): Promise<StatusReport | null> {
+  if (lastStatus && Date.now() - lastStatus.at < STATUS_REUSE_MS) return Promise.resolve(lastStatus.report);
+  pendingStatus ??= fetch(STATUS_JSON_URL, { headers: { accept: "application/json" } })
+    .then((response) => (response.ok ? (response.json() as Promise<StatusReport>) : null))
+    .then((report) => {
+      if (report?.overall) lastStatus = { report, at: Date.now() };
+      return report?.overall ? report : null;
+    })
+    // The status page being unreachable only means no dot.
+    .catch(() => null)
+    .finally(() => {
+      pendingStatus = null;
+    });
+  return pendingStatus;
 }
 
-const STATUS_WORDS: Record<OverallState, string> = {
-  up: "All systems working",
-  degraded: "Some systems having trouble",
-  down: "Major outage",
-  unknown: "Status unknown",
-};
+/**
+ * The live status, from status.g1t.sh once the page is up (or `when` turns
+ * true), so no page waits on it. Kept a minute across pages. Null until it
+ * arrives, or if it cannot.
+ */
+export function useSiteStatus(when = true): StatusReport | null {
+  const [report, setReport] = useState<StatusReport | null>(() => lastStatus?.report ?? null);
+  useEffect(() => {
+    if (!when) return;
+    let live = true;
+    fetchStatus().then((fresh) => {
+      if (live && fresh) setReport(fresh);
+    });
+    return () => {
+      live = false;
+    };
+  }, [when]);
+  return report;
+}
 
 /** The coloured dot, with words for screen readers. */
 export function StatusDot({ state, className = "" }: { state: OverallState | null; className?: string }) {
@@ -73,7 +94,7 @@ const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
       ["Flagon, Inc.", COMPANY.url],
       ["Support", "/support"],
       ["Security", "/security"],
-      ["Status", "/status"],
+      ["Status", STATUS_URL],
     ],
   },
   {
@@ -155,39 +176,37 @@ const ROW_LINK = "rounded-sm transition-colors hover:text-fg";
  * Status, the trust pages, the account and the legal line, separated by
  * dots that wrap away cleanly on a phone.
  */
-export function LegalRow({ user, compact = false }: { user: User | null | undefined; compact?: boolean }) {
+export function LegalRow({ user }: { user: User | null | undefined }) {
   const status = useSiteStatus();
   const links = [
-    <Link key="status" to="/status" className={`inline-flex items-center gap-1.5 ${ROW_LINK}`}>
+    <a key="status" href={STATUS_URL} className={`inline-flex items-center gap-1.5 ${ROW_LINK}`}>
       <StatusDot state={status?.overall.state ?? null} />
       Status
-    </Link>,
+    </a>,
     ...ROW_LINKS.map(([label, to]) => (
       <Link key={to} to={to} className={ROW_LINK}>
         {label}
       </Link>
     )),
   ];
-  const account = compact
-    ? []
-    : [
-        user ? (
-          <Link key="me" to={`/u/${user.username}`} className={`font-medium text-fg/90 ${ROW_LINK}`}>
-            {user.username}
-          </Link>
-        ) : (
-          <Link key="login" to="/login" className={ROW_LINK}>
-            Sign in
-          </Link>
-        ),
-      ];
+  const account = [
+    user ? (
+      <Link key="me" to={`/u/${user.username}`} className={`font-medium text-fg/90 ${ROW_LINK}`}>
+        {user.username}
+      </Link>
+    ) : (
+      <Link key="login" to="/login" className={ROW_LINK}>
+        Sign in
+      </Link>
+    ),
+  ];
   const legal = [
     ...account,
     <span key="copyright" className="text-faint">
       {copyright()}
     </span>,
   ];
-  const gap = compact ? "gap-x-2" : "gap-x-3";
+  const gap = "gap-x-3";
   const dot = (
     <span aria-hidden className="text-line-strong">
       ·
@@ -203,20 +222,10 @@ export function LegalRow({ user, compact = false }: { user: User | null | undefi
       </li>
     ));
   return (
-    <div
-      className={`flex flex-wrap items-center justify-center gap-y-1.5 ${gap} text-muted ${compact ? "text-[0.6875rem]" : "text-[0.8125rem]"}`}
-    >
-      {compact ? (
-        // The account menu is narrow: the links in two short runs.
-        <>
-          <ul className={`flex items-center ${gap}`}>{run(links.slice(0, 3))}</ul>
-          <ul className={`flex items-center ${gap}`}>{run(links.slice(3))}</ul>
-        </>
-      ) : (
-        <ul className={`flex flex-wrap items-center justify-center gap-y-1.5 ${gap}`}>{run(links)}</ul>
-      )}
+    <div className={`flex flex-wrap items-center justify-center gap-y-1.5 ${gap} text-[0.8125rem] text-muted`}>
+      <ul className={`flex flex-wrap items-center justify-center gap-y-1.5 ${gap}`}>{run(links)}</ul>
       {/* Between the two runs only while they share a line. */}
-      {!compact && <span className="hidden md:inline">{dot}</span>}
+      <span className="hidden md:inline">{dot}</span>
       <ul className={`flex flex-wrap items-center justify-center gap-y-1.5 ${gap}`}>{run(legal)}</ul>
     </div>
   );

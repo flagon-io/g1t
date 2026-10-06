@@ -9,10 +9,15 @@ import {
   inviteFor,
   inviteLink,
   inviteState,
+  landingFor,
   looksAutomated,
   moreInvitesMailto,
   remainingLine,
   signUpCopy,
+  suggestUsername,
+  welcomeCookie,
+  clearWelcome,
+  welcomes,
 } from "./invites.ts";
 
 const CODE = "g1t-k7m2-q9xd-4hpw-abcd-0123-4567-89ef-ghjk";
@@ -72,4 +77,32 @@ test("bots that fill the hidden field or answer instantly are turned away", () =
   assert.equal(looksAutomated(form({ started: String(now - 10_000) }), now), false);
   assert.equal(looksAutomated(form({}), now), false);
   assert.equal(looksAutomated(form({ website: "  " }), now), false);
+});
+
+test("a username is suggested from the invited address", () => {
+  assert.equal(suggestUsername("ada.lovelace@example.com"), "ada-lovelace");
+  assert.equal(suggestUsername("Margaret_Hamilton+g1t@example.com"), "margaret-hamilton");
+  assert.equal(suggestUsername("--x--@example.com"), "x");
+  assert.equal(suggestUsername(`${"a".repeat(38)}.b@example.com`), "a".repeat(38));
+  assert.equal(suggestUsername("...@example.com"), "");
+  assert.equal(suggestUsername(null), "");
+});
+
+test("an invite lands in its workspace, else its repository", () => {
+  assert.equal(landingFor({ workspace: { slug: "Flagon-IO" }, repository: null }), "flagon-io");
+  assert.equal(landingFor({ workspace: null, repository: { name: "flagon-io/g1t" } }), "flagon-io/g1t");
+  assert.equal(landingFor({ workspace: null, repository: null }), null);
+});
+
+test("the welcome is for one place, and ends", () => {
+  const set = welcomeCookie("flagon-io/g1t", true);
+  assert.match(set, /^g1t_welcome=flagon-io%2Fg1t; Path=\/; Max-Age=300; HttpOnly; SameSite=Lax; Secure$/);
+  const header = `a=1; ${set.split(";")[0]}; b=2`;
+  assert.equal(welcomes(header, "flagon-io/g1t"), true);
+  assert.equal(welcomes(header, "flagon-io"), false);
+  assert.equal(welcomes("g1t_welcome=flagon-io", "Flagon-IO"), true);
+  assert.equal(welcomes("g1t_welcome=%E0%A4%A", "flagon-io"), false);
+  assert.equal(welcomes("g1t_welcome=..%2F..%2Fx", "../../x"), false);
+  assert.equal(welcomes(null, "flagon-io"), false);
+  assert.match(clearWelcome(false), /^g1t_welcome=; Path=\/; Max-Age=0; HttpOnly; SameSite=Lax$/);
 });

@@ -16,6 +16,76 @@ struct Message<'a> {
     html: String,
 }
 
+/// What one email says, before it is laid out as text and HTML.
+#[derive(Debug, Default)]
+pub struct Letter {
+    pub paragraphs: Vec<String>,
+    /// Quoted passages, each with who or what it is from: a note from the
+    /// person who sent an invite, or what someone asking for access said.
+    pub quotes: Vec<(String, String)>,
+    /// The button: what it says, and where it goes.
+    pub action: Option<(String, String)>,
+    pub footer: String,
+}
+
+/// The plain text and HTML of a letter. Everything in it is escaped:
+/// names, notes and requests people wrote can reach every line.
+pub fn render(letter: &Letter) -> (String, String) {
+    let mut text = String::new();
+    let mut html = format!(
+        "<div style=\"font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 16px;color:#16150f\">\
+         <p style=\"margin:0 0 20px\"><img src=\"{SITE}/brand/g1t-logo.png\" width=\"60\" height=\"28\" alt=\"g1t\" style=\"display:block;border:0\"></p>"
+    );
+    for paragraph in &letter.paragraphs {
+        text.push_str(paragraph);
+        text.push_str("\n\n");
+        html.push_str(&format!("<p style=\"font-size:15px;line-height:1.6\">{}</p>", escape(paragraph)));
+    }
+    for (from, quote) in &letter.quotes {
+        text.push_str(&format!("{from}:\n"));
+        for line in quote.lines() {
+            text.push_str(&format!("> {line}\n"));
+        }
+        text.push('\n');
+        html.push_str(&format!(
+            "<p style=\"margin:20px 0 6px;font-size:13px;color:#6e6a5e\">{}</p>\
+             <blockquote style=\"margin:0;padding:2px 0 2px 14px;border-left:3px solid #b9a6f2;font-size:15px;line-height:1.6;white-space:pre-line\">{}</blockquote>",
+            escape(from),
+            escape(quote)
+        ));
+    }
+    if let Some((label, link)) = &letter.action {
+        text.push_str(&format!("{label}: {link}\n\n"));
+        html.push_str(&format!(
+            "<p style=\"margin:24px 0\"><a href=\"{}\" style=\"background:#16150f;color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:15px\">{}</a></p>",
+            escape(link),
+            escape(label)
+        ));
+    }
+    text.push_str(&letter.footer);
+    text.push('\n');
+    html.push_str(&format!(
+        "<p style=\"font-size:13px;line-height:1.6;color:#6e6a5e\">{}</p></div>",
+        escape(&letter.footer)
+    ));
+    (text, html)
+}
+
+/// Sends a letter.
+pub async fn send(env: &Env, to: &str, subject: &str, letter: &Letter) -> Result<()> {
+    let (text, html) = render(letter);
+    let message = Message {
+        to,
+        from: FROM,
+        subject,
+        text,
+        html,
+    };
+    let binding = js::binding(env, "EMAIL")?;
+    js::call(&binding, "send", &[js::to_js(&message)?]).await?;
+    Ok(())
+}
+
 /// A short message with one link to follow.
 pub async fn send_link(
     env: &Env,
@@ -26,26 +96,13 @@ pub async fn send_link(
     link: &str,
     footer: &str,
 ) -> Result<()> {
-    let text = format!("{intro}\n\n{action}: {link}\n\n{footer}\n");
-    // Names people chose can reach these lines.
-    let (intro, action, link, footer) = (escape(intro), escape(action), escape(link), escape(footer));
-    let message = Message {
-        to,
-        from: FROM,
-        subject,
-        text,
-        html: format!(
-            "<div style=\"font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 16px;color:#16150f\">\
-             <p style=\"margin:0 0 20px\"><img src=\"{SITE}/brand/g1t-logo.png\" width=\"60\" height=\"28\" alt=\"g1t\" style=\"display:block;border:0\"></p>\
-             <p style=\"font-size:15px;line-height:1.6\">{intro}</p>\
-             <p style=\"margin:24px 0\"><a href=\"{link}\" style=\"background:#16150f;color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:15px\">{action}</a></p>\
-             <p style=\"font-size:13px;line-height:1.6;color:#6e6a5e\">{footer}</p>\
-             </div>"
-        ),
+    let letter = Letter {
+        paragraphs: vec![intro.to_owned()],
+        quotes: Vec::new(),
+        action: Some((action.to_owned(), link.to_owned())),
+        footer: footer.to_owned(),
     };
-    let binding = js::binding(env, "EMAIL")?;
-    js::call(&binding, "send", &[js::to_js(&message)?]).await?;
-    Ok(())
+    send(env, to, subject, &letter).await
 }
 
 /// Text made safe to put in HTML, in an element or a quoted attribute.
@@ -121,41 +178,141 @@ pub async fn send_security_notice(env: &Env, to: &str, username: &str, change: &
         &subject,
         &intro,
         "Review your email settings",
-        &format!("{SITE}/settings#emails"),
+        &format!("{SITE}/settings/emails"),
         "If this was you, there is nothing to do. If it was not, reset your password at g1t.sh/forgot straight away and remove any address you do not recognise.",
     )
     .await
 }
 
-/// An invite: to make an account, or for an existing one to join a
-/// workspace. `from` is who sent it (a username, or a name and username);
-/// None when g1t staff did.
-pub async fn send_invite(
-    env: &Env,
-    to: &str,
-    from: Option<&str>,
-    workspace: Option<&str>,
-    joins_existing_account: bool,
-    code: &str,
-    days: u64,
-) -> Result<()> {
-    let (subject, intro) = invite_wording(from, workspace, joins_existing_account);
-    let action = match workspace {
-        Some(workspace) if joins_existing_account => format!("Join {workspace}"),
+/// An invite email: to make an account, or for an existing one to join a
+/// workspace.
+pub struct InviteEmail<'a> {
+    pub to: &'a str,
+    /// Who sent it (a name, or a username); None when g1t staff did.
+    pub from: Option<&'a str>,
+    /// The workspace it joins, by name.
+    pub workspace: Option<&'a str>,
+    pub joins_existing_account: bool,
+    pub code: &'a str,
+    pub days: u64,
+    /// A line from whoever sent it, such as staff approving a request.
+    pub note: Option<&'a str>,
+}
+
+/// The subject and letter of an invite email.
+pub fn invite_letter(invite: &InviteEmail) -> (String, Letter) {
+    let (subject, intro) = invite_wording(invite.from, invite.workspace, invite.joins_existing_account);
+    let action = match invite.workspace {
+        Some(workspace) if invite.joins_existing_account => format!("Join {workspace}"),
         _ => "Accept invite".to_owned(),
     };
-    send_link(
-        env,
-        to,
-        &subject,
-        &intro,
-        &action,
-        &format!("{SITE}/invite/{code}"),
-        &format!(
-            "This invite works for {days} days, only for this address. If you were not expecting it, you can ignore this message."
+    let quotes = match invite.note.map(str::trim).filter(|note| !note.is_empty()) {
+        Some(note) => vec![(
+            match invite.from {
+                Some(from) => format!("A note from {from}"),
+                None => "A note from the g1t team".to_owned(),
+            },
+            note.to_owned(),
+        )],
+        None => Vec::new(),
+    };
+    let letter = Letter {
+        paragraphs: vec![intro],
+        quotes,
+        action: Some((action, format!("{SITE}/invite/{}", invite.code))),
+        footer: format!(
+            "This invite works for {} days, only for this address. If you were not expecting it, you can ignore this message.",
+            invite.days
         ),
+    };
+    (subject, letter)
+}
+
+pub async fn send_invite(env: &Env, invite: &InviteEmail<'_>) -> Result<()> {
+    let (subject, letter) = invite_letter(invite);
+    send(env, invite.to, &subject, &letter).await
+}
+
+/// Where staff decide on access requests.
+pub const SUDO_WAITLIST: &str = "https://sudo.g1t.sh/invites?tab=waitlist";
+
+/// The one confirmation someone gets after asking for access.
+pub fn waitlist_confirmation() -> (String, Letter) {
+    (
+        "You're on the list for g1t".to_owned(),
+        Letter {
+            paragraphs: vec![
+                "Thanks for asking to try g1t. You're on the list, and we'll email you an invite at this address when there's a place for you.".to_owned(),
+                "g1t is invite-only while we open it up a few people at a time, so we can't say exactly when that will be. Someone already on g1t can also invite you sooner.".to_owned(),
+            ],
+            quotes: Vec::new(),
+            action: None,
+            footer: "You're getting this because this address asked for access at g1t.sh/register. If that wasn't you, ignore this message; nothing more is sent unless you're invited.".to_owned(),
+        },
     )
-    .await
+}
+
+pub async fn send_waitlist_confirmation(env: &Env, to: &str) -> Result<()> {
+    let (subject, letter) = waitlist_confirmation();
+    send(env, to, &subject, &letter).await
+}
+
+/// One access request, as a staff summary lists it.
+pub struct Requested {
+    pub email: String,
+    pub about: Option<String>,
+}
+
+/// The most requests one summary lists; the rest are counted.
+pub const SUMMARY_LISTS: usize = 20;
+
+/// The summary staff get of new access requests: every one since the last
+/// summary, and how many are waiting in all.
+pub fn waitlist_summary(new: &[Requested], waiting: u32) -> (String, Letter) {
+    let subject = match new {
+        [one] => format!("g1t access request from {}", one.email),
+        _ => format!("{} new g1t access requests", new.len()),
+    };
+    let asked = match new.len() {
+        1 => "Someone asked for access to g1t.".to_owned(),
+        n => format!("{n} people asked for access to g1t since the last summary."),
+    };
+    let in_all = if waiting as usize > new.len() {
+        format!(" {waiting} requests are waiting in all.")
+    } else {
+        String::new()
+    };
+    let mut quotes: Vec<(String, String)> = new
+        .iter()
+        .take(SUMMARY_LISTS)
+        .map(|request| {
+            (
+                request.email.clone(),
+                request
+                    .about
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|about| !about.is_empty())
+                    .unwrap_or("(They did not say what they will build.)")
+                    .to_owned(),
+            )
+        })
+        .collect();
+    if new.len() > SUMMARY_LISTS {
+        quotes.push(("And more".to_owned(), format!("{} more requests are on the waitlist.", new.len() - SUMMARY_LISTS)));
+    }
+    let letter = Letter {
+        paragraphs: vec![format!("{asked}{in_all}")],
+        quotes,
+        action: Some(("Review the waitlist".to_owned(), SUDO_WAITLIST.to_owned())),
+        footer: "Sent to WAITLIST_NOTIFY_EMAIL at most once every 15 minutes. A request that arrives in between is in the next summary, and every request is in sudo straight away.".to_owned(),
+    };
+    (subject, letter)
+}
+
+pub async fn send_waitlist_summary(env: &Env, to: &str, new: &[Requested], waiting: u32) -> Result<()> {
+    let (subject, letter) = waitlist_summary(new, waiting);
+    send(env, to, &subject, &letter).await
 }
 
 /// An invitation to collaborate on one repository. `code` is set when the
@@ -226,7 +383,7 @@ pub fn invite_wording(from: Option<&str>, workspace: Option<&str>, joins_existin
 
 #[cfg(test)]
 mod tests {
-    use super::{escape, invite_wording};
+    use super::*;
 
     #[test]
     fn html_is_escaped() {
@@ -249,5 +406,109 @@ mod tests {
         assert_eq!(intro, "ada invited you to join the acme workspace on g1t.");
         let (_, intro) = invite_wording(Some("ada"), Some("acme"), false);
         assert!(intro.contains("makes your account and joins you to acme"));
+    }
+
+    fn invite<'a>(note: Option<&'a str>, from: Option<&'a str>) -> InviteEmail<'a> {
+        InviteEmail {
+            to: "ada@example.com",
+            from,
+            workspace: Some("Flagon, Inc."),
+            joins_existing_account: false,
+            code: "g1t-abcd",
+            days: 30,
+            note,
+        }
+    }
+
+    #[test]
+    fn an_invite_links_to_its_page_and_carries_a_note() {
+        let (subject, letter) = invite_letter(&invite(Some("Welcome aboard <3"), None));
+        assert_eq!(subject, "The g1t team invited you to Flagon, Inc. on g1t");
+        assert_eq!(letter.action.as_ref().unwrap().1, "https://g1t.sh/invite/g1t-abcd");
+        assert_eq!(letter.quotes, vec![("A note from the g1t team".to_owned(), "Welcome aboard <3".to_owned())]);
+        let (text, html) = render(&letter);
+        assert!(text.contains("> Welcome aboard <3"));
+        assert!(html.contains("Welcome aboard &lt;3"));
+        assert!(!html.contains("<3"));
+        // No note, no quote; a blank note is no note.
+        assert!(invite_letter(&invite(None, Some("Chase Pierce"))).1.quotes.is_empty());
+        assert!(invite_letter(&invite(Some("  "), Some("Chase Pierce"))).1.quotes.is_empty());
+        assert_eq!(invite_letter(&invite(Some("hi"), Some("Chase Pierce"))).1.quotes[0].0, "A note from Chase Pierce");
+    }
+
+    #[test]
+    fn the_waitlist_confirmation_promises_no_date() {
+        let (subject, letter) = waitlist_confirmation();
+        assert_eq!(subject, "You're on the list for g1t");
+        let (text, _) = render(&letter);
+        assert!(text.contains("we'll email you an invite"));
+        assert!(text.contains("can't say exactly when"));
+        assert!(letter.action.is_none());
+    }
+
+    #[test]
+    fn staff_summaries_list_each_request_and_link_to_sudo() {
+        let one = [Requested { email: "ada@example.com".into(), about: Some("A compiler <for> fun".into()) }];
+        let (subject, letter) = waitlist_summary(&one, 1);
+        assert_eq!(subject, "g1t access request from ada@example.com");
+        assert_eq!(letter.paragraphs, vec!["Someone asked for access to g1t."]);
+        assert_eq!(letter.action.as_ref().unwrap().1, SUDO_WAITLIST);
+        let (_, html) = render(&letter);
+        assert!(html.contains("A compiler &lt;for&gt; fun"));
+
+        let many: Vec<Requested> = (0..25).map(|n| Requested { email: format!("p{n}@example.com"), about: None }).collect();
+        let (subject, letter) = waitlist_summary(&many, 40);
+        assert_eq!(subject, "25 new g1t access requests");
+        assert_eq!(
+            letter.paragraphs[0],
+            "25 people asked for access to g1t since the last summary. 40 requests are waiting in all."
+        );
+        assert_eq!(letter.quotes.len(), SUMMARY_LISTS + 1);
+        assert_eq!(letter.quotes[0].1, "(They did not say what they will build.)");
+        assert!(letter.quotes.last().unwrap().1.starts_with("5 more"));
+    }
+
+    /// Writes each email as HTML for a look in a browser:
+    /// `G1T_WRITE_EMAILS=<dir> cargo test -p g1t-identity write_emails`.
+    #[test]
+    fn write_emails() {
+        let Ok(dir) = std::env::var("G1T_WRITE_EMAILS") else { return };
+        let page = |name: &str, subject: &str, letter: &Letter| {
+            let (_, html) = render(letter);
+            let html = html.replace(SITE, "https://g1t.sh");
+            std::fs::write(
+                format!("{dir}/{name}.html"),
+                format!("<!doctype html><meta charset=utf-8><title>{}</title><body style=\"margin:0;background:#fff\">{html}", escape(subject)),
+            )
+            .unwrap();
+        };
+        let (subject, letter) = waitlist_confirmation();
+        page("waitlist-confirmation", &subject, &letter);
+        let requests = [
+            Requested { email: "ada@example.com".into(), about: Some("A compiler for a teaching language, with agents writing the test suite.".into()) },
+            Requested { email: "linus@example.com".into(), about: None },
+        ];
+        let (subject, letter) = waitlist_summary(&requests, 7);
+        page("waitlist-summary", &subject, &letter);
+        let (subject, letter) = invite_letter(&InviteEmail {
+            to: "margaret@example.com",
+            from: Some("Chase Pierce"),
+            workspace: Some("Flagon, Inc."),
+            joins_existing_account: false,
+            code: "g1t-k7m2-q9xd-4hpw-abcd-0123-4567-89ef-ghjk",
+            days: 30,
+            note: None,
+        });
+        page("workspace-invite", &subject, &letter);
+        let (subject, letter) = invite_letter(&InviteEmail {
+            to: "ada@example.com",
+            from: None,
+            workspace: None,
+            joins_existing_account: false,
+            code: "g1t-k7m2-q9xd-4hpw-abcd-0123-4567-89ef-ghjk",
+            days: 30,
+            note: Some("Thanks for waiting. We would love to see the compiler."),
+        });
+        page("waitlist-approved", &subject, &letter);
     }
 }

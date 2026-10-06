@@ -61,6 +61,10 @@ const FAILURES_PER_HOUR: u32 = 20;
 const REQUESTS_PER_HOUR: u32 = 5;
 /// Access requests from clients that sent no address, together, in an hour.
 const ANONYMOUS_REQUESTS_PER_HOUR: u32 = 200;
+/// Confirmations of access requests, to everyone together, in an hour.
+const CONFIRMATIONS_PER_HOUR: u32 = 300;
+/// The least time between two summaries of new requests to staff.
+const SUMMARY_EVERY_MS: u64 = 15 * 60 * 1000;
 /// The most invites a person's or workspace's list shows.
 const LIST_LIMIT: u32 = 200;
 /// How far down the invite tree staff see.
@@ -234,6 +238,12 @@ pub fn bucket(now_ms: u64, window_ms: u64) -> u64 {
     now_ms / window_ms
 }
 
+/// Whether staff may be sent a summary of new requests: none was sent yet,
+/// or the last went before `since` (15 minutes ago). RFC 3339 times.
+pub fn summary_due(last: Option<&str>, since: &str) -> bool {
+    last.is_none_or(|last| last <= since)
+}
+
 // --- Rows ---------------------------------------------------------------------
 
 const COLUMNS: &str = "i.id, i.hint, i.sealed_code, i.email, i.kind, i.workspace_id, w.slug AS workspace,
@@ -309,9 +319,19 @@ struct WaitlistRow {
     invite_id: Option<String>,
     decided_by: Option<String>,
     decided_at: Option<String>,
+    #[serde(default)]
+    note: Option<String>,
+    #[serde(default)]
+    joined_as: Option<String>,
     created_at: String,
     updated_at: String,
 }
+
+const WAITLIST_COLUMNS: &str = "wl.id, wl.email, wl.about, wl.status, wl.invite_id, wl.decided_by, wl.decided_at, wl.note,
+  ju.username AS joined_as, wl.created_at, wl.updated_at
+  FROM waitlist wl
+  LEFT JOIN invites wi ON wi.id = wl.invite_id
+  LEFT JOIN users ju ON ju.id = wi.redeemed_by";
 
 impl From<WaitlistRow> for WaitlistEntry {
     fn from(row: WaitlistRow) -> Self {
@@ -327,6 +347,8 @@ impl From<WaitlistRow> for WaitlistEntry {
             invite_id: row.invite_id,
             decided_by: row.decided_by,
             decided_at: row.decided_at,
+            note: row.note,
+            joined_as: row.joined_as,
             created_at: row.created_at,
             updated_at: row.updated_at,
         }
@@ -624,13 +646,17 @@ impl Identity {
             }
         }
 
+        // An invite bound to this address arrived there: following its link
+        // proves the address as well as a confirmation link would, so no
+        // second email asks for it.
+        let verified = new.verified || invite.as_ref().is_some_and(|row| row.email.is_some());
         let user = User {
             id: new_id("usr", now_ms()),
             username: new.username.to_owned(),
-            verified: new.verified,
+            verified,
             ..User::default()
         };
-        let verified_at = if new.verified { SQL_NOW } else { "NULL" };
+        let verified_at = if verified { SQL_NOW } else { "NULL" };
         let values = [
             JsValue::from(user.id.as_str()),
             new.username.into(),
@@ -917,7 +943,8 @@ impl Identity {
             return Ok(Self::out_of_invites());
         };
         if let (Some(email), Some(code)) = (&email, &invite.code) {
-            self.send_invite_email(email, Some(&a.user.username), None, false, code).await;
+            let from = self.display_name(&a.user).await;
+            self.send_invite_email(email, Some(&from), None, false, code, None).await;
         }
         let logs: Vec<String> = a.user.workspaces.iter().map(|membership| membership.slug.clone()).collect();
         self.audit_invites(&a.user, "invite.created", logs, a.surface.unwrap_or(Surface::Web), format!("Created invite {}", invite.hint))
@@ -925,12 +952,69 @@ impl Identity {
         Ok(Outcome::Ok(invite))
     }
 
-    async fn send_invite_email(&self, to: &str, from: Option<&str>, workspace: Option<&str>, existing: bool, code: &str) {
-        if let Err(error) =
-            crate::email::send_invite(&self.env, to, from, workspace, existing, code, self.invite_ttl_days()).await
-        {
+    async fn send_invite_email(
+        &self,
+        to: &str,
+        from: Option<&str>,
+        workspace: Option<&str>,
+        existing: bool,
+        code: &str,
+        note: Option<&str>,
+    ) {
+        let invite = crate::email::InviteEmail {
+            to,
+            from,
+            workspace,
+            joins_existing_account: existing,
+            code,
+            days: self.invite_ttl_days(),
+            note,
+        };
+        if let Err(error) = crate::email::send_invite(&self.env, &invite).await {
             worker::console_error!("invite email failed: {error}");
         }
+    }
+
+    /// How an invite names the person who sent it: their name, else their
+    /// username.
+    async fn display_name(&self, user: &User) -> String {
+        self.name_of("SELECT display_name AS name FROM users WHERE id = ?", &user.id)
+            .await
+            .unwrap_or_else(|| user.username.clone())
+    }
+
+    /// A workspace's name, as an invite shows it; its slug if it has none.
+    async fn workspace_name(&self, workspace_id: &str, slug: &str) -> String {
+        self.name_of("SELECT name FROM workspaces WHERE id = ?", workspace_id)
+            .await
+            .unwrap_or_else(|| slug.to_owned())
+    }
+
+    /// A name `sql` selects for `id`, if it has one. Only for wording an
+    /// email, so a failed read is no name.
+    async fn name_of(&self, sql: &str, id: &str) -> Option<String> {
+        #[derive(Deserialize)]
+        struct Name {
+            name: Option<String>,
+        }
+        let read = async { self.db.prepare(sql).bind(&[id.into()])?.first::<Name>(None).await };
+        read.await
+            .ok()
+            .flatten()
+            .and_then(|row| row.name)
+            .map(|name| name.trim().to_owned())
+            .filter(|name| !name.is_empty())
+    }
+
+    /// The address a pending invite is bound to, if it is: signing up with
+    /// GitHub uses it when GitHub has confirmed it too (github.rs).
+    pub(crate) async fn bound_email_of(&self, code: &str) -> Result<Option<String>> {
+        let now = rfc3339(now_ms());
+        Ok(self
+            .invite_by_code(code)
+            .await?
+            .filter(|row| row.status(&now) == InviteStatus::Pending)
+            .and_then(|row| row.email))
     }
 
     pub async fn list_invites(&self, a: UserArgs) -> Result<InvitesOverview> {
@@ -999,11 +1083,36 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Conflict, TOO_MANY));
         }
         let now = rfc3339(now_ms());
-        let row = self.invite_by_code(&a.code).await?.filter(|row| row.status(&now) == InviteStatus::Pending);
+        // A spent code is still a real one (160 random bits): saying what
+        // became of it tells a guesser nothing.
+        let row = self
+            .invite_by_code(&a.code)
+            .await?
+            .filter(|row| a.any_status || row.status(&now) == InviteStatus::Pending);
         let Some(row) = row else {
             self.count_failure(a.client.as_deref()).await?;
             return Ok(Outcome::fail(FailureCode::NotFound, INVALID));
         };
+        let status = row.status(&now);
+        let pending = status == InviteStatus::Pending;
+        // Whether it is the viewer's: for one of their confirmed addresses,
+        // or, once used, used by them.
+        let for_viewer = match &a.viewer {
+            Some(viewer) if viewer.kind == PrincipalKind::User => match (&row.email, status) {
+                (_, InviteStatus::Redeemed) => Some(row.redeemer.as_deref() == Some(viewer.username.as_str())),
+                (Some(bound), _) => {
+                    let mine = self.verified_emails(&viewer.id).await?;
+                    Some(mine.iter().any(|address| address.eq_ignore_ascii_case(bound.trim())))
+                }
+                (None, _) => None,
+            },
+            _ => None,
+        };
+        let has_account = match (&row.email, pending) {
+            (Some(bound), true) => self.email_has_account(bound).await?,
+            _ => false,
+        };
+        let repository = self.repository_of_code(&row.id).await?;
         #[derive(Deserialize)]
         struct From {
             username: String,
@@ -1035,14 +1144,20 @@ impl Identity {
         };
         Ok(Outcome::Ok(InvitePreview {
             kind: kind_of(&row.kind),
+            status,
             invited_by,
             workspace,
+            repository,
             email: row.email.as_deref().map(mask_email),
+            address: row.email.clone().filter(|_| pending),
+            has_account,
+            for_viewer,
             expires_at: row.expires_at,
         }))
     }
 
-    /// A signed-in person uses a workspace invite sent to their address.
+    /// A signed-in person uses a workspace invite sent to their address,
+    /// or one sent with a repository invitation.
     pub async fn accept_invite(&self, a: AcceptInviteArgs) -> Result<Outcome<String>> {
         if a.user.kind != PrincipalKind::User || a.user.acting.is_some() {
             return Ok(Outcome::fail(FailureCode::Forbidden, "Only a person can accept an invite."));
@@ -1060,7 +1175,13 @@ impl Identity {
             .and_then(|row| row.email.as_deref())
             .and_then(|bound| verified.iter().find(|address| address.eq_ignore_ascii_case(bound.trim())).cloned())
             .unwrap_or(primary);
-        let joins = row.as_ref().is_some_and(joins_workspace);
+        // What using it gives an account that exists: a workspace, or a
+        // repository it was sent with.
+        let repository = match &row {
+            Some(row) => self.repository_of_code(&row.id).await?,
+            None => None,
+        };
+        let joins = row.as_ref().is_some_and(joins_workspace) || repository.is_some();
         if let Err(refusal) = admits(row.as_ref().map(|row| row.admits(&now)).as_ref(), &email, false) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
@@ -1092,9 +1213,13 @@ impl Identity {
         if claimed.is_none() {
             return Ok(Outcome::fail(FailureCode::Forbidden, INVALID));
         }
-        let slug = row.workspace.clone().unwrap_or_default();
+        let lands = row
+            .workspace
+            .clone()
+            .or_else(|| repository.map(|repository| repository.name))
+            .unwrap_or_default();
         self.after_redeemed(&row, &a.user, false).await?;
-        Ok(Outcome::Ok(slug))
+        Ok(Outcome::Ok(lands))
     }
 
     // --- Workspace invitations ---
@@ -1171,7 +1296,9 @@ impl Identity {
             return Ok(Self::out_of_invites());
         };
         if let Some(code) = &invite.code {
-            self.send_invite_email(&email, Some(&a.actor.username), Some(&slug), has_account, code).await;
+            let from = self.display_name(&a.actor).await;
+            let workspace = self.workspace_name(&workspace_id, &slug).await;
+            self.send_invite_email(&email, Some(&from), Some(&workspace), has_account, code, None).await;
         }
         self.audit_invites(
             &a.actor,
@@ -1294,9 +1421,114 @@ impl Identity {
             .first::<Upserted>(None)
             .await?;
         if let Some(row) = row.filter(|row| row.created_at == now) {
-            self.announce("waitlist.requested", None, WaitlistRequested { entry_id: row.id }).await;
+            self.announce("waitlist.requested", None, WaitlistRequested { entry_id: row.id.clone() }).await;
+            self.acknowledge_request(&row.id, &email).await?;
+            self.notify_staff_of_requests().await?;
         }
         Ok(Outcome::Ok(true))
+    }
+
+    /// The one confirmation an address gets for asking: claimed in the
+    /// database first, so a repeat request (or two at once) never sends a
+    /// second, and capped across everyone, since anyone can type any
+    /// address.
+    async fn acknowledge_request(&self, id: &str, email: &str) -> Result<()> {
+        if !self.hit("waitlist.ack", CONFIRMATIONS_PER_HOUR).await? {
+            return Ok(());
+        }
+        let claimed = self
+            .db
+            .prepare(format!(
+                "UPDATE waitlist SET acknowledged_at = {SQL_NOW} WHERE id = ? AND acknowledged_at IS NULL RETURNING id"
+            ))
+            .bind(&[id.into()])?
+            .first::<Id>(None)
+            .await?;
+        if claimed.is_none() {
+            return Ok(());
+        }
+        if let Err(error) = crate::email::send_waitlist_confirmation(&self.env, email).await {
+            worker::console_error!("waitlist confirmation failed: {error}");
+            // Not sent: leave it unclaimed, so staff can see it was not.
+            self.db
+                .prepare("UPDATE waitlist SET acknowledged_at = NULL WHERE id = ?")
+                .bind(&[id.into()])?
+                .run()
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Where staff hear about new requests: WAITLIST_NOTIFY_EMAIL, unset or
+    /// empty for nobody.
+    fn waitlist_notify_email(&self) -> Option<String> {
+        let to = self.env.var("WAITLIST_NOTIFY_EMAIL").ok()?.to_string();
+        normalize_email(&to)
+    }
+
+    /// Tells staff about every request they have not heard about, unless a
+    /// summary went in the last 15 minutes: then the next request after
+    /// that brings them all in one. The rows are claimed before sending, so
+    /// two requests at once send one summary.
+    pub(crate) async fn notify_staff_of_requests(&self) -> Result<()> {
+        let Some(to) = self.waitlist_notify_email() else {
+            return Ok(());
+        };
+        #[derive(Deserialize)]
+        struct Last {
+            at: Option<String>,
+        }
+        let last = self
+            .db
+            .prepare("SELECT max(notified_at) AS at FROM waitlist")
+            .first::<Last>(None)
+            .await?
+            .and_then(|last| last.at);
+        let now = now_ms();
+        if !summary_due(last.as_deref(), &rfc3339(now.saturating_sub(SUMMARY_EVERY_MS))) {
+            return Ok(());
+        }
+        let stamp = rfc3339(now);
+        #[derive(Deserialize)]
+        struct New {
+            email: String,
+            about: Option<String>,
+            created_at: String,
+        }
+        let mut new = self
+            .db
+            .prepare(
+                "UPDATE waitlist SET notified_at = ? WHERE notified_at IS NULL AND status = 'waiting'
+                 RETURNING email, about, created_at",
+            )
+            .bind(&[stamp.as_str().into()])?
+            .all()
+            .await?
+            .results::<New>()?;
+        if new.is_empty() {
+            return Ok(());
+        }
+        new.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        let waiting = self
+            .db
+            .prepare("SELECT count(*) AS n FROM waitlist WHERE status = 'waiting'")
+            .first::<Count>(None)
+            .await?
+            .map_or(0, |count| count.n as u32);
+        let new: Vec<crate::email::Requested> = new
+            .into_iter()
+            .map(|row| crate::email::Requested { email: row.email, about: row.about })
+            .collect();
+        if let Err(error) = crate::email::send_waitlist_summary(&self.env, &to, &new, waiting).await {
+            worker::console_error!("waitlist summary failed: {error}");
+            // Not sent: the next request tries again with these too.
+            self.db
+                .prepare("UPDATE waitlist SET notified_at = NULL WHERE notified_at = ?")
+                .bind(&[stamp.as_str().into()])?
+                .run()
+                .await?;
+        }
+        Ok(())
     }
 
     // --- Staff ---
@@ -1305,11 +1537,11 @@ impl Identity {
         let mut filters = Vec::new();
         let mut binds: Vec<JsValue> = Vec::new();
         if let Some(status) = a.status {
-            filters.push("status = ?".to_owned());
+            filters.push("wl.status = ?".to_owned());
             binds.push(status.as_str().into());
         }
         if let Some(pattern) = crate::admin::like_pattern(a.query.as_deref()) {
-            filters.push("(email LIKE ? ESCAPE '\\' OR lower(about) LIKE ? ESCAPE '\\')".to_owned());
+            filters.push("(wl.email LIKE ? ESCAPE '\\' OR lower(wl.about) LIKE ? ESCAPE '\\')".to_owned());
             binds.push(pattern.as_str().into());
             binds.push(pattern.as_str().into());
         }
@@ -1317,8 +1549,7 @@ impl Identity {
         Ok(self
             .db
             .prepare(format!(
-                "SELECT id, email, about, status, invite_id, decided_by, decided_at, created_at, updated_at
-                 FROM waitlist {filter} ORDER BY created_at, id LIMIT {ADMIN_INVITES_LIMIT}"
+                "SELECT {WAITLIST_COLUMNS} {filter} ORDER BY wl.created_at DESC, wl.id DESC LIMIT {ADMIN_INVITES_LIMIT}"
             ))
             .bind(&binds)?
             .all()
@@ -1331,13 +1562,20 @@ impl Identity {
 
     async fn waitlist_entry(&self, id: &str) -> Result<Option<WaitlistRow>> {
         self.db
-            .prepare(
-                "SELECT id, email, about, status, invite_id, decided_by, decided_at, created_at, updated_at
-                 FROM waitlist WHERE id = ?",
-            )
+            .prepare(format!("SELECT {WAITLIST_COLUMNS} WHERE wl.id = ?"))
             .bind(&[id.into()])?
             .first::<WaitlistRow>(None)
             .await
+    }
+
+    /// How many requests are waiting, for sudo's navigation.
+    pub async fn admin_waitlist_pending(&self) -> Result<u32> {
+        Ok(self
+            .db
+            .prepare("SELECT count(*) AS n FROM waitlist WHERE status = 'waiting'")
+            .first::<Count>(None)
+            .await?
+            .map_or(0, |count| count.n as u32))
     }
 
     pub async fn admin_decide_waitlist(&self, a: AdminDecideWaitlistArgs) -> Result<Outcome<WaitlistEntry>> {
@@ -1348,12 +1586,20 @@ impl Identity {
         if staff.is_empty() {
             return Ok(Outcome::fail(FailureCode::Forbidden, "Say which staff member decided."));
         }
+        if entry.status != "waiting" {
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                format!("{} was already {} by {}.", entry.email, entry.status, entry.decided_by.as_deref().unwrap_or("staff")),
+            ));
+        }
+        let note: String = a.note.as_deref().unwrap_or_default().trim().chars().take(MAX_WAITLIST_NOTE).collect();
+        let note = (!note.is_empty()).then_some(note);
         let mut invite_id = JsValue::NULL;
         if a.approve {
             if self.email_has_account(&entry.email).await? {
                 return Ok(Outcome::fail(FailureCode::Conflict, "That address already has a g1t account."));
             }
-            let minted = match self.admin_mint_invite(AdminMintInviteArgs { email: Some(entry.email.clone()), staff: staff.to_owned() }).await? {
+            let minted = match self.mint_staff_invite(Some(entry.email.clone()), staff, note.as_deref()).await? {
                 Outcome::Ok(invite) => invite,
                 Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
             };
@@ -1361,13 +1607,15 @@ impl Identity {
         }
         self.db
             .prepare(format!(
-                "UPDATE waitlist SET status = ?, invite_id = COALESCE(?, invite_id), decided_by = ?, decided_at = {SQL_NOW}
+                "UPDATE waitlist SET status = ?, invite_id = COALESCE(?, invite_id), decided_by = ?, decided_at = {SQL_NOW},
+                   note = ?, notified_at = COALESCE(notified_at, {SQL_NOW})
                  WHERE id = ?"
             ))
             .bind(&[
                 if a.approve { "invited" } else { "dismissed" }.into(),
                 invite_id,
                 staff.into(),
+                note.as_deref().map_or(JsValue::NULL, JsValue::from),
                 entry.id.as_str().into(),
             ])?
             .run()
@@ -1423,11 +1671,16 @@ impl Identity {
     }
 
     pub async fn admin_mint_invite(&self, a: AdminMintInviteArgs) -> Result<Outcome<Invite>> {
-        let staff = a.staff.trim();
+        self.mint_staff_invite(a.email, &a.staff, None).await
+    }
+
+    /// An invite staff make, emailed with `note` when it is for an address.
+    async fn mint_staff_invite(&self, email: Option<String>, staff: &str, note: Option<&str>) -> Result<Outcome<Invite>> {
+        let staff = staff.trim();
         if staff.is_empty() {
             return Ok(Outcome::fail(FailureCode::Forbidden, "Say which staff member is minting it."));
         }
-        let email = match a.email.as_deref().map(str::trim).filter(|email| !email.is_empty()) {
+        let email = match email.as_deref().map(str::trim).filter(|email| !email.is_empty()) {
             Some(email) => match normalize_email(email) {
                 Some(email) => Some(email),
                 None => return Ok(Outcome::fail(FailureCode::Invalid, BAD_EMAIL)),
@@ -1448,7 +1701,7 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Conflict, "The invite could not be made. Try again."));
         };
         if let (Some(email), Some(code)) = (&email, &invite.code) {
-            self.send_invite_email(email, None, None, false, code).await;
+            self.send_invite_email(email, None, None, false, code, note).await;
         }
         invite.staff = Some(staff.to_owned());
         Ok(Outcome::Ok(invite))
@@ -1840,6 +2093,17 @@ mod tests {
         assert!((5..=100).contains(&FAILURES_PER_HOUR));
         const { assert!(CREATES_PER_HOUR >= INVITES_PER_USER) };
         const { assert!(REQUESTS_PER_HOUR >= 1) };
+    }
+
+    #[test]
+    fn staff_hear_about_requests_at_most_every_15_minutes() {
+        assert_eq!(SUMMARY_EVERY_MS, 15 * 60 * 1000);
+        let since = "2026-10-05T11:45:00.000Z";
+        assert!(summary_due(None, since));
+        assert!(summary_due(Some("2026-10-05T11:30:00.000Z"), since));
+        assert!(summary_due(Some(since), since));
+        assert!(!summary_due(Some("2026-10-05T11:50:00.000Z"), since));
+        const { assert!(CONFIRMATIONS_PER_HOUR >= ANONYMOUS_REQUESTS_PER_HOUR) };
     }
 
     #[test]

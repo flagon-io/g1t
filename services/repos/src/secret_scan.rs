@@ -285,7 +285,7 @@ pub fn exposed_message(commit: &str, email: &str, noreply: &str) -> Vec<String> 
             mask_email(&email.to_lowercase())
         ),
         format!("Commit with {noreply} (git config user.email {noreply}) and amend,"),
-        format!("or change this in {}/settings#emails.", SITE.trim_start_matches("https://")),
+        format!("or change this in {}/settings/emails.", SITE.trim_start_matches("https://")),
     ]
 }
 
@@ -679,7 +679,7 @@ x
         let message = exposed_message(&found, &email, &guard.noreply);
         assert!(message[0].starts_with(&format!("push declined: commit {} would publish s***@gmail.com", &mine_id[..7])));
         assert!(message[1].contains("git config user.email 1abc2def+sam@users.noreply.g1t.sh"));
-        assert!(message[2].contains("g1t.sh/settings#emails"));
+        assert!(message[2].contains("g1t.sh/settings/emails"));
         // Someone else's commits, and no pack at all, go through.
         let theirs = push(&[Entry::Whole(ObjectKind::Commit, commit(&tree_id, None)), Entry::Whole(ObjectKind::Tree, tree)]);
         assert_eq!(exposed_address(&theirs, &guard), None);

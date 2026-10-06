@@ -193,7 +193,14 @@ type Held = { id: string; workspace: string; microsPerSecond: number; modelBille
  * A sandbox that is not an agent run but still runs under guardrails: a
  * workflow job or a deploy build, in `repo`, for `minutes` at most.
  */
-type Build = { kind: "actions" | "deploy"; repo: RepoPath; minutes: number };
+type Build = {
+  kind: "actions" | "deploy";
+  /** The project whose guardrails apply: never a pull request's working copy. */
+  repo: RepoPath;
+  /** Its id, so it is found even if it moved since. */
+  repoId?: string | null;
+  minutes: number;
+};
 /** Deploy builds are metered by the Deployments plan, not here. */
 type RunRequest = Run & {
   envVars: Record<string, string>;
@@ -271,6 +278,13 @@ type DeployJob = {
   actor: User;
   /** The repository the commit is in: the pull request's fork, or the repository. */
   source: RepoPath;
+  /**
+   * The project's repository, whose guardrails the build runs under, and
+   * its id. A preview's `source` is its pull request's working copy, so
+   * the two differ. Older callers send only `source`.
+   */
+  repo?: RepoPath | null;
+  repoId?: string | null;
   commit: string;
   /** Where in the repository the project lives; empty for all of it. */
   rootDir?: string;
@@ -321,7 +335,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       guard = track
         ? withPlanLimits(await guardFor(this.env.WORK, track.repo, track.kind), limits)
         : build
-          ? withPlanLimits(await buildGuardFor(this.env.WORK, build.repo, build.kind, build.minutes), limits)
+          ? withPlanLimits(await buildGuardFor(this.env.WORK, build.repo, build.kind, build.minutes, build.repoId), limits)
           : null;
     } catch (error) {
       await this.settle(0);
@@ -1400,6 +1414,8 @@ export default class RunnerService
     });
     const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`deploy:${job.deployId}`));
     const workspace = (job.workspace ?? job.source.namespace).toLowerCase();
+    // The project the build is for: its guardrails, and who it is charged to.
+    const project = job.repo ?? job.source;
     try {
       await sandbox.run({
         kind: "deploy",
@@ -1411,8 +1427,8 @@ export default class RunnerService
         limits: { minutes: job.maxRunMinutes ?? null },
         // The project's network list plus registries and Cloudflare's API,
         // for as long as its read token lasts.
-        build: { kind: "deploy", repo: job.source, minutes: DEPLOY_TOKEN_TTL_SECONDS / 60 },
-        owner: { workspace, repo: `${job.source.namespace}/${job.source.name}` },
+        build: { kind: "deploy", repo: project, repoId: job.repoId ?? null, minutes: DEPLOY_TOKEN_TTL_SECONDS / 60 },
+        owner: { workspace, repo: `${project.namespace}/${project.name}` },
         envVars: {
           MODE: "deploy",
           G1T_API: "https://api.g1t.sh",

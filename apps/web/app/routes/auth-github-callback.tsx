@@ -40,7 +40,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       headers.append("set-cookie", startSession(done.signedIn.sessionToken));
       throw redirect(safeNext(done.next), { headers });
     case "linked":
-      throw redirect(safeNext(done.next === "/" ? "/settings#github" : done.next), { headers });
+      throw redirect(safeNext(done.next === "/" ? "/settings/github" : done.next), { headers });
     case "needs_link":
       headers.append("set-cookie", cookie(PENDING_COOKIE, done.pending, 1800));
       throw redirect(`/login?github=link${done.next === "/" ? "" : `&next=${encodeURIComponent(done.next)}`}`, { headers });

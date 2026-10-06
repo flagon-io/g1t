@@ -28,8 +28,9 @@
 		{ "binding": "BILLING", "service": "g1t-billing" }
 	],
 	// A free workspace past this many git operations in a month is slowed
-	// to this many an hour, never charged (src/git_ops.rs). Billing's
-	// GIT_OPERATIONS_FREE_CAP says the same on the pricing page.
+	// to this many an hour, never charged (src/git_ops.rs). It is billing's
+	// GIT_OPERATIONS_INCLUDED, the amount free for every workspace: past it,
+	// a workspace on the plan pays at cost plus 20% and is never slowed.
 	// FREE_PRIVATE_STORAGE_BYTES: a free workspace's private repositories may
 	// hold this much (1 GB); past it, pushes to them stop. Billing reads the
 	// same amount.

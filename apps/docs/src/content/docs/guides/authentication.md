@@ -15,11 +15,30 @@ Accounts can only be created in a browser. There is no API for it, by
 design: it keeps passwords out of scripts and agents, and lets g1t protect
 the one place accounts are made.
 
+## Your settings
+
+Your own settings are at [g1t.sh/settings](https://g1t.sh/settings), one
+page each. Open them from your account menu at the bottom of the sidebar,
+under **Your settings**; the sidebar then lists every page.
+
+| Page | Address | What is on it |
+| --- | --- | --- |
+| Profile | [`/settings/profile`](https://g1t.sh/settings/profile) | Your picture, and your [public profile](/guides/workspaces/#profiles): name, pronouns, bio, location and website. |
+| Emails | [`/settings/emails`](https://g1t.sh/settings/emails) | Your [email addresses](#email-addresses), the backup address, and [keeping your address private](#keeping-your-address-private). |
+| Invites | [`/settings/invites`](https://g1t.sh/settings/invites) | [Making, copying and revoking invites](#invites). |
+| SSH keys | [`/settings/keys`](https://g1t.sh/settings/keys) | Public keys for [git over SSH](/guides/git/). |
+| Access tokens | [`/settings/tokens`](https://g1t.sh/settings/tokens) | Your [personal access tokens](#access-tokens). |
+| GitHub | [`/settings/github`](https://g1t.sh/settings/github) | [Linking and unlinking GitHub](/guides/github/#link-and-unlink-github). |
+| Connected applications | [`/settings/applications`](https://g1t.sh/settings/applications) | Tools you [signed in to with OAuth](#signing-in-with-oauth), such as an agent using the MCP server. |
+| Security log | [`/settings/security-log`](https://g1t.sh/settings/security-log) | [What happened to your account](#security-log). |
+
+`g1t.sh/settings` opens Profile.
+
 ## Signing in with GitHub
 
 **Continue with GitHub** on the sign-in and sign-up pages signs you in with
 your GitHub account, and makes a g1t account the first time. Link or
-unlink GitHub in [Settings](https://g1t.sh/settings#github). See
+unlink GitHub in [Settings → GitHub](https://g1t.sh/settings/github). See
 [GitHub](/guides/github/#sign-in-with-github).
 
 Making an account with GitHub needs an invite too: start from your invite
@@ -36,12 +55,36 @@ people who [asked for access](#asking-for-access). An invite:
 - when it was made for an email address, works only with that address;
 - can be revoked by whoever made it until it is used.
 
-An invite link, `g1t.sh/invite/<code>`, shows who sent it and continues to
-sign-up with the code filled in.
+### Using an invite
+
+Every invite email links to `g1t.sh/invite/<code>`. That one page shows
+who sent it and what it is for (joining a workspace, collaborating on a
+repository, or just making an account), and finishes the job there:
+
+1. **No account yet**: sign up on the page. When the invite was sent to
+   your address, the email field is filled in and locked, and the address
+   is confirmed already, so no confirmation email follows. Choose a
+   username (one is suggested from your address) and a password, or select
+   **Continue with GitHub**: the invite rides along, and the account uses
+   the invited address when GitHub has verified it too.
+2. **The address already has an account**: select **Sign in to accept**.
+   After you sign in, the invite is accepted for you.
+3. **Signed in as someone else**: an invite sent to one address works only
+   for an account that has confirmed that address. The page says so and
+   offers **Sign out and continue**.
+
+Once the account exists or you have signed in, you land in the workspace
+(or the repository) the invite was for, already a member, with a one-time
+"You're in" banner, and it becomes the workspace your sidebar shows. A
+code typed at [g1t.sh/register](https://g1t.sh/register) goes to the
+same page.
+
+An expired, revoked or used invite says which, and who sent it, so you
+can ask them for a new one; or ask for access from the same page.
 
 ### Making invites
 
-1. Open [Settings → Invites](https://g1t.sh/settings#invites).
+1. Open [Settings → Invites](https://g1t.sh/settings/invites).
 2. Optionally enter the email address of the person you are inviting.
    With one, g1t emails them the invite, and only that address can use it.
    Without one, anyone with the link can, once.
@@ -67,15 +110,20 @@ already on g1t costs nothing.
 Write to [hey@flagon.io](mailto:hey@flagon.io?subject=%5Bg1t%20Invites%5D%20)
 with the subject `[g1t Invites]` and say who you would like to bring. g1t
 can give more invites to you, or to a workspace, whose owners then share
-them. Invites given to a workspace appear under **Settings → Invites** for
+them. Invites given to a workspace appear under
+[Settings → Invites](https://g1t.sh/settings/invites) for
 each of its owners, as a choice of whose invites to use.
 
 ### Asking for access
 
 Without an invite, [g1t.sh/register](https://g1t.sh/register) asks for your
-email address and, if you like, what you will build. g1t emails you an
-invite as places open. Asking again with the same address updates your
-request; it does not move you down the list.
+email address and, if you like, what you will build. g1t emails that
+address once to confirm you are on the list, and staff see the request
+straight away. When they approve it, the invite comes to the same address,
+sometimes with a note, and its link opens sign-up with the address filled
+in. There is no fixed date: g1t opens up a few people at a time. Asking
+again with the same address updates your request without another email; it
+does not move you down the list.
 
 ### Invites through the API
 
@@ -98,7 +146,7 @@ use the banner at the top of the site.
 ## Email addresses
 
 An account can have up to 10 email addresses. Manage them in
-[Settings → Emails](https://g1t.sh/settings#emails).
+[Settings → Emails](https://g1t.sh/settings/emails).
 
 | An address that is | Can |
 | --- | --- |
@@ -114,7 +162,7 @@ account has confirmed cannot be added.
 
 ### Add an address
 
-1. Open [Settings → Emails](https://g1t.sh/settings#emails).
+1. Open [Settings → Emails](https://g1t.sh/settings/emails).
 2. Enter the address under **Add an email address** and select **Add**.
 3. Follow the link g1t sends it. The link works for 24 hours; **Resend
    link** sends a new one, at most once a minute and 10 times an hour.
@@ -169,7 +217,7 @@ address. git shows why, with the address masked:
 ```
 remote: push declined: commit 3f9a1c2 would publish s***@gmail.com while your email is private.
 remote: Commit with 6c1d0efg+sam@users.noreply.g1t.sh (git config user.email 6c1d0efg+sam@users.noreply.g1t.sh) and amend,
-remote: or change this in g1t.sh/settings#emails.
+remote: or change this in g1t.sh/settings/emails.
 ```
 
 To push those commits:
@@ -226,7 +274,7 @@ A token stands in for your password everywhere outside the website:
 | API | `Authorization: Bearer g1t_…` |
 | MCP | The same header, set when you add the server. |
 
-Create one in [Settings](https://g1t.sh/settings). A token is shown once,
+Create one in [Settings → Access tokens](https://g1t.sh/settings/tokens). A token is shown once,
 when it is created; g1t stores only a hash of it. If you lose one, delete it
 and create another. Delete a token the moment you think someone else has
 seen it.
@@ -245,8 +293,8 @@ You see a page on g1t naming the application and where it will send you
 back, and you approve or deny. The application never sees your password and
 there is no token to copy.
 
-Applications you have approved are listed under **Connected applications**
-in [Settings](https://g1t.sh/settings). Signing one out ends its access at
+Applications you have approved are listed in
+[Settings → Connected applications](https://g1t.sh/settings/applications). Signing one out ends its access at
 once.
 
 For people building a client:
@@ -293,7 +341,8 @@ curl -X POST https://api.g1t.sh/device/token   -H "Content-Type: application/jso
 
 The poll answers with a `status` of `pending`, `approved`, `denied` or
 `expired`. An approved answer carries the token, once. Codes expire after 15
-minutes. The token appears in your settings under the tool's name, where you
+minutes. The token appears in
+[Settings → Access tokens](https://g1t.sh/settings/tokens) under the tool's name, where you
 can delete it.
 
 Only approve a code you asked for. Approving gives the tool the full rights
@@ -327,7 +376,7 @@ GitHub sign-in are not affected.
 
 ## Security log
 
-[Settings → Security log](https://g1t.sh/settings#security-log) lists what
+[Settings → Security log](https://g1t.sh/settings/security-log) lists what
 happened to your account: addresses added, confirmed, removed or made
 primary, your backup and privacy settings, password changes, and pauses
 after too many wrong passwords. Changes g1t staff made, such as removing an

@@ -1,0 +1,61 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-status",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	"main": "./src/index.ts",
+	"workers_dev": false,
+	"preview_urls": false,
+	// The status page. A Worker of its own, bound to nothing it reports on
+	// but billing, so it stays up when the site does not. A custom domain,
+	// whose DNS record Cloudflare makes on the first deploy.
+	"routes": [{ "pattern": "status.g1t.sh", "custom_domain": true }],
+	// Every minute: check each part and keep the result.
+	"triggers": { "crons": ["* * * * *"] },
+	// The fonts, from packages/theme, served from the page's own origin.
+	"rules": [{ "type": "Data", "globs": ["**/*.woff2"], "fallthrough": false }],
+	// Each part's last check, 90 days of daily tallies, and incidents.
+	// Made by `npx wrangler d1 create g1t-status`; put its id here.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "g1t-status",
+			"database_id": "dba85721-96dc-401d-9121-a6c587d614b2",
+			"migrations_dir": "migrations"
+		}
+	],
+	// Billing has no public address: its price book is read through this.
+	// Nothing else is bound, so every other check goes over the internet.
+	"services": [{ "binding": "BILLING", "service": "g1t-billing" }],
+	// Email to subscribers (confirmations, incident and maintenance
+	// updates) and the staff alert for detected drafts, through Cloudflare
+	// Email Sending, as identity sends its own. Subscriptions also need the
+	// STATUS_SECRET secret, which signs unsubscribe links:
+	//   npx wrangler secret put STATUS_SECRET
+	// Without either, the page offers the feeds only.
+	"send_email": [{ "name": "EMAIL", "remote": true }],
+	"vars": {
+		// Where each part is. An empty one leaves that part off the page,
+		// for an installation that does not run it.
+		"SITE_URL": "https://g1t.sh",
+		"API_URL": "https://api.g1t.sh",
+		"MCP_URL": "https://mcp.g1t.sh",
+		"DOCS_URL": "https://docs.g1t.sh",
+		"PAGES_URL": "https://g1t.page",
+		"MODELS_URL": "https://models.g1t.sh",
+		// A public repository that always exists, whose branches are listed
+		// as a clone would.
+		"PROBE_REPO": "flagon-io/g1t",
+		"SUPPORT_URL": "https://g1t.sh/support",
+		// This page's own address, for links in email and the feeds.
+		"STATUS_URL": "https://status.g1t.sh",
+		// sudo, for the link in the staff alert.
+		"SUDO_URL": "https://sudo.g1t.sh",
+		// Who hears when a part fails three checks in a row and a draft
+		// incident is made. Empty sends none.
+		"STATUS_ALERT_EMAIL": "hey@flagon.io",
+		"STATUS_FROM": "g1t status <noreply@g1t.sh>",
+		"OG_IMAGE": "https://og.g1t.sh/image?path=%2Fstatus&v=2"
+	},
+	"observability": { "enabled": true }
+}

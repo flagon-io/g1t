@@ -30,7 +30,7 @@ export function ProfileSection({
   return (
     <section id="profile" className="scroll-mt-20">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-medium">Profile</h2>
+        <h2 className="font-medium">Public profile</h2>
         <Link to={`/u/${username}`} className="text-sm text-muted underline-offset-4 hover:text-fg hover:underline">
           View your profile
         </Link>

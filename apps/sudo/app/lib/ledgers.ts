@@ -67,6 +67,8 @@ const ENTERPRISE = /^ent_[a-z0-9_-]{1,80}$/;
  */
 export function accountPath(account: string | null | undefined): string | null {
   const id = (account ?? "").trim().toLowerCase();
+  const status = /^(incident|maintenance):([a-z0-9-]{1,64})$/.exec(id);
+  if (status) return status[1] === "incident" ? `/incidents/${status[2]}` : `/incidents/maintenance/${status[2]}`;
   if (ENTERPRISE.test(id)) return `/enterprises/${encodeURIComponent(id)}`;
   if (id.startsWith("ws_") && SLUG.test(id.slice(3))) return `/workspaces/${encodeURIComponent(id.slice(3))}`;
   return null;
@@ -75,6 +77,8 @@ export function accountPath(account: string | null | undefined): string | null {
 /** What to call an account: a workspace by its slug, an enterprise by its name when known. */
 export function accountName(account: string, names: Map<string, string> = new Map()): string {
   if (names.has(account)) return names.get(account) as string;
+  if (account.startsWith("incident:")) return "Incident";
+  if (account.startsWith("maintenance:")) return "Maintenance";
   if (account.startsWith("ws_")) return account.slice(3);
   if (ENTERPRISE.test(account)) return "an enterprise";
   return account;
@@ -101,7 +105,46 @@ export const AUDIT_ACTIONS: Record<string, string> = {
   note: "Sales note added",
   stripe: "From Stripe",
   webhook: "Stripe webhook registered",
+  // From the status page (apps/status), merged in by the Audit log page.
+  incident_declared: "Incident declared",
+  incident_detected: "Incident detected",
+  incident_update: "Incident update",
+  incident_note: "Incident note",
+  incident_resolved: "Incident resolved",
+  incident_roles: "Incident roles",
+  incident_published: "Incident published",
+  incident_dismissed: "Draft dismissed",
+  incident_followup: "Incident follow-up",
+  postmortem_saved: "Postmortem saved",
+  postmortem_published: "Postmortem published",
+  postmortem_unpublished: "Postmortem taken down",
+  maintenance_scheduled: "Maintenance scheduled",
+  maintenance_update: "Maintenance update",
+  maintenance_started: "Maintenance started",
+  maintenance_completed: "Maintenance completed",
+  maintenance_cancelled: "Maintenance cancelled",
 };
+
+/**
+ * The status page's audit lines as the Audit log lists billing's: the
+ * account is `incident:<id>` or `maintenance:<id>`, which link to their
+ * pages in sudo.
+ */
+export function statusAuditActions(entries: { id: string; at: string; by: string; action: string; target: string; detail: string }[]): AdminAction[] {
+  return entries.map((e) => ({
+    id: `status-${e.id}`,
+    account: `${e.action.startsWith("maintenance_") ? "maintenance" : "incident"}:${e.target}`,
+    action: e.action,
+    detail: e.detail,
+    by: e.by,
+    createdAt: e.at,
+  }));
+}
+
+/** Billing's lines and the status page's, newest first, one page's worth. */
+export function mergeAudit(a: AdminAction[], b: AdminAction[], page = AUDIT_PAGE): AdminAction[] {
+  return [...a, ...b].sort((x, y) => y.createdAt.localeCompare(x.createdAt)).slice(0, page);
+}
 
 export function actionLabel(action: string): string {
   return AUDIT_ACTIONS[action] ?? action.replace(/_/g, " ").replace(/^./, (char) => char.toUpperCase());

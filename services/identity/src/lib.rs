@@ -30,7 +30,7 @@ use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::Deserialize;
 use tokens::TOKEN_PREFIX;
 use worker::wasm_bindgen::JsValue;
-use worker::{Context, D1Database, Env, Request, Response, Result, event};
+use worker::{Context, D1Database, Env, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
 
 const SESSION_TTL_SECONDS: u64 = 30 * 24 * 60 * 60;
 const VERIFY_TTL_SECONDS: u64 = 24 * 60 * 60;
@@ -438,7 +438,10 @@ impl Identity {
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
         // The account exists either way; the email can be sent again later.
-        if let Err(error) = self.send_verification(&user, &email).await {
+        // An invite sent to this address confirmed it already (invites.rs).
+        if !user.verified
+            && let Err(error) = self.send_verification(&user, &email).await
+        {
             worker::console_error!("verification email failed: {error}");
         }
         self.start_session(user).await
@@ -617,6 +620,17 @@ impl Identity {
     }
 }
 
+/// Every 15 minutes: staff hear about waitlist requests that arrived while
+/// the last summary's window was still open, so none waits on a later one.
+#[event(scheduled)]
+async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
+    let Ok(db) = env.d1("DB") else { return };
+    let identity = Identity { db, env };
+    if let Err(error) = identity.notify_staff_of_requests().await {
+        worker::console_error!("waitlist summary: {error}");
+    }
+}
+
 #[event(fetch)]
 async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response> {
     let Some(method) = rpc_method(&request) else {
@@ -778,6 +792,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_workspace" => reply(&identity.admin_workspace(args(body)?).await?),
         "admin_waitlist" => reply(&identity.admin_waitlist(args(body)?).await?),
         "admin_decide_waitlist" => reply(&identity.admin_decide_waitlist(args(body)?).await?),
+        "admin_waitlist_pending" => reply(&identity.admin_waitlist_pending().await?),
         "admin_invites" => reply(&identity.admin_invites(args(body)?).await?),
         "admin_revoke_invite" => reply(&identity.admin_revoke_invite(args(body)?).await?),
         "admin_mint_invite" => reply(&identity.admin_mint_invite(args(body)?).await?),

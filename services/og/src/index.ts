@@ -3,12 +3,14 @@
  * result, at `https://og.g1t.sh`.
  *
  *   GET /image?path=/<any page of g1t.sh>[&v=<version>]
- *   GET /docs?title=&section=&description=
+ *   GET /docs?title=&section=&description=[&v=<version>]
  *
  * A page's card is looked up as an anonymous visitor would see the page,
  * so nothing private ever reaches one (see `resolve.ts`). Cards are kept in
- * the edge cache by their full address; the site adds `v`, which changes
- * when what a card shows does, so an edited title gets a new card.
+ * the edge cache under the render version and the parameters that change
+ * them (see `cache.ts`). The site and the docs add `v`, which changes when
+ * the design does (`OG_RENDER_VERSION` in packages/contracts) or when what
+ * a card shows does, so a new logo or an edited title gets a new address.
  *
  * Also the `Screenshots` entrypoint, reached only through service
  * bindings: a screenshot of each project's production, per deploy (see
@@ -95,8 +97,8 @@ const CACHE_CONTROL = "public, max-age=3600, s-maxage=86400";
 /** When a service could not be reached: soon tried again. */
 const BRIEF_CACHE_CONTROL = "public, max-age=60";
 
-/** The static card, for when rendering itself fails. */
-const FALLBACK = "https://g1t.sh/brand/g1t-og.png";
+/** When even the brand card cannot be drawn: never kept, so the next request tries again. */
+const NO_STORE = "no-store";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -125,16 +127,25 @@ export default {
     }
 
     let png: Uint8Array;
+    let fellBack = false;
     try {
       png = await cardPng(card, ASSETS);
     } catch (error) {
       console.error("og: rendering failed", url.pathname, error);
-      // An icon it could not draw is left out rather than losing the card.
-      if ((card.kind !== "workspace" && card.kind !== "person") || !card.icon) return Response.redirect(FALLBACK, 302);
       try {
-        png = await cardPng({ ...card, icon: undefined }, ASSETS);
-      } catch {
-        return Response.redirect(FALLBACK, 302);
+        // An icon it could not draw is left out rather than losing the card;
+        // anything else gets the brand card, kept only briefly.
+        if ((card.kind === "workspace" || card.kind === "person") && card.icon) {
+          png = await cardPng({ ...card, icon: undefined }, ASSETS);
+        } else if (card.kind !== "brand") {
+          png = await cardPng(BRAND, ASSETS);
+          fellBack = true;
+        } else {
+          throw error;
+        }
+      } catch (again) {
+        console.error("og: the brand card could not be drawn either", again);
+        return new Response("The card could not be drawn", { status: 503, headers: { "cache-control": NO_STORE } });
       }
     }
     const response = new Response(png, {
@@ -145,6 +156,7 @@ export default {
         "x-content-type-options": "nosniff",
       },
     });
+    if (fellBack) return withCacheControl(response, true);
     if (card.kind === "brand") {
       ctx.waitUntil(cache.put(brandKey, response.clone()));
     } else {

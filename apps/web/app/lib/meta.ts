@@ -8,6 +8,7 @@
  * returns `page(args, …)` rather than a bare title.
  */
 import type { MetaDescriptor } from "react-router";
+import { ogVersion } from "@g1t/contracts/og";
 
 export const SITE = "https://g1t.sh";
 export const OG = "https://og.g1t.sh";
@@ -78,11 +79,16 @@ export function excerpt(markdown: string | null | undefined, max = 160): string 
   return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
 }
 
-/** The address of a page's card. */
+/**
+ * The address of a page's card. Its `v` always carries the cards' render
+ * version, so a new card design is a new address for og's cache, browsers
+ * and every site that has fetched the old card; then, when the page has one,
+ * a fingerprint of what the card shows.
+ */
 export function cardUrl(pathname: string, version?: unknown): string {
   const url = new URL("/image", OG);
   url.searchParams.set("path", pathname);
-  if (version !== undefined) url.searchParams.set("v", fingerprint(version));
+  url.searchParams.set("v", ogVersion(version === undefined ? undefined : fingerprint(version)));
   return url.toString();
 }
 

@@ -20,6 +20,7 @@ a private network, not yet for an installation on the open internet.
 | Repositories: create, push and clone over HTTP, browse code, commits | Works |
 | Issues, comments, labels | Works |
 | Site search | Works |
+| A status page of your own | Works, at `http://localhost:8788` ([below](#the-status-page)) |
 | Webhooks, integrations | Run, but scheduled retries do not (see below) |
 | Sign in with GitHub, import from GitHub | Off until you register a GitHub App of your own ([below](#sign-in-with-github-and-import-from-github)). Mirrors sync with **Sync now**: GitHub's webhook needs the REST API. |
 | g1t agents, plans, reviews by agents | Off |
@@ -33,7 +34,7 @@ a private network, not yet for an installation on the open internet.
 
 - Docker with Compose v2 (`docker compose version`).
 - About 4 GB of free disk space for the images.
-- Ports 8787 and 8025 free on your machine.
+- Ports 8787, 8788 and 8025 free on your machine.
 
 ## Start g1t
 
@@ -100,7 +101,27 @@ Set these in the environment, or in a `.env` file next to
 | `MAIL_URL` | `http://mailpit:8025` | The Mailpit server g1t sends mail through |
 | `REGISTRATION_MODE` | `open` | `open`: anyone can make an account. `invite`: every new account needs an [invite](/guides/authentication/#invites), as on g1t.sh. |
 | `INVITES_PER_USER` | `5` | How many invites each person can have out, while `REGISTRATION_MODE` is `invite` |
+| `WAITLIST_NOTIFY_EMAIL` | (none) | Where a summary of new access requests goes, at most every 15 minutes. Empty sends none; requests still wait for you in the database. |
+| `STATUS_PORT` | `8788` | The port the status page is published on |
+| `STATUS_PROBE_REPO` | (none) | A public repository, `workspace/repo`, whose branches the status page lists every minute as a clone would. Empty: git is not checked. |
 | `INVITE_STAFF_WORKSPACES` | (none) | Workspace slugs, comma separated, whose owners can make invites without a limit. Set it to your own workspace before you switch to `invite`, so someone can invite the first people. |
+
+## The status page
+
+The `status` service runs the same status page as
+[status.g1t.sh](/guides/status/), in a process of its own, so it keeps
+answering when the site does not. Open
+[http://localhost:8788](http://localhost:8788).
+
+Every minute it loads the site's sign-in page from inside Compose, and,
+with `STATUS_PROBE_REPO` set, lists that repository's branches. It keeps
+90 days of history on its own volume, `g1t-status`. Parts an installation
+of your own does not run (the API, MCP, docs, deployments, the model
+proxy and billing) are left off its page.
+
+The links to **Status** in the site's footer and account menu still point
+to status.g1t.sh; pointing them at your own status page is not a setting
+yet.
 
 To deliver email to real inboxes, have Mailpit relay it through your SMTP
 server. The settings are in `docker-compose.yml`, under `mailpit`.

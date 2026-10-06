@@ -185,6 +185,8 @@ function selfHosted(service) {
     config.vars.REGISTRATION_MODE = process.env.REGISTRATION_MODE || "open";
     config.vars.INVITE_STAFF_WORKSPACES = process.env.INVITE_STAFF_WORKSPACES ?? "";
     if (process.env.INVITES_PER_USER) config.vars.INVITES_PER_USER = process.env.INVITES_PER_USER;
+    // Access requests are summarised to your own address, not g1t.sh's.
+    config.vars.WAITLIST_NOTIFY_EMAIL = process.env.WAITLIST_NOTIFY_EMAIL ?? "";
   }
   // Nothing to deploy to: deployments are off (no Cloudflare API token).
   if (hosted.name === "g1t-deployments") delete config.vars.CUSTOM_HOSTNAMES_ZONE_ID;
@@ -242,4 +244,47 @@ for (const [service, feature] of Object.entries(OFF)) {
 
 // The order Wrangler takes them in: the site first, as the one that serves.
 writeFileSync(join(out, "workers.txt"), `${files.map((file) => relative(out, file)).join("\n")}\n`);
+
+// The status page runs in a workerd of its own (status.sh, the `status`
+// service in docker-compose.yml), so it stays up when the site does not:
+// not in workers.txt. It checks the site from inside Compose
+// (STATUS_CHECK_URL) and links to it at PUBLIC_URL. Parts this
+// installation does not run (the API, MCP, docs, g1t.page, the model
+// proxy, billing) are left off its page; a public repository of yours in
+// STATUS_PROBE_REPO adds the git check.
+{
+  const hosted = parseJsonc(readFileSync(join(root, "apps/status/wrangler.jsonc"), "utf8"));
+  const db = hosted.d1_databases[0];
+  write("g1t-status", {
+    name: hosted.name,
+    main: rel(join("apps/status", hosted.main)),
+    compatibility_date: hosted.compatibility_date,
+    rules: hosted.rules,
+    triggers: hosted.triggers,
+    d1_databases: [
+      {
+        binding: db.binding,
+        database_name: db.database_name,
+        database_id: db.database_id,
+        migrations_dir: rel(join("apps/status", db.migrations_dir)),
+      },
+    ],
+    vars: {
+      SITE_URL: (process.env.STATUS_CHECK_URL ?? "http://g1t:8787").replace(/\/$/, ""),
+      PUBLIC_SITE_URL: PUBLIC_URL,
+      API_URL: "",
+      MCP_URL: "",
+      DOCS_URL: "",
+      PAGES_URL: "",
+      MODELS_URL: "",
+      PROBE_REPO: process.env.STATUS_PROBE_REPO ?? "",
+      SUPPORT_URL: `${PUBLIC_URL}/support`,
+      OG_IMAGE: "",
+      // Its own address, for links made outside a request. No email
+      // binding here: subscribing by email is off, the feeds work.
+      STATUS_URL: `http://localhost:${process.env.STATUS_PORT ?? "8788"}`,
+      STATUS_ALERT_EMAIL: "",
+    },
+  });
+}
 console.log(`Wrote ${files.length} configs to ${out}`);

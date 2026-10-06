@@ -44,7 +44,7 @@ function InviteRow({ invite, origin }: { invite: Invite; origin: string }) {
 }
 
 /**
- * Account settings → Invites: what is left, making one (for anyone with the
+ * Settings → Invites (`/settings/invites`): what is left, making one (for anyone with the
  * link, or for one address), copying links, and revoking.
  */
 export function InvitesSection({
@@ -61,8 +61,7 @@ export function InvitesSection({
   if (!overview) {
     return (
       <section id="invites" className="scroll-mt-20">
-        <h2 className="font-medium">Invites</h2>
-        <p className="mt-1 text-sm text-muted">Confirm your email address to invite people to g1t.</p>
+        <p className="text-sm text-muted">Confirm your email address to invite people to g1t.</p>
       </section>
     );
   }
@@ -70,8 +69,7 @@ export function InvitesSection({
   const out = allowance.remaining === 0 && workspaces.every((workspace) => workspace.allowance.remaining === 0);
   return (
     <section id="invites" className="scroll-mt-20">
-      <h2 className="font-medium">Invites</h2>
-      <p className="mt-1 text-sm text-muted">
+      <p className="text-sm text-muted">
         {overview.mode === "invite"
           ? "g1t is invite-only for now. Each invite lets one person make an account. "
           : "Anyone can make an account, but an invite still says who sent it. "}

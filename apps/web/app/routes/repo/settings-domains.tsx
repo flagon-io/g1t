@@ -71,6 +71,11 @@ const STATUS: Record<DomainStatus, { label: string; tone: string; live?: boolean
   removing: { label: "Removing", tone: "text-faint border-line" },
 };
 
+/** A custom domain's monthly price, to the cent: `$0.12`. */
+function domainPrice(micros: number | undefined): string {
+  return `$${((micros ?? 120_000) / 1_000_000).toFixed(2)}`;
+}
+
 function StatusBadge({ status }: { status: DomainStatus }) {
   const { label, tone, live } = STATUS[status];
   return (
@@ -90,7 +95,7 @@ function twinOf(input: string): string | null {
 }
 
 export default function DomainSettings({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { settings, domains, target, available, notice, included, used } = loaderData;
+  const { settings, domains, target, available, notice, monthlyMicros, used } = loaderData;
   const busy = useNavigation().state === "submitting";
   const base = `/${params.owner}/${params.repo}`;
   const [hostname, setHostname] = useState("");
@@ -186,8 +191,8 @@ export default function DomainSettings({ loaderData, actionData, params }: Route
           description="Most sites answer at both example.com and www.example.com; one serves the app and the other sends visitors to it, path and query kept."
         />
         <p className="mt-4 text-xs text-faint">
-          The g1t plan includes {included} custom domains across the workspace ({used} in use). Each one past that is
-          charged by the month at cost plus the margin.
+          Each custom domain is {domainPrice(monthlyMicros)} a month on the g1t plan, its cost plus 20%, from the included usage
+          first. As many as you like: {used} in use across the workspace.
         </p>
       </Form>
 

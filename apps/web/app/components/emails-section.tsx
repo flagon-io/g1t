@@ -94,19 +94,13 @@ export function EmailsSection({
   const full = data.emails.length >= data.limit;
   return (
     <section id="emails" className="scroll-mt-20">
-      <h2 className="font-medium">Emails</h2>
-      <p className="mt-1 text-sm text-muted">
-        Your primary address gets account mail and password resets. Any confirmed address signs you in and can
-        reset your password, and commits that carry it are shown as yours.
-      </p>
-
       {actionData?.reauth && (
-        <div className="mt-4">
+        <div className="mb-4">
           <ConfirmItIsYou pending={actionData.reauth} hasPassword={hasPassword} />
         </div>
       )}
 
-      <ul className="mt-4 divide-y divide-line rounded-md border border-line">
+      <ul className="divide-y divide-line rounded-md border border-line">
         {data.emails.map((email) => {
           const can = addressActions(email, data.emails);
           return (
@@ -162,7 +156,7 @@ export function EmailsSection({
       )}
 
       <div className="mt-8">
-        <h3 className="text-sm font-medium">Backup address</h3>
+        <h2 className="font-medium">Backup address</h2>
         <p className="mt-1 text-sm text-muted">
           Security notices, such as a new address or a changed password, go to your primary and to this address.
         </p>
@@ -194,7 +188,7 @@ export function EmailsSection({
       </div>
 
       <div className="mt-8">
-        <h3 className="text-sm font-medium">Privacy</h3>
+        <h2 className="font-medium">Privacy</h2>
         <Form method="post" className="mt-3 space-y-3">
           <input type="hidden" name="intent" value="email-privacy" />
           <SwitchCard name="private" defaultChecked={data.privateEmail} title="Keep my email address private">
@@ -223,15 +217,10 @@ export function EmailsSection({
 export function SecurityLogSection({ log }: { log: SecurityEvent[] }) {
   return (
     <section id="security-log" className="scroll-mt-20">
-      <h2 className="font-medium">Security log</h2>
-      <p className="mt-1 text-sm text-muted">
-        Changes to your addresses and password, by you or by g1t staff. If you do not recognise one, reset your
-        password.
-      </p>
       {log.length === 0 ? (
-        <p className="mt-4 text-sm text-faint">Nothing yet.</p>
+        <p className="text-sm text-faint">Nothing yet.</p>
       ) : (
-        <ul className="mt-4 divide-y divide-line rounded-md border border-line">
+        <ul className="divide-y divide-line rounded-md border border-line">
           {log.map((event, at) => (
             <li key={`${event.createdAt}:${at}`} className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
               <p className="min-w-0 grow truncate text-sm">

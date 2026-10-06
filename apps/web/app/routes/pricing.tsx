@@ -1,6 +1,6 @@
 import { ArrowUpRight } from "lucide-react";
 
-import { DEPLOYMENTS_ALLOWANCE, type FeaturePlan, type FreeTier, MICROS_PER_DOLLAR, type Price } from "@g1t/contracts";
+import { type FeaturePlan, type FreeTier, MICROS_PER_DOLLAR, type Price } from "@g1t/contracts";
 
 import type { Route } from "./+types/pricing";
 import { wholeDollars } from "../lib/billing";
@@ -51,28 +51,23 @@ const DEFAULT_FREE: Required<FreeTier> = {
   freePrivateStorageBytes: 1_000_000_000,
   auditRetentionDays: 90,
   minChargeMicros: 5_000_000,
-  gitOperationsIncluded: 10_000,
-  gitOperationsFreeCap: 50_000,
-  planPrivateStorageBytes: 10_000_000_000,
+  gitOperationsIncluded: 50_000,
   paidStartCeilingMicros: 100_000_000,
   overageForgiveCostMicros: 50_000_000,
 };
-
-const A = DEPLOYMENTS_ALLOWANCE;
-const DEPLOYMENTS_LINE = `${A.apps} apps, ${A.requests / 1e6} million requests, ${A.cpuMs / 1e6} million CPU milliseconds, ${A.customDomains} custom domains and ${A.buildSeconds / 60} build minutes a month`;
 
 const DEFAULT_PLAN: FeaturePlan = {
   feature: "plan",
   title: "g1t",
   monthlyCents: 2000,
   includes: [
-    "$10 of usage each month at cost plus 20%, used first. Unused included usage does not roll over.",
+    "$10 of usage each month at cost plus 20%, used first",
+    "Everyone in the workspace at one price, never per person",
+    "Unlimited projects, previews and repositories",
     "Agents, checks, workflows, the merge queue, deployments and semantic search",
-    `Deployments: ${DEPLOYMENTS_LINE}`,
-    "10 GB of private repository storage",
-    "Unlimited members, at one price for the workspace: never per person",
+    "Usage past $10 is charged at cost plus 20%, up to your spend limit",
   ],
-  overage: "Usage past what is included is charged at cost plus 20%.",
+  overage: "Everything is metered from the first unit at what it costs g1t plus 20%. Unused included usage does not roll over.",
 };
 
 /** The ways to reach g1t about an enterprise account. */
@@ -114,9 +109,14 @@ function rows(tier: Required<FreeTier>): Row[] {
       plan: "From the plan's included usage, then at cost plus 20%",
     },
     {
+      what: "Projects and previews",
+      free: "Not available: deployments run on g1t's machines",
+      plan: "Unlimited, and never charged for. An app no one visits costs nothing.",
+    },
+    {
       what: "Deployments",
       free: "Not available",
-      plan: DEPLOYMENTS_LINE.replace(/^./, (c) => c.toUpperCase()) + ", then at cost plus 20%",
+      plan: "Builds by the second, app requests, CPU time and custom domains, each from the first at cost plus 20%",
     },
     {
       what: "Semantic search",
@@ -126,13 +126,13 @@ function rows(tier: Required<FreeTier>): Row[] {
     {
       what: "Private storage",
       free: `${gigabytes(tier.freePrivateStorageBytes)}, never charged. Past it, pushes to private repositories stop until you make room or start the plan.`,
-      plan: `${gigabytes(tier.planPrivateStorageBytes)}, then at cost plus 20%`,
+      plan: `${gigabytes(tier.freePrivateStorageBytes)} free, then at cost plus 20%. Pushes never stop.`,
       note: "Public repositories are never charged for storage.",
     },
     {
       what: "Git operations",
-      free: `${count(tier.gitOperationsIncluded)} a month, and never charged. Past ${count(tier.gitOperationsFreeCap)} in a month, slowed to 60 an hour until the month turns.`,
-      plan: `${count(tier.gitOperationsIncluded)} a month, then at cost plus 20%`,
+      free: `${count(tier.gitOperationsIncluded)} a month, never charged. Past it, slowed to 60 an hour until the month turns.`,
+      plan: `${count(tier.gitOperationsIncluded)} a month free, then at cost plus 20%. Never slowed.`,
       note: "Clones, fetches and pushes through g1t.",
     },
     {
@@ -146,7 +146,7 @@ function rows(tier: Required<FreeTier>): Row[] {
     {
       what: "Usage past what is included",
       free: "Not possible: a free workspace never runs up a bill",
-      plan: "Opt in, up to a spend limit you set",
+      plan: "Charged at cost plus 20%, up to a spend limit you set. No quotas: only your limit stops anything.",
     },
   ];
 }
@@ -202,10 +202,11 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             </p>
           </div>
           <div>
-            <p className="font-medium">Included usage resets each month</p>
+            <p className="font-medium">No quotas</p>
             <p className="mt-1 text-muted">
-              Unused included usage does not roll over: it starts again at $10 when the month turns. Past it, usage is
-              charged at cost plus 20%.
+              No count of projects, previews, builds, requests or git operations ever stops a workspace on the plan. Past
+              the $10, usage is charged at cost plus 20%, and only your spend limit stops it. Unused included usage does
+              not roll over.
             </p>
           </div>
         </div>
@@ -258,7 +259,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
       </div>
       <p className="mt-3 text-sm text-muted">
         Git operations cost g1t money too: Cloudflare charges g1t $0.15 per 1,000. {count(tier.gitOperationsIncluded)} a
-        month is about twenty times what an active workspace uses; an agent run takes two to four.
+        month is far more than an active workspace uses; an agent run takes two to four.
       </p>
 
       <h2 className="mt-14 text-xl font-semibold tracking-tight">No card, no compute</h2>
@@ -410,7 +411,16 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
               <td className="hidden px-4 py-3 tabular-nums sm:table-cell">{book?.modelMarginPercent ?? 20}%</td>
               <td className="px-4 py-3 text-muted">Cost + {book?.modelMarginPercent ?? 20}%</td>
             </tr>
-            {(book?.prices ?? []).map((price) => (
+            <tr>
+              <td className="px-4 py-3">
+                <p className="font-medium">Projects, previews and apps</p>
+                <p className="text-xs text-faint">An app costs only the requests and CPU it answers with</p>
+              </td>
+              <td className="px-4 py-3 text-muted">Next to nothing</td>
+              <td className="hidden px-4 py-3 tabular-nums sm:table-cell">—</td>
+              <td className="px-4 py-3 text-muted">Not charged</td>
+            </tr>
+            {(book?.prices ?? []).filter((price) => price.meter !== "app_month").map((price) => (
               <tr key={price.meter}>
                 <td className="px-4 py-3">
                   <p className="font-medium">{price.title}</p>

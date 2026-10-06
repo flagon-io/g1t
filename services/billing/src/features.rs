@@ -1,7 +1,12 @@
 //! The g1t plan: one monthly price per workspace, never per person, that
-//! includes usage, private storage and deployments; usage past what it
-//! includes is charged at cost plus the margin. None of it is free,
-//! whatever `FREE_WHILE_BUILDING` says.
+//! includes $10 of usage. Everything that costs g1t money is metered from
+//! the first unit at cost plus the margin and drawn from that $10 first;
+//! past it, it is charged, up to the workspace's spend limit. There are no
+//! per-feature quotas: no count of apps, build minutes, requests or
+//! domains ever stops a workspace on the plan. Only its spend limit does
+//! (and g1t's protections against abuse). Projects, previews and
+//! repositories cost g1t next to nothing and are not metered. None of it is
+//! free, whatever `FREE_WHILE_BUILDING` says.
 //!
 //! Deployments were once a plan of their own. They come with the g1t plan
 //! now: `has_feature(deployments)` answers whether the workspace has the
@@ -9,7 +14,7 @@
 //! its period ends. Billing sets each one to end then, once
 //! (`retire_deployments_plans`), so no one pays for both.
 
-use g1t_contracts::billing::deployments_allowance as allowance;
+use g1t_contracts::billing::deployment_costs as costs;
 use g1t_contracts::billing::*;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, Role};
@@ -108,34 +113,30 @@ impl Billing {
             monthly_cents: p.plan_monthly_cents,
             includes: vec![
                 format!(
-                    "{} of usage each month at cost plus {}%, used first. Unused usage does not roll over.",
+                    "{} of usage each month at cost plus {}%, used first",
                     dollars(p.plan_included_micros),
                     self.margin_percent
                 ),
-                "Everyone in the workspace, at one price: never per person".to_owned(),
-                "Agents, checks, workflows, the merge queue and semantic search, on demand past the included usage, up to your spend limit".to_owned(),
+                "Everyone in the workspace at one price, never per person".to_owned(),
+                "Unlimited projects, previews and repositories".to_owned(),
+                "Agents, checks, workflows, the merge queue, deployments and semantic search".to_owned(),
                 format!(
-                    "Deployments: {} apps, {} build minutes, {} million requests, {} million CPU milliseconds and {} custom domains a month",
-                    allowance::APPS,
-                    p.build_seconds / 60,
-                    allowance::REQUESTS / 1_000_000,
-                    allowance::CPU_MS / 1_000_000,
-                    allowance::CUSTOM_DOMAINS,
-                ),
-                format!("{} of private repository storage, rather than {}", bytes(p.plan_storage_bytes), bytes(p.free_storage_bytes)),
-                format!(
-                    "The other {} of the price pays for running g1t, the free forge for everyone, and the people building it",
-                    dollars(i64::from(p.plan_monthly_cents) * 10_000 - p.plan_included_micros)
+                    "Usage past {} is charged at cost plus {}%, up to your spend limit",
+                    dollars(p.plan_included_micros),
+                    self.margin_percent
                 ),
             ],
             overage: format!(
-                "Usage past what is included is charged at cost plus {}%: sandbox time by the second, models at what the provider charged, and for deployments {} per build minute, {} per extra app a month, {} per million requests, {} per million CPU milliseconds and {} per extra custom domain a month.",
+                "Everything is metered from the first unit at what it costs g1t plus {}%: sandbox time and deploy builds by the second ({} a build minute), models at what the provider charged, {} per million app requests, {} per million CPU milliseconds, {} a month per custom domain, private storage past the free {} at {} per GB-month, and git operations past the free {} a month at {} per 1,000. Unused included usage does not roll over.",
                 self.margin_percent,
-                price(allowance::MICROS_PER_BUILD_SECOND * 60),
-                price(allowance::MICROS_PER_APP_MONTH),
-                price(allowance::MICROS_PER_MILLION_REQUESTS),
-                price(allowance::MICROS_PER_MILLION_CPU_MS),
-                price(allowance::MICROS_PER_DOMAIN_MONTH),
+                price(costs::MICROS_PER_BUILD_SECOND * 60),
+                price(costs::MICROS_PER_MILLION_REQUESTS),
+                price(costs::MICROS_PER_MILLION_CPU_MS),
+                price(costs::MICROS_PER_DOMAIN_MONTH),
+                bytes(p.free_storage_bytes),
+                price(crate::storage::STORAGE_MICROS_PER_GB_MONTH),
+                thousands(p.git_included),
+                price(crate::storage::GIT_MICROS_PER_THOUSAND),
             ),
         }
     }
@@ -538,24 +539,15 @@ impl Billing {
         let timestamp = rfc3339(now_ms());
         let month = crate::credits::month_of(&timestamp);
         let mut description = a.description.clone();
-        // A build: the plan's build time this month pays for what it can,
-        // and the rest is priced at the price book's build second, which the
-        // keeper keeps at what Cloudflare bills, rather than at what the
-        // caller worked out.
+        // A build: every second is metered, at the price book's build
+        // second, which the keeper keeps at what Cloudflare bills, rather
+        // than at what the caller worked out. The month's build time is
+        // tallied for the Billing page.
         let cost_micros = match a.build_seconds.filter(|s| *s > 0 && a.feature == Feature::Deployments) {
             Some(seconds) => {
+                self.tally("build_seconds", &workspace, &month, seconds.into()).await?;
                 let measured = self.price("build_second").await?.map(|(cost, _)| (f64::from(seconds) * cost).ceil() as i64);
-                let cost_micros = measured.unwrap_or(a.cost_micros);
-                let included = self
-                    .draw_allowance("build_seconds", &workspace, &month, seconds.into(), self.plans.build_seconds.into())
-                    .await?;
-                if included > 0 {
-                    description.push_str(&format!(
-                        ", {} of it included in the plan",
-                        if included == i64::from(seconds) { "all".to_owned() } else { format!("{included} s") }
-                    ));
-                }
-                billable_build_cost(cost_micros, seconds, included)
+                measured.unwrap_or(a.cost_micros)
             }
             None => a.cost_micros,
         };
@@ -583,14 +575,17 @@ impl Billing {
     }
 }
 
-/// What of a build's cost is charged when `included` of its `seconds` were
-/// paid for by the plan: the rest, in proportion, rounded up.
-pub(crate) fn billable_build_cost(cost_micros: i64, seconds: u32, included: i64) -> i64 {
-    if seconds == 0 {
-        return cost_micros;
+/// `50,000`: a count as the plan reads it.
+pub(crate) fn thousands(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
     }
-    let billable = (i64::from(seconds) - included.max(0)).max(0);
-    (cost_micros as f64 * billable as f64 / f64::from(seconds)).ceil() as i64
+    out
 }
 
 #[cfg(test)]
@@ -598,18 +593,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_plan_pays_for_its_build_minutes_and_the_rest_is_charged() {
-        // A 5-minute build at 15 millionths a second costs 4,500.
-        assert_eq!(billable_build_cost(4_500, 300, 300), 0);
-        assert_eq!(billable_build_cost(4_500, 300, 0), 4_500);
-        // The allowance ran out a minute into it: four minutes are charged.
-        assert_eq!(billable_build_cost(4_500, 300, 60), 3_600);
-        // Then at cost plus 20%.
-        assert_eq!(crate::credits::with_margin(3_600, 20), 4_320);
-        // 200 minutes a month cost g1t about $0.18.
-        let month = crate::credits::Config::default().build_seconds;
-        assert_eq!(month, 12_000);
-        assert_eq!(i64::from(month) * allowance::MICROS_PER_BUILD_SECOND, 180_000);
+    fn every_build_second_is_metered_at_cost_plus_the_margin() {
+        // A 5-minute build at 15 millionths a second costs g1t 4,500, and
+        // is charged at cost plus 20%, from the first second: there are no
+        // included build minutes, only the plan's included usage.
+        let cost = 300 * costs::MICROS_PER_BUILD_SECOND;
+        assert_eq!(cost, 4_500);
+        assert_eq!(crate::credits::with_margin(cost, 20), 5_400);
+    }
+
+    #[test]
+    fn counts_read_with_thousands_separators() {
+        assert_eq!(thousands(0), "0");
+        assert_eq!(thousands(999), "999");
+        assert_eq!(thousands(50_000), "50,000");
+        assert_eq!(thousands(1_234_567), "1,234,567");
     }
 
     #[test]

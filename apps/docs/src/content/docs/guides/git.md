@@ -29,7 +29,7 @@ git remote set-url origin https://g1t.sh/<new-workspace>/<repo>.git
 
 Pushing, and reading private repositories, needs credentials. Use your
 username, and as the password either your account password or an
-[access token](https://g1t.sh/settings). Tokens are recommended: they can be revoked
+[access token](https://g1t.sh/settings/tokens). Tokens are recommended: they can be revoked
 individually and they also work for the API.
 
 To avoid typing it each time, let git store it:
@@ -60,12 +60,14 @@ status 404:
 
 | You are | The page says |
 | --- | --- |
-| Signed out | **Sign in to see this project**: it may be private, or it may not exist. Signing in brings you back to the same address. |
-| Signed in | **This project doesn't exist, or you don't have access to it**, which account you are signed in as, and a link to switch account. If you should have access, ask someone with the Admin role on it to add you. |
+| Signed out | **Nothing here**: this page doesn't exist, or it's private; sign in if it's yours. **Sign in** brings you back to the same address. |
+| Signed in | **Nothing here**: this page doesn't exist, or you don't have access to it, with which account you are signed in as and a link to switch account. If you should have access, ask someone with the Admin role on it to add you. |
 
-Issues, pull requests and workspace pages work the same way. A profile
-that does not exist says **No one goes by that name**, since profiles are
-public.
+Issues, pull requests and workspace pages work the same way. The sidebar
+does not open the project or workspace the address names, so nothing on
+the page hints at whether it exists; a missing file, commit or issue in a
+project you can see keeps that project's sidebar. A profile that does not
+exist says **No one on g1t goes by that name**, since profiles are public.
 
 ## Browsing without an account
 
@@ -131,5 +133,6 @@ fetch and push everywhere SSH would.
 Why: git over SSH needs raw TCP connections on port 22, and g1t runs
 entirely on Cloudflare's network. Accepting inbound TCP traffic directly
 into Workers is in a beta from Cloudflare that g1t has applied for and is
-waiting on. SSH keys can already be added under **Settings → SSH keys**,
+waiting on. SSH keys can already be added under
+[Settings → SSH keys](https://g1t.sh/settings/keys),
 and will be used once SSH is on.

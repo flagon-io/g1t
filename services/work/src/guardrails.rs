@@ -192,14 +192,41 @@ impl Work {
     /// What a run in `repo` gets. The runner is trusted: it names the
     /// repository it is starting a sandbox in.
     pub(crate) async fn run_guardrails(&self, a: RunGuardrailsArgs) -> Result<Outcome<Guardrails>> {
-        let workspace = a.repo.namespace.to_lowercase();
-        let repo = match self.repo(&a.repo, &member_of_service(&workspace)).await? {
+        let path = self.project_path(&a).await?;
+        let workspace = path.namespace.to_lowercase();
+        let repo = match self.repo(&path, &member_of_service(&workspace)).await? {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
         let level = self.guardrail_level("workspace", &workspace).await?;
         let project = self.guardrail_level("project", &repo.id).await?;
         Ok(Outcome::Ok(Guardrails::merge(&level, Some(&project))))
+    }
+
+    /// The project a run's guardrails come from, where it is now. By id
+    /// when the runner has it, so a repository renamed or transferred
+    /// since is still found; a pull request's working copy stands for the
+    /// repository the pull request is to (a preview built from it gets
+    /// that project's guardrails, not the `pulls` namespace's). Otherwise
+    /// the path as given.
+    async fn project_path(&self, a: &RunGuardrailsArgs) -> Result<RepoPath> {
+        let id = match (&a.repo_id, working_copy_of(&a.repo)) {
+            (Some(id), _) => Some(id.clone()),
+            (None, Some(pull_id)) => {
+                self.db
+                    .prepare("SELECT repo_id AS value FROM pulls WHERE id = ?1 AND fork_name = ?1")
+                    .bind(&[pull_id.into()])?
+                    .first::<String>(Some("value"))
+                    .await?
+            }
+            (None, None) => None,
+        };
+        let Some(id) = id else {
+            return Ok(a.repo.clone());
+        };
+        let current: Option<RepoPath> =
+            g1t_kit::call(&self.repos, "path_by_id", &g1t_contracts::repos::PathByIdArgs { id }).await?;
+        Ok(current.unwrap_or_else(|| a.repo.clone()))
     }
 
     /// Ends a run that reached a cap of its guardrails, as stopped, and
@@ -270,6 +297,16 @@ impl Work {
     }
 }
 
+/// The pull request id of a pull request's working copy
+/// (`pulls/<pull id>`, made by repos `fork_for_pull`), if `path` is one.
+fn working_copy_of(path: &RepoPath) -> Option<String> {
+    (path.namespace.eq_ignore_ascii_case(WORKING_COPIES) && !path.name.is_empty())
+        .then(|| path.name.to_lowercase())
+}
+
+/// Where repos keeps every pull request's working copy.
+const WORKING_COPIES: &str = "pulls";
+
 /// A principal that can read any repository of `workspace`, for the
 /// runner's lookups.
 fn member_of_service(workspace: &str) -> Viewer {
@@ -286,6 +323,36 @@ fn member_of_service(workspace: &str) -> Viewer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn path(namespace: &str, name: &str) -> RepoPath {
+        RepoPath {
+            namespace: namespace.to_owned(),
+            name: name.to_owned(),
+        }
+    }
+
+    #[test]
+    fn a_working_copy_names_its_pull_request() {
+        assert_eq!(
+            working_copy_of(&path("pulls", "pr_01m45bd1b2e359sayh78w977kv")).as_deref(),
+            Some("pr_01m45bd1b2e359sayh78w977kv")
+        );
+        assert_eq!(working_copy_of(&path("Pulls", "PR_7")).as_deref(), Some("pr_7"));
+        assert_eq!(working_copy_of(&path("flagon-io", "automation-lab")), None);
+        assert_eq!(working_copy_of(&path("pulls", "")), None);
+    }
+
+    #[test]
+    fn run_guardrails_take_an_optional_repo_id() {
+        let old: RunGuardrailsArgs =
+            serde_json::from_str(r#"{"repo":{"namespace":"pulls","name":"pr_1"}}"#).unwrap();
+        assert!(old.repo_id.is_none());
+        let by_id: RunGuardrailsArgs = serde_json::from_str(
+            r#"{"repo":{"namespace":"syntaqx","name":"automation-lab"},"repo_id":"rep_1"}"#,
+        )
+        .unwrap();
+        assert_eq!(by_id.repo_id.as_deref(), Some("rep_1"));
+    }
 
     #[test]
     fn renames_take_two_parameters() {

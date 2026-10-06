@@ -30,6 +30,7 @@ import {
   Server,
   ShieldAlert,
   ShieldCheck,
+  Siren,
   Tags,
   Ticket,
   TrendingUp,
@@ -42,7 +43,7 @@ import {
 import { Link, useLocation } from "react-router";
 
 import { Logo } from "~/components/logo";
-import { NAV, type NavGroup, type NavIcon, type NavItem, holdsCurrent, isCurrent } from "~/lib/nav";
+import { NAV, type NavCounts, type NavGroup, type NavIcon, type NavItem, countFor, holdsCurrent, isCurrent } from "~/lib/nav";
 
 const ICONS: Record<NavIcon, LucideIcon> = {
   overview: LayoutDashboard,
@@ -58,6 +59,7 @@ const ICONS: Record<NavIcon, LucideIcon> = {
   costs: Cloud,
   agents: Bot,
   abuse: ShieldAlert,
+  incidents: Siren,
   inbox: Inbox,
   "view-as": Eye,
   announcements: Megaphone,
@@ -81,6 +83,27 @@ export function NavGlyph({ icon, size = 15, className }: { icon: NavIcon; size?:
   return <Icon size={size} className={className} />;
 }
 
+/** How many are waiting on a page, such as access requests; nothing at zero. */
+function CountPill({ count, label }: { count: number; label: string }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      title={label}
+      className="shrink-0 rounded-full bg-merged/15 px-1.5 py-px text-[0.6875rem] font-semibold text-merged tabular-nums ring-1 ring-merged/30"
+    >
+      {count > 99 ? "99+" : count}
+      <span className="sr-only"> {label}</span>
+    </span>
+  );
+}
+
+const COUNT_LABEL = "waiting";
+
+/** What an item's number counts, for screen readers: incidents are open, not waiting. */
+function countLabel(item: NavItem): string {
+  return item.count === "incidents" ? "open" : COUNT_LABEL;
+}
+
 function SoonPill() {
   return (
     <span className="shrink-0 rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">
@@ -90,7 +113,7 @@ function SoonPill() {
 }
 
 /** A top-level link, with its icon. */
-function TopLink({ item, pathname }: { item: NavItem; pathname: string }) {
+function TopLink({ item, pathname, counts }: { item: NavItem; pathname: string; counts: NavCounts }) {
   const current = isCurrent(item, pathname);
   return (
     <Link
@@ -103,13 +126,14 @@ function TopLink({ item, pathname }: { item: NavItem; pathname: string }) {
     >
       <NavGlyph icon={item.icon} className={`shrink-0 ${current ? "text-merged" : "text-faint group-hover:text-muted"}`} />
       <span className="min-w-0 grow truncate">{item.label}</span>
+      <CountPill count={countFor([item], counts)} label={countLabel(item)} />
       {item.soon && <SoonPill />}
     </Link>
   );
 }
 
 /** A page inside a section: indented, no icon, the current one marked in lavender. */
-function SubLink({ item, pathname }: { item: NavItem; pathname: string }) {
+function SubLink({ item, pathname, counts }: { item: NavItem; pathname: string; counts: NavCounts }) {
   const current = isCurrent(item, pathname);
   return (
     <Link
@@ -125,14 +149,16 @@ function SubLink({ item, pathname }: { item: NavItem; pathname: string }) {
       }`}
     >
       <span className="min-w-0 grow truncate">{item.label}</span>
+      <CountPill count={countFor([item], counts)} label={countLabel(item)} />
       {item.soon && <SoonPill />}
     </Link>
   );
 }
 
 /** A section: one row that folds open to its pages. Open when it holds the current page. */
-function Section({ group, pathname }: { group: NavGroup & { title: string }; pathname: string }) {
+function Section({ group, pathname, counts }: { group: NavGroup & { title: string }; pathname: string; counts: NavCounts }) {
   const current = holdsCurrent(group, pathname);
+  const waiting = countFor(group.items, counts);
   const allSoon = group.items.every((item) => item.soon);
   return (
     <details open={current} className="group/section">
@@ -148,12 +174,18 @@ function Section({ group, pathname }: { group: NavGroup & { title: string }; pat
             <SoonPill />
           </span>
         )}
+        {/* Folded, the section carries its pages' counts; open, the pages do. */}
+        {waiting > 0 && (
+          <span className="group-open/section:hidden">
+            <CountPill count={waiting} label={COUNT_LABEL} />
+          </span>
+        )}
         <ChevronRight size={14} aria-hidden="true" className="shrink-0 text-faint transition-transform duration-150 group-open/section:rotate-90" />
       </summary>
       <ul className="relative mt-px mb-1 space-y-px before:absolute before:top-1 before:bottom-1 before:left-[1.1875rem] before:w-px before:bg-line">
         {group.items.map((item) => (
           <li key={item.to}>
-            <SubLink item={item} pathname={pathname} />
+            <SubLink item={item} pathname={pathname} counts={counts} />
           </li>
         ))}
       </ul>
@@ -161,17 +193,17 @@ function Section({ group, pathname }: { group: NavGroup & { title: string }; pat
   );
 }
 
-function NavTree({ pathname }: { pathname: string }) {
+function NavTree({ pathname, counts }: { pathname: string; counts: NavCounts }) {
   return (
     <div className="space-y-px">
       {NAV.map((group, index) =>
         group.title ? (
-          <Section key={group.title} group={group as NavGroup & { title: string }} pathname={pathname} />
+          <Section key={group.title} group={group as NavGroup & { title: string }} pathname={pathname} counts={counts} />
         ) : (
           <ul key={index} className={`space-y-px ${index === 0 ? "" : "pt-2"} ${index < NAV.length - 1 ? "pb-2" : ""}`}>
             {group.items.map((item) => (
               <li key={item.to}>
-                <TopLink item={item} pathname={pathname} />
+                <TopLink item={item} pathname={pathname} counts={counts} />
               </li>
             ))}
           </ul>
@@ -197,7 +229,7 @@ function SignedIn({ email }: { email: string | null | undefined }) {
 }
 
 /** The sidebar, from `lg` up. */
-export function Sidebar({ email }: { email: string | null | undefined }) {
+export function Sidebar({ email, counts = {} }: { email: string | null | undefined; counts?: NavCounts }) {
   const { pathname } = useLocation();
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-line bg-surface/50 lg:flex">
@@ -207,7 +239,7 @@ export function Sidebar({ email }: { email: string | null | undefined }) {
         </Link>
       </div>
       <nav aria-label="sudo" className="grow overflow-y-auto px-2 pt-2 pb-6">
-        <NavTree pathname={pathname} />
+        <NavTree pathname={pathname} counts={counts} />
       </nav>
       <div className="shrink-0">
         <SignedIn email={email} />
@@ -217,7 +249,7 @@ export function Sidebar({ email }: { email: string | null | undefined }) {
 }
 
 /** The top bar and its menu, below `lg`. */
-export function MobileBar({ email }: { email: string | null | undefined }) {
+export function MobileBar({ email, counts = {} }: { email: string | null | undefined; counts?: NavCounts }) {
   const { pathname } = useLocation();
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/95 backdrop-blur lg:hidden">
@@ -238,7 +270,7 @@ export function MobileBar({ email }: { email: string | null | undefined }) {
           </summary>
           <div className="absolute inset-x-0 top-14 max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-b border-line bg-bg shadow-2xl shadow-black/50">
             <nav aria-label="sudo" className="px-2 pt-3 pb-4">
-              <NavTree pathname={pathname} />
+              <NavTree pathname={pathname} counts={counts} />
             </nav>
             <SignedIn email={email} />
           </div>

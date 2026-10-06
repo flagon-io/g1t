@@ -55,12 +55,10 @@ pub(crate) struct Config {
     /// `MIN_CHARGE_MICROS`: a month's close charges no less; smaller
     /// amounts carry over. Charges at a limit always go through.
     pub min_charge_micros: i64,
-    /// `DEPLOYMENTS_BUILD_SECONDS`: build time the plan includes each month.
-    pub build_seconds: u32,
-    /// `FREE_PRIVATE_STORAGE_BYTES` and `PLAN_PRIVATE_STORAGE_BYTES`:
-    /// private repository storage before it is charged.
+    /// `FREE_PRIVATE_STORAGE_BYTES`: private repository storage that is
+    /// free for every workspace. Past it, the plan pays at cost plus the
+    /// margin; a free workspace's pushes to private repositories stop.
     pub free_storage_bytes: i64,
-    pub plan_storage_bytes: i64,
     /// `AUDIT_RETENTION_DAYS`: the same on every plan.
     pub audit_days: u32,
     /// `RUN_CAP_MICROS` and `ISSUE_CAP_MICROS`: one run's spend cap, and
@@ -77,9 +75,11 @@ pub(crate) struct Config {
     /// `OVERAGE_FORGIVE_COST_MICROS`: the most of an overage's real cost a
     /// one-click goodwill credit covers.
     pub forgive_cost_micros: i64,
-    /// `GIT_OPERATIONS_INCLUDED` and `GIT_OPERATIONS_FREE_CAP`.
+    /// `GIT_OPERATIONS_INCLUDED`: git operations a month that are free for
+    /// every workspace. Past it, the plan pays at cost plus the margin and
+    /// is never slowed; a free workspace is slowed down (the repos
+    /// service's `GIT_OPERATIONS_FREE_CAP`, the same number), never charged.
     pub git_included: u64,
-    pub git_free_cap: u64,
 }
 
 impl Default for Config {
@@ -92,9 +92,7 @@ impl Default for Config {
             trial_workspace_micros: 5_000_000,
             trial_monthly_pool_micros: 100_000_000,
             min_charge_micros: 5_000_000,
-            build_seconds: g1t_contracts::billing::deployments_allowance::BUILD_SECONDS,
             free_storage_bytes: 1_000_000_000,
-            plan_storage_bytes: 10_000_000_000,
             audit_days: 90,
             run_cap_micros: 2_000_000,
             issue_cap_micros: 10_000_000,
@@ -102,8 +100,7 @@ impl Default for Config {
             spike_factor: 5,
             spike_floor_micros: 5_000_000,
             forgive_cost_micros: 50_000_000,
-            git_included: 10_000,
-            git_free_cap: 50_000,
+            git_included: 50_000,
         }
     }
 }
@@ -122,9 +119,7 @@ impl Config {
             trial_workspace_micros: number("TRIAL_WORKSPACE_MICROS", d.trial_workspace_micros),
             trial_monthly_pool_micros: number("TRIAL_MONTHLY_POOL_MICROS", d.trial_monthly_pool_micros),
             min_charge_micros: number("MIN_CHARGE_MICROS", d.min_charge_micros),
-            build_seconds: number("DEPLOYMENTS_BUILD_SECONDS", d.build_seconds.into()) as u32,
             free_storage_bytes: number("FREE_PRIVATE_STORAGE_BYTES", d.free_storage_bytes),
-            plan_storage_bytes: number("PLAN_PRIVATE_STORAGE_BYTES", d.plan_storage_bytes),
             audit_days: number("AUDIT_RETENTION_DAYS", d.audit_days.into()) as u32,
             run_cap_micros: number("RUN_CAP_MICROS", d.run_cap_micros),
             issue_cap_micros: number("ISSUE_CAP_MICROS", d.issue_cap_micros),
@@ -133,7 +128,6 @@ impl Config {
             spike_floor_micros: number("SPIKE_FLOOR_MICROS", d.spike_floor_micros),
             forgive_cost_micros: number("OVERAGE_FORGIVE_COST_MICROS", d.forgive_cost_micros),
             git_included: number("GIT_OPERATIONS_INCLUDED", d.git_included as i64) as u64,
-            git_free_cap: number("GIT_OPERATIONS_FREE_CAP", d.git_free_cap as i64) as u64,
         }
     }
 }
@@ -297,6 +291,23 @@ impl Billing {
             .await?
             .and_then(|u| u.used)
             .unwrap_or(0))
+    }
+
+    /// Adds `amount` to a monthly count with no cap, such as the month's
+    /// build seconds, which the Billing page shows beside what they cost.
+    pub(crate) async fn tally(&self, kind: &str, scope: &str, month: &str, amount: i64) -> Result<()> {
+        if amount <= 0 {
+            return Ok(());
+        }
+        self.db
+            .prepare(
+                "INSERT INTO allowance_use (kind, scope, month, used) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT (kind, scope, month) DO UPDATE SET used = used + ?4",
+            )
+            .bind(&[kind.into(), scope.into(), month.into(), (amount as f64).into()])?
+            .run()
+            .await?;
+        Ok(())
     }
 
     /// Takes up to `want` from a monthly allowance with `cap`, as one
@@ -737,15 +748,12 @@ mod tests {
         assert_eq!(c.trial_workspace_micros, 5_000_000);
         assert_eq!(c.trial_monthly_pool_micros, 100_000_000);
         assert_eq!(c.min_charge_micros, 5_000_000);
-        assert_eq!(c.build_seconds, 12_000);
         assert_eq!(c.free_storage_bytes, 1_000_000_000);
-        assert_eq!(c.plan_storage_bytes, 10_000_000_000);
         assert_eq!(c.audit_days, 90);
         assert_eq!(c.run_cap_micros, 2_000_000);
         assert_eq!(c.issue_cap_micros, 10_000_000);
         assert_eq!(c.paid_start_micros, 100_000_000);
         assert_eq!(c.forgive_cost_micros, 50_000_000);
-        assert_eq!(c.git_included, 10_000);
-        assert_eq!(c.git_free_cap, 50_000);
+        assert_eq!(c.git_included, 50_000);
     }
 }

@@ -1,5 +1,5 @@
 import { Box, Lock } from "lucide-react";
-import { Link, NavLink, Outlet, useLocation, useRouteLoaderData } from "react-router";
+import { Link, NavLink, Outlet, data, useLocation, useRouteLoaderData } from "react-router";
 
 import type { Project } from "@g1t/contracts";
 
@@ -8,6 +8,8 @@ import { page } from "../../lib/meta";
 import { type Tab as PageTab, tabsFor } from "../../lib/project-nav";
 import { Pill } from "../../components/ui";
 import { ArchivedBanner } from "../../components/repo-lifecycle";
+import { WelcomeBanner } from "../../components/welcome";
+import { clearWelcome, welcomes } from "../../lib/invites";
 import { notFound } from "../../lib/not-found.server";
 import { redirectIfRenamed, redirectIfTransferred } from "../../lib/renamed.server";
 import { accessFor, repoFor } from "../../lib/access.server";
@@ -43,13 +45,17 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // The viewer's role on the repository and what it lets them do, for the
   // pages under it and the sidebar.
   const access = accessFor(viewer, value);
-  return {
+  // Just given access with an invite: welcomed once (routes/invite.tsx).
+  const welcome = Boolean(access.role) && welcomes(request.headers.get("cookie"), `${value.namespace}/${value.name}`);
+  const headers = welcome ? { "Set-Cookie": clearWelcome(new URL(request.url).protocol === "https:") } : undefined;
+  return data({
+    welcome,
     repo: value,
     project,
     open: counts.ok ? counts.value : { issues: 0, pulls: 0 },
     access,
     member: access.insider,
-  };
+  }, { headers });
 }
 
 /** The project the page is in, for the pages under it. */
@@ -149,7 +155,7 @@ function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
 }
 
 export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
-  const { repo, project, member, access } = loaderData;
+  const { repo, project, member, access, welcome } = loaderData;
   const base = `/${repo.namespace}/${repo.name}`;
   const description = project?.description ?? repo.description;
   const { pathname } = useLocation();
@@ -177,6 +183,13 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
         </div>
       </div>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+        {welcome && (
+          <div className="mb-6">
+            <WelcomeBanner title={`You're in ${repo.namespace}/${repo.name}`}>
+              You have the {access.role} role on it now. Its code, issues and pull requests are yours to work on.
+            </WelcomeBanner>
+          </div>
+        )}
         {repo.archivedAt && (
           <div className="mb-6">
             <ArchivedBanner base={base} owner={access.can.administer} settings={/^settings(\/|$)/.test(pathname.slice(base.length + 1))} />

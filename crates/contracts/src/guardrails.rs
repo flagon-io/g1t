@@ -487,9 +487,16 @@ pub struct UpdateGuardrailsArgs {
 
 /// `run_guardrails`: what a run in `repo` gets. For the runner service,
 /// which is trusted. Returns `Outcome<Guardrails>`.
+///
+/// A run's guardrails are always its project's: `repo_id`, when given,
+/// names that repository however it has moved since, and a pull
+/// request's working copy (`pulls/<pull id>`) stands for the repository
+/// the pull request is to.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RunGuardrailsArgs {
     pub repo: RepoPath,
+    #[serde(default)]
+    pub repo_id: Option<String>,
 }
 
 /// Why g1t stopped a run by itself.

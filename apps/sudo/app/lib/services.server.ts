@@ -1,6 +1,13 @@
 import { env } from "cloudflare:workers";
 
-import { accountsAdminClient, billingAdminClient, billingClient, eventsClient, identityAdminClient } from "@g1t/contracts";
+import {
+  type StatusAdminApi,
+  accountsAdminClient,
+  billingAdminClient,
+  billingClient,
+  eventsClient,
+  identityAdminClient,
+} from "@g1t/contracts";
 
 /** Staff-only billing, on the billing service. */
 export const admin = billingAdminClient(env.BILLING);
@@ -19,3 +26,9 @@ export const entitlements = (workspace: string) => billingClient(env.BILLING).en
 
 /** The event log, read-only: sudo lists `abuse.flagged`. */
 export const events = eventsClient(env.EVENTS);
+
+/** The status page's incidents (apps/status's `StatusAdmin` entrypoint). */
+export const statusAdmin = env.STATUS as unknown as StatusAdminApi;
+
+/** STAFF_EMAILS, for suggesting staff in the incident roles. */
+export const staffEmails = (): string => env.STAFF_EMAILS ?? "";

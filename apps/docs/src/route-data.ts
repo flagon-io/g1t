@@ -1,4 +1,5 @@
 import { defineRouteMiddleware } from '@astrojs/starlight/route-data';
+import { ogVersion } from '@g1t/contracts/og';
 
 import { tabFor } from './tabs';
 
@@ -56,6 +57,8 @@ export const onRequest = defineRouteMiddleware((context) => {
 	card.searchParams.set('title', title);
 	if (section) card.searchParams.set('section', section);
 	if (description) card.searchParams.set('description', description);
+	// The render version, so a new card design is a new address for every cache.
+	card.searchParams.set('v', ogVersion());
 	const image = card.toString();
 	const alt = `${title} · g1t docs`;
 	const meta = (key: 'property' | 'name', name: string, content: string) => ({

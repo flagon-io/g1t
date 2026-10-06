@@ -29,7 +29,7 @@ import {
   wholeDollars,
 } from "../../lib/billing";
 import { page } from "../../lib/meta";
-import { billing, deployments } from "../../lib/services.server";
+import { billing } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
 /** The trial and pools as published, when the price book cannot be read. */
@@ -81,11 +81,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   if (url.searchParams.get("plan") === "started") throw redirect(`${here}?done=subscribed`);
 
   const group: "day" | "project" = url.searchParams.get("group") === "project" ? "project" : "day";
-  const [account, statement, features, deployUsage, limit, invoices, entitlements, requests, book] = await Promise.all([
+  const [account, statement, features, meters, limit, invoices, entitlements, requests, book] = await Promise.all([
     billing.account(slug, viewer),
     billing.statement(slug, viewer, url.searchParams.get("month"), group),
     billing.features(slug, viewer),
-    deployments.usage(slug, viewer).catch(() => null),
+    billing.usageMeters(slug, viewer).catch(() => null),
     billing.limit(slug, viewer).catch(() => null),
     billing.invoices(slug, viewer).catch(() => null),
     billing.entitlements(slug).catch(() => null),
@@ -102,7 +102,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     statement: unwrap(statement),
     group,
     plan: featureStates.find((state) => state.plan.feature === "plan") ?? null,
-    deployUsage: deployUsage?.ok ? deployUsage.value : null,
+    meters: meters?.ok ? meters.value : null,
     limit: limit?.ok ? limit.value : null,
     invoices: invoices?.ok ? invoices.value : [],
     entitlements,
@@ -205,7 +205,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function WorkspaceBilling({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, account, statement, group, plan, deployUsage, limit, invoices, entitlements, requests, trialMicros, notice, problem } =
+  const { slug, role, account, statement, group, plan, meters, limit, invoices, entitlements, requests, trialMicros, notice, problem } =
     loaderData;
   const { status } = account;
   const owner = role === "owner";
@@ -244,7 +244,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
           enabled={status.enabled}
           live={status.live}
           busy={busy}
-          deployUsage={deployUsage}
+          meters={meters}
           error={err("plan")}
         />
 

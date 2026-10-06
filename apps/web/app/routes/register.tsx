@@ -7,6 +7,7 @@ import type { Route } from "./+types/register";
 import { page } from "../lib/meta";
 import { AuthCard } from "../components/auth-card";
 import { ContinueWithGithub, OrDivider } from "../components/github";
+import { Honeypot } from "../components/honeypot";
 import { githubSignInEnabled } from "../lib/github.server";
 import { Avatar, Button, ErrorText, Field, Input } from "../components/ui";
 import { identity } from "../lib/services.server";
@@ -31,6 +32,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // one, there is no form to fill in.
   const checked = code ? await identity.checkInvite(code, clientKey(request)) : null;
   const invite: InvitePreview | null = checked?.ok ? checked.value : null;
+  // A good invite is used on its own page, which knows whom it is from and
+  // where it leads; it signs up, joins and lands in one go.
+  if (invite && code) throw redirect(`/invite/${encodeURIComponent(code)}`);
   // Signing up with GitHub carries the invite code and `next` through it.
   const params = new URLSearchParams();
   if (code) params.set("invite", code);
@@ -124,21 +128,6 @@ function InvitedBy({ invite }: { invite: InvitePreview }) {
         </span>
       </p>
     </div>
-  );
-}
-
-/** The fields a bot fills in and a person never sees. */
-function Honeypot({ started }: { started: number }) {
-  return (
-    <>
-      <input type="hidden" name="started" value={started} />
-      <div aria-hidden="true" className="absolute left-[-9999px] h-px w-px overflow-hidden">
-        <label>
-          Website
-          <input type="text" name="website" tabIndex={-1} autoComplete="off" />
-        </label>
-      </div>
-    </>
   );
 }
 
@@ -247,7 +236,10 @@ function InviteOnly({
         {requested ? (
           <p className="mt-3 flex items-start gap-2 rounded-md border border-accent/40 bg-surface p-3 text-sm" role="status">
             <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-accent" />
-            <span>You are on the list. When a place opens, your invite comes to that address.</span>
+            <span>
+              You are on the list, and your invite comes to that address when a place opens. The first time an address
+              asks, we email it to confirm.
+            </span>
           </p>
         ) : (
           <>

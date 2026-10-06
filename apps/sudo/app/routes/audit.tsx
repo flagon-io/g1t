@@ -12,12 +12,14 @@ import {
   accountPath,
   actionLabel,
   auditHref,
+  mergeAudit,
   olderBefore,
   parseAction,
   parseBefore,
   parseBy,
+  statusAuditActions,
 } from "~/lib/ledgers";
-import { admin } from "~/lib/services.server";
+import { admin, statusAdmin } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
 import { requireStaff } from "~/lib/staff";
 
@@ -30,14 +32,19 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const action = parseAction(url.searchParams.get("action"));
   const before = parseBefore(url.searchParams.get("before"));
   // Enterprises' names, so a line about one reads as its name, not its id.
-  const [result, accounts] = await Promise.all([
+  // The status page keeps its own log (incidents, maintenance, postmortems), merged in here.
+  const [result, accounts, status] = await Promise.all([
     settle(admin.audit({ by: by ?? undefined, action: action ?? undefined, before: before ?? undefined })),
     settle(admin.accounts()),
+    settle(statusAdmin.audit({ before })),
   ]);
   const names = Object.fromEntries(
     (accounts.ok ? accounts.value : []).filter((row) => row.account.kind === "enterprise").map((row) => [row.account.id, row.account.name]),
   );
-  const actions = result.ok ? result.value : [];
+  const fromStatus = statusAuditActions(status.ok ? status.value : []).filter(
+    (entry) => (!by || entry.by.toLowerCase() === by) && (!action || entry.action === action),
+  );
+  const actions = mergeAudit(result.ok ? result.value : [], fromStatus);
   return {
     me: staff.email,
     by,
@@ -64,7 +71,7 @@ export default function Audit({ loaderData }: Route.ComponentProps) {
     <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
       <PageHeader
         title="Audit log"
-        description="Every change made in sudo, and what Stripe told billing, newest first, across every customer. Each names who made it."
+        description="Every change made in sudo, what Stripe told billing, and every incident and maintenance change on the status page, newest first. Each names who made it."
       />
 
       <form method="get" action="/audit" className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center">

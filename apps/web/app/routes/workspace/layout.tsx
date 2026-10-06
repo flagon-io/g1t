@@ -4,6 +4,8 @@ import { Outlet, data, useLocation } from "react-router";
 import type { Route } from "./+types/layout";
 import { page } from "../../lib/meta";
 import { Avatar, ButtonLink, Pill } from "../../components/ui";
+import { WelcomeBanner } from "../../components/welcome";
+import { clearWelcome, welcomes } from "../../lib/invites";
 import { notFound } from "../../lib/not-found.server";
 import { redirectIfRenamed } from "../../lib/renamed.server";
 import { rememberWorkspace } from "../../lib/workspace-choice";
@@ -23,9 +25,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   }
   const role = roleIn(getViewer(context), workspace.slug);
   // Opening one of your workspaces makes it the one you are in.
-  if (!role) return { workspace, role };
+  if (!role) return { workspace, role, welcome: false };
   const secure = new URL(request.url).protocol === "https:";
-  return data({ workspace, role }, { headers: { "Set-Cookie": rememberWorkspace(workspace.slug, secure) } });
+  const headers = new Headers({ "Set-Cookie": rememberWorkspace(workspace.slug, secure) });
+  // Just joined with an invite: welcomed once (routes/invite.tsx).
+  const welcome = welcomes(request.headers.get("cookie"), workspace.slug);
+  if (welcome) headers.append("Set-Cookie", clearWelcome(secure));
+  return data({ workspace, role, welcome }, { headers });
 }
 
 /** A workspace's own pages, each with its title and what it is for. */
@@ -80,7 +86,7 @@ const PAGES: Record<string, { title: string; about: string }> = {
 };
 
 export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
-  const { workspace, role } = loaderData;
+  const { workspace, role, welcome } = loaderData;
   // The sidebar finds the workspace's pages, for everyone, so its pages
   // need a title, not the workspace's whole header again.
   const page = PAGES[useLocation().pathname.split("/-/")[1]?.split("/")[0] ?? ""];
@@ -100,6 +106,13 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
       {/* The workspace's own header band. */}
       <div className="border-b border-line bg-surface/60">
         <div className="mx-auto max-w-6xl px-4 pt-8 pb-8">
+          {welcome && (
+            <div className="mb-6">
+              <WelcomeBanner title={`You're in ${workspace.name}`}>
+                You joined as a {role}. Its projects, issues and agents are all here.
+              </WelcomeBanner>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-4">
             <Avatar name={workspace.slug} image={workspace.avatar} size={52} square />
             <div className="min-w-0 grow">

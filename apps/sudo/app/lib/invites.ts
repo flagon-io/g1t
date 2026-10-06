@@ -74,3 +74,44 @@ export const INVITES_DONE: Record<string, string> = {
   revoked: "Invite revoked. It comes back to whoever it was charged to.",
   granted: "Granted. It applies at once.",
 };
+
+/** The flash for `?done=` and, after deciding several at once, `?n=` of them. */
+export function doneMessage(done: string | null, n: string | null): string | null {
+  if (!done) return null;
+  const count = Number(n);
+  if (Number.isInteger(count) && count > 1) {
+    if (done === "approved") return `Approved ${count} requests. Each invite is on its way.`;
+    if (done === "dismissed") return `Dismissed ${count} requests.`;
+  }
+  return INVITES_DONE[done] ?? null;
+}
+
+/** The most requests one bulk decision takes: each one is its own call to identity. */
+export const MAX_BULK = 50;
+
+/** The waitlist entries ticked on a bulk form, each once, in order. */
+export function parseIds(form: { getAll(name: string): unknown[] }): Parsed<string[]> {
+  const ids = [
+    ...new Set(
+      form
+        .getAll("ids")
+        .filter((id): id is string => typeof id === "string")
+        .map((id) => id.trim())
+        .filter((id) => /^wl_[0-9a-z]{1,40}$/.test(id)),
+    ),
+  ];
+  if (ids.length === 0) return { ok: false, error: "Tick the requests to decide on first." };
+  if (ids.length > MAX_BULK) return { ok: false, error: `Decide on at most ${MAX_BULK} at a time.` };
+  return { ok: true, value: ids };
+}
+
+/** The most characters an approval's note keeps; identity holds the same line. */
+export const MAX_NOTE = 500;
+
+/** A note for the invite email: trimmed, or none. */
+export function parseNote(raw: string | null | undefined): Parsed<string | null> {
+  const note = (raw ?? "").trim();
+  if (!note) return { ok: true, value: null };
+  if (note.length > MAX_NOTE) return { ok: false, error: `Keep the note to ${MAX_NOTE} characters; it is ${note.length}.` };
+  return { ok: true, value: note };
+}

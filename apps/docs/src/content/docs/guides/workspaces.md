@@ -65,7 +65,7 @@ The icon then shows wherever the workspace does, and on its link previews
 that changes gets a new address and nothing shows the old one.
 
 You can upload a picture of yourself the same way, under
-[Settings → Picture](https://g1t.sh/settings#picture).
+[Settings → Profile](https://g1t.sh/settings/profile).
 
 ## Rename a workspace
 
@@ -214,6 +214,12 @@ workspace's **Settings → Members**, `g1t.sh/<workspace>/-/people`:
   an account, it costs nothing, and they join when they accept. The page
   never says which it was.
 
+The email names you and the workspace and links to the invite's page.
+Someone new signs up right there, with the invited address filled in and
+already confirmed; someone with an account signs in. Either way they land
+in the workspace as a member, with a one-time welcome. See
+[using an invite](/guides/authentication/#using-an-invite).
+
 Pending invites are listed under the members, with a link to copy and
 **Revoke**. An owner can also remove a member there. Through the API, use
 [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/)
@@ -276,7 +282,7 @@ for or lose the password to.
 | Can reach | Every workspace you belong to | That workspace only |
 | Can do | Everything you can | Admin on the workspace's repositories; it cannot manage people, tokens or workspaces |
 | When its creator leaves | Stops working | Keeps working |
-| Created by | You, in [Settings](https://g1t.sh/settings) | An owner, under the workspace's **Settings → Access tokens** |
+| Created by | You, in [Settings → Access tokens](https://g1t.sh/settings/tokens) | An owner, under the workspace's **Settings → Access tokens** |
 
 They are the same kind of token and are sent the same way; see
 [access tokens](/guides/authentication/#access-tokens). With git, any
@@ -302,7 +308,7 @@ website and when you joined; then your work in three tabs:
   repository and sort order. Add `?tab=pulls&state=merged` and the like to
   link to a filtered list.
 
-**Edit it** under **Profile** in [Settings](https://g1t.sh/settings). Every
+**Edit it** in [Settings → Profile](https://g1t.sh/settings/profile). Every
 field is optional. The bio takes up to 160 characters and is also what a
 link to your profile says. The website must be an `https://` address;
 `example.com` is saved as `https://example.com`. Your email address is

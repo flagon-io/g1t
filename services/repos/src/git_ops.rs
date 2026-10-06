@@ -4,11 +4,14 @@
 //! ($0.15 per 1,000): each clone, fetch and push. Every upload-pack (clone
 //! or fetch) and receive-pack (push) request through here is one, counted
 //! by the hour. Billing reads the month's count each day (`git_operations`)
-//! and charges workspaces on the plan for what is past the included amount.
+//! and charges workspaces on the plan for what is past the amount that is
+//! free for everyone (50,000 a month), at cost plus 20%. A workspace on the
+//! plan is never slowed or refused for git operations or for storage: it
+//! pays for them as usage, up to its spend limit.
 //!
 //! A free workspace is never charged for git operations. Past
-//! `GIT_OPERATIONS_FREE_CAP` in a month (50,000, five times what is
-//! included), it is slowed down instead: at most
+//! `GIT_OPERATIONS_FREE_CAP` in a month (50,000, billing's
+//! `GIT_OPERATIONS_INCLUDED`), it is slowed down instead: at most
 //! `GIT_OPERATIONS_FREE_HOURLY` (60) an hour, answered 429 with when to try
 //! again. Pushes from agents' sandboxes go to the store directly and are
 //! not counted.
@@ -118,6 +121,8 @@ pub fn free_private_bytes(env: &worker::Env) -> i64 {
 /// Whether a push to a private repository should be refused: a free
 /// workspace whose private repositories already hold its free amount. Free
 /// workspaces are never charged for storage; past it, pushes stop instead.
+/// Only ever asked for a free workspace: one on the plan pays for storage
+/// past the free amount and is never refused.
 pub fn storage_full(private_bytes: i64, free_bytes: i64) -> bool {
     private_bytes >= free_bytes
 }
@@ -127,7 +132,7 @@ pub fn storage_full(private_bytes: i64, free_bytes: i64) -> bool {
 pub fn storage_full_response(namespace: &str, private_bytes: i64, free_bytes: i64) -> Result<Response> {
     let gb = |bytes: i64| bytes as f64 / 1_000_000_000.0;
     let message = format!(
-        "{namespace}'s private repositories hold {:.2} GB, and a free workspace has {:.0} GB. Free workspaces are never charged for storage, so pushes to private repositories stop here. Make the repository public, delete what you no longer need, or start the g1t plan (10 GB): https://g1t.sh/{namespace}/-/billing
+        "{namespace}'s private repositories hold {:.2} GB, and a free workspace has {:.0} GB. Free workspaces are never charged for storage, so pushes to private repositories stop here. Make the repository public, delete what you no longer need, or start the g1t plan, where storage past it is usage at cost plus 20% and pushes never stop: https://g1t.sh/{namespace}/-/billing
 ",
         gb(private_bytes),
         gb(free_bytes)
@@ -138,7 +143,7 @@ pub fn storage_full_response(namespace: &str, private_bytes: i64, free_bytes: i6
 /// The answer to a free workspace past its share: try again next hour.
 pub fn too_many(namespace: &str, free_cap: u64, hourly: u64) -> Result<Response> {
     let message = format!(
-        "{namespace} has made more than {free_cap} git operations this month, so g1t allows {hourly} an hour until the month turns. Free workspaces are never charged for git operations; the g1t plan has no hourly limit: https://g1t.sh/{namespace}/-/billing\n"
+        "{namespace} has made more than {free_cap} git operations this month, so g1t allows {hourly} an hour until the month turns. Free workspaces are never charged for git operations. On the g1t plan they are never slowed: past {free_cap} a month they are usage at cost plus 20%: https://g1t.sh/{namespace}/-/billing\n"
     );
     let response = Response::error(message, 429)?;
     response.headers().set("retry-after", "3600")?;

@@ -21,7 +21,21 @@ export default [
   route("auth/github/username", "routes/auth-github-username.tsx"),
   route("integrations/github/install", "routes/github-install.ts"),
   route("integrations/github/setup", "routes/github-setup.tsx"),
-  route("settings", "routes/settings.tsx"),
+  // Your own settings: one page each, so links can name the one they mean.
+  // `/settings` goes to the first; an old link's `#anchor` to its page.
+  route("settings", "routes/settings/layout.tsx", [
+    index("routes/settings/index.tsx"),
+    route("profile", "routes/settings/profile.tsx"),
+    route("emails", "routes/settings/emails.tsx"),
+    route("invites", "routes/settings/invites.tsx"),
+    route("keys", "routes/settings/keys.tsx"),
+    route("tokens", "routes/settings/tokens.tsx"),
+    route("github", "routes/settings/github.tsx"),
+    route("applications", "routes/settings/applications.tsx"),
+    route("security-log", "routes/settings/security-log.tsx"),
+  ]),
+  // The account menu's header: name, primary email and invites left.
+  route("settings/menu.json", "routes/settings-menu-json.ts"),
   // People, apart from workspaces: `u` is a reserved name.
   route("u/:username", "routes/user.tsx"),
   route("explore", "routes/explore.tsx", { id: "explore" }),
@@ -35,8 +49,8 @@ export default [
   route("policies/:policy", "routes/policy.tsx"),
   route("security", "routes/security.tsx"),
   route("support", "routes/support.tsx"),
+  // Status moved to status.g1t.sh (apps/status); old links go there.
   route("status", "routes/status.tsx"),
-  // What /status shows and the footer's dot reads, as JSON.
   route("status.json", "routes/status-json.ts"),
   route(".well-known/security.txt", "routes/security-txt.ts"),
   // A workspace's own pages sit under `-`, which no repository can be named.

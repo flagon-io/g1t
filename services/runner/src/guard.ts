@@ -39,16 +39,18 @@ export async function guardFor(work: ServiceBinding, repo: RepoPath, kind: RunKi
 /**
  * The guardrails of a workflow job or deploy build in `repo`: its
  * project's network list, plus what builds need (`buildHosts`), and the
- * time cap it was given. Throws when they cannot be read: no build starts
- * without them.
+ * time cap it was given. `repo` is the project, not a pull request's
+ * working copy; `repoId`, when known, finds it however it has moved.
+ * Throws when they cannot be read: no build starts without them.
  */
 export async function buildGuardFor(
   work: ServiceBinding,
   repo: RepoPath,
   kind: "actions" | "deploy",
   minutes: number,
+  repoId?: string | null,
 ): Promise<RunGuard> {
-  const found = await guardrailsClient(work).runGuardrails(repo);
+  const found = await guardrailsClient(work).runGuardrails(repo, repoId);
   if (!found.ok) throw new Error(`g1t could not read this project's guardrails: ${found.error.message}`);
   const policy = found.value;
   return { policy: { ...policy, hosts: [...new Set([...policy.hosts, ...buildHosts(kind)])] }, minutes };

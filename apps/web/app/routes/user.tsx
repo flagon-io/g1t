@@ -174,7 +174,7 @@ function PersonColumn({
 
       {isSelf && (
         <div className="mt-4">
-          <ButtonLink to="/settings#profile" variant="quiet">
+          <ButtonLink to="/settings/profile" variant="quiet">
             <Pencil size={14} />
             Edit profile
           </ButtonLink>

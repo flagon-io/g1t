@@ -99,3 +99,28 @@ test("g1t.page addresses dispatch by label as before", async () => {
   assert.equal((await call("https://gone-acme.g1t.page/", e)).status, 404);
   assert.equal((await call("https://domains.g1t.page/", e)).status, 200);
 });
+
+test("an app's old address redirects to its new one, whatever the old script answers", async () => {
+  // The old script is the paused notice, as when the old workspace reached its limit.
+  const { env: e, seen } = env(
+    { "lab-api-syntaqx": "This app is paused", "lab-api-flagon-io": "api" },
+    { "lab-api-syntaqx.g1t.page": { script: "lab-api-syntaqx", redirect: "lab-api-flagon-io.g1t.page" } },
+  );
+  const response = await call("https://lab-api-syntaqx.g1t.page/v1/items?page=2", e);
+  assert.equal(response.status, 301);
+  assert.equal(response.headers.get("location"), "https://lab-api-flagon-io.g1t.page/v1/items?page=2");
+  assert.equal(response.headers.get("x-robots-tag"), "noindex");
+  assert.deepEqual(seen, []);
+  // The new address is served.
+  assert.equal(await (await call("https://lab-api-flagon-io.g1t.page/", e)).text(), "api");
+});
+
+test("an app address with no redirect, or a failing lookup, is served as it is", async () => {
+  const { env: e } = env({ "shop-acme": "shop" }, {});
+  e.DOMAINS = {
+    async get() {
+      throw new Error("KV is down");
+    },
+  };
+  assert.equal(await (await call("https://shop-acme.g1t.page/", e)).text(), "shop");
+});

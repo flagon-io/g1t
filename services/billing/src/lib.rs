@@ -744,7 +744,7 @@ impl Billing {
         // sandbox is the same container as a build, so without a row it is
         // a build second's cost plus the margin.
         let (cost_per_second, _) = self.price("sandbox_second").await?.unwrap_or_else(|| {
-            let cost = deployments_allowance::MICROS_PER_BUILD_SECOND as f64;
+            let cost = deployment_costs::MICROS_PER_BUILD_SECOND as f64;
             (cost, Price::price_for(cost, self.margin_percent))
         });
         // Its own CPU when the sandbox reports it; otherwise the average.
@@ -1019,6 +1019,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "invoices" => reply(&billing.invoices(args(body)?).await?),
         "statement" => reply(&billing.statement(args(body)?).await?),
         "statement_entries" => reply(&billing.statement_entries(args(body)?).await?),
+        "usage_meters" => reply(&billing.usage_meters(args(body)?).await?),
         "admin_workspace_invoices" => {
             let a: AdminWorkspaceInvoicesArgs = args(body)?;
             reply(&billing.workspace_invoices(&a.workspace.to_lowercase()).await?)

@@ -18,7 +18,6 @@ import {
 import { type ReactNode, useEffect, useState } from "react";
 import { Link, useRouteLoaderData } from "react-router";
 
-import { CHANGELOG, changelogHref } from "../lib/changelog";
 import { trialClosed } from "../lib/trial";
 import { type Need, formatSpan, greetingFor, rankNeeds } from "../lib/mission";
 import { AgentSetup } from "./agent-setup";
@@ -377,37 +376,6 @@ function UsageCard({ shell, weekCost }: { shell: ShellData; weekCost: number }) 
   );
 }
 
-function WhatsNew({ workspace }: { workspace: string | null }) {
-  return (
-    <div className="rounded-xl border border-line bg-surface p-5">
-      <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-        <Sparkles size={14} className="text-accent" />
-        What's new on g1t
-      </h2>
-      <ul className="mt-3 space-y-3">
-        {CHANGELOG.slice(0, 5).map((entry) => {
-          const href = changelogHref(entry, workspace);
-          const title = <span className="text-sm font-medium">{entry.title}</span>;
-          return (
-            <li key={entry.title}>
-              {href ? (
-                <Link to={href} className="hover:text-accent">
-                  {title}
-                </Link>
-              ) : (
-                title
-              )}
-              <p className="mt-0.5 text-xs leading-5 text-muted">{entry.about}</p>
-            </li>
-          );
-        })}
-      </ul>
-      <a href="https://docs.g1t.sh/" className="mt-4 inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
-        Read the docs <ArrowRight size={12} />
-      </a>
-    </div>
-  );
-}
 
 // --- The page -------------------------------------------------------------------
 
@@ -695,7 +663,6 @@ export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
           />
         )}
         {shell?.workspace && <UsageCard shell={shell} weekCost={pulse.cost} />}
-        <WhatsNew workspace={workspace} />
         <div className="rounded-xl border border-line bg-surface p-5">
           <h2 className="text-sm font-semibold">Connect your own agent</h2>
           <p className="mt-1.5 text-xs leading-5 text-muted">

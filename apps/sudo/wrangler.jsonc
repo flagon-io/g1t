@@ -19,7 +19,10 @@
 	"services": [
 		{ "binding": "BILLING", "service": "g1t-billing" },
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
-		{ "binding": "EVENTS", "service": "g1t-events" }
+		{ "binding": "EVENTS", "service": "g1t-events" },
+		// The status page's staff-only entrypoint: posting incidents to
+		// status.g1t.sh (apps/status). Only bindings reach it.
+		{ "binding": "STATUS", "service": "g1t-status", "entrypoint": "StatusAdmin" }
 	],
 	"vars": {
 		// The Zero Trust team domain, such as `g1t.cloudflareaccess.com`.

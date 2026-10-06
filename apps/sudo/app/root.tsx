@@ -6,6 +6,9 @@ import displayFont from "@g1t/theme/fonts/bricolage-grotesque-latin.woff2?url";
 import sansFont from "@g1t/theme/fonts/hanken-grotesk-latin.woff2?url";
 import { MobileBar, Sidebar } from "./components/shell";
 import { ButtonLink } from "./components/ui";
+import type { NavCounts } from "./lib/nav";
+import { identity, statusAdmin } from "./lib/services.server";
+import { settle } from "./lib/settle";
 import { requireStaff } from "./lib/staff";
 
 export const links: Route.LinksFunction = () => [
@@ -21,7 +24,11 @@ export const meta: Route.MetaFunction = () => [
 ];
 
 export async function loader({ context }: Route.LoaderArgs) {
-  return { email: requireStaff(context).email };
+  const { email } = requireStaff(context);
+  // The sidebar's counts: a service that does not answer shows none.
+  const [waitlist, incidents] = await Promise.all([settle(identity.waitlistPending()), settle(statusAdmin.openCount())]);
+  const counts: NavCounts = { waitlist: waitlist.ok ? waitlist.value : 0, incidents: incidents.ok ? incidents.value : 0 };
+  return { email, counts };
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -36,8 +43,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body className="min-h-screen">
-        <Sidebar email={root?.email} />
-        <MobileBar email={root?.email} />
+        <Sidebar email={root?.email} counts={root?.counts} />
+        <MobileBar email={root?.email} counts={root?.counts} />
         <div className="lg:pl-60">{children}</div>
         {/* No <Scripts />: sudo ships no JavaScript, and its policy allows none. */}
       </body>

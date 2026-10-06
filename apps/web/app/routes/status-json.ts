@@ -1,10 +1,8 @@
-/**
- * The live status as JSON: what /status shows and what the footer's dot
- * is coloured by. Public, with no viewer in it, so browsers and the edge
- * may keep it for a minute.
- */
-import { STATUS_HEADERS, currentStatus } from "../lib/status.server";
+/** The status JSON moved with the page, to status.g1t.sh. */
+import { redirect } from "react-router";
 
-export async function loader() {
-  return Response.json(await currentStatus(), { headers: STATUS_HEADERS });
+import { STATUS_JSON_URL } from "../lib/status";
+
+export function loader() {
+  return redirect(STATUS_JSON_URL, 301);
 }

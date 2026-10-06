@@ -50,7 +50,7 @@ time, GitHub is linked to the account you signed in to.
 
 ## Link and unlink GitHub
 
-In [Settings](https://g1t.sh/settings#github), under **GitHub**:
+In [Settings → GitHub](https://g1t.sh/settings/github):
 
 - **Link GitHub** sends you to GitHub and links the account you authorize.
   One GitHub account links to one g1t account, and the other way round.

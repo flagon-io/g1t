@@ -34,6 +34,12 @@ export async function loadEmails(user: User): Promise<{ emails: AccountEmails | 
   };
 }
 
+/** A person's security log, newest first, for its own settings page. */
+export async function loadSecurityLog(user: User): Promise<SecurityEvent[]> {
+  const log = await accounts.securityLog(user).catch(() => null);
+  return log?.ok ? log.value : [];
+}
+
 /** The proof a change carries: this session, and the password if it was just typed. */
 function proof(request: Request, form: FormData): Reauth {
   const password = String(form.get("password") ?? "");

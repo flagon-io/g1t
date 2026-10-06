@@ -27,41 +27,33 @@ test("without one, the shape of the address decides", () => {
   for (const [path, kind] of cases) assert.equal(missingKind(null, path), kind, path);
 });
 
-const KINDS: [MissingKind, string][] = [
-  ["project", "project"],
-  ["issue", "issue"],
-  ["pull", "pull request"],
-  ["workspace", "workspace"],
-  ["page", "page"],
-];
+const KINDS: MissingKind[] = ["project", "issue", "pull", "workspace", "page"];
 
-test("signed out: sign in to see it, which may be private or missing", () => {
-  for (const [kind, noun] of KINDS) {
+test("signed out: nothing here, which may be private, and sign in if it is yours", () => {
+  for (const kind of KINDS) {
     const copy = notFoundCopy(kind, null);
-    assert.equal(copy.title, `Sign in to see this ${noun}`);
-    assert.equal(copy.body, "It may be private, or it may not exist.");
+    assert.equal(copy.title, "Nothing here");
+    assert.equal(copy.body, "This page doesn't exist, or it's private. Sign in if it's yours.");
     assert.equal(copy.signIn, true);
     assert.equal(copy.signedInAs, null);
-    assert.equal(copy.askOwner, false);
   }
 });
 
 test("signed in: it does not exist or you cannot see it, and who you are", () => {
-  for (const [kind, noun] of KINDS) {
+  for (const kind of KINDS) {
     const copy = notFoundCopy(kind, "ada");
-    assert.equal(copy.title, `This ${noun} doesn't exist, or you don't have access to it`);
+    assert.equal(copy.title, "Nothing here");
+    assert.equal(copy.body, "This page doesn't exist, or you don't have access to it.");
     assert.equal(copy.signIn, false);
     assert.equal(copy.signedInAs, "ada");
-    assert.equal(copy.askOwner, true);
   }
 });
 
 test("a missing person is simply no one, signed in or not", () => {
   for (const viewer of [null, "ada"]) {
     const copy = notFoundCopy("person", viewer);
-    assert.equal(copy.title, "No one goes by that name");
+    assert.equal(copy.body, "No one on g1t goes by that name.");
     assert.equal(copy.signIn, false);
-    assert.equal(copy.askOwner, false);
   }
 });
 

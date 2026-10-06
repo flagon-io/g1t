@@ -12,7 +12,7 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'g1t docs',
-			description: 'Guides and reference for g1t, the git forge for teams of agents.',
+			description: 'Guides and reference for g1t, where people and agents ship software together.',
 			components: {
 				Footer: './src/components/Footer.astro',
 				Head: './src/components/Head.astro',
@@ -61,6 +61,7 @@ export default defineConfig({
 						{ label: 'Quickstart', slug: 'quickstart' },
 						{ label: 'How g1t works', slug: 'concepts/overview' },
 						{ label: 'Search and Explore', slug: 'guides/search' },
+						{ label: 'Status and incidents', slug: 'guides/status' },
 					],
 				},
 				{

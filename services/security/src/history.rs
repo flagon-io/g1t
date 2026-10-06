@@ -62,7 +62,7 @@ impl Security {
         let noted: Result<bool> = g1t_kit::call(
             &self.billing,
             "note_pending",
-            &NotePendingArgs { workspace: workspace.to_owned(), source: "security".to_owned(), cost_micros: total },
+            &NotePendingArgs { workspace: workspace.to_owned(), source: "security".to_owned(), cost_micros: total, detail: None },
         )
         .await;
         if let Err(error) = noted {

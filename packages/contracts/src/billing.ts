@@ -211,16 +211,15 @@ export type Entitlements = {
   includedUsedMicros?: number;
   /** How far back the audit log can be read and exported: the same on every plan. */
   auditRetentionDays: number;
-  /** Private repository storage included before it is charged. */
+  /** Private repository storage free for every workspace: past it, the plan pays and a free workspace's pushes stop. */
   freePrivateStorageBytes: number;
   /** The last daily measure of the workspace's private repositories (a lower bound). */
   privateStorageBytes: number;
   /** What g1t's open-source pool paid for the workspace this month. */
   ossPaidMicros: number;
-  /** Build time the plan includes each month, and used. */
-  buildSecondsIncluded: number;
-  buildSecondsUsed: number;
-  /** Git operations this month, and how many are included. */
+  /** Deploy build time this month, every second of it metered. */
+  buildSecondsUsed?: number;
+  /** Git operations this month, and how many are free for every workspace. */
   gitOperations?: number;
   gitOperationsIncluded?: number;
   /** The smallest amount a card is charged when a month closes. */
@@ -637,6 +636,17 @@ export type PriceBook = {
   free?: FreeTier | null;
 };
 
+/** One kind of meter's usage this month, from `usage_meters`. */
+export type MeterUsage = {
+  /** `agents`, `builds`, `requests`, `domains`, `git_storage` or `search_scans`. */
+  key: string;
+  label: string;
+  /** At price (cost plus 20%, on the account's terms), before what paid for it. */
+  micros: number;
+  /** How much, when it is known: `12 runs`, `41 build minutes`. */
+  quantity?: string | null;
+};
+
 /** What g1t gives without a plan; each is paid for by a capped budget. */
 export type FreeTier = {
   /** Each new workspace's trial credit, once. */
@@ -646,17 +656,14 @@ export type FreeTier = {
   /** g1t's open-source pool each month, and any one repository's share. */
   ossPoolMicros: number;
   ossRepoMicros: number;
-  /** Private repository storage before it is charged. */
+  /** Private repository storage free for every workspace. Past it, the plan pays; a free workspace's pushes stop. */
   freePrivateStorageBytes: number;
   /** Days of audit log, the same on every plan. */
   auditRetentionDays: number;
   /** The smallest amount a card is charged when a month closes; less carries over. */
   minChargeMicros: number;
-  /** Git operations included each month on every plan; past the free cap, a free workspace is slowed down. */
+  /** Git operations free for every workspace each month. Past it, the plan pays; a free workspace is slowed down. */
   gitOperationsIncluded?: number;
-  gitOperationsFreeCap?: number;
-  /** Private storage on the plan before it is charged. */
-  planPrivateStorageBytes?: number;
   /** A new paid workspace's ceiling in its first month. */
   paidStartCeilingMicros?: number;
   /** The most a one-click goodwill credit can cost g1t. */
@@ -689,21 +696,19 @@ export type Trial = {
  */
 export type Feature = "plan" | "deployments";
 
-/** What the g1t plan includes for deployments each month. Mirrors `deployments_allowance`. */
-export const DEPLOYMENTS_ALLOWANCE = {
-  apps: 10,
-  requests: 1_000_000,
-  cpuMs: 3_000_000,
-  /** Build time included: 200 minutes. Billing's `DEPLOYMENTS_BUILD_SECONDS` decides. */
-  buildSeconds: 12_000,
-  /** What Cloudflare charges g1t past that, in millionths of a dollar. */
-  microsPerAppMonth: 20_000,
+/**
+ * What deployments cost g1t, in millionths of a dollar: fallbacks for when
+ * billing's price book cannot be read. Not an allowance: on the plan every
+ * unit is metered from the first, at cost plus 20%, and drawn from the
+ * plan's included usage first. Projects, previews and the apps behind them
+ * are not metered at all. Mirrors `deployment_costs`.
+ */
+export const DEPLOYMENT_COSTS = {
   microsPerMillionRequests: 300_000,
   microsPerMillionCpuMs: 20_000,
-  /** One second of a build's sandbox past the included build time: a fallback; billing charges the price book's `build_second`. */
+  /** One second of a build's sandbox: a fallback; billing charges the price book's `build_second`. */
   microsPerBuildSecond: 15,
-  /** Custom domains across the workspace, and what each one past that costs g1t a month. */
-  customDomains: 3,
+  /** One custom domain for a month. */
   microsPerDomainMonth: 100_000,
 } as const;
 
@@ -818,7 +823,18 @@ export interface BillingApi {
    * and `security` itself once the month is over; `deployments` charges
    * its own.
    */
-  notePending(workspace: string, source: "deployments" | "context" | "security", costMicros: number): Promise<boolean>;
+  notePending(
+    workspace: string,
+    source: "deployments" | "domains" | "context" | "security",
+    costMicros: number,
+    /** How much of it, for the Billing page: `1.2 million requests and 3.4 million CPU ms`. */
+    detail?: string | null,
+  ): Promise<boolean>;
+  /**
+   * This month's usage, one line per kind of meter, at what it is charged
+   * before the plan's included usage or a pool paid for it. Members only.
+   */
+  usageMeters(workspace: string, viewer: Viewer): Promise<Result<MeterUsage[]>>;
   /** What the workspace may do now: its plan, caps, pause, trial, and what the plan gives it. */
   entitlements(workspace: string): Promise<Entitlements>;
   /**

@@ -28,7 +28,7 @@ WORKDIR /app
 COPY . .
 RUN npm ci --no-audit --no-fund \
       --include-workspace-root \
-      -w @g1t/web -w @g1t/projects -w @g1t/deployments -w @g1t/contracts -w @g1t/theme \
+      -w @g1t/web -w @g1t/projects -w @g1t/deployments -w @g1t/contracts -w @g1t/theme -w @g1t/status \
  && npm run build -w @g1t/web
 
 # ── Runtime ──

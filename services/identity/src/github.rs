@@ -300,6 +300,19 @@ struct GithubUser {
     emails: Vec<String>,
 }
 
+const INVITE_FOR_ANOTHER_ADDRESS: &str = "Your invite was sent to an address your GitHub account has not verified. Verify that address on GitHub and try again, or go back to the invite and create your account with your email and a password.";
+
+/// Moves `bound` to the front of a GitHub account's verified addresses, so
+/// a new account is made with it. False if GitHub has not verified it.
+fn put_first(emails: &mut Vec<String>, bound: &str) -> bool {
+    let Some(at) = emails.iter().position(|email| email.eq_ignore_ascii_case(bound.trim())) else {
+        return false;
+    };
+    let email = emails.remove(at);
+    emails.insert(0, email);
+    true
+}
+
 async fn read_user(token: &str) -> Result<Option<GithubUser>> {
     let user = send(Method::Get, &format!("{API}/user"), Some(token), None).await?;
     let (Some(id), Some(login)) = (user.body["id"].as_u64(), user.body["login"].as_str()) else {
@@ -611,9 +624,17 @@ impl Identity {
         let Some(tokens) = token_request(&client, grant).await? else {
             return Ok(Outcome::fail(FailureCode::Invalid, TRY_AGAIN));
         };
-        let Some(github) = read_user(&tokens.access_token).await? else {
+        let Some(mut github) = read_user(&tokens.access_token).await? else {
             return Ok(Outcome::fail(FailureCode::Invalid, TRY_AGAIN));
         };
+        // An invite sent to one address makes the account with that one,
+        // when GitHub has confirmed it too; otherwise the invite is not
+        // this GitHub account's to use.
+        let bound = match state.invite_code.as_deref() {
+            Some(code) => self.bound_email_of(code).await?,
+            None => None,
+        };
+        let bound_elsewhere = bound.as_deref().is_some_and(|bound| !put_first(&mut github.emails, bound));
         let purpose = if state.purpose == "link" { GithubPurpose::Link } else { GithubPurpose::SignIn };
         let linked = self.account_by_github(github.id).await?;
         let asking_has_other = match &state.user_id {
@@ -633,7 +654,11 @@ impl Identity {
             invite_missing: self.github_invites_required() && state.invite_code.is_none(),
         };
         let next = state.next;
-        Ok(match decide(&facts) {
+        let decision = decide(&facts);
+        if bound_elsewhere && matches!(decision, Decision::Create(_) | Decision::NeedsUsername(_)) {
+            return Ok(Outcome::fail(FailureCode::Conflict, INVITE_FOR_ANOTHER_ADDRESS));
+        }
+        Ok(match decision {
             Decision::Refuse(reason) => Outcome::fail(FailureCode::Conflict, reason),
             Decision::Link(user_id) => {
                 self.link(&user_id, github.id, &github.login, Some(&tokens)).await?;
@@ -1038,6 +1063,15 @@ mod tests {
         assert_eq!(decide(&taken), Decision::NeedsUsername("octocat".to_owned()));
         let no_email = Facts { has_verified_email: false, ..facts() };
         assert!(matches!(decide(&no_email), Decision::Refuse(_)));
+    }
+
+    #[test]
+    fn an_invite_for_one_address_makes_the_account_with_it() {
+        let mut emails = vec!["ada@work.example".to_owned(), "ada@home.example".to_owned()];
+        assert!(put_first(&mut emails, "Ada@Home.example"));
+        assert_eq!(emails, ["ada@home.example", "ada@work.example"]);
+        assert!(!put_first(&mut emails, "eve@example.com"));
+        assert_eq!(emails, ["ada@home.example", "ada@work.example"]);
     }
 
     #[test]

@@ -64,3 +64,22 @@ export function Logo({ className = "text-[1.5rem]" }: { className?: string }) {
     </span>
   );
 }
+
+const FOUR = ["...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#."];
+const ZERO = [".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."];
+/** 4 at 0, the 0 at 6, 4 at 12: the logo's cells and spacing. */
+const FOUR_O_FOUR = [...pixels(FOUR, 0, false), ...pixels(ZERO, 6, true), ...pixels(FOUR, 12, false)];
+
+/**
+ * 404 in the logo's pixels, the 0 in lavender where the logo has its 1.
+ * Sized by its font size, like the wordmark.
+ */
+export function Pixel404({ className = "text-[4rem]" }: { className?: string }) {
+  return (
+    <span className={`inline-flex leading-none text-fg ${className}`}>
+      <svg viewBox="1 1 168 68" role="img" aria-label="404" className="h-[0.85em] w-auto shrink-0" shapeRendering="crispEdges">
+        <Pixels of={FOUR_O_FOUR} />
+      </svg>
+    </span>
+  );
+}

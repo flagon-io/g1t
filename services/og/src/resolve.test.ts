@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { Issue, Project, Pull, Repo, Result, Workspace } from "@g1t/contracts";
 
-import { cacheKey } from "./cache.ts";
+import { RENDER_VERSION, cacheKey } from "./cache.ts";
 import { type Sources, clean, docsCard, resolve, segments } from "./resolve.ts";
 
 const ok = <T>(value: T): Result<T> => ({ ok: true, value });
@@ -226,5 +226,9 @@ test("the cache key keeps only what changes the card", () => {
   const b = cacheKey(new URL("https://og.g1t.sh/image?path=/acme/web&v=3&x=2"));
   assert.equal(a, b);
   assert.notEqual(a, cacheKey(new URL("https://og.g1t.sh/image?path=/acme/web&v=4")));
-  assert.match(a, /design=/);
+  assert.match(a, new RegExp(`render=${RENDER_VERSION}`));
+  // The keys cards were kept under before the render version was.
+  assert.notEqual(a, "https://og.g1t.sh/image?design=1&path=%2Facme%2Fweb&v=3");
+  const docs = cacheKey(new URL("https://og.g1t.sh/docs?title=Quickstart&v=2&utm=x"));
+  assert.equal(docs, `https://og.g1t.sh/docs?render=${RENDER_VERSION}&title=Quickstart&v=2`);
 });

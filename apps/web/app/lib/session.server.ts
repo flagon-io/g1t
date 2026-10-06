@@ -53,6 +53,7 @@ export const viewerMiddleware: MiddlewareFunction<Response> = async ({
     // Someone a repository is shared with can use it without a workspace.
     (viewer.grants ?? []).length === 0 &&
     !BEFORE_WORKSPACE.includes(pathname) &&
+    !pathname.startsWith("/settings/") &&
     // An invite to a workspace is how someone without one gets one, and an
     // invitation to a repository is answered before anything else.
     !pathname.startsWith("/invite/") &&

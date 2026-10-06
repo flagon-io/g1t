@@ -6,6 +6,8 @@ declare global {
       BILLING: ServiceBinding;
       IDENTITY: ServiceBinding;
       EVENTS: ServiceBinding;
+      /** apps/status's `StatusAdmin` entrypoint: see `StatusAdminApi`. */
+      STATUS: Fetcher;
       ASSETS: Fetcher;
       ACCESS_TEAM_DOMAIN: string;
       ACCESS_AUD: string;

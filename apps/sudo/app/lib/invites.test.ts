@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { INVITES_DONE, invitesHref, parseGrant, parseMintEmail, parseTab, parseWaitlistStatus } from "./invites.ts";
+import {
+  INVITES_DONE,
+  MAX_BULK,
+  doneMessage,
+  invitesHref,
+  parseGrant,
+  parseIds,
+  parseMintEmail,
+  parseNote,
+  parseTab,
+  parseWaitlistStatus,
+} from "./invites.ts";
 
 const form = (fields: Record<string, string>) => ({ get: (name: string) => fields[name] ?? null });
 
@@ -40,4 +51,30 @@ test("a minted invite is for one address, or for anyone", () => {
 
 test("every outcome has words", () => {
   for (const key of ["approved", "dismissed", "revoked", "granted"]) assert.ok(INVITES_DONE[key]);
+});
+
+test("several requests are decided at once, each once", () => {
+  const ticked = (ids: string[]) => ({ getAll: (name: string) => (name === "ids" ? ids : []) });
+  assert.deepEqual(parseIds(ticked(["wl_01jb2k", "wl_01jb2m", "wl_01jb2k"])), { ok: true, value: ["wl_01jb2k", "wl_01jb2m"] });
+  assert.equal(parseIds(ticked([])).ok, false);
+  assert.equal(parseIds(ticked(["inv_01jb2k", "wl_<script>"])).ok, false);
+  const many = Array.from({ length: MAX_BULK + 1 }, (_, n) => `wl_${n.toString(36)}`);
+  assert.equal(parseIds(ticked(many)).ok, false);
+  assert.equal(parseIds(ticked(many.slice(0, MAX_BULK))).ok, true);
+});
+
+test("an approval's note is optional and short", () => {
+  assert.deepEqual(parseNote("  Welcome aboard.  "), { ok: true, value: "Welcome aboard." });
+  assert.deepEqual(parseNote(""), { ok: true, value: null });
+  assert.deepEqual(parseNote(null), { ok: true, value: null });
+  assert.equal(parseNote("x".repeat(501)).ok, false);
+});
+
+test("the flash says how many were decided", () => {
+  assert.equal(doneMessage("approved", "3"), "Approved 3 requests. Each invite is on its way.");
+  assert.equal(doneMessage("dismissed", "2"), "Dismissed 2 requests.");
+  assert.equal(doneMessage("approved", null), INVITES_DONE.approved);
+  assert.equal(doneMessage("approved", "1"), INVITES_DONE.approved);
+  assert.equal(doneMessage("nope", "4"), null);
+  assert.equal(doneMessage(null, null), null);
 });

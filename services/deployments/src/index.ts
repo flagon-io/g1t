@@ -12,12 +12,16 @@
  * for Platforms namespace, where the `*.g1t.page` dispatcher finds it by
  * hostname.
  *
- * Nothing here is free. The plan includes 200 build minutes a month, and
- * builds past them are charged by the second; requests, CPU
- * time and apps past the plan's allowance are charged once the month is
- * over. A Worker runs only while it answers a request, so an app no one
- * visits costs nothing, and a preview is taken down when its pull request
- * closes or after its project's idle days.
+ * Nothing here is free, and nothing is capped. On the plan, every build
+ * second is charged as it happens; requests, CPU time and custom domains
+ * are charged from the first once the month is over, all at cost plus the
+ * margin and from the plan's included usage first. No count of projects,
+ * previews or apps ever stops or pauses a workspace: apps are not metered
+ * at all. Only the workspace's spend limit pauses its apps
+ * (`holdToLimits`), and only the plan ending takes them down. A Worker
+ * runs only while it answers a request, so an app no one visits costs
+ * nothing, and a preview is taken down when its pull request closes or
+ * after its project's idle days.
  *
  * Reached through service bindings (`POST /rpc/<method>`) and, for a
  * build's reports, through the API (`POST /jobs/<id>/<step>`).
@@ -25,7 +29,7 @@
 
 import {
   CUSTOM_DOMAIN_TARGET,
-  DEPLOYMENTS_ALLOWANCE,
+  DEPLOYMENT_COSTS,
   SLUG_HOLD_DAYS,
   ComputeGate,
   allows,
@@ -70,7 +74,9 @@ import {
 import { NEEDS, repoRef, type Method } from "./access";
 import { Cloudflare, type BuiltWorker, type Manifest } from "./cloudflare";
 import { CustomHostnames } from "./custom-hostnames";
-import { Domains, NOT_ENABLED_NOTICE, extraDomains, toDomain } from "./domains";
+import { Domains, NOT_ENABLED_NOTICE, toDomain } from "./domains";
+import { monthCost } from "./metering";
+import { moveTargets, ownerOf, rebuildOutcome, retryDue, type DroppedBuild, type MoveTarget } from "./moves";
 import { appHost, appUrl, label, uniqueLabel } from "./names";
 
 type Env = {
@@ -107,6 +113,11 @@ const STATUS_CONTEXT = "g1t / deploy";
  * have seen it too, before going ahead with the new slug regardless.
  */
 const RENAME_WAITS = 3;
+/** Why a build under way was dropped by a move; the move builds it again under the new name. */
+const MOVED_ERROR = "The repository moved: built again under its new name.";
+const RENAMED_ERROR = "The workspace was renamed: built again under its new name.";
+/** A move's rebuild that could not start is tried again by the sweep after this long. */
+const MOVE_RETRY_MS = 60 * 60 * 1000;
 
 /** A build's report of what it found the project to be, if it is one g1t knows. */
 export function detectedKind(value: unknown): DetectedKind | null {
@@ -657,17 +668,18 @@ class Deployments {
     if (!project.ok) return project;
     const domains = this.domains;
     await domains.catchUp(project.value.id).catch((error) => console.error("could not check domains", error));
-    const [rows, available, used] = await Promise.all([
+    const [rows, available, used, costs] = await Promise.all([
       domains.forProject(project.value.id),
       domains.available(),
       domains.countFor(project.value.workspace),
+      this.costs(),
     ]);
     return ok({
       domains: rows.map(toDomain),
       target: CUSTOM_DOMAIN_TARGET,
       available,
       notice: available ? null : NOT_ENABLED_NOTICE,
-      included: DEPLOYMENTS_ALLOWANCE.customDomains,
+      monthlyMicros: costs.domainMonthPrice,
       used,
     });
   }
@@ -837,6 +849,10 @@ class Deployments {
         maxRunMinutes,
         actor: input.reader,
         source: input.source,
+        // The project, whose guardrails the build runs under: a preview's
+        // source is its pull request's working copy, not the project.
+        repo: repo.path,
+        repoId: repo.id,
         commit: input.commit,
         rootDir: project.source.rootDir,
         buildCommand: input.settings.build_command,
@@ -977,11 +993,8 @@ class Deployments {
           await this.finishFailed(id, `Cloudflare did not take the app: ${String(error).replace(/^Error: /, "")}`, String(body.log ?? ""), seconds);
           return Response.json(ok(false));
         }
-        // The same app at an older name (its workspace was renamed) now
-        // redirects here; it stays up as it was if the redirect cannot be put.
-        const redirected = await this.supersede(cloudflare, row);
         const at = now();
-        const expires = new Date(Date.parse(at) + SLUG_HOLD_DAYS * 24 * 60 * 60 * 1000).toISOString();
+        const wasRedirect = await this.db.prepare("SELECT 1 FROM redirects WHERE script = ?").bind(row.script).first();
         await this.db.batch([
           this.db
             .prepare(
@@ -1007,18 +1020,15 @@ class Deployments {
                ON CONFLICT (script) DO UPDATE SET commit_sha = ?8, number = ?7, deployed_at = ?9, paused_at = NULL`,
             )
             .bind(row.script, row.project_id, row.workspace, row.slug, row.kind, row.branch, row.number, row.commit_sha, at),
-          // A name that redirected elsewhere (a rename undone) is an app again.
+          // A name that redirected elsewhere (a move undone) is an app again.
           this.db.prepare("DELETE FROM redirects WHERE script = ?").bind(row.script),
-          ...redirected.flatMap((old) => [
-            this.db.prepare("DELETE FROM apps WHERE script = ?").bind(old),
-            this.db
-              .prepare(
-                `INSERT INTO redirects (script, target, workspace, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5)
-                 ON CONFLICT (script) DO UPDATE SET target = ?2, workspace = ?3, created_at = ?4, expires_at = ?5`,
-              )
-              .bind(old, appHost(row.script), row.workspace, at, expires),
-          ]),
         ]);
+        if (wasRedirect) {
+          await this.env.DOMAINS?.delete(appHost(row.script)).catch((error) => console.error("could not drop redirect", row.script, error));
+        }
+        // The same app at an older name (its project moved) now redirects
+        // here; it stays up as it was if the redirect cannot be put.
+        await this.supersede(cloudflare, row, row.script);
         // The project's own domains serve production wherever it is up.
         if (row.kind === "production") {
           await this.domains.follow(row.project_id, row.script).catch((error) => console.error("could not point domains", error));
@@ -1043,26 +1053,52 @@ class Deployments {
   }
 
   /**
-   * Older names of the app `row` just put up: one project's production, or
+   * Older names of the app `script`, now up: one project's production, or
    * its preview of one branch, has one name, so any other app row for the
-   * same is the app under the name it had before its workspace was renamed.
-   * Each is replaced in the namespace by a redirect to the new name; the
-   * names that were are returned, for their app rows to go.
+   * same is the app under a name it had before its project moved (its
+   * workspace renamed, its repository renamed or transferred). Each is
+   * replaced in the namespace by a redirect to the new name, its app row
+   * goes, and the redirect is recorded for `SLUG_HOLD_DAYS`, both here (for
+   * the sweep to hold the old script) and in `DOMAINS` under the old
+   * hostname, which the dispatcher follows before running anything, so the
+   * old address redirects even if the old script is paused. A name that
+   * cannot be redirected is left as it is, for the next deploy or sweep.
    */
-  private async supersede(cloudflare: Cloudflare, row: DeploymentRow): Promise<string[]> {
+  private async supersede(
+    cloudflare: Cloudflare,
+    app: { project_id: string; kind: DeployKind; branch: string | null; workspace: string },
+    script: string,
+  ): Promise<string[]> {
     const older = await this.db
       .prepare("SELECT script FROM apps WHERE project_id = ? AND kind = ? AND branch IS ? AND script != ?")
-      .bind(row.project_id, row.kind, row.branch, row.script)
+      .bind(app.project_id, app.kind, app.branch, script)
       .all<{ script: string }>();
+    const target = appHost(script);
     const done: string[] = [];
-    for (const { script } of older.results) {
+    for (const { script: old } of older.results) {
       try {
-        await cloudflare.redirectScript(script, appHost(row.script));
-        done.push(script);
+        await cloudflare.redirectScript(old, target);
       } catch (error) {
-        // Left as it is, the next deploy of this app tries again.
-        console.error("could not redirect", script, "to", row.script, error);
+        console.error("could not redirect", old, "to", script, error);
+        continue;
       }
+      const at = now();
+      const expires = new Date(Date.parse(at) + SLUG_HOLD_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      await this.db.batch([
+        this.db.prepare("DELETE FROM apps WHERE script = ?").bind(old),
+        this.db
+          .prepare(
+            `INSERT INTO redirects (script, target, workspace, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT (script) DO UPDATE SET target = ?2, workspace = ?3, created_at = ?4, expires_at = ?5`,
+          )
+          .bind(old, target, app.workspace, at, expires),
+        // Its builds are no longer live under the old name.
+        this.db.prepare("UPDATE deployments SET status = 'replaced' WHERE script = ? AND status = 'ready'").bind(old),
+      ]);
+      await this.env.DOMAINS?.put(appHost(old), JSON.stringify({ script: old, redirect: target }), {
+        expiration: Math.floor(Date.parse(expires) / 1000),
+      }).catch((error) => console.error("could not record redirect", old, error));
+      done.push(old);
     }
     return done;
   }
@@ -1082,7 +1118,7 @@ class Deployments {
     await this.statusFor(row, "failure", "Deployment failed", `${this.env.SITE}/${row.workspace}/${row.slug}/deployments/${id}`);
   }
 
-  /** Each build is charged by the second at the container price plus the margin, past the plan's included build minutes (billing applies those). */
+  /** Each build is charged by the second, from the first, at the container price plus the margin. */
   private async chargeBuild(row: DeploymentRow, seconds: number): Promise<void> {
     const costs = await this.costs();
     const cost = Math.ceil(Math.ceil(seconds) * costs.buildSecond);
@@ -1098,8 +1134,8 @@ class Deployments {
       description: `Building ${what} (${Math.ceil(seconds)} s)`,
       repo: row.repo,
       reference: `deploy/${row.id}`,
-      // The plan's included build minutes pay for what they can; billing
-      // charges the rest.
+      // Every second is metered; billing prices it from its price book and
+      // tallies the month's build time.
       buildSeconds: Math.ceil(seconds),
     });
     await this.db
@@ -1119,10 +1155,11 @@ class Deployments {
     buildSecond: number;
     millionRequests: number;
     millionCpuMs: number;
-    appMonth: number;
     domainMonth: number;
+    /** What one custom domain is charged a month: the cost plus the margin. */
+    domainMonthPrice: number;
   }> {
-    const a = DEPLOYMENTS_ALLOWANCE;
+    const a = DEPLOYMENT_COSTS;
     const book = await billingClient(this.env.BILLING)
       .prices()
       .catch(() => null);
@@ -1131,12 +1168,13 @@ class Deployments {
       buildSecond: cost("build_second", a.microsPerBuildSecond),
       millionRequests: cost("app_requests", a.microsPerMillionRequests),
       millionCpuMs: cost("app_cpu", a.microsPerMillionCpuMs),
-      appMonth: cost("app_month", a.microsPerAppMonth),
       domainMonth: cost("custom_domain_month", a.microsPerDomainMonth),
+      domainMonthPrice:
+        book?.prices.find((p) => p.meter === "custom_domain_month")?.priceMicros ?? Math.ceil(a.microsPerDomainMonth * 1.2),
     };
   }
 
-  /** Remembers the most apps, and custom domains, the workspace had at once this month. */
+  /** Remembers the most apps (for information; never charged) and custom domains the workspace had at once this month. */
   private async notePeak(workspace: string): Promise<void> {
     await this.db
       .prepare(
@@ -1258,16 +1296,12 @@ class Deployments {
    *
    * Its rows move to the slug it has now (asked of identity, so a delivery
    * twice over, or an older rename after a newer one, ends the same), and
-   * each app that is up is built again from the same commit under its new
-   * name. The old name keeps serving the app until the new one is live;
-   * then the build's finish puts a redirect to the new name in its place
-   * (see `supersede`), held for as long as the workspace holds its old slug.
-   *
-   * Paused apps are left: they are rebuilt, under the new name, when the
-   * workspace is under its limit again, and the old name redirects then.
+   * each app (paused or not) is built again from the same commit under its
+   * new name; see `followMoves`. The old name keeps serving the app until
+   * the new one is live; then it redirects to the new name (see
+   * `supersede`), held for as long as the workspace holds its old slug.
    * Builds under way for the old name are dropped and started again under
-   * the new one. Only rows still under an old slug are acted on, so a
-   * second delivery builds nothing.
+   * the new one.
    */
   private async renamed(renamed: { workspaceId: string; from: string; to: string }, attempts: number): Promise<void> {
     const current = await currentWorkspaceSlug(this.env.IDENTITY, renamed);
@@ -1275,46 +1309,18 @@ class Deployments {
     if (stale.length === 0) return;
     const marks = stale.map(() => "?").join(", ");
 
-    // What to build again, read before the rows move.
-    const [apps, building] = await Promise.all([
-      this.db
-        .prepare(`SELECT * FROM apps WHERE workspace IN (${marks}) AND paused_at IS NULL`)
-        .bind(...stale)
-        .all<AppRow>(),
-      this.db
-        .prepare(`SELECT * FROM deployments WHERE workspace IN (${marks}) AND status IN ('queued', 'building') ORDER BY id`)
-        .bind(...stale)
-        .all<DeploymentRow>(),
-    ]);
-    type Target = { projectId: string; kind: DeployKind; branch: string | null; number: number | null; commit: string };
-    const targets = new Map<string, Target>();
-    const key = (t: { project_id: string; kind: DeployKind; branch: string | null }) => `${t.project_id}/${t.kind}/${t.branch ?? ""}`;
-    for (const app of apps.results) {
-      targets.set(key(app), { projectId: app.project_id, kind: app.kind, branch: app.branch, number: app.number, commit: app.commit_sha });
-    }
-    // A build under way is newer than what is up.
-    for (const row of building.results) {
-      targets.set(key(row), { projectId: row.project_id, kind: row.kind, branch: row.branch, number: row.number, commit: row.commit_sha });
-    }
-
-    // The projects, as the projects service has them now.
-    const projectIds = [...new Set([...targets.values()].map((t) => t.projectId))];
-    const projects = new Map<string, Project>();
-    if (projectIds.length > 0) {
-      const repoIds = await this.db
-        .prepare(`SELECT DISTINCT repo_id FROM settings WHERE project_id IN (${projectIds.map(() => "?").join(", ")})`)
-        .bind(...projectIds)
-        .all<{ repo_id: string }>();
-      for (const { repo_id } of repoIds.results) {
-        for (const project of await this.projects.byRepo(repo_id)) {
-          if (projectIds.includes(project.id)) projects.set(project.id, project);
-        }
-      }
-      // The projects service hears of the rename on its own queue: wait for
-      // it a few deliveries, so the builds read the repository by its new name.
-      const behind = [...projects.values()].some((p) => p.workspace !== current);
-      if (behind && attempts < RENAME_WAITS) throw new Error(`projects has not seen ${renamed.from} renamed to ${current} yet`);
-    }
+    // The workspace's projects, under any of its names: a second delivery
+    // finds them under the new one, with whatever is left to do.
+    const rows = await this.db
+      .prepare(`SELECT project_id FROM settings WHERE workspace IN (${marks}, ?)`)
+      .bind(...stale, current)
+      .all<{ project_id: string }>();
+    const projectIds = rows.results.map((row) => row.project_id);
+    const projects = await this.projectsById(projectIds);
+    // The projects service hears of the rename on its own queue: wait for
+    // it a few deliveries, so the builds read the repository by its new name.
+    const behind = [...projects.values()].some((p) => p.workspace !== current);
+    if (behind && attempts < RENAME_WAITS) throw new Error(`projects has not seen ${renamed.from} renamed to ${current} yet`);
 
     // Every row moves at once.
     const at = now();
@@ -1323,10 +1329,9 @@ class Deployments {
       statements.push(
         this.db
           .prepare(
-            `UPDATE deployments SET status = 'skipped', error = 'The workspace was renamed: built again under its new name.',
-               finished_at = ? WHERE workspace = ? AND status IN ('queued', 'building')`,
+            `UPDATE deployments SET status = 'skipped', error = ?, finished_at = ? WHERE workspace = ? AND status IN ('queued', 'building')`,
           )
-          .bind(at, slug),
+          .bind(RENAMED_ERROR, at, slug),
         this.db.prepare("UPDATE settings SET workspace = ?1 WHERE workspace = ?2").bind(current, slug),
         this.db.prepare("UPDATE apps SET workspace = ?1 WHERE workspace = ?2").bind(current, slug),
         this.db
@@ -1362,24 +1367,12 @@ class Deployments {
 
     // Each app again, under its new name. Its dependencies' addresses are
     // read again too, so apps that call one another follow the rename.
-    // Failures are logged, not retried: the rows have moved, and the next
-    // deploy of the app puts it under its new name all the same.
-    const actor = await this.workspaceActor(current);
-    for (const target of targets.values()) {
-      const found = projects.get(target.projectId);
-      if (!found) continue;
-      const project = this.underSlug(found, current, stale);
-      try {
-        const started =
-          target.kind === "production"
-            ? await this.deployProduction(project, target.commit, "g1t")
-            : target.number != null
-              ? await this.deployPreview(project, target.number, "g1t", true)
-              : await this.rebuildStack(project, target.branch, target.commit, actor);
-        if (started && !started.ok) console.log("could not rebuild", project.slug, target.branch, started.error.message);
-      } catch (error) {
-        console.error("could not rebuild after rename", project.slug, target.branch, error);
-      }
+    const followed = await this.followMoves(projectIds, {
+      projects,
+      adjust: (project) => this.underSlug(project, current, stale),
+    });
+    if (followed.failed.length > 0) {
+      throw new Error(`could not rebuild after the rename to ${current}: ${followed.failed.join("; ")}`);
     }
   }
 
@@ -1388,18 +1381,21 @@ class Deployments {
    * with it, or renamed within its own, when its own project's slug follows
    * its name (see the projects service). Each app's name is
    * `<project>-<workspace>`, so the apps of every project whose workspace or
-   * slug changed (production and every preview) are built again, from the
-   * same commit, under the new name. As after a workspace rename, the old
-   * name keeps serving until the new one is live, then redirects to it
-   * (see `supersede`) for `SLUG_HOLD_DAYS`. The project's custom domains
-   * follow its production. Builds under way are started again under the
-   * new name. What the apps used this month stays on the old workspace's
-   * meter; from now on, the new workspace's counts it.
+   * slug changed (production and every preview, paused or not) are built
+   * again, from the same commit, under the new name; see `followMoves`. As
+   * after a workspace rename, the old name keeps serving until the new one
+   * is live, then redirects to it (see `supersede`) for `SLUG_HOLD_DAYS`.
+   * The project's custom domains follow its production. Builds under way
+   * are started again under the new name. What the apps used this month
+   * stays on the old workspace's meter; from now on, the new workspace's
+   * counts it.
    *
    * Projects whose name did not change (a rename where the new name was
    * taken, or a project of another name) only learn the repository's new
-   * path. Rows are compared with where the project is now, so a second or
-   * late delivery builds nothing.
+   * path. What is left to rebuild is read from the rows each time, so a
+   * second or late delivery builds only what the first could not, and one
+   * whose rebuild could not be queued is delivered again (and, past the
+   * queue's retries, followed up by the sweep).
    */
   private async moved(move: RepoMove, attempts: number): Promise<void> {
     const current = await currentMovedPath(this.env.REPOS, move);
@@ -1426,45 +1422,22 @@ class Deployments {
     const statements: D1PreparedStatement[] = [
       this.db.prepare("UPDATE deployments SET repo = ? WHERE repo_id = ?").bind(current, move.repoId),
     ];
-    // The projects whose apps' names change.
-    const moving = settings.results.filter(
-      (row) => row.workspace !== workspace || (projects.get(row.project_id)?.slug ?? row.slug) !== row.slug,
-    );
-    const projectIds = moving.map((row) => row.project_id);
-    if (projectIds.length === 0) {
-      await this.db.batch(statements);
-      return;
+    // The projects whose apps' names change, and have not been moved yet.
+    const moving = settings.results
+      .filter((row) => row.workspace !== workspace || (projects.get(row.project_id)?.slug ?? row.slug) !== row.slug)
+      .map((row) => row.project_id);
+    if (moving.length > 0) {
+      const ids = moving.map(() => "?").join(", ");
+      statements.push(
+        this.db
+          .prepare(
+            `UPDATE deployments SET status = 'skipped', error = ?, finished_at = ?
+             WHERE project_id IN (${ids}) AND status IN ('queued', 'building')`,
+          )
+          .bind(MOVED_ERROR, now(), ...moving),
+      );
     }
-    const ids = projectIds.map(() => "?").join(", ");
-
-    const [apps, building] = await Promise.all([
-      this.db.prepare(`SELECT * FROM apps WHERE project_id IN (${ids}) AND paused_at IS NULL`).bind(...projectIds).all<AppRow>(),
-      this.db
-        .prepare(`SELECT * FROM deployments WHERE project_id IN (${ids}) AND status IN ('queued', 'building') ORDER BY id`)
-        .bind(...projectIds)
-        .all<DeploymentRow>(),
-    ]);
-    type Target = { projectId: string; kind: DeployKind; branch: string | null; number: number | null; commit: string };
-    const targets = new Map<string, Target>();
-    const key = (t: { project_id: string; kind: DeployKind; branch: string | null }) => `${t.project_id}/${t.kind}/${t.branch ?? ""}`;
-    for (const app of apps.results) {
-      targets.set(key(app), { projectId: app.project_id, kind: app.kind, branch: app.branch, number: app.number, commit: app.commit_sha });
-    }
-    // A build under way is newer than what is up.
-    for (const row of building.results) {
-      targets.set(key(row), { projectId: row.project_id, kind: row.kind, branch: row.branch, number: row.number, commit: row.commit_sha });
-    }
-
-    const at = now();
-    statements.push(
-      this.db
-        .prepare(
-          `UPDATE deployments SET status = 'skipped', error = 'The repository moved: built again under its new name.',
-             finished_at = ? WHERE project_id IN (${ids}) AND status IN ('queued', 'building')`,
-        )
-        .bind(at, ...projectIds),
-    );
-    for (const projectId of projectIds) {
+    for (const projectId of moving) {
       const slug = projects.get(projectId)?.slug ?? null;
       statements.push(
         this.db
@@ -1488,26 +1461,190 @@ class Deployments {
 
     // Each app again, under its new name. App rows under the old name stay
     // until the new one is live, which redirects them.
-    const actor = await this.workspaceActor(workspace);
-    for (const target of targets.values()) {
+    const followed = await this.followMoves(
+      settings.results.map((row) => row.project_id),
+      {
+        projects,
+        adjust: (found) =>
+          found.source.kind === "hosted"
+            ? { ...found, workspace, source: { ...found.source, repo: { ...found.source.repo, namespace: workspace, name } } }
+            : { ...found, workspace },
+      },
+    );
+    if (followed.failed.length > 0) throw new Error(`could not rebuild after the move to ${current}: ${followed.failed.join("; ")}`);
+  }
+
+  /** The projects with these ids, as the projects service has them now (found through their repositories). */
+  private async projectsById(projectIds: string[]): Promise<Map<string, Project>> {
+    const projects = new Map<string, Project>();
+    if (projectIds.length === 0) return projects;
+    const repoIds = new Set<string>();
+    for (let i = 0; i < projectIds.length; i += 50) {
+      const chunk = projectIds.slice(i, i + 50);
+      const rows = await this.db
+        .prepare(`SELECT DISTINCT repo_id FROM settings WHERE project_id IN (${chunk.map(() => "?").join(", ")})`)
+        .bind(...chunk)
+        .all<{ repo_id: string }>();
+      for (const { repo_id } of rows.results) repoIds.add(repo_id);
+    }
+    const wanted = new Set(projectIds);
+    for (const repoId of repoIds) {
+      for (const project of await this.projects.byRepo(repoId)) {
+        if (wanted.has(project.id)) projects.set(project.id, project);
+      }
+    }
+    return projects;
+  }
+
+  /** Whether `script` is the name an app of the project has where the project is now. */
+  private async namedNow(
+    script: string,
+    settings: { project_id: string; workspace: string; slug: string },
+    branch: string | null,
+  ): Promise<boolean> {
+    const base = await label(settings.workspace, settings.slug, branch);
+    return script === base || script === (await uniqueLabel(base, `${settings.project_id}/${branch ?? ""}`));
+  }
+
+  /** Apps still under a name their project had before it moved, among `apps` (whose projects are in `settings`). */
+  private async staleApps(apps: AppRow[], settings: Map<string, SettingsRow>): Promise<AppRow[]> {
+    const stale: AppRow[] = [];
+    for (const app of apps) {
+      const row = settings.get(app.project_id);
+      if (row && !(await this.namedNow(app.script, row, app.branch))) stale.push(app);
+    }
+    return stale;
+  }
+
+  /**
+   * Brings the apps of the projects `projectIds` (every project when null)
+   * under the names they have where the projects are now: each app still
+   * under an older name, paused or not, and each build a move dropped, is
+   * built again under its new name from the same commit, and once that is
+   * live the old name redirects to it (`supersede`).
+   *
+   * Idempotent, and safe to run again at any time: an app already up under
+   * its new name only has its old names redirected; one whose rebuild is
+   * queued or under way is left to it; one whose workspace has no
+   * Deployments or is over its limit waits, without a refused deployment
+   * each time; with `backoff` (the sweep), one whose rebuild was tried
+   * within `MOVE_RETRY_MS` waits. Returns what could not be queued, for an
+   * event's delivery to be retried.
+   */
+  private async followMoves(
+    projectIds: string[] | null,
+    options: { projects?: Map<string, Project>; adjust?: (project: Project) => Project; backoff?: boolean } = {},
+  ): Promise<{ queued: number; waiting: number; failed: string[] }> {
+    const result = { queued: 0, waiting: 0, failed: [] as string[] };
+    if (projectIds && projectIds.length === 0) return result;
+    const cloudflare = this.cloudflare;
+    if (!cloudflare) return result;
+
+    const settingsRows =
+      projectIds == null
+        ? (await this.db.prepare("SELECT * FROM settings WHERE repo_deleted_at IS NULL").all<SettingsRow>()).results
+        : (await Promise.all(projectIds.map((id) => this.settingsRow(id)))).filter((row): row is SettingsRow => row != null);
+    const settings = new Map(settingsRows.map((row) => [row.project_id, row]));
+    if (settings.size === 0) return result;
+    const ids = [...settings.keys()];
+
+    const apps: AppRow[] = [];
+    const dropped: DroppedBuild[] = [];
+    for (let i = 0; i < ids.length; i += 50) {
+      const chunk = ids.slice(i, i + 50);
+      const marks = chunk.map(() => "?").join(", ");
+      const [appRows, droppedRows] = await Promise.all([
+        this.db.prepare(`SELECT * FROM apps WHERE project_id IN (${marks})`).bind(...chunk).all<AppRow>(),
+        // Builds a move dropped, that nothing has been built in place of since.
+        this.db
+          .prepare(
+            `SELECT * FROM deployments d WHERE d.project_id IN (${marks}) AND d.status = 'skipped' AND d.error IN (?, ?)
+               AND d.created_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-7 days')
+               AND NOT EXISTS (
+                 SELECT 1 FROM deployments n WHERE n.project_id = d.project_id AND n.kind = d.kind AND n.branch IS d.branch
+                   AND n.created_at > d.created_at AND n.status != 'skipped'
+               )`,
+          )
+          .bind(...chunk, MOVED_ERROR, RENAMED_ERROR)
+          .all<DeploymentRow>(),
+      ]);
+      apps.push(...appRows.results);
+      dropped.push(...droppedRows.results);
+    }
+    const targets: MoveTarget[] = moveTargets(await this.staleApps(apps, settings), dropped);
+    if (targets.length === 0) return result;
+
+    const projects = new Map(options.projects ?? []);
+    const unknown = [...new Set(targets.map((t) => t.projectId))].filter((id) => !projects.has(id));
+    for (const [id, project] of await this.projectsById(unknown)) projects.set(id, project);
+    const billing = billingClient(this.env.BILLING);
+    const open = new Map<string, boolean>();
+    const actors = new Map<string, User | null>();
+
+    for (const target of targets) {
+      const row = settings.get(target.projectId)!;
       const found = projects.get(target.projectId);
       if (!found) continue;
-      const project: Project =
-        found.source.kind === "hosted"
-          ? { ...found, workspace, source: { ...found.source, repo: { ...found.source.repo, namespace: workspace, name } } }
-          : { ...found, workspace };
+      const project = options.adjust ? options.adjust(found) : found;
+      const named = `${row.workspace}/${row.slug}${target.branch ? ` (${target.branch})` : ""}`;
+      // Built only where deployments has the project now; the projects
+      // service catches up on its own queue, and a later run builds then.
+      if (project.workspace !== row.workspace || project.slug !== row.slug) {
+        result.waiting++;
+        continue;
+      }
       try {
+        const script = await this.scriptFor(project, target.branch);
+        // Already up under its new name: only its old names are left to redirect.
+        const up = await this.db.prepare("SELECT 1 FROM apps WHERE script = ?").bind(script).first();
+        if (up) {
+          await this.supersede(cloudflare, { project_id: project.id, kind: target.kind, branch: target.branch, workspace: project.workspace }, script);
+          continue;
+        }
+        const last = await this.db
+          .prepare("SELECT status, created_at FROM deployments WHERE script = ? ORDER BY created_at DESC LIMIT 1")
+          .bind(script)
+          .first<{ status: string; created_at: string }>();
+        if (last && (last.status === "queued" || last.status === "building")) {
+          result.queued++;
+          continue;
+        }
+        if (options.backoff && !retryDue(last?.created_at ?? null, Date.now(), MOVE_RETRY_MS)) {
+          result.waiting++;
+          continue;
+        }
+        // A workspace without Deployments, or over its limit, waits for it
+        // rather than gathering refused deployments.
+        if (!open.has(project.workspace)) {
+          const [plan, limit] = await Promise.all([
+            billing.hasFeature(project.workspace, "deployments"),
+            billing.checkLimit(project.workspace),
+          ]);
+          open.set(project.workspace, plan.ok && !(limit.ok && limit.value.state === "stopped"));
+        }
+        if (!open.get(project.workspace)) {
+          result.waiting++;
+          continue;
+        }
+        if (!actors.has(project.workspace)) actors.set(project.workspace, await this.workspaceActor(project.workspace));
         const started =
           target.kind === "production"
             ? await this.deployProduction(project, target.commit, "g1t")
             : target.number != null
               ? await this.deployPreview(project, target.number, "g1t", true)
-              : await this.rebuildStack(project, target.branch, target.commit, actor);
-        if (started && !started.ok) console.log("could not rebuild", project.slug, target.branch, started.error.message);
+              : await this.rebuildStack(project, target.branch, target.commit, actors.get(project.workspace) ?? null);
+        const outcome = rebuildOutcome(started);
+        if (outcome === "queued") result.queued++;
+        else if (outcome === "failed") {
+          const why = started?.ok ? (started.value.error ?? started.value.status) : started ? started.error.message : "";
+          result.failed.push(`${named}: ${why}`);
+        }
       } catch (error) {
-        console.error("could not rebuild after move", project.slug, target.branch, error);
+        result.failed.push(`${named}: ${String(error)}`);
       }
     }
+    if (result.failed.length > 0) console.error("could not rebuild moved apps", result.failed);
+    return result;
   }
 
   /** The projects built from a repository, as this service has them (projects hides a deleted one's). */
@@ -1597,6 +1734,7 @@ class Deployments {
         .all<{ script: string }>();
       for (const { script } of redirects.results) {
         await this.cloudflare?.deleteScript(script);
+        await this.env.DOMAINS?.delete(appHost(script)).catch((error) => console.error("could not drop redirect", script, error));
         await this.db.prepare("DELETE FROM redirects WHERE script = ?").bind(script).run();
       }
     }
@@ -1697,20 +1835,32 @@ class Deployments {
       .all<{ id: string }>();
     for (const { id } of stuck.results) await this.finishFailed(id, "The build did not finish in 45 minutes.", null, null);
 
-    const apps = (await this.db.prepare("SELECT * FROM apps").all<AppRow>()).results;
-    const workspaces = [...new Set(apps.map((app) => app.workspace))];
+    let apps = (await this.db.prepare("SELECT * FROM apps").all<AppRow>()).results;
+    // Each app is its project's workspace's, as deployments has it now: an
+    // app still under the name it had before its project moved is the new
+    // workspace's, and plans and limits are checked there.
+    const settings = new Map(
+      (await this.db.prepare("SELECT * FROM settings").all<SettingsRow>()).results.map((row) => [row.project_id, row]),
+    );
+    const owners = new Map([...settings].map(([id, row]) => [id, row.workspace]));
+    const workspaces = [...new Set(apps.map((app) => ownerOf(app, owners)))];
 
     // Apps of workspaces whose plan has ended come down.
     const billing = billingClient(this.env.BILLING);
-    await this.holdToLimits(apps).catch((error) => console.error("could not apply limits", error));
+    await this.holdToLimits(apps, settings).catch((error) => console.error("could not apply limits", error));
     for (const workspace of workspaces) {
       const plan = await billing.hasFeature(workspace, "deployments");
       if (!plan.ok && plan.error.code === "payment_required") {
-        for (const app of apps.filter((a) => a.workspace === workspace)) await this.removeApp(app.script);
+        for (const app of apps.filter((a) => ownerOf(a, owners) === workspace)) await this.removeApp(app.script);
         // Custom domains cost g1t by the month: they go with the plan.
         await this.domains.removeWhere("workspace", workspace).catch((error) => console.error("could not remove domains", error));
       }
     }
+
+    // Apps whose project moved and are not up under the new name yet: a
+    // move's rebuild that could not start is tried again here.
+    await this.followMoves(null, { backoff: true }).catch((error) => console.error("could not follow moves", error));
+    apps = (await this.db.prepare("SELECT * FROM apps").all<AppRow>()).results;
 
     await this.domains
       .sweep(async (projectId) => {
@@ -1732,15 +1882,22 @@ class Deployments {
    * Pauses the apps of workspaces that reached their limit for usage not
    * yet paid for, and rebuilds them from the same commit once they are
    * under it again. Paused apps answer with a notice and run nothing.
+   *
+   * The workspace is the project's now (see `ownerOf`), never the one an
+   * app's row was written under, so an app left under its old name after
+   * a transfer is paused only if its new workspace is over its limit. Such
+   * an app is resumed by being built under its new name (`followMoves`),
+   * not here.
    */
-  private async holdToLimits(apps: AppRow[]): Promise<void> {
+  private async holdToLimits(apps: AppRow[], settings: Map<string, SettingsRow>): Promise<void> {
     const cloudflare = this.cloudflare;
     if (!cloudflare) return;
     const billing = billingClient(this.env.BILLING);
-    for (const workspace of [...new Set(apps.map((app) => app.workspace))]) {
+    const owners = new Map([...settings].map(([id, row]) => [id, row.workspace]));
+    for (const workspace of [...new Set(apps.map((app) => ownerOf(app, owners)))]) {
       const limit = await billing.checkLimit(workspace);
       if (!limit.ok) continue;
-      const theirs = apps.filter((app) => app.workspace === workspace);
+      const theirs = apps.filter((app) => ownerOf(app, owners) === workspace);
       if (limit.value.state === "stopped") {
         for (const app of theirs.filter((a) => !a.paused_at)) {
           await cloudflare.pauseScript(app.script);
@@ -1748,19 +1905,19 @@ class Deployments {
         }
         continue;
       }
-      const paused = theirs.filter((a) => a.paused_at);
+      const stale = new Set((await this.staleApps(theirs, settings)).map((app) => app.script));
+      const paused = theirs.filter((a) => a.paused_at && !stale.has(a.script));
       if (paused.length === 0) continue;
-      const actor = await this.workspaceActor(workspace);
-      if (!actor) continue;
+      const projects = await this.projectsById([...new Set(paused.map((app) => app.project_id))]);
       for (const app of paused) {
-        const project = await this.projects.get(workspace, app.slug, actor);
-        if (!project.ok) continue;
+        const project = projects.get(app.project_id);
+        if (!project) continue;
         // A failed or refused rebuild leaves it paused, to try again next time.
         const rebuilt =
           app.kind === "production"
-            ? await this.deployProduction(project.value, app.commit_sha, "g1t")
+            ? await this.deployProduction(project, app.commit_sha, "g1t")
             : app.number != null
-              ? await this.deployPreview(project.value, app.number, "g1t", true)
+              ? await this.deployPreview(project, app.number, "g1t", true)
               : null;
         if (rebuilt && !rebuilt.ok) console.log("could not resume", app.script, rebuilt.error.message);
       }
@@ -1775,6 +1932,7 @@ class Deployments {
   private async removeOrphans(apps: AppRow[]): Promise<void> {
     const cloudflare = this.cloudflare;
     if (!cloudflare) return;
+    // Their entries in `DOMAINS` expire on their own, at the same time.
     await this.db.prepare("DELETE FROM redirects WHERE expires_at < ?").bind(now()).run();
     const redirects = await this.db.prepare("SELECT script FROM redirects").all<{ script: string }>();
     const held = new Set([...apps.map((app) => app.script), ...redirects.results.map((r) => r.script)]);
@@ -1828,25 +1986,25 @@ class Deployments {
       }
     }
     for (const workspace of new Set(apps.map((app) => app.workspace))) await this.notePeak(workspace);
-    // What this month's traffic past the plan will cost, so the workspace's
-    // limit counts it now rather than when the month closes.
+    // What this month's traffic and custom domains will cost, from the
+    // first request and the first domain, so the workspace's limit counts
+    // it now rather than when the month closes, and its Billing page shows it.
     const costs = await this.costs();
-    const a = DEPLOYMENTS_ALLOWANCE;
-    for (const workspace of perWorkspace.keys()) {
-      const meter = await this.db
-        .prepare("SELECT requests, cpu_ms, peak_apps, peak_domains FROM meters WHERE namespace = ? AND month = ?")
-        .bind(workspace, month())
-        .first<{ requests: number; cpu_ms: number; peak_apps: number; peak_domains: number }>();
-      if (!meter) continue;
-      const cost = Math.ceil(
-        (Math.max(0, meter.requests - a.requests) / 1_000_000) * costs.millionRequests +
-          (Math.max(0, meter.cpu_ms - a.cpuMs) / 1_000_000) * costs.millionCpuMs +
-          Math.max(0, meter.peak_apps - a.apps) * costs.appMonth +
-          extraDomains(meter.peak_domains ?? 0) * costs.domainMonth,
-      );
-      await billingClient(this.env.BILLING)
-        .notePending(workspace, "deployments", cost)
+    const billing = billingClient(this.env.BILLING);
+    const meters = await this.db
+      .prepare("SELECT namespace, requests, cpu_ms, peak_domains FROM meters WHERE month = ?")
+      .bind(month())
+      .all<{ namespace: string; requests: number; cpu_ms: number; peak_domains: number | null }>();
+    for (const meter of meters.results) {
+      const cost = monthCost(meter, costs);
+      await billing
+        .notePending(meter.namespace, "deployments", cost.traffic.micros, cost.traffic.detail)
         .catch((error) => console.error("could not note pending usage", error));
+      if ((meter.peak_domains ?? 0) > 0) {
+        await billing
+          .notePending(meter.namespace, "domains", cost.domains.micros, cost.domains.detail)
+          .catch((error) => console.error("could not note pending usage", error));
+      }
     }
   }
 
@@ -1862,37 +2020,21 @@ class Deployments {
     for (const { script } of idle.results) await this.removeApp(script);
   }
 
-  /** Charges each month that is over for what it used past the allowance, once. */
+  /** Charges each month that is over for its requests, CPU time and custom domains, from the first, once. */
   private async chargeMonths(): Promise<void> {
     const due = await this.db
       .prepare("SELECT * FROM meters WHERE month < ? AND charged_at IS NULL")
       .bind(month())
-      .all<{ namespace: string; month: string; requests: number; cpu_ms: number; peak_apps: number; peak_domains: number }>();
-    const a = DEPLOYMENTS_ALLOWANCE;
+      .all<{ namespace: string; month: string; requests: number; cpu_ms: number; peak_domains: number | null }>();
     const costs = await this.costs();
     for (const meter of due.results) {
-      const extraRequests = Math.max(0, meter.requests - a.requests);
-      const extraCpu = Math.max(0, meter.cpu_ms - a.cpuMs);
-      const extraApps = Math.max(0, meter.peak_apps - a.apps);
-      const moreDomains = extraDomains(meter.peak_domains ?? 0);
-      const cost = Math.ceil(
-        (extraRequests / 1_000_000) * costs.millionRequests +
-          (extraCpu / 1_000_000) * costs.millionCpuMs +
-          extraApps * costs.appMonth +
-          moreDomains * costs.domainMonth,
-      );
-      if (cost > 0) {
-        const parts = [
-          extraApps && `${extraApps} extra apps`,
-          moreDomains && `${moreDomains} extra custom domains`,
-          extraRequests && `${extraRequests.toLocaleString("en-US")} extra requests`,
-          extraCpu && `${extraCpu.toLocaleString("en-US")} extra CPU ms`,
-        ].filter(Boolean);
+      const cost = monthCost(meter, costs);
+      if (cost.micros > 0) {
         const charged = await billingClient(this.env.BILLING).chargeFeature({
           workspace: meter.namespace,
           feature: "deployments",
-          costMicros: cost,
-          description: `Deployments in ${meter.month} past the plan: ${parts.join(", ")}`,
+          costMicros: cost.micros,
+          description: `Deployments in ${meter.month}: ${cost.description}`,
           reference: `deployments/${meter.namespace}/${meter.month}`,
         });
         if (!charged.ok) continue;

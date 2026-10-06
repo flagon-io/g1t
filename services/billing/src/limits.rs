@@ -622,7 +622,8 @@ impl Billing {
     /// (see `storage`); `deployments` charges its own.
     pub(crate) async fn note_pending(&self, a: NotePendingArgs) -> Result<bool> {
         let now = rfc3339(now_ms());
-        self.set_pending(&a.workspace, &a.source, &now[..7], a.cost_micros).await?;
+        let detail = a.detail.as_deref().map(str::trim).filter(|d| !d.is_empty()).map(|d| d.chars().take(200).collect::<String>());
+        self.set_pending(&a.workspace, &a.source, &now[..7], a.cost_micros, detail.as_deref()).await?;
         Ok(true)
     }
 

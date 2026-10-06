@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { OG_RENDER_VERSION } from "@g1t/contracts/og";
+
 import { DESCRIPTION, cardUrl, excerpt, fingerprint, page } from "./meta.ts";
 
 type Tag = Record<string, string>;
@@ -21,7 +23,7 @@ test("a page gets its title, description, Open Graph and Twitter tags", () => {
   assert.equal(meta.get("og:title"), "Pricing");
   assert.equal(meta.get("og:url"), "https://g1t.sh/pricing");
   assert.equal(meta.get("og:site_name"), "g1t");
-  assert.equal(meta.get("og:image"), "https://og.g1t.sh/image?path=%2Fpricing");
+  assert.equal(meta.get("og:image"), `https://og.g1t.sh/image?path=%2Fpricing&v=${OG_RENDER_VERSION}`);
   assert.equal(meta.get("twitter:card"), "summary_large_image");
   assert.equal(meta.get("twitter:image"), meta.get("og:image"));
 });
@@ -34,7 +36,7 @@ test("pages under a project describe the project, and their card follows its det
   const meta = tags(page({ location: { pathname: "/acme/web/commits/" }, matches: [project] }, { title: "Commits · acme/web · g1t" }));
   assert.equal(meta.get("description"), "The storefront");
   assert.equal(meta.get("og:url"), "https://g1t.sh/acme/web/commits");
-  assert.match(meta.get("og:image") ?? "", /\?path=%2Facme%2Fweb%2Fcommits&v=[0-9a-z]+$/);
+  assert.match(meta.get("og:image") ?? "", new RegExp(`\\?path=%2Facme%2Fweb%2Fcommits&v=${OG_RENDER_VERSION}\\.[0-9a-z]+$`));
 });
 
 test("with nothing particular to say, a page says what g1t is", () => {
@@ -45,7 +47,12 @@ test("with nothing particular to say, a page says what g1t is", () => {
 test("a card's version changes with what it shows", () => {
   assert.equal(fingerprint(["a", "open"]), fingerprint(["a", "open"]));
   assert.notEqual(fingerprint(["a", "open"]), fingerprint(["a", "merged"]));
-  assert.equal(cardUrl("/", undefined), "https://og.g1t.sh/image?path=%2F");
+  assert.equal(cardUrl("/", undefined), `https://og.g1t.sh/image?path=%2F&v=${OG_RENDER_VERSION}`);
+});
+
+test("every card address carries the render version, so a new design is a new address", () => {
+  assert.match(cardUrl("/"), new RegExp(`[?&]v=${OG_RENDER_VERSION}$`));
+  assert.match(cardUrl("/acme", ["Acme"]), new RegExp(`[?&]v=${OG_RENDER_VERSION}\\.[0-9a-z]+$`));
 });
 
 test("an excerpt is plain text from the start of the Markdown", () => {

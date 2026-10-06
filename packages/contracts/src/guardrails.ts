@@ -65,8 +65,13 @@ export interface GuardrailsApi {
     repo: RepoPath | null,
     settings: GuardrailSettings,
   ): Promise<Result<GuardrailsView>>;
-  /** For the runner: what a run in `repo` gets. */
-  runGuardrails(repo: RepoPath): Promise<Result<Guardrails>>;
+  /**
+   * For the runner: what a run in `repo` gets, which is always its
+   * project's. `repoId` names the project however it has moved since; a
+   * pull request's working copy (`pulls/<pull id>`) stands for the
+   * repository the pull request is to.
+   */
+  runGuardrails(repo: RepoPath, repoId?: string | null): Promise<Result<Guardrails>>;
 }
 
 /** The guardrails methods of the work service. */
@@ -84,6 +89,6 @@ export function guardrailsClient(service: ServiceBinding): GuardrailsApi {
     getGuardrails: (viewer, workspace, repo) => call("get_guardrails", { viewer, workspace, repo: repo ?? null }),
     updateGuardrails: (actor, workspace, repo, settings) =>
       call("update_guardrails", { actor, workspace, repo, settings }),
-    runGuardrails: (repo) => call("run_guardrails", { repo }),
+    runGuardrails: (repo, repoId) => call("run_guardrails", { repo, repo_id: repoId ?? null }),
   };
 }

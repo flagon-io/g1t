@@ -1,4 +1,4 @@
-import { Check, Search, Ticket, X } from "lucide-react";
+import { Check, MessageSquareText, Search, Ticket, X } from "lucide-react";
 import { Link, data, redirect, useLocation } from "react-router";
 
 import type { Invite, InviteTree, InviteTreeNode, WaitlistEntry } from "@g1t/contracts";
@@ -7,13 +7,17 @@ import type { Route } from "./+types/invites";
 import { Badge, Button, EmptyState, Field, Input, Notice, PageHeader, Section, Select, Textarea, When } from "~/components/ui";
 import { text } from "~/lib/forms";
 import {
-  INVITES_DONE,
   INVITE_TABS,
   type InviteTab,
+  MAX_BULK,
+  MAX_NOTE,
   TAB_LABEL,
+  doneMessage,
   invitesHref,
   parseGrant,
+  parseIds,
   parseMintEmail,
+  parseNote,
   parseTab,
   parseWaitlistStatus,
 } from "~/lib/invites";
@@ -32,6 +36,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const name = url.searchParams.get("name")?.trim().toLowerCase() ?? "";
   const kind = url.searchParams.get("kind") === "workspace" ? "workspace" : "user";
   const done = url.searchParams.get("done");
+  const selectAll = url.searchParams.get("select") === "all";
   const [waitlist, invites, tree] = await Promise.all([
     tab === "waitlist" ? settle(identity.waitlist(query || null, status === "all" ? null : status)) : null,
     tab === "invites" ? settle(identity.invites(query || null)) : null,
@@ -47,25 +52,52 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     invites: invites?.ok ? invites.value : [],
     tree: tree?.ok ? tree.value : null,
     error: [waitlist, invites, tree].map((result) => (result && !result.ok ? result.error : null)).find(Boolean) ?? null,
-    done: done ? (INVITES_DONE[done] ?? null) : null,
+    done: doneMessage(done, url.searchParams.get("n")),
+    selectAll,
   };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
   const staff = requireStaff(context);
   const form = await request.formData();
-  const back = (done: string) => {
+  const back = (done: string, n?: number) => {
     const url = new URL(request.url);
     url.searchParams.set("done", done);
+    url.searchParams.delete("select");
+    if (n) url.searchParams.set("n", String(n));
+    else url.searchParams.delete("n");
     return redirect(`${url.pathname}${url.search}`);
   };
   switch (text(form, "intent")) {
     case "approve":
     case "dismiss": {
       const approve = text(form, "intent") === "approve";
-      const result = await identity.decideWaitlist(text(form, "id"), approve, staff.email);
+      const note = parseNote(text(form, "note"));
+      if (!note.ok) return data({ error: note.error, id: text(form, "id") }, { status: 422 });
+      const result = await identity.decideWaitlist(text(form, "id"), approve, staff.email, approve ? note.value : null);
       if (!result.ok) return data({ error: result.error.message, id: text(form, "id") }, { status: 422 });
       throw back(approve ? "approved" : "dismissed");
+    }
+    case "bulk-approve":
+    case "bulk-dismiss": {
+      const approve = text(form, "intent") === "bulk-approve";
+      const ids = parseIds(form);
+      if (!ids.ok) return data({ error: ids.error, section: "bulk" }, { status: 422 });
+      const note = parseNote(text(form, "note"));
+      if (!note.ok) return data({ error: note.error, section: "bulk" }, { status: 422 });
+      // One at a time: each mints and emails its own invite.
+      const refused: string[] = [];
+      let decided = 0;
+      for (const id of ids.value) {
+        const result = await identity.decideWaitlist(id, approve, staff.email, approve ? note.value : null);
+        if (result.ok) decided += 1;
+        else refused.push(result.error.message);
+      }
+      if (refused.length > 0) {
+        const verb = approve ? "Approved" : "Dismissed";
+        return data({ error: `${verb} ${decided}; ${refused.length} not: ${refused.join(" ")}`, section: "bulk" }, { status: 422 });
+      }
+      throw back(approve ? "approved" : "dismissed", decided);
     }
     case "revoke": {
       const result = await identity.revokeInvite(text(form, "id"), staff.email);
@@ -130,8 +162,69 @@ function SearchForm({ tab, query, placeholder, extra }: { tab: InviteTab; query:
   );
 }
 
-function Waitlist({ entries, query, status, actionData }: { entries: WaitlistEntry[]; query: string; status: string; actionData: ActionData }) {
+/** A note for the invite email, folded away until wanted. */
+function NoteField({ form, label }: { form?: string; label: string }) {
+  return (
+    <details className="group/note">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-xs text-muted select-none hover:text-fg [&::-webkit-details-marker]:hidden">
+        <MessageSquareText size={13} />
+        {label}
+      </summary>
+      <div className="mt-2">
+        <Textarea
+          name="note"
+          form={form}
+          rows={2}
+          maxLength={MAX_NOTE}
+          placeholder="Optional. Goes in the invite email as a note from the g1t team."
+          aria-label="Note for the invite email"
+        />
+      </div>
+    </details>
+  );
+}
+
+/** Who decided, when, what they wrote, and whether the invite was used. */
+function Decision({ entry }: { entry: WaitlistEntry }) {
+  if (!entry.decidedBy) return null;
+  return (
+    <div className="space-y-1.5">
+      <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-faint">
+        {entry.status === "invited" ? "Approved" : "Dismissed"} by <span className="font-mono text-muted">{entry.decidedBy}</span>
+        <When at={entry.decidedAt} />
+        {entry.status === "invited" &&
+          (entry.joinedAs ? <Badge tone="mint">Joined as @{entry.joinedAs}</Badge> : <Badge>Invite not used yet</Badge>)}
+      </p>
+      {entry.note && (
+        <p className="text-xs text-muted">
+          Note sent: <span className="whitespace-pre-line text-fg-soft">{entry.note}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Waitlist({
+  entries,
+  query,
+  status,
+  selectAll,
+  actionData,
+}: {
+  entries: WaitlistEntry[];
+  query: string;
+  status: string;
+  selectAll: boolean;
+  actionData: ActionData;
+}) {
   const { pathname, search } = useLocation();
+  const waiting = entries.filter((entry) => entry.status === "waiting");
+  const params = new URLSearchParams(search);
+  params.set("select", "all");
+  const selectHref = `${pathname}?${params}`;
+  params.delete("select");
+  const clearHref = `${pathname}?${params}`;
+  const bulkError = errorFor(actionData, { section: "bulk" });
   return (
     <div className="space-y-4">
       <SearchForm
@@ -149,48 +242,108 @@ function Waitlist({ entries, query, status, actionData }: { entries: WaitlistEnt
           </div>
         }
       />
+      {waiting.length > 0 && (
+        // Ticked rows belong to this form through their `form` attribute:
+        // sudo runs no script, so choosing several is plain HTML.
+        <form
+          id="bulk"
+          method="post"
+          action={`${pathname}${search}`}
+          className="space-y-3 rounded-lg border border-line bg-raised/40 px-4 py-3 sm:px-5"
+        >
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <p className="text-sm">
+              <span className="font-medium">{waiting.length} waiting</span>
+              <span className="text-muted"> · tick some, or </span>
+              {selectAll ? (
+                <a href={clearHref} className="text-merged hover:underline">
+                  clear
+                </a>
+              ) : (
+                <a href={selectHref} className="text-merged hover:underline">
+                  tick all {Math.min(waiting.length, MAX_BULK)}
+                </a>
+              )}
+            </p>
+            <div className="ml-auto flex flex-wrap gap-2">
+              <Button type="submit" name="intent" value="bulk-dismiss" variant="quiet">
+                <X size={14} />
+                Dismiss ticked
+              </Button>
+              <Button type="submit" name="intent" value="bulk-approve" variant="lavender">
+                <Check size={14} />
+                Approve and invite ticked
+              </Button>
+            </div>
+          </div>
+          <NoteField form="bulk" label="Add a note to every invite" />
+          {bulkError && <Notice tone="error">{bulkError}</Notice>}
+        </form>
+      )}
       {entries.length === 0 ? (
-        <EmptyState title="Nobody waiting">People who ask for access on g1t.sh/register show up here, oldest first.</EmptyState>
+        <EmptyState title={status === "waiting" ? "Nobody waiting" : "Nothing here"}>
+          People who ask for access on g1t.sh/register show up here, newest first.
+        </EmptyState>
       ) : (
         <ul className="divide-y divide-line rounded-lg border border-line bg-surface">
-          {entries.map((entry) => {
+          {entries.map((entry, index) => {
             const error = errorFor(actionData, { id: entry.id });
+            const open = entry.status === "waiting";
             return (
-              <li key={entry.id} id={entry.id} className="scroll-mt-20 space-y-2 px-4 py-3 sm:px-5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-sm break-all">{entry.email}</span>
-                  {entry.status === "invited" && <Badge tone="mint">Invited</Badge>}
-                  {entry.status === "dismissed" && <Badge>Dismissed</Badge>}
-                  <span className="text-xs text-faint">
-                    asked <When at={entry.createdAt} />
-                    {entry.updatedAt !== entry.createdAt && (
-                      <>
-                        , again <When at={entry.updatedAt} />
-                      </>
-                    )}
-                  </span>
-                  {entry.status === "waiting" && (
-                    <form method="post" action={`${pathname}${search}#${entry.id}`} className="ml-auto flex gap-2">
-                      <input type="hidden" name="id" value={entry.id} />
-                      <Button type="submit" name="intent" value="dismiss" variant="quiet">
-                        <X size={14} />
-                        Dismiss
-                      </Button>
-                      <Button type="submit" name="intent" value="approve" variant="lavender">
-                        <Check size={14} />
-                        Approve and invite
-                      </Button>
-                    </form>
+              <li key={entry.id} id={entry.id} className="scroll-mt-20 px-4 py-3 sm:px-5">
+                <div className="flex gap-3">
+                  {open && (
+                    <input
+                      type="checkbox"
+                      form="bulk"
+                      name="ids"
+                      value={entry.id}
+                      defaultChecked={selectAll && index < MAX_BULK}
+                      aria-label={`Tick ${entry.email}`}
+                      className="mt-1 size-4 shrink-0 accent-[var(--color-merged)]"
+                    />
                   )}
+                  <div className="min-w-0 grow space-y-2">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="font-mono text-sm break-all">{entry.email}</span>
+                      {entry.status === "invited" && <Badge tone="mint">Invited</Badge>}
+                      {entry.status === "dismissed" && <Badge>Dismissed</Badge>}
+                      <span className="text-xs text-faint">
+                        asked <When at={entry.createdAt} />
+                        {entry.updatedAt !== entry.createdAt && (
+                          <>
+                            , again <When at={entry.updatedAt} />
+                          </>
+                        )}
+                      </span>
+                    </div>
+                    {entry.about ? (
+                      <blockquote className="border-l-2 border-line-strong pl-3 text-sm break-words whitespace-pre-line text-fg-soft">{entry.about}</blockquote>
+                    ) : (
+                      <p className="text-xs text-faint italic">Did not say what they will build.</p>
+                    )}
+                    <Decision entry={entry} />
+                    {open && (
+                      <form method="post" action={`${pathname}${search}#${entry.id}`} className="space-y-2">
+                        <input type="hidden" name="id" value={entry.id} />
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <NoteField label="Add a note to the invite" />
+                          <div className="ml-auto flex gap-2">
+                            <Button type="submit" name="intent" value="dismiss" variant="quiet">
+                              <X size={14} />
+                              Dismiss
+                            </Button>
+                            <Button type="submit" name="intent" value="approve" variant="lavender">
+                              <Check size={14} />
+                              Approve and invite
+                            </Button>
+                          </div>
+                        </div>
+                      </form>
+                    )}
+                    {error && <Notice tone="error">{error}</Notice>}
+                  </div>
                 </div>
-                {entry.about && <blockquote className="border-l-2 border-line-strong pl-3 text-sm break-words whitespace-pre-line text-fg-soft">{entry.about}</blockquote>}
-                {entry.decidedBy && (
-                  <p className="text-xs text-faint">
-                    {entry.status === "invited" ? "Approved" : "Dismissed"} by <span className="font-mono">{entry.decidedBy}</span>{" "}
-                    <When at={entry.decidedAt} />
-                  </p>
-                )}
-                {error && <Notice tone="error">{error}</Notice>}
               </li>
             );
           })}
@@ -427,7 +580,7 @@ function Tree({ tree, name, kind, actionData }: { tree: InviteTree | null; name:
 }
 
 export default function Invites({ loaderData, actionData }: Route.ComponentProps) {
-  const { tab, query, status, waitlist, invites, tree, name, kind, error, done } = loaderData;
+  const { tab, query, status, waitlist, invites, tree, name, kind, error, done, selectAll } = loaderData;
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
       <PageHeader
@@ -453,7 +606,9 @@ export default function Invites({ loaderData, actionData }: Route.ComponentProps
         {error && <Notice tone="warn">Identity did not answer: {error}</Notice>}
       </div>
       <div className="mt-5">
-        {tab === "waitlist" && <Waitlist entries={waitlist} query={query} status={status} actionData={actionData} />}
+        {tab === "waitlist" && (
+          <Waitlist entries={waitlist} query={query} status={status} selectAll={selectAll} actionData={actionData} />
+        )}
         {tab === "invites" && (
           <div className="space-y-4">
             <SearchForm tab="invites" query={query} placeholder="A code's start (g1t-k7m2), an email, or a username" />

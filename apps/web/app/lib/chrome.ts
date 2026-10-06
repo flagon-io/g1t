@@ -43,6 +43,8 @@ export function usesAppShell(pathname: string, signedIn: boolean): boolean {
   // An invite link is the front door: the marketing frame, like /register.
   if (path.startsWith("/invite/")) return false;
   if (path.startsWith("/policies/")) return false;
+  // Your settings pages, like /settings: a visitor is sent to sign in.
+  if (path.startsWith("/settings/")) return false;
   return true;
 }
 

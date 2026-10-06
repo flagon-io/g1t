@@ -25,6 +25,7 @@ import {
   type ShouldRevalidateFunctionArgs,
   useLocation,
   useParams,
+  useRouteError,
   useRouteLoaderData,
   useSubmit,
 } from "react-router";
@@ -373,7 +374,7 @@ function Header({ user }: { user: User | null | undefined }) {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
-                    <Link to="/settings">
+                    <Link to="/settings/profile">
                       <Settings />
                       Settings
                     </Link>
@@ -415,6 +416,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const root = useRouteLoaderData<typeof loader>("root");
   const user = root?.user;
   const { pathname } = useLocation();
+  // Drawn around the error page too: a 404 keeps the sidebar out of a
+  // project or workspace the viewer cannot see.
+  const error = useRouteError();
+  const missing = isRouteErrorResponse(error) && error.status === 404;
   // The billing page shows the full banner itself.
   const paused = root?.shell?.compute && root.shell.workspace && !pathname.endsWith("/-/billing") && (
     <Suspense fallback={null}>
@@ -459,7 +464,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body className="flex min-h-screen flex-col">
         {root?.shell && usesAppShell(pathname, user != null) ? (
-          <AppShell user={user ?? null} shell={root.shell} banner={banner}>
+          <AppShell user={user ?? null} shell={root.shell} missing={missing} banner={banner}>
             {children}
           </AppShell>
         ) : (

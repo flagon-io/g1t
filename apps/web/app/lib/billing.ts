@@ -3,7 +3,7 @@
  * workspace's alerts. Pure, so it can be tested.
  */
 
-import type { Entitlements, FeatureState, Limit, LimitRequest, Usage, UsageAlert } from "@g1t/contracts";
+import type { Entitlements, FeatureState, Limit, LimitRequest, MeterUsage, Usage, UsageAlert } from "@g1t/contracts";
 
 /** Millionths of a dollar in one dollar, as `MICROS_PER_DOLLAR`; here so the tests need no build of the contracts. */
 const MICROS_PER_DOLLAR = 1_000_000;
@@ -182,6 +182,24 @@ export function planStatus(
   }
   if (entitlements?.trialVerified && entitlements.trialMicrosLeft > 0) return { kind: "trial", label: "Free, on the trial" };
   return { kind: "free", label: "Free" };
+}
+
+/** Meters only the plan runs: a free workspace never builds, serves apps or adds custom domains. */
+const PLAN_ONLY_METERS = new Set(["builds", "requests", "domains"]);
+
+/**
+ * The lines of "This month's usage": every meter on the plan, so it reads
+ * the same each month; without it, only what a free workspace can use,
+ * plus anything that was used anyway (from before the plan ended).
+ */
+export function shownMeters(meters: MeterUsage[], onPlan: boolean): MeterUsage[] {
+  return meters.filter((meter) => onPlan || !PLAN_ONLY_METERS.has(meter.key) || meter.micros > 0);
+}
+
+/** `1 GB`, `500 MB`: storage as it is priced, in powers of ten. */
+export function gigabytes(bytes: number): string {
+  if (bytes >= 1e9) return `${Math.round((bytes / 1e9) * 10) / 10} GB`;
+  return `${Math.round(bytes / 1e6)} MB`;
 }
 
 /** A share from 0 to 1 of `used` against `of`, for a meter. */

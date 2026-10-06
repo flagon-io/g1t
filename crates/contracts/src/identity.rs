@@ -937,13 +937,21 @@ pub struct CreateInviteArgs {
 
 /// `check_invite`: what an invite code is for, before using it. Returns
 /// `Outcome<InvitePreview>`; a code that is unknown, used, revoked or
-/// expired gets the same answer, so codes cannot be probed.
+/// expired gets the same answer, so codes cannot be probed. With
+/// `any_status`, a real code that can no longer be used is described
+/// instead (its `status` says why), so the page can say whom to ask for a
+/// new one; an unknown code still gets the one answer.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InviteCodeArgs {
     pub code: String,
     /// Who is asking, such as the visitor's IP address, for rate limits.
     #[serde(default)]
     pub client: Option<String>,
+    /// Who is looking, if signed in: sets `InvitePreview::for_viewer`.
+    #[serde(default)]
+    pub viewer: Option<User>,
+    #[serde(default)]
+    pub any_status: bool,
 }
 
 /// Someone shown on an invite.
@@ -954,23 +962,48 @@ pub struct InviteFrom {
     pub avatar: Option<String>,
 }
 
+/// A repository an invite code was sent with: using the code accepts the
+/// invitation to collaborate on it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct InviteRepository {
+    /// `workspace/repo`.
+    pub name: String,
+    /// The role it gives, such as `write`.
+    pub role: String,
+}
+
 /// What a valid invite code is for.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InvitePreview {
     pub kind: InviteKind,
+    /// Pending, unless `any_status` asked about a code that is spent.
+    pub status: InviteStatus,
     /// Null when g1t staff sent it.
     pub invited_by: Option<InviteFrom>,
     pub workspace: Option<ProfileWorkspace>,
+    /// The repository it accepts an invitation to, if it was sent with one.
+    pub repository: Option<InviteRepository>,
     /// The address it is for, partly hidden, such as `a•••@example.com`.
     pub email: Option<String>,
+    /// The address in full, while it is pending: whoever holds the code
+    /// was sent it there. Fills in and locks the sign-up form.
+    pub address: Option<String>,
+    /// Whether the address it is for has a g1t account already, so the
+    /// page asks them to sign in rather than sign up.
+    pub has_account: bool,
+    /// With a viewer: whether the invite is theirs (it is for one of their
+    /// confirmed addresses, or they used it). Null without a viewer or,
+    /// for a pending invite, when it is for anyone with the code.
+    pub for_viewer: Option<bool>,
     /// RFC 3339.
     pub expires_at: String,
 }
 
 /// `accept_invite`: a signed-in person uses a workspace invite made for
-/// their confirmed address, and joins the workspace. Returns
-/// `Outcome<String>`: the workspace's slug.
+/// their confirmed address, and joins the workspace, or an invite sent with
+/// a repository invitation, and accepts it. Returns `Outcome<String>`: the
+/// workspace's slug, or `workspace/repo`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AcceptInviteArgs {
     pub user: User,
@@ -1055,14 +1088,23 @@ pub struct WaitlistEntry {
     pub decided_by: Option<String>,
     /// RFC 3339.
     pub decided_at: Option<String>,
+    /// What staff wrote when approving; it went in the invite email.
+    #[serde(default)]
+    pub note: Option<String>,
+    /// The account made with the invite, once it was used.
+    #[serde(default)]
+    pub joined_as: Option<String>,
     /// When they first asked. RFC 3339.
     pub created_at: String,
     /// When they last asked. RFC 3339.
     pub updated_at: String,
 }
 
-/// `admin_waitlist`: the waitlist, oldest first, at most
+/// `admin_waitlist`: the waitlist, newest first, at most
 /// [`ADMIN_INVITES_LIMIT`]. Returns `Vec<WaitlistEntry>`.
+///
+/// `admin_waitlist_pending` takes `{}` and returns the number of requests
+/// still waiting, for sudo's navigation.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AdminWaitlistArgs {
     /// Part of an email address or of what they said.
@@ -1077,15 +1119,21 @@ pub struct AdminWaitlistArgs {
 pub const ADMIN_INVITES_LIMIT: usize = 500;
 
 /// `admin_decide_waitlist`: approving mints an invite bound to the
-/// address, charged to nobody, and emails it; dismissing only marks the
-/// entry. Returns `Outcome<WaitlistEntry>`.
+/// address, charged to nobody, and emails it, with `note` if given;
+/// dismissing only marks the entry. Returns `Outcome<WaitlistEntry>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AdminDecideWaitlistArgs {
     pub id: String,
     pub approve: bool,
     /// The staff member, by email.
     pub staff: String,
+    /// A line for the invite email, up to [`MAX_WAITLIST_NOTE`] characters.
+    #[serde(default)]
+    pub note: Option<String>,
 }
+
+/// The most characters an approval's note keeps.
+pub const MAX_WAITLIST_NOTE: usize = 500;
 
 /// `admin_invites`: every invite, newest first, at most
 /// [`ADMIN_INVITES_LIMIT`], optionally only those whose code starts with

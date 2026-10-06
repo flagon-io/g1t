@@ -529,13 +529,13 @@ function PlanSection({ entitlements: e, unavailable }: { entitlements: Entitleme
     ["Held by reservations", usd(e.heldMicros ?? 0)],
     ["Prepaid", usd(e.prepaidMicros ?? 0)],
     ["Included usage", e.includedMicros ? `${usd(e.includedUsedMicros ?? 0)} of ${usd(e.includedMicros)}` : "—"],
-    ["Private storage", `${gigabytes(e.privateStorageBytes)} of ${gigabytes(e.freePrivateStorageBytes)}`],
+    ["Private storage", `${gigabytes(e.privateStorageBytes)} (${gigabytes(e.freePrivateStorageBytes)} free)`],
     ["Open-source pool paid", usd(e.ossPaidMicros)],
-    ["Build minutes", `${Math.ceil(e.buildSecondsUsed / 60)} of ${Math.floor(e.buildSecondsIncluded / 60)}`],
+    ["Build minutes", `${Math.ceil((e.buildSecondsUsed ?? 0) / 60)}, all metered`],
     [
       "Git operations",
       e.gitOperations != null
-        ? `${e.gitOperations.toLocaleString("en-US")}${e.gitOperationsIncluded ? ` of ${e.gitOperationsIncluded.toLocaleString("en-US")}` : ""}`
+        ? `${e.gitOperations.toLocaleString("en-US")}${e.gitOperationsIncluded ? ` (${e.gitOperationsIncluded.toLocaleString("en-US")} free)` : ""}`
         : "—",
     ],
     ["Audit log", `${e.auditRetentionDays} days`],

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { NAV, holdsCurrent, isCurrent, navItems, soonFor, soonItems } from "./nav.ts";
+import { NAV, countFor, holdsCurrent, isCurrent, navItems, soonFor, soonItems } from "./nav.ts";
 
 test("the sidebar: two top-level links, then sections that fold", () => {
   assert.deepEqual(
@@ -40,7 +40,7 @@ test("every item has its own path, a label and a line about it", () => {
 
 test("the built pages are not marked soon", () => {
   const built = navItems().filter((item) => !item.soon).map((item) => item.to);
-  assert.deepEqual(built, ["/", "/reach-out", "/workspaces", "/enterprises", "/invites", "/requests", "/overages", "/velocity", "/invoices", "/stripe", "/abuse", "/audit"]);
+  assert.deepEqual(built, ["/", "/reach-out", "/workspaces", "/enterprises", "/invites", "/requests", "/overages", "/velocity", "/invoices", "/stripe", "/abuse", "/incidents", "/audit"]);
 });
 
 test("every soon page says what it will do, why, and what it will have", () => {
@@ -79,4 +79,14 @@ test("isCurrent: an item stays lit on the pages beneath it; / only on itself", (
   assert.ok(isCurrent(workspaces, "/workspaces/"));
   assert.ok(!isCurrent(workspaces, "/workspaces-old"));
   assert.ok(isCurrent({ to: "/x", also: ["/y"] }, "/y/z"));
+});
+
+test("requests waiting show beside Invites, and on Customers while it is folded", () => {
+  const invites = navItems().find((item) => item.to === "/invites")!;
+  assert.equal(invites.count, "waitlist");
+  assert.equal(countFor([invites], { waitlist: 4 }), 4);
+  assert.equal(countFor([invites], {}), 0);
+  const customers = NAV.find((group) => group.title === "Customers")!;
+  assert.equal(countFor(customers.items, { waitlist: 4 }), 4);
+  assert.equal(countFor(NAV.find((group) => group.title === "Team")!.items, { waitlist: 4 }), 0);
 });

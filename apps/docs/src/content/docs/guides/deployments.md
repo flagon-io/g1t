@@ -192,8 +192,9 @@ to change.
    **Issuing certificate** to **Active** by itself; **Check now** asks
    again at once.
 
-Custom domains need the workspace's g1t plan. Adding or removing one
-needs the Admin [role](/guides/access-and-roles/) on the project's repository.
+Custom domains need the workspace's g1t plan, and are $0.12 a month each
+(their cost plus 20%), as many as you like. Adding or removing one needs
+the Admin [role](/guides/access-and-roles/) on the project's repository.
 
 ### A subdomain, such as www
 
@@ -318,43 +319,41 @@ key.
 
 ## What it costs
 
-Deployments are never free. They come with the
+Deployments come with the
 [g1t plan](/guides/usage-and-billing/#the-g1t-plan), $20 a month per
-workspace, which includes, each calendar month (UTC):
+workspace with $10 of usage included. There are **no quotas**: as many
+projects and previews as you like, and no count of builds, requests or
+domains ever stops or pauses an app. What deployments cost g1t is metered
+from the first unit, at Cloudflare's price plus 20%, and paid from the
+plan's $10 of included usage first; past it, it is charged up to your
+[spend limit](/guides/usage-and-billing/#limits).
 
-| Included | |
-| --- | --- |
-| 10 apps | The most apps up at once: production and previews together, across the workspace's projects. |
-| 1 million requests | To all of the workspace's apps. |
-| 3 million CPU milliseconds | Time your code spends computing. Waiting on the network is not counted. |
-| 3 custom domains | Across the workspace's projects, with their certificates. A www/apex pair is two. |
-| 200 build minutes | Every build's time, whether it succeeds or fails. |
+| | Costs g1t | You pay |
+| --- | --- | --- |
+| Projects, previews and the apps behind them | Next to nothing | Not charged |
+| Builds, by the second, whether they succeed or fail | About $0.001 a minute | About $0.0012 a minute |
+| Requests, to all of the workspace's apps | $0.30 a million | $0.36 a million |
+| CPU time your code spends computing (waiting on the network is not counted) | $0.02 a million ms | $0.024 a million ms |
+| Custom domains, with their certificates (a www/apex pair is two) | $0.10 a month | $0.12 a month, by the most the workspace had at once that month |
 
-**Usage past that** is charged at Cloudflare's price plus 20%, paid from
-the plan's $10 of included usage first:
-
-| | Price |
-| --- | --- |
-| A build past the 200 minutes | $0.0015 a minute, by the second, whether it succeeds or fails. |
-| Each app past 10 | $0.024 a month |
-| Each million requests past 1 million | $0.36 |
-| Each million CPU milliseconds past 3 million | $0.024 |
-| Each custom domain past 3 | $0.12 a month, by the most the workspace had at once that month |
-
-Builds are recorded when they finish: the plan's minutes pay for them
-first, and a build that runs past them is charged only for the seconds
-past them. Other usage past the allowance is charged once, on the first
-sweep after the month ends, as one line: *Deployments in 2026-10 past the
-plan*.
+Builds are charged when they finish. Requests, CPU time and custom domains
+are counted through the month, so your limit and **Billing** follow them as
+they happen, and charged once, on the first sweep after the month ends, as
+one line: *Deployments in 2026-10: 1,240,000 requests, 3,100,000 CPU ms, 2
+custom domains*.
 
 A static site, or plain HTML, runs no code when it is visited: its files
 are served as they are, so serving it adds no requests or CPU time. Its
 builds are metered. A Workers project's code runs on every request, so its
 requests and CPU time are metered too.
 
-An app that no one visits costs nothing beyond counting toward the 10. That
-is why previews come down when their pull request closes and after their
-idle days.
+An app that no one visits costs nothing. Previews still come down when
+their pull request closes and after their idle days, to keep the list of
+what is up short.
+
+The only things that stop a workspace's apps are its own spend limit
+(apps pause with a notice, and come back once there is room) and the plan
+ending (they come down).
 
 Deployments used to be a $5 plan of their own. A Deployments subscription
 bought before keeps working until its current period ends, and is not
@@ -362,13 +361,13 @@ renewed.
 
 ### Seeing what you use
 
-- **Billing**, under the plan, shows this month's apps, build
-  minutes, requests and CPU time against what the plan includes.
-  Requests and CPU time are counted from Cloudflare's analytics
-  every 10 minutes.
+- **Billing**, under the plan, shows **This month's usage**: *Builds*
+  (build minutes and their cost), *Requests & CPU* and *Custom domains*,
+  in dollars, beside the rest of the workspace's usage. Requests and CPU
+  time are counted from Cloudflare's analytics every 10 minutes.
 - The **statement** on Billing lists every build (*Building acme/web to
-  production (48 s), all of it included in the plan*) and every month's
-  usage past the plan.
+  production (48 s), paid by your plan's included usage*) and every
+  month's requests, CPU time and custom domains.
 - Each build's page shows how long it ran.
 
 ## Turn it off

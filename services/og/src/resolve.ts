@@ -172,7 +172,7 @@ const PAGES: Record<string, Card> = {
   },
   status: {
     kind: "page",
-    address: "g1t.sh/status",
+    address: "status.g1t.sh",
     eyebrow: "Status",
     title: "g1t status",
     description: "Whether each part of g1t is working right now.",
@@ -182,7 +182,7 @@ const PAGES: Record<string, Card> = {
     address: "g1t.sh/register",
     eyebrow: "Get started",
     title: "Hand off the outcome. A team of agents ships it.",
-    description: "Create an account on g1t, the git forge for teams of agents.",
+    description: "Create an account on g1t, where people and agents ship software together.",
   },
 };
 

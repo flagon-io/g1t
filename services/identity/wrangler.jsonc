@@ -7,6 +7,8 @@
 	// and each would otherwise cross the distance to it.
 	"placement": { "mode": "smart" },
 	"main": "build/index.js",
+	// Staff waitlist summaries (src/lib.rs `scheduled`).
+	"triggers": { "crons": ["*/15 * * * *"] },
 	"build": { "command": "cargo install -q worker-build@0.8.7 && worker-build --release" },
 	// Reached only through service bindings.
 	"workers_dev": false,
@@ -44,12 +46,17 @@
 	// working INVITE_TTL_DAYS; owners of INVITE_STAFF_WORKSPACES (g1t's own)
 	// have no limit. IDENTITY_KEY also seals invite codes so their makers
 	// can copy them again.
+	//
+	// The waitlist: whoever asks for access gets one confirmation, and
+	// WAITLIST_NOTIFY_EMAIL gets a summary of new requests at most every
+	// 15 minutes, linking to sudo's Waitlist. Empty sends none.
 	"vars": {
 		"GITHUB_APP_CLIENT_ID": "Iv23liZS94alfjIUn1eW",
 		"REGISTRATION_MODE": "invite",
 		"INVITES_PER_USER": "5",
 		"INVITE_TTL_DAYS": "30",
-		"INVITE_STAFF_WORKSPACES": "flagon-io"
+		"INVITE_STAFF_WORKSPACES": "flagon-io",
+		"WAITLIST_NOTIFY_EMAIL": "hey@flagon.io"
 	},
 	"observability": { "enabled": true }
 }

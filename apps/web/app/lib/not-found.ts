@@ -51,37 +51,30 @@ export type NotFoundCopy = {
   signedInAs: string | null;
   /** Offer to sign in and come back. */
   signIn: boolean;
-  /** Tell them to ask a workspace owner for access. */
-  askOwner: boolean;
 };
 
-/** What the page says for this kind of thing, to whoever is looking. */
+/**
+ * What the page says to whoever is looking. Signed out, it says that the
+ * page may be private, and to sign in if it is yours; signed in, that it
+ * does not exist or they cannot reach it. Never which of the two.
+ */
 export function notFoundCopy(kind: MissingKind, username: string | null | undefined): NotFoundCopy {
   // People are public: a name either belongs to someone or it does not.
   if (kind === "person") {
-    return {
-      title: "No one goes by that name",
-      body: "Check the spelling, or search for them.",
-      signedInAs: null,
-      signIn: false,
-      askOwner: false,
-    };
+    return { title: "Nothing here", body: "No one on g1t goes by that name.", signedInAs: null, signIn: false };
   }
-  const noun = NOUN[kind];
   if (!username) {
     return {
-      title: `Sign in to see this ${noun}`,
-      body: "It may be private, or it may not exist.",
+      title: "Nothing here",
+      body: "This page doesn't exist, or it's private. Sign in if it's yours.",
       signedInAs: null,
       signIn: true,
-      askOwner: false,
     };
   }
   return {
-    title: `This ${noun} doesn't exist, or you don't have access to it`,
-    body: "",
+    title: "Nothing here",
+    body: "This page doesn't exist, or you don't have access to it.",
     signedInAs: username,
     signIn: false,
-    askOwner: true,
   };
 }

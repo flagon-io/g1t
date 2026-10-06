@@ -40,7 +40,7 @@ The response has more entries than shown here.
 ## Authentication
 
 A token is needed to change anything, and to see what is private. Send an
-[access token](https://g1t.sh/settings) as a bearer token:
+[access token](https://g1t.sh/settings/tokens) as a bearer token:
 
 ```sh
 curl https://api.g1t.sh/user \

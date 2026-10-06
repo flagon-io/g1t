@@ -32,7 +32,6 @@ its own copies from `apps/web/public` and `apps/docs/public`.
 | `icon-transparent-1024.png` | 1024×1024, transparent | Placing the icon on a dark surface of your own |
 | `logo-on-dark.png` | 1056×642, dark background | Stripe branding logo (wide), docs and decks on dark |
 | `logo-on-light.png` | 1056×642, white background | Invoices, receipts and anywhere the background is light |
-| `og-1200x630.png` | 1200×630 | Social and Open Graph card |
 
 ## Sources
 
@@ -49,7 +48,6 @@ its own copies from `apps/web/public` and `apps/docs/public`.
 | `svg/favicon.svg` | The 16px cut with no tile, coloured for a light or dark browser (`favicon.svg` in the apps and `packages/theme`) |
 | `svg/logo.svg`, `svg/logo-on-light.svg` | The wordmark, transparent and cropped to its ink, for dark and light backgrounds |
 | `svg/logo-dark-bg.svg`, `svg/logo-light-bg.svg` | The wordmark with padding and a background, on 40px cells |
-| `svg/og.svg` | The social card; its tagline uses Hanken Grotesk and IBM Plex Mono as live text |
 
 `favicon.ico` in the apps holds the 16, 32 and 48px cuts of the icon on a
 rounded dark tile. The pixels are squares, so no file needs a font.
@@ -62,7 +60,6 @@ anything that links to the mark:
 - `g1t-mark.svg`, `g1t-mark.png` (256px): the icon on a rounded dark tile, readable on any background
 - `g1t-logo.svg`, `g1t-logo.png` (300×140, shown at 60×28): the wordmark for light backgrounds, used in g1t's emails
 - `g1t-logo-on-dark.svg`, `g1t-logo-on-dark.png` (300×140): the wordmark for dark backgrounds
-- `g1t-og.png`: the brand social card as `services/og` draws it, which that service falls back to if drawing fails
 
 ## Social cards
 
@@ -70,3 +67,14 @@ Every page of g1t.sh and docs.g1t.sh links to its own card at `https://og.g1t.sh
 drawn by `services/og` in the same colours, type and pixels: the wordmark and
 the page's address along the top, its subject in the middle, its facts along
 the bottom, the pixel 1 standing large and faded off the right edge.
+
+There is no static social card. The brand card, the one for g1t.sh itself
+and for any page without a card of its own, is `https://og.g1t.sh/image?path=%2F`,
+with the lockup and the line "Where people and agents ship software
+together." When a card cannot be drawn, og draws the brand card instead.
+
+Every card's address carries the render version in its `v` parameter
+(`OG_RENDER_VERSION` in `packages/contracts/src/og.ts`), which is also part
+of og's cache key. Bump it in the same change as any change to the cards'
+design, the logo or the brand line: otherwise og, browsers and every site
+that has fetched a card keep showing the old one.

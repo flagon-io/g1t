@@ -468,10 +468,9 @@ impl Billing {
             included_micros: if has_plan { self.plans.plan_included_micros } else { 0 },
             included_used_micros: if has_plan { self.allowance_used("plan_credit", &workspace, &month).await? } else { 0 },
             audit_retention_days: self.plans.audit_days,
-            free_private_storage_bytes: if has_plan { self.plans.plan_storage_bytes } else { self.plans.free_storage_bytes },
+            free_private_storage_bytes: self.plans.free_storage_bytes,
             private_storage_bytes: stored,
             oss_paid_micros: oss,
-            build_seconds_included: if has_plan { self.plans.build_seconds } else { 0 },
             build_seconds_used: self.allowance_used("build_seconds", &workspace, &month).await?.max(0) as u32,
             git_operations: self.git_operations_this_month(&workspace).await?,
             git_operations_included: self.plans.git_included,
@@ -837,6 +836,28 @@ mod tests {
         // A public repository's checks, from the pool.
         let pool = Room { oss: 2_000_000, on_demand: Some(0), ..Room::default() };
         assert_eq!(place(&pool, 0, 600_000, false), Ok((PaidBy::Oss, 600_000)));
+    }
+
+    #[test]
+    fn a_paid_workspace_is_stopped_only_by_its_limit_never_by_a_count() {
+        // The included $10 is gone and the workspace has already built,
+        // served and stored far past what used to be quotas: the next start
+        // still goes on demand, as long as its spend limit has room.
+        let room = paid(0, 250_000_000);
+        let held = 0;
+        for start in 0..1_000 {
+            let placed = place(&room, held + start * 100_000, 100_000, true);
+            assert_eq!(placed, Ok((PaidBy::OnDemand, 100_000)));
+        }
+        // Only at its limit does it stop, with the limit's refusal.
+        assert_eq!(place(&room, 250_000_000, 100_000, true), Err(Short::Empty));
+        // A free workspace has no on-demand room at all: with no trial or
+        // pool left, nothing starts (`short` says NotPaid or TrialUsed).
+        let free = Room { on_demand: Some(0), ..Room::default() };
+        assert_eq!(place(&free, 0, 100_000, false), Err(Short::Empty));
+        // g1t's own workspaces: no limit.
+        let internal = Room { on_demand: None, ..Room::default() };
+        assert_eq!(place(&internal, i64::MAX / 2, 100_000, true), Ok((PaidBy::OnDemand, 100_000)));
     }
 
     #[test]

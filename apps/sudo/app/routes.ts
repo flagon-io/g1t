@@ -19,6 +19,12 @@ export default [
   route("invoices", "routes/invoices.tsx"),
   route("stripe", "routes/stripe.tsx"),
   route("audit", "routes/audit.tsx"),
+  route("incidents", "routes/incidents.tsx"),
+  route("incidents/new", "routes/incident-new.tsx"),
+  route("incidents/maintenance/new", "routes/maintenance-new.tsx"),
+  route("incidents/maintenance/:id", "routes/maintenance.tsx"),
+  route("incidents/:id", "routes/incident.tsx"),
+  route("incidents/:id/postmortem", "routes/incident-postmortem.tsx"),
   // What sudo will have: one placeholder page each, from lib/nav.ts.
   ...soonItems().map((item) => route(item.to.slice(1), "routes/soon.tsx", { id: `soon${item.to.replace(/\//g, "-")}` })),
   // Before sudo was organised around workspaces, everything was an account.

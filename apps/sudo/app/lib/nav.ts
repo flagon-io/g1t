@@ -22,6 +22,7 @@ export type NavIcon =
   | "costs"
   | "agents"
   | "abuse"
+  | "incidents"
   | "inbox"
   | "view-as"
   | "announcements"
@@ -60,7 +61,19 @@ export type NavItem = {
   also?: string[];
   /** Not built yet: the page says what it will be. */
   soon?: Roadmap;
+  /** A number the sidebar shows beside it while it is above zero, such as requests waiting. */
+  count?: NavCount;
 };
+
+/** The numbers the sidebar can show, read by root.tsx on every page. */
+export type NavCount = "waitlist" | "incidents";
+
+export type NavCounts = Partial<Record<NavCount, number>>;
+
+/** What a page or a folded section shows beside it: its items' counts, added up. */
+export function countFor(items: Pick<NavItem, "count">[], counts: NavCounts): number {
+  return items.reduce((sum, item) => sum + (item.count ? (counts[item.count] ?? 0) : 0), 0);
+}
 
 /**
  * A section of the sidebar: a row with an icon that opens to its pages,
@@ -87,6 +100,7 @@ export const NAV: NavGroup[] = [
         to: "/invites",
         icon: "invites",
         about: "The waitlist, every invite, more invites for a person or workspace, and who invited whom.",
+        count: "waitlist",
       },
       {
         label: "People",
@@ -246,6 +260,13 @@ export const NAV: NavGroup[] = [
         to: "/abuse",
         icon: "abuse",
         about: "Sandboxes stopped for looking like mining, and disputes and declines.",
+      },
+      {
+        label: "Incidents",
+        to: "/incidents",
+        icon: "incidents",
+        about: "Declare and run incidents, schedule maintenance, and publish postmortems on status.g1t.sh.",
+        count: "incidents",
       },
     ],
   },
