@@ -469,7 +469,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="theme-color" content="#0f0f11" />
         {/* The stylesheet before everything React Router preloads, so a slow
             connection paints sooner (docs/research/css-shipping.md). */}
-        <link rel="stylesheet" href={appCss} />
+        <link rel="stylesheet" href={appCss} precedence="default" />
         <Meta />
         <Links />
       </head>
