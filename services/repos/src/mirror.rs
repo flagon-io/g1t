@@ -380,7 +380,11 @@ impl<S: GitStore> Repos<S> {
         let ours = Endpoint::bearer(&access.remote, &access.token);
         let theirs = Endpoint::github(&url, &a.token);
         let copied = match a.direction {
-            MirrorDirection::Pull => copy(&theirs, &ours, Prune::Yes).await?,
+            MirrorDirection::Pull => {
+                let copied = copy(&theirs, &ours, Prune::Yes).await?;
+                self.refs_moved(&repo.id).await;
+                copied
+            }
             MirrorDirection::Push => copy(&ours, &theirs, Prune::No).await?,
         };
         let copied = match copied {

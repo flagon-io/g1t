@@ -269,6 +269,60 @@ project's own list, with **‹ All projects** at the top to go back. Its
 for the roles that can use it. A link straight to any of these pages opens
 the sidebar already there.
 
+## Mission control
+
+Mission control, `g1t.sh` when you are signed in, is your home page. It
+shows where you are needed in the workspace you have chosen in the
+sidebar, what its agents are doing, and what landed without you.
+
+Under the greeting, one line sums up the week, such as *Agents landed 39
+of 47 changes this week without you*. A change landed without you when
+g1t merged it, by auto-merge or from the [merge queue](/guides/merge-queue/),
+with no person pressing merge. **Review N that need you** jumps to the
+list, and **New issue** opens a new issue in the project you pick.
+
+| Across the top | What it counts |
+| --- | --- |
+| **Projects** | The workspace's projects, and how many were added this month. |
+| **Agents** | Agent runs going now, and the hours agents worked in the last 7 days. |
+| **Changes this week** | Pull requests merged in the last 7 days, and the change from the 7 days before. The change is left out when g1t cannot read far enough back to count it. |
+| **Landed without you** | The share of those changes that g1t merged with no person pressing merge. |
+| **Need you** | What is waiting on you, and how many of those block work. |
+
+The list has three tabs. Each row opens to say more; the first is open.
+
+| Tab | What it lists |
+| --- | --- |
+| **Needs you** | Pull requests g1t stopped seeing through, reviews asked of you, changes ready for you to merge, failed checks, quiet agents, failed production builds, repository invitations and a usage limit that is close or reached. |
+| **Waiting on agents** | Pull requests in an agent's hands (making the change, checking, reviewing, revising, catching up or in the merge queue), and runs going now. |
+| **Landed today** | Pull requests merged today in your time zone, and whether a person merged them. |
+
+Each row in **Needs you** carries the reason it needs you:
+
+| Reason | Means |
+| --- | --- |
+| `BLOCKING` | Nothing moves until a person acts: a failed production build, a merge g1t could not make, or the usage limit. |
+| `ASKED FOR YOU` | A review or an invitation addressed to you by name. |
+| `CHECKS FAILING` | The checks still fail after the agent revised, or could not run. |
+| `OUTSIDE GUARDRAILS` | A run reached a cost or time cap set in [Guardrails](/guides/guardrails/). |
+| `NEEDS REVIEW` | The repository wants a person's approval, or the review still asks for changes after the agent revised. |
+| `STALLED` | An agent stopped, or has reported nothing for 10 minutes. |
+| `READY TO MERGE` | Checks passed and it was approved; the repository lands changes only when a person merges them. |
+
+Opened, a row shows **The ask** (what g1t stopped with, and who the work
+was started for), **What the agent already knows** (its checks, the files
+and lines it changes, the test files it touches, how often the agent was
+sent back, and what its runs cost) and **Why this needs you**. From
+there, **Review and respond** opens it, and where it can be done without
+leaving the page you can approve the change, merge it or run its checks
+again. **By impact** puts the most urgent first; **Newest** sorts by time.
+
+On the right, **This week** charts the changes landed each day, split
+into those agents landed alone and those a person merged, with what
+agents and sandboxes cost over the same days. **Activity** lists what
+moved across the workspace, agents marked apart from people. The page
+refreshes itself while agents are at work.
+
 ## Workspace access tokens
 
 A workspace has access tokens of its own, for CI, integrations and agents

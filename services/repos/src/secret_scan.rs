@@ -12,7 +12,7 @@ use std::collections::{HashSet, VecDeque};
 use futures_util::future::try_join_all;
 use g1t_contracts::User;
 use g1t_contracts::accounts::{CommitIdentityArgs, PushEmailGuard, mask_email};
-use g1t_contracts::repos::{EntryKind, RepoPath};
+use g1t_contracts::repos::{EntryKind, Repo, RepoPath};
 use g1t_contracts::security::{
     FindLockfilesArgs, HistoryPage, LockfileText, Lockfiles, NewSecret, PushBlockedArgs, PushVerdict,
     ScanHistoryArgs,
@@ -308,8 +308,16 @@ impl<S: GitStore> crate::Repos<S> {
     /// Push protection: the response refusing a push that adds secrets
     /// nobody has allowed, or that would publish the pusher's private
     /// address, or `None` to let it through.
-    pub(crate) async fn protect(&self, path: &RepoPath, pusher: Option<&User>, body: &[u8]) -> Result<Option<Response>> {
-        if let Some(guard) = self.push_email_guard(pusher).await
+    /// `repo` is the repository pushed to, as the request read it.
+    pub(crate) async fn protect(&self, repo: &Repo, pusher: Option<&User>, body: &[u8]) -> Result<Option<Response>> {
+        // Asking identity about the pusher's address and scanning the push
+        // do not depend on each other, so they happen at once.
+        let scan = async {
+            let git = self.store.open(&store_key(repo)).await?;
+            scan_push(&git, body).await
+        };
+        let (guard, found) = futures_util::future::join(self.push_email_guard(pusher), scan).await;
+        if let Some(guard) = guard
             && let Some((commit, email)) = exposed_address(body, &guard)
         {
             return Ok(Some(crate::git_http::declined(
@@ -318,11 +326,7 @@ impl<S: GitStore> crate::Repos<S> {
                 &exposed_message(&commit, &email, &guard.noreply),
             )?));
         }
-        let Some(repo) = self.registry.by_path(path).await? else {
-            return Ok(None);
-        };
-        let git = self.store.open(&store_key(&repo)).await?;
-        let found = scan_push(&git, body).await?;
+        let found = found?;
         if found.is_empty() {
             return Ok(None);
         }

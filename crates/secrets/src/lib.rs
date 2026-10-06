@@ -45,6 +45,46 @@ impl Sealer {
         format!("{VERSION}{}", STANDARD.encode(out))
     }
 
+    /// Bytes sealed the same way, kept as bytes: the version, the nonce,
+    /// then the ciphertext. For values stored as bytes, such as a cache's.
+    pub fn seal_bytes(&self, plaintext: &[u8], bound_to: &str) -> Vec<u8> {
+        let mut nonce = [0u8; 12];
+        getrandom::getrandom(&mut nonce).expect("no source of randomness");
+        let sealed = self
+            .cipher
+            .encrypt(
+                Nonce::from_slice(&nonce),
+                Payload {
+                    msg: plaintext,
+                    aad: bound_to.as_bytes(),
+                },
+            )
+            .expect("encrypting cannot fail");
+        let mut out = VERSION.as_bytes().to_vec();
+        out.extend(nonce);
+        out.extend(sealed);
+        out
+    }
+
+    /// What [`Sealer::seal_bytes`] sealed; `None` under another key, for
+    /// another row, or for anything else.
+    pub fn open_bytes(&self, sealed: &[u8], bound_to: &str) -> Option<Vec<u8>> {
+        let bytes = sealed.strip_prefix(VERSION.as_bytes())?;
+        if bytes.len() < 12 {
+            return None;
+        }
+        let (nonce, ciphertext) = bytes.split_at(12);
+        self.cipher
+            .decrypt(
+                Nonce::from_slice(nonce),
+                Payload {
+                    msg: ciphertext,
+                    aad: bound_to.as_bytes(),
+                },
+            )
+            .ok()
+    }
+
     /// `None` when it was sealed under another key or for another row.
     pub fn open(&self, sealed: &str, bound_to: &str) -> Option<String> {
         let bytes = STANDARD.decode(sealed.strip_prefix(VERSION)?).ok()?;
@@ -67,7 +107,11 @@ impl Sealer {
 }
 
 pub fn sha256_hex(value: &str) -> String {
-    hex::encode(Sha256::digest(value.as_bytes()))
+    sha256_hex_bytes(value.as_bytes())
+}
+
+pub fn sha256_hex_bytes(value: &[u8]) -> String {
+    hex::encode(Sha256::digest(value))
 }
 
 pub fn random_hex(bytes: usize) -> String {
@@ -114,6 +158,20 @@ mod tests {
         assert!(!sealed.contains("sk-ant"));
         assert_eq!(sealer.open(&sealed, "con_1").as_deref(), Some("sk-ant-secret"));
         assert_eq!(sealer.open(&sealed, "con_2"), None);
+    }
+
+    #[test]
+    fn sealed_bytes_open_only_for_their_own_key() {
+        let sealer = Sealer::new(KEY).unwrap();
+        let plain = b"0032HEAD\0symref=HEAD:refs/heads/main\n";
+        let sealed = sealer.seal_bytes(plain, "refs:rep_1:abc");
+        assert!(!sealed.windows(4).any(|window| window == b"HEAD"));
+        assert_eq!(sealer.open_bytes(&sealed, "refs:rep_1:abc").as_deref(), Some(&plain[..]));
+        assert_eq!(sealer.open_bytes(&sealed, "refs:rep_2:abc"), None);
+        let other = Sealer::new(&"ff".repeat(32)).unwrap();
+        assert_eq!(other.open_bytes(&sealed, "refs:rep_1:abc"), None);
+        assert_eq!(sealer.open_bytes(b"v1:short", "refs:rep_1:abc"), None);
+        assert_eq!(sealer.open_bytes(plain, "refs:rep_1:abc"), None);
     }
 
     #[test]

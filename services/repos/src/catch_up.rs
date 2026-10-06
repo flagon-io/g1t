@@ -525,6 +525,7 @@ impl<S: GitStore> Repos<S> {
         // Only if the branch is still where it was: a push that landed
         // meanwhile is kept, and this is refused.
         let pushed = land::push_pack(&source_access, &branch, Some(&head.hash), &commit_id, pack).await?;
+        self.refs_moved(&source.id).await;
         let git_ref = format!("refs/heads/{branch}");
         let path = RepoPath {
             namespace: source.namespace.clone(),

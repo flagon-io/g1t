@@ -35,6 +35,64 @@ pub(crate) struct RepoRow {
     archived_at: Option<String>,
     #[serde(default)]
     deleted_at: Option<String>,
+    /// Bumped by everything that changes the repository's refs; see
+    /// [`RefsState`]. Absent on rows read before the column existed.
+    #[serde(default)]
+    refs_version: Option<f64>,
+    #[serde(default)]
+    refs_open_until: Option<f64>,
+}
+
+/// Where a repository's refs stand, as its row last said: `version` goes up
+/// with every change g1t makes to them, so an answer that lists them (see
+/// refs_cache.rs) is kept under the version it was made at, and a change
+/// leaves it behind. Until `open_until` (milliseconds) a credential that
+/// can change them is out of g1t's hands, and nothing is kept.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RefsState {
+    pub version: u64,
+    pub open_until: u64,
+}
+
+/// The newest [`RefsState`] this isolate has read or written, by
+/// repository id. A version only goes up, so an older read finishing late
+/// never takes a newer one back.
+#[derive(Default)]
+pub struct RefsStates {
+    states: HashMap<String, RefsState>,
+}
+
+impl RefsStates {
+    pub fn note(&mut self, id: &str, state: RefsState) {
+        let kept = self.states.entry(id.to_owned()).or_default();
+        kept.version = kept.version.max(state.version);
+        kept.open_until = kept.open_until.max(state.open_until);
+    }
+
+    pub fn get(&self, id: &str) -> Option<RefsState> {
+        self.states.get(id).copied()
+    }
+}
+
+thread_local! {
+    static REFS: RefCell<RefsStates> = RefCell::new(RefsStates::default());
+}
+
+/// Where the refs of the repository with this id stand, as this isolate
+/// last read them; `None` before the column existed or before its row was
+/// read here.
+pub fn refs_state(id: &str) -> Option<RefsState> {
+    REFS.with(|refs| refs.borrow().get(id))
+}
+
+fn note_refs(id: &str, version: Option<f64>, open_until: Option<f64>) {
+    if let Some(version) = version {
+        let state = RefsState {
+            version: version as u64,
+            open_until: open_until.unwrap_or(0.0) as u64,
+        };
+        REFS.with(|refs| refs.borrow_mut().note(id, state));
+    }
 }
 
 thread_local! {
@@ -44,6 +102,41 @@ thread_local! {
     /// service holds has its key here. A key never changes once given, so
     /// requests sharing the isolate can share the map.
     static MOVED: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
+
+/// How long a fetch may go by a repository's row as it was read a moment
+/// ago: a clone is two or three requests in quick succession, and each
+/// would otherwise read the same row. Short enough that making a repository
+/// private, archiving or deleting it applies within seconds.
+pub const RECENT_MS: u64 = 5_000;
+
+/// Repositories read in the last [`RECENT_MS`], by path. Only rows that
+/// were found are kept, so a repository just made is never missed.
+#[derive(Default)]
+pub struct Recent {
+    rows: HashMap<(String, String), (Repo, u64)>,
+}
+
+impl Recent {
+    fn key(path: &RepoPath) -> (String, String) {
+        (path.namespace.to_lowercase(), path.name.to_lowercase())
+    }
+
+    pub fn get(&self, path: &RepoPath, now: u64) -> Option<Repo> {
+        self.rows
+            .get(&Self::key(path))
+            .filter(|(_, read)| now.saturating_sub(*read) < RECENT_MS)
+            .map(|(repo, _)| repo.clone())
+    }
+
+    pub fn keep(&mut self, path: &RepoPath, repo: &Repo, now: u64) {
+        self.rows.retain(|_, (_, read)| now.saturating_sub(*read) < RECENT_MS);
+        self.rows.insert(Self::key(path), (repo.clone(), now));
+    }
+}
+
+thread_local! {
+    static RECENT: RefCell<Recent> = RefCell::new(Recent::default());
 }
 
 /// The key a repository's path gives: what every repository was stored
@@ -83,6 +176,7 @@ impl From<RepoRow> for Repo {
         if let Some(store) = &row.store {
             remember_store(&repo, store);
         }
+        note_refs(&repo.id, row.refs_version, row.refs_open_until);
         repo
     }
 }
@@ -154,6 +248,20 @@ impl Registry {
             .first::<RepoRow>(None)
             .await?
             .map(Repo::from))
+    }
+
+    /// The repository at `path`, as read in the last few seconds if it was
+    /// (see [`RECENT_MS`]). For fetches only: a push always reads the row.
+    pub async fn by_path_recent(&self, path: &RepoPath) -> Result<Option<Repo>> {
+        let now = g1t_kit::now_ms();
+        if let Some(repo) = RECENT.with(|recent| recent.borrow().get(path, now)) {
+            return Ok(Some(repo));
+        }
+        let found = self.by_path(path).await?;
+        if let Some(repo) = &found {
+            RECENT.with(|recent| recent.borrow_mut().keep(path, repo, now));
+        }
+        Ok(found)
     }
 
     /// Its details; who can see it changes with `set_private`.
@@ -516,6 +624,50 @@ impl Registry {
             .map_or(0, |row| row.left))
     }
 
+    /// Records that the refs of the repository with this id changed, after
+    /// they did: what anything that lists them keeps goes stale.
+    pub async fn refs_moved(&self, id: &str) -> Result<()> {
+        self.bump_refs(
+            "UPDATE repos SET refs_version = refs_version + 1 WHERE id = ?
+             RETURNING refs_version, refs_open_until",
+            &[id.into()],
+            id,
+        )
+        .await
+    }
+
+    /// Records that a credential able to change the refs of the repository
+    /// with this id was handed out of g1t's hands, until `until`
+    /// (milliseconds): until then, nothing that lists them is kept.
+    pub async fn refs_open(&self, id: &str, until: u64) -> Result<()> {
+        self.bump_refs(
+            "UPDATE repos SET refs_version = refs_version + 1,
+               refs_open_until = max(coalesce(refs_open_until, 0), ?)
+             WHERE id = ? RETURNING refs_version, refs_open_until",
+            &[(until as f64).into(), id.into()],
+            id,
+        )
+        .await
+    }
+
+    async fn bump_refs(&self, sql: &str, params: &[JsValue], id: &str) -> Result<()> {
+        #[derive(Deserialize)]
+        struct Bumped {
+            refs_version: Option<f64>,
+            refs_open_until: Option<f64>,
+        }
+        let bumped = self
+            .db
+            .prepare(sql)
+            .bind(params)?
+            .first::<Bumped>(None)
+            .await?;
+        if let Some(bumped) = bumped {
+            note_refs(id, bumped.refs_version, bumped.refs_open_until);
+        }
+        Ok(())
+    }
+
     pub async fn insert(&self, repo: &Repo) -> Result<()> {
         self.db
             .prepare(
@@ -547,6 +699,72 @@ mod tests {
     use super::*;
     use g1t_contracts::access::{BasePermission, RepoGrant};
     use g1t_contracts::{Membership, Role, User};
+
+    #[test]
+    fn the_refs_state_kept_only_moves_forward() {
+        let mut states = RefsStates::default();
+        assert_eq!(states.get("rep_1"), None);
+        states.note("rep_1", RefsState { version: 3, open_until: 0 });
+        // A read that started before a bump and finished after it.
+        states.note("rep_1", RefsState { version: 2, open_until: 0 });
+        assert_eq!(states.get("rep_1").unwrap().version, 3);
+        states.note("rep_1", RefsState { version: 4, open_until: 9_000 });
+        states.note("rep_1", RefsState { version: 5, open_until: 0 });
+        assert_eq!(states.get("rep_1"), Some(RefsState { version: 5, open_until: 9_000 }));
+        assert_eq!(states.get("rep_2"), None);
+    }
+
+    #[test]
+    fn a_row_from_before_the_column_has_no_refs_state() {
+        let row = |version: Option<f64>| RepoRow {
+            id: format!("rep_row_{}", version.is_some()),
+            namespace: "acme".into(),
+            name: "rocket".into(),
+            description: None,
+            is_private: 0,
+            owner_id: "usr_owner".into(),
+            default_branch: "main".into(),
+            fork_of: None,
+            protected: 0,
+            created_at: String::new(),
+            store: None,
+            topics: None,
+            website: None,
+            archived_at: None,
+            deleted_at: None,
+            refs_version: version,
+            refs_open_until: None,
+        };
+        let old = Repo::from(row(None));
+        assert_eq!(refs_state(&old.id), None);
+        let new = Repo::from(row(Some(7.0)));
+        assert_eq!(refs_state(&new.id), Some(RefsState { version: 7, open_until: 0 }));
+    }
+
+    #[test]
+    fn a_repository_read_a_moment_ago_is_reused_for_a_few_seconds() {
+        let mut recent = Recent::default();
+        let path = RepoPath {
+            namespace: "Acme".into(),
+            name: "Rocket".into(),
+        };
+        recent.keep(&path, &repo(false), 1_000);
+        // Paths are matched as the table matches them, ignoring case.
+        let lower = RepoPath {
+            namespace: "acme".into(),
+            name: "rocket".into(),
+        };
+        assert_eq!(recent.get(&lower, 1_000 + RECENT_MS - 1).unwrap().id, "rep_1");
+        assert!(recent.get(&lower, 1_000 + RECENT_MS).is_none());
+        let other = RepoPath {
+            namespace: "acme".into(),
+            name: "booster".into(),
+        };
+        assert!(recent.get(&other, 1_000).is_none());
+        // Keeping another later drops the stale row.
+        recent.keep(&other, &repo(true), 1_000 + RECENT_MS);
+        assert_eq!(recent.rows.len(), 1);
+    }
 
     fn repo(private: bool) -> Repo {
         Repo {

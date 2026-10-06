@@ -9,7 +9,7 @@
 
 use g1t_contracts::audit::{AuditActor, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface};
 use g1t_contracts::credentials::{Decision, as_person, decide_git, decide_refs, limits_branches};
-use g1t_contracts::repos::{GitService, RepoPath};
+use g1t_contracts::repos::{GitService, Repo, RepoPath};
 use g1t_contracts::{PrincipalKind, Viewer};
 use worker::js_sys::Uint8Array;
 use worker::{Headers, Method, Request, RequestInit, Response, Result, console_error};
@@ -84,8 +84,14 @@ impl<S: GitStore> Repos<S> {
     /// Where a git request's entry belongs: the repository a fork came
     /// from, so that a pull request's pushes are in its workspace's log.
     pub(crate) async fn audit_target(&self, path: &RepoPath) -> Result<AuditTarget> {
+        let found = self.registry.by_path(path).await?;
+        self.audit_target_of(path, found.as_ref()).await
+    }
+
+    /// The same, for the repository at `path` as already read (`found`).
+    async fn audit_target_of(&self, path: &RepoPath, found: Option<&Repo>) -> Result<AuditTarget> {
         let mut repo = path.clone();
-        if let Some(found) = self.registry.by_path(path).await?
+        if let Some(found) = found
             && let Some(source) = found.fork_of.as_deref()
             && let Some(source) = self.registry.by_id(source).await?
         {
@@ -122,6 +128,7 @@ impl<S: GitStore> Repos<S> {
         mut request: Request,
         git: &GitRequest,
         viewer: Viewer,
+        found: Option<&Repo>,
     ) -> Result<Admitted> {
         let post = request.method() == Method::Post;
         let write = git.service == GitService::ReceivePack;
@@ -164,7 +171,7 @@ impl<S: GitStore> Repos<S> {
                     PrincipalKind::User => "person",
                 };
                 Some(Box::new(entry(
-                    self.audit_target(&git.path).await?,
+                    self.audit_target_of(&git.path, found).await?,
                     &Decision::allow(rule),
                 )))
             } else {
@@ -188,7 +195,7 @@ impl<S: GitStore> Repos<S> {
             // A fork is the pull request's own: any branch of it.
             refs.clear();
         }
-        let mut target = self.audit_target(&git.path).await?;
+        let mut target = self.audit_target_of(&git.path, found).await?;
         if !refs.is_empty() {
             target.git_ref = Some(refs.join(" "));
         }

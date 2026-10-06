@@ -58,6 +58,63 @@ pub fn parse(url: &Url) -> Option<GitRequest> {
     })
 }
 
+/// How long each step of a git request took, sent back to git as a
+/// `Server-Timing` header so that a slow clone shows where its time went.
+/// Step names and whole milliseconds only. The Workers clock moves only
+/// while a request waits on something, so each step is the time spent
+/// waiting on the database, another service or the git store. A note
+/// says how a step went without a duration: `refs;desc=hit-colo`.
+pub struct Timing {
+    started: u64,
+    last: u64,
+    steps: Vec<(&'static str, u64)>,
+    notes: Vec<(&'static str, &'static str)>,
+}
+
+impl Timing {
+    pub fn start() -> Self {
+        let now = g1t_kit::now_ms();
+        Self {
+            started: now,
+            last: now,
+            steps: Vec::new(),
+            notes: Vec::new(),
+        }
+    }
+
+    /// Says how `name` went: where an answer or a credential came from.
+    pub fn note(&mut self, name: &'static str, description: &'static str) {
+        self.notes.push((name, description));
+    }
+
+    /// Ends a step, named `step`, that began when the last one ended.
+    pub fn mark(&mut self, step: &'static str) {
+        let now = g1t_kit::now_ms();
+        self.steps.push((step, now.saturating_sub(self.last)));
+        self.last = now;
+    }
+
+    /// `response`, with how long each step took.
+    pub fn apply(&self, response: Response) -> Result<Response> {
+        let total = g1t_kit::now_ms().saturating_sub(self.started);
+        let headers = response.headers().clone();
+        headers.set("server-timing", &server_timing(&self.steps, &self.notes, total))?;
+        Ok(response.with_headers(headers))
+    }
+}
+
+/// A `Server-Timing` value: each step with its duration, the notes, then
+/// the total.
+fn server_timing(steps: &[(&str, u64)], notes: &[(&str, &str)], total: u64) -> String {
+    steps
+        .iter()
+        .map(|(step, ms)| format!("{step};dur={ms}"))
+        .chain(notes.iter().map(|(name, description)| format!("{name};desc={description}")))
+        .chain(std::iter::once(format!("total;dur={total}")))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// The user named by an HTTP Basic `Authorization` header, as git sends it.
 pub async fn viewer(request: &Request, identity: &Fetcher) -> Result<Viewer> {
     let Some(header) = request.headers().get("authorization")? else {
@@ -471,9 +528,11 @@ fn names_head(git: &GitRequest, body: Option<&[u8]>) -> bool {
 /// Sends the request on to the git store and returns its response as is,
 /// unless it is a push that would change the `protected` branch, or one
 /// that `scan` (push protection) answers itself. A fetch's ref listing has
-/// its `HEAD` pointed at `default_branch` (see [`with_head`]).
+/// its `HEAD` pointed at `default_branch` (see [`with_head`]). A POST's
+/// body is `read` when the caller has read it already.
 pub async fn forward(
     mut request: Request,
+    read: Option<Vec<u8>>,
     git: &GitRequest,
     access: &GitAccess,
     protected: Option<&str>,
@@ -499,7 +558,10 @@ pub async fn forward(
     let mut lists_head = request.method() == Method::Get && names_head(git, None);
     if request.method() == Method::Post {
         // Pushes are capped at 100 MB by the platform, so buffering is safe.
-        let body = request.bytes().await?;
+        let body = match read {
+            Some(body) => body,
+            None => request.bytes().await?,
+        };
         if git.endpoint == "git-receive-pack" {
             if let Some(report) = protected.and_then(|branch| refusal(&body, branch)) {
                 let headers = Headers::new();
@@ -539,7 +601,20 @@ pub async fn forward(
 
 #[cfg(test)]
 mod tests {
-    use super::{Pushed, RepoPath, Url, ZERO_ID, framed, pack_bytes, pushed_branches, refusal, transferred, with_head, with_namespace};
+    use super::{Pushed, RepoPath, Url, ZERO_ID, framed, pack_bytes, pushed_branches, refusal, server_timing, transferred, with_head, with_namespace};
+
+    #[test]
+    fn server_timing_names_each_step_and_the_total() {
+        assert_eq!(
+            server_timing(&[("repo", 12), ("token", 0), ("store", 140)], &[], 153),
+            "repo;dur=12, token;dur=0, store;dur=140, total;dur=153"
+        );
+        assert_eq!(server_timing(&[], &[], 3), "total;dur=3");
+        assert_eq!(
+            server_timing(&[("repo", 1), ("cache", 2)], &[("refs", "hit-colo")], 4),
+            "repo;dur=1, cache;dur=2, refs;desc=hit-colo, total;dur=4"
+        );
+    }
 
     #[test]
     fn a_renamed_repository_redirects_to_its_new_name() {

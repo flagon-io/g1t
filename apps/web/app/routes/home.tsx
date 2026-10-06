@@ -1,21 +1,12 @@
 import { env } from "cloudflare:workers";
 import { Suspense, lazy } from "react";
-import { data } from "react-router";
+import { type ShouldRevalidateFunctionArgs, data } from "react-router";
 
 import {
-  type AgentRun,
-  type AuthoredItem,
-  type CheckStatus,
-  type Deployment,
-  type G1tEvent,
-  type Issue,
   type Lifecycle,
-  type LiveApp,
   type Pull,
-  type PullStatus,
   type Repo,
   type RepoPath,
-  type Stage,
   REPO_ROLE_LABELS,
   isActiveRun,
 } from "@g1t/contracts";
@@ -26,23 +17,38 @@ import { WORKSPACE_COOKIE, chosenWorkspace } from "../lib/workspace-choice";
 import {
   type ActivityItem,
   type Need,
-  SEEN_COOKIE,
   TIME,
   agentHours,
   dailyBuckets,
-  digestParts,
   eventItem,
-  firstPassRate,
   greetingFor,
   groupActivity,
   hourIn,
-  issueToMerge,
-  median,
-  nextSeen,
+  isAgent,
   rankNeeds,
   readCookie,
   stuckMinutes,
 } from "../lib/mission";
+import {
+  type Fact,
+  type Merged,
+  type NeedRow,
+  type QuickAction,
+  RUN_LABEL,
+  dateLine,
+  dayKey,
+  landedToday,
+  needPathKey,
+  pullFacts,
+  reachesBack,
+  reasonFor,
+  summaryLine,
+  usd,
+  waitingRows,
+  weekOf,
+  who,
+  whyFor,
+} from "../lib/mission-control";
 import { Landing } from "../components/landing";
 import {
   agents,
@@ -61,6 +67,8 @@ const TZ_COOKIE = "g1t_tz";
 /** The most projects whose pull requests and events are read for the page. */
 const MAX_PROJECTS = 10;
 const EVENTS_PER_PROJECT = 80;
+/** How many pull requests work lists at once (`LIST_PAGE` in services/work). */
+const PULL_PAGE = 100;
 
 export function meta(args: Route.MetaArgs) {
   return page(args, {
@@ -79,70 +87,18 @@ export function headers({ loaderHeaders }: Route.HeadersArgs) {
   return out;
 }
 
-/** A row of the viewer's pull requests, whichever list it comes from. */
-type PullRow = {
-  key: string;
-  repo: RepoPath;
-  number: number;
-  title: string;
-  status: PullStatus;
-  agent: string | null;
-  stage: Stage | null;
-  detail: string | null;
-  checkStatus: CheckStatus | null;
-  updatedAt: string;
-};
+/**
+ * Switching tabs, the sort or the activity list changes only the address:
+ * everything is already loaded. A refresh, a form, or anything else loads
+ * again as usual.
+ */
+export function shouldRevalidate({ currentUrl, nextUrl, formMethod, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
+  if (!formMethod && currentUrl.pathname === nextUrl.pathname && currentUrl.search !== nextUrl.search) return false;
+  return defaultShouldRevalidate;
+}
 
-/** A row of the viewer's issues. */
-type IssueRow = {
-  key: string;
-  repo: RepoPath;
-  number: number;
-  title: string;
-  agent: string | null;
-  queued: boolean;
-  updatedAt: string;
-};
-
-type ProjectHealth = {
-  slug: string;
-  name: string;
-  private: boolean;
-  repo: RepoPath | null;
-  deploys: boolean;
-  production: LiveApp | null;
-  latest: Deployment | null;
-  openPulls: number | null;
-  agents: number;
-  passRate: number | null;
-  checks: number;
-};
-
-const pullRow = (pull: Pull, repo: RepoPath, lifecycle: Lifecycle | null): PullRow => ({
-  key: pull.id,
-  repo,
-  number: pull.number,
-  title: pull.title,
-  status: pull.status,
-  agent: pull.agent,
-  stage: lifecycle?.stage ?? null,
-  detail: lifecycle?.detail ?? null,
-  checkStatus: pull.checkStatus,
-  updatedAt: pull.updatedAt,
-});
-
-const authoredPull = (item: AuthoredItem): PullRow => ({
-  key: `${item.repo.namespace}/${item.repo.name}#${item.number}`,
-  repo: item.repo,
-  number: item.number,
-  title: item.title,
-  status: item.status ?? (item.draft ? "draft" : "open"),
-  agent: null,
-  stage: null,
-  detail: null,
-  checkStatus: null,
-  updatedAt: item.updatedAt,
-});
+/** Where a need came from, so its row can say what is known about it. */
+type Extra = Partial<Pick<NeedRow, "repo" | "ref" | "by" | "for" | "facts" | "quick" | "link" | "open">>;
 
 export async function loader({ context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
@@ -169,62 +125,62 @@ export async function loader({ context, request }: Route.LoaderArgs) {
   const okOr = <T,>(result: { ok: true; value: T } | { ok: false } | null): T | null => (result?.ok ? result.value : null);
 
   const cookies = request.headers.get("cookie");
-  const seen = nextSeen(readCookie(cookies, SEEN_COOKIE), now);
   const tz = readCookie(cookies, TZ_COOKIE);
   const memberships = viewer.workspaces ?? [];
   // The workspace you chose, as the sidebar shows it (lib/workspace-choice.ts).
   const slug = chosenWorkspace(memberships, readCookie(cookies, WORKSPACE_COOKIE))?.slug ?? null;
-  const mine = new Set(memberships.map((m) => m.slug.toLowerCase()));
   const username = viewer.username;
 
   const reposP = soft("repos", reposApi.list(viewer, { memberOnly: true }));
-  // The workspace's projects' open pull requests and recent events, read
-  // once each, all at once, as soon as the projects are known.
+  // The chosen workspace's projects: their open and recently merged pull
+  // requests and recent events, read once each, all at once, as soon as
+  // the projects are known.
   const perRepoP = reposP.then((repos) =>
     Promise.all(
       (repos ?? [])
-        .filter((repo) => mine.has(repo.namespace.toLowerCase()))
+        .filter((repo) => slug != null && repo.namespace.toLowerCase() === slug.toLowerCase())
         .slice(0, MAX_PROJECTS)
         .map(async (repo) => {
           const path = { namespace: repo.namespace, name: repo.name };
-          const [pulls, log] = await Promise.all([
+          const [pulls, closed, log] = await Promise.all([
             work.listPulls(path, viewer, "open").catch(() => null),
+            work.listPulls(path, viewer, "closed").catch(() => null),
             eventLog.list({ repoId: repo.id, limit: EVENTS_PER_PROJECT }).catch(() => null),
           ]);
-          return { repo, pulls: pulls?.ok ? pulls.value.slice(0, 60) : null, events: log };
+          return {
+            repo,
+            pulls: pulls?.ok ? pulls.value.slice(0, 60) : null,
+            closed: closed?.ok ? closed.value : null,
+            events: log,
+          };
         }),
     ),
   );
 
-  const [repos, perRepo, active, assigned, models, profile, runs, overview, usage, authoredPulls, authoredIssues, projectList, memories, invitations] =
-    await Promise.all([
-      reposP,
-      soft("projects", perRepoP),
-      soft("pulls", work.listActivePulls(viewer)),
-      soft("assigned", work.listAssignedIssues(viewer)),
-      slug ? soft("models", env.RUNNER.modelAccess(slug)) : null,
-      soft("profile", identity.profile(username)),
-      slug ? soft("runs", agents.listRuns(viewer, { workspace: slug, limit: 150 })) : null,
-      slug ? soft("deploys", deployments.overview(slug, viewer)) : null,
-      slug ? soft("usage", billing.usage(slug, viewer, new Date(weekAgo - TIME.DAY).toISOString())) : null,
-      soft("authoredPulls", work.byAuthor(username, viewer, { kind: "pull", state: "open", sort: "updated", limit: 10 })),
-      soft("authoredIssues", work.byAuthor(username, viewer, { kind: "issue", state: "open", sort: "updated", limit: 10 })),
-      slug ? soft("projectList", projectsApi.list(slug, viewer)) : null,
-      slug ? soft("memories", agents.listMemories(viewer, slug, null)) : null,
-      // Repositories someone has invited the viewer to.
-      soft("invitations", identity.myRepoInvitations(viewer)),
-    ]);
+  const [repos, perRepo, active, models, profile, runs, overview, usage, projectList, memories, invitations] = await Promise.all([
+    reposP,
+    soft("projects", perRepoP),
+    soft("pulls", work.listActivePulls(viewer)),
+    slug ? soft("models", env.RUNNER.modelAccess(slug)) : null,
+    soft("profile", identity.profile(username)),
+    slug ? soft("runs", agents.listRuns(viewer, { workspace: slug, limit: 150 })) : null,
+    slug ? soft("deploys", deployments.overview(slug, viewer)) : null,
+    slug ? soft("usage", billing.usage(slug, viewer, new Date(weekAgo - TIME.DAY).toISOString())) : null,
+    slug ? soft("projectList", projectsApi.list(slug, viewer)) : null,
+    slug ? soft("memories", agents.listMemories(viewer, slug, null)) : null,
+    // Repositories someone has invited the viewer to.
+    soft("invitations", identity.myRepoInvitations(viewer)),
+  ]);
 
   const repoList = repos ?? [];
-  // Each issue and pull request is shown under its repository. Most are in
-  // the viewer's own, already listed; the rest are looked up once each.
+  // Each pull request is shown under its repository. Most are in the
+  // viewer's own, already listed; the rest are looked up once each.
   const known = new Map<string, Repo>(repoList.map((repo) => [repo.id, repo]));
-  const missing = [
-    ...new Set([...(assigned ?? []).map((issue) => issue.repoId), ...(active ?? []).map(({ pull }) => pull.repoId)]),
-  ].filter((id) => !known.has(id));
+  const missing = [...new Set((active ?? []).map(({ pull }) => pull.repoId))].filter((id) => !known.has(id));
   const looked = await Promise.all(missing.map((id) => reposApi.getById(id, viewer).catch(() => null)));
   for (const found of looked) if (found?.ok) known.set(found.value.id, found.value);
   const pathOf = (repo: Repo): RepoPath => ({ namespace: repo.namespace, name: repo.name });
+  const inWorkspace = (repo: RepoPath) => slug != null && repo.namespace.toLowerCase() === slug.toLowerCase();
 
   const activeList = (active ?? []).flatMap((item) => {
     const repo = known.get(item.pull.repoId);
@@ -234,8 +190,11 @@ export async function loader({ context, request }: Route.LoaderArgs) {
   const liveRuns = runList.filter((run) => isActiveRun(run.status));
   const overviewList = okOr(overview ?? null);
   const projectsOk = okOr(projectList ?? null);
+  const runsOn = (repo: RepoPath, number: number) =>
+    runList.filter(
+      (run) => run.number === number && `${run.repo.namespace}/${run.repo.name}`.toLowerCase() === `${repo.namespace}/${repo.name}`.toLowerCase(),
+    );
 
-  // --- What the viewer's pull requests and issues are ----------------------
   const lower = username.toLowerCase();
   const openPulls = (perRepo ?? []).flatMap(({ repo, pulls }) => (pulls ?? []).map((pull) => ({ pull, repo })));
   const reviewRequested = openPulls.filter(
@@ -244,47 +203,39 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       pull.author.username.toLowerCase() !== lower &&
       pull.reviewers.some((name) => name.toLowerCase() === lower),
   );
-  const assignedPulls = openPulls.filter(({ pull }) => pull.assignees.some((name) => name.toLowerCase() === lower));
-  const authoredRows =
-    activeList.length > 0
-      ? activeList.map(({ pull, lifecycle, repo }) => pullRow(pull, pathOf(repo), lifecycle))
-      : (okOr(authoredPulls)?.items ?? []).map(authoredPull);
-  const pullsTabs = {
-    authored: authoredRows.slice(0, 8),
-    review: reviewRequested.slice(0, 8).map(({ pull, repo }) => pullRow(pull, pathOf(repo), null)),
-    assigned: assignedPulls.slice(0, 8).map(({ pull, repo }) => pullRow(pull, pathOf(repo), null)),
-  };
-  const issueRow = (issue: Issue, repo: RepoPath): IssueRow => ({
-    key: issue.id,
-    repo,
-    number: issue.number,
-    title: issue.title,
-    agent: issue.agent,
-    queued: issue.queued,
-    updatedAt: issue.updatedAt,
-  });
-  const issuesTabs = {
-    assigned: (assigned ?? []).flatMap((issue) => {
-      const repo = known.get(issue.repoId);
-      return repo ? [issueRow(issue, pathOf(repo))] : [];
-    }).slice(0, 8),
-    authored: (okOr(authoredIssues)?.items ?? []).slice(0, 8).map((item) => ({
-      key: `${item.repo.namespace}/${item.repo.name}#${item.number}`,
-      repo: item.repo,
-      number: item.number,
-      title: item.title,
-      agent: null,
-      queued: false,
-      updatedAt: item.updatedAt,
-    })),
-  };
 
   // --- Needs you ------------------------------------------------------------
   const needs: Need[] = [];
+  const extras = new Map<string, Extra>();
+  /** What every pull request's row shares: where it is, who is on it, what is known. */
+  const pullExtra = (pull: Pull, repo: Repo, lifecycle: Lifecycle | null): Extra => {
+    const base = `/${repo.namespace}/${repo.name}`;
+    const agentWork = isAgent(pull.agent);
+    return {
+      repo: pathOf(repo),
+      ref: `#${pull.number}`,
+      by: agentWork ? who(pull.agent) : who(pull.author.username),
+      for: agentWork ? pull.author.username : null,
+      facts: pullFacts({ checkStatus: pull.checkStatus, files: pull.files, lifecycle, runs: runsOn(repo, pull.number) }),
+      open: pull.issue != null ? `${base}/issues/${pull.issue}` : `${base}/pull/${pull.number}?tab=changes`,
+    };
+  };
+  const pullAction = (repo: Repo, pull: Pull, quick: Omit<QuickAction, "to">): QuickAction => ({
+    ...quick,
+    to: `/${repo.namespace}/${repo.name}/pull/${pull.number}`,
+  });
+  const approve = (repo: Repo, pull: Pull) =>
+    pullAction(repo, pull, {
+      label: isAgent(pull.agent) ? "Approve the agent's change" : "Approve the change",
+      fields: { action: "comment", verdict: "approve", body: "" },
+      done: "Approved",
+    });
+
   for (const invitation of invitations ?? []) {
     if (invitation.status !== "pending") continue;
+    const key = `invitation:${invitation.id}`;
     needs.push({
-      key: `invitation:${invitation.id}`,
+      key,
       kind: "invitation",
       title: `${invitation.invited_by ?? "Someone"} invited you to ${invitation.repo}`,
       detail: `With the ${REPO_ROLE_LABELS[invitation.role]} role. The invitation expires ${new Date(invitation.expires_at).toISOString().slice(0, 10)}.`,
@@ -293,29 +244,56 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       at: Date.parse(invitation.created_at),
       where: invitation.repo,
     });
+    const [namespace, name] = invitation.repo.split("/");
+    extras.set(key, {
+      repo: namespace && name ? { namespace, name } : null,
+      by: who(invitation.invited_by),
+      facts: [
+        { label: "Role", value: REPO_ROLE_LABELS[invitation.role], tone: null },
+        { label: "Expires", value: new Date(invitation.expires_at).toISOString().slice(0, 10), tone: null },
+      ],
+    });
   }
   for (const entry of overviewList ?? []) {
     const latest = entry.latest;
     if (latest?.kind === "production" && latest.status === "failed" && slug) {
+      const key = `deploy:${entry.slug}`;
+      const to = `/${slug}/${entry.slug}/deployments/${latest.id}`;
       needs.push({
-        key: `deploy:${entry.slug}`,
+        key,
         kind: "deploy",
         title: `Production build of ${entry.slug} failed`,
         detail: latest.error ?? "The last build of the default branch failed. Production still serves the build before it.",
-        to: `/${slug}/${entry.slug}/deployments/${latest.id}`,
+        to,
         action: "See the build",
         at: Date.parse(latest.finishedAt ?? latest.createdAt),
         where: `${slug}/${entry.slug}`,
+      });
+      const facts: Fact[] = [
+        { label: "Commit", value: latest.commit.slice(0, 7), tone: null },
+        {
+          label: "Production",
+          value: entry.production ? "Serving the build before" : "Not live yet",
+          tone: entry.production ? "good" : "warn",
+        },
+      ];
+      extras.set(key, {
+        repo: { namespace: slug, name: entry.slug },
+        by: who(latest.createdBy),
+        facts,
+        link: { label: "Deployment settings", to: `/${slug}/${entry.slug}/settings/deployments` },
       });
     }
   }
   for (const { pull, lifecycle, repo } of activeList) {
     const where = `${repo.namespace}/${repo.name}#${pull.number}`;
     const to = `/${repo.namespace}/${repo.name}/pull/${pull.number}`;
+    const key = `pull:${pull.id}`;
+    const extra = pullExtra(pull, repo, lifecycle);
     if (lifecycle?.stage === "needs_you") {
       const conflict = /conflict/i.test(lifecycle.detail);
-      needs.push({
-        key: `pull:${pull.id}`,
+      const need: Need = {
+        key,
         kind: conflict ? "conflict" : "stalled",
         title: pull.title,
         detail: lifecycle.detail,
@@ -323,16 +301,41 @@ export async function loader({ context, request }: Route.LoaderArgs) {
         action: conflict ? "Resolve" : "Decide",
         at: Date.parse(pull.updatedAt),
         where,
+      };
+      needs.push(need);
+      const reason = reasonFor(need);
+      extras.set(key, {
+        ...extra,
+        quick:
+          reason === "needs_review"
+            ? approve(repo, pull)
+            : /could not be run/i.test(lifecycle.detail)
+              ? pullAction(repo, pull, { label: "Run the checks again", fields: { action: "recheck" }, done: "Checks started" })
+              : null,
+        link: reason === "outside_guardrails" ? { label: "Raise the cap", to: `/${repo.namespace}/${repo.name}/settings/guardrails` } : null,
       });
     } else if (lifecycle?.stage === "ready") {
-      needs.push({ key: `pull:${pull.id}`, kind: "ready", title: pull.title, detail: "Checks passed and it was approved. It lands when you merge it.", to, action: "Merge", at: Date.parse(pull.updatedAt), where });
+      needs.push({ key, kind: "ready", title: pull.title, detail: "Checks passed and it was approved. It lands when you merge it.", to, action: "Merge", at: Date.parse(pull.updatedAt), where });
+      extras.set(key, {
+        ...extra,
+        quick: pullAction(repo, pull, {
+          label: isAgent(pull.agent) ? "Merge the agent's change" : "Merge it",
+          fields: { action: "merge" },
+          done: "Merging",
+        }),
+      });
     } else if (!lifecycle && pull.status === "open" && pull.checkStatus === "failed") {
-      needs.push({ key: `pull:${pull.id}`, kind: "checks", title: pull.title, detail: "Its acceptance checks failed on the latest push.", to, action: "See checks", at: Date.parse(pull.updatedAt), where });
+      needs.push({ key, kind: "checks", title: pull.title, detail: "Its acceptance checks failed on the latest push.", to, action: "See checks", at: Date.parse(pull.updatedAt), where });
+      extras.set(key, {
+        ...extra,
+        quick: pullAction(repo, pull, { label: "Run the checks again", fields: { action: "recheck" }, done: "Checks started" }),
+      });
     }
   }
   for (const { pull, repo } of reviewRequested) {
+    const key = `review:${pull.id}`;
     needs.push({
-      key: `review:${pull.id}`,
+      key,
       kind: "review",
       title: pull.title,
       detail: `${pull.author.username} asked for your review.`,
@@ -341,14 +344,14 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       at: Date.parse(pull.updatedAt),
       where: `${repo.namespace}/${repo.name}#${pull.number}`,
     });
+    extras.set(key, { ...pullExtra(pull, repo, null), quick: approve(repo, pull) });
   }
-  let quietest: number | null = null;
   for (const run of liveRuns) {
     const minutes = stuckMinutes(run, now);
     if (minutes == null) continue;
-    quietest = Math.max(quietest ?? 0, minutes);
+    const key = `run:${run.id}`;
     needs.push({
-      key: `run:${run.id}`,
+      key,
       kind: "stuck",
       title: run.title ?? `${run.agent}'s run`,
       detail: `${run.agent} has reported nothing for ${minutes} min${run.step ? `. Last: ${run.step}` : ""}.`,
@@ -357,14 +360,74 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       at: Date.parse(run.updatedAt),
       where: `${run.repo.namespace}/${run.repo.name}${run.number != null ? `#${run.number}` : ""}`,
     });
+    extras.set(key, {
+      repo: run.repo,
+      ref: run.number != null ? `#${run.number}` : null,
+      by: who(run.agent),
+      facts: [
+        { label: "Run", value: RUN_LABEL[run.kind], tone: null },
+        { label: "Quiet for", value: `${minutes} min`, tone: "warn" },
+        { label: "Steps so far", value: String(run.stepCount), tone: null },
+        ...(run.costUsd != null ? [{ label: "Cost so far", value: usd(run.costUsd), tone: null }] : []),
+      ],
+      open: run.number != null ? `/${run.repo.namespace}/${run.repo.name}/pull/${run.number}` : undefined,
+    });
   }
+
+  const needRows: NeedRow[] = rankNeeds(needs).map((need) => {
+    const extra = extras.get(need.key) ?? {};
+    const reason = reasonFor(need);
+    return {
+      key: need.key,
+      reason,
+      repo: extra.repo ?? null,
+      ref: extra.ref ?? null,
+      title: need.title,
+      ask: need.detail,
+      by: extra.by ?? null,
+      for: extra.for ?? null,
+      at: need.at,
+      to: need.to,
+      open: extra.open ?? need.to,
+      facts: extra.facts ?? [],
+      why: whyFor(reason, need),
+      quick: extra.quick ?? null,
+      link: extra.link ?? null,
+    };
+  });
+
+  // --- Waiting on agents ----------------------------------------------------
+  const needKeys = new Set(
+    needRows.flatMap((row) => (row.repo && row.ref ? [needPathKey(row.repo, Number(row.ref.slice(1)))] : [])),
+  );
+  const waiting = waitingRows({
+    active: activeList.filter(({ repo }) => inWorkspace(repo)).map(({ pull, lifecycle, repo }) => ({ pull, lifecycle, repo: pathOf(repo) })),
+    live: liveRuns,
+    drafts: openPulls.filter(({ pull }) => pull.status === "draft").map(({ pull, repo }) => ({ ...pull, repo: pathOf(repo) })),
+    needKeys,
+  });
+
+  // --- Landed ---------------------------------------------------------------
+  const merged: Merged[] = (perRepo ?? []).flatMap(({ repo, closed }) =>
+    (closed ?? []).flatMap((pull) =>
+      pull.status === "merged" && pull.mergedAt
+        ? [{ repo: pathOf(repo), number: pull.number, title: pull.title, agent: pull.agent, mergedBy: pull.mergedBy, mergedAt: pull.mergedAt, files: pull.files }]
+        : [],
+    ),
+  );
+  const twoWeeksAgo = now - 14 * TIME.DAY;
+  const complete = perRepo != null && perRepo.every(({ closed }) => closed != null && reachesBack(closed, twoWeeksAgo, PULL_PAGE));
+  const week = weekOf(merged, now, tz, complete);
+  const landed = landedToday(merged, now, tz);
 
   // --- Activity -------------------------------------------------------------
   const items: ActivityItem[] = [];
-  const allEvents: { repo: string; event: G1tEvent }[] = [];
-  for (const { repo, events } of perRepo ?? []) {
+  const titles: Record<string, string> = {};
+  const titleKey = (repo: RepoPath, number: number) => `${repo.namespace}/${repo.name}#${number}`.toLowerCase();
+  for (const { repo, pulls, closed, events } of perRepo ?? []) {
+    for (const pull of [...(pulls ?? []), ...(closed ?? [])]) titles[titleKey(repo, pull.number)] = pull.title;
     for (const event of events ?? []) {
-      allEvents.push({ repo: repo.id, event });
+      if (event.type === "issue.opened") titles[titleKey(repo, event.data.number)] ??= event.data.title;
       const item = eventItem(event, pathOf(repo));
       if (item) items.push(item);
     }
@@ -397,113 +460,68 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       to: `/${slug}/-/memory`,
     });
   }
-  const groups = groupActivity(items).slice(0, 60);
+  const groups = groupActivity(items).slice(0, 40);
+  // Only the titles the feed names travel to the page.
+  const shownTitles: Record<string, string> = {};
+  for (const group of groups) {
+    for (const part of group.parts) {
+      for (const number of part.numbers) {
+        const key = titleKey(group.repo, number);
+        if (titles[key]) shownTitles[key] = titles[key];
+      }
+    }
+  }
 
-  // --- Since you were last here --------------------------------------------
-  const since = seen.since ?? now - TIME.DAY;
-  const after = (verb: ActivityItem["verb"]) => items.filter((item) => item.verb === verb && item.at > since).length;
-  const digest = digestParts({
-    landed: after("landed"),
-    reviews: reviewRequested.length,
-    opened: after("opened_issue"),
-    deploys: after("deployed"),
-    failedDeploys: after("deploy_failed"),
-    stuck: quietest,
-  });
-
-  // --- Pulse ----------------------------------------------------------------
-  const week = allEvents.filter(({ event }) => Date.parse(event.time) >= weekAgo);
-  const mergedWeek = week.filter(({ event }) => event.type === "pull.merged");
-  const spans = issueToMerge(
-    allEvents.flatMap(({ repo, event }) => (event.type === "issue.opened" ? [{ repo, number: event.data.number, at: Date.parse(event.time) }] : [])),
-    mergedWeek.flatMap(({ repo, event }) => (event.type === "pull.merged" ? [{ repo, issue: event.data.issue ?? null, at: Date.parse(event.time) }] : [])),
-  );
-  const checkEvents = allEvents.flatMap(({ repo, event }) =>
-    event.type === "checks.completed" ? [{ repo, number: event.data.number, at: Date.parse(event.time), passed: event.data.status === "passed" }] : [],
-  );
-  const firstPass = firstPassRate(checkEvents.filter((c) => c.at >= weekAgo));
+  // --- The strip ------------------------------------------------------------
   const usageOk = okOr(usage ?? null);
   const costPoints = usageOk
     ? usageOk.byDay.map((slice) => ({ at: Date.parse(`${slice.key.split("/")[0]}T12:00:00Z`), value: slice.micros / 1_000_000 }))
     : runList.filter((run) => run.costUsd != null).map((run) => ({ at: Date.parse(run.createdAt), value: run.costUsd ?? 0 }));
-  const costDays = dailyBuckets(costPoints, 7, now);
-  const pulse = {
-    merged: mergedWeek.length,
-    mergedDays: dailyBuckets(mergedWeek.map(({ event }) => ({ at: Date.parse(event.time) })), 7, now),
-    hours: agentHours(runList, weekAgo, now),
-    hoursDays: dailyBuckets(
-      runList
-        .filter((run) => run.startedAt)
-        .map((run) => ({ at: Date.parse(run.startedAt!), value: agentHours([run], weekAgo, now) })),
-      7,
-      now,
-    ),
-    cost: costDays.reduce((sum, v) => sum + v, 0),
-    costDays,
-    issueToMerge: median(spans),
-    mergedWithIssue: spans.length,
-    firstPass: firstPass.rate,
-    firstPassOf: firstPass.of,
-  };
-
-  // --- Projects -------------------------------------------------------------
-  const byRepoName = new Map((perRepo ?? []).map((entry) => [`${entry.repo.namespace}/${entry.repo.name}`.toLowerCase(), entry]));
-  const projectsHealth: ProjectHealth[] = (projectsOk ?? []).slice(0, 12).map((project) => {
-    const repo = project.source.kind === "hosted" ? project.source.repo : null;
-    const key = repo ? `${repo.namespace}/${repo.name}`.toLowerCase() : "";
-    const entry = byRepoName.get(key);
-    const deploy = overviewList?.find((d) => d.slug === project.slug) ?? null;
-    const checks = (entry?.events ?? []).flatMap((event) => (event.type === "checks.completed" ? [event.data.status === "passed"] : []));
-    return {
-      slug: project.slug,
-      name: project.name,
-      private: project.private,
-      repo,
-      deploys: deploy?.enabled ?? false,
-      production: deploy?.production ?? null,
-      latest: deploy?.latest ?? null,
-      openPulls: entry?.pulls ? entry.pulls.length : null,
-      agents: liveRuns.filter((run) => repo && `${run.repo.namespace}/${run.repo.name}`.toLowerCase() === key).length,
-      passRate: checks.length ? checks.filter(Boolean).length / checks.length : null,
-      checks: checks.length,
-    };
-  });
+  const weekCost = dailyBuckets(costPoints, 7, now).reduce((sum, v) => sum + v, 0);
+  const month = dayKey(now, tz).slice(0, 7);
+  const projectCount = projectsOk?.length ?? (perRepo != null ? perRepo.length : null);
+  const projectsThisMonth = projectsOk ? projectsOk.filter((project) => dayKey(Date.parse(project.createdAt), tz).slice(0, 7) === month).length : null;
 
   const models_ = models ?? null;
   times.total = Date.now() - started;
   const serverTiming = Object.entries(times)
     .map(([name, ms]) => `${name};dur=${ms}`)
     .join(", ");
-  const secure = new URL(request.url).protocol === "https:" ? "; Secure" : "";
   return data(
     {
       signedIn: true as const,
       viewer,
       name: profile?.name?.trim() || username,
       greeting: greetingFor(hourIn(now, tz)),
-      seenBefore: seen.since,
-      repos: repoList,
+      date: dateLine(now, tz),
+      summary: summaryLine({ total: week.total, byAgents: week.byAgents, live: liveRuns.length, needs: needRows.length }),
+      workspace: slug,
+      repos: repoList.filter((repo) => inWorkspace(repo)).map(pathOf),
       canRunAgents: models_ == null || models_.hosted || models_.own != null,
       trial: models_?.own == null ? (models_?.trial ?? null) : null,
-      active: activeList.map(({ pull, lifecycle, repo }) => ({ pull, lifecycle, repo })),
-      needs: rankNeeds(needs),
-      live: liveRuns.slice(0, 12) as AgentRun[],
+      handedOff: activeList.length > 0 || runList.length > 0 || merged.length > 0,
+      needs: needRows,
+      waiting,
+      landed,
       liveTotal: liveRuns.length,
       runsLoaded: runs != null && runs.ok,
-      pullsTabs,
-      issuesTabs,
       perRepoLoaded: perRepo != null,
+      stats: {
+        projects: projectCount,
+        projectsThisMonth,
+        agentHours: agentHours(runList, weekAgo, now),
+        weekCost,
+      },
+      week,
       groups,
-      digest,
-      pulse,
-      projects: projectsHealth,
-      projectsLoaded: projectsOk != null,
+      titles: shownTitles,
+      // A run that is going makes the page worth refreshing on its own.
+      changing:
+        liveRuns.length > 0 ||
+        activeList.some((item) => item.lifecycle && item.lifecycle.stage !== "needs_you" && item.lifecycle.stage !== "ready"),
     },
     {
-      headers: {
-        "Server-Timing": serverTiming,
-        "Set-Cookie": `${SEEN_COOKIE}=${seen.value}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax${secure}`,
-      },
+      headers: { "Server-Timing": serverTiming },
     },
   );
 }

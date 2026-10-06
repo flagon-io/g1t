@@ -1135,6 +1135,8 @@ impl<S: GitStore> Repos<S> {
             ));
         }
         self.registry.set_default_branch(&repo.id, &branch).await?;
+        // HEAD in what git is told follows it.
+        self.refs_moved(&repo.id).await;
         let from = repo.default_branch.clone();
         let changed = Repo {
             default_branch: branch.clone(),
@@ -1195,7 +1197,9 @@ impl<S: GitStore> Repos<S> {
             return Ok(not_found());
         };
         let access = git.access(Scope::Write).await?;
-        if let Err(reason) = land::push_pack(&access, &to, None, &head, EMPTY_PACK.to_vec()).await? {
+        let made = land::push_pack(&access, &to, None, &head, EMPTY_PACK.to_vec()).await?;
+        self.refs_moved(&repo.id).await;
+        if let Err(reason) = made {
             return Ok(Outcome::fail(FailureCode::Conflict, format!("{to} could not be made: {reason}")));
         }
         // The default moves before the old name goes, so it never names a
@@ -1203,7 +1207,9 @@ impl<S: GitStore> Repos<S> {
         if is_default {
             self.registry.set_default_branch(&repo.id, &to).await?;
         }
-        if let Err(reason) = land::delete_ref(&access, &from, &head).await? {
+        let removed = land::delete_ref(&access, &from, &head).await;
+        self.refs_moved(&repo.id).await;
+        if let Err(reason) = removed? {
             worker::console_error!("{from} not removed after renaming it to {to}: {reason}");
         }
         self.registry.add_branch_redirect(&repo.id, &from, &to).await?;
@@ -1279,15 +1285,21 @@ impl<S: GitStore> Repos<S> {
                     return Ok(());
                 };
                 let access = git.access(Scope::Write).await?;
-                if !branches.iter().any(|b| b.name == to)
-                    && let Err(reason) = land::push_pack(&access, to, None, &head, EMPTY_PACK.to_vec()).await?
-                {
-                    worker::console_error!("working copy {} did not get {to}: {reason}", fork.id);
-                    return Ok(());
+                if !branches.iter().any(|b| b.name == to) {
+                    let made = land::push_pack(&access, to, None, &head, EMPTY_PACK.to_vec()).await;
+                    self.refs_moved(&fork.id).await;
+                    if let Err(reason) = made? {
+                        worker::console_error!("working copy {} did not get {to}: {reason}", fork.id);
+                        return Ok(());
+                    }
                 }
                 self.registry.set_default_branch(&fork.id, to).await?;
-                if renamed && let Err(reason) = land::delete_ref(&access, from, &head).await? {
-                    worker::console_error!("working copy {} kept {from}: {reason}", fork.id);
+                if renamed {
+                    let removed = land::delete_ref(&access, from, &head).await;
+                    self.refs_moved(&fork.id).await;
+                    if let Err(reason) = removed? {
+                        worker::console_error!("working copy {} kept {from}: {reason}", fork.id);
+                    }
                 }
                 Ok(())
             }

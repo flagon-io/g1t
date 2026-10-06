@@ -16,9 +16,11 @@ mod lifecycle;
 mod listing;
 mod mirror;
 mod refs;
+mod refs_cache;
 mod registry;
 mod run_access;
 mod secret_scan;
+mod shared;
 mod store;
 mod transfer;
 
@@ -32,6 +34,7 @@ use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, User, Viewer, is_valid_repo_name, new_id};
 use g1t_kit::{args, now_ms, reply, rpc_method};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::rc::Rc;
 
 use serde::Serialize;
 use worker::{
@@ -150,9 +153,23 @@ pub(crate) struct Repos<S: GitStore> {
     identity: Option<Fetcher>,
     /// What a free workspace's private repositories may hold.
     free_private_bytes: i64,
+    /// What isolates share: answers that list refs (refs_cache.rs).
+    shared: Option<Rc<shared::Shared>>,
 }
 
 impl<S: GitStore> Repos<S> {
+    /// Records that the refs of the repository with this id changed, once
+    /// they have, so that the answers kept that list them go stale (see
+    /// refs_cache.rs). Everything that changes a repository's refs calls
+    /// this after it (`every_ref_writer_records_the_change` checks). A
+    /// failure is logged: the change itself happened, and what was kept
+    /// expires within `refs_cache::TTL_SECONDS` regardless.
+    pub(crate) async fn refs_moved(&self, repo_id: &str) {
+        if let Err(error) = self.registry.refs_moved(repo_id).await {
+            worker::console_error!("refs of {repo_id} changed but not recorded: {error}");
+        }
+    }
+
     pub(crate) async fn publish<T: Serialize>(&self, event: NewEvent<T>) -> Result<()> {
         g1t_kit::call(
             &self.events,
@@ -475,6 +492,7 @@ impl<S: GitStore> Repos<S> {
                 .await?;
             let stored =
                 land::push_pack(&access, &repo.default_branch, None, &remote.head, pack).await?;
+            self.refs_moved(&repo.id).await;
             if let Err(reason) = stored {
                 self.registry.remove(&repo.id).await?;
                 return Ok(Outcome::fail(
@@ -492,7 +510,9 @@ impl<S: GitStore> Repos<S> {
                 .access(Scope::Write)
                 .await?;
             let target = mirror::Endpoint::bearer(&access.remote, &access.token);
-            match mirror::copy(&source, &target, mirror::Prune::Yes).await? {
+            let copied = mirror::copy(&source, &target, mirror::Prune::Yes).await?;
+            self.refs_moved(&repo.id).await;
+            match copied {
                 Ok(copied) => {
                     let branch = format!("refs/heads/{}", repo.default_branch);
                     pushed = copied
@@ -789,7 +809,9 @@ impl<S: GitStore> Repos<S> {
             return Ok(Outcome::Ok(false));
         };
         let access = git.access(Scope::Write).await?;
-        if let Err(reason) = land::delete_ref(&access, &a.branch, &old).await? {
+        let deleted = land::delete_ref(&access, &a.branch, &old).await?;
+        self.refs_moved(&repo.id).await;
+        if let Err(reason) = deleted {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
                 format!("{} could not be deleted: {reason}", a.branch),
@@ -851,6 +873,45 @@ impl<S: GitStore> Repos<S> {
     }
 
     async fn git_access(&self, a: GitAccessArgs) -> Result<Outcome<GitAccess>> {
+        let found = self.registry.by_path(&a.path).await?;
+        Ok(match self.authorize_git(&a.path, &a.viewer, a.service, found).await? {
+            Outcome::Ok(repo) => {
+                let write = a.service == GitService::ReceivePack;
+                if write {
+                    // A push with this credential would not pass through
+                    // here, so nothing that lists the refs is kept until it
+                    // has expired (see refs_cache.rs).
+                    let until = now_ms() + store::CREDENTIAL_LIFE_MS + 60_000;
+                    if let Err(error) = self.registry.refs_open(&repo.id, until).await {
+                        // Before the column exists nothing is kept anyway.
+                        if registry::refs_state(&repo.id).is_some() {
+                            return Err(error);
+                        }
+                    }
+                }
+                let scope = if write { Scope::Write } else { Scope::Read };
+                Outcome::Ok(self.store.access(&store_key(&repo), scope).await?)
+            }
+            Outcome::Fail(failure) => Outcome::Fail(failure),
+        })
+    }
+
+    /// The repository at `path` (`found`, as just read), if the viewer may
+    /// use `service` on it: fetch from it, or push to it. A push to a path
+    /// with nothing there makes the repository, in a workspace the pusher
+    /// belongs to.
+    async fn authorize_git(
+        &self,
+        path: &RepoPath,
+        viewer: &Viewer,
+        service: GitService,
+        found: Option<Repo>,
+    ) -> Result<Outcome<Repo>> {
+        let a = GitAccessArgs {
+            path: path.clone(),
+            viewer: viewer.clone(),
+            service,
+        };
         let write = a.service == GitService::ReceivePack;
         // Anonymous callers are asked to authenticate whether or not the repo
         // exists, so private repos cannot be told apart from missing ones.
@@ -872,7 +933,7 @@ impl<S: GitStore> Repos<S> {
             return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
         }
 
-        let repo = match self.registry.by_path(&a.path).await? {
+        let repo = match found {
             Some(repo) => {
                 let allowed = if write {
                     can_write(&repo, &a.viewer)
@@ -927,9 +988,7 @@ impl<S: GitStore> Repos<S> {
                 }
             }
         };
-        let git = self.store.open(&store_key(&repo)).await?;
-        let scope = if write { Scope::Write } else { Scope::Read };
-        Ok(Outcome::Ok(git.access(scope).await?))
+        Ok(Outcome::Ok(repo))
     }
 
     async fn land(&self, a: LandArgs) -> Result<Outcome<Landed>> {
@@ -1022,6 +1081,7 @@ impl<S: GitStore> Repos<S> {
         let pushed =
             land::fast_forward(&source_access, &target_access, branch, old.as_deref(), &new)
                 .await?;
+        self.refs_moved(&target.id).await;
         if let Err(reason) = pushed {
             // Most often another pull request landed between the check and the push.
             return Ok(Outcome::fail(
@@ -1133,162 +1193,403 @@ impl<S: GitStore> Repos<S> {
         .await
     }
 
-    /// Git over HTTPS.
-    async fn git_http(&self, request: Request, env: &Env) -> Result<Response> {
+    /// Git over HTTPS. Only what decides the answer happens before it:
+    /// the repository, who is asking and whether they may, the free
+    /// workspace limits, push protection, and the store's own answer. The
+    /// audit entry and what a push changed are recorded once git has its
+    /// answer. Each answer says how long its steps took (`Server-Timing`).
+    async fn git_http(&self, request: Request, env: &Env, ctx: &Context) -> Result<Response> {
+        let mut timing = git_http::Timing::start();
         let Some(git) = git_http::parse(&request.url()?) else {
             return Response::error("Not found", 404);
         };
-        // A workspace that was renamed: git follows a redirect when it
-        // first asks for refs, and uses the new address from then on.
-        if self.registry.by_path(&git.path).await?.is_none() {
-            if let Some(location) = git_http::renamed(&request.url()?, &env.service("IDENTITY")?).await? {
-                return git_http::moved(&location, request.method() == Method::Get);
+        let response = self.answer_git(request, &git, env, ctx, &mut timing).await?;
+        timing.apply(response)
+    }
+
+    async fn answer_git(
+        &self,
+        request: Request,
+        git: &git_http::GitRequest,
+        env: &Env,
+        ctx: &Context,
+        timing: &mut git_http::Timing,
+    ) -> Result<Response> {
+        let write = git.service == GitService::ReceivePack;
+        let get = request.method() == Method::Get;
+        let identity = env.service("IDENTITY")?;
+        // The repository and the caller's credentials, at once. A fetch may
+        // go by the row as read a moment ago, for the same clone's next
+        // request; a push always reads it. Anonymous callers cost nothing.
+        let lookup = async {
+            if write {
+                self.registry.by_path(&git.path).await
+            } else {
+                self.registry.by_path_recent(&git.path).await
             }
-            // A repository transferred to another workspace: the same,
-            // to its new path. Fetches and pushes both follow it.
-            if let Some(now) = self.registry.resolve_moved(&git.path).await?
-                && let Some(location) = git_http::transferred(&request.url()?, &now)
+        };
+        let (found, viewer) =
+            futures_util::future::join(lookup, git_http::viewer(&request, &identity)).await;
+        let found = found?;
+        timing.mark("repo");
+        if found.is_none() {
+            // A workspace that was renamed: git follows a redirect when it
+            // first asks for refs, and uses the new address from then on.
+            // A repository transferred to another workspace: the same, to
+            // its new path. Fetches and pushes both follow either.
+            let url = request.url()?;
+            let (renamed, moved) = futures_util::future::join(
+                git_http::renamed(&url, &identity),
+                self.registry.resolve_moved(&git.path),
+            )
+            .await;
+            timing.mark("moved");
+            if let Some(location) = renamed? {
+                return git_http::moved(&location, get);
+            }
+            if let Some(now) = moved?
+                && let Some(location) = git_http::transferred(&url, &now)
             {
-                return git_http::moved(&location, request.method() == Method::Get);
+                return git_http::moved(&location, get);
             }
         }
-        let viewer = git_http::viewer(&request, &env.service("IDENTITY")?).await?;
+        let viewer = viewer?;
         // A run credential is checked against its grants, then acts as the
         // person it works for. See run_access.rs.
-        let (request, viewer, audit) = match self.admit_git(request, &git, viewer).await? {
+        let (request, viewer, audit) = match self.admit_git(request, git, viewer, found.as_ref()).await? {
             run_access::Admitted::Go { request, viewer, entry } => (request, viewer, entry),
             run_access::Admitted::Refused(response) => return Ok(response),
         };
-        let access = self
-            .git_access(GitAccessArgs {
-                path: git.path.clone(),
-                viewer: viewer.clone(),
-                service: git.service,
-            })
-            .await?;
-        let access = match access {
-            Outcome::Ok(access) => access,
+        let mut after = AfterGit {
+            audit,
+            status: 0,
+            message: None,
+            push: None,
+        };
+        let repo = match self.authorize_git(&git.path, &viewer, git.service, found).await? {
+            Outcome::Ok(repo) => repo,
             refused => {
                 let response = git_http::refuse(refused)?;
-                self.finish_git(audit, response.status_code(), None).await;
+                after.ended(response.status_code(), None);
+                after.spawn(env, ctx);
                 return Ok(response);
             }
         };
+        timing.mark("access");
         // A protected default branch takes changes only from a merged pull
         // request, which lands without going through here.
-        let here = self.registry.by_path(&git.path).await?;
-        let protected = match &here {
-            Some(repo) if repo.protected && repo.fork_of.is_none() => Some(repo.default_branch.clone()),
-            _ => None,
-        };
+        let protected = (repo.protected && repo.fork_of.is_none()).then(|| repo.default_branch.clone());
         // Clones check out the default branch g1t keeps, which can have
         // changed since the store made the repository.
-        let default_branch = here
-            .as_ref()
-            .filter(|repo| repo.fork_of.is_none())
-            .map(|repo| repo.default_branch.clone());
-        // Each clone, fetch and push is a git operation, which the git store
-        // charges g1t for: counted for billing, and a free workspace far
-        // past its share is slowed down rather than charged. See git_ops.rs.
+        let default_branch = repo.fork_of.is_none().then(|| repo.default_branch.clone());
+        let key = store_key(&repo);
+        let scope = if write { Scope::Write } else { Scope::Read };
+        let mut request = request;
+        let protocol = refs_cache::protocol(request.headers().get("git-protocol")?.as_deref());
+        // A fetch's POST is read here, to tell an `ls-refs` from a fetch of
+        // objects; the store would have it read in full anyway.
+        let body = if !write && !get { Some(request.bytes().await?) } else { None };
+        // An answer that lists refs may have been kept: see refs_cache.rs.
+        let kept_key = refs_cache::kind(git, get, protocol, body.as_deref())
+            .zip(refs_cache::usable(registry::refs_state(&repo.id), now_ms()))
+            .map(|(kind, version)| {
+                refs_cache::Key::new(&repo.id, version, default_branch.as_deref(), protocol, &kind)
+            });
+        // A kept answer and the free workspace limits, with a kept
+        // credential looked up alongside. A kept answer goes back without
+        // waiting for the credential, which it does not need.
+        let ((answer, limited), kept_access) = {
+            let shared = self.shared.as_deref();
+            let answer_and_limits = std::pin::pin!(futures_util::future::join(
+                async {
+                    match &kept_key {
+                        Some(kept_key) => refs_cache::get(shared, kept_key).await,
+                        None => None,
+                    }
+                },
+                self.git_limits(&request, git, &repo, env),
+            ));
+            let kept_access = std::pin::pin!(self.store.kept_access(&key, scope));
+            match futures_util::future::select(answer_and_limits, kept_access).await {
+                futures_util::future::Either::Left((first, kept_access)) => {
+                    let answered = first.0.is_some() || matches!(first.1, Ok(Some(_)) | Err(_));
+                    (first, if answered { None } else { kept_access.await })
+                }
+                futures_util::future::Either::Right((kept_access, first)) => (first.await, kept_access),
+            }
+        };
+        timing.mark("kept");
+        if let Some((response, status, message)) = limited? {
+            after.ended(status, Some(message.to_owned()));
+            after.spawn(env, ctx);
+            return Ok(response);
+        }
+        if let (Some((entry, found)), Some(kept_key)) = (answer, &kept_key) {
+            timing.note("refs", found.as_str());
+            if found == refs_cache::Found::Shared {
+                let (kept_key, entry) = (kept_key.clone(), entry.clone());
+                ctx.wait_until(async move { refs_cache::keep_in_colo(&kept_key, &entry).await });
+            }
+            after.ended(200, None);
+            after.spawn(env, ctx);
+            return entry.response();
+        }
+        if kept_key.is_some() {
+            timing.note("refs", "miss");
+        }
+        // The store's credential: one made a moment ago, here or in another
+        // isolate (see store.rs), or a new one.
+        let access = match kept_access {
+            Some((access, from)) => {
+                timing.note("cred", from.as_str());
+                access
+            }
+            None => {
+                let access = self.store.mint_access(&key, scope).await?;
+                timing.mark("mint");
+                timing.note("cred", "mint");
+                access
+            }
+        };
+        // Should the store turn a kept credential down, a fetch's first
+        // request is tried again with a new one; the requests after it then
+        // have that one too.
+        let again = if get { Some(request.clone()?) } else { None };
+        // Push protection: a push that adds a secret is refused. See secret_scan.rs.
+        let scan = async |body: &[u8]| self.protect(&repo, viewer.as_ref(), body).await;
+        let mut outcome = git_http::forward(
+            request,
+            body,
+            git,
+            &access,
+            protected.as_deref(),
+            default_branch.as_deref(),
+            scan,
+        )
+        .await?;
+        let turned_down = matches!(
+            &outcome,
+            git_http::Push::Forwarded(forwarded) if matches!(forwarded.response.status_code(), 401 | 403)
+        );
+        if turned_down {
+            self.store.forget_access(&key).await;
+            if let Some(again) = again {
+                let access = self.store.mint_access(&key, scope).await?;
+                let nothing = async |_: &[u8]| Ok(None);
+                outcome = git_http::forward(again, None, git, &access, protected.as_deref(), default_branch.as_deref(), nothing)
+                    .await?;
+            }
+        }
+        let forwarded =
+            match outcome {
+                git_http::Push::Forwarded(forwarded) => forwarded,
+                git_http::Push::Refused(response) => {
+                    after.ended(403, Some("The push would change a protected branch.".to_owned()));
+                    after.spawn(env, ctx);
+                    return Ok(response);
+                }
+                git_http::Push::Blocked(response) => {
+                    after.ended(403, Some("The push adds a secret.".to_owned()));
+                    after.spawn(env, ctx);
+                    return Ok(response);
+                }
+            };
+        timing.mark("store");
+        let mut response = forwarded.response;
+        let status = response.status_code();
+        if write && !get {
+            // A push: the store has moved its refs once it has answered in
+            // full, so the answer is read before the change is recorded, and
+            // only then goes back. Whoever fetches after it sees the push.
+            let headers = response.headers().clone();
+            headers.delete("content-length")?;
+            let report = response.bytes().await?;
+            self.refs_moved(&repo.id).await;
+            timing.mark("refs");
+            response = Response::from_bytes(report)?.with_headers(headers).with_status(status);
+        } else if let (Some(kept_key), 200) = (&kept_key, status) {
+            // A miss: this answer is kept for the next to ask.
+            let headers = response.headers().clone();
+            headers.delete("content-length")?;
+            let body = response.bytes().await?;
+            if let Some(content_type) = headers.get("content-type")? {
+                let entry = refs_cache::Entry { content_type, body: body.clone() };
+                if entry.keepable() {
+                    let shared = self.shared.clone();
+                    let kept_key = kept_key.clone();
+                    ctx.wait_until(async move { refs_cache::keep(shared.as_deref(), &kept_key, &entry).await });
+                }
+            }
+            response = Response::from_bytes(body)?.with_headers(headers).with_status(status);
+        }
+        after.ended(status, None);
+        if status == 200 && (forwarded.pack_bytes > 0 || !forwarded.pushed.is_empty()) {
+            after.push = Some(PushDone {
+                repo,
+                pushed: forwarded.pushed,
+                pack_bytes: forwarded.pack_bytes,
+                actor: viewer.map(|user: User| user.id),
+            });
+        }
+        after.spawn(env, ctx);
+        Ok(response)
+    }
+
+    /// The answer for a request a free workspace's limits stop, with its
+    /// status and reason for the audit log; `None` to go on.
+    ///
+    /// Each clone, fetch and push is a git operation, which the git store
+    /// charges g1t for: counted for billing, and a free workspace far past
+    /// its share is slowed down rather than charged (see git_ops.rs). And a
+    /// free workspace is never charged for private storage: once its
+    /// private repositories hold the free amount, pushes to them stop,
+    /// checked when a push begins so that git shows the reason.
+    async fn git_limits(
+        &self,
+        request: &Request,
+        git: &git_http::GitRequest,
+        repo: &Repo,
+        env: &Env,
+    ) -> Result<Option<(Response, u16, &'static str)>> {
+        let namespace = git.path.namespace.to_lowercase();
         if request.method() == Method::Post && git.endpoint != "info/refs" {
-            let namespace = git.path.namespace.to_lowercase();
             match git_ops::count(&self.registry.db, &namespace, &rfc3339(now_ms())).await {
                 Ok((month, hour)) => {
                     let limits = git_ops::Limits::from_env(env);
                     if git_ops::slow_down(month, hour, limits.free_cap, limits.hourly)
                         && git_ops::is_free(env.service("BILLING").ok().as_ref(), &namespace).await
                     {
-                        self.finish_git(audit, 429, Some("Too many git operations this hour.".to_owned())).await;
-                        return git_ops::too_many(&namespace, limits.free_cap, limits.hourly);
+                        return Ok(Some((
+                            git_ops::too_many(&namespace, limits.free_cap, limits.hourly)?,
+                            429,
+                            "Too many git operations this hour.",
+                        )));
                     }
                 }
                 Err(error) => worker::console_error!("git operation for {namespace} not counted: {error}"),
             }
         }
-        // A free workspace is never charged for private storage: once its
-        // private repositories hold the free amount, pushes to them stop.
-        // Checked when a push begins, so git shows the reason.
-        if git.service == GitService::ReceivePack && git.endpoint == "info/refs" {
-            let namespace = git.path.namespace.to_lowercase();
-            let private = self.registry.by_path(&git.path).await?.is_some_and(|repo| repo.is_private);
-            if private {
-                let free = git_ops::free_private_bytes(env);
-                let held = self.registry.private_bytes(&namespace).await.unwrap_or(0);
-                if git_ops::storage_full(held, free)
-                    && git_ops::is_free(env.service("BILLING").ok().as_ref(), &namespace).await
-                {
-                    self.finish_git(audit, 403, Some("Free private storage is full.".to_owned())).await;
-                    return git_ops::storage_full_response(&namespace, held, free);
-                }
+        if git.service == GitService::ReceivePack && git.endpoint == "info/refs" && repo.is_private {
+            let free = git_ops::free_private_bytes(env);
+            let held = self.registry.private_bytes(&namespace).await.unwrap_or(0);
+            if git_ops::storage_full(held, free)
+                && git_ops::is_free(env.service("BILLING").ok().as_ref(), &namespace).await
+            {
+                return Ok(Some((
+                    git_ops::storage_full_response(&namespace, held, free)?,
+                    403,
+                    "Free private storage is full.",
+                )));
             }
         }
-        // Push protection: a push that adds a secret is refused. See secret_scan.rs.
-        let scan = async |body: &[u8]| self.protect(&git.path, viewer.as_ref(), body).await;
-        let forwarded =
-            match git_http::forward(request, &git, &access, protected.as_deref(), default_branch.as_deref(), scan).await? {
-                git_http::Push::Forwarded(forwarded) => forwarded,
-                git_http::Push::Refused(response) => {
-                    self.finish_git(audit, 403, Some("The push would change a protected branch.".to_owned())).await;
-                    return Ok(response);
-                }
-                git_http::Push::Blocked(response) => {
-                    self.finish_git(audit, 403, Some("The push adds a secret.".to_owned())).await;
-                    return Ok(response);
-                }
-            };
-        self.finish_git(audit, forwarded.response.status_code(), None).await;
+        Ok(None)
+    }
 
+    /// What a push changed, recorded once git has its answer.
+    async fn record_push(&self, push: PushDone) -> Result<()> {
+        let PushDone {
+            repo,
+            pushed,
+            pack_bytes,
+            actor,
+        } = push;
         // What the push stored, for billing's storage meter. A failure only
         // leaves the count short.
-        if forwarded.response.status_code() == 200
-            && forwarded.pack_bytes > 0
-            && let Some(repo) = self.registry.by_path(&git.path).await?
-            && let Err(error) = self.registry.add_stored_bytes(&repo, forwarded.pack_bytes).await
+        if pack_bytes > 0
+            && let Err(error) = self.registry.add_stored_bytes(&repo, pack_bytes).await
         {
-            worker::console_error!("stored bytes for {} not counted: {error}", git.path.name);
+            worker::console_error!("stored bytes for {} not counted: {error}", repo.name);
         }
-
+        if pushed.is_empty() {
+            return Ok(());
+        }
         // Artifacts' own push notifications are per repository, which does
         // not fit a repo per pull request, so the front end reports pushes
         // itself: one event for each branch that moved.
-        let accepted = forwarded.response.status_code() == 200 && !forwarded.pushed.is_empty();
-        if accepted && let Some(repo) = self.registry.by_path(&git.path).await? {
-            let stored = self.store.open(&store_key(&repo)).await?;
-            let actor = viewer.map(|user: User| user.id);
-            for pushed in &forwarded.pushed {
-                // The store can refuse one ref and accept another, so each
-                // branch is checked against where it actually is. A tag the
-                // store cannot read back is taken as pushed.
-                let moved = match pushed.branch() {
-                    Some(branch) => stored
-                        .log(branch, 1)
-                        .await?
-                        .first()
-                        .is_some_and(|commit| commit.hash == pushed.after),
-                    None => stored.log(&pushed.git_ref, 1).await.map_or(true, |head| {
-                        head.first().is_none_or(|commit| commit.hash == pushed.after)
-                    }),
-                };
-                if moved {
-                    self.publish_push(
-                        &repo,
-                        &pushed.git_ref,
-                        pushed.before.as_deref(),
-                        &pushed.after,
-                        actor.clone(),
-                    )
-                    .await?;
-                }
+        let stored = self.store.open(&store_key(&repo)).await?;
+        for pushed in &pushed {
+            // The store can refuse one ref and accept another, so each
+            // branch is checked against where it actually is. A tag the
+            // store cannot read back is taken as pushed.
+            let moved = match pushed.branch() {
+                Some(branch) => stored
+                    .log(branch, 1)
+                    .await?
+                    .first()
+                    .is_some_and(|commit| commit.hash == pushed.after),
+                None => stored.log(&pushed.git_ref, 1).await.map_or(true, |head| {
+                    head.first().is_none_or(|commit| commit.hash == pushed.after)
+                }),
+            };
+            if moved {
+                self.publish_push(
+                    &repo,
+                    &pushed.git_ref,
+                    pushed.before.as_deref(),
+                    &pushed.after,
+                    actor.clone(),
+                )
+                .await?;
             }
         }
-        Ok(forwarded.response)
+        Ok(())
+    }
+}
+
+/// A push the store accepted, to be recorded once git has its answer.
+struct PushDone {
+    repo: Repo,
+    pushed: Vec<git_http::Pushed>,
+    pack_bytes: u64,
+    actor: Option<String>,
+}
+
+/// What a git request leaves for after its answer: its audit entry, with
+/// how the request ended, and what a push changed.
+struct AfterGit {
+    audit: Option<Box<g1t_contracts::audit::NewAuditEntry>>,
+    status: u16,
+    message: Option<String>,
+    push: Option<PushDone>,
+}
+
+impl AfterGit {
+    fn ended(&mut self, status: u16, message: Option<String>) {
+        self.status = status;
+        self.message = message;
+    }
+
+    /// Does the work once the response is on its way. A failure is logged:
+    /// git has already been told how its request went.
+    fn spawn(self, env: &Env, ctx: &Context) {
+        if self.audit.is_none() && self.push.is_none() {
+            return;
+        }
+        let env = env.clone();
+        ctx.wait_until(async move {
+            let repos = match service(&env) {
+                Ok(repos) => repos,
+                Err(error) => {
+                    worker::console_error!("git request not recorded: {error}");
+                    return;
+                }
+            };
+            repos.finish_git(self.audit, self.status, self.message).await;
+            if let Some(push) = self.push
+                && let Err(error) = repos.record_push(push).await
+            {
+                worker::console_error!("push not recorded: {error}");
+            }
+        });
     }
 }
 
 fn service(env: &Env) -> Result<Repos<ArtifactsStore>> {
+    let shared = shared::Shared::from_env(env).map(Rc::new);
     Ok(Repos {
         registry: Registry { db: env.d1("DB")? },
-        store: ArtifactsStore::new(env)?,
+        store: ArtifactsStore::new(env, shared.clone())?,
+        shared,
         events: env.service("EVENTS")?,
         security: env.service("SECURITY").ok(),
         billing: env.service("BILLING").ok(),
@@ -1298,10 +1599,10 @@ fn service(env: &Env) -> Result<Repos<ArtifactsStore>> {
 }
 
 #[event(fetch)]
-async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response> {
+async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response> {
     let repos = service(&env)?;
     let Some(method) = rpc_method(&request) else {
-        return repos.git_http(request, &env).await;
+        return repos.git_http(request, &env, &ctx).await;
     };
     let body: serde_json::Value = request.json().await?;
 

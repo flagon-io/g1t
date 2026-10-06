@@ -991,6 +991,7 @@ dependencies = [
  "g1t-contracts",
  "g1t-kit",
  "g1t-scan",
+ "g1t-secrets",
  "serde",
  "serde_json",
  "similar",

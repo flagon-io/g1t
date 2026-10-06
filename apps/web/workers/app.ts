@@ -32,7 +32,7 @@ export default {
     // renamed workspace's old name answers with a 301, which git follows and
     // must see, so the redirect is never followed here.
     if (GIT_PATH.test(pathname)) {
-      return env.REPOS.fetch(new Request(request, { redirect: "manual" }));
+      return proxyGit(env, request);
     }
     const avatar = AVATAR_PATH.exec(pathname);
     if (avatar) {
@@ -47,6 +47,20 @@ export default {
     return requestHandler(request);
   },
 } satisfies ExportedHandler<Env>;
+
+/**
+ * A git request, answered by the repos service. Its `Server-Timing` header
+ * gains `repos`: how long the answer took to start from here, so the time
+ * between this Worker and the repos service shows beside the steps the
+ * repos service reports.
+ */
+async function proxyGit(env: Env, request: Request): Promise<Response> {
+  const started = Date.now();
+  const answer = await env.REPOS.fetch(new Request(request, { redirect: "manual" }));
+  const response = new Response(answer.body, answer);
+  response.headers.append("server-timing", `repos;dur=${Date.now() - started}`);
+  return response;
+}
 
 /**
  * An uploaded avatar. Its address is its hash, so it never changes and is

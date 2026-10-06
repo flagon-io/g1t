@@ -18,6 +18,12 @@
 		}
 	],
 	"artifacts": [{ "binding": "ARTIFACTS", "namespace": "g1t" }],
+	// Shared between isolates (src/shared.rs): the git store's credentials
+	// (src/store.rs) and the ref listings git asks for first
+	// (src/refs_cache.rs), every value sealed with the REPOS_KEY secret (64
+	// hex characters). Without the binding or the secret each isolate keeps
+	// only its own. Made by `npx wrangler kv namespace create g1t-repos-git-cache`:
+	"kv_namespaces": [{ "binding": "GIT_CACHE", "id": "be765052d0124c2a935b3db4dff99f1f" }],
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "EVENTS", "service": "g1t-events" },

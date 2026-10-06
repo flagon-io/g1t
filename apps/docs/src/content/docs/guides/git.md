@@ -125,6 +125,43 @@ git requests past 60 in an hour are answered `429` with when to try again,
 until the month turns. Counting starts on 2026-10-14. See
 [git operations](/guides/usage-and-billing/#git-operations).
 
+## Where a slow request's time went
+
+Every answer g1t gives git carries a `Server-Timing` header: how many
+milliseconds each step of the request took. To see it, run git with its
+HTTP trace on:
+
+```sh
+GIT_TRACE_CURL=1 git ls-remote https://g1t.sh/<owner>/<repo>.git 2>&1 | grep -i server-timing
+```
+
+| Step | What it is |
+| --- | --- |
+| `repo` | Finding the repository, and checking your credentials if you sent any |
+| `moved` | Only for an address with no repository: looking for a renamed workspace or a transferred repository to send you to |
+| `access` | Deciding whether you may fetch from or push to it |
+| `kept` | A free workspace's limits, and looking for a ref listing and a store credential made a moment ago |
+| `mint` | Only when no credential was kept: the git store making one for the request |
+| `store` | The git store's answer; for a push, checking it for secrets first |
+| `refs` | Only for a push: recording that the repository's refs changed |
+| `total` | Everything g1t did |
+| `repos` | The same, measured where your request arrived |
+
+Two entries say how a step went rather than how long it took:
+
+| Entry | Values |
+| --- | --- |
+| `refs;desc=` | `hit-colo` or `hit-shared` when the ref listing came from g1t's cache, `miss` when the git store was asked |
+| `cred;desc=` | `isolate` or `shared` for a store credential made a moment ago, `mint` for a new one |
+
+The ref listing git asks for first on every clone and fetch is kept for up
+to a minute, and only the same question about the same refs gets the same
+answer: a push, a merge or any other change to a repository's branches and
+tags makes the next fetch ask the git store again. A change can take up to
+5 seconds to reach every fetch.
+
+Include the header when you report a slow clone, fetch or push.
+
 ## SSH
 
 Git over SSH is not available yet. Use HTTPS, which works for clone,

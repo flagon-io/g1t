@@ -95,7 +95,7 @@ is graded:
 | `apps/sudo` | TS Worker plus assets | Access JWT | Not run |
 | `apps/docs` | Static | — | Not run (docs.g1t.sh serves them) |
 | `services/identity` | Rust | Email Sending, KV `AVATARS` | Runs unchanged; `EMAIL` goes to the mail shim |
-| `services/repos` | Rust | **Artifacts**, Cache API | Runs unchanged; `ARTIFACTS` goes to the git store |
+| `services/repos` | Rust | **Artifacts**, Cache API, optional KV `GIT_CACHE` with `REPOS_KEY` | Runs unchanged; `ARTIFACTS` goes to the git store. Without `GIT_CACHE` and `REPOS_KEY`, credentials and ref listings are kept per isolate only |
 | `services/work` | Rust | Queue consumer | Runs unchanged |
 | `services/events` | Rust | Queues (producer and fan-out) | Runs unchanged; the off services' queues are not produced to |
 | `services/projects` | TS | Queue consumer | Runs unchanged |
