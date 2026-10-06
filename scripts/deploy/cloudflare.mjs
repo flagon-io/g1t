@@ -11,6 +11,19 @@ import { ROOT } from "./stack.mjs";
 const WRANGLER = join(ROOT, "node_modules/wrangler/bin/wrangler.js");
 export const ACCOUNT_ID = "1e6f2cffa3f445920836e8ebe446bb58";
 
+/**
+ * Headers for Cloudflare's REST and GraphQL APIs, for the ops scripts:
+ * CLOUDFLARE_API_TOKEN as a bearer token, or else a global API key
+ * (CLOUDFLARE_API_KEY with CLOUDFLARE_EMAIL). Null when neither is set.
+ */
+export function cloudflareAuth(env = process.env) {
+  if (env.CLOUDFLARE_API_TOKEN) return { authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` };
+  if (env.CLOUDFLARE_API_KEY && env.CLOUDFLARE_EMAIL) {
+    return { "x-auth-key": env.CLOUDFLARE_API_KEY, "x-auth-email": env.CLOUDFLARE_EMAIL };
+  }
+  return null;
+}
+
 /** What a deploy's version message starts with, followed by the commit. */
 export const MESSAGE_PREFIX = "g1t-deploy";
 

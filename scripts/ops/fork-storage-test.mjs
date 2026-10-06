@@ -10,6 +10,7 @@
 // against Cloudflare's API, never through g1t.sh.
 //
 //   export CLOUDFLARE_API_TOKEN=<token: Artifacts edit, Account Analytics read>
+//   (or a global API key: CLOUDFLARE_API_KEY with CLOUDFLARE_EMAIL)
 //   node scripts/ops/fork-storage-test.mjs run        # make, fork 5x, measure for 20 min, delete
 //   node scripts/ops/fork-storage-test.mjs run --keep # ... and keep it, to measure again tomorrow
 //   node scripts/ops/fork-storage-test.mjs measure    # read the figures again (e.g. the next day)
@@ -28,6 +29,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { cloudflareAuth } from "../deploy/cloudflare.mjs";
+
 const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID || "1e6f2cffa3f445920836e8ebe446bb58";
 const API = `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}`;
 const args = process.argv.slice(2);
@@ -44,16 +47,16 @@ const KEEP = args.includes("--keep");
 const SOURCE = "fork-test-source";
 const forkName = (n) => `fork-test-copy-${n}`;
 
-const token = process.env.CLOUDFLARE_API_TOKEN;
-if (!token) {
-  console.error("Set CLOUDFLARE_API_TOKEN (Artifacts edit, Account Analytics read).");
+const auth = cloudflareAuth();
+if (!auth) {
+  console.error("Set CLOUDFLARE_API_TOKEN (Artifacts edit, Account Analytics read), or CLOUDFLARE_API_KEY and CLOUDFLARE_EMAIL.");
   process.exit(2);
 }
 
 async function api(method, path, body) {
   const response = await fetch(`${API}${path}`, {
     method,
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    headers: { ...auth, "content-type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
   const json = await response.json().catch(() => ({}));
@@ -63,7 +66,7 @@ async function api(method, path, body) {
 async function graphql(query, variables = {}) {
   const response = await fetch("https://api.cloudflare.com/client/v4/graphql", {
     method: "POST",
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    headers: { ...auth, "content-type": "application/json" },
     body: JSON.stringify({ query, variables }),
   });
   const json = await response.json();

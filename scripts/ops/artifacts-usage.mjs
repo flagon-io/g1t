@@ -16,7 +16,7 @@
 // token needs D1: Read too), or with CLOUDFLARE_D1_TOKEN when that is set,
 // or as you are logged in (`npx wrangler login`) when neither has it.
 
-import { ACCOUNT_ID, exec, jsonFrom, wranglerEnv } from "../deploy/cloudflare.mjs";
+import { ACCOUNT_ID, cloudflareAuth, exec, jsonFrom, wranglerEnv } from "../deploy/cloudflare.mjs";
 import { ROOT } from "../deploy/stack.mjs";
 import { join } from "node:path";
 
@@ -33,9 +33,12 @@ const option = (name, fallback) => {
 const days = Math.min(31, Math.max(1, Number(option("--days", "31")) || 31));
 const asJson = flag("--json");
 
-const token = process.env.CLOUDFLARE_API_TOKEN;
-if (!token) {
-  console.error("Set CLOUDFLARE_API_TOKEN to a token with Account Analytics: Read on account " + ACCOUNT_ID + ".");
+const auth = cloudflareAuth();
+if (!auth) {
+  console.error(
+    "Set CLOUDFLARE_API_TOKEN to a token with Account Analytics: Read on account " + ACCOUNT_ID +
+      ", or CLOUDFLARE_API_KEY and CLOUDFLARE_EMAIL.",
+  );
   process.exit(2);
 }
 
@@ -62,7 +65,7 @@ async function cloudflare() {
   }`;
   const response = await fetch("https://api.cloudflare.com/client/v4/graphql", {
     method: "POST",
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    headers: { ...auth, "content-type": "application/json" },
     body: JSON.stringify({ query, variables: { accountTag: ACCOUNT_ID, start: start.toISOString(), end: end.toISOString() } }),
   });
   const body = await response.json();

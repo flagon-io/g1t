@@ -9,12 +9,6 @@ Windows box with a GPU, or a pod in your cluster. You install `g1t-runner`
 on it, register it once, and it picks up jobs that ask for it with
 `runs-on: self-hosted`.
 
-**Not available yet:** the first release of `g1t-runner` has not been
-published, so the downloads below and the `flagonio/g1t-runner` image do
-not exist yet. g1t's side (**Settings → Runners**, registration tokens,
-groups and the API) is live. This page says how the runner works once it
-is released.
-
 - **Time on your runners is $0**, on every plan, including the free one.
   It shows on [usage](/guides/usage-and-billing/) as self-hosted minutes.
 - **It only connects out.** The runner polls `api.g1t.sh` over HTTPS for
@@ -181,9 +175,9 @@ a runner needs to take it (`self-hosted` is always one).
   your own [model provider](/guides/models/), g1t charges nothing for the
   run; otherwise the model is paid as usual and the machine is free.
 - Agent work needs an image with git, Node and the agent's CLI: register
-  the runner with `--agent-image`, which the release names, or run it with
-  `--no-docker` on a Linux machine set aside for it, where `/work` can be
-  written.
+  the runner with `--agent-image` and an image of yours that has them, or
+  run it with `--no-docker` on a Linux machine set aside for it, where
+  `/work` can be written. g1t does not publish an agent image yet.
 - [Guardrails](/guides/guardrails/) still apply to what the agent does, but
   their network list cannot be enforced on your machine. The run's session
   says so when it starts.
@@ -231,6 +225,11 @@ so you can see how much ran there.
   to run its own jobs.
 
 ## Docker and Kubernetes
+
+**The `flagonio/g1t-runner` image is not published yet.** Until it is, run
+the binary on the machine, or build the image from
+[`deploy/runner/Dockerfile`](https://g1t.sh/flagon-io/g1t/blob/main/deploy/runner/Dockerfile)
+with the Linux binary beside it.
 
 The runner's image runs `register-and-run`, which registers once and then
 runs. Each option can also come from `G1T_RUNNER_<OPTION>` in the

@@ -48,13 +48,13 @@ jobs:
           key: runner-release-${{ hashFiles('Cargo.lock') }}
       - name: Build every platform
         env:
-          G1T_RUNNER_RELEASE_KEY: ${{ vars.G1T_RUNNER_RELEASE_KEY }}
+          G1T_RUNNER_RELEASE_KEY: ${{ vars.RUNNER_RELEASE_PUBLIC_KEY }}
           RUNNER_AGENT_IMAGE: ${{ vars.RUNNER_AGENT_IMAGE }}
         run: node scripts/runner-release.mjs build
       - name: Sign
         env:
           RUNNER_RELEASE_KEY: ${{ secrets.RUNNER_RELEASE_KEY }}
-          G1T_RUNNER_RELEASE_KEY: ${{ vars.G1T_RUNNER_RELEASE_KEY }}
+          G1T_RUNNER_RELEASE_KEY: ${{ vars.RUNNER_RELEASE_PUBLIC_KEY }}
         run: |
           node scripts/runner-release.mjs sign
           node scripts/runner-release.mjs verify

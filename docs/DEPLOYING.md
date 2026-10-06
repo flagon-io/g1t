@@ -562,8 +562,10 @@ The first time:
 
 1. `node scripts/runner-release.mjs keygen`. Put `RUNNER_RELEASE_KEY` in the
    repository's secrets (production environment) and keep a copy offline;
-   put `G1T_RUNNER_RELEASE_KEY` in its variables. A build made without the
-   public key never updates itself.
+   put the public key in its variables as `RUNNER_RELEASE_PUBLIC_KEY` (names
+   starting `G1T_` are reserved; the workflow hands it to the build as
+   `G1T_RUNNER_RELEASE_KEY`). A build made without the public key never
+   updates itself.
 2. `npx wrangler r2 bucket create g1t-downloads`, and deploy the site so it
    has the `DOWNLOADS` binding.
 3. Set the variables `RUNNER_IMAGE` (the image's name in a public registry),

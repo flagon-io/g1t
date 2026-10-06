@@ -387,8 +387,37 @@ the ratio Cloudflare ÷ g1t for several combinations of meters. Read it like thi
   Ratios over 1: something reaches Artifacts that g1t does not meter, such as sandboxes pushing
   directly with handed-out credentials.
 - Only days after the meters were deployed compare; before that only `git_operations` exists.
-- Binding calls (`binding.*`) never appear among Cloudflare's event types; if Cloudflare says
-  they are billed, map them in `operation_mapping`.
+- Binding calls do appear: Cloudflare's events include `read` and `token_create` actions (and
+  `namespace_*`) besides the five documented ones. If Cloudflare says they are billed, map the
+  `binding.*` meters in `operation_mapping`.
+
+A global API key works in place of the token: `CLOUDFLARE_API_KEY` with `CLOUDFLARE_EMAIL`
+(both scripts).
+
+**Result, 2026-10-06** (31 days; g1t's meters cover only 2026-10-06, the day they shipped):
+
+| Cloudflare event | 31 days | 2026-10-06 | g1t's meters, 2026-10-06 |
+| --- | --- | --- | --- |
+| `read` | 137,225 | 107,616 | `binding.get` 85,206, `read_file` 49,846, `read_tree` 9,208, `read_blob` 4,964, `log` 2,798 |
+| `pull` | 646 | 101 | `git.fetch` 29, `git.ls_refs` 26, `git.info_refs` 426 (+ 129 internal) |
+| `push` | 385 | 10 | `git.receive_pack` 3 |
+| `token_create` | 2,721 | 338 | `binding.create_token` 34 |
+| `fork` / `create` / `delete` | 96 / 14 / 8 | 2 / 0 / 0 | |
+| errors | 699 (688 client) | 476 client | |
+
+- `pull` is not one per upload-pack fetch: 101 pulls against 29 fetches on the one day both
+  exist. Over 31 days `pull` ≈ fetch + ls-refs + info/refs (ratio 1.06), so listing refs likely
+  counts as a pull. Not yet changed in `operation_mapping`: one day of meters is too little, and
+  re-check after a week before setting `cost_operations` for `git.info_refs` and `git.ls_refs`.
+- `read` is the open question that matters. If reads are billed as operations at $0.15 per
+  1,000, today's demo-scale traffic alone is about 3.2 million a month (~$480). Ask Cloudflare
+  (Q1) before 2026-10-14. Either way the volume is mostly waste: every repos call opens a handle
+  with `get` even when the answer is cached, and the object cache may not be hitting (no hit/miss
+  meter yet). Fixes, ranked: lazy `get`; a real cache for objects named by hash (KV or an
+  in-isolate LRU, with hit/miss meters); Actions reading workflows from the synced table instead
+  of the store on every event; caller attribution in the meters.
+- 476 client errors on 2026-10-06 are unexplained; the fetch fix below accounts for some (every
+  failed negotiation was one).
 
 ### R2: running and reading `scripts/ops/fork-storage-test.mjs`
 
@@ -412,6 +441,25 @@ It works only in its own namespace, through Cloudflare's REST API, never through
 
 Either way R2 retires forks; the answer decides `FORK_RETENTION_DAYS` (shared: a week is fine;
 copied: shorten it to 1 or 2 days and ask Cloudflare to raise the 1 TB account limit).
+
+**Result, 2026-10-06: forks are stored and billed as copies.** A 100 MB source took 57 s to
+push; each of 5 forks took 4–6 s. The storage dataset (`artifactsStorageAdaptiveGroups`,
+`max.repositorySizeBytes`) gave every fork the source's full 105,582,592 bytes: about 633 MB for
+the six, not about 106 MB. Whatever Artifacts shares underneath, storage billing and the 1 TB
+account limit see full copies. So:
+
+- `FORK_RETENTION_DAYS` should drop from 7 to 1 (not yet changed).
+- g1t meters a workspace's storage once per repository (`stored_bytes`), so an open pull
+  request's working copy is Cloudflare cost g1t absorbs: about $0.05 a month per 100 MB per open
+  pull request. Small now; decide whether open working copies count toward a workspace's
+  storage before agent pull requests reach thousands.
+- Ask Cloudflare whether forks share objects physically, and for a higher account limit.
+
+Also found while testing (fixed in `git_http.rs`): the store answers a protocol v2 fetch that is
+still negotiating, and whose `have`s it does not know, with `acknowledgments`, `NAK`, then a pack.
+git refuses that ("expected no other sections to be sent after no 'ready'"). g1t now ends such
+an answer after the acknowledgments with a flush, and the client negotiates again. Report it to
+Cloudflare.
 
 ### R7: making more namespaces (yours to run, when needed)
 
