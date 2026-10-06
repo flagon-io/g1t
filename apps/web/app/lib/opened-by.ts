@@ -12,13 +12,11 @@ export function madeByG1t(pull: Pick<Pull, "agent" | "branch">): boolean {
 }
 
 /**
- * Who shows as having opened a pull request. g1t for one its agent made,
- * with the person who asked for the work as `requestedBy`; anyone else's
- * is its author's, with no `requestedBy`. Only the face: who may change
- * the pull request is still decided by its stored author.
+ * Who opened an issue or a pull request, and who asked g1t for it, as
+ * stored: g1t for what it made or filed, with the person it was for as
+ * `requestedBy`; anyone else's, theirs alone. Who may change it is the
+ * same pair read the other way round: `workOwner` in the contracts.
  */
-export function openedBy(pull: Pick<Pull, "agent" | "branch" | "author">): { name: string; requestedBy: string | null } {
-  if (!madeByG1t(pull)) return { name: pull.author.username, requestedBy: null };
-  // Work g1t started itself, such as a security update's code change, was asked for by nobody else.
-  return { name: G1T, requestedBy: pull.author.username === G1T ? null : pull.author.username };
+export function openedBy(item: Pick<Pull, "author" | "requestedBy">): { name: string; requestedBy: string | null } {
+  return { name: item.author.username, requestedBy: item.requestedBy?.username ?? null };
 }

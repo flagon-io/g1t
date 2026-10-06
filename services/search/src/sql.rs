@@ -323,7 +323,7 @@ pub fn first_pieces(fids: &[i64]) -> Sql {
 
 // ---- Issues and pull requests ----------------------------------------------
 
-const ITEM_COLUMNS: &str = "i.kind, i.number, i.title, i.state, i.status, i.author, i.labels, i.updated_at, \
+const ITEM_COLUMNS: &str = "i.kind, i.number, i.title, i.state, i.status, i.author, i.requested_by, i.labels, i.updated_at, \
                             r.repo_id, r.namespace, r.name, r.private";
 
 fn items_select(query: &Query, reader: &Reader, kind: ItemKind) -> (Sql, bool) {

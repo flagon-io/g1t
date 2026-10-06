@@ -553,7 +553,7 @@ impl Work {
                 ));
             }
         }
-        let viewer = self.author_viewer(&pull).await?;
+        let viewer = self.owner_viewer(&pull).await?;
         let repo: Outcome<Repo> = g1t_kit::call(
             &self.repos,
             "get_by_id",
@@ -603,7 +603,7 @@ impl Work {
                 name: repo.name,
             },
             number: pull.number,
-            author: pull.author,
+            author: pull.requested_by.unwrap_or(pull.author),
             source,
             branch: None,
             default_branch: repo.default_branch,

@@ -752,7 +752,7 @@ impl Op {
                 "The check names reported on a repository's commits in the last 30 days, most recent first, with the events each was reported for: the names update_repo_settings takes in required_checks. A workflow's runs report a check named after the workflow; a check required on the default branch must be reported on a pull request's head (pull_request events) and, with the merge queue on, on its queued state (merge_group events)."
             }
             Op::MessageAgent => {
-                "Send the agent working on a pull request a message: a correction, a hint, a change of plan. It receives it at its next step, and it is recorded in the pull request's session. The pull request's author, and anyone with the Write role or higher. An agent uses it to ask the agent on another pull request a question (kind: question) or hand it work that belongs there (kind: handoff), giving its own pull request as from_number; the answer comes back to it at its next step."
+                "Send the agent working on a pull request a message: a correction, a hint, a change of plan. It receives it at its next step, and it is recorded in the pull request's session. The pull request's author (for one g1t made, whoever asked for it), and anyone with the Write role or higher. An agent uses it to ask the agent on another pull request a question (kind: question) or hand it work that belongs there (kind: handoff), giving its own pull request as from_number; the answer comes back to it at its next step."
             }
             Op::AnswerMessage => {
                 "Answer a question or a handoff another agent sent you, by the message's id. For a handoff, set decline to say it is not yours to take. The answer reaches the asking agent at its next step."
@@ -791,12 +791,12 @@ impl Op {
                 "Open an issue on a repository. Say what done means in the body if it helps, for instance under a \"Definition of done\" heading; what must pass before a pull request for it merges is the default branch's required checks, the same for every pull request."
             }
             Op::UpdateIssue => {
-                "Change an issue's title, body, labels or the people it is assigned to. Only the fields given are changed; labels and assignees each replace the whole set. Its author may change their own issue; anyone else needs the Triage role or higher."
+                "Change an issue's title, body, labels or the people it is assigned to. Only the fields given are changed; labels and assignees each replace the whole set. Its author may change their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher."
             }
             Op::CloseIssue => {
-                "Close an issue without a pull request. Merging a pull request made for an issue closes it for you. Its author may close their own issue; anyone else needs the Triage role or higher."
+                "Close an issue without a pull request. Merging a pull request made for an issue closes it for you. Its author may close their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher."
             }
-            Op::ReopenIssue => "Reopen a closed issue. Its author may reopen their own issue; anyone else needs the Triage role or higher.",
+            Op::ReopenIssue => "Reopen a closed issue. Its author may reopen their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher.",
             Op::PlanWork => {
                 "Turn an outcome into a plan. An agent reads the repository and proposes the issues that would get there: what each changes, what done means for it (added to its body under \"Definition of done\"), the files it will touch, and which must merge before which. Returns the plan's id at once; the plan takes a minute or two to write, so read it with get_plan until its status is ready. Nothing is opened until apply_plan. Needs the Write role or higher."
             }
@@ -807,7 +807,7 @@ impl Op {
                 "Open a plan's issues, each blocked by the ones it depends on. With assign, g1t agents start at once on every issue that depends on nothing, working in parallel, and on the others as what they depend on merges. keep limits it to some of the proposed issues, by their positions counting from 1. A plan is applied once. Needs the Write role or higher."
             }
             Op::AssignIssue => {
-                "Assign an issue to g1t. It opens a pull request for the issue in a sandbox of its own and sees it through: the repository's workflows run on it as its checks, a second agent reviews it, it revises when a check fails (reading the failing jobs' logs) or the review asks for changes, and it catches up when main moves. It is ready once the default branch's required checks pass and the review approves. Returns the pull request at once; follow its progress with get_pull_request. There is no model or agent count to choose. To put many agents to work, assign many issues. Needs the Write role or higher. In preview: only for accounts g1t agents are enabled for."
+                "Assign an issue to g1t. It opens a pull request for the issue in a sandbox of its own and sees it through: the repository's workflows run on it as its checks, a second agent reviews it, it revises when a check fails (reading the failing jobs' logs) or the review asks for changes, and it catches up when main moves. It is ready once the default branch's required checks pass and the review approves. Returns the pull request at once, with g1t as its author and you as its requested_by; follow its progress with get_pull_request. There is no model or agent count to choose. To put many agents to work, assign many issues. Needs the Write role or higher. In preview: only for accounts g1t agents are enabled for."
             }
             Op::Delegate => {
                 "Put an agent on something in one step: open an issue and assign it to g1t at once. Say what you want done in plain words, with what done means if you know it. What must pass before its pull request merges is the default branch's required checks. Needs the Write role or higher, and nothing is opened without it. The issue is opened whatever happens next: agent.status is started (pull is the draft pull request the agent opened; follow it with get_pull_request), queued (every agent slot of the workspace is busy; it starts by itself when one frees up) or not_started, with agent.code saying why (not_paid, trial_used, limit, paused, issue_cap, billing_unavailable or no_model), agent.message saying what to do, and agent.fix_url where. There is no model or agent count to choose."
@@ -817,7 +817,7 @@ impl Op {
                 "Comment on an issue or a pull request. On a pull request, give path and line to comment on one line of the change."
             }
             Op::ReviewPullRequest => {
-                "Give a verdict on a pull request: approve it, or request changes and say what. Read get_pull_request_changes first. You cannot review a pull request you opened."
+                "Give a verdict on a pull request: approve it, or request changes and say what. Read get_pull_request_changes first. You cannot review a pull request you opened, or one g1t made for you (you are its requested_by)."
             }
             Op::ListPullRequests => {
                 "Pull requests on a repository, newest first. State open covers drafts and those ready for review; closed covers merged and closed."
@@ -835,7 +835,7 @@ impl Op {
             Op::MarkPullRequestReady => {
                 "Mark a draft pull request ready for review. Push your commits first. The summary becomes its description and should say what changed and why."
             }
-            Op::ClosePullRequest => "Close a pull request without merging it. Its author may close their own; anyone else needs the Triage role or higher.",
+            Op::ClosePullRequest => "Close a pull request without merging it. Its author may close their own, and whoever asked g1t for one may close that one; anyone else needs the Triage role or higher.",
             Op::GetPullRequestChanges => {
                 "What a pull request changes: the files it touches and their line-by-line diff against the commit it started from. Use it to review a pull request or to compare several made for the same issue."
             }

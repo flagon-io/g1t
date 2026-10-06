@@ -10,6 +10,7 @@ import {
   type RepoPath,
   REPO_ROLE_LABELS,
   isActiveRun,
+  workOwner,
 } from "@g1t/contracts";
 
 import type { Route } from "./+types/home";
@@ -240,10 +241,11 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 
   const lower = username.toLowerCase();
   const openPulls = (perRepo ?? []).flatMap(({ repo, pulls }) => (pulls ?? []).map((pull) => ({ pull, repo })));
+  // Never your own, nor one g1t made for you.
   const reviewRequested = openPulls.filter(
     ({ pull }) =>
       pull.status === "open" &&
-      pull.author.username.toLowerCase() !== lower &&
+      workOwner(pull).username.toLowerCase() !== lower &&
       pull.reviewers.some((name) => name.toLowerCase() === lower),
   );
 
@@ -258,7 +260,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       repo: pathOf(repo),
       ref: `#${pull.number}`,
       by: agentWork ? who(pull.agent) : who(pull.author.username),
-      for: agentWork ? pull.author.username : null,
+      for: agentWork ? workOwner(pull).username : null,
       facts: pullFacts({
         checkStatus: pull.checkStatus,
         files: pull.files,
@@ -398,7 +400,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       key,
       kind: "review",
       title: pull.title,
-      detail: `${pull.author.username} asked for your review.`,
+      detail: `${workOwner(pull).username} asked for your review.`,
       to: `/${repo.namespace}/${repo.name}/pull/${pull.number}`,
       action: "Review",
       at: Date.parse(pull.updatedAt),

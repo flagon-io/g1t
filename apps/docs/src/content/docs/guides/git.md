@@ -116,7 +116,8 @@ A pull request that was not opened from a branch has its own remote:
 https://g1t.sh/pulls/<pull request id>.git
 ```
 
-Only whoever opened the pull request can push to it. Pushes to a fork
+Only whoever opened the pull request can push to it, or, for one g1t
+made, whoever asked for it. Pushes to a fork
 update the pull request's head commit on its page.
 
 ## Limits

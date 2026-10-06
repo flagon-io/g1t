@@ -155,9 +155,12 @@ pub struct Hit {
     /// `closed` for a pull request.
     #[serde(default)]
     pub state: Option<String>,
-    /// Who opened the issue or pull request.
+    /// Who opened the issue or pull request: `g1t` for one g1t made.
     #[serde(default)]
     pub author: Option<String>,
+    /// For an issue or pull request g1t opened: who asked for it.
+    #[serde(default)]
+    pub requested_by: Option<String>,
     #[serde(default)]
     pub labels: Vec<String>,
     /// A repository's topics.
@@ -191,6 +194,7 @@ impl Hit {
             number: None,
             state: None,
             author: None,
+            requested_by: None,
             labels: Vec::new(),
             topics: Vec::new(),
             slug: None,

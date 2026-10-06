@@ -31,8 +31,9 @@ const REPOS: Record<string, Repo> = {
   "acme/vault": repo("acme", "vault", true),
 };
 
-const ISSUE = { number: 7, title: "Fix the thing", state: "closed", reason: "not_planned", author } as Issue;
-const PULL = { number: 8, title: "Make the thing", status: "merged", author } as Pull;
+const ISSUE = { number: 7, title: "Fix the thing", state: "closed", reason: "not_planned", author, requestedBy: null } as Issue;
+// A change g1t made for ada.
+const PULL = { number: 8, title: "Make the thing", status: "merged", author: { id: "usr_g1t_agent", username: "g1t", kind: "agent" }, requestedBy: author } as Pull;
 
 /** Services that see what an anonymous visitor sees, and record that they were asked as one. */
 function sources(overrides: Partial<Sources> = {}) {
@@ -159,10 +160,14 @@ test("issues, pull requests and Soon pages get cards of their own", async () => 
     title: "Fix the thing",
     state: "not_planned",
     author: "ada",
+    requestedBy: null,
   });
   const pull = await resolve("/acme/web/pull/8", s);
   assert.equal(pull.kind, "pull");
   assert.equal(pull.kind === "pull" && pull.state, "merged");
+  // g1t made it, for ada: the card says both.
+  assert.equal(pull.kind === "pull" && pull.author, "g1t");
+  assert.equal(pull.kind === "pull" && pull.requestedBy, "ada");
   const soon = await resolve("/acme/web/soon/board", s);
   assert.equal(soon.kind, "soon");
   assert.equal(soon.kind === "soon" && soon.title, "Board");

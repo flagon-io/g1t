@@ -21,7 +21,7 @@ import {
 import { type ReactNode, Suspense } from "react";
 import { Await, Form, Link, useNavigation } from "react-router";
 
-import { type AgentRun, type G1tEvent, type Memory, type Pull, RUN_KIND_LABEL, isActiveRun } from "@g1t/contracts";
+import { type AgentRun, type G1tEvent, type Memory, type Pull, RUN_KIND_LABEL, isActiveRun, workOwner } from "@g1t/contracts";
 
 import type { Route } from "./+types/overview";
 import { host, StatusDot } from "../../components/deploy";
@@ -252,8 +252,10 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     } else if (lifecycle?.stage === "ready") {
       needs.push({ key: `pull:${pull.number}`, kind: "ready", title: pull.title, detail: "Ready to land when you merge it.", to, action: "Merge", at: Date.parse(pull.updatedAt), where });
     }
-    if (me && pull.status === "open" && pull.author.username.toLowerCase() !== me && pull.reviewers.some((name) => name.toLowerCase() === me)) {
-      needs.push({ key: `review:${pull.number}`, kind: "review", title: pull.title, detail: `${pull.author.username} asked for your review.`, to, action: "Review", at: Date.parse(pull.updatedAt), where });
+    // Never your own, nor one g1t made for you; whoever it is for asked.
+    const owner = workOwner(pull).username;
+    if (me && pull.status === "open" && owner.toLowerCase() !== me && pull.reviewers.some((name) => name.toLowerCase() === me)) {
+      needs.push({ key: `review:${pull.number}`, kind: "review", title: pull.title, detail: `${owner} asked for your review.`, to, action: "Review", at: Date.parse(pull.updatedAt), where });
     }
     if (member && pull.status === "open" && pull.checkStatus === "failed" && !runOn.has(pull.number) && !lifecycle) {
       needs.push({ key: `checks:${pull.number}`, kind: "checks", title: pull.title, detail: "It failed in the merge queue and no agent is fixing it.", to, action: "See checks", at: Date.parse(pull.updatedAt), where });
@@ -836,8 +838,8 @@ function Overview({
                           <span>·</span>
                           <span className="inline-flex items-center gap-1">
                             <Avatar name={pull.agent} size={13} />
-                            {madeByG1t(pull)
-                              ? `made by g1t for ${pull.author.username}`
+                            {pull.requestedBy
+                              ? `made by ${pull.author.username} for ${pull.requestedBy.username}`
                               : byAgent
                                 ? `made by ${pull.agent}`
                                 : `by ${pull.author.username}`}

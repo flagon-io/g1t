@@ -229,6 +229,15 @@ free slot" and the work starts by itself when one finishes.
   large tier: planning, catching up and reviews of small changes that
   touch no sensitive path run small; making changes, other reviews, and
   any retry after a failed attempt run large.
+- **Who a g1t pull request is for:** g1t is the `author` (`username`
+  `g1t`, `kind` `agent`) of every pull request it makes and every issue it
+  files at work; `requested_by` is the person who asked (null when nobody
+  did, as for a security update). That person answers for it as an author
+  would: they may update, close and steer it without Triage, cannot
+  approve it, are never asked to review it, see it in their own lists, and
+  its sandboxes, workflows and previews are trusted as they are. Webhooks
+  carry `data.author` and `data.requested_by`; Actions payloads
+  `pull_request.user` (a `Bot`) and `pull_request.requested_by`.
 - **Put an agent on something in one step:** `POST {repo}/issues/delegate`
   with `title` and `body` (what to do, in plain words, and what done
   means if you know it). It opens the issue and assigns g1t at once; it needs the
@@ -398,8 +407,9 @@ deployments or both read it. API: `{repo}/actions/secrets` and
 `secrets.G1T_TOKEN` (the workspace's token; `GITHUB_TOKEN` is its alias),
 which cannot change secrets. A pull request's runs and preview are trusted
 only when its author has `write` or higher on the repository (a member or
-an outside collaborator) or is g1t's agent; anyone else's run with config
-only. Guide:
+an outside collaborator), or is g1t working on its own; for one g1t made,
+the role of whoever asked for it (`requested_by`) counts. Anyone else's run
+with config only. Guide:
 https://docs.g1t.sh/guides/secrets-and-variables/
 
 Self-hosted runners: a job with `runs-on: self-hosted` (or

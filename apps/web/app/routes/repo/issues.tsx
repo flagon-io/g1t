@@ -219,6 +219,7 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
                     <span className="mt-0.5 block text-xs text-faint">
                       #{issue.number} opened <TimeAgo at={issue.createdAt} /> by{" "}
                       {issue.author.username}
+                      {issue.requestedBy && <> for {issue.requestedBy.username}</>}
                       {issue.resolvedBy != null && (
                         <span className="text-merged"> · resolved by #{issue.resolvedBy}</span>
                       )}

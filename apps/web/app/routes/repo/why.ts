@@ -81,6 +81,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       agent: pull.agent,
       runtime: pull.runtime,
       author: pull.author.username,
+      requestedBy: pull.requestedBy?.username ?? null,
       mergedBy: pull.mergedBy,
       mergedAt: pull.mergedAt,
     },

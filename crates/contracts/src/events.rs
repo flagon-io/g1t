@@ -79,6 +79,12 @@ pub struct IssueEvent {
     pub issue_id: String,
     pub repo_id: String,
     pub number: u32,
+    /// Who opened it: g1t, for one its agent filed while at work.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<crate::credentials::Principal>,
+    /// For an issue g1t's agent filed: the person it was working for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested_by: Option<crate::credentials::Principal>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     /// On close: `completed` or `not_planned`.
@@ -100,6 +106,12 @@ pub struct PullEvent {
     pub pull_id: String,
     pub repo_id: String,
     pub number: u32,
+    /// Who opened it: g1t, for a change g1t made.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<crate::credentials::Principal>,
+    /// For a change g1t made: the person who asked for it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested_by: Option<crate::credentials::Principal>,
     /// The number of the issue it is for.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub issue: Option<u32>,

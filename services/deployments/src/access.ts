@@ -6,7 +6,7 @@
  * Types only, so the table is tested apart from the service.
  */
 
-import type { Capability, Project, RepoRef } from "@g1t/contracts";
+import type { Capability, Project, RepoRef, User } from "@g1t/contracts";
 
 export const NEEDS = {
   settings: "read",
@@ -30,4 +30,14 @@ export function repoRef(project: Project): RepoRef {
     return { id: project.source.repoId, namespace: project.source.repo.namespace, isPrivate: project.private };
   }
   return { id: "", namespace: project.workspace, isPrivate: project.private };
+}
+
+/**
+ * Whether whoever a pull request is for is trusted with a project's secrets
+ * without asking what they may do: only g1t itself, in work nobody asked it
+ * for. A change g1t made for someone is for them (`workOwner`), and they are
+ * asked about like anyone else.
+ */
+export function trustedOutright(owner: Pick<User, "kind">): boolean {
+  return owner.kind === "agent" || owner.kind === "system";
 }

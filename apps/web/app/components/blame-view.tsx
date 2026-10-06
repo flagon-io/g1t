@@ -257,7 +257,7 @@ function WhyPanel({
                       <Sparkles size={11} />
                       written by {current.pull.agent}
                     </span>
-                    {current.pull.agent === "g1t" && <span>for {current.pull.author}</span>}
+                    {current.pull.requestedBy && <span>for {current.pull.requestedBy}</span>}
                   </>
                 ) : (
                   <span>by {current.pull.author} with {current.pull.agent}</span>

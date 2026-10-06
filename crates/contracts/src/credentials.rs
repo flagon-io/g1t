@@ -150,6 +150,15 @@ pub struct Principal {
     pub username: String,
 }
 
+impl From<&User> for Principal {
+    fn from(user: &User) -> Self {
+        Principal {
+            id: user.id.clone(),
+            username: user.username.clone(),
+        }
+    }
+}
+
 /// Set on a [`User`] resolved from an agent's token: the composite
 /// identity, "g1t on behalf of syntaqx", and what it may do.
 #[derive(Clone, Debug, Serialize, Deserialize)]

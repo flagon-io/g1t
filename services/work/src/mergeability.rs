@@ -401,13 +401,14 @@ impl Work {
                 "This pull request is already being checked.",
             ));
         }
-        // Its author can read both the repository and the change.
+        // Its owner (whoever asked g1t for it, or its author) can read both
+        // the repository and the change.
         let repo: Outcome<Repo> = g1t_kit::call(
             &self.repos,
             "get_by_id",
             &GetByIdArgs {
                 id: pull.repo_id.clone(),
-                viewer: self.author_viewer(&pull).await?,
+                viewer: self.owner_viewer(&pull).await?,
             },
         )
         .await?;
@@ -428,7 +429,7 @@ impl Work {
             default_branch: repo.default_branch,
             base,
             head,
-            author: pull.author,
+            author: pull.requested_by.unwrap_or(pull.author),
         }))
     }
 

@@ -70,7 +70,7 @@ Put qualifiers anywhere in the query. Most can be left out with a leading
 | `is:open`, `is:closed` | Issues and pull requests by state | Issues, pull requests |
 | `is:merged`, `is:draft` | Pull requests that were merged, or are still drafts | Pull requests |
 | `is:public`, `is:private` | Results from public or private repositories | Repositories, code, issues, pull requests |
-| `author:ana` | Opened by someone | Issues, pull requests |
+| `author:ana` | Opened by someone. What g1t opened is `author:g1t`, and shows who it was for | Issues, pull requests |
 | `label:bug` | With a label. Quote a label with spaces: `label:"good first issue"` | Issues, pull requests |
 | `type:code` | Which tab to open: `repositories`, `code`, `issues`, `pulls` or `people` | All |
 

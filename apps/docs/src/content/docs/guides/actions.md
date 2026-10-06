@@ -184,6 +184,12 @@ a commit is pushed to it, and, for one g1t makes, when g1t
 marks it ready, which on g1t is when it first has code. Each head runs
 each workflow once.
 
+`github.event.pull_request` reads as it does on GitHub. For a pull request
+g1t made, `pull_request.user` is g1t (`login` `g1t`, `type` `Bot`), and
+`pull_request.requested_by` names the person who asked for it; it is `null`
+on anyone else's. `github.event.issue.requested_by` does the same for an
+issue g1t's agent filed. `sender` is whoever caused the event.
+
 ## Checks
 
 A pull request's checks are its workflows. Each workflow that runs on
@@ -255,7 +261,9 @@ Every trusted job also gets `${{ secrets.G1T_TOKEN }}`, the workspace's own
 token for the run, with `GITHUB_TOKEN` as its alias. A pull request's runs
 get secrets and the token only when its author has the Write
 [role](/guides/access-and-roles/) or higher on the repository, a member or
-an outside collaborator, or is g1t's agent. Anyone else's, such as one
+an outside collaborator, or is g1t working on its own. For a pull request
+g1t made, its author is g1t and the person who asked for it is the one
+whose role counts. Anyone else's, such as one
 from a fork or by someone with Read or Triage, runs without secrets and
 with an empty token. See
 [who gets secrets](/guides/secrets-and-variables/#who-gets-secrets).

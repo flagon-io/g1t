@@ -170,27 +170,28 @@ impl Work {
             .await
     }
 
-    /// A pull request's author as a viewer who can read its repository and
-    /// source. Stored authors carry no memberships, so a private repository
-    /// would otherwise look missing to them. The membership given reads
-    /// and nothing more: it is for looking, never for acting.
-    pub(crate) async fn author_viewer(&self, pull: &Pull) -> Result<Viewer> {
+    /// A pull request's owner (whoever asked g1t for it, or its author) as
+    /// a viewer who can read its repository and source. Stored people carry
+    /// no memberships, so a private repository would otherwise look missing
+    /// to them. The membership given reads and nothing more: it is for
+    /// looking, never for acting.
+    pub(crate) async fn owner_viewer(&self, pull: &Pull) -> Result<Viewer> {
         let path: Option<RepoPath> = g1t_kit::call(
             &self.repos,
             "path_by_id",
             &g1t_contracts::repos::PathByIdArgs { id: pull.repo_id.clone() },
         )
         .await?;
-        let mut author = pull.author.clone();
+        let mut owner = pull.owner().clone();
         if let Some(path) = path
-            && !author.is_member(&path.namespace.to_lowercase())
+            && !owner.is_member(&path.namespace.to_lowercase())
         {
-            author.workspaces.push(g1t_contracts::Membership {
+            owner.workspaces.push(g1t_contracts::Membership {
                 base_permission: Some(access::BasePermission::Read),
                 ..g1t_contracts::Membership::member(path.namespace.to_lowercase())
             });
         }
-        Ok(Some(author))
+        Ok(Some(owner))
     }
 
     /// Publishes an event caused by `actor`, or by g1t itself.
@@ -377,6 +378,8 @@ impl Work {
             issue_id: issue.id.clone(),
             repo_id: issue.repo_id.clone(),
             number: issue.number,
+            author: Some((&issue.author).into()),
+            requested_by: issue.requested_by.as_ref().map(Into::into),
             ..IssueEvent::default()
         }
     }
@@ -400,6 +403,8 @@ impl Work {
             pull_id: pull.id.clone(),
             repo_id: pull.repo_id.clone(),
             number: pull.number,
+            author: Some((&pull.author).into()),
+            requested_by: pull.requested_by.as_ref().map(Into::into),
             issue: pull.issue,
             confidence: pull.confidence.clone(),
             ..PullEvent::default()
@@ -451,12 +456,14 @@ impl Work {
         let id = new_id("iss", now);
         let number = self.next_number(&repo.id).await?;
         let timestamp = rfc3339(now);
+        // What g1t's agent files at work is g1t's, for the person it works for.
+        let (author, requested_by) = authorship(&a.actor, false);
         self.db
             .prepare(
                 "INSERT INTO issues
                    (id, repo_id, number, title, body, labels, checks, author_id, author_name,
-                    created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    requested_by_id, requested_by_name, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 id.as_str().into(),
@@ -466,8 +473,10 @@ impl Work {
                 body.into(),
                 serde_json::to_string(&labels)?.into(),
                 "[]".into(),
-                a.actor.id.as_str().into(),
-                a.actor.username.as_str().into(),
+                author.id.as_str().into(),
+                author.username.as_str().into(),
+                optional(&requested_by.as_ref().map(|user| user.id.clone())),
+                optional(&requested_by.as_ref().map(|user| user.username.clone())),
                 timestamp.as_str().into(),
                 timestamp.as_str().into(),
             ])?
@@ -568,7 +577,7 @@ impl Work {
     ) -> Result<Outcome<Issue>> {
         let (repo, issue) = check!(self.issue_at(path, number, &Some(actor.clone())).await?);
         check!(writable(&repo));
-        if issue.author.id != actor.id {
+        if issue.owner().id != actor.id {
             check!(allowed(Some(actor), &repo, Capability::Triage));
         }
         Ok(Outcome::Ok(issue))
@@ -879,7 +888,7 @@ impl Work {
             }
             "issues"
         } else if let Some(pull) = self.pull(&repo.id, a.number).await? {
-            if a.verdict.is_some() && pull.author.id == a.actor.id {
+            if a.verdict.is_some() && pull.is_owned_by(&a.actor.id) {
                 return Ok(Outcome::fail(
                     FailureCode::Forbidden,
                     "You cannot approve or request changes on your own pull request.",
@@ -1068,13 +1077,17 @@ impl Work {
 
         let number = self.next_number(&repo.id).await?;
         let timestamp = rfc3339(now);
+        // A change g1t makes is g1t's, for whoever asked for it. This is
+        // what lifecycle::made_by_g1t reads back.
+        let by_g1t = matches!(a.runtime, Runtime::Hosted) && agent == reviews::AGENT_NAME && fork.is_some();
+        let (author, requested_by) = authorship(&a.actor, by_g1t);
         self.db
             .prepare(
                 "INSERT INTO pulls
                    (id, repo_id, number, issue_id, issue_number, title, body, agent, runtime,
                     status, fork_repo_id, fork_namespace, fork_name, source_branch, head_commit,
-                    author_id, author_name, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    author_id, author_name, requested_by_id, requested_by_name, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 id.as_str().into(),
@@ -1092,8 +1105,10 @@ impl Work {
                 optional(&fork.as_ref().map(|fork| fork.name.clone())),
                 optional(&branch.map(str::to_owned)),
                 optional(&head),
-                a.actor.id.as_str().into(),
-                a.actor.username.as_str().into(),
+                author.id.as_str().into(),
+                author.username.as_str().into(),
+                optional(&requested_by.as_ref().map(|user| user.id.clone())),
+                optional(&requested_by.as_ref().map(|user| user.username.clone())),
                 timestamp.as_str().into(),
                 timestamp.as_str().into(),
             ])?
@@ -1327,7 +1342,7 @@ impl Work {
     ) -> Result<Outcome<Pull>> {
         let (repo, pull) = check!(self.pull_at(path, number, &Some(actor.clone())).await?);
         check!(writable(&repo));
-        if pull.author.id != actor.id {
+        if !pull.is_owned_by(&actor.id) {
             check!(allowed(Some(actor), &repo, Capability::Triage));
         }
         if !pull.status.is_active() {
@@ -1341,8 +1356,9 @@ impl Work {
 
     /// Brings a pull request up to date with the default branch without a
     /// sandbox, where the repos service can do that safely. Whoever could
-    /// have pushed the merge themselves may ask: whoever opened it, for a
-    /// fork; anyone who may push, for a branch of the repository. When it needs a
+    /// have pushed the merge themselves may ask: whoever opened it (or asked
+    /// g1t for it), for a fork; anyone who may push, for a branch of the
+    /// repository. When it needs a
     /// real merge, says so, naming the conflicting files if a probe found
     /// them, and pushes nothing.
     async fn catch_up_pull(&self, a: PullActionArgs) -> Result<Outcome<PullBranchUpdate>> {
@@ -1355,10 +1371,10 @@ impl Work {
             ));
         }
         if pull.fork_repo_id.is_some() {
-            if pull.author.id != a.actor.id {
+            if !pull.is_owned_by(&a.actor.id) {
                 return Ok(Outcome::fail(
                     FailureCode::Forbidden,
-                    "Only whoever opened this pull request can update it.",
+                    "Only whoever opened this pull request, or asked g1t for it, can update it.",
                 ));
             }
         } else {
@@ -1406,7 +1422,8 @@ impl Work {
                     .filter(|name| !name.trim().eq_ignore_ascii_case(reviews::AGENT_NAME))
                     .collect();
                 let mut reviewers = check!(self.valid_assignees(people).await?);
-                reviewers.retain(|name| *name != pull.author.username);
+                // Nobody is asked to review their own, nor what they had g1t make.
+                reviewers.retain(|name| *name != pull.owner().username);
                 if agent {
                     reviewers.insert(0, reviews::AGENT_NAME.to_owned());
                 }
@@ -1784,7 +1801,8 @@ impl Work {
         let Some(viewer) = a.viewer else {
             return Ok(Vec::new());
         };
-        // The pull requests and their issues, in one round trip.
+        // The pull requests and their issues, in one round trip: their own,
+        // and those g1t made for them (Pull::owner).
         let author = [JsValue::from(viewer.id.as_str())];
         let found = self
             .timing
@@ -1794,7 +1812,7 @@ impl Work {
                     self.db
                         .prepare(format!(
                             "SELECT {PULL_COLUMNS} FROM pulls
-                             WHERE author_id = ?1 AND status IN ('draft', 'open')
+                             WHERE COALESCE(requested_by_id, author_id) = ?1 AND status IN ('draft', 'open')
                              ORDER BY updated_at DESC LIMIT 50"
                         ))
                         .bind(&author)?,
@@ -1802,7 +1820,7 @@ impl Work {
                         .prepare(format!(
                             "SELECT {ISSUE_COLUMNS} FROM issues WHERE issues.id IN (
                                SELECT issue_id FROM pulls
-                               WHERE author_id = ?1 AND status IN ('draft', 'open') AND issue_id IS NOT NULL
+                               WHERE COALESCE(requested_by_id, author_id) = ?1 AND status IN ('draft', 'open') AND issue_id IS NOT NULL
                                ORDER BY updated_at DESC LIMIT 50)"
                         ))
                         .bind(&author)?,
@@ -1863,10 +1881,10 @@ impl Work {
         }
         let viewer = Some(a.actor.clone());
         let (_, pull) = check!(self.pull_at(&a.repo, a.number, &viewer).await?);
-        if pull.author.id != a.actor.id {
+        if !pull.is_owned_by(&a.actor.id) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
-                "Only whoever opened a pull request can record its session.",
+                "Only whoever opened a pull request, or asked g1t for it, can record its session.",
             ));
         }
 
@@ -1984,7 +2002,8 @@ impl Work {
              SET head_commit = ?, updated_at = ?, check_status = NULL, check_run_id = NULL,
                  working_on = NULL, working_until = NULL, stalled = NULL";
         let active = "status IN ('draft', 'open') AND head_commit IS NOT ?";
-        let returning = "RETURNING id, repo_id, number, issue_number, status";
+        let returning =
+            "RETURNING id, repo_id, number, issue_number, status, author_id, author_name, requested_by_id, requested_by_name";
         let mut pulls: Vec<MovedRow> = Vec::new();
         // A fork carries its pull request on its default branch.
         if event.data["defaultBranch"].as_bool() == Some(true) {
@@ -2047,6 +2066,11 @@ impl Work {
                 &pull.repo_id,
                 event.actor.clone(),
                 PullEvent {
+                    author: Some(g1t_contracts::credentials::Principal { id: pull.author_id, username: pull.author_name }),
+                    requested_by: pull
+                        .requested_by_id
+                        .zip(pull.requested_by_name)
+                        .map(|(id, username)| g1t_contracts::credentials::Principal { id, username }),
                     pull_id: pull.id,
                     repo_id: pull.repo_id.clone(),
                     number: pull.number,
@@ -2213,4 +2237,68 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
         message.ack();
     }
     Ok(())
+}
+
+/// The rules that once read a pull request's author read its owner now:
+/// whoever asked g1t for it, or its author. For each, the person who asked
+/// is held to what an author was, and g1t's agent (a token it works with)
+/// gains nothing by being the author.
+#[cfg(test)]
+mod owner_rules {
+    use super::*;
+    use crate::rows::stored::{ASKER, G1T, pull};
+    use g1t_contracts::identity::AGENT_ID;
+
+    const SOMEONE: &str = "usr_2";
+
+    #[test]
+    fn no_self_approval() {
+        // add_comment refuses a verdict on one that is theirs.
+        let made = pull(G1T, Some(ASKER));
+        assert!(made.is_owned_by(ASKER.0), "the person who asked cannot approve it");
+        assert!(!made.is_owned_by(AGENT_ID), "g1t's review agent still gives its verdict");
+        assert!(!made.is_owned_by(SOMEONE));
+    }
+
+    #[test]
+    fn what_an_author_could_do_without_a_role() {
+        // manageable_pull (update, ready, close), catch_up_pull on a fork,
+        // append_session, and steering with message_agent: theirs to do.
+        let made = pull(G1T, Some(ASKER));
+        assert!(made.is_owned_by(ASKER.0));
+        assert!(!made.is_owned_by(SOMEONE), "anyone else still needs the role");
+        assert!(!made.is_owned_by(AGENT_ID), "being its author gives g1t's tokens nothing more");
+    }
+
+    #[test]
+    fn nobody_is_asked_to_review_what_they_asked_for() {
+        // update_pull drops the owner from the reviewers asked.
+        let made = pull(G1T, Some(ASKER));
+        let mut reviewers = vec!["syntaqx".to_owned(), "ana".to_owned()];
+        reviewers.retain(|name| *name != made.owner().username);
+        assert_eq!(reviewers, ["ana"]);
+    }
+
+    #[test]
+    fn sandboxes_act_as_whoever_asked() {
+        // LifecycleJob, ReviewJob, MergecheckJob and the merge queue's job
+        // carry who the sandbox's credential acts for: a real account.
+        let made = pull(G1T, Some(ASKER));
+        assert_eq!(made.owner().id, ASKER.0);
+        let acts_as = made.requested_by.unwrap_or(made.author);
+        assert_eq!(acts_as.id, ASKER.0);
+        // g1t's own work, which nobody asked for, acts as g1t, as before.
+        let own = pull(("g1t", "g1t"), None);
+        assert_eq!(own.requested_by.unwrap_or(own.author).id, "g1t");
+    }
+
+    #[test]
+    fn events_name_g1t_and_whoever_asked() {
+        let made = pull(G1T, Some(ASKER));
+        let event = serde_json::to_value(Work::pull_event(&made)).unwrap();
+        assert_eq!(event["author"], serde_json::json!({ "id": AGENT_ID, "username": "g1t" }));
+        assert_eq!(event["requestedBy"], serde_json::json!({ "id": "usr_1", "username": "syntaqx" }));
+        let own = serde_json::to_value(Work::pull_event(&pull(ASKER, None))).unwrap();
+        assert!(own.get("requestedBy").is_none());
+    }
 }

@@ -62,6 +62,8 @@ export type Card =
       title: string;
       state: IssueState;
       author: string;
+      /** For one g1t's agent filed: the person it was working for. */
+      requestedBy: string | null;
     }
   | {
       kind: "pull";
@@ -70,7 +72,10 @@ export type Card =
       number: number;
       title: string;
       state: PullStatus;
+      /** `g1t` for a change g1t made. */
       author: string;
+      /** For a change g1t made: who asked for it. */
+      requestedBy: string | null;
     }
   | { kind: "soon"; owner: string; repo: string; title: string; summary: string; section: string }
   | { kind: "docs"; title: string; section: string | null; description: string | null };
@@ -306,6 +311,7 @@ async function lookUp(parts: string[], sources: Sources): Promise<Card | null> {
         title: issue.value.issue.title,
         state: issueState(issue.value.issue),
         author: issue.value.issue.author.username,
+        requestedBy: issue.value.issue.requestedBy?.username ?? null,
       };
     }
   }
@@ -321,6 +327,7 @@ async function lookUp(parts: string[], sources: Sources): Promise<Card | null> {
         title: pull.value.pull.title,
         state: pull.value.pull.status,
         author: pull.value.pull.author.username,
+        requestedBy: pull.value.pull.requestedBy?.username ?? null,
       };
     }
   }

@@ -314,7 +314,8 @@ log. The running app gets them as bindings, `env.KEY`, put in place by g1t
 rather than the build. Secrets reach a preview only when the pull
 request's author has Write or higher on the repository, whether a member
 or an [outside collaborator](/guides/access-and-roles/#outside-collaborators),
-or it is g1t's own agent. A preview of anyone else's pull request, such as
+or it is g1t working on its own. For a pull request g1t made, whoever
+asked for it is the one whose role counts. A preview of anyone else's pull request, such as
 one from a fork or by someone with Read or Triage, is built and runs with
 variables only, no secrets.
 

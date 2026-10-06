@@ -122,6 +122,13 @@ pub(crate) fn made_by_g1t(pull: &Pull) -> bool {
     pull.runtime == Runtime::Hosted && pull.agent == AGENT_NAME && pull.fork.is_some()
 }
 
+/// Whether a verdict by `reviewer` is a person's other than the pull
+/// request's owner (whoever asked g1t for it, or its author): neither
+/// theirs nor g1t's agent's.
+pub(crate) fn from_someone_else(pull: &Pull, reviewer: &str) -> bool {
+    !pull.is_owned_by(reviewer) && reviewer != AGENT_ID
+}
+
 fn at(stage: Stage, detail: impl Into<String>, revisions: u32) -> Lifecycle {
     Lifecycle {
         stage,
@@ -619,9 +626,9 @@ impl Work {
         Ok(Some((lifecycle, next, confidence)))
     }
 
-    /// The latest request for changes by a person other than the author,
-    /// if it is that person's latest verdict and came after the last
-    /// revision.
+    /// The latest request for changes by a person other than its owner
+    /// (whoever asked g1t for it, or its author), if it is that person's
+    /// latest verdict and came after the last revision.
     async fn person_request(
         &self,
         pull: &Pull,
@@ -638,7 +645,7 @@ impl Work {
             Some(found) => found
                 .rows::<Verdicts>(Slot::Verdicts)?
                 .into_iter()
-                .filter(|row| row.author_id != pull.author.id && row.author_id != AGENT_ID)
+                .filter(|row| from_someone_else(pull, &row.author_id))
                 .collect(),
             None => self
                 .db
@@ -651,7 +658,7 @@ impl Work {
                 .bind(&[
                     pull.repo_id.as_str().into(),
                     pull.number.into(),
-                    pull.author.id.as_str().into(),
+                    pull.owner().id.as_str().into(),
                     AGENT_ID.into(),
                 ])?
                 .all()
@@ -910,7 +917,7 @@ impl Work {
         else {
             return Ok(Vec::new());
         };
-        let viewer = self.author_viewer(pull).await?;
+        let viewer = self.owner_viewer(pull).await?;
         let mut out = Vec::new();
         for status in failing {
             let Some(run_id) = status
@@ -982,7 +989,7 @@ impl Work {
         }
         // As a member: a private repository would look missing otherwise,
         // and the pull request would never move.
-        let viewer: Viewer = self.author_viewer(&pull).await?;
+        let viewer: Viewer = self.owner_viewer(&pull).await?;
         let repo: Outcome<Repo> = g1t_kit::call(
             &self.repos,
             "get_by_id",
@@ -1068,7 +1075,7 @@ impl Work {
                 name: repo.name,
             },
             number: pull.number,
-            author: pull.author,
+            author: pull.requested_by.unwrap_or(pull.author),
             source,
             branch: None,
             default_branch: repo.default_branch,
@@ -1283,13 +1290,14 @@ impl Work {
         let Some(pull) = self.pull_by_id(&a.pull_id).await? else {
             return Ok(None);
         };
-        // Its author can read both the repository and the pull request's source.
+        // Its owner (whoever asked g1t for it, or its author) can read both
+        // the repository and the pull request's source.
         let repo: Outcome<Repo> = g1t_kit::call(
             &self.repos,
             "get_by_id",
             &GetByIdArgs {
                 id: pull.repo_id.clone(),
-                viewer: self.author_viewer(&pull).await?,
+                viewer: self.owner_viewer(&pull).await?,
             },
         )
         .await?;
@@ -1310,7 +1318,7 @@ impl Work {
             source: pull.fork.unwrap_or_else(|| path.clone()),
             repo: path,
             number: pull.number,
-            author: pull.author,
+            author: pull.requested_by.unwrap_or(pull.author),
             branch: pull.branch,
             default_branch: repo.default_branch,
             title: pull.title,
@@ -1377,6 +1385,23 @@ mod tests {
     use super::*;
 
     const MAX_REVISIONS: u32 = 2;
+
+    #[test]
+    fn a_verdict_from_whoever_asked_for_g1t_s_change_is_not_someone_else_s() {
+        use crate::rows::stored::{ASKER, G1T, pull};
+        let made = pull(G1T, Some(ASKER));
+        assert!(made_by_g1t(&made));
+        // The person it was made for is held to what an author was: their
+        // request for changes does not send g1t back as a reviewer's
+        // would, and their approval does not lift a hold.
+        assert!(!from_someone_else(&made, ASKER.0));
+        assert!(!from_someone_else(&made, AGENT_ID));
+        assert!(from_someone_else(&made, "usr_reviewer"));
+        // Anyone's own pull request, the same.
+        let own = pull(ASKER, None);
+        assert!(!from_someone_else(&own, ASKER.0));
+        assert!(from_someone_else(&own, "usr_reviewer"));
+    }
 
     #[test]
     fn approvals_the_repository_wants_are_waited_for() {

@@ -9,10 +9,13 @@ use g1t_contracts::work::{
 use serde::Deserialize;
 
 /// An author or actor as stored: g1t itself when the id is its own (a
-/// security update it opened, a merge its settings made), a person otherwise.
+/// security update it opened, a merge its settings made), g1t's agent by
+/// its id (what it made or filed), a person otherwise.
 pub(crate) fn user(id: String, username: String) -> User {
     let kind = if g1t_contracts::system::is_system_id(&id) {
         g1t_contracts::PrincipalKind::System
+    } else if id == g1t_contracts::identity::AGENT_ID {
+        g1t_contracts::PrincipalKind::Agent
     } else {
         g1t_contracts::PrincipalKind::User
     };
@@ -22,6 +25,12 @@ pub(crate) fn user(id: String, username: String) -> User {
         kind,
         ..User::default()
     }
+}
+
+/// Who asked g1t for the work, as stored beside its author: both columns,
+/// or nobody.
+pub(crate) fn requester(id: Option<String>, username: Option<String>) -> Option<User> {
+    Some(user(id?, username?))
 }
 
 #[derive(Deserialize)]
@@ -38,6 +47,10 @@ pub struct IssueRow {
     pub resolved_by: Option<u32>,
     pub author_id: String,
     pub author_name: String,
+    #[serde(default)]
+    pub requested_by_id: Option<String>,
+    #[serde(default)]
+    pub requested_by_name: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub closed_at: Option<String>,
@@ -65,6 +78,7 @@ impl From<IssueRow> for Issue {
             reason: row.reason,
             resolved_by: row.resolved_by,
             author: user(row.author_id, row.author_name),
+            requested_by: requester(row.requested_by_id, row.requested_by_name),
             created_at: row.created_at,
             updated_at: row.updated_at,
             closed_at: row.closed_at,
@@ -123,6 +137,10 @@ pub struct PullRow {
     pub reviewers: String,
     pub author_id: String,
     pub author_name: String,
+    #[serde(default)]
+    pub requested_by_id: Option<String>,
+    #[serde(default)]
+    pub requested_by_name: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     /// JSON of its confidence, once worked out.
@@ -162,6 +180,7 @@ impl From<PullRow> for Pull {
             assignees: serde_json::from_str(&row.assignees).unwrap_or_default(),
             reviewers: serde_json::from_str(&row.reviewers).unwrap_or_default(),
             author: user(row.author_id, row.author_name),
+            requested_by: requester(row.requested_by_id, row.requested_by_name),
             created_at: row.created_at,
             updated_at: row.updated_at,
             confidence: row
@@ -231,6 +250,12 @@ pub struct MovedRow {
     pub number: u32,
     pub issue_number: Option<u32>,
     pub status: PullStatus,
+    pub author_id: String,
+    pub author_name: String,
+    #[serde(default)]
+    pub requested_by_id: Option<String>,
+    #[serde(default)]
+    pub requested_by_name: Option<String>,
 }
 
 /// A single number selected as `n`.
@@ -243,4 +268,67 @@ pub struct NumberRow {
 #[derive(Deserialize)]
 pub struct ValueRow {
     pub value: String,
+}
+
+/// Rows as the database holds them, for tests of the rules that read them.
+#[cfg(test)]
+pub(crate) mod stored {
+    use super::*;
+
+    /// A pull request g1t made in a fork, read back as stored: g1t as its
+    /// author, and `requested_by` the person who asked, if anyone did.
+    pub(crate) fn pull(author: (&str, &str), requested_by: Option<(&str, &str)>) -> Pull {
+        let row: PullRow = serde_json::from_value(serde_json::json!({
+            "id": "pr_1", "repo_id": "rep_1", "number": 14, "issue_number": 12, "title": "Fix it",
+            "body": null, "agent": "g1t", "runtime": "hosted", "status": "open",
+            "fork_repo_id": "rep_f", "fork_namespace": "pulls", "fork_name": "pr_1",
+            "source_branch": null, "head_commit": null, "merge_base": null, "merged_by": null,
+            "merged_at": null, "superseded_by": null, "check_status": null, "files": null,
+            "assignees": "[]", "reviewers": "[]",
+            "author_id": author.0, "author_name": author.1,
+            "requested_by_id": requested_by.map(|(id, _)| id),
+            "requested_by_name": requested_by.map(|(_, name)| name),
+            "created_at": "", "updated_at": ""
+        }))
+        .unwrap();
+        row.into()
+    }
+
+    /// g1t's agent, as an author is stored.
+    pub(crate) const G1T: (&str, &str) = (g1t_contracts::identity::AGENT_ID, "g1t");
+    /// The person who asked g1t for the work.
+    pub(crate) const ASKER: (&str, &str) = ("usr_1", "syntaqx");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::stored::{ASKER, G1T, pull};
+    use super::*;
+    use g1t_contracts::PrincipalKind;
+
+    #[test]
+    fn g1t_s_pull_request_reads_back_as_g1t_s_requested_by_the_person() {
+        let made = pull(G1T, Some(ASKER));
+        assert_eq!((made.author.username.as_str(), made.author.kind), ("g1t", PrincipalKind::Agent));
+        let asked = made.requested_by.as_ref().expect("who asked is kept");
+        assert_eq!((asked.id.as_str(), asked.username.as_str(), asked.kind), ("usr_1", "syntaqx", PrincipalKind::User));
+        assert_eq!(made.owner().id, "usr_1");
+    }
+
+    #[test]
+    fn anyone_else_s_reads_back_as_theirs_alone() {
+        let own = pull(ASKER, None);
+        assert_eq!(own.author.kind, PrincipalKind::User);
+        assert!(own.requested_by.is_none());
+        assert_eq!(own.owner().id, "usr_1");
+        // Half a requester is nobody.
+        assert!(requester(Some("usr_1".into()), None).is_none());
+    }
+
+    #[test]
+    fn g1t_s_own_work_reads_back_as_g1t_itself() {
+        let own = pull(("g1t", "g1t"), None);
+        assert_eq!(own.author.kind, PrincipalKind::System);
+        assert!(own.requested_by.is_none());
+    }
 }

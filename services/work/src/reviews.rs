@@ -61,8 +61,9 @@ impl Work {
     /// that overlaps between pull requests can be found without comparing
     /// every one of them each time.
     pub(crate) async fn refresh_files(&self, pull: &Pull) -> Result<Vec<ChangedFile>> {
-        // Its author can read both the repository and the pull request's source.
-        let viewer = self.author_viewer(pull).await?;
+        // Its owner (whoever asked g1t for it, or its author) can read both
+        // the repository and the pull request's source.
+        let viewer = self.owner_viewer(pull).await?;
         let compared: Outcome<Comparison> =
             g1t_kit::call(&self.repos, "compare", &pull.comparison(&viewer)).await?;
         let files: Vec<ChangedFile> = match compared {
@@ -186,7 +187,7 @@ impl Work {
                 "A pull request can be reviewed once it is ready for review.",
             ));
         }
-        let viewer = self.author_viewer(&pull).await?;
+        let viewer = self.owner_viewer(&pull).await?;
         let repo: Outcome<Repo> = g1t_kit::call(
             &self.repos,
             "get_by_id",
@@ -264,7 +265,7 @@ impl Work {
             title: pull.title,
             description: pull.body.unwrap_or_default(),
             issue,
-            author: pull.author,
+            author: pull.requested_by.unwrap_or(pull.author),
             files: pull.files,
             sensitive,
         }))

@@ -385,7 +385,7 @@ export function cardTree(card: Card): Node {
         eyebrow: eyebrowWithNumber(`${card.owner}/${card.repo}`, card.number),
         title: title(card.title),
         description: null,
-        facts: [badge(label, shapes, tone), plain("Issue"), dot(), byline(card.author)],
+        facts: [badge(label, shapes, tone), plain("Issue"), dot(), byline(card.author, card.requestedBy)],
       });
     }
 
@@ -396,7 +396,7 @@ export function cardTree(card: Card): Node {
         eyebrow: eyebrowWithNumber(`${card.owner}/${card.repo}`, card.number),
         title: title(card.title),
         description: null,
-        facts: [badge(label, shapes, tone), plain("Pull request"), dot(), byline(card.author)],
+        facts: [badge(label, shapes, tone), plain("Pull request"), dot(), byline(card.author, card.requestedBy)],
       });
     }
 
@@ -456,11 +456,14 @@ function eyebrowWithNumber(repo: string, number: number): Node {
   );
 }
 
-function byline(author: string): Node {
+/** "by ana", or "by g1t for ana" for what g1t opened for someone. */
+function byline(author: string, requestedBy: string | null): Node {
+  const name = (text: string) => h("div", { display: "flex", fontFamily: MONO, fontSize: 26, color: COLOR.fgSoft }, bound(text, 32));
   return h(
     "div",
     { display: "flex", alignItems: "center", gap: 10, fontFamily: SANS, fontSize: 28, color: COLOR.muted },
     "by",
-    h("div", { display: "flex", fontFamily: MONO, fontSize: 26, color: COLOR.fgSoft }, bound(author, 32)),
+    name(author),
+    ...(requestedBy ? ["for", name(requestedBy)] : []),
   );
 }

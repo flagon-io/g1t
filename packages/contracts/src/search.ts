@@ -48,7 +48,10 @@ export type SiteHit = {
   number: number | null;
   /** `open`/`closed` for an issue; `draft`/`open`/`merged`/`closed` for a pull request. */
   state: string | null;
+  /** Who opened the issue or pull request: `g1t` for one g1t made. */
   author: string | null;
+  /** For an issue or pull request g1t opened: who asked for it. */
+  requestedBy?: string | null;
   labels: string[];
   topics: string[];
   /** A username or a workspace's slug. */

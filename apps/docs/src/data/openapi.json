@@ -4296,7 +4296,7 @@
           "Search"
         ],
         "summary": "Search g1t",
-        "description": "Search all of g1t: repositories (name, description, topics, README), code on default branches (file names and contents), issues, pull requests, people and workspaces. Covers everything public, and private content in workspaces you belong to; signed out, public only. Write words, \"exact phrases\", -words to leave out, and qualifiers: repo:owner/name, org:workspace, language:rust, path:src/ (a glob with *), is:issue, is:pr, is:open, is:closed, is:merged, author:username, label:bug. type picks the kind of results (repositories, code, issues, pulls or people); without it, the qualifiers decide. Returns one page of results with the matches highlighted, code with line numbers, and how many there are of each kind.\n\n`q` takes words, `\"exact phrases\"`, `-words` to leave out, and qualifiers: `repo:owner/name`, `org:` (or `workspace:`), `language:`, `path:` (a glob when it has `*`), `is:issue`, `is:pr`, `is:open`, `is:closed`, `is:merged`, `is:draft`, `is:public`, `is:private`, `author:` and `label:`; most can be left out with a leading `-`, as in `-label:wontfix`. `type` is `repositories`, `code`, `issues`, `pulls` or `people`; without it, `path:` means code, `is:pr` pull requests, `is:open`, `author:` or `label:` issues, and anything else repositories. `counts` says how many results each type has, up to 1,000. Each result's `snippet` (or, for code, each of its `lines`) is a list of parts, `highlight` true where the query matched. Code is searched on default branches and needs a word of three characters or more, unless the query names a `repo:`. Public content is returned to anyone, without a token; private content only to people who can read it (members of its workspace, and people given a role on the repository), checked when the search runs, so a repository made private, or a role taken away, stops appearing at once. A g1t agent's token can search too.",
+        "description": "Search all of g1t: repositories (name, description, topics, README), code on default branches (file names and contents), issues, pull requests, people and workspaces. Covers everything public, and private content in workspaces you belong to; signed out, public only. Write words, \"exact phrases\", -words to leave out, and qualifiers: repo:owner/name, org:workspace, language:rust, path:src/ (a glob with *), is:issue, is:pr, is:open, is:closed, is:merged, author:username, label:bug. type picks the kind of results (repositories, code, issues, pulls or people); without it, the qualifiers decide. Returns one page of results with the matches highlighted, code with line numbers, and how many there are of each kind.\n\n`q` takes words, `\"exact phrases\"`, `-words` to leave out, and qualifiers: `repo:owner/name`, `org:` (or `workspace:`), `language:`, `path:` (a glob when it has `*`), `is:issue`, `is:pr`, `is:open`, `is:closed`, `is:merged`, `is:draft`, `is:public`, `is:private`, `author:` and `label:`; most can be left out with a leading `-`, as in `-label:wontfix`. `type` is `repositories`, `code`, `issues`, `pulls` or `people`; without it, `path:` means code, `is:pr` pull requests, `is:open`, `author:` or `label:` issues, and anything else repositories. `counts` says how many results each type has, up to 1,000. Each result's `snippet` (or, for code, each of its `lines`) is a list of parts, `highlight` true where the query matched. Code is searched on default branches and needs a word of three characters or more, unless the query names a `repo:`. Public content is returned to anyone, without a token; private content only to people who can read it (members of its workspace, and people given a role on the repository), checked when the search runs, so a repository made private, or a role taken away, stops appearing at once. A g1t agent's token can search too. An issue or pull request g1t opened has `author` `g1t` and `requested_by` the person it was for; `author:` matches the author.",
         "x-operation": "search",
         "x-mcp-tool": "search",
         "x-mcp-action": "code",
@@ -4425,6 +4425,7 @@
                       "number": null,
                       "state": null,
                       "author": null,
+                      "requested_by": null,
                       "labels": [],
                       "topics": [],
                       "slug": null,
@@ -6584,7 +6585,7 @@
           "Pull requests"
         ],
         "summary": "Message an agent",
-        "description": "Send the agent working on a pull request a message: a correction, a hint, a change of plan. It receives it at its next step, and it is recorded in the pull request's session. The pull request's author, and anyone with the Write role or higher. An agent uses it to ask the agent on another pull request a question (kind: question) or hand it work that belongs there (kind: handoff), giving its own pull request as from_number; the answer comes back to it at its next step.\n\nThe response is the message. `delivered_at` is set once the agent has read it.",
+        "description": "Send the agent working on a pull request a message: a correction, a hint, a change of plan. It receives it at its next step, and it is recorded in the pull request's session. The pull request's author (for one g1t made, whoever asked for it), and anyone with the Write role or higher. An agent uses it to ask the agent on another pull request a question (kind: question) or hand it work that belongs there (kind: handoff), giving its own pull request as from_number; the answer comes back to it at its next step.\n\nThe response is the message. `delivered_at` is set once the agent has read it.",
         "x-operation": "message_agent",
         "x-mcp-tool": "agent",
         "x-mcp-action": "message",
@@ -7637,6 +7638,7 @@
                       "verified": false,
                       "workspaces": []
                     },
+                    "requested_by": null,
                     "created_at": "2026-10-01T18:04:11.482Z",
                     "updated_at": "2026-10-01T18:04:11.482Z",
                     "closed_at": null,
@@ -7760,6 +7762,7 @@
                     "verified": false,
                     "workspaces": []
                   },
+                  "requested_by": null,
                   "created_at": "2026-10-01T18:04:11.482Z",
                   "updated_at": "2026-10-01T18:04:11.482Z",
                   "closed_at": null,
@@ -7946,6 +7949,7 @@
                       "verified": false,
                       "workspaces": []
                     },
+                    "requested_by": null,
                     "created_at": "2026-10-01T18:04:11.482Z",
                     "updated_at": "2026-10-01T18:52:17.093Z",
                     "closed_at": "2026-10-01T18:52:17.093Z",
@@ -7989,6 +7993,7 @@
                         "verified": false,
                         "workspaces": []
                       },
+                      "requested_by": null,
                       "created_at": "2026-10-01T18:20:02.117Z",
                       "updated_at": "2026-10-01T18:20:02.117Z"
                     },
@@ -8032,6 +8037,7 @@
                         "verified": false,
                         "workspaces": []
                       },
+                      "requested_by": null,
                       "created_at": "2026-10-01T18:20:02.117Z",
                       "updated_at": "2026-10-01T18:52:17.093Z"
                     }
@@ -8106,7 +8112,7 @@
           "Issues"
         ],
         "summary": "Update an issue",
-        "description": "Change an issue's title, body, labels or the people it is assigned to. Only the fields given are changed; labels and assignees each replace the whole set. Its author may change their own issue; anyone else needs the Triage role or higher.",
+        "description": "Change an issue's title, body, labels or the people it is assigned to. Only the fields given are changed; labels and assignees each replace the whole set. Its author may change their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher.",
         "x-operation": "update_issue",
         "x-mcp-tool": "issue",
         "x-mcp-action": "update",
@@ -8173,6 +8179,7 @@
                     "verified": false,
                     "workspaces": []
                   },
+                  "requested_by": null,
                   "created_at": "2026-10-01T18:04:11.482Z",
                   "updated_at": "2026-10-01T18:09:47.305Z",
                   "closed_at": null,
@@ -8288,7 +8295,7 @@
           "Issues"
         ],
         "summary": "Close an issue",
-        "description": "Close an issue without a pull request. Merging a pull request made for an issue closes it for you. Its author may close their own issue; anyone else needs the Triage role or higher.",
+        "description": "Close an issue without a pull request. Merging a pull request made for an issue closes it for you. Its author may close their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher.",
         "x-operation": "close_issue",
         "x-mcp-tool": "issue",
         "x-mcp-action": "close",
@@ -8354,6 +8361,7 @@
                     "verified": false,
                     "workspaces": []
                   },
+                  "requested_by": null,
                   "created_at": "2026-10-01T18:04:11.482Z",
                   "updated_at": "2026-10-01T19:30:00.214Z",
                   "closed_at": "2026-10-01T19:30:00.214Z",
@@ -8450,7 +8458,7 @@
           "Issues"
         ],
         "summary": "Reopen an issue",
-        "description": "Reopen a closed issue. Its author may reopen their own issue; anyone else needs the Triage role or higher.",
+        "description": "Reopen a closed issue. Its author may reopen their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher.",
         "x-operation": "reopen_issue",
         "x-mcp-tool": "issue",
         "x-mcp-action": "reopen",
@@ -8516,6 +8524,7 @@
                     "verified": false,
                     "workspaces": []
                   },
+                  "requested_by": null,
                   "created_at": "2026-10-01T18:04:11.482Z",
                   "updated_at": "2026-10-01T19:41:52.830Z",
                   "closed_at": null,
@@ -8589,7 +8598,7 @@
           "Issues"
         ],
         "summary": "Assign an issue to g1t",
-        "description": "Assign an issue to g1t. It opens a pull request for the issue in a sandbox of its own and sees it through: the repository's workflows run on it as its checks, a second agent reviews it, it revises when a check fails (reading the failing jobs' logs) or the review asks for changes, and it catches up when main moves. It is ready once the default branch's required checks pass and the review approves. Returns the pull request at once; follow its progress with get_pull_request. There is no model or agent count to choose. To put many agents to work, assign many issues. Needs the Write role or higher. In preview: only for accounts g1t agents are enabled for.\n\nThe response is the pull request g1t opened, still a draft. Follow it with [get a pull request](/reference/api/pull-requests/get-pull-request/): `lifecycle` says what the agent is doing.",
+        "description": "Assign an issue to g1t. It opens a pull request for the issue in a sandbox of its own and sees it through: the repository's workflows run on it as its checks, a second agent reviews it, it revises when a check fails (reading the failing jobs' logs) or the review asks for changes, and it catches up when main moves. It is ready once the default branch's required checks pass and the review approves. Returns the pull request at once, with g1t as its author and you as its requested_by; follow its progress with get_pull_request. There is no model or agent count to choose. To put many agents to work, assign many issues. Needs the Write role or higher. In preview: only for accounts g1t agents are enabled for.\n\nThe response is the pull request g1t opened, still a draft. g1t is its `author` and you are its `requested_by`: you may manage it as if you had opened it, and cannot approve it yourself. Follow it with [get a pull request](/reference/api/pull-requests/get-pull-request/): `lifecycle` says what the agent is doing.",
         "x-operation": "assign_issue",
         "x-mcp-tool": "agent",
         "x-mcp-action": "assign",
@@ -8662,6 +8671,13 @@
                   "assignees": [],
                   "reviewers": [],
                   "author": {
+                    "id": "usr_g1t_agent",
+                    "username": "g1t",
+                    "kind": "agent",
+                    "verified": false,
+                    "workspaces": []
+                  },
+                  "requested_by": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
                     "kind": "user",
@@ -8960,6 +8976,7 @@
                       "verified": false,
                       "workspaces": []
                     },
+                    "requested_by": null,
                     "created_at": "2026-10-05T14:02:11.204Z",
                     "updated_at": "2026-10-05T14:02:11.204Z",
                     "closed_at": null,
@@ -8996,6 +9013,13 @@
                     "assignees": [],
                     "reviewers": [],
                     "author": {
+                      "id": "usr_g1t_agent",
+                      "username": "g1t",
+                      "kind": "agent",
+                      "verified": false,
+                      "workspaces": []
+                    },
+                    "requested_by": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
                       "kind": "user",
@@ -18743,6 +18767,7 @@
                       "verified": false,
                       "workspaces": []
                     },
+                    "requested_by": null,
                     "created_at": "2026-10-01T18:20:02.117Z",
                     "updated_at": "2026-10-01T18:35:44.902Z"
                   }
@@ -18872,6 +18897,7 @@
                       "verified": false,
                       "workspaces": []
                     },
+                    "requested_by": null,
                     "created_at": "2026-10-01T18:20:02.117Z",
                     "updated_at": "2026-10-01T18:20:02.117Z"
                   },
@@ -19069,6 +19095,7 @@
                       "verified": false,
                       "workspaces": []
                     },
+                    "requested_by": null,
                     "created_at": "2026-10-01T18:20:02.117Z",
                     "updated_at": "2026-10-01T18:35:44.902Z",
                     "confidence": null
@@ -19092,6 +19119,7 @@
                       "verified": false,
                       "workspaces": []
                     },
+                    "requested_by": null,
                     "created_at": "2026-10-01T18:04:11.482Z",
                     "updated_at": "2026-10-01T18:20:02.117Z",
                     "closed_at": null,
@@ -19357,7 +19385,7 @@
           "Pull requests"
         ],
         "summary": "Review a pull request",
-        "description": "Give a verdict on a pull request: approve it, or request changes and say what. Read get_pull_request_changes first. You cannot review a pull request you opened.",
+        "description": "Give a verdict on a pull request: approve it, or request changes and say what. Read get_pull_request_changes first. You cannot review a pull request you opened, or one g1t made for you (you are its requested_by).",
         "x-operation": "review_pull_request",
         "x-mcp-tool": "pull_request",
         "x-mcp-action": "review",
@@ -19902,6 +19930,7 @@
                     "verified": false,
                     "workspaces": []
                   },
+                  "requested_by": null,
                   "created_at": "2026-10-01T18:20:02.117Z",
                   "updated_at": "2026-10-01T18:33:10.398Z"
                 }
@@ -19990,7 +20019,7 @@
           "Pull requests"
         ],
         "summary": "Close a pull request",
-        "description": "Close a pull request without merging it. Its author may close their own; anyone else needs the Triage role or higher.",
+        "description": "Close a pull request without merging it. Its author may close their own, and whoever asked g1t for one may close that one; anyone else needs the Triage role or higher.",
         "x-operation": "close_pull_request",
         "x-mcp-tool": "pull_request",
         "x-mcp-action": "close",
@@ -20075,6 +20104,7 @@
                     "verified": false,
                     "workspaces": []
                   },
+                  "requested_by": null,
                   "created_at": "2026-10-01T18:20:02.117Z",
                   "updated_at": "2026-10-01T19:02:48.760Z"
                 }
@@ -20228,6 +20258,7 @@
                     "verified": false,
                     "workspaces": []
                   },
+                  "requested_by": null,
                   "created_at": "2026-10-01T18:20:02.117Z",
                   "updated_at": "2026-10-01T18:52:17.093Z"
                 }

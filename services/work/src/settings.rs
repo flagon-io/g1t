@@ -60,10 +60,11 @@ impl From<SettingsRow> for RepoSettings {
 
 /// What is missing before a pull request has the approvals its repository
 /// asks for, or `None` if nothing is. `verdicts` is each reviewer's id and
-/// their most recent verdict; the author's own does not count.
+/// their most recent verdict; its owner's own (whoever asked g1t for it,
+/// or its author: Pull::owner) does not count.
 pub(crate) fn approvals_missing(
     settings: &RepoSettings,
-    author_id: &str,
+    owner_id: &str,
     verdicts: &[(String, Verdict)],
 ) -> Option<String> {
     if settings.required_approvals == 0 {
@@ -72,7 +73,7 @@ pub(crate) fn approvals_missing(
     let others = || {
         verdicts
             .iter()
-            .filter(|(reviewer, _)| reviewer != author_id)
+            .filter(|(reviewer, _)| reviewer != owner_id)
     };
     if others().any(|(_, verdict)| *verdict == Verdict::RequestChanges) {
         return Some("A reviewer has asked for changes.".to_owned());
@@ -157,7 +158,7 @@ impl Work {
             latest.insert(row.author_id, row.verdict);
         }
         let verdicts: Vec<(String, Verdict)> = latest.into_iter().collect();
-        Ok(approvals_missing(settings, &pull.author.id, &verdicts))
+        Ok(approvals_missing(settings, &pull.owner().id, &verdicts))
     }
 
     pub(crate) async fn get_settings(&self, a: ViewArgs) -> Result<Outcome<RepoSettings>> {
@@ -300,5 +301,22 @@ mod tests {
             ..requiring(1)
         };
         assert!(approvals_missing(&people_only, "usr_a", &agent).is_some());
+    }
+
+    #[test]
+    fn whoever_asked_g1t_cannot_approve_its_change_for_them() {
+        use crate::rows::stored::{ASKER, G1T, pull};
+        let made = pull(G1T, Some(ASKER));
+        let owner = &made.owner().id;
+        // Their own approval is no approval, as an author's was not.
+        let theirs = verdicts(&[(ASKER.0, Verdict::Approve)]);
+        assert!(approvals_missing(&requiring(1), owner, &theirs).is_some());
+        // Nor does their asking for changes block it: it is theirs.
+        let changes = verdicts(&[(ASKER.0, Verdict::RequestChanges), ("usr_b", Verdict::Approve)]);
+        assert_eq!(approvals_missing(&requiring(1), owner, &changes), None);
+        // g1t's agent reviewing the change g1t made counts where the
+        // repository lets an agent's approval count, as it did.
+        let agent = verdicts(&[(AGENT_ID, Verdict::Approve)]);
+        assert_eq!(approvals_missing(&requiring(1), owner, &agent), None);
     }
 }

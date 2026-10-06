@@ -78,8 +78,9 @@ Secrets go only to trusted runs:
 - pushes, schedules, manual runs and the merge queue;
 - pull requests whose author has the Write [role](/guides/access-and-roles/)
   or higher on the repository, a member or an
-  [outside collaborator](/guides/access-and-roles/#outside-collaborators);
-- pull requests from g1t's agents.
+  [outside collaborator](/guides/access-and-roles/#outside-collaborators).
+  For one g1t made, that is whoever asked for it;
+- pull requests g1t opened on its own, such as a security update.
 
 Anyone else's pull request, such as one from a fork or by someone with
 Read or Triage (who may open one on a private repository too), runs its

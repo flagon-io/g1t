@@ -33,7 +33,13 @@ export type Issue = {
   reason: IssueReason | null;
   /** The number of the pull request whose merge closed this issue. */
   resolvedBy: number | null;
+  /** Who opened it: a person, an integration, or g1t (`kind` `agent`) for one its agent filed while at work. */
   author: User;
+  /**
+   * For an issue g1t's agent filed: the person it was working for. They may
+   * manage it as its author could. See `workOwner`.
+   */
+  requestedBy: User | null;
   /** RFC 3339. */
   createdAt: string;
   /** RFC 3339. */
@@ -58,6 +64,16 @@ export type Issue = {
    */
   agent: string | null;
 };
+
+/**
+ * Whose an issue or a pull request is to answer for: whoever asked g1t for
+ * it, or its author. They may change, close and steer it, are never asked to
+ * review it and cannot approve it, and see it as theirs. Mirrors
+ * `Pull::owner` in the Rust contracts.
+ */
+export function workOwner(item: Pick<Pull, "author" | "requestedBy">): User {
+  return item.requestedBy ?? item.author;
+}
 
 /** `draft` is still being worked on; `open` is ready for review. */
 export type PullStatus = "draft" | "open" | "merged" | "closed";
@@ -118,7 +134,14 @@ export type Pull = {
    * agent was asked.
    */
   reviewers: string[];
+  /** Who opened it: a person, or g1t (`kind` `agent`, username `g1t`) for a change g1t made. */
   author: User;
+  /**
+   * For a change g1t made: the person who asked for it, by assigning an issue
+   * or handing g1t the work. They answer for it as its author would. See
+   * `workOwner`.
+   */
+  requestedBy: User | null;
   /** RFC 3339. */
   createdAt: string;
   /** RFC 3339. */
@@ -292,7 +315,7 @@ export type CheckJob = {
   /** The repository holding the commit: the fork, or the repository itself. */
   source: RepoPath;
   commit: string;
-  /** Who opened the pull request, and so can read its source. */
+  /** Who the pull request is for (`workOwner`: whoever asked g1t for it, or its author), and so can read its source. */
   author: User;
   /** Username of whoever wrote the checks: the issue's author. */
   requestedBy: string;
@@ -447,7 +470,7 @@ export type MergecheckJob = {
   branch: string;
   /** The change's commit. */
   head: string;
-  /** Who opened the pull request, and so can read its source. */
+  /** Who the pull request is for (`workOwner`: whoever asked g1t for it, or its author), and so can read its source. */
   author: User;
 };
 
@@ -494,7 +517,7 @@ export type LifecycleJob = {
   pullId: string;
   repo: RepoPath;
   number: number;
-  /** Who the pull request belongs to. Sandboxes act as them. */
+  /** Who the pull request belongs to (`workOwner`: whoever asked g1t for it, or its author). Sandboxes act as them. */
   author: User;
   /** The repository holding the change: its fork, or the repository itself. */
   source: RepoPath;
@@ -658,7 +681,7 @@ export type ReviewJob = {
   description: string;
   /** The issue the pull request is for, which says what it should achieve. */
   issue: Issue | null;
-  /** Who opened the pull request, and so can read its source. */
+  /** Who the pull request is for (`workOwner`: whoever asked g1t for it, or its author), and so can read its source. */
   author: User;
   /**
    * The files it changes, as of its latest push: how large the change is,

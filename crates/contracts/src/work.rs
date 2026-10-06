@@ -62,7 +62,13 @@ pub struct Issue {
     pub reason: Option<IssueReason>,
     /// The number of the pull request whose merge closed this issue.
     pub resolved_by: Option<u32>,
+    /// Who opened it: a person, an integration, or g1t (`kind` `agent`)
+    /// for one its agent filed while at work.
     pub author: User,
+    /// For an issue g1t's agent filed: the person it was working for. They
+    /// may manage it as its author could. See [`owner`](Issue::owner).
+    #[serde(default)]
+    pub requested_by: Option<User>,
     /// RFC 3339.
     pub created_at: String,
     /// RFC 3339.
@@ -176,7 +182,14 @@ pub struct Pull {
     /// g1t agent was asked.
     #[serde(default)]
     pub reviewers: Vec<String>,
+    /// Who opened it: a person, or g1t (`kind` `agent`, username `g1t`)
+    /// for a change g1t made.
     pub author: User,
+    /// For a change g1t made: the person who asked for it, by assigning
+    /// an issue or handing g1t the work. They answer for it as its author
+    /// would. See [`owner`](Pull::owner).
+    #[serde(default)]
+    pub requested_by: Option<User>,
     /// RFC 3339.
     pub created_at: String,
     /// RFC 3339.
@@ -263,7 +276,30 @@ pub struct Overlap {
     pub paths: Vec<String>,
 }
 
+impl Issue {
+    /// Who the issue is theirs to manage: the person g1t's agent filed it
+    /// for, or its author. They may edit, close and reopen it without the
+    /// Triage role.
+    pub fn owner(&self) -> &User {
+        self.requested_by.as_ref().unwrap_or(&self.author)
+    }
+}
+
 impl Pull {
+    /// Who the pull request is theirs to answer for: whoever asked g1t to
+    /// make it, or its author. Every rule that once read "its author" reads
+    /// this: they may update, close and steer it, are never asked to review
+    /// it and cannot approve it, see it as theirs, and a sandbox at work on
+    /// it acts as them.
+    pub fn owner(&self) -> &User {
+        self.requested_by.as_ref().unwrap_or(&self.author)
+    }
+
+    /// Whether `id` is its [`owner`](Pull::owner)'s.
+    pub fn is_owned_by(&self, id: &str) -> bool {
+        self.owner().id == id
+    }
+
     /// What to ask the repos service to see what this pull request changes.
     ///
     /// A fork is compared as a whole. A branch is compared by name while
@@ -288,6 +324,54 @@ impl Pull {
             head,
         }
     }
+}
+
+/// g1t's agent, as the author of what it opens: stored by
+/// [`AGENT_ID`](crate::identity::AGENT_ID), shown as `g1t`.
+pub fn g1t_author() -> User {
+    User {
+        id: crate::identity::AGENT_ID.to_owned(),
+        username: crate::identity::AGENT_NAME.to_owned(),
+        kind: crate::PrincipalKind::Agent,
+        ..User::default()
+    }
+}
+
+/// Who is recorded as opening an issue or a pull request that `actor`
+/// opens, and who asked for it: `(author, requested_by)`.
+///
+/// - g1t's agent, acting for someone through its token (an issue it files
+///   while at work): g1t, requested by that person.
+/// - A person having g1t make the change (`by_g1t`: a hosted g1t agent in
+///   a fork of its own): g1t, requested by them.
+/// - Anyone else, and g1t's own work that nobody asked for: the actor, and
+///   nobody asking.
+pub fn authorship(actor: &User, by_g1t: bool) -> (User, Option<User>) {
+    let person = |id: &str, username: &str| User {
+        id: id.to_owned(),
+        username: username.to_owned(),
+        kind: crate::PrincipalKind::User,
+        ..User::default()
+    };
+    if actor.kind == crate::PrincipalKind::Agent {
+        let asked = actor
+            .acting
+            .as_ref()
+            .map(|acting| &acting.on_behalf_of)
+            .filter(|on_behalf_of| !crate::system::is_system_id(&on_behalf_of.id))
+            .map(|on_behalf_of| person(&on_behalf_of.id, &on_behalf_of.username));
+        return (g1t_author(), asked);
+    }
+    if by_g1t && actor.kind != crate::PrincipalKind::System {
+        return (g1t_author(), Some(person(&actor.id, &actor.username)));
+    }
+    let author = User {
+        id: actor.id.clone(),
+        username: actor.username.clone(),
+        kind: actor.kind,
+        ..User::default()
+    };
+    (author, None)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -727,7 +811,8 @@ pub struct MergecheckJob {
     pub branch: String,
     /// The change's commit.
     pub head: String,
-    /// Who opened the pull request, and so can read its source.
+    /// Who the pull request is for ([`Pull::owner`]: whoever asked g1t for
+    /// it, or its author), and so can read its source.
     pub author: User,
 }
 
@@ -812,7 +897,8 @@ fn message_kind() -> String {
 }
 
 /// `message_agent`: sends the agent working on a pull request a message.
-/// The pull request's author and members of the workspace may. Returns
+/// The pull request's owner ([`Pull::owner`]: whoever asked g1t for it, or
+/// its author) and members of the workspace may. Returns
 /// `Outcome<AgentMessage>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MessageAgentArgs {
@@ -919,7 +1005,8 @@ pub struct LifecycleJob {
     pub pull_id: String,
     pub repo: RepoPath,
     pub number: u32,
-    /// Who the pull request belongs to. Sandboxes act as them.
+    /// Who the pull request belongs to ([`Pull::owner`]: whoever asked g1t
+    /// for it, or its author). Sandboxes act as them.
     pub author: User,
     /// The repository holding the change: its fork, or the repository
     /// itself for one made on a branch.
@@ -1301,7 +1388,8 @@ pub struct OpenPullArgs {
 /// Also `catch_up_pull`: brings the pull request up to date with the
 /// default branch without a sandbox where that is safe, as the repos
 /// service's `update_pull_branch` does, after checking that `actor` may
-/// update it: whoever opened it for a fork, any member for a branch.
+/// update it: its owner ([`Pull::owner`]) for a fork, any member for a
+/// branch.
 /// Returns `Outcome<repos::PullBranchUpdate>`; on `needs_agent` nothing was
 /// pushed and the runner's `update` is the way on.
 #[derive(Debug, Serialize, Deserialize)]
@@ -1536,7 +1624,8 @@ pub struct CheckJob {
     /// The repository holding the commit: the fork, or the repository itself.
     pub source: RepoPath,
     pub commit: String,
-    /// Who opened the pull request, and so can read its source.
+    /// Who the pull request is for ([`Pull::owner`]: whoever asked g1t for
+    /// it, or its author), and so can read its source.
     pub author: User,
     /// Username of whoever wrote the checks: the issue's author.
     pub requested_by: String,
@@ -1619,7 +1708,8 @@ pub struct ReviewJob {
     pub description: String,
     /// The issue the pull request is for, which says what it should achieve.
     pub issue: Option<Issue>,
-    /// Who opened the pull request, and so can read its source.
+    /// Who the pull request is for ([`Pull::owner`]: whoever asked g1t for
+    /// it, or its author), and so can read its source.
     pub author: User,
     /// The files it changes, as of its latest push: how large the change
     /// is, which decides the model that reviews it.
@@ -2068,5 +2158,114 @@ mod required_tests {
         assert_eq!(with_definition_of_done(&body, &items), body);
         assert_eq!(with_definition_of_done("", &items), "## Definition of done\n\n- `cargo test` passes.");
         assert_eq!(with_definition_of_done(" Text ", &[]), "Text");
+    }
+}
+
+#[cfg(test)]
+mod authorship_tests {
+    use super::*;
+    use crate::PrincipalKind;
+    use crate::credentials::{Acting, Principal};
+    use crate::identity::{AGENT_ID, AgentScope};
+
+    fn person() -> User {
+        User {
+            id: "usr_1".into(),
+            username: "syntaqx".into(),
+            verified: true,
+            ..User::default()
+        }
+    }
+
+    fn agent_for(id: &str, username: &str) -> User {
+        User {
+            id: AGENT_ID.into(),
+            username: "g1t".into(),
+            kind: PrincipalKind::Agent,
+            acting: Some(Box::new(Acting {
+                credential_id: "tok_1".into(),
+                agent: "g1t".into(),
+                on_behalf_of: Principal { id: id.into(), username: username.into() },
+                scope: AgentScope {
+                    repo: RepoPath { namespace: "acme".into(), name: "web".into() },
+                    operations: Vec::new(),
+                    run: None,
+                },
+            })),
+            ..User::default()
+        }
+    }
+
+    fn pull(author: User, requested_by: Option<User>) -> Pull {
+        let mut pull: Pull = serde_json::from_value(serde_json::json!({
+            "id": "pr_1", "repoId": "rep_1", "number": 14, "issue": 12, "title": "Fix it", "body": null,
+            "agent": "g1t", "runtime": "hosted", "status": "open", "fork": null, "forkRepoId": null,
+            "branch": null, "headCommit": null, "mergeBase": null, "mergedBy": null, "mergedAt": null,
+            "supersededBy": null, "checkStatus": null,
+            "author": { "id": "x", "username": "x" },
+            "createdAt": "", "updatedAt": ""
+        }))
+        .unwrap();
+        pull.author = author;
+        pull.requested_by = requested_by;
+        pull
+    }
+
+    #[test]
+    fn a_change_a_person_has_g1t_make_is_g1t_s_requested_by_them() {
+        let (author, asked) = authorship(&person(), true);
+        assert_eq!((author.id.as_str(), author.username.as_str(), author.kind), (AGENT_ID, "g1t", PrincipalKind::Agent));
+        let asked = asked.expect("the person asked for it");
+        assert_eq!((asked.id.as_str(), asked.username.as_str(), asked.kind), ("usr_1", "syntaqx", PrincipalKind::User));
+    }
+
+    #[test]
+    fn what_g1t_s_agent_files_at_work_is_g1t_s_requested_by_whoever_it_works_for() {
+        let (author, asked) = authorship(&agent_for("usr_1", "syntaqx"), false);
+        assert_eq!(author.id, AGENT_ID);
+        assert_eq!(asked.map(|user| user.username), Some("syntaqx".into()));
+    }
+
+    #[test]
+    fn nobody_asked_for_g1t_s_own_work() {
+        // A run g1t started itself acts for g1t, not for a person.
+        let (author, asked) = authorship(&agent_for(crate::system::ID, "g1t"), false);
+        assert_eq!(author.id, AGENT_ID);
+        assert!(asked.is_none());
+        // A security update g1t opens is g1t's own, as before.
+        let (author, asked) = authorship(&User::system("acme"), true);
+        assert_eq!((author.id.as_str(), author.kind), (crate::system::ID, PrincipalKind::System));
+        assert!(asked.is_none());
+    }
+
+    #[test]
+    fn anyone_else_opens_their_own() {
+        let (author, asked) = authorship(&person(), false);
+        assert_eq!((author.id.as_str(), author.kind), ("usr_1", PrincipalKind::User));
+        assert!(asked.is_none());
+        // Nothing but who they are is kept.
+        assert!(author.workspaces.is_empty() && author.acting.is_none());
+    }
+
+    #[test]
+    fn the_requester_owns_g1t_s_pull_request_and_an_author_their_own() {
+        let made = pull(g1t_author(), Some(person()));
+        assert_eq!(made.owner().id, "usr_1");
+        assert!(made.is_owned_by("usr_1"));
+        assert!(!made.is_owned_by(AGENT_ID), "g1t's agent does not answer for its own change");
+        let own = pull(person(), None);
+        assert_eq!(own.owner().id, "usr_1");
+        assert!(own.is_owned_by("usr_1"));
+    }
+
+    #[test]
+    fn requested_by_is_null_when_nobody_asked_and_read_as_absent_from_older_senders() {
+        let own = pull(person(), None);
+        let sent = serde_json::to_value(&own).unwrap();
+        assert!(sent["requestedBy"].is_null());
+        let mut older = sent.clone();
+        older.as_object_mut().unwrap().remove("requestedBy");
+        let read: Pull = serde_json::from_value(older).unwrap();
+        assert!(read.requested_by.is_none());
     }
 }

@@ -99,6 +99,8 @@ struct ItemRow {
     state: String,
     status: String,
     author: String,
+    #[serde(default)]
+    requested_by: Option<String>,
     labels: String,
     updated_at: String,
     repo_id: String,
@@ -158,6 +160,7 @@ fn item_hit(row: ItemRow, terms: &[String]) -> Found {
     hit.number = Some(row.number);
     hit.state = Some(if pull { row.status } else { row.state });
     hit.author = Some(row.author);
+    hit.requested_by = row.requested_by;
     hit.labels = split_labels(&row.labels);
     hit.updated_at = Some(row.updated_at);
     Found {

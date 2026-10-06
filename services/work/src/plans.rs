@@ -417,6 +417,9 @@ impl Work {
             .then(|| serde_json::to_string(&a.actor))
             .transpose()?;
         let mut numbers: Vec<Option<u32>> = vec![None; plan.issues.len()];
+        // Whoever applies the plan opens its issues; g1t's agent applying
+        // one opens them as g1t, for the person it works for.
+        let (author, requested_by) = authorship(&a.actor, false);
         for index in kept {
             let planned = &plan.issues[index];
             let blocked_by: Vec<u32> = planned
@@ -432,8 +435,8 @@ impl Work {
                 .prepare(
                     "INSERT INTO issues
                        (id, repo_id, number, title, body, labels, checks, blocked_by, queued_by,
-                        author_id, author_name, created_at, updated_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        author_id, author_name, requested_by_id, requested_by_name, created_at, updated_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 )
                 .bind(&[
                     issue_id.as_str().into(),
@@ -447,8 +450,10 @@ impl Work {
                     "[]".into(),
                     serde_json::to_string(&blocked_by)?.into(),
                     queued_by.as_deref().map_or(JsValue::NULL, JsValue::from),
-                    a.actor.id.as_str().into(),
-                    a.actor.username.as_str().into(),
+                    author.id.as_str().into(),
+                    author.username.as_str().into(),
+                    requested_by.as_ref().map_or(JsValue::NULL, |user| user.id.as_str().into()),
+                    requested_by.as_ref().map_or(JsValue::NULL, |user| user.username.as_str().into()),
                     timestamp.as_str().into(),
                     timestamp.as_str().into(),
                 ])?
@@ -483,6 +488,8 @@ impl Work {
                     issue_id,
                     repo_id: repo.id.clone(),
                     number,
+                    author: Some((&author).into()),
+                    requested_by: requested_by.as_ref().map(Into::into),
                     title: Some(planned.title.clone()),
                     ..IssueEvent::default()
                 },

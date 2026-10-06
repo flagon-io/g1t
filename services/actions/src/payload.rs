@@ -2,7 +2,7 @@
 //! built from g1t's own records so `github.event.pull_request.number`,
 //! `github.event.issue.labels.*.name` and the like read as they do there.
 
-use g1t_contracts::User;
+use g1t_contracts::{PrincipalKind, User};
 use g1t_contracts::repos::{Commit, Repo};
 use g1t_contracts::work::{Comment, Issue, Pull, PullStatus, State};
 use serde_json::{Value, json};
@@ -32,8 +32,14 @@ pub fn user(login: &str) -> Value {
     json!({ "login": login, "type": "User", "html_url": format!("{SITE}/{login}") })
 }
 
+/// Someone as GitHub names them. g1t, the author of what it makes and
+/// files, is a `Bot`, as an app is there.
 fn person(user: &User) -> Value {
-    self::user(&user.username)
+    let mut named = self::user(&user.username);
+    if matches!(user.kind, PrincipalKind::Agent | PrincipalKind::System) {
+        named["type"] = json!("Bot");
+    }
+    named
 }
 
 fn labels(names: &[String]) -> Value {
@@ -84,6 +90,8 @@ pub fn issue(repo: &Repo, issue: &Issue) -> Value {
         "state_reason": issue.reason,
         "labels": labels(&issue.labels),
         "user": person(&issue.author),
+        // g1t's own field: for an issue its agent filed, who it worked for.
+        "requested_by": issue.requested_by.as_ref().map(person),
         "assignees": issue.assignees.iter().map(|a| user(a)).collect::<Vec<_>>(),
         "comments": issue.comment_count,
         "created_at": issue.created_at,
@@ -115,6 +123,8 @@ pub fn pull(repo: &Repo, pull: &Pull, labels_of: &[String]) -> Value {
         "merge_commit_sha": if pull.status == PullStatus::Merged { pull.head_commit.clone() } else { None },
         "labels": labels(labels_of),
         "user": person(&pull.author),
+        // g1t's own field: for a change g1t made, who asked for it.
+        "requested_by": pull.requested_by.as_ref().map(person),
         "assignees": pull.assignees.iter().map(|a| user(a)).collect::<Vec<_>>(),
         "requested_reviewers": pull.reviewers.iter().map(|r| user(r)).collect::<Vec<_>>(),
         "head": {
@@ -167,6 +177,7 @@ pub fn pull_as_issue(repo: &Repo, pull: &Pull, labels_of: &[String]) -> Value {
         "state": if pull.status.is_active() { "open" } else { "closed" },
         "labels": labels(labels_of),
         "user": person(&pull.author),
+        "requested_by": pull.requested_by.as_ref().map(person),
         "html_url": format!("{SITE}/{full_name}/pull/{}", pull.number),
         "pull_request": {
             "url": format!("{API}/repos/{full_name}/pulls/{}", pull.number),

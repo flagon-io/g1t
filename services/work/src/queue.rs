@@ -430,9 +430,10 @@ impl Work {
                 .run()
                 .await?;
             // The sandbox reads the change and pushes the tested state as
-            // the pull request's author: a real account, whose token carries
-            // its memberships. (Whoever queued it may be g1t itself.)
-            let actor = pull.author.clone();
+            // the pull request's owner (whoever asked g1t for it, or its
+            // author): a real account, whose token carries its memberships.
+            // (Whoever queued it may be g1t itself.)
+            let actor = pull.owner().clone();
             jobs.push(QueueJob {
                 entry_id: row.id.clone(),
                 token,

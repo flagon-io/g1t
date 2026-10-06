@@ -35,6 +35,7 @@ import {
   type SessionEntry,
   type Viewer,
   pullComparison,
+  workOwner,
 } from "@g1t/contracts";
 
 import type { Route } from "./+types/pull";
@@ -183,13 +184,15 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     viewer,
     // Write and up can merge.
     canMerge: can.merge,
-    // Triage and up manage anyone's pull request; its author, their own.
-    canManage: can.triage || (viewer != null && viewer.id === pull.author.id),
+    // Triage and up manage anyone's pull request; its author, their own,
+    // and whoever asked g1t for one, that one.
+    canManage: can.triage || (viewer != null && viewer.id === workOwner(pull).id),
     // Telling its agent things, and re-running checks, spend compute: Write and up.
     canRun: can.run,
     // A catch-up is pushed as the viewer: a fork takes pushes only from
-    // whoever opened it, a branch from anyone who can push.
-    canUpdate: pull.fork ? viewer?.id === pull.author.id : can.push,
+    // whoever it is for (who asked g1t for it, or its author), a branch
+    // from anyone who can push.
+    canUpdate: pull.fork ? viewer?.id === workOwner(pull).id : can.push,
     agentsEnabled,
     computeNote,
     members: members?.ok ? members.value.map((person) => person.username) : [],
@@ -571,8 +574,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   const collisions = overlaps.filter((other) => other.issue == null || other.issue !== pull.issue);
   const review = {
     changesUrl: here + "?tab=changes",
-    // Nobody reviews their own pull request.
-    canJudge: active && viewer != null && viewer.id !== pull.author.id,
+    // Nobody reviews their own pull request, nor one g1t made for them.
+    canJudge: active && viewer != null && viewer.id !== workOwner(pull).id,
   };
   // Everyone whose review was asked for, then anyone who reviewed unasked.
   const reviewerNames = [
@@ -1245,7 +1248,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                     )}
                     <PeoplePicker
                       name="reviewer"
-                      members={members.filter((name) => name !== pull.author.username)}
+                      members={members.filter((name) => name !== workOwner(pull).username)}
                       chosen={pull.reviewers.filter((name) => name !== "g1t")}
                     />
                     <Button variant="quiet" type="submit">

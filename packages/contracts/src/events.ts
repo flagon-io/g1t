@@ -82,7 +82,19 @@ export type EventPayloads = {
    * points to now, and `defaultBranch` whether it is the default branch.
    */
   "git.push": { repoId: string; ref: string; after: string; defaultBranch: boolean };
-  "issue.opened": { issueId: string; repoId: string; number: number; title: string };
+  /**
+   * `author` is who opened it: g1t, for one its agent filed while at work,
+   * with `requestedBy` the person it was working for. Every issue and pull
+   * request event carries both.
+   */
+  "issue.opened": {
+    issueId: string;
+    repoId: string;
+    number: number;
+    title: string;
+    author?: { id: string; username: string };
+    requestedBy?: { id: string; username: string };
+  };
   "issue.updated": { issueId: string; repoId: string; number: number };
   /** The people an issue is assigned to changed; `assignees` is the new set. */
   "issue.assigned": { issueId: string; repoId: string; number: number; assignees: string[] };
@@ -95,8 +107,20 @@ export type EventPayloads = {
     resolvedBy?: number;
   };
   "issue.reopened": { issueId: string; repoId: string; number: number };
-  /** `issue` is the number of the issue the pull request is for. */
-  "pull.opened": { pullId: string; repoId: string; number: number; issue?: number; agent: string };
+  /**
+   * `issue` is the number of the issue the pull request is for. `author` is
+   * who opened it: g1t, for a change g1t made, with `requestedBy` the person
+   * who asked for it.
+   */
+  "pull.opened": {
+    pullId: string;
+    repoId: string;
+    number: number;
+    issue?: number;
+    agent: string;
+    author?: { id: string; username: string };
+    requestedBy?: { id: string; username: string };
+  };
   /** `confidence`, on a g1t agent's change once g1t has worked it out, is on every pull request event. */
   "pull.ready": { pullId: string; repoId: string; number: number; issue?: number; confidence?: Confidence };
   /** A push moved the head of a pull request that is ready for review. */

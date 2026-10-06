@@ -518,7 +518,7 @@ impl Search {
             &issue.body,
             if issue.state == State::Open { "open" } else { "closed" },
             status,
-            &issue.author.username,
+            (&issue.author.username, issue.requested_by.as_ref().map(|user| user.username.as_str())),
             &issue.labels,
             &issue.created_at,
             &issue.updated_at,
@@ -534,7 +534,7 @@ impl Search {
             pull.body.as_deref().unwrap_or_default(),
             if pull.status.is_active() { "open" } else { "closed" },
             pull.status.as_str(),
-            &pull.author.username,
+            (&pull.author.username, pull.requested_by.as_ref().map(|user| user.username.as_str())),
             labels,
             &pull.created_at,
             &pull.updated_at,
@@ -551,18 +551,19 @@ impl Search {
         body: &str,
         state: &str,
         status: &str,
-        author: &str,
+        // Who opened it, and for g1t's work, who asked for it.
+        (author, requested_by): (&str, Option<&str>),
         labels: &[String],
         created_at: &str,
         updated_at: &str,
     ) -> Result<worker::D1PreparedStatement> {
         store::prepare(
             &self.db,
-            "INSERT INTO items (repo_id, kind, number, title, body, state, status, author, labels, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO items (repo_id, kind, number, title, body, state, status, author, requested_by, labels, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (repo_id, kind, number) DO UPDATE SET title = excluded.title, body = excluded.body,
-               state = excluded.state, status = excluded.status, author = excluded.author, labels = excluded.labels,
-               updated_at = excluded.updated_at",
+               state = excluded.state, status = excluded.status, author = excluded.author,
+               requested_by = excluded.requested_by, labels = excluded.labels, updated_at = excluded.updated_at",
             vec![
                 p(repo_id),
                 p(kind),
@@ -572,6 +573,7 @@ impl Search {
                 p(state),
                 p(status),
                 p(&author.to_lowercase()),
+                requested_by.map_or(Param::Null, |name| p(&name.to_lowercase())),
                 p(&labels_of(labels)),
                 p(created_at),
                 p(updated_at),

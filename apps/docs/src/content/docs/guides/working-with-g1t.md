@@ -13,7 +13,7 @@ Everything g1t does shows as `g1t`: the pull requests it opens, its
 commits, comments, reviews, plans and security updates, assignments,
 timeline events, the audit log, notifications and webhooks. A pull request
 g1t opens shows g1t as its author, with **requested by** naming the person
-who asked for it.
+who asked for it. See [who a pull request is for](#who-a-pull-request-is-for).
 
 g1t's runs are paid for by the workspace they work for, so they need a
 paid workspace or the free trial; see [who can run agents](#who-can-run-agents)
@@ -478,6 +478,37 @@ is not routed by tier: its work runs on the model its route names.
 
 A pull request g1t opens has `g1t` as its author and as its `agent` in the
 API, and its commits are authored `g1t <g1t@users.noreply.g1t.sh>`.
+
+## Who a pull request is for
+
+g1t is the author of every pull request it makes and of every issue it
+files while at work. The person who asked for the work, by assigning the
+issue or handing g1t the task, is kept beside it as **requested by**. Work
+g1t starts itself, such as a [security update](/guides/security/), names
+nobody.
+
+| Where | Author | Who asked |
+| --- | --- | --- |
+| The pull request's page, lists and link previews | **g1t** | **requested by** *name*, or **for** *name* |
+| The API and MCP (`get_pull_request`, `list_pull_requests`, `get_issue`) | `author`: `{ "username": "g1t", "kind": "agent" }` | `requested_by`, or `null` |
+| [Webhooks](/guides/webhooks/) | `data.author` | `data.requested_by`, left out when nobody asked |
+| [Actions](/guides/actions/) (`github.event`) | `pull_request.user`, a `Bot` named `g1t` | `pull_request.requested_by`; `sender` is whoever caused the event |
+| [Search](/guides/search/) | `author:g1t` finds it | shown as **for** *name* |
+
+The person who asked answers for the pull request as its author would:
+
+- they can update, close and mark it ready, catch it up and steer its
+  agent without the Triage role;
+- they are never asked to review it, and they cannot approve it or
+  request changes on it; nor does their approval count toward the
+  repository's required approvals;
+- it is on their own lists: what they are working on, and their profile;
+- the sandboxes that work on it act as them, so it reaches what they can;
+- its workflows and preview get secrets only when they have the Write
+  role or higher, as theirs would.
+
+Being its author gives g1t nothing more: a review by g1t's agent still
+counts where the repository lets an agent's approval count.
 
 ## How model traffic is routed
 

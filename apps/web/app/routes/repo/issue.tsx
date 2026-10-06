@@ -3,7 +3,7 @@ import { Bot, ExternalLink, GitCommitHorizontal, GitMerge, Play, Sparkles } from
 import { useEffect } from "react";
 import { Form, Link, redirect, useNavigation, useRevalidator } from "react-router";
 
-import { type Pull, PROVIDERS } from "@g1t/contracts";
+import { type Pull, PROVIDERS, workOwner } from "@g1t/contracts";
 
 import type { Route } from "./+types/issue";
 import { excerpt, page } from "../../lib/meta";
@@ -52,7 +52,7 @@ export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   return page(args, {
     title: `${title}${params.owner}/${params.repo} · g1t`,
     description: issue
-      ? `${state} issue #${issue.number} on ${params.owner}/${params.repo}, opened by ${issue.author.username}.${body ? ` ${body}` : ""}`
+      ? `${state} issue #${issue.number} on ${params.owner}/${params.repo}, opened by ${issue.author.username}${issue.requestedBy ? ` for ${issue.requestedBy.username}` : ""}.${body ? ` ${body}` : ""}`
       : null,
     // The card shows the title and the state.
     version: issue ? [issue.title, issue.state, issue.reason] : undefined,
@@ -94,8 +94,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     computeNote,
     links,
     members: members?.ok ? members.value.map((member) => member.username) : [],
-    // The author can close and reopen their own issue; Triage and up, anyone's.
-    canManage: viewer != null && (viewer.id === issue.author.id || can.triage),
+    // The author can close and reopen their own issue, and whoever g1t's
+    // agent filed one for, that one; Triage and up, anyone's.
+    canManage: viewer != null && (viewer.id === workOwner(issue).id || can.triage),
     can,
   };
 }
@@ -283,6 +284,12 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
             <Avatar name={issue.author.username} size={18} />
             <span>
               <PersonLink name={issue.author.username} className="font-medium text-fg hover:underline" /> opened this{" "}
+              {issue.requestedBy && (
+                <>
+                  for{" "}
+                  <PersonLink name={issue.requestedBy.username} className="font-medium text-fg-soft hover:underline" />{" "}
+                </>
+              )}
               <TimeAgo at={issue.createdAt} />
             </span>
           </span>

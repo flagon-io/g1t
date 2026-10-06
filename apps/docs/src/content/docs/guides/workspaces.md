@@ -373,7 +373,8 @@ website and when you joined; then your work in three tabs:
 
 - **Overview:** pull requests merged, open pull requests and issues
   opened, and your most recent activity.
-- **Pull requests** and **Issues:** everything you opened, newest first,
+- **Pull requests** and **Issues:** everything you opened, and what g1t
+  opened for you, newest first,
   with filters beside the list for state (open, closed, merged), type,
   repository and sort order. Add `?tab=pulls&state=merged` and the like to
   link to a filtered list.

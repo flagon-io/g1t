@@ -65,6 +65,7 @@ import {
   type RepoMove,
   type ProjectDomains,
   type ProjectRef,
+  workOwner,
   type RepoPath,
   type Result,
   type ServiceBinding,
@@ -72,7 +73,7 @@ import {
   type Viewer,
 } from "@g1t/contracts";
 
-import { NEEDS, repoRef, type Method } from "./access";
+import { NEEDS, repoRef, trustedOutright, type Method } from "./access";
 import { Cloudflare, type BuiltWorker, type Manifest } from "./cloudflare";
 import { CustomHostnames } from "./custom-hostnames";
 import { Domains, NOT_ENABLED_NOTICE, toDomain } from "./domains";
@@ -356,15 +357,17 @@ class Deployments {
   }
 
   /**
-   * Whether a pull request's author is trusted with the project's secrets:
-   * g1t's agent, or someone who can push to the repository (Write or more,
-   * a member's or a collaborator's). Anyone else gets a preview built
-   * without them, as their workflows run.
+   * Whether whoever a pull request is for (`workOwner`: whoever asked g1t for
+   * it, or its author) is trusted with the project's secrets: g1t itself,
+   * or someone who can push to the repository (Write or more, a member's or
+   * a collaborator's). Anyone else gets a preview built without them, as
+   * their workflows run. A change g1t made for someone is trusted as they
+   * are, never more for being g1t's.
    */
-  private async insider(repo: RepoPath, author: User, actor: User): Promise<boolean> {
-    if (author.kind === "agent" || author.kind === "system") return true;
+  private async insider(repo: RepoPath, owner: User, actor: User): Promise<boolean> {
+    if (trustedOutright(owner)) return true;
     const found = await identityClient(this.env.IDENTITY)
-      .collaboratorPermission(actor, repo.namespace, repo.name, author.username)
+      .collaboratorPermission(actor, repo.namespace, repo.name, owner.username)
       .catch(() => null);
     return !!found?.ok && allows(found.value.role, "push");
   }
@@ -928,11 +931,13 @@ class Deployments {
       number,
       commit: pull.headCommit,
       source: pull.fork ?? repo.path,
-      // The pull request's fork may be private: read it as its author.
-      reader: pull.author,
+      // The pull request's fork may be private: read it as whoever it is
+      // for (whoever asked g1t for it, or its author), who is also who is
+      // trusted or not with the project's secrets.
+      reader: workOwner(pull),
       createdBy,
       settings,
-      trusted: await this.insider(repo.path, pull.author, actor),
+      trusted: await this.insider(repo.path, workOwner(pull), actor),
     });
   }
 

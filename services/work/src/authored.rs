@@ -1,5 +1,6 @@
 //! A person's work, for their profile: the issues and pull requests they
-//! opened, newest first, a page at a time.
+//! opened, and those g1t opened for them (`requested_by`, see Pull::owner),
+//! newest first, a page at a time.
 //!
 //! Only work on repositories the viewer may read is ever shown, counted or
 //! named. Which those are is the repos service's decision (`readable`, the
@@ -139,13 +140,13 @@ fn page_sql(a: &ByAuthorArgs, params: &mut Params, author: &str, visible: &str, 
            SELECT 'issue' AS kind, id, repo_id, number, title, state, reason,
              NULL AS status, created_at, updated_at, NULL AS merged_at
            FROM issues
-           WHERE author_id = {author} AND repo_id IN (SELECT value FROM json_each({visible}))
+           WHERE COALESCE(requested_by_id, author_id) = {author} AND repo_id IN (SELECT value FROM json_each({visible}))
            UNION ALL
            SELECT 'pull' AS kind, id, repo_id, number, title,
              CASE WHEN status IN ('draft', 'open') THEN 'open' ELSE 'closed' END AS state,
              NULL AS reason, status, created_at, updated_at, merged_at
            FROM pulls
-           WHERE author_id = {author} AND repo_id IN (SELECT value FROM json_each({visible}))
+           WHERE COALESCE(requested_by_id, author_id) = {author} AND repo_id IN (SELECT value FROM json_each({visible}))
          ) AS work
          {filter}
          ORDER BY {key} {direction}, id {direction}
@@ -154,15 +155,15 @@ fn page_sql(a: &ByAuthorArgs, params: &mut Params, author: &str, visible: &str, 
 }
 
 const COUNTS_SQL: &str = "SELECT
-   (SELECT count(*) FROM pulls WHERE author_id = ?1
+   (SELECT count(*) FROM pulls WHERE COALESCE(requested_by_id, author_id) = ?1
       AND repo_id IN (SELECT value FROM json_each(?2)) AND status = 'merged') AS pulls_merged,
-   (SELECT count(*) FROM pulls WHERE author_id = ?1
+   (SELECT count(*) FROM pulls WHERE COALESCE(requested_by_id, author_id) = ?1
       AND repo_id IN (SELECT value FROM json_each(?2)) AND status IN ('draft', 'open')) AS pulls_open,
-   (SELECT count(*) FROM pulls WHERE author_id = ?1
+   (SELECT count(*) FROM pulls WHERE COALESCE(requested_by_id, author_id) = ?1
       AND repo_id IN (SELECT value FROM json_each(?2))) AS pulls,
-   (SELECT count(*) FROM issues WHERE author_id = ?1
+   (SELECT count(*) FROM issues WHERE COALESCE(requested_by_id, author_id) = ?1
       AND repo_id IN (SELECT value FROM json_each(?2))) AS issues,
-   (SELECT count(*) FROM issues WHERE author_id = ?1
+   (SELECT count(*) FROM issues WHERE COALESCE(requested_by_id, author_id) = ?1
       AND repo_id IN (SELECT value FROM json_each(?2)) AND state = 'open') AS issues_open";
 
 #[derive(Deserialize)]
@@ -201,8 +202,8 @@ impl Work {
             .db
             .prepare(
                 "SELECT repo_id, count(*) AS n FROM (
-                   SELECT repo_id FROM issues WHERE author_id = ?1
-                   UNION ALL SELECT repo_id FROM pulls WHERE author_id = ?1
+                   SELECT repo_id FROM issues WHERE COALESCE(requested_by_id, author_id) = ?1
+                   UNION ALL SELECT repo_id FROM pulls WHERE COALESCE(requested_by_id, author_id) = ?1
                  ) GROUP BY repo_id ORDER BY n DESC LIMIT ?2",
             )
             .bind(&[person.id.as_str().into(), (MAX_READABLE as u32).into()])?
@@ -354,7 +355,7 @@ mod tests {
         let mut params = Params(Vec::new());
         let sql = page_sql(&args(), &mut params, "usr_1", "[]", 25);
         assert_eq!(sql.matches("json_each(?2)").count(), 2);
-        assert_eq!(sql.matches("author_id = ?1").count(), 2);
+        assert_eq!(sql.matches("COALESCE(requested_by_id, author_id) = ?1").count(), 2);
         assert_eq!(COUNTS_SQL.matches("json_each(?2)").count(), 5);
         assert!(sql.contains("LIMIT ?3"));
         assert!(sql.contains("ORDER BY created_at DESC, id DESC"));

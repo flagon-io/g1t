@@ -3,7 +3,7 @@ import { Link } from "react-router";
 
 import type { Route } from "./+types/pulls";
 import { page } from "../../lib/meta";
-import { madeByG1t, openedBy } from "../../lib/opened-by";
+import { openedBy } from "../../lib/opened-by";
 import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
 import { CheckBadge } from "../../components/checks";
 import { ChangeSize, PullIcon, StateTabs } from "../../components/work";
@@ -76,7 +76,7 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
                     <span className="mt-0.5 block text-xs text-faint">
                       #{pull.number} opened <TimeAgo at={pull.createdAt} /> by{" "}
                       {openedBy(pull).name}
-                      {madeByG1t(pull) && <> for {pull.author.username}</>}
+                      {pull.requestedBy && <> for {pull.requestedBy.username}</>}
                       {pull.issue != null && <> · for #{pull.issue}</>}
                       {pull.supersededBy != null && <> · superseded by #{pull.supersededBy}</>}
                     </span>

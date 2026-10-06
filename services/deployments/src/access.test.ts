@@ -58,3 +58,18 @@ test("anyone can see a public project's deployments, and no more", () => {
   assert.ok(!allowed(null, "redeploy", false));
   assert.equal(permission(null, repoRef(project(true))), null);
 });
+
+test("a preview of g1t's change for someone is trusted as they are", async () => {
+  const { workOwner } = await import("../../../packages/contracts/src/work.ts");
+  const { trustedOutright } = await import("./access.ts");
+  const g1t: User = { id: "usr_g1t_agent", username: "g1t", kind: "agent", verified: false, workspaces: [] };
+  const syntaqx: User = { id: "usr_1", username: "syntaqx", kind: "user", verified: false, workspaces: [] };
+  // Made for syntaqx: their role decides, as when they were its author.
+  const made = workOwner({ author: g1t, requestedBy: syntaqx });
+  assert.equal(made.username, "syntaqx");
+  assert.equal(trustedOutright(made), false);
+  // g1t's own work, which nobody asked for, is g1t's.
+  assert.equal(trustedOutright(workOwner({ author: g1t, requestedBy: null })), true);
+  // Anyone's own pull request: they are asked about.
+  assert.equal(trustedOutright(workOwner({ author: syntaqx, requestedBy: null })), false);
+});

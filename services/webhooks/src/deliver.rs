@@ -177,6 +177,29 @@ mod tests {
         assert!(g1t_kit::wire::camel_case_keys(&sent).is_empty());
     }
 
+    #[test]
+    fn a_pull_request_g1t_made_names_g1t_and_who_asked() {
+        // As the work service publishes it: g1t the author, the person who
+        // asked beside it, and the actor whoever caused the event.
+        let event = Event {
+            id: "evt_1".to_owned(),
+            kind: "pull.opened".to_owned(),
+            source: "work".to_owned(),
+            time: "2026-10-06T10:00:00Z".to_owned(),
+            repo_id: Some("rep_1".to_owned()),
+            actor: Some("usr_1".to_owned()),
+            data: json!({
+                "pullId": "pr_1", "repoId": "rep_1", "number": 14, "agent": "g1t",
+                "author": { "id": "usr_g1t_agent", "username": "g1t" },
+                "requestedBy": { "id": "usr_1", "username": "syntaqx" }
+            }),
+        };
+        let sent = payload(&event, "acme", Some(("rep_1", "acme/rocket")), Some("syntaqx"));
+        assert_eq!(sent["data"]["author"]["username"], "g1t");
+        assert_eq!(sent["data"]["requested_by"]["username"], "syntaqx");
+        assert_eq!(sent["actor"]["username"], "syntaqx");
+    }
+
     fn repo_event(kind: &str, data: Value) -> Event {
         Event {
             id: "evt_1".to_owned(),

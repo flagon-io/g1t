@@ -145,8 +145,9 @@ impl Work {
         if !a.actor.verified {
             return Ok(Outcome::fail(FailureCode::Forbidden, crate::UNVERIFIED));
         }
-        // Its author may always steer it; anyone else puts compute to work.
-        if pull.author.id != a.actor.id
+        // Its owner (whoever asked g1t for it, or its author) may always
+        // steer it; anyone else puts compute to work.
+        if !pull.is_owned_by(&a.actor.id)
             && let Outcome::Fail(failure) = crate::allowed(Some(&a.actor), &repo, Capability::Run)
         {
             return Ok(Outcome::Fail(failure));
@@ -444,7 +445,7 @@ impl Work {
             "get_by_id",
             &g1t_contracts::repos::GetByIdArgs {
                 id: pull.repo_id.clone(),
-                viewer: self.author_viewer(&pull).await?,
+                viewer: self.owner_viewer(&pull).await?,
             },
         )
         .await?;
@@ -477,7 +478,7 @@ impl Work {
                 source: pull.fork.unwrap_or_else(|| path.clone()),
                 repo: path,
                 number: pull.number,
-                author: pull.author,
+                author: pull.requested_by.unwrap_or(pull.author),
                 branch: pull.branch,
                 default_branch: repo.default_branch,
                 title: pull.title,

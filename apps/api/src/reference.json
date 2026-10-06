@@ -834,6 +834,7 @@
 					"verified": false,
 					"workspaces": []
 				},
+				"requested_by": null,
 				"created_at": "2026-10-01T18:04:11.482Z",
 				"updated_at": "2026-10-01T18:04:11.482Z",
 				"closed_at": null,
@@ -874,6 +875,7 @@
 				"verified": false,
 				"workspaces": []
 			},
+			"requested_by": null,
 			"created_at": "2026-10-01T18:04:11.482Z",
 			"updated_at": "2026-10-01T18:04:11.482Z",
 			"closed_at": null,
@@ -907,6 +909,7 @@
 					"verified": false,
 					"workspaces": []
 				},
+				"requested_by": null,
 				"created_at": "2026-10-01T18:04:11.482Z",
 				"updated_at": "2026-10-01T18:52:17.093Z",
 				"closed_at": "2026-10-01T18:52:17.093Z",
@@ -950,6 +953,7 @@
 						"verified": false,
 						"workspaces": []
 					},
+					"requested_by": null,
 					"created_at": "2026-10-01T18:20:02.117Z",
 					"updated_at": "2026-10-01T18:20:02.117Z"
 				},
@@ -993,6 +997,7 @@
 						"verified": false,
 						"workspaces": []
 					},
+					"requested_by": null,
 					"created_at": "2026-10-01T18:20:02.117Z",
 					"updated_at": "2026-10-01T18:52:17.093Z"
 				}
@@ -1048,6 +1053,7 @@
 				"verified": false,
 				"workspaces": []
 			},
+			"requested_by": null,
 			"created_at": "2026-10-01T18:04:11.482Z",
 			"updated_at": "2026-10-01T18:09:47.305Z",
 			"closed_at": null,
@@ -1084,6 +1090,7 @@
 				"verified": false,
 				"workspaces": []
 			},
+			"requested_by": null,
 			"created_at": "2026-10-01T18:04:11.482Z",
 			"updated_at": "2026-10-01T19:30:00.214Z",
 			"closed_at": "2026-10-01T19:30:00.214Z",
@@ -1115,6 +1122,7 @@
 				"verified": false,
 				"workspaces": []
 			},
+			"requested_by": null,
 			"created_at": "2026-10-01T18:04:11.482Z",
 			"updated_at": "2026-10-01T19:41:52.830Z",
 			"closed_at": null,
@@ -1156,6 +1164,13 @@
 			"assignees": [],
 			"reviewers": [],
 			"author": {
+				"id": "usr_g1t_agent",
+				"username": "g1t",
+				"kind": "agent",
+				"verified": false,
+				"workspaces": []
+			},
+			"requested_by": {
 				"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
 				"username": "syntaqx",
 				"kind": "user",
@@ -1166,7 +1181,7 @@
 			"updated_at": "2026-10-01T18:20:02.117Z",
 			"confidence": null
 		},
-		"notes": "The response is the pull request g1t opened, still a draft. Follow it with [get a pull request](/reference/api/pull-requests/get-pull-request/): `lifecycle` says what the agent is doing."
+		"notes": "The response is the pull request g1t opened, still a draft. g1t is its `author` and you are its `requested_by`: you may manage it as if you had opened it, and cannot approve it yourself. Follow it with [get a pull request](/reference/api/pull-requests/get-pull-request/): `lifecycle` says what the agent is doing."
 	},
 	"delegate": {
 		"request": {
@@ -1191,6 +1206,7 @@
 					"verified": false,
 					"workspaces": []
 				},
+				"requested_by": null,
 				"created_at": "2026-10-05T14:02:11.204Z",
 				"updated_at": "2026-10-05T14:02:11.204Z",
 				"closed_at": null,
@@ -1227,6 +1243,13 @@
 				"assignees": [],
 				"reviewers": [],
 				"author": {
+					"id": "usr_g1t_agent",
+					"username": "g1t",
+					"kind": "agent",
+					"verified": false,
+					"workspaces": []
+				},
+				"requested_by": {
 					"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
 					"username": "syntaqx",
 					"kind": "user",
@@ -1457,6 +1480,7 @@
 					"verified": false,
 					"workspaces": []
 				},
+				"requested_by": null,
 				"created_at": "2026-10-01T18:20:02.117Z",
 				"updated_at": "2026-10-01T18:35:44.902Z"
 			}
@@ -1501,6 +1525,7 @@
 					"verified": false,
 					"workspaces": []
 				},
+				"requested_by": null,
 				"created_at": "2026-10-01T18:20:02.117Z",
 				"updated_at": "2026-10-01T18:20:02.117Z"
 			},
@@ -1554,6 +1579,7 @@
 					"verified": false,
 					"workspaces": []
 				},
+				"requested_by": null,
 				"created_at": "2026-10-01T18:20:02.117Z",
 				"updated_at": "2026-10-01T18:35:44.902Z",
 				"confidence": null
@@ -1577,6 +1603,7 @@
 					"verified": false,
 					"workspaces": []
 				},
+				"requested_by": null,
 				"created_at": "2026-10-01T18:04:11.482Z",
 				"updated_at": "2026-10-01T18:20:02.117Z",
 				"closed_at": null,
@@ -1735,6 +1762,7 @@
 				"verified": false,
 				"workspaces": []
 			},
+			"requested_by": null,
 			"created_at": "2026-10-01T18:20:02.117Z",
 			"updated_at": "2026-10-01T18:33:10.398Z"
 		}
@@ -1810,6 +1838,7 @@
 				"verified": false,
 				"workspaces": []
 			},
+			"requested_by": null,
 			"created_at": "2026-10-01T18:20:02.117Z",
 			"updated_at": "2026-10-01T18:52:17.093Z"
 		},
@@ -1854,6 +1883,7 @@
 				"verified": false,
 				"workspaces": []
 			},
+			"requested_by": null,
 			"created_at": "2026-10-01T18:20:02.117Z",
 			"updated_at": "2026-10-01T19:02:48.760Z"
 		}
@@ -3645,6 +3675,7 @@
 					"number": null,
 					"state": null,
 					"author": null,
+					"requested_by": null,
 					"labels": [],
 					"topics": [],
 					"slug": null,
@@ -3654,7 +3685,7 @@
 			],
 			"notes": []
 		},
-		"notes": "`q` takes words, `\"exact phrases\"`, `-words` to leave out, and qualifiers: `repo:owner/name`, `org:` (or `workspace:`), `language:`, `path:` (a glob when it has `*`), `is:issue`, `is:pr`, `is:open`, `is:closed`, `is:merged`, `is:draft`, `is:public`, `is:private`, `author:` and `label:`; most can be left out with a leading `-`, as in `-label:wontfix`. `type` is `repositories`, `code`, `issues`, `pulls` or `people`; without it, `path:` means code, `is:pr` pull requests, `is:open`, `author:` or `label:` issues, and anything else repositories. `counts` says how many results each type has, up to 1,000. Each result's `snippet` (or, for code, each of its `lines`) is a list of parts, `highlight` true where the query matched. Code is searched on default branches and needs a word of three characters or more, unless the query names a `repo:`. Public content is returned to anyone, without a token; private content only to people who can read it (members of its workspace, and people given a role on the repository), checked when the search runs, so a repository made private, or a role taken away, stops appearing at once. A g1t agent's token can search too."
+		"notes": "`q` takes words, `\"exact phrases\"`, `-words` to leave out, and qualifiers: `repo:owner/name`, `org:` (or `workspace:`), `language:`, `path:` (a glob when it has `*`), `is:issue`, `is:pr`, `is:open`, `is:closed`, `is:merged`, `is:draft`, `is:public`, `is:private`, `author:` and `label:`; most can be left out with a leading `-`, as in `-label:wontfix`. `type` is `repositories`, `code`, `issues`, `pulls` or `people`; without it, `path:` means code, `is:pr` pull requests, `is:open`, `author:` or `label:` issues, and anything else repositories. `counts` says how many results each type has, up to 1,000. Each result's `snippet` (or, for code, each of its `lines`) is a list of parts, `highlight` true where the query matched. Code is searched on default branches and needs a word of three characters or more, unless the query names a `repo:`. Public content is returned to anyone, without a token; private content only to people who can read it (members of its workspace, and people given a role on the repository), checked when the search runs, so a repository made private, or a role taken away, stops appearing at once. A g1t agent's token can search too. An issue or pull request g1t opened has `author` `g1t` and `requested_by` the person it was for; `author:` matches the author."
 	},
 	"search_context": {
 		"params": {

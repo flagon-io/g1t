@@ -54,6 +54,7 @@ import {
   ok,
   reposClient,
   workClient,
+  workOwner,
   type Capability,
   type InstanceType,
   STANDARD_INSTANCE,
@@ -2391,11 +2392,12 @@ export default class RunnerService
     }
     if (!behind) return fail("conflict", "This pull request is already up to date.");
     // The result is pushed as the person asking, so they must be able to
-    // push there: a fork takes pushes only from whoever opened it.
-    if (pull.fork ? pull.author.id !== actor.id : !(await this.repoAllows(actor, repo, "push"))) {
+    // push there: a fork takes pushes only from whoever it is for (whoever
+    // asked g1t for it, or its author).
+    if (pull.fork ? workOwner(pull).id !== actor.id : !(await this.repoAllows(actor, repo, "push"))) {
       return fail(
         "forbidden",
-        pull.fork ? "Only whoever opened this pull request can update it." : needs("push"),
+        pull.fork ? "Only whoever opened this pull request, or asked g1t for it, can update it." : needs("push"),
       );
     }
     const admitted = await this.admitAgent("update", repo, number);

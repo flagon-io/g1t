@@ -8,6 +8,11 @@ what stands between it and its target branch: its checks, its reviews,
 whether it merges cleanly, and the button that merges it. Everything in it
 updates by itself while something is still running.
 
+A pull request g1t made shows **g1t** as its author and **requested by**
+the person who asked for it. That person can manage it as its author could,
+and cannot approve it; see
+[who a pull request is for](/guides/working-with-g1t/#who-a-pull-request-is-for).
+
 ## Checks
 
 A pull request's checks are the statuses reported on its head commit. Most
@@ -149,8 +154,9 @@ ways to resolve them:
 - **Resolve with g1t.** g1t merges the target branch in,
   resolves the conflicts keeping what both sides meant, and pushes the
   result. It is told which files conflict. Available to whoever can push to
-  the pull request: for a pull request's fork, whoever opened it; for a
-  branch, anyone with the Write role or higher.
+  the pull request: for a pull request's fork, whoever opened it (whoever
+  asked g1t for one it made); for a branch, anyone with the Write role or
+  higher.
 - **Resolve in the browser.** Coming soon.
 - **On the command line.** The box lists the commands, each with a copy
   button. For a pull request from a branch:
@@ -184,8 +190,8 @@ requires pull requests to be up to date.
 
 When the target branch has moved, the merge box says **main has moved since
 this was made**. Whoever can push to the pull request (whoever opened it,
-for one in its own fork; anyone with the Write [role](/guides/access-and-roles/) or higher,
-for a branch) can
+or asked g1t for it, for one in its own fork; anyone with the Write
+[role](/guides/access-and-roles/) or higher, for a branch) can
 press **Catch up with main now**:
 
 1. **When the two changed different files**, g1t merges `main` in itself,

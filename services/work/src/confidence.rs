@@ -712,8 +712,9 @@ impl Work {
             .map_or(0, |row| row.n))
     }
 
-    /// Whether a person other than the author approved the change since the
-    /// agent last revised it: someone has looked, so a hold is lifted.
+    /// Whether a person other than its owner (whoever asked g1t for it, or
+    /// its author) approved the change since the agent last revised it:
+    /// someone has looked, so a hold is lifted.
     pub(crate) async fn person_approved(&self, pull: &Pull, revised_at: Option<&str>) -> Result<bool> {
         #[derive(Deserialize)]
         struct Latest {
@@ -732,8 +733,7 @@ impl Work {
                 .into_iter()
                 .rev()
                 .filter(|row| {
-                    row.author_id != pull.author.id
-                        && row.author_id != AGENT_ID
+                    crate::lifecycle::from_someone_else(pull, &row.author_id)
                         && row.author_id != crate::lifecycle::POLICY_ACTOR_ID
                 })
                 .take(20)
@@ -750,7 +750,7 @@ impl Work {
                 .bind(&[
                     pull.repo_id.as_str().into(),
                     pull.number.into(),
-                    pull.author.id.as_str().into(),
+                    pull.owner().id.as_str().into(),
                     AGENT_ID.into(),
                     crate::lifecycle::POLICY_ACTOR_ID.into(),
                 ])?

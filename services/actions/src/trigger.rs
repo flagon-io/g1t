@@ -41,6 +41,13 @@ struct Subject {
     trusted: bool,
 }
 
+/// Whether whoever a pull request is for is trusted without asking
+/// identity: g1t's agent in work nobody asked it for, or someone whose
+/// role here is known to allow pushing.
+fn trusted_outright(owner: &User, repo: &Repo) -> bool {
+    owner.id == AGENT_ID || access::can(Some(owner), repo, Capability::Push)
+}
+
 impl Actions {
     async fn username(&self, id: Option<&str>) -> Result<Option<String>> {
         let Some(id) = id else { return Ok(None) };
@@ -52,12 +59,13 @@ impl Actions {
         Ok(names.get(id).cloned())
     }
 
-    /// Whether a pull request's author could push to the repository, so
-    /// its runs get the secrets and a token. Anyone else's, a reader's
-    /// included (who may open one on a private repository too), runs
-    /// without them.
-    async fn insider(&self, author: &User, repo: &Repo, ws: &User) -> Result<bool> {
-        if author.id == AGENT_ID || access::can(Some(author), repo, Capability::Push) {
+    /// Whether whoever a pull request is for (Pull::owner: whoever asked
+    /// g1t for it, or its author) could push to the repository, so its
+    /// runs get the secrets and a token. Anyone else's, a reader's included
+    /// (who may open one on a private repository too), runs without them.
+    /// A change g1t made for someone is trusted as they are.
+    async fn insider(&self, owner: &User, repo: &Repo, ws: &User) -> Result<bool> {
+        if trusted_outright(owner, repo) {
             return Ok(true);
         }
         // Stored authors carry no memberships or grants: ask identity, as
@@ -68,7 +76,7 @@ impl Actions {
             &access::CollaboratorPermissionArgs {
                 viewer: Some(ws.clone()),
                 path: RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() },
-                username: author.username.clone(),
+                username: owner.username.clone(),
             },
         )
         .await?;
@@ -217,7 +225,7 @@ impl Actions {
                         "user": review.map(|r| payload::user(&r.author.username)),
                     });
                 }
-                let trusted = self.insider(&pull.author, repo, ws).await?;
+                let trusted = self.insider(pull.owner(), repo, ws).await?;
                 let head_ref = payload::head_ref(pull);
                 if event_name == "pull_request_target" {
                     // In the base's context: its workflows, its head.
@@ -801,4 +809,62 @@ fn dispatch_inputs(trigger: &Trigger, given: &Map<String, Value>) -> Outcome<Map
         inputs.insert(name.clone(), value);
     }
     Outcome::Ok(inputs)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use g1t_contracts::work::{Pull, g1t_author};
+    use g1t_contracts::{Membership, PrincipalKind};
+
+    fn repo() -> Repo {
+        serde_json::from_value(json!({
+            "id": "rep_1", "namespace": "acme", "name": "web", "description": null, "isPrivate": true,
+            "ownerId": "ws_1", "defaultBranch": "main", "forkOf": null, "createdAt": ""
+        }))
+        .unwrap()
+    }
+
+    fn person(id: &str, username: &str) -> User {
+        User { id: id.into(), username: username.into(), kind: PrincipalKind::User, ..User::default() }
+    }
+
+    fn made_for(asker: User) -> Pull {
+        serde_json::from_value(json!({
+            "id": "pr_1", "repoId": "rep_1", "number": 14, "issue": 12, "title": "Fix it", "body": null,
+            "agent": "g1t", "runtime": "hosted", "status": "open",
+            "fork": { "namespace": "pulls", "name": "pr_1" }, "forkRepoId": "rep_f",
+            "branch": null, "headCommit": "abc", "mergeBase": null, "mergedBy": null, "mergedAt": null,
+            "supersededBy": null, "checkStatus": null,
+            "author": g1t_author(), "requestedBy": asker,
+            "createdAt": "", "updatedAt": ""
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn g1t_s_change_for_someone_is_trusted_as_they_are() {
+        // Stored people carry no memberships, so identity is asked about
+        // them; being g1t's change gives it nothing more.
+        let pull = made_for(person("usr_2", "ana"));
+        assert!(!trusted_outright(pull.owner(), &repo()));
+        // Someone known to be able to push is trusted at once.
+        let mut member = person("usr_1", "syntaqx");
+        member.workspaces.push(Membership::member("acme"));
+        let pull = made_for(member);
+        assert!(trusted_outright(pull.owner(), &repo()));
+    }
+
+    #[test]
+    fn the_payload_names_g1t_as_its_user_and_who_asked_for_it() {
+        let pull = made_for(person("usr_1", "syntaqx"));
+        let event = payload::pull(&repo(), &pull, &[]);
+        assert_eq!(event["user"]["login"], "g1t");
+        assert_eq!(event["user"]["type"], "Bot");
+        assert_eq!(event["requested_by"]["login"], "syntaqx");
+        assert_eq!(event["requested_by"]["type"], "User");
+        let as_issue = payload::pull_as_issue(&repo(), &pull, &[]);
+        assert_eq!(as_issue["user"]["login"], "g1t");
+        assert_eq!(as_issue["requested_by"]["login"], "syntaqx");
+    }
 }

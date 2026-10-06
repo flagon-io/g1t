@@ -6,6 +6,7 @@ import type { Segment, SiteHit } from "@g1t/contracts";
 
 import { Avatar, TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
+import { PersonLink } from "./work";
 
 /** Text with the parts that matched the query marked. */
 export function Highlighted({ parts, className }: { parts: Segment[]; className?: string }) {
@@ -158,9 +159,16 @@ function Item({ hit }: { hit: SiteHit }) {
         {hit.snippet.length > 0 && <Highlighted parts={hit.snippet} className="mt-1 block text-sm text-muted" />}
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint">
           {hit.author && (
-            <Link to={`/u/${hit.author}`} className="hover:text-fg">
-              {hit.author}
-            </Link>
+            <span>
+              <PersonLink name={hit.author} className="hover:text-fg" />
+              {hit.requestedBy && (
+                <>
+                  {" "}
+                  for{" "}
+                  <PersonLink name={hit.requestedBy} className="hover:text-fg" />
+                </>
+              )}
+            </span>
           )}
           {hit.labels.map((label) => (
             <span key={label} className="rounded-full px-2 py-px text-muted ring-1 ring-line">
