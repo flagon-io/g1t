@@ -9,7 +9,7 @@ import { ButtonLink } from "./components/ui";
 import type { NavCounts } from "./lib/nav";
 import { identity, statusAdmin } from "./lib/services.server";
 import { settle } from "./lib/settle";
-import { requireStaff } from "./lib/staff";
+import { requireStaff, zoneContext } from "./lib/staff";
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
@@ -28,7 +28,9 @@ export async function loader({ context }: Route.LoaderArgs) {
   // The sidebar's counts: a service that does not answer shows none.
   const [waitlist, incidents] = await Promise.all([settle(identity.waitlistPending()), settle(statusAdmin.openCount())]);
   const counts: NavCounts = { waitlist: waitlist.ok ? waitlist.value : 0, incidents: incidents.ok ? incidents.value : 0 };
-  return { email, counts };
+  // Every page says times in this zone (components/ui.tsx `When`).
+  const { zone, chosen } = context.get(zoneContext);
+  return { email, counts, zone, zoneChosen: chosen };
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {

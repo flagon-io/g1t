@@ -252,7 +252,7 @@ function ProfileTabs({
       to={value === "overview" ? `/u/${username}` : `/u/${username}?tab=${value}`}
       aria-current={tab === value ? "page" : undefined}
       preventScrollReset
-      className={`-mb-px flex items-center gap-2 border-b-2 px-1 pb-3 text-sm whitespace-nowrap transition-colors ${
+      className={`-mb-px flex items-center gap-2 border-b-2 px-3 pb-3 text-sm whitespace-nowrap transition-colors ${
         tab === value ? "border-accent font-medium text-fg" : "border-transparent text-muted hover:text-fg"
       }`}
     >
@@ -264,7 +264,7 @@ function ProfileTabs({
     </Link>
   );
   return (
-    <nav aria-label="Profile" className="flex gap-x-6 overflow-x-auto border-b border-line">
+    <nav aria-label="Profile" className="flex gap-1 overflow-x-auto border-b border-line">
       {item("overview", "Overview", <LayoutGrid size={15} />)}
       {item("pulls", "Pull requests", <GitPullRequest size={15} />, counts.pulls)}
       {item("issues", "Issues", <CircleDot size={15} />, counts.issues)}

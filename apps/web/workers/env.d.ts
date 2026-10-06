@@ -32,6 +32,8 @@ declare global {
       BLOBS: KVNamespace;
       /** Uploaded avatars by SHA-256, with `{ contentType }`; written by identity. */
       AVATARS: KVNamespace;
+      /** The self-hosted runner's releases (scripts/runner-release.mjs). Absent when self-hosted. */
+      DOWNLOADS?: R2Bucket;
     }
   }
   interface Env extends Cloudflare.Env {}

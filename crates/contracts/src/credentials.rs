@@ -216,6 +216,7 @@ pub const READ_OPERATIONS: &[&str] = &[
     "list_my_repo_invitations",
     "list_outside_collaborators",
     "get_repo_settings",
+    "list_check_names",
     "get_merge_queue",
     "recall",
     "list_issues",

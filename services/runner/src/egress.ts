@@ -9,7 +9,7 @@
  * out at all.
  */
 
-import type { Guardrails } from "@g1t/contracts";
+import type { Guardrails, WorkflowDomain } from "@g1t/contracts";
 
 /** A host name as it is compared: lower case, no port, no trailing dot. */
 export function normalizeHost(host: string): string {
@@ -204,6 +204,68 @@ export const BUILD_HOSTS: readonly string[] = [
   "deb.debian.org",
   "security.debian.org",
 ];
+
+/**
+ * A workflow job, for the guardrails' workflow-only domains: its workflow
+ * file, the environment it names, and whether its run is trusted (not a
+ * pull request from a fork). Only a trusted run's jobs get them.
+ */
+export type WorkflowJob = { workflow: string | null; environment: string | null; trusted: boolean };
+
+/** The file name of a workflow's path: `.g1t/workflows/deploy.yml` is `deploy.yml`. */
+function workflowFile(path: string): string {
+  return path.trim().split(/[\\/]/).pop() ?? "";
+}
+
+/**
+ * The workflow-only hosts a job of `workflow` (its path) in `environment`
+ * may reach, as `Guardrails::workflow_hosts` decides it: names compare
+ * without regard to case, and an empty list of workflows or environments
+ * is any.
+ */
+export function workflowHosts(entries: readonly WorkflowDomain[] | undefined, workflow: string, environment: string | null | undefined): string[] {
+  const file = workflowFile(workflow).toLowerCase();
+  const env = environment?.trim().toLowerCase() ?? null;
+  const hosts: string[] = [];
+  for (const entry of entries ?? []) {
+    const workflowOk = !entry.workflows.length || entry.workflows.some((w) => workflowFile(w).toLowerCase() === file);
+    const envOk = !entry.environments.length || (env != null && entry.environments.some((e) => e.toLowerCase() === env));
+    if (workflowOk && envOk && !hosts.includes(entry.domain)) hosts.push(entry.domain);
+  }
+  return hosts;
+}
+
+/**
+ * The workflow-only domains a sandbox gets: for a workflow job of a
+ * trusted run, those whose workflows and environments include its own.
+ * Never for a deploy build, an agent or a pull request from a fork.
+ */
+export function jobHosts(
+  policy: { workflowDomains?: readonly WorkflowDomain[] },
+  kind: "actions" | "deploy",
+  job: WorkflowJob | null | undefined,
+): string[] {
+  if (kind !== "actions" || !job?.trusted || !job.workflow) return [];
+  return workflowHosts(policy.workflowDomains, job.workflow, job.environment);
+}
+
+/**
+ * The Durable Object namespace behind each sandbox class, by its binding:
+ * a sandbox's outbound handlers are told its class, and report back to its
+ * own object. Larger machines are classes of their own (wrangler.jsonc).
+ */
+export const SANDBOX_BINDINGS: Record<string, string> = {
+  AttemptSandbox: "SANDBOX",
+  Sandbox2Core: "SANDBOX_2CORE",
+  Sandbox4Core: "SANDBOX_4CORE",
+};
+
+/** The namespace of a sandbox of `className`; the standard one when unknown. */
+export function sandboxNamespace(env: object, className: string | undefined): DurableObjectNamespace {
+  const bindings = env as Record<string, DurableObjectNamespace | undefined>;
+  const binding = (className && SANDBOX_BINDINGS[className]) || "SANDBOX";
+  return (bindings[binding] ?? bindings.SANDBOX) as DurableObjectNamespace;
+}
 
 /** What a build sandbox may reach on top of its project's list. */
 export function buildHosts(kind: "actions" | "deploy"): string[] {

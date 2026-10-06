@@ -36,11 +36,13 @@ export function wranglerEnv(base = process.env) {
 
 /**
  * Runs a command; resolves with { code, out } (stdout and stderr together,
- * in order). `onLine` sees each line as it comes.
+ * in order). `onLine` sees each line as it comes; `input` is written to
+ * its stdin.
  */
-export function exec(command, args, { cwd = ROOT, env = process.env, onLine, shell = false } = {}) {
+export function exec(command, args, { cwd = ROOT, env = process.env, onLine, shell = false, input } = {}) {
   return new Promise((resolve) => {
     const child = spawn(command, args, { cwd, env, shell, windowsHide: true });
+    if (input !== undefined) child.stdin.end(input);
     let out = "";
     let partial = "";
     const take = (chunk) => {

@@ -12,14 +12,12 @@ test("a form becomes what to put the agent on", () => {
   const form = new FormData();
   form.set("title", "  Retry webhooks with backoff ");
   form.set("body", " Failed deliveries are dropped. ");
-  form.set("checks", "npm test\n\n  npm run lint  ");
   form.append("label", "bug");
   form.set("labels", "webhooks, ");
   assert.deepEqual(delegateForm(form), {
     title: "Retry webhooks with backoff",
     body: "Failed deliveries are dropped.",
     labels: ["bug", "webhooks"],
-    checks: ["npm test", "npm run lint"],
   });
 });
 

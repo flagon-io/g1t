@@ -92,6 +92,7 @@ export default defineConfig({
 						{ label: 'Model providers', slug: 'guides/models' },
 						{ label: 'Webhooks', slug: 'guides/webhooks' },
 						{ label: 'GitHub Actions', slug: 'guides/actions' },
+						{ label: 'Self-hosted runners', slug: 'guides/self-hosted-runners' },
 					],
 				},
 				{
@@ -123,10 +124,15 @@ export default defineConfig({
 					items: [
 						{ label: 'API overview', slug: 'reference/api' },
 						{ label: 'MCP tools', slug: 'reference/mcp' },
+						{ label: "What g1t can't do yet", slug: 'reference/limitations' },
 						{ label: 'Try it in the explorer', link: '/api/reference/', attrs: { target: '_self' } },
 						{ label: 'OpenAPI document', link: 'https://api.g1t.sh/openapi.json' },
 						{ label: 'llms.txt', link: 'https://g1t.sh/llms.txt' },
 					],
+				},
+				{
+					label: 'About',
+					items: [{ label: 'An open letter to Cloudflare', slug: 'about/open-letter-to-cloudflare' }],
 				},
 				...apiGroups,
 			],

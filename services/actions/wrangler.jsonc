@@ -4,7 +4,7 @@
 	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
 	"compatibility_date": "2026-09-26",
 	// Runs next to its database: moving a run along makes many queries in turn.
-	"placement": { "mode": "smart" },
+	"placement": { "mode": "off" },
 	"main": "build/index.js",
 	"build": { "command": "node ../../scripts/build-rust-worker.mjs" },
 	// Reached only through service bindings.
@@ -26,8 +26,13 @@
 		{ "binding": "RUNNER", "service": "g1t-runner" },
 		{ "binding": "EVENTS", "service": "g1t-events" },
 		// A repository's secrets and variables belong to its project.
-		{ "binding": "PROJECTS", "service": "g1t-projects" }
+		{ "binding": "PROJECTS", "service": "g1t-projects" },
+		// Self-hosted runners' time, recorded on usage at $0.
+		{ "binding": "BILLING", "service": "g1t-billing" }
 	],
+	// actions/cache entries, which the API writes: deleted here when they
+	// are evicted or expire.
+	"r2_buckets": [{ "binding": "ACTIONS_CACHE", "bucket_name": "g1t-actions-cache" }],
 	// Every event on the bus: what starts workflows, and pushes that change them.
 	"queues": {
 		"consumers": [{ "queue": "g1t-events-actions", "max_batch_size": 10, "max_batch_timeout": 1, "max_retries": 3 }]

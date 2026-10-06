@@ -16,9 +16,45 @@ use std::cmp::Ordering;
 /// How the job is going, for success(), failure(), cancelled(), always().
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Status {
+    /// Everything before succeeded: success() is true.
     Success,
+    /// Something before failed (a step; for a job's `if:`, a job it needs
+    /// or any job before those): failure() is true.
     Failure,
+    /// The run was cancelled: cancelled() is true.
     Cancelled,
+    /// For a job's `if:`: nothing before it failed and the run was not
+    /// cancelled, but a job it needs did not succeed (it was skipped, or
+    /// cancelled by itself). success(), failure() and cancelled() are all
+    /// false, so the job is skipped unless its `if:` says otherwise, such
+    /// as `always()` or `!failure() && !cancelled()`.
+    Incomplete,
+}
+
+/// The status a job's `if:` is decided with, as on GitHub, from the
+/// results of the jobs it needs (`needs.<id>.result`), whether any job
+/// before those failed (`ancestor_failed`: failure() looks through every
+/// ancestor, so a job after a skipped one still sees a failure before
+/// it), and whether the run was cancelled.
+pub fn job_status<'a>(needs: impl IntoIterator<Item = &'a str>, ancestor_failed: bool, run_cancelled: bool) -> Status {
+    if run_cancelled {
+        return Status::Cancelled;
+    }
+    let mut all_succeeded = true;
+    for result in needs {
+        match result {
+            "success" => {}
+            "failure" => return Status::Failure,
+            _ => all_succeeded = false,
+        }
+    }
+    if ancestor_failed {
+        Status::Failure
+    } else if all_succeeded {
+        Status::Success
+    } else {
+        Status::Incomplete
+    }
 }
 
 pub struct Scope<'a> {
@@ -1595,6 +1631,56 @@ mod tests {
         ));
         // Nested inside another call still counts.
         assert!(cond(Status::Failure, "contains(toJSON(always()), 'true')"));
+    }
+
+    /// A job's status from what it needs, and its `if:` with it, as on
+    /// GitHub: a skipped need is not a failure.
+    #[test]
+    fn job_status_from_needs() {
+        let ok = |needs: &[&str]| job_status(needs.iter().copied(), false, false);
+        assert_eq!(ok(&[]), Status::Success);
+        assert_eq!(ok(&["success", "success"]), Status::Success);
+        assert_eq!(ok(&["success", "failure"]), Status::Failure);
+        assert_eq!(ok(&["skipped"]), Status::Incomplete);
+        assert_eq!(ok(&["success", "skipped"]), Status::Incomplete);
+        // A need cancelled by itself, in a run that was not.
+        assert_eq!(ok(&["cancelled"]), Status::Incomplete);
+        // A failure anywhere wins over a skip.
+        assert_eq!(ok(&["skipped", "failure"]), Status::Failure);
+        // A failure further back, behind a need that was skipped for it.
+        assert_eq!(job_status(["skipped"], true, false), Status::Failure);
+        // A cancelled run is cancelled, whatever its jobs did.
+        assert_eq!(job_status(["failure"], true, true), Status::Cancelled);
+        assert_eq!(job_status(["success"], false, true), Status::Cancelled);
+    }
+
+    #[test]
+    fn job_conditions_after_a_skipped_need() {
+        let skipped = job_status(["success", "skipped"], false, false);
+        // The default `if:` (success()) skips it; so does any condition
+        // that does not check status.
+        assert!(!cond(skipped, ""));
+        assert!(!cond(skipped, "success()"));
+        assert!(!cond(skipped, "github.event_name == 'push'"));
+        // Nothing failed and nothing was cancelled.
+        assert!(!cond(skipped, "failure()"));
+        assert!(!cond(skipped, "cancelled()"));
+        assert!(cond(skipped, "always()"));
+        assert!(cond(skipped, "!cancelled()"));
+        assert!(cond(skipped, "!failure() && !cancelled()"));
+        assert!(cond(skipped, "${{ !failure() && !cancelled() && github.event_name == 'push' }}"));
+
+        let failed = job_status(["skipped"], true, false);
+        assert!(cond(failed, "failure()"));
+        assert!(!cond(failed, "!failure() && !cancelled()"));
+        assert!(!cond(failed, ""));
+        assert!(cond(failed, "always()"));
+
+        let cancelled = job_status(["success"], false, true);
+        assert!(cond(cancelled, "cancelled()"));
+        assert!(!cond(cancelled, "!failure() && !cancelled()"));
+        assert!(!cond(cancelled, "failure()"));
+        assert!(!cond(cancelled, "success()"));
     }
 
     #[test]

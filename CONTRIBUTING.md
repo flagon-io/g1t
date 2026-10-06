@@ -1,8 +1,8 @@
 # Contributing to g1t
 
 g1t is built the way it asks others to build: issues and pull requests on
-[g1t.sh/flagon-io/g1t](https://g1t.sh/flagon-io/g1t), checks that prove a change
-done, and a merge queue that keeps `main` passing.
+[g1t.sh/flagon-io/g1t](https://g1t.sh/flagon-io/g1t), required checks that prove
+a change works, and a merge queue that keeps `main` passing.
 
 ## A change ships with its docs
 

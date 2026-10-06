@@ -88,7 +88,7 @@ export function SecretsPanel({
 
       <p className="mt-4 rounded-lg border border-line bg-surface px-4 py-2.5 text-xs text-muted">
         Built in: workflows get <code className="text-fg">secrets.G1T_TOKEN</code>, the workspace's own token for
-        the run, with <code className="text-fg">secrets.GITHUB_TOKEN</code> as its alias. Agents, acceptance checks
+        the run, with <code className="text-fg">secrets.GITHUB_TOKEN</code> as its alias. Agents
         and the merge queue never read secrets or variables, and runs for people outside the workspace get no secrets.
       </p>
 

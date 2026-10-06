@@ -23,7 +23,7 @@ import type {
   TimelineKind,
 } from "@g1t/contracts";
 
-import type { Streak } from "./detect.ts";
+import type { DeployWindow, Streak, WatchedDraft } from "./detect.ts";
 import { type Entry, type IncidentFacts, durations, shortId } from "./incidents.ts";
 import { type Current, type DayRow, HISTORY_DAYS, dayOf, overallImpact } from "./model.ts";
 import { postmortemDraft } from "./postmortem.ts";
@@ -705,10 +705,15 @@ export async function loadStreaks(db: D1Database): Promise<Map<string, Streak>> 
   return new Map(list.map((s) => [s.component, { ...s, alerted: s.alerted === 1 }]));
 }
 
+/**
+ * Keeps exactly these runs: every other part's run is over. With none
+ * left, every row goes (`NOT IN (NULL)` matches nothing in SQL, which once
+ * kept a finished run alive and let its old start leak into the next one).
+ */
 export async function saveStreaks(db: D1Database, streaks: Streak[]): Promise<void> {
   const keep = streaks.map((s) => s.component);
   await db.batch([
-    db.prepare(`DELETE FROM streak WHERE component NOT IN (${inList(keep)})`).bind(...keep),
+    keep.length ? db.prepare(`DELETE FROM streak WHERE component NOT IN (${inList(keep)})`).bind(...keep) : db.prepare(`DELETE FROM streak`),
     ...streaks.map((s) =>
       db
         .prepare(
@@ -737,6 +742,90 @@ export async function openRefs(db: D1Database): Promise<{ id: string; components
     map.set(r.id, parts);
   }
   return [...map].map(([id, components]) => ({ id, components }));
+}
+
+/** The last deploy the deploy tool reported, kept in `meta`. */
+export async function loadDeploy(db: D1Database): Promise<DeployWindow | null> {
+  const row = (await db.prepare(`SELECT value FROM meta WHERE key = 'deploy'`).first()) as { value?: string } | null;
+  if (!row?.value) return null;
+  try {
+    const w = JSON.parse(row.value) as Partial<DeployWindow>;
+    return typeof w.started_at === "string" ? { id: w.id ?? null, started_at: w.started_at, finished_at: w.finished_at ?? null } : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveDeploy(db: D1Database, window: DeployWindow): Promise<void> {
+  await db
+    .prepare(`INSERT INTO meta (key, value) VALUES ('deploy', ?1) ON CONFLICT (key) DO UPDATE SET value = ?1`)
+    .bind(JSON.stringify(window))
+    .run();
+}
+
+const HEALTHY = "draft_healthy:";
+
+/**
+ * Detected drafts no one has picked up (unacknowledged, never published),
+ * with their parts and since when those have been healthy.
+ */
+export async function watchedDrafts(db: D1Database): Promise<WatchedDraft[]> {
+  const list = rows<{ id: string; title: string; started_at: string; healthy_since: string | null; component: string | null }>(
+    (await db
+      .prepare(
+        `SELECT i.id, i.title, i.started_at, m.value AS healthy_since, c.component FROM incident i
+         LEFT JOIN incident_component c ON c.incident_id = i.id AND c.impact != 'operational'
+         LEFT JOIN meta m ON m.key = '${HEALTHY}' || i.id
+         WHERE i.source = 'detected' AND i.visibility = 'draft' AND i.acknowledged_at IS NULL AND i.resolved_at IS NULL AND i.published_at IS NULL`,
+      )
+      .all()) as D1Result,
+  );
+  const map = new Map<string, WatchedDraft>();
+  for (const r of list) {
+    const d = map.get(r.id) ?? { id: r.id, title: r.title, started_at: r.started_at, healthy_since: r.healthy_since ?? null, components: [] };
+    if (r.component) d.components.push(r.component);
+    map.set(r.id, d);
+  }
+  return [...map.values()];
+}
+
+/** Keeps each watched draft's healthy-since, and forgets drafts no longer watched. */
+export async function saveHealthy(db: D1Database, healthy: { id: string; since: string | null }[]): Promise<void> {
+  const keys = healthy.filter((h) => h.since).map((h) => `${HEALTHY}${h.id}`);
+  await db.batch([
+    keys.length
+      ? db.prepare(`DELETE FROM meta WHERE key LIKE '${HEALTHY}%' AND key NOT IN (${inList(keys)})`).bind(...keys)
+      : db.prepare(`DELETE FROM meta WHERE key LIKE '${HEALTHY}%'`),
+    ...healthy
+      .filter((h) => h.since)
+      .map((h) =>
+        db
+          .prepare(`INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT (key) DO UPDATE SET value = excluded.value WHERE meta.value != excluded.value`)
+          .bind(`${HEALTHY}${h.id}`, h.since),
+      ),
+  ]);
+}
+
+/**
+ * Dismisses a detected draft that recovered, as `status`, resolved at the
+ * moment it recovered. Only while it is still an untouched draft: returns
+ * false (and changes nothing) when staff got to it first.
+ */
+export async function autoDismiss(db: D1Database, id: string, recoveredAt: string, text: string, now: Date): Promise<boolean> {
+  const done = await db
+    .prepare(
+      `UPDATE incident SET visibility = 'dismissed', status = 'resolved', resolved_at = ?2
+       WHERE id = ?1 AND visibility = 'draft' AND source = 'detected' AND acknowledged_at IS NULL AND resolved_at IS NULL`,
+    )
+    .bind(id, recoveredAt)
+    .run();
+  if ((done.meta?.changes ?? 0) === 0) return false;
+  await db.batch([
+    ...timelineStatements(db, id, [{ kind: "dismissed", public: false, status: null, text }], now, "status"),
+    db.prepare(`DELETE FROM meta WHERE key = ?1`).bind(`${HEALTHY}${id}`),
+    auditStatement(db, now.toISOString(), "status", "incident_dismissed", id, `Dismissed automatically: ${text}`),
+  ]);
+  return true;
 }
 
 // --- Audit ---------------------------------------------------------------------------------

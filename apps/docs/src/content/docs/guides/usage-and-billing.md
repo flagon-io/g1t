@@ -5,7 +5,7 @@ description: What is free on g1t, what the g1t plan costs and includes, how comp
 
 The forge is free: repositories, git, issues, pull requests and review cost
 nothing, for public and private work. What costs money is compute, the
-things g1t runs for you: agents, the sandboxes they and your checks run in,
+things g1t runs for you: agents, the sandboxes they and your workflows run in,
 deployed apps, and, on the plan, storage and git traffic past the free
 amounts. Each is charged at what it costs g1t plus 20%, to the workspace
 that owns the repository. There is no seat price, and on the plan there
@@ -30,9 +30,15 @@ repository public, delete what you do not need, or start the plan, where
 storage past 1 GB is usage and pushes never stop. Public repositories are
 never charged for storage.
 
-Compute is not free. Agents, checks, workflows, the merge queue,
+Compute is not free. Agents, workflows, the merge queue,
 deployments and semantic search need [the g1t plan](#the-g1t-plan), or a
 [card check](#no-card-no-compute) for the trial and the open-source pool.
+
+Your own machines are. Workflow jobs on
+[self-hosted runners](/guides/self-hosted-runners/) cost nothing, on every
+plan, the free one included, and need no card; their minutes show on usage
+as **Self-hosted runner time** at $0. Agent work you send to your runners
+still needs its model paid for, unless it uses your own model provider.
 
 ## The g1t plan
 
@@ -42,7 +48,7 @@ are in it. It is never priced per person.
 - **$10 of usage each month** at cost plus 20%, used first.
 - **Everyone in the workspace** at one price, never per person.
 - **Unlimited** projects, previews and repositories.
-- Agents, checks, workflows, the merge queue,
+- Agents, workflows, the merge queue,
   [deployments](/guides/deployments/) and semantic search.
 - Usage past $10 is charged at cost plus 20%, **up to your
   [spend limit](#limits)**.
@@ -69,12 +75,14 @@ Every price is what g1t pays plus 20%. The live figures are on
 | What | Unit | Costs g1t | You pay |
 | --- | --- | --- | --- |
 | Models | A run | What the provider charged | Cost + 20% |
-| Sandbox time (agents, checks, workflows, the merge queue) | Second | About $0.000016 | About $0.000019 |
+| Sandbox time (agents, workflows, the merge queue) | Second | About $0.000016 | About $0.000019 |
+| [Larger machines](#workflow-jobs-on-larger-machines) for workflow jobs (`g1t-2core`, `g1t-4core`) | Second | About 2.8 and 5.1 times a sandbox second | Cost + 20% |
 | Deploy builds | Second | About $0.000016 | About $0.000019 ($0.0012 a minute) |
 | App requests | Million | $0.30 | $0.36 |
 | App CPU time | Million CPU milliseconds | $0.02 | $0.024 |
 | Custom domains | Domain-month | $0.10 | $0.12 |
 | Private storage, past the free 1 GB | GB-month | $0.50 | $0.60 |
+| [Actions cache](#actions-cache) storage | GB-month | $0.015 | $0.018 |
 | Git operations, past the free 50,000 a month | 1,000 | $0.15 | $0.18 |
 | Search embeddings | Million tokens | $0.067 | $0.0804 |
 | Security scans | Million CPU ms / million rows | $0.02 / $1.00 | $0.024 / $1.20 |
@@ -142,13 +150,13 @@ but starts no trial.
 The card check unlocks:
 
 - [The trial](#the-trial): $5 of usage, once.
-- [The open-source pool](#the-open-source-pool): checks, workflows and
+- [The open-source pool](#the-open-source-pool): workflows and
   the merge queue on public repositories.
 
 ## The trial
 
 Once its card is checked, a workspace gets **$5 of trial credit**, once. It
-pays for usage at cost plus 20%: agents, sandbox time, checks, workflows,
+pays for usage at cost plus 20%: agents, sandbox time, workflows,
 the merge queue and semantic search. It never pays for deployments.
 
 - Each card gets one trial, whichever workspace it is checked in. Prepaid
@@ -168,7 +176,7 @@ by g1t**. When the trial is used up, new compute waits for the plan.
 ## The open-source pool
 
 g1t sets aside **$25 a month** for public repositories, at most **$2 a
-month** for any one repository. It pays for **checks, workflows and the
+month** for any one repository. It pays for **workflows and the
 merge queue on public repositories**, after a card check. It does not pay
 for agents, deployments, storage or embeddings.
 
@@ -186,9 +194,9 @@ pool**.
 | A review by a g1t agent | Yes |
 | Catching up with `main` | Yes, when it needed an agent |
 | Planning an [outcome](/guides/outcomes/) | Yes |
-| Acceptance checks | [Sandbox time](#sandbox-time) |
 | The [merge queue](/guides/merge-queue/) | [Sandbox time](#sandbox-time) |
-| [Workflow](/guides/actions/) jobs | [Sandbox time](#sandbox-time) |
+| [Workflow](/guides/actions/) jobs | [Sandbox time](#sandbox-time), more on a [larger machine](#workflow-jobs-on-larger-machines) |
+| [Actions cache](#actions-cache) | What it holds, on the plan only |
 | [Deployments](/guides/deployments/) | Builds, requests, CPU time and custom domains, from the first. Projects and previews are not charged. |
 | [Private repository storage](#storage-search-embeddings-and-scans) | Past the free 1 GB, on the plan only |
 | [Git operations](#git-operations) | Past the free 50,000 a month, on the plan only |
@@ -222,6 +230,7 @@ billing charges from.
 | App requests and CPU | Per million requests, per million CPU milliseconds |
 | Custom domains | Per domain-month |
 | Private storage past the free 1 GB | Per GB-month |
+| Actions cache storage | Per GB-month |
 | Git operations past the free 50,000 a month | Per 1,000 |
 | Search embeddings | Per million tokens |
 | Security scans | Per million CPU milliseconds and per million rows written |
@@ -249,7 +258,7 @@ Prices keep themselves current as those costs move:
 Every sandbox g1t starts runs on Cloudflare Containers, and Cloudflare
 charges g1t for every second of it. So each one is metered by the second,
 from start to stop, whatever it was for: agents, reviews, revisions,
-catch-ups, planning, acceptance checks, the merge queue and workflow jobs.
+catch-ups, planning, the merge queue and workflow jobs.
 There are no free minutes.
 
 A sandbox second is priced in two parts: memory, disk and the Durable
@@ -261,6 +270,24 @@ Each sandbox is one line on the [statement](#the-statement), such as
 *Checks on acme/api#12: 3m 12s of sandbox time*. Deploy builds are not
 counted here: [Deployments](/guides/deployments/) charges them by the
 second, from the first, under **Builds**.
+
+### Workflow jobs on larger machines
+
+A workflow job whose `runs-on` names a [larger machine](/guides/actions/#machine-sizes)
+runs on a larger Cloudflare Containers instance, and its seconds cost what
+that instance costs g1t, plus 20%:
+
+| `runs-on` | Instance | Its memory and disk, against the standard machine's | A second with its vCPUs as busy as an average sandbox's |
+| --- | --- | --- | --- |
+| `g1t-2core` | 2 vCPU, 8 GiB, 16 GB | 1.9 times | About 2.8 times a sandbox second |
+| `g1t-4core` | 4 vCPU, 12 GiB, 20 GB | 2.7 times | About 5.1 times a sandbox second |
+
+A job that reports its own CPU is priced on it: its memory and disk for
+every second, and the vCPU-seconds it used. One that does not is priced
+at the right-hand column. Its line on the statement names the machine,
+such as *A workflow job in acme/api on g1t-4core: 6m 40s of sandbox
+time*. A job usually finishes several times sooner on a larger machine,
+so it often costs about the same.
 
 ## Git operations
 
@@ -294,6 +321,18 @@ The plan's included usage and the trial pay for them first.
 | Private repository storage | $0.50 a GB-month (Cloudflare Artifacts) | On the plan, each day, what the workspace's private repositories hold past the free 1 GB. A month's GB-months are those days added up, divided by 30. |
 | Search embeddings | $0.067 per million tokens (Workers AI) | The text of private repositories, issues and pull requests put in the search index. Public text and searches are not charged. |
 | Security scans | $0.02 per million CPU milliseconds and $1.00 per million rows written (Workers and D1) | The CPU each history scan and dependency check takes and the rows it writes. |
+
+### Actions cache
+
+What a workspace's [`actions/cache`](/guides/actions/#the-cache) entries
+hold is measured every hour, and each day's largest figure counts. A
+month's GB-months are those days added up, divided by 30, charged at
+$0.018 a GB-month: R2's $0.015, plus 20%. It is charged from the first
+byte, to workspaces on the plan only, as **Actions cache storage** under
+**Git operations & storage**. A free workspace's caches are never charged;
+they are held to the same 10 GB a repository as everyone's.
+
+### Private repository storage
 
 Storage is charged at $0.60 a GB-month (cost plus 20%). It is measured from
 the packs pushed through g1t's git endpoints to each repository and its
@@ -610,8 +649,8 @@ time. Every member can see it.
 ## The preview
 
 While payments on g1t are in test mode, g1t's hosted models are open only
-to the workspaces g1t runs itself. Every other workspace's agents, checks
-and merge queue work with [its own model provider](/guides/models/), and
+to the workspaces g1t runs itself. Every other workspace's agents and merge
+queue work with [its own model provider](/guides/models/), and
 the sandbox time is paid as above. When payments go live, every workspace
 can use g1t's hosted models.
 

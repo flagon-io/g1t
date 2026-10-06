@@ -59,20 +59,26 @@ fn plan_outputs(migrate: bool, core: &[(&str, &str, bool)], edge: &[(&str, &str,
 }
 
 /// Whether `job` starts, given its needs' results, as the actions service
-/// decides it (services/actions/src/plan.rs `decide`): any need that did
-/// not succeed makes the status a failure.
+/// decides it (services/actions/src/plan.rs `decide`, with
+/// `expr::job_status`): a need that was skipped is not a failure, and a
+/// failure anywhere before the job is.
 fn starts(workflow: &Workflow, job: &str, needs: &[(&str, &str)], outputs: &Value, inputs: Value, cancelled: bool) -> bool {
+    starts_after(workflow, job, needs, outputs, inputs, cancelled, false)
+}
+
+/// `starts`, where `failed_before` says a job further back failed (one the
+/// needs were skipped for).
+fn starts_after(workflow: &Workflow, job: &str, needs: &[(&str, &str)], outputs: &Value, inputs: Value, cancelled: bool, failed_before: bool) -> bool {
     let job = workflow.jobs.iter().find(|j| j.id == job).unwrap();
     let mut needs_ctx = Map::new();
-    let mut status = if cancelled { Status::Cancelled } else { Status::Success };
+    let mut results = Vec::new();
     for need in &job.needs {
         let result = needs.iter().find(|(name, _)| name == need).map(|(_, r)| *r).unwrap_or("success");
-        if result != "success" && matches!(status, Status::Success) {
-            status = Status::Failure;
-        }
+        results.push(result);
         let outputs = if need == "plan" { outputs.clone() } else { json!({}) };
         needs_ctx.insert(need.clone(), json!({ "result": result, "outputs": outputs }));
     }
+    let status = expr::job_status(results, failed_before, cancelled);
     let mut contexts = Map::new();
     contexts.insert("needs".into(), Value::Object(needs_ctx));
     contexts.insert("inputs".into(), inputs);
@@ -131,6 +137,12 @@ fn deploy_stages_follow_one_another() {
     assert!(!starts(&deploy, "front", &[("migrate", "success"), ("core", "failure"), ("edge", "skipped")], &all, push.clone(), false));
     // A cancelled run starts nothing more.
     assert!(!starts(&deploy, "edge", &[("migrate", "success"), ("core", "success")], &all, push.clone(), true));
+    // A failed check: plan, and every stage after it, is skipped, and
+    // failure() still sees the check's failure through them.
+    let skipped = [("plan", "skipped"), ("migrate", "skipped"), ("core", "skipped"), ("edge", "skipped")];
+    assert!(!starts_after(&deploy, "plan", &[("check", "failure")], &all, push.clone(), false, false));
+    assert!(!starts_after(&deploy, "core", &skipped, &all, push.clone(), false, true));
+    assert!(!starts_after(&deploy, "front", &skipped, &all, push.clone(), false, true));
 
     // A dry run plans and stops.
     let dry = json!({ "dry_run": true, "units": "", "all": false });
@@ -155,4 +167,33 @@ fn deploy_stage_matrices_come_from_the_plan() {
         .map(|c| (c["group"].as_str().unwrap(), c["units"].as_str().unwrap(), c["rust"].as_bool().unwrap()))
         .collect();
     assert_eq!(groups, [("rust-1", "events,work", true), ("rust-2", "repos", true), ("ts", "projects,og", false)]);
+}
+
+#[test]
+fn deploy_builds_rust_on_the_larger_machine_with_its_target_cached() {
+    let deploy = read("deploy.yml");
+    for stage in ["core", "edge", "front"] {
+        let job = deploy.jobs.iter().find(|j| j.id == stage).unwrap();
+        let on = |rust: bool| {
+            let mut contexts = Map::new();
+            contexts.insert("matrix".into(), json!({ "group": "g", "units": "u", "rust": rust }));
+            let scope = Scope { contexts: &contexts, status: Status::Success, hash_files: None };
+            expr::interpolate_value(&job.runs_on, &scope).unwrap()
+        };
+        assert_eq!(on(true), json!("g1t-4core"), "{stage}");
+        assert_eq!(on(false), json!("ubuntu-latest"), "{stage}");
+    }
+    let source = std::fs::read_to_string(workflows_dir().join("deploy.yml")).unwrap();
+    assert!(source.contains("target/wasm32-unknown-unknown/release"));
+    assert!(source.contains("!target/**/incremental"));
+}
+
+#[test]
+fn the_runner_base_rebuilds_weekly_on_a_machine_with_docker() {
+    let base = read("runner-base.yml");
+    assert!(base.trigger("schedule").is_some());
+    assert!(base.trigger("workflow_dispatch").is_some());
+    assert!(base.trigger("push").unwrap().branches.allows("main"));
+    let job = base.jobs.iter().find(|j| j.id == "build").unwrap();
+    assert_eq!(job.runs_on, json!(["self-hosted", "docker"]));
 }

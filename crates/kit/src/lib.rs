@@ -60,6 +60,7 @@ pub async fn call<A: Serialize, R: DeserializeOwned>(
     response.json().await
 }
 
+pub mod d1;
 pub mod wire;
 
 /// Helpers for bindings that workers-rs has no typed wrapper for, such as

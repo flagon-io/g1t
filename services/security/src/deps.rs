@@ -235,7 +235,7 @@ impl Security {
                 [] => "a known vulnerability".to_owned(),
             };
             let title: String = format!("Upgrade {package} to {target}: fixes {named}").chars().take(200).collect();
-            let (body, checks) = issue_text(&ecosystem, &package, &target, &vulns, located);
+            let body = issue_text(&ecosystem, &package, &target, &vulns, located);
             let issue: Outcome<Issue> = g1t_kit::call(
                 &self.work,
                 "open_issue",
@@ -245,7 +245,7 @@ impl Security {
                     title,
                     body,
                     labels: vec!["dependencies".to_owned(), "security".to_owned()],
-                    checks,
+                    checks: Vec::new(),
                 },
             )
             .await?;
@@ -346,9 +346,10 @@ fn vulnerability(repo_id: &str, item: &Located, advisory: &Advisory) -> Vulnerab
 }
 
 /// The issue's body, written for the agent that takes it as much as for a
-/// person, and its acceptance checks: the project's tests, and that no
-/// lockfile still resolves a vulnerable version.
-fn issue_text(ecosystem: &str, package: &str, target: &str, vulns: &[&VulnRow], located: &[Located]) -> (String, Vec<String>) {
+/// person, ending with what done means: commands that show no lockfile
+/// still resolves a vulnerable version, and the project's tests. The pull
+/// request merges on the repository's required checks, like any other.
+fn issue_text(ecosystem: &str, package: &str, target: &str, vulns: &[&VulnRow], located: &[Located]) -> String {
     let mut body = format!(
         "`{package}` ({ecosystem}) has known vulnerabilities with a fix in **{target}**. Upgrade it to {target} or later \
          everywhere it is locked, keeping other changes to what the upgrade needs.\n\n\
@@ -389,12 +390,14 @@ fn issue_text(ecosystem: &str, package: &str, target: &str, vulns: &[&VulnRow], 
     let locked: Vec<String> = manifests.iter().map(|(path, version)| format!("`{path}` ({version})")).collect();
     body.push_str(&format!("\nLocked in: {}.\n", locked.join(", ")));
     body.push_str(
-        "\nThe acceptance checks pass once no lockfile resolves a vulnerable version and the tests still pass. \
-         If the fix needs a major upgrade that breaks the build, change the code that depends on it in the same pull request.\n\n\
-         ---\n_Opened by g1t's dependency upkeep. Turn it off for this project on its Security page._",
+        "\nIf the fix needs a major upgrade that breaks the build, change the code that depends on it in the same pull request.",
     );
     checks.extend(tests);
-    (body, checks)
+    let mut done = vec!["No lockfile resolves a vulnerable version, and the tests still pass.".to_owned()];
+    done.extend(g1t_contracts::work::commands_pass(&checks));
+    let mut body = g1t_contracts::work::with_definition_of_done(&body, &done);
+    body.push_str("\n\n---\n_Opened by g1t's dependency upkeep. Turn it off for this project on its Security page._");
+    body
 }
 
 #[cfg(test)]
@@ -451,11 +454,14 @@ mod tests {
             lockfile: Lockfile::PackageLock,
             path: "web/package-lock.json".into(),
         }];
-        let (body, checks) = issue_text("npm", "lodash", "4.17.21", &[&row], &located);
+        let body = issue_text("npm", "lodash", "4.17.21", &[&row], &located);
         assert!(body.contains("[GHSA-35jh-r3h4-6jhm](https://osv.dev/vulnerability/GHSA-35jh-r3h4-6jhm) | high | 4.17.20 | 4.17.21"));
         assert!(body.contains("`web/package-lock.json` (4.17.20)"));
-        assert_eq!(checks.len(), 2);
-        assert!(checks[0].contains("node_modules/lodash") && checks[0].contains("'web/package-lock.json'"));
-        assert_eq!(checks[1], "cd 'web' && npm ci && npm test --if-present");
+        let (_, done) = body.split_once("## Definition of done\n\n").unwrap();
+        let items: Vec<&str> = done.lines().take_while(|line| line.starts_with("- ")).collect();
+        assert_eq!(items.len(), 3);
+        assert!(items[1].contains("node_modules/lodash") && items[1].contains("'web/package-lock.json'"));
+        assert_eq!(items[2], "- `cd 'web' && npm ci && npm test --if-present` passes.");
+        assert!(body.ends_with("on its Security page._"));
     }
 }

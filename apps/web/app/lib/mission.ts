@@ -384,12 +384,14 @@ export const PIPELINE: { stage: PipelineStage; label: string }[] = [
 
 /**
  * Where a pull request stands on its way to landing, from what a list of
- * pull requests says about it, the run at work on it and the merge queue.
+ * pull requests says about it, the run at work on it, the merge queue, and
+ * for one g1t sees through, its lifecycle (waiting on its checks).
  */
 export function pipelineStage(
   pull: Pick<Pull, "status" | "checkStatus" | "number">,
   run: Pick<AgentRun, "kind"> | undefined,
   queued: Set<number>,
+  lifecycle?: { stage: string } | null,
 ): PipelineStage {
   if (pull.status === "merged") return "landed";
   if (queued.has(pull.number)) return "queue";
@@ -400,6 +402,7 @@ export function pipelineStage(
     return "working";
   }
   if (pull.status === "draft") return "working";
+  if (lifecycle?.stage === "checking") return "checking";
   if (pull.checkStatus === "queued" || pull.checkStatus === "running") return "checking";
   return "reviewing";
 }

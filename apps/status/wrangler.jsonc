@@ -33,6 +33,11 @@
 	// STATUS_SECRET secret, which signs unsubscribe links:
 	//   npx wrangler secret put STATUS_SECRET
 	// Without either, the page offers the feeds only.
+	//
+	// The deploy tool says when a deploy starts and finishes (POST /deploys,
+	// bearer STATUS_DEPLOY_TOKEN), so restarts do not draft incidents.
+	// Optional; without it, deploys are not announced:
+	//   npx wrangler secret put STATUS_DEPLOY_TOKEN
 	"send_email": [{ "name": "EMAIL", "remote": true }],
 	"vars": {
 		// Where each part is. An empty one leaves that part off the page,

@@ -3,12 +3,13 @@
 //!
 //! A batch of up to [`BATCH`] entries is tested at once, speculatively: one
 //! sandbox per entry builds the default branch with that entry and every
-//! entry ahead of it merged in, runs all of their acceptance checks, and
-//! pushes the result to `g1t-queue/<entry>`. Entries land in order, each by
-//! moving the default branch to its tested state, once everything ahead has
-//! landed. One that fails leaves the queue with a failed check run, which
-//! sends a g1t agent back to fix it; the entries behind it are tested again
-//! without it.
+//! entry ahead of it merged in, and pushes the result to
+//! `g1t-queue/<entry>`. The repository's `merge_group` workflows then run
+//! on that commit, and the default branch's required checks must pass
+//! there. Entries land in order, each by moving the default branch to its
+//! tested state, once everything ahead has landed. One that fails leaves
+//! the queue with a failed check run, which sends a g1t agent back to fix
+//! it; the entries behind it are tested again without it.
 
 use futures_util::future::try_join_all;
 use g1t_contracts::events::{ChecksEvent, QueueChanged};
@@ -30,8 +31,6 @@ const BATCH: usize = 4;
 const TESTING_MINUTES: u64 = 45;
 /// How many entries that left the queue are shown.
 const RECENT: u32 = 20;
-/// How many completed issues' checks make up the default branch's contract.
-const CONTRACT_ISSUES: u32 = 30;
 /// Where tested states are pushed, in the repository itself.
 const BRANCH_PREFIX: &str = "g1t-queue/";
 
@@ -365,8 +364,8 @@ impl Work {
             return Ok(Vec::new());
         };
 
-        // Each entry's change, as it is now, and the checks it brings.
-        let mut items: Vec<(EntryRow, Pull, QueueStackItem, Vec<String>)> = Vec::new();
+        // Each entry's change, as it is now.
+        let mut items: Vec<(EntryRow, Pull, QueueStackItem)> = Vec::new();
         for row in batch {
             let Some(pull) = self.pull_by_id(&row.pull_id).await? else {
                 continue;
@@ -388,14 +387,6 @@ impl Work {
             let Some(commit) = head else {
                 continue;
             };
-            let checks = match pull.issue {
-                Some(number) => self
-                    .issue(&repo.id, number)
-                    .await?
-                    .map(|issue| issue.checks)
-                    .unwrap_or_default(),
-                None => Vec::new(),
-            };
             let source = pull.fork.clone().unwrap_or_else(|| RepoPath {
                 namespace: repo.namespace.clone(),
                 name: repo.name.clone(),
@@ -407,48 +398,14 @@ impl Work {
                 branch: pull.branch.clone().unwrap_or_else(|| repo.default_branch.clone()),
                 commit,
             };
-            items.push((row, pull, item, checks));
-        }
-
-        // What the default branch has promised so far: every check an issue
-        // passed when it landed, newest first.
-        #[derive(Deserialize)]
-        struct ChecksRow {
-            checks: String,
-        }
-        let mut contract: Vec<String> = Vec::new();
-        for row in self
-            .db
-            .prepare(
-                "SELECT checks FROM issues
-                 WHERE repo_id = ? AND state = 'closed' AND reason = 'completed' AND checks != '[]'
-                 ORDER BY closed_at DESC LIMIT ?",
-            )
-            .bind(&[repo.id.as_str().into(), CONTRACT_ISSUES.into()])?
-            .all()
-            .await?
-            .results::<ChecksRow>()?
-        {
-            for check in serde_json::from_str::<Vec<String>>(&row.checks).unwrap_or_default() {
-                if !contract.contains(&check) {
-                    contract.push(check);
-                }
-            }
+            items.push((row, pull, item));
         }
 
         let now = rfc3339(now_ms());
         let mut jobs = Vec::new();
         for index in 0..items.len() {
-            let (row, pull, _, _) = &items[index];
-            let stack: Vec<QueueStackItem> = items[..=index].iter().map(|(_, _, item, _)| item.clone()).collect();
-            let mut checks: Vec<String> = Vec::new();
-            for (_, _, _, theirs) in &items[..=index] {
-                for check in theirs {
-                    if !checks.contains(check) {
-                        checks.push(check.clone());
-                    }
-                }
-            }
+            let (row, pull, _) = &items[index];
+            let stack: Vec<QueueStackItem> = items[..=index].iter().map(|(_, _, item)| item.clone()).collect();
             let ahead: Vec<u32> = stack[..index].iter().map(|item| item.number).collect();
             let token = new_token();
             self.db
@@ -483,9 +440,10 @@ impl Work {
                 default_branch: repo.default_branch.clone(),
                 base_commit: base.clone(),
                 branch: row.branch(),
-                contract_checks: contract.iter().filter(|check| !checks.contains(check)).cloned().collect(),
+                // The state is checked by its merge_group workflows.
+                contract_checks: Vec::new(),
                 stack,
-                checks,
+                checks: Vec::new(),
                 actor,
             });
         }
@@ -509,14 +467,25 @@ impl Work {
                 "This state is no longer being tested.",
             ));
         }
-        let passed = a.error.is_none() && a.results.iter().all(|result| result.passed);
-        // A state that passed its checks still runs the repository's
-        // `merge_group` workflows, as GitHub's merge queue does; it stays in
-        // testing until they finish (see `statuses`).
-        let workflows = match (&a.combined_commit, passed) {
+        let built = a.error.is_none() && a.results.iter().all(|result| result.passed);
+        // A state that was built runs the repository's `merge_group`
+        // workflows; it stays in testing until they finish (see `statuses`),
+        // and the branch's required checks must pass on it.
+        let workflows = match (&a.combined_commit, built) {
             (Some(commit), true) => self.start_merge_group(&row, commit).await.unwrap_or(0),
             _ => 0,
         };
+        let required = self.settings(&row.repo_id).await?.required_checks;
+        // Nothing runs on it, so the required checks never would report.
+        let unchecked = (built && workflows == 0 && !required.is_empty()).then(|| {
+            format!(
+                "the required {} {} cannot report on it: no workflow runs on merge_group events. Add merge_group to the on: of the workflows the branch requires",
+                if required.len() == 1 { "check" } else { "checks" },
+                crate::statuses::list(&required)
+            )
+        });
+        let passed = built && unchecked.is_none();
+        let error = a.error.clone().or(unchecked);
         let state = if !passed {
             QueueState::Failed
         } else if workflows > 0 {
@@ -535,7 +504,7 @@ impl Work {
                 state.as_str().into(),
                 a.combined_commit.as_deref().map_or(JsValue::NULL, JsValue::from),
                 serde_json::to_string(&a.results)?.into(),
-                a.error.as_deref().map_or(JsValue::NULL, JsValue::from),
+                error.as_deref().map_or(JsValue::NULL, JsValue::from),
                 state.as_str().into(),
                 rfc3339(now_ms()).into(),
                 row.id.as_str().into(),
@@ -543,7 +512,8 @@ impl Work {
             .run()
             .await?;
         if !passed {
-            self.eject(&row, &a).await?;
+            let report = ReportQueueArgs { error, ..a };
+            self.eject(&row, &report).await?;
         }
         self.settle(&row.repo_id).await?;
         self.changed(&row.repo_id).await?;
@@ -577,9 +547,15 @@ impl Work {
         })
     }
 
-    /// Workflows on a combined state finished: it passes and lands in turn,
-    /// or fails and leaves the queue as for failed checks.
-    pub(crate) async fn merge_group_finished(&self, repo_id: &str, commit: &str, failed: &[String]) -> Result<()> {
+    /// Workflows on a combined state finished: it passes and lands in turn
+    /// when they all passed and so did every required check, or fails and
+    /// leaves the queue.
+    pub(crate) async fn merge_group_finished(
+        &self,
+        repo_id: &str,
+        commit: &str,
+        facts: &crate::statuses::WorkflowFacts,
+    ) -> Result<()> {
         let row = self
             .db
             .prepare(
@@ -589,7 +565,8 @@ impl Work {
             .first::<EntryRow>(None)
             .await?;
         let Some(row) = row else { return Ok(()) };
-        let passed = failed.is_empty();
+        let missing = facts.expected();
+        let passed = facts.failed.is_empty() && facts.required_failed().is_empty() && missing.is_empty();
         self.db
             .prepare("UPDATE queue_entries SET state = ?, finished_at = CASE WHEN ? = 'failed' THEN ? ELSE NULL END WHERE id = ?")
             .bind(&[
@@ -606,10 +583,15 @@ impl Work {
                 token: String::new(),
                 combined_commit: Some(commit.to_owned()),
                 results: Vec::new(),
-                error: Some(format!(
-                    "the workflow {} failed on it",
-                    crate::statuses::list(failed)
-                )),
+                error: Some(if facts.failed.is_empty() {
+                    format!(
+                        "the required {} {} did not report on it. Add merge_group to the on: of the workflows the branch requires",
+                        if missing.len() == 1 { "check" } else { "checks" },
+                        crate::statuses::list(&missing)
+                    )
+                } else {
+                    format!("the workflow {} failed on it", crate::statuses::list(&facts.failed))
+                }),
                 conflict_with: None,
                 conflicts: Vec::new(),
             };
@@ -663,9 +645,12 @@ impl Work {
             (Some(error), _) if error.starts_with("the workflow ") => {
                 format!("{} when it was combined with {state}.", error.replacen("the workflow", "The workflow", 1).trim_end_matches(" on it"))
             }
+            (Some(error), _) if error.starts_with("the required ") => {
+                format!("Combined with {state}, {error}.")
+            }
             (Some(error), _) => format!("Its combined state could not be built or checked: {error}"),
             (None, _) => format!(
-                "The acceptance checks failed when it was combined with {state}, though it may pass on its own."
+                "It failed when it was combined with {state}, though it may pass on its own."
             ),
         };
         let now = now_ms();

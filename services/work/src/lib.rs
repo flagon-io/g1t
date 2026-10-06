@@ -29,7 +29,7 @@ use g1t_contracts::events::{
 };
 use g1t_contracts::identity::UsernameArgs;
 use g1t_contracts::repos::{
-    ForkArgs, GetArgs, HeadArgs, LandArgs, Landed, NeedsAgentReason, PullBranchUpdate, Repo, RepoPath,
+    ForkArgs, GetArgs, HeadArgs, LandArgs, Landed, NeedsAgentReason, PullBranchUpdate, ReadableArgs, Repo, RepoPath,
     UpdatePullBranchArgs,
 };
 use g1t_contracts::access::{self, Capability, Denied};
@@ -430,12 +430,10 @@ impl Work {
         };
         let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
         check!(writable(&repo));
-        let checks: Vec<&str> = a
-            .checks
-            .iter()
-            .map(|check| check.trim())
-            .filter(|check| !check.is_empty())
-            .collect();
+        // Commands given the old way are words for the agent now: added to
+        // the body under "Definition of done". What has to pass to merge is
+        // the branch's required checks.
+        let body = with_definition_of_done(&a.body, &commands_pass(&a.checks));
 
         let now = now_ms();
         let id = new_id("iss", now);
@@ -453,9 +451,9 @@ impl Work {
                 repo.id.as_str().into(),
                 number.into(),
                 title.into(),
-                a.body.trim().into(),
+                body.into(),
                 serde_json::to_string(&labels)?.into(),
-                serde_json::to_string(&checks)?.into(),
+                "[]".into(),
                 a.actor.id.as_str().into(),
                 a.actor.username.as_str().into(),
                 timestamp.as_str().into(),
@@ -1118,6 +1116,56 @@ impl Work {
         Ok(Outcome::Ok(rows.into_iter().map(Pull::from).collect()))
     }
 
+    /// `pulls_for_repos`: what `list_pulls` gives, open and closed, for many
+    /// repositories at once: one access check with repos for all of them
+    /// and one query, instead of two of each per repository.
+    async fn pulls_for_repos(&self, a: PullsForReposArgs) -> Result<Vec<RepoPulls>> {
+        let ids: Vec<String> = a.repo_ids.into_iter().take(MAX_PULLS_FOR_REPOS).collect();
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let readable: Vec<Repo> = g1t_kit::call(&self.repos, "readable", &ReadableArgs { ids, viewer: a.viewer }).await?;
+        if readable.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids: Vec<&str> = readable.iter().map(|repo| repo.id.as_str()).collect();
+        let limit = a.limit.clamp(1, LIST_PAGE);
+        // The newest `limit` of each repository's open (draft or open) and
+        // closed (merged or closed) pull requests.
+        let rows = self
+            .db
+            .prepare(format!(
+                "SELECT * FROM (
+                   SELECT {PULL_COLUMNS}, ROW_NUMBER() OVER (
+                     PARTITION BY pulls.repo_id, pulls.status IN ('draft', 'open') ORDER BY pulls.number DESC
+                   ) AS place
+                   FROM pulls WHERE pulls.repo_id IN (SELECT value FROM json_each(?1))
+                 ) WHERE place <= ?2"
+            ))
+            .bind(&[serde_json::to_string(&ids)?.into(), limit.into()])?
+            .all()
+            .await?
+            .results::<PullRow>()?;
+        let mut answer: Vec<RepoPulls> = readable
+            .iter()
+            .map(|repo| RepoPulls { repo_id: repo.id.clone(), open: Vec::new(), closed: Vec::new() })
+            .collect();
+        for pull in rows.into_iter().map(Pull::from) {
+            let Some(entry) = answer.iter_mut().find(|entry| entry.repo_id == pull.repo_id) else {
+                continue;
+            };
+            match pull.status {
+                PullStatus::Draft | PullStatus::Open => entry.open.push(pull),
+                PullStatus::Merged | PullStatus::Closed => entry.closed.push(pull),
+            }
+        }
+        for entry in &mut answer {
+            entry.open.sort_by_key(|pull| std::cmp::Reverse(pull.number));
+            entry.closed.sort_by_key(|pull| std::cmp::Reverse(pull.number));
+        }
+        Ok(answer)
+    }
+
     async fn get_pull(&self, a: ViewArgs) -> Result<Outcome<PullDetail>> {
         let (repo, pull) = check!(self.pull_at(&a.repo, a.number, &a.viewer).await?);
         let issue = match pull.issue {
@@ -1156,7 +1204,10 @@ impl Work {
         if confidence.is_some() {
             pull.confidence = confidence;
         }
+        let (statuses, settings) =
+            try_join(self.statuses(&repo.id, pull.head_commit.as_deref()), self.settings(&repo.id)).await?;
         Ok(Outcome::Ok(PullDetail {
+            required_checks: required_checks(&settings.required_checks, &statuses),
             comments,
             checks,
             overlaps,
@@ -1166,7 +1217,7 @@ impl Work {
             landing,
             stalled,
             messages: self.messages(&pull.id).await?,
-            statuses: self.statuses(&repo.id, pull.head_commit.as_deref()).await?,
+            statuses,
             mergeable,
             conflicts,
             earlier_checks: self.earlier_checks(&pull.id).await?,
@@ -1432,25 +1483,23 @@ impl Work {
             }
         }
         let settings = self.settings(&repo.id).await?;
-        // Where the repository does not allow it, asking to ignore the
-        // checks changes nothing.
+        // The default branch's protection: its required checks must pass on
+        // the head, for a person's pull request and an agent's alike. Where
+        // the repository does not allow bypassing them, asking to bypass
+        // them changes nothing.
         if !a.ignore_checks || !settings.allow_ignoring_checks {
-            let waiting = match pull.check_status {
-                Some(CheckStatus::Queued | CheckStatus::Running) => {
-                    Some("The acceptance checks are still running.")
-                }
-                Some(CheckStatus::Failed) => Some("The acceptance checks did not pass."),
-                Some(CheckStatus::Errored) => Some("The acceptance checks could not be run."),
-                Some(CheckStatus::Passed) | None => None,
-            };
-            // Workflows run on its head count as checks too.
-            let workflows = statuses::WorkflowFacts::of(&self.statuses(&repo.id, pull.head_commit.as_deref()).await?).refusal();
-            let waiting = waiting.map(str::to_owned).or(workflows);
-            if let Some(reason) = waiting {
+            let queue = (pull.check_status == Some(CheckStatus::Failed))
+                .then(|| "It failed in the merge queue; push a fix to try again.".to_owned());
+            let required = statuses::WorkflowFacts::of(
+                &self.statuses(&repo.id, pull.head_commit.as_deref()).await?,
+                &settings.required_checks,
+            )
+            .refusal();
+            if let Some(reason) = queue.or(required) {
                 let remedy = if settings.allow_ignoring_checks {
-                    "Wait or fix them, or merge anyway by ignoring the checks."
+                    "Wait or fix them, or bypass the required checks as you merge."
                 } else {
-                    "This repository only merges pull requests whose checks pass."
+                    "This repository only merges pull requests whose required checks pass."
                 };
                 return Ok(Outcome::fail(
                     FailureCode::Conflict,
@@ -1914,10 +1963,13 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     let Some(method) = rpc_method(&request) else {
         return Response::error("Not found", 404);
     };
+    // A replica near the caller when it asks for one (crates/kit/src/d1.rs).
+    let (db, served) = g1t_kit::d1::open(&env, "DB", &request)?;
     let body: serde_json::Value = request.json().await?;
-    let work = service(&env)?;
+    let mut work = service(&env)?;
+    work.db = db;
 
-    match method.as_str() {
+    let answered = match method.as_str() {
         "open_issue" => reply(&work.open_issue(args(body)?).await?),
         "delegate_issue" => reply(&work.delegate_issue(args(body)?).await?),
         "report_confidence" => reply(&work.report_confidence(args(body)?).await?),
@@ -1930,6 +1982,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "counts" => reply(&work.counts(args(body)?).await?),
         "add_comment" => reply(&work.add_comment(args(body)?).await?),
         "start_checks" => reply(&work.start_checks(args(body)?).await?),
+        "seen_checks" => reply(&work.seen_checks(args(body)?).await?),
         "report_checks" => reply(&work.report_checks(args(body)?).await?),
         "set_commit_status" => reply(&work.set_commit_status(args(body)?).await?),
         "start_review" => reply(&work.start_review(args(body)?).await?),
@@ -1951,6 +2004,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "report_review" => reply(&work.report_review(args(body)?).await?),
         "open_pull" => reply(&work.open_pull(args(body)?).await?),
         "list_pulls" => reply(&work.list_pulls(args(body)?).await?),
+        "pulls_for_repos" => reply(&work.pulls_for_repos(args(body)?).await?),
         "get_pull" => reply(&work.get_pull(args(body)?).await?),
         "update_pull" => reply(&work.update_pull(args(body)?).await?),
         "catch_up_pull" => reply(&work.catch_up_pull(args(body)?).await?),
@@ -2009,7 +2063,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "get_agent_rules" => reply(&work.get_agent_rules(args(body)?).await?),
         "set_agent_rules" => reply(&work.set_agent_rules(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
-    }
+    };
+    served.finish(answered)
 }
 
 /// Events from the bus, delivered on this service's own queue.

@@ -5,25 +5,49 @@
 	"compatibility_date": "2026-09-26",
 	"main": "./src/index.ts",
 	"workers_dev": false,
+	// One image (the base plus the runner binary), on three machine sizes.
+	// scripts/deploy.mjs deploys with each image set to the reference it
+	// built and pushed (docs/DEPLOYING.md, "The runner's images"), so a
+	// deploy builds nothing; "./Dockerfile" here is for building by hand.
 	"containers": [
 		{
 			"class_name": "AttemptSandbox",
-			// Built from the repository root so the image can compile the
-			// runner crate.
 			"image": "./Dockerfile",
-			"image_build_context": "../..",
 			"instance_type": "standard-1",
 			"max_instances": 20,
 			// A deploy replaces sandboxes. Ones that are busy are given this
 			// long, in seconds, to finish first, so shipping g1t does not
 			// kill agents in the middle of their work.
 			"rollout_active_grace_period": 7200
+		},
+		{
+			// Workflow jobs with `runs-on: g1t-2core`: 2 vCPU, 8 GiB, 16 GB.
+			"class_name": "Sandbox2Core",
+			"image": "./Dockerfile",
+			"instance_type": "standard-3",
+			"max_instances": 10,
+			"rollout_active_grace_period": 7200
+		},
+		{
+			// Workflow jobs with `runs-on: g1t-4core`: 4 vCPU, 12 GiB, 20 GB.
+			"class_name": "Sandbox4Core",
+			"image": "./Dockerfile",
+			"instance_type": "standard-4",
+			"max_instances": 10,
+			"rollout_active_grace_period": 7200
 		}
 	],
 	"durable_objects": {
-		"bindings": [{ "name": "SANDBOX", "class_name": "AttemptSandbox" }]
+		"bindings": [
+			{ "name": "SANDBOX", "class_name": "AttemptSandbox" },
+			{ "name": "SANDBOX_2CORE", "class_name": "Sandbox2Core" },
+			{ "name": "SANDBOX_4CORE", "class_name": "Sandbox4Core" }
+		]
 	},
-	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["AttemptSandbox"] }],
+	"migrations": [
+		{ "tag": "v1", "new_sqlite_classes": ["AttemptSandbox"] },
+		{ "tag": "v2", "new_sqlite_classes": ["Sandbox2Core", "Sandbox4Core"] }
+	],
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "REPOS", "service": "g1t-repos" },

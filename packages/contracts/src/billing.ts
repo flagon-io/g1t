@@ -907,6 +907,10 @@ export interface BillingApi {
     cpuSeconds?: number | null;
     /** The reservation it started under, settled with this cost. */
     reservationId?: string | null;
+    /** It ran on one of the workspace's self-hosted runners: its minutes go on usage at $0. */
+    selfHosted?: boolean;
+    /** The machine it ran on, by label (`g1t-4core`); absent, the standard one. */
+    instance?: string | null;
   }): Promise<Result<boolean>>;
   startRun(run: {
     workspace: string;

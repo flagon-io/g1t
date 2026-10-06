@@ -202,7 +202,7 @@ function tile(cx: number, cy: number, w = 60, h = 30): string {
   return `M${cx} ${cy - h}L${cx + w} ${cy}L${cx} ${cy + h}L${cx - w} ${cy}Z`;
 }
 
-/** An issue with acceptance checks ticking off. */
+/** An issue with its checks ticking off. */
 export function IssueIllustration() {
   return (
     <svg viewBox="0 0 320 180" fill="none" className="w-full" aria-hidden="true">

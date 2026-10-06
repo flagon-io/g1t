@@ -992,6 +992,7 @@ dependencies = [
  "g1t-kit",
  "g1t-scan",
  "g1t-secrets",
+ "miniz_oxide",
  "serde",
  "serde_json",
  "similar",
@@ -1004,6 +1005,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "ed25519-dalek",
  "g1t-actions",
  "hex",
  "serde",

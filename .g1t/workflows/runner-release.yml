@@ -1,0 +1,102 @@
+# Releases the self-hosted runner, g1t-runner (crates/runner): builds it for
+# Linux, macOS and Windows on x64 and arm64, signs the release, publishes it
+# to g1t.sh/downloads/runner/ (the g1t-downloads R2 bucket), and pushes its
+# container image. Runners already out there update themselves to it.
+#
+# A release is a tag `runner-v<version>`, where the version is the one in
+# crates/runner/Cargo.toml; or run it by hand. scripts/runner-release.mjs
+# does the work; docs/DEPLOYING.md, "The self-hosted runner", says how to
+# make the release key the first time.
+name: Runner release
+
+on:
+  push:
+    tags: ["runner-v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: runner-release
+  cancel-in-progress: false
+
+env:
+  CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+  WRANGLER_SEND_METRICS: "false"
+
+jobs:
+  binaries:
+    name: Build, sign and publish
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: The tag names this version
+        if: startsWith(github.ref, 'refs/tags/runner-v')
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/runner/Cargo.toml | head -1)"
+          [ "runner-v$version" = "${GITHUB_REF_NAME}" ] || { echo "::error::The tag is ${GITHUB_REF_NAME}, but crates/runner is $version"; exit 1; }
+      - name: Install zig and cargo-zigbuild
+        run: |
+          pip install --user ziglang==0.13.0
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          cargo install --locked cargo-zigbuild
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            target
+          key: runner-release-${{ hashFiles('Cargo.lock') }}
+      - name: Build every platform
+        env:
+          G1T_RUNNER_RELEASE_KEY: ${{ vars.G1T_RUNNER_RELEASE_KEY }}
+          RUNNER_AGENT_IMAGE: ${{ vars.RUNNER_AGENT_IMAGE }}
+        run: node scripts/runner-release.mjs build
+      - name: Sign
+        env:
+          RUNNER_RELEASE_KEY: ${{ secrets.RUNNER_RELEASE_KEY }}
+          G1T_RUNNER_RELEASE_KEY: ${{ vars.G1T_RUNNER_RELEASE_KEY }}
+        run: |
+          node scripts/runner-release.mjs sign
+          node scripts/runner-release.mjs verify
+      - name: Install Wrangler
+        run: npm ci --workspaces=false --no-audit --no-fund
+      - name: Publish to g1t.sh/downloads/runner
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/runner-release.mjs publish
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-binaries
+          path: |
+            target/runner-release/*/g1t-runner-linux-x64
+            target/runner-release/*/g1t-runner-linux-arm64
+
+  image:
+    name: Container image
+    needs: binaries
+    # Needs Docker, which g1t's own sandboxes do not have.
+    runs-on: [self-hosted, docker]
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-binaries
+          path: release
+      - name: Build and push for amd64 and arm64
+        env:
+          REGISTRY_USER: ${{ vars.RUNNER_IMAGE_REGISTRY_USER }}
+          REGISTRY_TOKEN: ${{ secrets.RUNNER_IMAGE_REGISTRY_TOKEN }}
+          IMAGE: ${{ vars.RUNNER_IMAGE }}
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/runner/Cargo.toml | head -1)"
+          echo "$REGISTRY_TOKEN" | docker login --username "$REGISTRY_USER" --password-stdin
+          for arch in amd64 arm64; do
+            mkdir -p "context-$arch"
+            cp deploy/runner/Dockerfile "context-$arch/"
+            name="g1t-runner-linux-$([ "$arch" = amd64 ] && echo x64 || echo arm64)"
+            cp release/*/"$name" "context-$arch/g1t-runner"
+            docker buildx build --platform "linux/$arch" -t "$IMAGE:$version-$arch" --push "context-$arch"
+          done
+          docker buildx imagetools create -t "$IMAGE:$version" -t "$IMAGE:latest" "$IMAGE:$version-amd64" "$IMAGE:$version-arm64"

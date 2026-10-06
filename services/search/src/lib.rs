@@ -69,14 +69,18 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     let Some(method) = rpc_method(&request) else {
         return Response::error("Not found", 404);
     };
-    let search = Search::new(env)?;
+    // A replica near the caller when it asks for one (crates/kit/src/d1.rs).
+    let (db, served) = g1t_kit::d1::open(&env, "DB", &request)?;
+    let mut search = Search::new(env)?;
+    search.db = db;
     let body: serde_json::Value = request.json().await?;
-    match method.as_str() {
+    let answered = match method.as_str() {
         "search" => reply(&search.search(args(body)?).await?),
         "suggest" => reply(&search.suggest(args(body)?).await?),
         "explore" => reply(&search.explore(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
-    }
+    };
+    served.finish(answered)
 }
 
 /// Events from the bus, and this service's own jobs. Indexing is

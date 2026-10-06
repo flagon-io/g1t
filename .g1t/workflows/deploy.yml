@@ -8,9 +8,11 @@
 #   core, edge, front   the units of each stage, in jobs that share a build;
 #            a stage starts only when the one before it succeeded
 #
-# Needs the repository secret CLOUDFLARE_API_TOKEN (a Production row) and
-# the variable CLOUDFLARE_ACCOUNT_ID, and api.cloudflare.com among the
-# project's allowed domains (Settings, Guardrails). See docs/DEPLOYING.md.
+# Needs the repository secret CLOUDFLARE_API_TOKEN (a Production row), the
+# variable CLOUDFLARE_ACCOUNT_ID, and api.cloudflare.com among the project's
+# workflow-only domains for deploy.yml in production (Settings, Guardrails),
+# and registry.cloudflare.com there too, to find the runner's image. See
+# docs/DEPLOYING.md.
 name: Deploy
 
 on:
@@ -108,8 +110,11 @@ jobs:
   core:
     name: core (${{ matrix.group }})
     needs: [plan, migrate]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') && needs.plan.outputs.has_core == 'true' && inputs.dry_run != true }}
-    runs-on: ubuntu-latest
+    # Runs when nothing before it failed: a migrate job skipped for having
+    # nothing to apply is not a failure.
+    if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_core == 'true' && inputs.dry_run != true }}
+    # Rust builds get 4 vCPUs; everything else the standard machine.
+    runs-on: ${{ matrix.rust && 'g1t-4core' || 'ubuntu-latest' }}
     environment: production
     timeout-minutes: 60
     strategy:
@@ -146,6 +151,25 @@ jobs:
           path: ~/.cargo/registry/cache
           key: cargo-crates-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-crates-${{ runner.os }}-
+      # The compiled dependencies of this job's units, for wasm32 and the
+      # build scripts and proc macros they run. The workspace's own crates
+      # are compiled again whatever is cached (a checkout's sources are
+      # newer), so an entry is saved only when the dependencies change: a
+      # new Cargo.lock, or a new base image (base.json names its Rust).
+      # Otherwise the nearest earlier entry, of any group, is a start.
+      - name: Cache the Cargo target
+        if: ${{ matrix.rust }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            target/release
+            target/wasm32-unknown-unknown/release
+            !target/**/incremental
+            !target/**/*.wasm
+          key: cargo-target-${{ runner.os }}-${{ matrix.group }}-${{ hashFiles('Cargo.lock', 'services/runner/base.json') }}
+          restore-keys: |
+            cargo-target-${{ runner.os }}-${{ matrix.group }}-
+            cargo-target-${{ runner.os }}-
       - name: Install
         run: node scripts/deploy.mjs install --only "${{ matrix.units }}"
       - name: Deploy ${{ matrix.units }}
@@ -156,8 +180,8 @@ jobs:
   edge:
     name: edge (${{ matrix.group }})
     needs: [plan, migrate, core]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') && (needs.core.result == 'success' || needs.core.result == 'skipped') && needs.plan.outputs.has_edge == 'true' && inputs.dry_run != true }}
-    runs-on: ubuntu-latest
+    if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_edge == 'true' && inputs.dry_run != true }}
+    runs-on: ${{ matrix.rust && 'g1t-4core' || 'ubuntu-latest' }}
     environment: production
     timeout-minutes: 60
     strategy:
@@ -169,8 +193,8 @@ jobs:
   front:
     name: front (${{ matrix.group }})
     needs: [plan, migrate, core, edge]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') && (needs.core.result == 'success' || needs.core.result == 'skipped') && (needs.edge.result == 'success' || needs.edge.result == 'skipped') && needs.plan.outputs.has_front == 'true' && inputs.dry_run != true }}
-    runs-on: ubuntu-latest
+    if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_front == 'true' && inputs.dry_run != true }}
+    runs-on: ${{ matrix.rust && 'g1t-4core' || 'ubuntu-latest' }}
     environment: production
     timeout-minutes: 60
     strategy:

@@ -128,11 +128,11 @@ pub(crate) fn tidy(proposed: Vec<PlannedIssue>) -> Vec<PlannedIssue> {
             title,
             body: issue.body.trim().chars().take(MAX_BODY_CHARS).collect(),
             labels: normalize_labels(&issue.labels).unwrap_or_default(),
-            checks: issue
-                .checks
+            done: issue
+                .done
                 .into_iter()
-                .map(|check| check.trim().to_owned())
-                .filter(|check| !check.is_empty())
+                .map(|item| item.trim().to_owned())
+                .filter(|item| !item.is_empty())
                 .take(10)
                 .collect(),
             files: issue.files.into_iter().take(40).collect(),
@@ -440,9 +440,11 @@ impl Work {
                     repo.id.as_str().into(),
                     number.into(),
                     planned.title.as_str().into(),
-                    planned.body.as_str().into(),
+                    // What done looks like, in words, for the agent and
+                    // reviewers; the branch's required checks gate the merge.
+                    with_definition_of_done(&planned.body, &planned.done).into(),
                     serde_json::to_string(&planned.labels)?.into(),
-                    serde_json::to_string(&planned.checks)?.into(),
+                    "[]".into(),
                     serde_json::to_string(&blocked_by)?.into(),
                     queued_by.as_deref().map_or(JsValue::NULL, JsValue::from),
                     a.actor.id.as_str().into(),
@@ -657,7 +659,7 @@ mod tests {
             title: title.to_owned(),
             body: "  What to do.  ".to_owned(),
             labels: vec!["Feature".to_owned()],
-            checks: vec![" cargo test ".to_owned(), String::new()],
+            done: vec![" The flag is documented in --help. ".to_owned(), String::new()],
             files: vec!["src/lib.rs".to_owned()],
             depends_on: depends_on.to_vec(),
             number: None,
@@ -670,7 +672,7 @@ mod tests {
         assert_eq!(issues[0].title, "Add a flag");
         assert_eq!(issues[0].body, "What to do.");
         assert_eq!(issues[0].labels, ["feature"]);
-        assert_eq!(issues[0].checks, ["cargo test"]);
+        assert_eq!(issues[0].done, ["The flag is documented in --help."]);
     }
 
     #[test]

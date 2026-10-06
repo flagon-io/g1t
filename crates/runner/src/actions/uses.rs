@@ -138,7 +138,7 @@ impl Job {
 
     /// Fetches an action from GitHub, once per job.
     fn fetch_action(&mut self, owner: &str, repo: &str, git_ref: &str) -> Option<PathBuf> {
-        let dir = Path::new(ACTIONS_DIR).join(owner).join(repo).join(git_ref);
+        let dir = super::paths::under_home(ACTIONS_DIR).join(owner).join(repo).join(git_ref);
         if dir.join(".g1t-fetched").exists() {
             return Some(dir);
         }

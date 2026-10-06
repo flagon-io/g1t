@@ -27,6 +27,8 @@ pub enum ActorKind {
     Agent,
     /// A workspace's own access token.
     Workspace,
+    /// A self-hosted runner, with its own credential.
+    Runner,
 }
 
 impl ActorKind {
@@ -35,6 +37,7 @@ impl ActorKind {
             ActorKind::Person => "person",
             ActorKind::Agent => "agent",
             ActorKind::Workspace => "workspace",
+            ActorKind::Runner => "runner",
         }
     }
 }

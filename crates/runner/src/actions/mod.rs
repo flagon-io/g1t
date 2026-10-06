@@ -10,6 +10,7 @@
 
 mod blobs;
 mod files;
+mod paths;
 mod process;
 mod report;
 mod uses;
@@ -156,7 +157,8 @@ impl Job {
         }
         if !self.path_prepend.is_empty() {
             let current = out.get("PATH").cloned().unwrap_or_default();
-            out.insert("PATH".into(), format!("{}:{current}", self.path_prepend.join(":")));
+            let separator = paths::PATH_SEPARATOR;
+            out.insert("PATH".into(), format!("{}{separator}{current}", self.path_prepend.join(separator)));
         }
         out
     }
@@ -224,12 +226,23 @@ impl Job {
         let id = format!("{:x}", rand_id());
         let shell = shell.map(str::trim).filter(|s| !s.is_empty());
         let (program, args, extension): (String, Vec<String>, &str) = match shell {
+            // A self-hosted Windows runner, as GitHub's: PowerShell.
+            None if cfg!(windows) => (windows_powershell(), powershell_args(), "ps1"),
             None => ("bash".into(), vec!["-e".into(), "{0}".into()], "sh"),
             Some("bash") => ("bash".into(), vec!["--noprofile".into(), "--norc".into(), "-eo".into(), "pipefail".into(), "{0}".into()], "sh"),
             Some("sh") => ("sh".into(), vec!["-e".into(), "{0}".into()], "sh"),
             Some("python") => ("python3".into(), vec!["{0}".into()], "py"),
+            Some("pwsh") if cfg!(windows) || program_exists("pwsh") => ("pwsh".into(), powershell_args(), "ps1"),
+            Some("powershell") if cfg!(windows) => ("powershell".into(), powershell_args(), "ps1"),
+            Some("cmd") if cfg!(windows) => (
+                "cmd".into(),
+                vec!["/D".into(), "/E:ON".into(), "/V:OFF".into(), "/S".into(), "/C".into(), "CALL \"{0}\"".into()],
+                "cmd",
+            ),
             Some(other @ ("pwsh" | "powershell" | "cmd")) => {
-                self.log.line(&format!("##[error]`shell: {other}` needs Windows or PowerShell, which g1t's Linux runners do not have."));
+                self.log.line(&format!(
+                    "##[error]`shell: {other}` needs Windows or PowerShell, which g1t's Linux runners do not have. A self-hosted Windows runner can run it: `runs-on: [self-hosted, windows]`."
+                ));
                 return (false, BTreeMap::new(), BTreeMap::new());
             }
             Some(custom) => {
@@ -254,7 +267,7 @@ impl Job {
                 return (false, BTreeMap::new(), BTreeMap::new());
             }
         };
-        let args: Vec<String> = args.iter().map(|a| a.replace("{0}", &script_path.display().to_string())).collect();
+        let args: Vec<String> = args.iter().map(|a| a.replace("{0}", &paths::shown(&script_path))).collect();
         self.log.line(&format!("shell: {program} {}", args.join(" ")));
         let dir = match working_directory {
             Some(dir) if Path::new(dir).is_absolute() => PathBuf::from(dir),
@@ -413,6 +426,27 @@ impl Job {
     }
 }
 
+/// PowerShell on Windows: `pwsh` (PowerShell 7) if it is installed, as on
+/// GitHub's Windows runners, else Windows PowerShell.
+fn windows_powershell() -> String {
+    if program_exists("pwsh") { "pwsh".into() } else { "powershell".into() }
+}
+
+/// How GitHub runs a PowerShell step: the script, stopping at the first error.
+fn powershell_args() -> Vec<String> {
+    vec!["-NoLogo".into(), "-NoProfile".into(), "-NonInteractive".into(), "-Command".into(), ". '{0}'".into()]
+}
+
+/// Whether `program` is on `PATH`.
+fn program_exists(program: &str) -> bool {
+    Command::new(program)
+        .arg(if program == "cmd" { "/C" } else { "-Version" })
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok()
+}
+
 /// An id for files, unique enough within one job.
 fn rand_id() -> u64 {
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -432,11 +466,17 @@ fn interpolated_map(job: &Job, value: Option<&Value>, contexts: &Map<String, Val
     out
 }
 
-fn setup(spec: Value, api: Api) -> Result<Job> {
+fn setup(mut spec: Value, api: Api) -> Result<Job> {
     let masks: Vec<String> = spec["masks"].as_array().map(|m| m.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).unwrap_or_default();
     let log = Log::new(api, masks);
-    let workspace = PathBuf::from(WORKSPACE);
-    let temp = PathBuf::from(TEMP);
+    // On a self-hosted runner's own machine, GitHub's layout lives in a
+    // folder of the runner's (paths.rs).
+    for part in ["variables", "github"] {
+        paths::relocate(&mut spec[part]);
+    }
+    paths::relocate(&mut spec["contexts"]["runner"]);
+    let workspace = paths::under_home(WORKSPACE);
+    let temp = paths::under_home(TEMP);
     std::fs::create_dir_all(&workspace).context("could not make the workspace")?;
     std::fs::create_dir_all(&temp).context("could not make the temporary folder")?;
     std::fs::write(temp.join("event.json"), serde_json::to_string_pretty(&spec["event"])?)?;
@@ -446,7 +486,7 @@ fn setup(spec: Value, api: Api) -> Result<Job> {
         std::env::vars().filter(|(name, _)| !matches!(name.as_str(), "ACTIONS_TOKEN" | "ACTIONS_JOB" | "MODE") && !name.starts_with("G1T_")).collect();
     base_env.insert("HOME".into(), std::env::var("HOME").unwrap_or_else(|_| "/home/node".into()));
     base_env.extend(text_map(spec.get("variables")));
-    base_env.insert("GITHUB_EVENT_PATH".into(), temp.join("event.json").display().to_string());
+    base_env.insert("GITHUB_EVENT_PATH".into(), paths::shown(&temp.join("event.json")));
 
     let mut contexts: Map<String, Value> = spec["contexts"].as_object().cloned().unwrap_or_default();
     contexts.insert("github".into(), spec["github"].clone());
@@ -523,7 +563,13 @@ fn run_job(job: &mut Job) {
 
     job.log.step(0);
     job.log.line(&format!("Job: {}", job.spec["name"].as_str().unwrap_or_default()));
-    job.log.line("Runner: g1t, Linux X64 (Debian bookworm, Node 24, Python 3, Go, Rust)");
+    let variables = &job.spec["variables"];
+    if variables["RUNNER_ENVIRONMENT"] == "self-hosted" {
+        let text = |name: &str| variables[name].as_str().unwrap_or_default().to_owned();
+        job.log.line(&format!("Runner: {}, self-hosted, {} {}", text("RUNNER_NAME"), text("RUNNER_OS"), text("RUNNER_ARCH")));
+    } else {
+        job.log.line("Runner: g1t, Linux X64 (Debian bookworm, Node 24, Python 3, Go, Rust)");
+    }
     if let Some(Value::Object(matrix)) = job.contexts.get("matrix")
         && !matrix.is_empty()
     {

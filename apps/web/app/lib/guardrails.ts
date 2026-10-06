@@ -1,4 +1,4 @@
-import type { GuardrailSettings, RunKind } from "@g1t/contracts";
+import type { GuardrailSettings, RunKind, WorkflowDomain } from "@g1t/contracts";
 
 /** What a level's form field means: inherit, or a choice of its own. */
 export type Tri = "inherit" | "on" | "off";
@@ -15,6 +15,34 @@ export function lines(value: FormDataEntryValue | null): string[] {
     if (trimmed) seen.add(trimmed);
   }
   return [...seen];
+}
+
+/**
+ * Workflow-only domains, one per line, as
+ * `domain | workflows | environments`: the last two comma-separated, and
+ * either left out or empty for any. `api.cloudflare.com | deploy.yml |
+ * production` lets only deploy.yml's jobs in production reach it.
+ */
+export function workflowDomains(value: FormDataEntryValue | null): WorkflowDomain[] {
+  const list = (text: string | undefined) =>
+    (text ?? "")
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+  const out: WorkflowDomain[] = [];
+  for (const line of lines(value)) {
+    const [domain, workflows, environments] = line.split("|").map((part) => part.trim());
+    if (!domain) continue;
+    out.push({ domain, workflows: list(workflows), environments: list(environments) });
+  }
+  return out;
+}
+
+/** A workflow-only domain as a line of the form's field. */
+export function workflowDomainLine(entry: WorkflowDomain): string {
+  const parts = [entry.domain, entry.workflows.join(", "), entry.environments.join(", ")];
+  while (parts.length > 1 && !parts[parts.length - 1]) parts.pop();
+  return parts.join(" | ");
 }
 
 /** A number from a field; empty means inherit. Not a number is kept, to be refused. */
@@ -52,6 +80,7 @@ export function settingsFromForm(
         ? catalog.registries.filter((id) => form.get(`registry:${id}`) === "on")
         : null,
     domains: lines(form.get("domains")),
+    workflowDomains: workflowDomains(form.get("workflowDomains")),
     rules,
     deny: lines(form.get("deny")),
     // Not a number is sent as one the service refuses, with why.

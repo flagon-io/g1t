@@ -7,6 +7,7 @@ import type { DispatchInput, Workflow, WorkflowRun } from "@g1t/contracts";
 import type { Route } from "./+types/actions";
 import { page } from "../../lib/meta";
 import { Notes, StatusIcon, duration, shortRef } from "../../components/actions";
+import { AddCiPrompt } from "../../components/add-ci";
 import { Button, ComputeNote, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
@@ -27,6 +28,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const can = found.ok ? accessFor(viewer, found.value).can : null;
   // Starting runs needs Write; turning a workflow on or off, Maintain.
   const member = can?.run ?? false;
+  // Who may open the pull request that adds a starter workflow.
+  const canPush = can?.push ?? false;
   const [workflows, runs, computeNote] = await Promise.all([
     actions.workflows(repo, viewer),
     actions.runs(repo, viewer, { workflow: selected, limit: 50 }),
@@ -41,6 +44,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     workflows: unwrap(workflows),
     runs: runs.ok ? runs.value : [],
     member,
+    canPush,
     manage: can?.manage_settings ?? false,
     computeNote,
     selected: selected ?? null,
@@ -274,7 +278,7 @@ jobs:
       - run: npm test`;
 
 export default function Actions({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { workflows, runs, member, manage, computeNote, selected } = loaderData;
+  const { workflows, runs, member, canPush, manage, computeNote, selected } = loaderData;
   const [search] = useSearchParams();
   const base = `/${params.owner}/${params.repo}`;
   const workflow = workflows.find((w) => w.id === selected || w.path.endsWith(`/${selected}`)) ?? null;
@@ -307,6 +311,9 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
 
       {workflows.length === 0 ? (
         <div className="grid gap-6 lg:grid-cols-2">
+          <div className="lg:col-span-2">
+            <AddCiPrompt owner={params.owner} repo={params.repo} canAdd={canPush} />
+          </div>
           <EmptyState title="No workflows yet">
             Coming from GitHub? Rename <code>.github</code> to <code>.g1t</code> and push: your workflows run here as they
             are. g1t never reads <code>.github</code>.

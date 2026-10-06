@@ -44,15 +44,17 @@ gives their values out, so they cannot be copied across.
 | `secrets.*`, `vars.*`, `secrets.GITHUB_TOKEN` | The same. `secrets.G1T_TOKEN` is the workspace's own token for the run; `GITHUB_TOKEN` is its alias. |
 | `environment:` on a job | The job reads each key's row for that environment, as GitHub's environment secrets work. |
 | `actions/upload-artifact`, `actions/download-artifact` | Kept with the run for 14 days, passed between its jobs, and downloadable from the run's page. Up to 60 MB each. |
-| `actions/cache`, `actions/cache/restore`, `actions/cache/save` | Kept per repository for 7 days, found by `key` or the newest under a `restore-keys` prefix. Up to 60 MB each. |
+| `actions/cache`, `actions/cache/restore`, `actions/cache/save` | Kept per repository, found by `key` or the newest under a `restore-keys` prefix. `path` takes globs and `!` exclusions. Up to 2 GB each; see [the cache](#the-cache). |
 
 The **Actions** page of a workflow says, under *How this runs on g1t*,
 anything in it that runs differently.
 
 ### Not yet
 
-- **Windows and macOS runners.** Jobs run on Linux; a job with
-  `runs-on: windows-latest` or `macos-latest` fails, and says so.
+- **Windows and macOS on g1t's machines.** g1t's own runners are Linux; a
+  job with `runs-on: windows-latest` or `macos-latest` fails, and says so.
+  [Self-hosted runners](/guides/self-hosted-runners/) of any OS run them:
+  `runs-on: [self-hosted, windows]`.
 - **Docker** container actions, `services:` containers and `container:`.
 - **Reusable workflows from other repositories** (`uses: owner/repo/.github/workflows/x.yml@v1`); ones in the same repository work.
 - **The toolkit's own cache.** Actions that cache through GitHub's service
@@ -73,6 +75,30 @@ other Linux labels all run here. Setup actions such as
 `actions/setup-node` and `actions/setup-python` install other versions as
 they do on GitHub.
 
+### Machine sizes
+
+A job runs on the standard machine unless its `runs-on` names a larger
+one:
+
+| `runs-on` | vCPUs | Memory | Disk |
+| --- | --- | --- | --- |
+| `ubuntu-latest`, or any other Linux label | 0.5 | 4 GiB | 8 GB |
+| `g1t-2core` | 2 | 8 GiB | 16 GB |
+| `g1t-4core` | 4 | 12 GiB | 20 GB |
+
+```yaml
+jobs:
+  build:
+    runs-on: g1t-4core
+```
+
+The label can come from the matrix or the run's inputs
+(`runs-on: ${{ matrix.big && 'g1t-4core' || 'ubuntu-latest' }}`). A
+larger machine costs what it costs g1t, plus the same margin as all
+sandbox time: see [usage and billing](/guides/usage-and-billing/#workflow-jobs-on-larger-machines).
+Builds that compile, such as Rust or a large TypeScript project, finish
+several times faster on one.
+
 A job runs for at most 60 minutes, whatever its `timeout-minutes`, and
 for less if the workspace's plan caps runs lower (a new workspace's first
 month, or the trial). A job stopped at its time cap fails saying so.
@@ -92,10 +118,46 @@ higher adds it to the project's
 allowed domains under **Settings → Guardrails**; a project whose guardrails
 turn the network restriction off runs its jobs with an open network.
 
+A host only workflows should reach, such as the API a deploy uploads to,
+goes in **Workflow-only domains** instead, limited to the workflows and
+environments that need it: `api.cloudflare.com | deploy.yml | production`
+lets only `deploy.yml`'s jobs with `environment: production` reach it.
+Agents never reach those hosts, and neither do runs of pull requests from
+forks. See [workflow-only domains](/guides/guardrails/#workflow-only-domains).
+
 g1t does not run cryptocurrency miners: a step that names one (`xmrig`,
 a `stratum+tcp://` pool, `--donate-level`) is not run, and a job that
 looks like it is mining is stopped. See
 [abuse and mining](/guides/guardrails/#abuse-and-mining).
+
+## The cache
+
+`actions/cache` keeps what a job saves for the repository's later jobs:
+
+| | |
+| --- | --- |
+| One entry | Up to 2 GB, compressed. A larger one is not saved, and the job goes on. |
+| A repository's entries | Up to 10 GB together. Saving past it removes the entries restored longest ago. |
+| How long | Until it has not been restored for 7 days, and at most 28 days after it was saved. |
+| Keys | Written once: saving under a key that exists does nothing. A restore finds its `key` exactly, else the newest entry whose key starts with one of its `restore-keys`. |
+| `path` | Files and folders; globs, `**` included; `~/` is the home folder; a line starting with `!` leaves matching paths out. |
+| Compression | zstd. |
+
+```yaml
+- uses: actions/cache@v4
+  with:
+    path: |
+      ~/.cargo/registry/cache
+      target/release
+      !target/**/incremental
+    key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+    restore-keys: cargo-${{ runner.os }}-
+```
+
+Each restore and save says on the job's log how large the entry was and
+how long it took. A workspace on the plan pays for what its caches hold
+(`Actions cache storage` on its statement), at R2's price plus the margin;
+see [usage and billing](/guides/usage-and-billing/#actions-cache).
 
 ## Runs and logs
 
@@ -115,19 +177,62 @@ a commit is pushed to it, and, for one a g1t agent makes, when the agent
 marks it ready, which on g1t is when it first has code. Each head runs
 each workflow once.
 
-A run on a pull request's latest commit is a check on it:
+## Checks
 
-- While a workflow runs, the pull request waits for it before merging.
-- When one fails, merging is refused, as for failed acceptance checks.
-  Where the repository allows ignoring checks, anyone who can merge can
-  merge anyway.
-- In a repository that merges through the [merge queue](/guides/merge-queue/),
+A pull request's checks are its workflows. Each workflow that runs on
+`pull_request` runs on every pull request's head, whoever opened it, a
+person or an agent, and its runs report a check named after the workflow:
+a workflow with `name: CI` reports `CI`, with the status context
+`CI / pull_request` (the workflow's name and the event).
+
+- **Which checks a merge needs** is up to the default branch's
+  [required status checks](/guides/pull-requests/#required-status-checks),
+  under **Settings → Branches and merging**. A required check that failed,
+  is still running or has not reported holds the merge. Checks that are not
+  required are shown on the pull request and never hold it.
+- **In a repository that merges through the [merge queue](/guides/merge-queue/)**,
   workflows with `on: merge_group` run on each combined state the queue
-  builds, as on GitHub, and the state lands only if they pass.
-- A pull request a **g1t agent** is working on goes back to the agent
-  when a workflow fails. The agent reads the run and its logs with the
-  same tools you have, fixes the cause, and pushes; the workflows run
-  again.
+  builds, on the branch `g1t-queue/<entry>`, and the state lands only if
+  they and every required check pass on it. A workflow behind a required
+  check needs `merge_group` in its `on:`.
+- **A pull request a g1t agent is working on** goes back to the agent when
+  a check fails, with the end of each failed job's log. The agent reads the
+  run and its logs with the same tools you have, fixes the cause, and
+  pushes; the workflows run again. See
+  [seeing it through](/guides/g1t-agents/#seeing-it-through).
+
+```yaml
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+```
+
+### Add CI
+
+A repository with no workflows has nothing that proves a change works, for
+people or for agents. Its pull requests, its **Branches and merging**
+settings and its **Actions** page say **This repository has no checks**,
+with an **Add CI** button. Anyone who can push to the repository can use it:
+
+1. Choose **Add CI**. g1t looks at the files at the repository's root and
+   writes a starter workflow with a job for each stack it finds, up to
+   three: Node (npm, pnpm, Yarn or Bun), Rust, Go, Python (pip or uv), Ruby,
+   Java (Maven or Gradle), .NET, or Make. Each job installs, lints where
+   the project says how, builds and tests. When it finds none, the job is a
+   placeholder that fails until you replace its last step with your own
+   commands.
+2. The workflow is committed as `.g1t/workflows/ci.yml` on a new branch,
+   `add-ci`, and opened as a pull request, by you. It is named `CI` and runs
+   on `pull_request`, on `push` to the default branch, and on `merge_group`.
+3. Change it on the pull request if the steps are not how your project
+   builds, and merge it.
+4. Once it has run, `CI` is offered under **Required status checks**.
+   Require it, so that nothing merges into the default branch unless it
+   passes.
 
 ## Secrets and variables
 

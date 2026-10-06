@@ -6,7 +6,6 @@ import {
   type AgentRun,
   type RunKind,
   agentsClient,
-  type CheckJob,
   type DelegateInput,
   type Delegated,
   type G1tEvent,
@@ -54,6 +53,9 @@ import {
   reposClient,
   workClient,
   type Capability,
+  type InstanceType,
+  STANDARD_INSTANCE,
+  instanceNamed,
 } from "@g1t/contracts";
 
 import { type AgentRoutes, type AgentTask, canReachModel, modelEnv } from "./model-env";
@@ -63,6 +65,7 @@ import { type ProjectSurroundings, readableSurroundings } from "./surroundings";
 import { holdCredentials, pushGrant, remotePath, revokeCredentials, runCredential } from "./credentials";
 import { buildMentionPrompt, describeThread, handleMention, planMention } from "./mentions";
 import { instructionsFor, repoInstructions, withBlock } from "./repo-instructions";
+import { cancelTask, enqueueTask, handedOverStep, selfHostedRoute, taskEnv, taskRepo } from "./self-hosted";
 import {
   ABUSE_EXIT_CODE,
   ABUSE_HOST,
@@ -78,6 +81,9 @@ import {
   harnessEnv,
   newlyBlocked,
   reportRun,
+  SANDBOX_BINDINGS,
+  sandboxNamespace,
+  type WorkflowJob,
   timeCapMessage,
   withPlanLimits,
 } from "./guard";
@@ -87,6 +93,12 @@ export { ContainerProxy } from "@cloudflare/containers";
 
 export interface RunnerEnv {
   SANDBOX: DurableObjectNamespace<AttemptSandbox>;
+  /**
+   * Larger machines for workflow jobs that ask for one with `runs-on`
+   * (`g1t-2core`, `g1t-4core`): the same image on a larger instance type.
+   */
+  SANDBOX_2CORE?: DurableObjectNamespace<Sandbox2Core>;
+  SANDBOX_4CORE?: DurableObjectNamespace<Sandbox4Core>;
   IDENTITY: ServiceBinding;
   REPOS: ServiceBinding;
   WORK: ServiceBinding;
@@ -158,7 +170,7 @@ const AGENT = "g1t-agent";
 
 /**
  * What a sandbox is doing: an agent working on a pull request as someone,
- * or a run of acceptance checks.
+ * or, from before checks were workflows, a run of an issue's commands.
  */
 type Run =
   | { kind: "agent"; actor: User; repo: RepoPath; number: number }
@@ -184,8 +196,11 @@ type Run =
   | { kind: "actions"; jobId: string; token: string }
   /** A build of one commit, deployed to g1t.page. */
   | { kind: "deploy"; deployId: string; token: string };
-/** Whose sandbox time it is, reported when the sandbox stops. */
-type Meter = { workspace: string; repo: string; description: string };
+/**
+ * Whose sandbox time it is, reported when the sandbox stops, and the
+ * machine it ran on when it was not the standard one.
+ */
+type Meter = { workspace: string; repo: string; description: string; instance?: string | null };
 /**
  * What billing reserved for a sandbox's work (`ComputeGate.admit`), settled
  * when it stops at what it cost: its seconds, plus its model when g1t paid
@@ -203,6 +218,8 @@ type Build = {
   /** Its id, so it is found even if it moved since. */
   repoId?: string | null;
   minutes: number;
+  /** A workflow job's workflow, environment and trust, for workflow-only domains. */
+  job?: WorkflowJob | null;
 };
 /** Deploy builds are metered by the Deployments plan, not here. */
 type RunRequest = Run & {
@@ -215,6 +232,11 @@ type RunRequest = Run & {
   build?: Build;
   /** Whose sandbox it is, when it has no meter: for `abuse.flagged`. */
   owner?: { workspace: string; repo: string };
+  /**
+   * The labels of the workspace's self-hosted runners this work goes to
+   * instead of a container (self-hosted.ts). Null or absent: a container.
+   */
+  selfHosted?: string[] | null;
 };
 
 /** What a sandbox is, as billing meters it. */
@@ -327,7 +349,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
   }
 
   async run(request: RunRequest): Promise<void> {
-    const { envVars, meter, track, limits, reservation, build, owner, ...run } = request;
+    const { envVars, meter, track, limits, reservation, build, owner, selfHosted, ...run } = request;
     // What billing reserved is settled however this ends, once.
     if (reservation) await this.ctx.storage.put("reservation", reservation);
     let guard: RunGuard | null;
@@ -338,14 +360,14 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       guard = track
         ? withPlanLimits(await guardFor(this.env.WORK, track.repo, track.kind), limits)
         : build
-          ? withPlanLimits(await buildGuardFor(this.env.WORK, build.repo, build.kind, build.minutes, build.repoId), limits)
+          ? withPlanLimits(await buildGuardFor(this.env.WORK, build.repo, build.kind, build.minutes, build.repoId, build.job), limits)
           : null;
     } catch (error) {
       await this.settle(0);
       throw error;
     }
     await this.ctx.storage.put("run", run);
-    await this.ctx.storage.delete(["abuse", "stopReason"]);
+    await this.ctx.storage.delete(["abuse", "stopReason", "remote"]);
     if (meter) await this.ctx.storage.put("meter", { ...meter, started: Date.now() });
     await this.ctx.storage.put("started", Date.now());
     const who = meter ? { workspace: meter.workspace, repo: meter.repo } : owner;
@@ -355,6 +377,29 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     await holdCredentials(this.env.IDENTITY, this.ctx.storage, envVars, tracked?.runId ?? null);
     try {
       const vars = tracked ? { ...envVars, AGENT_RUN: tracked.runId, AGENT_RUN_TOKEN: tracked.token } : envVars;
+      // The workspace's own runner, not a container: the same environment,
+      // handed over as a task. Network guardrails cannot be enforced there.
+      const repo = selfHosted?.length ? taskRepo(track, meter, owner) : null;
+      if (selfHosted?.length && repo) {
+        const harness = guard ? harnessEnv(guard, vars, false) : {};
+        const minutes = guard?.minutes ?? limits?.minutes ?? 60;
+        await enqueueTask(this.env.ACTIONS, {
+          sandbox: this.ctx.id.toString(),
+          repo,
+          kind: track?.kind ?? run.kind,
+          title: track?.title ?? meter?.description ?? `${run.kind} in ${repo.namespace}/${repo.name}`,
+          labels: selfHosted,
+          env: taskEnv({ ...vars, ...harness }),
+          timeoutMinutes: minutes,
+        });
+        await this.ctx.storage.put("remote", true);
+        if (tracked) await reportRun(this.env.WORK, tracked, { steps: [handedOverStep(selfHosted)] });
+        if (guard) {
+          await this.ctx.storage.put("timeCap", guard.minutes);
+          await this.schedule(guard.minutes * 60 + ALARM_GRACE_SECONDS, "timeUp");
+        }
+        return;
+      }
       const restricted = (guard?.policy.restrictNetwork ?? false) && this.env.EGRESS !== "off";
       if (guard && restricted) {
         this.enableInternet = false;
@@ -485,7 +530,40 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     // A workflow job or a build has no run to halt: it fails saying why.
     await this.ctx.storage.put("stopReason", timeCapMessage(minutes));
     if (tracked) await reportRun(this.env.WORK, tracked, { halt: "time", error: timeCapMessage(minutes) });
+    if (await this.ctx.storage.get<boolean>("remote")) {
+      await cancelTask(this.env.ACTIONS, this.ctx.id.toString(), timeCapMessage(minutes));
+      await this.remoteEnded(1, null);
+      return;
+    }
     await this.destroy().catch((error: unknown) => console.log("sandbox not destroyed at its time cap", String(error)));
+  }
+
+  /**
+   * Stops this sandbox's work: its container, or the task a self-hosted
+   * runner holds, which it hears about on its next poll.
+   */
+  async halt(reason: string | null): Promise<void> {
+    if (await this.ctx.storage.get<boolean>("remote")) {
+      await cancelTask(this.env.ACTIONS, this.ctx.id.toString(), reason);
+      await this.remoteEnded(1, reason);
+      return;
+    }
+    await this.destroy();
+  }
+
+  /**
+   * A self-hosted runner's task ended (the actions service says so, or g1t
+   * stopped it): everything a container's stop does, once.
+   */
+  async remoteEnded(exitCode: number, reason: string | null): Promise<void> {
+    if (!(await this.ctx.storage.get<boolean>("remote"))) return;
+    await this.ctx.storage.delete("remote");
+    await this.ctx.storage.put("selfHostedEnded", true);
+    if (exitCode !== 0 && reason && !(await this.ctx.storage.get<string>("stopReason"))) {
+      await this.ctx.storage.put("stopReason", reason);
+    }
+    await this.onStop({ exitCode, reason: "exit" } as StopParams);
+    await this.ctx.storage.delete("selfHostedEnded");
   }
 
   /**
@@ -509,15 +587,19 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     await this.ctx.storage.delete("meter");
     const seconds = Math.max(1, Math.ceil((Date.now() - metered.started) / 1000));
     const run = await this.ctx.storage.get<Run>("run");
+    // On the workspace's own runner: its minutes, at $0.
+    const selfHosted = (await this.ctx.storage.get<boolean>("selfHostedEnded")) ?? false;
     const recorded = await billingClient(this.env.BILLING)
       .recordSandbox({
         workspace: metered.workspace,
         seconds,
-        description: metered.description,
+        description: selfHosted ? `${metered.description} on a self-hosted runner` : metered.description,
         repo: metered.repo,
         reference: `sandbox/${this.ctx.id.toString()}/${metered.started}`,
         // Whether g1t's open-source pool may pay for it.
         kind: run ? computeKindOf(run.kind) : null,
+        selfHosted,
+        instance: metered.instance ?? null,
       })
       .catch((error: unknown) => ({ ok: false as const, error: { message: String(error) } }));
     if (!recorded.ok) console.log("sandbox time not recorded", metered.workspace, seconds, recorded.error.message);
@@ -622,7 +704,13 @@ export class AttemptSandbox extends Container<RunnerEnv> {
  * reserved and the plan's caps; or not, waiting for a free agent slot or
  * refused with what to tell people.
  */
-type Granted = { ok: true; held: Held | null; limits: PlanLimits };
+type Granted = {
+  ok: true;
+  held: Held | null;
+  limits: PlanLimits;
+  /** The labels of the self-hosted runners it goes to; null for a sandbox. */
+  route: string[] | null;
+};
 type Admitted = Granted | { ok: false; waiting: boolean; code: string; message: string };
 
 /**
@@ -806,6 +894,14 @@ function describeOutside(items: ContextItem[]): string {
   ].join("\n\n");
 }
 
+/**
+ * How an agent's change is checked: by the repository's workflows, run on
+ * its pull request, and the checks the default branch requires. An issue's
+ * "Definition of done", if it has one, is in its body above.
+ */
+const CHECKS_NOTE =
+  "When your work is pushed, the repository's workflows (in .g1t/workflows) run on your pull request as its checks, and it merges only once the checks its default branch requires pass. Before you finish, run the same tests, linters and builds those workflows run, where the tools are installed, and fix what fails. If the issue has a Definition of done, meet every point of it.";
+
 /** What the author is told when sent back to a pull request it made. */
 function buildRevisionPrompt(job: LifecycleJob, inFlight: string | null, peopleSaid: string | null): string {
   const parts = [
@@ -815,8 +911,7 @@ function buildRevisionPrompt(job: LifecycleJob, inFlight: string | null, peopleS
       : `The pull request: ${job.title}`,
     job.description && `What you said you changed:\n\n${job.description}`,
     job.feedback,
-    job.issue?.checks.length &&
-      `These commands must pass when you are done. Run them if the tools are installed:\n${job.issue.checks.map((check) => `- ${check}`).join("\n")}`,
+    CHECKS_NOTE,
     peopleSaid,
     inFlight,
     WORKING_WITH_OTHERS,
@@ -868,11 +963,7 @@ function buildPrompt(
     issue.body,
     outside,
   ];
-  if (issue.checks.length > 0) {
-    parts.push(
-      `These commands must pass when you are done. Run them if the tools are installed:\n${issue.checks.map((check) => `- ${check}`).join("\n")}`,
-    );
-  }
+  parts.push(CHECKS_NOTE);
   if (instructions) parts.push(instructions);
   if (inFlight) parts.push(inFlight);
   parts.push(WORKING_WITH_OTHERS);
@@ -881,6 +972,39 @@ function buildPrompt(
   );
   return parts.filter(Boolean).join("\n\n");
 }
+
+/**
+ * Larger sandboxes for workflow jobs that ask for one in `runs-on`: the
+ * same image and behaviour on a larger Containers instance type, each a
+ * class of its own (wrangler.jsonc). Outbound handlers are registered by
+ * class, so each registers its own.
+ */
+export class Sandbox2Core extends AttemptSandbox {
+  static {
+    Sandbox2Core.outboundHandlers = { egress, abuse };
+  }
+}
+export class Sandbox4Core extends AttemptSandbox {
+  static {
+    Sandbox4Core.outboundHandlers = { egress, abuse };
+  }
+}
+
+/** What the actions service sends to start a job (`StartJobArgs`). */
+type ActionsJobArgs = {
+  job: string;
+  token: string;
+  repo: RepoPath;
+  timeoutMinutes: number;
+  /** Its workflow file, `.g1t/workflows/deploy.yml`. */
+  workflow?: string | null;
+  /** The environment it names plainly. */
+  environment?: string | null;
+  /** Not a pull request from a fork: only then are workflow-only domains given. */
+  trusted?: boolean;
+  /** The machine its `runs-on` asked for, by label; absent, the standard one. */
+  instance?: string | null;
+};
 
 export default class RunnerService
   extends WorkerEntrypoint<RunnerEnv>
@@ -909,18 +1033,28 @@ export default class RunnerService
       return Response.json(await this.delegate(args.actor, args.repo, args));
     }
     if (request.method === "POST" && pathname === "/rpc/start_actions_job") {
-      const args = (await request.json()) as {
-        job: string;
-        token: string;
-        repo: RepoPath;
-        timeoutMinutes: number;
-      };
-      return Response.json(await this.startActionsJob(args));
+      return Response.json(await this.startActionsJob((await request.json()) as ActionsJobArgs));
     }
     if (request.method === "POST" && pathname === "/rpc/stop_actions_job") {
       const args = (await request.json()) as { job: string };
-      const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`actions:${args.job}`));
-      await sandbox.destroy().catch(() => undefined);
+      // Whichever machine it asked for: the job's object in every namespace.
+      await Promise.all(
+        Object.keys(SANDBOX_BINDINGS).map((className) => {
+          const namespace = sandboxNamespace(this.env, className) as unknown as DurableObjectNamespace<AttemptSandbox>;
+          return namespace
+            .get(namespace.idFromName(`actions:${args.job}`))
+            .destroy()
+            .catch(() => undefined);
+        }),
+      );
+      return Response.json(ok(true));
+    }
+    // A self-hosted runner's task ended: the sandbox that handed it over
+    // does what it does when a container stops.
+    if (request.method === "POST" && pathname === "/rpc/task_ended") {
+      const args = (await request.json()) as { sandbox: string; exitCode: number; reason?: string | null };
+      const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromString(args.sandbox));
+      await sandbox.remoteEnded(args.exitCode, args.reason ?? null);
       return Response.json(ok(true));
     }
     if (request.method === "POST" && pathname === "/rpc/start_deploy") {
@@ -978,13 +1112,18 @@ export default class RunnerService
     if (ent && !slotFree(await agents.activeAgents(workspace).catch(() => 0), ent)) {
       return { ok: false, waiting: true, code: "waiting", message: waitingMessage(ent.maxConcurrentAgents) };
     }
-    const [microsPerSecond, access, isPublic] = await Promise.all([
+    const [sandboxMicros, access, isPublic, route] = await Promise.all([
       compute.microsPerSecond(),
       this.modelAccess(workspace).catch(() => null),
       this.isPublic(repo),
+      selfHostedRoute(this.env.ACTIONS, repo),
     ]);
     // The workspace's own provider pays for its model; g1t only for the sandbox.
     const ownModel = access?.own != null;
+    // On the workspace's own runners the machine costs g1t nothing, and with
+    // its own model provider neither does the run: nothing to reserve.
+    if (route && ownModel) return { ok: true, held: null, limits: limitsOf(ent), route };
+    const microsPerSecond = route ? 0 : sandboxMicros;
     const minutes = estimateMinutes(DEFAULT_MINUTES[task], ent);
     const admission = await compute.admit(
       { workspace, repo, public: isPublic, kind: "agent", estimateMicros: agentEstimateMicros(task, minutes, microsPerSecond, ownModel) },
@@ -997,6 +1136,7 @@ export default class RunnerService
         ? { id: admission.reservation.id, workspace, microsPerSecond, modelBilled: !ownModel }
         : null,
       limits: limitsOf(ent),
+      route,
     };
   }
 
@@ -1006,12 +1146,18 @@ export default class RunnerService
    * for `minutes` reserved. Public repositories' checks, workflows and
    * queue can be paid by the open-source pool. Never throws.
    */
-  private async admitSandbox(kind: ComputeKind, repo: RepoPath, minutes: number): Promise<Admitted> {
+  private async admitSandbox(kind: ComputeKind, repo: RepoPath, minutes: number, instance: InstanceType = STANDARD_INSTANCE): Promise<Admitted> {
     const workspace = repo.namespace.toLowerCase();
     const compute = gateFor(this.env);
     const ent = await compute.entitlements(workspace);
     if (ent?.paused) return { ok: false, waiting: false, code: "paused", message: refusalMessage("paused", workspace, kind, ent.paused) };
-    const [microsPerSecond, isPublic] = await Promise.all([compute.microsPerSecond(), this.isPublic(repo)]);
+    // Checks and the merge queue go to the workspace's own runners when it
+    // says so, and cost nothing there. Workflow jobs choose with `runs-on`.
+    const route = kind === "check" || kind === "queue" ? await selfHostedRoute(this.env.ACTIONS, repo) : null;
+    if (route) return { ok: true, held: null, limits: limitsOf(ent), route };
+    const [standardMicros, isPublic] = await Promise.all([compute.microsPerSecond(), this.isPublic(repo)]);
+    // A larger machine is reserved for at what it costs with every vCPU busy.
+    const microsPerSecond = standardMicros * instance.estimateScale;
     const admission = await compute.admit(
       { workspace, repo, public: isPublic, kind, estimateMicros: sandboxEstimateMicros(estimateMinutes(minutes, ent), microsPerSecond) },
       ent,
@@ -1021,6 +1167,7 @@ export default class RunnerService
       ok: true,
       held: admission.reservation ? { id: admission.reservation.id, workspace, microsPerSecond, modelBilled: false } : null,
       limits: limitsOf(ent),
+      route: null,
     };
   }
 
@@ -1254,7 +1401,7 @@ export default class RunnerService
     if (!stopped.ok) return stopped;
     try {
       const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromString(stopped.value.sandbox));
-      await sandbox.destroy();
+      await sandbox.halt(`${actor.username} stopped the run.`);
     } catch (error) {
       // Already gone, or never started: the record says stopped either way.
       console.log("sandbox not destroyed", runId, String(error));
@@ -1362,17 +1509,20 @@ export default class RunnerService
    * job's token, and reports back to the actions service through the API.
    * Jobs run on g1t's machines, so only for workspaces that may use them.
    */
-  private async startActionsJob(args: {
-    job: string;
-    token: string;
-    repo: RepoPath;
-    timeoutMinutes: number;
-  }): Promise<Result<true>> {
+  private async startActionsJob(args: ActionsJobArgs): Promise<Result<true>> {
+    // The machine its `runs-on` asked for; the standard one otherwise.
+    const instance = instanceNamed(args.instance);
     // Workflow jobs run on g1t's machines: only as the workspace's plan
     // allows, or on a public repository, from the open-source pool.
-    const admitted = await this.admitSandbox("workflow", args.repo, args.timeoutMinutes);
+    const admitted = await this.admitSandbox("workflow", args.repo, args.timeoutMinutes, instance);
     if (!admitted.ok) return fail("payment_required", `Not started: ${admitted.message}`);
-    const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`actions:${args.job}`));
+    const namespace = this.jobNamespace(instance);
+    if (!namespace) {
+      await this.release(admitted.held);
+      return fail("invalid", `Not started: ${instance.label} machines are not available here.`);
+    }
+    const sandbox = namespace.get(namespace.idFromName(`actions:${args.job}`));
+    const on = instance === STANDARD_INSTANCE ? "" : ` on ${instance.label}`;
     try {
       await sandbox.run({
         kind: "actions",
@@ -1380,10 +1530,19 @@ export default class RunnerService
         token: args.token,
         reservation: admitted.held,
         limits: admitted.limits,
-        // The project's network list plus what builds need, and the job's
-        // own time limit as the sandbox's.
-        build: { kind: "actions", repo: args.repo, minutes: Math.max(1, args.timeoutMinutes) },
-        meter: meter(args.repo, `A workflow job in ${args.repo.namespace}/${args.repo.name}`),
+        // The project's network list plus what builds need (and, for a
+        // trusted run, the workflow-only domains its workflow and
+        // environment are given), and the job's own time limit.
+        build: {
+          kind: "actions",
+          repo: args.repo,
+          minutes: Math.max(1, args.timeoutMinutes),
+          job: { workflow: args.workflow ?? null, environment: args.environment ?? null, trusted: args.trusted === true },
+        },
+        meter: {
+          ...meter(args.repo, `A workflow job in ${args.repo.namespace}/${args.repo.name}${on}`),
+          instance: instance === STANDARD_INSTANCE ? null : instance.label,
+        },
         envVars: {
           MODE: "actions",
           G1T_API: "https://api.g1t.sh",
@@ -1401,6 +1560,13 @@ export default class RunnerService
     }
     // `true`, not null: an outcome needs a value.
     return ok(true);
+  }
+
+  /** The sandboxes of a machine size: each instance type is a class of its own. */
+  private jobNamespace(instance: InstanceType): DurableObjectNamespace<AttemptSandbox> | null {
+    if (instance === STANDARD_INSTANCE) return this.env.SANDBOX;
+    const bound = instance.label === "g1t-4core" ? this.env.SANDBOX_4CORE : instance.label === "g1t-2core" ? this.env.SANDBOX_2CORE : undefined;
+    return (bound as DurableObjectNamespace<AttemptSandbox> | undefined) ?? null;
   }
 
   /**
@@ -1501,9 +1667,9 @@ export default class RunnerService
         case "pull.opened":
         case "pull.ready":
         case "pull.updated":
-          if (!(await this.startChecks(event.data.pullId)).started) {
-            await this.advance(event.data.pullId);
-          }
+          // Its checks are the workflows these same events start; the
+          // lifecycle waits for them.
+          await this.advance(event.data.pullId);
           // An agent that has finished its change leaves room for another.
           if (event.type === "pull.ready") await this.startReady(event.data.repoId);
           break;
@@ -1752,6 +1918,7 @@ export default class RunnerService
       token: job.token,
       reservation: granted.held,
       limits: granted.limits,
+      selfHosted: granted.route,
       track: {
         actor: job.actor,
         repo: job.repo,
@@ -1858,6 +2025,7 @@ export default class RunnerService
       pullId: job.pullId,
       reservation: granted.held,
       limits: granted.limits,
+      selfHosted: granted.route,
       track: { actor: job.author, repo: job.repo, kind: "answer", number: job.number, pullId: job.pullId },
       meter: meter(job.repo, `Agent answering on ${job.repo.namespace}/${job.repo.name}#${job.number}`),
       envVars: {
@@ -1905,6 +2073,7 @@ export default class RunnerService
       pullId: job.pullId,
       reservation: granted.held,
       limits: granted.limits,
+      selfHosted: granted.route,
       track: { actor: job.author, repo: job.repo, kind: "revise", number: job.number, pullId: job.pullId, startedBy: startedBy ?? null },
       meter: meter(job.repo, `Agent revising ${job.repo.namespace}/${job.repo.name}#${job.number}`),
       envVars: {
@@ -1933,62 +2102,6 @@ export default class RunnerService
           job.author,
         ),
         ...(await this.modelEnvOrThrow("implement", job.repo, job.number)),
-      },
-    });
-  }
-
-  /**
-   * Runs a pull request's acceptance checks in a sandbox of its own. Does
-   * nothing when there is nothing to run.
-   */
-  private async startChecks(pullId: string): Promise<{ started: boolean; refused?: string }> {
-    const work = workClient(this.env.WORK);
-    const started = await work.startChecks(pullId);
-    if (!started.ok) return { started: false };
-    const job: CheckJob = started.value;
-    // Checks are commands one person wrote, run against code another
-    // pushed, on g1t's machines: only as the workspace's plan allows, or
-    // on a public repository, from the open-source pool. A refusal is the
-    // run's outcome, so people see why nothing ran.
-    const admitted = await this.admitSandbox("check", job.repo, DEFAULT_MINUTES.checks);
-    if (!admitted.ok) {
-      await work.reportChecks(job.runId, job.token, { error: `Not started: ${admitted.message}` });
-      return { started: false, refused: admitted.message };
-    }
-    await this.holding(admitted, () => this.startCheckRun(job, pullId, admitted));
-    return { started: true };
-  }
-
-  private async startCheckRun(job: CheckJob, pullId: string, granted: Granted): Promise<void> {
-    // To read the commit, which may be private, as the one who pushed it.
-    const token = await runCredential(this.env.IDENTITY, {
-      onBehalfOf: job.author,
-      repo: job.repo,
-      kind: "checks",
-      use: "runner",
-      number: job.number,
-      read: [job.source],
-      ttlSeconds: CHECKS_TOKEN_TTL_SECONDS,
-    });
-    const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(job.runId));
-    await sandbox.run({
-      kind: "checks",
-      runId: job.runId,
-      token: job.token,
-      reservation: granted.held,
-      limits: granted.limits,
-      track: { actor: job.author, repo: job.repo, kind: "checks", number: job.number, pullId },
-      meter: meter(job.repo, `Checks on ${job.repo.namespace}/${job.repo.name}#${job.number}`),
-      envVars: {
-        MODE: "checks",
-        G1T_API: "https://api.g1t.sh",
-        CHECK_RUN: job.runId,
-        CHECK_TOKEN: job.token,
-        G1T_USER: job.author.username,
-        G1T_TOKEN: token,
-        GIT_REMOTE: `https://g1t.sh/${job.source.namespace}/${job.source.name}.git`,
-        GIT_COMMIT: job.commit,
-        CHECKS: JSON.stringify(job.commands),
       },
     });
   }
@@ -2030,6 +2143,7 @@ export default class RunnerService
         token: job.token,
         reservation: granted.held,
         limits: granted.limits,
+        selfHosted: granted.route,
         meter: meter(job.repo, `Merge check of ${job.repo.namespace}/${job.repo.name}#${job.number}`),
         envVars: {
           MODE: "mergecheck",
@@ -2119,7 +2233,7 @@ export default class RunnerService
       for (const run of runs) {
         if (!run.sandbox) continue;
         try {
-          await this.env.SANDBOX.get(this.env.SANDBOX.idFromString(run.sandbox)).destroy();
+          await this.env.SANDBOX.get(this.env.SANDBOX.idFromString(run.sandbox)).halt("The repository was archived or deleted.");
         } catch (error) {
           // Already gone, or never started.
           console.log("sandbox not destroyed", run.runId, String(error));
@@ -2213,6 +2327,7 @@ export default class RunnerService
       pullId: update.pullId,
       reservation: update.granted.held,
       limits: update.granted.limits,
+      selfHosted: update.granted.route,
       track: {
         actor,
         repo,
@@ -2291,8 +2406,6 @@ export default class RunnerService
       job.description,
       job.issue &&
         `It is for issue #${job.issue.number}: ${job.issue.title}\n\n${job.issue.body}`,
-      job.issue?.checks.length &&
-        `The issue's acceptance checks: ${job.issue.checks.join("; ")}`,
       await this.peopleSaid(job.author, repo, number),
     ];
     const model = await this.modelEnv("review", repo, number);
@@ -2307,6 +2420,7 @@ export default class RunnerService
       token: job.token,
       reservation: granted.held,
       limits: granted.limits,
+      selfHosted: granted.route,
       track: { actor: job.author, repo, kind: "review", number, pullId },
       meter: meter(repo, `Review of ${repo.namespace}/${repo.name}#${number}`),
       envVars: {
@@ -2334,24 +2448,6 @@ export default class RunnerService
   private async defaultBranch(repo: RepoPath, viewer: Viewer): Promise<string> {
     const found = await reposClient(this.env.REPOS).get(repo, viewer);
     return found.ok ? found.value.defaultBranch : "main";
-  }
-
-  async recheck(actor: User, repo: RepoPath, number: number): Promise<Result<boolean>> {
-    const found = await workClient(this.env.WORK).getPull(repo, number, actor);
-    if (!found.ok) return found;
-    const { pull } = found.value;
-    // Checks spend compute: whoever opened it, or someone with Write.
-    if (pull.author.id !== actor.id && !(await this.repoAllows(actor, repo, "run"))) {
-      return fail(
-        "forbidden",
-        "Only whoever opened a pull request, or someone with the Write role or higher, can run its checks.",
-      );
-    }
-    const checks = await this.startChecks(pull.id);
-    if (checks.started) return ok(true);
-    return checks.refused
-      ? fail("payment_required", checks.refused)
-      : fail("conflict", "There are no checks to run for this pull request right now.");
   }
 
   async plan(actor: User, repo: RepoPath, brief: string): Promise<Result<{ planId: string }>> {
@@ -2393,6 +2489,7 @@ export default class RunnerService
       token: job.token,
       reservation: granted.held,
       limits: granted.limits,
+      selfHosted: granted.route,
       track: { actor, repo, kind: "plan", title: job.brief, startedBy: actor.username },
       meter: meter(repo, `Planning for ${repo.namespace}/${repo.name}`),
       envVars: {
@@ -2552,6 +2649,7 @@ export default class RunnerService
       number: pull.number,
       reservation: granted.held,
       limits: granted.limits,
+      selfHosted: granted.route,
       track: { actor, repo, kind: "implement", number: pull.number, pullId: pull.id, startedBy: actor.username },
       meter: meter(repo, `Agent on ${repo.namespace}/${repo.name}#${pull.number}`),
       envVars: {
@@ -2694,6 +2792,7 @@ export default class RunnerService
       pullId: job.pull?.id ?? "",
       reservation: granted.held,
       limits: granted.limits,
+      selfHosted: granted.route,
       track: {
         actor: job.actor,
         repo: job.repo,

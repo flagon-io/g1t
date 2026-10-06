@@ -34,16 +34,15 @@ fn answer() -> Result<String> {
     let auth = auth_option(&env("G1T_USER")?, &env("G1T_TOKEN")?);
     let workdir = Path::new(WORKDIR);
     std::fs::create_dir_all("/work")?;
-    git(
-        Path::new("/work"),
-        &["-c", &auth, "clone", "--quiet", &remote, WORKDIR],
-    )
-    .context("could not clone the repository")?;
+    crate::clone::clone(Path::new("/work"), &auth, &[], &remote, WORKDIR).context("could not clone the repository")?;
     if let Ok(reference) = env("GIT_REF")
         && !reference.is_empty()
     {
-        // A commit the clone may not have fetched by name: fetch it.
-        let _ = git(workdir, &["-c", &auth, "fetch", "--quiet", "origin", &reference]);
+        // A commit the clone may not have fetched by name: fetch it, and
+        // everything if that is refused.
+        if crate::clone::fetch(workdir, &auth, "origin", &reference).is_err() && crate::clone::is_shallow(workdir) {
+            let _ = git(workdir, &["-c", &auth, "fetch", "--quiet", "--unshallow", "origin"]);
+        }
         git(workdir, &["checkout", "--quiet", "--detach", &reference])
             .or_else(|_| git(workdir, &["checkout", "--quiet", "--detach", "FETCH_HEAD"]))
             .context("could not check out what the question is about")?;

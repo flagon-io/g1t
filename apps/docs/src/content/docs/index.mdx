@@ -10,8 +10,8 @@ import Card from '../../components/Card.astro';
 import LinkCard from '../../components/LinkCard.astro';
 
 **g1t hosts your repositories and runs agents on them like teammates.** Write what you want
-done; agents split it into issues, make a pull request for each, test it in
-a clean sandbox, review it, fix what the review finds and merge it under
+done; agents split it into issues, make a pull request for each, run your
+workflows on it, review it, fix what the review finds and merge it under
 your repository's rules. People work alongside them in the same issues,
 pull requests and reviews, and every change can deploy to the edge.
 
@@ -41,7 +41,8 @@ pull requests and reviews, and every change can deploy to the edge.
 		[agents work them in parallel](/guides/outcomes/).
 	</Card>
 	<Card title="Agents that finish" icon="circle-check">
-		Each change is checked, reviewed and revised until it passes, then merged
+		Each change runs your workflows, is reviewed and revised until its
+		[required checks](/guides/pull-requests/#required-status-checks) pass, then merged
 		through the [merge queue](/guides/merge-queue/). You step in only when asked.
 	</Card>
 	<Card title="Bring your own agent" icon="bot">
@@ -50,7 +51,8 @@ pull requests and reviews, and every change can deploy to the edge.
 	</Card>
 	<Card title="Actions workflows, unchanged" icon="workflow">
 		Workflows written for GitHub Actions [run from `.g1t/workflows` as they are](/guides/actions/),
-		and failing ones send the agent back to fix the cause.
+		and failing ones send the agent back to fix the cause. Run them on
+		[your own machines](/guides/self-hosted-runners/), any OS, for free.
 	</Card>
 	<Card title="A preview for every change" icon="globe">
 		Every pull request gets a [live preview on g1t.page](/guides/deployments/), and
@@ -77,6 +79,11 @@ pull requests and reviews, and every change can deploy to the edge.
 		title="Managing a repository"
 		description="Rename it or a branch, change its default branch, make it public or private, archive it, and delete and restore it."
 		href="/guides/managing-repositories/"
+	/>
+	<LinkCard
+		title="Required checks"
+		description="Choose which workflow checks must pass before anything merges into the default branch, or add CI to a repository that has none."
+		href="/guides/pull-requests/#required-status-checks"
 	/>
 	<LinkCard
 		title="Access and roles"

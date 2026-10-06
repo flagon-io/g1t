@@ -98,12 +98,28 @@ export function updateLetter(input: { heading: string; text: string; url: string
   };
 }
 
-export function alertLetter(input: { title: string; parts: string[]; since: string; link: string }): Letter {
+/**
+ * The staff alert for a new detected draft. `lines` say what each part
+ * did, slow and not answering told apart (detect.ts `troubleSentence`).
+ */
+export function alertLetter(input: { title: string; lines: string[]; link: string; note?: string }): Letter {
   return {
     heading: input.title,
     paragraphs: [
-      `The checks have failed for ${input.parts.join(", ")} since ${input.since}, three times in a row. A draft incident is waiting in sudo. It is not on the status page until someone publishes it.`,
+      input.lines.join("\n"),
+      ...(input.note ? [input.note] : []),
+      "A draft incident is waiting in sudo. It is not on the status page until someone publishes it.",
     ],
+    action: { label: "Open it in sudo", url: input.link },
+    footer: ["Sent by status.g1t.sh to the staff alert address (STATUS_ALERT_EMAIL)."],
+  };
+}
+
+/** The follow-up when a detected draft recovered and was dismissed on its own. */
+export function recoveredLetter(input: { title: string; text: string; link: string }): Letter {
+  return {
+    heading: `Recovered: ${input.title.replace(/^Detected: /, "")} — dismissed automatically`,
+    paragraphs: [input.text, "Open it in sudo to read its timeline, or to declare an incident anyway."],
     action: { label: "Open it in sudo", url: input.link },
     footer: ["Sent by status.g1t.sh to the staff alert address (STATUS_ALERT_EMAIL)."],
   };

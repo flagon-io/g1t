@@ -260,6 +260,8 @@ export const USAGE_TASKS: Record<string, { label: string; color: string }> = {
   revise: { label: "Revisions", color: "var(--color-warn)" },
   update: { label: "Catching up", color: "var(--color-accent)" },
   plan: { label: "Planning", color: "#f0a6ca" },
+  /** Time on the workspace's own runners: its minutes, at $0. */
+  self_hosted: { label: "Self-hosted runners ($0)", color: "var(--color-line-strong)" },
   other: { label: "Other", color: "var(--color-faint)" },
 };
 

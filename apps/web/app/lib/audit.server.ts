@@ -3,11 +3,12 @@ import { env } from "cloudflare:workers";
 import { type AuditEntry, type AuditQuery, type Viewer, auditClient } from "@g1t/contracts";
 
 import { retainedSince, visibilityFor } from "./audit";
+import { instrumented } from "./perf.server";
 import { billing } from "./services.server";
 import { roleIn } from "./session.server";
 
 /** The audit log, which the events service keeps. */
-export const audit = auditClient(env.EVENTS);
+export const audit = auditClient(instrumented("events", env.EVENTS));
 
 /**
  * How many days of the workspace's log are kept: 90, the same on every

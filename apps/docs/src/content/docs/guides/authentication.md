@@ -323,7 +323,8 @@ On the form, scopes are a checklist grouped by area:
 | Memory & search | `memory:read`, `memory:write` |
 | Account | `account:read`, `account:write` |
 | Workspace | `workspace:read`, `access:read`, `webhooks:read`, `secrets:read` |
-| Dangerous | `repo:admin`, `workspace:admin`, `access:admin`, `webhooks:admin`, `secrets:admin` |
+| Runners | `runners:read` |
+| Dangerous | `repo:admin`, `workspace:admin`, `access:admin`, `webhooks:admin`, `secrets:admin`, `runners:admin` |
 
 Ticking a higher level ticks the lower ones of its resource and greys
 them out: tick `issues:write` and `issues:read` is ticked too. Untick
@@ -355,6 +356,8 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 | `webhooks:admin` | Create, change and delete webhooks |
 | `secrets:read` | List secrets (never their values) and read variables |
 | `secrets:admin` | Set and delete secrets and variables |
+| `runners:read` | See [self-hosted runners](/guides/self-hosted-runners/), their groups and where agents run. Not in the Agent preset. |
+| `runners:admin` | Register and remove self-hosted runners, change their groups and settings |
 
 Every operation of the API and the MCP server needs exactly one of these,
 except `whoami` (`GET /user`), which any token may use. Each endpoint's page

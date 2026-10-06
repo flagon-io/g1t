@@ -10,14 +10,19 @@
 //!   when the workspace has room, and finished by the sandbox's report.
 //! - [`payload`] builds the webhook-shaped `github.event`.
 //! - [`settings`] keeps secrets and variables.
+//! - [`cache`] lists `actions/cache` entries, which the API keeps in R2.
+//! - [`runners`] keeps self-hosted runners, hands them jobs (and agent
+//!   work from the runner service) when they ask, and hears back.
 //!
 //! The service acts as the repository's workspace: it reads what the
 //! workspace can read, and a job's `GITHUB_TOKEN` is a short-lived token of
 //! the workspace's.
 
+mod cache;
 mod payload;
 mod plan;
 mod rename;
+mod runners;
 mod settings;
 mod sync;
 mod trigger;
@@ -41,6 +46,9 @@ pub const MAX_WORKFLOWS: usize = 50;
 pub const RUNNING_PER_WORKSPACE: u32 = 4;
 /// The longest a job may run, whatever its `timeout-minutes`.
 pub const MAX_TIMEOUT_MINUTES: u32 = 60;
+/// The longest a job on a self-hosted runner may run: the machine is the
+/// workspace's own, and its time costs nothing.
+pub const SELF_HOSTED_MAX_TIMEOUT_MINUTES: u32 = 24 * 60;
 /// A running job that has said nothing for this long is taken as lost.
 pub const SILENT_MS: u64 = 10 * 60 * 1000;
 pub const SITE: &str = "https://g1t.sh";
@@ -77,6 +85,11 @@ pub struct Actions {
     events: Fetcher,
     /// Projects: a repository's secrets and variables belong to its project.
     projects: Fetcher,
+    /// Billing: self-hosted runners' time, recorded at $0, and the
+    /// cache's storage.
+    billing: Fetcher,
+    /// Where the API keeps cache entries, for deleting evicted ones.
+    cache: Option<worker::Bucket>,
     /// Seals secrets; absent until `ACTIONS_KEY` is set, when secrets
     /// cannot be saved.
     sealer: Option<Sealer>,
@@ -92,6 +105,8 @@ impl Actions {
             runner: env.service("RUNNER")?,
             events: env.service("EVENTS")?,
             projects: env.service("PROJECTS")?,
+            billing: env.service("BILLING")?,
+            cache: env.bucket("ACTIONS_CACHE").ok(),
             sealer: env.secret("ACTIONS_KEY").ok().and_then(|key| Sealer::new(&key.to_string())),
         })
     }
@@ -198,6 +213,30 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "job_spec" => reply(&service.job_spec(args(body)?).await?),
         "job_auth" => reply(&service.job_auth(args(body)?).await?),
         "job_report" => reply(&service.job_report(args(body)?).await?),
+        // actions/cache, through the API with the job's token.
+        "cache_lookup" => reply(&service.cache_lookup(args(body)?).await?),
+        "cache_reserve" => reply(&service.cache_reserve(args(body)?).await?),
+        "cache_commit" => reply(&service.cache_commit(args(body)?).await?),
+        "cache_abort" => reply(&service.cache_abort(args(body)?).await?),
+        // Self-hosted runners: people's side.
+        "runners" => reply(&service.runners(args(body)?).await?),
+        "create_registration_token" => reply(&service.create_registration_token(args(body)?).await?),
+        "remove_runner" => reply(&service.remove_runner(args(body)?).await?),
+        "runner_groups" => reply(&service.runner_groups(args(body)?).await?),
+        "set_runner_group" => reply(&service.set_runner_group(args(body)?).await?),
+        "delete_runner_group" => reply(&service.delete_runner_group(args(body)?).await?),
+        "runner_settings" => reply(&service.runner_settings(args(body)?).await?),
+        "set_runner_settings" => reply(&service.set_runner_settings(args(body)?).await?),
+        // The runner's own side, through the API with its credential.
+        "runner_register" => reply(&service.runner_register(args(body)?).await?),
+        "runner_poll" => reply(&service.runner_poll(args(body)?).await?),
+        "runner_finished" => reply(&service.runner_finished(args(body)?).await?),
+        "runner_remove_self" => reply(&service.runner_remove_self(args(body)?).await?),
+        // Agent work, from the runner service.
+        "runner_route" => reply(&service.runner_route(args(body)?).await?),
+        "stuck_jobs" => reply(&service.stuck_jobs(args(body)?).await?),
+        "enqueue_task" => reply(&service.enqueue_task(args(body)?).await?),
+        "cancel_task" => reply(&service.cancel_task(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }

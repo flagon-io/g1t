@@ -11,7 +11,7 @@ import {
   Search,
   Settings,
 } from "lucide-react";
-import { Suspense, lazy, useState } from "react";
+import { useState } from "react";
 import {
   Form,
   isRouteErrorResponse,
@@ -48,18 +48,19 @@ import {
 } from "./components/ui/dropdown-menu";
 import { AppShell, Progress, type ShellData } from "./components/shell";
 import { SiteFooter } from "./components/footer";
+import { SpikeBanner } from "./components/spike-banner";
 import { readCookie } from "./lib/mission";
 import { WORKSPACE_COOKIE, workspaceFor } from "./lib/workspace-choice";
 import { NotFound } from "./components/not-found";
 import { usesAppShell } from "./lib/chrome";
 import { CommandPalette, type PaletteCommand, usePaletteShortcut } from "./components/command-palette";
-import { billing, projects, repos, work } from "./lib/services.server";
+import { billing, projects } from "./lib/services.server";
+import { countsFor, readableRepos } from "./lib/access.server";
+import { shortCache } from "./lib/cache.server";
 import { getViewer, viewerMiddleware } from "./lib/session.server";
 import { registrationMode } from "./lib/registration.server";
 import { useSignUpCopy } from "./lib/registration";
 
-/** Shown only while a workspace's compute is held, so loaded only then. */
-const SpikeBanner = lazy(() => import("./components/billing").then((module) => ({ default: module.SpikeBanner })));
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/favicon.ico", sizes: "32x32" },
@@ -79,7 +80,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
   const chosen = readCookie(request.headers.get("cookie"), WORKSPACE_COOKIE);
   // What sign-up buttons say: Request access while g1t is invite-only.
   const [shell, mode] = await Promise.all([
-    user ? shellFor(user, params, chosen) : visitorShell(params),
+    user ? shellFor(user, params, chosen, context) : visitorShell(params, context),
     user ? Promise.resolve(null) : registrationMode(),
   ]);
   return { user, shell, inviteOnly: mode !== "open" };
@@ -90,9 +91,9 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
  * open counts of the project being looked at. One call, and only in a
  * project; it answers the same for a private project as a missing one.
  */
-async function visitorShell(params: { owner?: string; repo?: string }): Promise<ShellData> {
+async function visitorShell(params: { owner?: string; repo?: string }, context: Route.LoaderArgs["context"]): Promise<ShellData> {
   const path = params.owner && params.repo ? { namespace: params.owner, name: params.repo } : null;
-  const counts = path ? await work.counts(path, null) : null;
+  const counts = path ? await countsFor(context, params) : null;
   return {
     workspace: null,
     repos: [],
@@ -125,21 +126,27 @@ async function shellFor(
   user: User,
   params: { owner?: string; repo?: string },
   chosen: string | null,
+  context: Route.LoaderArgs["context"],
 ): Promise<ShellData> {
   const memberships = user.workspaces ?? [];
   const workspace = workspaceFor(memberships, chosen, params);
   const path = params.owner && params.repo ? { namespace: params.owner, name: params.repo } : null;
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
-  const [listed, counts, account, usage, limit, entitlements] = await Promise.all([
-    workspace ? projects.list(workspace.slug, user) : Promise.resolve(null),
-    path ? work.counts(path, user) : Promise.resolve(null),
-    workspace ? billing.account(workspace.slug, user) : Promise.resolve(null),
-    workspace ? billing.usage(workspace.slug, user, monthStart) : Promise.resolve(null),
-    workspace ? billing.limit(workspace.slug, user).catch(() => null) : Promise.resolve(null),
-    workspace ? billing.entitlements(workspace.slug).catch(() => null) : Promise.resolve(null),
+  // What the sidebar shows of the workspace changes rarely: kept for a few
+  // seconds per person and workspace, except just after they changed
+  // something (lib/cache.server.ts).
+  const kept = <T,>(what: string, load: () => Promise<T>) =>
+    workspace ? shortCache(`shell:${what}:${user.id}:${workspace.slug}`, SHELL_TTL_MS, load) : Promise.resolve(null);
+  const [listed, counts, account, usage, limit, entitlements, shared] = await Promise.all([
+    kept("projects", () => projects.list(workspace!.slug, user)),
+    path ? countsFor(context, params) : Promise.resolve(null),
+    kept("account", () => billing.account(workspace!.slug, user)),
+    kept(`usage:${monthStart}`, () => billing.usage(workspace!.slug, user, monthStart)),
+    kept("limit", () => billing.limit(workspace!.slug, user)).catch(() => null),
+    kept("entitlements", () => billing.entitlements(workspace!.slug)).catch(() => null),
+    sharedRepos(user),
   ]);
-  const shared = await sharedRepos(user);
   return {
     workspace,
     // Projects are what the sidebar lists: what the workspace builds and runs.
@@ -183,6 +190,9 @@ async function shellFor(
   };
 }
 
+/** How long one isolate keeps the sidebar's workspace answers. */
+const SHELL_TTL_MS = 15_000;
+
 /** Most repositories listed under Shared with you. */
 const MAX_SHARED = 20;
 
@@ -194,9 +204,9 @@ async function sharedRepos(user: User): Promise<ShellData["shared"]> {
   const outside = new Set(sharedWorkspaces(user));
   if (outside.size === 0) return [];
   const ids = (user.grants ?? []).filter((grant) => outside.has(grant.workspace)).map((grant) => grant.repo_id).slice(0, MAX_SHARED);
-  const found = await Promise.all(ids.map((id) => repos.getById(id, user).catch(() => null)));
+  const found = await readableRepos(ids, user);
   return found
-    .flatMap((repo) => (repo?.ok ? [{ namespace: repo.value.namespace, name: repo.value.name, isPrivate: repo.value.isPrivate }] : []))
+    .map((repo) => ({ namespace: repo.namespace, name: repo.name, isPrivate: repo.isPrivate }))
     .sort((a, b) => `${a.namespace}/${a.name}`.localeCompare(`${b.namespace}/${b.name}`));
 }
 
@@ -422,14 +432,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const missing = isRouteErrorResponse(error) && error.status === 404;
   // The billing page shows the full banner itself.
   const paused = root?.shell?.compute && root.shell.workspace && !pathname.endsWith("/-/billing") && (
-    <Suspense fallback={null}>
-      <SpikeBanner
-        compact
-        slug={root.shell.workspace.slug}
-        entitlements={{ paused: root.shell.compute.paused, spike: root.shell.compute.spike }}
-        owner={root.shell.compute.owner}
-      />
-    </Suspense>
+    <SpikeBanner
+      compact
+      slug={root.shell.workspace.slug}
+      entitlements={{ paused: root.shell.compute.paused, spike: root.shell.compute.spike }}
+      owner={root.shell.compute.owner}
+    />
   );
   const verify = user && !user.verified && (
     <Form

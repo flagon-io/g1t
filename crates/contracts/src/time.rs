@@ -37,9 +37,48 @@ pub fn rfc3339(ms: u64) -> String {
     format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z")
 }
 
+/// An RFC 3339 UTC timestamp in g1t's format (or without milliseconds)
+/// back to milliseconds since the Unix epoch. `None` for anything else.
+pub fn parse_rfc3339(text: &str) -> Option<u64> {
+    let text = text.strip_suffix('Z')?;
+    let (date, time) = text.split_once('T')?;
+    let mut date = date.splitn(3, '-').map(|part| part.parse::<i64>().ok());
+    let (year, month, day) = (date.next()??, date.next()??, date.next()??);
+    let (clock, millis) = match time.split_once('.') {
+        Some((clock, fraction)) => {
+            let digits: String = fraction.chars().chain("000".chars()).take(3).collect();
+            (clock, digits.parse::<u64>().ok()?)
+        }
+        None => (time, 0),
+    };
+    let mut clock = clock.splitn(3, ':').map(|part| part.parse::<u64>().ok());
+    let (hour, minute, second) = (clock.next()??, clock.next()??, clock.next()??);
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || minute > 59 || second > 60 {
+        return None;
+    }
+    // Howard Hinnant's days_from_civil, the inverse of the above.
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = y.div_euclid(400);
+    let year_of_era = y - era * 400;
+    let day_of_year = (153 * (if month > 2 { month - 3 } else { month + 9 }) + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    let days = u64::try_from(era * 146_097 + day_of_era - 719_468).ok()?;
+    Some(((days * 86_400 + hour * 3600 + minute * 60 + second) * 1000) + millis)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_what_it_formats() {
+        for ms in [0, 951_782_400_000, 1_790_918_179_123, 4_102_444_799_999] {
+            assert_eq!(parse_rfc3339(&rfc3339(ms)), Some(ms));
+        }
+        assert_eq!(parse_rfc3339("2026-10-02T05:16:19Z"), Some(1_790_918_179_000));
+        assert_eq!(parse_rfc3339("yesterday"), None);
+        assert_eq!(parse_rfc3339("2026-13-02T05:16:19Z"), None);
+    }
 
     #[test]
     fn formats_known_instants() {

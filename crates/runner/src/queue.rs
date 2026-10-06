@@ -1,6 +1,6 @@
-//! Builds one state of a merge queue and checks it: the default branch with
-//! a run of pull requests merged in, in queue order, tested with all of
-//! their acceptance checks. The tested state is pushed to its own branch,
+//! Builds one state of a merge queue: the default branch with a run of pull
+//! requests merged in, in queue order. The state is pushed to its own branch,
+//! where the repository's `merge_group` workflows check it,
 //! from which g1t lands it if it passed and everything ahead of it has
 //! landed.
 //!
@@ -17,7 +17,8 @@
 //! - `QUEUE_BRANCH`: where to push the tested state.
 //! - `STACK`: the pull requests to merge, as JSON `[{number, title, remote,
 //!   branch, commit}]`, the entry being tested last.
-//! - `CHECKS`: the stack's own acceptance checks, as a JSON array.
+//! - `CHECKS`: commands to run on the state, as a JSON array. g1t sends
+//!   none now: the state is checked by its `merge_group` workflows.
 //! - `CONTRACT_CHECKS`: the checks of issues already completed, which the
 //!   default branch has to keep passing. One that fails is run again on the
 //!   base alone; if it fails there too, it was broken already and is not
@@ -70,22 +71,25 @@ fn build(stack: &[Item], auth: &str) -> std::result::Result<String, Stopped> {
     let base = env("BASE_COMMIT").map_err(Stopped::Failed)?;
     std::fs::create_dir_all("/work").map_err(|error| Stopped::Failed(error.into()))?;
     let workdir = Path::new(WORKDIR);
-    git(
-        Path::new("/work"),
-        &["-c", auth, "clone", "--quiet", &base_remote, WORKDIR],
-    )
-    .and_then(|_| git(workdir, &["checkout", "--quiet", "-B", "g1t-queue", &base]))
+    crate::clone::clone(Path::new("/work"), auth, &[], &base_remote, WORKDIR)
+        .and_then(|_| git(workdir, &["rev-parse", "--abbrev-ref", "HEAD"]))
+        .and_then(|branch| crate::clone::ensure(workdir, auth, "origin", &branch, &base).map(|_| branch))
+        .and_then(|_| git(workdir, &["checkout", "--quiet", "-B", "g1t-queue", &base]))
     .and_then(|_| git(workdir, &["config", "user.name", "g1t merge queue"]))
     .and_then(|_| git(workdir, &["config", "user.email", "queue@g1t.sh"]))
     .map_err(Stopped::Failed)?;
 
     for (index, item) in stack.iter().enumerate() {
-        git(
-            workdir,
-            &["-c", auth, "fetch", "--quiet", &item.remote, &item.branch],
-        )
-        .with_context(|| format!("could not fetch #{}", item.number))
-        .map_err(Stopped::Failed)?;
+        crate::clone::fetch(workdir, auth, &item.remote, &item.branch)
+            .with_context(|| format!("could not fetch #{}", item.number))
+            .map_err(Stopped::Failed)?;
+        let _ = crate::clone::ensure(workdir, auth, &item.remote, &item.branch, &item.commit);
+        // Shallow: deep enough for the change and the state so far to share
+        // a commit to merge from.
+        if crate::clone::has(workdir, &item.commit) {
+            crate::clone::share_history(workdir, auth, &[(base_remote.as_str(), "HEAD"), (item.remote.as_str(), item.branch.as_str())], "HEAD", &item.commit)
+                .map_err(Stopped::Failed)?;
+        }
         // The branch may have moved on since the queue looked; what was
         // queued is the commit, and it must be there.
         if !git_ok(workdir, &["cat-file", "-e", &format!("{}^{{commit}}", item.commit)]) {

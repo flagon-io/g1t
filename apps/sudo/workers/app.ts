@@ -2,7 +2,8 @@ import { RouterContextProvider, createRequestHandler } from "react-router";
 
 import { authorize, isSameOrigin, readSettings } from "../app/lib/access";
 import { denied, secure } from "../app/lib/guard";
-import { staffContext } from "../app/lib/staff";
+import { staffContext, zoneContext } from "../app/lib/staff";
+import { readZone } from "../app/lib/time";
 
 const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),
@@ -58,6 +59,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
   }
   const context = new RouterContextProvider();
   context.set(staffContext, { email: auth.email });
+  // Times in the staff member's zone: their choice (/timezone), else where Cloudflare places them.
+  context.set(zoneContext, readZone(request.headers.get("cookie"), (request as { cf?: { timezone?: unknown } }).cf?.timezone));
   return requestHandler(request, context);
 }
 

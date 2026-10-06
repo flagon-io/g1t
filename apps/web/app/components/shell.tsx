@@ -1,5 +1,6 @@
 import {
   Activity,
+  ServerCog,
   GanttChart,
   KanbanSquare,
   Package,
@@ -57,6 +58,7 @@ import { CommandPalette, type PaletteCommand, usePaletteShortcut } from "./comma
 import { StatusDot, useSiteStatus } from "./footer";
 import { Logo } from "./logo";
 import { Avatar, notACredential } from "./ui";
+import { Skeleton } from "./ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -276,6 +278,7 @@ function WorkspaceSwitcher({ user, shell }: { user: User; shell: ShellData }) {
           name gets all the room there is, and the whole of it on hover. */}
       <Link
         to={current ? `/${current}` : "/workspaces/new"}
+        prefetch="intent"
         title={workspace ? `${label} · g1t.sh/${workspace.slug}` : undefined}
         className="flex h-9 min-w-0 grow items-center gap-2 rounded-md px-2 transition-colors hover:bg-raised"
       >
@@ -364,7 +367,7 @@ function StatusSummary({ open }: { open: boolean }) {
       <span aria-hidden="true" className="flex">
         <StatusDot state={status?.overall.state ?? null} />
       </span>
-      <span className="truncate">{words ?? "Checking…"}</span>
+      {words ? <span className="truncate">{words}</span> : <Skeleton className="h-3 w-20" />}
     </span>
   );
 }
@@ -375,17 +378,26 @@ const MENU_ROW = "h-9 gap-2.5 px-2.5 text-[0.8125rem]";
 function AccountMenu({ user }: { user: User }) {
   const submit = useSubmit();
   const [open, setOpen] = useState(false);
-  // Name, primary address and invites left: asked for once, when first opened.
+  // Name, primary address and invites left: asked for once, as soon as the
+  // pointer or focus reaches the button, so they are there when it opens.
   const details = useFetcher<AccountMenuData | null>({ key: "account-menu" });
+  const prefetch = () => {
+    if (details.state === "idle" && details.data === undefined) details.load("/settings/menu.json");
+  };
   useEffect(() => {
-    if (open && details.state === "idle" && details.data === undefined) details.load("/settings/menu.json");
-  }, [open, details]);
+    if (open) prefetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   const me = details.data ?? null;
+  // Still on its way: shapes where the words will be, the same size.
+  const loading = details.data === undefined && details.state !== "idle";
   const profile = `/u/${user.username}`;
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger
         aria-label={`Account menu for ${user.username}`}
+        onPointerEnter={prefetch}
+        onFocus={prefetch}
         className="flex h-10 w-full items-center gap-2.5 rounded-md px-2 text-left outline-none transition-colors hover:bg-raised focus-visible:ring-2 focus-visible:ring-merged/60 data-[state=open]:bg-raised"
       >
         <Avatar name={user.username} image={user.avatar} size={22} />
@@ -397,10 +409,18 @@ function AccountMenu({ user }: { user: User }) {
         <DropdownMenuItem asChild className="gap-3 px-2 py-2">
           <Link to={profile} aria-label={`${me?.name ?? user.username} (@${user.username}), your profile`}>
             <Avatar name={user.username} image={user.avatar} size={36} />
-            <span className="flex min-w-0 flex-col leading-tight">
-              <span className="truncate text-sm font-medium text-fg">{me?.name ?? user.username}</span>
+            <span className="flex min-w-0 grow flex-col leading-tight" aria-busy={loading}>
+              {loading ? (
+                <Skeleton className="my-[0.1875rem] h-3.5 w-28" />
+              ) : (
+                <span className="truncate text-sm font-medium text-fg">{me?.name ?? user.username}</span>
+              )}
               <span className="truncate font-mono text-xs text-muted">@{user.username}</span>
-              {me?.email && <span className="mt-0.5 truncate text-xs text-faint">{me.email}</span>}
+              {loading ? (
+                <Skeleton className="mt-1 h-3 w-40" />
+              ) : (
+                me?.email && <span className="mt-0.5 truncate text-xs text-faint">{me.email}</span>
+              )}
             </span>
           </Link>
         </DropdownMenuItem>
@@ -422,6 +442,7 @@ function AccountMenu({ user }: { user: User }) {
             <Link to="/settings/invites">
               <Ticket />
               Invites
+              {loading && <Skeleton className="ml-auto h-4 w-12 rounded-full" />}
               {me?.invites_left != null && (
                 <span className="ml-auto rounded-full bg-line px-1.5 text-[0.6875rem] tabular-nums text-muted">
                   {me.invites_left} left
@@ -680,6 +701,9 @@ function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
             <SidebarLink to={`/${ws.slug}/-/secrets`} icon={<Lock size={15} />}>
               Secrets and variables
             </SidebarLink>
+            <SidebarLink to={`/${ws.slug}/-/runners`} icon={<ServerCog size={15} />}>
+              Runners
+            </SidebarLink>
             <SidebarLink to={`/${ws.slug}/-/integrations`} icon={<Plug size={15} />}>
               Integrations
             </SidebarLink>
@@ -805,6 +829,7 @@ function RepoMenu({
       <NavLink
         to={base}
         end
+        prefetch="intent"
         title="Overview"
         className={({ isActive }) =>
           `mt-2 flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors ${isActive ? "bg-raised" : "hover:bg-raised/60"}`
@@ -943,6 +968,11 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
         {shows("secrets") && (
           <SidebarLink to={`${base}/settings/secrets`} icon={<Lock size={15} />}>
             Secrets and variables
+          </SidebarLink>
+        )}
+        {shows("runners") && (
+          <SidebarLink to={`${base}/settings/runners`} icon={<ServerCog size={15} />}>
+            Runners
           </SidebarLink>
         )}
         {shows("webhooks") && (
@@ -1246,6 +1276,7 @@ function Breadcrumbs({ pathname, missing, repo }: { pathname: string; missing?: 
             {index > 0 && <span className="text-line-strong">/</span>}
             <Link
               to={crumb.to}
+              prefetch="intent"
               className={`truncate rounded px-1 py-0.5 transition-colors hover:bg-raised ${
                 index === trail.length - 1 ? "font-medium text-fg" : "text-muted hover:text-fg"
               }`}
@@ -1305,6 +1336,7 @@ function Breadcrumbs({ pathname, missing, repo }: { pathname: string; missing?: 
           {index > 0 && <span className="text-line-strong">/</span>}
           <Link
             to={crumb.to}
+            prefetch="intent"
             className={`truncate rounded px-1 py-0.5 transition-colors hover:bg-raised ${
               index === trail.length - 1 ? "font-medium text-fg" : "text-muted hover:text-fg"
             } ${crumb.mono ? "font-mono text-[0.8125rem]" : ""}`}
@@ -1488,6 +1520,15 @@ export function AppShell({
 
   // A new page closes the drawer on small screens.
   useEffect(() => setDrawer(false), [pathname]);
+  // Mission control's code, fetched while the browser is idle, so going
+  // home never waits on it (routes/home.tsx).
+  useEffect(() => {
+    if (!user) return;
+    const load = () => void import("./mission-control").catch(() => undefined);
+    const idle = (window as { requestIdleCallback?: (callback: () => void) => number }).requestIdleCallback;
+    if (idle) idle(load);
+    else setTimeout(load, 1500);
+  }, [user]);
   usePaletteShortcut(() => setPalette((open) => !open));
 
   return (

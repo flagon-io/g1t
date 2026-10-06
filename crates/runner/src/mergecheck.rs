@@ -48,13 +48,15 @@ fn probe(auth: &str) -> Result<Vec<String>> {
     let head = env("HEAD_COMMIT")?;
     std::fs::create_dir_all("/work")?;
     let workdir = Path::new(WORKDIR);
-    git(
-        Path::new("/work"),
-        &["-c", auth, "clone", "--quiet", "--no-checkout", &base_remote, WORKDIR],
-    )
-    .context("could not clone the repository")?;
-    git(workdir, &["-c", auth, "fetch", "--quiet", &head_remote, &head_branch])
-        .context("could not fetch the pull request's change")?;
+    crate::clone::clone(Path::new("/work"), auth, &["--no-checkout"], &base_remote, WORKDIR).context("could not clone the repository")?;
+    let base_branch = git(workdir, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+    crate::clone::ensure(workdir, auth, "origin", &base_branch, &base)?;
+    crate::clone::fetch(workdir, auth, &head_remote, &head_branch).context("could not fetch the pull request's change")?;
+    crate::clone::ensure(workdir, auth, &head_remote, &head_branch, &head)?;
+    // Shallow: deep enough for the two to share a commit to merge from.
+    if crate::clone::has(workdir, &base) && crate::clone::has(workdir, &head) {
+        crate::clone::share_history(workdir, auth, &[("origin", base_branch.as_str()), (head_remote.as_str(), head_branch.as_str())], &base, &head)?;
+    }
     for (commit, what) in [(&base, "the target branch's commit"), (&head, "the change's commit")] {
         let present = Command::new("git")
             .current_dir(workdir)

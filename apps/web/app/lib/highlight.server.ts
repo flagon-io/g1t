@@ -1,4 +1,6 @@
-import { THEME, getHighlighter, languageOf, linesToHtml } from "./shiki";
+// Shiki and its grammars load on the first file highlighted, not when the
+// Worker starts: most requests highlight nothing.
+const shiki = () => import("./shiki");
 
 const MAX_HIGHLIGHT_CHARS = 200_000;
 
@@ -7,6 +9,7 @@ const MAX_HIGHLIGHT_CHARS = 200_000;
  * is too large, in which case the caller shows plain text.
  */
 export async function highlight(path: string, text: string): Promise<string | null> {
+  const { THEME, getHighlighter, languageOf } = await shiki();
   const lang = languageOf(path);
   if (!lang || text.length > MAX_HIGHLIGHT_CHARS) return null;
   try {
@@ -21,6 +24,7 @@ export async function highlight(path: string, text: string): Promise<string | nu
  * language is unknown or it is too large.
  */
 export async function highlightLines(path: string, text: string): Promise<string[] | null> {
+  const { getHighlighter, languageOf, linesToHtml } = await shiki();
   const lang = languageOf(path);
   if (!lang || text.length > MAX_HIGHLIGHT_CHARS) return null;
   try {

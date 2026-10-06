@@ -10,9 +10,9 @@ and each project can override them.
 
 They apply to every sandbox g1t starts for a project's agents (implement,
 revise, answer, catch up, review, plan, and replies to mentions). The
-sandboxes of its acceptance checks and merge queue get the network list and
-the time cap; they run the project's commands, not an agent, so command
-rules and the cost cap do not apply to them. GitHub Actions jobs and deploy
+sandboxes of its merge queue get the network list and the time cap; they
+build the queue's states, not an agent's work, so command rules and the
+cost cap do not apply to them. GitHub Actions jobs and deploy
 builds get the network list too, with what builds need added (see
 [builds](#builds)), and their own time limit. Merge checks are not covered;
 see [What is not covered](#what-is-not-covered). Every sandbox, whatever
@@ -29,8 +29,9 @@ it runs, is watched for [mining](#abuse-and-mining).
 
 Every setting on a project's page starts as "As the workspace", which
 follows the workspace's default, whatever it is now. Choose a value to
-override it for that project only. Allowed domains and deny patterns add
-up: a project's are added to the workspace's, never instead of them.
+override it for that project only. Allowed domains, workflow-only domains
+and deny patterns add up: a project's are added to the workspace's, never
+instead of them.
 
 Changes apply to runs that start after you save. A run that is under way
 keeps the guardrails it started with.
@@ -107,6 +108,42 @@ real builds need, which no setting removes:
 The repository itself is cloned from g1t, which is always reachable. A
 project whose guardrails set **Only allowed hosts** to Open runs its jobs
 and builds with an open network too.
+
+### Workflow-only domains
+
+Some hosts only a workflow should reach: the API a deploy uploads to, a
+release server, a package registry you publish to. Listing them under
+allowed domains would open them to agents as well. List them under
+**Workflow-only domains** instead, one per line:
+
+```
+api.cloudflare.com | deploy.yml | production
+uploads.example.com | release.yml, nightly.yml
+*.internal.example.com
+```
+
+| Part | |
+| --- | --- |
+| The domain | As for allowed domains: `example.com`, or `*.example.com` for its subdomains. |
+| Workflows | Workflow files by name, comma-separated, as they are in `.g1t/workflows/`. Left out: any workflow. |
+| Environments | The environments a job must name with `environment:`, comma-separated. Left out: any job. |
+
+A domain is reached only by:
+
+- jobs of the workflows and environments its line names;
+- in a run that is not of a pull request from a fork, which runs code
+  anyone could write.
+
+Agents, checks, the merge queue and deploy builds never reach these
+hosts, whatever the line says. A job that names its environment with an
+expression (`environment: ${{ inputs.target }}`) matches only lines with
+no environments.
+
+Workflow-only domains are set by the same people as the rest of the page:
+owners for the workspace's, Maintain or higher for a project's. Each change
+is recorded in the workspace's [audit log](/guides/audit-log/) as
+`update_guardrails`, saying which domains were added or removed and what
+they were limited to.
 
 ## Commands
 

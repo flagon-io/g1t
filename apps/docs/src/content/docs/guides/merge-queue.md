@@ -1,13 +1,13 @@
 ---
 title: Merge queue
-description: Test each pull request together with the ones ahead of it, so main only moves to a state whose checks passed.
+description: Test each pull request together with the ones ahead of it, so main only moves to a state whose required checks passed.
 ---
 
 Merging one pull request at a time, each caught up with `main`, keeps every
 merge clean as text. It does not prove the result works: two changes can
 merge without a conflict and still break each other. With the merge queue
 on, a pull request is tested together with everything ahead of it before it
-lands, and `main` only ever moves to a state whose checks passed.
+lands, and `main` only ever moves to a state whose required checks passed.
 
 The merge queue runs in g1t's sandboxes, which work in any workspace with
 [its own model provider](/guides/models/) and in those g1t's hosted models
@@ -16,10 +16,14 @@ turn the queue off to merge directly.
 
 ## Turn it on
 
-1. Open the project's **Settings → Repository**. You need the Maintain
+1. Open the project's **Settings → Branches and merging**. You need the Maintain
    [role](/guides/access-and-roles/) or higher on its repository.
 2. Turn on **Merge through a queue**.
 3. Save.
+4. Add `merge_group` to the `on:` of every workflow behind a
+   [required status check](/guides/pull-requests/#required-status-checks),
+   so that it runs on the queue's states too
+   ([below](#what-each-state-is-held-to)).
 
 From the API, send `merge_queue` to `PATCH /repos/{owner}/{name}/settings`
 (or `update_repo_settings`):
@@ -37,8 +41,9 @@ Merging a pull request, from its page (**Add to the merge queue**), with
 the `pull_request` tool's `merge` action, or with
 `POST /repos/{owner}/{name}/pulls/{number}/merge`,
 adds it to the queue instead of changing `main`. Everything a merge needs
-is still checked first: the pull request must be ready for review, its
-checks must have passed and it must have the approvals the repository asks
+is still checked first: the pull request must be ready for review, every
+[required check](/guides/pull-requests/#required-status-checks) must have
+passed on its head, and it must have the approvals the repository asks
 for. Only people with the Write [role](/guides/access-and-roles/) or higher can add to the
 queue. Merging a pull
 request that is already queued changes nothing.
@@ -66,22 +71,19 @@ that takes longer than 45 minutes is tested again.
 
 ### What each state is held to
 
-Each tested state runs:
+g1t pushes each state it built to a branch of its own, `g1t-queue/<entry>`,
+and runs the repository's [workflows](/guides/actions/) that run on
+`merge_group` on it. The entry waits for them, and passes only if:
 
-- the acceptance checks of every pull request in it; and
-- the **contract**: the checks of issues already completed on the
-  repository, from the 30 most recently closed. Once an issue lands, its
-  checks become part of what `main` promises, and every later change is
-  held to them.
+- every `merge_group` workflow it started passed; and
+- every [required status check](/guides/pull-requests/#required-status-checks)
+  of the default branch passed on that commit.
 
-So a change that breaks something that landed before it is caught here,
-even when it merges without a conflict and its own checks pass.
+So a change that breaks something another change ahead of it relies on is
+caught here, even when it merges without a conflict and its own checks
+passed. The branch is deleted once the entry lands or leaves the queue.
 
-Once those pass, the repository's [GitHub Actions](/guides/actions/)
-workflows that run `on: merge_group` run on the state too, with the same
-`merge_group` event GitHub sends, on the branch `g1t-queue/<entry>`. The
-entry waits for them, and lands only if they pass. The branch is deleted
-once the entry lands or leaves the queue. A workflow opts in like this:
+A workflow opts in like this:
 
 ```yaml
 on:
@@ -89,10 +91,15 @@ on:
   merge_group:
 ```
 
-A contract check that fails is run again on `main` alone. If it fails there
-too, it was broken already: it is marked as passing with a note, "already
-failing on the default branch; not held against this", and does not hold
-the change back.
+Required checks only report on a queued state if their workflows run on
+`merge_group`. When the branch requires checks and no workflow runs on
+`merge_group`, the entry fails with a message saying so: "the required
+check CI cannot report on it: no workflow runs on merge_group events. Add
+merge_group to the on: of the workflows the branch requires". A required
+check that a workflow did not report on the state fails it the same way.
+A repository that requires no checks and has no `merge_group` workflows
+only has each state built: an entry passes once it merges cleanly with
+what is ahead of it.
 
 ## How entries land
 
@@ -118,21 +125,20 @@ date, [catch it up](/guides/pull-requests/#catching-up) first: when it and
 
 ## When an entry fails
 
-An entry fails when its checks or its `merge_group` workflows fail in the
-combined state, when it does not merge cleanly with what is ahead of it, or
+An entry fails when its `merge_group` workflows or required checks fail
+on the combined state, when it does not merge cleanly with what is ahead of it, or
 when the state cannot be built.
 It leaves the queue, and:
 
-1. Its pull request gets a failed check run. Each command is named with the
-   state it ran in, such as `cargo test (merge queue, on the default branch
-   with #41 merged in first)`, and the run says why it failed. A conflict
-   names the pull request ahead it collided with, and the files.
+1. Its pull request records the failure, saying why: which workflow failed
+   on the state, which required check did not report, or, for a conflict,
+   the pull request ahead it collided with and the files.
 2. Its conversation records that it was taken out of the queue, and why: a
    conflict links the pull request it collided with and each conflicting
    file, which opens in the pull request's changes.
 3. The entries that were tested on top of it are tested again without it.
 
-A g1t agent's pull request is then sent back to revise, like any failed
+A g1t agent's pull request is then sent back to revise, as for any failed
 check, starting from `main` as it is now. The revision counts towards
 **Revisions before asking you**. Once it is ready again, a repository with
 **Merge automatically when ready** on adds it to the queue again by itself;
@@ -152,13 +158,12 @@ Each shows:
 | --- | --- |
 | State | **Waiting**, **Testing** or **Passed**. |
 | Tested as | `main` and the pull requests merged into it, such as `main + #41 + #44`. |
-| Checks | How many of the checks passed. |
+| Checks | How its state's checks stand. |
 | Who | The agent or person who made the pull request, and who queued it. |
 | Commit | The tested state's commit. |
 
 **Recently** lists the last 20 that left the queue: **Landed**, **Failed**
-or **Removed**. A failed entry shows why, and the output of the checks that
-failed.
+or **Removed**. A failed entry shows why.
 
 ## From the API or an agent
 
@@ -199,6 +204,6 @@ curl https://api.g1t.sh/repos/acme/web/queue
 | `ahead` | The pull requests merged ahead of it in the state being tested. Empty when it was tested on `main` alone. |
 | `base_commit` | The commit of `main` the state was built on. |
 | `combined_commit` | The tested state. |
-| `results` | The checks run against it, each with `command`, `passed` and `output`. |
-| `error` | Why it failed: a conflict, or what could not be run. |
+| `results` | What building the state recorded, each with `command`, `passed` and `output`. The workflow runs on it are on its commit, `combined_commit`. |
+| `error` | Why it failed: a conflict, a workflow that failed on it, a required check that did not report, or what could not be built. |
 | `enqueued_by` | Who added it: a username, or `g1t` when it was merged automatically. |

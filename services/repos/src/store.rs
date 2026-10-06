@@ -286,6 +286,12 @@ const OBJECT_CACHE: &str = "https://objects.g1t.internal/";
 const MAX_CACHED_BLOB: usize = 1024 * 1024;
 const OBJECT_MAX_AGE: &str = "public, max-age=31536000, immutable";
 
+/// Whether a ref is a full commit hash (SHA-1 or SHA-256), whose history
+/// can be kept for good.
+pub fn is_commit_hash(git_ref: &str) -> bool {
+    (git_ref.len() == 40 || git_ref.len() == 64) && git_ref.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+}
+
 impl ArtifactsRepo {
     fn cache_url(&self, kind: &str, hash: &str) -> String {
         format!("{OBJECT_CACHE}{}/{kind}/{hash}", self.key)
@@ -388,10 +394,20 @@ impl GitRepo for ArtifactsRepo {
     }
 
     async fn log(&self, git_ref: &str, limit: u32) -> Result<Vec<Commit>> {
+        // History from a commit never changes, so a log asked for by hash is
+        // kept like an object: walking it is a read per commit.
+        let by_hash = is_commit_hash(git_ref);
+        let key = format!("{git_ref}-{limit}");
+        if by_hash
+            && let Some(bytes) = self.cached("log", &key).await
+            && let Ok(commits) = serde_json::from_slice::<Vec<Commit>>(&bytes)
+        {
+            return Ok(commits);
+        }
         let options = js::to_js(&serde_json::json!({ "ref": git_ref, "limit": limit }))?;
-        let commits: Vec<RawCommit> =
+        let raw: Vec<RawCommit> =
             js::from_js(&js::call(&self.handle, "log", &[options]).await?)?;
-        Ok(commits
+        let commits: Vec<Commit> = raw
             .into_iter()
             .map(|commit| Commit {
                 hash: commit.hash,
@@ -401,7 +417,15 @@ impl GitRepo for ArtifactsRepo {
                 parents: commit.parents,
                 authored_at: rfc3339(commit.authored_at * 1000),
             })
-            .collect())
+            .collect();
+        // An unknown hash logs nothing; that is not kept, in case it arrives.
+        if by_hash
+            && !commits.is_empty()
+            && let Ok(bytes) = serde_json::to_vec(&commits)
+        {
+            self.keep("log", &key, bytes).await;
+        }
+        Ok(commits)
     }
 
     async fn parents(&self, commit_hash: &str) -> Result<Option<Vec<String>>> {
@@ -536,5 +560,19 @@ mod tests {
         // Keeping another later drops the expired one from the map.
         kept.keep("acme--other", Scope::Read, access("o1"), 1_000 + TOKEN_REUSE_MS);
         assert_eq!(kept.kept.len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod log_cache_tests {
+    use super::is_commit_hash;
+
+    #[test]
+    fn only_full_lowercase_hashes_are_kept() {
+        assert!(is_commit_hash(&"a".repeat(40)));
+        assert!(is_commit_hash(&"0123456789abcdef".repeat(4)));
+        assert!(!is_commit_hash("main"));
+        assert!(!is_commit_hash(&"A".repeat(40)));
+        assert!(!is_commit_hash(&"a".repeat(39)));
     }
 }

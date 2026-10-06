@@ -7,12 +7,13 @@
 //! See `g1t_contracts::guardrails` for the rules and how levels merge.
 
 use g1t_contracts::access::{self, Capability};
+use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface};
 use g1t_contracts::agents::RunStatus;
 use g1t_contracts::guardrails::*;
 use g1t_contracts::repos::{Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::StallArgs;
-use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, User, Viewer};
+use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, User, Viewer, new_id};
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
@@ -167,6 +168,7 @@ impl Work {
             Some(repo) => ("project", repo.id.clone()),
             None => ("workspace", workspace.clone()),
         };
+        let before = self.guardrail_level(scope, &key).await?;
         self.db
             .prepare(
                 "INSERT INTO guardrails (scope, scope_key, workspace, settings, updated_by, updated_at)
@@ -186,7 +188,29 @@ impl Work {
             ])?
             .run()
             .await?;
+        let full = repo.as_ref().map(|repo| format!("{}/{}", repo.namespace, repo.name));
+        self.audit_guardrails(&a.actor, &workspace, full, &guardrails_change(&before, &settings)).await;
         Ok(Outcome::Ok(self.guardrails_view(&workspace, repo.as_ref()).await?))
+    }
+
+    /// Records a change to guardrails in the workspace's audit log. Never
+    /// fails the change: a log that cannot be written is logged.
+    async fn audit_guardrails(&self, actor: &User, workspace: &str, repo: Option<String>, message: &str) {
+        let entry = NewAuditEntry {
+            actor: AuditActor::of(actor),
+            action: "update_guardrails".to_owned(),
+            surface: Surface::Web,
+            target: AuditTarget { workspace: workspace.to_owned(), repo, ..AuditTarget::default() },
+            outcome: AuditOutcome::Allowed,
+            rule: "guardrails".to_owned(),
+            result: Some("ok".to_owned()),
+            message: Some(message.to_owned()),
+            request_id: new_id("req", now_ms()),
+        };
+        let recorded: Result<u32> = g1t_kit::call(&self.events, "audit_record", &RecordAuditArgs { entries: vec![entry] }).await;
+        if let Err(error) = recorded {
+            worker::console_error!("guardrails change not recorded: {error}");
+        }
     }
 
     /// What a run in `repo` gets. The runner is trusted: it names the
@@ -297,6 +321,31 @@ impl Work {
     }
 }
 
+/// What a change to one level did, for the audit log: the workflow-only
+/// domains added and removed, each with what it is limited to, and
+/// whether anything else changed.
+fn guardrails_change(before: &GuardrailSettings, after: &GuardrailSettings) -> String {
+    let describe = |entry: &WorkflowDomain| {
+        let workflows = if entry.workflows.is_empty() { "any workflow".to_owned() } else { entry.workflows.join(", ") };
+        let environments = if entry.environments.is_empty() { "any environment".to_owned() } else { entry.environments.join(", ") };
+        format!("{} ({workflows}; {environments})", entry.domain)
+    };
+    let added: Vec<String> = after.workflow_domains.iter().filter(|e| !before.workflow_domains.contains(e)).map(describe).collect();
+    let removed: Vec<String> = before.workflow_domains.iter().filter(|e| !after.workflow_domains.contains(e)).map(describe).collect();
+    let mut parts = Vec::new();
+    if !added.is_empty() {
+        parts.push(format!("Workflow-only domains added: {}.", added.join("; ")));
+    }
+    if !removed.is_empty() {
+        parts.push(format!("Workflow-only domains removed: {}.", removed.join("; ")));
+    }
+    let rest = |s: &GuardrailSettings| GuardrailSettings { workflow_domains: Vec::new(), updated_by: None, updated_at: None, ..s.clone() };
+    if rest(before) != rest(after) {
+        parts.push("Other guardrails changed.".to_owned());
+    }
+    if parts.is_empty() { "Guardrails saved unchanged.".to_owned() } else { parts.join(" ") }
+}
+
 /// The pull request id of a pull request's working copy
 /// (`pulls/<pull id>`, made by repos `fork_for_pull`), if `path` is one.
 fn working_copy_of(path: &RepoPath) -> Option<String> {
@@ -352,6 +401,23 @@ mod tests {
         )
         .unwrap();
         assert_eq!(by_id.repo_id.as_deref(), Some("rep_1"));
+    }
+
+    #[test]
+    fn a_change_to_workflow_domains_is_described_for_the_audit_log() {
+        let deploy = WorkflowDomain {
+            domain: "api.cloudflare.com".into(),
+            workflows: vec!["deploy.yml".into()],
+            environments: vec!["production".into()],
+        };
+        let open = WorkflowDomain { domain: "*.example.com".into(), ..WorkflowDomain::default() };
+        let before = GuardrailSettings { workflow_domains: vec![open.clone()], ..GuardrailSettings::default() };
+        let after = GuardrailSettings { workflow_domains: vec![deploy], budget_usd: Some(2.0), ..GuardrailSettings::default() };
+        assert_eq!(
+            guardrails_change(&before, &after),
+            "Workflow-only domains added: api.cloudflare.com (deploy.yml; production). Workflow-only domains removed: *.example.com (any workflow; any environment). Other guardrails changed."
+        );
+        assert_eq!(guardrails_change(&before, &before), "Guardrails saved unchanged.");
     }
 
     #[test]

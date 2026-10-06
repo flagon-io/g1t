@@ -53,11 +53,9 @@ fn review() -> Result<Value> {
     let workdir = Path::new(WORKDIR);
 
     std::fs::create_dir_all("/work")?;
-    git(
-        Path::new("/work"),
-        &["-c", &auth, "clone", "--quiet", &remote, WORKDIR],
-    )
-    .context("could not clone the pull request")?;
+    crate::clone::clone(Path::new("/work"), &auth, &[], &remote, WORKDIR).context("could not clone the pull request")?;
+    let head = git(workdir, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+    crate::clone::ensure(workdir, &auth, "origin", &head, &commit)?;
     git(
         workdir,
         &[
@@ -68,11 +66,9 @@ fn review() -> Result<Value> {
             &commit,
         ],
     )?;
-    git(
-        workdir,
-        &["-c", &auth, "fetch", "--quiet", &upstream, &upstream_branch],
-    )
-    .with_context(|| format!("could not fetch {upstream_branch}"))?;
+    crate::clone::fetch(workdir, &auth, &upstream, &upstream_branch).with_context(|| format!("could not fetch {upstream_branch}"))?;
+    // Shallow: deep enough to find where the pull request left the branch.
+    crate::clone::share_history(workdir, &auth, &[("origin", head.as_str()), (upstream.as_str(), upstream_branch.as_str())], "HEAD", "FETCH_HEAD")?;
     // The change is everything since the pull request left the branch.
     let base = git(workdir, &["merge-base", "FETCH_HEAD", "HEAD"])?;
     let diff = git(workdir, &["diff", &base, "HEAD"])?;

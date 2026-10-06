@@ -57,7 +57,7 @@ choose; blank lines and `#` comments are skipped.
 | A workflow job | Rows available to Workflows: secrets as `${{ secrets.KEY }}`, config as `${{ vars.KEY }}` | The job's `environment:`, if it has one |
 | A deploy build | Rows available to Deployments, as environment variables | `production` or `preview` |
 | A running app | The same rows, as bindings: `env.KEY` (a secret as a secret binding) | `production` or `preview` |
-| An agent, acceptance checks, the merge queue | Nothing | |
+| An agent, the merge queue's builds | Nothing | |
 
 For each key, a reader gets the row for its environment if there is one,
 else the row for all environments. A row only for other environments gives

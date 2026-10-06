@@ -70,7 +70,7 @@ export function stallReason(detail: string): Reason {
   if (/confidence in this change is low/i.test(detail)) return "low_confidence";
   if (/cost cap|time cap|unusual CPU/i.test(detail)) return "outside_guardrails";
   if (/conflict|could not (?:be )?merge/i.test(detail)) return "blocking";
-  if (/checks? (?:still )?fail|still fails|could not be run/i.test(detail)) return "checks_failing";
+  if (/checks? (?:still )?fail|still fails?\b|could not be run|failed in the merge queue/i.test(detail)) return "checks_failing";
   if (/approv|asked for changes|review (?:still|could not)/i.test(detail)) return "needs_review";
   return "stalled";
 }
@@ -156,13 +156,30 @@ export function confidenceFact(confidence: Pick<Confidence, "level" | "reasons">
   return { label: "Confidence", value: confidenceLine(confidence), tone: CONFIDENCE_TONE[confidence.level], wide: true };
 }
 
-const CHECKS: Record<CheckStatus, { text: string; tone: FactTone }> = {
-  passed: { text: "Passed", tone: "good" },
-  failed: { text: "Failing", tone: "bad" },
-  errored: { text: "Could not run", tone: "bad" },
-  running: { text: "Running", tone: null },
-  queued: { text: "Queued", tone: null },
-};
+/** The stages a pull request reaches only once its required checks have passed. */
+const PAST_CHECKS = new Set(["reviewing", "catching_up", "answering", "queued", "ready"]);
+
+/**
+ * How the checks the default branch requires stand on a pull request, from
+ * what a list knows without opening it: the merge queue taking it out, and
+ * for one g1t sees through, the stage it is at and what that stage says.
+ */
+export function checksFact(
+  checkStatus: CheckStatus | null,
+  lifecycle?: Pick<Lifecycle, "stage" | "detail"> | null,
+): Fact {
+  const fact = (value: string, tone: FactTone): Fact => ({ label: "Required checks", value, tone });
+  if (checkStatus === "failed") return fact("Failed in the merge queue", "bad");
+  if (!lifecycle?.stage) return fact(checkStatus === "passed" ? "Passing" : "Not known yet", checkStatus === "passed" ? "good" : null);
+  const detail = lifecycle.detail ?? "";
+  // "CI / pull_request failed", "The required check CI still fails ...".
+  const failing = /\b(?:failed|still fails?)\b/i.test(detail) && !/review|asked for changes|merge queue/i.test(detail);
+  if (lifecycle.stage === "checking") return /to report/i.test(detail) ? fact("Not reported yet", "warn") : fact("Running", null);
+  if (lifecycle.stage === "working") return fact("Not run yet", null);
+  if ((lifecycle.stage === "revising" || lifecycle.stage === "needs_you") && failing) return fact("Failing", "bad");
+  if (PAST_CHECKS.has(lifecycle.stage) || lifecycle.stage === "revising" || lifecycle.stage === "needs_you") return fact("Passing", "good");
+  return fact("Not known yet", null);
+}
 
 /** Test files, by the names test runners look for. */
 export function isTestFile(path: string): boolean {
@@ -185,13 +202,14 @@ export function usd(value: number): string {
 export function pullFacts(input: {
   checkStatus: CheckStatus | null;
   files: ChangedFile[];
-  lifecycle?: Pick<Lifecycle, "revisions"> | null;
+  lifecycle?: (Pick<Lifecycle, "revisions"> & Partial<Pick<Lifecycle, "stage" | "detail">>) | null;
   runs?: Pick<AgentRun, "costUsd" | "kind">[];
   confidence?: Pick<Confidence, "level" | "reasons"> | null;
 }): Fact[] {
   const facts: Fact[] = [];
-  const checks = input.checkStatus ? CHECKS[input.checkStatus] : null;
-  facts.push({ label: "Checks", value: checks?.text ?? "Not run", tone: checks?.tone ?? null });
+  facts.push(
+    checksFact(input.checkStatus, input.lifecycle?.stage ? { stage: input.lifecycle.stage, detail: input.lifecycle.detail ?? "" } : null),
+  );
   if (input.files.length > 0) {
     const added = input.files.reduce((sum, f) => sum + f.additions, 0);
     const removed = input.files.reduce((sum, f) => sum + f.deletions, 0);
@@ -538,7 +556,7 @@ export function landedToday(changes: Merged[], now: number, timeZone: string | n
       byAgents: landedByAgents(change),
       at: Date.parse(change.mergedAt),
       to: `/${change.repo.namespace}/${change.repo.name}/pull/${change.number}`,
-      facts: pullFacts({ checkStatus: "passed", files: change.files }).filter((fact) => fact.label !== "Checks"),
+      facts: pullFacts({ checkStatus: "passed", files: change.files }).filter((fact) => fact.label !== "Required checks"),
     }));
 }
 

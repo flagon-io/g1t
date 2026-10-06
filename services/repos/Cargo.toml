@@ -18,6 +18,7 @@ serde_json.workspace = true
 worker.workspace = true
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 similar = "2"
+miniz_oxide = "0.9"
 
 # wasm-opt at -O1: about the same gzipped size as -O in a tenth of the
 # time (docs/DEPLOYING.md, "Build speed").

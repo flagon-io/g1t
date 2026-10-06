@@ -10,6 +10,7 @@ import { searchHref } from "../lib/search";
 import { hitIcon } from "./search";
 import type { PaletteCommand } from "./command-palette";
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "./ui/combobox";
+import { SkeletonRows } from "./ui/skeleton";
 
 /** How long typing has to pause before results are asked for. */
 const PAUSE_MS = 140;
@@ -173,7 +174,9 @@ export default function CommandPaletteDialog({
             </CommandList>
           </Command>
           {hits.length === 0 && fetcher.state === "loading" && trimmed.length >= 2 && (
-            <p className="border-t border-line px-4 py-2 text-xs text-faint">Searching…</p>
+            <div aria-busy="true" className="border-t border-line">
+              <SkeletonRows rows={3} rowClassName="h-9 px-4" />
+            </div>
           )}
         </Primitive.Content>
       </Primitive.Portal>

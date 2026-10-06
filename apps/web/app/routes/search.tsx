@@ -166,13 +166,13 @@ export default function Search({ loaderData }: Route.ComponentProps) {
       )}
 
       {q && (
-        <nav aria-label="Kinds of results" className="mt-6 flex gap-5 overflow-x-auto border-b border-line">
+        <nav aria-label="Kinds of results" className="mt-6 flex gap-1 overflow-x-auto border-b border-line">
           {SEARCH_TYPES.map((each) => (
             <Link
               key={each}
               to={searchHref(q, each)}
               aria-current={each === type ? "page" : undefined}
-              className={`-mb-px flex items-center gap-2 border-b-2 px-1 pb-3 text-sm whitespace-nowrap transition-colors ${
+              className={`-mb-px flex items-center gap-2 border-b-2 px-3 pb-3 text-sm whitespace-nowrap transition-colors ${
                 each === type ? "border-accent font-medium text-fg" : "border-transparent text-muted hover:text-fg"
               }`}
             >

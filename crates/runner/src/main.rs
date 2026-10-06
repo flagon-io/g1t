@@ -25,10 +25,15 @@
 //!
 //! Every mode runs with the mining watch in `abuse`: a sandbox that looks
 //! like it is mining stops itself and exits with `abuse::EXIT_CODE`.
+//!
+//! Given a command instead (`register`, `run`, `service`, `remove`,
+//! `update`, `version`), it is a self-hosted runner on someone's own
+//! machine, which runs work in these modes: see `selfhosted`.
 
 mod abuse;
 mod actions;
 mod checks;
+mod clone;
 mod confidence;
 mod deploy;
 mod guard;
@@ -42,6 +47,7 @@ mod reply;
 mod report;
 mod review;
 mod revise;
+mod selfhosted;
 mod steer;
 mod update;
 
@@ -100,11 +106,7 @@ pub(crate) fn run(reporter: &mut Reporter) -> Result<String> {
     reporter.flush();
 
     std::fs::create_dir_all("/work")?;
-    git(
-        Path::new("/work"),
-        &["-c", &auth, "clone", "--quiet", &remote, WORKDIR],
-    )
-    .context("could not clone the pull request's fork")?;
+    clone::clone(Path::new("/work"), &auth, &[], &remote, WORKDIR).context("could not clone the pull request's fork")?;
     git(workdir, &["config", "user.name", "g1t agent"])?;
     git(workdir, &["config", "user.email", "agent@g1t.sh"])?;
     let branch = git(workdir, &["rev-parse", "--abbrev-ref", "HEAD"])?;
@@ -113,11 +115,9 @@ pub(crate) fn run(reporter: &mut Reporter) -> Result<String> {
     // Sent back to work that is already open: start from where the branch it
     // will land on is now, so what passes here passes there too.
     if let (Ok(upstream), Ok(upstream_branch)) = (env("UPSTREAM_REMOTE"), env("UPSTREAM_BRANCH")) {
-        git(
-            workdir,
-            &["-c", &auth, "fetch", "--quiet", &upstream, &upstream_branch],
-        )
-        .context("could not fetch the branch this will land on")?;
+        clone::fetch(workdir, &auth, &upstream, &upstream_branch).context("could not fetch the branch this will land on")?;
+        // Shallow: deep enough to tell whether it is behind, and to merge.
+        clone::share_history(workdir, &auth, &[("origin", branch.as_str()), (upstream.as_str(), upstream_branch.as_str())], "HEAD", "FETCH_HEAD")?;
         let behind = Command::new("git")
             .current_dir(workdir)
             .args(["merge-base", "--is-ancestor", "FETCH_HEAD", "HEAD"])
@@ -194,6 +194,12 @@ pub(crate) fn run(reporter: &mut Reporter) -> Result<String> {
 }
 
 fn main() {
+    // A self-hosted runner's commands; the modes below are what it, and
+    // g1t's sandboxes, run work with.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if selfhosted::is_command(&args) {
+        std::process::exit(selfhosted::main(args));
+    }
     // A guarded sandbox's HTTPS is re-signed on its way out: trust that
     // before anything is fetched. The guard hook runs before every tool
     // call, so it skips this.

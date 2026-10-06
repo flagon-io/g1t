@@ -17,6 +17,7 @@ import type { loader as whyLoader } from "../routes/repo/why";
 import { repoAt } from "../lib/markdown-plugins";
 import { Markdown } from "./markdown";
 import { Avatar, TimeAgo } from "./ui";
+import { Skeleton } from "./ui/skeleton";
 
 /**
  * A file with, beside each run of lines, the commit that last changed it.
@@ -214,7 +215,7 @@ function WhyPanel({
       {!current ? (
         <div className="space-y-3 p-4" aria-busy={loading}>
           {[70, 90, 55].map((width) => (
-            <span key={width} className="block h-3 animate-pulse rounded bg-raised" style={{ width: `${width}%` }} />
+            <Skeleton key={width} className="h-3" style={{ width: `${width}%` }} />
           ))}
         </div>
       ) : (

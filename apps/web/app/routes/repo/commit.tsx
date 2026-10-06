@@ -9,6 +9,7 @@ import type { Route } from "./+types/commit";
 import { page } from "../../lib/meta";
 import { DiffView } from "../../components/diff-view";
 import { Avatar, TimeAgo } from "../../components/ui";
+import { Skeleton } from "../../components/ui/skeleton";
 import { immutable } from "../../lib/immutable.server";
 import { pullForCommit } from "../../lib/provenance.server";
 import { accounts, repos } from "../../lib/services.server";
@@ -200,7 +201,14 @@ export default function CommitPage({ loaderData, params }: Route.ComponentProps)
             <CopyHash hash={commit.hash} />
           </span>
         </div>
-        <Suspense fallback={<div className="h-12 animate-pulse border-t border-line bg-raised/30" />}>
+        <Suspense
+          fallback={
+            <div aria-busy="true" className="flex h-12 items-center gap-3 border-t border-line px-4">
+              <Skeleton className="size-4 rounded-full" />
+              <Skeleton className="h-3 w-64 max-w-[60%]" />
+            </div>
+          }
+        >
           <Await resolve={pull}>{(pull) => (pull ? <MergedIn base={base} pull={pull} /> : null)}</Await>
         </Suspense>
       </section>

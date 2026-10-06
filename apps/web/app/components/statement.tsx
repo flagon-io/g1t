@@ -5,6 +5,7 @@ import { Link, useFetcher, useNavigate } from "react-router";
 import { MICROS_PER_DOLLAR, type LedgerEntry, type Statement } from "@g1t/contracts";
 
 import { EmptyState, TimeAgo } from "./ui";
+import { SkeletonRows } from "./ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 
@@ -252,7 +253,11 @@ function StatementLineRow({
               </li>
             ))}
           </ul>
-          {fetcher.state === "loading" && <p className="py-2 pl-11 text-xs text-faint">Loading…</p>}
+          {fetcher.state === "loading" && (
+            <div aria-busy="true" className="pl-8">
+              <SkeletonRows rows={3} rowClassName="h-12" />
+            </div>
+          )}
           {!done && entries.length > 0 && entries.length < count && fetcher.state === "idle" && (
             <button
               type="button"

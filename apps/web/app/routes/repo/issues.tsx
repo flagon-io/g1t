@@ -32,14 +32,16 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const query = new URL(request.url).searchParams;
   const state = query.get("state") === "closed" ? "closed" : "open";
   const label = query.get("label") ?? "";
-  // Assigning agents needs Write: Read cannot spend compute.
-  const { can } = await accessTo(context, params);
-  const [issues, labels, agentsEnabled, computeNote] = await Promise.all([
+  // Assigning agents needs Write: Read cannot spend compute. All at once:
+  // only the plan's note waits for the viewer's role.
+  const access = accessTo(context, params);
+  const [{ can }, issues, labels, agentsEnabled, computeNote] = await Promise.all([
+    access,
     work.listIssues(path, viewer, { state, label: label || undefined }),
     work.listLabels(path, viewer),
     env.RUNNER.enabled(viewer, path),
     // Before a member assigns: whether the workspace's plan lets agents start.
-    can.run ? computeNoteFor(params.owner, "agent") : null,
+    access.then(({ can }) => (can.run ? computeNoteFor(params.owner, "agent") : null)),
   ]);
   return {
     issues: unwrap(issues),

@@ -89,8 +89,8 @@ To stop recording, remove the `node ~/.g1t/hook.mjs` entries from
 
 ## How an agent works on an issue
 
-1. `issue` with `get`, to read the description and acceptance checks, and
-   to see which pull requests already exist for it.
+1. `issue` with `get`, to read the description, including what done means
+   if it says, and to see which pull requests already exist for it.
 2. `memory` with `recall`, to read what the project remembers: how to
    build, conventions and traps.
 3. `pull_request` with `create` and the issue's number. This opens a draft
@@ -107,10 +107,12 @@ For example, the call that starts the pull request:
 { "name": "pull_request", "arguments": { "action": "create", "repo": "flagon-io/hello", "issue": 42, "agent": "claude-code" } }
 ```
 
-When the pull request is ready, g1t runs the issue's acceptance checks
-against it in a clean sandbox. `pull_request` with `get` returns each command's
-result and output, so an agent whose checks failed can read why, push a fix,
-and have them run again.
+Every push runs the repository's [workflows](/guides/actions/#checks) on
+the pull request, as for anyone's. `pull_request` with `get` returns its
+`statuses` and `required_checks`, the checks the default branch requires
+before it merges. When one fails, `workflow` with `get_run` and `job_logs`
+says why; push a fix and the workflows run again. Run the same tests and
+linters the workflows run before you push, and you will rarely need to.
 
 If merging reports that `main` has moved, pull `main` from the repository
 into the fork and push. The pull request can then be merged.

@@ -95,12 +95,12 @@ A project's **Settings** has a tab for each part:
 
 | Tab | What it holds |
 | --- | --- |
-| **General** | The project's name and description, its source, and its **root directory**. |
+| **General** | The project's name and description, its source, and its **root directory**. A project shows its repository's description, and follows it as it changes, until you give the project one of its own; **Use the repository's description** goes back. |
 | **Deployments** | Production, previews, build command, output directory and idle days. See [Deployments](/guides/deployments/#settings). |
 | **Dependencies** | The projects this one uses, and the ones that use it. See [Dependencies](#dependencies). |
 | **Secrets and variables** | The project's rows. See [Secrets and variables](/guides/secrets-and-variables/). |
 | **Repository** | The repository's name, description, website, [topics](/guides/search/#what-is-indexed) and default branch, and its danger zone: visibility, archive, transfer and delete. See [Managing a repository](/guides/managing-repositories/). |
-| **Branches and merging** | Branch protection, required approvals, checks, the merge queue, auto-merge and how g1t's agents review. |
+| **Branches and merging** | Branch protection, [required status checks](/guides/pull-requests/#required-status-checks), required approvals, the merge queue, auto-merge and how g1t's agents review. |
 | **Webhooks** | The repository's [webhooks](/guides/webhooks/). |
 
 The **root directory** says where in the repository the project lives,

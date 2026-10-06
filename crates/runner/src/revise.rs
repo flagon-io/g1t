@@ -1,5 +1,6 @@
 //! Sends the author back to a pull request that is already ready for
-//! review, to address what its acceptance checks or a review found.
+//! review, to address a check that failed on it (the repository's
+//! workflows), the merge queue taking it out, or a review.
 //!
 //! The work is the same as making the change in the first place (see
 //! `main`): clone the fork, run the agent on `PROMPT`, commit and push.

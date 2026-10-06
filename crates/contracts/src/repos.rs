@@ -693,6 +693,33 @@ pub struct DeleteBranchArgs {
     pub branch: String,
 }
 
+/// `commit_file`: writes one file on a new branch made from the default
+/// branch's head, as one commit by `actor`, without a sandbox. For a change
+/// g1t proposes on someone's behalf, such as a starter workflow, which then
+/// becomes a pull request. Refused unless `actor` may push, when the branch
+/// already exists, or when the file is already there. Returns
+/// `Outcome<CommittedFile>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitFileArgs {
+    pub repo: RepoPath,
+    pub actor: User,
+    /// The new branch, which must not exist yet.
+    pub branch: String,
+    /// Where the file goes, such as `.g1t/workflows/ci.yml`.
+    pub path: String,
+    pub content: String,
+    pub message: String,
+}
+
+/// The commit `commit_file` made.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommittedFile {
+    pub branch: String,
+    pub commit: String,
+}
+
 /// `readable`: of these repository ids, the repositories the viewer may
 /// read, as `get_by_id` decides; forks and unknown ids are left out. For
 /// services that hold ids and must show only what the viewer could open.

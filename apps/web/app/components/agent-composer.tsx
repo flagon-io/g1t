@@ -118,20 +118,10 @@ export function AgentComposer({
                 className={cn(CONTROL, "min-h-24 resize-y leading-relaxed")}
               />
             </label>
-            <details className="group/checks">
-              <summary className="cursor-pointer list-none text-xs font-medium text-muted hover:text-fg [&::-webkit-details-marker]:hidden">
-                <ChevronDown size={13} className="mr-1 inline -rotate-90 transition-transform group-open/checks:rotate-0" />
-                Acceptance checks <span className="font-normal text-faint">(optional)</span>
-              </summary>
-              <textarea
-                name="checks"
-                rows={2}
-                placeholder="npm test"
-                aria-label="Acceptance checks, one command per line"
-                className={cn(CONTROL, "mt-2 min-h-16 resize-y font-mono text-xs")}
-              />
-              <span className="mt-1 block text-xs text-faint">One command per line. Its pull request must make them all pass.</span>
-            </details>
+            <p className="text-xs text-faint">
+              Its pull request runs the project's workflows as its checks, and merges once the ones the default branch
+              requires pass. Say what done looks like in your own words, if it helps.
+            </p>
           </div>
 
           {said?.error && <p className="mt-3 text-sm text-danger">{said.error}</p>}

@@ -5,7 +5,7 @@
 	"compatibility_date": "2026-09-26",
 	// Runs next to its database: a request makes several queries in turn,
 	// and each would otherwise cross the distance to it.
-	"placement": { "mode": "smart" },
+	"placement": { "mode": "off" },
 	"main": "build/index.js",
 	// Staff waitlist summaries (src/lib.rs `scheduled`).
 	"triggers": { "crons": ["*/15 * * * *"] },

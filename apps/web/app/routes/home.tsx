@@ -54,6 +54,7 @@ import {
 } from "../lib/mission-control";
 import { type NotStarted, chosenRepo, delegateForm, issuePath, notStarted } from "../lib/delegate";
 import { Landing } from "../components/landing";
+import { Skeleton, SkeletonRows } from "../components/ui/skeleton";
 import {
   agents,
   billing,
@@ -65,6 +66,8 @@ import {
   work,
 } from "../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser } from "../lib/session.server";
+import { runners } from "../lib/runners.server";
+import { readableRepos } from "../lib/access.server";
 
 /** The viewer's time zone, which mission control sets, so the greeting fits their day. */
 const TZ_COOKIE = "g1t_tz";
@@ -164,30 +167,39 @@ export async function loader({ context, request }: Route.LoaderArgs) {
   const username = viewer.username;
 
   const reposP = soft("repos", reposApi.list(viewer, { memberOnly: true }));
+  // Workflow jobs stuck waiting for a self-hosted runner that is not there.
+  const stuckJobsP = soft("stuck_jobs", runners.stuck(viewer));
   // The chosen workspace's projects: their open and recently merged pull
-  // requests and recent events, read once each, all at once, as soon as
-  // the projects are known.
-  const perRepoP = reposP.then((repos) =>
-    Promise.all(
-      (repos ?? [])
-        .filter((repo) => slug != null && repo.namespace.toLowerCase() === slug.toLowerCase())
-        .slice(0, MAX_PROJECTS)
-        .map(async (repo) => {
-          const path = { namespace: repo.namespace, name: repo.name };
-          const [pulls, closed, log] = await Promise.all([
-            work.listPulls(path, viewer, "open").catch(() => null),
-            work.listPulls(path, viewer, "closed").catch(() => null),
-            eventLog.list({ repoId: repo.id, limit: EVENTS_PER_PROJECT }).catch(() => null),
-          ]);
-          return {
-            repo,
-            pulls: pulls?.ok ? pulls.value.slice(0, 60) : null,
-            closed: closed?.ok ? closed.value : null,
-            events: log,
-          };
-        }),
-    ),
-  );
+  // requests, all in one call to work, and their recent events, read as
+  // soon as the projects are known.
+  const perRepoP = reposP.then(async (repos) => {
+    const chosen = (repos ?? [])
+      .filter((repo) => slug != null && repo.namespace.toLowerCase() === slug.toLowerCase())
+      .slice(0, MAX_PROJECTS);
+    const [batch, logs] = await Promise.all([
+      work.pullsForRepos(chosen.map((repo) => repo.id), viewer, PULL_PAGE).catch(() => []),
+      Promise.all(chosen.map((repo) => eventLog.list({ repoId: repo.id, limit: EVENTS_PER_PROJECT }).catch(() => null))),
+    ]);
+    const byId = new Map(batch.map((entry) => [entry.repoId, entry]));
+    return Promise.all(
+      chosen.map(async (repo, index) => {
+        const found = byId.get(repo.id);
+        if (found) return { repo, pulls: found.open.slice(0, 60), closed: found.closed, events: logs[index] };
+        // A fork, which the batch leaves out: asked on its own.
+        const path = { namespace: repo.namespace, name: repo.name };
+        const [pulls, closed] = await Promise.all([
+          work.listPulls(path, viewer, "open").catch(() => null),
+          work.listPulls(path, viewer, "closed").catch(() => null),
+        ]);
+        return {
+          repo,
+          pulls: pulls?.ok ? pulls.value.slice(0, 60) : null,
+          closed: closed?.ok ? closed.value : null,
+          events: logs[index],
+        };
+      }),
+    );
+  });
 
   const [repos, perRepo, active, models, profile, runs, overview, usage, projectList, memories, invitations] = await Promise.all([
     reposP,
@@ -209,8 +221,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
   // viewer's own, already listed; the rest are looked up once each.
   const known = new Map<string, Repo>(repoList.map((repo) => [repo.id, repo]));
   const missing = [...new Set((active ?? []).map(({ pull }) => pull.repoId))].filter((id) => !known.has(id));
-  const looked = await Promise.all(missing.map((id) => reposApi.getById(id, viewer).catch(() => null)));
-  for (const found of looked) if (found?.ok) known.set(found.value.id, found.value);
+  for (const repo of await readableRepos(missing, viewer)) known.set(repo.id, repo);
   const pathOf = (repo: Repo): RepoPath => ({ namespace: repo.namespace, name: repo.name });
   const inWorkspace = (repo: RepoPath) => slug != null && repo.namespace.toLowerCase() === slug.toLowerCase();
 
@@ -351,8 +362,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
         quick:
           reason === "needs_review" || reason === "low_confidence"
             ? approve(repo, pull)
-            : /could not be run/i.test(lifecycle.detail)
-              ? pullAction(repo, pull, { label: "Run the checks again", fields: { action: "recheck" }, done: "Checks started" })
+            : /required checks? .*still fails?\b/i.test(lifecycle.detail)
+              ? pullAction(repo, pull, { label: "Re-run failed jobs", fields: { action: "rerun-failed" }, done: "Re-running" })
               : null,
         link: reason === "outside_guardrails" ? { label: "Raise the cap", to: `/${repo.namespace}/${repo.name}/settings/guardrails` } : null,
       });
@@ -361,7 +372,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
         key,
         kind: "ready",
         title: pull.title,
-        detail: lowConfidence ? confidenceAsk(lowConfidence) : "Checks passed and it was approved. It lands when you merge it.",
+        detail: lowConfidence ? confidenceAsk(lowConfidence) : "Its required checks passed and it was approved. It lands when you merge it.",
         to,
         action: "Merge",
         at: Date.parse(pull.updatedAt),
@@ -376,11 +387,9 @@ export async function loader({ context, request }: Route.LoaderArgs) {
         }),
       });
     } else if (!lifecycle && pull.status === "open" && pull.checkStatus === "failed") {
-      needs.push({ key, kind: "checks", title: pull.title, detail: "Its acceptance checks failed on the latest push.", to, action: "See checks", at: Date.parse(pull.updatedAt), where });
-      extras.set(key, {
-        ...extra,
-        quick: pullAction(repo, pull, { label: "Run the checks again", fields: { action: "recheck" }, done: "Checks started" }),
-      });
+      // Taken out of the merge queue: its change failed combined with what was ahead.
+      needs.push({ key, kind: "checks", title: pull.title, detail: "It failed in the merge queue. Push a fix, then merge it again.", to, action: "See checks", at: Date.parse(pull.updatedAt), where });
+      extras.set(key, { ...extra, quick: null });
     }
   }
   for (const { pull, repo } of reviewRequested) {
@@ -396,6 +405,29 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       where: `${repo.namespace}/${repo.name}#${pull.number}`,
     });
     extras.set(key, { ...pullExtra(pull, repo, null), quick: approve(repo, pull) });
+  }
+  for (const job of (await stuckJobsP) ?? []) {
+    const key = `runner:${job.id}`;
+    const minutes = Math.max(10, Math.round((now - Date.parse(job.queuedAt)) / 60_000));
+    const [namespace, name] = job.repo.split("/");
+    needs.push({
+      key,
+      kind: "stuck",
+      title: `${job.name} is waiting for a self-hosted runner`,
+      detail: `No runner with labels ${job.labels} is online. Start one, or change the job's runs-on.`,
+      to: `/${job.repo}/actions/runs/${job.runId}`,
+      action: "Look",
+      at: Date.parse(job.queuedAt),
+      where: job.repo,
+    });
+    extras.set(key, {
+      repo: namespace && name ? { namespace, name } : undefined,
+      facts: [
+        { label: "Labels", value: job.labels, tone: null },
+        { label: "Waiting", value: `${minutes} min`, tone: "warn" },
+      ],
+      link: { label: "Runners", to: `/${namespace}/-/runners` },
+    });
   }
   for (const run of liveRuns) {
     const minutes = stuckMinutes(run, now);
@@ -579,13 +611,41 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 
 export type Loaded = Extract<Route.ComponentProps["loaderData"], { signedIn: true }>;
 
-/** Mission control, loaded only for someone signed in (components/mission-control.tsx). */
+/**
+ * Mission control, loaded only for someone signed in (components/mission-control.tsx).
+ * The app shell starts loading it once the browser is idle, so the
+ * skeleton below is rarely seen.
+ */
 const MissionControl = lazy(() => import("../components/mission-control"));
+
+/** Mission control's outline, the same size, while its code arrives. */
+function MissionControlSkeleton() {
+  return (
+    <main aria-busy="true" className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 sm:py-10">
+      <header>
+        <Skeleton className="h-8 w-72 sm:h-9" />
+        <Skeleton className="mt-2.5 h-3.5 w-96 max-w-full" />
+      </header>
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line lg:grid-cols-5">
+        {Array.from({ length: 5 }, (_, index) => (
+          <div key={index} className="bg-surface p-4">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="mt-3 h-6 w-10" />
+            <Skeleton className="mt-2 h-3 w-24" />
+          </div>
+        ))}
+      </div>
+      <div className="rounded-xl border border-line bg-surface">
+        <SkeletonRows rows={5} rowClassName="h-14" />
+      </div>
+    </main>
+  );
+}
 
 export default function Home({ loaderData, actionData }: Route.ComponentProps) {
   if (!loaderData.signedIn) return <Landing />;
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<MissionControlSkeleton />}>
       <MissionControl loaderData={loaderData} delegated={actionData ?? null} />
     </Suspense>
   );

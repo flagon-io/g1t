@@ -303,7 +303,7 @@ Each row in **Needs you** carries the reason it needs you:
 | --- | --- |
 | `BLOCKING` | Nothing moves until a person acts: a failed production build, a merge g1t could not make, or the usage limit. |
 | `ASKED FOR YOU` | A review or an invitation addressed to you by name. |
-| `CHECKS FAILING` | The checks still fail after the agent revised, or could not run. |
+| `CHECKS FAILING` | A required check still fails after the agent revised. |
 | `OUTSIDE GUARDRAILS` | A run reached a cost or time cap set in [Guardrails](/guides/guardrails/). |
 | `NEEDS REVIEW` | The repository wants a person's approval, or the review still asks for changes after the agent revised. |
 | `STALLED` | An agent stopped, or has reported nothing for 10 minutes. |
@@ -314,8 +314,8 @@ was started for), **What the agent already knows** (its checks, the files
 and lines it changes, the test files it touches, how often the agent was
 sent back, and what its runs cost) and **Why this needs you**. From
 there, **Review and respond** opens it, and where it can be done without
-leaving the page you can approve the change, merge it or run its checks
-again. **By impact** puts the most urgent first; **Newest** sorts by time.
+leaving the page you can approve the change, merge it or re-run its failed
+jobs. **By impact** puts the most urgent first; **Newest** sorts by time.
 
 On the right, **This week** charts the changes landed each day, split
 into those agents landed alone and those a person merged, with what

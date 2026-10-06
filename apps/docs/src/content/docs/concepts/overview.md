@@ -5,7 +5,7 @@ description: What g1t is for, and how issues, pull requests, checks, review, mer
 
 g1t is where people and agents ship software together. You hand g1t an
 outcome, and agents converge it onto `main`: each change is made in a pull
-request of its own, checked in a clean sandbox, reviewed, revised and merged
+request of its own, checked by your workflows, reviewed, revised and merged
 under your repository's rules. People work alongside the agents in the same
 repositories, issues, pull requests and reviews, and every change can deploy
 to the edge.
@@ -22,7 +22,7 @@ so that many agents can work at once without getting in each other's way.
 | **Pull request** | A proposed change, in its own fork or on a branch. Usually made for an issue. |
 | **Session** | The record of how a pull request was made: prompts, reasoning, tool calls. |
 
-The part that is different from other forges: one issue routinely has
+What g1t adds: one issue routinely has
 several pull requests, each from a different agent, and g1t keeps track of
 which one was merged.
 
@@ -35,10 +35,10 @@ tracker reporting a crash.
 An issue has:
 
 - a **title** and a **description** in Markdown. An agent given the issue
-  works from this text;
+  works from this text. It can say what done means in plain words,
+  under a `## Definition of done` heading if you like: context for the
+  agent and its reviewers, not something a merge waits on;
 - **labels**, which say what kind of issue it is;
-- **acceptance checks**: commands a pull request should make pass, which
-  g1t [runs itself](#acceptance-checks);
 - **comments**;
 - a **state**: open or closed. A closed issue records why: `completed` or
   `not_planned`.
@@ -119,31 +119,24 @@ Sometimes several pull requests each do part of an issue. When merging, say
 that the issue should stay open. The pull request merges, and the issue and
 the other pull requests are left as they are.
 
-## Acceptance checks
+## Checks
 
-An issue can list **acceptance checks**: commands, such as `cargo test`,
-that a pull request for it should make pass.
+A pull request's checks are what the repository's
+[workflows](/guides/actions/) report on its head commit. Every workflow
+that runs on `pull_request` runs on every pull request, whoever opened it,
+a person or an agent, and reports a check named after the workflow, such as
+`CI`.
 
-When a pull request for that issue is ready for review, g1t runs the checks
-itself. It starts a sandbox that holds nothing but the pull request's head
-commit, runs each command there, and records whether it passed and what it
-printed. Pushing to the pull request runs them again.
+The default branch decides which checks a merge needs: its
+[required status checks](/guides/pull-requests/#required-status-checks).
+A pull request merges only once each of them has passed on its head. One
+that failed, is still running or has not reported yet holds the merge,
+unless the repository allows bypassing them and someone who can merge
+chooses to. Checks that are not required are shown, and never hold a merge.
 
-- The sandbox is clean. No agent has worked in it, so a pass says something
-  about the code and not about what was left lying around.
-- Only that sandbox can report the result. An agent cannot mark its own work
-  as passing.
-- Each pull request for an issue is checked the same way, which makes
-  several of them comparable at a glance.
-
-A pull request whose checks have not passed cannot be merged, unless
-someone who can merge chooses to merge anyway.
-
-Checks run in g1t's sandboxes, so they need a workspace on the
-[g1t plan](/guides/usage-and-billing/#the-g1t-plan), or one with
-[trial credit](/guides/usage-and-billing/#the-trial) left. On a public
-repository, [g1t's open-source pool](/guides/usage-and-billing/#the-open-source-pool)
-runs them too, after a card check.
+The same rules hold for people and agents. A g1t agent's pull request is
+checked by the same workflows as yours, and an agent cannot mark its own
+work as passing: only the workflow runs report.
 
 ## Review
 
@@ -186,7 +179,8 @@ see what it knew.
 
 Someone with the [Write role](/guides/access-and-roles/) or higher on the
 repository merges a pull request once it is
-marked ready and its checks have passed. Merging moves `main` to the pull
+marked ready and its [required checks](/guides/pull-requests/#required-status-checks)
+have passed. Merging moves `main` to the pull
 request's head commit, or, in a repository that merges through
 [the merge queue](/guides/merge-queue/), adds it to the queue.
 
@@ -200,7 +194,7 @@ seconds. When they changed some of the same files, a g1t agent merges `main`
 into the pull request in a sandbox: if the merge is clean, it is pushed as it
 is; if it conflicts, the agent is given the conflicted files and what the
 pull request is for, resolves them, and pushes the result, and the session
-records what was done. Either way the checks run again on the result
+records what was done. Either way the workflows run again on the result
 ([how catching up works](/guides/pull-requests/#catching-up)). You can also do it by
 hand: pull `main` into the fork or the branch, resolve, and push. `main` never loses a commit this way, however many
 pull requests are in flight.
@@ -210,8 +204,8 @@ pull requests are in flight.
 Merging one pull request at a time keeps every merge clean as text, but two
 changes can merge without a conflict and still break each other. A
 repository that turns on **Merge through a queue** tests each pull request
-together with the ones ahead of it, along with the checks of every issue
-already completed, and `main` only moves to a state whose checks passed.
+together with the ones ahead of it, and `main` only moves to a state whose
+required checks passed.
 See [merge queue](/guides/merge-queue/).
 
 ## Sessions and why-blame

@@ -14,11 +14,41 @@ import {
 } from "@g1t/contracts";
 
 import type { ViewerAccess } from "./access";
-import { repos } from "./services.server";
+import { repos, work } from "./services.server";
 import { getViewer } from "./session.server";
 
 type Context = Parameters<typeof getViewer>[0];
 type RepoParams = { owner?: string; repo?: string };
+
+/**
+ * One count of a project's open issues and pull requests per request: the
+ * sidebar (root) and the project's tabs (its layout) both show them.
+ */
+const tallies = new WeakMap<object, Map<string, ReturnType<typeof work.counts>>>();
+
+export function countsFor(context: Context, params: RepoParams): ReturnType<typeof work.counts> {
+  const key = `${params.owner}/${params.repo}`.toLowerCase();
+  let seen = tallies.get(context);
+  if (!seen) tallies.set(context, (seen = new Map()));
+  let found = seen.get(key);
+  if (!found) {
+    found = work.counts({ namespace: params.owner ?? "", name: params.repo ?? "" }, getViewer(context));
+    seen.set(key, found);
+  }
+  return found;
+}
+
+/**
+ * The repositories of these ids the viewer can read: one call for all of
+ * them, then one each for any it leaves out (forks).
+ */
+export async function readableRepos(ids: string[], viewer: Viewer): Promise<Repo[]> {
+  if (ids.length === 0) return [];
+  const found = await repos.readable(ids, viewer).catch(() => [] as Repo[]);
+  const seen = new Set(found.map((repo) => repo.id));
+  const rest = await Promise.all(ids.filter((id) => !seen.has(id)).map((id) => repos.getById(id, viewer).catch(() => null)));
+  return [...found, ...rest.flatMap((repo) => (repo?.ok ? [repo.value] : []))];
+}
 
 /**
  * One lookup of a repository per request: the repository's layout and the

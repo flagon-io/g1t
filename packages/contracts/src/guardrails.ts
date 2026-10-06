@@ -14,6 +14,8 @@ export type GuardrailSettings = {
   registries?: string[] | null;
   /** More hosts to allow; they add to the other level's. */
   domains?: string[];
+  /** Hosts only workflow jobs may reach, never agents; they add to the other level's. */
+  workflowDomains?: WorkflowDomain[];
   /** Built-in command rules turned on or off, by id. */
   rules?: Record<string, boolean>;
   /** Permission rules to refuse; they add to the other level's. */
@@ -33,11 +35,27 @@ export type Guardrails = {
   domains: string[];
   /** Every host a sandbox may reach. `*.example.com` covers subdomains. */
   hosts: string[];
+  /** Hosts only some workflow jobs may reach (never in `hosts`). */
+  workflowDomains?: WorkflowDomain[];
   rules: Record<string, boolean>;
   deny: string[];
   /** Null: no cap. */
   budgetUsd: number | null;
   minutes: Record<string, number>;
+};
+
+/**
+ * A host only workflow jobs may reach: jobs of a trusted run (not a pull
+ * request from a fork), of the workflows named, in the environments
+ * named. Agents, checks, the merge queue and g1t.page builds never do.
+ */
+export type WorkflowDomain = {
+  /** `api.example.com`, or `*.example.com` for its subdomains. */
+  domain: string;
+  /** Workflow files by name, such as `deploy.yml`. Empty: any workflow. */
+  workflows: string[];
+  /** Environments a job must name with `environment:`. Empty: any job. */
+  environments: string[];
 };
 
 export type RegistryInfo = { id: string; name: string; hosts: string[] };

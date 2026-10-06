@@ -9,7 +9,8 @@ import { text } from "~/lib/forms";
 import { INCIDENT_SEVERITIES, INCIDENT_STATUSES, readImpacts, staffSuggestions, utc, wantsNotify } from "~/lib/incidents";
 import { staffEmails, statusAdmin } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
-import { requireStaff } from "~/lib/staff";
+import { requireStaff, zoneContext } from "~/lib/staff";
+import { zoneAbbr } from "~/lib/time";
 
 export const meta: Route.MetaFunction = () => [{ title: "Declare an incident · sudo" }, { name: "robots", content: "noindex, nofollow" }];
 
@@ -21,6 +22,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     components: components.ok ? components.value : [],
     error: components.ok ? null : components.error,
     staff: staffSuggestions(staffEmails(), [staff.email]),
+    zone: zoneAbbr(new Date(), context.get(zoneContext).zone),
   };
 }
 
@@ -39,7 +41,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       status: text(form, "status") as IncidentStatus,
       components: readImpacts(form, keys),
       message: String(form.get("message") ?? ""),
-      started_at: utc(text(form, "started_at")),
+      started_at: utc(text(form, "started_at"), context.get(zoneContext).zone),
       commander: text(form, "commander") || null,
       communications: text(form, "communications") || null,
       notify: wantsNotify(text(form, "notify"), text(form, "severity") as IncidentSeverity),
@@ -102,7 +104,7 @@ export default function DeclareIncident({ loaderData, actionData }: Route.Compon
                 ))}
               </Select>
             </Field>
-            <Field label="Impact began (UTC)" hint="Leave empty for now. Up to 90 days back; durations count from here.">
+            <Field label={`Impact began (${loaderData.zone})`} hint="Leave empty for now. Up to 90 days back; durations count from here.">
               <Input type="datetime-local" name="started_at" defaultValue={v.started_at} />
             </Field>
           </div>

@@ -12,6 +12,7 @@ const PAGES: Record<string, { title: string; about: string }> = {
   access: { title: "Access", about: "Who can see and change the repository, with which role, and invitations to it." },
   branches: { title: "Branches and merging", about: "Protection for the default branch, what a pull request needs before it merges, and what agents do." },
   secrets: { title: "Secrets and variables", about: "Values workflows, builds and deployments read at run time." },
+  runners: { title: "Runners", about: "Machines of your own for this project's workflow jobs, and where its agents' work runs." },
   webhooks: { title: "Webhooks", about: "Addresses g1t calls when something happens in the project." },
 };
 

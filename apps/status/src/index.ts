@@ -23,6 +23,7 @@
  *   POST /subscribe           asks for a subscription: a confirmation email
  *   GET|POST /subscribe/confirm?token=   confirms (GET shows a button: link scanners must not confirm)
  *   GET|POST /unsubscribe?token=         leaves (POST also takes RFC 8058 one-click)
+ *   POST /deploys             the deploy tool: a deploy started or finished (bearer STATUS_DEPLOY_TOKEN)
  */
 import { WorkerEntrypoint } from "cloudflare:workers";
 import {
@@ -51,8 +52,20 @@ import hanken from "@g1t/theme/fonts/hanken-grotesk-latin.woff2";
 import plexMono from "@g1t/theme/fonts/ibm-plex-mono-latin-400.woff2";
 
 import { type Targets, components } from "./components.ts";
-import { DETECT_AFTER, detect, detectedImpact, draftTitle } from "./detect.ts";
-import { type EmailBinding, type Sender, alertLetter, bindingSender, confirmLetter, render as renderMail, unsubscribeHeaders, updateLetter } from "./email.ts";
+import {
+  DEPLOY_GRACE_MS,
+  DEPLOY_MAX_MS,
+  autoDismissText,
+  deployChange,
+  deployQuiet,
+  detect,
+  detectedImpact,
+  draftTitle,
+  recoverySentence,
+  settleDrafts,
+  troubleSentence,
+} from "./detect.ts";
+import { type EmailBinding, type Sender, alertLetter, bindingSender, confirmLetter, recoveredLetter, render as renderMail, unsubscribeHeaders, updateLetter } from "./email.ts";
 import { atom, feedItems, jsonFeed } from "./feed.ts";
 import {
   type Entry,
@@ -70,9 +83,10 @@ import {
   SEVERITY_LABEL,
   shortId,
 } from "./incidents.ts";
-import { INCIDENT_STATUS, type PageModel, buildPage, classify, underMaintenance } from "./model.ts";
+import { INCIDENT_STATUS, type PageModel, SLOW_MS, buildPage, classify, underMaintenance } from "./model.ts";
 import { stamp } from "./postmortem.ts";
 import { runCheck } from "./probe.ts";
+import { readZone } from "./time.ts";
 import {
   FAVICON,
   SCRIPT,
@@ -90,6 +104,7 @@ import {
   addFollowUp,
   addSystemLines,
   auditLog,
+  autoDismiss,
   board,
   confirmSubscription,
   createIncident,
@@ -97,6 +112,7 @@ import {
   facts,
   incidentDetail,
   load,
+  loadDeploy,
   loadHistory,
   loadPublicIncident,
   loadPublicMaintenance,
@@ -110,12 +126,15 @@ import {
   recipients,
   record,
   requestSubscription,
+  saveDeploy,
+  saveHealthy,
   saveIncident,
   savePostmortem,
   saveStreaks,
   scheduleMaintenance,
   setFollowUp,
   unsubscribe,
+  watchedDrafts,
 } from "./store.ts";
 import { CONFIRM_TTL_MS, RESEND_AFTER_MS, chosenParts, hashToken, newToken, normalizeEmail, readUnsubscribeToken, unsubscribeToken } from "./subscribers.ts";
 
@@ -145,6 +164,11 @@ export interface Env extends Partial<Targets> {
   STATUS_SECRET?: string;
   /** Cloudflare Email Sending (`send_email`). Without it, nothing is emailed. */
   EMAIL?: EmailBinding;
+  /**
+   * The deploy tool's bearer token for `POST /deploys` (a secret). Without
+   * it, deploys are not announced and detection does not hold off for them.
+   */
+  STATUS_DEPLOY_TOKEN?: string;
 }
 
 /** How long the edge keeps a page or the JSON. */
@@ -186,7 +210,7 @@ export async function checkAll(env: Env, now = new Date()): Promise<Observation[
         fetch: (url, init) => fetch(url, init),
         billing: billing ? () => billingClient(billing).prices() : null,
       });
-      const { state, detail } = classify(result);
+      const { state, detail } = classify(result, info.slowMs);
       return { component: info.key, state, detail, latency_ms: result ? Math.round(result.ms) : null };
     }),
   );
@@ -246,27 +270,29 @@ async function afterChecks(env: Env, ctx: { waitUntil(p: Promise<unknown>): void
       detail: `${m.title} (on schedule)`,
     });
   }
-  // Detection.
-  const [streaks, open, page] = await Promise.all([loadStreaks(env.DB), openRefs(env.DB), load(env.DB, now, origin)]);
-  const found = detect(streaks, observations, open, underMaintenance(page.maintenance, now), now);
+  // Detection. A deploy restarts services: during one, and briefly after, trouble is counted but not drafted.
+  const [streaks, open, page, deploy] = await Promise.all([loadStreaks(env.DB), openRefs(env.DB), load(env.DB, now, origin), loadDeploy(env.DB)]);
+  const quiet = deployQuiet(deploy, now);
+  const found = detect(streaks, observations, open, underMaintenance(page.maintenance, now), now, { quiet });
   await saveStreaks(env.DB, found.streaks);
+  if (found.held.length) console.log(JSON.stringify({ event: "status.held_for_deploy", parts: found.held, deploy: deploy?.id ?? null }));
+  const name = (key: string) => named.get(key) ?? key;
+  const slowMs = (key: string) => parts(env).find((p) => p.key === key)?.slowMs ?? SLOW_MS;
   const lines = [
-    ...found.failing.map((f) => ({
-      incident: f.incident,
-      kind: "failing" as const,
-      text: `${named.get(f.key) ?? f.key}: checks ${f.state === "down" ? "failing" : "slow"} ${DETECT_AFTER} times in a row since ${stamp(f.since)}.`,
-    })),
-    ...found.recovered.map((r) => ({
-      incident: r.incident,
-      kind: "recovered" as const,
-      text: `${named.get(r.key) ?? r.key}: answering again, after ${r.checks} failed or slow checks since ${stamp(r.since)}.`,
-    })),
+    ...found.failing.map((f) => ({ incident: f.incident, kind: "failing" as const, text: troubleSentence(name(f.key), f, stamp(f.since), slowMs(f.key)) })),
+    ...found.recovered.map((r) => ({ incident: r.incident, kind: "recovered" as const, text: recoverySentence(name(r.key), r, stamp(r.since)) })),
   ];
   await addSystemLines(env.DB, lines, now);
+  const sudo = (id: string) => `${(env.SUDO_URL || "https://sudo.g1t.sh").replace(/\/+$/, "")}/incidents/${id}`;
+  const alertTo = (env.STATUS_ALERT_EMAIL ?? "").trim();
+  const send = sender(env);
   if (found.draft.length) {
     const core = new Set(parts(env).filter((p) => p.core).map((p) => p.key));
-    const title = draftTitle(found.draft.map((d) => ({ name: named.get(d.key) ?? d.key, state: d.state })));
+    const title = draftTitle(found.draft.map((d) => ({ name: name(d.key), state: d.state })));
     const since = found.draft.map((d) => d.since).sort()[0]!;
+    const said = found.draft.map((d) => troubleSentence(name(d.key), d, stamp(d.since), slowMs(d.key)));
+    // Trouble that began in a deploy and outlasted it: say so, it is the first thing to rule out.
+    const note = deploy && deployQuiet(deploy, new Date(since)) ? `It began during a deploy (started ${stamp(deploy.started_at)}) and outlasted it.` : null;
     const id = await createIncident(
       env.DB,
       {
@@ -287,21 +313,70 @@ async function afterChecks(env: Env, ctx: { waitUntil(p: Promise<unknown>): void
           kind: "detected",
           public: false,
           status: null,
-          text: `The checks failed ${DETECT_AFTER} times in a row: ${found.draft.map((d) => `${named.get(d.key) ?? d.key} (${d.state === "down" ? "not answering" : "slow"})`).join(", ")}. Not on the status page until it is published.`,
+          text: `${said.join(" ")}${note ? ` ${note}` : ""} Not on the status page until it is published.`,
         },
       ],
       now,
       { action: "incident_detected", detail: title },
     );
-    console.warn(JSON.stringify({ event: "status.detected", id, parts: found.draft.map((d) => d.key) }));
-    const to = (env.STATUS_ALERT_EMAIL ?? "").trim();
-    const send = sender(env);
-    if (to && send) {
-      const link = `${(env.SUDO_URL || "https://sudo.g1t.sh").replace(/\/+$/, "")}/incidents/${id}`;
-      const { text, html } = renderMail(alertLetter({ title, parts: found.draft.map((d) => named.get(d.key) ?? d.key), since: stamp(since), link }));
-      ctx.waitUntil(send.send({ to, subject: `[g1t status] ${title}`, text, html }).catch((e) => console.error(JSON.stringify({ event: "status.alert_failed", error: String(e) }))));
+    console.warn(JSON.stringify({ event: "status.detected", id, parts: found.draft.map((d) => d.key), since }));
+    if (alertTo && send) {
+      const { text, html } = renderMail(alertLetter({ title, lines: said, link: sudo(id), ...(note ? { note } : {}) }));
+      ctx.waitUntil(send.send({ to: alertTo, subject: `[g1t status] ${title}`, text, html }).catch((e) => console.error(JSON.stringify({ event: "status.alert_failed", error: String(e) }))));
     }
   }
+  // Detected drafts no one picked up, whose parts have stayed healthy long enough: dismissed, with a word to staff.
+  const troubled = new Set(found.streaks.map((s) => s.component));
+  const settled = settleDrafts(await watchedDrafts(env.DB), troubled, now);
+  await saveHealthy(env.DB, settled.healthy);
+  for (const d of settled.dismiss) {
+    const text = autoDismissText(d.lasted_ms, stamp(d.recovered_at));
+    if (!(await autoDismiss(env.DB, d.id, d.recovered_at, text, now))) continue;
+    console.log(JSON.stringify({ event: "status.auto_dismissed", id: d.id, lasted_ms: d.lasted_ms }));
+    if (alertTo && send) {
+      const letter = recoveredLetter({ title: d.title, text, link: sudo(d.id) });
+      const { text: body, html } = renderMail(letter);
+      ctx.waitUntil(send.send({ to: alertTo, subject: `[g1t status] ${letter.heading}`, text: body, html }).catch((e) => console.error(JSON.stringify({ event: "status.alert_failed", error: String(e) }))));
+    }
+  }
+}
+
+/**
+ * The deploy tool's word that a deploy started or finished:
+ * `POST /deploys` with `Authorization: Bearer <STATUS_DEPLOY_TOKEN>` and
+ * `{"phase": "started" | "finished", "id": "<run or commit>"}`. Without
+ * the secret set, there is no such address.
+ */
+async function deployHook(request: Request, env: Env): Promise<Response> {
+  const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "cache-control": "no-store", ...COMMON } });
+  const token = (env.STATUS_DEPLOY_TOKEN ?? "").trim();
+  if (!token) return json({ error: { code: "not_found", message: "Not found." } }, 404);
+  const given = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!(await sameSecret(given, token))) return json({ error: { code: "unauthorized", message: "A valid deploy token is required." } }, 401);
+  let body: { phase?: unknown; id?: unknown } = {};
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    // Checked below.
+  }
+  const phase = body.phase === "started" || body.phase === "finished" ? body.phase : null;
+  if (!phase) return json({ error: { code: "invalid", message: 'phase must be "started" or "finished".' } }, 400);
+  const id = typeof body.id === "string" && body.id.trim() ? body.id.trim().slice(0, 100) : null;
+  const now = new Date();
+  const window = deployChange(await loadDeploy(env.DB), phase, id, now);
+  await saveDeploy(env.DB, window);
+  console.log(JSON.stringify({ event: `status.deploy_${phase}`, id }));
+  const quietUntil = window.finished_at ? Date.parse(window.finished_at) + DEPLOY_GRACE_MS : Date.parse(window.started_at) + DEPLOY_MAX_MS;
+  return json({ deploy: window, quiet_until: new Date(quietUntil).toISOString() });
+}
+
+/** Compares two secrets in constant time, by their hashes. */
+async function sameSecret(a: string, b: string): Promise<boolean> {
+  const digest = async (v: string) => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v)));
+  const [x, y] = await Promise.all([digest(a), digest(b)]);
+  let diff = a.length === 0 ? 1 : 0;
+  for (let i = 0; i < x.length; i++) diff |= x[i]! ^ y[i]!;
+  return diff === 0;
 }
 
 // --- Pages -------------------------------------------------------------------------------
@@ -349,11 +424,14 @@ function edgeCache(): Cache | null {
   return (globalThis as unknown as { caches?: { default?: Cache } }).caches?.default ?? null;
 }
 
-/** A response from the edge cache, or made and kept there. */
-async function cached(request: Request, ctx: ExecutionContext, make: () => Promise<Response>): Promise<Response> {
+/**
+ * A response from the edge cache, or made and kept there. Pages that say
+ * times pass the reader's zone, and are kept once per zone.
+ */
+async function cached(request: Request, ctx: ExecutionContext, make: () => Promise<Response>, zone?: string): Promise<Response> {
   const cache = edgeCache();
   const url = new URL(request.url);
-  const key = new Request(url.origin + url.pathname, { method: "GET" });
+  const key = new Request(`${url.origin}${url.pathname}${zone ? `?zone=${encodeURIComponent(zone)}` : ""}`, { method: "GET" });
   if (cache) {
     const hit = await cache.match(key).catch(() => undefined);
     if (hit) return hit;
@@ -446,8 +524,10 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
     selfUrl: `${url.origin}${path === "/" ? "/" : path}`,
     now,
     email: emailOn(env),
+    zone: readZone(request.headers.get("cookie"), (request as { cf?: { timezone?: unknown } }).cf?.timezone),
   };
 
+  if (request.method === "POST" && path === "/deploys") return deployHook(request, env);
   if (request.method === "POST") {
     const answer = await subscriptions(request, env, ctx, url, options);
     return answer ?? new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD", ...COMMON } });
@@ -464,7 +544,7 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
         const page = await model(env, now, origin);
         catchUp(env, ctx, page, now);
         return html(renderPage(page, options), fresh());
-      });
+      }, options.zone);
     case "/status.json":
       return cached(request, ctx, async () => {
         const page = await model(env, now, origin);
@@ -483,7 +563,7 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
         const since = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1));
         const { incidents, maintenance } = await loadHistory(env.DB, since, origin);
         return html(renderHistory(incidents, maintenance, options), fresh());
-      });
+      }, options.zone);
     case "/feed.xml":
     case "/feed.json":
       return cached(request, ctx, async () => {
@@ -515,14 +595,14 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
     return cached(request, ctx, async () => {
       const found = await loadPublicIncident(env.DB, incident[1]!, origin);
       return found ? html(renderIncident(found.incident, found.postmortem, names(env), options), fresh()) : notFound();
-    });
+    }, options.zone);
   }
   const maintenance = /^\/maintenance\/([a-z0-9-]{1,64})$/.exec(path);
   if (maintenance) {
     return cached(request, ctx, async () => {
       const found = await loadPublicMaintenance(env.DB, maintenance[1]!, origin);
       return found ? html(renderMaintenance(found, names(env), options), fresh()) : notFound();
-    });
+    }, options.zone);
   }
   const font = FONTS[path];
   if (font) {

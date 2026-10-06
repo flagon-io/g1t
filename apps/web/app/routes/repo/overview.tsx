@@ -18,8 +18,8 @@ import {
   Rocket,
   RotateCw,
 } from "lucide-react";
-import type { ReactNode } from "react";
-import { Form, Link, useNavigation } from "react-router";
+import { type ReactNode, Suspense } from "react";
+import { Await, Form, Link, useNavigation } from "react-router";
 
 import { type AgentRun, type G1tEvent, type Memory, type Pull, RUN_KIND_LABEL, isActiveRun } from "@g1t/contracts";
 
@@ -30,6 +30,7 @@ import { Elapsed, formatCost, useLiveRefresh } from "../../components/agents";
 import { ActivityFeed, DeployStrip, Meter, NeedsList, Panel, Quiet, Unavailable, percent } from "../../components/mission";
 import { type ActiveBranch, ActiveBranches } from "../../components/branches";
 import { ProductionChecklist } from "../../components/checklist";
+import { SkeletonRows } from "../../components/ui/skeleton";
 import { ProductionShot } from "../../components/production-shot";
 import { GithubLinkStrip } from "../../components/github";
 import { githubApp } from "../../lib/github.server";
@@ -55,7 +56,7 @@ import { drift } from "../../lib/branches";
 import { agentWasAssigned, hasInstructions, productionChecklist } from "../../lib/checklist";
 import { agents, deployments, events as eventLog, projects, repos, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
-import { accessTo, refusal, repoFor } from "../../lib/access.server";
+import { accessTo, countsFor, refusal, repoFor } from "../../lib/access.server";
 
 const MAX_LANDED = 6;
 /** Branches read for the Active branches list, and shown. */
@@ -67,15 +68,20 @@ const MAIN_DEPTH = 120;
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  // People with a role of their own here see its running parts: deployments,
-  // memory, setup; everyone who can read it sees the rest.
-  const { insider: member, can } = await accessTo(context, params);
   const path = { namespace: params.owner, name: params.repo };
   const ref = { workspace: params.owner, slug: params.repo };
   const now = Date.now();
   // A section whose service fails shows its own empty state; the page stays up.
   const soft = <T,>(promise: Promise<T> | null): Promise<T | null> =>
     promise ? promise.catch((error) => (console.warn("overview:", error), null)) : Promise.resolve(null);
+  // People with a role of their own here see its running parts: deployments,
+  // memory, setup; everyone who can read it sees the rest. Not awaited: only
+  // those sections wait on the repository lookup, which the layout makes in
+  // this request too.
+  const accessP = accessTo(context, params);
+  const memberP = accessP.then((access) => access.insider);
+  const forMembers = <T,>(start: () => Promise<T>): Promise<T | null> =>
+    memberP.then((member) => (member ? soft(start()) : null));
   const repoP = soft(repoFor(context, params));
   const eventsP = repoP.then((repo) => (repo?.ok ? soft(eventLog.list({ repoId: repo.value.id, limit: 150 })) : null));
   const minePullsP = repoP.then((repo) =>
@@ -85,8 +91,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   );
   const openP = soft(work.listPulls(path, viewer, "open"));
   // Where its code came from on GitHub, for members.
-  const githubP = repoP.then((repo) => (repo?.ok && member ? soft(githubApp.link(repo.value.id)) : null));
-  const listP = soft(member ? deployments.list(ref, viewer) : null);
+  const githubP = repoP.then((repo) => (repo?.ok ? forMembers(() => githubApp.link(repo.value.id)) : null));
+  const listP = forMembers(() => deployments.list(ref, viewer));
   // Active branches: the newest few besides the default, with how far each
   // has moved. Branches with an open pull request are read first.
   const branchesP = Promise.all([repoP, soft(repos.branches(path, viewer)), openP, listP]).then(
@@ -98,9 +104,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       const others = branchList.value.filter((branch) => branch.name !== main);
       if (others.length === 0) return { main, total: 0, shown: [] };
       const read = [...others.filter((b) => pullOn.has(b.name)), ...others.filter((b) => !pullOn.has(b.name))].slice(0, BRANCHES_READ);
+      // By commit hash, not name: history from a commit never changes, so
+      // repos keeps it (services/repos/src/store.rs) and only new heads cost
+      // a walk.
+      const mainHead = branchList.value.find((branch) => branch.name === main)?.hash ?? main;
       const [mainLog, ...logs] = await Promise.all([
-        soft(repos.log(path, viewer, main, MAIN_DEPTH)),
-        ...read.map((branch) => soft(repos.log(path, viewer, branch.name, BRANCH_DEPTH))),
+        soft(repos.log(path, viewer, mainHead, MAIN_DEPTH)),
+        ...read.map((branch) => soft(repos.log(path, viewer, branch.hash || branch.name, BRANCH_DEPTH))),
       ]);
       const mainHashes = mainLog?.ok ? mainLog.value.map((c) => c.hash) : [];
       const previews = deploys?.ok ? deploys.value.live.filter((app) => app.kind === "preview") : [];
@@ -123,25 +133,27 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       return { main, total: others.length, shown };
     },
   );
-  const [project, settings, list, open, closed, log, counts, deps, runs, queue, issues, memories, recent, mine, domains, root, branches] = await Promise.all([
+  // Active branches read several logs each: streamed, so the rest shows first.
+  const branches = branchesP.catch(() => null);
+  const [{ insider: member, can }, project, settings, list, open, closed, log, counts, deps, runs, queue, issues, memories, recent, mine, domains, root] = await Promise.all([
+    accessP,
     soft(projects.get(params.owner, params.repo, viewer)),
-    soft(member ? deployments.settings(ref, viewer) : null),
+    forMembers(() => deployments.settings(ref, viewer)),
     listP,
     openP,
     soft(work.listPulls(path, viewer, "closed")),
     soft(repos.log(path, viewer, null, 1)),
-    soft(work.counts(path, viewer)),
+    soft(countsFor(context, params)),
     soft(projects.dependencies(params.owner, params.repo, viewer)),
     soft(agents.listRuns(viewer, { repo: path, limit: 60 })),
     soft(work.queue(path, viewer)),
     soft(work.listIssues(path, viewer, { state: "open" })),
-    soft(member ? agents.listMemories(viewer, params.owner, path) : null),
+    forMembers(() => agents.listMemories(viewer, params.owner, path)),
     eventsP,
     minePullsP,
     // For the checklist, which only members see.
-    soft(member ? deployments.domains(ref, viewer) : null),
-    soft(member ? repos.tree(path, viewer, null, "") : null),
-    branchesP,
+    forMembers(() => deployments.domains(ref, viewer)),
+    forMembers(() => repos.tree(path, viewer, null, "")),
   ]);
   const ok = <T,>(result: { ok: true; value: T } | { ok: false } | null): T | null => (result?.ok ? result.value : null);
 
@@ -173,7 +185,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const columns: Record<PipelineStage, Card[]> = { working: [], checking: [], reviewing: [], queue: [], landed: [] };
   for (const pull of openPulls.slice(0, 40)) {
     const run = runOn.get(pull.number);
-    columns[pipelineStage(pull, run, queued)].push({
+    columns[pipelineStage(pull, run, queued, lifecycleOf.get(pull.number))].push({
       number: pull.number,
       title: pull.title,
       agent: pull.agent,
@@ -232,7 +244,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       needs.push({ key: `review:${pull.number}`, kind: "review", title: pull.title, detail: `${pull.author.username} asked for your review.`, to, action: "Review", at: Date.parse(pull.updatedAt), where });
     }
     if (member && pull.status === "open" && pull.checkStatus === "failed" && !runOn.has(pull.number) && !lifecycle) {
-      needs.push({ key: `checks:${pull.number}`, kind: "checks", title: pull.title, detail: "Its acceptance checks failed and no agent is fixing them.", to, action: "See checks", at: Date.parse(pull.updatedAt), where });
+      needs.push({ key: `checks:${pull.number}`, kind: "checks", title: pull.title, detail: "It failed in the merge queue and no agent is fixing it.", to, action: "See checks", at: Date.parse(pull.updatedAt), where });
     }
   }
   for (const run of live) {
@@ -705,29 +717,39 @@ export default function ProjectOverview({ loaderData, actionData, params }: Rout
             </Panel>
           )}
 
-          <Panel
-            title="Active branches"
-            icon={<GitBranch size={14} />}
-            count={branches?.total || null}
+          <Suspense
+            fallback={
+              <Panel title="Active branches" icon={<GitBranch size={14} />}>
+                <div aria-busy="true">
+                  <SkeletonRows rows={3} rowClassName="h-12" />
+                </div>
+              </Panel>
+            }
           >
-            {!branches ? (
-              <Unavailable what="Branches" />
-            ) : branches.shown.length === 0 ? (
-              <Quiet>
-                Only {branches.main} so far. Branches pushed here show with how far each has moved from {branches.main}, and
-                its pull request and preview.
-              </Quiet>
-            ) : (
-              <>
-                <ActiveBranches branches={branches.shown} base={base} main={branches.main} />
-                {branches.total > branches.shown.length && (
-                  <p className="mt-2 px-1 text-xs text-faint">
-                    The {branches.shown.length} most recently changed of {branches.total} branches.
-                  </p>
-                )}
-              </>
-            )}
-          </Panel>
+            <Await resolve={branches}>
+              {(branches) => (
+                <Panel title="Active branches" icon={<GitBranch size={14} />} count={branches?.total || null}>
+                  {!branches ? (
+                    <Unavailable what="Branches" />
+                  ) : branches.shown.length === 0 ? (
+                    <Quiet>
+                      Only {branches.main} so far. Branches pushed here show with how far each has moved from {branches.main}, and
+                      its pull request and preview.
+                    </Quiet>
+                  ) : (
+                    <>
+                      <ActiveBranches branches={branches.shown} base={base} main={branches.main} />
+                      {branches.total > branches.shown.length && (
+                        <p className="mt-2 px-1 text-xs text-faint">
+                          The {branches.shown.length} most recently changed of {branches.total} branches.
+                        </p>
+                      )}
+                    </>
+                  )}
+                </Panel>
+              )}
+            </Await>
+          </Suspense>
 
           <Panel title="Recent changes" icon={<GitMerge size={14} />} all={{ to: `${base}/pulls?state=closed`, label: "All landed" }}>
             {landed.length === 0 ? (

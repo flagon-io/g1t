@@ -64,7 +64,7 @@ issue records which one was taken.
 
 | Concept | What it is |
 | --- | --- |
-| **Issue** | What should change in a repo: a bug, a feature, a question. Opened by a person, an agent or an integration such as an error tracker. Carries labels, acceptance checks (commands that must pass), comments, and every pull request made for it. |
+| **Issue** | What should change in a repo: a bug, a feature, a question. Opened by a person, an agent or an integration such as an error tracker. Carries labels, a description that may say what done means (a Definition of done: context, never a gate), comments, and every pull request made for it. What a merge needs is the default branch's required checks: workflow statuses, the same for people and agents. |
 | **Pull request** | A proposed change in its own Artifacts fork, made by an agent or a person, usually for an issue. Any number can be open for one issue. Starts as a draft; marked ready; merged or closed. |
 | **Session** | The agent's full context for a pull request: prompt, messages, tool calls, cost. Stored with the pull request and linked from every commit it produced. |
 | **Compare view** | Every pull request for an issue side by side with diff, check results, conflicts against main and against each other, and a reviewer agent's summary. |
@@ -248,8 +248,8 @@ push goes through g1t's git front end, so none of it bypasses the model.
 ### Planning by writing
 
 - **Brief.** Write the outcome in prose on the site, or commit it as a
-  markdown file. A planner agent turns it into a project: issues, acceptance
-  checks, dependencies. The person edits the graph before anything starts.
+  markdown file. A planner agent turns it into a project: issues, each with
+  what done means, and dependencies. The person edits the graph before anything starts.
 - **Plan from their own agent.** The same operations are MCP tools, so a
   person can plan in their own Claude Code session and create the project
   from there.
@@ -259,7 +259,8 @@ push goes through g1t's git front end, so none of it bypasses the model.
 ### Seeing what moved
 
 - **Project page.** The outcome, the issue graph coloured by state, and how
-  many acceptance checks pass now compared with when the project started.
+  many of its issues have landed with their required checks passing,
+  compared with when the project started.
 - **Digest.** An agent-written summary per project and per person: what
   merged, what is blocked on whom, which conflicts were resolved, what it
   cost.
@@ -292,8 +293,8 @@ phone and Claude Code are views of the same session.
   browser like a document, with inline comments. "Suggest a change" is an
   pull request and "publish" is merge, without git vocabulary.
 - **Document issues.** "Write the onboarding guide for the billing API" is
-  an issue. Its acceptance checks are a checklist judged by a reviewer agent
-  instead of commands. Agents draft and revise; people comment and approve.
+  an issue. Its Definition of done is a checklist judged by a reviewer agent
+  instead of a workflow. Agents draft and revise; people comment and approve.
 - **Templates.** Product brief, RFC, decision record. A filled-in template is
   a brief the planner can turn into a project.
 - **Explain.** Ask about any repo, project or change in plain language and
@@ -347,7 +348,7 @@ One page answers "where is the business" across every initiative:
 - **Health** per initiative: on track, at risk, or blocked, derived from
   facts (checks passing, issues stalled, questions waiting on a person),
   not self-reported.
-- **Progress** as measurable results: acceptance checks passing, issues
+- **Progress** as measurable results: required checks passing, issues
   merged out of planned, and the trend since the start.
 - **Forecast** from actual throughput: at the current rate, when the
   remaining issues land.

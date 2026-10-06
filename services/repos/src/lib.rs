@@ -7,6 +7,7 @@
 
 mod blame;
 mod catch_up;
+mod commit_file;
 mod diff;
 mod git_http;
 mod git_ops;
@@ -15,6 +16,7 @@ mod land;
 mod lifecycle;
 mod listing;
 mod mirror;
+mod pack_limits;
 mod refs;
 mod refs_cache;
 mod registry;
@@ -1617,13 +1619,17 @@ fn service(env: &Env) -> Result<Repos<ArtifactsStore>> {
 
 #[event(fetch)]
 async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response> {
-    let repos = service(&env)?;
+    let mut repos = service(&env)?;
     let Some(method) = rpc_method(&request) else {
         return repos.git_http(request, &env, &ctx).await;
     };
+    // A replica near the caller when it asks for one (crates/kit/src/d1.rs).
+    // Git over HTTPS above always reads the primary.
+    let (db, served) = g1t_kit::d1::open(&env, "DB", &request)?;
+    repos.registry.db = db;
     let body: serde_json::Value = request.json().await?;
 
-    match method.as_str() {
+    let answered = match method.as_str() {
         "get" => reply(&repos.get(args(body)?).await?),
         "get_by_id" => reply(&repos.get_by_id(args(body)?).await?),
         "readable" => {
@@ -1701,6 +1707,7 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "land" => reply(&repos.land(args(body)?).await?),
         "update_pull_branch" => reply(&repos.update_pull_branch(args(body)?).await?),
         "delete_branch" => reply(&repos.delete_branch(args(body)?).await?),
+        "commit_file" => reply(&repos.commit_file(args(body)?).await?),
         "compare" => reply(&repos.compare(args(body)?).await?),
         "scan_history" => reply(&repos.scan_history(args(body)?).await?),
         "find_lockfiles" => reply(&repos.find_lockfiles(args(body)?).await?),
@@ -1724,7 +1731,8 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
             reply(&IdPage { ids, next })
         }
         _ => Response::error("Unknown method", 404),
-    }
+    };
+    served.finish(answered)
 }
 
 /// The hourly sweep: deleted repositories whose time to be restored has

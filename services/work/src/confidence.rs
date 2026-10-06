@@ -1,7 +1,8 @@
 //! How sure g1t is of a change an agent made.
 //!
 //! Worked out from what g1t can observe, never from how the agent sounds:
-//! whether the acceptance checks pass (and passed only on a retry), how
+//! whether the checks the default branch requires pass on it (and whether
+//! the branch requires any), whether it failed in the merge queue, how
 //! many times the agent was sent back, the reviewer agent's verdict and how
 //! much it had to say, whether tests were added or changed, how large the
 //! change is and whether it reached outside the files its plan expected,
@@ -23,7 +24,7 @@
 use futures_util::future::try_join;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::{
-    ChangedFile, CheckStatus, Confidence, ConfidenceLevel, Pull, ReportConfidenceArgs, Verdict,
+    ChangedFile, Confidence, ConfidenceLevel, Pull, ReportConfidenceArgs, RequiredCheck, RequiredState, Verdict,
 };
 use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
@@ -46,13 +47,45 @@ const MAX_UNCERTAIN_CHARS: usize = 160;
 /// A share of a run's cap past which it was close to it.
 const NEAR_CAP: f64 = 0.8;
 
+/// Where the checks the default branch requires stand on a change's head,
+/// taken together.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum RequiredSignal {
+    /// The branch requires no checks: nothing has to pass.
+    #[default]
+    NoneRequired,
+    Passing,
+    Failing,
+    Running,
+    /// Required, and nothing has reported them on the head.
+    NotRun,
+}
+
+impl RequiredSignal {
+    pub(crate) fn of(required: &[RequiredCheck]) -> RequiredSignal {
+        let any = |state: RequiredState| required.iter().any(|check| check.state == state);
+        if required.is_empty() {
+            RequiredSignal::NoneRequired
+        } else if any(RequiredState::Failure) {
+            RequiredSignal::Failing
+        } else if any(RequiredState::Pending) {
+            RequiredSignal::Running
+        } else if any(RequiredState::Expected) {
+            RequiredSignal::NotRun
+        } else {
+            RequiredSignal::Passing
+        }
+    }
+}
+
 /// Everything confidence is worked out from.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Signals {
-    /// Whether the issue has acceptance checks at all.
-    pub has_checks: bool,
-    pub check_status: Option<CheckStatus>,
-    /// A run of the checks errored, or failed and then passed on the same
+    /// Where the required checks stand on its head.
+    pub required: RequiredSignal,
+    /// The merge queue took it out: it failed together with what was ahead.
+    pub queue_failed: bool,
+    /// A recorded run errored, or failed and then passed on the same
     /// commit: they pass, but not reliably.
     pub flaky_checks: bool,
     /// How many times the agent was sent back.
@@ -171,17 +204,17 @@ fn points(points: u32, reason: impl Into<String>) -> Mark {
 pub(crate) fn score(signals: &Signals) -> (ConfidenceLevel, Vec<String>) {
     let mut marks: Vec<Mark> = Vec::new();
 
-    match signals.check_status {
-        Some(CheckStatus::Failed) => marks.push(sink("checks failing")),
-        Some(CheckStatus::Errored) => marks.push(sink("checks could not run")),
-        Some(CheckStatus::Queued | CheckStatus::Running) => marks.push(points(1, "checks not finished")),
-        None if signals.has_checks => marks.push(points(1, "checks not run yet")),
-        Some(CheckStatus::Passed) | None => {}
+    if signals.queue_failed {
+        marks.push(sink("failed in the merge queue"));
     }
-    if !signals.has_checks {
-        marks.push(points(1, "no acceptance checks"));
+    match signals.required {
+        RequiredSignal::Failing => marks.push(sink("required checks failing")),
+        RequiredSignal::Running => marks.push(points(1, "required checks not finished")),
+        RequiredSignal::NotRun => marks.push(points(1, "required checks not run")),
+        RequiredSignal::NoneRequired => marks.push(points(1, "branch has no required checks")),
+        RequiredSignal::Passing => {}
     }
-    if signals.flaky_checks && signals.check_status == Some(CheckStatus::Passed) {
+    if signals.flaky_checks && signals.required == RequiredSignal::Passing {
         marks.push(points(1, "checks passed only on a retry"));
     }
 
@@ -291,8 +324,8 @@ pub(crate) fn score(signals: &Signals) -> (ConfidenceLevel, Vec<String>) {
     reasons.extend(marks.into_iter().map(|mark| mark.reason));
     if reasons.is_empty() {
         // High: what it rests on.
-        if signals.has_checks && signals.check_status == Some(CheckStatus::Passed) {
-            reasons.push("checks pass".to_owned());
+        if signals.required == RequiredSignal::Passing {
+            reasons.push("required checks pass".to_owned());
         }
         if signals.review == Some(Verdict::Approve) {
             reasons.push(if signals.revisions == 0 { "approved on first review" } else { "review approved" }.to_owned());
@@ -667,12 +700,11 @@ mod tests {
         ChangedFile { path: path.to_owned(), additions: lines, deletions: 0 }
     }
 
-    /// A clean change: checks pass, approved on the first review, a test
-    /// beside the code, small.
+    /// A clean change: required checks pass, approved on the first
+    /// review, a test beside the code, small.
     fn clean() -> Signals {
         Signals {
-            has_checks: true,
-            check_status: Some(CheckStatus::Passed),
+            required: RequiredSignal::Passing,
             agent_review: true,
             review: Some(Verdict::Approve),
             files: vec![file("src/retry.ts", 40), file("src/retry.test.ts", 30)],
@@ -684,18 +716,30 @@ mod tests {
     fn signals_score_as_the_table_says() {
         use ConfidenceLevel::*;
         let cases: Vec<(&str, Signals, ConfidenceLevel, &[&str])> = vec![
-            ("clean", clean(), High, &["checks pass", "approved on first review", "tests added", "small change"]),
+            ("clean", clean(), High, &["required checks pass", "approved on first review", "tests added", "small change"]),
             (
-                "failing checks",
-                Signals { check_status: Some(CheckStatus::Failed), ..clean() },
+                "failing required checks",
+                Signals { required: RequiredSignal::Failing, ..clean() },
                 Low,
-                &["checks failing"],
+                &["required checks failing"],
             ),
             (
-                "checks that could not run",
-                Signals { check_status: Some(CheckStatus::Errored), ..clean() },
+                "required checks not run",
+                Signals { required: RequiredSignal::NotRun, ..clean() },
+                Medium,
+                &["required checks not run"],
+            ),
+            (
+                "required checks still running",
+                Signals { required: RequiredSignal::Running, ..clean() },
+                Medium,
+                &["required checks not finished"],
+            ),
+            (
+                "failed in the merge queue",
+                Signals { queue_failed: true, ..clean() },
                 Low,
-                &["checks could not run"],
+                &["failed in the merge queue"],
             ),
             ("one revision", Signals { revisions: 1, ..clean() }, Medium, &["1 revision"]),
             ("three revisions", Signals { revisions: 3, ..clean() }, Low, &["3 revisions"]),
@@ -715,7 +759,7 @@ mod tests {
                 "docs need no tests",
                 Signals { files: vec![file("README.md", 40), file("docs/guide.md", 10)], ..clean() },
                 High,
-                &["checks pass", "approved on first review", "small change"],
+                &["required checks pass", "approved on first review", "small change"],
             ),
             (
                 "the reviewer asks for changes",
@@ -731,10 +775,10 @@ mod tests {
             ),
             ("no review yet", Signals { review: None, ..clean() }, Medium, &["not reviewed yet"]),
             (
-                "no reviewer agent and no checks",
-                Signals { review: None, agent_review: false, has_checks: false, check_status: None, ..clean() },
+                "no reviewer agent and no required checks",
+                Signals { review: None, agent_review: false, required: RequiredSignal::NoneRequired, ..clean() },
                 Medium,
-                &["no acceptance checks", "no review"],
+                &["branch has no required checks", "no review"],
             ),
             (
                 "a large change",
@@ -760,7 +804,7 @@ mod tests {
                     ..clean()
                 },
                 High,
-                &["checks pass", "approved on first review", "tests added", "small change"],
+                &["required checks pass", "approved on first review", "tests added", "small change"],
             ),
             (
                 "a CI workflow",
@@ -828,7 +872,7 @@ mod tests {
     #[test]
     fn reasons_are_few_and_the_worst_come_first() {
         let signals = Signals {
-            check_status: Some(CheckStatus::Failed),
+            required: RequiredSignal::Failing,
             revisions: 2,
             files: vec![file("src/a.ts", 600), file(".env.example", 1)],
             unanswered: 1,
@@ -837,7 +881,7 @@ mod tests {
         let (level, reasons) = score(&signals);
         assert_eq!(level, ConfidenceLevel::Low);
         assert_eq!(reasons.len(), MAX_REASONS);
-        assert_eq!(reasons[0], "checks failing");
+        assert_eq!(reasons[0], "required checks failing");
     }
 
     #[test]

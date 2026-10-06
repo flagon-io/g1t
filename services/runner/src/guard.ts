@@ -14,13 +14,36 @@ import type { OutboundHandlerContext } from "@cloudflare/containers";
 
 import { type RepoPath, type RunKind, type ServiceBinding, guardrailsClient } from "@g1t/contracts";
 
-import { ABUSE_HOST, type ModelHosts, type RunGuard, allows, buildHosts, refusal, sandboxHosts } from "./egress";
+import {
+  ABUSE_HOST,
+  type ModelHosts,
+  type RunGuard,
+  type WorkflowJob,
+  allows,
+  buildHosts,
+  jobHosts,
+  refusal,
+  sandboxHosts,
+  sandboxNamespace,
+} from "./egress";
 
-export { ABUSE_EXIT_CODE, ABUSE_HOST, ABUSE_MESSAGE, harnessEnv, newlyBlocked, timeCapMessage, withPlanLimits } from "./egress";
-export type { PlanLimits, RunGuard } from "./egress";
+export {
+  ABUSE_EXIT_CODE,
+  ABUSE_HOST,
+  ABUSE_MESSAGE,
+  SANDBOX_BINDINGS,
+  harnessEnv,
+  jobHosts,
+  newlyBlocked,
+  sandboxNamespace,
+  timeCapMessage,
+  withPlanLimits,
+} from "./egress";
+export type { PlanLimits, RunGuard, WorkflowJob } from "./egress";
 
 /** What the outbound handler is given: the hosts this sandbox may reach. */
 export type EgressParams = { hosts: string[] };
+
 
 /** The stop by the sandbox's alarm comes this long after the harness's own. */
 export const ALARM_GRACE_SECONDS = 3 * 60;
@@ -41,7 +64,9 @@ export async function guardFor(work: ServiceBinding, repo: RepoPath, kind: RunKi
  * project's network list, plus what builds need (`buildHosts`), and the
  * time cap it was given. `repo` is the project, not a pull request's
  * working copy; `repoId`, when known, finds it however it has moved.
- * Throws when they cannot be read: no build starts without them.
+ * A workflow job of a trusted run also gets the workflow-only domains
+ * that name its workflow and environment (`jobHosts`); nothing else
+ * ever does. Throws when they cannot be read: no build starts without them.
  */
 export async function buildGuardFor(
   work: ServiceBinding,
@@ -49,12 +74,15 @@ export async function buildGuardFor(
   kind: "actions" | "deploy",
   minutes: number,
   repoId?: string | null,
+  job?: WorkflowJob | null,
 ): Promise<RunGuard> {
   const found = await guardrailsClient(work).runGuardrails(repo, repoId);
   if (!found.ok) throw new Error(`g1t could not read this project's guardrails: ${found.error.message}`);
   const policy = found.value;
-  return { policy: { ...policy, hosts: [...new Set([...policy.hosts, ...buildHosts(kind)])] }, minutes };
+  const hosts = [...policy.hosts, ...buildHosts(kind), ...jobHosts(policy, kind, job)];
+  return { policy: { ...policy, hosts: [...new Set(hosts)] }, minutes };
 }
+
 
 /** Every host the sandbox may reach, for the outbound handler. */
 export function egressHosts(guard: RunGuard, env: ModelHosts, sandboxEnv: Record<string, string>): string[] {
@@ -76,7 +104,8 @@ export async function egress(
   if (host === ABUSE_HOST) return abuse(request, env, ctx);
   if (allows(ctx.params?.hosts ?? [], host)) return fetch(request);
   try {
-    const sandbox = env.SANDBOX.get(env.SANDBOX.idFromString(ctx.containerId)) as unknown as {
+    const namespace = sandboxNamespace(env, ctx.className);
+    const sandbox = namespace.get(namespace.idFromString(ctx.containerId)) as unknown as {
       noteBlocked(host: string): Promise<void>;
     };
     await sandbox.noteBlocked(host);
@@ -103,7 +132,8 @@ export async function abuse(
     // A report without its metrics still stops the run.
   }
   try {
-    const sandbox = env.SANDBOX.get(env.SANDBOX.idFromString(ctx.containerId)) as unknown as {
+    const namespace = sandboxNamespace(env, ctx.className);
+    const sandbox = namespace.get(namespace.idFromString(ctx.containerId)) as unknown as {
       flagAbuse(verdict: unknown): Promise<void>;
     };
     await sandbox.flagAbuse(verdict);

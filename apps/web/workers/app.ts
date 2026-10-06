@@ -1,5 +1,7 @@
 import { createRequestHandler } from "react-router";
 
+import { finishResponse, withRequestPerf } from "../app/lib/perf.server";
+
 const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),
   import.meta.env.MODE,
@@ -44,9 +46,65 @@ export default {
       const target = MOVED_DOCS[page] ?? "/";
       return Response.redirect(DOCS + target, 301);
     }
-    return requestHandler(request);
+    // Every page and data request says where its time went (Server-Timing)
+    // and keeps the reader's D1 bookmarks (app/lib/perf.server.ts).
+    const render = () => withRequestPerf(request, async () => finishResponse(request, await requestHandler(request)));
+    if (anonymousPage(request, pathname)) return servePublic(request, ctx, render);
+    return render();
   },
 } satisfies ExportedHandler<Env>;
+
+/**
+ * Public pages as someone signed out sees them: the same for every such
+ * visitor, so kept in this data centre's cache. Reserved first segments
+ * (settings, sign-in, invitations and the like) and workspace pages (`-`)
+ * are never kept; docs/PERFORMANCE.md lists the rules.
+ */
+const PUBLIC_TOP = /^\/(?:|_root\.data|pricing|explore|security|support|policies(?:\/[a-z-]+)?)(?:\.data)?$/;
+const PUBLIC_PROJECT =
+  /^\/(?!(?:settings|u|auth|oauth|integrations|new|invite|workspaces|device|verify|login|register|logout|forgot|reset|search|status|avatars|docs)\/)[^/]+\/(?!-\/|-$)[^/]+(?:\/(?:code|commits|issues|pulls|pull\/\d+|issues\/\d+|commit\/[0-9a-f]+|tree\/.+|blob\/.+))?(?:\.data)?$/;
+/** Fresh for this long; then served once more while a new copy is made. */
+const PUBLIC_FRESH_SECONDS = 30;
+const PUBLIC_STALE_SECONDS = 300;
+
+function anonymousPage(request: Request, pathname: string): boolean {
+  if (request.method !== "GET") return false;
+  if (/(?:^|;\s*)g1t_session=/.test(request.headers.get("cookie") ?? "")) return false;
+  return PUBLIC_TOP.test(pathname) || PUBLIC_PROJECT.test(pathname);
+}
+
+async function servePublic(request: Request, ctx: ExecutionContext, render: () => Promise<Response>): Promise<Response> {
+  const cache = (caches as unknown as { default: Cache }).default;
+  const key = new Request(request.url, { method: "GET" });
+  const cached = await cache.match(key);
+  const keptAt = Number(cached?.headers.get("x-g1t-kept-at") ?? 0);
+  const age = Math.round((Date.now() - keptAt) / 1000);
+  const refresh = async () => {
+    const fresh = await render();
+    // Only a plain answer for everyone: nothing that sets a cookie or says
+    // it is private.
+    const cacheable =
+      (fresh.status === 200 || fresh.status === 404) &&
+      !fresh.headers.has("set-cookie") &&
+      !/private|no-store/.test(fresh.headers.get("cache-control") ?? "");
+    if (cacheable) {
+      const copy = new Response(fresh.clone().body, fresh);
+      copy.headers.set("x-g1t-kept-at", String(Date.now()));
+      copy.headers.set("cache-control", `public, max-age=${PUBLIC_STALE_SECONDS}`);
+      ctx.waitUntil(cache.put(key, copy));
+    }
+    return fresh;
+  };
+  if (cached && keptAt > 0 && age < PUBLIC_STALE_SECONDS) {
+    if (age >= PUBLIC_FRESH_SECONDS) ctx.waitUntil(refresh().then(() => undefined, () => undefined));
+    const answer = new Response(cached.body, cached);
+    answer.headers.delete("x-g1t-kept-at");
+    answer.headers.delete("cache-control");
+    answer.headers.set("server-timing", `cache;desc="hit, ${age}s old"`);
+    return answer;
+  }
+  return refresh();
+}
 
 /**
  * A git request, answered by the repos service. Its `Server-Timing` header

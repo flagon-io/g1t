@@ -1,5 +1,5 @@
 import { Box, Lock } from "lucide-react";
-import { Link, NavLink, Outlet, data, useLocation, useRouteLoaderData } from "react-router";
+import { Link, NavLink, Outlet, type ShouldRevalidateFunctionArgs, data, useLocation, useRouteLoaderData } from "react-router";
 
 import type { Project } from "@g1t/contracts";
 
@@ -12,8 +12,8 @@ import { WelcomeBanner } from "../../components/welcome";
 import { clearWelcome, welcomes } from "../../lib/invites";
 import { notFound } from "../../lib/not-found.server";
 import { redirectIfRenamed, redirectIfTransferred } from "../../lib/renamed.server";
-import { accessFor, repoFor } from "../../lib/access.server";
-import { projects, work } from "../../lib/services.server";
+import { accessFor, countsFor, repoFor } from "../../lib/access.server";
+import { projects } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
 export function meta({ loaderData: loaded, params, ...args }: Route.MetaArgs) {
@@ -25,7 +25,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const [repo, counts, found] = await Promise.all([
     repoFor(context, params),
-    work.counts(path, viewer),
+    countsFor(context, params),
     projects.get(params.owner, params.repo, viewer),
   ]);
   if (!repo.ok && !found.ok) {
@@ -56,6 +56,16 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     access,
     member: access.insider,
   }, { headers });
+}
+
+/**
+ * The project's header, tabs and the viewer's role change with the project
+ * or after something was submitted, not from one page of it to the next,
+ * nor when a page refreshes itself.
+ */
+export function shouldRevalidate({ currentParams, nextParams, formMethod, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
+  if (formMethod && formMethod !== "GET") return defaultShouldRevalidate;
+  return currentParams.owner !== nextParams.owner || currentParams.repo !== nextParams.repo;
 }
 
 /** The project the page is in, for the pages under it. */
@@ -157,7 +167,8 @@ function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
 export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
   const { repo, project, member, access, welcome } = loaderData;
   const base = `/${repo.namespace}/${repo.name}`;
-  const description = project?.description ?? repo.description;
+  // The project's own description, else the repository's as it is now.
+  const description = (project && !project.descriptionInherited ? project.description : null) ?? repo.description;
   const { pathname } = useLocation();
   const tabs = tabsFor(pathname.slice(base.length + 1), member, access.can);
   // Everyone, signed in or not, finds the project's pages in the sidebar;

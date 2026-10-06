@@ -197,6 +197,14 @@ pub(crate) fn sandbox_second_micros(usage: ContainerUsage, memory: f64, disk: f6
     Some(sandbox_base_micros(memory, disk, durable_object) + cpu_share * vcpu * MICROS_PER_DOLLAR as f64)
 }
 
+/// How much more a second of a larger machine's memory and disk (and the
+/// Durable Object behind it) costs than the standard sandbox's, at
+/// Cloudflare's list rates: 1 for the standard machine.
+pub(crate) fn base_scale(memory_gib: f64, disk_gb: f64) -> f64 {
+    let base = |memory: f64, disk: f64| memory * LIST_MEMORY_GIB_SECOND + disk * LIST_DISK_GB_SECOND + SANDBOX_DO_GB * LIST_DO_GB_SECOND;
+    base(memory_gib, disk_gb) / base(SANDBOX_GIB, SANDBOX_DISK_GB)
+}
+
 /// What a run that reported its own CPU cost g1t: its base for every
 /// second, and its vCPU-seconds at the vCPU rate.
 pub(crate) fn run_cost(seconds: i64, cpu_seconds: f64, base_per_second: f64, per_vcpu_second: f64) -> f64 {
@@ -738,6 +746,10 @@ mod tests {
         let average = 600.0 * (base + 0.195 * vcpu);
         assert!(average < heavy && average > light);
         assert_eq!(run_cost(0, -1.0, base, vcpu), 0.0);
+        // A larger machine's base: its memory and disk, not its CPU.
+        assert!((base_scale(SANDBOX_GIB, SANDBOX_DISK_GB) - 1.0).abs() < 1e-12);
+        assert!((base_scale(12.0, 20.0) - 2.72).abs() < 0.01, "{}", base_scale(12.0, 20.0));
+        assert!((base_scale(8.0, 16.0) - 1.87).abs() < 0.01, "{}", base_scale(8.0, 16.0));
     }
 
     #[test]

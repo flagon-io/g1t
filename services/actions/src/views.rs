@@ -51,6 +51,8 @@ fn job_view(row: JobRow) -> Job {
         reason: row.reason,
         started_at: row.started_at,
         finished_at: row.finished_at,
+        self_hosted: row.labels.is_some(),
+        runner: row.runner_name,
     }
 }
 

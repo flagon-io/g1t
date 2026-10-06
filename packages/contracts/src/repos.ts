@@ -119,6 +119,11 @@ export interface ReposApi {
   get(path: RepoPath, viewer: Viewer): Promise<Result<Repo>>;
   getById(id: string, viewer: Viewer): Promise<Result<Repo>>;
   /**
+   * Of these ids (at most 500), the repositories the viewer can read, in
+   * one call. Forks and deleted repositories are left out.
+   */
+  readable(ids: string[], viewer: Viewer): Promise<Repo[]>;
+  /**
    * The workspaces in which this account made a public repository, and so
    * a public project anyone can see. By account id.
    */
@@ -228,6 +233,18 @@ export interface ReposApi {
 
   /** The repository's branches, default branch first. */
   branches(path: RepoPath, viewer: Viewer): Promise<Result<Branch[]>>;
+
+  /**
+   * Writes one file on a new branch made from the default branch's head, as
+   * one commit by `actor`, for a change g1t proposes on their behalf (a
+   * starter workflow). Refused unless they may push, when the branch exists,
+   * or when the file is already there.
+   */
+  commitFile(
+    repo: RepoPath,
+    actor: User,
+    file: { branch: string; path: string; content: string; message: string },
+  ): Promise<Result<{ branch: string; commit: string }>>;
 
   /**
    * Moves a repository's default branch to the head of a pull request's

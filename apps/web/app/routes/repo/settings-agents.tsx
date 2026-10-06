@@ -9,10 +9,11 @@ import { page } from "../../lib/meta";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { Button, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
 import { work } from "../../lib/services.server";
+import { instrumented } from "../../lib/perf.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { requireCapability, requireInsider } from "../../lib/access.server";
 
-const mentions = mentionsClient(env.WORK);
+const mentions = mentionsClient(instrumented("work", env.WORK));
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Agent settings · ${params.owner}/${params.repo} · g1t` });

@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import type { Blame, BlobView as Blob, Commit, TreeView as Tree } from "@g1t/contracts";
 
 import { BlameView } from "./blame-view";
+import { CodeLines } from "./code-lines";
 
 import { AgentSetup } from "./agent-setup";
 import { CloneBox } from "./clone-box";
@@ -181,8 +182,8 @@ export function BlobView({
   blame,
 }: {
   blob: Blob;
-  /** Syntax-highlighted HTML, when the language is known. */
-  html: string | null;
+  /** Syntax-highlighted HTML per line, when the language is known. */
+  html: string[] | null;
   /** Shown instead of the plain file when asked for, with HTML per line. */
   blame?: { blame: Blame; lines: string[] | null } | null;
 }) {
@@ -219,22 +220,8 @@ export function BlobView({
         </div>
         {blame && lines ? (
           <BlameView base={base} path={path} lines={lines} html={blame.lines} blame={blame.blame} />
-        ) : html ? (
-          <div
-            className="overflow-x-auto py-3 pr-4"
-            // Shiki escapes the source; this is its generated markup.
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
         ) : lines ? (
-          <div className="flex overflow-x-auto py-3 font-mono text-sm leading-6">
-            <pre
-              aria-hidden="true"
-              className="w-10 shrink-0 text-right text-faint select-none"
-            >
-              {lines.map((_, i) => i + 1).join("\n")}
-            </pre>
-            <pre className="pr-4 pl-5"><code>{lines.join("\n")}</code></pre>
-          </div>
+          <CodeLines lines={lines} html={html} />
         ) : (
           <p className="p-6 text-sm text-muted">
             This file is binary or too large to show.

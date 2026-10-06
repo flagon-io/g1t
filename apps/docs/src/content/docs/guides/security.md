@@ -178,7 +178,9 @@ gets one issue, labelled `dependencies` and `security`, such as:
 > Upgrade lodash to 4.17.21: fixes GHSA-35jh-r3h4-6jhm
 
 The issue lists every advisory it fixes, and the target is the lowest
-version that fixes all of them. Its acceptance checks are:
+version that fixes all of them. It ends with a **Definition of done**: no
+lockfile resolves a vulnerable version and the tests still pass, followed
+by the commands that show it, each as "`command` passes.":
 
 - a command per lockfile that fails while the lockfile still resolves the
   vulnerable version, and
@@ -193,8 +195,13 @@ version that fixes all of them. Its acceptance checks are:
   | `Cargo.lock` | `cargo test --locked` |
   | `go.mod`, `go.sum` | `go test ./...` |
 
-  Python projects get the lockfile check only, since there is no one way
+  Python projects get the lockfile command only, since there is no one way
   to run their tests.
+
+The definition of done tells the agent and its reviewer what to verify. The
+pull request merges on the repository's
+[required status checks](/guides/pull-requests/#required-status-checks),
+as any other does.
 
 g1t puts its agent on the first new upgrade at once and queues the rest,
 which start as the project has room for more agents. The agent upgrades the

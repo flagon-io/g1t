@@ -17,6 +17,8 @@ import {
   type MaintenanceState,
 } from "@g1t/contracts/status";
 
+import { fromLocalInput, toLocalInput } from "./time.ts";
+
 export { COMPONENT_IMPACTS, INCIDENT_SEVERITIES, INCIDENT_STATUSES };
 
 export type Tone = "plain" | "lavender" | "mint" | "warn" | "danger" | "info";
@@ -150,17 +152,14 @@ export function median(values: (number | null)[]): number | null {
   return known.length % 2 ? known[mid]! : (known[mid - 1]! + known[mid]!) / 2;
 }
 
-/** A `datetime-local` value, read as UTC: sudo ships no script to know the browser's zone. */
-export function utc(raw: string): string | null {
-  const value = raw.trim();
-  if (!value) return null;
-  const iso = /Z$|[+-]\d\d:\d\d$/.test(value) ? value : `${value.length === 16 ? `${value}:00` : value}Z`;
-  return Number.isNaN(Date.parse(iso)) ? null : new Date(iso).toISOString();
+/** A `datetime-local` value, read in the staff member's zone (lib/time.ts); UTC ISO. */
+export function utc(raw: string, tz = "UTC"): string | null {
+  return fromLocalInput(raw, tz);
 }
 
-/** A time as a `datetime-local` value in UTC: `2026-10-05T14:00`. */
-export function localValue(at: Date | string): string {
-  return new Date(at).toISOString().slice(0, 16);
+/** A time as a `datetime-local` value in the staff member's zone: `2026-10-05T07:00`. */
+export function localValue(at: Date | string, tz = "UTC"): string {
+  return toLocalInput(at, tz);
 }
 
 // --- Forms ------------------------------------------------------------------------------

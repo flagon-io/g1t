@@ -552,7 +552,7 @@ fn check_out(secrets: &[String]) -> Result<()> {
     let commit = env("GIT_COMMIT")?;
     let auth = auth_option(&env("G1T_USER")?, &env("G1T_TOKEN")?);
     std::fs::create_dir_all("/work")?;
-    let cloned = git(Path::new("/work"), &["-c", &auth, "clone", "--quiet", &remote, WORKDIR]).and_then(|_| {
+    let cloned = crate::clone::clone(Path::new("/work"), &auth, &[], &remote, WORKDIR).and_then(|_| {
         git(
             Path::new(WORKDIR),
             &["-c", "advice.detachedHead=false", "checkout", "--quiet", &commit],

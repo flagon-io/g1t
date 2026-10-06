@@ -15,6 +15,7 @@
 import { parse as parseYaml } from "yaml";
 
 import { NEEDS, repoRef } from "./access";
+import { effectiveDescription, ownDescription } from "./description";
 import { renameStatements } from "./rename";
 import { moveStatements, slugOf, strandedQuery } from "./transfer";
 
@@ -28,6 +29,7 @@ import {
   needs,
   newId,
   ok,
+  openD1,
   permission,
   repoMove,
   reposClient,
@@ -56,7 +58,10 @@ type Row = {
   workspace: string;
   slug: string;
   name: string;
+  /** The project's own description; null while it follows its repository's. */
   description: string | null;
+  /** Its repository's description, kept from repos. */
+  repo_description?: string | null;
   source_kind: string;
   repo_id: string;
   repo_namespace: string;
@@ -85,12 +90,14 @@ type LinkRow = { slug: string; name: string; alias: string | null; source: "ui" 
 type NodeRow = { id: string; slug: string; workspace: string; alias: string | null };
 
 function toProject(row: Row): Project {
+  const { description, inherited } = effectiveDescription(row);
   return {
     id: row.id,
     workspace: row.workspace,
     slug: row.slug,
     name: row.name,
-    description: row.description,
+    description,
+    descriptionInherited: inherited,
     source: {
       kind: "hosted",
       repoId: row.repo_id,
@@ -151,18 +158,19 @@ class Projects {
     if (existing) {
       await this.db
         .prepare(
-          "UPDATE projects SET repo_private = ?, default_branch = ?, repo_name = ?, repo_archived_at = ? WHERE repo_id = ?",
+          "UPDATE projects SET repo_private = ?, default_branch = ?, repo_name = ?, repo_archived_at = ?, repo_description = ? WHERE repo_id = ?",
         )
-        .bind(repo.isPrivate ? 1 : 0, repo.defaultBranch, repo.name, repo.archivedAt ?? null, repo.id)
+        .bind(repo.isPrivate ? 1 : 0, repo.defaultBranch, repo.name, repo.archivedAt ?? null, repo.description ?? null, repo.id)
         .run();
       return;
     }
     const at = now();
     await this.db
       .prepare(
-        `INSERT INTO projects (id, workspace, slug, name, description, repo_id, repo_namespace, repo_name, repo_private,
+        // No description of its own: it shows the repository's, as that changes.
+        `INSERT INTO projects (id, workspace, slug, name, description, repo_description, repo_id, repo_namespace, repo_name, repo_private,
            default_branch, root_dir, is_primary, created_by, created_at, updated_at, repo_archived_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 1, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, '', 1, ?, ?, ?, ?)
          ON CONFLICT (workspace, slug) DO NOTHING`,
       )
       .bind(
@@ -170,7 +178,7 @@ class Projects {
         repo.namespace.toLowerCase(),
         await this.freeSlug(repo.namespace.toLowerCase(), repo.name),
         repo.name,
-        repo.description,
+        repo.description ?? null,
         repo.id,
         repo.namespace,
         repo.name,
@@ -307,16 +315,17 @@ class Projects {
     const id = newId("prj");
     await this.db
       .prepare(
-        `INSERT INTO projects (id, workspace, slug, name, description, repo_id, repo_namespace, repo_name, repo_private,
+        `INSERT INTO projects (id, workspace, slug, name, description, repo_description, repo_id, repo_namespace, repo_name, repo_private,
            default_branch, root_dir, is_primary, created_by, created_at, updated_at, repo_archived_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
         workspace,
         slug,
         name,
-        a.input.description?.trim() || null,
+        ownDescription(null, a.input.description ?? null),
+        repo.value.description ?? null,
         repo.value.id,
         repo.value.namespace,
         repo.value.name,
@@ -348,7 +357,8 @@ class Projects {
     const allowed = this.changeable(row, a.actor, NEEDS.update);
     if (!allowed.ok) return allowed;
     const name = a.changes.name?.trim() || row.name;
-    const description = a.changes.description === undefined ? row.description : a.changes.description?.trim() || null;
+    // Blank or null goes back to following the repository's description.
+    const description = ownDescription(row.description, a.changes.description);
     const rootDir = a.changes.rootDir === undefined ? row.root_dir : a.changes.rootDir.trim().replace(/^\/+|\/+$/g, "");
     if (rootDir.split("/").some((part) => part === "..")) return fail("invalid", "The root directory is inside the repository.");
     await this.db
@@ -604,6 +614,17 @@ class Projects {
         .prepare("UPDATE projects SET repo_private = ? WHERE repo_id = ?")
         .bind(event.data.isPrivate ? 1 : 0, event.data.repoId)
         .run();
+      if (event.type === "repo.updated") {
+        // Projects without a description of their own show the repository's.
+        // Asked of repos, so changes delivered out of order end the same.
+        const repo = await this.repoById(event.data.repoId);
+        if (repo) {
+          await this.db
+            .prepare("UPDATE projects SET repo_description = ? WHERE repo_id = ?")
+            .bind(repo.description ?? null, event.data.repoId)
+            .run();
+        }
+      }
       return;
     }
     if (event.type === "repo.archived" || event.type === "repo.unarchived") {
@@ -640,38 +661,45 @@ class Projects {
   }
 }
 
+/** One RPC method's answer. */
+async function answer(service: Projects, method: string, args: any): Promise<Response> {
+  switch (method) {
+    case "list":
+      return Response.json(await service.list(args));
+    case "get":
+      return Response.json(await service.get(args));
+    case "by_repo":
+      return Response.json(await service.byRepo(args));
+    case "held":
+      return Response.json(await service.held(args));
+    case "create":
+      return Response.json(await service.create(args));
+    case "update":
+      return Response.json(await service.update(args));
+    case "dependencies":
+      return Response.json(await service.dependencies(args));
+    case "add_dependency":
+      return Response.json(await service.addDependency(args));
+    case "remove_dependency":
+      return Response.json(await service.removeDependency(args));
+    case "graph":
+      return Response.json(await service.graph(args));
+    case "context_for_repo":
+      return Response.json(await service.contextForRepo(args));
+    default:
+      return new Response("Unknown method\n", { status: 404 });
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const match = new URL(request.url).pathname.match(/^\/rpc\/([a-z_]+)$/);
     if (request.method !== "POST" || !match) return new Response("Not found\n", { status: 404 });
-    const service = new Projects(env);
+    // A replica near the caller when it asks for one (@g1t/contracts d1.ts).
+    const opened = openD1(env.DB, request);
+    const service = new Projects(Object.create(env, { DB: { value: opened.db } }) as Env);
     const args = (await request.json().catch(() => ({}))) as any;
-    switch (match[1]) {
-      case "list":
-        return Response.json(await service.list(args));
-      case "get":
-        return Response.json(await service.get(args));
-      case "by_repo":
-        return Response.json(await service.byRepo(args));
-      case "held":
-        return Response.json(await service.held(args));
-      case "create":
-        return Response.json(await service.create(args));
-      case "update":
-        return Response.json(await service.update(args));
-      case "dependencies":
-        return Response.json(await service.dependencies(args));
-      case "add_dependency":
-        return Response.json(await service.addDependency(args));
-      case "remove_dependency":
-        return Response.json(await service.removeDependency(args));
-      case "graph":
-        return Response.json(await service.graph(args));
-      case "context_for_repo":
-        return Response.json(await service.contextForRepo(args));
-      default:
-        return new Response("Unknown method\n", { status: 404 });
-    }
+    return opened.finish(await answer(service, match[1], args));
   },
 
   async queue(batch: MessageBatch<G1tEvent>, env: Env): Promise<void> {

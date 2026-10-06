@@ -1,16 +1,13 @@
-//! Check runs: an issue's acceptance checks, run against a pull request's
-//! head in a clean sandbox.
-//!
-//! This service keeps the record. The runner service starts the sandbox:
-//! it asks for a job with `start_checks`, and the sandbox reports back
-//! through the API with the job's one-time token. Nothing else can write a
-//! result, including the agent whose work is being checked.
+//! Check runs: the record of the merge queue taking a pull request out,
+//! and of commands written on issues, which g1t ran before a pull
+//! request's checks were the workflows run on it. Those runs are kept so
+//! their history still reads; a sandbox still finishing one reports
+//! through the API with the job's one-time token.
 
 use g1t_contracts::events::ChecksEvent;
-use g1t_contracts::repos::{GetByIdArgs, HeadArgs, Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
-use g1t_contracts::{FailureCode, Outcome, new_id};
+use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -103,127 +100,13 @@ impl Work {
             .collect())
     }
 
-    /// Begins a check run for a pull request that is ready for review, and
-    /// returns what a sandbox needs to carry it out. Any run still in
-    /// progress for the pull request is abandoned.
-    pub(crate) async fn start_checks(&self, a: StartChecksArgs) -> Result<Outcome<CheckJob>> {
-        let pull = self
-            .db
-            .prepare(format!("SELECT {PULL_COLUMNS} FROM pulls WHERE id = ?"))
-            .bind(&[a.pull_id.as_str().into()])?
-            .first::<PullRow>(None)
-            .await?
-            .map(Pull::from);
-        let Some(pull) = pull else {
-            return Ok(Outcome::fail(
-                FailureCode::NotFound,
-                "Pull request not found.",
-            ));
-        };
-        if pull.status != PullStatus::Open {
-            return Ok(refused(
-                "Checks run once a pull request is ready for review.",
-            ));
-        }
-        let issue = match pull.issue {
-            Some(number) => self.issue(&pull.repo_id, number).await?,
-            None => None,
-        };
-        let Some(issue) = issue.filter(|issue| !issue.checks.is_empty()) else {
-            return Ok(refused(
-                "This pull request's issue has no acceptance checks.",
-            ));
-        };
-
-        // The author can read both the repository and the pull request's source.
-        let viewer = self.author_viewer(&pull).await?;
-        let repo: Outcome<Repo> = g1t_kit::call(
-            &self.repos,
-            "get_by_id",
-            &GetByIdArgs {
-                id: pull.repo_id.clone(),
-                viewer,
-            },
-        )
-        .await?;
-        let Outcome::Ok(repo) = crate::retired::unless_archived(repo) else {
-            return Ok(Outcome::fail(
-                FailureCode::NotFound,
-                "Pull request not found.",
-            ));
-        };
-        // Asked of the store, since the recorded head can lag a push.
-        let head: Option<String> = g1t_kit::call(
-            &self.repos,
-            "head",
-            &HeadArgs {
-                repo_id: pull.fork_repo_id.clone().unwrap_or_else(|| repo.id.clone()),
-                branch: pull
-                    .branch
-                    .clone()
-                    .unwrap_or_else(|| repo.default_branch.clone()),
-            },
-        )
-        .await?;
-        let Some(commit) = head else {
-            return Ok(refused("This pull request has no commits to check."));
-        };
-
-        let now = now_ms();
-        let timestamp = rfc3339(now);
-        let run_id = new_id("chk", now);
-        let token = new_token();
-        self.db
-            .batch(vec![
-                self.db
-                    .prepare(
-                        "UPDATE check_runs
-                         SET status = 'errored', error = 'Replaced by a newer run.', finished_at = ?
-                         WHERE pull_id = ? AND finished_at IS NULL",
-                    )
-                    .bind(&[timestamp.as_str().into(), pull.id.as_str().into()])?,
-                self.db
-                    .prepare(
-                        "INSERT INTO check_runs (id, pull_id, head_commit, token_hash, created_at)
-                         VALUES (?, ?, ?, ?, ?)",
-                    )
-                    .bind(&[
-                        run_id.as_str().into(),
-                        pull.id.as_str().into(),
-                        commit.as_str().into(),
-                        hash(&token).into(),
-                        timestamp.as_str().into(),
-                    ])?,
-                self.db
-                    .prepare(
-                        "UPDATE pulls SET check_status = 'queued', check_run_id = ?, head_commit = ?
-                         WHERE id = ?",
-                    )
-                    .bind(&[
-                        run_id.as_str().into(),
-                        commit.as_str().into(),
-                        pull.id.as_str().into(),
-                    ])?,
-            ])
-            .await?;
-
-        Ok(Outcome::Ok(CheckJob {
-            run_id,
-            token,
-            commands: issue.checks,
-            source: pull.fork.clone().unwrap_or(RepoPath {
-                namespace: repo.namespace.clone(),
-                name: repo.name.clone(),
-            }),
-            commit,
-            author: pull.author,
-            requested_by: issue.author.username,
-            repo: RepoPath {
-                namespace: repo.namespace,
-                name: repo.name,
-            },
-            number: pull.number,
-        }))
+    /// Commands written on issues are no longer run: a pull request's
+    /// checks are the workflows run on it, and the default branch's
+    /// protection says which must pass. Refused, for a runner from before.
+    pub(crate) async fn start_checks(&self, _: StartChecksArgs) -> Result<Outcome<CheckJob>> {
+        Ok(refused(
+            "Checks are the workflows run on a pull request; there are no commands to run.",
+        ))
     }
 
     /// Records what a sandbox reports for its run: that it has started, its

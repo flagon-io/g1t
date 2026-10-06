@@ -6,7 +6,7 @@
 	"main": "./src/index.ts",
 	// Reached only through service bindings; builds report through the API.
 	"workers_dev": false,
-	"placement": { "mode": "smart" },
+	"placement": { "mode": "off" },
 	"d1_databases": [
 		{
 			"binding": "DB",

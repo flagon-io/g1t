@@ -31,6 +31,7 @@ export const SETTINGS_CAPABILITY: Record<string, Capability> = {
   guardrails: "manage_protection",
   webhooks: "manage_integrations",
   secrets: "manage_integrations",
+  runners: "manage_integrations",
   deployments: "manage_integrations",
   domains: "manage_integrations",
   dependencies: "manage_settings",

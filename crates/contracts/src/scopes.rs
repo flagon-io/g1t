@@ -34,10 +34,11 @@ pub enum Resource {
     Access,
     Webhooks,
     Secrets,
+    Runners,
 }
 
 impl Resource {
-    pub const ALL: [Resource; 12] = [
+    pub const ALL: [Resource; 13] = [
         Resource::Repo,
         Resource::Code,
         Resource::Issues,
@@ -50,6 +51,7 @@ impl Resource {
         Resource::Access,
         Resource::Webhooks,
         Resource::Secrets,
+        Resource::Runners,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -66,6 +68,7 @@ impl Resource {
             Resource::Access => "access",
             Resource::Webhooks => "webhooks",
             Resource::Secrets => "secrets",
+            Resource::Runners => "runners",
         }
     }
 
@@ -84,6 +87,7 @@ impl Resource {
             Resource::Access => "Who has access",
             Resource::Webhooks => "Webhooks",
             Resource::Secrets => "Secrets and variables",
+            Resource::Runners => "Self-hosted runners",
         }
     }
 }
@@ -137,11 +141,13 @@ pub enum Scope {
     WebhooksAdmin,
     SecretsRead,
     SecretsAdmin,
+    RunnersRead,
+    RunnersAdmin,
 }
 
 impl Scope {
     /// Every scope, grouped by resource, least first.
-    pub const ALL: [Scope; 24] = [
+    pub const ALL: [Scope; 26] = [
         Scope::RepoRead,
         Scope::RepoWrite,
         Scope::RepoAdmin,
@@ -166,6 +172,8 @@ impl Scope {
         Scope::WebhooksAdmin,
         Scope::SecretsRead,
         Scope::SecretsAdmin,
+        Scope::RunnersRead,
+        Scope::RunnersAdmin,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -194,6 +202,8 @@ impl Scope {
             Scope::WebhooksAdmin => "webhooks:admin",
             Scope::SecretsRead => "secrets:read",
             Scope::SecretsAdmin => "secrets:admin",
+            Scope::RunnersRead => "runners:read",
+            Scope::RunnersAdmin => "runners:admin",
         }
     }
 
@@ -258,6 +268,8 @@ impl Scope {
             Scope::WebhooksAdmin => "Create, change and delete webhooks",
             Scope::SecretsRead => "List secrets (never their values) and read variables",
             Scope::SecretsAdmin => "Set and delete secrets and variables",
+            Scope::RunnersRead => "See self-hosted runners, their groups and where agents run",
+            Scope::RunnersAdmin => "Register and remove self-hosted runners, change their groups and settings",
         }
     }
 }
@@ -338,7 +350,9 @@ impl Preset {
         match self {
             Preset::ReadOnly => Some(reads().collect()),
             Preset::Agent => {
-                let mut scopes: Vec<Scope> = reads().collect();
+                // Not the machines work runs on: an agent has no business
+                // knowing a workspace's own runners.
+                let mut scopes: Vec<Scope> = reads().filter(|scope| scope.resource() != Resource::Runners).collect();
                 scopes.extend([
                     Scope::CodeWrite,
                     Scope::IssuesWrite,
@@ -443,6 +457,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("list_events", Scope::RepoRead),
     ("list_labels", Scope::RepoRead),
     ("get_repo_settings", Scope::RepoRead),
+    ("list_check_names", Scope::RepoRead),
     ("list_deleted_repos", Scope::RepoRead),
     ("create_repo", Scope::RepoWrite),
     ("update_repo", Scope::RepoWrite),
@@ -526,6 +541,16 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("delete_actions_secret", Scope::SecretsAdmin),
     ("set_actions_variable", Scope::SecretsAdmin),
     ("delete_actions_variable", Scope::SecretsAdmin),
+    // Self-hosted runners.
+    ("list_runners", Scope::RunnersRead),
+    ("list_runner_groups", Scope::RunnersRead),
+    ("get_runner_settings", Scope::RunnersRead),
+    ("create_runner_registration_token", Scope::RunnersAdmin),
+    ("remove_runner", Scope::RunnersAdmin),
+    ("create_runner_group", Scope::RunnersAdmin),
+    ("update_runner_group", Scope::RunnersAdmin),
+    ("delete_runner_group", Scope::RunnersAdmin),
+    ("update_runner_settings", Scope::RunnersAdmin),
 ];
 
 /// Operations any token may use: saying who it is.
@@ -663,7 +688,8 @@ mod tests {
         assert!(scopes.contains(&Scope::AgentsRun));
         assert!(scopes.iter().all(|scope| !scope.dangerous()), "{scopes:?}");
         for read in Scope::ALL.into_iter().filter(|scope| scope.level() == Level::Read) {
-            assert!(scopes.contains(&read), "{read:?}");
+            // Every read but the machines work runs on.
+            assert_eq!(scopes.contains(&read), read != Scope::RunnersRead, "{read:?}");
         }
         assert!(Preset::ReadOnly.scopes().unwrap().iter().all(|scope| scope.level() == Level::Read));
         assert_eq!(Preset::Full.scopes(), None);

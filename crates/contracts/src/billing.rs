@@ -449,6 +449,14 @@ pub struct RecordSandboxArgs {
     /// The reservation the work started under, settled with this cost.
     #[serde(default, alias = "reservation_id")]
     pub reservation_id: Option<String>,
+    /// It ran on one of the workspace's self-hosted runners: recorded as
+    /// self-hosted time, for the minutes, at $0.
+    #[serde(default, alias = "self_hosted")]
+    pub self_hosted: bool,
+    /// The machine it ran on, by label (`g1t-4core`); absent, the standard
+    /// one. A larger machine's memory and disk cost more each second.
+    #[serde(default)]
+    pub instance: Option<String>,
 }
 
 /// How much a workspace has earned g1t's trust with money, which sets how
@@ -564,9 +572,10 @@ pub struct CheckLimitArgs {
 #[serde(rename_all = "camelCase")]
 pub struct NotePendingArgs {
     pub workspace: String,
-    /// `deployments`, `security` (scans), `context` (search embeddings) or
-    /// `storage`. Billing charges `security`, `context` and `storage`
-    /// itself once the month is over; `deployments` charges its own.
+    /// `deployments`, `security` (scans), `context` (search embeddings),
+    /// `storage` or `cache` (actions/cache, plan only). Billing charges
+    /// `security`, `context`, `storage` and `cache` itself once the month
+    /// is over; `deployments` charges its own.
     pub source: String,
     /// What it cost g1t so far this month, before the margin.
     pub cost_micros: i64,

@@ -25,8 +25,6 @@ pub struct IssueRow {
     pub body: String,
     /// JSON array of label names.
     pub labels: String,
-    /// JSON array of commands.
-    pub checks: String,
     pub state: State,
     pub reason: Option<IssueReason>,
     pub resolved_by: Option<u32>,
@@ -55,7 +53,6 @@ impl From<IssueRow> for Issue {
             title: row.title,
             body: row.body,
             labels: serde_json::from_str(&row.labels).unwrap_or_default(),
-            checks: serde_json::from_str(&row.checks).unwrap_or_default(),
             state: row.state,
             reason: row.reason,
             resolved_by: row.resolved_by,

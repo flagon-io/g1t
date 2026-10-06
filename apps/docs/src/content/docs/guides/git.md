@@ -80,8 +80,8 @@ back to the page you were on.
 
 ## Protected branches
 
-A repository can protect its default branch under **Settings → Repository**. Pushing to
-it is then refused for everyone, whatever their role, and for agents, and
+A repository can protect its default branch under **Settings → Branches and
+merging**. Pushing to it is then refused for everyone, whatever their role, and for agents, and
 git says why:
 
 ```text
@@ -90,6 +90,10 @@ git says why:
 
 Changes reach a protected branch only by merging a pull request. The first
 push to an empty repository is still allowed.
+
+The same page sets what a merge needs: the
+[required status checks](/guides/pull-requests/#required-status-checks)
+and approvals.
 
 ## Branches
 

@@ -1,5 +1,7 @@
-//! Runs an issue's acceptance checks against one commit and reports how
-//! each went.
+//! Runs commands against one commit and reports how each went: the merge
+//! queue's runner of commands, and `MODE=checks`, which ran commands written
+//! on issues before a pull request's checks were its workflows. g1t no
+//! longer starts that mode; it stays for a sandbox already under way.
 //!
 //! The sandbox holds nothing but that commit: no agent has run here, so a
 //! passing result says something about the code and not about what an
@@ -140,10 +142,10 @@ fn check_out(secrets: &[String]) -> Result<()> {
     let commit = env("GIT_COMMIT")?;
     let auth = auth_option(&env("G1T_USER")?, &env("G1T_TOKEN")?);
     std::fs::create_dir_all("/work")?;
-    let cloned = git(
-        Path::new("/work"),
-        &["-c", &auth, "clone", "--quiet", &remote, WORKDIR],
-    )
+    let workdir = Path::new(WORKDIR);
+    let cloned = crate::clone::clone(Path::new("/work"), &auth, &[], &remote, WORKDIR)
+        .and_then(|_| git(workdir, &["rev-parse", "--abbrev-ref", "HEAD"]))
+        .and_then(|branch| crate::clone::ensure(workdir, &auth, "origin", &branch, &commit))
     .and_then(|_| {
         git(
             Path::new(WORKDIR),

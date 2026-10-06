@@ -1,10 +1,20 @@
-//! Statuses on commits: what workflow runs say about a pull request's head.
-//! A pending status holds the pull request, a failed one sends its agent
-//! back (or, for anyone else's, refuses the merge), as acceptance checks do.
+//! Statuses on commits: what workflow runs (and other tools, such as
+//! deployments) say about a pull request's head. These are its checks.
+//!
+//! The default branch's protection names the checks that must pass
+//! (`RepoSettings::required_checks`): a required check that failed, is
+//! still running or has not reported refuses the merge, for everyone and
+//! for the merge queue. Where g1t sees an agent's pull request through,
+//! any check that failed sends the agent back to fix it, with what the
+//! failing jobs printed; once it is out of revisions, only a required
+//! check holds the pull request for a person.
 
 use g1t_contracts::events::ChecksEvent;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::work::{CommitStatus, SetCommitStatusArgs};
+use g1t_contracts::work::{
+    CommitStatus, RequiredCheck, RequiredState, SeenCheck, SeenChecksArgs, SetCommitStatusArgs, check_name,
+    required_checks,
+};
 use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
 use serde::Deserialize;
@@ -39,31 +49,102 @@ struct HeadRow {
     number: u32,
 }
 
-/// The workflows still running and the ones that failed, by name.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// What a commit's checks say: every status still running and every one
+/// that failed, by context, and where each required check stands.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct WorkflowFacts {
     pub(crate) pending: Vec<String>,
     pub(crate) failed: Vec<String>,
+    pub(crate) required: Vec<RequiredCheck>,
 }
 
 impl WorkflowFacts {
-    pub(crate) fn of(statuses: &[CommitStatus]) -> WorkflowFacts {
+    /// `required` names the checks the default branch's protection requires.
+    pub(crate) fn of(statuses: &[CommitStatus], required: &[String]) -> WorkflowFacts {
         WorkflowFacts {
             pending: statuses.iter().filter(|s| s.state == "pending").map(|s| s.context.clone()).collect(),
             failed: statuses.iter().filter(|s| s.state == "failure" || s.state == "error").map(|s| s.context.clone()).collect(),
+            required: required_checks(required, statuses),
         }
     }
 
-    /// Why a merge has to wait, if it does.
+    fn required_in(&self, state: RequiredState) -> Vec<String> {
+        self.required.iter().filter(|check| check.state == state).map(|check| check.name.clone()).collect()
+    }
+
+    /// The required checks that failed, by name.
+    pub(crate) fn required_failed(&self) -> Vec<String> {
+        self.required_in(RequiredState::Failure)
+    }
+
+    /// The required checks nothing has reported on the commit yet.
+    pub(crate) fn expected(&self) -> Vec<String> {
+        self.required_in(RequiredState::Expected)
+    }
+
+    /// Why a merge has to wait, if it does: a required check that failed,
+    /// is still running, or has not reported. Other checks never hold it.
     pub(crate) fn refusal(&self) -> Option<String> {
-        if !self.failed.is_empty() {
-            return Some(format!("{} failed.", list(&self.failed)));
+        let failed = self.required_failed();
+        if !failed.is_empty() {
+            return Some(format!("The required {} {} failed.", checks_word(&failed), list(&failed)));
         }
-        if !self.pending.is_empty() {
-            return Some(format!("{} {} still running.", list(&self.pending), if self.pending.len() == 1 { "is" } else { "are" }));
+        let running = self.required_in(RequiredState::Pending);
+        if !running.is_empty() {
+            let verb = if running.len() == 1 { "is" } else { "are" };
+            return Some(format!("The required {} {} {verb} still running.", checks_word(&running), list(&running)));
+        }
+        let expected = self.expected();
+        if !expected.is_empty() {
+            let verb = if expected.len() == 1 { "has" } else { "have" };
+            return Some(format!(
+                "The required {} {} {verb} not reported on this commit yet.",
+                checks_word(&expected),
+                list(&expected)
+            ));
         }
         None
     }
+}
+
+fn checks_word(names: &[String]) -> &'static str {
+    if names.len() == 1 { "check" } else { "checks" }
+}
+
+/// The check names in `(context, last reported)` rows, most recent first:
+/// each name once, with the events it was reported for.
+pub(crate) fn seen(rows: Vec<(String, String)>) -> Vec<SeenCheck> {
+    let mut rows = rows;
+    rows.sort_by(|a, b| b.1.cmp(&a.1));
+    let mut out: Vec<SeenCheck> = Vec::new();
+    for (context, at) in rows {
+        let (name, event) = check_name(&context);
+        match out.iter_mut().find(|seen| seen.name.eq_ignore_ascii_case(name)) {
+            Some(seen) => {
+                if let Some(event) = event
+                    && !seen.events.iter().any(|known| known == event)
+                {
+                    seen.events.push(event.to_owned());
+                }
+            }
+            None => out.push(SeenCheck {
+                name: name.to_owned(),
+                events: event.map(|event| vec![event.to_owned()]).unwrap_or_default(),
+                last_seen: at,
+            }),
+        }
+    }
+    out
+}
+
+/// How far back `seen_checks` looks, and the most contexts it reads.
+const SEEN_DAYS: u64 = 30;
+const SEEN_LIMIT: u32 = 200;
+
+#[derive(Deserialize)]
+struct SeenRow {
+    context: String,
+    at: String,
 }
 
 pub(crate) fn list(names: &[String]) -> String {
@@ -75,6 +156,34 @@ pub(crate) fn list(names: &[String]) -> String {
 }
 
 impl Work {
+    /// Where a commit's checks stand, against the repository's required ones.
+    pub(crate) async fn facts(&self, repo_id: &str, sha: Option<&str>) -> Result<WorkflowFacts> {
+        let (statuses, settings) =
+            futures_util::future::try_join(self.statuses(repo_id, sha), self.settings(repo_id)).await?;
+        Ok(WorkflowFacts::of(&statuses, &settings.required_checks))
+    }
+
+    /// The check names reported on a repository's commits lately, for
+    /// choosing which to require.
+    pub(crate) async fn seen_checks(&self, a: SeenChecksArgs) -> Result<Outcome<Vec<SeenCheck>>> {
+        let repo = match self.repo(&a.repo, &a.viewer).await? {
+            Outcome::Ok(repo) => repo,
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        };
+        let since = rfc3339(now_ms().saturating_sub(SEEN_DAYS * 24 * 60 * 60 * 1000));
+        let rows = self
+            .db
+            .prepare(
+                "SELECT context, MAX(updated_at) AS at FROM commit_statuses
+                 WHERE repo_id = ? AND updated_at >= ? GROUP BY context ORDER BY at DESC LIMIT ?",
+            )
+            .bind(&[repo.id.as_str().into(), since.into(), SEEN_LIMIT.into()])?
+            .all()
+            .await?
+            .results::<SeenRow>()?;
+        Ok(Outcome::Ok(seen(rows.into_iter().map(|row| (row.context, row.at)).collect())))
+    }
+
     pub(crate) async fn statuses(&self, repo_id: &str, sha: Option<&str>) -> Result<Vec<CommitStatus>> {
         let Some(sha) = sha else { return Ok(Vec::new()) };
         Ok(self
@@ -117,12 +226,12 @@ impl Work {
         }
         // Once every workflow on a pull request's head has finished, its
         // lifecycle moves on, as it does when its checks finish.
-        let facts = WorkflowFacts::of(&self.statuses(&a.repo_id, Some(&a.sha)).await?);
+        let facts = self.facts(&a.repo_id, Some(&a.sha)).await?;
         if !facts.pending.is_empty() {
             return Ok(Outcome::Ok(true));
         }
         // A merge queue state waiting on its merge_group workflows.
-        self.merge_group_finished(&a.repo_id, &a.sha, &facts.failed).await?;
+        self.merge_group_finished(&a.repo_id, &a.sha, &facts).await?;
         let heads = self
             .db
             .prepare("SELECT id, number FROM pulls WHERE repo_id = ? AND head_commit = ? AND status IN ('draft', 'open')")
@@ -186,14 +295,46 @@ mod tests {
         }
     }
 
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(|name| (*name).to_owned()).collect()
+    }
+
     #[test]
-    fn failures_come_before_waiting() {
-        let facts = WorkflowFacts::of(&[status("CI / push", "pending"), status("Lint / pull_request", "failure"), status("Docs", "success")]);
-        assert_eq!(facts.pending, ["CI / push"]);
-        assert_eq!(facts.failed, ["Lint / pull_request"]);
-        assert_eq!(facts.refusal().unwrap(), "Lint / pull_request failed.");
-        let waiting = WorkflowFacts::of(&[status("A", "pending"), status("B", "pending")]);
-        assert_eq!(waiting.refusal().unwrap(), "A and B are still running.");
-        assert!(WorkflowFacts::of(&[status("A", "success")]).refusal().is_none());
+    fn only_required_checks_hold_a_merge() {
+        let statuses = [status("CI / push", "pending"), status("Lint / pull_request", "failure"), status("Docs", "success")];
+        // Nothing required: nothing holds it, whatever failed.
+        let free = WorkflowFacts::of(&statuses, &[]);
+        assert_eq!(free.pending, ["CI / push"]);
+        assert_eq!(free.failed, ["Lint / pull_request"]);
+        assert!(free.refusal().is_none());
+        // Failures come before waiting.
+        let both = WorkflowFacts::of(&statuses, &names(&["CI", "Lint"]));
+        assert_eq!(both.refusal().unwrap(), "The required check Lint failed.");
+        let waiting = WorkflowFacts::of(&[status("A / pull_request", "pending"), status("B", "pending")], &names(&["A", "B"]));
+        assert_eq!(waiting.refusal().unwrap(), "The required checks A and B are still running.");
+        assert!(WorkflowFacts::of(&[status("Docs", "success")], &names(&["Docs"])).refusal().is_none());
+    }
+
+    #[test]
+    fn a_required_check_nothing_reported_holds_a_merge() {
+        let facts = WorkflowFacts::of(&[status("CI / pull_request", "success")], &names(&["CI", "Deploy"]));
+        assert_eq!(facts.expected(), ["Deploy"]);
+        assert_eq!(facts.refusal().unwrap(), "The required check Deploy has not reported on this commit yet.");
+    }
+
+    #[test]
+    fn seen_checks_are_named_once_with_their_events() {
+        let rows = vec![
+            ("CI / push".to_owned(), "2026-10-01T00:00:00Z".to_owned()),
+            ("CI / pull_request".to_owned(), "2026-10-03T00:00:00Z".to_owned()),
+            ("g1t / deploy".to_owned(), "2026-10-02T00:00:00Z".to_owned()),
+        ];
+        let seen = seen(rows);
+        assert_eq!(seen.len(), 2);
+        assert_eq!(seen[0].name, "CI");
+        assert_eq!(seen[0].events, ["pull_request", "push"]);
+        assert_eq!(seen[0].last_seen, "2026-10-03T00:00:00Z");
+        assert_eq!(seen[1].name, "g1t / deploy");
+        assert!(seen[1].events.is_empty());
     }
 }

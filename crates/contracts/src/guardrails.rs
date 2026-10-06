@@ -108,6 +108,9 @@ pub const COMMAND_RULES: &[CommandRule] = &[
 /// The most deny patterns or domains one level keeps.
 pub const MAX_PATTERNS: usize = 50;
 pub const MAX_DOMAINS: usize = 100;
+/// The most workflow-only domains one level keeps.
+pub const MAX_WORKFLOW_DOMAINS: usize = 50;
+const MAX_NAME_CHARS: usize = 255;
 const MAX_PATTERN_CHARS: usize = 200;
 /// The most a run may be allowed to cost, in US dollars.
 pub const MAX_BUDGET_USD: f64 = 100.0;
@@ -145,6 +148,10 @@ pub struct GuardrailSettings {
     /// More hosts to allow: `example.com`, or `*.example.com` for its
     /// subdomains.
     pub domains: Vec<String>,
+    /// Hosts only workflow jobs may reach, never agents: a deploy's API,
+    /// say. Each can be limited to some workflows and environments. They
+    /// add to the other level's.
+    pub workflow_domains: Vec<WorkflowDomain>,
     /// Built-in command rules turned on or off, by id.
     pub rules: BTreeMap<String, bool>,
     /// Commands and tools to refuse, as permission rules:
@@ -160,6 +167,39 @@ pub struct GuardrailSettings {
     pub updated_at: Option<String>,
 }
 
+/// A host that only workflow jobs may reach: jobs of a trusted run (not a
+/// pull request from a fork), of the workflows named, in the environments
+/// named. Agents, checks, the merge queue and g1t.page builds never do.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WorkflowDomain {
+    /// `api.example.com`, or `*.example.com` for its subdomains.
+    pub domain: String,
+    /// Workflow files by name, such as `deploy.yml`. Empty: any workflow.
+    pub workflows: Vec<String>,
+    /// The environments a job must name with `environment:`, such as
+    /// `production`. Empty: any job, whether it names one or not.
+    pub environments: Vec<String>,
+}
+
+impl WorkflowDomain {
+    /// Whether a job of `workflow` (its path or file name) in `environment`
+    /// may reach this domain. Names compare without regard to case.
+    pub fn applies_to(&self, workflow: &str, environment: Option<&str>) -> bool {
+        let file = workflow_file(workflow);
+        let workflow_ok = self.workflows.is_empty() || self.workflows.iter().any(|w| workflow_file(w).eq_ignore_ascii_case(file));
+        let environment_ok = self.environments.is_empty()
+            || environment.is_some_and(|env| self.environments.iter().any(|e| e.eq_ignore_ascii_case(env.trim())));
+        workflow_ok && environment_ok
+    }
+}
+
+/// A workflow's file name: `.g1t/workflows/deploy.yml` is `deploy.yml`.
+fn workflow_file(path: &str) -> &str {
+    let path = path.trim();
+    path.rsplit(['/', '\\']).next().unwrap_or(path)
+}
+
 /// The guardrails a run actually gets: g1t's defaults, then the
 /// workspace's, then the project's.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -171,6 +211,10 @@ pub struct Guardrails {
     pub domains: Vec<String>,
     /// Every host a sandbox may reach: g1t's, the registries', the domains.
     pub hosts: Vec<String>,
+    /// Hosts only some workflow jobs may reach, from both levels,
+    /// workspace first. Never in `hosts`.
+    #[serde(default)]
+    pub workflow_domains: Vec<WorkflowDomain>,
     /// Every built-in rule, on or off.
     pub rules: BTreeMap<String, bool>,
     /// The deny patterns of both levels, workspace first.
@@ -190,6 +234,7 @@ impl Guardrails {
             registries: REGISTRIES.iter().map(|registry| registry.id.to_owned()).collect(),
             domains: Vec::new(),
             hosts: Vec::new(),
+            workflow_domains: Vec::new(),
             rules: COMMAND_RULES.iter().map(|rule| (rule.id.to_owned(), true)).collect(),
             deny: Vec::new(),
             budget_usd: Some(DEFAULT_BUDGET_USD),
@@ -217,6 +262,11 @@ impl Guardrails {
         for domain in &level.domains {
             if !self.domains.contains(domain) {
                 self.domains.push(domain.clone());
+            }
+        }
+        for entry in &level.workflow_domains {
+            if !self.workflow_domains.contains(entry) {
+                self.workflow_domains.push(entry.clone());
             }
         }
         for (id, on) in &level.rules {
@@ -260,6 +310,20 @@ impl Guardrails {
         for domain in &self.domains {
             if !hosts.contains(domain) {
                 hosts.push(domain.clone());
+            }
+        }
+        hosts
+    }
+
+    /// The hosts a job of `workflow` (its path) in `environment` may
+    /// reach on top of `hosts`: the workflow-only domains that apply to
+    /// it. For workflow jobs of trusted runs only; the runner never adds
+    /// them for anything else.
+    pub fn workflow_hosts(&self, workflow: &str, environment: Option<&str>) -> Vec<String> {
+        let mut hosts: Vec<String> = Vec::new();
+        for entry in self.workflow_domains.iter().filter(|entry| entry.applies_to(workflow, environment)) {
+            if !hosts.contains(&entry.domain) {
+                hosts.push(entry.domain.clone());
             }
         }
         hosts
@@ -345,6 +409,19 @@ pub fn validate(settings: GuardrailSettings) -> Result<GuardrailSettings, String
     if domains.len() > MAX_DOMAINS {
         return Err(format!("At most {MAX_DOMAINS} domains can be listed."));
     }
+    let mut workflow_domains: Vec<WorkflowDomain> = Vec::new();
+    for entry in &settings.workflow_domains {
+        if entry.domain.trim().is_empty() {
+            continue;
+        }
+        let entry = validate_workflow_domain(entry)?;
+        if !workflow_domains.contains(&entry) {
+            workflow_domains.push(entry);
+        }
+    }
+    if workflow_domains.len() > MAX_WORKFLOW_DOMAINS {
+        return Err(format!("At most {MAX_WORKFLOW_DOMAINS} workflow-only domains can be listed."));
+    }
     let mut deny = Vec::new();
     for pattern in &settings.deny {
         if pattern.trim().is_empty() {
@@ -389,6 +466,7 @@ pub fn validate(settings: GuardrailSettings) -> Result<GuardrailSettings, String
         restrict_network: settings.restrict_network,
         registries,
         domains,
+        workflow_domains,
         rules,
         deny,
         budget_usd: settings.budget_usd,
@@ -396,6 +474,36 @@ pub fn validate(settings: GuardrailSettings) -> Result<GuardrailSettings, String
         updated_by: settings.updated_by,
         updated_at: settings.updated_at,
     })
+}
+
+/// A workflow-only domain, tidied: its domain as `normalize_domain` keeps
+/// it, workflows as file names ending in `.yml` or `.yaml`, and
+/// environments as given, each list without repeats.
+pub fn validate_workflow_domain(entry: &WorkflowDomain) -> Result<WorkflowDomain, String> {
+    let domain = normalize_domain(&entry.domain)?;
+    let mut workflows: Vec<String> = Vec::new();
+    for workflow in entry.workflows.iter().map(|w| workflow_file(w).to_owned()).filter(|w| !w.is_empty()) {
+        let lower = workflow.to_lowercase();
+        let valid = (lower.ends_with(".yml") || lower.ends_with(".yaml"))
+            && workflow.chars().count() <= MAX_NAME_CHARS
+            && workflow.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+        if !valid {
+            return Err(format!("{workflow} is not a workflow file. Name it as it is in .g1t/workflows, such as deploy.yml."));
+        }
+        if !workflows.iter().any(|w| w.eq_ignore_ascii_case(&workflow)) {
+            workflows.push(workflow);
+        }
+    }
+    let mut environments: Vec<String> = Vec::new();
+    for environment in entry.environments.iter().map(|e| e.trim().to_owned()).filter(|e| !e.is_empty()) {
+        if environment.chars().count() > MAX_NAME_CHARS || environment.contains(['\n', '\r']) || environment.contains("${{") {
+            return Err(format!("{environment} is not an environment name."));
+        }
+        if !environments.iter().any(|e| e.eq_ignore_ascii_case(&environment)) {
+            environments.push(environment);
+        }
+    }
+    Ok(WorkflowDomain { domain, workflows, environments })
 }
 
 /// A registry as the settings page shows it.
@@ -604,6 +712,72 @@ mod tests {
         assert_eq!(effective.domains, vec!["api.stripe.com", "*.example.com"]);
         assert_eq!(effective.deny, vec!["Bash(terraform apply:*)", "Bash(kubectl:*)"]);
         assert!(effective.hosts.iter().any(|host| host == "*.example.com"));
+    }
+
+    fn workflow_domain(domain: &str, workflows: &[&str], environments: &[&str]) -> WorkflowDomain {
+        WorkflowDomain {
+            domain: domain.into(),
+            workflows: workflows.iter().map(|w| (*w).to_owned()).collect(),
+            environments: environments.iter().map(|e| (*e).to_owned()).collect(),
+        }
+    }
+
+    #[test]
+    fn workflow_domains_are_never_hosts_and_reach_only_the_jobs_named() {
+        let workspace = GuardrailSettings {
+            workflow_domains: vec![workflow_domain("api.cloudflare.com", &["deploy.yml"], &["production"])],
+            ..level()
+        };
+        let project = GuardrailSettings {
+            workflow_domains: vec![
+                workflow_domain("api.cloudflare.com", &["deploy.yml"], &["production"]),
+                workflow_domain("*.example.com", &[], &[]),
+            ],
+            ..level()
+        };
+        let effective = Guardrails::merge(&workspace, Some(&project));
+        // Added up across the levels, once each, and never for agents.
+        assert_eq!(effective.workflow_domains.len(), 2);
+        assert!(!effective.hosts.iter().any(|host| host == "api.cloudflare.com" || host == "*.example.com"));
+        // deploy.yml's jobs in production, by path or name, in any case.
+        assert_eq!(effective.workflow_hosts(".g1t/workflows/deploy.yml", Some("production")), ["api.cloudflare.com", "*.example.com"]);
+        assert_eq!(effective.workflow_hosts("DEPLOY.yml", Some("Production")), ["api.cloudflare.com", "*.example.com"]);
+        // Another environment, none, or another workflow: only the open one.
+        assert_eq!(effective.workflow_hosts(".g1t/workflows/deploy.yml", Some("staging")), ["*.example.com"]);
+        assert_eq!(effective.workflow_hosts(".g1t/workflows/deploy.yml", None), ["*.example.com"]);
+        assert_eq!(effective.workflow_hosts(".g1t/workflows/ci.yml", Some("production")), ["*.example.com"]);
+    }
+
+    #[test]
+    fn workflow_domains_are_tidied_or_refused() {
+        let settings = validate(GuardrailSettings {
+            workflow_domains: vec![
+                workflow_domain(" HTTPS://API.Cloudflare.com/client/v4 ", &[".g1t/workflows/deploy.yml", "deploy.yml"], &[" production ", "Production"]),
+                workflow_domain("api.cloudflare.com", &["deploy.yml"], &["production"]),
+                workflow_domain(" ", &[], &[]),
+            ],
+            ..level()
+        })
+        .unwrap();
+        assert_eq!(settings.workflow_domains, vec![workflow_domain("api.cloudflare.com", &["deploy.yml"], &["production"])]);
+        let refused = |entry: WorkflowDomain| validate(GuardrailSettings { workflow_domains: vec![entry], ..level() }).is_err();
+        assert!(refused(workflow_domain("localhost", &[], &[])));
+        assert!(refused(workflow_domain("api.example.com", &["deploy"], &[])));
+        assert!(refused(workflow_domain("api.example.com", &["de ploy.yml"], &[])));
+        assert!(refused(workflow_domain("api.example.com", &[], &["${{ inputs.env }}"])));
+        let many = (0..=MAX_WORKFLOW_DOMAINS).map(|i| workflow_domain(&format!("h{i}.example.com"), &[], &[])).collect();
+        assert!(validate(GuardrailSettings { workflow_domains: many, ..level() }).is_err());
+    }
+
+    #[test]
+    fn levels_saved_before_workflow_domains_still_read() {
+        let old: GuardrailSettings = serde_json::from_str(r#"{"domains":["example.com"]}"#).unwrap();
+        assert!(old.workflow_domains.is_empty());
+        let old: Guardrails = serde_json::from_value(serde_json::json!({
+            "restrictNetwork": true, "registries": [], "domains": [], "hosts": [], "rules": {}, "deny": [], "budgetUsd": null, "minutes": {}
+        }))
+        .unwrap();
+        assert!(old.workflow_hosts("deploy.yml", Some("production")).is_empty());
     }
 
     #[test]

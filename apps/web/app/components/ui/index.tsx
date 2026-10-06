@@ -82,7 +82,7 @@ export function TabLink({
       to={to}
       end={end}
       className={({ isActive }) =>
-        `-mb-px flex items-center gap-2 border-b-2 px-1 pb-3 text-sm whitespace-nowrap transition-colors ${
+        `-mb-px flex items-center gap-2 border-b-2 px-3 pb-3 text-sm whitespace-nowrap transition-colors ${
           isActive || (also && pathname.startsWith(also + "/"))
             ? "border-accent font-medium text-fg"
             : "border-transparent text-muted hover:text-fg"

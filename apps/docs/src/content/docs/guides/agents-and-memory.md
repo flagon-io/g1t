@@ -32,8 +32,8 @@ work on one pull request:
 | `update` | Merges in the branch its pull request will land on. |
 | `plan` | Turns an outcome into a plan of issues. |
 
-Sandboxes that run commands rather than a model show too, as `checks` and
-`queue`, so the list is everything g1t is running for the project.
+Sandboxes that run commands rather than a model show too, such as `queue`
+for the merge queue's builds, so the list is everything g1t is running for the project.
 
 Each run records:
 

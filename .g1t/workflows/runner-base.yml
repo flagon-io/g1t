@@ -1,0 +1,87 @@
+# Rebuilds the base image of g1t's sandboxes (services/runner/base/Dockerfile:
+# the OS, toolchains and the Claude Code CLI), pushes it to Cloudflare's
+# registry, and opens a pull request that records it in
+# services/runner/base.json. Merging that pull request is what rolls it out:
+# the next deploy builds the runner's image on it, in seconds.
+#
+# Weekly, for security updates and new stable toolchains; when the base's
+# folder changes on main (a change that forgot to rebuild it); and by hand.
+#
+# It needs Docker, which g1t's own sandboxes do not have, so it runs on a
+# self-hosted runner with the `docker` label. Until one is registered, run
+# the same thing by hand on a machine with Docker:
+#
+#   node scripts/deploy.mjs build-base
+#
+# and commit services/runner/base.json. docs/DEPLOYING.md explains both.
+name: Runner base image
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  push:
+    branches: [main]
+    paths:
+      - services/runner/base/**
+  workflow_dispatch:
+    inputs:
+      no_cache:
+        description: "Build every layer again, ignoring the previous base"
+        type: boolean
+        default: false
+
+concurrency:
+  group: runner-base
+  cancel-in-progress: false
+
+env:
+  CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+  WRANGLER_SEND_METRICS: "false"
+
+jobs:
+  build:
+    name: Build and push the base
+    runs-on: [self-hosted, docker]
+    environment: production
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Wrangler
+        run: npm ci --workspaces=false --no-audit --no-fund
+      - name: Build and push
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CI: "true"
+          NO_CACHE: ${{ inputs.no_cache }}
+        run: |
+          args=()
+          if [ "$NO_CACHE" = "true" ]; then args+=(--no-cache); fi
+          node scripts/deploy.mjs build-base "${args[@]}"
+      # The runner's own image on the new base, so the deploy after the
+      # merge finds it in the registry instead of building it.
+      - name: Build and push the runner's image on it
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CI: "true"
+        run: node scripts/deploy.mjs image
+      - name: Open a pull request with base.json
+        env:
+          G1T_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if git diff --quiet -- services/runner/base.json; then
+            echo "The base is unchanged."
+            exit 0
+          fi
+          branch="runner-base/$(date -u +%Y%m%d-%H%M)"
+          git config user.name "g1t"
+          git config user.email "actions@g1t.sh"
+          git checkout -b "$branch"
+          git add services/runner/base.json
+          git commit -m "A new base image for g1t's sandboxes"
+          git push origin "$branch"
+          tag=$(node -e 'console.log(require("./services/runner/base.json").image.split(":").pop())')
+          body=$(node -e 'const b=require("./services/runner/base.json"); console.log("Built and pushed by the Runner base image workflow.\n\n| | |\n| --- | --- |\n" + Object.entries(b.versions).map(([k,v]) => `| ${k} | ${v} |`).join("\n") + `\n| size | ${(b.size_bytes/1e9).toFixed(2)} GB unpacked |`)')
+          curl -fsS -X POST "https://api.g1t.sh/repos/$REPO/pulls" \
+            -H "Authorization: Bearer $G1T_TOKEN" -H "Content-Type: application/json" \
+            -d "$(node -e 'console.log(JSON.stringify({ title: `Runner base image ${process.argv[1]}`, branch: process.argv[2], body: process.argv[3] }))' "$tag" "$branch" "$body")"

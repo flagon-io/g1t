@@ -13,6 +13,7 @@ import {
   Boxes,
   ChevronRight,
   CircleDollarSign,
+  Clock,
   Cloud,
   CreditCard,
   Eye,
@@ -43,7 +44,9 @@ import {
 import { Link, useLocation } from "react-router";
 
 import { Logo } from "~/components/logo";
+import { useZone } from "~/components/ui";
 import { NAV, type NavCounts, type NavGroup, type NavIcon, type NavItem, countFor, holdsCurrent, isCurrent } from "~/lib/nav";
+import { zoneAbbr } from "~/lib/time";
 
 const ICONS: Record<NavIcon, LucideIcon> = {
   overview: LayoutDashboard,
@@ -213,6 +216,24 @@ function NavTree({ pathname, counts }: { pathname: string; counts: NavCounts }) 
   );
 }
 
+/** Which zone the pages say times in, and the way to change it. */
+function TimesIn() {
+  const zone = useZone();
+  const { pathname, search } = useLocation();
+  const back = pathname === "/timezone" ? "/" : `${pathname}${search}`;
+  return (
+    <p className="mt-1.5 flex items-center gap-1.5 text-[0.6875rem] leading-snug text-faint">
+      <Clock size={12} aria-hidden="true" className="shrink-0" />
+      <span className="min-w-0 truncate" title={`Times are shown in ${zone}`}>
+        Times in {zone === "UTC" ? "UTC" : `${zone.split("/").at(-1)!.replace(/_/g, " ")} (${zoneAbbr(new Date(), zone)})`} ·{" "}
+        <Link to={`/timezone?back=${encodeURIComponent(back)}`} className="underline-offset-2 hover:text-fg hover:underline">
+          Change
+        </Link>
+      </span>
+    </p>
+  );
+}
+
 /** Who is signed in: a panel of its own at the foot of the menu. */
 function SignedIn({ email }: { email: string | null | undefined }) {
   return (
@@ -224,6 +245,7 @@ function SignedIn({ email }: { email: string | null | undefined }) {
         </p>
       )}
       <p className="mt-1.5 text-[0.6875rem] leading-snug text-faint">g1t staff only. Every change is recorded with who made it.</p>
+      <TimesIn />
     </div>
   );
 }

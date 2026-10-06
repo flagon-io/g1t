@@ -27,6 +27,9 @@ struct SettingsRow {
     max_revisions: u32,
     #[serde(default)]
     merge_queue: u8,
+    /// JSON array of names.
+    #[serde(default)]
+    required_checks: Option<String>,
     updated_by: String,
     updated_at: String,
 }
@@ -35,6 +38,11 @@ impl From<SettingsRow> for RepoSettings {
     fn from(row: SettingsRow) -> Self {
         RepoSettings {
             auto_merge: row.auto_merge != 0,
+            required_checks: row
+                .required_checks
+                .as_deref()
+                .and_then(|names| serde_json::from_str(names).ok())
+                .unwrap_or_default(),
             require_up_to_date: row.require_up_to_date != 0,
             required_approvals: row.required_approvals,
             count_agent_approvals: row.count_agent_approvals != 0,
@@ -169,6 +177,7 @@ impl Work {
         let settings = RepoSettings {
             required_approvals: a.settings.required_approvals.min(MAX_REQUIRED_APPROVALS),
             max_revisions: a.settings.max_revisions.min(MAX_REVISIONS),
+            required_checks: tidy_required(&a.settings.required_checks),
             updated_by: Some(a.actor.username),
             updated_at: Some(rfc3339(now_ms())),
             ..a.settings
@@ -178,8 +187,8 @@ impl Work {
                 "INSERT INTO repo_settings
                    (repo_id, auto_merge, require_up_to_date, required_approvals,
                     count_agent_approvals, allow_ignoring_checks, agent_review, max_revisions,
-                    merge_queue, updated_by, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    merge_queue, required_checks, updated_by, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT (repo_id) DO UPDATE SET
                    auto_merge = excluded.auto_merge,
                    require_up_to_date = excluded.require_up_to_date,
@@ -189,6 +198,7 @@ impl Work {
                    agent_review = excluded.agent_review,
                    max_revisions = excluded.max_revisions,
                    merge_queue = excluded.merge_queue,
+                   required_checks = excluded.required_checks,
                    updated_by = excluded.updated_by,
                    updated_at = excluded.updated_at",
             )
@@ -202,6 +212,7 @@ impl Work {
                 u32::from(settings.agent_review).into(),
                 settings.max_revisions.into(),
                 u32::from(settings.merge_queue).into(),
+                serde_json::to_string(&settings.required_checks)?.into(),
                 settings.updated_by.as_deref().unwrap_or_default().into(),
                 settings.updated_at.as_deref().unwrap_or_default().into(),
             ])?

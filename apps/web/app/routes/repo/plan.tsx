@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import type { G1tEvent } from "@g1t/contracts";
-import { ArrowRight, FileCode2, Sparkles, Terminal } from "lucide-react";
+import { ArrowRight, CircleCheck, FileCode2, Sparkles } from "lucide-react";
 import { useEffect } from "react";
 import { Form, Link, data, useNavigation, useRevalidator } from "react-router";
 
@@ -239,10 +239,10 @@ export default function PlanPage({ loaderData, actionData, params }: Route.Compo
                             .join(", ")}
                         </span>
                       )}
-                      {issue.checks.map((check) => (
-                        <span key={check} className="flex items-center gap-1 font-mono">
-                          <Terminal size={12} />
-                          {check}
+                      {(issue.done ?? []).map((point) => (
+                        <span key={point} className="flex items-center gap-1">
+                          <CircleCheck size={12} />
+                          {point}
                         </span>
                       ))}
                     </p>

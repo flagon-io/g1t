@@ -11,17 +11,21 @@
 //   node scripts/deploy.mjs manifest [--check]    the resolved manifest, or its problems
 //   node scripts/deploy.mjs doctor                which units lack their secrets
 //   node scripts/deploy.mjs install --only a,b    npm ci of just what those units need (CI)
+//   node scripts/deploy.mjs build-base            build and push the runner's base image (Docker)
+//   node scripts/deploy.mjs image                 build and push the runner's image for this checkout (Docker)
 //
 // Flags: --all (every unit, changed or not), --only a,b, --skip a,b,
 // --force, --concurrency N (default 4), --stage core (one stage),
 // --json (plan), --out FILE (plan), --no-migrations, --allow-dirty,
-// --rebuild-image, --since REV (Workers with no recorded commit are taken
-// to run REV).
+// --rebuild-image, --rebuild-base, --since REV (Workers with no recorded
+// commit are taken to run REV); for build-base and image, --no-push, and
+// for build-base, --no-cache.
 
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { OUT_DIR } from "./build-runner.mjs";
 import { ensureWorkerBuild } from "./build-rust-worker.mjs";
 import {
   annotation,
@@ -36,10 +40,28 @@ import {
   wrangler,
   wranglerEnv,
 } from "./deploy/cloudflare.mjs";
+import {
+  baseInputs,
+  baseState,
+  baseTag,
+  baseVersions,
+  buildBase,
+  buildRunnerImage,
+  dockerHas,
+  dockerLogin,
+  imageSize,
+  pushImage,
+  readBaseLock,
+  registryHas,
+  removeDeployConfig,
+  runnerRef,
+  writeBaseLock,
+  writeDeployConfig,
+} from "./deploy/image.mjs";
 import { decide, git, planJson, pool, table } from "./deploy/plan.mjs";
 import { ROOT, byStage, codeStages, findWranglerConfigs, npmCiArgs, npmWorkspace, pick, problems, resolvedStack } from "./deploy/stack.mjs";
 
-const USAGE = "usage: node scripts/deploy.mjs plan|deploy|build|migrate|manifest|doctor [--all] [--only a,b] [--skip a,b] [--force] [--concurrency N] [--stage S] [--json]";
+const USAGE = "usage: node scripts/deploy.mjs plan|deploy|build|migrate|manifest|doctor|install|build-base|image [--all] [--only a,b] [--skip a,b] [--force] [--concurrency N] [--stage S] [--json]";
 
 function parseArgs(argv) {
   const opts = { command: argv[0], only: [], skip: [], concurrency: 4, force: false, all: false, json: false };
@@ -58,6 +80,9 @@ function parseArgs(argv) {
     else if (flag === "--no-migrations") opts.noMigrations = true;
     else if (flag === "--allow-dirty") opts.allowDirty = true;
     else if (flag === "--rebuild-image") opts.rebuildImage = true;
+    else if (flag === "--rebuild-base") opts.rebuildBase = true;
+    else if (flag === "--no-push") opts.noPush = true;
+    else if (flag === "--no-cache") opts.noCache = true;
     else if (flag === "--out") opts.out = value();
     else if (flag === "--since") opts.since = value();
     else if (flag === "--github-output") opts.githubOutput = true;
@@ -201,8 +226,78 @@ function unitLogger(id) {
   };
 }
 
+/**
+ * The runner's image for this checkout, by registry reference: already in
+ * the registry (built by an earlier deploy, `deploy.mjs image`, or on
+ * another machine), or built and pushed here, which needs Docker. A dry
+ * run builds it locally and pushes nothing. Returns { ref, note }.
+ */
+async function runnerImage(unit, { dryRun, docker, rebuildImage, rebuildBase }, out) {
+  let base = baseState(unit);
+  if (!base.current || rebuildBase) {
+    if (!rebuildBase) {
+      throw new Error(
+        `${unit.image.base.context} has changed since ${unit.image.base.lock} was written${base.lock ? "" : " (the base has never been built)"}. Build and push the base, and commit ${unit.image.base.lock}: node scripts/deploy.mjs build-base`,
+      );
+    }
+    if (!docker) throw new Error("--rebuild-base needs Docker.");
+    await newBase(unit, { push: !dryRun, onLine: out.line });
+    base = baseState(unit);
+  }
+  if (!base.pushed && !dryRun) throw new Error(`${unit.image.base.lock} records a base that was never pushed: node scripts/deploy.mjs build-base`);
+  const ref = runnerRef(unit);
+  const tag = ref.split(":").pop();
+  if (!rebuildImage) {
+    if (dryRun && docker && (await dockerHas(ref))) return { ref, note: `image ${tag} already built here` };
+    if (!dryRun) {
+      try {
+        if (await registryHas(ref)) return { ref, note: `image ${tag} already in the registry` };
+      } catch (error) {
+        out.line(`could not ask the registry for ${tag}: ${error.message ?? error}`);
+      }
+    }
+  }
+  if (!docker) {
+    throw new Error(
+      `its image ${tag} is not in the registry, and Docker is not available here. Build and push it from a machine with Docker (node scripts/deploy.mjs image), then run this again.`,
+    );
+  }
+  const started = Date.now();
+  const binary = await exec(process.execPath, [join(ROOT, "scripts/build-runner.mjs")], { onLine: out.line });
+  if (binary.code !== 0) throw new Error(`the runner binary did not build:\n${lastLines(binary.out)}`);
+  if (!dryRun) await dockerLogin({ push: true });
+  await buildRunnerImage(unit, { ref, base: base.ref, binaryDir: OUT_DIR, onLine: out.line });
+  if (!dryRun) await pushImage(ref, { onLine: out.line });
+  return { ref, note: `image ${tag} ${dryRun ? "built" : "built and pushed"} in ${seconds(Date.now() - started)}` };
+}
+
+/** Builds the base (and pushes it unless `push` is false), and writes its lock. */
+async function newBase(unit, { push = true, noCache = false, onLine = log } = {}) {
+  const started = Date.now();
+  const inputs = baseInputs(unit);
+  const tag = baseTag(inputs);
+  const previous = readBaseLock(unit);
+  // Logged in, the base it replaces is pulled as cache.
+  if (push || previous?.pushed) {
+    try {
+      await dockerLogin({ push });
+    } catch (error) {
+      if (push) throw error;
+      onLine(`not logged in to the registry, so no cache from it: ${error.message ?? error}`);
+    }
+  }
+  const ref = await buildBase(unit, { tag, previous: previous?.pushed ? previous.image : null, onLine, noCache });
+  const built = Date.now();
+  const [size, versions] = await Promise.all([imageSize(ref), baseVersions(ref)]);
+  const digest = push ? await pushImage(ref, { onLine }) : null;
+  const lock = { image: ref, digest, pushed: push, inputs, built_at: new Date().toISOString(), size_bytes: size, versions };
+  writeBaseLock(unit, lock);
+  onLine(`base ${tag}: built in ${seconds(built - started)}${push ? `, pushed in ${seconds(Date.now() - built)}` : ""}, ${(size / 1e9).toFixed(2)} GB unpacked`);
+  return lock;
+}
+
 /** Builds (and unless `dryRun`, deploys) one unit. */
-async function ship(unit, decision, { head, subject, dirty, dryRun, docker, rebuildImage }) {
+async function ship(unit, decision, { head, subject, dirty, dryRun, docker, rebuildImage, rebuildBase }) {
   const started = Date.now();
   const out = unitLogger(unit.id);
   const cwd = join(ROOT, unit.path);
@@ -220,18 +315,13 @@ async function ship(unit, decision, { head, subject, dirty, dryRun, docker, rebu
       args.push("--message", dirty ? message.replace(/^g1t-deploy/, "g1t-deploy-dirty") : message, "--tag", tag);
     }
     if (unit.image) {
-      const build = rebuildImage || decision.image;
-      if (!build) {
-        args.push("--containers-rollout", "none");
-        result.note = "image unchanged: not rebuilt";
-      } else if (!docker) {
-        throw new Error(
-          "its Containers image changed, and Docker is not available here. Deploy it from a machine with Docker: node scripts/deploy.mjs deploy --only " +
-            unit.id,
-        );
-      } else {
-        result.note = "image rebuilt";
-      }
+      // Wrangler is given the image by reference, so it builds nothing.
+      const image = await runnerImage(unit, { dryRun, docker, rebuildImage, rebuildBase }, out);
+      args.push("--config", writeDeployConfig(unit, image.ref));
+      // Nothing the image is built from changed: the running sandboxes
+      // keep going, and new ones start from the same image.
+      if (!rebuildImage && !rebuildBase && !decision.image) args.push("--containers-rollout", "none");
+      result.note = image.note;
     }
     const deployed = await wrangler(args, { cwd, onLine: out.line });
     if (deployed.code !== 0) throw new Error(`wrangler deploy failed:\n${lastLines(deployed.out)}`);
@@ -239,6 +329,8 @@ async function ship(unit, decision, { head, subject, dirty, dryRun, docker, rebu
     result.ok = true;
   } catch (error) {
     result.note = String(error.message ?? error);
+  } finally {
+    if (unit.image) removeDeployConfig(unit);
   }
   result.ms = Date.now() - started;
   out.save();
@@ -310,7 +402,7 @@ async function deploy(stack, opts, { dryRun = false } = {}) {
 
   if (touched.some((u) => u.kind === "rust-worker")) ensureWorkerBuild();
   const docker = touched.some((u) => u.image) ? await dockerAvailable() : false;
-  const context = { head, subject: git.subject(), dirty, dryRun, docker, rebuildImage: opts.rebuildImage };
+  const context = { head, subject: git.subject(), dirty, dryRun, docker, rebuildImage: opts.rebuildImage, rebuildBase: opts.rebuildBase };
 
   let failed = false;
   for (const { stage, units } of byStage(stack, touched)) {
@@ -377,6 +469,13 @@ function manifest(stack, opts) {
   return true;
 }
 
+/** The unit with a Containers image (the runner), or the one named. */
+function imageUnit(stack, opts) {
+  const units = (opts.only.length ? pick(stack, opts.only) : stack.units).filter((u) => u.image?.base);
+  if (units.length !== 1) throw new Error("Name the unit with a Containers image: --only runner");
+  return units[0];
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const stack = resolvedStack();
@@ -408,6 +507,23 @@ async function main() {
       return doctor(stack, opts);
     case "install":
       return install(stack, opts);
+    case "build-base": {
+      const unit = imageUnit(stack, opts);
+      if (!(await dockerAvailable())) throw new Error("build-base needs Docker.");
+      const lock = await newBase(unit, { push: !opts.noPush, noCache: opts.noCache });
+      console.log(JSON.stringify(lock, null, 2));
+      if (lock.pushed) console.log(`\nCommit ${unit.image.base.lock}: the next deploy builds the runner's image on this base.`);
+      return true;
+    }
+    case "image": {
+      const unit = imageUnit(stack, opts);
+      const out = unitLogger(`${unit.id}-image`);
+      const docker = await dockerAvailable();
+      const image = await runnerImage(unit, { dryRun: Boolean(opts.noPush), docker, rebuildImage: opts.rebuildImage, rebuildBase: opts.rebuildBase }, out);
+      out.save();
+      console.log(`${image.ref}\n${image.note}`);
+      return true;
+    }
     default:
       console.error(USAGE);
       return false;

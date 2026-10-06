@@ -21,6 +21,12 @@
 //! at cost plus the margin, and a free workspace is slowed down instead
 //! (the repos service's `GIT_OPERATIONS_FREE_CAP`, the same number).
 //!
+//! **Actions cache.** The actions service reports what each workspace's
+//! `actions/cache` entries held each day (source `cache`), at what R2
+//! charges g1t to store them ($0.015 a GB-month). Only the plan is charged
+//! for it, from the first byte; a free workspace is never charged, and its
+//! repositories are held to the cache's quota like everyone's.
+//!
 //! **Storage.** The git store does not report a repository's size, so the
 //! repos service counts the packs pushed through g1t's git endpoints (see
 //! `g1t_contracts::repos::StorageArgs`): a lower bound. Each day billing
@@ -44,7 +50,10 @@ use crate::credits::{self, Drawn, Eligible};
 use crate::{Billing, optional};
 
 /// Sources billing charges itself when the month is over.
-pub(crate) const CHARGED_HERE: [&str; 4] = ["security", "context", "storage", "git"];
+pub(crate) const CHARGED_HERE: [&str; 5] = ["security", "context", "storage", "git", "cache"];
+
+/// Sources only the plan is charged for: a free workspace's are not kept.
+pub(crate) const PLAN_ONLY: [&str; 1] = ["cache"];
 
 /// What Artifacts charges g1t, when the price book cannot be read: $0.50
 /// a GB-month of storage, and $0.15 per 1,000 git operations.
@@ -89,6 +98,7 @@ pub(crate) fn title(source: &str) -> &'static str {
         "context" => "Search embeddings",
         "storage" => "Private repository storage past the free amount",
         "git" => "Git operations past the free amount",
+        "cache" => "Actions cache storage",
         "domains" => "Custom domains",
         _ => "Metered usage",
     }

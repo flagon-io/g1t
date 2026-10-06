@@ -1,6 +1,6 @@
 ---
 title: Pull requests and checks
-description: What the merge box shows before a pull request can merge, every check and what a failed one printed, and conflicts found before anyone tries to merge.
+description: What the merge box shows before a pull request can merge, the checks your workflows report and which ones a merge needs, and conflicts found before anyone tries to merge.
 ---
 
 At the foot of an open pull request's conversation, the **merge box** says
@@ -10,50 +10,120 @@ updates by itself while something is still running.
 
 ## Checks
 
-A pull request has two kinds of checks, and the merge box lists both in
-one place:
+A pull request's checks are the statuses reported on its head commit. Most
+come from the repository's [workflows](/guides/actions/): every workflow
+that runs on `pull_request` runs on every pull request's head, whoever
+opened it, a person or an agent, and reports a check named after the
+workflow. A workflow named `CI` reports the check `CI`; its status context
+is `CI / pull_request`, the workflow's name and the event it ran for. Other
+parts of g1t report under their own names, such as `g1t / deploy` (or
+`g1t / deploy (<project>)`) for a [deployment](/guides/deployments/).
 
-- **Acceptance checks**: the commands written on the issue it is for, run
-  against its head in a clean sandbox that holds nothing but that commit.
-  No agent runs there, so a pass says something about the code. See
-  [acceptance checks](/concepts/overview/#acceptance-checks).
-- **Workflows**: the repository's [GitHub Actions workflows](/guides/actions/)
-  run on its head, listed job by job.
+Which checks a merge needs is up to the repository: its
+[required status checks](#required-status-checks). The merge box lists
+those first:
 
-The first line sums them up: **All checks have passed**, **2 of 5 checks
-failed**, or how many are still running. Below it, each check has a row with
-its state, its command or job name, and how long it took.
+```text
+Required checks: 1 of 2 passing
+  CI        failing   Details
+  Lint      passing   Details
+```
 
-### What a failed check printed
+Each required check is **passing**, **failing**, **running**, or
+**expected**, "waiting for status to be reported", when nothing has
+reported it on the head commit yet. **Details** opens the run that
+reported it. Below them are all the other checks, workflow runs job by job,
+each with its state and how long it took. A check that is not required is
+shown, but never holds a merge.
 
-A failed acceptance check opens by itself and shows:
-
-- the exit code, or that it was stopped for taking too long (ten minutes);
-- what it printed, standard output and error together, as a log with line
-  numbers and its colours, and a button to copy it;
-- a note when the output was long and only its end was kept, which is where
-  failures are.
-
-A workflow job's **Details** opens its log on the run's page.
-
-Above the acceptance checks is the commit they ran on, linked. If the pull
-request has been pushed to since, the box says so: those results are for
-an older commit, and the latest push has not been checked yet.
-
-When the checks could not be run at all, for example because the sandbox
-stopped, the box says why instead of listing results.
+A workflow job's **Details** opens its log on the run's page, where every
+step's output is kept.
 
 ### Running them again
 
-**Re-run checks** runs the acceptance checks again on the current head.
-Whoever opened the pull request and people with the Write [role](/guides/access-and-roles/)
-or higher can. People with Write can also **Re-run failed jobs** of a
-workflow that failed.
+People with the Write [role](/guides/access-and-roles/) or higher can press
+**Re-run failed jobs** on a workflow run that failed, to run its failed jobs
+again on the same commit. Every push to the pull request runs its workflows
+again on the new head.
 
-**Earlier runs of the acceptance checks** lists the runs before the latest,
-with the commit each ran on and how it went.
+### A repository with no checks
 
-The acceptance checks also run again by themselves on every push.
+When a repository has no workflows, the merge box says **This repository
+has no checks**: nothing proves a change works, for people or for agents.
+**Add CI** writes a starter workflow for you; see
+[add CI](/guides/actions/#add-ci). The same offer is on the
+**Branches and merging** settings page and the **Actions** page.
+
+## Required status checks
+
+Rules for merging belong to the default branch, since every pull request
+merges into it. Someone with the Maintain [role](/guides/access-and-roles/)
+or higher sets them under the repository's **Settings → Branches and
+merging**, in **Branch protection**:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| Require a pull request to change the default branch | Off | Refuses pushes to the default branch; changes reach it only by merging. See [protected branches](/guides/git/#protected-branches). |
+| Required status checks | None | The checks that must pass on a pull request's head before it merges. |
+| Required approvals | None | How many reviewers must approve before a merge, 0 to 3 on the page (up to 6 from the API). A reviewer who asked for changes blocks it. |
+| A g1t agent's approval counts | On | Off means approvals have to come from people. |
+| Require branches to be up to date before merging | Off | On means a pull request behind the default branch has to catch up, and its checks run again, before it merges. |
+| Merge through a queue | Off | See [merge queue](/guides/merge-queue/). |
+| Allow bypassing required checks | On | Lets someone who may merge tick **bypass** when merging, to merge without the required checks passing. Off means nobody can. |
+
+### Choosing the checks
+
+**Required status checks** offers the check names reported on the
+repository's commits in the last 30 days, each with the events it was seen
+for, such as `pull_request` and `merge_group`. Pick from the list, or type a
+name that has not reported yet. A repository can require at most 20.
+
+A required check is met by a status of that name on the pull request's head,
+whatever event reported it:
+
+| What reported it | What the merge does |
+| --- | --- |
+| A status that failed | Refused: "The required check CI failed." |
+| A status still pending | Held: "The required check CI is still running." |
+| Nothing yet | Held: "The required check CI has not reported on this commit yet." |
+| Success | Allowed |
+
+The same rule holds wherever a pull request merges: the merge button,
+[`merge_pull_request`](/reference/api/pull-requests/merge-pull-request/),
+a g1t agent's [automatic merge](/guides/g1t-agents/#merging-automatically)
+and the [merge queue](/guides/merge-queue/). With **Allow bypassing required
+checks** on, the merge button has a **bypass** box, and the API takes
+`ignore_checks: true`.
+
+A check that only exists once a workflow has run, such as `CI` from a
+workflow added in a pull request, appears in the list after that workflow
+has run once.
+
+### From the API
+
+```sh
+curl https://api.g1t.sh/repos/<workspace>/<repo>/check-names \
+  -H "Authorization: Bearer $G1T_TOKEN"
+```
+
+[`list_check_names`](/reference/api/repositories/list-check-names/)
+returns the names seen in the last 30 days, most recent first, each as
+`{name, events, last_seen}`. It needs the `repo:read` scope.
+
+```sh
+curl -X PATCH https://api.g1t.sh/repos/<workspace>/<repo>/settings \
+  -H "Authorization: Bearer $G1T_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"required_checks": ["CI", "g1t / deploy"]}'
+```
+
+[`update_repo_settings`](/reference/api/repositories/update-repo-settings/)
+takes `required_checks`, which replaces the whole list, along with
+`required_approvals`, `count_agent_approvals`, `require_up_to_date`,
+`merge_queue` and `allow_ignoring_checks`;
+[`get_repo_settings`](/reference/api/repositories/get-repo-settings/)
+returns them. On the MCP server they are the `repository` tool's
+`check_names`, `get_settings` and `update_settings` actions.
 
 ## Conflicts
 
@@ -68,8 +138,8 @@ the pull request, or anything landing on the target branch.
 2. **With a short probe.** If they share files, a sandbox merges the two
    commits without an agent and pushes nothing, and reports the files that
    conflict. Meanwhile the box says **Checking whether this merges cleanly**,
-   and the merge button waits. Probes are metered as sandbox time, like
-   checks; each pair of commits is probed once, and a repository runs at most
+   and the merge button waits. Probes are metered as sandbox time; each
+   pair of commits is probed once, and a repository runs at most
    three at a time, the rest following in turn.
 
 A pull request that conflicts shows **This branch has conflicts that must
@@ -122,7 +192,7 @@ press **Catch up with main now**:
    in a few seconds. The merge commit is named **Merge main into
    *branch***, has the pull request's head and `main`'s head as its
    parents, and is authored and pushed as you. The box then says **Brought
-   up to date with main**, and the checks and workflows run again on the
+   up to date with main**, and the workflows run again on the
    new commit, as after any push.
 2. **When both changed some of the same files**, a sandbox merges `main` in
    with git, and a [g1t agent](/guides/g1t-agents/) resolves any conflict.
@@ -150,9 +220,9 @@ is sent back to resolve it by itself, before it is ready.
 
 | Field | What it is |
 | --- | --- |
-| `checks` | The latest run of the acceptance checks: `status`, `head_commit`, `error`, and `results`, each with `command`, `passed`, `exit_code`, `output` and `duration_ms`. |
-| `earlier_checks` | The runs before it, newest first, without their output. |
-| `statuses` | What each workflow run said about its head. |
+| `statuses` | What each workflow run, and anything else that reports statuses, said about its head, with a link to the run. |
+| `required_checks` | Each check the default branch requires, as it stands on the head: `name`, `state` (`success`, `failure`, `pending`, or `expected` when nothing has reported it yet), `description` and `target_url`. Empty when none are required. |
+| `checks` | The latest record against its head from g1t itself, such as the merge queue taking it out, with `earlier_checks` before it. |
 | `mergeable` | `clean`, `conflicting`, `checking` or `unknown`. |
 | `conflicts` | When conflicting, the files that conflict. |
 | `behind` | Whether its target has moved on without it. |

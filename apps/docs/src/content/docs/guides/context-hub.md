@@ -164,8 +164,8 @@ Each project is checked against a few rules:
 | **No open secret findings** | [Security](/guides/security/) has no open secret findings for it |
 
 A failing rule has **Fix with an agent**: g1t opens an issue saying what to
-do, with an acceptance check where one can be written (such as
-`test -f AGENTS.md`), and puts g1t's agent on it.
+do, with a definition of done where one can be written (such as
+"`test -f AGENTS.md` passes."), and puts g1t's agent on it.
 
 ## Agents start with context
 

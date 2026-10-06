@@ -14,6 +14,7 @@ mod renamed;
 #[cfg(test)]
 mod responses;
 mod rest;
+mod runners;
 mod tools;
 
 use g1t_contracts::billing::FinishRunArgs;
@@ -240,7 +241,8 @@ async fn device_token(request: &mut Request, services: &Services) -> Result<Resp
     })
 }
 
-/// A sandbox reporting on its run of a pull request's acceptance checks.
+/// A sandbox reporting on a run of an issue's commands, from before a pull
+/// request's checks were the workflows run on it.
 /// The run's own token, in the body, is the credential: it was given to
 /// that sandbox and to nothing else.
 async fn report_checks(
@@ -469,10 +471,20 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     // g1t token either.
     if !on_mcp
         && let Some(rest) = path.strip_prefix("/actions/jobs/")
-        && (rest.contains("/artifacts") || rest.ends_with("/cache"))
+        && (rest.contains("/artifacts") || rest.ends_with("/cache") || rest.contains("/cache/uploads"))
     {
         let rest = rest.to_owned();
         return blobs::for_job(request, env, &services, method, &rest).await;
+    }
+
+    // A self-hosted runner, with a registration token or its own
+    // credential, neither of which is a g1t access token.
+    if method == "POST"
+        && !on_mcp
+        && path.starts_with("/runners/")
+        && let Some(response) = runners::handle(&mut request, &services, &path).await?
+    {
+        return Ok(response);
     }
 
     let viewer = match authenticate(&request, &services).await? {

@@ -2,10 +2,12 @@ import { env } from "cloudflare:workers";
 
 import { githubAppClient, githubSignInClient } from "@g1t/contracts";
 
+import { instrumented } from "./perf.server";
+
 /** Signing in with GitHub, kept by the identity service. */
-export const githubSignIn = githubSignInClient(env.IDENTITY);
+export const githubSignIn = githubSignInClient(instrumented("identity", env.IDENTITY));
 /** g1t's GitHub App: installations, imports and mirrors, kept by integrations. */
-export const githubApp = githubAppClient(env.INTEGRATIONS);
+export const githubApp = githubAppClient(instrumented("integrations", env.INTEGRATIONS));
 
 /**
  * Whether this g1t offers signing in with GitHub. False when no app is

@@ -2,7 +2,9 @@
  * The pages at status.g1t.sh, drawn on the server as plain HTML: no
  * framework, a small stylesheet inline, and a few lines of script (served
  * at /status.js) that only add hover and keyboard detail to the bars and
- * say times in the reader's own words. Every page works without it:
+ * say times in the browser's own zone. Without it, times are already in
+ * the reader's zone as Cloudflare places them (PageOptions `zone`), with
+ * the zone's abbreviation; `datetime` attributes and feeds stay in UTC. Every page works without it:
  * subscribing, confirming and leaving are plain forms. No Workers
  * imports, so it is tested under Node.
  *
@@ -15,6 +17,7 @@
 import type { PostmortemFields, StatusComponent, StatusIncident, StatusMaintenance, StatusOverallState } from "@g1t/contracts";
 
 import { type DayBar, HISTORY_DAYS, IMPACT_WORD, INCIDENT_STATUS, type PageModel, maintenanceState, percent } from "./model.ts";
+import { timeIn, validZone } from "./time.ts";
 
 export type PageOptions = {
   /** The site the page is about: `https://g1t.sh`. */
@@ -28,6 +31,8 @@ export type PageOptions = {
   now: Date;
   /** Whether email subscriptions can be offered (a sender and a secret). */
   email?: boolean;
+  /** The reader's time zone (time.ts `readZone`); UTC when absent. */
+  zone?: string;
 };
 
 export function escape(text: string): string {
@@ -43,16 +48,25 @@ export function dayLabel(day: string): string {
   return `${d} ${MONTHS[(m ?? 1) - 1]} ${y}`;
 }
 
-/** "5 Oct 2026, 14:03 UTC": the script says it in the reader's time. */
-export function timeLabel(at: string): string {
-  const date = new Date(at);
-  const hh = String(date.getUTCHours()).padStart(2, "0");
-  const mm = String(date.getUTCMinutes()).padStart(2, "0");
-  return `${dayLabel(date.toISOString().slice(0, 10))}, ${hh}:${mm} UTC`;
+/**
+ * The zone the page being drawn says its times in. Each page's renderer
+ * sets it from its options before drawing (drawing is synchronous, so one
+ * page never sees another's).
+ */
+let zone = "UTC";
+
+function zoned(options: PageOptions): void {
+  zone = validZone(options.zone) ? options.zone : "UTC";
 }
 
+/** "5 Oct 2026, 14:03 UTC", or in the reader's zone: "5 Oct 2026, 07:03 PDT". */
+export function timeLabel(at: string, tz = zone): string {
+  return timeIn(at, tz);
+}
+
+/** A time in the reader's zone; the UTC instant in `datetime` and, in words, on hover. */
 function time(at: string, relative = false): string {
-  return `<time datetime="${escape(at)}"${relative ? " data-relative" : ""}>${escape(timeLabel(at))}</time>`;
+  return `<time datetime="${escape(at)}" title="${escape(timeIn(at, "UTC"))}"${relative ? " data-relative" : ""}>${escape(timeLabel(at))}</time>`;
 }
 
 /** "1h 05m", "3d 4h". */
@@ -288,6 +302,7 @@ function subscribeForm(options: PageOptions, compact: boolean): string {
 
 /** The front page. */
 export function renderPage(model: PageModel, options: PageOptions): string {
+  zoned(options);
   const { report, bars, stale } = model;
   const { overall, components, incidents, maintenance, checked_at } = report;
   const names = new Map(components.map((c) => [c.key, c.name]));
@@ -356,6 +371,7 @@ export function renderIncident(
   names: Map<string, string>,
   options: PageOptions,
 ): string {
+  zoned(options);
   const open = incident.resolved_at == null;
   const body = `<p class="crumbs"><a href="/">Status</a> <span aria-hidden="true">/</span> <a href="/history">History</a></p>
 <article class="incident-page">
@@ -383,6 +399,7 @@ ${
 }
 
 export function renderMaintenance(m: StatusMaintenance, names: Map<string, string>, options: PageOptions): string {
+  zoned(options);
   const state = maintenanceState(m, options.now);
   const body = `<p class="crumbs"><a href="/">Status</a> <span aria-hidden="true">/</span> <a href="/history">History</a></p>
 <header class="page-head"><h1>${escape(m.title)}</h1><span class="pill maint">${MAINTENANCE_WORD[state]}</span></header>
@@ -410,6 +427,7 @@ export function byMonth(incidents: StatusIncident[], maintenance: StatusMaintena
 }
 
 export function renderHistory(incidents: StatusIncident[], maintenance: StatusMaintenance[], options: PageOptions, months = 12): string {
+  zoned(options);
   const groups = byMonth(incidents, maintenance);
   const now = options.now;
   const list: string[] = [];
@@ -492,7 +510,7 @@ export function renderBadge(state: StatusOverallState, title: string): string {
 /** The page's script: day detail on hover, tap and arrow keys; times in the reader's words. */
 export const SCRIPT = `(() => {
   const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-  const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+  const fmt = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" });
   function ago(at) {
     const s = (Date.parse(at) - Date.now()) / 1000;
     const a = Math.abs(s);
@@ -504,8 +522,10 @@ export const SCRIPT = `(() => {
   function times() {
     for (const t of document.querySelectorAll("time[datetime]")) {
       const at = t.getAttribute("datetime");
-      t.title = fmt.format(new Date(at));
-      t.textContent = t.hasAttribute("data-relative") ? ago(at) : fmt.format(new Date(at));
+      if (t.hasAttribute("data-relative")) {
+        t.title = fmt.format(new Date(at));
+        t.textContent = ago(at);
+      } else t.textContent = fmt.format(new Date(at));
     }
   }
   times();

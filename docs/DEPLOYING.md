@@ -10,7 +10,8 @@ self-hosting guide is `apps/docs/src/content/docs/guides/self-hosting.md`.
 | The manifest | `deploy/stack.jsonc` |
 | The tool | `scripts/deploy.mjs` (library and tests in `scripts/deploy/`) |
 | Rust Worker builds | `scripts/build-rust-worker.mjs`, every Rust unit's build command |
-| The workflow | `.g1t/workflows/deploy.yml` |
+| The runner's images | `services/runner/base/Dockerfile`, `services/runner/Dockerfile`, `services/runner/base.json`, `scripts/build-runner.mjs`, `scripts/deploy/image.mjs` |
+| The workflows | `.g1t/workflows/deploy.yml`, `.g1t/workflows/runner-base.yml` |
 | The old entry point | `scripts/deploy.sh`, now a wrapper |
 
 ## The manifest
@@ -29,7 +30,7 @@ with the same parser as the Wrangler configs, and comments stay possible.
 | `secrets` | The Wrangler secrets it needs, by name. `node scripts/deploy.mjs doctor` checks they are set. |
 | `setup` | One-time steps no config can say, for a first deploy. |
 | `inputs` | Files outside its folder it is built from that no workspace metadata names. A test finds such imports. |
-| `image` | A Containers image (`dockerfile`, and the `crate` it compiles), which needs Docker to build. |
+| `image` | A Containers image: `dockerfile` (the image deployed), `crate` (the binary it adds), `base` (`{ context, lock }`: the base image's folder and the file recording the base that was pushed) and `repository` (where both are pushed). See [the runner's images](#the-runners-images). |
 | `self_host` | `run`, `off`, `separate` or `none`: what `deploy/self-host/configs.mjs` does with it. |
 
 What a unit is **built from** is never listed by hand. The tool reads it:
@@ -96,6 +97,8 @@ node scripts/deploy.mjs build --only events  # build as a deploy would; upload n
 node scripts/deploy.mjs migrate              # pending migrations only
 node scripts/deploy.mjs manifest [--check|--json]
 node scripts/deploy.mjs doctor               # secrets each unit lacks
+node scripts/deploy.mjs build-base           # build and push the runner's base image (Docker)
+node scripts/deploy.mjs image                # build and push the runner's image for this checkout (Docker)
 scripts/deploy.sh [units...]                 # the old entry point: all, or those named, always
 ```
 
@@ -108,7 +111,10 @@ scripts/deploy.sh [units...]                 # the old entry point: all, or thos
 | `--stage core` | One stage only. |
 | `--no-migrations` | Skip the migrations step (the workflow runs it as its own job). |
 | `--allow-dirty` | Deploy with uncommitted changes in what deploys. The version records no commit, so the next plan deploys it again. |
-| `--rebuild-image` | Build the runner's image even if nothing it is built from changed. |
+| `--rebuild-image` | Build the runner's image even if one for this source is already in the registry. |
+| `--rebuild-base` | Build and push a new base first (needs Docker), then the runner's image on it. Writes `services/runner/base.json`: commit it. |
+| `--no-push` | `build-base` and `image`: build locally, push nothing. |
+| `--no-cache` | `build-base`: build every layer again. |
 | `--since REV` | Treat Workers with no recorded commit as running `REV`. Used once to adopt Workers deployed before this tool. |
 | `--json`, `--out FILE`, `--github-output` | The plan as data, for the workflow. |
 
@@ -146,27 +152,125 @@ read-only calls per unit, in parallel; a plan of all 22 units takes about
 6. Prints a table: unit, stage, result, version id, time. Each unit's full
    output is kept in `$TMPDIR/g1t-deploy/<unit>.log`.
 
+#### Telling the status page about a deploy
+
+Restarts during a deploy can make a part slow for a minute, which the
+status page's checks would otherwise draft as an incident. Before the
+first stage and after the last, a deploy can say so with
+`scripts/deploy/status-window.mjs` (`announceDeploy("started" | "finished",
+{ id })`, or `node scripts/deploy/status-window.mjs started|finished [id]`).
+It posts to `POST https://status.g1t.sh/deploys` with
+`Authorization: Bearer $STATUS_DEPLOY_TOKEN`, the same value as the status
+Worker's `STATUS_DEPLOY_TOKEN` secret. During the deploy and for 3 minutes
+after it, detection keeps counting failed and slow checks but makes no new
+draft; trouble that outlasts that is drafted with its true start. A
+start with no finish stops counting after 30 minutes. Without the token
+the helper does nothing, and it never fails a deploy.
+
 On a laptop the tool uses your `wrangler login` (or `CLOUDFLARE_DEPLOY_TOKEN`
 if set), as `scripts/deploy.sh` always did: a `CLOUDFLARE_API_TOKEN` or
 global API key in your shell, or in the repository's `.env`, is ignored.
 With `CI=true` it uses `CLOUDFLARE_API_TOKEN`.
 
-### The runner's image
+### The runner's images
 
-`services/runner` deploys a Containers image built from
-`services/runner/Dockerfile`, which needs Docker. The tool rebuilds it only
-when something the image is built from changed since the runner's live
-commit (the Dockerfile, `crates/runner` and the crates it uses,
-`Cargo.toml`, `Cargo.lock`), or with `--rebuild-image`. Otherwise it deploys
-the Worker with `--containers-rollout none`, which leaves the running image
-alone. g1t Actions sandboxes have no Docker, so a CI deploy that needs a new
-image fails that unit with what to do, and later stages wait:
+`services/runner` runs every sandbox (agents, checks, the merge queue,
+workflow jobs, g1t.page builds) from one Containers image, made in two
+parts:
+
+| Image | Built from | Holds | Rebuilt |
+| --- | --- | --- | --- |
+| **Base**, `g1t-runner:base-<date>-<inputs>` | `services/runner/base/Dockerfile` | Debian bookworm, Node 24, Python 3.11, Go (from go.dev), Rust stable for the `node` user with rustfmt, clippy and the `wasm32-unknown-unknown` target, build-essential, git, ripgrep, jq, zstd, sudo, and the pinned Claude Code CLI on top | When its folder changes, weekly, or by hand (`build-base`) |
+| **Runner**, `g1t-runner:<content hash>` | `services/runner/Dockerfile`: `FROM` the base, plus one file | The g1t runner, a static binary | When the binary or the base changes |
+
+Both are pushed to one repository of Cloudflare's registry,
+`registry.cloudflare.com/<account>/g1t-runner`, so pushing the runner's
+image uploads only its own layer (about 5 MB): the base's layers are
+already there.
+
+**The base** is recorded in `services/runner/base.json`: its reference, its
+digest, a hash of its folder (`inputs`), when it was built, its size and
+each toolchain's version. `node scripts/deploy.mjs build-base` builds it,
+pushes it and rewrites the file; commit the file, and the next deploy
+builds the runner's image on it. `npm run test:deploy` fails while the
+folder and the file disagree, so a change to the base's Dockerfile cannot
+merge without the base it describes. Layers go from what changes least to
+most (system packages, Go, Rust, the Claude Code CLI), and the apt and npm
+caches stay in BuildKit's cache, out of the image.
+
+The base's build cache is the base itself: it is built with
+`BUILDKIT_INLINE_CACHE`, which records in the image how each layer was
+made, and `build-base` builds `--cache-from` the base it replaces. A
+machine with an empty cache, or one just pruned, pulls the unchanged
+layers from the registry instead of building them. (BuildKit's other
+registry cache, `--cache-to type=registry`, pushes a separate cache
+manifest that not every registry takes, and for a one-stage image adds
+nothing the inline cache lacks.)
+
+**The runner binary** (`crates/runner`) is built outside Docker by
+`scripts/build-runner.mjs` as one static binary for
+`x86_64-unknown-linux-musl`, so it runs on the base whatever its libc, and
+on a self-hosted runner's machine too. Where it is built:
+
+- on x86-64 Linux with the musl target and `musl-gcc`
+  (`rustup target add x86_64-unknown-linux-musl`, `apt-get install musl-tools`),
+  with the machine's own Cargo;
+- anywhere else (Windows, macOS) in a small builder container, Rust on
+  Alpine (whose own target is musl), with Docker volumes keeping Cargo's
+  registry and target directory between builds. Windows has no musl
+  cross-linker, and `ring` (under ureq's TLS) needs a C compiler for the
+  target, so a container is the dependable route.
+
+**The runner's image tag** is a hash of everything it is built from: its
+Dockerfile, `base.json`, the crates the binary is built from, the
+workspace's Cargo files and the build script. The same source always names
+the same image, so:
+
+1. A deploy computes the tag and asks the registry whether it is there
+   (a `HEAD` of its manifest, with credentials from Wrangler; no Docker).
+2. If it is, nothing is built: the deploy uses it.
+3. If not, and Docker is here, it builds the binary and the image (seconds
+   on a warm machine) and pushes it.
+4. If not, and Docker is not here (a g1t Actions sandbox), the unit fails
+   saying to run `node scripts/deploy.mjs image` on a machine with Docker;
+   then re-run the workflow.
+
+Then `wrangler deploy` is given the image by reference, from a generated
+config (`services/runner/wrangler.deploy.json`, deleted after, ignored by
+git), so Wrangler builds nothing. When nothing the image is built from
+changed since the runner's live commit, the deploy also passes
+`--containers-rollout none`, which leaves running sandboxes alone.
+
+To get a new base out:
 
 ```sh
-node scripts/deploy.mjs deploy --only runner   # on a machine with Docker
+node scripts/deploy.mjs build-base      # build, push, write base.json (needs Docker)
+git commit services/runner/base.json -m "A new base image for g1t's sandboxes"
+node scripts/deploy.mjs image           # optional: push the runner's image now, so CI finds it
 ```
 
-then re-run the workflow; its plan now sees the runner up to date.
+`.g1t/workflows/runner-base.yml` does the same weekly (and when the
+base's folder changes on `main`), and opens a pull request with
+`base.json`. It needs Docker, so it runs on a self-hosted runner with the
+`docker` label (`runs-on: [self-hosted, docker]`). Until one is
+registered, its runs wait for one; run `build-base` by hand instead.
+
+**Sandboxes start from the image.** Cloudflare pulls an image to a
+machine the first time a sandbox lands there, and keeps it. A smaller base
+pulls sooner, and a change to the runner alone sends machines one 5 MB
+layer instead of the whole image.
+
+#### Larger machines
+
+The same image runs on three instance types, each a Durable Object class
+of its own in `services/runner/wrangler.jsonc`: `AttemptSandbox`
+(`standard-1`), `Sandbox2Core` (`standard-3`) and `Sandbox4Core`
+(`standard-4`). Workflow jobs choose with `runs-on: g1t-2core` or
+`g1t-4core` (`g1t_contracts::actions::INSTANCE_TYPES`); the actions
+service passes the label to the runner, which starts the job in that
+class. Billing prices the larger ones from their memory and disk, and
+their CPU (see the public billing guide). The account's Containers limits
+must allow `standard-4`; Wrangler refuses the deploy otherwise.
 
 ## Build speed
 
@@ -221,7 +325,7 @@ not), `all` and `dry_run` (plan only).
 - **One at a time:** `concurrency: deploy-production`, never cancelled in
   progress; a second push waits.
 - **Build groups:** a stage's units are split so each job shares a build:
-  Rust workers at most four to a job (a sandbox has half a CPU), the
+  Rust workers at most four to a job (each a 4-vCPU `g1t-4core` machine), the
   TypeScript Workers together, each site alone, and a unit whose image must
   be rebuilt alone. `fail-fast: false`, so one failed job does not cut
   another off mid-upload; the next stage then does not start.
@@ -229,48 +333,57 @@ not), `all` and `dry_run` (plan only).
   the merge queue's checks. `check` runs the deploy tool's own tests. When a
   CI workflow is added, make `plan` wait for it (`workflow_run`, or a job in
   this file).
-- **Caching** (`actions/cache`, kept per repository for 7 days, at most
-  60 MB an entry): the worker-build binary, worker-build's downloaded tools,
-  and `~/.cargo/registry/cache`. Not cached: the Cargo target directory
-  (about 500 MB for these crates) and npm's cache (over 150 MB), so every
-  Rust job compiles its crates from scratch and every job runs `npm ci` of
-  only what its units need (`deploy.mjs install`: Wrangler alone for Rust
-  jobs).
+- **Machines:** Rust jobs run on `g1t-4core` (4 vCPUs, 12 GiB), the
+  others on the standard machine (`runs-on: ${{ matrix.rust && 'g1t-4core' || 'ubuntu-latest' }}`).
+- **Caching** (`actions/cache`: up to 2 GB an entry, 10 GB a repository,
+  kept until unused for 7 days): the worker-build binary, worker-build's
+  downloaded tools, `~/.cargo/registry/cache`, and the Cargo target's
+  release dependencies (`target/release` and
+  `target/wasm32-unknown-unknown/release`, without `incremental` or
+  `.wasm`), keyed by the build group, `Cargo.lock` and `base.json`. The
+  workspace's own crates are compiled again on every run (a checkout's
+  sources are newer than any cache); the crates.io dependencies are not.
+  npm's cache is not kept: every job runs `npm ci` of only what its units
+  need (`deploy.mjs install`: Wrangler alone for Rust jobs).
+- **Conditions:** each stage runs with `!failure() && !cancelled()`, which
+  on g1t (as on GitHub) is true when no job before it failed, however far
+  back: a `migrate` job skipped for having nothing to apply does not stop
+  the stages after it, and a failed `check` stops all of them.
 - `crates/actions/tests/repository_workflows.rs` reads the workflow with
   g1t's own parser and expressions, and checks the jobs start, wait and
   stop as above (`cargo test -p g1t-actions --test repository_workflows`).
 
 ### What the sandbox has
 
-The runner image (`services/runner/Dockerfile`) has Node 24, npm, git, and
-Rust stable for the `node` user (rustfmt, clippy) but not the
-`wasm32-unknown-unknown` target, worker-build or Docker. The workflow adds
-the target (`rustup target add`, from `static.rust-lang.org`) and restores
-worker-build from the cache, installing it on a miss. worker-build fetches
-wasm-bindgen and wasm-opt from GitHub releases and esbuild from npm. All
-of those hosts are on the list every workflow job may reach.
-
-Adding the wasm target and worker-build to the image instead would save
-about a minute per Rust job, but every image change needs a Docker deploy of
-the runner and replaces every sandbox, so it is left for when the image
-next changes anyway.
+The base image (`services/runner/base/Dockerfile`) has Node 24, npm, git,
+Go, zstd, and Rust stable for the `node` user with rustfmt, clippy and the
+`wasm32-unknown-unknown` target, but not worker-build or Docker. The
+workflow's `rustup target add wasm32-unknown-unknown` is then a no-op, and
+worker-build is restored from the cache, installed on a miss. worker-build
+fetches wasm-bindgen and wasm-opt from GitHub releases and esbuild from
+npm. All of those hosts are on the list every workflow job may reach.
 
 ### Network
 
-A workflow job reaches only its project's allowed domains, g1t, and what
-builds need (`services/runner/src/egress.ts`, `BUILD_HOSTS`). Cloudflare's
-API is not among them for workflows (only for g1t.page deploy builds), and
-guardrails have no per-workflow list. The least that works today: add
-`api.cloudflare.com` to **flagon-io/g1t's allowed domains** (repository
-**Settings → Guardrails**, Maintain role or higher).
+A workflow job reaches its project's allowed domains, g1t, what builds
+need (`services/runner/src/egress.ts`, `BUILD_HOSTS`), and the project's
+**workflow-only domains** that name its workflow and environment. Those are
+never reached by agents, checks, the merge queue, deploy builds or runs of
+pull requests from forks (`Guardrails::workflow_hosts`, the runner's
+`jobHosts`). Under flagon-io/g1t's **Settings → Guardrails**
+(Maintain role or higher), **Workflow-only domains**:
 
-That opens the host to every sandbox of that project, agents included.
-Agents never get the token (secrets go only to trusted workflow jobs), but
-any code there could talk to Cloudflare's API with credentials of its own.
-The better fix is a list of domains only workflow jobs may reach, set by a
-maintainer, or hosts a job asks for honored only for trusted jobs; that is
-a change to guardrails (`crates/contracts/src/guardrails.rs`, the work
-service, the runner's `buildGuardFor`).
+```
+api.cloudflare.com | deploy.yml | production
+registry.cloudflare.com | deploy.yml, runner-base.yml | production
+```
+
+`api.cloudflare.com` is Wrangler's API; `registry.cloudflare.com` is where
+the deploy asks whether the runner's image is already built (and where
+`runner-base.yml` pushes). Only `deploy.yml`'s and `runner-base.yml`'s
+jobs with `environment: production` reach them, which are also the only
+jobs that can read `CLOUDFLARE_API_TOKEN`. Each change to the list is in
+the workspace's audit log as `update_guardrails`.
 
 ### The API token
 
@@ -284,7 +397,7 @@ Token → Custom token**, named `g1t deploys (CI)`:
 | Account | Queues: Edit | Attaching each unit's queue consumers on deploy |
 | Account | Workers R2 Storage: Read | Wrangler checks `og`'s bucket binding |
 | Account | Account Settings: Read | Wrangler reads the account |
-| Account | Containers: Read | The runner's deploy with `--containers-rollout none` reads its application (Edit only if CI ever builds images) |
+| Account | Containers: Edit | The runner's deploy updates its applications (the image reference, the three classes), and gets registry credentials to look for its image. `runner-base.yml` pushes images with it. |
 | Zone (`g1t.sh`, `g1t.page`) | Workers Routes: Edit | `pages`' zone routes, and custom domains |
 | Zone (`g1t.sh`, `g1t.page`) | DNS: Edit | Custom domains (`api`, `mcp`, `og`, `models`, `status`, `sudo`, `docs`, `g1t.sh`, `g1t.page`) keep their DNS records |
 | Zone (`g1t.sh`, `g1t.page`) | Zone: Read | Finding the zone a route names |
@@ -331,14 +444,20 @@ curl -X POST https://api.g1t.sh/repos/flagon-io/g1t/actions/variables \
 ## Turning it on
 
 1. Create the token and add the secret and variable (above).
-2. Add `api.cloudflare.com` to flagon-io/g1t's allowed domains.
-3. Adopt the live Workers once, from a laptop: deploy everything with the
+2. Add `api.cloudflare.com` and `registry.cloudflare.com` to flagon-io/g1t's
+   workflow-only domains, for `deploy.yml` in `production` (above).
+3. Build and push the base once, and commit `services/runner/base.json`:
+   `node scripts/deploy.mjs build-base`. Create the cache bucket:
+   `npx wrangler r2 bucket create g1t-actions-cache`, with a lifecycle rule
+   deleting objects 30 days after upload
+   (`npx wrangler r2 bucket lifecycle add g1t-actions-cache expire --expire-days 30 --abort-multipart-days 1`).
+4. Adopt the live Workers once, from a laptop: deploy everything with the
    tool so each version records its commit (`scripts/deploy.sh`, or
    `node scripts/deploy.mjs deploy --all`). Until then every plan says "no
    known commit" and deploys every unit. To see what has changed since a
    commit you know production runs, without deploying:
    `node scripts/deploy.mjs plan --since <sha>`.
-4. Run the workflow by hand with `dry_run`, then with `units: pages`.
+5. Run the workflow by hand with `dry_run`, then with `units: pages`.
 
 ## First deploy of a new account
 
@@ -353,7 +472,10 @@ dispatch namespaces; each unit's `setup` and `secrets` say the rest.
 - Queues: `npx wrangler queues create <queue>` for each queue in the
   manifest: `g1t-events`, `g1t-events-<service>` for every subscriber,
   `g1t-search-jobs`, `g1t-context-jobs`.
-- R2: `npx wrangler r2 bucket create g1t-screenshots`.
+- R2: `npx wrangler r2 bucket create g1t-screenshots` and
+  `npx wrangler r2 bucket create g1t-actions-cache` (with its 30-day
+  lifecycle rule, above).
+- The runner's base image: `node scripts/deploy.mjs build-base`.
 - Vectorize, dispatch namespace, DNS, Access, Email Sending, Artifacts: each
   unit's `setup`.
 - Secrets: `npx wrangler secret put <NAME>` in the unit's folder;
@@ -374,8 +496,10 @@ that does not exist yet may be refused; deploy that service first with
   <units> --force`. Migrations never run backwards: a migration that needs
   undoing is a new migration.
 - **The runner's image:** a rollback of the Worker does not roll back the
-  container image; redeploy the older commit with `--rebuild-image` on a
-  machine with Docker.
+  container image. Redeploy the older commit (`--only runner --force`): its
+  image's tag is the hash of that commit's source, which is still in the
+  registry, so nothing is built. A bad base is undone by reverting the
+  commit that changed `services/runner/base.json`.
 
 ## Adding a unit
 
@@ -392,3 +516,52 @@ that does not exist yet may be refused; deploy that service first with
 5. `npm run test:deploy` and `node scripts/deploy.mjs manifest --check`
    say what is missing. Then create its resources and secrets, and
    `node scripts/deploy.mjs deploy --only <unit>`.
+
+## The self-hosted runner
+
+`g1t-runner` (crates/runner) is also what customers run on their own
+machines (guide: `apps/docs/src/content/docs/guides/self-hosted-runners.md`).
+It is not deployed with the stack: it is released, and runners already out
+there update themselves to each release.
+
+| Piece | Where |
+| --- | --- |
+| The tool | `scripts/runner-release.mjs` (`keygen`, `build`, `sign`, `verify`, `publish`) |
+| The workflow | `.g1t/workflows/runner-release.yml`, on a tag `runner-v<version>` or by hand |
+| Where it is published | The R2 bucket `g1t-downloads`, served by the site at `g1t.sh/downloads/runner/<version>/<file>` and `/latest/<file>` (`apps/web/app/routes/downloads-runner.ts`) |
+| Its image | `deploy/runner/Dockerfile`, pushed as `RUNNER_IMAGE` (`flagonio/g1t-runner`) for amd64 and arm64 |
+
+A release is five binaries (Linux x64 and arm64, both static musl; macOS
+x64 and arm64; Windows x64), `SHA256SUMS`, and `manifest.json`;
+`latest.json` and its Ed25519 signature `latest.json.sig` name the newest.
+A runner updates only to a release whose signature checks out against the
+public key built into it and whose download matches the manifest's SHA-256.
+
+The first time:
+
+1. `node scripts/runner-release.mjs keygen`. Put `RUNNER_RELEASE_KEY` in the
+   repository's secrets (production environment) and keep a copy offline;
+   put `G1T_RUNNER_RELEASE_KEY` in its variables. A build made without the
+   public key never updates itself.
+2. `npx wrangler r2 bucket create g1t-downloads`, and deploy the site so it
+   has the `DOWNLOADS` binding.
+3. Set the variables `RUNNER_IMAGE` (the image's name in a public registry),
+   `RUNNER_IMAGE_REGISTRY_USER` and the secret `RUNNER_IMAGE_REGISTRY_TOKEN`,
+   and `RUNNER_AGENT_IMAGE` (a public copy of `g1t-runner-base`, the image
+   agent work runs in on customers' runners).
+4. Register a self-hosted runner with the `docker` label for the image job.
+
+Each release:
+
+1. Bump `version` in `crates/runner/Cargo.toml` and merge it.
+2. Tag the commit `runner-v<version>` and push the tag. The workflow builds
+   every platform with cargo-zigbuild, signs, verifies, publishes the files
+   (the version's first, `latest.json` last), and pushes the image.
+3. By hand, the same is `node scripts/runner-release.mjs build`, then `sign`,
+   `verify` and `publish`, with the keys in the environment.
+
+Rolling back a release: copy the older version's `manifest.json` over
+`runner/latest.json` and sign it again (`sign` after checking the older
+version out). Runners never move to an older version on their own; a
+runner on a bad release is fixed by the next good one, or by downloading
+the older binary over it.

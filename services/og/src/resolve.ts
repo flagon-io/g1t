@@ -349,7 +349,8 @@ async function lookUp(parts: string[], sources: Sources): Promise<Card | null> {
     owner: namespace,
     repo: name,
     name: shown?.name ?? name,
-    description: shown?.description ?? found.value.description,
+    // Its own description, else the repository's as it is now.
+    description: (shown && !shown.descriptionInherited ? shown.description : null) ?? found.value.description,
     issues: counts?.ok ? counts.value.issues : 0,
     pulls: counts?.ok ? counts.value.pulls : 0,
   };

@@ -57,8 +57,6 @@ pub struct Issue {
     /// Markdown. Also what an agent is given to work from.
     pub body: String,
     pub labels: Vec<String>,
-    /// Commands that must pass for a pull request to be accepted.
-    pub checks: Vec<String>,
     pub state: State,
     /// Set when closed.
     pub reason: Option<IssueReason>,
@@ -163,8 +161,10 @@ pub struct Pull {
     /// Set on a pull request closed because another one for the same issue
     /// was merged: that one's number.
     pub superseded_by: Option<u32>,
-    /// Where the latest run of the issue's acceptance checks stands, if
-    /// there has been one against the current head.
+    /// `failed` when the merge queue took it out because its combined
+    /// state failed, until its head moves. Its checks are the statuses
+    /// workflows report on its head: see `PullDetail::statuses` and
+    /// `PullDetail::required_checks`.
     pub check_status: Option<CheckStatus>,
     /// The files it changes, as of its latest push.
     #[serde(default)]
@@ -314,7 +314,8 @@ impl CheckStatus {
     }
 }
 
-/// How one acceptance check went.
+/// How one command went. Recorded by earlier runs of commands written on
+/// issues, which g1t no longer runs; kept so their history still reads.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CheckResult {
@@ -331,8 +332,8 @@ pub struct CheckResult {
     pub duration_ms: u64,
 }
 
-/// One run of an issue's acceptance checks against a pull request's head,
-/// in a sandbox that holds nothing but that commit.
+/// A record against a pull request's head: the merge queue taking it out,
+/// with why, or an earlier run of commands written on its issue.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CheckRun {
@@ -447,7 +448,8 @@ pub struct PullDetail {
     /// The issue it is for, if any.
     pub issue: Option<Issue>,
     pub comments: Vec<Comment>,
-    /// The latest run of the issue's acceptance checks.
+    /// The latest record against its head: the merge queue taking it out,
+    /// or (from before checks were workflows) a run of its issue's commands.
     pub checks: Option<CheckRun>,
     /// Other pull requests in progress that change the same files.
     #[serde(default)]
@@ -484,10 +486,180 @@ pub struct PullDetail {
     /// When `mergeable` is `conflicting`: the files that conflict.
     #[serde(default)]
     pub conflicts: Vec<String>,
-    /// Earlier runs of its acceptance checks, newest first, without their
-    /// output.
+    /// Earlier records like `checks`, newest first, without their output.
     #[serde(default)]
     pub earlier_checks: Vec<CheckRun>,
+    /// The checks the default branch's protection requires, each as it
+    /// stands on the head commit. Empty when none are required.
+    #[serde(default, alias = "requiredChecks")]
+    pub required_checks: Vec<RequiredCheck>,
+}
+
+/// Where a required check stands on a commit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RequiredState {
+    Success,
+    Failure,
+    /// Reported and still running.
+    Pending,
+    /// Nothing has reported it on this commit yet.
+    Expected,
+}
+
+impl RequiredState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RequiredState::Success => "success",
+            RequiredState::Failure => "failure",
+            RequiredState::Pending => "pending",
+            RequiredState::Expected => "expected",
+        }
+    }
+}
+
+/// One check a branch's protection requires, as it stands on a commit.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequiredCheck {
+    /// The check's name, such as `CI` or `g1t / deploy`.
+    pub name: String,
+    pub state: RequiredState,
+    /// What the status that decided it says, if one did.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Where to see more: the workflow run, for one a workflow reported.
+    #[serde(default)]
+    pub target_url: Option<String>,
+}
+
+/// The events a workflow status's context can end in: `CI / pull_request`
+/// is the `CI` check, reported by a run for a `pull_request` event.
+const STATUS_EVENTS: &[&str] = &[
+    "push",
+    "pull_request",
+    "pull_request_target",
+    "pull_request_review",
+    "merge_group",
+    "workflow_dispatch",
+    "workflow_run",
+    "workflow_call",
+    "schedule",
+    "release",
+    "issues",
+    "issue_comment",
+    "repository_dispatch",
+];
+
+/// A status context's check name and the event it was reported for:
+/// `CI / pull_request` is `("CI", Some("pull_request"))`. A context that
+/// does not end in an event, such as `g1t / deploy`, is its own name.
+pub fn check_name(context: &str) -> (&str, Option<&str>) {
+    match context.rsplit_once(" / ") {
+        Some((name, event)) if STATUS_EVENTS.contains(&event) && !name.trim().is_empty() => (name, Some(event)),
+        _ => (context, None),
+    }
+}
+
+/// Where each required check stands among a commit's statuses. A check is
+/// met by any status of that name, for any event: one that failed fails
+/// it, one still running holds it, and with neither, one that passed
+/// passes it. Names compare without regard to case.
+pub fn required_checks(required: &[String], statuses: &[CommitStatus]) -> Vec<RequiredCheck> {
+    required
+        .iter()
+        .map(|name| {
+            let matching: Vec<&CommitStatus> = statuses
+                .iter()
+                .filter(|status| check_name(&status.context).0.eq_ignore_ascii_case(name.trim()))
+                .collect();
+            let failed = matching.iter().find(|s| s.state == "failure" || s.state == "error");
+            let pending = matching.iter().find(|s| s.state == "pending");
+            let passed = matching.iter().find(|s| s.state == "success");
+            let (state, decided) = match (failed, pending, passed) {
+                (Some(status), _, _) => (RequiredState::Failure, Some(*status)),
+                (None, Some(status), _) => (RequiredState::Pending, Some(*status)),
+                (None, None, Some(status)) => (RequiredState::Success, Some(*status)),
+                _ => (RequiredState::Expected, None),
+            };
+            RequiredCheck {
+                name: name.trim().to_owned(),
+                state,
+                description: decided.and_then(|status| status.description.clone()),
+                target_url: decided.and_then(|status| status.target_url.clone()),
+            }
+        })
+        .collect()
+}
+
+/// A repository's required check names, tidied: trimmed, without blanks
+/// or repeats (ignoring case), at most [`MAX_REQUIRED_CHECKS`].
+pub fn tidy_required(names: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for name in names {
+        let name: String = name.trim().chars().take(MAX_CHECK_NAME_CHARS).collect();
+        if !name.is_empty() && !out.iter().any(|kept| kept.eq_ignore_ascii_case(&name)) {
+            out.push(name);
+        }
+    }
+    out.truncate(MAX_REQUIRED_CHECKS);
+    out
+}
+
+/// The most checks a branch can require, and the longest name of one.
+pub const MAX_REQUIRED_CHECKS: usize = 20;
+pub const MAX_CHECK_NAME_CHARS: usize = 100;
+
+/// A check name seen on the repository's commits recently, for choosing
+/// required checks: what reported it, and for which events.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeenCheck {
+    pub name: String,
+    /// The events it was reported for, such as `pull_request`; empty for a
+    /// status that names none, such as a deployment's.
+    pub events: Vec<String>,
+    /// RFC 3339. The latest report.
+    pub last_seen: String,
+}
+
+/// `seen_checks`: the check names reported on a repository's commits in
+/// the last 30 days, most recent first. Returns `Outcome<Vec<SeenCheck>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SeenChecksArgs {
+    pub repo: RepoPath,
+    pub viewer: Viewer,
+}
+
+/// The heading an issue's plain-words description of done goes under.
+pub const DEFINITION_OF_DONE: &str = "## Definition of done";
+
+/// An issue's body with `items` added as a bulleted "Definition of done"
+/// section, for the agent and reviewers to read. Nothing is added when
+/// `items` is empty, or when the body already has the section, so folding
+/// the same items twice changes nothing.
+pub fn with_definition_of_done(body: &str, items: &[String]) -> String {
+    let items: Vec<&str> = items.iter().map(|item| item.trim()).filter(|item| !item.is_empty()).collect();
+    let body = body.trim();
+    if items.is_empty() || body.contains(DEFINITION_OF_DONE) {
+        return body.to_owned();
+    }
+    let list = items.iter().map(|item| format!("- {item}")).collect::<Vec<_>>().join("\n");
+    if body.is_empty() {
+        format!("{DEFINITION_OF_DONE}\n\n{list}")
+    } else {
+        format!("{body}\n\n{DEFINITION_OF_DONE}\n\n{list}")
+    }
+}
+
+/// Commands, as items of a definition of done: "`npm test` passes."
+pub fn commands_pass(commands: &[String]) -> Vec<String> {
+    commands
+        .iter()
+        .map(|command| command.trim())
+        .filter(|command| !command.is_empty())
+        .map(|command| format!("`{}` passes.", command.replace('`', "'")))
+        .collect()
 }
 
 /// Whether a pull request's change merges cleanly into the branch it
@@ -687,7 +859,7 @@ pub struct TakeMessagesArgs {
 pub enum Stage {
     /// The agent is making the change.
     Working,
-    /// The issue's acceptance checks are running against it.
+    /// Waiting for the checks workflows report on its head.
     Checking,
     /// A g1t agent is reviewing it.
     Reviewing,
@@ -700,7 +872,8 @@ pub enum Stage {
     /// In the repository's merge queue, being tested with what is ahead of
     /// it before it lands.
     Queued,
-    /// Checks passed, reviewed and approved, up to date. A person merges.
+    /// Required checks passed, reviewed and approved, up to date. A
+    /// person merges.
     Ready,
     /// g1t has stopped and a person has to decide what happens next.
     NeedsYou,
@@ -771,8 +944,13 @@ pub struct LifecycleJob {
 #[serde(rename_all = "camelCase", default)]
 pub struct RepoSettings {
     /// Land a g1t agent's pull request without a person once it is ready:
-    /// checks passed and approved as the settings below require.
+    /// required checks passed and approved as the settings below require.
     pub auto_merge: bool,
+    /// The checks that must pass on a pull request's head before it may
+    /// merge into the default branch, by name: a workflow's name (`CI`), or
+    /// the context of another status (`g1t / deploy`). The same for a
+    /// person's pull request and an agent's, and for the merge queue.
+    pub required_checks: Vec<String>,
     /// Refuse to merge a pull request that does not contain the default
     /// branch's latest commits, so that what merges is what was checked.
     /// When off, merging one that is behind brings it up to date first.
@@ -782,8 +960,8 @@ pub struct RepoSettings {
     pub required_approvals: u32,
     /// Whether a g1t agent's approval counts towards `required_approvals`.
     pub count_agent_approvals: bool,
-    /// Whether a member may merge although the acceptance checks did not
-    /// pass.
+    /// Whether someone who may merge can bypass required checks that have
+    /// not passed, by saying so as they merge.
     pub allow_ignoring_checks: bool,
     /// Whether a g1t agent's pull request is reviewed by a second agent
     /// without being asked.
@@ -809,6 +987,7 @@ impl Default for RepoSettings {
     fn default() -> Self {
         RepoSettings {
             auto_merge: false,
+            required_checks: Vec::new(),
             require_up_to_date: false,
             required_approvals: 0,
             count_agent_approvals: true,
@@ -891,6 +1070,8 @@ pub struct OpenIssueArgs {
     pub body: String,
     #[serde(default)]
     pub labels: Vec<String>,
+    /// Deprecated: commands, added to the body under "Definition of done".
+    /// Checks are the workflows the branch's protection requires.
     #[serde(default)]
     pub checks: Vec<String>,
 }
@@ -908,6 +1089,7 @@ pub struct DelegateIssueArgs {
     pub body: String,
     #[serde(default)]
     pub labels: Vec<String>,
+    /// Deprecated, as on `OpenIssueArgs`.
     #[serde(default)]
     pub checks: Vec<String>,
 }
@@ -988,6 +1170,34 @@ pub struct ListPullsArgs {
     pub viewer: Viewer,
     #[serde(default)]
     pub state: Option<State>,
+}
+
+/// `pulls_for_repos`: the newest open and the newest closed pull requests
+/// of many repositories, in one call, for pages that show several projects
+/// at once. Repositories the viewer cannot read are left out, as are forks
+/// (ask those with `list_pulls`). Returns `Vec<RepoPulls>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PullsForReposArgs {
+    /// At most [`MAX_PULLS_FOR_REPOS`] are looked at.
+    pub repo_ids: Vec<String>,
+    pub viewer: Viewer,
+    /// How many of each, open and closed, per repository (at most 100).
+    pub limit: u32,
+}
+
+/// The most repositories one `pulls_for_repos` call looks at.
+pub const MAX_PULLS_FOR_REPOS: usize = 50;
+
+/// One repository's pull requests from `pulls_for_repos`, newest first.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoPulls {
+    pub repo_id: String,
+    /// Draft and open.
+    pub open: Vec<Pull>,
+    /// Merged and closed.
+    pub closed: Vec<Pull>,
 }
 
 /// `get_issue` (`Outcome<IssueDetail>`), `get_pull` (`Outcome<PullDetail>`),
@@ -1107,8 +1317,8 @@ pub struct PullActionArgs {
     /// for it untouched, because this one is only part of the work.
     #[serde(default)]
     pub keep_issue_open: bool,
-    /// For `merge_pull`: merge although the acceptance checks have not
-    /// passed.
+    /// For `merge_pull`: merge although required checks have not passed,
+    /// where the repository lets members bypass them.
     #[serde(default)]
     pub ignore_checks: bool,
 }
@@ -1135,8 +1345,11 @@ pub struct PlannedIssue {
     /// Markdown: what to change, where, and why.
     pub body: String,
     pub labels: Vec<String>,
-    /// Commands that must pass once the change is made.
-    pub checks: Vec<String>,
+    /// What is true once it is done, in plain words. Added to the issue's
+    /// body under "Definition of done". Plans written before this was
+    /// called `done` named it `checks`.
+    #[serde(alias = "checks")]
+    pub done: Vec<String>,
     /// The files it will most likely change.
     pub files: Vec<String>,
     /// The positions, counting from 1, of earlier issues in the plan that
@@ -1303,9 +1516,9 @@ pub struct UpdatePullArgs {
     pub reviewers: Option<Vec<String>>,
 }
 
-/// `start_checks`: begins a run of the acceptance checks for a pull request
-/// that is ready for review. Called by the runner service, which starts the
-/// sandbox. Returns `Outcome<CheckJob>`.
+/// `start_checks`: always refused now; a pull request's checks are the
+/// workflows run on it. Kept so that a runner from before is answered.
+/// Returns `Outcome<CheckJob>`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartChecksArgs {
@@ -1547,7 +1760,8 @@ pub struct QueueEntry {
     pub combined_commit: Option<String>,
     /// Why it failed: a merge conflict or what could not be run.
     pub error: Option<String>,
-    /// The checks run against the tested state.
+    /// Commands run against the tested state by queues from before its
+    /// checks were workflows. Empty since.
     pub results: Vec<CheckResult>,
     /// Username of whoever merged it into the queue: a person, or `g1t`.
     pub enqueued_by: String,
@@ -1613,11 +1827,11 @@ pub struct QueueJob {
     pub branch: String,
     /// The pull requests to merge in, in order; the last is the entry.
     pub stack: Vec<QueueStackItem>,
-    /// Every acceptance check of every pull request in the stack.
+    /// Commands to run on the built state. Always empty: the state is
+    /// checked by the `merge_group` workflows run on it, and the default
+    /// branch's required checks must pass there.
     pub checks: Vec<String>,
-    /// The checks of issues already completed: the default branch's
-    /// contract. One that fails on the base alone is not held against the
-    /// entry.
+    /// Always empty, as `checks`.
     #[serde(default)]
     pub contract_checks: Vec<String>,
     /// Who the sandbox acts as: a member who can push the tested state.
@@ -1779,4 +1993,71 @@ pub struct Authored {
     pub counts: AuthoredCounts,
     /// Those repositories, most work first.
     pub repos: Vec<AuthoredRepo>,
+}
+
+#[cfg(test)]
+mod required_tests {
+    use super::*;
+
+    fn status(context: &str, state: &str) -> CommitStatus {
+        CommitStatus {
+            context: context.into(),
+            state: state.into(),
+            description: Some(format!("{context} {state}")),
+            target_url: None,
+            updated_at: String::new(),
+        }
+    }
+
+    #[test]
+    fn a_context_names_its_check_and_event() {
+        assert_eq!(check_name("CI / pull_request"), ("CI", Some("pull_request")));
+        assert_eq!(check_name("Build and test / merge_group"), ("Build and test", Some("merge_group")));
+        assert_eq!(check_name("g1t / deploy"), ("g1t / deploy", None));
+        assert_eq!(check_name("g1t / deploy (docs)"), ("g1t / deploy (docs)", None));
+        assert_eq!(check_name("lint"), ("lint", None));
+    }
+
+    #[test]
+    fn required_checks_are_missing_pending_failed_or_passed() {
+        let required = vec!["CI".to_owned(), "Lint".to_owned(), "g1t / deploy".to_owned(), "Docs".to_owned()];
+        let statuses = [
+            status("CI / pull_request", "success"),
+            status("Lint / pull_request", "pending"),
+            status("g1t / deploy", "failure"),
+        ];
+        let states: Vec<RequiredState> = required_checks(&required, &statuses).into_iter().map(|c| c.state).collect();
+        assert_eq!(
+            states,
+            [RequiredState::Success, RequiredState::Pending, RequiredState::Failure, RequiredState::Expected]
+        );
+    }
+
+    #[test]
+    fn any_event_reports_a_check_and_a_failure_wins() {
+        let required = vec!["ci".to_owned()];
+        let both = [status("CI / push", "failure"), status("CI / pull_request", "success")];
+        let check = &required_checks(&required, &both)[0];
+        assert_eq!(check.state, RequiredState::Failure);
+        assert_eq!(check.description.as_deref(), Some("CI / push failure"));
+        let queue = [status("CI / merge_group", "success")];
+        assert_eq!(required_checks(&required, &queue)[0].state, RequiredState::Success);
+    }
+
+    #[test]
+    fn required_names_are_tidied() {
+        let names = vec![" CI ".to_owned(), "ci".to_owned(), String::new(), "Lint".to_owned()];
+        assert_eq!(tidy_required(&names), ["CI", "Lint"]);
+    }
+
+    #[test]
+    fn a_definition_of_done_is_added_once() {
+        let items = commands_pass(&["cargo test".to_owned(), " ".to_owned()]);
+        assert_eq!(items, ["`cargo test` passes."]);
+        let body = with_definition_of_done("Fix the greeting.", &items);
+        assert_eq!(body, "Fix the greeting.\n\n## Definition of done\n\n- `cargo test` passes.");
+        assert_eq!(with_definition_of_done(&body, &items), body);
+        assert_eq!(with_definition_of_done("", &items), "## Definition of done\n\n- `cargo test` passes.");
+        assert_eq!(with_definition_of_done(" Text ", &[]), "Text");
+    }
 }

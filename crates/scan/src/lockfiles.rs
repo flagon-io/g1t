@@ -344,7 +344,7 @@ fn requirements(text: &str) -> Vec<(String, String)> {
 }
 
 /// A shell command that fails while `lockfile` still resolves `name` at
-/// `version`: an acceptance check for an upgrade, which passes only once
+/// `version`: a check for an upgrade, which passes only once
 /// the vulnerable version is gone from the lockfile.
 pub fn still_locked_check(lockfile: Lockfile, path: &str, name: &str, version: &str) -> String {
     let quote = |text: &str| format!("'{}'", text.replace('\'', "'\\''"));

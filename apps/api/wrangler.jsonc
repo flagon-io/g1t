@@ -3,6 +3,7 @@
 	"name": "g1t-api",
 	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
 	"compatibility_date": "2026-09-26",
+	"placement": { "mode": "off" },
 	"main": "build/index.js",
 	"build": { "command": "node ../../scripts/build-rust-worker.mjs" },
 	"workers_dev": false,
@@ -28,8 +29,11 @@
 		{ "binding": "CONTEXT", "service": "g1t-context" },
 		{ "binding": "SEARCH", "service": "g1t-search" }
 	],
-	// GitHub Actions artifacts and cache, in chunks, with KV's own expiry.
-	// (Moves to R2 once R2 is enabled on the account.)
+	// GitHub Actions artifacts, in chunks, with KV's own expiry (and cache
+	// entries saved before the cache moved to R2, until they expire).
 	"kv_namespaces": [{ "binding": "BLOBS", "id": "16a4232cb746418db53782aa068be693" }],
+	// actions/cache entries, up to 2 GB each, uploaded in parts. The actions
+	// service lists them and decides what is kept (services/actions/src/cache.rs).
+	"r2_buckets": [{ "binding": "ACTIONS_CACHE", "bucket_name": "g1t-actions-cache" }],
 	"observability": { "enabled": true }
 }

@@ -110,7 +110,7 @@ const FACTS: [string, string][] = [
 
 const FLOW: [string, string][] = [
   ["Brief", "Write the outcome you want, in plain words, or open an issue as you always would."],
-  ["Plan", "A planner agent splits it into issues, each with checks that prove it done, and the order they depend on."],
+  ["Plan", "A planner agent splits it into issues, each saying what done looks like, and the order they depend on."],
   ["Agents", "Each issue gets an agent as it unblocks. They know what the others are changing, and tell each other."],
   ["Review", "Checks run in clean sandboxes; a second agent reviews; you ask for changes and the agent makes them."],
   ["Main", "The queue tests every change with what lands before it. Main moves only to what passed, and production follows."],
@@ -322,14 +322,14 @@ export function Landing() {
             art={<PlanArt className="w-full" />}
             points={[
               "A brief planned into issues with dependencies",
-              "Acceptance checks that prove each issue done",
+              "Your workflows' required checks on every change",
               "Work starts as each dependency lands",
               "The plan as a live graph, with its cost",
             ]}
             more={["Hand off an outcome", `${DOCS}/guides/outcomes/`]}
           >
-            Write what should be true. A planner turns it into issues, each with checks that prove
-            it done and the order they depend on. Agents take each issue as it unblocks, and you
+            Write what should be true. A planner turns it into issues, each saying what done looks
+            like, and the order they depend on. Agents take each issue as it unblocks, and you
             watch the whole outcome converge.
           </Pillar>
 

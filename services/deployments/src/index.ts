@@ -44,6 +44,7 @@ import {
   identityClient,
   newId,
   ok,
+  openD1,
   projectsClient,
   repoMove,
   reposClient,
@@ -2085,13 +2086,16 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const { pathname } = new URL(request.url);
     if (request.method !== "POST") return new Response("Not found\n", { status: 404 });
-    const service = new Deployments(env);
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const rpcMatch = pathname.match(/^\/rpc\/([a-z_]+)$/);
     if (rpcMatch) {
+      // A replica near the caller when it asks for one (@g1t/contracts d1.ts).
+      const opened = openD1(env.DB, request);
+      const service = new Deployments(Object.create(env, { DB: { value: opened.db } }) as Env);
       const result = await rpc(service, rpcMatch[1], body, ctx);
-      return result === undefined ? new Response("Unknown method\n", { status: 404 }) : Response.json(result);
+      return opened.finish(result === undefined ? new Response("Unknown method\n", { status: 404 }) : Response.json(result));
     }
+    const service = new Deployments(env);
     // A build's reports, forwarded by the API.
     const jobMatch = pathname.match(/^\/jobs\/([a-z0-9_]+)\/(started|session|finish|fail)$/);
     if (jobMatch) return service.job(jobMatch[1], jobMatch[2], body);

@@ -25,7 +25,7 @@ agent at once:
 
 1. On Mission control, choose **Put an agent on it**.
 2. Pick the project, give a title, and say what you want done in plain
-   words. Add acceptance checks, one command per line, if you know them.
+   words, with what done means if you know it.
 3. Choose **Put an agent on it**.
 
 You land on the new issue with the agent already at work on its pull
@@ -49,7 +49,7 @@ From the API or an agent of your own, it is one call:
 curl -X POST https://api.g1t.sh/repos/<workspace>/<repo>/issues/delegate \
   -H "Authorization: Bearer $G1T_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"title": "Retry webhooks with exponential backoff", "body": "Deliveries that fail are dropped today. Retry them up to six times.", "checks": ["npm test"]}'
+  -d '{"title": "Retry webhooks with exponential backoff", "body": "Deliveries that fail are dropped today. Retry them up to six times."}'
 ```
 
 The answer holds the `issue`, the `pull` request the agent opened (or
@@ -57,6 +57,13 @@ The answer holds the `issue`, the `pull` request the agent opened (or
 and when it did not start, a `code`, a `message` and a `fix_url`. On the MCP
 server it is the `agent` tool's `delegate` action. See
 [put an agent on it](/reference/api/issues/delegate/).
+
+The `checks` field this call and `create_issue` used to take is
+deprecated. It is still accepted: its commands are added to the issue's
+body under `## Definition of done`, one line each (`` - `npm test` passes. ``),
+and the answer carries a `deprecation` string saying so. What has to pass
+before the pull request merges is the default branch's
+[required status checks](/guides/pull-requests/#required-status-checks).
 
 ## Assigning agents
 
@@ -166,17 +173,29 @@ the files and merge to the default branch.
 Making the change is the first step. g1t takes the rest itself, and you
 get the pull request back ready to merge:
 
-1. **Checks.** The issue's
-   [acceptance checks](/concepts/overview/#acceptance-checks) run against
-   the change in a separate, clean sandbox. The agent has no say in the
-   result.
+1. **Checks.** Every push the agent makes runs the repository's
+   [workflows](/guides/actions/) on the pull request, as for anyone's pull
+   request. g1t waits for them to finish. Only the workflow runs report, so
+   the agent has no say in the result.
 2. **Review.** A different agent reads the change and posts comments on
    lines, a summary and a verdict.
-3. **Revision.** If the checks fail or the review asks for changes, the
-   author is sent back with exactly what was found, and steps 1 and 2 run
-   again on the result. This happens at most twice.
-4. **Ready to merge.** Checks passed and approved. Merging is yours,
-   unless the repository says otherwise (below).
+3. **Revision.** If a check fails or the review asks for changes, the
+   author is sent back with exactly what was found. For a failed check,
+   that is the end of the log of each failed job, up to three jobs and
+   about 3,000 characters each; it can read more with `get_workflow_run`
+   and `get_job_logs`. Steps 1 and 2 run again on the result. This happens
+   at most twice, or as often as the repository's **Revisions before asking
+   you** allows.
+4. **Ready to merge.** The required checks passed and it is approved.
+   Merging is yours, unless the repository says otherwise (below).
+
+Agents are told to run the same tests and linters the workflows run before
+they finish, so most failures are caught in the sandbox. What "done" means
+for the issue, if its description says so, is context for the agent and
+its reviewer; what decides the merge is the default branch's
+[required status checks](/guides/pull-requests/#required-status-checks).
+A repository with no workflows has nothing to prove a change works; **Add
+CI** gives it one ([add CI](/guides/actions/#add-ci)).
 
 If `main` has moved in the meantime, that does not hold the pull request
 up. Merging it brings it up to date first: g1t merges `main` in, an agent
@@ -192,30 +211,43 @@ requests is found to conflict, g1t does not wait for a merge to trip over
 it: the agent is sent to merge `main` in and resolve the conflicts, told
 which files conflict, and the checks run again on the result.
 
-The pull request's page shows which step it is at. If g1t cannot finish,
-because the checks still fail after two revisions, a review could not be
-written, or a conflict could not be resolved while bringing it up to date,
-it stops and the page says
-**Needs you**, with the reason. Pushing to the pull request yourself starts
-it moving again.
+The pull request's page shows which step it is at. While a required check
+has not reported on its latest commit, it says so: "Waiting for the
+required check CI to report on its latest commit." If g1t cannot finish,
+because a required check still fails after the agent revised as often as
+the repository allows ("The required check CI still fails after the agent
+revised twice."), a review could not be written, or a conflict could not
+be resolved while bringing it up to date, it stops and the page says
+**Needs you**, with the reason. A check that is not required and still
+fails after the last revision does not hold it. Pushing to the pull
+request yourself starts it moving again.
 
 ### What a repository can ask for
 
-Under a project's **Settings → Repository**, someone with the Maintain
-[role](/guides/access-and-roles/) or higher sets the rules its pull requests follow:
+Under a project's **Settings → Branches and merging**, someone with the
+Maintain [role](/guides/access-and-roles/) or higher sets the rules its pull
+requests follow. **Branch protection** holds the rules for every pull
+request, a person's or an agent's; they are described in
+[required status checks](/guides/pull-requests/#required-status-checks):
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| Require a pull request to change `main` | Off | Refuses pushes to the default branch. |
+| Require a pull request to change the default branch | Off | Refuses pushes to the default branch. |
+| Required status checks | None | The checks that must pass on a pull request's head before it merges. |
 | Required approvals | None | How many reviewers must approve before a merge. A reviewer who asked for changes blocks it. |
 | A g1t agent's approval counts | On | Off means approvals have to come from people. |
-| Require acceptance checks to pass | Off | On means nobody can merge with failed checks. |
-| Require pull requests to be up to date | Off | On means catching up is a step of its own and the checks run again. |
+| Require branches to be up to date before merging | Off | On means catching up is a step of its own and the checks run again. |
+| Merge through a queue | Off | Merging tests a pull request together with those ahead of it; the default branch only moves to a combination that passed. See [merge queue](/guides/merge-queue/). |
+| Allow bypassing required checks | On | Lets someone who may merge merge without the required checks passing. Off means nobody can. |
+
+**g1t agents** holds what g1t does with its own agents' pull requests:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
 | Review by a second agent | On | Off leaves review to people. |
 | Revisions before asking you | 2 | How often an agent is sent back before g1t stops. |
 | Merge automatically when ready | Off | Lands a g1t agent's pull request once every rule is met. |
 | Ask a person before merging low-confidence changes | On | A g1t agent's change [rated low](#how-sure-the-agent-is) waits for a person's approval instead of merging by itself or joining the queue. |
-| Merge through a queue | Off | Merging tests a pull request together with those ahead of it; `main` only moves to a combination that passed. See [merge queue](/guides/merge-queue/). |
 
 A g1t agent's pull request follows the same rules as anyone's. If the
 repository wants approvals from people, it waits for them, and shows
@@ -234,9 +266,10 @@ same time can also ask each other questions and hand each other work. See
 
 A repository can land a g1t agent's pull request by itself once it is
 ready. Someone with the Maintain role or higher turns this on under the repository's
-**Settings → Repository**; it is off to begin with. The merge is recorded as made by
+**Settings → Branches and merging**; it is off to begin with. The merge is recorded as made by
 `g1t`, the issue closes naming the pull request, and nothing short of
-ready is ever merged this way. One that is behind `main` is brought up to
+ready is ever merged this way: every required check has passed on its
+head. One that is behind `main` is brought up to
 date as part of the merge. Pull requests from people and from other
 agents always wait for a person to merge them.
 
@@ -244,7 +277,7 @@ Every step is recorded: revisions and catch-ups in the pull request's
 **Session**, reviews in its conversation.
 
 This applies to pull requests made by g1t agents. One you or your own
-agent opened is yours to drive; the same checks run on it, and you can ask
+agent opened is yours to drive; the same workflows run on it, and you can ask
 for a review or a catch-up from its page.
 
 ### How sure the agent is
@@ -263,12 +296,14 @@ is low.
 
 | Signal | Effect |
 | --- | --- |
-| The acceptance checks fail, or could not run | Low |
+| Required checks fail | Low |
+| It failed in the [merge queue](/guides/merge-queue/) | Low |
 | The reviewer agent asks for changes | Low |
 | A run was stopped at its cost or time cap | Low |
 | Sent back to revise | 1 point per revision, at most 3 |
-| The checks have not finished, or passed only on a retry | 1 point |
-| The issue has no acceptance checks | 1 point |
+| Required checks have not finished, or have not run on its head | 1 point |
+| Checks passed only on a retry | 1 point |
+| The default branch has no required checks | 1 point |
 | No review yet, or the repository has no reviewer agent | 1 point |
 | The reviewer approved but left three or more comments on lines | 1 point |
 | Code changed and no test was added or changed | 1 point |
@@ -287,7 +322,7 @@ the two: what it observes can lower the agent's own word, never raise it.
 When the agent's word is lower, the reasons start with "agent says low",
 and the pull request lists what it was unsure about.
 
-For high confidence, the reasons say what it rests on: checks pass,
+For high confidence, the reasons say what it rests on: required checks pass,
 approved on the first review, tests added, a small change.
 
 The pull request's `confidence` in the
@@ -445,6 +480,13 @@ Git, common shell tools, and toolchains for Node.js, Python, Go and Rust, so
 an agent can build and test most projects. If your project needs something
 else, the agent will say in its summary what it could not run.
 
+A workspace (or a project) can send its agents' work to
+[its own runners](/guides/self-hosted-runners/#agents-on-your-runners)
+instead, so agents build and test with what those machines have. The agent
+works the same way there, with the same short-lived credentials, and its
+model calls still go through g1t; the machine time is free. g1t's network
+guardrails cannot be enforced on your machines, and the run says so.
+
 ## Who can run agents
 
 Putting an agent to work (assigning it, mentioning it, asking it for a
@@ -461,7 +503,7 @@ Agents cost g1t real money, so they run for paid workspaces. A free
 workspace has the whole forge, and two ways to try agents:
 
 - **The trial.** $5 of usage, once per workspace, after a card check.
-- **The open-source pool.** Checks, workflows and the merge queue on public
+- **The open-source pool.** Workflows and the merge queue on public
   repositories, after the same card check. It does not pay for agents.
 
 This holds whether the agent uses g1t's hosted models or
@@ -562,7 +604,7 @@ git at all.
 | Catch up | Reads the repository; pushes to the pull request's fork or branch only | Records the session of its own pull request |
 | Review | Reads the change and the repository; pushes nothing | Reports its review through its own run |
 | Plan | Reads the repository; pushes nothing | Reports its plan through its own run, for a person to apply; it can create issues in its repository only |
-| Checks, merge check | Reads the change; pushes nothing | None |
+| Merge check | Reads the change; pushes nothing | None |
 | Merge queue | Reads each queued change; pushes the queue's own branch only | None |
 | Deploy | Reads the commit it builds; pushes nothing | None |
 

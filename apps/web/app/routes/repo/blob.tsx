@@ -1,7 +1,7 @@
 import type { Route } from "./+types/blob";
 import { page } from "../../lib/meta";
 import { BlobView } from "../../components/repo-view";
-import { highlight, highlightLines } from "../../lib/highlight.server";
+import { highlightLines } from "../../lib/highlight.server";
 import { repos } from "../../lib/services.server";
 import { redirectIfBranchRenamed } from "../../lib/branch-redirect.server";
 import { getViewer, unwrap } from "../../lib/session.server";
@@ -31,7 +31,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   }
   return {
     blob,
-    html: blob.text == null ? null : await highlight(blob.path, blob.text),
+    html: blob.text == null ? null : await highlightLines(blob.path, blob.text),
     blame: null,
   };
 }

@@ -55,6 +55,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::PurgeRepo,
             Op::GetRepoSettings,
             Op::UpdateRepoSettings,
+            Op::ListCheckNames,
             Op::ListEvents,
         ],
     ),
@@ -162,6 +163,21 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         ],
     ),
     (
+        "Runners",
+        "Self-hosted runners: your own machines, which run your workflow jobs (and, if you choose, your agents' work) for $0 of g1t compute. They register with a short-lived token and only ever connect out.",
+        &[
+            Op::ListRunners,
+            Op::CreateRunnerRegistrationToken,
+            Op::RemoveRunner,
+            Op::ListRunnerGroups,
+            Op::CreateRunnerGroup,
+            Op::UpdateRunnerGroup,
+            Op::DeleteRunnerGroup,
+            Op::GetRunnerSettings,
+            Op::UpdateRunnerSettings,
+        ],
+    ),
+    (
         "Webhooks",
         "Signed HTTPS requests sent to your own address as things happen, for a repository or a whole workspace.",
         &[
@@ -230,6 +246,7 @@ fn title(op: Op) -> &'static str {
         Op::UpdateRepo => "Update a repository",
         Op::GetRepoSettings => "Get repository settings",
         Op::UpdateRepoSettings => "Update repository settings",
+        Op::ListCheckNames => "List check names",
         Op::GetMergeQueue => "Get the merge queue",
         Op::MessageAgent => "Message an agent",
         Op::AnswerMessage => "Answer a message",
@@ -292,6 +309,15 @@ fn title(op: Op) -> &'static str {
         Op::ListActionsVariables => "List variables",
         Op::SetActionsVariable => "Set a variable",
         Op::DeleteActionsVariable => "Delete a variable",
+        Op::ListRunners => "List self-hosted runners",
+        Op::ListRunnerGroups => "List runner groups",
+        Op::GetRunnerSettings => "Get runner settings",
+        Op::CreateRunnerRegistrationToken => "Create a runner registration token",
+        Op::RemoveRunner => "Remove a self-hosted runner",
+        Op::CreateRunnerGroup => "Create a runner group",
+        Op::UpdateRunnerGroup => "Change a runner group",
+        Op::DeleteRunnerGroup => "Delete a runner group",
+        Op::UpdateRunnerSettings => "Change runner settings",
         Op::ListCollaborators => "List who has access",
         Op::AddCollaborator => "Add a collaborator",
         Op::UpdateCollaborator => "Change a collaborator's role",
@@ -828,7 +854,7 @@ mod tests {
     /// after the prefix, as `whsec_…` and `g1t_…` do.
     #[test]
     fn examples_hold_no_real_looking_secrets() {
-        let prefixes = ["whsec_", "g1t_", "sk_live_", "sk_test_", "ghp_", "github_pat_", "xoxb-", "AKIA"];
+        let prefixes = ["whsec_", "g1t_", "g1tr_", "g1trt_", "sk_live_", "sk_test_", "ghp_", "github_pat_", "xoxb-", "AKIA"];
         for (line, text) in REFERENCE.lines().enumerate() {
             for prefix in prefixes {
                 let mut rest = text;

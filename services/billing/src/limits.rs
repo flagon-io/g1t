@@ -621,6 +621,11 @@ impl Billing {
     /// `storage` and `git` are charged by billing once the month is over
     /// (see `storage`); `deployments` charges its own.
     pub(crate) async fn note_pending(&self, a: NotePendingArgs) -> Result<bool> {
+        // The actions cache is the plan's to pay for; free workspaces are
+        // held to its quota instead.
+        if crate::storage::PLAN_ONLY.contains(&a.source.as_str()) && !self.has_plan(&a.workspace.to_lowercase()).await? {
+            return Ok(false);
+        }
         let now = rfc3339(now_ms());
         let detail = a.detail.as_deref().map(str::trim).filter(|d| !d.is_empty()).map(|d| d.chars().take(200).collect::<String>());
         self.set_pending(&a.workspace, &a.source, &now[..7], a.cost_micros, detail.as_deref()).await?;

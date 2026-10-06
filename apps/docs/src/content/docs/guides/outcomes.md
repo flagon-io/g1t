@@ -5,8 +5,8 @@ description: Write what should be true, let an agent plan the issues, and follow
 
 You do not have to split work into issues yourself. Write the outcome you
 want on a repository's **Plan** page. An agent reads the repository and
-proposes the issues that would get there, with acceptance checks and the
-order they have to land in. You read the plan, keep what you want, and open
+proposes the issues that would get there, with what done means for each and
+the order they have to land in. You read the plan, keep what you want, and open
 it. g1t agents then work on the issues, as many at once as the dependencies
 allow, and the outcome page shows each one until it lands.
 
@@ -43,7 +43,7 @@ A plan proposes up to 12 issues. For each one it shows:
 | --- | --- |
 | Title and labels | What the issue is. |
 | **Starts at once**, or **After** | Whether it depends on nothing, or which earlier issues have to merge first. |
-| Acceptance checks | The commands a pull request for it must make pass, taken from how the repository is tested. |
+| Definition of done | What has to be true for it to be done, in plain words. It is added to the issue's description under **Definition of done**, for the agent and its reviewer. What a pull request for it must pass to merge is the default branch's [required status checks](/guides/pull-requests/#required-status-checks). |
 | Files | The files it will most likely change. |
 | **What the agent will be told** | The issue's description, in full. An agent given the issue works from this text. |
 
@@ -71,7 +71,7 @@ An issue queued for a g1t agent starts when:
   it merged; and
 - the repository has room. At most six g1t agents make changes in one
   repository at once. The rest wait their turn, which also leaves sandboxes
-  free for checks and reviews.
+  free for reviews.
 
 Each queued issue says so in its conversation, for example "queued this for
 g1t-agent, to start once #41 has merged". From there each issue is
@@ -104,7 +104,7 @@ the issue when there is none yet, and shows its state:
 | Waiting for an agent | Queued, and waiting for an agent to be free. |
 | Open | Nobody is working on it. |
 | Agent working | A g1t agent is making the change. |
-| Checking | The acceptance checks are running. |
+| Checking | Its workflows are running, or a required check has not reported yet. |
 | In review | A g1t agent is reviewing the change. |
 | Revising | The agent was sent back by the checks, a review or a person. |
 | Catching up | The agent is merging in the branch it will land on, which has moved. |
@@ -157,7 +157,9 @@ curl -X POST https://api.g1t.sh/repos/acme/greeter/plans/pln_01…/apply \
 ```
 
 A plan's `status` is `planning`, `ready`, `failed` or `applied`. Each
-proposed issue has `title`, `body`, `labels`, `checks`, `files`,
+proposed issue has `title`, `body`, `labels`, `done` (what done means, in
+plain words, added to `body` under **Definition of done** when it is
+opened), `files`,
 `depends_on` (positions in the plan, counting from 1) and, once applied,
 `number`. `keep` takes positions counting from 1; leave it out to open
 every issue.

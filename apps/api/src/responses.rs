@@ -99,6 +99,7 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::DeleteRepo => through::<repos::DeletedRepo>(op, sent),
         Op::ListDeletedRepos => through::<Vec<repos::DeletedRepo>>(op, sent),
         Op::GetRepoSettings | Op::UpdateRepoSettings => through::<work::RepoSettings>(op, sent),
+        Op::ListCheckNames => through::<Vec<work::SeenCheck>>(op, sent),
         Op::GetMergeQueue => through::<work::QueueView>(op, sent),
         Op::ListIssues => through::<Vec<work::Issue>>(op, sent),
         Op::CreateIssue | Op::UpdateIssue | Op::CloseIssue | Op::ReopenIssue => {
@@ -119,6 +120,11 @@ fn sample(op: Op, example: &Value) -> Value {
             through::<actions::WorkflowRun>(op, sent)
         }
         Op::ListActionsSecrets | Op::ListActionsVariables => through::<Vec<actions::Setting>>(op, sent),
+        Op::ListRunners => through::<Vec<g1t_contracts::runners::Runner>>(op, sent),
+        Op::ListRunnerGroups => through::<Vec<g1t_contracts::runners::RunnerGroup>>(op, sent),
+        Op::CreateRunnerGroup | Op::UpdateRunnerGroup => through::<g1t_contracts::runners::RunnerGroup>(op, sent),
+        Op::GetRunnerSettings | Op::UpdateRunnerSettings => through::<g1t_contracts::runners::RunnerSettings>(op, sent),
+        Op::CreateRunnerRegistrationToken => through::<g1t_contracts::runners::RegistrationToken>(op, sent),
         Op::ListWebhooks => through::<Vec<webhooks::Hook>>(op, sent),
         Op::ListIntegrations => through::<Vec<integrations::Connection>>(op, sent),
         Op::GetModelRoutes | Op::SetModelRoutes => through::<Vec<integrations::ModelRoute>>(op, sent),

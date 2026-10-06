@@ -1,4 +1,4 @@
-import { ArrowDownWideNarrow, ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, LoaderCircle, Plus, Sparkles } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, Plus, Sparkles } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Link, useFetcher, useRouteLoaderData, useSearchParams } from "react-router";
 
@@ -121,7 +121,9 @@ function QuickForm({ quick, variant = "quiet" }: { quick: QuickAction; variant?:
   const fetcher = useFetcher<{ error?: string } | null>();
   const [sent, setSent] = useState(false);
   const busy = fetcher.state !== "idle";
-  const done = sent && fetcher.state === "idle" && !fetcher.data?.error;
+  // Shown as done the moment it is sent, and undone if it fails: the page
+  // reloads behind it, which takes longer than the action.
+  const done = sent && (busy || !fetcher.data?.error);
   return (
     <fetcher.Form method="post" action={quick.to} onSubmit={() => setSent(true)} className="contents">
       {Object.entries(quick.fields).map(([name, value]) => (
@@ -138,7 +140,7 @@ function QuickForm({ quick, variant = "quiet" }: { quick: QuickAction; variant?:
           done && "border-accent/40 text-accent",
         )}
       >
-        {busy ? <LoaderCircle size={14} className="animate-spin" /> : done ? <Check size={14} /> : null}
+        {done ? <Check size={14} /> : null}
         {done ? quick.done : quick.label}
       </button>
       {fetcher.data?.error && <span className="basis-full text-xs text-danger">{fetcher.data.error}</span>}

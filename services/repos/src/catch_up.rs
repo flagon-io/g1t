@@ -68,7 +68,7 @@ pub(crate) fn encode_entries(entries: &[TreeEntry]) -> Vec<u8> {
 
 /// The directories above a path, nearest the root first: `a/b/c` is in
 /// `a` and `a/b`.
-fn ancestors(path: &str) -> impl Iterator<Item = &str> {
+pub(crate) fn ancestors(path: &str) -> impl Iterator<Item = &str> {
     path.match_indices('/').map(move |(at, _)| &path[..at])
 }
 
@@ -292,7 +292,7 @@ pub(crate) fn merge_message(base: &str, branch: &str, number: u32) -> String {
 /// The trees at `dirs` (and the root, `""`) under `root`, by path: each
 /// one's id and entries. A directory that is not there is left out. Each
 /// level is read at once.
-async fn read_dirs<R: GitRepo>(
+pub(crate) async fn read_dirs<R: GitRepo>(
     repo: &R,
     root: &str,
     dirs: &BTreeSet<String>,
@@ -335,6 +335,34 @@ fn needs_agent(reason: NeedsAgentReason, detail: impl Into<String>, paths: Vec<S
 }
 
 impl<S: GitStore> Repos<S> {
+    /// The name and address a commit made for `actor` carries: their
+    /// noreply address unless they chose to show their own. An agent's
+    /// commit is its person's. Without identity, the noreply address all
+    /// the same.
+    pub(crate) async fn commit_identity(&self, actor: &g1t_contracts::User) -> g1t_contracts::accounts::CommitIdentity {
+        let person = actor
+            .acting
+            .as_ref()
+            .map_or((actor.id.clone(), actor.username.clone()), |acting| {
+                (acting.on_behalf_of.id.clone(), acting.on_behalf_of.username.clone())
+            });
+        let found = match &self.identity {
+            Some(identity) => g1t_kit::call::<_, Option<g1t_contracts::accounts::CommitIdentity>>(
+                identity,
+                "commit_identity",
+                &g1t_contracts::accounts::CommitIdentityArgs { user_id: person.0.clone() },
+            )
+            .await
+            .ok()
+            .flatten(),
+            None => None,
+        };
+        found.unwrap_or_else(|| g1t_contracts::accounts::CommitIdentity {
+            name: person.1.clone(),
+            email: g1t_contracts::accounts::noreply_address(&person.0, &person.1),
+        })
+    }
+
     pub(crate) async fn update_pull_branch(&self, a: UpdatePullBranchArgs) -> Result<Outcome<PullBranchUpdate>> {
         let actor = Some(a.actor.clone());
         let Some(source) = self.registry.by_id(&a.source_id).await? else {
@@ -469,31 +497,7 @@ impl<S: GitStore> Repos<S> {
             }
         };
 
-        // The person's commit name and address: their noreply address
-        // unless they chose to show their own. An agent's commit is its
-        // person's. Without identity, the noreply address all the same.
-        let person = a
-            .actor
-            .acting
-            .as_ref()
-            .map_or((a.actor.id.clone(), a.actor.username.clone()), |acting| {
-                (acting.on_behalf_of.id.clone(), acting.on_behalf_of.username.clone())
-            });
-        let author = match &self.identity {
-            Some(identity) => g1t_kit::call::<_, Option<g1t_contracts::accounts::CommitIdentity>>(
-                identity,
-                "commit_identity",
-                &g1t_contracts::accounts::CommitIdentityArgs { user_id: person.0.clone() },
-            )
-            .await
-            .ok()
-            .flatten(),
-            None => None,
-        }
-        .unwrap_or_else(|| g1t_contracts::accounts::CommitIdentity {
-            name: person.1.clone(),
-            email: g1t_contracts::accounts::noreply_address(&person.0, &person.1),
-        });
+        let author = self.commit_identity(&a.actor).await;
         let commit = commit_object(
             &merged.tree,
             &[&head.hash, &base.hash],

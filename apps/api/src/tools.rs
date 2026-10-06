@@ -64,8 +64,9 @@ pub const TOOLS: &[Tool] = &[
             a("get", Op::GetRepo, "One repository"),
             a("create", Op::CreateRepo, "Create one, empty or copied from a public git URL"),
             a("update", Op::UpdateRepo, "Change description, website, topics, default branch, protection"),
-            a("get_settings", Op::GetRepoSettings, "How pull requests merge"),
-            a("update_settings", Op::UpdateRepoSettings, "Change how pull requests merge"),
+            a("get_settings", Op::GetRepoSettings, "Branch protection: required checks, approvals, how pull requests merge"),
+            a("update_settings", Op::UpdateRepoSettings, "Change branch protection and how pull requests merge"),
+            a("check_names", Op::ListCheckNames, "Check names reported lately, to require on the default branch"),
             a("list_labels", Op::ListLabels, "Labels in use"),
             a("list_events", Op::ListEvents, "Timeline: pushes, issues, pull requests, comments"),
             a("rename_branch", Op::RenameBranch, "Rename a branch"),
@@ -87,7 +88,7 @@ pub const TOOLS: &[Tool] = &[
         default_action: None,
         actions: &[
             a("list", Op::ListIssues, "Issues on a repository, newest first"),
-            a("get", Op::GetIssue, "One issue with comments, checks and its pull requests"),
+            a("get", Op::GetIssue, "One issue with comments and its pull requests"),
             a("create", Op::CreateIssue, "Open an issue"),
             a("update", Op::UpdateIssue, "Change title, body, labels or assignees"),
             a("close", Op::CloseIssue, "Close it without a pull request"),
@@ -103,7 +104,7 @@ pub const TOOLS: &[Tool] = &[
         default_action: None,
         actions: &[
             a("list", Op::ListPullRequests, "Pull requests on a repository, newest first"),
-            a("get", Op::GetPullRequest, "Status, checks, reviews, overlaps and whether it is behind"),
+            a("get", Op::GetPullRequest, "Status, checks and required checks, reviews, overlaps, whether it is behind"),
             a("changes", Op::GetPullRequestChanges, "Files and line-by-line diff"),
             a("create", Op::CreatePullRequest, "Start a draft with its own fork to push to, or open one from a pushed branch"),
             a("record_session", Op::RecordSession, "Append prompt, reasoning and tool entries to its session"),
@@ -131,7 +132,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "plan",
         title: "Plans",
-        description: "Turn an outcome into issues: an agent proposes them with checks and dependencies; nothing opens until you apply the plan.",
+        description: "Turn an outcome into issues: an agent proposes them with what done means and their dependencies; nothing opens until you apply the plan.",
         default_action: None,
         actions: &[
             a("create", Op::PlanWork, "Ask an agent for a plan; read it with get until ready"),
@@ -152,7 +153,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "workflow",
         title: "Workflows",
-        description: "GitHub Actions workflows from .g1t/workflows: their runs, jobs and logs, and running, cancelling or rerunning them.",
+        description: "GitHub Actions workflows from .g1t/workflows: their runs, jobs and logs, and running, cancelling or rerunning them. Also the self-hosted runners they run on: a workspace's (`workspace`) or a repository's own (`repo`), their groups, and where agent work runs.",
         default_action: None,
         actions: &[
             a("list", Op::ListWorkflows, "Workflows on the default branch"),
@@ -163,6 +164,15 @@ pub const TOOLS: &[Tool] = &[
             a("cancel", Op::CancelWorkflowRun, "Cancel a run"),
             a("rerun", Op::RerunWorkflowRun, "Run a finished run again"),
             a("update", Op::UpdateWorkflow, "Turn a workflow on or off"),
+            a("list_runners", Op::ListRunners, "Self-hosted runners, with status, labels and what each is doing"),
+            a("create_runner_token", Op::CreateRunnerRegistrationToken, "A one-hour token for g1t-runner register"),
+            a("remove_runner", Op::RemoveRunner, "Remove a self-hosted runner"),
+            a("list_runner_groups", Op::ListRunnerGroups, "A workspace's runner groups"),
+            a("create_runner_group", Op::CreateRunnerGroup, "Make a group, for some repositories"),
+            a("update_runner_group", Op::UpdateRunnerGroup, "Rename a group or change its repositories"),
+            a("delete_runner_group", Op::DeleteRunnerGroup, "Delete a group; its runners join the default"),
+            a("get_runner_settings", Op::GetRunnerSettings, "Where agent work runs; whether forks may use runners"),
+            a("update_runner_settings", Op::UpdateRunnerSettings, "Change them"),
         ],
     },
     Tool {
@@ -272,6 +282,9 @@ fn destructive(op: Op) -> bool {
             | Op::SetModelRoutes
             | Op::SetBasePermission
             | Op::MergePullRequest
+            | Op::RemoveRunner
+            | Op::DeleteRunnerGroup
+            | Op::UpdateRunnerSettings
     )
 }
 

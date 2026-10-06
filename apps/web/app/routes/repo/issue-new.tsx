@@ -71,7 +71,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         ...form.getAll("label").map(String),
         ...String(form.get("labels") ?? "").split(","),
       ],
-      checks: String(form.get("checks") ?? "").split("\n"),
     },
   );
   if (!result.ok) return { error: result.error.message };
@@ -125,7 +124,7 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
         </Field>
         <Field
           label="Description"
-          hint="What is wrong or wanted, and anything needed to act on it. An agent given this issue works from this text."
+          hint="What is wrong or wanted, and anything needed to act on it. An agent given this issue works from this text. To say what done looks like, add a list under a “## Definition of done” heading. Pull requests for it merge once the checks the default branch requires pass."
         >
           <Textarea name="body" rows={8} />
         </Field>
@@ -144,12 +143,6 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
             />
           </div>
         </fieldset>
-        <Field
-          label="Acceptance checks (optional)"
-          hint="One command per line. A pull request for this issue should make them all pass."
-        >
-          <Textarea name="checks" rows={3} placeholder="cargo test" />
-        </Field>
         {loaderData.canAssign && (
           <div className="rounded-xl border border-merged/25 bg-merged/[0.04] px-3.5 py-3">
             <CheckboxOption
@@ -161,7 +154,7 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
                   Assign g1t-agent now
                 </span>
               }
-              description="It opens a pull request for this issue in a sandbox of its own and sees it through checks and review. There is no model or agent count to choose."
+              description="It opens a pull request for this issue in a sandbox of its own and sees it through: this repository's workflows run on it as its checks, and it revises until the required ones pass and the review approves. There is no model or agent count to choose."
             />
             {(!loaderData.agents || loaderData.computeNote) && (
               <p className="mt-2 pl-6 text-xs text-warn">

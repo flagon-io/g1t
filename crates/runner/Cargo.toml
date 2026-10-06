@@ -3,7 +3,7 @@ name = "g1t-runner"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
-description = "The program inside a g1t sandbox: runs an agent, checks, a catch-up merge, a review or a GitHub Actions job, and reports back."
+description = "The program inside a g1t sandbox: runs an agent, checks, a catch-up merge, a review or a GitHub Actions job, and reports back. Also the self-hosted runner, g1t-runner register/run, on your own machines."
 
 [dependencies]
 g1t-actions = { path = "../actions" }
@@ -11,6 +11,8 @@ sha2 = "0.10"
 serde_yaml = "0.9"
 toml = "0.8"
 hex = "0.4"
+# Checking that a release of the self-hosted runner is g1t's.
+ed25519-dalek = "3"
 anyhow = "1"
 base64 = "0.22"
 serde = { workspace = true }

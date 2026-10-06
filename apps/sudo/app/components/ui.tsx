@@ -5,11 +5,12 @@
  */
 import { AlertTriangle, CheckCircle2, Info } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import { Link, type LinkProps } from "react-router";
+import { Link, type LinkProps, useRouteLoaderData } from "react-router";
 
 import type { Limit, Terms, Trust } from "@g1t/contracts";
 
 import { usd } from "~/lib/money";
+import { when } from "~/lib/time";
 
 export function Field({
   label,
@@ -246,18 +247,25 @@ export function Stat({ label, value, hint, tone }: { label: string; value: React
   );
 }
 
-const DATE = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" });
-const DATE_TIME = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" });
+/** The zone the pages say times in, from the root loader (lib/time.ts); UTC without one. */
+export function useZone(): string {
+  return useRouteLoaderData<{ zone?: string }>("root")?.zone ?? "UTC";
+}
 
-/** A timestamp, in UTC, as staff compare notes across time zones. */
+/**
+ * A timestamp in the staff member's zone, with the zone's abbreviation;
+ * the UTC instant in `datetime` and on hover, for comparing notes.
+ */
 export function When({ at, time = false }: { at: string | null | undefined; time?: boolean }) {
+  const zone = useZone();
   if (!at) return <span className="text-faint">—</span>;
   const date = new Date(at);
   if (Number.isNaN(date.getTime())) return <span>{at}</span>;
+  const shown = when(date, zone, time);
   return (
-    <time dateTime={date.toISOString()} title={date.toISOString()}>
-      {(time ? DATE_TIME : DATE).format(date)}
-      {time && <span className="text-faint"> UTC</span>}
+    <time dateTime={date.toISOString()} title={shown.utc}>
+      {shown.text}
+      {shown.zone && <span className="text-faint"> {shown.zone}</span>}
     </time>
   );
 }

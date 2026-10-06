@@ -1,17 +1,33 @@
-//! Artifacts and the cache of GitHub Actions jobs, kept in Workers KV in
-//! chunks, with KV's own expiry: artifacts for 14 days with their run,
-//! cache entries for 7 days with their repository.
+//! Artifacts and the cache of GitHub Actions jobs.
 //!
-//! A sandbox reaches these with its job's token, at
-//! `/actions/jobs/{job}/artifacts[/{name}]` and `/actions/jobs/{job}/cache`.
+//! Artifacts are kept in Workers KV in chunks, with KV's own expiry: 14
+//! days with their run. Cache entries are kept in R2 (ACTIONS_CACHE), up
+//! to 2 GB each, uploaded in parts; the actions service lists them and
+//! decides what is found, what fits and what is evicted
+//! (services/actions/src/cache.rs). Entries saved in KV before the cache
+//! moved are still found there until they expire.
+//!
+//! A sandbox reaches these with its job's token:
+//!
+//! - `GET /actions/jobs/{job}/artifacts`, `PUT|GET .../artifacts/{name}`
+//! - `GET .../cache?key=&restore=`: the entry, streamed, its key in `x-g1t-key`
+//! - `POST .../cache/uploads?key=&size=`: `{ id, upload, part_bytes }`
+//! - `PUT .../cache/uploads/{id}/{part}?upload=`: one part, `{ part, etag }`
+//! - `POST .../cache/uploads/{id}/complete?upload=` with `{ size, parts }`
+//! - `DELETE .../cache/uploads/{id}?upload=`: gives the upload up
+//! - `PUT .../cache?key=`: a whole entry of at most 60 MB at once (older runners)
+//!
 //! People download an artifact at
 //! `/repos/{owner}/{repo}/actions/runs/{run}/artifacts/{name}`.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use worker::kv::KvStore;
-use worker::{Env, Request, Response, Result};
+use worker::{Bucket, Env, Request, Response, Result, UploadedPart};
 
+use g1t_contracts::actions::{
+    CACHE_PART_BYTES, CacheAbortArgs, CacheCommitArgs, CacheCommitted, CacheHit, CacheLookupArgs, CacheReservation, CacheReserveArgs,
+};
 use g1t_contracts::{FailureCode, Outcome};
 
 use crate::operations::Services;
@@ -21,7 +37,6 @@ const CHUNK: usize = 20 * 1024 * 1024;
 /// The largest artifact or cache entry, kept within a Worker's memory.
 const MAX_BYTES: usize = 60 * 1024 * 1024;
 const ARTIFACT_TTL: u64 = 14 * 24 * 60 * 60;
-const CACHE_TTL: u64 = 7 * 24 * 60 * 60;
 
 #[derive(Serialize, Deserialize)]
 struct Meta {
@@ -182,44 +197,222 @@ pub async fn for_job(mut request: Request, env: &Env, services: &Services, metho
                 None => error(404, "No such artifact."),
             }
         }
-        (_, "cache") => {
-            let key = query(&request, "key").unwrap_or_default();
-            if key.is_empty() || key.len() > 400 {
-                return error(400, "A cache key is 1 to 400 characters.");
-            }
-            if method == "PUT" {
-                let base = format!("c/{repo}/{key}");
-                // A key is written once, as on GitHub.
-                if kv.get(&base).text().await?.is_some() {
-                    return crate::reply(&json!({ "saved": false, "reason": "That key is already cached." }));
-                }
-                let bytes = request.bytes().await?;
-                if bytes.len() > MAX_BYTES {
-                    return error(413, "Cache entries are at most 60 MB.");
-                }
-                put(&kv, &base, &key, &bytes, CACHE_TTL).await?;
-                return crate::reply(&json!({ "saved": true }));
-            }
-            // The exact key, else the newest entry under each restore key.
-            let exact = format!("c/{repo}/{key}");
-            if let Some(bytes) = get(&kv, &exact).await? {
-                let mut response = Response::from_bytes(bytes)?;
-                response.headers_mut().set("x-g1t-key", &key)?;
-                return Ok(response);
-            }
-            for prefix in query(&request, "restore").unwrap_or_default().lines().map(str::trim).filter(|p| !p.is_empty()) {
-                if let Some((base, meta)) = list(&kv, &format!("c/{repo}/{prefix}")).await?.into_iter().next()
-                    && let Some(bytes) = get(&kv, &base).await?
-                {
-                    let mut response = Response::from_bytes(bytes)?;
-                    response.headers_mut().set("x-g1t-key", &meta.name)?;
-                    return Ok(response);
-                }
-            }
-            error(404, "Nothing cached under those keys.")
+        (_, what) if what == "cache" || what.starts_with("cache/") => {
+            let bucket = env.bucket("ACTIONS_CACHE")?;
+            cache(request, &kv, &bucket, services, method, job, &token, &repo, what).await
         }
         _ => error(404, "No such endpoint."),
     }
+}
+
+/// A part's number and the etag R2 gave it.
+#[derive(Deserialize)]
+struct Part {
+    part: u16,
+    etag: String,
+}
+
+#[derive(Deserialize)]
+struct Complete {
+    size: u64,
+    parts: Vec<Part>,
+}
+
+/// An outcome of the actions service, or its failure as the reply it means.
+fn refused<T>(outcome: Outcome<T>) -> std::result::Result<T, Result<Response>> {
+    match outcome {
+        Outcome::Ok(value) => Ok(value),
+        Outcome::Fail(failure) => {
+            let status = match failure.code {
+                FailureCode::Unauthenticated => 401,
+                FailureCode::NotFound => 404,
+                FailureCode::Conflict => 409,
+                FailureCode::Forbidden => 403,
+                _ => 400,
+            };
+            Err(error(status, &failure.message))
+        }
+    }
+}
+
+/// The cache: restoring, uploading in parts, and the older whole upload.
+#[allow(clippy::too_many_arguments)]
+async fn cache(
+    mut request: Request,
+    kv: &KvStore,
+    bucket: &Bucket,
+    services: &Services,
+    method: &str,
+    job: &str,
+    token: &str,
+    repo: &str,
+    what: &str,
+) -> Result<Response> {
+    let parts: Vec<&str> = what.split('/').collect();
+    let upload_id = query(&request, "upload").unwrap_or_default();
+    match (method, parts.as_slice()) {
+        ("GET", ["cache"]) => {
+            let key = query(&request, "key").unwrap_or_default();
+            let restore: Vec<String> =
+                query(&request, "restore").unwrap_or_default().lines().map(str::trim).filter(|p| !p.is_empty()).map(str::to_owned).collect();
+            let found: Outcome<Option<CacheHit>> = g1t_kit::call(
+                &services.actions,
+                "cache_lookup",
+                &CacheLookupArgs { job: job.to_owned(), token: token.to_owned(), key: key.clone(), restore: restore.clone() },
+            )
+            .await?;
+            let found = match refused(found) {
+                Ok(found) => found,
+                Err(reply) => return reply,
+            };
+            if let Some(hit) = found
+                && let Some(object) = bucket.get(&hit.object).execute().await?
+                && let Some(body) = object.body()
+            {
+                let mut response = Response::from_body(body.response_body()?)?;
+                let headers = response.headers_mut();
+                headers.set("x-g1t-key", &hit.key)?;
+                headers.set("content-length", &object.size().to_string())?;
+                headers.set("content-type", "application/octet-stream")?;
+                return Ok(response);
+            }
+            // Entries saved in KV before the cache moved to R2.
+            kv_lookup(kv, repo, &key, &restore).await
+        }
+        // Older runners send a whole entry of at most 60 MB at once.
+        ("PUT", ["cache"]) => {
+            let key = query(&request, "key").unwrap_or_default();
+            let bytes = request.bytes().await?;
+            if bytes.len() > MAX_BYTES {
+                return error(413, "An entry sent at once is at most 60 MB; newer runners upload it in parts.");
+            }
+            let reserved: Outcome<CacheReservation> = g1t_kit::call(
+                &services.actions,
+                "cache_reserve",
+                &CacheReserveArgs { job: job.to_owned(), token: token.to_owned(), key, size: bytes.len() as u64 },
+            )
+            .await?;
+            let reserved = match reserved {
+                Outcome::Fail(failure) if failure.code == FailureCode::Conflict => {
+                    return crate::reply(&json!({ "saved": false, "reason": failure.message }));
+                }
+                other => match refused(other) {
+                    Ok(reserved) => reserved,
+                    Err(reply) => return reply,
+                },
+            };
+            let size = bytes.len() as u64;
+            bucket.put(&reserved.object, bytes).execute().await?;
+            commit(bucket, services, job, token, &reserved.id, size).await?;
+            crate::reply(&json!({ "saved": true }))
+        }
+        ("POST", ["cache", "uploads"]) => {
+            let key = query(&request, "key").unwrap_or_default();
+            let size = query(&request, "size").and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+            let reserved: Outcome<CacheReservation> = g1t_kit::call(
+                &services.actions,
+                "cache_reserve",
+                &CacheReserveArgs { job: job.to_owned(), token: token.to_owned(), key, size },
+            )
+            .await?;
+            let reserved = match refused(reserved) {
+                Ok(reserved) => reserved,
+                Err(reply) => return reply,
+            };
+            let upload = bucket.create_multipart_upload(&reserved.object).execute().await?;
+            crate::reply(&json!({ "id": reserved.id, "upload": upload.upload_id().await, "part_bytes": CACHE_PART_BYTES }))
+        }
+        ("PUT", ["cache", "uploads", id, part]) => {
+            let part = part.parse::<u16>().unwrap_or(0);
+            if part == 0 || upload_id.is_empty() {
+                return error(400, "A part is numbered from 1, and names its upload.");
+            }
+            let length = request.headers().get("content-length")?.and_then(|l| l.parse::<u64>().ok()).unwrap_or(0);
+            if length == 0 || length > CACHE_PART_BYTES {
+                return error(413, &format!("A part is 1 to {} MB, with its length.", CACHE_PART_BYTES / 1_048_576));
+            }
+            // The body goes to R2 as it comes, never held whole here.
+            let Some(body) = request.inner().body() else { return error(400, "The part is empty.") };
+            let upload = bucket.resume_multipart_upload(object_of(repo, id), &upload_id)?;
+            let uploaded = upload.upload_part(part, body).await?;
+            crate::reply(&json!({ "part": uploaded.part_number(), "etag": uploaded.etag() }))
+        }
+        ("POST", ["cache", "uploads", id, "complete"]) => {
+            let done: Complete = match request.json().await {
+                Ok(done) => done,
+                Err(_) => return error(400, "Send { size, parts: [{ part, etag }] }."),
+            };
+            let upload = bucket.resume_multipart_upload(object_of(repo, id), &upload_id)?;
+            let mut parts = done.parts;
+            parts.sort_by_key(|p| p.part);
+            if let Err(problem) = upload.complete(parts.into_iter().map(|p| UploadedPart::new(p.part, p.etag))).await {
+                let _ = abort(services, job, token, id).await;
+                return error(400, &format!("The upload could not be completed: {problem}"));
+            }
+            commit(bucket, services, job, token, id, done.size).await?;
+            crate::reply(&json!({ "saved": true }))
+        }
+        ("DELETE", ["cache", "uploads", id]) => {
+            if let Ok(upload) = bucket.resume_multipart_upload(object_of(repo, id), &upload_id) {
+                let _ = upload.abort().await;
+            }
+            abort(services, job, token, id).await?;
+            crate::reply(&json!({ "aborted": true }))
+        }
+        _ => error(404, "No such endpoint."),
+    }
+}
+
+/// Where an entry is in R2: under its repository, by its id, as the
+/// actions service named it when it was reserved.
+fn object_of(repo: &str, id: &str) -> String {
+    format!("c/{repo}/{id}")
+}
+
+/// Marks an uploaded entry ready, and deletes what that evicted.
+async fn commit(bucket: &Bucket, services: &Services, job: &str, token: &str, id: &str, size: u64) -> Result<()> {
+    let committed: Outcome<CacheCommitted> = g1t_kit::call(
+        &services.actions,
+        "cache_commit",
+        &CacheCommitArgs { job: job.to_owned(), token: token.to_owned(), id: id.to_owned(), size },
+    )
+    .await?;
+    if let Outcome::Ok(committed) = committed
+        && !committed.evicted.is_empty()
+    {
+        bucket.delete_multiple(committed.evicted.iter().map(String::as_str).collect()).await?;
+    }
+    Ok(())
+}
+
+async fn abort(services: &Services, job: &str, token: &str, id: &str) -> Result<()> {
+    let _: Outcome<bool> = g1t_kit::call(
+        &services.actions,
+        "cache_abort",
+        &CacheAbortArgs { job: job.to_owned(), token: token.to_owned(), id: id.to_owned() },
+    )
+    .await?;
+    Ok(())
+}
+
+/// An entry saved in KV before the cache moved to R2, by key or restore key.
+async fn kv_lookup(kv: &KvStore, repo: &str, key: &str, restore: &[String]) -> Result<Response> {
+    // The exact key, else the newest entry under each restore key.
+    if let Some(bytes) = get(kv, &format!("c/{repo}/{key}")).await? {
+        let mut response = Response::from_bytes(bytes)?;
+        response.headers_mut().set("x-g1t-key", key)?;
+        return Ok(response);
+    }
+    for prefix in restore {
+        if let Some((base, meta)) = list(kv, &format!("c/{repo}/{prefix}")).await?.into_iter().next()
+            && let Some(bytes) = get(kv, &base).await?
+        {
+            let mut response = Response::from_bytes(bytes)?;
+            response.headers_mut().set("x-g1t-key", &meta.name)?;
+            return Ok(response);
+        }
+    }
+    error(404, "Nothing cached under those keys.")
 }
 
 /// Someone who can see the run downloading one of its artifacts.

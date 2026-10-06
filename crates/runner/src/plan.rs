@@ -1,6 +1,6 @@
 //! Turns an outcome someone wrote into a plan: the issues that would get
-//! there, what each must pass, which files each will touch, and which must
-//! land before which.
+//! there, what done means for each, which files each will touch, and which
+//! must land before which.
 //!
 //! The agent reads the repository to do it, so the plan is about the code
 //! as it is and not a guess. It writes the plan to a file as JSON and this
@@ -21,7 +21,7 @@ use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 
 use crate::report::Reporter;
-use crate::{WORKDIR, auth_option, env, git, harness};
+use crate::{WORKDIR, auth_option, env, harness};
 
 const PLAN_FILE: &str = "/work/plan.json";
 
@@ -34,8 +34,8 @@ and each will be merged on its own. So:
 - Make each issue one coherent change that can be merged by itself and leaves the project working.
 - Write the body for someone with no other context: what to change, where, and why. Name the files and functions involved.
 - Prefer several small issues to one large one, but do not split a change that only makes sense whole. At most 12 issues.
-- Give acceptance checks: shell commands that must pass once the change is made. Use the project's real test or build commands. \
-Give none if the project has no way to check that kind of change.
+- Say what done means for each, in plain words a reviewer can confirm: a few short points, such as what a command prints or what a page shows. \
+Do not list the project's tests: its workflows run them on every pull request.
 - List the files each issue will most likely change.
 - Two agents working at once must not edit the same code. If two issues would change the same file, or one needs what another adds, \
 make the later one depend on the earlier. Otherwise leave them independent, so that they are worked on at the same time.
@@ -49,7 +49,7 @@ Write the plan to /work/plan.json as JSON with exactly this shape:
       \"title\": \"One line, as an instruction\",
       \"body\": \"Markdown.\",
       \"labels\": [\"feature\"],
-      \"checks\": [\"cargo test\"],
+      \"done\": [\"`greet ana` prints Hello, ana!\"],
       \"files\": [\"src/lib.rs\"],
       \"depends_on\": [1]
     }
@@ -67,11 +67,7 @@ fn plan() -> Result<Value> {
     let workdir = Path::new(WORKDIR);
 
     std::fs::create_dir_all("/work")?;
-    git(
-        Path::new("/work"),
-        &["-c", &auth, "clone", "--quiet", &remote, WORKDIR],
-    )
-    .context("could not clone the repository")?;
+    crate::clone::clone(Path::new("/work"), &auth, &[], &remote, WORKDIR).context("could not clone the repository")?;
 
     let prompt = format!("{INSTRUCTIONS}\n\n{}", env("PROMPT")?);
     // A plan has no session; what matters is the plan.

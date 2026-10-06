@@ -3,9 +3,13 @@
 	"name": "g1t",
 	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
 	"compatibility_date": "2026-09-26",
-	// Runs beside the services it calls, which run beside their databases:
-	// a page makes several calls in turn, and only the page travels back.
-	"placement": { "mode": "smart" },
+	// AsyncLocalStorage, for per-request timings and D1 bookmarks
+	// (app/lib/perf.server.ts).
+	"compatibility_flags": ["nodejs_als"],
+	// Where it runs: docs/PERFORMANCE.md. Off runs it in the data centre
+	// nearest the visitor; scripts/perf/placement-probe.mjs measures the
+	// alternatives and `apply` changes every Worker's at once.
+	"placement": { "mode": "off" },
 	"main": "./workers/app.ts",
 	"routes": [{ "pattern": "g1t.sh", "custom_domain": true }],
 	// The site holds no data of its own; everything goes through services.
@@ -16,6 +20,9 @@
 		{ "binding": "BLOBS", "id": "16a4232cb746418db53782aa068be693" },
 		{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }
 	],
+	// The self-hosted runner's releases, served at /downloads/runner/
+	// (routes/downloads-runner.ts); published by scripts/runner-release.mjs.
+	"r2_buckets": [{ "binding": "DOWNLOADS", "bucket_name": "g1t-downloads" }],
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "REPOS", "service": "g1t-repos" },

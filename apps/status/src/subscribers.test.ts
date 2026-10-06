@@ -53,7 +53,7 @@ test("letters: escaped HTML, plain text, and an unsubscribe link in every update
   assert.ok(text.includes("Affects: Git."));
   assert.equal(unsubscribeHeaders("https://u")["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
   assert.ok(render(confirmLetter("https://c", ["Git"])).text.includes("affecting Git"));
-  assert.ok(render(alertLetter({ title: "Detected: API not answering", parts: ["API"], since: "5 Oct 12:00 UTC", link: "https://sudo.g1t.sh/incidents/x" })).text.includes("https://sudo.g1t.sh/incidents/x"));
+  assert.ok(render(alertLetter({ title: "Detected: API not answering", lines: ["API has not answered on 3 checks in a row since 5 Oct 12:00 UTC."], link: "https://sudo.g1t.sh/incidents/x" })).text.includes("https://sudo.g1t.sh/incidents/x"));
 });
 
 test("senders: the binding when there is one, none otherwise", async () => {

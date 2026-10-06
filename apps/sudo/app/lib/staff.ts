@@ -15,3 +15,9 @@ export function requireStaff(context: Readonly<RouterContextProvider>): Staff {
   if (!staff?.email) throw new Response("Forbidden", { status: 403 });
   return staff;
 }
+
+/** The zone this request's pages say times in, and whether the staff member chose it (lib/time.ts). */
+export type Zone = { zone: string; chosen: boolean };
+
+/** Set by the worker from the `sudo_tz` cookie or Cloudflare's guess; UTC otherwise. */
+export const zoneContext = createContext<Zone>({ zone: "UTC", chosen: false });

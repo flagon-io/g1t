@@ -20,7 +20,8 @@ export type ScopeResource =
   | "workspace"
   | "access"
   | "webhooks"
-  | "secrets";
+  | "secrets"
+  | "runners";
 
 export type ScopeLevel = "read" | "write" | "run" | "admin";
 
@@ -50,6 +51,8 @@ export const SCOPES = [
   { scope: "webhooks:admin", description: "Create, change and delete webhooks" },
   { scope: "secrets:read", description: "List secrets (never their values) and read variables" },
   { scope: "secrets:admin", description: "Set and delete secrets and variables" },
+  { scope: "runners:read", description: "See self-hosted runners, their groups and where agents run" },
+  { scope: "runners:admin", description: "Register and remove self-hosted runners, change their groups and settings" },
 ] as const;
 
 export type Scope = (typeof SCOPES)[number]["scope"];
@@ -68,6 +71,7 @@ export const SCOPE_RESOURCES: { resource: ScopeResource; label: string }[] = [
   { resource: "access", label: "Who has access" },
   { resource: "webhooks", label: "Webhooks" },
   { resource: "secrets", label: "Secrets and variables" },
+  { resource: "runners", label: "Self-hosted runners" },
 ];
 
 const LEVEL_ORDER: Record<ScopeLevel, number> = { read: 0, write: 1, run: 2, admin: 3 };
@@ -120,7 +124,7 @@ export type PresetId = "read_only" | "agent" | "ci" | "full";
 /** Starting points for choosing scopes. `*` is full access. */
 export const PRESET_SCOPES = {
   read_only: [
-    "repo:read", "code:read", "issues:read", "pull_requests:read", "workflows:read", "memory:read", "account:read", "workspace:read", "access:read", "webhooks:read", "secrets:read",
+    "repo:read", "code:read", "issues:read", "pull_requests:read", "workflows:read", "memory:read", "account:read", "workspace:read", "access:read", "webhooks:read", "secrets:read", "runners:read",
   ] as const,
   agent: [
     "repo:read", "code:read", "code:write", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "agents:run", "workflows:read", "memory:read", "memory:write", "account:read", "workspace:read", "access:read", "webhooks:read", "secrets:read",
@@ -178,6 +182,7 @@ export const OPERATION_SCOPES = [
   ["list_events", "repo:read"],
   ["list_labels", "repo:read"],
   ["get_repo_settings", "repo:read"],
+  ["list_check_names", "repo:read"],
   ["list_deleted_repos", "repo:read"],
   ["create_repo", "repo:write"],
   ["update_repo", "repo:write"],
@@ -253,6 +258,16 @@ export const OPERATION_SCOPES = [
   ["delete_actions_secret", "secrets:admin"],
   ["set_actions_variable", "secrets:admin"],
   ["delete_actions_variable", "secrets:admin"],
+  // Self-hosted runners.
+  ["list_runners", "runners:read"],
+  ["list_runner_groups", "runners:read"],
+  ["get_runner_settings", "runners:read"],
+  ["create_runner_registration_token", "runners:admin"],
+  ["remove_runner", "runners:admin"],
+  ["create_runner_group", "runners:admin"],
+  ["update_runner_group", "runners:admin"],
+  ["delete_runner_group", "runners:admin"],
+  ["update_runner_settings", "runners:admin"],
 ] as const;
 
 /**
@@ -278,6 +293,7 @@ export const SCOPE_GROUPS: { id: string; label: string; scopes: Scope[] }[] = [
   { id: "memory", label: "Memory & search", scopes: ["memory:read", "memory:write"] },
   { id: "account", label: "Account", scopes: ["account:read", "account:write"] },
   { id: "workspace", label: "Workspace", scopes: ["workspace:read", "access:read", "webhooks:read", "secrets:read"] },
+  { id: "runners", label: "Runners", scopes: ["runners:read"] },
 ];
 
 /** The admin scopes, shown under "Dangerous" behind a warning. */

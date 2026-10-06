@@ -15,7 +15,7 @@ when you do.
 | --- | --- |
 | **Name** | The repository's name, the second part of its address. |
 | **Details** | Its description, website and topics, shown on its page, in [search and Explore](/guides/search/). |
-| **Branches** | The default branch, renaming a branch, and a link to **Branches and merging**: [branch protection](/guides/git/#protected-branches), required approvals, the [merge queue](/guides/merge-queue/) and what agents do. What a sandbox may reach is under **Guardrails**; see [guardrails](/guides/guardrails/). |
+| **Branches** | The default branch, renaming a branch, and a link to **Branches and merging**: [branch protection](/guides/git/#protected-branches), [required status checks](/guides/pull-requests/#required-status-checks), required approvals, the [merge queue](/guides/merge-queue/) and what agents do. What a sandbox may reach is under **Guardrails**; see [guardrails](/guides/guardrails/). |
 | **Danger zone** | Change visibility, archive, [transfer](/guides/transferring-repositories/) and delete. Shown to people with the Admin role. |
 
 While a repository is [archived](#archive-a-repository), the settings that

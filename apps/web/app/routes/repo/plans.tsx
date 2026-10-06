@@ -134,7 +134,7 @@ export default function Plans({ loaderData, actionData, params }: Route.Componen
           <h3 className="font-medium">What a plan gives you</h3>
           <ul className="mt-2 list-disc space-y-1.5 pl-4 text-muted">
             <li>Issues small enough to be merged one at a time, written so that an agent needs nothing else.</li>
-            <li>Acceptance checks on each, taken from how this repository is tested.</li>
+            <li>What done looks like for each, in plain words, added to its description.</li>
             <li>The files each will touch, and a dependency wherever two would collide.</li>
             <li>
               Independent issues are worked on at the same time. One that depends on

@@ -178,7 +178,7 @@ test("components: an installation without a host leaves that part off", () => {
   const keys = components({ SITE_URL: "http://localhost:8787", API_URL: "http://localhost:8787/api", PROBE_REPO: "me/demo" }, false).map(
     (c) => c.key,
   );
-  assert.deepEqual(keys, ["site", "api", "git"]);
+  assert.deepEqual(keys, ["site", "api", "git", "speed"]);
   const bare = components({ SITE_URL: "http://g1t:8787" }, false);
   assert.deepEqual(
     bare.map((c) => c.key),
@@ -188,8 +188,12 @@ test("components: an installation without a host leaves that part off", () => {
   const all = components(VARS, true);
   assert.deepEqual(
     all.map((c) => c.key),
-    ["site", "api", "git", "mcp", "docs", "deployments", "agents", "sandboxes", "billing"],
+    ["site", "api", "git", "speed", "mcp", "docs", "deployments", "agents", "sandboxes", "billing"],
   );
+  const speed = all.find((c) => c.key === "speed")!;
+  assert.deepEqual(speed.check, { kind: "http", steps: [{ url: "https://g1t.sh/flagon-io/g1t" }, { url: "https://g1t.sh/explore" }] });
+  assert.equal(classify({ ok: true, ms: 900 }, speed.slowMs).state, "degraded");
+  assert.equal(classify({ ok: true, ms: 300 }, speed.slowMs).state, "up");
   const git = all.find((c) => c.key === "git")!;
   assert.deepEqual(git.check, { kind: "http", steps: [{ url: "https://g1t.sh/flagon-io/g1t.git/info/refs?service=git-upload-pack" }] });
 });

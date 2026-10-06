@@ -49,7 +49,16 @@ export type ComponentInfo = {
   /** Whether g1t as a whole is down when this is. */
   core: boolean;
   check: Check;
+  /** Slower than this, it counts as degraded; `SLOW_MS` when absent. */
+  slowMs?: number;
 };
+
+/**
+ * The page-speed budget the status page holds the site to: the slower of a
+ * public project page and Explore, to the first byte of the answer, from a
+ * Cloudflare data centre. docs/PERFORMANCE.md has the targets.
+ */
+export const SPEED_BUDGET_MS = 800;
 
 /** A token no one holds: the API asks identity about it and refuses it. */
 export const NO_TOKEN = `g1t_${"0".repeat(40)}`;
@@ -112,6 +121,17 @@ export function components(vars: Partial<Targets>, billing = true): ComponentInf
           checks: "Listing the branches of a public repository over HTTPS, the first step of every clone.",
           core: true,
           check: { kind: "http", steps: [{ url: `${site}/${repo}.git/info/refs?service=git-upload-pack` }] },
+        }
+      : null,
+    site && repo
+      ? {
+          key: "speed",
+          name: "Page speed",
+          address: `${shown}/${repo}`,
+          checks: `A public project page and Explore each answering within ${SPEED_BUDGET_MS} ms. Slower counts as degraded.`,
+          core: false,
+          check: { kind: "http", steps: [{ url: `${site}/${repo}` }, { url: `${site}/explore` }] },
+          slowMs: SPEED_BUDGET_MS,
         }
       : null,
     mcp

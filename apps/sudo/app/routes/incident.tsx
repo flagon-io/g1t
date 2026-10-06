@@ -309,7 +309,7 @@ export default function Incident({ loaderData, actionData }: Route.ComponentProp
           <h2 className="font-semibold">This is a draft</h2>
           <p className="mt-1 text-sm text-muted">
             {incident.source === "detected"
-              ? "The checks failed several times in a row and made this. Nobody outside sees it until you publish it. If it was a blip, dismiss it."
+              ? "The checks failed or were slow three times in a row and made this. Nobody outside sees it until you publish it. If it was a blip, dismiss it; if no one picks it up and its parts stay healthy for 10 minutes, it is dismissed on its own."
               : "Nobody outside sees it until you publish it."}
           </p>
           <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">

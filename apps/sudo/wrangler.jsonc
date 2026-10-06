@@ -3,6 +3,7 @@
 	"name": "g1t-sudo",
 	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
 	"compatibility_date": "2026-09-26",
+	"placement": { "mode": "off" },
 	"main": "./workers/app.ts",
 	// Staff only: reachable at sudo.g1t.sh, behind Cloudflare Access, and
 	// nowhere else. No workers.dev address and no preview URLs, so there is

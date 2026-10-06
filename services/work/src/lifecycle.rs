@@ -1,9 +1,11 @@
 //! Seeing a pull request through. Once a g1t agent has made a change, g1t
-//! takes each remaining step itself: the acceptance checks, a review by
-//! another agent, sending the author back to address what either found,
-//! and catching up when the branch it would land on has moved. It stops
-//! when the pull request is ready for a person to merge, or when it has
-//! tried and a person has to decide.
+//! takes each remaining step itself: waiting for the checks the
+//! repository's workflows report on it, a review by another agent, sending
+//! the author back to address a failed check (with what its jobs printed)
+//! or the review, and catching up when the branch it would land on has
+//! moved. It stops when the pull request meets everything the default
+//! branch's protection requires, or when it has tried and a person has to
+//! decide.
 //!
 //! This service decides what the next step is and claims it. The runner
 //! service asks, on every event that could change the answer, and carries
@@ -36,6 +38,11 @@ pub(crate) const POLICY_ACTOR_ID: &str = "g1t_policy";
 pub(crate) const POLICY_ACTOR_NAME: &str = "g1t";
 /// How much of a failed check's output the author is shown.
 const MAX_CHECK_OUTPUT_CHARS: usize = 4_000;
+/// How many failed jobs' logs the author is shown, and how much of each.
+const MAX_FAILED_JOBS: usize = 3;
+const MAX_JOB_LOG_CHARS: usize = 3_000;
+/// The most pages of a job's log read to find its end.
+const MAX_LOG_PAGES: usize = 6;
 const MANAGED_PAGE: u32 = 200;
 
 /// The part of a pull request's row that tracks its lifecycle.
@@ -79,8 +86,9 @@ struct ReviewNote {
 
 /// What the author is being sent back to address.
 pub(crate) enum Feedback {
+    /// The merge queue took it out: its combined state failed.
     FailedChecks,
-    /// Workflows that failed on its head.
+    /// Checks that failed on its head.
     FailedWorkflows,
     /// The review that finished at this time.
     Review(String),
@@ -137,11 +145,10 @@ struct Facts {
     stalled: Option<String>,
     /// The step under way, if one was claimed and is still being waited for.
     working_on: Option<String>,
+    /// `failed` when the merge queue took it out.
     check_status: Option<CheckStatus>,
     /// A review someone asked for is being written.
     review_pending: bool,
-    /// Whether the issue has acceptance checks at all.
-    has_checks: bool,
     revisions: u32,
     /// The latest finished review of the change as it is now.
     review: Option<FinishedReview>,
@@ -163,7 +170,7 @@ struct Facts {
     person_request: Option<PersonRequest>,
     /// Its place in the merge queue, and what is ahead of it there.
     queued: Option<(QueueState, Vec<u32>)>,
-    /// What the workflows run on its head say.
+    /// What the checks on its head say, against the required ones.
     workflows: WorkflowFacts,
     /// Why the agent's change has low confidence, when the repository asks
     /// a person before merging one and no person has approved it since.
@@ -173,10 +180,12 @@ struct Facts {
 /// Where a pull request stands, and the step to take if it is g1t's turn.
 ///
 /// The order is: nothing while a step is under way; a person asking for
-/// changes is answered first; the checks must pass; then a review must
-/// approve; then it must be up to date. A person's or an agent's request
-/// for changes, or a failed check, sends the author back, a limited number
-/// of times, after which a person is asked.
+/// changes is answered first; its checks must finish, and the required
+/// ones pass; then a review must approve; then it must be up to date. A
+/// person's or an agent's request for changes, or a failed check, sends the
+/// author back, a limited number of times, after which a person is asked.
+/// A check the branch does not require stops holding it once the
+/// revisions run out.
 fn decide(facts: Facts) -> (Lifecycle, Next) {
     let revisions = facts.revisions;
     let wait = |stage, detail: &str| (at(stage, detail, revisions), Next::Wait);
@@ -226,12 +235,6 @@ fn decide(facts: Facts) -> (Lifecycle, Next) {
         Some(_) => return wait(Stage::Reviewing, "A g1t agent is reviewing the change."),
         None => {}
     }
-    if matches!(
-        facts.check_status,
-        Some(CheckStatus::Queued | CheckStatus::Running)
-    ) {
-        return wait(Stage::Checking, "The acceptance checks are running.");
-    }
     if facts.review_pending {
         return wait(Stage::Reviewing, "A g1t agent is reviewing the change.");
     }
@@ -261,64 +264,74 @@ fn decide(facts: Facts) -> (Lifecycle, Next) {
         );
     }
 
-    // An issue's checks, and any failure recorded as one, such as the merge
-    // queue taking the pull request out.
-    if facts.has_checks || matches!(facts.check_status, Some(CheckStatus::Failed | CheckStatus::Errored)) {
-        match facts.check_status {
-            Some(CheckStatus::Passed) => {}
-            Some(CheckStatus::Failed) if exhausted => {
-                return wait(
-                    Stage::NeedsYou,
-                    &format!(
-                        "The acceptance checks still fail after the agent revised {}.",
-                        times(revisions)
-                    ),
-                );
-            }
-            Some(CheckStatus::Failed) => {
-                return (
-                    at(
-                        Stage::Revising,
-                        "The acceptance checks failed. The agent is being sent back to fix them.",
-                        revisions,
-                    ),
-                    Next::Revise(Feedback::FailedChecks),
-                );
-            }
-            Some(CheckStatus::Errored) => {
-                return wait(Stage::NeedsYou, "The acceptance checks could not be run.");
-            }
-            _ => {
-                return wait(
-                    Stage::Checking,
-                    "Waiting for the acceptance checks to start.",
-                );
-            }
-        }
-    }
-
-    // Its workflows, like its checks, must pass.
-    if !facts.workflows.failed.is_empty() {
-        let failed = statuses::list(&facts.workflows.failed);
-        if exhausted {
+    // The merge queue took it out: its change failed together with what
+    // was ahead of it.
+    match facts.check_status {
+        Some(CheckStatus::Failed) if exhausted => {
             return wait(
                 Stage::NeedsYou,
-                &format!("{failed} still fails after the agent revised {}.", times(revisions)),
+                &format!("It failed in the merge queue after the agent revised {}.", times(revisions)),
             );
         }
-        return (
-            at(
-                Stage::Revising,
-                format!("{failed} failed. The agent is being sent back to fix it."),
-                revisions,
-            ),
-            Next::Revise(Feedback::FailedWorkflows),
-        );
+        Some(CheckStatus::Failed) => {
+            return (
+                at(
+                    Stage::Revising,
+                    "It failed in the merge queue. The agent is being sent back to fix it.",
+                    revisions,
+                ),
+                Next::Revise(Feedback::FailedChecks),
+            );
+        }
+        Some(CheckStatus::Errored) => {
+            return wait(Stage::NeedsYou, "Its checks could not be run.");
+        }
+        _ => {}
+    }
+
+    // Its checks: the agent fixes any that failed. Once it is out of
+    // revisions, only the checks the branch requires still hold it.
+    if !facts.workflows.failed.is_empty() {
+        let failed = statuses::list(&facts.workflows.failed);
+        let required = facts.workflows.required_failed();
+        if !exhausted {
+            return (
+                at(
+                    Stage::Revising,
+                    format!("{failed} failed. The agent is being sent back to fix it."),
+                    revisions,
+                ),
+                Next::Revise(Feedback::FailedWorkflows),
+            );
+        }
+        if !required.is_empty() {
+            return wait(
+                Stage::NeedsYou,
+                &format!(
+                    "The required {} {} still {} after the agent revised {}.",
+                    if required.len() == 1 { "check" } else { "checks" },
+                    statuses::list(&required),
+                    if required.len() == 1 { "fails" } else { "fail" },
+                    times(revisions)
+                ),
+            );
+        }
     }
     if !facts.workflows.pending.is_empty() {
         return wait(
             Stage::Checking,
             &format!("Waiting for {} to finish.", statuses::list(&facts.workflows.pending)),
+        );
+    }
+    let expected = facts.workflows.expected();
+    if !expected.is_empty() {
+        return wait(
+            Stage::Checking,
+            &format!(
+                "Waiting for the required {} {} to report on its latest commit.",
+                if expected.len() == 1 { "check" } else { "checks" },
+                statuses::list(&expected)
+            ),
         );
     }
 
@@ -383,7 +396,7 @@ fn decide(facts: Facts) -> (Lifecycle, Next) {
         );
     }
     // Only where the repository insists is catching up a step of its own,
-    // followed by the checks again. Elsewhere it happens as part of merging.
+    // followed by its checks again. Elsewhere it happens as part of merging.
     if facts.behind && facts.require_up_to_date {
         return (
             at(
@@ -478,7 +491,9 @@ impl Work {
     async fn assess_now(
         &self,
         pull: &Pull,
-        issue: &Option<Issue>,
+        // What done means is in its body, for the agent; the merge waits on
+        // the branch's required checks, not on the issue.
+        _issue: &Option<Issue>,
         behind: bool,
     ) -> Result<Option<(Lifecycle, Next, Option<Confidence>)>> {
         if !pull.status.is_active() {
@@ -521,7 +536,10 @@ impl Work {
                     .is_none_or(|revised| review.finished_at.as_str() >= revised)
             });
         let settings = self.settings(&pull.repo_id).await?;
-        let has_checks = issue.as_ref().is_some_and(|issue| !issue.checks.is_empty());
+        let workflows = WorkflowFacts::of(
+            &self.statuses(&pull.repo_id, pull.head_commit.as_deref()).await?,
+            &settings.required_checks,
+        );
         // Once the agent has finished the change: how sure g1t is of it, and
         // whether that holds it for a person.
         let (confidence, low_confidence) = if pull.status == PullStatus::Draft {
@@ -535,8 +553,8 @@ impl Work {
                 .assess_confidence(
                     pull,
                     crate::confidence::Signals {
-                        has_checks,
-                        check_status: pull.check_status,
+                        required: crate::confidence::RequiredSignal::of(&workflows.required),
+                        queue_failed: pull.check_status == Some(CheckStatus::Failed),
                         revisions: progress.revisions,
                         agent_review: settings.agent_review,
                         review: review.as_ref().and_then(|review| review.verdict),
@@ -557,7 +575,6 @@ impl Work {
             working_on,
             check_status: pull.check_status,
             review_pending: self.review_pending(&pull.id).await?,
-            has_checks,
             revisions: progress.revisions,
             review,
             behind,
@@ -571,7 +588,7 @@ impl Work {
                 .person_request(pull, progress.revised_at.as_deref())
                 .await?,
             queued: self.queued_entry(&pull.id).await?,
-            workflows: WorkflowFacts::of(&self.statuses(&pull.repo_id, pull.head_commit.as_deref()).await?),
+            workflows,
             low_confidence,
         });
         Ok(Some((lifecycle, next, confidence)))
@@ -669,7 +686,8 @@ impl Work {
     }
 
     /// What the author is told when sent back: the checks that failed and
-    /// what they printed, or the review and its comments on lines.
+    /// what their failing jobs printed, why the merge queue took it out, or
+    /// the review and its comments on lines.
     async fn feedback(&self, pull: &Pull, feedback: &Feedback) -> Result<String> {
         match feedback {
             Feedback::FailedChecks => {
@@ -703,25 +721,36 @@ impl Work {
                     ));
                 }
                 Ok(format!(
-                    "{why}These acceptance checks were run against your change in a clean sandbox and failed.\n\n{}",
+                    "{why}These commands failed against your change.\n\n{}",
                     failed.join("\n\n")
                 ))
             }
             Feedback::FailedWorkflows => {
-                let statuses = self.statuses(&pull.repo_id, pull.head_commit.as_deref()).await?;
-                let failed: Vec<String> = statuses
+                let (statuses, settings) = futures_util::future::try_join(
+                    self.statuses(&pull.repo_id, pull.head_commit.as_deref()),
+                    self.settings(&pull.repo_id),
+                )
+                .await?;
+                let required = |context: &str| {
+                    let name = g1t_contracts::work::check_name(context).0;
+                    settings.required_checks.iter().any(|wanted| wanted.eq_ignore_ascii_case(name))
+                };
+                let failing: Vec<&CommitStatus> =
+                    statuses.iter().filter(|s| s.state == "failure" || s.state == "error").collect();
+                let failed: Vec<String> = failing
                     .iter()
-                    .filter(|s| s.state == "failure" || s.state == "error")
                     .map(|s| {
                         let run = s.target_url.as_deref().and_then(|url| url.rsplit('/').next()).unwrap_or_default();
                         format!(
-                            "- {} ({}): run `{run}`, {}",
+                            "- {}{} ({}): run `{run}`, {}",
                             s.context,
+                            if required(&s.context) { ", required to merge" } else { "" },
                             s.description.as_deref().unwrap_or("failed"),
                             s.target_url.as_deref().unwrap_or_default()
                         )
                     })
                     .collect();
+                let logs = self.failing_logs(pull, &failing).await.unwrap_or_default();
                 // Named outright: the agent cannot guess it from its fork.
                 let repo = g1t_kit::call::<_, Option<RepoPath>>(
                     &self.repos,
@@ -731,11 +760,16 @@ impl Work {
                 .await?
                 .map(|path| format!("{}/{}", path.namespace, path.name))
                 .unwrap_or_default();
+                let logs = if logs.is_empty() {
+                    String::new()
+                } else {
+                    format!("\n\nThe end of what the failing jobs printed:\n\n{}", logs.join("\n\n"))
+                };
                 Ok(format!(
-                    "These GitHub Actions workflows failed on your latest commit to {repo}:\n\n{}\n\n\
-                     Read why with the `get_workflow_run` tool (repo `{repo}` and the run's id), \
+                    "These checks failed on your latest commit to {repo}. They are the repository's workflows, run on your pull request:\n\n{}{logs}\n\n\
+                     For more, use the `get_workflow_run` tool (repo `{repo}` and the run's id), \
                      then `get_job_logs` for the job that failed. Fix the cause in the code, not the workflow, \
-                     unless the workflow itself is wrong.",
+                     unless the workflow itself is wrong. Push, and the checks run again.",
                     failed.join("\n")
                 ))
             }
@@ -830,6 +864,83 @@ impl Work {
         }
     }
 
+    /// The end of what the failed jobs of failing workflow runs printed, a
+    /// few jobs at most, for an agent sent back to fix them. Empty where the
+    /// runs or their logs cannot be read.
+    async fn failing_logs(&self, pull: &Pull, failing: &[&CommitStatus]) -> Result<Vec<String>> {
+        use g1t_contracts::actions::{JobLog, LogsArgs, RunArgs, RunDetail};
+        let Some(repo) = g1t_kit::call::<_, Option<RepoPath>>(
+            &self.repos,
+            "path_by_id",
+            &g1t_contracts::repos::PathByIdArgs { id: pull.repo_id.clone() },
+        )
+        .await?
+        else {
+            return Ok(Vec::new());
+        };
+        let viewer = self.author_viewer(pull).await?;
+        let mut out = Vec::new();
+        for status in failing {
+            let Some(run_id) = status
+                .target_url
+                .as_deref()
+                .and_then(|url| url.split("/actions/runs/").nth(1))
+                .map(|rest| rest.split(['/', '?', '#']).next().unwrap_or_default().to_owned())
+                .filter(|id| !id.is_empty())
+            else {
+                continue;
+            };
+            let detail: Outcome<RunDetail> = g1t_kit::call(
+                &self.actions,
+                "run",
+                &RunArgs { repo: repo.clone(), viewer: viewer.clone(), id: run_id },
+            )
+            .await?;
+            let Outcome::Ok(detail) = detail else { continue };
+            let failed_jobs = detail.jobs.into_iter().filter(|job| {
+                job.status == "completed" && matches!(job.conclusion.as_deref(), Some("failure" | "timed_out"))
+            });
+            for job in failed_jobs {
+                if out.len() >= MAX_FAILED_JOBS {
+                    return Ok(out);
+                }
+                let mut text = String::new();
+                let mut after = 0;
+                for _ in 0..MAX_LOG_PAGES {
+                    let page: Outcome<JobLog> = g1t_kit::call(
+                        &self.actions,
+                        "logs",
+                        &LogsArgs { repo: repo.clone(), viewer: viewer.clone(), job: job.id.clone(), after },
+                    )
+                    .await?;
+                    let Outcome::Ok(page) = page else { break };
+                    let Some(last) = page.chunks.last().map(|chunk| chunk.seq) else { break };
+                    for chunk in &page.chunks {
+                        text.push_str(&chunk.text);
+                        if !chunk.text.ends_with('\n') {
+                            text.push('\n');
+                        }
+                    }
+                    // Only the end is kept, so the start can go as it is read.
+                    let length = text.chars().count();
+                    if length > MAX_JOB_LOG_CHARS * 2 {
+                        text = text.chars().skip(length - MAX_JOB_LOG_CHARS).collect();
+                    }
+                    after = last;
+                    if page.chunks.len() < 500 {
+                        break;
+                    }
+                }
+                let length = text.chars().count();
+                let tail: String = text.chars().skip(length.saturating_sub(MAX_JOB_LOG_CHARS)).collect();
+                if !tail.trim().is_empty() {
+                    out.push(format!("{} / {}:\n```\n{}\n```", status.context, job.name, tail.trim_end()));
+                }
+            }
+        }
+        Ok(out)
+    }
+
     pub(crate) async fn advance(&self, a: AdvanceArgs) -> Result<Advance> {
         let Some(pull) = self.pull_by_id(&a.pull_id).await? else {
             return Ok(Advance::None);
@@ -898,10 +1009,10 @@ impl Work {
                 "requested a review from g1t-agent".to_owned()
             }
             Next::Revise(Feedback::FailedChecks) => {
-                "sent g1t-agent back to fix the failed checks".to_owned()
+                "sent g1t-agent back to fix what failed in the merge queue".to_owned()
             }
             Next::Revise(Feedback::FailedWorkflows) => {
-                "sent g1t-agent back to fix the failed workflows".to_owned()
+                "sent g1t-agent back to fix the failed checks".to_owned()
             }
             Next::Revise(Feedback::Review(_)) => {
                 "sent g1t-agent back to address the review".to_owned()
@@ -1280,16 +1391,32 @@ mod tests {
         assert_eq!(outcome(never), (Stage::NeedsYou, "wait"));
     }
 
-    /// A pull request that is ready for review, with checks that passed
-    /// and nothing else yet.
+    /// Checks on a head commit: `(context, state)` statuses, against the
+    /// required check names.
+    fn checks(statuses: &[(&str, &str)], required: &[&str]) -> WorkflowFacts {
+        let statuses: Vec<CommitStatus> = statuses
+            .iter()
+            .map(|(context, state)| CommitStatus {
+                context: (*context).to_owned(),
+                state: (*state).to_owned(),
+                description: None,
+                target_url: None,
+                updated_at: String::new(),
+            })
+            .collect();
+        let required: Vec<String> = required.iter().map(|name| (*name).to_owned()).collect();
+        WorkflowFacts::of(&statuses, &required)
+    }
+
+    /// A pull request that is ready for review, whose required check
+    /// passed, and nothing else yet.
     fn facts() -> Facts {
         Facts {
             draft: false,
             stalled: None,
             working_on: None,
-            check_status: Some(CheckStatus::Passed),
+            check_status: None,
             review_pending: false,
-            has_checks: true,
             revisions: 0,
             review: None,
             behind: false,
@@ -1301,27 +1428,67 @@ mod tests {
             approvals_missing: None,
             person_request: None,
             queued: None,
-            workflows: WorkflowFacts::default(),
+            workflows: checks(&[("CI / pull_request", "success")], &["CI"]),
             low_confidence: None,
         }
     }
 
     #[test]
-    fn failed_workflows_send_the_agent_back_and_running_ones_wait() {
+    fn failed_checks_send_the_agent_back_and_running_ones_wait() {
         let failed = Facts {
-            workflows: WorkflowFacts { pending: vec![], failed: vec!["CI / pull_request".into()] },
+            workflows: checks(&[("CI / pull_request", "failure")], &["CI"]),
             ..facts()
         };
         let (lifecycle, next) = decide(failed);
         assert!(matches!(next, Next::Revise(Feedback::FailedWorkflows)));
         assert!(lifecycle.detail.contains("CI / pull_request failed"));
         let running = Facts {
-            workflows: WorkflowFacts { pending: vec!["CI / pull_request".into()], failed: vec![] },
+            workflows: checks(&[("CI / pull_request", "pending")], &["CI"]),
             ..facts()
         };
         let (lifecycle, next) = decide(running);
         assert!(matches!(next, Next::Wait));
         assert!(lifecycle.detail.contains("Waiting for CI / pull_request"));
+    }
+
+    #[test]
+    fn a_check_the_branch_does_not_require_is_fixed_but_does_not_hold_it_for_ever() {
+        // Lint is not required: the agent is still sent back to fix it...
+        let lint = checks(&[("CI / pull_request", "success"), ("Lint / pull_request", "failure")], &["CI"]);
+        let failing = Facts { workflows: lint.clone(), ..facts() };
+        assert_eq!(outcome(failing), (Stage::Revising, "revise for workflows"));
+        // ...but once it is out of revisions, Lint no longer holds it.
+        let exhausted = Facts {
+            workflows: lint,
+            revisions: MAX_REVISIONS,
+            review: reviewed(Some(Verdict::Approve)),
+            ..facts()
+        };
+        assert_eq!(outcome(exhausted), (Stage::Ready, "wait"));
+        // A required check that still fails asks a person.
+        let required = Facts {
+            workflows: checks(&[("CI / pull_request", "failure")], &["CI"]),
+            revisions: MAX_REVISIONS,
+            ..facts()
+        };
+        let (lifecycle, next) = decide(required);
+        assert_eq!(lifecycle.stage, Stage::NeedsYou);
+        assert_eq!(lifecycle.detail, "The required check CI still fails after the agent revised twice.");
+        assert!(matches!(next, Next::Wait));
+    }
+
+    #[test]
+    fn a_required_check_that_has_not_reported_is_waited_for() {
+        let missing = Facts {
+            workflows: checks(&[("CI / pull_request", "success")], &["CI", "Deploy"]),
+            review: reviewed(Some(Verdict::Approve)),
+            auto_merge: true,
+            ..facts()
+        };
+        let (lifecycle, next) = decide(missing);
+        assert_eq!(lifecycle.stage, Stage::Checking);
+        assert_eq!(lifecycle.detail, "Waiting for the required check Deploy to report on its latest commit.");
+        assert!(matches!(next, Next::Wait), "auto-merge must not land it");
     }
 
     #[test]
@@ -1408,12 +1575,12 @@ mod tests {
     #[test]
     fn checks_come_before_review() {
         let unchecked = Facts {
-            check_status: None,
+            workflows: checks(&[], &["CI"]),
             ..facts()
         };
         assert_eq!(outcome(unchecked), (Stage::Checking, "wait"));
         let running = Facts {
-            check_status: Some(CheckStatus::Running),
+            workflows: checks(&[("CI / pull_request", "pending")], &["CI"]),
             ..facts()
         };
         assert_eq!(outcome(running), (Stage::Checking, "wait"));
@@ -1421,22 +1588,23 @@ mod tests {
     }
 
     #[test]
-    fn an_issue_without_checks_goes_straight_to_review() {
+    fn a_branch_that_requires_no_checks_goes_straight_to_review() {
         let unchecked = Facts {
-            has_checks: false,
-            check_status: None,
+            workflows: WorkflowFacts::default(),
             ..facts()
         };
         assert_eq!(outcome(unchecked), (Stage::Reviewing, "review"));
     }
 
     #[test]
-    fn failed_checks_send_the_author_back() {
+    fn failing_in_the_merge_queue_sends_the_author_back() {
         let failed = Facts {
             check_status: Some(CheckStatus::Failed),
             ..facts()
         };
-        assert_eq!(outcome(failed), (Stage::Revising, "revise for checks"));
+        let (lifecycle, next) = decide(failed);
+        assert_eq!(lifecycle.detail, "It failed in the merge queue. The agent is being sent back to fix it.");
+        assert!(matches!(next, Next::Revise(Feedback::FailedChecks)));
     }
 
     #[test]
@@ -1579,7 +1747,7 @@ mod tests {
         // The merge moved the head, so the checks are waited for again.
         let merged_in = Facts {
             review: reviewed(Some(Verdict::Approve)),
-            check_status: None,
+            workflows: checks(&[], &["CI"]),
             ..facts()
         };
         assert_eq!(outcome(merged_in), (Stage::Checking, "wait"));

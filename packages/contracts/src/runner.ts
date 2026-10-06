@@ -11,7 +11,7 @@ export type RunHostedInput = {
 };
 
 /**
- * Sandboxes on g1t: agents that work on an issue, and acceptance checks.
+ * Sandboxes on g1t: agents that work on an issue, reviews, and the merge queue.
  *
  * Nobody who assigns a g1t agent picks a model. g1t routes each kind of
  * work itself, and says in the session which model ran.
@@ -96,11 +96,6 @@ export interface RunnerApi {
     planId: string,
     options?: { assign?: boolean; keep?: number[] },
   ): Promise<Result<Plan>>;
-  /**
-   * Runs the acceptance checks of a pull request again. Whoever opened it,
-   * or a member of the repository's workspace, may ask.
-   */
-  recheck(actor: User, repo: RepoPath, number: number): Promise<Result<boolean>>;
   /**
    * Brings a pull request up to date with the branch it would merge into,
    * in a sandbox. A clean merge is pushed as it is; a conflict is resolved

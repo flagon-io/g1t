@@ -1,4 +1,4 @@
-import { AlertTriangle, ChevronRight, Download, GitBranch, GitCommitHorizontal, Info, Package, RotateCw, Square, XCircle } from "lucide-react";
+import { AlertTriangle, ChevronRight, Cloud, Download, GitBranch, GitCommitHorizontal, Info, Package, RotateCw, ServerCog, Square, XCircle } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { Form, Link, useNavigation, useRevalidator, useSearchParams } from "react-router";
 
@@ -86,6 +86,29 @@ function Reason({ text, workspace }: { text: string; workspace: string }) {
   );
 }
 
+/** Where the job ran: g1t's own runners, or a self-hosted one by name. */
+function RanOn({ job, workspace }: { job: Job; workspace: string }) {
+  if (job.selfHosted) {
+    return (
+      <Link
+        to={`/${workspace}/-/runners`}
+        className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-0.5 text-xs text-muted hover:text-fg"
+        title="Self-hosted runner"
+      >
+        <ServerCog size={13} />
+        {job.runner ? `Self-hosted: ${job.runner}` : "Self-hosted"}
+      </Link>
+    );
+  }
+  if (!job.startedAt) return null;
+  return (
+    <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-0.5 text-xs text-muted">
+      <Cloud size={13} />
+      g1t
+    </span>
+  );
+}
+
 function JobView({ job, base }: { job: Job; base: string }) {
   const live = job.status !== "completed";
   const log = useJobLog(`${base}/actions/jobs/${job.id}/log`, live);
@@ -100,6 +123,7 @@ function JobView({ job, base }: { job: Job; base: string }) {
           {standingWord(job)}
           {job.startedAt && ` · ${duration(job.startedAt, job.finishedAt)}`}
         </span>
+        <RanOn job={job} workspace={base.split("/")[1]!} />
       </div>
       {job.reason && <Reason text={job.reason} workspace={base.split("/")[1]} />}
       {job.annotations.length > 0 && (

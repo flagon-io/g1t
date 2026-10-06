@@ -56,7 +56,7 @@ Call a tool with `tools/call`, its name, and `arguments` that hold the
 - The input schema that `tools/list` returns is one flat object: `action`,
   then every field any of the tool's actions takes. The `action` field's
   description lists each action with the fields it needs, such as
-  `get (repo, number): One issue with comments, checks and its pull requests.`
+  `get (repo, number): One issue with comments and its pull requests.`
 - The server card at `https://mcp.g1t.sh` has each tool's schema keyed by
   action: a `oneOf` with one branch per action and its required fields.
   `tools/list` does not use `oneOf`, because many clients refuse a tool
@@ -234,8 +234,9 @@ full name typed out.
 | [`get`](/reference/api/repositories/get-repo/) | One repository's details. | `repo` | `repo:read` |
 | [`create`](/reference/api/repositories/create-repo/) | Create a repository in one of your workspaces, empty or as a copy of a public git repository (`import_url`). `workspace` may be left out if you belong to exactly one. | `name` | `repo:write` |
 | [`update`](/reference/api/repositories/update-repo/) | Change its `description`, `website`, `topics` and `default_branch`, whether its default branch is `protected`, and whether it is `private`. Maintain role; `private` and `default_branch` need Admin. | `repo` | `repo:write` |
-| [`get_settings`](/reference/api/repositories/get-repo-settings/) | How it handles pull requests: approvals, checks, being up to date, and how g1t's agents are reviewed, revised and merged. | `repo` | `repo:read` |
-| [`update_settings`](/reference/api/repositories/update-repo-settings/) | Change those settings, including `hold_low_confidence`, which holds a g1t agent's [low-confidence](/guides/g1t-agents/#how-sure-the-agent-is) change for a person. Only the fields given change. Maintain role. | `repo` | `repo:write` |
+| [`get_settings`](/reference/api/repositories/get-repo-settings/) | How it handles pull requests: the default branch's required checks, approvals, bypassing checks, being up to date, the merge queue, and how g1t's agents are reviewed, revised and merged. | `repo` | `repo:read` |
+| [`update_settings`](/reference/api/repositories/update-repo-settings/) | Change those settings, including `hold_low_confidence`, which holds a g1t agent's [low-confidence](/guides/g1t-agents/#how-sure-the-agent-is) change for a person. Only the fields given change; `required_checks` replaces the whole list. Maintain role. | `repo` | `repo:write` |
+| [`check_names`](/reference/api/repositories/list-check-names/) | The check names reported on its commits in the last 30 days, most recent first, each with `name`, `events` and `last_seen`: the names `required_checks` takes. | `repo` | `repo:read` |
 | [`list_labels`](/reference/api/issues/list-labels/) | The labels available on its issues. | `repo` | `repo:read` |
 | [`list_events`](/reference/api/repositories/list-events/) | Its timeline, newest first. `before` pages back. | `repo` | `repo:read` |
 | [`rename_branch`](/reference/api/repositories/rename-branch/) | Rename a branch; its pull requests follow, and web addresses that name the old branch redirect. Write role; the default branch needs Admin. | `repo`, `branch`, `new_name` | `repo:write` |
@@ -249,9 +250,11 @@ full name typed out.
 | [`restore`](/reference/api/repositories/restore-repo/) | Bring a deleted repository back at the path it had. Owners only. | `repo` | `repo:admin` |
 | [`purge`](/reference/api/repositories/purge-repo/) | Remove a deleted repository for good now, and free its name; `confirm` is its full name. Owners only. | `repo`, `confirm` | `repo:admin` |
 
-`update_settings` takes `required_approvals`, `count_agent_approvals`,
+`update_settings` takes `required_checks` (at most 20 names),
+`required_approvals`, `count_agent_approvals`,
 `allow_ignoring_checks`, `require_up_to_date`, `agent_review`,
 `max_revisions`, `auto_merge`, `merge_queue` and `hold_low_confidence`. See
+[required status checks](/guides/pull-requests/#required-status-checks) and
 [what a repository can ask for](/guides/g1t-agents/#what-a-repository-can-ask-for).
 `update` with `private` or `default_branch` also needs `repo:admin`.
 
@@ -268,8 +271,8 @@ requests already made for it. Issues and pull requests share numbers, so
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
 | [`list`](/reference/api/issues/list-issues/) | Issues, newest first, by `state` and `label`. | `repo` | `issues:read` |
-| [`get`](/reference/api/issues/get-issue/) | An issue: description, labels, acceptance checks, comments, and every pull request made for it. | `repo`, `number` | `issues:read` |
-| [`create`](/reference/api/issues/create-issue/) | Open an issue, with `body`, `labels` and `checks`. | `repo`, `title` | `issues:write` |
+| [`get`](/reference/api/issues/get-issue/) | An issue: description (which may say what done means, under **Definition of done**), labels, comments, and every pull request made for it. | `repo`, `number` | `issues:read` |
+| [`create`](/reference/api/issues/create-issue/) | Open an issue, with `body` and `labels`. `checks` is deprecated: its commands are added to the body under **Definition of done**, and the result carries a `deprecation` note. | `repo`, `title` | `issues:write` |
 | [`update`](/reference/api/issues/update-issue/) | Change its title, body, labels or assignees. Labels and assignees each replace the whole set. | `repo`, `number` | `issues:write` |
 | [`close`](/reference/api/issues/close-issue/) | Close it as `completed` or `not_planned`. | `repo`, `number` | `issues:write` |
 | [`reopen`](/reference/api/issues/reopen-issue/) | Reopen a closed issue. | `repo`, `number` | `issues:write` |
@@ -288,7 +291,7 @@ far.
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
 | [`list`](/reference/api/pull-requests/list-pull-requests/) | Pull requests, newest first. `open` covers drafts and those ready for review. | `repo` | `pull_requests:read` |
-| [`get`](/reference/api/pull-requests/get-pull-request/) | Status, head commit, comments and reviews, its issue, the latest acceptance check results, `behind`, and `overlaps`. | `repo`, `number` | `pull_requests:read` |
+| [`get`](/reference/api/pull-requests/get-pull-request/) | Status, head commit, comments and reviews, its issue, its checks (`statuses`, and `required_checks`: each check the default branch requires, as `success`, `failure`, `pending` or `expected`), `behind`, and `overlaps`. | `repo`, `number` | `pull_requests:read` |
 | [`changes`](/reference/api/pull-requests/get-pull-request-changes/) | The files it changes, with line-by-line diffs. | `repo`, `number` | `pull_requests:read` |
 | [`create`](/reference/api/pull-requests/create-pull-request/) | Open a draft pull request with its own fork and get its git remote; or, with `branch`, one from a branch already pushed. Give `issue` whenever there is one. | `repo` | `pull_requests:write` |
 | [`record_session`](/reference/api/sessions/record-session/) | Append entries to a pull request's session. Each has `kind` and `text`, and `tool` for tool entries. | `repo`, `number`, `entries` | `pull_requests:write` |
@@ -296,7 +299,7 @@ far.
 | [`ready`](/reference/api/pull-requests/mark-pull-request-ready/) | Mark a draft ready for review. The summary becomes its description. | `repo`, `number`, `summary` | `pull_requests:write` |
 | [`review`](/reference/api/pull-requests/review-pull-request/) | `approve`, or `request_changes` with a `body`. Not on your own pull request. | `repo`, `number`, `verdict` | `pull_requests:write` |
 | [`close`](/reference/api/pull-requests/close-pull-request/) | Close it without merging. | `repo`, `number` | `pull_requests:write` |
-| [`merge`](/reference/api/pull-requests/merge-pull-request/) | Land it on `main` and resolve its issue, or add it to the [merge queue](/guides/merge-queue/). Write role. | `repo`, `number` | `pull_requests:write` |
+| [`merge`](/reference/api/pull-requests/merge-pull-request/) | Land it on `main` and resolve its issue, or add it to the [merge queue](/guides/merge-queue/), once every [required check](/guides/pull-requests/#required-status-checks) has passed on its head. `ignore_checks` bypasses them where the repository allows it. Write role. | `repo`, `number` | `pull_requests:write` |
 | [`merge_queue`](/reference/api/pull-requests/get-merge-queue/) | The pull requests waiting to land, in order, each with the state it is tested in and how that went; then those that recently landed or left. | `repo` | `pull_requests:read` |
 
 `record_session` takes a list of `entries`, each with a `kind` (`prompt`,
@@ -313,7 +316,7 @@ opens the issue.
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
-| [`delegate`](/reference/api/issues/delegate/) | Put an agent on something in one step: open an issue, with `body` and `checks`, and assign it to the g1t agent at once. Write role; nothing is opened without it. The issue opens even when the agent cannot start: `agent.status` is `started`, `queued` or `not_started`, with `agent.code`, `agent.message` and `agent.fix_url` saying why and where to fix it. See [put an agent on it](/guides/g1t-agents/#put-an-agent-on-it-in-one-step). | `repo`, `title` | `agents:run` |
+| [`delegate`](/reference/api/issues/delegate/) | Put an agent on something in one step: open an issue, with `body`, and assign it to the g1t agent at once. Write role; nothing is opened without it. The issue opens even when the agent cannot start: `agent.status` is `started`, `queued` or `not_started`, with `agent.code`, `agent.message` and `agent.fix_url` saying why and where to fix it. `checks` is deprecated, as for `issue` `create`. See [put an agent on it](/guides/g1t-agents/#put-an-agent-on-it-in-one-step). | `repo`, `title` | `agents:run` |
 | [`assign`](/reference/api/issues/assign-issue/) | Assign an existing issue to the [g1t agent](/guides/g1t-agents/), which opens a pull request and sees it through. Preview. | `repo`, `number` | `agents:run` |
 | [`message`](/reference/api/pull-requests/message-agent/) | Send the agent working on a pull request a message, received at its next step. A g1t agent sends a `question` or a `handoff`, with its own pull request as `from_number`. | `repo`, `number`, `body` | `agents:run` |
 | [`answer`](/reference/api/pull-requests/answer-message/) | Answer a question or a handoff by the message's id; `decline` a handoff that is not yours. The answer reaches the asking agent at its next step. | `repo`, `id`, `body` | `agents:run` |
@@ -323,13 +326,13 @@ See [talk to agents](/guides/talking-to-agents/).
 
 ## `plan`
 
-Turn an outcome into issues: an agent proposes them with checks and
-dependencies, and nothing opens until you apply the plan. `apply` with
+Turn an outcome into issues: an agent proposes them with what done means
+for each and their dependencies, and nothing opens until you apply the plan. `apply` with
 `assign` also needs `agents:run`. See [hand off an outcome](/guides/outcomes/).
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
-| [`create`](/reference/api/plans/plan-work/) | Have an agent turn an outcome into proposed issues with checks and dependencies. Returns the plan's id at once. Write role. | `repo`, `brief` | `agents:run` |
+| [`create`](/reference/api/plans/plan-work/) | Have an agent turn an outcome into proposed issues, each with what done means (`done`) and its dependencies. Returns the plan's id at once. Write role. | `repo`, `brief` | `agents:run` |
 | [`get`](/reference/api/plans/get-plan/) | The plan: its status (`planning`, `ready`, `failed` or `applied`), the issues it proposes, and once applied, where each stands. | `repo`, `plan` | `issues:read` |
 | [`apply`](/reference/api/plans/apply-plan/) | Open its issues. `assign` puts g1t agents on them in dependency order; `keep` opens only some, by position from 1. | `repo`, `plan` | `issues:write` |
 
@@ -348,7 +351,9 @@ one short fact at a time, never a secret. See
 ## `workflow`
 
 Workflows in `.g1t/workflows/`: their runs, jobs and logs, and running,
-cancelling or rerunning them. See [GitHub Actions](/guides/actions/).
+cancelling or rerunning them, and the self-hosted runners they run on. See
+[GitHub Actions](/guides/actions/) and
+[self-hosted runners](/guides/self-hosted-runners/).
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
@@ -360,6 +365,15 @@ cancelling or rerunning them. See [GitHub Actions](/guides/actions/).
 | [`cancel`](/reference/api/actions/cancel-workflow-run/) | Cancel a run. Write role. | `repo`, `id` | `workflows:write` |
 | [`rerun`](/reference/api/actions/rerun-workflow-run/) | Run it again; `failed_only` for the jobs that did not succeed. Write role. | `repo`, `id` | `workflows:write` |
 | [`update`](/reference/api/actions/update-workflow/) | Turn a workflow on or off. Maintain role. | `repo`, `workflow`, `enabled` | `workflows:write` |
+| [`list_runners`](/reference/api/runners/list-runners-for-workspace/) | [Self-hosted runners](/guides/self-hosted-runners/): a workspace's (`workspace`), or a repository's own and the workspace's it may use (`repo`), with status, labels and what each is running. | `workspace` or `repo` | `runners:read` |
+| [`create_runner_token`](/reference/api/runners/create-runner-registration-token-for-workspace/) | A registration token for `g1t-runner register`, an hour long; `group` for a workspace's. Owners, or a repository's admins; not workspace tokens. | `workspace` or `repo` | `runners:admin` |
+| [`remove_runner`](/reference/api/runners/remove-runner-for-workspace/) | Remove a runner; a job it is running fails. | `workspace` or `repo`, `id` | `runners:admin` |
+| [`list_runner_groups`](/reference/api/runners/list-runner-groups/) | A workspace's runner groups and the repositories each serves. | `workspace` | `runners:read` |
+| [`create_runner_group`](/reference/api/runners/create-runner-group/) | A group for some `repositories` (empty for all). Owners. | `workspace`, `name` | `runners:admin` |
+| [`update_runner_group`](/reference/api/runners/update-runner-group/) | Rename a group or change its repositories. Owners. | `workspace`, `id` | `runners:admin` |
+| [`delete_runner_group`](/reference/api/runners/delete-runner-group/) | Delete a group; its runners join the default. Owners. | `workspace`, `id` | `runners:admin` |
+| [`get_runner_settings`](/reference/api/runners/get-runner-settings-for-workspace/) | Whether agent work runs on self-hosted runners and on which labels, and whether pull requests from forks may use them. | `workspace` or `repo` | `runners:read` |
+| [`update_runner_settings`](/reference/api/runners/update-runner-settings-for-workspace/) | Change them: `agents_on_self_hosted`, `agent_labels`, `fork_pull_requests`, or `inherit` for a repository. | `workspace` or `repo` | `runners:admin` |
 
 ## `secret`
 

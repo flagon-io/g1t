@@ -127,6 +127,12 @@ pub struct Job {
     pub reason: Option<String>,
     pub started_at: Option<String>,
     pub finished_at: Option<String>,
+    /// Its `runs-on` names self-hosted runners (see `runners`).
+    #[serde(default)]
+    pub self_hosted: bool,
+    /// The self-hosted runner that took it, by name.
+    #[serde(default)]
+    pub runner: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -399,6 +405,185 @@ pub struct StartJobArgs {
     pub repo: RepoPath,
     /// Minutes before the job is stopped.
     pub timeout_minutes: u32,
+    /// The workflow file the job is in (`.g1t/workflows/deploy.yml`), for
+    /// the guardrails' workflow-only domains.
+    #[serde(default)]
+    pub workflow: Option<String>,
+    /// The environment the job names with `environment:`, when it names
+    /// one plainly (not with an expression).
+    #[serde(default)]
+    pub environment: Option<String>,
+    /// Whether its run is trusted: not a pull request from a fork. Only a
+    /// trusted run's jobs reach workflow-only domains.
+    #[serde(default)]
+    pub trusted: bool,
+    /// The machine its `runs-on` asked for, by label (`instance_for`):
+    /// `g1t-2core` or `g1t-4core`; absent, the standard one.
+    #[serde(default)]
+    pub instance: Option<String>,
+}
+
+/// A size of machine g1t runs workflow jobs on, asked for by a label in
+/// `runs-on`. Each is a Cloudflare Containers instance type; it costs what
+/// that instance costs g1t, plus the margin, like any sandbox time.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct InstanceType {
+    /// The `runs-on` label, or `standard` for the default.
+    pub label: &'static str,
+    /// The Containers instance type.
+    pub container: &'static str,
+    pub vcpu: f64,
+    pub memory_gib: f64,
+    pub disk_gb: f64,
+    /// What a second of it costs g1t as a multiple of the standard
+    /// machine's, with its vCPUs as busy (Cloudflare's list prices:
+    /// memory $0.0000025 a GiB-second, disk $0.00000007 a GB-second, vCPU
+    /// $0.00002 a second). Used to reserve before a job starts, and to
+    /// price a job that did not report its own CPU.
+    pub price_scale: f64,
+}
+
+/// The default: what `ubuntu-latest` and every other hosted label get.
+pub const STANDARD_INSTANCE: InstanceType =
+    InstanceType { label: "standard", container: "standard-1", vcpu: 0.5, memory_gib: 4.0, disk_gb: 8.0, price_scale: 1.0 };
+
+/// Every machine a workflow job can ask for, the default first.
+pub const INSTANCE_TYPES: [InstanceType; 3] = [
+    STANDARD_INSTANCE,
+    InstanceType { label: "g1t-2core", container: "standard-3", vcpu: 2.0, memory_gib: 8.0, disk_gb: 16.0, price_scale: 2.8 },
+    InstanceType { label: "g1t-4core", container: "standard-4", vcpu: 4.0, memory_gib: 12.0, disk_gb: 20.0, price_scale: 5.1 },
+];
+
+/// The machine a job's `runs-on` labels ask for: the largest named, or the
+/// standard one. Labels compare without regard to case.
+pub fn instance_for(labels: &[String]) -> InstanceType {
+    INSTANCE_TYPES
+        .iter()
+        .rev()
+        .find(|instance| instance.label != STANDARD_INSTANCE.label && labels.iter().any(|label| label.trim().eq_ignore_ascii_case(instance.label)))
+        .copied()
+        .unwrap_or(STANDARD_INSTANCE)
+}
+
+/// An instance type by its label, if it is one.
+pub fn instance_named(label: &str) -> Option<InstanceType> {
+    INSTANCE_TYPES.iter().find(|instance| instance.label.eq_ignore_ascii_case(label.trim())).copied()
+}
+
+// ── The cache (actions/cache) ─────────────────────────────────────────────
+//
+// Entries are kept in R2 by the API (the ACTIONS_CACHE bucket) and listed
+// here, by the actions service, which decides what is found, what fits and
+// what is evicted. A sandbox reaches these through the API with its job's
+// token: `/actions/jobs/{job}/cache` (see apps/api/src/blobs.rs).
+
+/// The largest one cache entry may be, compressed.
+pub const CACHE_MAX_ENTRY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+/// What one repository's entries may hold together. Saving past it evicts
+/// the entries restored longest ago.
+pub const CACHE_REPO_QUOTA_BYTES: u64 = 10 * 1024 * 1024 * 1024;
+/// An entry not restored for this long is deleted.
+pub const CACHE_UNUSED_DAYS: u64 = 7;
+/// An entry is deleted this long after it was saved, however often it is
+/// restored (the bucket's own lifecycle rule deletes objects at 30 days).
+pub const CACHE_MAX_AGE_DAYS: u64 = 28;
+/// An upload is sent in parts of this size (the last may be smaller).
+pub const CACHE_PART_BYTES: u64 = 32 * 1024 * 1024;
+/// What R2 charges g1t to store a GB for a month, in millionths of a
+/// dollar ($0.015): what the cache's storage is charged at, plus the margin.
+pub const CACHE_MICROS_PER_GB_MONTH: i64 = 15_000;
+
+/// `cache_lookup`: the entry a job restores: its key exactly, else the
+/// newest whose key starts with one of `restore`, in order.
+/// Returns `Outcome<Option<CacheHit>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CacheLookupArgs {
+    pub job: String,
+    pub token: String,
+    pub key: String,
+    #[serde(default)]
+    pub restore: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CacheHit {
+    pub key: String,
+    pub object: String,
+    pub size: u64,
+}
+
+/// `cache_reserve`: a job about to save `size` bytes under `key`. Refused
+/// when the key is taken (`conflict`: keys are written once) or the entry
+/// is too large. Returns `Outcome<CacheReservation>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CacheReserveArgs {
+    pub job: String,
+    pub token: String,
+    pub key: String,
+    pub size: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CacheReservation {
+    pub id: String,
+    /// Where the API puts it in R2.
+    pub object: String,
+}
+
+/// `cache_commit`: the upload of `id` is complete, at `size` bytes. Returns
+/// `Outcome<CacheCommitted>`: the objects of entries it evicted, which the
+/// API deletes from R2.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CacheCommitArgs {
+    pub job: String,
+    pub token: String,
+    pub id: String,
+    pub size: u64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct CacheCommitted {
+    pub evicted: Vec<String>,
+}
+
+/// `cache_abort`: an upload that will not finish; its reservation goes.
+/// Returns `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CacheAbortArgs {
+    pub job: String,
+    pub token: String,
+    pub id: String,
+}
+
+#[cfg(test)]
+mod instance_tests {
+    use super::*;
+
+    fn labels(given: &[&str]) -> Vec<String> {
+        given.iter().map(|l| (*l).to_owned()).collect()
+    }
+
+    #[test]
+    fn runs_on_picks_the_machine() {
+        assert_eq!(instance_for(&labels(&["ubuntu-latest"])).container, "standard-1");
+        assert_eq!(instance_for(&labels(&[])).label, "standard");
+        assert_eq!(instance_for(&labels(&["g1t-4core"])).container, "standard-4");
+        assert_eq!(instance_for(&labels(&["ubuntu-latest", "G1T-2Core"])).container, "standard-3");
+        // Both named: the larger.
+        assert_eq!(instance_for(&labels(&["g1t-2core", "g1t-4core"])).label, "g1t-4core");
+        assert_eq!(instance_named("g1t-4core").map(|i| i.vcpu), Some(4.0));
+        assert_eq!(instance_named("standard"), Some(STANDARD_INSTANCE));
+        assert_eq!(instance_named("g1t-64core"), None);
+    }
+
+    #[test]
+    fn start_args_from_older_callers_read() {
+        let args: StartJobArgs = serde_json::from_value(serde_json::json!({
+            "job": "job_1", "token": "t", "repo": { "namespace": "acme", "name": "web" }, "timeoutMinutes": 30
+        }))
+        .unwrap();
+        assert!(args.workflow.is_none() && args.environment.is_none() && !args.trusted && args.instance.is_none());
+    }
 }
 
 #[cfg(test)]

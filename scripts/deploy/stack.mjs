@@ -157,7 +157,8 @@ export function globalInputs(kind) {
  *   crate / pkg:   its own crate or package name, when it has one;
  *   dependsOn:     folders of the shared crates and packages it uses;
  *   inputs:        the manifest's own inputs plus the root files its kind uses;
- *   image:         for a Containers image, the folders and files it is built from.
+ *   image:         for a Containers image, the folders and files it is built from
+ *                  (`dirs`, `files`), and its base's folder (`baseDirs`).
  */
 export function resolveStack(stack, { cargo, npm }) {
   const crateByDir = new Map([...cargo].map(([name, crate]) => [crate.dir, name]));
@@ -176,14 +177,19 @@ export function resolveStack(stack, { cargo, npm }) {
     if (unit.image) {
       const name = unit.image.crate;
       const crates = name && cargo.has(name) ? [name, ...closure(cargo, name)] : [];
+      // The image is the base (recorded in its lock) plus the binary: a
+      // change to the base's folder reaches the image only through a new
+      // lock, which `build-base` writes.
+      const lock = unit.image.base?.lock;
       unit.image = {
         ...unit.image,
         dirs: crates.map((c) => cargo.get(c).dir).sort(),
-        files: [unit.image.dockerfile, "Cargo.toml", "Cargo.lock"],
+        files: [unit.image.dockerfile, ...(lock ? [lock] : []), "Cargo.toml", "Cargo.lock", "scripts/build-runner.mjs"],
+        baseDirs: unit.image.base ? [unit.image.base.context] : [],
       };
       for (const dir of unit.image.dirs) if (dir !== unit.path) unit.dependsOn.push(dir);
       unit.dependsOn = [...new Set(unit.dependsOn)].sort();
-      unit.inputs = [...new Set([...unit.inputs, "Cargo.toml", "Cargo.lock"])].sort();
+      unit.inputs = [...new Set([...unit.inputs, "Cargo.toml", "Cargo.lock", "scripts/build-runner.mjs"])].sort();
     }
   }
   return stack;
@@ -218,6 +224,11 @@ export function touchesImage(unit, files) {
   return files.some((file) => unit.image.files.includes(file) || unit.image.dirs.some((dir) => under(file, dir)));
 }
 
+/** Whether changed files touch the folder a unit's base image is built from. */
+export function touchesBase(unit, files) {
+  return Boolean(unit.image?.baseDirs?.length) && files.some((file) => unit.image.baseDirs.some((dir) => under(file, dir)));
+}
+
 /** Units named on the command line: short names, folders or Worker names. */
 export function pick(stack, names) {
   const wanted = names.flatMap((name) => name.split(",")).map((name) => name.trim().replace(/\/$/, "")).filter(Boolean);
@@ -243,7 +254,7 @@ export const RUST_PER_JOB = 4;
 /**
  * How a stage's units are split into CI jobs, so units that share a build
  * share a sandbox: Rust workers (one Cargo target, at most RUST_PER_JOB to
- * a job, since a sandbox has half a CPU), the TypeScript Workers (cheap),
+ * a job, each on a 4-vCPU machine), the TypeScript Workers (cheap),
  * each site that runs a framework build, and each unit whose Containers
  * image must be rebuilt (`images`: ids), which needs Docker.
  */

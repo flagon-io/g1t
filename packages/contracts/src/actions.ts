@@ -89,6 +89,10 @@ export type Job = {
   reason: string | null;
   startedAt: string | null;
   finishedAt: string | null;
+  /** Its `runs-on` names self-hosted runners. */
+  selfHosted?: boolean;
+  /** The self-hosted runner that took it, by name. */
+  runner?: string | null;
 };
 
 export type RunDetail = { run: WorkflowRun; jobs: Job[]; notes: WorkflowNote[] };

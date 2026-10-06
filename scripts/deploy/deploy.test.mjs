@@ -1,9 +1,26 @@
 // node --test "scripts/deploy/*.test.mjs"   (npm run test:deploy)
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+
+import { isStaticElf } from "../build-runner.mjs";
+import {
+  DEPLOY_CONFIG,
+  baseInputs,
+  baseState,
+  baseTag,
+  contentHash,
+  lockFor,
+  readBaseLock,
+  registryHas,
+  removeDeployConfig,
+  runnerRef,
+  runnerTag,
+  writeDeployConfig,
+} from "./image.mjs";
 
 import { annotation, commitFrom, liveCommit, pendingFrom, versionFrom } from "./cloudflare.mjs";
 import { changedNames, parseCargoLock, parseNpmLock, reaches } from "./lockfiles.mjs";
@@ -22,6 +39,7 @@ import {
   resolveStack,
   resolvedStack,
   touches,
+  touchesBase,
   touchesImage,
 } from "./stack.mjs";
 
@@ -88,13 +106,140 @@ test("shared crates and packages are read from workspace metadata", () => {
   assert.equal(unit("web").pkg, "@g1t/web");
 });
 
-test("the runner's image is built from the runner crate and what it uses", () => {
+test("the runner's image is built from the runner crate and what it uses, on the base its lock names", () => {
   const runner = unit("runner");
   assert.deepEqual(runner.image.dirs, ["crates/actions", "crates/runner"]);
+  assert.deepEqual(runner.image.baseDirs, ["services/runner/base"]);
   assert.ok(runner.dependsOn.includes("crates/runner"));
   assert.ok(touchesImage(runner, ["crates/actions/src/expr.rs"]));
   assert.ok(touchesImage(runner, ["services/runner/Dockerfile"]));
+  assert.ok(touchesImage(runner, ["services/runner/base.json"]));
+  assert.ok(touchesImage(runner, ["scripts/build-runner.mjs"]));
   assert.ok(!touchesImage(runner, ["services/runner/src/index.ts"]));
+  // The base's Dockerfile reaches the image only through a new lock.
+  assert.ok(!touchesImage(runner, ["services/runner/base/Dockerfile"]));
+  assert.ok(touchesBase(runner, ["services/runner/base/Dockerfile"]));
+  assert.ok(!touchesBase(unit("events"), ["services/runner/base/Dockerfile"]));
+});
+
+// ── The runner's images ───────────────────────────────────────────────────
+
+test("services/runner/base.json records the base its folder builds", () => {
+  const runner = unit("runner");
+  const lock = readBaseLock(runner);
+  assert.ok(lock, "services/runner/base.json is missing: node scripts/deploy.mjs build-base");
+  assert.equal(
+    lock.inputs,
+    baseInputs(runner),
+    "services/runner/base changed since base.json was written: node scripts/deploy.mjs build-base, and commit base.json",
+  );
+  assert.match(lock.image, /^registry\.cloudflare\.com\/[0-9a-f]{32}\/g1t-runner:base-\d{8}-[0-9a-f]{12}$/);
+  assert.ok(lock.image.endsWith(lock.inputs.slice(0, 12)));
+  assert.equal(baseState(runner).current, true);
+});
+
+test("an image's hash ignores line endings, and its tags say what they are", () => {
+  const files = { "a.txt": "one\r\ntwo\r\n", "b.txt": "x" };
+  const lf = { "a.txt": "one\ntwo\n", "b.txt": "x" };
+  const hash = (set) => contentHash(Object.keys(set), "/", (file) => Buffer.from(set[file]));
+  assert.equal(hash(files), hash(lf));
+  assert.notEqual(hash(lf), hash({ ...lf, "b.txt": "y" }));
+  assert.equal(baseTag("0123456789abcdef".repeat(4), new Date("2026-10-06T12:00:00Z")), "base-20261006-0123456789ab");
+  const runner = unit("runner");
+  assert.match(runnerTag(runner), /^[0-9a-f]{16}$/);
+  assert.equal(runnerTag(runner), runnerTag(runner));
+  assert.equal(runnerRef(runner, ROOT, "a".repeat(32)), `registry.cloudflare.com/${"a".repeat(32)}/g1t-runner:${runnerTag(runner)}`);
+});
+
+test("only the lockfile entries the runner is built from name its image", () => {
+  const lock = (wasm) => `[[package]]
+name = "g1t-runner"
+version = "0.1.0"
+dependencies = [
+ "ureq",
+]
+
+[[package]]
+name = "ureq"
+version = "2.12.1"
+
+[[package]]
+name = "wasm-bindgen"
+version = "${wasm}"
+`;
+  assert.equal(lockFor(lock("0.2.100"), "g1t-runner"), lockFor(lock("0.2.101"), "g1t-runner"));
+  assert.ok(lockFor(lock("0.2.100"), "g1t-runner").includes("ureq"));
+  assert.notEqual(lockFor(lock("0.2.100"), "g1t-runner"), lockFor(lock("0.2.100").replace("2.12.1", "2.12.2"), "g1t-runner"));
+});
+
+test("the runner's deploy config names its image by reference, beside its wrangler.jsonc", () => {
+  const runner = unit("runner");
+  const ref = "registry.cloudflare.com/acct/g1t-runner:0123456789abcdef";
+  const name = writeDeployConfig(runner, ref);
+  try {
+    assert.equal(name, DEPLOY_CONFIG);
+    const config = JSON.parse(readFileSync(join(ROOT, runner.path, DEPLOY_CONFIG), "utf8"));
+    assert.equal(config.name, "g1t-runner");
+    assert.equal(config.main, "./src/index.ts");
+    assert.ok(config.containers.length >= 1);
+    for (const container of config.containers) {
+      assert.equal(container.image, ref);
+      assert.equal(container.image_build_context, undefined);
+    }
+    // Every sandbox class shares the image; each has a Durable Object binding.
+    const classes = config.containers.map((c) => c.class_name).sort();
+    assert.deepEqual(classes, config.durable_objects.bindings.map((b) => b.class_name).sort());
+    // Generated, never committed, and not taken for a unit of its own.
+    assert.ok(readFileSync(join(ROOT, ".gitignore"), "utf8").includes("wrangler.deploy.json"));
+    assert.ok(!findWranglerConfigs().some((c) => c.endsWith(DEPLOY_CONFIG)));
+  } finally {
+    removeDeployConfig(runner);
+  }
+  assert.ok(!existsSync(join(ROOT, runner.path, DEPLOY_CONFIG)));
+});
+
+test("the registry is asked for an image's manifest, without Docker", async () => {
+  const asked = [];
+  const fetchImpl = async (url, init) => {
+    asked.push([url, init.method, init.headers.authorization]);
+    return { status: url.endsWith(":nope") || url.endsWith("/nope") ? 404 : 200, ok: !url.endsWith("/nope") };
+  };
+  const credentials = async () => ({ username: "v1", password: "secret" });
+  assert.equal(await registryHas("registry.cloudflare.com/acct/g1t-runner:abc", { fetchImpl, credentials }), true);
+  assert.equal(await registryHas("registry.cloudflare.com/acct/g1t-runner:nope", { fetchImpl, credentials }), false);
+  assert.deepEqual(asked[0], [
+    "https://registry.cloudflare.com/v2/acct/g1t-runner/manifests/abc",
+    "HEAD",
+    `Basic ${Buffer.from("v1:secret").toString("base64")}`,
+  ]);
+  await assert.rejects(registryHas("not-a-reference", { fetchImpl, credentials }));
+});
+
+test("a static Linux binary is told from a dynamic one", () => {
+  const dir = mkdtempSync(join(tmpdir(), "g1t-elf-"));
+  try {
+    const elf = (interp) => {
+      // 64-bit little-endian x86-64 ELF with one program header.
+      const bytes = Buffer.alloc(64 + 56);
+      bytes.writeUInt32BE(0x7f454c46, 0);
+      bytes[4] = 2;
+      bytes[5] = 1;
+      bytes.writeUInt16LE(0x3e, 18);
+      bytes.writeBigUInt64LE(64n, 32);
+      bytes.writeUInt16LE(56, 54);
+      bytes.writeUInt16LE(1, 56);
+      bytes.writeUInt32LE(interp ? 3 : 1, 64);
+      return bytes;
+    };
+    writeFileSync(join(dir, "static"), elf(false));
+    writeFileSync(join(dir, "dynamic"), elf(true));
+    writeFileSync(join(dir, "text"), "#!/bin/sh\n");
+    assert.equal(isStaticElf(join(dir, "static")), true);
+    assert.equal(isStaticElf(join(dir, "dynamic")), false);
+    assert.equal(isStaticElf(join(dir, "text")), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("path dependencies agree with Cargo's own resolved graph", (t) => {

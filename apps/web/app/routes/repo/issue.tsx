@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { Bot, ExternalLink, GitCommitHorizontal, GitMerge, Play, Sparkles, Terminal } from "lucide-react";
+import { Bot, ExternalLink, GitCommitHorizontal, GitMerge, Play, Sparkles } from "lucide-react";
 import { useEffect } from "react";
 import { Form, Link, redirect, useNavigation, useRevalidator } from "react-router";
 
@@ -63,11 +63,11 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const path = { namespace: params.owner, name: params.repo };
   const number = Number(params.number);
-  // At once: none of these depends on another.
-  const { can } = await accessTo(context, params);
-  // Putting an agent on it needs Write: Read cannot spend compute.
-  const member = can.run;
-  const [found, labels, agentsEnabled, members, links, computeNote] = await Promise.all([
+  // At once: only the plan's note waits for the viewer's role. Putting an
+  // agent on it needs Write: Read cannot spend compute.
+  const access = accessTo(context, params);
+  const [{ can }, found, labels, agentsEnabled, members, links, computeNote] = await Promise.all([
+    access,
     work.getIssue(path, number, viewer),
     work.listLabels(path, viewer),
     env.RUNNER.enabled(viewer, path),
@@ -76,7 +76,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     // What it is tied to outside g1t. Shown only once the issue is known visible.
     integrations.links(path, number).catch(() => []),
     // Before a member assigns g1t-agent: whether the workspace's plan lets it start.
-    member ? computeNoteFor(params.owner, "agent") : null,
+    access.then(({ can }) => (can.run ? computeNoteFor(params.owner, "agent") : null)),
   ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be a pull request.
@@ -600,23 +600,6 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                 to open a pull request.
               </p>
             )}
-          </section>
-        )}
-
-        {issue.checks.length > 0 && (
-          <section>
-            <h3 className="text-sm font-medium">Acceptance checks</h3>
-            <ul className="mt-2 space-y-1.5">
-              {issue.checks.map((check) => (
-                <li
-                  key={check}
-                  className="flex items-center gap-2 rounded-md border border-line bg-surface px-2.5 py-1.5 font-mono text-xs"
-                >
-                  <Terminal size={13} className="shrink-0 text-faint" />
-                  <span className="truncate">{check}</span>
-                </li>
-              ))}
-            </ul>
           </section>
         )}
 

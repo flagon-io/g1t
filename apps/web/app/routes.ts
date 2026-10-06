@@ -53,6 +53,8 @@ export default [
   route("status", "routes/status.tsx"),
   route("status.json", "routes/status-json.ts"),
   route(".well-known/security.txt", "routes/security-txt.ts"),
+  // The self-hosted runner's releases, from R2.
+  route("downloads/runner/*", "routes/downloads-runner.ts"),
   // A workspace's own pages sit under `-`, which no repository can be named.
   route(":owner", "routes/workspace/layout.tsx", [
     index("routes/workspace/overview.tsx"),
@@ -65,6 +67,7 @@ export default [
     route("-/integrations", "routes/workspace/integrations.tsx"),
     route("-/webhooks", "routes/workspace/webhooks.tsx"),
     route("-/secrets", "routes/workspace/secrets.tsx"),
+    route("-/runners", "routes/workspace/runners.tsx"),
     route("-/settings", "routes/workspace/settings.tsx"),
     route("-/repositories", "routes/workspace/repositories.tsx"),
     route("-/agents", "routes/workspace/agents.tsx"),
@@ -85,6 +88,8 @@ export default [
   route(":owner/:repo/audit.json", "routes/repo/audit-live.ts"),
   // An invitation to a repository, answered by someone who cannot see it yet.
   route(":owner/:repo/invitations", "routes/repo/invitations.tsx"),
+  // A starter CI workflow, opened as a pull request (components/add-ci.tsx).
+  route(":owner/:repo/add-ci", "routes/repo/add-ci.ts"),
   // A screenshot of a project's production, for its overview.
   route(":owner/:repo/production.jpg", "routes/repo/production-screenshot.ts"),
   // A project: its overview first, its repository's code under Code. The
@@ -124,6 +129,7 @@ export default [
     route("settings/branches", "routes/repo/settings-branches.tsx"),
     route("settings/webhooks", "routes/repo/webhooks.tsx"),
     route("settings/secrets", "routes/repo/secrets.tsx"),
+    route("settings/runners", "routes/repo/settings-runners.tsx"),
     route("settings/deployments", "routes/repo/settings-deployments.tsx"),
     route("settings/domains", "routes/repo/settings-domains.tsx"),
     route("settings/dependencies", "routes/repo/settings-dependencies.tsx"),

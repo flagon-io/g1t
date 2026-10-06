@@ -16,7 +16,7 @@ import {
   isActiveRun,
 } from "@g1t/contracts";
 
-import { formatCap, tri } from "../lib/guardrails";
+import { formatCap, tri, workflowDomainLine } from "../lib/guardrails";
 import { formatCost } from "./agents";
 import { Button, ErrorText, Input, TimeAgo } from "./ui";
 import { CheckboxOption } from "./ui/checkbox";
@@ -109,6 +109,7 @@ export function GuardrailsForm({
   const shownRegistries = own.registries ?? base.registries;
   const inheritedDomains = level === "project" ? view.inherited.domains : [];
   const inheritedDeny = level === "project" ? view.inherited.deny : [];
+  const inheritedWorkflowDomains = level === "project" ? (view.inherited.workflowDomains ?? []) : [];
   return (
     <Form method="post" className="max-w-4xl space-y-8">
       <fieldset disabled={!editable} className="min-w-0 space-y-8">
@@ -187,6 +188,31 @@ export function GuardrailsForm({
             {inheritedDomains.length > 0 && (
               <p className="mt-2 text-xs text-faint">
                 From the workspace: <Hosts hosts={inheritedDomains} />
+              </p>
+            )}
+          </div>
+          <div className="rounded-xl border border-line bg-surface p-4">
+            <label htmlFor="guardrail-workflow-domains" className="text-sm font-medium">
+              Workflow-only domains
+            </label>
+            <p className="mt-1 text-sm text-muted">
+              Hosts that only workflow jobs may reach, never agents, such as the API a deploy uploads to. One
+              per line: the domain, then the workflows and the environments it is for, each comma-separated;
+              leave either out for any. Only jobs of runs that are not pull requests from forks get them.
+              {level === "project" && " These add to the workspace's."}
+            </p>
+            <Textarea
+              id="guardrail-workflow-domains"
+              name="workflowDomains"
+              className="mt-3 font-mono text-xs"
+              rows={3}
+              defaultValue={(own.workflowDomains ?? []).map(workflowDomainLine).join("\n")}
+              placeholder="api.cloudflare.com | deploy.yml | production"
+            />
+            {inheritedWorkflowDomains.length > 0 && (
+              <p className="mt-2 text-xs text-faint">
+                From the workspace:{" "}
+                <span className="font-mono break-words">{inheritedWorkflowDomains.map(workflowDomainLine).join("; ")}</span>
               </p>
             )}
           </div>

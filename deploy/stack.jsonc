@@ -43,7 +43,13 @@
 	//            process of its own), or "none".
 	// inputs:    files outside its folder it is built from that no workspace
 	//            metadata names (a test finds such imports).
-	// image:     a Containers image, built with Docker on deploy.
+	// image:     a Containers image (docs/DEPLOYING.md, "The runner's images"):
+	//            dockerfile  the image a deploy ships: the base plus the binary
+	//            crate       the crate that binary is built from (and what it uses)
+	//            base        { context: the base's folder, lock: the file that
+	//                        records the base that was pushed }; the base is
+	//                        rebuilt only when its folder changes
+	//            repository  where both are pushed in Cloudflare's registry
 	"units": {
 		"events": {
 			"path": "services/events",
@@ -165,11 +171,16 @@
 			"worker": "g1t-runner",
 			"stage": "core",
 			"secrets": ["AI_GATEWAY_TOKEN"],
-			"setup": ["Containers on the account; Docker on the machine that deploys a new image"],
+			"setup": [
+				"Containers on the account; Docker on the machine that builds a new image",
+				"The base image, once: node scripts/deploy.mjs build-base"
+			],
 			"image": {
 				"dockerfile": "services/runner/Dockerfile",
-				// The image compiles this crate (and what it depends on).
-				"crate": "g1t-runner"
+				// The binary the image adds to its base (scripts/build-runner.mjs).
+				"crate": "g1t-runner",
+				"base": { "context": "services/runner/base", "lock": "services/runner/base.json" },
+				"repository": "g1t-runner"
 			},
 			"self_host": "off"
 		},
@@ -238,6 +249,7 @@
 			"worker": "g1t",
 			"stage": "front",
 			"secrets": [],
+			"setup": ["The R2 bucket g1t-downloads, for the self-hosted runner's releases: npx wrangler r2 bucket create g1t-downloads"],
 			"self_host": "run"
 		},
 		"sudo": {

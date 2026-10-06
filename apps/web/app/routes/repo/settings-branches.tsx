@@ -3,10 +3,12 @@ import { Form, Link, useNavigation } from "react-router";
 
 import type { Route } from "./+types/settings-branches";
 import { page } from "../../lib/meta";
+import { AddCiPrompt } from "../../components/add-ci";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
+import { RequiredChecksPicker } from "../../components/required-checks";
 import { SettingChoice as Choice, SettingsSection as Section, SettingToggle as Toggle } from "../../components/settings-section";
 import { Button, ErrorText, TimeAgo } from "../../components/ui";
-import { repos, work } from "../../lib/services.server";
+import { actions, repos, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { requireCapability, requireInsider } from "../../lib/access.server";
 
@@ -17,10 +19,23 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   // Maintain and up; to anyone without a role here the page does not exist.
-  await requireInsider(context, params, "manage_protection");
+  const { access } = await requireInsider(context, params, "manage_protection");
   const path = { namespace: params.owner, name: params.repo };
-  const [repo, settings] = await Promise.all([repos.get(path, viewer), work.getSettings(path, viewer)]);
-  return { repo: unwrap(repo), settings: unwrap(settings) };
+  const [repo, settings, seen, workflows] = await Promise.all([
+    repos.get(path, viewer),
+    work.getSettings(path, viewer),
+    work.seenChecks(path, viewer),
+    actions.workflows(path, viewer),
+  ]);
+  return {
+    repo: unwrap(repo),
+    settings: unwrap(settings),
+    // The names to choose required checks from: what reported lately.
+    seen: seen.ok ? seen.value : [],
+    // Nothing to require until something runs: the page offers to add CI.
+    noChecks: workflows.ok && workflows.value.length === 0 && seen.ok && seen.value.length === 0,
+    canPush: access.can.push,
+  };
 }
 
 /** A whole number from a form field, kept within `min` and `max`. */
@@ -42,10 +57,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   if (!repo.ok) return { saved: false, error: repo.error.message };
   const settings = await work.updateSettings(user, path, {
     autoMerge: on("autoMerge"),
+    requiredChecks: form.getAll("requiredChecks").map(String),
     requireUpToDate: on("requireUpToDate"),
     requiredApprovals: count(form.get("requiredApprovals"), 0, 6),
     countAgentApprovals: on("countAgentApprovals"),
-    allowIgnoringChecks: !on("requireChecks"),
+    allowIgnoringChecks: on("bypassChecks"),
     agentReview: on("agentReview"),
     maxRevisions: count(form.get("maxRevisions"), 0, 5),
     mergeQueue: on("mergeQueue"),
@@ -55,7 +71,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function BranchSettings({ loaderData, actionData }: Route.ComponentProps) {
-  const { repo, settings } = loaderData;
+  const { repo, settings, seen, noChecks, canPush } = loaderData;
   const saving = useNavigation().state === "submitting";
   const branch = repo.defaultBranch;
   const base = `/${repo.namespace}/${repo.name}`;
@@ -63,12 +79,37 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
   return (
     <>
       <RepoSettingsHeading base={base} />
+      {/* Its own form, so outside the settings one. */}
+      {noChecks && (
+        <div className="mb-8 max-w-4xl">
+          <AddCiPrompt owner={repo.namespace} repo={repo.name} canAdd={canPush && !archived} />
+        </div>
+      )}
       <Form method="post" className="max-w-4xl">
         <fieldset disabled={archived} className="min-w-0 space-y-8">
-          <Section title="Branch protection" about={`Rules for ${branch}, the branch everything lands on.`}>
+          <Section title="Branch protection" about={`Rules for ${branch}, the branch every pull request merges into. They hold for people and agents alike.`}>
             <Toggle name="protected" on={repo.protected} title={`Require a pull request to change ${branch}`}>
               Pushing to {branch} is refused, for members and agents alike, and git says why. Changes reach it only by
               merging a pull request. The first push to an empty repository is still allowed.
+            </Toggle>
+            <RequiredChecksPicker
+              required={settings.requiredChecks ?? []}
+              seen={seen}
+              mergeQueue={settings.mergeQueue}
+              disabled={archived}
+            />
+            <Toggle name="bypassChecks" on={settings.allowIgnoringChecks} title="Allow bypassing required checks">
+              Someone who may merge can tick a box to merge although a required check failed or has not finished, and
+              the pull request says who did. With this off, nobody can, and auto-merge never does.
+            </Toggle>
+            <Toggle
+              name="requireUpToDate"
+              on={settings.requireUpToDate}
+              title="Require branches to be up to date before merging"
+            >
+              With this off, a pull request can be merged after {branch} has moved: g1t brings it up to date as part of
+              merging, and asks you only if there is a conflict it cannot resolve. With it on, it has to catch up first
+              and its required checks pass again on the result, so what lands is exactly what was checked.
             </Toggle>
             <Choice
               name="requiredApprovals"
@@ -87,30 +128,17 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
             <Toggle name="countAgentApprovals" on={settings.countAgentApprovals} title="A g1t agent's approval counts">
               With this off, required approvals have to come from people, and an agent's review is advice.
             </Toggle>
-            <Toggle name="requireChecks" on={!settings.allowIgnoringChecks} title="Require acceptance checks to pass">
-              With this off, a member can choose to merge although the issue's checks failed or have not finished. With
-              it on, nobody can.
-            </Toggle>
-            <Toggle
-              name="requireUpToDate"
-              on={settings.requireUpToDate}
-              title="Require pull requests to be up to date before merging"
-            >
-              With this off, a pull request can be merged after {branch} has moved: g1t brings it up to date as part of
-              merging, and asks you only if there is a conflict it cannot resolve. With it on, it has to catch up first
-              and its checks run again on the result, so what lands is exactly what was checked.
-            </Toggle>
             <Toggle name="mergeQueue" on={settings.mergeQueue} title="Merge through a queue">
-              Merging adds a pull request to the queue instead of changing {branch} at once. g1t tests it together with
-              every pull request ahead of it, several combinations at a time, and {branch} only ever moves to a
-              combination whose checks passed. One that fails leaves the queue and goes back to its author, and the ones
-              behind it are tested again without it.
+              Merging adds a pull request to the queue instead of changing {branch} at once. g1t builds it together with
+              every pull request ahead of it, several combinations at a time, and runs the workflows that run on{" "}
+              <code className="text-fg">merge_group</code> on each. {branch} only ever moves to a combination whose
+              required checks passed. One that fails leaves the queue and goes back to its author.
             </Toggle>
           </Section>
 
           <Section
             title="g1t agents"
-            about="What happens to a pull request a g1t agent makes, from the moment it is ready."
+            about="What happens to a pull request a g1t agent makes, from the moment it is ready. Its checks are the same workflows, and the rules above hold."
           >
             <Toggle name="agentReview" on={settings.agentReview} title="Review by a second agent">
               A different agent reads each change and posts comments on lines, a summary and a verdict. If it asks for
@@ -128,21 +156,23 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
                 [5, "5"],
               ]}
             >
-              How many times an agent is sent back to fix failed checks or address a review before g1t stops and the
-              pull request says it needs you.
+              How many times an agent is sent back to fix a failed check, with what its jobs printed, or to address a
+              review, before g1t stops and the pull request says it needs you. After that, only a required check that
+              still fails holds it.
             </Choice>
             <Toggle name="autoMerge" on={settings.autoMerge} title="Merge automatically when ready">
-              A g1t agent's pull request lands without anyone pressing merge once every rule above is met. With this
-              off, it waits for a member. Pull requests from people and from other agents always wait.
+              A g1t agent's pull request lands without anyone pressing merge once every rule above is met, its required
+              checks included. With this off, it waits for a member. Pull requests from people and from other agents
+              always wait.
             </Toggle>
             <Toggle
               name="holdLowConfidence"
               on={settings.holdLowConfidence}
               title="Ask a person before merging low-confidence changes"
             >
-              g1t rates how sure it is of each change an agent finishes, from its checks, revisions, review, tests, size
-              and guardrails. One it rates low waits for a member to approve it, instead of merging by itself or joining
-              the queue, and shows on Mission control as needing you.
+              g1t rates how sure it is of each change an agent finishes, from its required checks, revisions, review,
+              tests, size and guardrails. One it rates low waits for a member to approve it, instead of merging by itself
+              or joining the queue, and shows on Mission control as needing you.
             </Toggle>
             <Link
               to={`${base}/settings/guardrails`}

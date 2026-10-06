@@ -7,21 +7,24 @@ import { text } from "~/lib/forms";
 import { localValue, utc } from "~/lib/incidents";
 import { statusAdmin } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
-import { requireStaff } from "~/lib/staff";
+import { requireStaff, zoneContext } from "~/lib/staff";
+import { zoneAbbr } from "~/lib/time";
 
 export const meta: Route.MetaFunction = () => [{ title: "Schedule maintenance · sudo" }, { name: "robots", content: "noindex, nofollow" }];
 
 export async function loader({ context }: Route.LoaderArgs) {
   requireStaff(context);
+  const { zone } = context.get(zoneContext);
   const components = await settle(statusAdmin.components());
-  // A sensible default: tomorrow, 02:00 to 03:00 UTC.
+  // A sensible default: tomorrow, 02:00 to 03:00 UTC, shown in the staff member's zone.
   const now = new Date();
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 2));
   return {
     components: components.ok ? components.value : [],
     error: components.ok ? null : components.error,
-    start: localValue(start),
-    end: localValue(new Date(start.getTime() + 3600_000)),
+    start: localValue(start, zone),
+    end: localValue(new Date(start.getTime() + 3600_000), zone),
+    zone: zoneAbbr(start, zone),
   };
 }
 
@@ -29,6 +32,7 @@ type ActionData = { error: string; values: Record<string, string>; chosen: strin
 
 export async function action({ request, context }: Route.ActionArgs) {
   const staff = requireStaff(context);
+  const { zone } = context.get(zoneContext);
   const form = await request.formData();
   const values = Object.fromEntries(["title", "message", "starts_at", "ends_at"].map((k) => [k, text(form, k)]));
   const chosen = form.getAll("components").map(String);
@@ -37,8 +41,8 @@ export async function action({ request, context }: Route.ActionArgs) {
       title: text(form, "title"),
       message: String(form.get("message") ?? ""),
       components: chosen,
-      starts_at: utc(text(form, "starts_at")) ?? "",
-      ends_at: utc(text(form, "ends_at")) ?? "",
+      starts_at: utc(text(form, "starts_at"), zone) ?? "",
+      ends_at: utc(text(form, "ends_at"), zone) ?? "",
       notify: form.get("notify") === "on",
       by: staff.email,
     }),
@@ -49,7 +53,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 }
 
 export default function ScheduleMaintenance({ loaderData, actionData }: Route.ComponentProps) {
-  const { components, error, start, end } = loaderData;
+  const { components, error, start, end, zone } = loaderData;
   const failed = actionData as ActionData | undefined;
   const v = failed?.values ?? {};
   return (
@@ -71,10 +75,10 @@ export default function ScheduleMaintenance({ loaderData, actionData }: Route.Co
             <Field label="Title" className="sm:col-span-2">
               <Input name="title" required maxLength={120} autoFocus defaultValue={v.title} placeholder="Database upgrade" />
             </Field>
-            <Field label="Starts (UTC)">
+            <Field label={`Starts (${zone})`}>
               <Input type="datetime-local" name="starts_at" required defaultValue={v.starts_at || start} />
             </Field>
-            <Field label="Ends (UTC)" hint="Up to 72 hours after it starts.">
+            <Field label={`Ends (${zone})`} hint="Up to 72 hours after it starts.">
               <Input type="datetime-local" name="ends_at" required defaultValue={v.ends_at || end} />
             </Field>
           </div>

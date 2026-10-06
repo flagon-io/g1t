@@ -25,7 +25,10 @@ export type Project = {
   /** Unique in its workspace; the project's address is `g1t.sh/<workspace>/<slug>`. */
   slug: string;
   name: string;
+  /** The project's own description, or its repository's while it has none. */
   description: string | null;
+  /** Whether `description` is its repository's, following it as it changes. */
+  descriptionInherited: boolean;
   source: ProjectSource;
   /** Whether its repository is private: only people with a role on it can see it. */
   private: boolean;
@@ -75,7 +78,7 @@ export interface ProjectsApi {
   byRepo(repoId: string): Promise<Project[]>;
   /** Members only. */
   create(actor: User, workspace: string, input: NewProject): Promise<Result<Project>>;
-  /** Members only. */
+  /** Members only. A null or blank description goes back to the repository's. */
   update(
     actor: User,
     workspace: string,

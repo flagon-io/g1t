@@ -92,6 +92,7 @@ pub enum Op {
     PurgeRepo,
     GetRepoSettings,
     UpdateRepoSettings,
+    ListCheckNames,
     GetMergeQueue,
     MessageAgent,
     AnswerMessage,
@@ -154,6 +155,15 @@ pub enum Op {
     ListActionsVariables,
     SetActionsVariable,
     DeleteActionsVariable,
+    ListRunners,
+    ListRunnerGroups,
+    GetRunnerSettings,
+    CreateRunnerRegistrationToken,
+    RemoveRunner,
+    CreateRunnerGroup,
+    UpdateRunnerGroup,
+    DeleteRunnerGroup,
+    UpdateRunnerSettings,
     ListCollaborators,
     AddCollaborator,
     UpdateCollaborator,
@@ -188,6 +198,28 @@ async fn call<A: Serialize, T: DeserializeOwned>(
 /// Calls a method that returns an `Outcome`, passing its value through.
 async fn pass<A: Serialize>(service: &Fetcher, method: &str, args: &A) -> Result<Outcome<Value>> {
     call(service, method, args).await
+}
+
+/// Commands given the deprecated way, as `checks` or `acceptance_checks`.
+fn deprecated_checks(input: &Value) -> Vec<String> {
+    let mut checks = strings(input, "checks").unwrap_or_default();
+    checks.extend(strings(input, "acceptance_checks").unwrap_or_default());
+    checks.retain(|check| !check.trim().is_empty());
+    checks
+}
+
+/// What the response says when `checks` was given: it still works, as
+/// words in the issue's body, and what replaced it.
+pub(crate) const CHECKS_DEPRECATION: &str = "checks is deprecated: commands are no longer run per issue. They were added to the issue's body under \"Definition of done\". What must pass before a pull request merges is the default branch's required checks: see update_repo_settings (required_checks).";
+
+fn with_deprecation(outcome: Outcome<Value>, deprecated: bool) -> Outcome<Value> {
+    match outcome {
+        Outcome::Ok(mut value) if deprecated && value.is_object() => {
+            value["deprecation"] = Value::String(CHECKS_DEPRECATION.to_owned());
+            Outcome::Ok(value)
+        }
+        other => other,
+    }
 }
 
 fn text(input: &Value, key: &str) -> String {
@@ -312,6 +344,21 @@ fn settings_owner(properties: Value) -> Value {
     properties
 }
 
+/// The inputs that say whose self-hosted runners: a repository's own, or a
+/// workspace's.
+fn runners_owner(properties: Value) -> Value {
+    let mut properties = properties;
+    properties["repo"] = json!({
+        "type": "string",
+        "description": "Repository as \"owner/name\", for its own runners (and, when listing, the workspace's it may use).",
+    });
+    properties["workspace"] = json!({
+        "type": "string",
+        "description": "Instead of repo: the workspace, for the runners its repositories share.",
+    });
+    properties
+}
+
 /// The inputs that say whose webhooks: a repository's, or a workspace's own.
 fn hook_owner(properties: Value) -> Value {
     let mut properties = properties;
@@ -351,7 +398,7 @@ fn role_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 103] = [
+    pub const ALL: [Op; 113] = [
         Op::Whoami,
         Op::CreateWorkspace,
         Op::DeleteWorkspace,
@@ -381,6 +428,7 @@ impl Op {
         Op::PurgeRepo,
         Op::GetRepoSettings,
         Op::UpdateRepoSettings,
+        Op::ListCheckNames,
         Op::GetMergeQueue,
         Op::MessageAgent,
         Op::AnswerMessage,
@@ -443,6 +491,15 @@ impl Op {
         Op::ListActionsVariables,
         Op::SetActionsVariable,
         Op::DeleteActionsVariable,
+        Op::ListRunners,
+        Op::ListRunnerGroups,
+        Op::GetRunnerSettings,
+        Op::CreateRunnerRegistrationToken,
+        Op::RemoveRunner,
+        Op::CreateRunnerGroup,
+        Op::UpdateRunnerGroup,
+        Op::DeleteRunnerGroup,
+        Op::UpdateRunnerSettings,
         Op::ListCollaborators,
         Op::AddCollaborator,
         Op::UpdateCollaborator,
@@ -492,6 +549,7 @@ impl Op {
             Op::RestoreRepo => "restore_repo",
             Op::PurgeRepo => "purge_repo",
             Op::GetRepoSettings => "get_repo_settings",
+            Op::ListCheckNames => "list_check_names",
             Op::GetMergeQueue => "get_merge_queue",
             Op::MessageAgent => "message_agent",
             Op::AnswerMessage => "answer_message",
@@ -555,6 +613,15 @@ impl Op {
             Op::ListActionsVariables => "list_actions_variables",
             Op::SetActionsVariable => "set_actions_variable",
             Op::DeleteActionsVariable => "delete_actions_variable",
+            Op::ListRunners => "list_runners",
+            Op::ListRunnerGroups => "list_runner_groups",
+            Op::GetRunnerSettings => "get_runner_settings",
+            Op::CreateRunnerRegistrationToken => "create_runner_registration_token",
+            Op::RemoveRunner => "remove_runner",
+            Op::CreateRunnerGroup => "create_runner_group",
+            Op::UpdateRunnerGroup => "update_runner_group",
+            Op::DeleteRunnerGroup => "delete_runner_group",
+            Op::UpdateRunnerSettings => "update_runner_settings",
             Op::ListCollaborators => "list_collaborators",
             Op::AddCollaborator => "add_collaborator",
             Op::UpdateCollaborator => "update_collaborator",
@@ -645,10 +712,13 @@ impl Op {
                 "Move a repository to another workspace, keeping its name. You must own both workspaces, and the destination must not already have a repository of that name; a free destination takes a private repository only if its private storage has room. Everything moves with it: git data, issues, pull requests, comments, labels, workflow runs, deployments, its project, and its own secrets, variables and webhooks. Its old address keeps working: web pages, git remotes and API calls redirect to the new one until a repository is made at the old address. Usage from now on is charged to the new workspace."
             }
             Op::GetRepoSettings => {
-                "How a repository handles pull requests: the approvals a merge needs, whether failed checks can be overridden, whether a pull request must be up to date, and how g1t's agents are reviewed, revised and merged."
+                "How a repository handles pull requests, as its default branch's protection: the checks that must pass (required_checks), the approvals a merge needs, whether required checks can be bypassed, whether a pull request must be up to date, and how g1t's agents are reviewed, revised and merged. The same rules hold for a person's pull request and an agent's."
             }
             Op::UpdateRepoSettings => {
-                "Change how a repository handles pull requests. Only the fields given are changed. Needs the Maintain role or higher."
+                "Change how a repository handles pull requests. Only the fields given are changed; required_checks replaces the whole list. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. Needs the Maintain role or higher."
+            }
+            Op::ListCheckNames => {
+                "The check names reported on a repository's commits in the last 30 days, most recent first, with the events each was reported for: the names update_repo_settings takes in required_checks. A workflow's runs report a check named after the workflow; a check required on the default branch must be reported on a pull request's head (pull_request events) and, with the merge queue on, on its queued state (merge_group events)."
             }
             Op::MessageAgent => {
                 "Send the agent working on a pull request a message: a correction, a hint, a change of plan. It receives it at its next step, and it is recorded in the pull request's session. The pull request's author, and anyone with the Write role or higher. An agent uses it to ask the agent on another pull request a question (kind: question) or hand it work that belongs there (kind: handoff), giving its own pull request as from_number; the answer comes back to it at its next step."
@@ -684,9 +754,11 @@ impl Op {
                 "Issues on a repository, newest first. An issue is something that should change: a bug, a feature, a question. Pull requests are made against it."
             }
             Op::GetIssue => {
-                "An issue: its description, labels and acceptance checks, its comments, and every pull request made against it with its status. If the issue is closed, resolvedBy is the number of the pull request that was merged for it. Read this before opening a pull request, to see what others have already tried."
+                "An issue: its description (which may say what done means, under \"Definition of done\"), labels, its comments, and every pull request made against it with its status. If the issue is closed, resolved_by is the number of the pull request that was merged for it. Read this before opening a pull request, to see what others have already tried."
             }
-            Op::CreateIssue => "Open an issue on a repository.",
+            Op::CreateIssue => {
+                "Open an issue on a repository. Say what done means in the body if it helps, for instance under a \"Definition of done\" heading; what must pass before a pull request for it merges is the default branch's required checks, the same for every pull request."
+            }
             Op::UpdateIssue => {
                 "Change an issue's title, body, labels or the people it is assigned to. Only the fields given are changed; labels and assignees each replace the whole set. Its author may change their own issue; anyone else needs the Triage role or higher."
             }
@@ -695,7 +767,7 @@ impl Op {
             }
             Op::ReopenIssue => "Reopen a closed issue. Its author may reopen their own issue; anyone else needs the Triage role or higher.",
             Op::PlanWork => {
-                "Turn an outcome into a plan. An agent reads the repository and proposes the issues that would get there: what each changes, the checks it must pass, the files it will touch, and which must merge before which. Returns the plan's id at once; the plan takes a minute or two to write, so read it with get_plan until its status is ready. Nothing is opened until apply_plan. Needs the Write role or higher."
+                "Turn an outcome into a plan. An agent reads the repository and proposes the issues that would get there: what each changes, what done means for it (added to its body under \"Definition of done\"), the files it will touch, and which must merge before which. Returns the plan's id at once; the plan takes a minute or two to write, so read it with get_plan until its status is ready. Nothing is opened until apply_plan. Needs the Write role or higher."
             }
             Op::GetPlan => {
                 "A plan: the outcome asked for, its status (planning, ready, failed or applied), and the issues it proposes with their dependencies."
@@ -704,10 +776,10 @@ impl Op {
                 "Open a plan's issues, each blocked by the ones it depends on. With assign, g1t agents start at once on every issue that depends on nothing, working in parallel, and on the others as what they depend on merges. keep limits it to some of the proposed issues, by their positions counting from 1. A plan is applied once. Needs the Write role or higher."
             }
             Op::AssignIssue => {
-                "Assign an issue to the g1t agent. It opens a pull request for the issue in a sandbox of its own and sees it through: the issue's acceptance checks, a review by a second agent, revision if either finds something, and catching up when main moves. Returns the pull request at once; follow its progress with get_pull_request. There is no model or agent count to choose. To put many agents to work, assign many issues. Needs the Write role or higher. In preview: only for accounts g1t agents are enabled for."
+                "Assign an issue to the g1t agent. It opens a pull request for the issue in a sandbox of its own and sees it through: the repository's workflows run on it as its checks, a second agent reviews it, it revises when a check fails (reading the failing jobs' logs) or the review asks for changes, and it catches up when main moves. It is ready once the default branch's required checks pass and the review approves. Returns the pull request at once; follow its progress with get_pull_request. There is no model or agent count to choose. To put many agents to work, assign many issues. Needs the Write role or higher. In preview: only for accounts g1t agents are enabled for."
             }
             Op::Delegate => {
-                "Put an agent on something in one step: open an issue and assign it to the g1t agent at once. Say what you want done in plain words; give checks, commands that must pass, when you know them. Needs the Write role or higher, and nothing is opened without it. The issue is opened whatever happens next: agent.status is started (pull is the draft pull request the agent opened; follow it with get_pull_request), queued (every agent slot of the workspace is busy; it starts by itself when one frees up) or not_started, with agent.code saying why (not_paid, trial_used, limit, paused, issue_cap, billing_unavailable or no_model), agent.message saying what to do, and agent.fix_url where. There is no model or agent count to choose."
+                "Put an agent on something in one step: open an issue and assign it to the g1t agent at once. Say what you want done in plain words, with what done means if you know it. What must pass before its pull request merges is the default branch's required checks. Needs the Write role or higher, and nothing is opened without it. The issue is opened whatever happens next: agent.status is started (pull is the draft pull request the agent opened; follow it with get_pull_request), queued (every agent slot of the workspace is busy; it starts by itself when one frees up) or not_started, with agent.code saying why (not_paid, trial_used, limit, paused, issue_cap, billing_unavailable or no_model), agent.message saying what to do, and agent.fix_url where. There is no model or agent count to choose."
             }
             Op::ListLabels => "The labels available on a repository's issues.",
             Op::AddComment => {
@@ -720,7 +792,7 @@ impl Op {
                 "Pull requests on a repository, newest first. State open covers drafts and those ready for review; closed covers merged and closed."
             }
             Op::GetPullRequest => {
-                "A pull request's status, head commit, comments and reviews, the issue it is for, the latest run of that issue's acceptance checks with each command's output, whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different issue means the two will conflict; say so, or keep clear of those files."
+                "A pull request's status, head commit, comments and reviews, the issue it is for, its checks (statuses: what each workflow run reported on its head, with a link to the run; get_workflow_run and get_job_logs say why one failed), required_checks (each check the default branch requires, as success, failure, pending or expected when nothing has reported it yet), whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different issue means the two will conflict; say so, or keep clear of those files."
             }
             Op::CreatePullRequest => {
                 "Start a change. Opens a draft pull request with its own fork of the repository and returns the fork's git remote. Clone it, commit your work there, push, record your session as you go, then call mark_pull_request_ready. Give the issue it is for whenever there is one. If the change is already on a branch pushed to the repository, give that branch instead: no fork is made and the pull request is ready for review at once."
@@ -737,7 +809,7 @@ impl Op {
                 "What a pull request changes: the files it touches and their line-by-line diff against the commit it started from. Use it to review a pull request or to compare several made for the same issue."
             }
             Op::MergePullRequest => {
-                "Land a pull request on the repository's main branch. Merging needs the Write role or higher, and only once it is marked ready and its acceptance checks have passed. Merging resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded. Where the repository has a merge queue, it joins the queue instead of landing at once. If main has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests to be up to date refuses instead, so pull main into its fork or branch, push, and merge again. Check status in the result to see whether it has landed."
+                "Land a pull request on the repository's main branch. Merging needs the Write role or higher, and only once it is marked ready and every check the default branch requires has passed on its head (see required_checks on get_pull_request); with ignore_checks, someone who may merge can bypass them where the repository allows it. Merging resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded. Where the repository has a merge queue, it joins the queue instead of landing at once. If main has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests to be up to date refuses instead, so pull main into its fork or branch, push, and merge again. Check status in the result to see whether it has landed."
             }
             Op::ListEvents => {
                 "The timeline of a repository: pushes, issues, pull requests, comments and session activity, newest first."
@@ -810,6 +882,29 @@ impl Op {
             }
             Op::SetActionsVariable => "Add or change a variable's row, as for secrets.",
             Op::DeleteActionsVariable => "Remove a variable: one row by `id`, or every row of the key.",
+            Op::ListRunners => {
+                "A workspace's self-hosted runners, or a repository's: its own and the workspace's that its runner group lets it use. Each has its `labels` (always `self-hosted`, its OS and its architecture), `status` (`online`, `busy` or `offline`), the `work` it is doing, its `version` and when it was last seen. A workspace's are seen by its members; a repository's need the Admin role on it."
+            }
+            Op::ListRunnerGroups => {
+                "A workspace's runner groups: which of its repositories may use the runners in each. The default group (every repository) is where runners go when no group is named. Members only."
+            }
+            Op::GetRunnerSettings => {
+                "Where a workspace's (or a repository's) g1t agent work runs, and whether pull requests from forks may use its self-hosted runners. `agents_on_self_hosted` sends agent runs, checks, reviews and the merge queue to runners with `agent_labels` instead of g1t's sandboxes. A repository's are its workspace's unless it has its own (`inherited`)."
+            }
+            Op::CreateRunnerRegistrationToken => {
+                "A registration token for `g1t-runner register`, shown once. It lasts an hour and registers any number of runners until then, into `group` (the default group if none) for a workspace, or as a repository's own runners. It can do nothing else. Owners of the workspace, or admins of the repository, signed in or with a person's token; workspace tokens, G1T_TOKEN included, are refused."
+            }
+            Op::RemoveRunner => {
+                "Remove a self-hosted runner: its credential stops working at once and a job it is running fails. The machine's `g1t-runner` stops on its next poll. Owners of the workspace, or admins of the repository."
+            }
+            Op::CreateRunnerGroup => {
+                "Create a runner group: the repositories (by name) that may use the runners in it; empty for every repository. Owners only."
+            }
+            Op::UpdateRunnerGroup => "Rename a runner group, or change which repositories may use it. Owners only.",
+            Op::DeleteRunnerGroup => "Delete a runner group. Its runners join the default group, which cannot be deleted. Owners only.",
+            Op::UpdateRunnerSettings => {
+                "Change where g1t agent work runs and whether pull requests from forks may use self-hosted runners, for a workspace or one repository. Left out is unchanged; `inherit` drops a repository's own settings. Allowing forks lets anyone who can open a pull request run code on your machines. Owners of the workspace, or admins of the repository."
+            }
             Op::ImportIssue => {
                 "Open an issue from a ticket in Jira or Linear, or from a Sentry issue, by its key or address. The issue is linked to it: agents read the original, and when the work lands the ticket is told. Importing the same ticket again returns the issue already made. With assign, a g1t agent starts on it."
             }
@@ -1035,7 +1130,7 @@ impl Op {
                 &["repo", "confirm"],
             ),
             Op::ListDeletedRepos => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
-            Op::GetRepoSettings => object(json!({ "repo": repo_schema() }), &["repo"]),
+            Op::GetRepoSettings | Op::ListCheckNames => object(json!({ "repo": repo_schema() }), &["repo"]),
             Op::GetMergeQueue => object(json!({ "repo": repo_schema() }), &["repo"]),
             Op::MessageAgent => object(
                 numbered(json!({
@@ -1141,6 +1236,11 @@ impl Op {
                         "type": "boolean",
                         "description": "Land a g1t agent's pull request without a person once every rule is met.",
                     },
+                    "required_checks": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "The checks that must pass on a pull request's head before it merges into the default branch, by name: a workflow's name (CI) or another status's context (g1t / deploy). list_check_names gives the names seen lately. Replaces the whole list; an empty list requires none.",
+                    },
                     "require_up_to_date": {
                         "type": "boolean",
                         "description": "Refuse to merge a pull request that is behind the default branch. When false, merging brings it up to date first.",
@@ -1155,7 +1255,7 @@ impl Op {
                     },
                     "allow_ignoring_checks": {
                         "type": "boolean",
-                        "description": "Whether a member may merge although the acceptance checks did not pass.",
+                        "description": "Whether someone who may merge can bypass required checks that have not passed, with ignore_checks.",
                     },
                     "agent_review": {
                         "type": "boolean",
@@ -1221,7 +1321,8 @@ impl Op {
                     "checks": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "Commands that must pass for a pull request to be accepted.",
+                        "deprecated": true,
+                        "description": "Deprecated. Commands are added to the body under \"Definition of done\", and the response says so in deprecation. What must pass before a pull request merges is the default branch's required checks.",
                     },
                 }),
                 &["repo", "title"],
@@ -1283,7 +1384,8 @@ impl Op {
                     "checks": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "Commands that must pass for its pull request to be accepted, e.g. \"npm test\".",
+                        "deprecated": true,
+                        "description": "Deprecated, as on create_issue: commands are added to the body under \"Definition of done\".",
                     },
                     "labels": {
                         "type": "array",
@@ -1400,7 +1502,7 @@ impl Op {
                     },
                     "ignore_checks": {
                         "type": "boolean",
-                        "description": "Merge although the acceptance checks have not passed.",
+                        "description": "Merge although required checks have not passed, where the repository allows bypassing them (allow_ignoring_checks).",
                     },
                 })),
                 &["repo", "number"],
@@ -1517,6 +1619,48 @@ impl Op {
                     "id": { "type": "string", "description": "One row; left out, every row of the key." },
                 })),
                 &["setting"],
+            ),
+            Op::ListRunners | Op::GetRunnerSettings => object(runners_owner(json!({})), &[]),
+            Op::CreateRunnerRegistrationToken => object(
+                runners_owner(json!({
+                    "group": { "type": "string", "description": "A workspace's runner group, by name or id, for the runners it registers. The default group if left out." },
+                })),
+                &[],
+            ),
+            Op::RemoveRunner => object(
+                runners_owner(json!({ "id": { "type": "string", "description": "The runner's id, from a list." } })),
+                &["id"],
+            ),
+            Op::ListRunnerGroups => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
+            Op::CreateRunnerGroup | Op::UpdateRunnerGroup => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "id": { "type": "string", "description": "The group to change, from a list. Left out: a new group." },
+                    "name": { "type": "string", "description": "What to call it." },
+                    "repositories": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Repository names that may use its runners. Empty is every repository in the workspace.",
+                    },
+                }),
+                if self == Op::UpdateRunnerGroup { &["workspace", "id"] } else { &["workspace", "name"] },
+            ),
+            Op::DeleteRunnerGroup => object(
+                json!({ "workspace": workspace_schema(), "id": { "type": "string", "description": "The group's id." } }),
+                &["workspace", "id"],
+            ),
+            Op::UpdateRunnerSettings => object(
+                runners_owner(json!({
+                    "agents_on_self_hosted": { "type": "boolean", "description": "Run agent runs, checks, reviews and the merge queue on self-hosted runners." },
+                    "agent_labels": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "The labels a runner needs to take agent work. self-hosted is always one.",
+                    },
+                    "fork_pull_requests": { "type": "boolean", "description": "Let jobs of pull requests from forks run on self-hosted runners." },
+                    "inherit": { "type": "boolean", "description": "For a repository: drop its own settings and follow its workspace's." },
+                })),
+                &[],
             ),
             Op::CreateWebhook => object(
                 hook_owner(json!({
@@ -1659,6 +1803,7 @@ impl Op {
                 | Op::GetPullRequestChanges
                 | Op::ListEvents
                 | Op::GetRepoSettings
+                | Op::ListCheckNames
                 | Op::GetMergeQueue
         )
     }
@@ -1710,6 +1855,15 @@ impl Op {
                 | Op::ListActionsVariables
                 | Op::SetActionsVariable
                 | Op::DeleteActionsVariable
+                | Op::ListRunners
+                | Op::ListRunnerGroups
+                | Op::GetRunnerSettings
+                | Op::CreateRunnerRegistrationToken
+                | Op::RemoveRunner
+                | Op::CreateRunnerGroup
+                | Op::UpdateRunnerGroup
+                | Op::DeleteRunnerGroup
+                | Op::UpdateRunnerSettings
                 | Op::ListMyRepoInvitations
                 | Op::AcceptRepoInvitation
                 | Op::DeclineRepoInvitation
@@ -2122,6 +2276,14 @@ impl Op {
                 )
                 .await
             }
+            Op::ListCheckNames => {
+                pass(
+                    work,
+                    "seen_checks",
+                    &json!({ "repo": repo, "viewer": viewer }),
+                )
+                .await
+            }
             Op::GetMergeQueue => {
                 pass(work, "queue", &json!({ "repo": repo, "viewer": viewer })).await
             }
@@ -2275,6 +2437,7 @@ impl Op {
                 let flag = |key: &str, now: bool| input[key].as_bool().unwrap_or(now);
                 let settings = RepoSettings {
                     auto_merge: flag("auto_merge", current.auto_merge),
+                    required_checks: strings(input, "required_checks").unwrap_or(current.required_checks.clone()),
                     require_up_to_date: flag("require_up_to_date", current.require_up_to_date),
                     required_approvals: integer(input, "required_approvals")
                         .unwrap_or(current.required_approvals),
@@ -2342,7 +2505,8 @@ impl Op {
             }
             Op::GetIssue => pass(work, "get_issue", &view()).await,
             Op::CreateIssue => {
-                pass(
+                let checks = deprecated_checks(input);
+                let opened = pass(
                     work,
                     "open_issue",
                     &OpenIssueArgs {
@@ -2351,10 +2515,11 @@ impl Op {
                         title: text(input, "title"),
                         body: text(input, "body"),
                         labels: strings(input, "labels").unwrap_or_default(),
-                        checks: strings(input, "checks").unwrap_or_default(),
+                        checks: checks.clone(),
                     },
                 )
-                .await
+                .await?;
+                Ok(with_deprecation(opened, !checks.is_empty()))
             }
             Op::UpdateIssue => {
                 pass(
@@ -2407,7 +2572,8 @@ impl Op {
                 .await
             }
             Op::Delegate => {
-                pass(
+                let checks = deprecated_checks(input);
+                let delegated = pass(
                     runner,
                     "delegate",
                     &json!({
@@ -2416,10 +2582,11 @@ impl Op {
                         "title": text(input, "title"),
                         "body": text(input, "body"),
                         "labels": strings(input, "labels").unwrap_or_default(),
-                        "checks": strings(input, "checks").unwrap_or_default(),
+                        "checks": checks,
                     }),
                 )
-                .await
+                .await?;
+                Ok(with_deprecation(delegated, !checks.is_empty()))
             }
             Op::AssignIssue => {
                 pass(
@@ -2754,6 +2921,61 @@ impl Op {
             }
             Op::GetModelRoutes => {
                 pass(integrations, "routes", &json!({ "workspace": workspace(), "viewer": viewer })).await
+            }
+            Op::ListRunners
+            | Op::GetRunnerSettings
+            | Op::CreateRunnerRegistrationToken
+            | Op::RemoveRunner
+            | Op::UpdateRunnerSettings => {
+                // A repository's own runners, or with no repository named,
+                // the workspace's.
+                let mut args = match repo_path(input) {
+                    Some(repo) => json!({ "repo": repo }),
+                    None if !workspace().is_empty() => json!({ "workspace": workspace() }),
+                    None => return failed(FailureCode::Invalid, "Name the repository as repo, or the workspace as workspace."),
+                };
+                args["actor"] = json!(actor());
+                let method = match self {
+                    Op::ListRunners => "runners",
+                    Op::GetRunnerSettings => "runner_settings",
+                    Op::CreateRunnerRegistrationToken => "create_registration_token",
+                    Op::RemoveRunner => "remove_runner",
+                    _ => "set_runner_settings",
+                };
+                if let Some(group) = optional_text(input, "group") {
+                    args["group"] = json!(group);
+                }
+                if let Some(id) = optional_text(input, "id") {
+                    args["id"] = json!(id);
+                }
+                for key in ["agents_on_self_hosted", "fork_pull_requests", "inherit"] {
+                    if let Some(on) = input[key].as_bool() {
+                        args[key] = json!(on);
+                    }
+                }
+                if let Some(labels) = strings(input, "agent_labels") {
+                    args["agent_labels"] = json!(labels);
+                }
+                pass(actions, method, &args).await
+            }
+            Op::ListRunnerGroups => {
+                pass(actions, "runner_groups", &json!({ "actor": actor(), "workspace": workspace() })).await
+            }
+            Op::CreateRunnerGroup | Op::UpdateRunnerGroup => {
+                let mut args = json!({ "actor": actor(), "workspace": workspace() });
+                if self == Op::UpdateRunnerGroup {
+                    args["id"] = json!(text(input, "id"));
+                }
+                if let Some(name) = optional_text(input, "name") {
+                    args["name"] = json!(name);
+                }
+                if let Some(repositories) = strings(input, "repositories") {
+                    args["repositories"] = json!(repositories);
+                }
+                pass(actions, "set_runner_group", &args).await
+            }
+            Op::DeleteRunnerGroup => {
+                pass(actions, "delete_runner_group", &json!({ "actor": actor(), "workspace": workspace(), "id": text(input, "id") })).await
             }
             Op::SetModelRoutes => {
                 let routes: Vec<Value> = input["routes"]

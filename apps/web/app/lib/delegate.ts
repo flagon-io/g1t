@@ -12,10 +12,6 @@ export function delegateForm(form: FormData): DelegateInput {
     title: text("title").trim(),
     body: text("body").trim(),
     labels: [...form.getAll("label").map(String), ...text("labels").split(",")].map((label) => label.trim()).filter(Boolean),
-    checks: text("checks")
-      .split("\n")
-      .map((check) => check.trim())
-      .filter(Boolean),
   };
 }
 

@@ -1,6 +1,7 @@
 /**
  * The parts of a pull request's merge box that say what stands between it
- * and a merge: every check, with what a failed one printed, and whether
+ * and a merge: the checks the branch requires and every other check, job by
+ * job, and whether
  * the change merges cleanly into its target, with what to do when not.
  */
 import {
@@ -21,7 +22,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { Form, Link } from "react-router";
 
-import type { CheckResult, CheckRun, CommitStatus, Job, Mergeable, PullBranchUpdate, Pull } from "@g1t/contracts";
+import type { CheckResult, CheckRun, CommitStatus, Job, Mergeable, PullBranchUpdate, Pull, RequiredCheck } from "@g1t/contracts";
 
 import { catchUpPhase, catchUpRun, catchUpTitle, catchUpWhy } from "../lib/catch-up";
 import { duration } from "./actions";
@@ -233,8 +234,8 @@ function CheckLine({
   );
 }
 
-/** An acceptance check: its command, and, open when it failed, what it printed. */
-function AcceptanceCheck({ result }: { result: CheckResult }) {
+/** A command from a run recorded before checks were workflows: what it printed, open when it failed. */
+function CommandResult({ result }: { result: CheckResult }) {
   const timedOut = result.exitCode == null && !result.passed;
   return (
     <details className="group" open={!result.passed}>
@@ -259,26 +260,62 @@ function AcceptanceCheck({ result }: { result: CheckResult }) {
   );
 }
 
+/** Where a required check stands, in the box's terms. */
+function requiredStanding(check: RequiredCheck): Standing {
+  if (check.state === "success") return "passed";
+  if (check.state === "failure") return "failed";
+  return check.state === "pending" ? "running" : "queued";
+}
+
+/** How the required checks stand together: "2 of 3 passing", and what holds the rest. */
+export function requiredSummary(required: RequiredCheck[]): { title: string; sub: string; standing: Standing } {
+  const count = (state: RequiredCheck["state"]) => required.filter((check) => check.state === state).length;
+  const passing = count("success");
+  const failing = count("failure");
+  const running = count("pending");
+  const expected = count("expected");
+  const sub = [
+    failing > 0 && `${failing} failing`,
+    running > 0 && `${running} running`,
+    expected > 0 && `${expected} not reported yet`,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  return {
+    title: `Required checks: ${passing} of ${required.length} passing`,
+    sub,
+    standing: failing > 0 ? "failed" : running + expected > 0 ? "running" : "passed",
+  };
+}
+
+/** The repository-relative address of a status's link, when it is on g1t. */
+function onSite(url: string | null): string | undefined {
+  if (!url) return undefined;
+  const path = url.replace(/^https:\/\/g1t\.sh(?=\/)/, "");
+  return path.startsWith("/") ? path : undefined;
+}
+
 /**
- * Every check on a pull request, at a glance and in detail: its issue's
- * acceptance checks, run in a clean sandbox, and the workflows run on its
- * head, job by job.
+ * Every check on a pull request, at a glance and in detail: first the
+ * checks the default branch requires, each as it stands on the head (one
+ * nothing has reported is waited for), then every workflow run on the
+ * head, job by job. A record of the merge queue taking it out comes last.
  */
 export function ChecksSection({
   run,
-  commands,
+  required,
   statuses,
   jobs,
   pull,
   base,
   earlier,
-  canRerun,
   canRerunWorkflows,
+  settingsUrl,
   error,
 }: {
+  /** Set when the merge queue took it out, or for a run from before checks were workflows. */
   run: CheckRun | null;
-  /** The issue's acceptance checks, shown before a run has results. */
-  commands: string[];
+  required: RequiredCheck[];
   statuses: CommitStatus[];
   /** Each workflow run's jobs, by run id, where they could be read. */
   jobs: Record<string, Job[]>;
@@ -286,51 +323,55 @@ export function ChecksSection({
   /** The repository's path, `/<owner>/<repo>`. */
   base: string;
   earlier: CheckRun[];
-  canRerun: boolean;
   canRerunWorkflows: boolean;
+  /** Where the required checks are chosen, for those who may. */
+  settingsUrl?: string | null;
   error?: string | null;
 }) {
-  if (!run && statuses.length === 0) return null;
+  if (!run && statuses.length === 0 && required.length === 0) return null;
 
-  // Every row, so they can be counted the same way they are shown.
-  const acceptance: Standing[] = run
-    ? run.results.length > 0
-      ? run.results.map((result) => (result.passed ? "passed" : "failed"))
-      : run.status === "queued" || run.status === "running"
-        ? commands.map(() => (run.status === "running" ? "running" : "queued"))
-        : run.status === "errored"
-          ? ["failed"]
-          : []
-    : [];
+  // Every workflow row, so they can be counted the same way they are shown.
   const workflow: Standing[] = statuses.flatMap((status) => {
     const id = runIdOf(status);
     const theirs = id ? jobs[id] : undefined;
     return theirs && theirs.length > 0 ? theirs.map(jobStanding) : [statusStanding(status)];
   });
-  const all = [...acceptance, ...workflow];
-  const failed = all.filter((standing) => standing === "failed").length;
-  const pending = all.filter((standing) => standing === "running" || standing === "queued").length;
-  const passed = all.filter((standing) => standing === "passed").length;
-  const total = all.length;
+  const failed = workflow.filter((standing) => standing === "failed").length;
+  const pending = workflow.filter((standing) => standing === "running" || standing === "queued").length;
+  const passed = workflow.filter((standing) => standing === "passed").length;
+  const skipped = workflow.filter((standing) => standing === "skipped").length;
+  const total = workflow.length;
+  const queueFailed = run?.status === "failed" && run.results.length === 0;
 
-  const headline =
-    failed > 0
+  const summary = required.length > 0 ? requiredSummary(required) : null;
+  const headline = summary
+    ? summary.title
+    : failed > 0
       ? `${failed} of ${total} ${total === 1 ? "check" : "checks"} failed`
       : pending > 0
         ? `${pending} of ${total} ${total === 1 ? "check is" : "checks are"} still running`
         : total > 0
           ? "All checks have passed"
           : "Checks";
-  const sub = [
-    failed > 0 && pending > 0 && `${pending} still running`,
+  const others = [
+    failed > 0 && `${failed} failed`,
+    pending > 0 && `${pending} running`,
     passed > 0 && `${passed} passed`,
-    all.filter((standing) => standing === "skipped").length > 0 &&
-      `${all.filter((standing) => standing === "skipped").length} skipped or cancelled`,
+    skipped > 0 && `${skipped} skipped or cancelled`,
   ]
     .filter(Boolean)
     .join(", ");
+  const sub = summary
+    ? [summary.sub, others && `all checks: ${others}`].filter(Boolean).join(" · ")
+    : [others, "none are required, so none hold the merge"].filter(Boolean).join(" · ");
+  const standing: Standing = summary
+    ? summary.standing
+    : failed > 0
+      ? "failed"
+      : pending > 0
+        ? "running"
+        : "passed";
 
-  const pending_ = run?.status === "queued" || run?.status === "running";
   const commitPath = (sha: string) =>
     pull.fork ? `/${pull.fork.namespace}/${pull.fork.name}/commit/${sha}` : `${base}/commit/${sha}`;
   const older = run != null && pull.headCommit != null && run.headCommit !== pull.headCommit;
@@ -340,9 +381,9 @@ export function ChecksSection({
     <div>
       <div className="flex items-start gap-3 px-4 py-3">
         <span className="mt-0.5 shrink-0">
-          {failed > 0 ? (
+          {standing === "failed" || queueFailed ? (
             <CircleX size={16} className="text-danger" />
-          ) : pending > 0 ? (
+          ) : standing === "running" ? (
             <LoaderCircle size={16} className="animate-spin text-warn" />
           ) : (
             <CircleCheck size={16} className="text-accent" />
@@ -351,17 +392,16 @@ export function ChecksSection({
         <div className="min-w-0 grow">
           <p className="text-sm font-medium">{headline}</p>
           {sub && <p className="mt-0.5 text-xs text-muted">{sub}</p>}
+          {!summary && settingsUrl && (
+            <p className="mt-0.5 text-xs text-muted">
+              <Link to={settingsUrl} className="text-fg hover:underline">
+                Choose required checks
+              </Link>{" "}
+              to hold merges until they pass.
+            </p>
+          )}
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          {canRerun && run && !pending_ && (
-            <Form method="post">
-              <input type="hidden" name="action" value="recheck" />
-              <Button variant="quiet" type="submit">
-                <RotateCw size={13} />
-                Re-run checks
-              </Button>
-            </Form>
-          )}
           {canRerunWorkflows &&
             failedRuns.map((status) => (
               <Form method="post" key={status.context}>
@@ -382,64 +422,36 @@ export function ChecksSection({
       )}
 
       <div className="divide-y divide-line border-t border-line">
-        {run && (
-          <section aria-label="Acceptance checks" className="py-1">
-            <p className="flex flex-wrap items-center gap-x-1.5 px-4 pt-1.5 pb-1 text-xs text-faint">
-              <span className="font-medium text-muted">Acceptance checks</span>
-              <span>· in a clean sandbox, on</span>
-              <Link to={commitPath(run.headCommit)} className="inline-flex items-center gap-1 font-mono hover:text-fg">
-                <GitCommitHorizontal size={12} />
-                {run.headCommit.slice(0, 7)}
-              </Link>
-              {run.finishedAt ? (
-                <span>
-                  · finished <TimeAgo at={run.finishedAt} />
-                </span>
-              ) : (
-                <span>
-                  · started <TimeAgo at={run.createdAt} />
-                </span>
-              )}
-            </p>
-            {older && (
-              <p className="mx-4 my-1.5 flex items-start gap-2 rounded-md bg-warn/10 px-2.5 py-1.5 text-xs text-warn">
-                <TriangleAlert size={13} className="mt-0.5 shrink-0" />
-                These checks ran on an older commit. The latest push,{" "}
-                <span className="font-mono">{pull.headCommit?.slice(0, 7)}</span>, has not been checked yet.
-              </p>
-            )}
-            {run.status === "errored" && (
-              <div className="mx-4 my-1.5 rounded-lg border border-danger/40 bg-danger/5 px-3 py-2 text-sm">
-                <p className="flex items-center gap-2 font-medium text-danger">
-                  <TriangleAlert size={14} />
-                  The checks could not be run
-                </p>
-                {run.error && <p className="mt-1 text-muted">{run.error}</p>}
-              </div>
-            )}
-            {run.status === "failed" && run.error && (
-              <p className="mx-4 my-1.5 rounded-lg border border-line bg-bg px-3 py-2 text-sm text-muted">{run.error}</p>
-            )}
-            {run.results.length > 0
-              ? run.results.map((result, index) => <AcceptanceCheck key={`${result.command}-${index}`} result={result} />)
-              : pending_ &&
-                commands.map((command) => (
-                  <CheckLine
-                    key={command}
-                    standing={run.status === "running" ? "running" : "queued"}
-                    name={<code className="font-mono text-xs">{command}</code>}
-                    detail={run.status === "running" ? "running" : "waiting for a sandbox"}
-                  />
-                ))}
+        {required.length > 0 && (
+          <section aria-label="Required checks" className="py-1">
+            <p className="px-4 pt-1.5 pb-1 text-xs font-medium text-muted">Required</p>
+            {required.map((check) => (
+              <CheckLine
+                key={check.name}
+                standing={requiredStanding(check)}
+                name={
+                  <>
+                    {check.name}
+                    <span className="ml-1.5 rounded-full border border-line px-1.5 py-px text-[0.625rem] text-faint">Required</span>
+                  </>
+                }
+                detail={
+                  check.state === "expected"
+                    ? "Waiting for status to be reported"
+                    : (check.description ?? (check.state === "pending" ? "running" : undefined))
+                }
+                to={onSite(check.targetUrl)}
+              />
+            ))}
           </section>
         )}
 
         {statuses.length > 0 && (
-          <section aria-label="Workflows" className="py-1">
-            <p className="px-4 pt-1.5 pb-1 text-xs font-medium text-muted">Workflows</p>
+          <section aria-label="All checks" className="py-1">
+            <p className="px-4 pt-1.5 pb-1 text-xs font-medium text-muted">{required.length > 0 ? "All checks" : "Workflows"}</p>
             {statuses.map((status) => {
               const id = runIdOf(status);
-              const runPath = id ? `${base}/actions/runs/${id}` : undefined;
+              const runPath = id ? `${base}/actions/runs/${id}` : onSite(status.targetUrl);
               const theirs = id ? jobs[id] : undefined;
               if (!theirs || theirs.length === 0) {
                 return (
@@ -471,11 +483,46 @@ export function ChecksSection({
           </section>
         )}
 
+        {run && (
+          <section aria-label={queueFailed ? "Merge queue" : "Earlier commands"} className="py-1">
+            <p className="flex flex-wrap items-center gap-x-1.5 px-4 pt-1.5 pb-1 text-xs text-faint">
+              <span className="font-medium text-muted">{queueFailed ? "Merge queue" : "Commands from the issue"}</span>
+              <span>· on</span>
+              <Link to={commitPath(run.headCommit)} className="inline-flex items-center gap-1 font-mono hover:text-fg">
+                <GitCommitHorizontal size={12} />
+                {run.headCommit.slice(0, 7)}
+              </Link>
+              {run.finishedAt ? (
+                <span>
+                  · <TimeAgo at={run.finishedAt} />
+                </span>
+              ) : (
+                <span>
+                  · started <TimeAgo at={run.createdAt} />
+                </span>
+              )}
+            </p>
+            {older && !queueFailed && (
+              <p className="mx-4 my-1.5 flex items-start gap-2 rounded-md bg-warn/10 px-2.5 py-1.5 text-xs text-warn">
+                <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+                These ran on an older commit, before the latest push,{" "}
+                <span className="font-mono">{pull.headCommit?.slice(0, 7)}</span>.
+              </p>
+            )}
+            {run.error && (
+              <p className="mx-4 my-1.5 rounded-lg border border-line bg-bg px-3 py-2 text-sm text-muted">{run.error}</p>
+            )}
+            {run.results.map((result, index) => (
+              <CommandResult key={`${result.command}-${index}`} result={result} />
+            ))}
+          </section>
+        )}
+
         {earlier.length > 0 && (
           <details className="group">
             <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2 text-xs text-muted hover:text-fg">
               <History size={13} />
-              Earlier runs of the acceptance checks ({earlier.length})
+              Earlier records ({earlier.length})
               <ChevronRight size={13} className="transition-transform group-open:rotate-90" />
             </summary>
             <ul className="space-y-1 px-4 pb-3 text-xs">
@@ -499,7 +546,7 @@ export function ChecksSection({
                       ? `could not run${before.error ? `: ${before.error}` : ""}`
                       : before.results.length > 0
                         ? `${before.results.filter((result) => result.passed).length} of ${before.results.length} passed`
-                        : before.status}
+                        : (before.error ?? before.status)}
                   </span>
                   <span className="ml-auto shrink-0 text-faint">
                     <TimeAgo at={before.createdAt} />

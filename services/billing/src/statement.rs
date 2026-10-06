@@ -27,10 +27,12 @@ pub(crate) const KIND_SQL: &str = "CASE
     WHEN kind = 'top_up' AND amount_micros < 0 THEN 'Refunds'
     WHEN kind = 'top_up' THEN 'Payments'
     WHEN task = 'sandbox' THEN 'Sandbox time'
+    WHEN task = 'self_hosted' THEN 'Self-hosted runner time'
     WHEN task = 'deployments' THEN 'Deployments'
     WHEN task = 'security' THEN 'Security scans'
     WHEN task = 'context' THEN 'Search embeddings'
     WHEN task = 'storage' THEN 'Private storage'
+    WHEN task = 'cache' THEN 'Actions cache storage'
     WHEN task = 'git' THEN 'Git operations'
     WHEN billed_to = 'workspace' THEN 'Runs on your own model provider'
     ELSE 'Agent runs' END";
@@ -41,8 +43,10 @@ pub(crate) fn kind_order(kind: &str) -> u8 {
         "Agent runs" => 0,
         "Runs on your own model provider" => 1,
         "Sandbox time" => 2,
+        "Self-hosted runner time" => 2,
         "Deployments" => 3,
         "Private storage" => 4,
+        "Actions cache storage" => 4,
         "Git operations" => 5,
         "Search embeddings" => 6,
         "Security scans" => 7,
@@ -67,7 +71,7 @@ pub(crate) const METERS: [(&str, &str); 6] = [
 pub(crate) const METER_SQL: &str = "CASE
     WHEN task = 'deployments' AND reference LIKE 'deploy/%' THEN 'builds'
     WHEN task = 'deployments' THEN 'requests'
-    WHEN task IN ('storage', 'git') THEN 'git_storage'
+    WHEN task IN ('storage', 'git', 'cache') THEN 'git_storage'
     WHEN task IN ('security', 'context') THEN 'search_scans'
     ELSE 'agents' END";
 
@@ -76,7 +80,7 @@ pub(crate) fn meter_of_source(source: &str) -> &'static str {
     match source {
         "deployments" => "requests",
         "domains" => "domains",
-        "storage" | "git" => "git_storage",
+        "storage" | "git" | "cache" => "git_storage",
         _ => "search_scans",
     }
 }

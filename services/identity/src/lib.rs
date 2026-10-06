@@ -636,13 +636,12 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     let Some(method) = rpc_method(&request) else {
         return Response::error("Not found", 404);
     };
+    // A replica near the caller when it asks for one (crates/kit/src/d1.rs).
+    let (db, served) = g1t_kit::d1::open(&env, "DB", &request)?;
     let body: serde_json::Value = request.json().await?;
-    let identity = Identity {
-        db: env.d1("DB")?,
-        env,
-    };
+    let identity = Identity { db, env };
 
-    match method.as_str() {
+    let answered = match method.as_str() {
         "register" => {
             let outcome = identity.register(args(body)?).await?;
             if let Outcome::Ok(signed_in) = &outcome {
@@ -802,5 +801,6 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_invite_tree" => reply(&identity.admin_invite_tree(args(body)?).await?),
         "admin_workspace_invites" => reply(&identity.admin_workspace_invites(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
-    }
+    };
+    served.finish(answered)
 }

@@ -724,7 +724,9 @@ impl Billing {
     /// second, from the first, at the price book's price; on its own CPU
     /// when it reports it. Settles its reservation, if it names one.
     async fn record_sandbox(&self, a: RecordSandboxArgs) -> Result<Outcome<bool>> {
-        if self.stripe.is_none() || a.seconds == 0 {
+        // Self-hosted time is recorded wherever g1t runs, for its minutes;
+        // anything else only where there is a bill to put it on.
+        if (self.stripe.is_none() && !a.self_hosted) || a.seconds == 0 {
             return Ok(Outcome::Ok(false));
         }
         let workspace = a.workspace.to_lowercase();
@@ -740,6 +742,32 @@ impl Billing {
         let now = now_ms();
         let timestamp = rfc3339(now);
         let seconds = i64::from(a.seconds);
+        // On the workspace's own machine: its minutes go on usage, at $0,
+        // and whatever was reserved for it is given back.
+        if a.self_hosted {
+            let description = format!("{}: {} of self-hosted runner time, $0", a.description, duration(seconds));
+            self.db
+                .prepare(
+                    "INSERT INTO ledger
+                       (id, workspace, kind, amount_micros, description, repo, task,
+                        cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros)
+                     VALUES (?, ?, 'usage', 0, ?, ?, 'self_hosted', 0, ?, ?, 'workspace', 0, 0, 0, 0)",
+                )
+                .bind(&[
+                    new_id("led", now).into(),
+                    workspace.as_str().into(),
+                    description.as_str().into(),
+                    optional(a.repo.as_deref()),
+                    a.reference.as_str().into(),
+                    timestamp.as_str().into(),
+                ])?
+                .run()
+                .await?;
+            if let Some(reservation) = &a.reservation_id {
+                self.settle_reservation(SettleArgs { reservation_id: reservation.clone(), actual_micros: 0 }).await?;
+            }
+            return Ok(Outcome::Ok(true));
+        }
         // From the price book, which follows what Cloudflare bills g1t. A
         // sandbox is the same container as a build, so without a row it is
         // a build second's cost plus the margin.
@@ -747,15 +775,24 @@ impl Billing {
             let cost = deployment_costs::MICROS_PER_BUILD_SECOND as f64;
             (cost, Price::price_for(cost, self.margin_percent))
         });
+        // A larger machine (`runs-on: g1t-4core`): its memory and disk
+        // cost more each second, and without its own CPU it is priced at
+        // its vCPUs as busy as the standard machine's.
+        let instance = a.instance.as_deref().and_then(g1t_contracts::actions::instance_named);
+        let base_scale = instance.map_or(1.0, |i| keeper::base_scale(i.memory_gib, i.disk_gb));
+        let price_scale = instance.map_or(1.0, |i| i.price_scale);
+        let vcpus = instance.map_or(4.0, |i| i.vcpu.max(4.0));
         // Its own CPU when the sandbox reports it; otherwise the average.
         let parts = match a.cpu_seconds.filter(|cpu| cpu.is_finite() && *cpu >= 0.0) {
             Some(cpu) => match (self.price("sandbox_base_second").await?, self.price("sandbox_cpu_second").await?) {
-                (Some((base, _)), Some((vcpu, _))) => Some((keeper::run_cost(seconds, cpu.min(seconds as f64 * 4.0), base, vcpu), cpu)),
+                (Some((base, _)), Some((vcpu, _))) => {
+                    Some((keeper::run_cost(seconds, cpu.min(seconds as f64 * vcpus), base * base_scale, vcpu), cpu))
+                }
                 _ => None,
             },
             None => None,
         };
-        let cost = parts.map_or(seconds as f64 * cost_per_second, |(cost, _)| cost).ceil() as i64;
+        let cost = parts.map_or(seconds as f64 * cost_per_second * price_scale, |(cost, _)| cost).ceil() as i64;
         let (charge, terms_note) = self.charged(&workspace, credits::with_margin(cost, self.margin_percent)).await?;
         let eligible = credits::eligible_for(a.kind, a.repo.as_deref());
         let drawn = self.draw(&workspace, charge, &credits::month_of(&timestamp), &eligible).await?;
@@ -985,9 +1022,13 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     let Some(method) = rpc_method(&request) else {
         return Response::error("Not found", 404);
     };
+    // A replica near the caller when it asks for one (crates/kit/src/d1.rs);
+    // what other services call (can_start, start_run) asks for none.
+    let (db, served) = g1t_kit::d1::open(&env, "DB", &request)?;
     let body: serde_json::Value = request.json().await?;
-    let billing = Billing::from_env(&env)?;
-    match method.as_str() {
+    let mut billing = Billing::from_env(&env)?;
+    billing.db = db;
+    let answered = match method.as_str() {
         "status" => reply(&billing.status()),
         "account" => reply(&billing.account(args(body)?).await?),
         "ledger" => reply(&billing.ledger(args(body)?).await?),
@@ -1055,7 +1096,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_velocity" => reply(&billing.admin_velocity(args(body)?).await?),
         "admin_record_payment" => reply(&billing.admin_record_payment(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
-    }
+    };
+    served.finish(answered)
 }
 
 #[cfg(test)]

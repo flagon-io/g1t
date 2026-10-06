@@ -22,6 +22,7 @@ would make, over the public internet:
 | Website and sign-in | Loads `g1t.sh/login`, and asks the API about an access token no one holds, which the account service must refuse with `401` |
 | API | Loads `api.g1t.sh/` |
 | Git and repositories | Lists the branches of a public repository over HTTPS (`info/refs`), the first step of every clone |
+| Page speed | Loads a public project page (`g1t.sh/flagon-io/g1t`) and `g1t.sh/explore`, timed to the first byte of each answer |
 | MCP server | Loads `mcp.g1t.sh/` |
 | Documentation | Loads `docs.g1t.sh/` |
 | Deployments | Loads `g1t.page/`. Each deployed app is not checked one by one. |
@@ -30,7 +31,8 @@ would make, over the public internet:
 | Billing | Reads billing's price book. Stripe itself is not checked. |
 
 A part that answers in over 1.5 seconds counts as slow, and one that
-fails or takes over 5 seconds counts as down.
+fails or takes over 5 seconds counts as down. **Page speed** is held to
+a tighter budget: slower than 800 ms on either page counts as slow.
 
 ## What each part shows
 
@@ -94,6 +96,9 @@ parts it affects and how badly, and updates as it moves from
   incident's page: a summary, the impact, a timeline, the root cause, what
   went well and badly, and what will change. Incidents with one are marked
   **Postmortem** in the lists.
+- Times are shown in your time zone, with its abbreviation (`PDT`,
+  `CEST`); hover one to see it in UTC. The JSON, the feeds and email keep
+  UTC.
 
 ### Severity
 
@@ -115,6 +120,12 @@ alerted and an incident is drafted for them. It appears on the status
 page once someone confirms it, usually within minutes. The part's own
 state on the page changes at once either way, because it comes from the
 checks.
+
+A brief blip does not become an incident: if the part recovers and stays
+healthy for 10 minutes before anyone confirms the draft, the draft is
+dismissed and never appears on the page. While g1t is deploying, and for
+3 minutes after, a slow restart is not drafted unless it outlasts the
+deploy.
 
 If something is broken and the page does not show it, write to
 [hey@flagon.io](mailto:hey@flagon.io) or see

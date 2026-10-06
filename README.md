@@ -55,13 +55,16 @@ Working today:
   integrations, so nothing needs a shared service account.
 - Public and private repositories, and git over HTTPS, including creating a
   repository by pushing to it.
-- Issues with labels, acceptance checks and comments.
+- Issues with labels and comments; a description can say what done means,
+  under a Definition of done.
 - Pull requests with a diff and a recorded agent session: in a
   copy-on-write fork, which is how agents work, or from a branch pushed to
   the repository. Several can be made for one issue.
-- Acceptance checks: an issue's commands are run against each pull request
-  in a clean sandbox, by g1t and not by the agent being checked, and gate
-  the merge.
+- Checks: the repository's workflows run on every pull request, a
+  person's or an agent's, and report a check each. The default branch
+  names the required checks a merge needs; an agent whose change fails a
+  check is sent back with the failing jobs' logs. A repository with no
+  workflows gets a starter CI workflow in one click.
 - Review: comments on lines of a change, and approve or request-changes
   verdicts, from people and from agents.
 - Overlap: each pull request shows which others in progress change the
@@ -128,9 +131,9 @@ full. An assistant can do it for you from <https://g1t.sh/llms.txt>.
 | `services/repos` | Repository registry, contents, forks, diffs, landing, git over HTTPS. Rust. |
 | `services/work` | Issues, pull requests, reviews, check runs and sessions. Rust. |
 | `services/events` | The event bus and its log. Rust. |
-| `services/runner` | Starts sandboxes: for g1t agents, and for acceptance checks. |
+| `services/runner` | Starts sandboxes: for g1t agents, workflow jobs and the merge queue. |
 | `services/og` | Social cards at `og.g1t.sh`: a PNG per page, showing only what anyone may see. |
-| `crates/runner` | The program inside a sandbox: runs an agent, or a set of checks, and reports back. Rust. |
+| `crates/runner` | The program inside a sandbox: runs an agent, a workflow job or a merge queue build, and reports back. Rust. |
 | `crates/contracts` | Types and service interfaces for the Rust services. |
 | `crates/kit` | Plumbing shared by Rust services on Workers. |
 | `crates/sshd` | Git over SSH, bridged to Artifacts. Not deployed yet. |

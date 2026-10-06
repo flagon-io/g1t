@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { capShare, formatCap, lines, settingsFromForm, tri } from "./guardrails.ts";
+import { capShare, formatCap, lines, settingsFromForm, tri, workflowDomainLine, workflowDomains } from "./guardrails.ts";
 
 const catalog = {
   registries: ["npm", "pypi", "crates"],
@@ -14,6 +14,26 @@ function form(entries: Record<string, string>): FormData {
   for (const [key, value] of Object.entries(entries)) data.set(key, value);
   return data;
 }
+
+test("workflow-only domains are read one per line, and written back the same way", () => {
+  const read = workflowDomains(
+    " api.cloudflare.com | deploy.yml | production \n\n*.example.com\nhooks.example.com | | staging, production\nci.example.com | ci.yml, release.yml\n | deploy.yml",
+  );
+  assert.deepEqual(read, [
+    { domain: "api.cloudflare.com", workflows: ["deploy.yml"], environments: ["production"] },
+    { domain: "*.example.com", workflows: [], environments: [] },
+    { domain: "hooks.example.com", workflows: [], environments: ["staging", "production"] },
+    { domain: "ci.example.com", workflows: ["ci.yml", "release.yml"], environments: [] },
+  ]);
+  assert.deepEqual(read.map(workflowDomainLine), [
+    "api.cloudflare.com | deploy.yml | production",
+    "*.example.com",
+    "hooks.example.com |  | staging, production",
+    "ci.example.com | ci.yml, release.yml",
+  ]);
+  const settings = settingsFromForm(form({ workflowDomains: "api.cloudflare.com | deploy.yml | production" }), catalog);
+  assert.deepEqual(settings.workflowDomains, [{ domain: "api.cloudflare.com", workflows: ["deploy.yml"], environments: ["production"] }]);
+});
 
 test("an untouched form inherits everything", () => {
   const settings = settingsFromForm(form({ restrictNetwork: "inherit", registries: "inherit" }), catalog);

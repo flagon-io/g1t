@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   type Merged,
   change,
+  checksFact,
   confidenceAsk,
   confidenceLine,
   dayKey,
@@ -42,9 +43,11 @@ test("each kind of need gets its reason chip", () => {
 });
 
 test("a stopped pull request's reason comes from the sentence g1t stopped with", () => {
-  assert.equal(stallReason("The acceptance checks still fail after the agent revised 3 times."), "checks_failing");
+  assert.equal(stallReason("The required check CI still fails after the agent revised 3 times."), "checks_failing");
+  assert.equal(stallReason("The required checks CI and Lint still fail after the agent revised twice."), "checks_failing");
   assert.equal(stallReason("CI / push still fails after the agent revised 2 times."), "checks_failing");
-  assert.equal(stallReason("The acceptance checks could not be run."), "checks_failing");
+  assert.equal(stallReason("It failed in the merge queue after the agent revised twice."), "checks_failing");
+  assert.equal(stallReason("Its checks could not be run."), "checks_failing");
   assert.equal(
     stallReason("g1t stopped the agent's implement run when it reached its cost cap. Raise the cap under Settings, Guardrails."),
     "outside_guardrails",
@@ -82,8 +85,8 @@ test("what the agent knows lists only what is known", () => {
     ],
   });
   const by = Object.fromEntries(facts.map((f) => [f.label, f]));
-  assert.equal(by.Checks.value, "Failing");
-  assert.equal(by.Checks.tone, "bad");
+  assert.equal(by["Required checks"].value, "Failed in the merge queue");
+  assert.equal(by["Required checks"].tone, "bad");
   assert.equal(by["Files changed"].value, "2");
   assert.equal(by.Lines.value, "+100 −2");
   assert.equal(by.Tests.value, "1 file");
@@ -91,7 +94,22 @@ test("what the agent knows lists only what is known", () => {
   assert.equal(by["Agent runs"].value, "2 · $0.75");
 
   const bare = pullFacts({ checkStatus: null, files: [] });
-  assert.deepEqual(bare, [{ label: "Checks", value: "Not run", tone: null }]);
+  assert.deepEqual(bare, [{ label: "Required checks", value: "Not known yet", tone: null }]);
+});
+
+test("the required checks are read from where the agent's pull request stands", () => {
+  const at = (stage: Parameters<typeof checksFact>[1] extends infer L ? NonNullable<L>["stage"] : never, detail: string) =>
+    checksFact(null, { stage, detail });
+  assert.deepEqual(at("checking", "Waiting for CI / pull_request to finish."), { label: "Required checks", value: "Running", tone: null });
+  assert.equal(at("checking", "Waiting for the required check Deploy to report on its latest commit.").value, "Not reported yet");
+  assert.equal(at("revising", "CI / pull_request failed. The agent is being sent back to fix it.").value, "Failing");
+  assert.equal(at("needs_you", "The required check CI still fails after the agent revised twice.").value, "Failing");
+  // Past the checks: a review, an approval or a person's decision holds it, not them.
+  assert.equal(at("revising", "The review asked for changes. The agent is being sent back to make them.").value, "Passing");
+  assert.equal(at("needs_you", "This repository requires 1 approving review before a pull request merges; this one has 0.").value, "Passing");
+  assert.equal(at("ready", "Everything this repository asks for is met. Ready to merge.").tone, "good");
+  assert.equal(at("working", "A g1t agent is making the change.").value, "Not run yet");
+  assert.equal(checksFact("failed", { stage: "revising", detail: "It failed in the merge queue." }).value, "Failed in the merge queue");
 });
 
 test("a change held for low confidence is its own reason, ahead of what it would read as", () => {
@@ -229,7 +247,7 @@ test("waiting on agents holds each pull request once, running ones first, and no
   });
   const rows = waitingRows({
     active: [
-      { pull: pull(1, 30), lifecycle: { stage: "checking", detail: "The acceptance checks are running.", revisions: 0 }, repo },
+      { pull: pull(1, 30), lifecycle: { stage: "checking", detail: "Waiting for CI / pull_request to finish.", revisions: 0 }, repo },
       { pull: pull(2, 5), lifecycle: { stage: "needs_you", detail: "Stopped.", revisions: 0 }, repo },
       { pull: pull(3, 50), lifecycle: { stage: "queued", detail: "In the merge queue.", revisions: 0 }, repo },
       { pull: pull(9, 1), lifecycle: { stage: "reviewing", detail: "Reviewing.", revisions: 0 }, repo },

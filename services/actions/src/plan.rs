@@ -20,7 +20,8 @@ use serde_json::{Map, Value, json};
 use worker::Result;
 
 use crate::sync::WorkflowRow;
-use crate::{Actions, Count, MAX_TIMEOUT_MINUTES, RUNNING_PER_WORKSPACE, SILENT_MS, SITE, check, fail, optional, repo_path};
+use crate::{Actions, Count, MAX_TIMEOUT_MINUTES, RUNNING_PER_WORKSPACE, SELF_HOSTED_MAX_TIMEOUT_MINUTES, SILENT_MS, SITE, check, fail, optional, repo_path};
+use g1t_contracts::runners::{Wanted, waiting_reason};
 
 /// The most log one job keeps, in bytes; past it, the log says so and stops.
 const MAX_LOG_BYTES: usize = 4 * 1024 * 1024;
@@ -157,6 +158,17 @@ pub struct JobRow {
     pub seen_at: Option<String>,
     pub started_at: Option<String>,
     pub finished_at: Option<String>,
+    /// For a job whose `runs-on` names self-hosted runners: what it asks
+    /// for, as a JSON array (see `g1t_contracts::runners::Wanted`), when it
+    /// started waiting, and the runner that took it (migration 0004).
+    #[serde(default)]
+    pub labels: Option<String>,
+    #[serde(default)]
+    pub queued_at: Option<String>,
+    #[serde(default)]
+    pub runner_id: Option<String>,
+    #[serde(default)]
+    pub runner_name: Option<String>,
 }
 
 impl JobRow {
@@ -196,6 +208,71 @@ fn key_result(rows: &[&JobRow]) -> &'static str {
         "skipped"
     } else {
         "success"
+    }
+}
+
+/// Whether any job before `key` failed: one it needs, or one those need,
+/// however far back. A job after a skipped one still sees the failure
+/// that skipped it, as GitHub's failure() does. `needs_of`: each key's
+/// needs, as keys; `failed`: whether a key's jobs came to a failure.
+fn ancestor_failed(needs_of: &std::collections::HashMap<&str, Vec<&str>>, key: &str, failed: impl Fn(&str) -> bool) -> bool {
+    let mut seen = std::collections::HashSet::new();
+    let mut stack: Vec<&str> = needs_of.get(key).cloned().unwrap_or_default();
+    while let Some(next) = stack.pop() {
+        if !seen.insert(next) {
+            continue;
+        }
+        if failed(next) {
+            return true;
+        }
+        stack.extend(needs_of.get(next).into_iter().flatten().copied());
+    }
+    false
+}
+
+/// What the runner is told about a job it starts, from its workflow: the
+/// environment it names plainly, and the machine its `runs-on` asks for
+/// (`instance_for`; none for the standard one).
+#[derive(Default)]
+struct StartDetails {
+    environment: Option<String>,
+    instance: Option<String>,
+}
+
+fn start_details(run: &RunRow, job: &JobRow) -> StartDetails {
+    let spec = match job.callee() {
+        Some((_, spec, _)) => spec,
+        None => match workflow::parse(&run.source).ok().and_then(|w| w.jobs.into_iter().find(|j| j.id == job.key)) {
+            Some(spec) => spec,
+            None => return StartDetails::default(),
+        },
+    };
+    let environment = match spec.raw.get("environment") {
+        Some(Value::String(name)) if !name.contains("${{") => Some(name.clone()),
+        Some(Value::Object(env)) => env.get("name").and_then(Value::as_str).filter(|n| !n.contains("${{")).map(str::to_owned),
+        _ => None,
+    };
+    // `runs-on` as the job was queued with: its matrix and the run's
+    // inputs. A label that needs more than those is the standard machine.
+    let mut contexts = Map::new();
+    contexts.insert("github".into(), run.info().context(&spec.id, "", run.action.as_deref()));
+    contexts.insert("inputs".into(), Value::Object(run.inputs()));
+    contexts.insert("matrix".into(), job.matrix.as_deref().and_then(|m| serde_json::from_str(m).ok()).unwrap_or_else(|| json!({})));
+    let scope = Scope { contexts: &contexts, status: Status::Success, hash_files: None };
+    let labels: Vec<String> = match expr::interpolate_value(&spec.runs_on, &scope).unwrap_or(Value::Null) {
+        Value::String(label) => vec![label],
+        Value::Array(labels) => labels.iter().map(expr::to_text).collect(),
+        Value::Object(given) => match given.get("labels") {
+            Some(Value::Array(labels)) => labels.iter().map(expr::to_text).collect(),
+            Some(label) => vec![expr::to_text(label)],
+            None => Vec::new(),
+        },
+        _ => Vec::new(),
+    };
+    let instance = g1t_contracts::actions::instance_for(&labels);
+    StartDetails {
+        environment,
+        instance: (instance != g1t_contracts::actions::STANDARD_INSTANCE).then(|| instance.label.to_owned()),
     }
 }
 
@@ -461,6 +538,10 @@ impl Actions {
                     units.push((row.key.clone(), job, needs));
                 }
             }
+            // Each key's needs, as keys, to look back through for failure().
+            let needs_of: std::collections::HashMap<&str, Vec<&str>> =
+                units.iter().map(|(key, _, needs)| (key.as_str(), needs.iter().map(|(_, need)| need.as_str()).collect())).collect();
+            let key_failed = |key: &str| key_result(&jobs.iter().filter(|row| row.key == key).collect::<Vec<_>>()) == "failure";
             for (key, job, needs) in &units {
                 let rows: Vec<&JobRow> = jobs.iter().filter(|row| &row.key == key).collect();
                 if rows.is_empty() || !rows.iter().all(|row| row.status == "waiting") {
@@ -471,7 +552,8 @@ impl Actions {
                 if !needed.iter().all(|(_, rows)| rows.iter().all(|row| row.status == "completed")) {
                     continue;
                 }
-                self.decide(&run, job, rows[0], &needed).await?;
+                let failed_before = ancestor_failed(&needs_of, key, key_failed);
+                self.decide(&run, job, rows[0], &needed, failed_before).await?;
                 changed = true;
             }
             // A job that called a workflow finishes with that workflow's jobs.
@@ -494,8 +576,9 @@ impl Actions {
     }
 
     /// Decides on one job whose needs are done: skip it, fail it, or expand
-    /// it into its matrix and queue it.
-    async fn decide(&self, run: &RunRow, job: &workflow::Job, row: &JobRow, needed: &[(&String, Vec<&JobRow>)]) -> Result<()> {
+    /// it into its matrix and queue it. `failed_before`: whether any job
+    /// before it failed, however far back (`ancestor_failed`).
+    async fn decide(&self, run: &RunRow, job: &workflow::Job, row: &JobRow, needed: &[(&String, Vec<&JobRow>)], failed_before: bool) -> Result<()> {
         let vars = self.variables_for(&run.repo_id, &run.repo, None, run.trusted != 0).await?;
         let mut contexts = Self::base_contexts(run, &vars, &job.id);
         // A called workflow's jobs read the inputs they were called with.
@@ -505,7 +588,7 @@ impl Actions {
             contexts.insert("inputs".into(), call["inputs"].clone());
         }
         let mut needs = Map::new();
-        let mut status = if run.conclusion.as_deref() == Some("cancelled") { Status::Cancelled } else { Status::Success };
+        let mut results = Vec::new();
         for (key, rows) in needed {
             let result = key_result(rows);
             let mut outputs = Map::new();
@@ -514,11 +597,12 @@ impl Actions {
                     outputs.extend(more);
                 }
             }
-            if result != "success" && status == Status::Success {
-                status = Status::Failure;
-            }
+            results.push(result);
             needs.insert((*key).clone(), json!({ "result": result, "outputs": outputs }));
         }
+        // As on GitHub: a need that was skipped makes success() false but
+        // not failure(); failure() is a failure anywhere before the job.
+        let status = expr::job_status(results, failed_before, run.conclusion.as_deref() == Some("cancelled"));
         contexts.insert("needs".into(), Value::Object(needs));
         let scope = Scope {
             contexts: &contexts,
@@ -552,6 +636,9 @@ impl Actions {
         };
         let total = combinations.len();
         let raw = job.raw.as_object().cloned().unwrap_or_default();
+        // Whether pull requests from forks may use self-hosted runners here,
+        // asked once, and only for a run that is not trusted.
+        let mut forks_allowed: Option<bool> = None;
         let mut statements = Vec::new();
         for (index, combination) in combinations.iter().enumerate() {
             let mut contexts = contexts.clone();
@@ -588,18 +675,50 @@ impl Actions {
                 }).unwrap_or_default(),
                 _ => Vec::new(),
             };
-            let reason = labels
-                .iter()
-                .find(|label| {
-                    let lower = label.to_ascii_lowercase();
-                    lower.contains("windows") || lower.contains("macos")
-                })
-                .map(|label| format!("`runs-on: {label}`: g1t runs jobs on Linux only."));
+            // `runs-on: self-hosted` (or a group): the workspace's own
+            // machines, which may run any OS. Otherwise g1t's Linux sandboxes.
+            let group = match &runs_on {
+                Value::Object(spec) => spec.get("group").map(expr::to_text),
+                _ => None,
+            };
+            let wanted = Wanted::of(&labels, group.as_deref());
+            let mut reason = if wanted.self_hosted {
+                None
+            } else {
+                labels
+                    .iter()
+                    .find(|label| {
+                        let lower = label.to_ascii_lowercase();
+                        lower.contains("windows") || lower.contains("macos")
+                    })
+                    .map(|label| {
+                        let os = if label.to_ascii_lowercase().contains("windows") { "windows" } else { "macos" };
+                        format!("`runs-on: {label}`: g1t's own runners are Linux. A self-hosted runner can run it: `runs-on: [self-hosted, {os}]`.")
+                    })
+            };
+            // A pull request from a fork runs code anyone could write: never
+            // on the workspace's machines unless it said they may.
+            if wanted.self_hosted && run.trusted == 0 {
+                let allowed = match forks_allowed {
+                    Some(allowed) => allowed,
+                    None => {
+                        let allowed = self.effective_runner_settings(&row.namespace, Some(&run.repo_id)).await?.fork_pull_requests;
+                        forks_allowed = Some(allowed);
+                        allowed
+                    }
+                };
+                if !allowed {
+                    reason = Some(
+                        "Pull requests from forks do not run on self-hosted runners here. An admin can allow it under Settings, Runners.".to_owned(),
+                    );
+                }
+            }
+            let max_minutes = if wanted.self_hosted { SELF_HOSTED_MAX_TIMEOUT_MINUTES } else { MAX_TIMEOUT_MINUTES };
             let timeout = raw
                 .get("timeout-minutes")
                 .and_then(|value| expr::interpolate_value(value, &scope).ok())
                 .and_then(|value| value.as_f64().or_else(|| expr::to_text(&value).parse().ok()))
-                .map_or(MAX_TIMEOUT_MINUTES, |minutes| (minutes.ceil() as u32).clamp(1, MAX_TIMEOUT_MINUTES));
+                .map_or(MAX_TIMEOUT_MINUTES, |minutes| (minutes.ceil() as u32).clamp(1, max_minutes));
             let continue_on_error = raw
                 .get("continue-on-error")
                 .and_then(|value| expr::interpolate_value(value, &scope).ok())
@@ -607,6 +726,13 @@ impl Actions {
             let (status, conclusion, finished) = match &reason {
                 Some(_) => ("completed", Some("failure"), Some(now())),
                 None => ("queued", None, None),
+            };
+            // A self-hosted job waits, saying for what, until a runner takes it.
+            let (labels_json, queued_at) = if wanted.self_hosted && reason.is_none() {
+                reason = Some(waiting_reason(&wanted));
+                (Some(serde_json::to_string(&wanted.stored())?), Some(now()))
+            } else {
+                (None, None)
             };
             let values: Vec<worker::wasm_bindgen::JsValue> = vec![
                 name.into(),
@@ -618,6 +744,8 @@ impl Actions {
                 u32::from(continue_on_error).into(),
                 job.max_parallel.map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
                 optional(finished.as_deref()),
+                optional(labels_json.as_deref()),
+                optional(queued_at.as_deref()),
             ];
             if index == 0 {
                 let mut bound = values;
@@ -626,7 +754,7 @@ impl Actions {
                     self.db
                         .prepare(
                             "UPDATE jobs SET name = ?, matrix = ?, status = ?, conclusion = ?, reason = ?, timeout_minutes = ?,
-                               continue_on_error = ?, max_parallel = ?, finished_at = ? WHERE id = ?",
+                               continue_on_error = ?, max_parallel = ?, finished_at = ?, labels = ?, queued_at = ? WHERE id = ?",
                         )
                         .bind(&bound)?,
                 );
@@ -646,8 +774,8 @@ impl Actions {
                     self.db
                         .prepare(
                             "INSERT INTO jobs (id, run_id, repo_id, namespace, key, ordinal, needs, call, name, matrix, status, conclusion, reason,
-                               timeout_minutes, continue_on_error, max_parallel, finished_at)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                               timeout_minutes, continue_on_error, max_parallel, finished_at, labels, queued_at)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         )
                         .bind(&bound)?,
                 );
@@ -835,7 +963,8 @@ impl Actions {
     pub async fn start_queued(&self) -> Result<()> {
         let queued = self
             .db
-            .prepare("SELECT * FROM jobs WHERE status = 'queued' ORDER BY rowid LIMIT 50")
+            // Self-hosted jobs are taken by their runners (runners.rs).
+            .prepare("SELECT * FROM jobs WHERE status = 'queued' AND labels IS NULL ORDER BY rowid LIMIT 50")
             .all()
             .await?
             .results::<JobRow>()?;
@@ -846,7 +975,8 @@ impl Actions {
                 None => {
                     let n = self
                         .db
-                        .prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'in_progress' AND namespace = ?")
+                        // Only g1t's own sandboxes count against the workspace's room.
+                        .prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'in_progress' AND namespace = ? AND runner_id IS NULL")
                         .bind(&[job.namespace.as_str().into()])?
                         .first::<Count>(None)
                         .await?
@@ -894,6 +1024,8 @@ impl Actions {
                 namespace: job.namespace.clone(),
                 name: String::new(),
             });
+            // Its environment and the machine it asked for, for the runner.
+            let details = run.as_ref().map(|run| start_details(run, &job)).unwrap_or_default();
             let started: Outcome<Value> = g1t_kit::call(
                 &self.runner,
                 "start_actions_job",
@@ -902,6 +1034,10 @@ impl Actions {
                     token,
                     repo,
                     timeout_minutes: job.timeout_minutes,
+                    workflow: run.as_ref().map(|run| run.path.clone()),
+                    environment: details.environment,
+                    trusted: run.as_ref().is_some_and(|run| run.trusted != 0),
+                    instance: details.instance,
                 },
             )
             .await
@@ -931,6 +1067,11 @@ impl Actions {
             .first::<JobRow>(None)
             .await?;
         let Some(job) = finished else { return Ok(()) };
+        // A self-hosted runner's job: the runner is free again, and its time
+        // is recorded, at nothing.
+        if job.runner_id.is_some() {
+            self.released(&job).await?;
+        }
         // Steps still marked as going are not going any more.
         let mut steps: Vec<Value> = serde_json::from_str(&job.steps).unwrap_or_default();
         let mut touched = false;
@@ -975,14 +1116,19 @@ impl Actions {
 
     /// Cancels a job, stopping its sandbox if it has one.
     async fn stop_job(&self, job: &JobRow, reason: &str) -> Result<()> {
-        if job.status == "in_progress" {
+        // A self-hosted runner hears it was cancelled on its next poll.
+        if job.status == "in_progress" && job.runner_id.is_none() {
             let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id })).await;
         }
-        self.db
-            .prepare("UPDATE jobs SET status = 'completed', conclusion = 'cancelled', reason = ?, finished_at = ?, token_hash = NULL WHERE id = ? AND status != 'completed'")
+        let stopped = self
+            .db
+            .prepare("UPDATE jobs SET status = 'completed', conclusion = 'cancelled', reason = ?, finished_at = ?, token_hash = NULL WHERE id = ? AND status != 'completed' RETURNING *")
             .bind(&[reason.into(), now().into(), job.id.as_str().into()])?
-            .run()
+            .first::<JobRow>(None)
             .await?;
+        if let Some(stopped) = stopped.filter(|row| row.runner_id.is_some()) {
+            self.released(&stopped).await?;
+        }
         Ok(())
     }
 
@@ -1210,7 +1356,8 @@ impl Actions {
                 self.db
                     .prepare(
                         "UPDATE jobs SET status = 'waiting', conclusion = NULL, steps = '[]', annotations = '[]', outputs = '{}', reason = NULL,
-                           matrix = NULL, call = NULL, token_hash = NULL, seen_at = NULL, started_at = NULL, finished_at = NULL WHERE run_id = ? AND key = ?",
+                           matrix = NULL, call = NULL, token_hash = NULL, seen_at = NULL, started_at = NULL, finished_at = NULL,
+                           labels = NULL, queued_at = NULL, runner_id = NULL, runner_name = NULL WHERE run_id = ? AND key = ?",
                     )
                     .bind(&[run.id.as_str().into(), key.as_str().into()])?,
             );
@@ -1240,7 +1387,7 @@ impl Actions {
 
     // --- The sandbox's side -----------------------------------------------------
 
-    async fn job_for_token(&self, a: &JobCallArgs) -> Result<Outcome<JobRow>> {
+    pub(crate) async fn job_for_token(&self, a: &JobCallArgs) -> Result<Outcome<JobRow>> {
         let job = self.db.prepare("SELECT * FROM jobs WHERE id = ?").bind(&[a.job.as_str().into()])?.first::<JobRow>(None).await?;
         Ok(match job {
             Some(job) if job.status == "in_progress" && job.token_hash.as_deref().is_some_and(|hash| same(hash, &sha256_hex(&a.token))) => {
@@ -1345,6 +1492,13 @@ impl Actions {
         let info = run.info();
         let mut github = info.context(&job.key, &token, run.action.as_deref());
         github["token"] = json!(token);
+        // On a self-hosted runner, `runner` and `RUNNER_*` describe that
+        // machine rather than g1t's sandbox.
+        let mut variables = info.variables(&job.key);
+        let runner = match &job.runner_id {
+            Some(id) => self.runner_context_for(id, &mut variables).await?,
+            None => runner_context(),
+        };
 
         // Where to check out: a pull request's fork, or the repository.
         let clone_url = match run.pull {
@@ -1382,7 +1536,7 @@ impl Actions {
                 "defaults": workflow.raw.get("defaults").cloned().unwrap_or(Value::Null),
             },
             "github": github,
-            "variables": info.variables(&job.key),
+            "variables": variables,
             "event": info.event,
             "contexts": {
                 "vars": vars,
@@ -1396,7 +1550,7 @@ impl Actions {
                     "job-total": siblings,
                     "max-parallel": spec.max_parallel.unwrap_or(siblings as u32),
                 },
-                "runner": runner_context(),
+                "runner": runner,
             },
             "checkout": {
                 "repository": run.repo,
@@ -1543,11 +1697,27 @@ impl Actions {
             let over = job.started_at.as_deref().is_some_and(|started| started < before(limit).as_str());
             if over {
                 let reason = format!("It ran longer than its time limit of {} minutes.", job.timeout_minutes);
-                let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id })).await;
+                // A self-hosted runner is told to stop on its next poll.
+                if job.runner_id.is_none() {
+                    let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id })).await;
+                }
                 self.finish_job(&job.id, "failure", Some(&reason), None).await?;
             } else if silent {
-                self.finish_job(&job.id, "failure", Some("The runner stopped answering."), None).await?;
+                let reason = match &job.runner_name {
+                    Some(name) => format!("The self-hosted runner {name} stopped answering."),
+                    None => "The runner stopped answering.".to_owned(),
+                };
+                self.finish_job(&job.id, "failure", Some(&reason), None).await?;
             }
+        }
+        if let Err(error) = self.sweep_runners(now_ms).await {
+            worker::console_error!("actions: the runners' sweep failed: {error}");
+        }
+        // Once an hour: the cache's expired entries, and its storage.
+        if (now_ms / 60_000) % 60 == 7
+            && let Err(error) = self.sweep_cache(now_ms).await
+        {
+            worker::console_error!("actions: the cache's sweep failed: {error}");
         }
         self.start_queued().await
     }
@@ -1579,5 +1749,46 @@ mod stopping {
         assert_eq!(stops_runs(&event("repo.unarchived", json!({ "archived": false }))), None);
         assert_eq!(stops_runs(&event("repo.restored", json!({}))), None);
         assert_eq!(stops_runs(&event("git.push", json!({}))), None);
+    }
+}
+
+#[cfg(test)]
+mod status_of_needs {
+    use std::collections::HashMap;
+
+    use super::ancestor_failed;
+
+    /// check -> plan -> (migrate) -> core -> edge, as deploy.yml has them,
+    /// and a job that needs only the last.
+    fn graph() -> HashMap<&'static str, Vec<&'static str>> {
+        HashMap::from([
+            ("check", vec![]),
+            ("plan", vec!["check"]),
+            ("migrate", vec!["plan"]),
+            ("core", vec!["plan", "migrate"]),
+            ("edge", vec!["plan", "migrate", "core"]),
+            ("notify", vec!["edge"]),
+        ])
+    }
+
+    #[test]
+    fn a_failure_is_seen_however_far_back() {
+        let needs = graph();
+        let failed = |which: &'static str| move |key: &str| key == which;
+        // check failed; plan, and everything after, was skipped for it.
+        assert!(ancestor_failed(&needs, "notify", failed("check")));
+        assert!(ancestor_failed(&needs, "core", failed("check")));
+        assert!(ancestor_failed(&needs, "edge", failed("core")));
+        // Nothing before a job failed: a skipped migrate is not a failure.
+        assert!(!ancestor_failed(&needs, "edge", |_| false));
+        assert!(!ancestor_failed(&needs, "core", failed("edge")));
+        assert!(!ancestor_failed(&needs, "check", failed("check")));
+    }
+
+    #[test]
+    fn cycles_and_unknown_keys_end() {
+        let needs = HashMap::from([("a", vec!["b"]), ("b", vec!["a"])]);
+        assert!(!ancestor_failed(&needs, "a", |_| false));
+        assert!(!ancestor_failed(&needs, "missing", |_| true));
     }
 }

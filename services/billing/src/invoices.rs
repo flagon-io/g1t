@@ -119,6 +119,7 @@ impl Billing {
             .prepare(
                 "SELECT CASE
                           WHEN task = 'sandbox' THEN 'Sandbox time'
+                          WHEN task = 'self_hosted' THEN 'Self-hosted runner time'
                           WHEN task = 'deployments' THEN 'Deployments: builds and usage past the plan'
                           WHEN task = 'security' THEN 'Security scans'
                           WHEN task = 'context' THEN 'Search embeddings'

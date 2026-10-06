@@ -690,6 +690,9 @@
 	"get_repo_settings": {
 		"response": {
 			"auto_merge": false,
+			"required_checks": [
+				"CI"
+			],
 			"require_up_to_date": false,
 			"required_approvals": 0,
 			"count_agent_approvals": true,
@@ -704,12 +707,20 @@
 	},
 	"update_repo_settings": {
 		"request": {
+			"required_checks": [
+				"CI",
+				"g1t / deploy"
+			],
 			"required_approvals": 1,
 			"count_agent_approvals": false,
 			"merge_queue": true
 		},
 		"response": {
 			"auto_merge": false,
+			"required_checks": [
+				"CI",
+				"g1t / deploy"
+			],
 			"require_up_to_date": false,
 			"required_approvals": 1,
 			"count_agent_approvals": false,
@@ -721,7 +732,26 @@
 			"updated_by": "syntaqx",
 			"updated_at": "2026-10-04T16:20:37.508Z"
 		},
-		"notes": "`required_approvals` is at most 6 and `max_revisions` at most 5. See [what a repository can ask for](/guides/g1t-agents/#what-a-repository-can-ask-for). `hold_low_confidence` is on unless turned off: see [confidence](/guides/g1t-agents/#how-sure-the-agent-is)."
+		"notes": "`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](#list_check_names) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6 and `max_revisions` at most 5. See [what a repository can ask for](/guides/g1t-agents/#what-a-repository-can-ask-for). `hold_low_confidence` is on unless turned off: see [confidence](/guides/g1t-agents/#how-sure-the-agent-is)."
+	},
+	"list_check_names": {
+		"response": [
+			{
+				"name": "CI",
+				"events": [
+					"pull_request",
+					"merge_group",
+					"push"
+				],
+				"last_seen": "2026-10-06T09:14:02.118Z"
+			},
+			{
+				"name": "g1t / deploy",
+				"events": [],
+				"last_seen": "2026-10-06T08:51:40.006Z"
+			}
+		],
+		"notes": "The names reported on the repository's commits in the last 30 days, most recent first. A workflow reports a check named after it (`CI`), for each event it ran for; another tool, such as a deployment, reports its own name (`g1t / deploy`). Empty until something has reported on a commit: add a workflow in `.g1t/workflows` first."
 	},
 	"list_events": {
 		"query": {
@@ -775,9 +805,6 @@
 				"labels": [
 					"feature"
 				],
-				"checks": [
-					"cargo test"
-				],
 				"state": "open",
 				"reason": null,
 				"resolved_by": null,
@@ -807,9 +834,6 @@
 			"body": "Take a name from the first argument; fall back to world.",
 			"labels": [
 				"feature"
-			],
-			"checks": [
-				"cargo test"
 			]
 		},
 		"response": {
@@ -820,9 +844,6 @@
 			"body": "Take a name from the first argument; fall back to world.",
 			"labels": [
 				"feature"
-			],
-			"checks": [
-				"cargo test"
 			],
 			"state": "open",
 			"reason": null,
@@ -856,9 +877,6 @@
 				"body": "Take a name from the first argument; fall back to world.",
 				"labels": [
 					"feature"
-				],
-				"checks": [
-					"cargo test"
 				],
 				"state": "closed",
 				"reason": "completed",
@@ -1001,9 +1019,6 @@
 				"feature",
 				"good first issue"
 			],
-			"checks": [
-				"cargo test"
-			],
 			"state": "open",
 			"reason": null,
 			"resolved_by": null,
@@ -1040,9 +1055,6 @@
 			"labels": [
 				"feature"
 			],
-			"checks": [
-				"cargo test"
-			],
 			"state": "closed",
 			"reason": "not_planned",
 			"resolved_by": null,
@@ -1073,9 +1085,6 @@
 			"body": "Take a name from the first argument; fall back to world.",
 			"labels": [
 				"feature"
-			],
-			"checks": [
-				"cargo test"
 			],
 			"state": "open",
 			"reason": null,
@@ -1143,10 +1152,7 @@
 	"delegate": {
 		"request": {
 			"title": "Retry webhooks with exponential backoff",
-			"body": "Deliveries that fail are dropped today. Retry them with exponential backoff, up to six times, then mark the delivery failed.",
-			"checks": [
-				"npm test"
-			]
+			"body": "Deliveries that fail are dropped today. Retry them with exponential backoff, up to six times, then mark the delivery failed.\n\n## Definition of done\n\n- A delivery that fails is retried after 1, 2, 4, 8, 16 and 32 seconds.\n- After the sixth failure it is marked failed and shows on the webhook's page."
 		},
 		"response": {
 			"issue": {
@@ -1156,9 +1162,6 @@
 				"title": "Retry webhooks with exponential backoff",
 				"body": "Deliveries that fail are dropped today. Retry them with exponential backoff, up to six times, then mark the delivery failed.",
 				"labels": [],
-				"checks": [
-					"npm test"
-				],
 				"state": "open",
 				"reason": null,
 				"resolved_by": null,
@@ -1286,8 +1289,8 @@
 					"labels": [
 						"feature"
 					],
-					"checks": [
-						"cargo test"
+					"done": [
+						"`greet` prints \"Hello, ana!\" when given \"ana\", and \"Hello, world!\" with no argument."
 					],
 					"files": [
 						"src/greet.rs"
@@ -1301,8 +1304,8 @@
 					"labels": [
 						"feature"
 					],
-					"checks": [
-						"cargo test"
+					"done": [
+						"The page at / shows the name given in ?name=, escaped."
 					],
 					"files": [
 						"src/web.rs"
@@ -1348,8 +1351,8 @@
 					"labels": [
 						"feature"
 					],
-					"checks": [
-						"cargo test"
+					"done": [
+						"`greet` prints \"Hello, ana!\" when given \"ana\", and \"Hello, world!\" with no argument."
 					],
 					"files": [
 						"src/greet.rs"
@@ -1363,8 +1366,8 @@
 					"labels": [
 						"feature"
 					],
-					"checks": [
-						"cargo test"
+					"done": [
+						"The page at / shows the name given in ?name=, escaped."
 					],
 					"files": [
 						"src/web.rs"
@@ -1545,9 +1548,6 @@
 				"labels": [
 					"feature"
 				],
-				"checks": [
-					"cargo test"
-				],
 				"state": "open",
 				"reason": null,
 				"resolved_by": null,
@@ -1586,23 +1586,7 @@
 					"created_at": "2026-10-01T18:33:10.420Z"
 				}
 			],
-			"checks": {
-				"id": "chk_01m43sw8e2g6j0m4q8t2x6a0c4",
-				"head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
-				"status": "passed",
-				"results": [
-					{
-						"command": "cargo test",
-						"passed": true,
-						"exit_code": 0,
-						"output": "test result: ok. 3 passed; 0 failed",
-						"duration_ms": 18234
-					}
-				],
-				"error": null,
-				"created_at": "2026-10-01T18:33:11.002Z",
-				"finished_at": "2026-10-01T18:35:44.902Z"
-			},
+			"checks": null,
 			"overlaps": [],
 			"behind": false,
 			"review_pending": false,
@@ -1623,9 +1607,25 @@
 					"declined": false
 				}
 			],
-			"statuses": []
+			"statuses": [
+				{
+					"context": "CI / pull_request",
+					"state": "success",
+					"description": "CI passed",
+					"target_url": "https://g1t.sh/syntaqx/hello/actions/runs/run_01m43sw8e2g6j0m4q8t2x6a0c4",
+					"updated_at": "2026-10-01T18:35:44.902Z"
+				}
+			],
+			"required_checks": [
+				{
+					"name": "CI",
+					"state": "success",
+					"description": "CI passed",
+					"target_url": "https://g1t.sh/syntaqx/hello/actions/runs/run_01m43sw8e2g6j0m4q8t2x6a0c4"
+				}
+			]
 		},
-		"notes": "| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `checks` | The latest run of the acceptance checks against its head, with each command's output. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request the g1t agent is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n| `statuses` | Commit statuses reported for its head, such as workflow runs. |\n| `mergeable` | Whether it merges cleanly into its target: `clean`, `conflicting`, `checking` (being worked out) or `unknown`. Worked out ahead of time whenever it or its target moves. |\n| `conflicts` | When `mergeable` is `conflicting`, the files that conflict. Resolve them by merging the target in, or have the g1t agent do it. |\n| `earlierChecks` | Earlier runs of the acceptance checks, newest first, without their output. |\n\nChecks are started by g1t, not through the API. They run when a pull request becomes ready for review and again when its head moves."
+		"notes": "| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `statuses` | Its checks: what each workflow run (or another tool, such as a deployment) reported on its head, as `pending`, `success`, `failure` or `error`, with a link to the run. |\n| `required_checks` | Each check the default branch requires (see [`update_repo_settings`](#update_repo_settings)), as it stands on the head: `success`, `failure`, `pending`, or `expected` when nothing has reported it yet. It merges only once all are `success`. |\n| `checks` | Set when the merge queue took it out, with why in `error`. Older pull requests may show a run of commands from their issue here, from before checks were workflows. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request the g1t agent is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n\n| `mergeable` | Whether it merges cleanly into its target: `clean`, `conflicting`, `checking` (being worked out) or `unknown`. Worked out ahead of time whenever it or its target moves. |\n| `conflicts` | When `mergeable` is `conflicting`, the files that conflict. Resolve them by merging the target in, or have the g1t agent do it. |\n| `earlier_checks` | Earlier records like `checks`, newest first. |\n\nChecks are the repository's workflows: they run on `pull_request` events when it is opened, marked ready and pushed to. Read why one failed with [`get_workflow_run`](#get_workflow_run) and [`get_job_logs`](#get_job_logs)."
 	},
 	"get_pull_request_changes": {
 		"response": {
@@ -2680,6 +2680,291 @@
 		"params": {
 			"workspace": "flagon-io",
 			"setting": "NODE_VERSION"
+		},
+		"response": true
+	},
+	"list_runners": {
+		"response": [
+			{
+				"id": "rnr_01kq2m8v4c7f0h3k6n9q2t5w8z",
+				"name": "build-01",
+				"workspace": "flagon-io",
+				"repo": null,
+				"group": "Default",
+				"labels": [
+					"self-hosted",
+					"linux",
+					"x64",
+					"gpu"
+				],
+				"os": "linux",
+				"arch": "x64",
+				"version": "0.2.0",
+				"ephemeral": false,
+				"status": "busy",
+				"work": {
+					"kind": "workflow",
+					"id": "job_01kq2m9b1d4g7j0m3p6s9v2y5b",
+					"name": "test (linux, 24)",
+					"repo": "flagon-io/hello",
+					"run_id": "run_01kq2m9a8c1f4h7k0n3q6t9w2z",
+					"started_at": "2026-10-06T14:02:11.000Z"
+				},
+				"last_seen_at": "2026-10-06T14:05:40.512Z",
+				"created_at": "2026-10-02T09:30:00.000Z",
+				"created_by": null
+			},
+			{
+				"id": "rnr_01kq2m8v4c7f0h3k6n9q2t5w9a",
+				"name": "mac-mini",
+				"workspace": "flagon-io",
+				"repo": null,
+				"group": "Default",
+				"labels": [
+					"self-hosted",
+					"macos",
+					"arm64"
+				],
+				"os": "macos",
+				"arch": "arm64",
+				"version": "0.2.0",
+				"ephemeral": false,
+				"status": "online",
+				"work": null,
+				"last_seen_at": "2026-10-06T14:05:40.512Z",
+				"created_at": "2026-10-02T09:30:00.000Z",
+				"created_by": null
+			}
+		],
+		"notes": "A repository's list holds its own runners (`repo` set) and the workspace's that its runner group lets it use. A runner is `offline` when it has not polled for 90 seconds."
+	},
+	"list_runners_for_workspace": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"response": [
+			{
+				"id": "rnr_01kq2m8v4c7f0h3k6n9q2t5w8z",
+				"name": "build-01",
+				"workspace": "flagon-io",
+				"repo": null,
+				"group": "Default",
+				"labels": [
+					"self-hosted",
+					"linux",
+					"x64",
+					"gpu"
+				],
+				"os": "linux",
+				"arch": "x64",
+				"version": "0.2.0",
+				"ephemeral": false,
+				"status": "busy",
+				"work": {
+					"kind": "workflow",
+					"id": "job_01kq2m9b1d4g7j0m3p6s9v2y5b",
+					"name": "test (linux, 24)",
+					"repo": "flagon-io/hello",
+					"run_id": "run_01kq2m9a8c1f4h7k0n3q6t9w2z",
+					"started_at": "2026-10-06T14:02:11.000Z"
+				},
+				"last_seen_at": "2026-10-06T14:05:40.512Z",
+				"created_at": "2026-10-02T09:30:00.000Z",
+				"created_by": null
+			},
+			{
+				"id": "rnr_01kq2m8v4c7f0h3k6n9q2t5w9a",
+				"name": "mac-mini",
+				"workspace": "flagon-io",
+				"repo": null,
+				"group": "Default",
+				"labels": [
+					"self-hosted",
+					"macos",
+					"arm64"
+				],
+				"os": "macos",
+				"arch": "arm64",
+				"version": "0.2.0",
+				"ephemeral": false,
+				"status": "online",
+				"work": null,
+				"last_seen_at": "2026-10-06T14:05:40.512Z",
+				"created_at": "2026-10-02T09:30:00.000Z",
+				"created_by": null
+			}
+		]
+	},
+	"create_runner_registration_token": {
+		"response": {
+			"token": "g1trt_…",
+			"expires_at": "2026-10-06T15:04:00.000Z",
+			"workspace": "flagon-io",
+			"repo": "flagon-io/hello",
+			"group": null,
+			"url": "https://g1t.sh"
+		},
+		"notes": "Pass it to `g1t-runner register --url https://g1t.sh --token …` within the hour. See [self-hosted runners](/guides/self-hosted-runners/)."
+	},
+	"create_runner_registration_token_for_workspace": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"request": {
+			"group": "Default"
+		},
+		"response": {
+			"token": "g1trt_…",
+			"expires_at": "2026-10-06T15:04:00.000Z",
+			"workspace": "flagon-io",
+			"repo": null,
+			"group": "Default",
+			"url": "https://g1t.sh"
+		}
+	},
+	"remove_runner": {
+		"params": {
+			"id": "rnr_01kq2m8v4c7f0h3k6n9q2t5w8z"
+		},
+		"response": true
+	},
+	"remove_runner_for_workspace": {
+		"params": {
+			"workspace": "flagon-io",
+			"id": "rnr_01kq2m8v4c7f0h3k6n9q2t5w8z"
+		},
+		"response": true
+	},
+	"get_runner_settings": {
+		"response": {
+			"agents_on_self_hosted": false,
+			"agent_labels": [
+				"self-hosted",
+				"linux"
+			],
+			"fork_pull_requests": false,
+			"inherited": true
+		}
+	},
+	"get_runner_settings_for_workspace": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"response": {
+			"agents_on_self_hosted": true,
+			"agent_labels": [
+				"self-hosted",
+				"linux"
+			],
+			"fork_pull_requests": false,
+			"inherited": false
+		}
+	},
+	"update_runner_settings": {
+		"request": {
+			"inherit": true
+		},
+		"response": {
+			"agents_on_self_hosted": false,
+			"agent_labels": [
+				"self-hosted",
+				"linux"
+			],
+			"fork_pull_requests": false,
+			"inherited": true
+		}
+	},
+	"update_runner_settings_for_workspace": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"request": {
+			"agents_on_self_hosted": true,
+			"agent_labels": [
+				"linux"
+			]
+		},
+		"response": {
+			"agents_on_self_hosted": true,
+			"agent_labels": [
+				"self-hosted",
+				"linux"
+			],
+			"fork_pull_requests": false,
+			"inherited": false
+		},
+		"notes": "Agent work on your runners still uses g1t's model proxy, paid as before, unless the workspace has its own model provider."
+	},
+	"list_runner_groups": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"response": [
+			{
+				"id": "rng_01kq2m7r2a5d8g1j4m7p0s3v6y",
+				"name": "Default",
+				"default": true,
+				"repositories": [],
+				"runners": 2,
+				"updated_at": "2026-10-02T09:30:00.000Z"
+			},
+			{
+				"id": "rng_01kq2m7r2a5d8g1j4m7p0s3v6z",
+				"name": "GPU",
+				"default": false,
+				"repositories": [
+					"hello",
+					"models"
+				],
+				"runners": 1,
+				"updated_at": "2026-10-05T11:20:00.000Z"
+			}
+		]
+	},
+	"create_runner_group": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"request": {
+			"name": "GPU",
+			"repositories": [
+				"hello",
+				"models"
+			]
+		},
+		"response": {
+			"id": "rng_01kq2m7r2a5d8g1j4m7p0s3v6z",
+			"name": "GPU",
+			"default": false,
+			"repositories": [
+				"hello",
+				"models"
+			],
+			"runners": 1,
+			"updated_at": "2026-10-05T11:20:00.000Z"
+		}
+	},
+	"update_runner_group": {
+		"params": {
+			"workspace": "flagon-io",
+			"id": "rng_01kq2m7r2a5d8g1j4m7p0s3v6z"
+		},
+		"request": {
+			"repositories": []
+		},
+		"response": {
+			"id": "rng_01kq2m7r2a5d8g1j4m7p0s3v6z",
+			"name": "GPU",
+			"default": false,
+			"repositories": [],
+			"runners": 1,
+			"updated_at": "2026-10-05T11:20:00.000Z"
+		}
+	},
+	"delete_runner_group": {
+		"params": {
+			"workspace": "flagon-io",
+			"id": "rng_01kq2m7r2a5d8g1j4m7p0s3v6z"
 		},
 		"response": true
 	},

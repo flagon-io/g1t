@@ -23,8 +23,8 @@ import {
   User,
   Wrench,
 } from "lucide-react";
-import { useEffect } from "react";
-import { Form, Link, redirect, useNavigation, useRevalidator } from "react-router";
+import { Suspense, useEffect } from "react";
+import { Await, Form, Link, redirect, useNavigation, useRevalidator } from "react-router";
 
 import {
   type Capability,
@@ -56,7 +56,7 @@ import {
 } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { WorkflowStatuses } from "../../components/actions";
-import { ChecksPanel } from "../../components/checks";
+import { AddCiPrompt } from "../../components/add-ci";
 import {
   CommentForm,
   CommentList,
@@ -108,21 +108,29 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const member = (viewer?.workspaces ?? []).some(
     (membership) => membership.slug === params.owner,
   );
-  const { can, insider } = await accessTo(context, params);
-  // At once: none of these depends on another.
+  // Everything starts at once. Only what the viewer's role decides waits
+  // for the repository, which the layout is looking up in this request too
+  // (lib/access.server.ts), and only what the pull request decides waits
+  // for it.
   const ref = { workspace: params.owner, slug: params.repo };
-  const [found, repo, settings, agentsEnabled, members, deps, deployed, computeNote] = await Promise.all([
-    work.getPull(path, number, viewer),
+  const access = accessTo(context, params);
+  const pullFound = work.getPull(path, number, viewer);
+  const deps = projects.dependencies(params.owner, params.repo, viewer);
+  // Awaited below, unless the pull request is missing first.
+  deps.catch(() => null);
+  const [{ can }, found, repo, settings, agentsEnabled, members, computeNote, session, deployed] = await Promise.all([
+    access,
+    pullFound,
     repos.get(path, viewer),
     work.getSettings(path, viewer),
     env.RUNNER.enabled(viewer, path),
     // A member picks reviewers and assignees from the workspace's people.
     member ? identity.listMembers(params.owner, viewer) : null,
-    // The projects that use this one: what a change here can affect.
-    projects.dependencies(params.owner, params.repo, viewer),
-    insider ? deployments.list(ref, viewer) : null,
     // Before someone asks g1t-agent for something: whether the plan lets it start.
-    can.run ? computeNoteFor(params.owner, "agent") : null,
+    access.then(({ can }) => (can.run ? computeNoteFor(params.owner, "agent") : null)),
+    tab === "session" ? work.readSession(path, number, viewer) : null,
+    // Its preview, for people with a role here: beside the rest, not after.
+    access.then(({ insider }) => (insider ? deployments.list(ref, viewer).catch(() => null) : null)),
   ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be an issue.
@@ -134,18 +142,35 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const range = pullComparison(pull);
   // The jobs of each workflow run on its head, to list checks job by job.
   // Read as the viewer: a run they cannot see is listed by its status alone.
+  // Streamed: the checks show by status first, then job by job.
   const runIds = [...new Set((found.value.statuses ?? []).map(runIdOf).filter((id) => id != null))].slice(0, 10);
-  const [session, comparison, runs] = await Promise.all([
-    tab === "session" ? work.readSession(path, number, viewer) : null,
-    tab === "changes"
-      ? repos.compare(range.repoId, viewer, range.base, range.head)
-      : null,
-    tab === "conversation" && pull.status === "open"
-      ? Promise.all(runIds.map((id) => actions.run(path, viewer, id).catch(() => null)))
-      : [],
+  const workflowJobs =
+    tab === "conversation" && pull.status === "open" && runIds.length > 0
+      ? Promise.all(runIds.map((id) => actions.run(path, viewer, id).catch(() => null))).then((runs) => {
+          const jobs: Record<string, Job[]> = {};
+          for (const run of runs) if (run?.ok) jobs[run.value.run.id] = run.value.jobs;
+          return jobs;
+        })
+        .catch(() => ({}) as Record<string, Job[]>)
+      : Promise.resolve({} as Record<string, Job[]>);
+  // No checks at all on an open pull request: whether that is because the
+  // repository has no workflows, to offer a starter one.
+  const unchecked =
+    tab === "conversation" &&
+    pull.status === "open" &&
+    (found.value.statuses ?? []).length === 0 &&
+    (found.value.requiredChecks ?? []).length === 0;
+  const [comparison, used, noChecks] = await Promise.all([
+    tab === "changes" ? repos.compare(range.repoId, viewer, range.base, range.head) : null,
+    deps,
+    unchecked
+      ? actions
+          .workflows(path, viewer)
+          .then((found) => found.ok && found.value.length === 0)
+          .catch(() => false)
+      : false,
   ]);
-  const workflowJobs: Record<string, Job[]> = {};
-  for (const run of runs) if (run?.ok) workflowJobs[run.value.run.id] = run.value.jobs;
+  const affects = used.ok ? used.value.usedBy : [];
   return {
     ...found.value,
     workflowJobs,
@@ -170,9 +195,15 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     mergeQueue: settings.ok && settings.value.mergeQueue,
     requiredApprovals: settings.ok ? settings.value.requiredApprovals : 0,
     canIgnoreChecks: !settings.ok || settings.value.allowIgnoringChecks,
+    noChecks,
+    // Who may open the pull request that adds CI: anyone who can push.
+    canAddCi: can.push,
+    // Who may choose the required checks.
+    canProtect: can.manage_protection,
     defaultBranch: repo.ok ? repo.value.defaultBranch : "main",
-    affects: deps.ok ? deps.value.usedBy : [],
-    ...(await deploymentOf(deployed?.ok ? deployed.value : null, number, params.owner, deps.ok ? deps.value.usedBy : [], viewer)),
+    affects,
+    // Streamed: the conversation shows first, the preview card after.
+    ...deploymentOf(deployed?.ok ? deployed.value : null, number, params.owner, affects, viewer),
   };
 }
 
@@ -181,36 +212,37 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
  * one is going or after one failed), and the previews of the projects
  * that use this one, built against it.
  */
-async function deploymentOf(
+function deploymentOf(
   list: { deployments: Deployment[]; live: LiveApp[] } | null,
   number: number,
   owner: string,
   affects: { slug: string; name: string }[],
   viewer: Viewer,
-) {
-  if (!list) return { preview: null, build: null, stacked: [] };
-  const preview = list.live.find((app) => app.kind === "preview" && app.number === number) ?? null;
-  const build = list.deployments.find((d) => d.kind === "preview" && d.number === number) ?? null;
+): { preview: LiveApp | null; build: Deployment | null; stacked: Promise<Stacked[]> } {
+  const preview = list?.live.find((app) => app.kind === "preview" && app.number === number) ?? null;
+  const build = list?.deployments.find((d) => d.kind === "preview" && d.number === number) ?? null;
   const branch = preview?.branch ?? build?.branch ?? null;
-  const stacked = branch
-    ? (
-        await Promise.all(
-          affects.slice(0, 5).map(async (project) => {
-            const theirs = await deployments.list({ workspace: owner, slug: project.slug }, viewer);
-            const app = theirs.ok ? theirs.value.live.find((a) => a.kind === "preview" && a.branch === branch) : undefined;
-            return app ? { name: project.name, slug: project.slug, url: app.url } : null;
-          }),
-        )
-      ).filter((entry) => entry != null)
-    : [];
+  // Streamed: another lookup per project, shown in the card once known.
+  const stacked: Promise<Stacked[]> = branch
+    ? Promise.all(
+        affects.slice(0, 5).map(async (project) => {
+          const theirs = await deployments.list({ workspace: owner, slug: project.slug }, viewer).catch(() => null);
+          const app = theirs?.ok ? theirs.value.live.find((a) => a.kind === "preview" && a.branch === branch) : undefined;
+          return app ? { name: project.name, slug: project.slug, url: app.url } : null;
+        }),
+      ).then((found) => found.filter((entry) => entry != null))
+    : Promise.resolve([]);
   return { preview, build, stacked };
 }
+
+/** A project that uses this one, with its preview built against this change. */
+type Stacked = { name: string; slug: string; url: string };
 
 const PULL_NEEDS: Record<string, Capability> = {
   stack: "run",
   "agent-review": "run",
   "rerun-workflow": "run",
-  recheck: "run",
+  "rerun-failed": "run",
   message: "run",
   merge: "merge",
   unqueue: "merge",
@@ -269,6 +301,23 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     const rerun = await actions.rerun(user, path, String(form.get("run") ?? ""), true);
     return rerun.ok ? null : { error: rerun.error.message, action };
   }
+  // Every failed run on its head, run again: Mission control's quick action.
+  if (action === "rerun-failed") {
+    const found = await work.getPull(path, number, user);
+    if (!found.ok) return { error: found.error.message, action };
+    const failed = [
+      ...new Set(
+        (found.value.statuses ?? [])
+          .filter((status) => status.state === "failure" || status.state === "error")
+          .map(runIdOf)
+          .filter((id) => id != null),
+      ),
+    ];
+    if (failed.length === 0) return { error: "No workflow run failed on its latest commit.", action };
+    const reruns = await Promise.all(failed.map((id) => actions.rerun(user, path, id, true)));
+    const refused = reruns.find((rerun) => !rerun.ok);
+    return refused && !refused.ok ? { error: refused.error.message, action } : null;
+  }
   const result =
     action === "merge"
       ? await work.mergePull(user, path, number, {
@@ -281,9 +330,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         ? await work.messageAgent(user, path, number, String(form.get("body") ?? ""))
       : action === "close"
         ? await work.closePull(user, path, number)
-        : action === "recheck"
-          ? await env.RUNNER.recheck(user, path, number)
-          : action === "agent-review"
+        : action === "agent-review"
             ? await env.RUNNER.review(user, path, number)
           : action === "reviewers"
             ? await work.updatePull(user, path, number, { reviewers: picked("reviewer") })
@@ -325,7 +372,7 @@ function TabLink({
       to={to}
       preventScrollReset
       className={
-        "-mb-px flex items-center gap-2 border-b-2 px-1 pb-2.5 text-sm transition-colors " +
+        "-mb-px flex items-center gap-2 border-b-2 px-3 pb-2.5 text-sm transition-colors " +
         (active
           ? "border-accent font-medium text-fg"
           : "border-transparent text-muted hover:text-fg")
@@ -455,6 +502,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     lifecycle,
     messages,
     statuses = [],
+    requiredChecks = [],
+    noChecks,
+    canAddCi,
+    canProtect,
     mergeable = "unknown",
     conflicts = [],
     earlierChecks = [],
@@ -483,6 +534,20 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const here = `${base}/pull/${pull.number}`;
+  const checksSection = (jobs: Record<string, Job[]>) => (
+    <ChecksSection
+      run={checks}
+      required={requiredChecks}
+      statuses={statuses}
+      jobs={jobs}
+      pull={pull}
+      base={base}
+      earlier={earlierChecks}
+      canRerunWorkflows={canMerge}
+      settingsUrl={canProtect ? `${base}/settings/branches` : null}
+      error={actionData?.action === "rerun-failed" || actionData?.action === "rerun-workflow" ? actionData.error : null}
+    />
+  );
   const remote = pull.fork
     ? `https://g1t.sh/${pull.fork.namespace}/${pull.fork.name}.git`
     : `https://g1t.sh/${params.owner}/${params.repo}.git`;
@@ -491,11 +556,12 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   // Follow an agent at work, or checks in progress, without a manual reload.
   const revalidator = useRevalidator();
   const working = pull.status === "draft";
-  const checking =
-    checks?.status === "queued" || checks?.status === "running" || statuses.some((status) => status.state === "pending");
+  const checking = statuses.some((status) => status.state === "pending");
   const reviews = verdicts(comments);
-  // What stands between this pull request and a merge, if anything.
-  const unchecked = checks && checks.status !== "passed";
+  // What stands between this pull request and a merge, if anything: a
+  // required check that has not passed, or the merge queue taking it out.
+  const unchecked = requiredChecks.some((check) => check.state !== "success") || checks?.status === "failed";
+  const requiredFailed = requiredChecks.some((check) => check.state === "failure") || checks?.status === "failed";
   // Pull requests for other issues changing the same files will conflict;
   // ones for the same issue are alternatives, and expected to.
   const collisions = overlaps.filter((other) => other.issue == null || other.issue !== pull.issue);
@@ -542,7 +608,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
       ? "Waiting to find out whether it merges cleanly."
       : behind && requireUpToDate
         ? `This repository requires it to be up to date with ${defaultBranch} first.`
-        : null;
+        : unchecked && !canIgnoreChecks
+          ? `The checks ${defaultBranch} requires have to pass first.`
+          : null;
 
   return (
     // The changes get the whole width; people and settings are a tab away.
@@ -602,7 +670,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
           </p>
         )}
 
-        <nav className="mt-6 flex items-end gap-6 border-b border-line">
+        <nav className="mt-6 flex items-end gap-1 overflow-x-auto border-b border-line">
           <TabLink to={here} active={tab === "conversation"}>
             <MessageSquare size={15} />
             Conversation
@@ -843,9 +911,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
 
                 <CommentList comments={comments} review={review} base={base} />
 
-                {(preview || build) && (
-                  <DeploymentCard preview={preview} build={build} stacked={stacked} base={base} />
-                )}
+                {(preview || build) && <DeploymentCard preview={preview} build={build} stacked={stacked} base={base} />}
 
                 {pull.status === "draft" && (
                   <StatusBox>
@@ -864,22 +930,11 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
 
                 {pull.status === "open" && (
                   <StatusBox>
-                    <ChecksSection
-                      run={checks}
-                      commands={issue?.checks ?? []}
-                      statuses={statuses}
-                      jobs={workflowJobs}
-                      pull={pull}
-                      base={base}
-                      earlier={earlierChecks}
-                      canRerun={canRun}
-                      canRerunWorkflows={canMerge}
-                      error={
-                        actionData?.action === "recheck" || actionData?.action === "rerun-workflow"
-                          ? actionData.error
-                          : null
-                      }
-                    />
+                    {/* Checks by status at once; job by job when the runs are read. */}
+                    <Suspense fallback={checksSection({})}>
+                      <Await resolve={workflowJobs}>{checksSection}</Await>
+                    </Suspense>
+                    {noChecks && <AddCiPrompt owner={params.owner} repo={params.repo} canAdd={canAddCi} compact />}
                     <StatusRow
                       icon={
                         reviews.some(({ verdict }) => verdict === "request_changes") ? (
@@ -1009,7 +1064,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         {unchecked && canIgnoreChecks && (
                           <CheckboxOption
                             name="ignoreChecks"
-                            label={`Merge although the checks ${checking ? "have not finished" : "did not pass"}.`}
+                            label={`Bypass the required checks: merge although ${requiredFailed ? "one failed" : "they have not all passed"}.`}
                             labelClassName="text-xs text-muted"
                           />
                         )}
@@ -1054,7 +1109,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   </Form>
                 )}
                 {actionData &&
-                  !["merge", "comment", "recheck", "rerun-workflow", "update", "agent-review", "reviewers", "assign"].includes(
+                  !["merge", "comment", "rerun-failed", "rerun-workflow", "update", "agent-review", "reviewers", "assign"].includes(
                     String(actionData.action),
                   ) && <ErrorText>{actionData.error}</ErrorText>}
               </div>
@@ -1069,12 +1124,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
 
         <aside className={tab === "changes" ? "hidden" : "space-y-6"}>
           {/* An open pull request shows its checks in full in the merge box. */}
-          {pull.status !== "open" && (
-            <>
-              <ChecksPanel run={checks} commands={issue?.checks ?? []} canRerun={false} />
-              <WorkflowStatuses statuses={statuses} />
-            </>
-          )}
+          {pull.status !== "open" && <WorkflowStatuses statuses={statuses} />}
           {affects.length > 0 && (
             <section>
               <h3 className="flex items-center gap-1.5 text-sm font-medium">
@@ -1282,7 +1332,7 @@ function DeploymentCard({
 }: {
   preview: LiveApp | null;
   build: Deployment | null;
-  stacked: { name: string; slug: string; url: string }[];
+  stacked: Promise<Stacked[]>;
   base: string;
 }) {
   const building = build?.status === "queued" || build?.status === "building";
@@ -1338,21 +1388,28 @@ function DeploymentCard({
           {preview.branch && ` · from ${preview.branch}`}
         </p>
       )}
-      {stacked.length > 0 && (
-        <div className="border-t border-line px-4 py-2.5">
-          <p className="text-xs text-muted">Built against this change:</p>
-          <ul className="mt-1.5 space-y-1">
-            {stacked.map((entry) => (
-              <li key={entry.slug} className="flex items-center gap-2 text-xs">
-                <span className="font-medium">{entry.name}</span>
-                <a href={entry.url} className="truncate font-mono text-muted hover:text-accent">
-                  {entry.url.replace(/^https?:[/][/]/, "")}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {/* Read after the page: the card's own part shows at once. */}
+      <Suspense fallback={null}>
+        <Await resolve={stacked}>
+          {(stacked) =>
+            stacked.length > 0 && (
+              <div className="border-t border-line px-4 py-2.5">
+                <p className="text-xs text-muted">Built against this change:</p>
+                <ul className="mt-1.5 space-y-1">
+                  {stacked.map((entry) => (
+                    <li key={entry.slug} className="flex items-center gap-2 text-xs">
+                      <span className="font-medium">{entry.name}</span>
+                      <a href={entry.url} className="truncate font-mono text-muted hover:text-accent">
+                        {entry.url.replace(/^https?:[/][/]/, "")}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          }
+        </Await>
+      </Suspense>
     </section>
   );
 }

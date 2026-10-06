@@ -8,6 +8,7 @@ import type { IntegrationsApi } from "./integrations";
 import type { WebhooksApi } from "./webhooks";
 import type { ReposApi } from "./repos";
 import type { WorkApi } from "./work";
+import type { RunnersApi } from "./runners";
 
 /** A service binding, as far as these clients need it. */
 export type ServiceBinding = {
@@ -251,6 +252,7 @@ export function reposClient(service: ServiceBinding): ReposApi {
   return {
     get: (path, viewer) => call("get", { path, viewer }),
     getById: (id, viewer) => call("get_by_id", { id, viewer }),
+    readable: (ids, viewer) => call("readable", { ids, viewer }),
     publicNamespaces: (ownerId) => call("public_namespaces", { ownerId }),
     list: (viewer, options = {}) => call("list", { viewer, ...options }),
     create: (owner, input) => call("create", { owner, ...input }),
@@ -279,6 +281,7 @@ export function reposClient(service: ServiceBinding): ReposApi {
     gitAccess: (path, viewer, service) =>
       call("git_access", { path, viewer, service }),
     branches: (path, viewer) => call("branches", { path, viewer }),
+    commitFile: (repo, actor, file) => call("commit_file", { repo, actor, ...file }),
     land: (sourceId, actor, branch) => call("land", { sourceId, actor, branch }),
     compare: (repoId, viewer, base, head) => call("compare", { repoId, viewer, base, head }),
   };
@@ -318,10 +321,12 @@ export function workClient(service: ServiceBinding): WorkApi {
     catchUpJob: (pullId) => call("catch_up_job", { pullId }),
     wakeForMessages: (pullId) => call("wake_for_messages", { pullId }),
     getSettings: (repo, viewer) => call("get_settings", { repo, viewer }),
+    seenChecks: (repo, viewer) => call("seen_checks", { repo, viewer }),
     updateSettings: (actor, repo, settings) =>
       call("update_settings", { actor, repo, settings }),
     openPull: (actor, repo, input) => call("open_pull", { actor, repo, ...input }),
     listPulls: (repo, viewer, state) => call("list_pulls", { repo, viewer, state }),
+    pullsForRepos: (repoIds, viewer, limit) => call("pulls_for_repos", { repoIds, viewer, limit }),
     getPull: (repo, number, viewer) => call("get_pull", { repo, number, viewer }),
     updatePull: (actor, repo, number, changes) =>
       call("update_pull", { actor, repo, number, ...changes }),
@@ -510,6 +515,22 @@ export function actionsClient(service: ServiceBinding): ActionsApi {
   };
 }
 
+
+/** Self-hosted runners, kept by the actions service. */
+export function runnersClient(service: ServiceBinding): RunnersApi {
+  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
+  return {
+    stuck: (viewer) => call("stuck_jobs", { viewer }),
+    list: (actor, owner) => call("runners", { actor, ...owner }),
+    createToken: (actor, owner, group) => call("create_registration_token", { actor, ...owner, group }),
+    remove: (actor, owner, id) => call("remove_runner", { actor, ...owner, id }),
+    groups: (actor, workspace) => call("runner_groups", { actor, workspace }),
+    setGroup: (actor, workspace, group) => call("set_runner_group", { actor, workspace, ...group }),
+    deleteGroup: (actor, workspace, id) => call("delete_runner_group", { actor, workspace, id }),
+    settings: (actor, owner) => call("runner_settings", { actor, ...owner }),
+    setSettings: (actor, owner, change) => call("set_runner_settings", { actor, ...owner, ...change }),
+  };
+}
 
 export function deploymentsClient(service: ServiceBinding): DeploymentsApi {
   const call = <T>(method: string, args: object) => rpc<T>(service, method, args);

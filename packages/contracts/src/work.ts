@@ -28,8 +28,6 @@ export type Issue = {
   /** Markdown. Also what an agent is given to work from. */
   body: string;
   labels: string[];
-  /** Commands that must pass for a pull request to be accepted. */
-  checks: string[];
   state: State;
   /** Set when closed. */
   reason: IssueReason | null;
@@ -182,11 +180,16 @@ export type Delegated = {
   agent: AgentStart;
 };
 
-/** What to put an agent on: an issue's title, what to do in plain words, and the checks that prove it done. */
+/**
+ * What to put an agent on: an issue's title, and what to do in plain words,
+ * with what done means if you like (a "Definition of done" section). What
+ * has to pass before it merges is the branch's required checks.
+ */
 export type DelegateInput = {
   title: string;
   body: string;
   labels?: string[];
+  /** Deprecated: commands, added to the body under "Definition of done". */
   checks?: string[];
 };
 
@@ -207,10 +210,14 @@ export type Overlap = {
   paths: string[];
 };
 
-/** `queued` waits for a sandbox; `errored` means the checks could not be run. */
+/**
+ * On a pull request, `failed` means the merge queue took it out, until its
+ * head moves. The other states are from runs of commands written on issues,
+ * which g1t no longer runs.
+ */
 export type CheckStatus = "queued" | "running" | "passed" | "failed" | "errored";
 
-/** How one acceptance check went. */
+/** How one command went, in a run recorded before checks were workflows. */
 export type CheckResult = {
   command: string;
   passed: boolean;
@@ -222,8 +229,8 @@ export type CheckResult = {
 };
 
 /**
- * One run of an issue's acceptance checks against a pull request's head, in
- * a sandbox that holds nothing but that commit.
+ * A record against a pull request's head: the merge queue taking it out,
+ * with why, or an earlier run of commands written on its issue.
  */
 export type CheckRun = {
   id: string;
@@ -325,7 +332,7 @@ export type PullDetail = {
   /** The issue it is for, if any. */
   issue: Issue | null;
   comments: Comment[];
-  /** The latest run of the issue's acceptance checks. */
+  /** The latest record against its head: the merge queue taking it out. */
   checks: CheckRun | null;
   /** Other pull requests in progress that change the same files. */
   overlaps: Overlap[];
@@ -359,9 +366,63 @@ export type PullDetail = {
   mergeable?: Mergeable;
   /** When `mergeable` is `conflicting`: the files that conflict. */
   conflicts?: string[];
-  /** Earlier runs of its acceptance checks, newest first, without their output. */
+  /** Earlier records like `checks`, newest first, without their output. */
   earlierChecks?: CheckRun[];
+  /**
+   * The checks the default branch's protection requires, each as it stands
+   * on the head commit. Empty when none are required.
+   */
+  requiredChecks?: RequiredCheck[];
 };
+
+/** Where a required check stands on a commit; `expected` when nothing has reported it yet. */
+export type RequiredState = "success" | "failure" | "pending" | "expected";
+
+/** One check a branch's protection requires, as it stands on a commit. */
+export type RequiredCheck = {
+  /** A workflow's name, such as `CI`, or another status's context. */
+  name: string;
+  state: RequiredState;
+  description: string | null;
+  /** Where to see more: the workflow run, for one a workflow reported. */
+  targetUrl: string | null;
+};
+
+/** A check name reported on a repository's commits lately, for choosing required checks. */
+export type SeenCheck = {
+  name: string;
+  /** The events it was reported for, such as `pull_request`; empty for a status that names none. */
+  events: string[];
+  /** RFC 3339. */
+  lastSeen: string;
+};
+
+/**
+ * A status context's check name: `CI / pull_request` is the `CI` check,
+ * reported for a `pull_request` event. A context that does not end in an
+ * event, such as `g1t / deploy`, is its own name. As the work service reads it.
+ */
+export function checkName(context: string): string {
+  const at = context.lastIndexOf(" / ");
+  if (at <= 0) return context;
+  return STATUS_EVENTS.has(context.slice(at + 3)) ? context.slice(0, at) : context;
+}
+
+const STATUS_EVENTS = new Set([
+  "push",
+  "pull_request",
+  "pull_request_target",
+  "pull_request_review",
+  "merge_group",
+  "workflow_dispatch",
+  "workflow_run",
+  "workflow_call",
+  "schedule",
+  "release",
+  "issues",
+  "issue_comment",
+  "repository_dispatch",
+]);
 
 /**
  * Whether a pull request merges cleanly into the branch it targets:
@@ -465,8 +526,8 @@ export type PlannedIssue = {
   /** Markdown: what to change, where, and why. */
   body: string;
   labels: string[];
-  /** Commands that must pass once the change is made. */
-  checks: string[];
+  /** What is true once it is done, in plain words; added to the issue's body under "Definition of done". */
+  done: string[];
   /** The files it will most likely change. */
   files: string[];
   /**
@@ -529,6 +590,13 @@ export type RepoSettings = {
    */
   autoMerge: boolean;
   /**
+   * The checks that must pass on a pull request's head before it may merge
+   * into the default branch, by name: a workflow's name (`CI`) or another
+   * status's context (`g1t / deploy`). The same for people and agents, and
+   * for the merge queue.
+   */
+  requiredChecks: string[];
+  /**
    * Refuse to merge a pull request that does not contain the default
    * branch's latest commits, so that what merges is what was checked. When
    * off, merging one that is behind brings it up to date first.
@@ -541,7 +609,7 @@ export type RepoSettings = {
   requiredApprovals: number;
   /** Whether a g1t agent's approval counts towards `requiredApprovals`. */
   countAgentApprovals: boolean;
-  /** Whether a member may merge although the acceptance checks did not pass. */
+  /** Whether someone who may merge can bypass required checks that have not passed. */
   allowIgnoringChecks: boolean;
   /** Whether a g1t agent's pull request is reviewed by a second agent unasked. */
   agentReview: boolean;
@@ -598,6 +666,7 @@ export type OpenIssueInput = {
   title: string;
   body: string;
   labels?: string[];
+  /** Deprecated: commands, added to the body under "Definition of done". */
   checks?: string[];
 };
 
@@ -623,6 +692,15 @@ export type OpenPullInput = {
   branch?: string;
   agent: string;
   runtime: Runtime;
+};
+
+/** One repository's pull requests from `pullsForRepos`, newest first. */
+export type RepoPulls = {
+  repoId: string;
+  /** Draft and open. */
+  open: Pull[];
+  /** Merged and closed. */
+  closed: Pull[];
 };
 
 /** Issues, pull requests, comments and sessions. */
@@ -657,13 +735,13 @@ export interface WorkApi {
   addComment(actor: User, repo: RepoPath, number: number, comment: NewComment): Promise<Result<Comment>>;
 
   /**
-   * Begins a run of the acceptance checks for a pull request that is ready
-   * for review. For the runner service, which starts the sandbox.
+   * Always refused now: a pull request's checks are the workflows run on
+   * it. Kept for a runner from before.
    */
   startChecks(pullId: string): Promise<Result<CheckJob>>;
   /**
-   * What a sandbox says about its run. With no results and no error it has
-   * started; `skip` forgets a run that will not be carried out.
+   * What a sandbox says about a run from before checks were workflows: so
+   * one still finishing is recorded.
    */
   reportChecks(runId: string, token: string, report: CheckReport): Promise<Result<CheckRun>>;
   /** Begins a review by a g1t agent. For the runner service. */
@@ -705,6 +783,8 @@ export interface WorkApi {
   removeFromQueue(actor: User, repo: RepoPath, number: number): Promise<Result<Pull>>;
 
   getSettings(repo: RepoPath, viewer: Viewer): Promise<Result<RepoSettings>>;
+  /** The check names reported on the repository's commits in the last 30 days, most recent first. */
+  seenChecks(repo: RepoPath, viewer: Viewer): Promise<Result<SeenCheck[]>>;
   /** Members of the repository's workspace only. */
   updateSettings(actor: User, repo: RepoPath, settings: RepoSettingsInput): Promise<Result<RepoSettings>>;
   /**
@@ -727,6 +807,12 @@ export interface WorkApi {
   openPull(actor: User, repo: RepoPath, input: OpenPullInput): Promise<Result<Pull>>;
   /** Newest first. */
   listPulls(repo: RepoPath, viewer: Viewer, state?: State): Promise<Result<Pull[]>>;
+  /**
+   * The newest `limit` open and closed pull requests of each repository,
+   * in one call. Repositories the viewer cannot read, and forks, are left
+   * out: ask those with `listPulls`.
+   */
+  pullsForRepos(repoIds: string[], viewer: Viewer, limit: number): Promise<RepoPulls[]>;
   getPull(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<PullDetail>>;
   /**
    * Changes who a pull request is assigned to and whose review is asked
@@ -767,7 +853,7 @@ export interface WorkApi {
     number: number,
     options?: {
       keepIssueOpen?: boolean;
-      /** Merge although the acceptance checks have not passed. */
+      /** Merge although required checks have not passed, where the repository allows bypassing them. */
       ignoreChecks?: boolean;
     },
   ): Promise<Result<Pull>>;
@@ -927,8 +1013,9 @@ export type QueueJob = {
   baseCommit: string;
   branch: string;
   stack: QueueStackItem[];
+  /** Always empty: the state is checked by the merge_group workflows run on it. */
   checks: string[];
-  /** The checks of issues already completed: the default branch's contract. */
+  /** Always empty, as `checks`. */
   contractChecks: string[];
   actor: User;
 };

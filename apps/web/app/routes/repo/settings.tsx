@@ -27,7 +27,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const form = await request.formData();
   const saved = await projects.update(user, params.owner, params.repo, {
     name: String(form.get("name") ?? ""),
-    description: String(form.get("description") ?? ""),
+    // Blank, or the reset, and it follows the repository's description again.
+    description: form.get("inherit") === "description" ? null : String(form.get("description") ?? ""),
     rootDir: String(form.get("rootDir") ?? ""),
   });
   return saved.ok ? { saved: true as const } : { error: saved.error.message };
@@ -51,9 +52,35 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
             <Field label="Name" hint={`Its address stays g1t.sh/${project.workspace}/${project.slug}.`}>
               <Input name="name" defaultValue={project.name} required maxLength={100} />
             </Field>
-            <Field label="Description">
-              <Input name="description" defaultValue={project.description ?? ""} maxLength={200} placeholder="What it is, in a line" />
-            </Field>
+            <div>
+              <Field
+                label="Description"
+                hint={
+                  project.descriptionInherited
+                    ? "Follows the repository's description. Write one to give the project its own."
+                    : "The project's own. Empty follows the repository's description."
+                }
+              >
+                <Input
+                  key={`${project.descriptionInherited}:${project.description ?? ""}`}
+                  name="description"
+                  defaultValue={project.descriptionInherited ? "" : (project.description ?? "")}
+                  maxLength={200}
+                  placeholder={(project.descriptionInherited && project.description) || "What it is, in a line"}
+                />
+              </Field>
+              {!project.descriptionInherited && (
+                <button
+                  type="submit"
+                  name="inherit"
+                  value="description"
+                  disabled={saving}
+                  className="mt-1.5 text-xs text-muted hover:text-fg disabled:opacity-50"
+                >
+                  Use the repository's description
+                </button>
+              )}
+            </div>
           </div>
         </section>
 
