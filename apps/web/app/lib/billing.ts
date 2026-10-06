@@ -270,6 +270,21 @@ export function usageTask(key: string): { label: string; color: string } {
   return USAGE_TASKS[key] ?? USAGE_TASKS.other!;
 }
 
+/**
+ * Usage by kind of work with every kind that has no words of its own
+ * added into one Other, last, so Other is listed once.
+ */
+export function foldTasks<T extends { key: string; micros: number; runs: number }>(slices: T[]): T[] {
+  const known = slices.filter((slice) => slice.key !== "other" && slice.key in USAGE_TASKS);
+  const rest = slices.filter((slice) => !known.includes(slice));
+  if (rest.length === 0) return known;
+  const other = rest.reduce(
+    (sum, slice) => ({ ...sum, micros: sum.micros + slice.micros, runs: sum.runs + slice.runs }),
+    { ...rest[0]!, key: "other", micros: 0, runs: 0 },
+  );
+  return [...known, other];
+}
+
 /** The workspace's month at a glance, for the Usage card on its overview. */
 export type UsageGlance = {
   /**

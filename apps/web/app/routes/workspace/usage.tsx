@@ -4,7 +4,7 @@ import { Link, data } from "react-router";
 import { MICROS_PER_DOLLAR, type UsageSlice } from "@g1t/contracts";
 
 import type { Route } from "./+types/usage";
-import { usageTask } from "../../lib/billing";
+import { foldTasks, usageTask } from "../../lib/billing";
 import { page } from "../../lib/meta";
 import { ButtonLink } from "../../components/ui";
 import { billing } from "../../lib/services.server";
@@ -181,6 +181,7 @@ function Breakdown({
 
 export default function UsagePage({ loaderData, params }: Route.ComponentProps) {
   const { period, since, usage, account } = loaderData;
+  const byTask = foldTasks(usage.byTask);
   const base = `/${params.owner}`;
   const days = Math.max(1, Math.ceil((Date.now() - new Date(since).getTime()) / 86_400_000));
   // While g1t is free nothing is charged, so usage is measured at cost
@@ -257,7 +258,7 @@ export default function UsagePage({ loaderData, params }: Route.ComponentProps) 
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <h3 className="text-sm font-medium">{usage.free ? "Usage per day" : "Spend per day"}</h3>
           <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
-            {usage.byTask.map((slice) => (
+            {byTask.map((slice) => (
               <li key={slice.key} className="flex items-center gap-1.5">
                 <span className="size-2 rounded-sm" style={{ background: task(slice.key).color }} />
                 {task(slice.key).label}
@@ -273,7 +274,7 @@ export default function UsagePage({ loaderData, params }: Route.ComponentProps) 
       <div className="grid gap-4 lg:grid-cols-2">
         <Breakdown
           title="By kind of work"
-          slices={usage.byTask}
+          slices={byTask}
           total={total}
           label={(key) => task(key).label}
           color={(key) => task(key).color}

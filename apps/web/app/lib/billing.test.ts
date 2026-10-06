@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  foldTasks,
   gigabytes,
   shownMeters,
   alertText,
@@ -233,4 +234,20 @@ test("storage reads in powers of ten", () => {
   assert.equal(gigabytes(1_000_000_000), "1 GB");
   assert.equal(gigabytes(1_500_000_000), "1.5 GB");
   assert.equal(gigabytes(500_000_000), "500 MB");
+});
+
+test("kinds of work without words of their own are one Other, listed once and last", () => {
+  const slices = [
+    { key: "check", micros: 5, runs: 50 },
+    { key: "review", micros: 3, runs: 5 },
+    { key: "other", micros: 1, runs: 7 },
+    { key: "implement", micros: 9, runs: 4 },
+    { key: "answer", micros: 2, runs: 11 },
+  ];
+  assert.deepEqual(foldTasks(slices), [
+    { key: "review", micros: 3, runs: 5 },
+    { key: "implement", micros: 9, runs: 4 },
+    { key: "other", micros: 8, runs: 68 },
+  ]);
+  assert.deepEqual(foldTasks([{ key: "plan", micros: 1, runs: 1 }]), [{ key: "plan", micros: 1, runs: 1 }]);
 });
