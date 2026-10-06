@@ -170,15 +170,17 @@ impl Billing {
                 .await?
                 .results::<DayRow>()
         };
-        // What the window's runs cost at g1t's price, whoever paid: what was
+        // What the window's runs cost, whoever paid: at g1t's price, what was
         // left to pay plus what included usage, credit, the trial, the
-        // open-source pool or a comp covered, so a comped workspace's runs
-        // still show their cost. While g1t charges nothing, the provider's
-        // cost. For one person, the runs whose sessions counted their tokens.
+        // open-source pool or a comp covered; a run charged nothing at all
+        // (comped, or while g1t charges nothing) at the provider's cost.
+        // For one person, the runs whose sessions counted their tokens.
         let measure = if self.free {
             "COALESCE(l.cost_micros, 0)"
         } else {
-            "(-l.amount_micros + l.credit_micros + l.trial_micros + l.oss_micros + l.given_micros)"
+            "CASE WHEN (-l.amount_micros + l.credit_micros + l.trial_micros + l.oss_micros + l.given_micros) > 0
+                  THEN (-l.amount_micros + l.credit_micros + l.trial_micros + l.oss_micros + l.given_micros)
+                  ELSE COALESCE(l.cost_micros, 0) END"
         };
         let sessions = if person.is_some() {
             " AND r.session_id IN (SELECT session FROM token_usage WHERE workspace = ?1 AND person = ?3 AND day >= ?2)"
