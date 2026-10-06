@@ -1,6 +1,6 @@
 import { AlertTriangle, FileCode2, GitBranch, Play, PlayCircle } from "lucide-react";
-import { useEffect, useState } from "react";
-import { Form, Link, useNavigation, useRevalidator, useSearchParams } from "react-router";
+import { useState } from "react";
+import { Form, Link, useNavigation, useSearchParams } from "react-router";
 
 import type { DispatchInput, Workflow, WorkflowRun } from "@g1t/contracts";
 
@@ -15,6 +15,7 @@ import { computeNoteFor } from "../../lib/compute.server";
 import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { accessFor, refusal, repoFor } from "../../lib/access.server";
+import { useRefreshWhile } from "../../lib/refresh";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Workflows · ${params.owner}/${params.repo} · g1t` });
@@ -78,14 +79,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 /** Re-reads the page every few seconds while something is still running. */
 function useLiveWhile(running: boolean) {
-  const revalidator = useRevalidator();
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => {
-      if (revalidator.state === "idle" && document.visibilityState === "visible") revalidator.revalidate();
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [running, revalidator]);
+  useRefreshWhile(running, 3000);
 }
 
 const EVENT_WORDS: Record<string, string> = {

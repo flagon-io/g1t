@@ -8,8 +8,7 @@ import {
   Minus,
   X,
 } from "lucide-react";
-import { useEffect } from "react";
-import { Link, useRevalidator } from "react-router";
+import { Link } from "react-router";
 
 import type { QueueEntry, QueueState } from "@g1t/contracts";
 
@@ -19,8 +18,8 @@ import { Avatar, ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
 import { work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 import { accessFor, repoFor } from "../../lib/access.server";
+import { useRefreshWhile } from "../../lib/refresh";
 
-const REFRESH_MS = 4000;
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Merge queue · ${params.owner}/${params.repo} · g1t` });
@@ -149,15 +148,8 @@ function Entry({ entry, base, branch, position }: { entry: QueueEntry; base: str
 export default function Queue({ loaderData, params }: Route.ComponentProps) {
   const { queue, defaultBranch, member } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
-  const revalidator = useRevalidator();
   const moving = queue.active.length > 0;
-  useEffect(() => {
-    if (!moving) return;
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible") revalidator.revalidate();
-    }, REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [moving, revalidator]);
+  useRefreshWhile(moving);
 
   const testing = queue.active.filter((entry) => entry.state !== "waiting").length;
   return (

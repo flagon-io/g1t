@@ -1,7 +1,6 @@
 import { env } from "cloudflare:workers";
 import { Bot, ExternalLink, GitCommitHorizontal, GitMerge, Play, Sparkles } from "lucide-react";
-import { useEffect } from "react";
-import { Form, Link, redirect, useNavigation, useRevalidator } from "react-router";
+import { Form, Link, redirect, useNavigation } from "react-router";
 
 import { type Pull, PROVIDERS, workOwner } from "@g1t/contracts";
 
@@ -41,8 +40,8 @@ import { computeNoteFor } from "../../lib/compute.server";
 import { identity, integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 import { accessTo, refusal } from "../../lib/access.server";
+import { useRefreshWhile } from "../../lib/refresh";
 
-const REFRESH_MS = 4000;
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   const issue = loaderData?.issue;
@@ -236,7 +235,6 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
   const { issue, pulls, comments, viewer, labels, agentsEnabled, members, canManage, can } = loaderData;
 
   // Follow agents at work without a manual reload.
-  const revalidator = useRevalidator();
   const navigation = useNavigation();
   const running = pulls.some(
     (pull) =>
@@ -253,13 +251,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
         pull.runtime === "hosted" &&
         (pull.status === "draft" || pull.status === "open"),
     );
-  useEffect(() => {
-    if (!running && !assigned) return;
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible") revalidator.revalidate();
-    }, REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [running, assigned, revalidator]);
+  useRefreshWhile(Boolean(running || assigned));
 
   const starting = navigation.formData?.get("action") === "run-hosted";
   const base = `/${params.owner}/${params.repo}`;

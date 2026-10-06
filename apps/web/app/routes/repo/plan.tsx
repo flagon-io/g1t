@@ -1,8 +1,7 @@
 import { env } from "cloudflare:workers";
 import type { G1tEvent } from "@g1t/contracts";
 import { ArrowRight, CircleCheck, FileCode2, Sparkles } from "lucide-react";
-import { useEffect } from "react";
-import { Form, Link, data, useNavigation, useRevalidator } from "react-router";
+import { Form, Link, data, useNavigation } from "react-router";
 
 import type { Route } from "./+types/plan";
 import { refusal, requireRepo } from "../../lib/access.server";
@@ -21,8 +20,8 @@ import {
   requireUser,
   unwrap,
 } from "../../lib/session.server";
+import { useRefreshWhile } from "../../lib/refresh";
 
-const REFRESH_MS = 4000;
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Plan · ${params.owner}/${params.repo} · g1t` });
@@ -95,18 +94,11 @@ export default function PlanPage({ loaderData, actionData, params }: Route.Compo
   const applying = useNavigation().state === "submitting";
 
   // The agent is still writing it.
-  const revalidator = useRevalidator();
   const planning = plan.status === "planning";
   // Planning, or agents still converging what was applied.
   const moving =
     planning || plan.progress.some((item) => item.state !== "landed" && item.state !== "closed");
-  useEffect(() => {
-    if (!moving) return;
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible") revalidator.revalidate();
-    }, REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [moving, revalidator]);
+  useRefreshWhile(moving);
   const converging = plan.status === "applied" && plan.progress.length > 0;
 
   const independent = plan.issues.filter((issue) => issue.dependsOn.length === 0).length;

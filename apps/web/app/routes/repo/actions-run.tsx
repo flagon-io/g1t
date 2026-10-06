@@ -1,6 +1,6 @@
 import { AlertTriangle, ChevronRight, Cloud, Download, GitBranch, GitCommitHorizontal, Info, Package, RotateCw, ServerCog, Square, XCircle } from "lucide-react";
-import { type ReactNode, useEffect } from "react";
-import { Form, Link, useNavigation, useRevalidator, useSearchParams } from "react-router";
+import { type ReactNode } from "react";
+import { Form, Link, useNavigation, useSearchParams } from "react-router";
 
 import type { Annotation, Job, StepState } from "@g1t/contracts";
 
@@ -12,6 +12,7 @@ import { listArtifacts } from "../../lib/artifacts.server";
 import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { accessTo, refusal } from "../../lib/access.server";
+import { useRefreshWhile } from "../../lib/refresh";
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   const run = loaderData?.detail.run;
@@ -170,15 +171,8 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
   const base = `/${params.owner}/${params.repo}`;
   const [search] = useSearchParams();
   const busy = useNavigation().state === "submitting";
-  const revalidator = useRevalidator();
   const live = run.status !== "completed";
-  useEffect(() => {
-    if (!live) return;
-    const timer = setInterval(() => {
-      if (revalidator.state === "idle" && document.visibilityState === "visible") revalidator.revalidate();
-    }, 2500);
-    return () => clearInterval(timer);
-  }, [live, revalidator]);
+  useRefreshWhile(live, 2500);
 
   // The job asked for, else one that failed, is running, or the first.
   const selected =

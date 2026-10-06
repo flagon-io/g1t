@@ -23,8 +23,8 @@ import {
   User,
   Wrench,
 } from "lucide-react";
-import { Suspense, useEffect } from "react";
-import { Await, Form, Link, redirect, useNavigation, useRevalidator } from "react-router";
+import { Suspense } from "react";
+import { Await, Form, Link, redirect, useNavigation } from "react-router";
 
 import {
   type Capability,
@@ -76,8 +76,8 @@ import { computeNoteFor } from "../../lib/compute.server";
 import { actions, deployments, identity, projects, repos, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 import { accessTo, refusal } from "../../lib/access.server";
+import { REFRESH_MS, useRefreshWhile } from "../../lib/refresh";
 
-const REFRESH_MS = 4000;
 const EMPTY_COMPARISON: Comparison = { base: null, head: "", files: [], truncated: false };
 const TABS = ["conversation", "session", "changes"] as const;
 type Tab = (typeof TABS)[number];
@@ -561,7 +561,6 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   const active = pull.status === "draft" || pull.status === "open";
 
   // Follow an agent at work, or checks in progress, without a manual reload.
-  const revalidator = useRevalidator();
   const working = pull.status === "draft";
   const checking = statuses.some((status) => status.state === "pending");
   const reviews = verdicts(comments);
@@ -601,13 +600,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   // Whether it merges cleanly is being worked out, so the box will change.
   const probing = active && mergeable === "checking";
   const conflicting = active && mergeable === "conflicting";
-  useEffect(() => {
-    if (!working && !checking && !reviewPending && !catchingUp && !settling && !moving && !landing && !probing) return;
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible") revalidator.revalidate();
-    }, REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [working, checking, reviewPending, catchingUp, settling, moving, landing, probing, revalidator]);
+  useRefreshWhile(working || checking || reviewPending || catchingUp || settling || moving || landing || probing);
   // Why the merge button cannot be pressed, if it cannot.
   const mergeBlocked = conflicting
     ? "Resolve the conflicts first."

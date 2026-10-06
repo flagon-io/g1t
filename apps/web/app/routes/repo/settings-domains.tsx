@@ -1,6 +1,6 @@
 import { CheckCircle2, Globe, Info, RotateCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Form, Link, useNavigation, useRevalidator } from "react-router";
+import { Form, Link, useNavigation } from "react-router";
 
 import type { Domain, DomainRecord, DomainStatus } from "@g1t/contracts";
 
@@ -23,6 +23,7 @@ import { CheckboxOption } from "../../components/ui/checkbox";
 import { deployments } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { requireCapability, requireInsider } from "../../lib/access.server";
+import { useRefreshWhile } from "../../lib/refresh";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Domains · ${params.owner}/${params.repo} · g1t` });
@@ -106,15 +107,8 @@ export default function DomainSettings({ loaderData, actionData, params }: Route
   }, [added, actionData]);
 
   // While a domain is on its way, the page follows it.
-  const revalidator = useRevalidator();
   const waiting = domains.some((d) => d.status === "pending" || d.status === "verifying");
-  useEffect(() => {
-    if (!waiting) return;
-    const timer = setInterval(() => {
-      if (revalidator.state === "idle" && document.visibilityState === "visible") revalidator.revalidate();
-    }, 10_000);
-    return () => clearInterval(timer);
-  }, [waiting, revalidator]);
+  useRefreshWhile(waiting, 10_000);
 
   // A redirecting domain is shown under the one it redirects to.
   const primary = domains.filter((d) => !d.redirectTo || !domains.some((p) => p.hostname === d.redirectTo));

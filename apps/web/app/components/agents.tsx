@@ -6,7 +6,8 @@
  */
 import { Bot, CircleSlash, Clock, Coins, Gauge, Loader2, MessageSquare, OctagonX, Square, TriangleAlert } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { Link, useFetcher, useRevalidator } from "react-router";
+import { Link, useFetcher } from "react-router";
+import { useRefreshWhile } from "../lib/refresh";
 
 import {
   type AgentRun,
@@ -41,14 +42,7 @@ export const LIVE_MS = 4000;
 
 /** Revalidates the page every few seconds while `live`, as the merge queue does. */
 export function useLiveRefresh(live: boolean) {
-  const revalidator = useRevalidator();
-  useEffect(() => {
-    if (!live) return;
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible" && revalidator.state === "idle") revalidator.revalidate();
-    }, LIVE_MS);
-    return () => clearInterval(timer);
-  }, [live, revalidator]);
+  useRefreshWhile(live, LIVE_MS);
 }
 
 export function formatCost(usd: number | null | undefined): string | null {
