@@ -136,5 +136,4 @@ When we change this policy, we'll update the date on the [policies](/policies) p
 
 Questions about privacy, or a request about your information: [hey@flagon.io](mailto:hey@flagon.io).
 
-Flagon, Inc.\
-**[PLACEHOLDER: postal address]**
+Flagon, Inc.

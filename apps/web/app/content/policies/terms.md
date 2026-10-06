@@ -125,11 +125,11 @@ If someone makes a claim against Flagon because of your content or your use of g
 
 If you believe something on g1t infringes your copyright, send a notice to [hey@flagon.io](mailto:hey@flagon.io) with what is infringed, where it is on g1t, your contact details, and a statement that you believe in good faith the use isn't authorized and that your notice is accurate. If your content was removed and you believe that was a mistake, you can send a counter-notice to the same address. We close the accounts of repeat infringers.
 
-**[PLACEHOLDER: designated DMCA agent name and postal address, as registered with the US Copyright Office.]**
+Copyright notices and counter-notices go to Flagon, Inc. at [hey@flagon.io](mailto:hey@flagon.io).
 
 ## 16. Governing law and disputes
 
-These terms are governed by the laws of **[PLACEHOLDER: governing state or country]**, without regard to its conflict-of-law rules. Any dispute will be resolved in the courts located in **[PLACEHOLDER: city, state or country of venue]**, and you and Flagon agree to their jurisdiction. If you're a consumer, you keep the protections of the law where you live that can't be waived by contract.
+These terms are governed by the laws of the United States and of the state in which Flagon, Inc. is incorporated, without regard to conflict-of-law rules. Any dispute will be resolved in the state or federal courts there, and you and Flagon agree to their jurisdiction. If you're a consumer, you keep the protections of the law where you live that can't be waived by contract.
 
 Before going to court, please write to [hey@flagon.io](mailto:hey@flagon.io). Most problems are solved faster by talking.
 
@@ -148,5 +148,4 @@ We'll update these terms as g1t changes. **We'll tell you before material change
 ## 19. Contact
 
 Flagon, Inc.\
-**[PLACEHOLDER: postal address]**\
 [hey@flagon.io](mailto:hey@flagon.io)

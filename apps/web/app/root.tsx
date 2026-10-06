@@ -33,7 +33,7 @@ import {
 import { type User, hasAccessIn, sharedWorkspaces } from "@g1t/contracts";
 
 import type { Route } from "./+types/root";
-import "./app.css";
+import appCss from "./app.css?url";
 import displayFont from "@g1t/theme/fonts/bricolage-grotesque-latin.woff2?url";
 import sansFont from "@g1t/theme/fonts/hanken-grotesk-latin.woff2?url";
 import { Logo } from "./components/logo";
@@ -63,6 +63,9 @@ import { useSignUpCopy } from "./lib/registration";
 
 
 export const links: Route.LinksFunction = () => [
+  // The stylesheet first, ahead of the fonts and module preloads, so a slow
+  // connection paints sooner (docs/research/css-shipping.md).
+  { rel: "stylesheet", href: appCss },
   { rel: "icon", href: "/favicon.ico", sizes: "32x32" },
   { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
   { rel: "icon", type: "image/png", sizes: "192x192", href: "/icon-192.png" },
