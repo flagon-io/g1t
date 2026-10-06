@@ -167,12 +167,9 @@ const VERDICTS = {
   request_changes: { label: "requested changes", style: "text-danger" },
 } as const;
 
-/** How g1t's own agents are named; they have no profile to link to. */
-const AGENTS = new Set(["g1t-agent", "g1t agent", "g1t"]);
-
 /**
  * A person's name (or `children`) linking to their profile at `/u/<name>`.
- * g1t's agents, and names that are not usernames, stay plain text.
+ * g1t, and names that are not usernames, stay plain text.
  */
 export function PersonLink({
   name,
@@ -194,7 +191,7 @@ export function PersonLink({
       </span>
     );
   }
-  if (AGENTS.has(name) || !/^[a-z0-9-]{1,39}$/i.test(name)) {
+  if (name === "g1t" || !/^[a-z0-9-]{1,39}$/i.test(name)) {
     return <span className={className}>{children ?? name}</span>;
   }
   return (

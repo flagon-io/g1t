@@ -1,15 +1,21 @@
 ---
-title: g1t agents
-description: Have g1t's own agents work on an issue.
+title: g1t's agent
+description: Assign an issue to g1t and it does the work.
 ---
 
-g1t can do the work itself. Assign an open issue to the g1t agent and it
-opens a pull request for the issue, works in a sandbox and a fork of its
-own, and reports back as it goes. There is nothing to configure: you do not
-say how many agents or which model. Scale comes from assigning many issues,
-each to its own agent, all working at once.
+g1t can do the work itself. Its agent is named `g1t`: assign an open issue
+to g1t and it opens a pull request for the issue, works in a sandbox and a
+fork of its own, and reports back as it goes. There is nothing to
+configure: you do not say how many agents or which model. Scale comes from
+assigning many issues, each worked on by its own run, all at once.
 
-g1t agents are paid for by the workspace they work for, so they need a
+Everything g1t does shows as `g1t`: the pull requests it opens, its
+commits, comments, reviews, plans and security updates, assignments,
+timeline events, the audit log, notifications and webhooks. A pull request
+g1t opens shows g1t as its author, with **requested by** naming the person
+who asked for it.
+
+g1t's runs are paid for by the workspace they work for, so they need a
 paid workspace or the free trial; see [who can run agents](#who-can-run-agents)
 and [usage and billing](/guides/usage-and-billing/). Everyone can also
 [bring their own agent](/guides/bring-your-own-agent/), which costs
@@ -30,7 +36,7 @@ agent at once:
 
 You land on the new issue with the agent already at work on its pull
 request. The same choice is on a project's **New issue** page, as **Assign
-g1t-agent now**, and in the ⌘K palette as **Put an agent on …** followed by
+g1t now**, and in the ⌘K palette as **Put an agent on …** followed by
 a project's name.
 
 Putting an agent to work needs the Write role on the project. Without it,
@@ -40,7 +46,7 @@ agent cannot start:
 | What happened | What you see |
 | --- | --- |
 | The agent started | The issue, with its draft pull request under **Assignees**. |
-| Every agent slot of the workspace is busy | The issue, queued for g1t-agent. It starts by itself when a slot frees up. |
+| Every agent slot of the workspace is busy | The issue, queued for g1t. It starts by itself when a slot frees up. |
 | The workspace's plan or limits refused it | The issue is opened, and the composer says why and links to the fix: start the plan or the trial (`not_paid`, `trial_used`), raise the monthly limit (`limit`) or the cap per issue (`issue_cap`), or connect a model (`no_model`). A workspace g1t `paused` says to contact support. |
 
 From the API or an agent of your own, it is one call:
@@ -70,7 +76,7 @@ before the pull request merges is the default branch's
 One issue:
 
 1. Open an issue on a repository.
-2. In **Assign to g1t agent**, optionally add guidance for this run, on top
+2. In **Assign to g1t**, optionally add guidance for this run, on top
    of the issue's description.
 3. Choose **Assign**.
 
@@ -78,7 +84,7 @@ Many issues:
 
 1. Open the repository's **Issues** tab.
 2. Tick the issues to hand over, up to ten at a time.
-3. Choose **Assign to g1t agent**.
+3. Choose **Assign to g1t**.
 
 From the API, an agent of your own, or a script:
 
@@ -88,16 +94,16 @@ curl -X POST https://api.g1t.sh/repos/<workspace>/<repo>/issues/12/assign \
 ```
 
 The same thing is the `agent` tool's `assign` action on the MCP server, so an agent
-planning work can hand issues to g1t agents itself.
+planning work can hand issues to g1t itself.
 
-In a comment: write `@g1t-agent take this` on the issue. See
-[mentioning g1t-agent](#mentioning-g1t-agent).
+In a comment: write `@g1t take this` on the issue. See
+[mentioning g1t](#mentioning-g1t).
 
 By label: a project can hand every issue given a label to the agent. See
 [the label rule](#the-label-rule).
 
-Each agent appears as a draft pull request on its issue within a few
-seconds. The pages update on their own while they work.
+Each run appears as a draft pull request on its issue within a few
+seconds. The pages update on their own while g1t works.
 
 An issue can still have more than one pull request: assign it again, or
 have your own agent open one alongside. That is for when you want a second
@@ -124,7 +130,7 @@ is closed and its session says why.
 
 ## Repository instructions
 
-Every g1t agent run reads the repository's own instructions for agents
+Every g1t run reads the repository's own instructions for agents
 and is told them, labelled as the repository's, before it starts: making a
 change, revising it, reviewing, catching up, answering, and planning.
 
@@ -151,8 +157,8 @@ files in an issue helps the right instructions reach the agent.
 **Where they are read from.** The default branch, as it is when the run
 starts. A pull request from one of the repository's own branches is read at
 its head instead, since only people who can push to the repository can
-change it. A pull request from a fork, which includes every change a g1t
-agent makes, is never followed: the agent keeps the default branch's
+change it. A pull request from a fork, which includes every change g1t
+makes, is never followed: the agent keeps the default branch's
 instructions, and if the fork changes them, it is shown the changed text as
 part of the change, marked as not instructions. That way nobody can steer
 an agent, or the review of their own change, by editing these files in a
@@ -235,36 +241,36 @@ request, a person's or an agent's; they are described in
 | Require a pull request to change the default branch | Off | Refuses pushes to the default branch. |
 | Required status checks | None | The checks that must pass on a pull request's head before it merges. |
 | Required approvals | None | How many reviewers must approve before a merge. A reviewer who asked for changes blocks it. |
-| A g1t agent's approval counts | On | Off means approvals have to come from people. |
+| g1t's approval counts | On | Off means approvals have to come from people. |
 | Require branches to be up to date before merging | Off | On means catching up is a step of its own and the checks run again. |
 | Merge through a queue | Off | Merging tests a pull request together with those ahead of it; the default branch only moves to a combination that passed. See [merge queue](/guides/merge-queue/). |
 | Allow bypassing required checks | On | Lets someone who may merge merge without the required checks passing. Off means nobody can. |
 
-**g1t agents** holds what g1t does with its own agents' pull requests:
+In the **g1t** section, you set what g1t does with its own pull requests:
 
 | Setting | Default | What it does |
 | --- | --- | --- |
 | Review by a second agent | On | Off leaves review to people. |
 | Revisions before asking you | 2 | How often an agent is sent back before g1t stops. |
-| Merge automatically when ready | Off | Lands a g1t agent's pull request once every rule is met. |
-| Ask a person before merging low-confidence changes | On | A g1t agent's change [rated low](#how-sure-the-agent-is) waits for a person's approval instead of merging by itself or joining the queue. |
+| Merge automatically when ready | Off | Lands g1t's pull request once every rule is met. |
+| Ask a person before merging low-confidence changes | On | A change by g1t [rated low](#how-sure-the-agent-is) waits for a person's approval instead of merging by itself or joining the queue. |
 
-A g1t agent's pull request follows the same rules as anyone's. If the
+A pull request g1t opens follows the same rules as anyone's. If the
 repository wants approvals from people, it waits for them, and shows
 **Needs you** until they arrive.
 
 ### Talking to an agent
 
-While a g1t agent works, you can steer it with **Message the agent** on its
+While g1t works, you can steer it with **Message the agent** on its
 pull request; it reads the message at its next step, without starting
 over. Once it is done, a review with **Request changes** sends it back to
-make them, and the checks and review run again. g1t agents working at the
+make them, and the checks and review run again. g1t's runs working at the
 same time can also ask each other questions and hand each other work. See
 [talk to agents](/guides/talking-to-agents/).
 
 ### Merging automatically
 
-A repository can land a g1t agent's pull request by itself once it is
+A repository can land g1t's pull request by itself once it is
 ready. Someone with the Maintain role or higher turns this on under the repository's
 **Settings → Branches and merging**; it is off to begin with. The merge is recorded as made by
 `g1t`, the issue closes naming the pull request, and nothing short of
@@ -276,13 +282,13 @@ agents always wait for a person to merge them.
 Every step is recorded: revisions and catch-ups in the pull request's
 **Session**, reviews in its conversation.
 
-This applies to pull requests made by g1t agents. One you or your own
+This applies to pull requests g1t opens. One you or your own
 agent opened is yours to drive; the same workflows run on it, and you can ask
 for a review or a catch-up from its page.
 
 ### How sure the agent is
 
-Once a g1t agent has finished a change, g1t records how sure it is that the
+Once g1t has finished a change, g1t records how sure it is that the
 change is right: **high**, **medium** or **low**, with a few words saying
 why, such as "Low — tests not added, 3 revisions". It shows on the pull
 request, under the agent, and on Mission control. It is worked out again as
@@ -334,7 +340,7 @@ carry it too.
 ### Low-confidence changes wait for a person
 
 With **Ask a person before merging low-confidence changes** on, which it is
-unless someone turns it off, a g1t agent's change rated low is not merged
+unless someone turns it off, a change by g1t rated low is not merged
 by itself and does not join the merge queue, even with **Merge
 automatically when ready** on. Once everything else the repository asks
 for is met, it stops at **Needs you**, saying why, and Mission control
@@ -345,7 +351,7 @@ needs you**.
 To let it land, approve it: a person's approval since the agent last
 revised lifts the hold, and it merges as the repository's rules say. To
 send it back, request changes. Merging it yourself works as usual. The
-setting is under **Settings → Branches and merging**, in **g1t agents**,
+setting is under **Settings → Branches and merging**, in the **g1t** section,
 and is `hold_low_confidence` in
 [`update_repo_settings`](/reference/api/repositories/update-repo-settings/).
 
@@ -358,10 +364,10 @@ that pull request as the one that resolved it. The other pull requests for
 the issue close as superseded. See
 [merging](/concepts/overview/#merging) for what happens when `main` has moved.
 
-## Other things g1t agents do
+## Other things g1t does
 
-- **Review.** On a pull request that is ready, **Request review from g1t agent**
-  has an agent read the change and post comments on lines, a summary and a
+- **Review.** On a pull request that is ready, **Request review from g1t**
+  has g1t read the change and post comments on lines, a summary and a
   verdict.
 - **Catch up.** When `main` has moved under a pull request, **Catch up with
   main** merges it in. When the two changed different files g1t does that
@@ -371,48 +377,49 @@ the issue close as superseded. See
 - **Finish a security update.** g1t raises a vulnerable dependency to its
   fixed version itself, with no agent. When raising the version is not
   enough (the bump fails, or the pull request's required checks fail
-  because code must change), g1t opens an issue and puts g1t-agent on it.
+  because code must change), g1t opens an issue and assigns it to g1t.
   That session shows as **started by g1t** on the project's **Agents** page.
   See [security updates](/guides/security/#security-updates).
 
 Each runs in a sandbox of its own.
 
-## Mentioning g1t-agent
+## Mentioning g1t
 
-Write `@g1t-agent` in a comment on an issue or a pull request, with what
+Write `@g1t` in a comment on an issue or a pull request, with what
 you want, and it does it. The comment box offers to complete the name as
 you type `@`.
 
 | Where | You write | What happens |
 | --- | --- | --- |
-| An issue | A request: `@g1t-agent take this`, `@g1t-agent fix the empty case` | The issue is assigned to the agent, which opens a pull request, as if you had chosen **Assign**. |
-| An issue | A question: `@g1t-agent why does search time out?` | The agent reads the code on the default branch and answers in the thread. It changes nothing. |
-| A pull request g1t-agent made | A request: `@g1t-agent also handle the empty list` | The agent is sent back to make the change, with your comment as what to address, and the checks and review run again. If it is still working, it gets your comment as a message at its next step. |
-| Any pull request | `@g1t-agent review` | A review by a g1t agent, as with **Request review from g1t agent**. |
-| Any pull request | A question | The agent reads the change at its head and answers in the thread. On someone else's pull request, which it cannot push to, a request is answered too: it says what it would change. |
+| An issue | A request: `@g1t take this`, `@g1t fix the empty case` | The issue is assigned to g1t, which opens a pull request, as if you had chosen **Assign**. |
+| An issue | A question: `@g1t why is this slow?` | g1t reads the code on the default branch and answers in the thread. It changes nothing. |
+| A pull request g1t made | A request: `@g1t also handle the empty list` | g1t is sent back to make the change, with your comment as what to address, and the checks and review run again. If it is still working, it gets your comment as a message at its next step. |
+| Any pull request | `@g1t review this` | A review by g1t, as with **Request review from g1t**. |
+| Any pull request | A question | g1t reads the change at its head and answers in the thread. On someone else's pull request, which it cannot push to, a request is answered too: it says what it would change. |
 
 A request is a comment whose words after the mention start with what to
 do (`take`, `fix`, `add`, `please rename`, `can you update`); a question
 starts with a question word or ends with a question mark. `review` near the
 start asks for a review.
 
-g1t-agent always replies in the thread, saying what it started or why it
+g1t always replies in the thread, saying what it started or why it
 did not. Every run a mention starts shows on the project's **Agents** page
 as started by whoever mentioned it, and a mention that started nothing
 shows there as a failed run with the reason.
 
-**What does not count.** Mentions in code (`` `@g1t-agent` `` or a code
-block), in quoted lines (`> @g1t-agent …`), in email addresses
-(`ops@g1t-agent.dev`) and in longer names (`@g1t-agents`) are ignored.
-Matching ignores case. Agents mentioning `@g1t-agent` start nothing, so
+**What does not count.** Mentions in code (`` `@g1t` `` or a code
+block), in quoted lines (`> @g1t …`), in email addresses
+(`ops@g1t.sh`), in URLs, in package scopes (`@g1t/platform`) and in longer
+names (`@g1t-bot`) are ignored. Matching ignores case. Agents mentioning
+`@g1t` start nothing, so
 agents cannot set each other to work this way.
 
 **Who can.** People with the Write [role](/guides/access-and-roles/) or higher on the
 repository, members or not. Anyone else who mentions it gets a short reply
-saying that putting g1t-agent to work needs the Write role on the
+saying that putting g1t to work needs the Write role on the
 repository, and nothing starts. When
 the workspace's plan does not let the agent start (a free workspace with no
-trial left, a paused workspace, an issue at its spending cap), g1t-agent
+trial left, a paused workspace, an issue at its spending cap), g1t
 replies with why and where to fix it. When every agent slot is busy, it
 replies that the run is waiting for a free slot, and starts it when one
 finishes.
@@ -424,8 +431,8 @@ Each comment starts one run at most; to ask again, write a new comment.
 Under a project's **Settings → Agents**, someone with the Maintain role or
 higher sets a label, such as `agent`. From then on, when someone with the
 Write role or higher gives an open issue that label, either
-when opening it or later, g1t-agent takes it: the issue is queued for an
-agent, the conversation says so, and the agent starts as soon as the
+when opening it or later, g1t takes it: the issue is queued for
+g1t, the conversation says so, and the agent starts as soon as the
 project has room and nothing the issue depends on is still open, exactly as
 for a [plan's](/guides/outcomes/) issues. An issue that already had the
 label is not affected; removing and adding it again counts. **Turn off**
@@ -433,7 +440,7 @@ removes the rule.
 
 ## Which model runs
 
-You do not pick one. You assign the work to `g1t-agent`, the way you would
+You do not pick one. You assign the work to `g1t`, the way you would
 assign an issue to a colleague, and g1t routes it. On g1t's hosted models,
 each piece of work goes to the least costly of two tiers that can do it:
 
@@ -469,12 +476,12 @@ you have set up needs to change.
 A workspace that routes its work to [its own provider](/guides/models/)
 is not routed by tier: its work runs on the model its route names.
 
-A pull request made by a g1t agent carries the label `g1t-agent`, and its
-commits are authored by `g1t agent`.
+A pull request g1t opens has `g1t` as its author and as its `agent` in the
+API, and its commits are authored `g1t <g1t@users.noreply.g1t.sh>`.
 
 ## How model traffic is routed
 
-g1t agents send model requests to g1t's model proxy at
+g1t's runs send model requests to g1t's model proxy at
 `https://models.g1t.sh`, with a token for their run in place of a key; see
 [your keys never reach a sandbox](/guides/models/#your-keys-never-reach-a-sandbox).
 Requests for g1t's hosted models go on through
@@ -495,7 +502,7 @@ If you run your own copy of g1t, these settings control it:
 
 ## What it costs
 
-A workspace pays for the g1t agents that work on its repositories, after
+A workspace pays for g1t's runs on its repositories, after
 they run: each run is charged its sandbox by the second, at cost plus 20%,
 and, on g1t's hosted models, what AI Gateway priced its model requests at,
 plus 20%. A workspace's [own provider](/guides/models/) bills it for the
@@ -554,8 +561,8 @@ see why where you started it:
 
 | Where you started it | Where the refusal shows |
 | --- | --- |
-| **Assign to g1t agent**, **Request review**, **Plan it**, catching up | Under the button |
-| A mention or the label rule | A comment from g1t-agent on the issue or pull request |
+| **Assign to g1t**, **Request review**, **Plan it**, catching up | Under the button |
+| A mention or the label rule | A comment from g1t on the issue or pull request |
 | A step g1t takes by itself (a review, a revision, a catch-up) | The pull request's status, which then waits for you |
 
 Each refusal says what to do: start the plan or the trial, raise the spend
@@ -573,7 +580,7 @@ are on [usage and billing](/guides/usage-and-billing/#caps).
 | Agents at once | A run over the cap waits for a free slot instead of being refused. An assigned issue goes back in the queue; a review, catch-up, plan or answer someone asked for waits its turn; a step g1t takes by itself is tried again at its next sweep, within five minutes. Each says "Waiting for a free slot". |
 | Time per run | The lower of the project's [guardrails](/guides/guardrails/) time cap for that kind of run and the plan's. |
 | Cost per run | The lower of the guardrails' cost cap and the plan's. The agent is stopped when it reaches it, as with any cost cap. |
-| Cost per issue | What every agent run on an issue and its pull requests has cost in all. Past it, g1t-agent does not start on that issue again and says so on it; an owner can raise the cap on the **Billing** page. |
+| Cost per issue | What every agent run on an issue and its pull requests has cost in all. Past it, g1t does not start on that issue again and says so on it; an owner can raise the cap on the **Billing** page. |
 
 When the workspace's compute is paused (a spend spike waiting for an owner,
 or a hold by g1t), nothing new starts, and the refusal gives the reason.
@@ -608,7 +615,7 @@ not listed with them.
 
 Each credential carries a composite identity: the agent, acting on behalf
 of the person who started the work. A run you started by assigning an issue
-is `g1t-agent on behalf of you`, and that is how it appears in the
+is `g1t on behalf of you`, and that is how it appears in the
 [audit log](/guides/audit-log/), on the run's page and in the pull
 request's **Agent** panel.
 

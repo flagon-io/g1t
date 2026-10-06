@@ -84,7 +84,7 @@ pub struct Issue {
     #[serde(default)]
     pub queued: bool,
     /// The agent working on it now: the one behind its newest pull request
-    /// that is still in progress in a fork, such as `g1t-agent`.
+    /// that is still in progress in a fork, such as `g1t`.
     #[serde(default)]
     pub agent: Option<String>,
 }
@@ -172,7 +172,7 @@ pub struct Pull {
     /// Usernames of the people it is assigned to.
     #[serde(default)]
     pub assignees: Vec<String>,
-    /// Those whose review was asked for: usernames, and `g1t-agent` when a
+    /// Those whose review was asked for: usernames, and `g1t` when a
     /// g1t agent was asked.
     #[serde(default)]
     pub reviewers: Vec<String>,
@@ -861,7 +861,7 @@ pub enum Stage {
     Working,
     /// Waiting for the checks workflows report on its head.
     Checking,
-    /// A g1t agent is reviewing it.
+    /// g1t is reviewing it.
     Reviewing,
     /// The agent is addressing failed checks or a review.
     Revising,
@@ -1076,7 +1076,7 @@ pub struct OpenIssueArgs {
     pub checks: Vec<String>,
 }
 
-/// `delegate_issue`: opens an issue to put g1t-agent on at once, refused
+/// `delegate_issue`: opens an issue to put g1t on at once, refused
 /// before anything is opened unless `actor` may put agents to work in the
 /// repository (Run, which the Write role has). The runner service's
 /// `delegate` calls it and then starts the agent. Returns `Outcome<Issue>`.
@@ -1237,7 +1237,7 @@ pub struct UpdateIssueArgs {
     #[serde(default)]
     pub labels: Option<Vec<String>>,
     /// Usernames of the people it is assigned to; replaces the whole set.
-    /// Assigning it to the g1t agent is the runner's `run`, not this.
+    /// Assigning it to g1t is the runner's `run`, not this.
     #[serde(default)]
     pub assignees: Option<Vec<String>>,
 }
@@ -1406,7 +1406,7 @@ pub struct IssueProgress {
     pub blocked_by: Vec<u32>,
     /// The pull request carrying it, the newest if several.
     pub pull: Option<u32>,
-    /// Who or what is working on it, e.g. `g1t-agent`.
+    /// Who or what is working on it, e.g. `g1t`.
     pub agent: Option<String>,
 }
 
@@ -1510,7 +1510,7 @@ pub struct UpdatePullArgs {
     pub number: u32,
     #[serde(default)]
     pub assignees: Option<Vec<String>>,
-    /// May include `g1t-agent`. Asking for its review does not by itself
+    /// May include `g1t`. Asking for its review does not by itself
     /// start one; the runner's `review` does.
     #[serde(default)]
     pub reviewers: Option<Vec<String>>,
@@ -1757,7 +1757,7 @@ pub struct QueueEntry {
     pub id: String,
     pub number: u32,
     pub title: String,
-    /// Who or what made the pull request, e.g. `g1t-agent`.
+    /// Who or what made the pull request, e.g. `g1t`.
     pub agent: String,
     pub state: QueueState,
     /// The pull requests merged ahead of it in the state being tested, in

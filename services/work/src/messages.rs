@@ -468,7 +468,7 @@ impl Work {
             &pull.repo_id,
             pull.number,
             (crate::lifecycle::POLICY_ACTOR_ID, crate::lifecycle::POLICY_ACTOR_NAME),
-            &format!("woke g1t-agent to answer the agent on {}", asking.join(", ")),
+            &format!("woke g1t to answer the agent on {}", asking.join(", ")),
         )
         .await?;
         Ok(Some(Wake {

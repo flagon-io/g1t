@@ -69,7 +69,7 @@ export type CreateRunCredentialInput = {
   push?: GitGrant[];
   /** The run's timeout. */
   ttlSeconds: number;
-  /** Defaults to `g1t-agent`. */
+  /** Defaults to `g1t`. */
   agent?: string | null;
 };
 
@@ -159,7 +159,7 @@ export function auditClient(events: ServiceBinding): AuditApi {
   };
 }
 
-/** How an actor is shown: "g1t-agent on behalf of syntaqx". */
+/** How an actor is shown: "g1t on behalf of syntaqx". */
 export function describeActor(entry: Pick<AuditEntry, "actor" | "agent" | "onBehalfOf">): string {
   return entry.onBehalfOf ? `${entry.agent ?? entry.actor} on behalf of ${entry.onBehalfOf}` : entry.actor;
 }

@@ -6,15 +6,23 @@ const REPO_NAME = /^[a-z0-9._-]{1,100}$/;
 /** Routes and reserved words that may not be registered as usernames. */
 const RESERVED = new Set([
   "api", "mcp", "login", "logout", "register", "new", "settings", "search",
-  "admin", "auth", "integrations", "pulls", "issues", "verify", "forgot", "reset", "device", "workspaces", "u", "oauth", "assets", "avatars", "docs", "explore", "g1t", "about", "pricing",
+  "admin", "auth", "integrations", "pulls", "issues", "verify", "forgot", "reset", "device", "workspaces", "u", "oauth", "assets", "avatars", "docs", "explore", "about", "pricing",
+  // g1t itself, and the name its agent once went by: everything g1t does is
+  // shown as `g1t`, so nobody else may be called either.
+  "g1t", "g1t-agent",
   // Trust pages on g1t.sh, and names kept for them.
   "policies", "security", "support", "status", "terms", "privacy", "help", "blog",
   // Invite links, and the waitlist.
   "invite", "invites", "waitlist",
 ]);
 
+/** Whether `value`, whatever its case, is a name nobody can register: a route, or g1t's own. */
+export function isReservedName(value: string): boolean {
+  return RESERVED.has(value.trim().toLowerCase());
+}
+
 export function isValidNamespace(value: string): boolean {
-  return NAMESPACE.test(value) && !RESERVED.has(value);
+  return NAMESPACE.test(value) && !isReservedName(value);
 }
 
 export function isValidRepoName(value: string): boolean {

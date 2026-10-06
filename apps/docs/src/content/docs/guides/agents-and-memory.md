@@ -20,7 +20,7 @@ projects: the **Agent fleet** and **Workspace memory**.
 
 ## Runs
 
-A **run** is one sandbox g1t starts. Each g1t agent run does one kind of
+A **run** is one sandbox g1t starts. Each g1t run does one kind of
 work on one pull request:
 
 | Kind | What the agent does |
@@ -37,7 +37,7 @@ for the merge queue's builds, so the list is everything g1t is running for the p
 
 Each run records:
 
-- the agent (`g1t-agent`) and, for members, the model it runs on;
+- the agent (`g1t`) and, for members, the model it runs on;
 - its pull request, or for a plan, the outcome;
 - its status: starting, running, done, failed or stopped;
 - its **current step**, one line such as `Edited src/auth.ts` or
@@ -135,7 +135,7 @@ it is true of one codebase, it belongs to that project.
 
 ### How agents use it
 
-Every g1t agent run is given memory when it starts: the workspace's and
+Every g1t run is given memory when it starts: the workspace's and
 the project's, each labelled, pinned memories first, then the ones used
 most recently, up to about 6,000 characters. Agents are told to treat it as
 notes from colleagues: usually right, sometimes out of date, and where it

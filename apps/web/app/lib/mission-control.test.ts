@@ -108,7 +108,7 @@ test("the required checks are read from where the agent's pull request stands", 
   assert.equal(at("revising", "The review asked for changes. The agent is being sent back to make them.").value, "Passing");
   assert.equal(at("needs_you", "This repository requires 1 approving review before a pull request merges; this one has 0.").value, "Passing");
   assert.equal(at("ready", "Everything this repository asks for is met. Ready to merge.").tone, "good");
-  assert.equal(at("working", "A g1t agent is making the change.").value, "Not run yet");
+  assert.equal(at("working", "g1t is making the change.").value, "Not run yet");
   assert.equal(checksFact("failed", { stage: "revising", detail: "It failed in the merge queue." }).value, "Failed in the merge queue");
 });
 
@@ -164,7 +164,7 @@ const merged = (daysAgo: number, mergedBy: string | null, number = 1): Merged =>
   repo,
   number,
   title: `Change ${number}`,
-  agent: "g1t-agent",
+  agent: "g1t",
   mergedBy,
   mergedAt: new Date(NOW - daysAgo * DAY).toISOString(),
   files: [],
@@ -172,7 +172,7 @@ const merged = (daysAgo: number, mergedBy: string | null, number = 1): Merged =>
 
 test("a change landed without a person when g1t merged it", () => {
   assert.ok(landedByAgents({ mergedBy: "g1t" }));
-  assert.ok(landedByAgents({ mergedBy: "g1t-agent" }));
+  assert.ok(landedByAgents({ mergedBy: "g1t" }));
   assert.ok(landedByAgents({ mergedBy: null }));
   assert.ok(!landedByAgents({ mergedBy: "syntaqx" }));
 });
@@ -240,7 +240,7 @@ test("waiting on agents holds each pull request once, running ones first, and no
   const pull = (number: number, minutesAgo: number) => ({
     number,
     title: `Pull ${number}`,
-    agent: "g1t-agent",
+    agent: "g1t",
     updatedAt: new Date(NOW - minutesAgo * 60_000).toISOString(),
     checkStatus: null,
     files: [],
@@ -259,7 +259,7 @@ test("waiting on agents holds each pull request once, running ones first, and no
         number: 3,
         title: "Pull 3",
         kind: "update",
-        agent: "g1t-agent",
+        agent: "g1t",
         step: "Merging main in",
         costUsd: 0.1,
         startedAt: new Date(NOW - 60_000).toISOString(),
@@ -272,7 +272,7 @@ test("waiting on agents holds each pull request once, running ones first, and no
         number: null,
         title: null,
         kind: "plan",
-        agent: "g1t-agent",
+        agent: "g1t",
         step: null,
         costUsd: null,
         startedAt: null,

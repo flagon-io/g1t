@@ -5,7 +5,7 @@ description: Every action agents take with their run credentials, and every chan
 
 Every workspace keeps an audit log. It records:
 
-- **Everything an agent does** with its [run credentials](/guides/g1t-agents/#credentials),
+- **Everything an agent does** with its [run credentials](/guides/working-with-g1t/#credentials),
   reads included: every API and MCP call, every clone and fetch, every push.
 - **Every change people and workspace tokens make** through the API, the
   MCP server and git: opening and closing issues, comments, merges,
@@ -41,7 +41,7 @@ only ever added: nothing edits or removes one.
 | --- | --- |
 | Time | When it happened, to the millisecond. |
 | Actor | Who did it: a person, an agent, or a workspace token. |
-| On behalf of | For an agent, the person it worked for: `g1t-agent on behalf of syntaqx`. |
+| On behalf of | For an agent, the person it worked for: `g1t on behalf of syntaqx`. |
 | Run | The agent run, with its kind: `implement`, `review`, `update` and so on. |
 | Credential | The id of the token used. |
 | Action | The API or MCP operation, such as `create_issue`, or `git.push` and `git.fetch`. |
@@ -52,7 +52,7 @@ only ever added: nothing edits or removes one.
 | Request id | The request's id, the same one Cloudflare logs it under. |
 
 The rules that refuse an agent are listed under
-[credentials](/guides/g1t-agents/#credentials).
+[credentials](/guides/working-with-g1t/#credentials).
 
 ## Read the log
 

@@ -70,8 +70,8 @@ itself, and each links to where you do it:
 | Deploy to production | A production build has gone live. | Deployments settings, or **Deployments** once they are on. |
 | Add a custom domain | The project has a [custom domain](/guides/deployments/#custom-domains). | Domain settings. |
 | Open a preview | A branch or pull request has had a [preview](/guides/deployments/#previews-of-branches). | A new pull request. |
-| Set up repository instructions | `AGENTS.md` or `CLAUDE.md` is at the root of the default branch. | The instructions on the **Agents** page. See [repository instructions](/guides/g1t-agents/#repository-instructions). |
-| Assign a first issue to g1t-agent | g1t-agent has had a run, a pull request or an issue here. | A new issue. |
+| Set up repository instructions | `AGENTS.md` or `CLAUDE.md` is at the root of the default branch. | The instructions on the **Agents** page. See [repository instructions](/guides/working-with-g1t/#repository-instructions). |
+| Assign a first issue to g1t | g1t has had a run, a pull request or an issue here. | A new issue. |
 
 The card goes away when every step is done. To hide it sooner, choose
 **×** on it. That hides it for this project in this browser only.

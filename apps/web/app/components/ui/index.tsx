@@ -1,4 +1,4 @@
-import { Check, Copy, Sparkles } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
 import { Link, type LinkProps, NavLink, useLocation } from "react-router";
 
@@ -195,12 +195,10 @@ export function Pill({ children }: { children: ReactNode }) {
 
 const AVATAR_HUES = [82, 200, 262, 28, 330, 160];
 
-/** How g1t's agents are named: as reviewers and assignees, and as commit authors. */
-const AGENT_NAMES = new Set(["g1t-agent", "g1t agent"]);
-
 /**
- * g1t itself, as the author of security updates, the issues it opens and
- * merges from the queue: a user of kind `system`, named `g1t`.
+ * g1t itself: its agent, as reviewer, assignee and commit author, and the
+ * system, as the author of security updates, the issues it opens and merges
+ * from the queue. One name, `g1t`.
  */
 export function isSystemName(name: string | null | undefined): boolean {
   return name === "g1t";
@@ -258,18 +256,6 @@ export function Avatar({
         className="inline-block shrink-0 bg-raised object-cover"
         style={{ width: size, height: size, borderRadius: square ? size * 0.24 : size }}
       />
-    );
-  }
-  // g1t's own agents wear the agent colour and mark everywhere they appear.
-  if (AGENT_NAMES.has(name)) {
-    return (
-      <span
-        aria-hidden="true"
-        className="inline-flex shrink-0 items-center justify-center bg-merged/20 text-merged ring-1 ring-merged/40 ring-inset"
-        style={{ width: size, height: size, borderRadius: size * 0.3 }}
-      >
-        <Sparkles size={Math.round(size * 0.58)} />
-      </span>
     );
   }
   let hash = 0;

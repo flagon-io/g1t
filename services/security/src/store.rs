@@ -311,7 +311,7 @@ const VULN_COLUMNS: &str = "v.id, v.repo_id, v.ecosystem, v.package, v.version, 
     v.dismissed_by, v.dismissed_at, COALESCE(n.issue, u.number) AS number";
 
 /// The issue an upgrade has: the security update's, when it went to
-/// g1t-agent, or one opened before security updates.
+/// g1t, or one opened before security updates.
 const VULN_JOINS: &str = "LEFT JOIN upgrades u ON u.repo_id = v.repo_id AND u.ecosystem = v.ecosystem AND u.package = v.package
     LEFT JOIN updates n ON n.repo_id = v.repo_id AND n.ecosystem = v.ecosystem AND n.package = v.package";
 

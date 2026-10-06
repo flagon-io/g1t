@@ -87,7 +87,7 @@ export function splitRequest(text: string, max = 200): { title: string; body: st
 
 /** Accounts that are g1t's own agents and machinery. */
 export function isAgent(name: string | null | undefined): boolean {
-  return name === "g1t-agent" || name === "g1t" || (name ?? "").endsWith("-agent");
+  return name === "g1t" || (name ?? "").endsWith("-agent");
 }
 
 export type Verb =
@@ -140,7 +140,7 @@ export function eventItem(event: G1tEvent, repo: RepoPath): ActivityItem | null 
       return { ...base, actor: null, verb: event.data.status === "passed" ? "checks_passed" : "checks_failed", number: event.data.number };
     case "review.completed":
       if (!event.data.verdict) return null;
-      return { ...base, actor: "g1t-agent", verb: event.data.verdict === "approve" ? "approved" : "changes_requested", number: event.data.number };
+      return { ...base, actor: "g1t", verb: event.data.verdict === "approve" ? "approved" : "changes_requested", number: event.data.number };
     case "comment.created":
       if (event.data.verdict) {
         return { ...base, verb: event.data.verdict === "approve" ? "approved" : "changes_requested", number: event.data.number };

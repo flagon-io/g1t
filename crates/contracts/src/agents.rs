@@ -145,8 +145,8 @@ pub struct AgentRun {
     /// That pull request's title, or the plan's brief.
     pub title: Option<String>,
     pub kind: RunKind,
-    /// Who is working: `g1t-agent` for g1t's own agent, `g1t` for a sandbox
-    /// that runs commands.
+    /// Who is working: `g1t` for g1t's own agent and for a sandbox that
+    /// runs commands.
     pub agent: String,
     /// The model, by its public name. Members only.
     pub model: Option<String>,
@@ -299,7 +299,7 @@ pub struct SessionSummary {
     pub number: u32,
     pub title: String,
     pub status: PullStatus,
-    /// The agent label on the pull request, such as `g1t-agent`.
+    /// The agent label on the pull request, such as `g1t`.
     pub agent: String,
     pub entries: u32,
     /// How many tools it called.
@@ -473,7 +473,7 @@ pub struct Memory {
     pub text: String,
     pub kind: MemoryKind,
     pub source: MemorySource,
-    /// Who wrote it: a username, or `g1t-agent`.
+    /// Who wrote it: a username, or `g1t`.
     pub created_by: String,
     /// Pinned memories are given to every agent first.
     pub pinned: bool,
@@ -781,7 +781,7 @@ pub struct WaitForSlotArgs {
     pub reason: String,
 }
 
-/// `agent_comment`: a comment from g1t-agent on an issue or pull request,
+/// `agent_comment`: a comment from g1t on an issue or pull request,
 /// for what it could not do there. Called by the runner. Returns `bool`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AgentCommentArgs {

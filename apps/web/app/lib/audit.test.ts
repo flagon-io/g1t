@@ -20,9 +20,9 @@ const entry: AuditEntry = {
   id: "aud_1",
   time: "2026-10-04T12:00:00.000Z",
   actorKind: "agent",
-  actor: "g1t-agent",
+  actor: "g1t",
   actorId: "usr_g1t_agent",
-  agent: "g1t-agent",
+  agent: "g1t",
   onBehalfOf: "syntaqx",
   runId: "run_1",
   runKind: "implement",
@@ -37,7 +37,7 @@ const entry: AuditEntry = {
   outcome: "denied",
   rule: "never",
   result: "forbidden",
-  message: 'A g1t agent\'s token can never use merge_pull_request: "merging" is for people, too.',
+  message: 'g1t\'s token can never use merge_pull_request: "merging" is for people, too.',
   requestId: "8c1f",
 };
 
@@ -72,7 +72,7 @@ test("links keep the other filters", () => {
 });
 
 test("an agent is shown with whom it acted for", () => {
-  assert.equal(actorLabel(entry), "g1t-agent on behalf of syntaqx");
+  assert.equal(actorLabel(entry), "g1t on behalf of syntaqx");
   assert.equal(actorLabel({ actor: "ana", agent: null, onBehalfOf: null }), "ana");
   assert.equal(targetLabel(entry), "acme/rocket#12");
   assert.equal(targetLabel({ ...entry, number: null, gitRef: "refs/heads/fix" }), "acme/rocket refs/heads/fix");
@@ -86,7 +86,7 @@ test("the CSV quotes what it must and keeps formulas as text", () => {
   const lines = csv.trimEnd().split("\r\n");
   assert.equal(lines.length, 3);
   assert.ok(lines[0].startsWith("id,time,workspace,actorKind,actor"));
-  assert.ok(lines[1].includes('"A g1t agent\'s token can never use merge_pull_request: ""merging"" is for people, too."'));
+  assert.ok(lines[1].includes('"g1t\'s token can never use merge_pull_request: ""merging"" is for people, too."'));
   assert.ok(lines[2].includes("'=HYPERLINK(1)"));
   assert.equal(exportName("acme", "csv", new Date("2026-10-04T23:00:00Z")), "acme-audit-2026-10-04.csv");
 });

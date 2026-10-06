@@ -292,13 +292,13 @@ How each lockfile is changed:
 Install scripts never run. A lockfile the sandbox cannot change this way,
 such as a `requirements.txt` that pins with `--hash`, is handled as
 [when code has to change](#when-code-has-to-change): if no branch has been
-pushed 45 minutes after the update started, g1t-agent gets an issue for it.
+pushed 45 minutes after the update started, g1t gets an issue for it.
 
 ### When code has to change
 
 Sometimes raising the version is not enough: the bump fails, or the pull
 request's required checks fail because code must change. Then g1t opens an
-issue and puts [g1t-agent](/guides/g1t-agents/) on it. That agent's session
+issue and assigns it to [g1t](/guides/working-with-g1t/). That session
 shows as **started by g1t**. This is the only time an agent is involved in
 a security update.
 

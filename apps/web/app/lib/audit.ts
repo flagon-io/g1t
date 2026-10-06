@@ -122,7 +122,7 @@ export function filterHref(base: string, filters: AuditFilters, changes: Partial
   return search ? `${base}?${search}` : base;
 }
 
-/** Who acted, as people read it: "g1t-agent on behalf of syntaqx". */
+/** Who acted, as people read it: "g1t on behalf of syntaqx". */
 export function actorLabel(entry: Pick<AuditEntry, "actor" | "agent" | "onBehalfOf">): string {
   return entry.onBehalfOf ? `${entry.agent ?? entry.actor} on behalf of ${entry.onBehalfOf}` : entry.actor;
 }

@@ -1359,7 +1359,7 @@ function commandsFor(user: User | null, shell: ShellData, here: string, signUpLa
   const commands: Command[] = [
     { label: "Mission control", to: "/", icon: <House size={15} /> },
     ...(shell.repos.length > 0
-      ? [{ label: "Put an agent on it", hint: "Open an issue and assign g1t-agent", to: "/?agent=new", icon: <Sparkles size={15} /> }]
+      ? [{ label: "Put an agent on it", hint: "Open an issue and assign g1t", to: "/?agent=new", icon: <Sparkles size={15} /> }]
       : []),
     { label: "Explore repositories", to: "/explore", icon: <Compass size={15} /> },
     { label: "Search g1t", hint: "Repositories, code, issues, people", to: "/search", icon: <Search size={15} /> },

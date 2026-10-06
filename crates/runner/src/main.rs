@@ -63,6 +63,10 @@ use base64::engine::general_purpose::STANDARD;
 use report::{Entry, Reporter};
 
 pub(crate) const WORKDIR: &str = "/work/repo";
+/// The name and address on every commit g1t makes here, whether its agent
+/// or g1t itself: `g1t_contracts::system::{USERNAME, EMAIL}`.
+pub(crate) const AUTHOR_NAME: &str = "g1t";
+pub(crate) const AUTHOR_EMAIL: &str = "g1t@users.noreply.g1t.sh";
 
 pub(crate) fn env(name: &str) -> Result<String> {
     std::env::var(name).with_context(|| format!("{name} is not set"))
@@ -109,8 +113,8 @@ pub(crate) fn run(reporter: &mut Reporter) -> Result<String> {
 
     std::fs::create_dir_all("/work")?;
     clone::clone(Path::new("/work"), &auth, &[], &remote, WORKDIR).context("could not clone the pull request's fork")?;
-    git(workdir, &["config", "user.name", "g1t agent"])?;
-    git(workdir, &["config", "user.email", "agent@g1t.sh"])?;
+    git(workdir, &["config", "user.name", crate::AUTHOR_NAME])?;
+    git(workdir, &["config", "user.email", crate::AUTHOR_EMAIL])?;
     let branch = git(workdir, &["rev-parse", "--abbrev-ref", "HEAD"])?;
     let start = git(workdir, &["rev-parse", "HEAD"]).unwrap_or_default();
 

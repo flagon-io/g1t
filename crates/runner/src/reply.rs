@@ -1,15 +1,15 @@
-//! Answers a question someone asked `@g1t-agent` in a comment, in the
+//! Answers a question someone asked `@g1t` in a comment, in the
 //! thread it was asked in, changing nothing.
 //!
 //! The agent reads the repository as it is (the default branch for an
 //! issue, the pull request's head for a pull request) and writes its answer
-//! to a file. This program posts the answer as `g1t-agent`, with the
+//! to a file. This program posts the answer as `g1t`, with the
 //! agent's own token, which the agent itself never holds.
 //!
 //! Configuration comes from the environment:
 //!
 //! - `G1T_API`, `G1T_REPO`, `REPLY_NUMBER`: where the question was asked.
-//! - `G1T_AGENT_TOKEN`: g1t-agent's token for this run, to post the answer.
+//! - `G1T_AGENT_TOKEN`: g1t's token for this run, to post the answer.
 //! - `GIT_REMOTE`, `GIT_REF`: what to read, and at which branch or commit.
 //! - `G1T_USER`, `G1T_TOKEN`: to read it, if it is private.
 //! - `PROMPT`: the question and what the agent is told around it.

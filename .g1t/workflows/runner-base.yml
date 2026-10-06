@@ -75,7 +75,7 @@ jobs:
           fi
           branch="runner-base/$(date -u +%Y%m%d-%H%M)"
           git config user.name "g1t"
-          git config user.email "actions@g1t.sh"
+          git config user.email "g1t@users.noreply.g1t.sh"
           git checkout -b "$branch"
           git add services/runner/base.json
           git commit -m "A new base image for g1t's sandboxes"

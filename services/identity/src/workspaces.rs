@@ -8,7 +8,7 @@ use g1t_contracts::access::BasePermission;
 use g1t_contracts::identity::*;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{
-    FailureCode, Membership, Outcome, PrincipalKind, Role, User, is_valid_namespace, new_id,
+    FailureCode, Membership, Outcome, PrincipalKind, Role, User, claimable_namespace, new_id,
 };
 use g1t_kit::now_ms;
 use serde::Deserialize;
@@ -102,13 +102,12 @@ impl Identity {
                 "Confirm your email address before creating a workspace.",
             ));
         }
-        let slug = a.slug.trim().to_lowercase();
-        if !is_valid_namespace(&slug) {
+        let Some(slug) = claimable_namespace(&a.slug) else {
             return Ok(Outcome::fail(
                 FailureCode::Invalid,
-                "Workspace names use lowercase letters, digits and single hyphens, up to 39 characters.",
+                "Workspace names use lowercase letters, digits and single hyphens, up to 39 characters, and cannot be a reserved word.",
             ));
-        }
+        };
         if self.memberships(&a.user.id).await?.len() >= MAX_WORKSPACES_PER_USER {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
@@ -348,5 +347,19 @@ impl Identity {
             ])
             .await?;
         Ok(Outcome::Ok(true))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_workspace_is_created_with_g1ts_names() {
+        // What create_workspace takes the slug through, whatever its case.
+        for slug in ["g1t", "G1T", " g1t-agent ", "G1T-Agent"] {
+            assert_eq!(claimable_namespace(slug), None, "{slug}");
+        }
+        assert_eq!(claimable_namespace("Acme").as_deref(), Some("acme"));
     }
 }

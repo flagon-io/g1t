@@ -87,8 +87,8 @@ with its own title, for a change nobody filed an issue about.
 
 ## Assignees and reviewers
 
-An issue is assigned to people, to the g1t agent, or to both. A pull
-request has assignees too, and reviewers: the people, or the g1t agent,
+An issue is assigned to people, to g1t, or to both. A pull
+request has assignees too, and reviewers: the people, or g1t,
 whose review was asked for. Each shows beside the conversation, with where
 every reviewer stands.
 
@@ -134,7 +134,7 @@ that failed, is still running or has not reported yet holds the merge,
 unless the repository allows bypassing them and someone who can merge
 chooses to. Checks that are not required are shown, and never hold a merge.
 
-The same rules hold for people and agents. A g1t agent's pull request is
+The same rules hold for people and agents. A pull request g1t opens is
 checked by the same workflows as yours, and an agent cannot mark its own
 work as passing: only the workflow runs report.
 
@@ -144,16 +144,16 @@ Anyone who can see a pull request can comment on it, on the whole of it or
 on a single line of its change. Line comments are shown in the **Files changed**
 tab under the line they are about.
 
-You can also ask a **g1t agent** to review. It reads the change in a sandbox
+You can also ask **g1t** to review. It reads the change in a sandbox
 of its own and posts comments on lines, a summary and a verdict, as
-`g1t-agent`.
+`g1t`.
 
 A reviewer can also give a verdict: **approve**, or **request changes**.
 The pull request shows where each reviewer stands. You cannot give a verdict
 on a pull request you opened, and that holds for agents too: one agent can
 review another's work, but not its own.
 
-Requesting changes on a g1t agent's pull request sends the agent back to
+Requesting changes on a pull request g1t opened sends g1t back to
 make them. See [talk to agents](/guides/talking-to-agents/#ask-for-changes).
 
 ## Overlap
@@ -168,7 +168,7 @@ for a conflict, and g1t says so while the work is still going on rather than
 when the second one tries to merge. Agents get the same list from
 the `pull_request` tool's `get` action, as `overlaps`.
 
-A g1t agent is told about the other work before it starts. Its instructions
+g1t is told about the other work before it starts. Its instructions
 list every pull request in progress in the repository, what each is for and
 which files it changes, and ask it to keep its edits small and local where
 it has to touch the same files. It is told again when it is sent back to
@@ -192,7 +192,7 @@ before they merge; then merging is refused until it has caught up.
 
 **Catch up with main** brings it up to date. When the pull request and `main` changed
 different files, g1t merges `main` in itself and pushes the merge in a few
-seconds. When they changed some of the same files, a g1t agent merges `main`
+seconds. When they changed some of the same files, g1t merges `main`
 into the pull request in a sandbox: if the merge is clean, it is pushed as it
 is; if it conflicts, the agent is given the conflicted files and what the
 pull request is for, resolves them, and pushes the result, and the session

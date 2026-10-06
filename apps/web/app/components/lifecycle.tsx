@@ -65,7 +65,7 @@ const TITLE: Record<Stage, string> = {
 };
 
 /**
- * Where a pull request made by a g1t agent stands between "assigned" and
+ * Where a pull request made by g1t stands between "assigned" and
  * "ready to merge", and what is happening to it right now.
  */
 export function LifecyclePanel({ lifecycle }: { lifecycle: Lifecycle }) {

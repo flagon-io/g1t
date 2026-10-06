@@ -144,7 +144,7 @@ function describe(row: AlertActivity): { text: string; ref: ActivityEntry["ref"]
       return { text: "closed the security update as superseded", ref: pull };
     case "update_needs_code":
       return {
-        text: "found the upgrade needs code changes and opened an issue for g1t-agent",
+        text: "found the upgrade needs code changes and opened an issue to make them",
         ref: row.number != null ? { kind: "issue", number: row.number } : null,
       };
     case "update_failed":

@@ -336,7 +336,7 @@ impl Work {
     }
 
     /// Notes who was added to and removed from a list of people, such as
-    /// "assigned ana" or "requested a review from g1t-agent".
+    /// "assigned ana" or "requested a review from g1t".
     async fn note_changes(
         &self,
         repo_id: &str,
@@ -408,7 +408,7 @@ impl Work {
 
     // --- Issues ------------------------------------------------------------
 
-    /// Opens an issue for g1t-agent to take at once: refused before
+    /// Opens an issue for g1t to take at once: refused before
     /// anything is opened unless the actor may put agents to work here. The
     /// runner's `delegate` starts the agent on it.
     async fn delegate_issue(&self, a: DelegateIssueArgs) -> Result<Outcome<Issue>> {
@@ -1113,7 +1113,7 @@ impl Work {
         }
         if let Some(issue) = pull.issue {
             let text = if lifecycle::made_by_g1t(&pull) {
-                format!("assigned this to g1t-agent, which opened #{}", pull.number)
+                format!("assigned this to g1t, which opened #{}", pull.number)
             } else {
                 format!("opened #{} for this", pull.number)
             };
@@ -1397,7 +1397,7 @@ impl Work {
         };
         let reviewers = match a.reviewers {
             Some(names) => {
-                // A g1t agent is not an account; everyone else has to be.
+                // g1t is not an account; everyone else has to be.
                 let agent = names
                     .iter()
                     .any(|name| name.trim().eq_ignore_ascii_case(reviews::AGENT_NAME));
@@ -1612,7 +1612,7 @@ impl Work {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
                 format!(
-                    "This branch has conflicts with {}{named} that must be resolved first. Have the g1t agent resolve them, or merge {0} into it, fix them and push.",
+                    "This branch has conflicts with {}{named} that must be resolved first. Have g1t resolve them, or merge {0} into it, fix them and push.",
                     repo.default_branch
                 ),
             ));
@@ -2171,7 +2171,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "report_mergecheck" => reply(&work.report_mergecheck(args(body)?).await?),
         // Memory that fills itself, and its review queue (capture.rs).
         method if capture::METHODS.contains(&method) => capture::dispatch(&work, method, body).await,
-        // @g1t-agent in comments, and the label rule (mentions.rs).
+        // @g1t in comments, and the label rule (mentions.rs).
         "take_mention" => reply(&work.take_mention(args(body)?).await?),
         "mention_revision" => reply(&work.mention_revision(args(body)?).await?),
         "reply_mention" => reply(&work.reply_mention(args(body)?).await?),

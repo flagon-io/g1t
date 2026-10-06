@@ -39,6 +39,7 @@ import {
 
 import type { Route } from "./+types/pull";
 import { excerpt, page } from "../../lib/meta";
+import { openedBy } from "../../lib/opened-by";
 import { DiffView } from "../../components/diff-view";
 import { LifecyclePanel } from "../../components/lifecycle";
 import { AgentPanel } from "../../components/agents";
@@ -85,10 +86,11 @@ export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   const title = pull ? `${pull.title} · Pull request #${pull.number} · ` : "";
   const state = { draft: "Draft", open: "Open", merged: "Merged", closed: "Closed" }[pull?.status ?? "open"];
   const body = excerpt(pull?.body);
+  const opener = pull ? openedBy(pull) : null;
   return page(args, {
     title: `${title}${params.owner}/${params.repo} · g1t`,
     description: pull
-      ? `${state} pull request #${pull.number} on ${params.owner}/${params.repo} by ${pull.author.username}.${body ? ` ${body}` : ""}`
+      ? `${state} pull request #${pull.number} on ${params.owner}/${params.repo} by ${opener!.name}${opener!.requestedBy ? `, requested by ${opener!.requestedBy}` : ""}.${body ? ` ${body}` : ""}`
       : null,
     // The card shows the title and the state.
     version: pull ? [pull.title, pull.status] : undefined,
@@ -126,7 +128,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     env.RUNNER.enabled(viewer, path),
     // A member picks reviewers and assignees from the workspace's people.
     member ? identity.listMembers(params.owner, viewer) : null,
-    // Before someone asks g1t-agent for something: whether the plan lets it start.
+    // Before someone asks g1t for something: whether the plan lets it start.
     access.then(({ can }) => (can.run ? computeNoteFor(params.owner, "agent") : null)),
     tab === "session" ? work.readSession(path, number, viewer) : null,
     // Its preview, for people with a role here: beside the rest, not after.
@@ -273,10 +275,10 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       ? { action, notice: `Building ${built.value.join(", ")} against this preview. They appear on their Deployments pages.` }
       : { action, error: built.error.message };
   }
-  // Asking a g1t agent for its review records the request, then starts it.
+  // Asking g1t for its review records the request, then starts it.
   if (action === "agent-review") {
     const asked = await work.updatePull(user, path, number, {
-      reviewers: [...form.getAll("reviewer").map(String), "g1t-agent"],
+      reviewers: [...form.getAll("reviewer").map(String), "g1t"],
     });
     if (!asked.ok) return { error: asked.error.message, action };
   }
@@ -534,6 +536,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const here = `${base}/pull/${pull.number}`;
+  // g1t, on a pull request it made: the person who asked for it is a line below.
+  const opener = openedBy(pull);
   const checksSection = (jobs: Record<string, Job[]>) => (
     <ChecksSection
       run={checks}
@@ -625,12 +629,12 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
           <PullState status={pull.status} />
           <span className="flex items-center gap-2">
             <Avatar
-              name={(pull.status === "merged" && pull.mergedBy) || pull.author.username}
+              name={(pull.status === "merged" && pull.mergedBy) || opener.name}
               size={18}
             />
             <span>
               <PersonLink
-                name={(pull.status === "merged" && pull.mergedBy) || pull.author.username}
+                name={(pull.status === "merged" && pull.mergedBy) || opener.name}
                 className="font-medium text-fg hover:underline"
               />{" "}
               {pull.status === "merged" ? "merged" : "wants to merge"}
@@ -643,8 +647,15 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               into <span className="font-mono text-fg">{defaultBranch}</span>
             </span>
           </span>
-          {/* A pull request from a branch was made by its author, not an agent. */}
-          {!pull.branch && (
+          {opener.requestedBy && (
+            <span className="text-xs">
+              requested by{" "}
+              <PersonLink name={opener.requestedBy} className="font-medium text-fg-soft hover:underline" />
+            </span>
+          )}
+          {/* A pull request from a branch was made by its author, not an agent;
+              one g1t made already says so. */}
+          {!pull.branch && !opener.requestedBy && (
             <span className="flex items-center gap-1.5 font-mono text-xs">
               <Bot size={14} />
               {pull.agent}
@@ -868,12 +879,18 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             ) : (
               <div className="space-y-4">
                 <TimelineItem
-                  author={pull.author.username}
+                  author={opener.name}
                   at={pull.createdAt}
                   action={
                     <span>
                       opened this pull request
-                      {!pull.branch && (
+                      {opener.requestedBy ? (
+                        <>
+                          {" "}
+                          for{" "}
+                          <PersonLink name={opener.requestedBy} className="font-medium text-fg-soft hover:underline" />
+                        </>
+                      ) : !pull.branch && (
                         <>
                           {" "}
                           with <span className="font-mono text-xs">{pull.agent}</span>
@@ -956,7 +973,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                               .join(" · ")
                       }
                     >
-                      {reviewPending && "A g1t agent is reviewing it now. "}
+                      {reviewPending && "g1t is reviewing it now. "}
                       {requiredApprovals > 0 &&
                         `This repository requires ${requiredApprovals} approving ${
                           requiredApprovals === 1 ? "review" : "reviews"
@@ -1032,7 +1049,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                               again on the new commit.
                             </>
                           )}
-                          {agentCatchUp && "g1t-agent merged it in and pushed the result. Its checks run again on the new commit."}
+                          {agentCatchUp && "g1t merged it in and pushed the result. Its checks run again on the new commit."}
                         </StatusRow>
                       )
                     )}
@@ -1168,10 +1185,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             <ul className="mt-2 space-y-1.5 text-sm">
               {reviewerNames.map((name) => {
                 const verdict = reviews.find(({ reviewer }) => reviewer === name)?.verdict;
-                const pending = name === "g1t-agent" && reviewPending;
+                const pending = name === "g1t" && reviewPending;
                 return (
                   <li key={name} className="flex items-center gap-2 px-1">
-                    {name === "g1t-agent" ? (
+                    {name === "g1t" ? (
                       <Sparkles size={16} className="shrink-0 text-accent" />
                     ) : (
                       <Avatar name={name} size={20} />
@@ -1211,7 +1228,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                     <div className="*:w-full">
                       <Button variant="quiet" type="submit">
                         <Sparkles size={14} className="text-accent" />
-                        Request review from g1t agent
+                        Request review from g1t
                       </Button>
                     </div>
                     <ComputeNote note={loaderData.computeNote} />
@@ -1223,13 +1240,13 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   </summary>
                   <Form method="post" className="mt-2 space-y-2" key={pull.reviewers.join()}>
                     <input type="hidden" name="action" value="reviewers" />
-                    {pull.reviewers.includes("g1t-agent") && (
-                      <input type="hidden" name="reviewer" value="g1t-agent" />
+                    {pull.reviewers.includes("g1t") && (
+                      <input type="hidden" name="reviewer" value="g1t" />
                     )}
                     <PeoplePicker
                       name="reviewer"
                       members={members.filter((name) => name !== pull.author.username)}
-                      chosen={pull.reviewers.filter((name) => name !== "g1t-agent")}
+                      chosen={pull.reviewers.filter((name) => name !== "g1t")}
                     />
                     <Button variant="quiet" type="submit">
                       Save reviewers

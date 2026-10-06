@@ -338,7 +338,7 @@ function Settings({ data, manage, scope }: { data: RunnersData; manage: boolean;
         <span className="min-w-0">
           <span className="flex items-center gap-2 text-sm font-medium">
             <Bot size={15} className="text-muted" />
-            Run g1t-agent work on self-hosted runners
+            Run g1t's work on self-hosted runners
           </span>
           <span className="mt-1 block text-sm text-muted">
             Agent runs, checks, reviews and the merge queue run on your runners with these labels instead of g1t&apos;s sandboxes. The machine time is

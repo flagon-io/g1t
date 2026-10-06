@@ -31,7 +31,7 @@ pub mod webhooks;
 pub mod work;
 
 pub use ids::new_id;
-pub use names::{is_valid_namespace, is_valid_repo_name};
+pub use names::{claimable_namespace, is_reserved_name, is_valid_namespace, is_valid_repo_name};
 pub use outcome::{Failure, FailureCode, Outcome};
 
 use serde::{Deserialize, Serialize};
@@ -95,7 +95,7 @@ pub enum PrincipalKind {
     Workspace,
     /// A g1t agent at work in a sandbox, acting through a token that lives
     /// as long as its run and can do only what that token's scope lists, in
-    /// one repository. Its `username` is `g1t-agent`.
+    /// one repository. Its `username` is `g1t`.
     Agent,
     /// g1t itself: the platform acting on its own, as when it opens a
     /// pull request to upgrade a vulnerable dependency or merges from the

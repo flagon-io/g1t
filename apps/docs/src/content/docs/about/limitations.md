@@ -161,7 +161,7 @@ reopening the pull request, makes the fork again from there.
 
 You can't resolve a merge conflict on the pull request's page.
 
-- **Instead.** Ask a g1t agent to resolve it, or fix it on the command line.
+- **Instead.** Ask g1t to resolve it, or fix it on the command line.
   See [Conflicts](/guides/pull-requests/#conflicts).
 - **Status.** Planned.
 
@@ -309,7 +309,7 @@ and reach of the change. It cannot tell whether the change is correct.
 - **Instead.** Keep **Ask a person before merging low-confidence changes**
   on, and make your workflows required checks. A high rating on a
   repository with weak tests means less. See
-  [How sure the agent is](/guides/g1t-agents/#how-sure-the-agent-is).
+  [How sure the agent is](/guides/working-with-g1t/#how-sure-the-agent-is).
 - **Status.** The signals and their weights may change as we learn from
   real changes.
 
@@ -343,7 +343,7 @@ the beta.
 ### Self-hosting is early
 
 [Running g1t yourself](/guides/self-hosting/) gives you the core forge:
-accounts, repositories over HTTP, issues and pull requests. g1t agents,
+accounts, repositories over HTTP, issues and pull requests. g1t's agent,
 Actions, deployments, git over SSH, the REST API and MCP are off, and it is
 not ready for the open internet. **Status.** Planned, in phases.
 

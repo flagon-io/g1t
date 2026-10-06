@@ -16,8 +16,8 @@ import type { AgentMessage, G1tEvent } from "@g1t/contracts";
 
 import { Avatar, TimeAgo } from "./ui";
 
-/** The accounts that are g1t's own agents and machinery. */
-const AGENTS = new Set(["g1t-agent", "g1t"]);
+/** Whether an actor is g1t itself: its agent or its machinery. */
+const isG1t = (actor: string | null): actor is string => actor === "g1t";
 
 type Line = { icon: ReactNode; tone: string; actor: string | null; text: ReactNode; coordination?: boolean };
 
@@ -33,10 +33,10 @@ function line(event: G1tEvent, base: string): Line | null {
     case "issue.opened":
       return {
         icon: <CircleDot size={14} />,
-        tone: actor && AGENTS.has(actor) ? "text-merged" : "text-muted",
+        tone: isG1t(actor) ? "text-merged" : "text-muted",
         actor,
-        text: actor && AGENTS.has(actor) ? <>filed {ref(event.data.number)} for something it found</> : <>opened {ref(event.data.number)}</>,
-        coordination: actor != null && AGENTS.has(actor),
+        text: isG1t(actor) ? <>filed {ref(event.data.number)} for something it found</> : <>opened {ref(event.data.number)}</>,
+        coordination: isG1t(actor),
       };
     case "pull.opened":
       return {
@@ -66,7 +66,7 @@ function line(event: G1tEvent, base: string): Line | null {
       return {
         icon: event.data.verdict === "approve" ? <CircleCheck size={14} /> : <CircleSlash size={14} />,
         tone: event.data.verdict === "approve" ? "text-accent" : "text-warn",
-        actor: "g1t-agent",
+        actor: "g1t",
         text: (
           <>
             {event.data.verdict === "approve" ? "approved" : "asked for changes on"} {ref(event.data.number)}
@@ -88,10 +88,10 @@ function line(event: G1tEvent, base: string): Line | null {
       }
       return {
         icon: <MessageSquare size={14} />,
-        tone: actor && AGENTS.has(actor) ? "text-merged" : "text-muted",
+        tone: isG1t(actor) ? "text-merged" : "text-muted",
         actor,
         text: <>commented on {ref(event.data.number)}</>,
-        coordination: actor != null && AGENTS.has(actor),
+        coordination: isG1t(actor),
       };
     case "pull.merged":
       return { icon: <GitMerge size={14} />, tone: "text-accent", actor, text: <>landed {ref(event.data.number)} on main</> };
@@ -161,7 +161,7 @@ export function Exchanges({ exchanges, base }: { exchanges: AgentMessage[]; base
         return (
           <li key={exchange.id} className="rounded-2xl bg-merged/[0.05] p-4 ring-1 ring-merged/25">
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-              <Avatar name="g1t-agent" size={14} />
+              <Avatar name="g1t" size={14} />
               <span>
                 The agent on {exchange.fromNumber != null ? pull(exchange.fromNumber) : exchange.author}{" "}
                 {exchange.kind === "handoff" ? "handed work to" : "asked"} the agent on {pull(exchange.toNumber)}

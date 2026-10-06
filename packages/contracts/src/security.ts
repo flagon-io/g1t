@@ -111,7 +111,7 @@ export type Vulnerability = {
   severity: Severity;
   fixedVersion: string | null;
   status: "open" | "fixed" | "dismissed";
-  /** The issue opened for g1t-agent, when upgrading needs code changes. */
+  /** The issue opened for g1t, when upgrading needs code changes. */
   issue: number | null;
   foundAt: string;
   fixedAt: string | null;
@@ -129,7 +129,7 @@ export type Vulnerability = {
  * change. `open`: its pull request is going through the required checks.
  * `superseded`: a newer update replaced it, or the package is no longer
  * vulnerable. `needs_code`: the version could not be raised without code
- * changes, so g1t-agent has an issue for it. `failed`: see `error`.
+ * changes, so g1t has an issue for it. `failed`: see `error`.
  */
 export type UpdateState = "requested" | "open" | "merged" | "closed" | "superseded" | "needs_code" | "failed";
 

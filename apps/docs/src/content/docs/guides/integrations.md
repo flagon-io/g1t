@@ -32,7 +32,7 @@ one issue:
   linking the new occurrence.
 - **A recovery** (Datadog) is noted on the issue.
 
-Turn on **Put a g1t agent on each new issue** and an agent starts on the
+Turn on **Assign each new issue to g1t** and g1t starts on the
 issue as soon as it opens: it makes the change, is reviewed, revises, and
 lands through your repository's rules, often before anyone has looked. A
 reopened issue gets an agent again. Agents need a way to reach a model:
@@ -138,7 +138,7 @@ reach from g1t.
 
 ### Agents read tickets the work mentions
 
-When a g1t agent starts on an issue, or plans an outcome, g1t looks for
+When g1t starts on an issue, or plans an outcome, g1t looks for
 ticket keys and addresses in the text (`TECH-1234`,
 `https://acme.atlassian.net/browse/TECH-1234`,
 `https://linear.app/acme/issue/ENG-42/…`, a Sentry issue's address) and

@@ -130,7 +130,7 @@ impl Identity {
         else {
             return Ok(None);
         };
-        // An agent's token: g1t-agent on behalf of the person it was made
+        // An agent's token: g1t on behalf of the person it was made
         // for, in its repository's workspace while they belong to it, and
         // only for what its scope lists. See run_credentials.rs.
         if let Some(scope) = presented

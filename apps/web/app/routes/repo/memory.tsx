@@ -54,7 +54,7 @@ export default function ProjectMemory({ loaderData, params }: Route.ComponentPro
       </h2>
       <p className="mt-1.5 max-w-2xl text-sm text-muted">
         What agents and people have learned about this project that the next agent should know: how
-        to build and test it, its conventions, decisions and why, and its traps. Every g1t agent run
+        to build and test it, its conventions, decisions and why, and its traps. Every run of g1t
         here is given it, pinned first{member ? ", together with the workspace's memory" : ""}. Agents add to it with
         the remember tool as they work{editable ? "; keep it true by editing or forgetting what no longer holds" : ""}.
       </p>

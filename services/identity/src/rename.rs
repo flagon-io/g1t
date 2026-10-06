@@ -334,6 +334,14 @@ mod tests {
     }
 
     #[test]
+    fn no_workspace_is_renamed_to_g1ts_names() {
+        for name in ["g1t", "g1t-agent", "G1T", "G1T-Agent"] {
+            assert_eq!(refused(&facts("acme", name)), FailureCode::Invalid, "{name}");
+        }
+        assert!(check(&facts("acme", "g1t-fans")).is_ok());
+    }
+
+    #[test]
     fn refuses_names_in_use() {
         let taken = Facts {
             someone_elses_username: true,

@@ -1,10 +1,10 @@
 /**
- * What g1t does when a comment mentions `@g1t-agent`: what it is asked,
+ * What g1t does when a comment mentions `@g1t`: what it is asked,
  * through the flows that already exist. On an issue, a request assigns it
- * and a question is answered in the thread. On a pull request g1t-agent
+ * and a question is answered in the thread. On a pull request g1t
  * made, a request sends it back to revise, with the comment as what to
  * address. On any pull request, a review request starts a review and a
- * question is answered. Each mention is one run at most, and g1t-agent says
+ * question is answered. Each mention is one run at most, and g1t says
  * in the thread what it did, or why it did nothing.
  *
  * Only type imports, so it can be tested on its own.
@@ -15,13 +15,13 @@ import type { Comment, LifecycleJob, MentionJob, MentionsApi, Pull, RepoPath, Re
 export type MentionPlan =
   | { kind: "not_member" }
   | { kind: "closed"; reason: string }
-  /** Assign the issue to g1t-agent: it opens a pull request and makes the change. */
+  /** Assign the issue to g1t: it opens a pull request and makes the change. */
   | { kind: "assign" }
   /** Answer in the thread, reading the code, changing nothing. */
   | { kind: "answer" }
-  /** Send g1t-agent back to the pull request it made, to address the comment. */
+  /** Send g1t back to the pull request it made, to address the comment. */
   | { kind: "revise" }
-  /** Pass the comment to g1t-agent while it is still making the change. */
+  /** Pass the comment to g1t while it is still making the change. */
   | { kind: "message" }
   | { kind: "review" };
 
@@ -52,7 +52,7 @@ export interface MentionPorts {
   refusal(actor: User, repo: RepoPath): Promise<string | null>;
   assign(job: MentionJob): Promise<Result<Pull>>;
   /**
-   * Sends g1t-agent back to revise. Returns what to say instead when the
+   * Sends g1t back to revise. Returns what to say instead when the
    * revision waits for a free slot.
    */
   revise(job: LifecycleJob, startedBy: string): Promise<string | null | void>;
@@ -90,7 +90,7 @@ export async function handleMention(job: MentionJob, ports: MentionPorts): Promi
   try {
     if (plan.kind === "not_member") {
       await reply(
-        `Thanks for the mention, ${who}. Putting g1t-agent to work needs the Write role on ${job.repo.namespace}/${job.repo.name}, so I have left this for someone who has it.`,
+        `Thanks for the mention, ${who}. Putting g1t to work needs the Write role on ${job.repo.namespace}/${job.repo.name}, so I have left this for someone who has it.`,
       );
       return plan;
     }
@@ -177,7 +177,7 @@ export function buildMentionPrompt(job: MentionJob, context: { title: string; bo
     ? `pull request #${job.number}, checked out at its head`
     : `issue #${job.number}, with the repository checked out at its default branch, ${job.defaultBranch}`;
   const parts = [
-    `You are g1t-agent, a coding agent. ${job.actor.username} mentioned you in a comment on ${where}. The repository is in the current directory. Answer what they asked.`,
+    `You are g1t, a coding agent. ${job.actor.username} mentioned you in a comment on ${where}. The repository is in the current directory. Answer what they asked.`,
     `${job.pull ? "Pull request" : "Issue"} #${job.number}: ${context.title}`,
     context.body,
     context.thread && `The conversation so far, oldest first:\n\n${context.thread}`,
@@ -187,7 +187,7 @@ export function buildMentionPrompt(job: MentionJob, context: { title: string; bo
       : null,
     job.pull
       ? "Do not change any files."
-      : "Do not change any files. If answering properly needs work done, say so, and say that mentioning @g1t-agent with a request (such as \"@g1t-agent take this\") starts it.",
+      : "Do not change any files. If answering properly needs work done, say so, and say that mentioning @g1t with a request (such as \"@g1t take this\") starts it.",
   ];
   return parts.filter(Boolean).join("\n\n");
 }

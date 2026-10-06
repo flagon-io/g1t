@@ -14,7 +14,7 @@ docs in the same pull request:
 | --- | --- |
 | Something a person does on g1t.sh | The guide for it in `apps/docs/src/content/docs/guides/` |
 | An API route, a field, or an MCP tool | `apps/api/src/operations.rs` descriptions (they feed the OpenAPI document and the API reference), the example and notes for it in `apps/api/src/reference.json`, `reference/mcp.md`, and any guide that shows the call. Then refresh the docs' copy of the OpenAPI document with `G1T_WRITE_OPENAPI=1 cargo test -p g1t-api openapi`; `cargo test` fails until you do. |
-| How agents behave | `guides/g1t-agents.md`, and `apps/web/public/llms.txt` |
+| How agents behave | `guides/working-with-g1t.md`, and `apps/web/public/llms.txt` |
 | Settings, limits or prices | The page that names them, and the table it is in |
 | A new feature | A section in the guide that owns it, linked from the docs home if it is a new task |
 

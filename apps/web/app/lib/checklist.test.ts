@@ -68,13 +68,13 @@ test("instructions are AGENTS.md or CLAUDE.md at the root", () => {
   assert.equal(hasInstructions(["README.md", "AGENTS.mdx", "docs"]), false);
 });
 
-test("g1t-agent counts as assigned from a run, a pull request or an issue", () => {
-  const none = { runAgents: ["g1t"], pullAgents: ["claude-code"], issues: [{ assignees: ["ana"], agent: null }] };
+test("g1t counts as assigned from a run, a pull request or an issue", () => {
+  const none = { runAgents: ["claude-code"], pullAgents: ["claude-code"], issues: [{ assignees: ["ana"], agent: null }] };
   assert.equal(agentWasAssigned(none), false);
-  assert.equal(agentWasAssigned({ ...none, runAgents: ["g1t-agent"] }), true);
-  assert.equal(agentWasAssigned({ ...none, pullAgents: ["g1t-agent"] }), true);
-  assert.equal(agentWasAssigned({ ...none, issues: [{ assignees: ["G1T-Agent"], agent: null }] }), true);
-  assert.equal(agentWasAssigned({ ...none, issues: [{ assignees: [], agent: "g1t-agent" }] }), true);
+  assert.equal(agentWasAssigned({ ...none, runAgents: ["g1t"] }), true);
+  assert.equal(agentWasAssigned({ ...none, pullAgents: ["g1t"] }), true);
+  assert.equal(agentWasAssigned({ ...none, issues: [{ assignees: ["G1T"], agent: null }] }), true);
+  assert.equal(agentWasAssigned({ ...none, issues: [{ assignees: [], agent: "g1t" }] }), true);
 });
 
 test("dismissing is remembered per project, and storage that throws is ignored", () => {

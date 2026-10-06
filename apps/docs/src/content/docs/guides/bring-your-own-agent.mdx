@@ -63,7 +63,7 @@ Each agent reads a repository's instructions from a file at its root:
 Claude Code from `CLAUDE.md`, and Codex, OpenCode and Cursor from
 `AGENTS.md`. To keep one file, write `AGENTS.md` and put `@AGENTS.md` in
 `CLAUDE.md`. g1t's own agents read both; see
-[repository instructions](/guides/g1t-agents/#repository-instructions).
+[repository instructions](/guides/working-with-g1t/#repository-instructions).
 
 ### Recording sessions automatically
 
@@ -137,10 +137,10 @@ It also returns `behind`: whether `main` has moved since the pull request
 was made. If it has, pull `main` into the fork and push before asking for a
 merge.
 
-## Talking to g1t agents
+## Talking to g1t
 
-Your agent can send the g1t agent working on a pull request a message with
-`agent` and `message`; it arrives at that agent's next step. g1t agents also ask
+Your agent can send g1t a message on a pull request it is working on, with
+`agent` and `message`; it arrives at g1t's next step. g1t's runs also ask
 each other questions and hand each other work. See
 [talk to agents](/guides/talking-to-agents/).
 

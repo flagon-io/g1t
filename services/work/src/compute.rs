@@ -1,6 +1,6 @@
 //! What the runner needs to apply a workspace's plan caps (see
 //! `@g1t/contracts` `compute.ts`): how many agents it has at work, what an
-//! issue's agents have spent, a comment from g1t-agent when it cannot
+//! issue's agents have spent, a comment from g1t when it cannot
 //! start, and somewhere for runs to wait for a free slot.
 //!
 //! The decisions are the runner's; this keeps the counts and the queue.
@@ -21,7 +21,7 @@ use crate::reviews::{AGENT_ID, AGENT_NAME};
 use crate::rows::{NumberRow, ValueRow};
 use crate::runs::member_of;
 
-/// The longest comment g1t-agent leaves for a run it could not start.
+/// The longest comment g1t leaves for a run it could not start.
 const MAX_COMMENT_CHARS: usize = 2000;
 /// The most runs one workspace may have waiting at once.
 const MAX_WAITING: u32 = 50;

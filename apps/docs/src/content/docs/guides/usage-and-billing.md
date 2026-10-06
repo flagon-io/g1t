@@ -199,7 +199,7 @@ pool**.
 | --- | --- |
 | Making a change for an issue | Yes |
 | Revising a change after checks, a review or a person | Yes |
-| A review by a g1t agent | Yes |
+| A review by g1t | Yes |
 | Catching up with `main` | Yes, when it needed an agent |
 | Planning an [outcome](/guides/outcomes/) | Yes |
 | The [merge queue](/guides/merge-queue/) | [Sandbox time](#sandbox-time) |
@@ -220,7 +220,7 @@ paid for at those providers instead. Such a run is charged here only for
 its [sandbox time](#sandbox-time), like any other sandbox.
 
 The charge goes to the workspace that owns the repository, whoever
-assigned the issue. That is why putting g1t agents to work on a
+assigned the issue. That is why putting g1t to work on a
 repository needs the Write [role](/guides/access-and-roles/) or higher on it.
 
 ## How prices are set
@@ -474,7 +474,7 @@ Owners set the run and issue caps under **Caps on agents** on **Billing**,
 then **Save caps**; a blank field goes back to the default. A cap g1t staff
 set for the workspace wins over both. When an issue's agents reach its cap,
 the message links straight to that section. See
-[caps on a plan](/guides/g1t-agents/#caps-on-a-plan) for what happens at
+[caps on a plan](/guides/working-with-g1t/#caps-on-a-plan) for what happens at
 each.
 
 ### Alerts

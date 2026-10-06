@@ -460,10 +460,10 @@ impl Work {
                     number,
                     (&a.actor.id, &a.actor.username),
                     &if blocked_by.is_empty() {
-                        "queued this for g1t-agent".to_owned()
+                        "queued this for g1t".to_owned()
                     } else {
                         format!(
-                            "queued this for g1t-agent, to start once {} {} merged",
+                            "queued this for g1t, to start once {} {} merged",
                             blocked_by
                                 .iter()
                                 .map(|number| format!("#{number}"))

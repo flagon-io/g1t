@@ -326,6 +326,16 @@ pub(crate) async fn read_dirs<R: GitRepo>(
     Ok(found)
 }
 
+/// g1t's own name and address, for a commit g1t's agent or g1t itself
+/// makes. None for anyone else.
+pub(crate) fn g1t_commit_identity(actor: &g1t_contracts::User) -> Option<g1t_contracts::accounts::CommitIdentity> {
+    use g1t_contracts::{PrincipalKind, system};
+    matches!(actor.kind, PrincipalKind::Agent | PrincipalKind::System).then(|| g1t_contracts::accounts::CommitIdentity {
+        name: system::USERNAME.to_owned(),
+        email: system::EMAIL.to_owned(),
+    })
+}
+
 fn needs_agent(reason: NeedsAgentReason, detail: impl Into<String>, paths: Vec<String>) -> Outcome<PullBranchUpdate> {
     Outcome::Ok(PullBranchUpdate::NeedsAgent {
         reason,
@@ -336,16 +346,14 @@ fn needs_agent(reason: NeedsAgentReason, detail: impl Into<String>, paths: Vec<S
 
 impl<S: GitStore> Repos<S> {
     /// The name and address a commit made for `actor` carries: their
-    /// noreply address unless they chose to show their own. An agent's
-    /// commit is its person's. Without identity, the noreply address all
-    /// the same.
+    /// noreply address unless they chose to show their own. What g1t's
+    /// agent or g1t itself commits is g1t's, whoever it works for. Without
+    /// identity, the noreply address all the same.
     pub(crate) async fn commit_identity(&self, actor: &g1t_contracts::User) -> g1t_contracts::accounts::CommitIdentity {
-        let person = actor
-            .acting
-            .as_ref()
-            .map_or((actor.id.clone(), actor.username.clone()), |acting| {
-                (acting.on_behalf_of.id.clone(), acting.on_behalf_of.username.clone())
-            });
+        if let Some(g1t) = g1t_commit_identity(actor) {
+            return g1t;
+        }
+        let person = (actor.id.clone(), actor.username.clone());
         let found = match &self.identity {
             Some(identity) => g1t_kit::call::<_, Option<g1t_contracts::accounts::CommitIdentity>>(
                 identity,
@@ -583,6 +591,18 @@ mod tests {
 
     fn paths(list: &[&str]) -> Vec<String> {
         list.iter().map(|path| (*path).to_owned()).collect()
+    }
+
+    #[test]
+    fn g1ts_commits_are_g1ts_whoever_asked() {
+        use g1t_contracts::{PrincipalKind, User};
+        let agent = User { id: "usr_g1t_agent".into(), username: "g1t".into(), kind: PrincipalKind::Agent, ..User::default() };
+        let made = g1t_commit_identity(&agent).unwrap();
+        assert_eq!((made.name.as_str(), made.email.as_str()), ("g1t", "g1t@users.noreply.g1t.sh"));
+        let made = g1t_commit_identity(&User::system("acme")).unwrap();
+        assert_eq!((made.name.as_str(), made.email.as_str()), ("g1t", "g1t@users.noreply.g1t.sh"));
+        let person = User { id: "usr_1".into(), username: "ana".into(), ..User::default() };
+        assert!(g1t_commit_identity(&person).is_none());
     }
 
     #[test]

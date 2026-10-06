@@ -81,8 +81,8 @@ fn probe(auth: &str) -> Result<Vec<String>> {
     }
 
     // Otherwise in a throwaway checkout.
-    git(workdir, &["config", "user.name", "g1t merge check"])?;
-    git(workdir, &["config", "user.email", "mergecheck@g1t.sh"])?;
+    git(workdir, &["config", "user.name", crate::AUTHOR_NAME])?;
+    git(workdir, &["config", "user.email", crate::AUTHOR_EMAIL])?;
     git(workdir, &["checkout", "--quiet", "--detach", &base])?;
     let clean = Command::new("git")
         .current_dir(workdir)

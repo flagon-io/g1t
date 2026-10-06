@@ -14,7 +14,7 @@ function run(kind: AgentRun["kind"], status: AgentRun["status"], createdAt: stri
     number: 7,
     title: null,
     kind,
-    agent: "g1t-agent",
+    agent: "g1t",
     model: null,
     status,
     step: null,
@@ -61,8 +61,8 @@ test("it never waits forever", () => {
 });
 
 test("the box says who is doing what", () => {
-  assert.equal(catchUpTitle("conflicting", "main"), "g1t-agent is resolving conflicts with main");
-  assert.equal(catchUpTitle("overlap", "main"), "g1t-agent is merging main into this pull request");
+  assert.equal(catchUpTitle("conflicting", "main"), "g1t is resolving conflicts with main");
+  assert.equal(catchUpTitle("overlap", "main"), "g1t is merging main into this pull request");
   assert.match(catchUpWhy({ reason: "overlap", paths: ["a.rs"] }, "main"), /both changed one file/);
   assert.match(catchUpWhy({ reason: "conflicting", paths: ["a.rs", "b.rs"] }, "main"), /conflicts in 2 files/);
 });

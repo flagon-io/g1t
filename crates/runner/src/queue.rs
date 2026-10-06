@@ -75,8 +75,8 @@ fn build(stack: &[Item], auth: &str) -> std::result::Result<String, Stopped> {
         .and_then(|_| git(workdir, &["rev-parse", "--abbrev-ref", "HEAD"]))
         .and_then(|branch| crate::clone::ensure(workdir, auth, "origin", &branch, &base).map(|_| branch))
         .and_then(|_| git(workdir, &["checkout", "--quiet", "-B", "g1t-queue", &base]))
-    .and_then(|_| git(workdir, &["config", "user.name", "g1t merge queue"]))
-    .and_then(|_| git(workdir, &["config", "user.email", "queue@g1t.sh"]))
+    .and_then(|_| git(workdir, &["config", "user.name", crate::AUTHOR_NAME]))
+    .and_then(|_| git(workdir, &["config", "user.email", crate::AUTHOR_EMAIL]))
     .map_err(Stopped::Failed)?;
 
     for (index, item) in stack.iter().enumerate() {

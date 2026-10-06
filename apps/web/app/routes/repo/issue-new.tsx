@@ -52,7 +52,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     throw redirect(`/${params.owner}/${params.repo}/issues/${imported.value.number}`);
   }
   const path = { namespace: params.owner, name: params.repo };
-  // Assigned to g1t-agent as it opens: one step, and the agent starts.
+  // Assigned to g1t as it opens: one step, and the agent starts.
   if (form.get("agent") === "on") {
     const delegated = await env.RUNNER.delegate(user, path, delegateForm(form));
     if (!delegated.ok) return { error: delegated.error.message };
@@ -151,7 +151,7 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
               label={
                 <span className="flex items-center gap-1.5 font-medium">
                   <Sparkles size={14} className="text-merged" />
-                  Assign g1t-agent now
+                  Assign g1t now
                 </span>
               }
               description="It opens a pull request for this issue in a sandbox of its own and sees it through: this repository's workflows run on it as its checks, and it revises until the required ones pass and the review approves. There is no model or agent count to choose."
@@ -170,7 +170,7 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
               <Link to={refused.to} className="font-medium text-fg hover:underline">
                 #{refused.number}
               </Link>
-              , but g1t-agent did not start. {refused.message}
+              , but g1t did not start. {refused.message}
             </p>
             {refused.fix && (
               <Link to={refused.fix.to} className="mt-2 inline-block text-sm font-medium text-fg hover:underline">

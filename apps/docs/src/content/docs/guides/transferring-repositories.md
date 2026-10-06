@@ -17,7 +17,7 @@ than move it, [delete it](/guides/managing-repositories/#delete-a-repository).
 
 You must be an **owner of both workspaces**: the one the repository is in
 and the one it moves to. A member of either cannot, and neither can an
-access token that belongs to a workspace or a g1t agent's token. Your email
+access token that belongs to a workspace or g1t's token. Your email
 address must be confirmed.
 
 ## Transfer a repository

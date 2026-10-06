@@ -57,7 +57,7 @@ requests, and changes the assumption underneath them. A forge built for
 people expects a few changes in flight, each watched by its author. g1t
 expects dozens of agents working at once across a project, each on its own
 issue, all of which have to land on `main`. A person assigns an issue to
-the g1t agent and chooses nothing else: not how many agents, and not which
+g1t and chooses nothing else: not how many agents, and not which
 model. An issue can still collect more than one pull request (a second
 attempt, or someone's own agent alongside g1t's), and when it does the
 issue records which one was taken.
@@ -508,7 +508,7 @@ lands it through the queue. People only decide.
 
 - **Dependency updates.** A scheduled scan reads the lockfiles (npm, Cargo,
   Go, pip), finds outdated and vulnerable packages and opens one issue per
-  update or group, assigned to g1t-agent. The agent upgrades the package,
+  update or group, assigned to g1t. The agent upgrades the package,
   fixes what the upgrade broke and lands it through the queue. A repository
   sets how often it scans, which packages it groups and what lands without
   review (`.g1t/upkeep.yml`, shaped like `dependabot.yml`).
@@ -750,7 +750,7 @@ pull requests, comments and pull requests copied, GitLab and Bitbucket.
 - **Search with a filter sidebar:** Projects, Code, Issues, Pull requests,
   Users, Workspaces, each with its count; filters by workspace, language,
   state, author, agent, label, date; qualifiers in the query
-  (`user:`, `is:open`, `agent:g1t-agent`) as on GitHub. Typing `u/name`
+  (`user:`, `is:open`, `agent:g1t`) as on GitHub. Typing `u/name`
   searches people directly, as Docker Hub does.
 
 1 and 2 serve the competition directly (multi-agent coordination across
@@ -950,7 +950,7 @@ Decisions behind this:
 - **All hosted model traffic goes through Cloudflare AI Gateway.** That gives
   one place for spend tracking, budgets, rate limits, fallback and logs,
   whichever provider or endpoint is behind it.
-- **Nobody picks a model.** A person assigns work to `g1t-agent`, as they
+- **Nobody picks a model.** A person assigns work to `g1t`, as they
   would assign an issue to Copilot, and g1t routes it. Today the kind of
   work decides (implementing, reviewing, catching up), from one setting on
   the runner, and each request is tagged at the gateway with that kind, the
@@ -973,7 +973,7 @@ Decisions behind this:
 ### Seeing a pull request through
 
 Assigning an issue is the only thing a person does until there is something
-to merge. A pull request made by a g1t agent goes through checks, a review
+to merge. A pull request made by g1t goes through checks, a review
 by another agent, revision when either finds something, and catching up
 when `main` moves, without anyone pressing a button. It ends as ready to
 merge, or as "needs you" with the reason: the checks still fail after two
@@ -997,7 +997,7 @@ Each repository sets its own rules, on one settings page: whether its
 default branch takes pushes at all, how many approvals a merge needs and
 whether an agent's counts, whether failed checks can be overridden, whether
 a second agent reviews, and how often an agent is sent back before a person
-is asked. A g1t agent's pull request follows the same rules as anyone's.
+is asked. A pull request g1t opens follows the same rules as anyone's.
 Pushes to a protected branch are refused in the git front end, with the
 reason shown by git beside the branch.
 
@@ -1033,7 +1033,7 @@ threads, live.
 
 - Each channel is a Durable Object holding its WebSocket connections with
   hibernation, so idle channels cost nothing; history in D1, files in R2.
-- Agents are members. `@g1t-agent` in a channel starts work, answers, or
+- Agents are members. `@g1t` in a channel starts work, answers, or
   posts a summary; agents post their questions and handoffs where people
   already are. A thread becomes an issue or an outcome in one action, and
   the agent's progress streams into that thread.
@@ -1071,7 +1071,7 @@ compared. Underneath, the unit of work is still a branch and a pull request.
    token, report progress and submit. Adding it is one command; sign-in is a
    browser OAuth flow with no token to paste. The `g1t` CLI installs Claude
    Code hooks that upload the session transcript as the agent works.
-2. **g1t agents.** Assign an issue to g1t's own agent, or many issues at
+2. **g1t's agent.** Assign an issue to g1t, or many issues at
    once, each to an agent of its own. g1t starts a sandbox for each
    (Cloudflare Containers), running a coding agent headless against its
    own pull request and fork.
@@ -1104,7 +1104,7 @@ tokens and SSH keys remain for git itself.
 | `services/work` | Rust | Worker + D1 | Issues, pull requests, comments, sessions; later a Durable Object per repo for the landing queue and live state |
 | `services/billing` | Rust | Worker + D1 + Stripe | Each workspace's agent credit: payments, the ledger of every run, and the gate on starting one |
 | `services/events` | Rust | Worker + Queues + D1 | The event bus: durable log, and one queue per subscribing service |
-| `services/runner`, `crates/runner` | TypeScript, Rust | Worker + Containers | Starts a sandbox per g1t agent; the program inside runs the agent harness and reports through the public API |
+| `services/runner`, `crates/runner` | TypeScript, Rust | Worker + Containers | Starts a sandbox per g1t run; the program inside runs the agent harness and reports through the public API |
 | `services/og` | TypeScript | Worker + Cache API | Social cards at `og.g1t.sh`: one PNG per page of the site and the docs (satori and resvg), looked up as an anonymous visitor, so nothing private appears on one |
 | `apps/web` | TypeScript | Worker | Server-rendered site. Holds no data; calls services over RPC. |
 | `apps/docs` | TypeScript | Worker (static) | Documentation and the API explorer |

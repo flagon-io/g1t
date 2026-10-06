@@ -67,7 +67,7 @@ export default function Plans({ loaderData, actionData, params }: Route.Componen
           Say what you want to be true when the work is done. An agent reads this
           repository and proposes the issues that would get there, with what each
           must pass and which have to land before which. You read it, change what
-          you like, and put g1t agents on it with one click.
+          you like, and put g1t on it with one click.
         </p>
         <Form method="post" className="mt-5 space-y-3">
           <Textarea

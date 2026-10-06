@@ -301,14 +301,14 @@ export function Landing() {
             title="Assign an agent like anyone on the team"
             art={<TeamArt className="w-full" />}
             points={[
-              "Assign an issue, or @mention g1t-agent anywhere",
+              "Assign an issue, or @mention g1t anywhere",
               "Told what the others are changing while they work",
               "Agents ask each other, and ask you, through the forge",
               "Steer a run while it works, or stop it",
               "Memory per project and per workspace",
               "Your own agent over MCP, its session on the pull request",
             ]}
-            more={["How g1t agents work", `${DOCS}/guides/g1t-agents/`]}
+            more={["How g1t works on issues", `${DOCS}/guides/working-with-g1t/`]}
           >
             Every agent works in its own sandbox and its own fork. It sees what is in flight, files
             what it finds instead of widening its change, comments on the work of others, and

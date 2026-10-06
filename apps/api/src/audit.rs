@@ -316,7 +316,7 @@ mod tests {
             kind: PrincipalKind::Agent,
             acting: Some(Box::new(Acting {
                 credential_id: "tok_1".to_owned(),
-                agent: "g1t-agent".to_owned(),
+                agent: "g1t".to_owned(),
                 on_behalf_of: Principal::default(),
                 scope: AgentScope {
                     repo: RepoPath {

@@ -30,7 +30,7 @@ export type User = {
    */
   avatar?: string;
   /**
-   * Set on an agent resolved from its token: who it acts for ("g1t-agent
+   * Set on an agent resolved from its token: who it acts for ("g1t
    * on behalf of syntaqx"), with which credential, and what it may do.
    */
   acting?: Acting;
@@ -590,7 +590,7 @@ export interface IdentityApi extends AccessClient {
   updateAccessToken(user: User, id: string, grant: TokenGrant): Promise<Result<AccessToken>>;
   /**
    * A token for a g1t agent working for `onBehalfOf`: it acts as
-   * `g1t-agent`, in `scope.repo` only, and only for `scope.operations`.
+   * `g1t`, in `scope.repo` only, and only for `scope.operations`.
    */
   createAgentToken(
     onBehalfOf: User,

@@ -268,7 +268,7 @@ fn title(op: Op) -> &'static str {
         Op::UpdateIssue => "Update an issue",
         Op::CloseIssue => "Close an issue",
         Op::ReopenIssue => "Reopen an issue",
-        Op::AssignIssue => "Assign an issue to the g1t agent",
+        Op::AssignIssue => "Assign an issue to g1t",
         Op::Delegate => "Put an agent on it",
         Op::PlanWork => "Plan work",
         Op::GetPlan => "Get a plan",

@@ -53,7 +53,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   } as const;
 }
 
-/** Assigns each selected issue to a g1t agent of its own. */
+/** Assigns each selected issue to g1t, one run of its own each. */
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
@@ -135,11 +135,11 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
           <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-accent/30 bg-accent/5 px-4 py-2.5">
             <Sparkles size={15} className="shrink-0 text-accent" />
             <p className="min-w-0 grow text-sm text-muted">
-              Tick the issues to hand over. Each gets a g1t agent of its own,
+              Tick the issues to hand over. g1t takes each one in a run of its own,
               and they all work at once.
             </p>
             <Button variant="accent" type="submit" disabled={assigning}>
-              {assigning ? "Starting sandboxes…" : "Assign to g1t agent"}
+              {assigning ? "Starting sandboxes…" : "Assign to g1t"}
             </Button>
             {loaderData.computeNote && (
               <div className="basis-full">
@@ -210,7 +210,7 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
                       )}
                       {issue.state === "open" && issue.queued && !issue.agent && (
                         <span className="rounded-full border border-line px-2 py-px text-xs text-muted">
-                          queued for g1t-agent
+                          queued for g1t
                           {issue.blockedBy.length > 0 &&
                             `, after ${issue.blockedBy.map((number) => `#${number}`).join(", ")}`}
                         </span>

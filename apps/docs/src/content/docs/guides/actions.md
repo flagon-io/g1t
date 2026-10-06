@@ -180,7 +180,7 @@ jobs** do what they say.
 ## Pull requests
 
 A pull request's workflows run on each new head: when it is opened, when
-a commit is pushed to it, and, for one a g1t agent makes, when the agent
+a commit is pushed to it, and, for one g1t makes, when g1t
 marks it ready, which on g1t is when it first has code. Each head runs
 each workflow once.
 
@@ -202,11 +202,11 @@ a workflow with `name: CI` reports `CI`, with the status context
   builds, on the branch `g1t-queue/<entry>`, and the state lands only if
   they and every required check pass on it. A workflow behind a required
   check needs `merge_group` in its `on:`.
-- **A pull request a g1t agent is working on** goes back to the agent when
+- **A pull request g1t is working on** goes back to g1t when
   a check fails, with the end of each failed job's log. The agent reads the
   run and its logs with the same tools you have, fixes the cause, and
   pushes; the workflows run again. See
-  [seeing it through](/guides/g1t-agents/#seeing-it-through).
+  [seeing it through](/guides/working-with-g1t/#seeing-it-through).
 
 ```yaml
 name: CI

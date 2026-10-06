@@ -20,7 +20,7 @@ leaderboard positions.
   labeled findings are MIT, in one repository). It scores the output shape
   our reviewer already produces: file, line, message. Its judge runs
   locally with our own key. It gives us the first quality number for
-  `@g1t-agent review` that is not anecdote.
+  `@g1t review` that is not anecdote.
 - **Harness status.** The code skeleton is complete in
   `bench/reviewbench/`. The image builds from the production sandbox base
   image. The prompt is generated from `crates/runner/src/review.rs`, and
@@ -80,7 +80,7 @@ Sources:
 - `services/work/src/reviews.rs` and `confidence.rs`;
 - `services/runner/wrangler.jsonc`.
 
-**Trigger.** A person asks for a review (`@g1t-agent review`, or the API).
+**Trigger.** A person asks for a review (`@g1t review`, or the API).
 g1t also starts one by itself, from lifecycle and wait queues (`index.ts`
 around line 1870). Admission and guardrails apply. The default time cap
 for a review is 30 minutes, the cost cap comes from the workspace plan, and
@@ -141,7 +141,7 @@ default.
 - Line comments: empty bodies dropped; **comments on files the PR does
   not change are dropped**; at most **30** comments; one `line` (no
   ranges).
-- Posted as `g1t-agent`, with a `review.completed` event.
+- Posted as `g1t`, with a `review.completed` event.
 - Confidence (`confidence.rs`) uses the result: `request_changes` sinks
   the change's confidence; `approve` with 3 or more comments costs a
   point; no review costs a point.
@@ -360,7 +360,7 @@ category.
   user-facing copy compares to no one.
 
 **Online, the metric that matters.** Track the *addressed rate* of
-`g1t-agent` line comments: the share followed by a commit touching those
+`g1t` line comments: the share followed by a commit touching those
 lines before merge, or resolved by a person. Also track the share of
 `request_changes` verdicts that led to a revision. g1t has the comments,
 the commits and the review runs, so this is a query, not a model call. Put

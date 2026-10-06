@@ -115,7 +115,7 @@ export type DelegateResult = { error: string; notStarted: null } | { error: null
 
 /**
  * "Put an agent on it": opens an issue in one of the viewer's projects and
- * puts g1t-agent on it, then lands on the issue. When the agent could not
+ * puts g1t on it, then lands on the issue. When the agent could not
  * start, the issue is still open, and the composer says why and where to
  * fix it.
  */

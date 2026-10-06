@@ -30,7 +30,7 @@ const MAX_REVIEW_CHARS = 20_000; // reviews.rs
 
 const env = (name, fallback) => process.env[name] ?? fallback;
 const out = env("RB_OUT", "/work/out/findings.json");
-const agent = env("RB_AGENT", "g1t-agent");
+const agent = env("RB_AGENT", "g1t");
 const pr = JSON.parse(readFileSync(env("RB_PR_JSON", "/work/pr/pr.json"), "utf8"));
 const model = env("RB_CONFIG_MODEL", env("ANTHROPIC_MODEL", "claude-sonnet-5-5"));
 const budget = Number(env("RB_CONFIG_BUDGET_USD", "5"));

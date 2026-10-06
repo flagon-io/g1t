@@ -1,5 +1,5 @@
 /**
- * `@g1t-agent` in comments, and rules that put g1t-agent to work by
+ * `@g1t` in comments, and rules that put g1t to work by
  * itself. Kept by the work service; mirrors `services/work/src/mentions.rs`.
  */
 import type { ServiceBinding } from "./clients";
@@ -9,12 +9,12 @@ import type { Result } from "./result";
 import type { LifecycleJob, PullStatus } from "./work";
 
 /** How g1t's agent is mentioned in a comment. */
-export const AGENT_HANDLE = "@g1t-agent";
+export const AGENT_HANDLE = "@g1t";
 
-/** What someone who mentioned `@g1t-agent` wants. */
+/** What someone who mentioned `@g1t` wants. */
 export type MentionIntent = "work" | "question" | "review";
 
-/** What the runner needs to act on a comment that mentioned `@g1t-agent`. */
+/** What the runner needs to act on a comment that mentioned `@g1t`. */
 export type MentionJob = {
   commentId: string;
   /** Who wrote it, with the memberships they had then. */
@@ -29,13 +29,13 @@ export type MentionJob = {
   defaultBranch: string;
   /** Set when the comment is on an issue: whether it is still open. */
   issueOpen: boolean | null;
-  /** On an issue: the pull request g1t-agent is already working on for it, if any. */
+  /** On an issue: the pull request g1t is already working on for it, if any. */
   workingPull: number | null;
   /** Set when the comment is on a pull request. */
   pull: {
     id: string;
     status: PullStatus;
-    /** Made by g1t-agent, which g1t sees through. */
+    /** Made by g1t, which sees it through. */
     agentAuthored: boolean;
     /** Where its change is: its fork, or the repository itself. */
     source: RepoPath;
@@ -47,9 +47,9 @@ export type MentionJob = {
   } | null;
 };
 
-/** A repository's rules for putting g1t-agent to work by itself. */
+/** A repository's rules for putting g1t to work by itself. */
 export type AgentRules = {
-  /** When an issue is given this label, g1t-agent takes it. */
+  /** When an issue is given this label, g1t takes it. */
   label: string | null;
   updatedBy: string | null;
   updatedAt: string | null;
@@ -60,7 +60,7 @@ export interface MentionsApi {
   takeMention(commentId: string): Promise<MentionJob | null>;
   /** For the runner: sends the author of a g1t pull request back to address the comment. */
   mentionRevision(commentId: string): Promise<Result<LifecycleJob>>;
-  /** For the runner: says something in the mention's thread as g1t-agent, once. */
+  /** For the runner: says something in the mention's thread as g1t, once. */
   replyMention(commentId: string, body: string): Promise<boolean>;
   getAgentRules(repo: RepoPath, viewer: Viewer): Promise<Result<AgentRules>>;
   /** Members only. A null or empty label turns the rule off. */

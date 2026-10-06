@@ -70,7 +70,7 @@ const SOURCES: { id: Source | "mirror"; title: string; text: string; icon: React
   {
     id: "mirror",
     title: "Mirror GitHub, GitLab or Bitbucket",
-    text: "Keep the code where it is and work on it with g1t's agents. Deployments are yours to turn on.",
+    text: "Keep the code where it is and work on it with g1t. Deployments are yours to turn on.",
     icon: <GitBranch />,
     soon: true,
   },

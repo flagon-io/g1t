@@ -97,7 +97,7 @@ export default function WorkspaceAudit({ loaderData }: Route.ComponentProps) {
       <Form method="get" className="mt-6 rounded-xl border border-line bg-surface p-4">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <FilterField label="Actor" name="actor" value={filters.actor} placeholder="A person, or whom an agent worked for" />
-          <FilterField label="Agent" name="agent" value={filters.agent} placeholder="g1t-agent" />
+          <FilterField label="Agent" name="agent" value={filters.agent} placeholder="g1t" />
           <FilterField label="Action" name="action" value={filters.action} placeholder="git.push" list="audit-actions" />
           <FilterField label="Project" name="project" value={filters.project} placeholder="Any" list="audit-projects" />
           <Field label="Outcome">

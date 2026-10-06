@@ -13,7 +13,7 @@ const ROLE: Record<RepoInstructions["files"][number]["role"], string> = {
 };
 
 /**
- * The files every g1t agent run in a project reads as the repository's
+ * The files every run of g1t in a project reads as the repository's
  * instructions, as they are on its default branch: which, what they say,
  * when they last changed, and where to change them.
  */

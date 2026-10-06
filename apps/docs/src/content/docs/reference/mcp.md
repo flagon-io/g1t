@@ -236,7 +236,7 @@ out.
 | [`create`](/reference/api/repositories/create-repo/) | Create a repository in one of your workspaces, empty or as a copy of a public git repository (`import_url`). `workspace` may be left out if you belong to exactly one. | `name` | `repo:write` |
 | [`update`](/reference/api/repositories/update-repo/) | Change its `description`, `website`, `topics` and `default_branch`, whether its default branch is `protected`, and whether it is `private`. Maintain role; `private` and `default_branch` need Admin. | `repo` | `repo:write` |
 | [`get_settings`](/reference/api/repositories/get-repo-settings/) | How it handles pull requests: the default branch's required checks, approvals, bypassing checks, being up to date, the merge queue, and how g1t's agents are reviewed, revised and merged. | `repo` | `repo:read` |
-| [`update_settings`](/reference/api/repositories/update-repo-settings/) | Change those settings, including `hold_low_confidence`, which holds a g1t agent's [low-confidence](/guides/g1t-agents/#how-sure-the-agent-is) change for a person. Only the fields given change; `required_checks` replaces the whole list. Maintain role. | `repo` | `repo:write` |
+| [`update_settings`](/reference/api/repositories/update-repo-settings/) | Change those settings, including `hold_low_confidence`, which holds g1t's [low-confidence](/guides/working-with-g1t/#how-sure-the-agent-is) change for a person. Only the fields given change; `required_checks` replaces the whole list. Maintain role. | `repo` | `repo:write` |
 | [`check_names`](/reference/api/repositories/list-check-names/) | The check names reported on its commits in the last 30 days, most recent first, each with `name`, `events` and `last_seen`: the names `required_checks` takes. | `repo` | `repo:read` |
 | [`list_labels`](/reference/api/issues/list-labels/) | The labels available on its issues. | `repo` | `repo:read` |
 | [`list_events`](/reference/api/repositories/list-events/) | Its timeline, newest first. `before` pages back. | `repo` | `repo:read` |
@@ -259,7 +259,7 @@ out.
 `allow_ignoring_checks`, `require_up_to_date`, `agent_review`,
 `max_revisions`, `auto_merge`, `merge_queue` and `hold_low_confidence`. See
 [required status checks](/guides/pull-requests/#required-status-checks) and
-[what a repository can ask for](/guides/g1t-agents/#what-a-repository-can-ask-for).
+[what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for).
 `update` with `private` or `default_branch` also needs `repo:admin`.
 
 See [managing a repository](/guides/managing-repositories/) for what each
@@ -281,7 +281,7 @@ requests already made for it. Issues and pull requests share numbers, so
 | [`close`](/reference/api/issues/close-issue/) | Close it as `completed` or `not_planned`. | `repo`, `number` | `issues:write` |
 | [`reopen`](/reference/api/issues/reopen-issue/) | Reopen a closed issue. | `repo`, `number` | `issues:write` |
 | [`comment`](/reference/api/issues/add-comment/) | Comment on an issue or a pull request; with `path` and `line`, on one line of a pull request's change. | `repo`, `number`, `body` | `issues:write` |
-| [`import`](/reference/api/integrations/import-issue/) | Open an issue from a ticket, linked to it. `assign` puts a g1t agent on it. | `repo`, `reference` | `issues:write` |
+| [`import`](/reference/api/integrations/import-issue/) | Open an issue from a ticket, linked to it. `assign` assigns it to g1t. | `repo`, `reference` | `issues:write` |
 
 `import` with `assign` also needs `agents:run`, since it puts an agent to
 work.
@@ -313,18 +313,18 @@ tool entries. See [sessions and why-blame](/guides/why-blame/) and the
 
 ## `agent`
 
-Put [g1t agents](/guides/g1t-agents/) to work and talk to them. One agent
+Put [g1t](/guides/working-with-g1t/) to work and talk to it. One run
 works on each issue; to do more at once, use more issues. Starting an agent
 uses the workspace's money. `delegate` also needs `issues:write`, since it
 opens the issue.
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
-| [`delegate`](/reference/api/issues/delegate/) | Put an agent on something in one step: open an issue, with `body`, and assign it to the g1t agent at once. Write role; nothing is opened without it. The issue opens even when the agent cannot start: `agent.status` is `started`, `queued` or `not_started`, with `agent.code`, `agent.message` and `agent.fix_url` saying why and where to fix it. `checks` is deprecated, as for `issue` `create`. See [put an agent on it](/guides/g1t-agents/#put-an-agent-on-it-in-one-step). | `repo`, `title` | `agents:run` |
-| [`assign`](/reference/api/issues/assign-issue/) | Assign an existing issue to the [g1t agent](/guides/g1t-agents/), which opens a pull request and sees it through. Preview. | `repo`, `number` | `agents:run` |
-| [`message`](/reference/api/pull-requests/message-agent/) | Send the agent working on a pull request a message, received at its next step. A g1t agent sends a `question` or a `handoff`, with its own pull request as `from_number`. | `repo`, `number`, `body` | `agents:run` |
+| [`delegate`](/reference/api/issues/delegate/) | Put an agent on something in one step: open an issue, with `body`, and assign it to g1t at once. Write role; nothing is opened without it. The issue opens even when the agent cannot start: `agent.status` is `started`, `queued` or `not_started`, with `agent.code`, `agent.message` and `agent.fix_url` saying why and where to fix it. `checks` is deprecated, as for `issue` `create`. See [put an agent on it](/guides/working-with-g1t/#put-an-agent-on-it-in-one-step). | `repo`, `title` | `agents:run` |
+| [`assign`](/reference/api/issues/assign-issue/) | Assign an existing issue to [g1t](/guides/working-with-g1t/), which opens a pull request and sees it through. Preview. | `repo`, `number` | `agents:run` |
+| [`message`](/reference/api/pull-requests/message-agent/) | Send the agent working on a pull request a message, received at its next step. g1t sends a `question` or a `handoff`, with its own pull request as `from_number`. | `repo`, `number`, `body` | `agents:run` |
 | [`answer`](/reference/api/pull-requests/answer-message/) | Answer a question or a handoff by the message's id; `decline` a handoff that is not yours. The answer reaches the asking agent at its next step. | `repo`, `id`, `body` | `agents:run` |
-| [`take_messages`](/reference/api/pull-requests/take-messages/) | For a g1t agent at work: the messages it has not seen yet, each returned once. | `repo`, `number` | `agents:run` |
+| [`take_messages`](/reference/api/pull-requests/take-messages/) | For g1t at work: the messages it has not seen yet, each returned once. | `repo`, `number` | `agents:run` |
 
 See [talk to agents](/guides/talking-to-agents/).
 
@@ -338,7 +338,7 @@ for each and their dependencies, and nothing opens until you apply the plan. `ap
 | --- | --- | --- | --- |
 | [`create`](/reference/api/plans/plan-work/) | Have an agent turn an outcome into proposed issues, each with what done means (`done`) and its dependencies. Returns the plan's id at once. Write role. | `repo`, `brief` | `agents:run` |
 | [`get`](/reference/api/plans/get-plan/) | The plan: its status (`planning`, `ready`, `failed` or `applied`), the issues it proposes, and once applied, where each stands. | `repo`, `plan` | `issues:read` |
-| [`apply`](/reference/api/plans/apply-plan/) | Open its issues. `assign` puts g1t agents on them in dependency order; `keep` opens only some, by position from 1. | `repo`, `plan` | `issues:write` |
+| [`apply`](/reference/api/plans/apply-plan/) | Open its issues. `assign` assigns them to g1t in dependency order; `keep` opens only some, by position from 1. | `repo`, `plan` | `issues:write` |
 
 ## `memory`
 
@@ -473,10 +473,10 @@ use the email and invite actions.
 | [`decline_repository_invitation`](/reference/api/access/decline-repo-invitation/) | Decline one. | `id` | `account:write` |
 
 
-## What a g1t agent can use
+## What g1t can use
 
-A g1t agent works with a [run credential](/guides/g1t-agents/#credentials):
-a token bound to its run and its own repository, acting as `g1t-agent` on
+g1t works with a [run credential](/guides/working-with-g1t/#credentials):
+a token bound to its run and its own repository, acting as `g1t` on
 behalf of the person who started the work, and only while that person is
 still a member of the workspace or has a role on one of its repositories. It
 has that person's role on its repository, but never more than Write. Which

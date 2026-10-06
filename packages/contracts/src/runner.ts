@@ -79,7 +79,7 @@ export interface RunnerApi {
   run(actor: User, repo: RepoPath, issue: number, input?: RunHostedInput): Promise<Result<Pull>>;
   /**
    * Puts an agent on something in one step: opens an issue and assigns it
-   * to g1t-agent. Refused, with nothing opened, unless `actor` may put
+   * to g1t. Refused, with nothing opened, unless `actor` may put
    * agents to work in `repo` (Write). Once opened, the issue stays whatever
    * becomes of the agent: `agent` says whether it started, waits for a
    * free slot, or did not start, why and where to fix it.
@@ -111,7 +111,7 @@ export interface RunnerApi {
   update(actor: User, repo: RepoPath, number: number): Promise<Result<boolean>>;
   /**
    * Has a g1t agent review a pull request: line comments, a summary and a
-   * verdict, posted as `g1t-agent`.
+   * verdict, posted as `g1t`.
    */
   review(actor: User, repo: RepoPath, number: number): Promise<Result<boolean>>;
   /**

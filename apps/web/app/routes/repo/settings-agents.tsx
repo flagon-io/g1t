@@ -40,8 +40,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   return {
     error: null,
     notice: saved.value.label
-      ? `Issues labelled ${saved.value.label} now go to g1t-agent.`
-      : "Labels no longer put g1t-agent to work.",
+      ? `Issues labelled ${saved.value.label} now go to g1t.`
+      : "Labels no longer put g1t to work.",
   };
 }
 
@@ -64,7 +64,7 @@ export default function AgentSettings({ loaderData, actionData, params }: Route.
             Label rule
           </h2>
           <p className="mt-1 text-sm text-muted">
-            When a member gives an issue this label, g1t-agent takes it, as if they had assigned it. It starts as soon as
+            When a member gives an issue this label, g1t takes it, as if they had assigned it. It starts as soon as
             the project has room for another agent and nothing the issue depends on is still open.
           </p>
         </div>
@@ -105,16 +105,16 @@ export default function AgentSettings({ loaderData, actionData, params }: Route.
         </div>
         <ul className="space-y-2 text-sm text-muted">
           <li>
-            <span className="font-mono text-fg">{AGENT_HANDLE} take this</span> on an issue assigns it to g1t-agent. A
+            <span className="font-mono text-fg">{AGENT_HANDLE} take this</span> on an issue assigns it to g1t. A
             question gets an answer in the thread instead.
           </li>
           <li>
-            On a pull request g1t-agent made, a request sends it back to make the change. On any pull request,{" "}
+            On a pull request g1t made, a request sends it back to make the change. On any pull request,{" "}
             <span className="font-mono text-fg">{AGENT_HANDLE} review</span> starts a review and a question is answered.
           </li>
           <li>
             Mentions in code, in quotes or from people outside the workspace start nothing. Each comment starts one run at
-            most, and g1t-agent replies saying what it did, or why it could not.
+            most, and g1t replies saying what it did, or why it could not.
           </li>
         </ul>
       </section>

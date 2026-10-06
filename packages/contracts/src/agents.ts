@@ -58,7 +58,7 @@ export type AgentRun = {
   number: number | null;
   title: string | null;
   kind: RunKind;
-  /** `g1t-agent`, or `g1t` for a sandbox that runs commands. */
+  /** `g1t`, for its own agent and for a sandbox that runs commands. */
   agent: string;
   /** Members only. */
   model: string | null;
@@ -219,7 +219,7 @@ export interface AgentsApi {
   issueSpend(repo: RepoPath, number: number): Promise<Result<IssueSpend>>;
   /** For the runner: gives back a lifecycle step it could not start for want of a slot. */
   waitForSlot(pullId: string, reason: string): Promise<boolean>;
-  /** For the runner: a comment from g1t-agent on an issue or pull request. */
+  /** For the runner: a comment from g1t on an issue or pull request. */
   agentComment(repo: RepoPath, number: number, body: string): Promise<boolean>;
   /** For the runner: a run a person asked for, waiting for a slot. */
   addWait(workspace: string, kind: string, payload: unknown): Promise<Result<boolean>>;

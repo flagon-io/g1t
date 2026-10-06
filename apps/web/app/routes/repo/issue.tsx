@@ -36,6 +36,7 @@ import {
   plainText,
 } from "../../components/work";
 import { notFound } from "../../lib/not-found.server";
+import { openedBy } from "../../lib/opened-by";
 import { computeNoteFor } from "../../lib/compute.server";
 import { identity, integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
@@ -75,7 +76,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     roleIn(viewer, params.owner) ? identity.listMembers(params.owner, viewer) : null,
     // What it is tied to outside g1t. Shown only once the issue is known visible.
     integrations.links(path, number).catch(() => []),
-    // Before a member assigns g1t-agent: whether the workspace's plan lets it start.
+    // Before a member assigns g1t: whether the workspace's plan lets it start.
     access.then(({ can }) => (can.run ? computeNoteFor(params.owner, "agent") : null)),
   ]);
   if (!found.ok) {
@@ -177,6 +178,7 @@ function outcome(pull: Pull): string {
 
 function PullRow({ pull, base }: { pull: Pull; base: string }) {
   const merged = pull.status === "merged";
+  const opener = openedBy(pull);
   return (
     <li>
       <Link
@@ -212,8 +214,14 @@ function PullRow({ pull, base }: { pull: Pull; base: string }) {
             <Bot size={12} />
             {pull.agent}
           </span>
-          {pull.runtime === "hosted" && <span className="text-faint">on g1t</span>}
-          <span className="text-faint">· opened by {pull.author.username}</span>
+          {opener.requestedBy ? (
+            <span className="text-faint">· requested by {opener.requestedBy}</span>
+          ) : (
+            <>
+              {pull.runtime === "hosted" && <span className="text-faint">on g1t</span>}
+              <span className="text-faint">· opened by {opener.name}</span>
+            </>
+          )}
         </p>
         {pull.body && (
           <p className="mt-2 line-clamp-2 text-sm text-muted">{plainText(pull.body)}</p>
@@ -240,7 +248,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
     .reverse()
     .find(
       (pull) =>
-        pull.agent === "g1t-agent" &&
+        pull.agent === "g1t" &&
         pull.runtime === "hosted" &&
         (pull.status === "draft" || pull.status === "open"),
     );
@@ -324,7 +332,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
         <div className="mt-3">
           {pulls.length === 0 ? (
             <EmptyState title="Nobody has worked on this yet">
-              Put g1t agents on it, or point your own agent at{" "}
+              Put g1t on it, or point your own agent at{" "}
               <code className="font-mono">{reference}</code>.
             </EmptyState>
           ) : (
@@ -406,7 +414,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                 >
                   <Sparkles size={15} className="shrink-0 text-accent" />
                   <span className="min-w-0 grow">
-                    <span className="block font-mono text-xs font-medium">g1t-agent</span>
+                    <span className="block font-mono text-xs font-medium">g1t</span>
                     <span className="block truncate text-xs text-muted">
                       {assigned.status === "draft"
                         ? "Making the change"
@@ -429,7 +437,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
               <li className="flex items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-2">
                 <Sparkles size={15} className="shrink-0 text-faint" />
                 <span className="min-w-0 grow">
-                  <span className="block font-mono text-xs font-medium">g1t-agent</span>
+                  <span className="block font-mono text-xs font-medium">g1t</span>
                   <span className="block text-xs text-muted">
                     {issue.blockedBy.length > 0
                       ? "Queued. Starts when what this depends on has merged."
@@ -438,7 +446,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                 </span>
               </li>
             )}
-            {!open && resolver && resolver.agent === "g1t-agent" && (
+            {!open && resolver && resolver.agent === "g1t" && (
               <li>
                 <Link
                   to={`${base}/pull/${resolver.number}`}
@@ -446,7 +454,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                 >
                   <Sparkles size={15} className="shrink-0 text-merged" />
                   <span className="min-w-0 grow">
-                    <span className="block font-mono text-xs font-medium">g1t-agent</span>
+                    <span className="block font-mono text-xs font-medium">g1t</span>
                     <span className="block truncate text-xs text-muted">
                       Resolved it with #{resolver.number}
                     </span>
@@ -456,7 +464,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
             )}
             {issue.assignees.length === 0 &&
               !(open && (assigned || issue.queued)) &&
-              !(!open && resolver?.agent === "g1t-agent") && (
+              !(!open && resolver?.agent === "g1t") && (
                 <li className="px-1 text-xs text-faint">No one yet.</li>
               )}
           </ul>
@@ -484,7 +492,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
               <div className="*:w-full">
                 <Button variant="accent" type="submit" disabled={starting}>
                   <Sparkles size={14} />
-                  {starting ? "Starting a sandbox…" : "Assign to g1t agent"}
+                  {starting ? "Starting a sandbox…" : "Assign to g1t"}
                 </Button>
               </div>
               <details>
@@ -515,10 +523,10 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
             <div className="mt-3 rounded-lg border border-dashed border-line p-3 text-sm">
               <p className="flex items-center gap-1.5 font-medium">
                 <Sparkles size={14} className="text-accent" />
-                g1t agent
+                g1t
               </p>
               <p className="mt-1 text-xs text-muted">
-                Connect a model provider and g1t's agent can take this issue: it opens a pull request and sees it
+                Connect a model provider and g1t can take this issue: it opens a pull request and sees it
                 through checks, review and fixes. Agents run on a paid workspace, or on the free trial.
               </p>
               <Link

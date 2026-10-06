@@ -51,8 +51,8 @@ export default function Sessions({ loaderData, params }: Route.ComponentProps) {
       </h2>
       <p className="mt-1.5 max-w-2xl text-sm text-muted">
         Every recorded session on this project: the prompt an agent was given, what it said, the
-        tools it ran and what came back, for each pull request. g1t's agents record theirs as they
-        work; your own agents record theirs with record_session.
+        tools it ran and what came back, for each pull request. g1t records its own as it
+        works; your own agents record theirs with record_session.
       </p>
 
       {/* Each choice applies at once; the number applies on Enter. */}

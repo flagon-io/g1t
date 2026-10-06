@@ -68,7 +68,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     const named = await identity
       .usernames([...new Set(activity.flatMap((event) => (event.actor ? [event.actor] : [])))])
       .catch(() => ({}) as Record<string, string>);
-    const known: Record<string, string> = { ...named, usr_g1t_agent: "g1t-agent", g1t_policy: "g1t" };
+    const known: Record<string, string> = { ...named, usr_g1t_agent: "g1t", g1t_policy: "g1t" };
     activity = activity.map((event) => ({ ...event, actor: event.actor ? (known[event.actor] ?? event.actor) : null }));
   }
   return { plan: found, costMicros, activity, can: access.can };
@@ -272,7 +272,7 @@ export default function PlanPage({ loaderData, actionData, params }: Route.Compo
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <Button variant="accent" type="submit" name="action" value="assign" disabled={applying || !loaderData.can.run} title={whyNot(loaderData.can, "run")}>
                 <Sparkles size={15} />
-                {applying ? "Opening issues…" : "Open these and assign g1t agents"}
+                {applying ? "Opening issues…" : "Open these and assign g1t"}
               </Button>
               <Button variant="quiet" type="submit" name="action" value="open" disabled={applying || !loaderData.can.run} title={whyNot(loaderData.can, "run")}>
                 Only open the issues

@@ -56,10 +56,7 @@ use serde_json::{Value, json};
 
 use crate::{WORKDIR, auth_option, env, git};
 
-/// g1t's own name and address on the commits it makes:
-/// `g1t_contracts::system::{USERNAME, EMAIL}`.
-const AUTHOR_NAME: &str = "g1t";
-const AUTHOR_EMAIL: &str = "g1t@users.noreply.g1t.sh";
+use crate::{AUTHOR_EMAIL, AUTHOR_NAME};
 /// Every security update's branch starts with this:
 /// `g1t_contracts::security::UPDATE_BRANCH_PREFIX`.
 const BRANCH_PREFIX: &str = "g1t/security/";

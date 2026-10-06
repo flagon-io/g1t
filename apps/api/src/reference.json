@@ -751,7 +751,7 @@
 			"updated_by": "syntaqx",
 			"updated_at": "2026-10-04T16:20:37.508Z"
 		},
-		"notes": "`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6 and `max_revisions` at most 5. See [what a repository can ask for](/guides/g1t-agents/#what-a-repository-can-ask-for). `hold_low_confidence` is on unless turned off: see [confidence](/guides/g1t-agents/#how-sure-the-agent-is)."
+		"notes": "`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6 and `max_revisions` at most 5. See [what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for). `hold_low_confidence` is on unless turned off: see [confidence](/guides/working-with-g1t/#how-sure-the-agent-is)."
 	},
 	"list_check_names": {
 		"response": [
@@ -1137,7 +1137,7 @@
 			"issue": 12,
 			"title": "Greeting should name the caller",
 			"body": null,
-			"agent": "g1t-agent",
+			"agent": "g1t",
 			"runtime": "hosted",
 			"status": "draft",
 			"fork": {
@@ -1166,7 +1166,7 @@
 			"updated_at": "2026-10-01T18:20:02.117Z",
 			"confidence": null
 		},
-		"notes": "The response is the pull request the g1t agent opened, still a draft. Follow it with [get a pull request](/reference/api/pull-requests/get-pull-request/): `lifecycle` says what the agent is doing."
+		"notes": "The response is the pull request g1t opened, still a draft. Follow it with [get a pull request](/reference/api/pull-requests/get-pull-request/): `lifecycle` says what the agent is doing."
 	},
 	"delegate": {
 		"request": {
@@ -1199,7 +1199,7 @@
 				"assignees": [],
 				"blocked_by": [],
 				"queued": false,
-				"agent": "g1t-agent"
+				"agent": "g1t"
 			},
 			"pull": {
 				"id": "pr_01m4a2c9b6e0h4m8q2t6x0a4d8",
@@ -1208,7 +1208,7 @@
 				"issue": 41,
 				"title": "Retry webhooks with exponential backoff",
 				"body": null,
-				"agent": "g1t-agent",
+				"agent": "g1t",
 				"runtime": "hosted",
 				"status": "draft",
 				"fork": {
@@ -1244,7 +1244,7 @@
 				"fix_url": null
 			}
 		},
-		"notes": "The issue is opened whatever becomes of the agent. When the workspace's plan does not let it start, `pull` is null and `agent` says why and where to fix it, for example `{ \"status\": \"not_started\", \"code\": \"not_paid\", \"message\": \"Agents need a paid workspace. Start the $20 plan or try it with $5 of free usage after a card check: /acme/-/billing\", \"fix_url\": \"https://g1t.sh/acme/-/billing\" }`. With every agent slot busy, `status` is `queued` and it starts by itself when one frees up. See [putting an agent on something](/guides/g1t-agents/#put-an-agent-on-it-in-one-step)."
+		"notes": "The issue is opened whatever becomes of the agent. When the workspace's plan does not let it start, `pull` is null and `agent` says why and where to fix it, for example `{ \"status\": \"not_started\", \"code\": \"not_paid\", \"message\": \"Agents need a paid workspace. Start the $20 plan or try it with $5 of free usage after a card check: /acme/-/billing\", \"fix_url\": \"https://g1t.sh/acme/-/billing\" }`. With every agent slot busy, `status` is `queued` and it starts by itself when one frees up. See [putting an agent on something](/guides/working-with-g1t/#put-an-agent-on-it-in-one-step)."
 	},
 	"add_comment": {
 		"request": {
@@ -1644,7 +1644,7 @@
 				}
 			]
 		},
-		"notes": "| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `statuses` | Its checks: what each workflow run (or another tool, such as a deployment) reported on its head, as `pending`, `success`, `failure` or `error`, with a link to the run. |\n| `required_checks` | Each check the default branch requires (see [`update_repo_settings`](/reference/api/repositories/update-repo-settings/)), as it stands on the head: `success`, `failure`, `pending`, or `expected` when nothing has reported it yet. It merges only once all are `success`. |\n| `checks` | Set when the merge queue took it out, with why in `error`. Older pull requests may show a run of commands from their issue here, from before checks were workflows. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request the g1t agent is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n\n| `mergeable` | Whether it merges cleanly into its target: `clean`, `conflicting`, `checking` (being worked out) or `unknown`. Worked out ahead of time whenever it or its target moves. |\n| `conflicts` | When `mergeable` is `conflicting`, the files that conflict. Resolve them by merging the target in, or have the g1t agent do it. |\n| `earlier_checks` | Earlier records like `checks`, newest first. |\n\nChecks are the repository's workflows: they run on `pull_request` events when it is opened, marked ready and pushed to. Read why one failed with [`get_workflow_run`](/reference/api/actions/get-workflow-run/) and [`get_job_logs`](/reference/api/actions/get-job-logs/)."
+		"notes": "| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `statuses` | Its checks: what each workflow run (or another tool, such as a deployment) reported on its head, as `pending`, `success`, `failure` or `error`, with a link to the run. |\n| `required_checks` | Each check the default branch requires (see [`update_repo_settings`](/reference/api/repositories/update-repo-settings/)), as it stands on the head: `success`, `failure`, `pending`, or `expected` when nothing has reported it yet. It merges only once all are `success`. |\n| `checks` | Set when the merge queue took it out, with why in `error`. Older pull requests may show a run of commands from their issue here, from before checks were workflows. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request g1t is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n\n| `mergeable` | Whether it merges cleanly into its target: `clean`, `conflicting`, `checking` (being worked out) or `unknown`. Worked out ahead of time whenever it or its target moves. |\n| `conflicts` | When `mergeable` is `conflicting`, the files that conflict. Resolve them by merging the target in, or have g1t do it. |\n| `earlier_checks` | Earlier records like `checks`, newest first. |\n\nChecks are the repository's workflows: they run on `pull_request` events when it is opened, marked ready and pushed to. Read why one failed with [`get_workflow_run`](/reference/api/actions/get-workflow-run/) and [`get_job_logs`](/reference/api/actions/get-job-logs/)."
 	},
 	"get_pull_request_changes": {
 		"response": {
@@ -1883,7 +1883,7 @@
 					"id": "qen_01m43khqjmeb5a1magayrnk63z",
 					"number": 11,
 					"title": "Fix trailing newline in greeting",
-					"agent": "g1t-agent",
+					"agent": "g1t",
 					"state": "landed",
 					"ahead": [],
 					"base_commit": "4b1d7e9c2a5f8e3d6c0b9a7e5d3c1b8a6f4e2d0c",
@@ -1933,7 +1933,7 @@
 		},
 		"response": {
 			"id": "msg_01m43t66tde8hs2vpxhh3v8tqw",
-			"author": "g1t-agent",
+			"author": "g1t",
 			"body": "Are you renaming greet() in src/lib.rs? I need to call it from #16.",
 			"created_at": "2026-10-01T18:58:12.301Z",
 			"delivered_at": "2026-10-01T18:58:40.117Z",
@@ -3537,7 +3537,7 @@
 				},
 				"number": 14
 			},
-			"created_by": "g1t-agent",
+			"created_by": "g1t",
 			"pinned": false,
 			"created_at": "2026-10-01T18:40:12.000Z",
 			"updated_at": "2026-10-01T18:40:12.000Z",

@@ -125,7 +125,7 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
               How many reviewers must approve before a pull request can merge. A reviewer who has since asked for
               changes blocks it, and nobody approves their own.
             </Choice>
-            <Toggle name="countAgentApprovals" on={settings.countAgentApprovals} title="A g1t agent's approval counts">
+            <Toggle name="countAgentApprovals" on={settings.countAgentApprovals} title="g1t's approval counts">
               With this off, required approvals have to come from people, and an agent's review is advice.
             </Toggle>
             <Toggle name="mergeQueue" on={settings.mergeQueue} title="Merge through a queue">
@@ -137,8 +137,8 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
           </Section>
 
           <Section
-            title="g1t agents"
-            about="What happens to a pull request a g1t agent makes, from the moment it is ready. Its checks are the same workflows, and the rules above hold."
+            title="g1t"
+            about="What happens to a pull request g1t makes, from the moment it is ready. Its checks are the same workflows, and the rules above hold."
           >
             <Toggle name="agentReview" on={settings.agentReview} title="Review by a second agent">
               A different agent reads each change and posts comments on lines, a summary and a verdict. If it asks for
@@ -161,7 +161,7 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
               still fails holds it.
             </Choice>
             <Toggle name="autoMerge" on={settings.autoMerge} title="Merge automatically when ready">
-              A g1t agent's pull request lands without anyone pressing merge once every rule above is met, its required
+              A pull request g1t made lands without anyone pressing merge once every rule above is met, its required
               checks included. With this off, it waits for a member. Pull requests from people and from other agents
               always wait.
             </Toggle>

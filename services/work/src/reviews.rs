@@ -22,10 +22,9 @@ use crate::{Work, optional_number};
 const MAX_FILES: usize = 300;
 const MAX_REVIEW_COMMENTS: usize = 30;
 const MAX_REVIEW_CHARS: usize = 20_000;
-/// The account reviews by a g1t agent are attributed to. It is not a user
-/// anyone can sign in as.
-pub(crate) const AGENT_ID: &str = "usr_g1t_agent";
-pub(crate) const AGENT_NAME: &str = "g1t-agent";
+/// Who reviews by g1t's agent are attributed to: shown as `g1t`, which
+/// nobody can register or sign in as.
+pub(crate) use g1t_contracts::identity::{AGENT_ID, AGENT_NAME};
 
 #[derive(Deserialize)]
 struct OtherRow {
@@ -298,7 +297,7 @@ impl Work {
         let signature = a
             .model
             .as_deref()
-            .map(|model| format!("\n\n_Reviewed by a g1t agent on {model}._"))
+            .map(|model| format!("\n\n_Reviewed by g1t on {model}._"))
             .unwrap_or_default();
         let summary = match &a.error {
             Some(error) => format!("The review could not be completed: {error}"),

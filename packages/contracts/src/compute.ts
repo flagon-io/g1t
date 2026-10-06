@@ -356,7 +356,7 @@ export function issueCapReached(spentMicros: number, ent: ComputeEntitlements | 
   if (!ent || ent.issueCapMicros <= 0 || alwaysPasses(ent.plan)) return null;
   if (spentMicros < ent.issueCapMicros) return null;
   const dollars = (micros: number) => `$${(micros / 1_000_000).toFixed(2)}`;
-  return `The agents on #${issue} have spent ${dollars(spentMicros)}, its cap of ${dollars(ent.issueCapMicros)}, so g1t-agent will not start on it again`;
+  return `The agents on #${issue} have spent ${dollars(spentMicros)}, its cap of ${dollars(ent.issueCapMicros)}, so g1t will not start on it again`;
 }
 
 // ---- The gate -------------------------------------------------------------------

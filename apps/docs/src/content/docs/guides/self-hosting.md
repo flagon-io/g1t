@@ -23,7 +23,7 @@ a private network, not yet for an installation on the open internet.
 | A status page of your own | Works, at `http://localhost:8788` ([below](#the-status-page)) |
 | Webhooks, integrations | Run, but scheduled retries do not (see below) |
 | Sign in with GitHub, import from GitHub | Off until you register a GitHub App of your own ([below](#sign-in-with-github-and-import-from-github)). Mirrors sync with **Sync now**: GitHub's webhook needs the REST API. |
-| g1t agents, plans, reviews by agents | Off |
+| g1t's agent: changes, plans and reviews | Off |
 | Context hub search | Off |
 | Deployments on `g1t.page` | Off |
 | Billing | Off. Nothing is charged, and no usage limit stops work. |

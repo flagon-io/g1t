@@ -29,9 +29,9 @@ Read a session on the pull request's **Session** tab, with the
 or with `GET /repos/{owner}/{name}/pulls/{number}/session?after=`. A session
 is as visible as the repository, so do not put secrets in one.
 
-### From g1t agents
+### From g1t
 
-A [g1t agent](/guides/g1t-agents/) records its whole session itself:
+[g1t](/guides/working-with-g1t/) records its whole session itself:
 
 - it opens with a note naming the model that ran, and a note of the other
   pull requests in progress it was told about;

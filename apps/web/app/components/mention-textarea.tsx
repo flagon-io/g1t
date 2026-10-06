@@ -5,7 +5,7 @@ import { AGENT_MENTION as AGENT_HANDLE, partialMention } from "../lib/mention";
 import { Textarea } from "./ui";
 
 /**
- * A comment box that offers to complete `@g1t-agent`: Tab or Enter takes
+ * A comment box that offers to complete `@g1t`: Tab or Enter takes
  * the suggestion, Escape dismisses it.
  */
 export function MentionTextarea(props: ComponentProps<"textarea">) {

@@ -18,7 +18,7 @@ export function meta(args: Route.MetaArgs) {
 
 const DOCS: [string, string][] = [
   ["Quickstart", "https://docs.g1t.sh/quickstart/"],
-  ["g1t agents", "https://docs.g1t.sh/guides/g1t-agents/"],
+  ["Working with g1t", "https://docs.g1t.sh/guides/working-with-g1t/"],
   ["Git", "https://docs.g1t.sh/guides/git/"],
   ["Accounts and sign-in", "https://docs.g1t.sh/guides/authentication/"],
   ["Usage and billing", "https://docs.g1t.sh/guides/usage-and-billing/"],

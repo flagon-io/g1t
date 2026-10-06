@@ -35,7 +35,8 @@ ones you belong to.
 Usernames and workspaces share one set of names, so a name means the same
 thing wherever it appears. Your username is reserved for you: only you can
 create a workspace with that name, and nobody can register a username that
-is already a workspace.
+is already a workspace. The names `g1t` and `g1t-agent` belong to
+[g1t's agent](/guides/working-with-g1t/), and nobody can register them.
 
 ## Display name, slug and icon
 
@@ -211,7 +212,7 @@ and a repository made in it at an old address ends that address's redirect.
 
 | Role | Can |
 | --- | --- |
-| Member | Create repositories, see the workspace's usage and billing, and get the workspace's [base permission](/guides/access-and-roles/#the-base-permission) on every repository in it: Write unless an owner changes it, which is enough to push, manage issues, merge pull requests, plan work and put g1t agents to work. |
+| Member | Create repositories, see the workspace's usage and billing, and get the workspace's [base permission](/guides/access-and-roles/#the-base-permission) on every repository in it: Write unless an owner changes it, which is enough to push, manage issues, merge pull requests, plan work and put g1t to work. |
 | Owner | Everything a member can, and manage members, the base permission, the workspace's access tokens, its details, and billing: the plan, card checks, prepayment and limits. Admin on every repository, and the only ones who can transfer and delete them; see [access and roles](/guides/access-and-roles/). |
 
 Whoever creates a workspace is its owner. An owner adds people on the
@@ -254,7 +255,7 @@ The sidebar is one list, in groups: **Mission control**, the workspace's
 across them (**Agent fleet**, **Context**, **Memory**, **Security**,
 **Guardrails**, [**Secrets and variables**](/guides/secrets-and-variables/),
 [**Integrations**](/guides/integrations/) and
-[**Webhooks**](/guides/webhooks/)); then **Usage**, what g1t agents have
+[**Webhooks**](/guides/webhooks/)); then **Usage**, what g1t's runs have
 cost (see [usage and billing](/guides/usage-and-billing/)), **Support** and
 **Settings**. An item with an arrow opens a list of its own in the sidebar:
 **Settings** slides over to the workspace's settings, and the row at the

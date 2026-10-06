@@ -248,7 +248,7 @@ impl Work {
         let agent = a
             .agent
             .clone()
-            .unwrap_or_else(|| if a.kind.is_agent() { "g1t-agent" } else { "g1t" }.to_owned());
+            .unwrap_or_else(|| g1t_contracts::identity::AGENT_NAME.to_owned());
         self.db
             .prepare(
                 "INSERT INTO agent_runs

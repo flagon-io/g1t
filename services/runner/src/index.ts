@@ -190,7 +190,7 @@ type RouteInput = RouteSignals & { retried?: () => Promise<boolean> };
 /** A run that takes longer than this has its token expire under it. */
 const TOKEN_TTL_SECONDS = 2 * 60 * 60;
 /** How g1t's own agent is labelled. What runs behind it is g1t's choice. */
-const AGENT = "g1t-agent";
+const AGENT = "g1t";
 
 /**
  * What a sandbox is doing: an agent working on a pull request as someone,
@@ -874,7 +874,7 @@ const WORKING_WITH_OTHERS =
 /** Longest that what people said on a pull request is passed on. */
 const MAX_PEOPLE_SAID_CHARS = 6000;
 /** Accounts that are g1t itself, not people. */
-const NOT_PEOPLE = new Set(["g1t-agent", "g1t"]);
+const NOT_PEOPLE = new Set(["g1t"]);
 
 /**
  * What people have said on a pull request, for an agent working on it: a
@@ -1311,7 +1311,7 @@ export default class RunnerService
   }
 
   /**
-   * Sends g1t-agent back to revise once there is room: starts it, or
+   * Sends g1t back to revise once there is room: starts it, or
    * queues it and returns what to say. Throws when the plan refuses it.
    */
   private async reviseWhenFree(job: LifecycleJob, startedBy: string): Promise<string | null> {
@@ -1828,7 +1828,7 @@ export default class RunnerService
         // the other sends the agent back.
         case "comment.created":
           if (event.data.pullId && event.data.verdict) await this.advance(event.data.pullId);
-          // Someone mentioned @g1t-agent: do what they asked, once.
+          // Someone mentioned @g1t: do what they asked, once.
           await this.mention(event.data.commentId);
           break;
         // An issue given the label the repository's rule names is queued
@@ -2504,7 +2504,7 @@ export default class RunnerService
     const found = await workClient(this.env.WORK).getPull(repo, number, actor);
     if (!found.ok) return found;
     if (found.value.reviewPending) {
-      return fail("conflict", "A g1t agent is already reviewing this pull request.");
+      return fail("conflict", "g1t is already reviewing this pull request.");
     }
     const admitted = await this.admitAgent("review", repo, number);
     if (!admitted.ok) {
@@ -2771,7 +2771,7 @@ export default class RunnerService
       return model;
     }
 
-    // The sandbox acts as g1t-agent on behalf of the person who assigned
+    // The sandbox acts as g1t on behalf of the person who assigned
     // the issue, through a credential bound to this run: it reads the
     // repository, pushes to the pull request's fork only, records the
     // session and marks this pull request ready, and nothing else.
@@ -2841,7 +2841,7 @@ export default class RunnerService
     return repoInstructions(this.env.REPOS, viewer, repo);
   }
 
-  /** Acts on a comment's mention of @g1t-agent, if it made one not yet acted on. */
+  /** Acts on a comment's mention of @g1t, if it made one not yet acted on. */
   private async mention(commentId: string): Promise<void> {
     const mentions = mentionsClient(this.env.WORK);
     const job = await mentions.takeMention(commentId).catch(() => null);
@@ -2880,7 +2880,7 @@ export default class RunnerService
   }
 
   /**
-   * Answers a question asked of @g1t-agent in a comment, in a sandbox that
+   * Answers a question asked of @g1t in a comment, in a sandbox that
    * reads the code (the default branch, or the pull request's head) and
    * posts the answer in the thread. It changes nothing.
    */

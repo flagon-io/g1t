@@ -362,7 +362,7 @@ class Deployments {
    * without them, as their workflows run.
    */
   private async insider(repo: RepoPath, author: User, actor: User): Promise<boolean> {
-    if (author.kind === "agent" || author.username === "g1t-agent") return true;
+    if (author.kind === "agent" || author.kind === "system") return true;
     const found = await identityClient(this.env.IDENTITY)
       .collaboratorPermission(actor, repo.namespace, repo.name, author.username)
       .catch(() => null);

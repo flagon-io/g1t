@@ -14,7 +14,7 @@ export type ComposerResult = { error: string | null; notStarted: NotStarted | nu
 
 /**
  * "Put an agent on it": a compact composer that opens an issue in one of
- * the viewer's projects and puts g1t-agent on it, in one step. Posts to
+ * the viewer's projects and puts g1t on it, in one step. Posts to
  * Mission control's action, which lands on the issue with the agent
  * running. A native `<details>`, so it opens and posts without script.
  */
@@ -79,7 +79,7 @@ export function AgentComposer({
             Put an agent on it
           </p>
           <p className="mt-1 text-xs leading-5 text-muted">
-            Opens an issue and assigns g1t-agent at once. It makes the change in a sandbox and sees it through checks
+            Opens an issue and assigns g1t at once. It makes the change in a sandbox and sees it through checks
             and review.
           </p>
 
@@ -129,7 +129,7 @@ export function AgentComposer({
             <div className="mt-3 rounded-lg border border-warn/30 bg-warn/[0.06] p-3 text-sm">
               <p className="text-fg-soft">
                 Opened <Link to={said.notStarted.to} className="font-medium text-fg hover:underline">#{said.notStarted.number}</Link>, but
-                g1t-agent did not start. {said.notStarted.message}
+                g1t did not start. {said.notStarted.message}
               </p>
               <p className="mt-2 flex flex-wrap gap-2">
                 {said.notStarted.fix && (
@@ -150,8 +150,8 @@ export function AgentComposer({
 
           <div className="mt-4 flex items-center justify-between gap-3">
             <span className="flex min-w-0 items-center gap-1.5 text-xs text-faint">
-              <Avatar name="g1t-agent" size={16} />
-              <span className="truncate">g1t-agent · no model to choose</span>
+              <Avatar name="g1t" size={16} />
+              <span className="truncate">g1t · no model to choose</span>
             </span>
             <button
               type="submit"

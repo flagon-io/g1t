@@ -55,6 +55,7 @@ import {
 import { drift } from "../../lib/branches";
 import { agentWasAssigned, hasInstructions, productionChecklist } from "../../lib/checklist";
 import { agents, deployments, events as eventLog, projects, repos, work } from "../../lib/services.server";
+import { madeByG1t } from "../../lib/opened-by";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 import { accessTo, countsFor, refusal, repoFor } from "../../lib/access.server";
 
@@ -767,7 +768,7 @@ function Overview({
               ) : null
             }
           >
-            Nothing is moving. Open an issue and hand it to g1t-agent, or push a branch and open a pull request.
+            Nothing is moving. Open an issue and hand it to g1t, or push a branch and open a pull request.
           </Quiet>
         ) : (
           <Pipeline columns={columns} base={base} />
@@ -822,7 +823,7 @@ function Overview({
             ) : (
               <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
                 {landed.map((pull) => {
-                  const byAgent = pull.runtime === "hosted" || pull.agent === "g1t-agent";
+                  const byAgent = pull.runtime === "hosted" || madeByG1t(pull);
                   return (
                     <li key={pull.id} className="flex items-start gap-3 px-4 py-3">
                       <GitMerge size={15} className="mt-0.5 shrink-0 text-merged" />
@@ -835,7 +836,11 @@ function Overview({
                           <span>·</span>
                           <span className="inline-flex items-center gap-1">
                             <Avatar name={pull.agent} size={13} />
-                            {byAgent ? `made by ${pull.agent}` : `by ${pull.author.username}`}
+                            {madeByG1t(pull)
+                              ? `made by g1t for ${pull.author.username}`
+                              : byAgent
+                                ? `made by ${pull.agent}`
+                                : `by ${pull.author.username}`}
                           </span>
                           {pull.issue != null && (
                             <>

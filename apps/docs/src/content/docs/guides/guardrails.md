@@ -196,21 +196,21 @@ run from a script the agent wrote). The hard boundaries are elsewhere:
 - The sandbox's credentials. The agent itself holds none of g1t's: the
   runner clones and pushes with credentials passed per command, and pushes
   only to the run's own fork or branch, never with force. See
-  [credentials](/guides/g1t-agents/#credentials).
+  [credentials](/guides/working-with-g1t/#credentials).
 - Branch protection on the repository, which g1t enforces when a push
   arrives, whatever the sandbox did.
 
 ### Changes from forks
 
 When a run checks out a fork's head (revising, reviewing or answering on
-any pull request from a fork, including g1t-agent's own, and replying to a
+any pull request from a fork, including g1t's own, and replying to a
 mention on one), the harness loads nothing from that checkout: no
 `CLAUDE.md`, no `.claude/settings.json` or `settings.local.json` (so none
 of their hooks or permissions), no `.mcp.json` servers, and no commands or
 skills. g1t's guardrails, its tools and the repository's instructions from
 its own branches still apply. The run's session says so at the start. This
 follows the rule g1t uses for
-[repository instructions](/guides/g1t-agents/#repository-instructions):
+[repository instructions](/guides/working-with-g1t/#repository-instructions):
 they are read from the repository's own branches, never from a fork.
 
 ## Caps
@@ -244,7 +244,7 @@ per run, $2 by default, which owners can set from $0.10 to $100, so a run
 stops at $2 unless an owner raises it (see
 [caps](/guides/usage-and-billing/#caps)). A new paid workspace's first
 month, and the trial, also cap every run's time at 60 minutes (see
-[who can run agents](/guides/g1t-agents/#who-can-run-agents)). A run gets
+[who can run agents](/guides/working-with-g1t/#who-can-run-agents)). A run gets
 the lower of its guardrails' cap and its plan's, for time and for cost,
 and its page shows the cap it got.
 

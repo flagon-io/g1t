@@ -533,7 +533,7 @@ function UpdateStatus({ update, name, pulls, base }: { update: SecurityUpdate; n
     superseded: <>A newer update replaced it, or the package is no longer vulnerable, so g1t closed it.</>,
     needs_code: (
       <>
-        Raising {name} to {update.target} needs code changes, so g1t opened an issue for g1t-agent
+        Raising {name} to {update.target} needs code changes, so g1t opened an issue to make them
         {update.issue != null && (
           <>
             :{" "}

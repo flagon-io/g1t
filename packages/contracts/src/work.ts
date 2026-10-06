@@ -54,7 +54,7 @@ export type Issue = {
   queued: boolean;
   /**
    * The agent working on it now: the one behind its newest pull request
-   * that is still in progress in a fork, such as `g1t-agent`.
+   * that is still in progress in a fork, such as `g1t`.
    */
   agent: string | null;
 };
@@ -114,7 +114,7 @@ export type Pull = {
   /** Usernames of the people it is assigned to. */
   assignees: string[];
   /**
-   * Those whose review was asked for: usernames, and `g1t-agent` when a g1t
+   * Those whose review was asked for: usernames, and `g1t` when a g1t
    * agent was asked.
    */
   reviewers: string[];
@@ -172,7 +172,7 @@ export type AgentStart = {
   fixUrl: string | null;
 };
 
-/** An issue opened and handed to g1t-agent in one step. The issue exists whatever became of the agent. */
+/** An issue opened and handed to g1t in one step. The issue exists whatever became of the agent. */
 export type Delegated = {
   issue: Issue;
   /** The pull request the agent opened, when it started. */
@@ -718,7 +718,7 @@ export type RepoPulls = {
 export interface WorkApi {
   openIssue(actor: User, repo: RepoPath, input: OpenIssueInput): Promise<Result<Issue>>;
   /**
-   * Opens an issue to put g1t-agent on at once: refused, with nothing
+   * Opens an issue to put g1t on at once: refused, with nothing
    * opened, unless `actor` may put agents to work in `repo`. The runner's
    * `delegate` calls it, then starts the agent.
    */
@@ -827,7 +827,7 @@ export interface WorkApi {
   getPull(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<PullDetail>>;
   /**
    * Changes who a pull request is assigned to and whose review is asked
-   * for; each list given replaces the whole set. Asking for `g1t-agent`'s
+   * for; each list given replaces the whole set. Asking for `g1t`'s
    * review does not by itself start one: the runner's `review` does.
    */
   updatePull(

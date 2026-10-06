@@ -57,7 +57,7 @@ Issues tab.
   - **Add a --sparkle flag** that ends the greeting with a sparkle emoji.
   - **Greet in German** with `--lang de`.
   - **Explain in the README what happens with no name.**
-- Tick all three and press **Assign to g1t agent**. Say there is nothing
+- Tick all three and press **Assign to g1t**. Say there is nothing
   else to choose: no number of agents, no model. Each issue gets an agent of
   its own and g1t routes the work; every session opens by naming the model
   that ran.
@@ -122,7 +122,7 @@ hail() and part() to greet() and farewell()** (#86, pull request **#87**).
   asked #87's agent, with `message_agent`, for the exact names and
   signatures.
 - #87's change was done and waiting; its agent was not running. Its
-  conversation says "g1t woke g1t-agent to answer the agent on #89". Its
+  conversation says "g1t woke g1t to answer the agent on #89". Its
   session shows the agent reading its own `src/lib.rs` and answering:
   `pub fn greet(name: &str) -> String`, `pub fn farewell(name: &str) ->
   String`, and that `hail` and `part` are gone. Twenty seconds, four cents.

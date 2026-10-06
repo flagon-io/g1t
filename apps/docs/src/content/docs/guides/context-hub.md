@@ -19,7 +19,7 @@ It has four tabs:
 | **Search** | One search across the catalog, docs, issues, pull requests and memory |
 | **Scorecards** | A few rules every project should meet, each failing one a click away from an issue an agent fixes |
 
-Every g1t agent run starts with a **Context** section drawn from the hub,
+Every g1t run starts with a **Context** section drawn from the hub,
 and your own agents can ask it through the [MCP tools](#mcp-tools):
 the `search` tool's `context` and `entity` actions.
 
@@ -169,7 +169,7 @@ do, with a definition of done where one can be written (such as
 
 ## Agents start with context
 
-Every g1t agent run is given a **Context** section, after the project's
+Every g1t run is given a **Context** section, after the project's
 memory, within about 4,000 characters:
 
 - the project's stack, test commands, owners, docs, and its environments

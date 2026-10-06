@@ -9,7 +9,8 @@
 //!    any other. An older one for the same package is closed as superseded.
 //! 3. When its checks fail because code has to change, or the sandbox
 //!    never pushed, the pull request is closed and an issue is opened for
-//!    g1t-agent, started by g1t. That is the only time an agent is used.
+//!    g1t to work on, started by g1t. That is the only time an agent is
+//!    used.
 //! 4. A package no longer vulnerable closes its update as superseded.
 //!
 //! Each step is written to the alerts' activity log.
@@ -86,7 +87,7 @@ pub fn pull_text(ecosystem: &str, package: &str, target: &str, vulns: &[&VulnRow
     body.push_str(&format!(
         "\nLockfiles changed: {}.\n\n\
          Only the version changes. This pull request lands through this branch's required checks like any other. \
-         If they fail because code has to change, g1t closes it and puts g1t-agent on an issue to make the change.\n\n\
+         If they fail because code has to change, g1t closes it and puts g1t on an issue to make the change.\n\n\
          ---\n_Opened by g1t's security updates. Turn them off for this project on its Security page._",
         lockfiles.iter().map(|path| format!("`{path}`")).collect::<Vec<_>>().join(", ")
     ));
@@ -328,7 +329,7 @@ impl Security {
     }
 
     /// Updates whose sandbox never pushed: raising the version did not
-    /// work, so g1t-agent gets an issue for it.
+    /// work, so g1t gets an issue for it.
     pub async fn stalled_updates(&self) -> Result<()> {
         let before = rfc3339(now_ms().saturating_sub(STALLED_MS));
         for row in self.store.stalled_updates(&before, 10).await? {
@@ -345,7 +346,7 @@ impl Security {
     }
 
     /// Raising the version is not enough: closes g1t's pull request, opens
-    /// an issue for the change, and puts g1t-agent on it, started by g1t.
+    /// an issue for the change, and puts g1t to work on it.
     async fn needs_code(&self, repo: &RepoRow, row: &UpdateRow, why: &str) -> Result<()> {
         let path = Self::path_of(repo);
         let system = User::system(&repo.namespace);
@@ -382,14 +383,14 @@ impl Security {
             .set_update(row, UpdateState::NeedsCode, row.pull(), Some(issue.number), Some(why))
             .await?;
         if let Some(number) = row.pull() {
-            self.close_with(repo, number, format!("{why}, so code has to change too. g1t-agent is making the change in #{}.", issue.number))
+            self.close_with(repo, number, format!("{why}, so code has to change too. g1t is making the change in #{}.", issue.number))
                 .await?;
         }
         let started: Outcome<Value> =
             g1t_kit::call(&self.runner, "run", &json!({ "actor": system, "repo": path, "issue": issue.number })).await?;
         if let Outcome::Fail(refused) = started {
             self.comment(&system, &path, issue.number, format!(
-                "g1t could not put an agent on this upgrade: {}\n\nAssign it to g1t-agent once agents can run here, or upgrade it by hand.",
+                "g1t could not put an agent on this upgrade: {}\n\nAssign it to g1t once agents can run here, or upgrade it by hand.",
                 refused.message
             ))
             .await?;

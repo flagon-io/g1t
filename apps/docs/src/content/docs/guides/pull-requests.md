@@ -66,7 +66,7 @@ merging**, in **Branch protection**:
 | Require a pull request to change the default branch | Off | Refuses pushes to the default branch; changes reach it only by merging. See [protected branches](/guides/git/#protected-branches). |
 | Required status checks | None | The checks that must pass on a pull request's head before it merges. |
 | Required approvals | None | How many reviewers must approve before a merge, 0 to 3 on the page (up to 6 from the API). A reviewer who asked for changes blocks it. |
-| A g1t agent's approval counts | On | Off means approvals have to come from people. |
+| g1t's approval counts | On | Off means approvals have to come from people. |
 | Require branches to be up to date before merging | Off | On means a pull request behind the default branch has to catch up, and its checks run again, before it merges. |
 | Merge through a queue | Off | See [merge queue](/guides/merge-queue/). |
 | Allow bypassing required checks | On | Lets someone who may merge tick **bypass** when merging, to merge without the required checks passing. Off means nobody can. |
@@ -90,7 +90,7 @@ whatever event reported it:
 
 The same rule holds wherever a pull request merges: the merge button,
 [`merge_pull_request`](/reference/api/pull-requests/merge-pull-request/),
-a g1t agent's [automatic merge](/guides/g1t-agents/#merging-automatically)
+a g1t agent's [automatic merge](/guides/working-with-g1t/#merging-automatically)
 and the [merge queue](/guides/merge-queue/). With **Allow bypassing required
 checks** on, the merge button has a **bypass** box, and the API takes
 `ignore_checks: true`.
@@ -146,7 +146,7 @@ A pull request that conflicts shows **This branch has conflicts that must
 be resolved**, the conflicting files, each linked to its diff, and three
 ways to resolve them:
 
-- **Resolve with g1t agent.** An agent merges the target branch in,
+- **Resolve with g1t.** g1t merges the target branch in,
   resolves the conflicts keeping what both sides meant, and pushes the
   result. It is told which files conflict. Available to whoever can push to
   the pull request: for a pull request's fork, whoever opened it; for a
@@ -195,8 +195,8 @@ press **Catch up with main now**:
    up to date with main**, and the workflows run again on the
    new commit, as after any push.
 2. **When both changed some of the same files**, a sandbox merges `main` in
-   with git, and a [g1t agent](/guides/g1t-agents/) resolves any conflict.
-   The box says what is happening (**g1t-agent is resolving conflicts with
+   with git, and [g1t](/guides/working-with-g1t/) resolves any conflict.
+   The box says what is happening (**g1t is resolving conflicts with
    main** when the merge is known to conflict) with the run's live step and
    how long it has taken. It usually takes about a minute. When the result
    is pushed, the box shows the pull request up to date; if the run fails,
@@ -207,11 +207,11 @@ Either way the merge is pushed only if the pull request's branch is still
 where it was when the catch-up started. If someone pushed to it meanwhile,
 the catch-up stops with nothing lost, and you can press it again.
 
-The second case needs g1t agents enabled for the workspace and is
+The second case needs g1t's agent enabled for the workspace and is
 [charged](/guides/usage-and-billing/#what-is-charged) as agent work; the
 first is not.
 
-A [g1t agent's](/guides/g1t-agents/) pull request that is found to conflict
+A pull request [g1t](/guides/working-with-g1t/) opened that is found to conflict
 is sent back to resolve it by itself, before it is ready.
 
 ## From the API

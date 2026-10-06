@@ -211,7 +211,7 @@ An agent's credential can never change who has access: it cannot add,
 remove or invite anyone, answer an invitation, or change the base
 permission. When the person it works for loses their role on the
 repository, or leaves the workspace, the agent loses it too. See
-[credentials](/guides/g1t-agents/#credentials).
+[credentials](/guides/working-with-g1t/#credentials).
 
 Because putting agents to work spends compute, it needs Write. Someone with
 Read or Triage who mentions or assigns an agent is told so, and nothing

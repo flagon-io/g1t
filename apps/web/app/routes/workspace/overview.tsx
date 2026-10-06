@@ -9,6 +9,7 @@ import { Avatar, ButtonLink, CopyLine, Pill, TimeAgo } from "../../components/ui
 import { UsageCard } from "../../components/usage-card";
 import { PullIcon } from "../../components/work-icons";
 import { planStatus, type UsageGlance, usageGlance } from "../../lib/billing";
+import { openedBy } from "../../lib/opened-by";
 import { billing, deployments, identity, projects as projectsApi, work } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 
@@ -278,7 +279,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
                           <span className="block truncate font-medium">{pull.title}</span>
                           <span className="text-xs text-muted">
                             {name} <span className="font-mono">#{pull.number}</span>
-                            {pull.issue != null && ` · for #${pull.issue}`} · {pull.author.username}
+                            {pull.issue != null && ` · for #${pull.issue}`} · {openedBy(pull).name}
                           </span>
                         </span>
                         <span className="hidden shrink-0 text-xs text-muted sm:block">

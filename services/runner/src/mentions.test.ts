@@ -13,7 +13,7 @@ function onIssue(intent: MentionJob["intent"], extra: Partial<MentionJob> = {}):
     actor: ana,
     repo: { namespace: "acme", name: "site" },
     number: 7,
-    body: "@g1t-agent take this",
+    body: "@g1t take this",
     intent,
     member: true,
     defaultBranch: "main",
@@ -52,7 +52,7 @@ test("on an issue, a request assigns it and a question is answered", () => {
   assert.equal(planMention(onIssue("question", { workingPull: 9 })).kind, "answer");
 });
 
-test("on g1t-agent's pull request, a request sends it back", () => {
+test("on g1t's pull request, a request sends it back", () => {
   assert.equal(planMention(onPull("work")).kind, "revise");
   assert.equal(planMention(onPull("work", { status: "draft" })).kind, "message");
   assert.equal(planMention(onPull("question")).kind, "answer");
@@ -71,7 +71,7 @@ test("someone without Write on the repository is thanked and nothing starts", as
   const plan = await handleMention(onIssue("work", { member: false }), ports);
   assert.equal(plan.kind, "not_member");
   assert.deepEqual(started, []);
-  assert.match(replies[0], /Putting g1t-agent to work needs the Write role on acme\/[^,]+, so I have left this/);
+  assert.match(replies[0], /Putting g1t to work needs the Write role on acme\/[^,]+, so I have left this/);
 });
 
 test("a workspace that cannot run agents is told why, and the run is recorded", async () => {
@@ -110,7 +110,7 @@ test("an answer is the reply, so nothing else is said", async () => {
 });
 
 test("the question is in the prompt, and nothing is to change", () => {
-  const prompt = buildMentionPrompt(onIssue("question", { body: "@g1t-agent why is this slow?" }), {
+  const prompt = buildMentionPrompt(onIssue("question", { body: "@g1t why is this slow?" }), {
     title: "Search is slow",
     body: "It takes 4s.",
     thread: null,

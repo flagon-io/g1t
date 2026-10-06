@@ -139,7 +139,7 @@ It leaves the queue, and:
    file, which opens in the pull request's changes.
 3. The entries that were tested on top of it are tested again without it.
 
-A g1t agent's pull request is then sent back to revise, as for any failed
+A pull request g1t opened is then sent back to revise, as for any failed
 check, starting from `main` as it is now. The revision counts towards
 **Revisions before asking you**. Once it is ready again, a repository with
 **Merge automatically when ready** on adds it to the queue again by itself;
@@ -183,7 +183,7 @@ curl https://api.g1t.sh/repos/acme/web/queue
     {
       "number": 44,
       "title": "Add a --shout flag",
-      "agent": "g1t-agent",
+      "agent": "g1t",
       "state": "testing",
       "ahead": [41],
       "base_commit": "8f3c2e1…",

@@ -14,7 +14,7 @@
 //!   vulnerable package with a fix gets a security update: g1t itself
 //!   (`User::system`) opens a pull request raising its version, made in a
 //!   sandbox (the runner's `bump`), which lands through the branch's
-//!   required checks. Only when code has to change is g1t-agent put on an
+//!   required checks. Only when code has to change is g1t put on an
 //!   issue for it.
 //!
 //! Other services reach it over `POST /rpc/<method>`; see

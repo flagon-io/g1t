@@ -26,7 +26,7 @@ use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry,
 use g1t_contracts::github::*;
 use g1t_contracts::identity::{SignedIn, UserArgs};
 use g1t_contracts::time::{SQL_NOW, rfc3339, sql_after};
-use g1t_contracts::{FailureCode, Outcome, User, is_valid_namespace, new_id};
+use g1t_contracts::{FailureCode, Outcome, User, claimable_namespace, is_reserved_name, is_valid_namespace, new_id};
 use g1t_kit::now_ms;
 use g1t_secrets::Sealer;
 use serde::{Deserialize, Serialize};
@@ -123,7 +123,9 @@ pub fn verified_emails(emails: &[GithubEmail]) -> Vec<String> {
 }
 
 /// A username made from a GitHub login: lowercased, with anything g1t does
-/// not allow turned into single hyphens.
+/// not allow turned into single hyphens. A login that is a reserved name,
+/// such as `g1t`, is suggested with `-gh` after it, so signing up still
+/// goes ahead under a name of its own.
 pub fn suggest_username(login: &str) -> String {
     let mut out = String::new();
     for character in login.trim().to_lowercase().chars() {
@@ -134,7 +136,8 @@ pub fn suggest_username(login: &str) -> String {
         }
     }
     let out: String = out.trim_matches('-').chars().take(39).collect();
-    out.trim_end_matches('-').to_owned()
+    let out = out.trim_end_matches('-');
+    if is_reserved_name(out) { format!("{out}-gh") } else { out.to_owned() }
 }
 
 /// What a return from GitHub should do.
@@ -735,13 +738,12 @@ impl Identity {
         let Some(row) = self.pending_row(&a.pending).await?.filter(|row| row.kind == "username") else {
             return Ok(Outcome::fail(FailureCode::NotFound, "This GitHub sign-in has expired. Start again."));
         };
-        let username = a.username.trim().to_lowercase();
-        if !is_valid_namespace(&username) {
+        let Some(username) = claimable_namespace(&a.username) else {
             return Ok(Outcome::fail(
                 FailureCode::Invalid,
-                "Usernames use lowercase letters, digits and single hyphens, up to 39 characters.",
+                "Usernames use lowercase letters, digits and single hyphens, up to 39 characters, and cannot be a reserved word.",
             ));
-        }
+        };
         if !self.username_free(&username).await? {
             return Ok(Outcome::fail(FailureCode::Conflict, "That username is taken. Choose another."));
         }
@@ -1032,6 +1034,29 @@ mod tests {
         assert_eq!(suggest_username("a_b..c"), "a-b-c");
         assert_eq!(suggest_username("-x-"), "x");
         assert_eq!(suggest_username(&"a".repeat(50)).len(), 39);
+    }
+
+    #[test]
+    fn a_login_named_like_g1t_gets_a_name_of_its_own() {
+        assert_eq!(suggest_username("g1t"), "g1t-gh");
+        assert_eq!(suggest_username("G1T"), "g1t-gh");
+        assert_eq!(suggest_username("g1t-agent"), "g1t-agent-gh");
+        assert_eq!(suggest_username("G1t_Agent"), "g1t-agent-gh");
+        assert_eq!(suggest_username("api"), "api-gh");
+        assert!(is_valid_namespace(&suggest_username("g1t")));
+        assert_eq!(suggest_username("g1t-fan"), "g1t-fan");
+        // So signing up goes ahead, rather than failing on the login.
+        let facts = Facts { suggestion: suggest_username("g1t"), ..facts() };
+        assert_eq!(decide(&facts), Decision::Create("g1t-gh".to_owned()));
+    }
+
+    #[test]
+    fn a_chosen_username_cannot_be_g1ts() {
+        // What github_sign_up takes from the form.
+        for name in ["g1t", " G1T ", "g1t-agent", "G1T-AGENT"] {
+            assert_eq!(claimable_namespace(name), None, "{name}");
+        }
+        assert_eq!(claimable_namespace(" Octo-Cat ").as_deref(), Some("octo-cat"));
     }
 
     fn facts() -> Facts<'static> {

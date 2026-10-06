@@ -9,6 +9,10 @@ const apiGroups = generateApiReference();
 
 export default defineConfig({
 	site: 'https://docs.g1t.sh',
+	// Pages that moved, so links already shared still arrive.
+	redirects: {
+		'/guides/g1t-agents/': '/guides/working-with-g1t/',
+	},
 	integrations: [
 		starlight({
 			title: 'g1t docs',
@@ -76,7 +80,7 @@ export default defineConfig({
 				{
 					label: 'Agents',
 					items: [
-						{ label: 'g1t agents', slug: 'guides/g1t-agents' },
+						{ label: "g1t's agent", slug: 'guides/working-with-g1t' },
 						{ label: 'Guardrails', slug: 'guides/guardrails' },
 						{ label: 'Outcomes and plans', slug: 'guides/outcomes' },
 						{ label: 'Talking to agents', slug: 'guides/talking-to-agents' },

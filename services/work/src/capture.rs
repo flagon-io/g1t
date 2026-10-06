@@ -50,7 +50,7 @@ const MAX_SUMMARY_CHARS: usize = 400;
 /// The most files a decision names.
 const MAX_FILES_NAMED: usize = 6;
 /// Who people's and agents' names are not.
-const NOT_PEOPLE: [&str; 3] = ["g1t-agent", "g1t", "agent"];
+const NOT_PEOPLE: [&str; 2] = ["g1t", "agent"];
 
 /// Words that mark a sentence as telling the agent how things are done.
 const CORRECTIVE: [&str; 20] = [
@@ -444,7 +444,7 @@ impl Work {
                 run_id: Some(run.id.clone()),
             })
             .collect();
-        Ok(Outcome::Ok(self.capture(&run.workspace, &items, "g1t-agent").await?))
+        Ok(Outcome::Ok(self.capture(&run.workspace, &items, "g1t").await?))
     }
 
     pub(crate) async fn list_candidates(&self, a: ListCandidatesArgs) -> Result<Outcome<Vec<Memory>>> {

@@ -170,7 +170,7 @@ with `--group`. Deleting a group moves its runners to the default group.
 
 **Settings → Runners → Where work runs** can send g1t's own work to your
 runners too: agent runs, checks, reviews, merge checks and the merge queue.
-Switch on **Run g1t-agent work on self-hosted runners** and give the labels
+Switch on **Run g1t's work on self-hosted runners** and give the labels
 a runner needs to take it (`self-hosted` is always one).
 
 - The agent works exactly as in g1t's sandbox: the same harness, with a

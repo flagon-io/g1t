@@ -341,7 +341,7 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 | `issues:write` | Open, edit, close and comment on issues |
 | `pull_requests:read` | Read pull requests, their changes, sessions and merge queues |
 | `pull_requests:write` | Open, review, close and merge pull requests |
-| `agents:run` | Put g1t agents to work and message them, which uses the workspace's money |
+| `agents:run` | Put g1t to work and message it, which uses the workspace's money |
 | `workflows:read` | Read workflows, runs and logs |
 | `workflows:write` | Run, cancel, rerun and turn workflows on or off |
 | `memory:read` | Recall memory and search the workspace's context |
@@ -394,7 +394,7 @@ any box.
 | Preset | Scopes |
 | --- | --- |
 | Read only | Every `read` scope. Changes nothing. |
-| Agent | Every `read` scope except `runners:read`, and `code:write`, `issues:write`, `pull_requests:write`, `agents:run` and `memory:write`. Reads everything, works on issues and pull requests, pushes code and runs g1t agents. No admin scope. |
+| Agent | Every `read` scope except `runners:read`, and `code:write`, `issues:write`, `pull_requests:write`, `agents:run` and `memory:write`. Reads everything, works on issues and pull requests, pushes code and puts g1t to work. No admin scope. |
 | CI | `repo:read`, `code:read`, `code:write`, `workflows:read` and `workflows:write`. Clones and pushes code, and runs workflows. |
 | Full access | Everything you can do, including deleting repositories and changing who has access. Marked **Dangerous**. |
 

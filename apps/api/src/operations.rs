@@ -807,10 +807,10 @@ impl Op {
                 "Open a plan's issues, each blocked by the ones it depends on. With assign, g1t agents start at once on every issue that depends on nothing, working in parallel, and on the others as what they depend on merges. keep limits it to some of the proposed issues, by their positions counting from 1. A plan is applied once. Needs the Write role or higher."
             }
             Op::AssignIssue => {
-                "Assign an issue to the g1t agent. It opens a pull request for the issue in a sandbox of its own and sees it through: the repository's workflows run on it as its checks, a second agent reviews it, it revises when a check fails (reading the failing jobs' logs) or the review asks for changes, and it catches up when main moves. It is ready once the default branch's required checks pass and the review approves. Returns the pull request at once; follow its progress with get_pull_request. There is no model or agent count to choose. To put many agents to work, assign many issues. Needs the Write role or higher. In preview: only for accounts g1t agents are enabled for."
+                "Assign an issue to g1t. It opens a pull request for the issue in a sandbox of its own and sees it through: the repository's workflows run on it as its checks, a second agent reviews it, it revises when a check fails (reading the failing jobs' logs) or the review asks for changes, and it catches up when main moves. It is ready once the default branch's required checks pass and the review approves. Returns the pull request at once; follow its progress with get_pull_request. There is no model or agent count to choose. To put many agents to work, assign many issues. Needs the Write role or higher. In preview: only for accounts g1t agents are enabled for."
             }
             Op::Delegate => {
-                "Put an agent on something in one step: open an issue and assign it to the g1t agent at once. Say what you want done in plain words, with what done means if you know it. What must pass before its pull request merges is the default branch's required checks. Needs the Write role or higher, and nothing is opened without it. The issue is opened whatever happens next: agent.status is started (pull is the draft pull request the agent opened; follow it with get_pull_request), queued (every agent slot of the workspace is busy; it starts by itself when one frees up) or not_started, with agent.code saying why (not_paid, trial_used, limit, paused, issue_cap, billing_unavailable or no_model), agent.message saying what to do, and agent.fix_url where. There is no model or agent count to choose."
+                "Put an agent on something in one step: open an issue and assign it to g1t at once. Say what you want done in plain words, with what done means if you know it. What must pass before its pull request merges is the default branch's required checks. Needs the Write role or higher, and nothing is opened without it. The issue is opened whatever happens next: agent.status is started (pull is the draft pull request the agent opened; follow it with get_pull_request), queued (every agent slot of the workspace is busy; it starts by itself when one frees up) or not_started, with agent.code saying why (not_paid, trial_used, limit, paused, issue_cap, billing_unavailable or no_model), agent.message saying what to do, and agent.fix_url where. There is no model or agent count to choose."
             }
             Op::ListLabels => "The labels available on a repository's issues.",
             Op::AddComment => {
@@ -1394,7 +1394,7 @@ impl Op {
                     "assignees": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "Usernames of the people it is assigned to. Replaces the whole set; an empty list unassigns everyone. To assign it to the g1t agent, use assign_issue.",
+                        "description": "Usernames of the people it is assigned to. Replaces the whole set; an empty list unassigns everyone. To assign it to g1t, use assign_issue.",
                     },
                 })),
                 &["repo", "number"],

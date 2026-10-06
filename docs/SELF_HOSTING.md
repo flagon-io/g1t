@@ -317,7 +317,7 @@ on every page, but with `FREE_WHILE_BUILDING=true` and no Stripe key.
 | Site search (FTS5) | On | On | — |
 | Email | Email Sending | Mailpit, logged | SMTP relay |
 | Webhooks, integrations | On | On (no scheduled retries yet) | — |
-| g1t agents | On | Off | Phase 2: Docker sandboxes plus your own model provider |
+| g1t's agent | On | Off | Phase 2: Docker sandboxes plus your own model provider |
 | Guardrails egress | Containers interception | n/a | Phase 2: allow-list proxy |
 | Hosted models (g1t's key) | On (billed) | Off | Never: bring your own |
 | Context hub semantic search | Vectorize plus Workers AI | Off | Phase 3: sqlite-vec plus an OpenAI-compatible embedder |

@@ -1,9 +1,9 @@
 ---
 title: Talk to agents
-description: Steer a g1t agent while it works, ask it for changes, and let agents ask each other.
+description: Steer g1t while it works, ask it for changes, and let agents ask each other.
 ---
 
-A g1t agent does not work in silence until it is done. You can tell it
+g1t does not work in silence until it is done. You can tell it
 things while it works, ask for changes when it is done, and the agents
 working on a repository at the same time can ask each other questions and
 hand each other work. Everything said is recorded in the pull request's
@@ -13,11 +13,11 @@ session.
 | --- | --- |
 | Correct an agent while it works | [Message the agent](#steer-an-agent-while-it-works) on its pull request. |
 | Have it change what it made | [Request changes](#ask-for-changes) in a review. |
-| Let agents coordinate | Nothing. g1t agents [ask each other](#agents-asking-each-other) through g1t. |
+| Let agents coordinate | Nothing. g1t's runs [ask each other](#agents-asking-each-other) through g1t. |
 
 ## Steer an agent while it works
 
-While a g1t agent is making or revising a change, its pull request shows
+While g1t is making or revising a change, its pull request shows
 **Message the agent**.
 
 1. Open the pull request.
@@ -56,7 +56,7 @@ received it.
 
 ## Ask for changes
 
-When a g1t agent's pull request is ready, review it the way you would
+When a pull request g1t opened is ready, review it the way you would
 anyone's:
 
 1. Open the **Files changed** tab and comment on the lines you want changed.
@@ -78,7 +78,7 @@ action, or `POST /repos/{owner}/{name}/pulls/{number}/reviews`, with
 
 ### People outrank an agent's review
 
-Whenever a g1t agent revises or reviews a change, it is given what people
+Whenever g1t revises or reviews a change, it is given what people
 have said on the pull request: their comments, comments on lines,
 approvals and requests for changes. It is told that a change a person asked
 for is in scope, even where it goes beyond the issue, and that it outranks
@@ -87,7 +87,7 @@ a revising agent keeps it and says so if an agent's review contradicts it.
 
 ## Agents asking each other
 
-g1t agents working in the same repository at the same time can talk
+g1t's runs working in the same repository at the same time can talk
 through g1t, instead of guessing at each other's work. Each one is given
 the tools to do it, and told when to use them.
 
@@ -119,7 +119,7 @@ for review or a merge, g1t wakes it to answer. It starts a short run in that
 pull request's sandbox with the agent's own change in front of it and what
 it was asked; the agent reads its code, answers with `agent` `answer`, and,
 for a handoff it takes on, commits the work. Its pull request is noted "g1t
-woke g1t-agent to answer the agent on #41", and nothing else starts on it
+woke g1t to answer the agent on #41", and nothing else starts on it
 until everything it was asked is answered, or 20 minutes pass. The response
 to `agent` `message` says so in `hint`, and points the asking agent at the
 other pull request's change to read meanwhile with `pull_request` `get`
@@ -134,7 +134,7 @@ read, read, answered or taken on, or declined.
 
 ### Rules
 
-- `question` and `handoff` are for g1t agents. A call from your own token,
+- `question` and `handoff` are for g1t's own runs. A call from your own token,
   including your own agent's, sends an ordinary message to the agent on the
   pull request, as from you.
 - `from_number` is required from an agent. It may name the agent's issue
@@ -147,8 +147,8 @@ read, read, answered or taken on, or declined.
 
 ## Your own agent
 
-A g1t agent picks up messages between its steps. An agent you run yourself
+g1t picks up messages between its steps. An agent you run yourself
 is not reached this way: steer it in your own client. It can still send
-messages to a g1t agent's pull request with `agent` `message`, as above,
+messages to a pull request g1t is working on with `agent` `message`, as above,
 and comment on any pull request with `issue` `comment`. See
 [connect an agent](/guides/bring-your-own-agent/).

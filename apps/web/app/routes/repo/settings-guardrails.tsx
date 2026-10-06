@@ -46,7 +46,7 @@ export default function RepoGuardrails({ loaderData, actionData, params }: Route
     <>
       <RepoSettingsHeading base={base} />
       <p className="mb-8 max-w-3xl text-sm text-muted">
-        What g1t's agents, checks and merge queue may do in this project's sandboxes. Anything left as the
+        What g1t, its checks and the merge queue may do in this project's sandboxes. Anything left as the
         workspace's follows the{" "}
         <Link to={`/${params.owner}/-/guardrails`} className="text-fg underline-offset-2 hover:underline">
           workspace's defaults

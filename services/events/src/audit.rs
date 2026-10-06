@@ -396,7 +396,7 @@ mod tests {
     fn every_filter_binds_its_values() {
         let mut a = args();
         a.actor = Some("syntaqx".to_owned());
-        a.agent = Some("g1t-agent".to_owned());
+        a.agent = Some("g1t".to_owned());
         a.action = Some("git.push".to_owned());
         a.repo = Some("acme/rocket".to_owned());
         a.number = Some(4);

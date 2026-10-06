@@ -1,15 +1,15 @@
-//! `@g1t-agent` in a comment, and the label rule.
+//! `@g1t` in a comment, and the label rule.
 //!
-//! A comment that mentions `@g1t-agent` is recorded here as it is made,
+//! A comment that mentions `@g1t` is recorded here as it is made,
 //! with who wrote it and what they seem to want. The runner hears the
 //! comment was made, takes the mention (once: a mention is one run at most)
 //! and does what it asks through the flows that already exist: assigning
 //! the issue, sending the author of a g1t pull request back, a review, or
 //! an answer in the thread. Whatever it does, or why it did nothing, is
-//! said back in the thread as `g1t-agent`.
+//! said back in the thread as `g1t`.
 //!
 //! The label rule is a repository's "when an issue gets this label, give it
-//! to g1t-agent": the issue is queued for an agent, as a plan's issues are.
+//! to g1t": the issue is queued for an agent, as a plan's issues are.
 
 use g1t_contracts::access::{self, Capability};
 use g1t_contracts::events::CommentCreated;
@@ -28,7 +28,7 @@ use crate::reviews::{AGENT_ID, AGENT_NAME};
 use crate::rows::{NumberRow, ValueRow};
 
 /// How g1t's agent is mentioned. Matched without regard to case.
-pub(crate) const HANDLE: &str = "@g1t-agent";
+pub(crate) const HANDLE: &str = "@g1t";
 /// How long a revision asked for in a comment may take before another step can.
 const REVISION_MINUTES: u64 = 60;
 const MAX_REPLY_CHARS: usize = 20_000;
@@ -114,8 +114,9 @@ fn without_code_spans(line: &str) -> String {
     out
 }
 
-/// Where `text` mentions `@g1t-agent`, as byte ranges. Not in an email
-/// address or a longer name (`ops@g1t-agent.dev`, `@g1t-agents`).
+/// Where `text` mentions `@g1t`, as byte ranges. Not in an email
+/// address, a domain, a package scope or a longer name (`ops@g1t.sh`,
+/// `@g1t.dev`, `@g1t/contracts`, `@g1t-bot`).
 pub(crate) fn mentions_in(text: &str) -> Vec<(usize, usize)> {
     let bytes = text.as_bytes();
     let handle = HANDLE.as_bytes();
@@ -133,8 +134,9 @@ pub(crate) fn mentions_in(text: &str) -> Vec<(usize, usize)> {
             before.is_none_or(|c| !(c.is_alphanumeric() || "._%+-/\\@`=".contains(c)));
         let ends_clean = match after.next() {
             None => true,
-            Some(c) if c.is_alphanumeric() || c == '_' || c == '-' || c == '@' => false,
-            // The end of a sentence, or a domain: `@g1t-agent.dev`.
+            // A longer name, or a path such as the `@g1t/contracts` package.
+            Some(c) if c.is_alphanumeric() || "_-@/\\".contains(c) => false,
+            // The end of a sentence, or a domain: `@g1t.dev`.
             Some('.') => after.next().is_none_or(|c| !c.is_alphanumeric()),
             Some(_) => true,
         };
@@ -148,12 +150,12 @@ pub(crate) fn mentions_in(text: &str) -> Vec<(usize, usize)> {
     found
 }
 
-/// Whether a comment mentions `@g1t-agent` in its own words.
+/// Whether a comment mentions `@g1t` in its own words.
 pub(crate) fn mentions_agent(body: &str) -> bool {
     !mentions_in(&spoken(body)).is_empty()
 }
 
-/// What someone who mentions `@g1t-agent` wants.
+/// What someone who mentions `@g1t` wants.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Intent {
@@ -207,7 +209,7 @@ const PREFIXES: &[&[&str]] = &[
     &["will", "you"],
 ];
 
-/// What a comment mentioning `@g1t-agent` asks for, read from what it says
+/// What a comment mentioning `@g1t` asks for, read from what it says
 /// after the mention (or before, when nothing follows it).
 pub(crate) fn intent(body: &str) -> Intent {
     let spoken = spoken(body);
@@ -286,7 +288,7 @@ pub(crate) struct MentionJob {
     default_branch: String,
     /// Set when the comment is on an issue: whether it is still open.
     issue_open: Option<bool>,
-    /// On an issue: the pull request g1t-agent is already working on for it, if any.
+    /// On an issue: the pull request g1t is already working on for it, if any.
     working_pull: Option<u32>,
     /// Set when the comment is on a pull request.
     pull: Option<MentionPull>,
@@ -297,7 +299,7 @@ pub(crate) struct MentionJob {
 pub(crate) struct MentionPull {
     id: String,
     status: PullStatus,
-    /// Made by g1t-agent, which g1t sees through.
+    /// Made by g1t, which sees it through.
     agent_authored: bool,
     /// Where its change is: its fork, or the repository itself.
     source: RepoPath,
@@ -316,7 +318,7 @@ pub(crate) struct MentionRevisionArgs {
     comment_id: String,
 }
 
-/// `reply_mention`: g1t-agent's answer to a mention, in its thread.
+/// `reply_mention`: g1t's answer to a mention, in its thread.
 /// Returns `bool`: false when there was no such mention.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -325,11 +327,11 @@ pub(crate) struct ReplyMentionArgs {
     body: String,
 }
 
-/// A repository's rules for putting g1t-agent to work by itself.
+/// A repository's rules for putting g1t to work by itself.
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AgentRules {
-    /// When an issue is given this label, g1t-agent takes it.
+    /// When an issue is given this label, g1t takes it.
     label: Option<String>,
     updated_by: Option<String>,
     updated_at: Option<String>,
@@ -387,9 +389,9 @@ fn normalize_label(label: Option<&str>) -> std::result::Result<Option<String>, &
 }
 
 impl Work {
-    /// Records a comment's mention of `@g1t-agent`, if it makes one, for
-    /// the runner to take when it hears of the comment. Agents mentioning
-    /// themselves are not recorded, so no agent can set another to work.
+    /// Records a comment's mention of `@g1t`, if it makes one, for
+    /// the runner to take when it hears of the comment. g1t mentioning
+    /// itself is not recorded, so no agent can set another to work.
     pub(crate) async fn note_mention(
         &self,
         actor: &User,
@@ -399,6 +401,7 @@ impl Work {
         pull_id: Option<&str>,
     ) -> Result<()> {
         if actor.kind == PrincipalKind::Agent
+            || actor.is_system()
             || actor.id == AGENT_ID
             || !mentions_agent(&comment.body)
         {
@@ -532,7 +535,7 @@ impl Work {
         if row.member == 0 || !made_by_g1t(&pull) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
-                "Only someone with the Write role or higher can send g1t-agent back to a pull request it made.",
+                "Only someone with the Write role or higher can send g1t back to a pull request it made.",
             ));
         }
         match pull.status {
@@ -540,7 +543,7 @@ impl Work {
             PullStatus::Draft => {
                 return Ok(Outcome::fail(
                     FailureCode::Conflict,
-                    "g1t-agent is still making this change.",
+                    "g1t is still making this change.",
                 ));
             }
             status => {
@@ -572,7 +575,7 @@ impl Work {
         if !self.claim(&pull.id, "revision", REVISION_MINUTES, true).await? {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
-                "g1t-agent is already taking a step on this pull request.",
+                "g1t is already taking a step on this pull request.",
             ));
         }
         let round = self
@@ -590,7 +593,7 @@ impl Work {
             &pull.repo_id,
             pull.number,
             (POLICY_ACTOR_ID, POLICY_ACTOR_NAME),
-            &format!("sent g1t-agent back to address {}'s comment", actor.username),
+            &format!("sent g1t back to address {}'s comment", actor.username),
         )
         .await?;
         Ok(Outcome::Ok(LifecycleJob {
@@ -616,7 +619,7 @@ impl Work {
         }))
     }
 
-    /// Says something in a mention's thread as g1t-agent, once per mention.
+    /// Says something in a mention's thread as g1t, once per mention.
     pub(crate) async fn reply_mention(&self, a: ReplyMentionArgs) -> Result<bool> {
         let body: String = a.body.trim().chars().take(MAX_REPLY_CHARS).collect();
         if body.is_empty() {
@@ -746,7 +749,7 @@ impl Work {
         Ok(Outcome::Ok(rules))
     }
 
-    /// Queues an issue for g1t-agent when it has just been given the label
+    /// Queues an issue for g1t when it has just been given the label
     /// the repository's rule names, by someone who may run agents in it.
     /// The runner starts queued issues as there is room, as it does a
     /// plan's.
@@ -794,7 +797,7 @@ impl Work {
                 &issue.repo_id,
                 issue.number,
                 (POLICY_ACTOR_ID, POLICY_ACTOR_NAME),
-                &format!("queued this for g1t-agent, because it was labelled {label}"),
+                &format!("queued this for g1t, because it was labelled {label}"),
             )
             .await?;
         }
@@ -808,87 +811,108 @@ mod tests {
 
     #[test]
     fn a_mention_is_found_whatever_its_case() {
-        assert!(mentions_agent("@g1t-agent take this"));
-        assert!(mentions_agent("@G1T-Agent take this"));
-        assert!(mentions_agent("Thanks, @g1t-agent."));
-        assert!(mentions_agent("(@g1t-agent) and"));
-        assert!(mentions_agent("cc @g1t-agent, please"));
-        assert!(mentions_agent("first line\n@g1t-agent"));
+        assert!(mentions_agent("@g1t take this"));
+        assert!(mentions_agent("@G1T take this"));
+        assert!(mentions_agent("Thanks, @g1t."));
+        assert!(mentions_agent("(@g1t) and"));
+        assert!(mentions_agent("cc @g1t, please"));
+        assert!(mentions_agent("first line\n@g1t"));
     }
 
     #[test]
     fn code_does_not_mention_anyone() {
-        assert!(!mentions_agent("Type `@g1t-agent take this` to hand it over."));
-        assert!(!mentions_agent("Use ``@g1t-agent `x` `` like so."));
-        assert!(!mentions_agent("```\n@g1t-agent take this\n```"));
-        assert!(!mentions_agent("~~~md\n@g1t-agent\n~~~"));
-        assert!(!mentions_agent("````\n```\n@g1t-agent\n```\n````"));
+        assert!(!mentions_agent("Type `@g1t take this` to hand it over."));
+        assert!(!mentions_agent("Use ``@g1t `x` `` like so."));
+        assert!(!mentions_agent("```\n@g1t take this\n```"));
+        assert!(!mentions_agent("~~~md\n@g1t\n~~~"));
+        assert!(!mentions_agent("````\n```\n@g1t\n```\n````"));
         // Outside the code, it still counts.
-        assert!(mentions_agent("`code` then @g1t-agent fix it"));
-        assert!(mentions_agent("```\nx\n```\n@g1t-agent fix it"));
+        assert!(mentions_agent("`code` then @g1t fix it"));
+        assert!(mentions_agent("```\nx\n```\n@g1t fix it"));
         // A backtick that opens nothing is text.
-        assert!(mentions_agent("a ` b @g1t-agent"));
+        assert!(mentions_agent("a ` b @g1t"));
     }
 
     #[test]
     fn quoting_a_mention_does_not_repeat_it() {
-        assert!(!mentions_agent("> @g1t-agent take this\n\nI don't think we should."));
-        assert!(!mentions_agent("  > > @g1t-agent"));
-        assert!(mentions_agent("> earlier\n\n@g1t-agent yes, do it"));
+        assert!(!mentions_agent("> @g1t take this\n\nI don't think we should."));
+        assert!(!mentions_agent("  > > @g1t"));
+        assert!(mentions_agent("> earlier\n\n@g1t yes, do it"));
     }
 
     #[test]
     fn email_addresses_and_longer_names_are_not_mentions() {
-        assert!(!mentions_agent("write to ops@g1t-agent.dev"));
-        assert!(!mentions_agent("bot@g1t-agent"));
-        assert!(!mentions_agent("@g1t-agent.dev is the address"));
-        assert!(!mentions_agent("@g1t-agents"));
-        assert!(!mentions_agent("@g1t-agent-2"));
-        assert!(!mentions_agent("@g1t-agent_x"));
-        assert!(!mentions_agent("https://g1t.sh/@g1t-agent"));
-        assert!(!mentions_agent("\\@g1t-agent"));
-        assert!(!mentions_agent("g1t-agent without the at"));
+        assert!(!mentions_agent("write to ops@g1t.sh"));
+        assert!(!mentions_agent("mail g1t@users.noreply.g1t.sh"));
+        assert!(!mentions_agent("bot@g1t"));
+        assert!(!mentions_agent("@g1t.dev is the address"));
+        assert!(!mentions_agent("@g1t.sh"));
+        assert!(!mentions_agent("@g1ts"));
+        assert!(!mentions_agent("@g1t2"));
+        assert!(!mentions_agent("@g1t-2"));
+        assert!(!mentions_agent("@g1t-bot take this"));
+        assert!(!mentions_agent("@g1t-agent take this"));
+        assert!(!mentions_agent("@g1t_x"));
+        assert!(!mentions_agent("https://g1t.sh/@g1t"));
+        assert!(!mentions_agent("see https://g1t.sh/g1t/docs"));
+        assert!(!mentions_agent("\\@g1t"));
+        assert!(!mentions_agent("g1t without the at"));
+        assert!(!mentions_agent("import { x } from \"@g1t/contracts\";"));
+        assert!(!mentions_agent("npm i @g1t/contracts"));
+        assert!(!mentions_agent("@@g1t"));
+        assert!(!mentions_agent("name@g1t: hi"));
+    }
+
+    #[test]
+    fn a_mention_ends_at_punctuation() {
+        assert!(mentions_agent("@g1t: take this"));
+        assert!(mentions_agent("@g1t! fix it"));
+        assert!(mentions_agent("ok @g1t?"));
+        assert!(mentions_agent("\"@g1t\" take this"));
+        assert!(mentions_agent("**@g1t** take this"));
+        assert!(mentions_agent("@g1t.\nThanks"));
+        assert_eq!(mentions_in("@g1t and @g1t-bot and @g1t"), vec![(0, 4), (22, 26)]);
     }
 
     #[test]
     fn non_ascii_text_around_a_mention_is_fine() {
-        assert!(mentions_agent("é @g1t-agent ü"));
-        assert!(!mentions_agent("é@g1t-agent"));
-        assert_eq!(mentions_in("ü @g1t-agent"), vec![(3, 3 + HANDLE.len())]);
+        assert!(mentions_agent("é @g1t ü"));
+        assert!(!mentions_agent("é@g1t"));
+        assert_eq!(mentions_in("ü @g1t"), vec![(3, 3 + HANDLE.len())]);
     }
 
     #[test]
     fn a_request_is_work() {
-        assert_eq!(intent("@g1t-agent take this"), Intent::Work);
-        assert_eq!(intent("@g1t-agent"), Intent::Work);
-        assert_eq!(intent("@g1t-agent please fix the typo in the README"), Intent::Work);
-        assert_eq!(intent("@g1t-agent can you add tests for this?"), Intent::Work);
-        assert_eq!(intent("Looks close. @g1t-agent rename `foo` to `bar`."), Intent::Work);
-        assert_eq!(intent("@G1T-AGENT Handle the empty case too"), Intent::Work);
+        assert_eq!(intent("@g1t take this"), Intent::Work);
+        assert_eq!(intent("@g1t"), Intent::Work);
+        assert_eq!(intent("@g1t please fix the typo in the README"), Intent::Work);
+        assert_eq!(intent("@g1t can you add tests for this?"), Intent::Work);
+        assert_eq!(intent("Looks close. @g1t rename `foo` to `bar`."), Intent::Work);
+        assert_eq!(intent("@G1T Handle the empty case too"), Intent::Work);
     }
 
     #[test]
     fn a_question_is_answered() {
-        assert_eq!(intent("@g1t-agent why does this fail on Windows?"), Intent::Question);
-        assert_eq!(intent("@g1t-agent how is the cache invalidated"), Intent::Question);
-        assert_eq!(intent("@g1t-agent can you explain the retry logic"), Intent::Question);
-        assert_eq!(intent("@g1t-agent is this safe to merge as it is?"), Intent::Question);
-        assert_eq!(intent("@g1t-agent the parser or the lexer?"), Intent::Question);
-        assert_eq!(intent("What does this do, @g1t-agent?"), Intent::Question);
+        assert_eq!(intent("@g1t why does this fail on Windows?"), Intent::Question);
+        assert_eq!(intent("@g1t how is the cache invalidated"), Intent::Question);
+        assert_eq!(intent("@g1t can you explain the retry logic"), Intent::Question);
+        assert_eq!(intent("@g1t is this safe to merge as it is?"), Intent::Question);
+        assert_eq!(intent("@g1t the parser or the lexer?"), Intent::Question);
+        assert_eq!(intent("What does this do, @g1t?"), Intent::Question);
     }
 
     #[test]
     fn a_review_is_a_review() {
-        assert_eq!(intent("@g1t-agent review this"), Intent::Review);
-        assert_eq!(intent("@g1t-agent please review"), Intent::Review);
-        assert_eq!(intent("@g1t-agent could you review the migration?"), Intent::Review);
-        assert_eq!(intent("@g1t-agent re-review"), Intent::Review);
+        assert_eq!(intent("@g1t review this"), Intent::Review);
+        assert_eq!(intent("@g1t please review"), Intent::Review);
+        assert_eq!(intent("@g1t could you review the migration?"), Intent::Review);
+        assert_eq!(intent("@g1t re-review"), Intent::Review);
     }
 
     #[test]
     fn quoted_and_code_text_does_not_change_the_intent() {
-        assert_eq!(intent("> why?\n\n@g1t-agent fix it"), Intent::Work);
-        assert_eq!(intent("@g1t-agent fix `why?`"), Intent::Work);
+        assert_eq!(intent("> why?\n\n@g1t fix it"), Intent::Work);
+        assert_eq!(intent("@g1t fix `why?`"), Intent::Work);
     }
 
     #[test]

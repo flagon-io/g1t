@@ -57,7 +57,7 @@ export default function AgentsAtWork({ loaderData, params }: Route.ComponentProp
         {live.length === 0 ? (
           <div className="mt-3">
             <Idle>
-              No agent is at work here right now. Assign an issue to g1t-agent from the{" "}
+              No agent is at work here right now. Assign an issue to g1t from the{" "}
               <Link to={`${base}/issues`} className="text-fg underline-offset-2 hover:underline">
                 issues
               </Link>{" "}

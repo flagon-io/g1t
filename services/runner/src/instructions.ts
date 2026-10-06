@@ -7,7 +7,7 @@
  * Trust: instructions are followed only when they come from the
  * repository itself: its default branch, or for a pull request from one of
  * its own branches, that branch. A pull request from a fork (and every
- * change g1t-agent makes is in a fork) can change these files too, but what
+ * change g1t makes is in a fork) can change these files too, but what
  * it says is part of the change, not instructions: the agent is shown it
  * as such, and keeps following the default branch's.
  *

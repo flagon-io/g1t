@@ -91,12 +91,12 @@ const item = (id: string, at: number, actor: string | null, verb: ActivityItem["
 
 test("one agent's burst in one project reads as one line", () => {
   const groups = groupActivity([
-    item("1", NOW, "g1t-agent", "landed", 4),
-    item("2", NOW - 5 * MIN, "g1t-agent", "started", 5),
-    item("3", NOW - 10 * MIN, "g1t-agent", "started", 6),
-    item("4", NOW - 12 * MIN, "g1t-agent", "landed", 3),
+    item("1", NOW, "g1t", "landed", 4),
+    item("2", NOW - 5 * MIN, "g1t", "started", 5),
+    item("3", NOW - 10 * MIN, "g1t", "started", 6),
+    item("4", NOW - 12 * MIN, "g1t", "landed", 3),
     item("5", NOW - 20 * MIN, "ana", "opened_issue", 7),
-    item("6", NOW - 25 * MIN, "g1t-agent", "landed", 2),
+    item("6", NOW - 25 * MIN, "g1t", "landed", 2),
   ]);
   assert.equal(groups.length, 3);
   assert.equal(groups[0].count, 4);
@@ -111,9 +111,9 @@ test("one agent's burst in one project reads as one line", () => {
 test("a burst breaks across projects and long gaps", () => {
   const other = { namespace: "acme", name: "web" };
   const groups = groupActivity([
-    item("1", NOW, "g1t-agent", "landed", 1),
-    item("2", NOW - MIN, "g1t-agent", "landed", 2, other),
-    item("3", NOW - 2 * HOUR, "g1t-agent", "landed", 3, other),
+    item("1", NOW, "g1t", "landed", 1),
+    item("2", NOW - MIN, "g1t", "landed", 2, other),
+    item("3", NOW - 2 * HOUR, "g1t", "landed", 3, other),
   ]);
   assert.equal(groups.length, 3);
 });

@@ -1,6 +1,6 @@
 /**
  * Putting an agent on something in one step, from a form: the issue new
- * page with "Assign g1t-agent now", and Mission control's composer. Pure,
+ * page with "Assign g1t now", and Mission control's composer. Pure,
  * so it is tested on its own; the routes call `env.RUNNER.delegate`.
  */
 import type { AgentStart, DelegateInput, RepoPath } from "@g1t/contracts";
@@ -57,8 +57,8 @@ export function notStarted(agent: AgentStart, repo: RepoPath, number: number): N
     number,
     // The fix is offered as a link of its own, so the address the message ends with is left off.
     message: fixTo
-      ? (agent.message ?? "g1t-agent did not start.").replace(/:\s*(?:https:\/\/g1t\.sh)?\/[\w./#-]+\s*$/, ".")
-      : (agent.message ?? "g1t-agent did not start."),
+      ? (agent.message ?? "g1t did not start.").replace(/:\s*(?:https:\/\/g1t\.sh)?\/[\w./#-]+\s*$/, ".")
+      : (agent.message ?? "g1t did not start."),
     fix: fixTo ? { label: FIX_LABEL[agent.code ?? ""] ?? "Fix it", to: fixTo } : null,
   };
 }

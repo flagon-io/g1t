@@ -1018,8 +1018,8 @@ mod tests {
             Some("https://g1t.sh/acme/site.git"),
             None
         ));
-        // A fork's head, whoever's fork it is, g1t-agent's included.
-        assert!(!checkout_trusted(Some("https://g1t.sh/g1t-agent/site-12.git"), None, repo));
+        // A fork's head, whoever's fork it is.
+        assert!(!checkout_trusted(Some("https://g1t.sh/ana/site-12.git"), None, repo));
         assert!(!checkout_trusted(
             Some("https://g1t.sh/someone/site.git"),
             Some("https://g1t.sh/acme/site.git"),

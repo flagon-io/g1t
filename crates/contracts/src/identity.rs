@@ -609,7 +609,7 @@ pub struct AgentScope {
 }
 
 /// `create_agent_token`: a token for a g1t agent working on someone's
-/// behalf. It acts as `g1t-agent`, a member of the repository's workspace,
+/// behalf. It acts as `g1t`, a member of the repository's workspace,
 /// and only for the operations in `scope`. Returns `CreatedAccessToken`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -623,9 +623,13 @@ pub struct CreateAgentTokenArgs {
 // `agent_scope` takes `TokenArgs` and returns `Option<AgentScope>`: what an
 // agent's token may do, or null for any other token.
 
-/// The id and name g1t's agents act under.
+/// The id g1t's agent acts under. Only ever stored, never shown: it keeps
+/// the agent's work apart from g1t's own ([`crate::system::ID`]) where
+/// that matters, such as whether its approval counts.
 pub const AGENT_ID: &str = "usr_g1t_agent";
-pub const AGENT_NAME: &str = "g1t-agent";
+/// The name g1t's agent is shown by: g1t's own, [`crate::system::USERNAME`].
+/// Everything it does, people see g1t do.
+pub const AGENT_NAME: &str = crate::system::USERNAME;
 
 // --- Staff ---------------------------------------------------------------
 //

@@ -127,7 +127,7 @@ pub struct RunBinding {
     /// The pull request the run works on, for the kinds that work on one.
     #[serde(default)]
     pub number: Option<u32>,
-    /// The agent's name, such as `g1t-agent`.
+    /// The agent's name, such as `g1t`.
     pub agent: String,
     /// Repositories it may clone and fetch, besides those it may push to.
     #[serde(default)]
@@ -151,7 +151,7 @@ pub struct Principal {
 }
 
 /// Set on a [`User`] resolved from an agent's token: the composite
-/// identity, "g1t-agent on behalf of syntaqx", and what it may do.
+/// identity, "g1t on behalf of syntaqx", and what it may do.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Acting {
@@ -187,7 +187,7 @@ pub struct CreateRunCredentialArgs {
     #[serde(default)]
     pub push: Vec<GitGrant>,
     pub ttl_seconds: u64,
-    /// Defaults to `g1t-agent`.
+    /// Defaults to `g1t`.
     #[serde(default)]
     pub agent: Option<String>,
 }
@@ -686,7 +686,7 @@ pub fn as_person(user: &User) -> Option<User> {
     })
 }
 
-/// How an actor is described: "g1t-agent on behalf of syntaqx".
+/// How an actor is described: "g1t on behalf of syntaqx".
 pub fn describe(user: &User) -> String {
     match &user.acting {
         Some(acting) => format!(
@@ -767,7 +767,7 @@ mod tests {
                 usage,
                 run_id: Some("run_1".to_owned()),
                 number: Some(7),
-                agent: "g1t-agent".to_owned(),
+                agent: "g1t".to_owned(),
                 system: false,
                 read: vec![path("acme", "rocket")],
                 push: match kind {
@@ -790,7 +790,7 @@ mod tests {
     fn agent(member_of: &[&str], scope: AgentScope) -> User {
         User {
             id: "usr_g1t_agent".to_owned(),
-            username: "g1t-agent".to_owned(),
+            username: "g1t".to_owned(),
             kind: PrincipalKind::Agent,
             verified: true,
             workspaces: member_of
@@ -802,7 +802,7 @@ mod tests {
             token: None,
             acting: Some(Box::new(Acting {
                 credential_id: "tok_1".to_owned(),
-                agent: "g1t-agent".to_owned(),
+                agent: "g1t".to_owned(),
                 on_behalf_of: Principal {
                     id: "usr_1".to_owned(),
                     username: "syntaqx".to_owned(),
@@ -1115,7 +1115,7 @@ mod tests {
         assert_eq!(person.kind, PrincipalKind::User);
         assert!(person.is_member("acme"));
         assert!(person.acting.is_none());
-        assert_eq!(describe(&user), "g1t-agent on behalf of syntaqx");
+        assert_eq!(describe(&user), "g1t on behalf of syntaqx");
         // The tools act as the agent.
         assert!(as_person(&agent(&["acme"], scope(K::Implement, Tools))).is_none());
     }

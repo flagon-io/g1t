@@ -511,11 +511,11 @@ function AssignField() {
   return (
     <CheckboxOption
       name="assign"
-      label={<span className="font-medium">Put a g1t agent on each new issue</span>}
+      label={<span className="font-medium">Assign each new issue to g1t</span>}
       description={
         <span className="text-muted">
           It opens a pull request, gets reviewed, and lands through your merge rules, before anyone has to look.
-          Agents run only where g1t agents are enabled.
+          Agents run only where g1t is enabled.
         </span>
       }
     />

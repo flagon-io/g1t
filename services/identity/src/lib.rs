@@ -25,7 +25,7 @@ mod workspaces;
 
 use g1t_contracts::identity::*;
 use g1t_contracts::time::{SQL_NOW, rfc3339, sql_after};
-use g1t_contracts::{FailureCode, Outcome, User, Viewer, is_valid_namespace, new_id};
+use g1t_contracts::{FailureCode, Outcome, User, Viewer, claimable_namespace, new_id};
 use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::Deserialize;
 use tokens::TOKEN_PREFIX;
@@ -374,6 +374,7 @@ impl Identity {
 
     async fn register(&self, a: RegisterArgs) -> Result<Outcome<SignedIn>> {
         let username = a.username.trim().to_lowercase();
+        let claimable = claimable_namespace(&username).is_some();
         let email = a.email.trim().to_lowercase();
         let invalid = |message: &str| Ok(Outcome::fail(FailureCode::Invalid, message));
         let invite_code = a.invite_code.as_deref().map(str::trim).filter(|code| !code.is_empty());
@@ -381,9 +382,9 @@ impl Identity {
         if self.invites_required() && invite_code.is_none() {
             return Ok(Outcome::fail(FailureCode::Forbidden, invites::MISSING));
         }
-        if !is_valid_namespace(&username) {
+        if !claimable {
             return invalid(
-                "Usernames use lowercase letters, digits and single hyphens, up to 39 characters.",
+                "Usernames use lowercase letters, digits and single hyphens, up to 39 characters, and cannot be a reserved word.",
             );
         }
         let well_formed_email = email
@@ -803,4 +804,18 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         _ => Response::error("Unknown method", 404),
     };
     served.finish(answered)
+}
+
+#[cfg(test)]
+mod register_tests {
+    use super::*;
+
+    #[test]
+    fn nobody_registers_as_g1t() {
+        // What register checks the username with, whatever its case.
+        for username in ["g1t", "G1T", "g1t-agent", "G1t-Agent"] {
+            assert_eq!(claimable_namespace(username), None, "{username}");
+        }
+        assert_eq!(claimable_namespace("ana").as_deref(), Some("ana"));
+    }
 }

@@ -741,10 +741,10 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
     trial?.open
       ? {
           done: true,
-          title: "Try g1t's agents free",
+          title: "Try g1t free",
           about: trial.granted
             ? `This workspace has ${dollars(trial.limitMicros - trial.usedMicros)} of its ${dollars(trial.limitMicros)} trial credit left, for g1t's models and sandboxes.`
-            : `This workspace gets ${dollars(trial.limitMicros)} of trial credit, for g1t's models and sandboxes, the first time its agents work.`,
+            : `This workspace gets ${dollars(trial.limitMicros)} of trial credit, for g1t's models and sandboxes, the first time g1t works here.`,
           to: workspace ? `/${workspace}/-/integrations` : null,
           action: "Connect",
         }
@@ -770,7 +770,7 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
       done: loaded.handedOff,
       title: "Hand off an outcome",
       about:
-        "Open an issue and assign it to g1t-agent, or write an outcome on a project's Plans page and let a planner split it into issues.",
+        "Open an issue and assign it to g1t, or write an outcome on a project's Plans page and let a planner split it into issues.",
       to: repos[0] ? `/${repos[0].namespace}/${repos[0].name}/plans` : null,
       action: "Write one",
     },
@@ -985,7 +985,7 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
                 >
                   <p className="font-medium text-fg">No projects yet</p>
                   <p className="mt-1">
-                    Create a repository or import one. Assign its issues to g1t-agent, and what needs you shows up here.
+                    Create a repository or import one. Assign its issues to g1t, and what needs you shows up here.
                   </p>
                 </Empty>
               ) : (
@@ -1026,7 +1026,7 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
             ) : waiting.length === 0 ? (
               <Empty>
                 <p className="font-medium text-fg">No agent is at work right now</p>
-                <p className="mt-1">Assign an issue to g1t-agent and one starts on it in seconds. Its run shows here while it works.</p>
+                <p className="mt-1">Assign an issue to g1t and one starts on it in seconds. Its run shows here while it works.</p>
               </Empty>
             ) : (
               <List>
@@ -1108,7 +1108,7 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
             </div>
             <p className="mt-1 flex items-center gap-3 text-[0.6875rem] text-faint">
               <span className="inline-flex items-center gap-1.5">
-                <Avatar name="g1t-agent" size={12} /> agents
+                <Avatar name="g1t" size={12} /> agents
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <Avatar name={viewer.username} size={12} /> people

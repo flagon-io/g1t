@@ -193,7 +193,7 @@ fn decide(facts: Facts) -> (Lifecycle, Next) {
     let exhausted = revisions >= facts.max_revisions;
 
     if facts.draft {
-        return wait(Stage::Working, "A g1t agent is making the change.");
+        return wait(Stage::Working, "g1t is making the change.");
     }
     if let Some(reason) = &facts.stalled {
         return wait(Stage::NeedsYou, reason);
@@ -233,11 +233,11 @@ fn decide(facts: Facts) -> (Lifecycle, Next) {
             );
         }
         Some("merge") => return wait(Stage::Ready, "Merging."),
-        Some(_) => return wait(Stage::Reviewing, "A g1t agent is reviewing the change."),
+        Some(_) => return wait(Stage::Reviewing, "g1t is reviewing the change."),
         None => {}
     }
     if facts.review_pending {
-        return wait(Stage::Reviewing, "A g1t agent is reviewing the change.");
+        return wait(Stage::Reviewing, "g1t is reviewing the change.");
     }
     // A person asked for changes: the agent makes them, as it would for a
     // review it asked for, before anything else.
@@ -343,7 +343,7 @@ fn decide(facts: Facts) -> (Lifecycle, Next) {
                 return (
                     at(
                         Stage::Reviewing,
-                        "A g1t agent is about to review the change.",
+                        "g1t is about to review the change.",
                         revisions,
                     ),
                     Next::Review,
@@ -1038,19 +1038,19 @@ impl Work {
                     .bind(&[AGENT_NAME.into(), pull.id.as_str().into()])?
                     .run()
                     .await?;
-                "requested a review from g1t-agent".to_owned()
+                "requested a review from g1t".to_owned()
             }
             Next::Revise(Feedback::FailedChecks) => {
-                "sent g1t-agent back to fix what failed in the merge queue".to_owned()
+                "sent g1t back to fix what failed in the merge queue".to_owned()
             }
             Next::Revise(Feedback::FailedWorkflows) => {
-                "sent g1t-agent back to fix the failed checks".to_owned()
+                "sent g1t back to fix the failed checks".to_owned()
             }
             Next::Revise(Feedback::Review(_)) => {
-                "sent g1t-agent back to address the review".to_owned()
+                "sent g1t back to address the review".to_owned()
             }
             _ => format!(
-                "asked g1t-agent to bring this up to date with {}",
+                "asked g1t to bring this up to date with {}",
                 repo.default_branch
             ),
         };

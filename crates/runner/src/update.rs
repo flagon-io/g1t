@@ -60,8 +60,8 @@ fn update(reporter: &mut Reporter) -> Result<()> {
 
     std::fs::create_dir_all("/work")?;
     crate::clone::clone(Path::new("/work"), &auth, &["--branch", &branch], &remote, WORKDIR).context("could not clone the pull request")?;
-    git(workdir, &["config", "user.name", "g1t agent"])?;
-    git(workdir, &["config", "user.email", "agent@g1t.sh"])?;
+    git(workdir, &["config", "user.name", crate::AUTHOR_NAME])?;
+    git(workdir, &["config", "user.email", crate::AUTHOR_EMAIL])?;
     crate::clone::fetch(workdir, &auth, &upstream, &upstream_branch).with_context(|| format!("could not fetch {upstream_branch}"))?;
     // Shallow: deep enough to tell whether it is behind, and to merge.
     crate::clone::share_history(workdir, &auth, &[("origin", branch.as_str()), (upstream.as_str(), upstream_branch.as_str())], "HEAD", "FETCH_HEAD")?;

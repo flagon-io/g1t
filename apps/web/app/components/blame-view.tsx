@@ -252,10 +252,13 @@ function WhyPanel({
               </Link>
               <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
                 {current.pull.runtime === "hosted" ? (
-                  <span className="flex items-center gap-1 text-merged">
-                    <Sparkles size={11} />
-                    written by {current.pull.agent}
-                  </span>
+                  <>
+                    <span className="flex items-center gap-1 text-merged">
+                      <Sparkles size={11} />
+                      written by {current.pull.agent}
+                    </span>
+                    {current.pull.agent === "g1t" && <span>for {current.pull.author}</span>}
+                  </>
                 ) : (
                   <span>by {current.pull.author} with {current.pull.agent}</span>
                 )}

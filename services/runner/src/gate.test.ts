@@ -319,7 +319,7 @@ test("a mention whose run waits for a slot says so, and is not a failure", async
     intent: "work",
     issueOpen: true,
     workingPull: null,
-    body: "@g1t-agent take this",
+    body: "@g1t take this",
     defaultBranch: "main",
   } as never;
   await handleMention(job, {

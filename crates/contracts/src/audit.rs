@@ -79,7 +79,7 @@ pub enum Surface {
 #[serde(rename_all = "camelCase")]
 pub struct AuditActor {
     pub actor_kind: Option<ActorKind>,
-    /// The username: a person's, the agent's (`g1t-agent`), or the
+    /// The username: a person's, the agent's (`g1t`), or the
     /// workspace's slug.
     pub actor: String,
     pub actor_id: String,
@@ -287,11 +287,11 @@ mod tests {
     fn an_agent_is_recorded_with_who_it_worked_for() {
         let user = User {
             id: "usr_g1t_agent".to_owned(),
-            username: "g1t-agent".to_owned(),
+            username: "g1t".to_owned(),
             kind: PrincipalKind::Agent,
             acting: Some(Box::new(Acting {
                 credential_id: "tok_9".to_owned(),
-                agent: "g1t-agent".to_owned(),
+                agent: "g1t".to_owned(),
                 on_behalf_of: Principal {
                     id: "usr_1".to_owned(),
                     username: "syntaqx".to_owned(),
@@ -307,7 +307,7 @@ mod tests {
                         usage: CredentialUse::Tools,
                         run_id: Some("run_3".to_owned()),
                         number: Some(4),
-                        agent: "g1t-agent".to_owned(),
+                        agent: "g1t".to_owned(),
                         system: false,
                         read: vec![],
                         push: vec![],

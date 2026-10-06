@@ -40,8 +40,8 @@ Owners of its workspace have Admin on it.
 
 Renaming the repository or its default branch, changing its visibility
 and archiving it are done by a person, not a workspace token.
-A g1t agent's token can never use the tools that make these changes,
-whatever its run. See [credentials](/guides/g1t-agents/#credentials).
+g1t's token can never use the tools that make these changes,
+whatever its run. See [credentials](/guides/working-with-g1t/#credentials).
 
 ## Edit the details
 
@@ -374,7 +374,7 @@ it.
 | Response | Why | What to do |
 | --- | --- | --- |
 | `401 unauthenticated` | No token, or one that is not valid. | Send a personal access token. |
-| `403 forbidden` | You are not an owner, for a change that needs one; or a g1t agent's token was used. | Ask an owner of the workspace. |
+| `403 forbidden` | You are not an owner, for a change that needs one; or g1t's token was used. | Ask an owner of the workspace. |
 | `404 not_found` | No such repository or branch, or you cannot see it. For restore and purge: no deleted repository had that path, or it was purged. | Check the path. A deleted repository is named by the path it had. |
 | `409 conflict` | The new name is taken in the workspace, by a repository or a recently deleted one; or a branch with the new name exists. | Pick another name, or purge the deleted repository first. |
 | `422 invalid` | `confirm` is not the repository's full name; the name, branch name or website is not valid; or the new default branch does not exist. | Type `<workspace>/<repo>` exactly; push the branch first. |

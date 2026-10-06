@@ -20,7 +20,7 @@ const MOVED_DOCS: Record<string, string> = {
   "/docs/concepts": "/concepts/overview/",
   "/docs/authentication": "/guides/authentication/",
   "/docs/git": "/guides/git/",
-  "/docs/g1t-agents": "/guides/g1t-agents/",
+  "/docs/g1t-agents": "/guides/working-with-g1t/",
   "/docs/agents": "/guides/bring-your-own-agent/",
   "/docs/api": "/reference/api/",
   "/docs/api/reference": "/reference/api/",

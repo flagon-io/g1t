@@ -587,7 +587,7 @@ export function commandLineSteps(pull: Pull, owner: string, repo: string, defaul
 
 /**
  * The branch conflicts with its target: which files, and three ways out —
- * the g1t agent, the browser (soon), or the command line.
+ * g1t, the browser (soon), or the command line.
  */
 export function ConflictsSection({
   conflicts,
@@ -607,7 +607,7 @@ export function ConflictsSection({
   defaultBranch: string;
   /** Where the pull request's changes are shown, to link each file. */
   changesUrl: string;
-  /** Whether the viewer may have the g1t agent resolve them. */
+  /** Whether the viewer may have g1t resolve them. */
   canResolve: boolean;
   /** Whether asking for it is on its way. */
   resolving: boolean;
@@ -647,7 +647,7 @@ export function ConflictsSection({
                 <input type="hidden" name="action" value="update" />
                 <Button variant="primary" type="submit" disabled={resolving}>
                   {resolving ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                  {resolving ? "Starting g1t-agent…" : "Resolve with g1t agent"}
+                  {resolving ? "Starting g1t…" : "Resolve with g1t"}
                 </Button>
               </Form>
             )}
@@ -662,7 +662,7 @@ export function ConflictsSection({
                 </span>
               </TooltipTrigger>
               <TooltipContent>
-                An editor for conflicts in the browser is coming. Until then, have the g1t agent resolve them, or use the
+                An editor for conflicts in the browser is coming. Until then, have g1t resolve them, or use the
                 command line.
               </TooltipContent>
             </Tooltip>

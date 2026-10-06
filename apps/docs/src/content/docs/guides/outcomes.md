@@ -1,17 +1,17 @@
 ---
 title: Hand off an outcome
-description: Write what should be true, let an agent plan the issues, and follow g1t agents as they land them.
+description: Write what should be true, let an agent plan the issues, and follow g1t as it lands them.
 ---
 
 You do not have to split work into issues yourself. Write the outcome you
 want on a repository's **Plan** page. An agent reads the repository and
 proposes the issues that would get there, with what done means for each and
 the order they have to land in. You read the plan, keep what you want, and open
-it. g1t agents then work on the issues, as many at once as the dependencies
+it. g1t then works on the issues, as many at once as the dependencies
 allow, and the outcome page shows each one until it lands.
 
-Planning and g1t agents work in any workspace that
-[can run agents](/guides/g1t-agents/#who-can-run-agents) (the plan or the
+Planning and g1t's agent work in any workspace that
+[can run agents](/guides/working-with-g1t/#who-can-run-agents) (the plan or the
 trial) and has a model: [its own model provider](/guides/models/), or g1t's
 hosted models where they are open to it. The agents' runs are charged to
 the workspace; see
@@ -59,7 +59,7 @@ Untick any issue you do not want, then choose one of:
 
 | Choice | What happens |
 | --- | --- |
-| **Open these and assign g1t agents** | The issues are opened and queued for g1t agents. Agents start at once on every issue that depends on nothing, working in parallel, and on the others as what they depend on merges. |
+| **Open these and assign g1t** | The issues are opened and queued for g1t. It starts at once on every issue that depends on nothing, working in parallel, and on the others as what they depend on merges. |
 | **Only open the issues** | The issues are opened, each blocked by the ones it depends on. Nobody is put to work on them. |
 
 A dependency on an issue you unticked is dropped with it. A plan is applied
@@ -67,18 +67,18 @@ once.
 
 ### How queued issues start
 
-An issue queued for a g1t agent starts when:
+An issue queued for g1t starts when:
 
 - every issue it depends on has closed, normally because a pull request for
   it merged; and
-- the repository has room. At most six g1t agents make changes in one
+- the repository has room. g1t makes at most six changes in one
   repository at once. The rest wait their turn, which also leaves sandboxes
   free for reviews.
 
 Each queued issue says so in its conversation, for example "queued this for
-g1t-agent, to start once #41 has merged". From there each issue is
-[seen through](/guides/g1t-agents/#seeing-it-through) like any other a g1t
-agent works on: checks, review, revision, and merging under the
+g1t, to start once #41 has merged". From there each issue is
+[seen through](/guides/working-with-g1t/#seeing-it-through) like any other g1t
+works on: checks, review, revision, and merging under the
 repository's rules.
 
 ## Follow the outcome
@@ -105,9 +105,9 @@ the issue when there is none yet, and shows its state:
 | Blocked | Waiting for the issues it depends on to land. |
 | Waiting for an agent | Queued, and waiting for an agent to be free. |
 | Open | Nobody is working on it. |
-| Agent working | A g1t agent is making the change. |
+| Agent working | g1t is making the change. |
 | Checking | Its workflows are running, or a required check has not reported yet. |
-| In review | A g1t agent is reviewing the change. |
+| In review | g1t is reviewing the change. |
 | Revising | The agent was sent back by the checks, a review or a person. |
 | Catching up | The agent is merging in the branch it will land on, which has moved. |
 | In the merge queue | It is being tested with the changes ahead of it. See [the merge queue](/guides/merge-queue/). |
@@ -151,7 +151,7 @@ curl -X POST https://api.g1t.sh/repos/acme/greeter/plans \
 curl https://api.g1t.sh/repos/acme/greeter/plans/pln_01… \
   -H "Authorization: Bearer $G1T_TOKEN"
 
-# 3. Open issues 1 and 3 and put g1t agents on them.
+# 3. Open issues 1 and 3 and assign them to g1t.
 curl -X POST https://api.g1t.sh/repos/acme/greeter/plans/pln_01…/apply \
   -H "Authorization: Bearer $G1T_TOKEN" \
   -H "Content-Type: application/json" \

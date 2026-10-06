@@ -13,7 +13,7 @@ const DAY = 24 * 60 * 60 * 1000;
 
 /** Accounts that are g1t's own agents and machinery: `isAgent` in ./mission, kept here so this module imports only types. */
 export function isAgent(name: string | null | undefined): boolean {
-  return name === "g1t-agent" || name === "g1t" || (name ?? "").endsWith("-agent");
+  return name === "g1t" || (name ?? "").endsWith("-agent");
 }
 
 // --- Reasons ----------------------------------------------------------------
@@ -596,7 +596,7 @@ export function summaryLine(input: { total: number; byAgents: number; live: numb
   }
   if (live > 0) return `${plural(live, "agent is", "agents are")} at work. Nothing has landed this week yet.`;
   if (needs > 0) return "Nothing has landed this week. What is waiting on you is below.";
-  return "Nothing has landed this week yet. Assign an issue to g1t-agent and it starts in seconds.";
+  return "Nothing has landed this week yet. Assign an issue to g1t and it starts in seconds.";
 }
 
 /** "Monday, Oct 5", in the viewer's zone. */

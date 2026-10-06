@@ -20,7 +20,7 @@ export type ChecklistFacts = {
   previewOpened: boolean;
   /** An AGENTS.md or CLAUDE.md at the root of its default branch; null when unknown. */
   instructions: boolean | null;
-  /** g1t-agent has been given an issue here. */
+  /** g1t has been given an issue here. */
   agentAssigned: boolean;
 };
 
@@ -80,7 +80,7 @@ export function productionChecklist(facts: ChecklistFacts): ChecklistItem[] {
     },
     {
       key: "agent",
-      title: "Assign a first issue to g1t-agent",
+      title: "Assign a first issue to g1t",
       detail: "It opens a pull request, makes the change and sees it through checks and review.",
       done: facts.agentAssigned,
       to: `${base}/issues/new`,
@@ -100,13 +100,13 @@ export function hasInstructions(names: string[]): boolean {
   return names.some((name) => /^(agents|claude)\.md$/i.test(name));
 }
 
-/** Whether g1t-agent has worked here, from its runs, pull requests or issues. */
+/** Whether g1t has worked here, from its runs, pull requests or issues. */
 export function agentWasAssigned(input: {
   runAgents: string[];
   pullAgents: string[];
   issues: { assignees: string[]; agent: string | null }[];
 }): boolean {
-  const isAgent = (name: string | null) => name?.toLowerCase() === "g1t-agent";
+  const isAgent = (name: string | null) => name?.toLowerCase() === "g1t";
   return (
     input.runAgents.some(isAgent) ||
     input.pullAgents.some(isAgent) ||

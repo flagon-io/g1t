@@ -364,7 +364,7 @@ pub enum UpdateState {
     /// vulnerable; g1t closed it.
     Superseded,
     /// The version could not be raised without changing code: an issue
-    /// was opened for g1t-agent instead.
+    /// was opened for g1t instead.
     NeedsCode,
     /// It could not be made; why is in `error`.
     Failed,
@@ -414,7 +414,7 @@ pub struct SecurityUpdate {
     pub branch: Option<String>,
     /// The pull request g1t opened.
     pub pull: Option<u32>,
-    /// The issue opened for g1t-agent, when the upgrade needs code changes.
+    /// The issue opened for g1t, when the upgrade needs code changes.
     pub issue: Option<u32>,
     /// Why it failed, when it did.
     pub error: Option<String>,
@@ -461,7 +461,7 @@ pub struct Vulnerability {
     pub severity: String,
     pub fixed_version: Option<String>,
     pub status: VulnStatus,
-    /// The issue opened to upgrade the package, when g1t-agent was put on
+    /// The issue opened to upgrade the package, when g1t was put on
     /// it: the upgrade needs code changes, or predates security updates.
     pub issue: Option<u32>,
     /// RFC 3339.
