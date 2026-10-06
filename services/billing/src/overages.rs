@@ -44,7 +44,7 @@ pub(crate) fn typical(months: &[i64]) -> i64 {
     }
     sorted.sort_unstable();
     let middle = sorted.len() / 2;
-    if sorted.len() % 2 == 0 { (sorted[middle - 1] + sorted[middle]) / 2 } else { sorted[middle] }
+    if sorted.len().is_multiple_of(2) { (sorted[middle - 1] + sorted[middle]) / 2 } else { sorted[middle] }
 }
 
 /// Whether this month is well past the typical one.
@@ -214,7 +214,7 @@ impl Billing {
                 queue.push(overage);
             }
         }
-        queue.sort_by(|a, b| b.goodwill.overage_micros.cmp(&a.goodwill.overage_micros));
+        queue.sort_by_key(|a| std::cmp::Reverse(a.goodwill.overage_micros));
         Ok(queue)
     }
 

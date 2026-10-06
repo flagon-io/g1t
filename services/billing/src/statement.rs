@@ -214,7 +214,7 @@ impl Billing {
             group.charged_micros = group.lines.iter().filter(|l| l.charged_micros > 0).map(|l| l.charged_micros).sum();
         }
         if by_project {
-            groups.sort_by(|a, b| b.charged_micros.cmp(&a.charged_micros));
+            groups.sort_by_key(|a| std::cmp::Reverse(a.charged_micros));
         } else {
             groups.sort_by(|a, b| b.key.cmp(&a.key));
         }

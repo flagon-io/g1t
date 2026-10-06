@@ -357,8 +357,8 @@ impl Billing {
                 push(SignalKind::Declined, limit.message.clone().unwrap_or_default(), limit.exposure_micros);
             } else if limit.state == LimitState::Stopped {
                 push(SignalKind::AtLimit, limit.message.clone().unwrap_or_default(), limit.exposure_micros.max(limit.spent_micros));
-            } else if let Some(available) = limit.available_micros.filter(|a| *a > 0) {
-                if limit.exposure_micros * 5 >= available * 4 {
+            } else if let Some(available) = limit.available_micros.filter(|a| *a > 0)
+                && limit.exposure_micros * 5 >= available * 4 {
                     push(
                         SignalKind::NearCeiling,
                         format!(
@@ -370,7 +370,6 @@ impl Billing {
                         limit.exposure_micros,
                     );
                 }
-            }
             if last_month >= HIGH_SPEND_MICROS {
                 let terms = self.terms_of(&row.workspace).await?;
                 if terms.kind == TermsKind::Standard && !limit.account.starts_with("ent_") {

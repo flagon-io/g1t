@@ -281,3 +281,42 @@ shows a red **Spend cap** bar.
   `breaker_lifted`). It resets by itself at 00:00 UTC.
 - **Change a default**: edit the variable in `services/billing/wrangler.jsonc`
   and deploy g1t-billing.
+
+## Stripe
+
+Billing keeps what it needs from Stripe so reads never wait on it, and
+hears of changes three ways (`webhooks.rs`, `stripe_sync.rs`).
+
+**The webhook.** sudo → Stripe → **Register webhook** creates the endpoint
+`https://api.g1t.sh/stripe/webhook` through Stripe's API. Stripe returns the
+signing secret only in that answer; billing stores it in `stripe_webhooks`,
+one row per key mode (test, live). Never add the endpoint in Stripe's
+dashboard: its secret would not reach billing, and every event would fail
+with "The signature does not match". Register again in each mode (at
+launch, after the key changes to live). Events are claimed once each in
+`stripe_events`; a handler that fails forgets its claim, and Stripe retries.
+
+**What is kept, and how it stays current**
+
+| Kept | Where | Refreshed by |
+| --- | --- | --- |
+| Saved card (brand, last 4, expiry) | `accounts.card_*`, `card_synced_at` | `customer.updated`, `payment_method.*`, `setup_intent.succeeded`; forgotten when g1t sets a default card, so the next read asks once; the daily pass for cards older than 7 days |
+| Plans | `subscriptions` | `customer.subscription.*`, `invoice.*`; a read asks Stripe at most hourly once a period is over; the daily pass for rows older than a day |
+| Payments, refunds, disputes | ledger, `checkouts`, invoices | their events |
+
+**Every cron run (every 15 minutes)** replays missed events: Stripe's event
+list from an hour before `stripe_sync.through`, oldest first, through the
+same once-only claim. `through` moves to 5 minutes before now when all were
+handled, back to the first failure otherwise, and stays when more than
+1,000 events were listed. Claims stuck at `handling` for 10 minutes are
+dropped so the replay retries them. The first run reads 3 days back.
+
+**Daily** (`keeper::DAILY`): the endpoint is given billing's event list in
+place (its secret stays) and enabled again if Stripe disabled it, both
+audited as `stripe`/`webhook`; then up to 25 stale cards and 25 stale plans
+are read again.
+
+**What still calls Stripe on a request**: starting a payment page, a plan
+or a card check; opening the billing portal; settling a page the person
+came back from; renaming a workspace (the customer's name). Nothing a page
+view reads.

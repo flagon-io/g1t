@@ -197,12 +197,11 @@ impl Billing {
             .bind(&[workspace.as_str().into()])?
             .first::<Link>(None)
             .await?;
-        if let Some(link) = linked {
-            if let Some(row) = self.account_row(&link.account_id).await? {
+        if let Some(link) = linked
+            && let Some(row) = self.account_row(&link.account_id).await? {
                 let members = self.members(&row.id).await?;
                 return Ok(self.to_account(&row, members));
             }
-        }
         let id = own_account(&workspace);
         Ok(match self.account_row(&id).await? {
             Some(row) => self.to_account(&row, vec![workspace]),
@@ -398,14 +397,13 @@ impl Billing {
             if seen.contains(&id) {
                 continue;
             }
-            if let Some(account) = self.find_account(&id).await? {
-                if a.query.as_deref().is_none_or(|q| account.name.to_lowercase().contains(&q.to_lowercase())) {
+            if let Some(account) = self.find_account(&id).await?
+                && a.query.as_deref().is_none_or(|q| account.name.to_lowercase().contains(&q.to_lowercase())) {
                     seen.insert(id);
                     summaries.push(self.summary(account).await?);
                 }
-            }
         }
-        summaries.sort_by(|x, y| y.limit.exposure_micros.cmp(&x.limit.exposure_micros));
+        summaries.sort_by_key(|x| std::cmp::Reverse(x.limit.exposure_micros));
         Ok(summaries)
     }
 

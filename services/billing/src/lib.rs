@@ -38,6 +38,7 @@ mod keeper;
 mod limits;
 mod rename;
 mod stripe;
+mod stripe_sync;
 
 use g1t_contracts::billing::*;
 use g1t_contracts::time::rfc3339;
@@ -208,16 +209,8 @@ impl Billing {
     }
 
     async fn standing(&self, workspace: &str) -> Result<Account> {
-        let row = self.row(workspace).await?;
-        let card = match (&self.stripe, row.as_ref().and_then(|row| row.customer_id.as_deref())) {
-            (Some(stripe), Some(customer)) => stripe.card(customer).await.ok().flatten().map(|card| Card {
-                brand: card.brand,
-                last4: card.last4,
-                exp_month: card.exp_month,
-                exp_year: card.exp_year,
-            }),
-            _ => None,
-        };
+        // The card as last synced (stripe_sync.rs), not asked of Stripe.
+        let (row, card) = try_join(self.row(workspace), self.saved_card(workspace)).await?;
         Ok(Account {
             workspace: workspace.to_owned(),
             balance_micros: row.map_or(0, |row| row.balance_micros),
@@ -594,7 +587,10 @@ impl Billing {
     /// Drops a saved customer the card processor no longer knows.
     pub(crate) async fn forget_customer(&self, workspace: &str) -> Result<()> {
         self.db
-            .prepare("UPDATE accounts SET customer_id = NULL WHERE workspace = ?")
+            .prepare(
+                "UPDATE accounts SET customer_id = NULL, card_brand = NULL, card_last4 = NULL, card_exp_month = NULL,
+                   card_exp_year = NULL, card_synced_at = NULL WHERE workspace = ?",
+            )
             .bind(&[workspace.into()])?
             .run()
             .await?;
@@ -899,7 +895,7 @@ fn group(n: u32) -> String {
     let digits = n.to_string();
     let mut out = String::new();
     for (i, c) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i) % 3 == 0 {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(c);
@@ -968,7 +964,7 @@ impl Billing {
                 .and_then(|percent| percent.to_string().parse().ok())
                 .unwrap_or(20),
             free: env.var("FREE_WHILE_BUILDING").is_ok_and(|v| v.to_string() == "true"),
-            ceilings: limits::Ceilings::from_env(&env),
+            ceilings: limits::Ceilings::from_env(env),
             prepaid_only: env.var("PREPAID_ONLY").is_ok_and(|v| v.to_string() == "true"),
             trials_on: {
                 let plans = credits::Config::from_env(env);
@@ -992,6 +988,11 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     if let Err(error) = billing.settle_runs(&keeper).await {
         worker::console_error!("settling runs failed: {error}");
     }
+    // Stripe events billing never received, handled now.
+    match billing.replay_events().await {
+        Ok(done) => worker::console_log!("stripe replay: {done}"),
+        Err(error) => worker::console_error!("replaying Stripe events failed: {error}"),
+    }
     if let Err(error) = billing.autopay().await {
         worker::console_error!("paying at the limit failed: {error}");
     }
@@ -1010,18 +1011,28 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     if let Err(error) = billing.watch_spend().await {
         worker::console_error!("watching g1t's own spend failed: {error}");
     }
-    if let Ok(identity) = env.service("IDENTITY") {
-        if let Err(error) = billing.warn_limits(&identity).await {
+    if let Ok(identity) = env.service("IDENTITY")
+        && let Err(error) = billing.warn_limits(&identity).await {
             worker::console_error!("warning owners failed: {error}");
+        }
+    // Once a day: Stripe's endpoint kept listening to billing's events and
+    // enabled, and saved cards and plans not read in a while read again.
+    if event.cron() == keeper::DAILY {
+        match billing.keep_endpoint().await {
+            Ok(done) => worker::console_log!("stripe endpoint: {done}"),
+            Err(error) => worker::console_error!("keeping Stripe's endpoint failed: {error}"),
+        }
+        match billing.refresh_from_stripe().await {
+            Ok(done) => worker::console_log!("stripe refresh: {done}"),
+            Err(error) => worker::console_error!("refreshing from Stripe failed: {error}"),
         }
     }
     // Once a day, and at once if the costs were never checked: check every
     // cost against what Cloudflare billed.
-    if event.cron() == keeper::DAILY || billing.never_checked().await.unwrap_or(false) {
-        if let Err(error) = billing.reconcile(&keeper).await {
+    if (event.cron() == keeper::DAILY || billing.never_checked().await.unwrap_or(false))
+        && let Err(error) = billing.reconcile(&keeper).await {
             worker::console_error!("checking costs against Cloudflare failed: {error}");
         }
-    }
     // Once a day: what Cloudflare charged, reconciled against what g1t
     // counted and charged; prices whose day has come; margin alerts
     // (margin.rs). After the keeper, so its proposals are in.

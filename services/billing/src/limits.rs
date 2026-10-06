@@ -423,9 +423,7 @@ impl Billing {
         let risk = state(exposure, ceiling);
         let budget = state(spent, spend_limit);
         let over_budget = budget == LimitState::Stopped;
-        let state = if declined.is_some() && exposure > 0 {
-            LimitState::Stopped
-        } else if risk == LimitState::Stopped || over_budget {
+        let state = if (declined.is_some() && exposure > 0) || risk == LimitState::Stopped || over_budget {
             LimitState::Stopped
         } else if risk == LimitState::Warning || budget == LimitState::Warning {
             LimitState::Warning
@@ -839,8 +837,8 @@ impl Billing {
             let billing = format!("https://g1t.sh/{workspace}/-/billing");
 
             // A declined card, once per decline.
-            if let Some(Told { autopay_failed_at: Some(failed), declined_told_at }) = &told {
-                if declined_told_at.as_deref().is_none_or(|at| at < failed.as_str()) {
+            if let Some(Told { autopay_failed_at: Some(failed), declined_told_at }) = &told
+                && declined_told_at.as_deref().is_none_or(|at| at < failed.as_str()) {
                     let limit = self.limit_of(&workspace).await?;
                     let sent = notify(
                         identity,
@@ -859,7 +857,6 @@ impl Billing {
                             .await?;
                     }
                 }
-            }
 
             // 50, 75, 90 and 100%, once each a month and meter: only the
             // highest new level is emailed.

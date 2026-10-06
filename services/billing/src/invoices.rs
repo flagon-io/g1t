@@ -238,17 +238,15 @@ impl Billing {
         self.enter(workspace, EntryKind::TopUp, amount, &format!("Paid invoice {}", invoice.id), &invoice.id, None, None, None, None)
             .await?;
         // Prepaid cards pay, but never raise the limit.
-        if let (Some(stripe), Some(charge)) = (&self.stripe, &invoice.charge) {
-            if let Ok(charge) = stripe.get::<Value>(&format!("/charges/{charge}")).await {
-                if let Some(funding) = charge["payment_method_details"]["card"]["funding"].as_str() {
+        if let (Some(stripe), Some(charge)) = (&self.stripe, &invoice.charge)
+            && let Ok(charge) = stripe.get::<Value>(&format!("/charges/{charge}")).await
+                && let Some(funding) = charge["payment_method_details"]["card"]["funding"].as_str() {
                     self.db
                         .prepare("UPDATE ledger SET funding = ? WHERE reference = ?")
                         .bind(&[funding.into(), invoice.id.as_str().into()])?
                         .run()
                         .await?;
                 }
-            }
-        }
         Ok(true)
     }
 

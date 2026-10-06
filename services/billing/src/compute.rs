@@ -245,21 +245,19 @@ impl Billing {
     /// own workspaces, which are watched in sudo but never paused.
     async fn spike_pause(&self, workspace: &str, plan: PlanKind) -> Result<Option<Spike>> {
         let latest = self.latest_spike(workspace).await?;
-        if let Some(spike) = &latest {
-            if spike.status == "open" || spike.status == "stopped" {
+        if let Some(spike) = &latest
+            && (spike.status == "open" || spike.status == "stopped") {
                 return Ok(latest);
             }
-        }
         if plan == PlanKind::Internal || self.stripe.is_none() {
             return Ok(None);
         }
         let pace = self.pace(workspace).await?;
         let now = rfc3339(now_ms());
-        if let Some(spike) = &latest {
-            if spike.status == "continued" && still_continued(spike.until.as_deref(), &now, spike.hour_micros, pace.last_hour) {
+        if let Some(spike) = &latest
+            && spike.status == "continued" && still_continued(spike.until.as_deref(), &now, spike.hour_micros, pace.last_hour) {
                 return Ok(None);
             }
-        }
         if !is_spike(pace.last_hour, pace.usual_hour, self.plans.spike_factor, self.plans.spike_floor_micros) {
             return Ok(None);
         }
@@ -583,7 +581,7 @@ impl Billing {
             let held = self.held(&account.workspaces).await?;
             let (paid_by, hold) = match place(&room, held, estimate, has_plan) {
                 Ok(placed) => placed,
-                Err(short) => return Ok(self.short(&workspace, plan, &a, verified, &room, short).await?),
+                Err(short) => return self.short(&workspace, plan, &a, verified, &room, short).await,
             };
             let id = new_id("rsv", now);
             let mut values: Vec<JsValue> = vec![

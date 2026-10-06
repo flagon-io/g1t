@@ -89,11 +89,10 @@ impl Billing {
             .bind(&[a.session.as_str().into(), workspace.as_str().into(), CARD_CHECK.into()])?
             .first::<serde_json::Value>(None)
             .await?;
-        if mine.is_some() {
-            if let Err(why) = self.settle_card_check(&a.session).await? {
+        if mine.is_some()
+            && let Err(why) = self.settle_card_check(&a.session).await? {
                 return Ok(Outcome::fail(FailureCode::Conflict, why));
             }
-        }
         Ok(Outcome::Ok(self.entitlements(EntitlementsArgs { workspace }).await?))
     }
 
@@ -179,6 +178,8 @@ impl Billing {
             if let Err(error) = stripe.set_default_card(customer, &card.payment_method).await {
                 worker::console_error!("{workspace}: the checked card was not made the default: {error}");
             }
+            // The page this lands on shows the new card, not the old.
+            self.forget_card(&workspace).await?;
             self.db
                 .prepare("UPDATE accounts SET customer_id = COALESCE(customer_id, ?2) WHERE workspace = ?1")
                 .bind(&[workspace.as_str().into(), customer.into()])?

@@ -55,6 +55,13 @@ pub(crate) const EVENTS: &[&str] = &[
     "charge.refunded",
     "charge.dispute.created",
     "charge.dispute.closed",
+    // The saved card, kept on the account row (stripe_sync.rs).
+    "customer.updated",
+    "payment_method.attached",
+    "payment_method.detached",
+    "payment_method.updated",
+    "payment_method.automatically_updated",
+    "setup_intent.succeeded",
 ];
 
 /// How old a signed event may be, so a captured one cannot be replayed.
@@ -88,11 +95,11 @@ pub(crate) fn verify(payload: &str, header: &str, secret: &str, now_seconds: i64
 }
 
 #[derive(Deserialize)]
-struct WebhookRow {
-    endpoint_id: String,
+pub(crate) struct WebhookRow {
+    pub(crate) endpoint_id: String,
     secret: String,
     url: String,
-    events: String,
+    pub(crate) events: String,
     created_by: String,
     created_at: String,
 }
@@ -122,7 +129,7 @@ struct LineRow {
 }
 
 impl Billing {
-    fn mode(&self) -> &'static str {
+    pub(crate) fn mode(&self) -> &'static str {
         match &self.stripe {
             None => "off",
             Some(stripe) if stripe.live() => "live",
@@ -130,7 +137,7 @@ impl Billing {
         }
     }
 
-    async fn webhook_row(&self) -> Result<Option<WebhookRow>> {
+    pub(crate) async fn webhook_row(&self) -> Result<Option<WebhookRow>> {
         self.db
             .prepare("SELECT * FROM stripe_webhooks WHERE mode = ?")
             .bind(&[self.mode().into()])?
@@ -142,11 +149,10 @@ impl Billing {
 
     pub(crate) async fn admin_stripe(&self, a: AdminStripeArgs) -> Result<StripeStatus> {
         let mut error = None;
-        if a.setup {
-            if let Err(e) = self.register_webhook(a.by.as_deref().unwrap_or("sudo")).await {
+        if a.setup
+            && let Err(e) = self.register_webhook(a.by.as_deref().unwrap_or("sudo")).await {
                 error = Some(e.to_string());
             }
-        }
         let webhook = self.webhook_row().await?.map(|row| StripeWebhook {
             url: row.url,
             endpoint_id: row.endpoint_id,
@@ -234,11 +240,18 @@ impl Billing {
             return Ok(Outcome::fail(FailureCode::Forbidden, "The signature does not match."));
         }
         let event: Value = serde_json::from_str(&a.payload).map_err(|e| worker::Error::RustError(e.to_string()))?;
-        let id = event["id"].as_str().unwrap_or_default().to_owned();
-        let kind = event["type"].as_str().unwrap_or_default().to_owned();
-        if id.is_empty() {
+        if event["id"].as_str().unwrap_or_default().is_empty() {
             return Ok(Outcome::fail(FailureCode::Invalid, "Not an event."));
         }
+        Ok(Outcome::Ok(self.process_event(&event).await?))
+    }
+
+    /// Handles a Stripe event once, however often it arrives: by webhook,
+    /// or again from the event list (stripe_sync.rs). False when it was
+    /// seen before.
+    pub(crate) async fn process_event(&self, event: &Value) -> Result<bool> {
+        let id = event["id"].as_str().unwrap_or_default().to_owned();
+        let kind = event["type"].as_str().unwrap_or_default().to_owned();
         // Once each: the first to record it handles it.
         let claimed = self
             .db
@@ -247,10 +260,9 @@ impl Billing {
             .first::<Value>(None)
             .await?;
         if claimed.is_none() {
-            return Ok(Outcome::Ok(false));
+            return Ok(false);
         }
-        let object = &event["data"]["object"];
-        let outcome = match self.handle(&kind, object).await {
+        let outcome = match self.handle(&kind, event).await {
             Ok(outcome) => outcome,
             Err(error) => {
                 // Let Stripe send it again: forget it was seen.
@@ -263,11 +275,19 @@ impl Billing {
             .bind(&[outcome.as_str().into(), id.as_str().into()])?
             .run()
             .await?;
-        Ok(Outcome::Ok(true))
+        Ok(true)
     }
 
-    async fn handle(&self, kind: &str, object: &Value) -> Result<String> {
+    async fn handle(&self, kind: &str, event: &Value) -> Result<String> {
+        let object = &event["data"]["object"];
         let text = |key: &str| object[key].as_str().unwrap_or_default().to_owned();
+        // The customer whose saved card may have changed. A detached card
+        // has no customer any more; the event says whose it was.
+        let card_owner = match kind {
+            "customer.updated" => object["id"].as_str(),
+            "payment_method.detached" => event["data"]["previous_attributes"]["customer"].as_str(),
+            _ => object["customer"].as_str(),
+        };
         Ok(match kind {
             "checkout.session.completed" | "checkout.session.async_payment_succeeded" => self.settle_checkout(&text("id")).await?,
             "customer.subscription.updated" | "customer.subscription.deleted" => {
@@ -300,6 +320,15 @@ impl Billing {
             "charge.refunded" => self.refunded(object).await?,
             "charge.dispute.created" => self.disputed(object, true).await?,
             "charge.dispute.closed" => self.disputed(object, object["status"].as_str() == Some("lost")).await?,
+            "customer.updated"
+            | "payment_method.attached"
+            | "payment_method.detached"
+            | "payment_method.updated"
+            | "payment_method.automatically_updated"
+            | "setup_intent.succeeded" => match card_owner {
+                Some(customer) => self.sync_card_of(customer).await?,
+                None => "ignored: no customer".to_owned(),
+            },
             _ => "ignored".to_owned(),
         })
     }
@@ -404,7 +433,7 @@ impl Billing {
     }
 
     /// A plan that changed at Stripe: renewed, failed, canceled.
-    async fn settle_subscription(&self, subscription_id: &str) -> Result<String> {
+    pub(crate) async fn settle_subscription(&self, subscription_id: &str) -> Result<String> {
         #[derive(Deserialize)]
         struct Plan {
             workspace: String,
@@ -429,7 +458,7 @@ impl Billing {
     }
 
     /// The workspace a Stripe customer belongs to.
-    async fn workspace_of_customer(&self, customer: &str) -> Result<Option<String>> {
+    pub(crate) async fn workspace_of_customer(&self, customer: &str) -> Result<Option<String>> {
         #[derive(Deserialize)]
         struct Row {
             workspace: String,
