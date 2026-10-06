@@ -1143,7 +1143,14 @@ export default class RunnerService
     const microsPerSecond = route ? 0 : sandboxMicros;
     const minutes = estimateMinutes(DEFAULT_MINUTES[task], ent);
     const admission = await compute.admit(
-      { workspace, repo, public: isPublic, kind: "agent", estimateMicros: agentEstimateMicros(task, minutes, microsPerSecond, ownModel) },
+      {
+        workspace,
+        repo,
+        public: isPublic,
+        kind: "agent",
+        estimateMicros: agentEstimateMicros(task, minutes, microsPerSecond, ownModel),
+        hostedModel: !ownModel,
+      },
       ent,
     );
     if (!admission.ok) return { ok: false, waiting: false, code: admission.code, message: admission.message };

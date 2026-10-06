@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link, data, redirect } from "react-router";
 
 import type { CostsReport, PriceProposal } from "@g1t/contracts";
@@ -6,6 +7,7 @@ import type { Route } from "./+types/costs";
 import { DaysChart } from "~/components/costs";
 import { Badge, Button, EmptyState, Field, Input, Notice, PageHeader, Section, Stat, When } from "~/components/ui";
 import {
+  capPercent,
   countLabel,
   daySeries,
   driftLabel,
@@ -15,6 +17,7 @@ import {
   parseMapping,
   parseRange,
   percentLabel,
+  spendRows,
   unitDollars,
 } from "~/lib/costs";
 import { dollarsField, usd } from "~/lib/money";
@@ -31,6 +34,7 @@ const DONE: Record<string, string> = {
   settings: "Guardrails saved. They apply from the next run.",
   mapping: "Mapping saved. It applies from the next run; read the bill now to see it.",
   removed: "Mapping removed.",
+  lifted: "Breaker lifted for the rest of today (UTC). Hosted-model runs start again; it is recorded in the audit log.",
 };
 
 const RANGES = [7, 30, 90];
@@ -69,6 +73,14 @@ export async function action({ request, context }: Route.ActionArgs) {
     if (!run.value.ok) return fail("run", run.value.error.message);
     if (run.value.value.problems.length > 0) return fail("run", run.value.value.problems.join(" "));
     throw back("run");
+  }
+  if (intent === "lift") {
+    const note = String(form.get("note") ?? "").trim().slice(0, 500);
+    if (note.length < 5) return fail("lift", "Say why it is lifted, for whoever looks next.");
+    const result = await settle(admin.liftBreaker(note, staff.email));
+    if (!result.ok) return fail("lift", `Billing did not answer: ${result.error}`);
+    if (!result.value.ok) return fail("lift", result.value.error.message);
+    throw back("lifted", "#spend");
   }
   if (intent === "decide") {
     const id = String(form.get("id") ?? "");
@@ -201,6 +213,8 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
           tone={open.length > 0 ? "warn" : undefined}
         />
       </div>
+
+      <SpendSection caps={report.caps} error={failed?.section === "lift" ? failed.error : null} />
 
       <Section
         className="mt-6"
@@ -600,6 +614,133 @@ function ProposalRow({ proposal: p, error }: { proposal: PriceProposal; error: s
         </div>
       )}
     </li>
+  );
+}
+
+function CapMeter({ label, used, cap, hint }: { label: string; used: number; cap: number; hint: ReactNode }) {
+  const percent = capPercent(used, cap);
+  const tone = cap > 0 && used >= cap ? "bg-danger" : percent >= 75 ? "bg-warn" : "bg-merged";
+  return (
+    <div className="rounded-md border border-line px-4 py-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="text-sm font-medium">{label}</span>
+        <span className="tabular text-sm">
+          {usd(used)} <span className="text-faint">of {cap > 0 ? usd(cap) : "no cap"}</span>
+        </span>
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)} aria-label={label}>
+        <div className={`h-full ${tone}`} style={{ width: `${percent}%` }} />
+      </div>
+      <p className="mt-1.5 text-xs text-muted">{hint}</p>
+    </div>
+  );
+}
+
+/** g1t's own spend: the daily breaker, comped budgets, and this month by what paid. */
+function SpendSection({ caps, error }: { caps: CostsReport["caps"]; error: string | null }) {
+  const { rows, totalMicros } = spendRows(caps);
+  const net = caps.revenueMicros - totalMicros;
+  return (
+    <Section
+      className="mt-6"
+      id="spend"
+      title="g1t's own spend"
+      description="What g1t pays for itself, at cost: comped accounts, the trial and open-source pools, free workspaces' overruns, and anything charged without real money behind it. Two caps hold it: each comped account's monthly budget, and a daily breaker on all of it that pauses new hosted-model agent runs g1t would pay for."
+    >
+      <div className="grid gap-3 lg:grid-cols-2">
+        <CapMeter
+          label={`Today, ${caps.day} (UTC)`}
+          used={caps.todayMicros}
+          cap={caps.dailyCapMicros}
+          hint={
+            caps.tripped ? (
+              <span className="text-danger">
+                Breaker open{caps.trippedAt ? <> since <When at={caps.trippedAt} time /></> : null}: new hosted-model runs g1t pays for wait until 00:00 UTC.
+              </span>
+            ) : caps.liftedBy ? (
+              <>
+                Lifted for today by {caps.liftedBy}
+                {caps.liftNote ? `: “${caps.liftNote}”` : ""}.
+              </>
+            ) : (
+              "Paying workspaces on a live card are never paused. PLATFORM_DAILY_SPEND_CAP_MICROS."
+            )
+          }
+        />
+        {caps.comped.map((b) => (
+          <CapMeter
+            key={b.account}
+            label={`${b.name}, ${caps.month} (comped)`}
+            used={b.usedMicros}
+            cap={b.ceilingMicros}
+            hint={
+              <>
+                {b.ceilingMicros > 0 && b.usedMicros >= b.ceilingMicros ? (
+                  <span className="text-danger">Used up: new work on it is refused. </span>
+                ) : null}
+                {b.defaultCeiling ? "The default budget (COMPED_MONTHLY_CEILING_MICROS)" : "Its own budget, in its terms"}. Raise it on{" "}
+                <Link to={`/workspaces/${encodeURIComponent(b.name)}#billing`} className="underline underline-offset-2">
+                  its account
+                </Link>
+                : Terms, Limit.
+              </>
+            }
+          />
+        ))}
+      </div>
+      {(caps.tripped || error) && (
+        <form method="post" action="#spend" className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
+          <input type="hidden" name="intent" value="lift" />
+          <Field label="Why lift it" hint="Recorded in the audit log.">
+            <Input name="note" required minLength={5} maxLength={500} placeholder="e.g. Launch day; watching it" className="sm:min-w-[24rem]" />
+          </Field>
+          <Button type="submit" variant="danger">
+            Lift for today
+          </Button>
+        </form>
+      )}
+      {error && (
+        <div className="mt-3">
+          <Notice tone="error">{error}</Notice>
+        </div>
+      )}
+      <div className="-mx-4 mt-5 overflow-x-auto sm:-mx-5">
+        <table className="w-full min-w-[34rem] text-sm">
+          <thead>
+            <tr className="border-b border-line text-left text-xs text-muted">
+              <th className="px-4 py-2 font-medium sm:px-5">{caps.month}, so far</th>
+              <th className="px-4 py-2 text-right font-medium sm:pr-5">g1t paid</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.key} className="border-b border-line align-top">
+                <td className="px-4 py-2.5 sm:px-5">
+                  {row.title}
+                  <span className="block text-xs text-faint">{row.note}</span>
+                </td>
+                <td className="tabular px-4 py-2.5 text-right sm:pr-5">{usd(row.micros)}</td>
+              </tr>
+            ))}
+            <tr className="border-b border-line font-medium">
+              <td className="px-4 py-2.5 sm:px-5">All of it</td>
+              <td className="tabular px-4 py-2.5 text-right sm:pr-5">{usd(totalMicros)}</td>
+            </tr>
+            <tr className="border-b border-line">
+              <td className="px-4 py-2.5 sm:px-5">
+                Money in
+                <span className="block text-xs text-faint">Usage paid for and the plan, reconciled through yesterday</span>
+              </td>
+              <td className="tabular px-4 py-2.5 text-right sm:pr-5">{usd(caps.revenueMicros)}</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 sm:px-5">Money in less what g1t paid</td>
+              <td className={`tabular px-4 py-2.5 text-right sm:pr-5 ${net < 0 ? "text-danger" : "text-fg-soft"}`}>{usd(net, { signed: true })}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </Section>
   );
 }
 

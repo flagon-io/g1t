@@ -387,6 +387,10 @@ impl Billing {
         if let Some(hold) = account.allowances.hold.as_deref().filter(|h| !h.trim().is_empty()) {
             return Ok((Some(format!("g1t staff put a hold on new compute ({}).", hold.trim())), None, Some(FailureCode::Paused)));
         }
+        // A comped account past its monthly budget (`budget`).
+        if let Some(why) = self.comped_stop(&account).await? {
+            return Ok((Some(why), None, Some(FailureCode::Paused)));
+        }
         let spike = self.spike_pause(workspace, plan).await?;
         if let Some(spike) = &spike {
             let why = if spike.status == "stopped" {
@@ -492,12 +496,20 @@ impl Billing {
             return Ok(Outcome::Ok(Reservation { id: new_id("rsv", now), paid_by: PaidBy::OnDemand, held_micros: 0, expires_at }));
         }
         let plan = self.plan_kind(&workspace).await?;
+        let account = self.account_of(&workspace).await?;
+        // g1t's own caps (`budget`), in their own words: a comped account's
+        // monthly budget, and the daily breaker.
+        if let Some(why) = self.comped_stop(&account).await? {
+            return Ok(Outcome::fail(FailureCode::Paused, why));
+        }
+        if let Some(why) = self.breaker_refuses(plan, &account, a.kind, a.hosted_model).await? {
+            return Ok(Outcome::fail(FailureCode::Paused, why));
+        }
         let limit = if plan == PlanKind::Internal { None } else { Some(self.limit_of(&workspace).await?) };
         let (paused, _, code) = self.pause_reason(&workspace, plan, limit.as_ref()).await?;
         if let (Some(why), Some(code)) = (paused, code) {
             return Ok(refusal(code, &workspace, a.kind, &why));
         }
-        let account = self.account_of(&workspace).await?;
         let month = credits::month_of(&rfc3339(now));
         let estimate = credits::with_margin(a.estimate_micros, self.margin_percent);
         let verified = matches!(plan, PlanKind::Internal | PlanKind::Enterprise | PlanKind::Paid) || self.card_checked(&workspace).await?;

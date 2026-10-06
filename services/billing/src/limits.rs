@@ -14,7 +14,8 @@
 //!   (`SETTLE_DAYS`), never less than the starting ceiling; after three
 //!   steady months it follows the monthly spend, up to $10,000.
 //! - **Reviewed**: a ceiling g1t staff set by hand.
-//! - **Internal**: g1t's own workspaces, with none.
+//! - **Internal**: g1t's own workspaces, with none here: what their work
+//!   costs g1t has a monthly budget instead (see `budget`).
 //!
 //! A ceiling g1t granted (an approved request, or the owners' one-time
 //! raise) is a floor under the trust ceiling. Money paid in advance raises

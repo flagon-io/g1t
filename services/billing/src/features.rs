@@ -592,6 +592,7 @@ impl Billing {
             drawn,
         })
         .await?;
+        self.count_spend(&workspace, cost_micros, charge - drawn.total(), &drawn).await;
         Ok(Outcome::Ok(true))
     }
 }

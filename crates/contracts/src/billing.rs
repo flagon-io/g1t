@@ -1061,6 +1061,11 @@ pub struct ReserveArgs {
     /// whole time cap.
     #[serde(alias = "estimate_micros")]
     pub estimate_micros: i64,
+    /// An agent run on g1t's hosted models (not the workspace's own
+    /// provider). Unsaid, an agent run is taken to be one. g1t's daily
+    /// spend breaker pauses these when g1t is paying for them.
+    #[serde(default, alias = "hosted_model")]
+    pub hosted_model: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -2433,6 +2438,82 @@ pub struct CostsReport {
     pub lines: Vec<CostLineSummary>,
     pub mappings: Vec<CostMapping>,
     pub settings: CostSettings,
+    /// g1t's own spend against its two caps.
+    #[serde(default)]
+    pub caps: SpendCaps,
+}
+
+/// What g1t itself pays for, against its caps (billing's `budget`): the
+/// daily breaker on all of it, and each comped account's monthly budget.
+/// At cost, never at price. What sudo's Costs page and its red bar show.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpendCaps {
+    /// Today (UTC), YYYY-MM-DD, and this month, YYYY-MM.
+    pub day: String,
+    pub month: String,
+    /// What g1t paid for itself today across every workspace: comped work,
+    /// the trial and open-source pools, free workspaces' overruns, and
+    /// anything charged without real money behind it.
+    pub today_micros: i64,
+    /// `PLATFORM_DAILY_SPEND_CAP_MICROS`. Zero: no breaker.
+    pub daily_cap_micros: i64,
+    /// The breaker is open: new hosted-model agent runs that g1t would pay
+    /// for wait until tomorrow (UTC) or until staff lift it.
+    pub tripped: bool,
+    pub tripped_at: Option<String>,
+    /// Staff lifted it for the rest of the day.
+    pub lifted_by: Option<String>,
+    pub lifted_at: Option<String>,
+    pub lift_note: Option<String>,
+    /// This month so far, by what paid: `comped`, `trial`, `oss`, `given`,
+    /// `unpaid`.
+    pub month_buckets: Vec<SpendBucket>,
+    /// Each comped account's monthly budget.
+    pub comped: Vec<CompedBudget>,
+    /// Free workspaces' share of this month's reconciled costs (git,
+    /// storage, platform), through yesterday.
+    pub free_tier_micros: i64,
+    /// `CLOUDFLARE_FIXED_MONTHLY_MICROS`: Cloudflare subscriptions, an estimate.
+    pub fixed_monthly_micros: i64,
+    /// Money in this month, through the last reconciled day.
+    pub revenue_micros: i64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpendBucket {
+    pub bucket: String,
+    pub title: String,
+    pub micros: i64,
+}
+
+/// A comped account's monthly budget: what its work cost g1t this month.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompedBudget {
+    pub account: String,
+    pub name: String,
+    pub used_micros: i64,
+    /// Zero: no budget.
+    pub ceiling_micros: i64,
+    /// The ceiling is `COMPED_MONTHLY_CEILING_MICROS`, not the account's own.
+    pub default_ceiling: bool,
+    /// 50, 75, 90, 100, or 0.
+    pub level: u32,
+}
+
+/// `admin_spend_caps`: g1t's own spend against its caps. Returns `SpendCaps`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminSpendCapsArgs {}
+
+/// `admin_lift_breaker`: lets hosted-model runs start again for the rest
+/// of today (UTC), with why. Recorded in the audit log. Returns
+/// `Outcome<SpendCaps>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminLiftBreakerArgs {
+    pub note: String,
+    pub by: String,
 }
 
 /// `admin_cost_alerts`: the open margin alerts, for sudo's banner.

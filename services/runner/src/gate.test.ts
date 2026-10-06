@@ -145,6 +145,23 @@ test("internal and enterprise plans pass even when billing refuses", async () =>
   assert.equal(alwaysPasses("internal") && alwaysPasses("enterprise") && !alwaysPasses("paid"), true);
 });
 
+test("a pause from billing holds for every plan: g1t's own budget and its daily breaker", async () => {
+  for (const plan of ["internal", "enterprise", "paid"] as const) {
+    const message = "flagon-io's monthly budget for g1t's own agents is used up ($150.00 of $150.00 this month at cost), so new runs wait.";
+    const { binding, asked } = billing({ entitlements: wire(ent({ plan })), reserve: { ok: false, error: { code: "paused", message } } });
+    const admitted = await new ComputeGate(binding, memory(), quiet).admit({ ...request("agent"), hostedModel: true });
+    assert.equal(!admitted.ok && admitted.code, "paused", plan);
+    assert.equal(!admitted.ok && admitted.message, message);
+    // Billing hears whether the run is on g1t's hosted models.
+    assert.equal(asked.find((call) => call.method === "reserve")!.body.hostedModel, true);
+  }
+  // Billing's pause reason reads cleanly inside g1t's sentence.
+  assert.equal(
+    refusalMessage("paused", "acme", "agent", "Its budget is used up."),
+    "g1t paused compute for this workspace: Its budget is used up. Contact support@g1t.sh to have it looked at.",
+  );
+});
+
 test("billing down: free workspaces fail closed, paying ones go on", async () => {
   const down = new Set(["entitlements", "reserve"]);
   // Nothing known about the workspace: treated as free.

@@ -110,7 +110,21 @@
 		"AI_GATEWAY_ID": "g1t",
 		// Where margin alerts go: a product or all of g1t under the margin
 		// floor, leaks, drift. Empty sends none (sudo still shows them).
-		"COSTS_ALERT_EMAIL": "hey@flagon.io"
+		"COSTS_ALERT_EMAIL": "hey@flagon.io",
+		// What g1t pays for itself, capped (src/budget.rs), at cost:
+		// a comped account's (flagon-io's) work, $150 a month, unless its
+		// terms in sudo set its own limit; alerts at 50, 75, 90 and 100% to
+		// COSTS_ALERT_EMAIL, and at 100% new work on it is refused.
+		"COMPED_MONTHLY_CEILING_MICROS": "150000000",
+		// All of g1t's own spend in a day (comped, the trial and open-source
+		// pools, free overruns, anything charged without real money): at
+		// $75, new agent runs on hosted models that g1t pays for pause until
+		// 00:00 UTC; staff are emailed and can lift it in sudo. Workspaces
+		// paying with real money are never paused. 0 turns either cap off.
+		"PLATFORM_DAILY_SPEND_CAP_MICROS": "75000000",
+		// Cloudflare's fixed subscriptions a month, for sudo's figures only:
+		// Workers Paid ($5) and Workers for Platforms ($25).
+		"CLOUDFLARE_FIXED_MONTHLY_MICROS": "30000000"
 	},
 	// Settling runs every 15 minutes; checking costs daily (keeper::DAILY).
 	"triggers": { "crons": ["*/15 * * * *", "17 4 * * *"] },

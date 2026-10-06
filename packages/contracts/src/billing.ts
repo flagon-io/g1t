@@ -550,6 +550,10 @@ export interface BillingAdminApi {
   costs(days?: number): Promise<CostsReport>;
   /** The open margin alerts, for the banner on every page. */
   costAlerts(): Promise<MarginAlert[]>;
+  /** g1t's own spend against its caps: the daily breaker and comped budgets. */
+  spendCaps(): Promise<SpendCaps>;
+  /** Lets hosted-model runs start again for the rest of today (UTC); needs a note. */
+  liftBreaker(note: string, by: string): Promise<Result<SpendCaps>>;
   /** Approve or reject a price proposal; a rejection needs a note. An approved rise waits out the notice period. */
   decideProposal(id: string, decision: "approve" | "reject", note: string, by: string): Promise<Result<PriceProposal>>;
   setCostSettings(settings: CostSettings, by: string): Promise<Result<CostSettings>>;
@@ -1113,6 +1117,47 @@ export type CostsReport = {
   lines: CostLineSummary[];
   mappings: CostMapping[];
   settings: CostSettings;
+  /** g1t's own spend against its two caps. */
+  caps: SpendCaps;
+};
+
+/** What g1t pays for itself, at cost, against its caps (billing's `budget`). */
+export type SpendCaps = {
+  /** Today (UTC), YYYY-MM-DD, and this month, YYYY-MM. */
+  day: string;
+  month: string;
+  /** What g1t paid for itself today across every workspace. */
+  todayMicros: number;
+  /** `PLATFORM_DAILY_SPEND_CAP_MICROS`; 0: no breaker. */
+  dailyCapMicros: number;
+  /** New hosted-model agent runs g1t would pay for are paused. */
+  tripped: boolean;
+  trippedAt: string | null;
+  liftedBy: string | null;
+  liftedAt: string | null;
+  liftNote: string | null;
+  /** This month so far, by what paid: comped, trial, oss, given, unpaid. */
+  monthBuckets: { bucket: string; title: string; micros: number }[];
+  comped: CompedBudget[];
+  /** Free workspaces' share of reconciled costs this month (git, storage, platform). */
+  freeTierMicros: number;
+  /** `CLOUDFLARE_FIXED_MONTHLY_MICROS`: Cloudflare subscriptions, an estimate. */
+  fixedMonthlyMicros: number;
+  /** Money in this month, through the last reconciled day. */
+  revenueMicros: number;
+};
+
+/** A comped account's monthly budget, at cost. */
+export type CompedBudget = {
+  account: string;
+  name: string;
+  usedMicros: number;
+  /** 0: no budget. */
+  ceilingMicros: number;
+  /** `COMPED_MONTHLY_CEILING_MICROS`, not the account's own limit. */
+  defaultCeiling: boolean;
+  /** 50, 75, 90, 100, or 0. */
+  level: number;
 };
 
 export type CostsRun = { lines: number; days: number; proposals: number; alerts: number; problems: string[] };

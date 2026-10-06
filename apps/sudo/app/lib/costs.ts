@@ -2,9 +2,9 @@
  * Costs & margin: the arithmetic behind the page, apart from the SVG and
  * the Workers runtime so it can be tested under Node. Money is in micros.
  */
-import type { CostDay, CostMappingInput, CostSettings } from "@g1t/contracts";
+import type { CostDay, CostMappingInput, CostSettings, SpendCaps } from "@g1t/contracts";
 
-import { parseDollars } from "./money.ts";
+import { parseDollars, usd } from "./money.ts";
 
 /** Buckets Cloudflare does not bill: their cost is g1t's own figure. */
 export const NOT_CLOUDFLARE = new Set(["models"]);
@@ -163,4 +163,48 @@ export function parseMapping(form: FormData): Parsed<CostMappingInput> {
       note: value("note").slice(0, 200),
     },
   };
+}
+
+// --- g1t's own spend (billing's budget) ---------------------------------------
+
+/**
+ * The red bar on every sudo page: the daily breaker open, or a comped
+ * account's monthly budget used up. Null when neither.
+ */
+export function spendBanner(caps: SpendCaps): string | null {
+  const parts: string[] = [];
+  if (caps.tripped) {
+    parts.push(
+      `the daily breaker is open (${usd(caps.todayMicros)} of ${usd(caps.dailyCapMicros)} today), so new hosted-model agent runs g1t pays for wait until 00:00 UTC`,
+    );
+  }
+  for (const budget of caps.comped) {
+    if (budget.ceilingMicros > 0 && budget.usedMicros >= budget.ceilingMicros) {
+      parts.push(`${budget.name} used its ${usd(budget.ceilingMicros)} monthly budget, so new work on it is refused`);
+    }
+  }
+  if (parts.length === 0) return null;
+  const text = parts.join("; and ");
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
+}
+
+/** What g1t paid this month, by bucket, with the free tier and Cloudflare's subscriptions; and the total. */
+export function spendRows(caps: SpendCaps): { rows: { key: string; title: string; micros: number; note: string }[]; totalMicros: number } {
+  const notes: Record<string, string> = {
+    comped: "Work on comped accounts, at cost",
+    trial: "Trial credit, at cost",
+    oss: "Checks and workflows on public repositories, at cost",
+    given: "Free workspaces' overruns past their trial",
+    unpaid: "Charged, but no real money yet (test-mode payments)",
+  };
+  const rows = caps.monthBuckets.map((b) => ({ key: b.bucket, title: b.title, micros: b.micros, note: notes[b.bucket] ?? "" }));
+  rows.push({ key: "free", title: "Free tier", micros: caps.freeTierMicros, note: "Free workspaces' share of git, storage and platform, reconciled through yesterday" });
+  rows.push({ key: "fixed", title: "Cloudflare subscriptions", micros: caps.fixedMonthlyMicros, note: "A month, estimated (CLOUDFLARE_FIXED_MONTHLY_MICROS)" });
+  return { rows, totalMicros: rows.reduce((sum, row) => sum + row.micros, 0) };
+}
+
+/** How far a cap is used, 0 to 100, for a meter. */
+export function capPercent(usedMicros: number, capMicros: number): number {
+  if (capMicros <= 0) return 0;
+  return Math.max(0, Math.min(100, (usedMicros / capMicros) * 100));
 }

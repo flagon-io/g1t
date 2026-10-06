@@ -7,6 +7,7 @@ import sansFont from "@g1t/theme/fonts/hanken-grotesk-latin.woff2?url";
 import { MobileBar, Sidebar } from "./components/shell";
 import { ButtonLink } from "./components/ui";
 import type { NavCounts } from "./lib/nav";
+import { spendBanner } from "./lib/costs";
 import { admin, identity, statusAdmin } from "./lib/services.server";
 import { settle } from "./lib/settle";
 import { requireStaff, zoneContext } from "./lib/staff";
@@ -26,10 +27,11 @@ export const meta: Route.MetaFunction = () => [
 export async function loader({ context }: Route.LoaderArgs) {
   const { email } = requireStaff(context);
   // The sidebar's counts: a service that does not answer shows none.
-  const [waitlist, incidents, alerts] = await Promise.all([
+  const [waitlist, incidents, alerts, caps] = await Promise.all([
     settle(identity.waitlistPending()),
     settle(statusAdmin.openCount()),
     settle(admin.costAlerts()),
+    settle(admin.spendCaps()),
   ]);
   const counts: NavCounts = { waitlist: waitlist.ok ? waitlist.value : 0, incidents: incidents.ok ? incidents.value : 0 };
   // Every page says times in this zone (components/ui.tsx `When`).
@@ -39,7 +41,10 @@ export async function loader({ context }: Route.LoaderArgs) {
   const margin = alerts.ok
     ? alerts.value.filter((alert) => rank.includes(alert.kind)).sort((a, b) => rank.indexOf(a.kind) - rank.indexOf(b.kind))
     : [];
-  return { email, counts, zone, zoneChosen: chosen, margin };
+  // g1t's own spend (billing's budget): the daily breaker open, or a comped
+  // account's monthly budget used up. Red until it clears or staff act.
+  const spend = caps.ok ? spendBanner(caps.value) : null;
+  return { email, counts, zone, zoneChosen: chosen, margin, spend };
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -63,6 +68,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {root.margin.length > 1 && <span className="text-danger/80"> And {root.margin.length - 1} more.</span>}{" "}
               <a href="/costs" className="underline underline-offset-2">
                 Costs &amp; margin
+              </a>
+            </div>
+          )}
+          {root?.spend && (
+            <div role="alert" className="border-b border-danger/40 bg-danger/12 px-4 py-2 text-sm text-danger">
+              <span className="font-medium">Spend cap:</span> {root.spend}{" "}
+              <a href="/costs#spend" className="underline underline-offset-2">
+                g1t's own spend
               </a>
             </div>
           )}

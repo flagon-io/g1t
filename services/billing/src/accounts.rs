@@ -237,7 +237,7 @@ impl Billing {
     }
 
     /// An account by id, or the account of a workspace by its slug.
-    async fn find_account(&self, id: &str) -> Result<Option<BillingAccount>> {
+    pub(crate) async fn find_account(&self, id: &str) -> Result<Option<BillingAccount>> {
         let id = id.trim().to_lowercase();
         if id.starts_with("ent_") {
             return self.enterprise(&id).await;

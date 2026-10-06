@@ -491,7 +491,7 @@ fn escape(text: &str) -> String {
 }
 
 /// Emails staff through Cloudflare Email Sending, the `EMAIL` binding.
-async fn email_staff(env: &Env, to: &str, subject: &str, lines: &[String]) -> Result<()> {
+pub(crate) async fn email_staff(env: &Env, to: &str, subject: &str, lines: &[String]) -> Result<()> {
     let link = "https://sudo.g1t.sh/costs";
     let text = format!("{}\n\nCosts & margin: {link}\n\nSent by g1t-billing's margin guard (COSTS_ALERT_EMAIL).\n", lines.join("\n\n"));
     let mut html = String::from("<div style=\"font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px 16px;color:#16150f\">");
@@ -1401,6 +1401,7 @@ impl Billing {
             lines,
             mappings,
             settings: self.cost_settings().await?,
+            caps: self.spend_caps().await?,
         })
     }
 }

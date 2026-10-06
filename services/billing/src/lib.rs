@@ -18,6 +18,7 @@
 //! the methods and their arguments.
 
 mod accounts;
+mod budget;
 mod cards;
 mod closing;
 mod compute;
@@ -182,6 +183,10 @@ struct Billing {
     ceilings: limits::Ceilings,
     /// `PREPAID_ONLY`: the old rule, that agents need credit first.
     prepaid_only: bool,
+    /// The caps on what g1t pays for itself; see `budget`.
+    caps: budget::Caps,
+    /// The worker's bindings, for emailing staff (`EMAIL`).
+    env: Env,
 }
 
 impl Billing {
@@ -718,6 +723,7 @@ impl Billing {
         )
         .await?;
         self.record_drawn(&a.run_id, &drawn).await?;
+        self.count_spend(&run.workspace, charge_micros(a.cost_usd, 0), charge - drawn.total(), &drawn).await;
         Ok(Outcome::Ok(true))
     }
 }
@@ -846,6 +852,7 @@ impl Billing {
                     ])?,
             ])
             .await?;
+        self.count_spend(&workspace, cost, charge, &drawn).await;
         if let Some(reservation) = &a.reservation_id {
             self.settle_reservation(SettleArgs { reservation_id: reservation.clone(), actual_micros: cost }).await?;
         }
@@ -950,6 +957,8 @@ impl Billing {
             plans: credits::Config::from_env(env),
             repos: env.service("REPOS").ok(),
             identity: env.service("IDENTITY").ok(),
+            caps: budget::Caps::from_env(env),
+            env: env.clone(),
         })
     }
 }
@@ -976,6 +985,10 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     }
     if let Err(error) = billing.invoice_enterprises().await {
         worker::console_error!("invoicing enterprises failed: {error}");
+    }
+    // Comped budgets' alerts, and a tripped breaker staff were not told of.
+    if let Err(error) = billing.watch_spend().await {
+        worker::console_error!("watching g1t's own spend failed: {error}");
     }
     if let Ok(identity) = env.service("IDENTITY") {
         if let Err(error) = billing.warn_limits(&identity).await {
@@ -1117,6 +1130,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_record_payment" => reply(&billing.admin_record_payment(args(body)?).await?),
         "admin_costs" => reply(&billing.admin_costs(args(body)?, keeper::Keeper::from_env(&env).can_read_bill()).await?),
         "admin_cost_alerts" => reply(&billing.admin_cost_alerts(args(body)?).await?),
+        "admin_spend_caps" => reply(&billing.spend_caps().await?),
+        "admin_lift_breaker" => reply(&billing.admin_lift_breaker(args(body)?).await?),
         "admin_decide_proposal" => reply(&billing.admin_decide_proposal(args(body)?).await?),
         "admin_set_cost_settings" => reply(&billing.admin_set_cost_settings(args(body)?).await?),
         "admin_set_cost_mapping" => reply(&billing.admin_set_cost_mapping(args(body)?).await?),

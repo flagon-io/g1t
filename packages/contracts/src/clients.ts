@@ -453,6 +453,8 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
       call("admin_record_payment", { workspace, amount_micros: amountMicros, reference, note, by }),
     costs: (days) => call("admin_costs", { days: days ?? null }),
     costAlerts: () => call("admin_cost_alerts", {}),
+    spendCaps: () => call("admin_spend_caps", {}),
+    liftBreaker: (note, by) => call("admin_lift_breaker", { note, by }),
     decideProposal: (id, decision, note, by) => call("admin_decide_proposal", { id, decision, note, by }),
     setCostSettings: (settings, by) => call("admin_set_cost_settings", { settings, by }),
     setCostMapping: (mapping, by) =>

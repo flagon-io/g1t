@@ -4,7 +4,9 @@ How g1t checks what it charges against what Cloudflare charges it, keeps
 prices at cost plus 20%, and tells staff when the margin slips. Internal.
 Code: `services/billing/src/costs.rs` (reading the bill), `margin.rs`
 (reconciliation, drift, alerts), `pricing.rs` (versions, proposals,
-notice), `keeper.rs` (sandbox and Workers for Platforms measurements).
+notice), `keeper.rs` (sandbox and Workers for Platforms measurements),
+`budget.rs` (what g1t pays for itself, and its caps; see
+[Spend caps](#spend-caps)).
 Page: sudo **Costs & margin** (`/costs`).
 
 Several Cloudflare products g1t runs on are new. Artifacts bills
@@ -208,3 +210,74 @@ guardrails, seeded), the `actions_cache` price, and `ledger.price_version`.
 Every create is `IF NOT EXISTS` and every seed `INSERT OR IGNORE`; the one
 `ALTER` is applied once by D1's migration tracking. Migration
 `0023_one_operation_mapping.sql` drops `billable_units` (see above).
+
+## Spend caps
+
+Two caps keep what g1t pays for itself bounded while billing takes no
+real money. Both are measured at **cost** (what Cloudflare and the model
+providers charge g1t), never at price. Code: `services/billing/src/budget.rs`.
+Page: sudo **Costs & margin** → **g1t's own spend** (`/costs#spend`).
+
+### What counts as g1t's own spend
+
+Every charge that settles (an agent run's model cost from `finish_run` or
+AI Gateway's settlement, sandbox time from `record_sandbox`, a build from
+`charge_feature`) is split by what paid for it and g1t's part is added to
+`g1t_spend` (day, bucket, billing account):
+
+| Bucket | What |
+| --- | --- |
+| `comped` | All of a comped account's work (flagon-io) |
+| `trial` | The trial credit's share |
+| `oss` | The open-source pool's share |
+| `given` | A free workspace's overrun past its last bit of trial |
+| `unpaid` | Charged, but with no real money behind it: Stripe's test key, or `FREE_WHILE_BUILDING` |
+
+The plan's included usage and on-demand charges count as revenue only
+with live payments; in test mode they are `unpaid`. A workspace's own
+model provider costs g1t nothing and is not counted. Month-end meters
+(git, storage, scans, embeddings, the cache) are not counted here; the
+daily reconciliation covers them. Migration `0024_spend_caps.sql`
+backfills the current month from the ledger.
+
+### Caps
+
+| Cap | Variable (g1t-billing) | Default | At the cap |
+| --- | --- | --- | --- |
+| A comped account's monthly budget | `COMPED_MONTHLY_CEILING_MICROS`, or the account's own **Limit** in its terms | $150 a month | New work on the account (agents, checks, workflows, builds) is refused with "<name>'s monthly budget for g1t's own agents is used up … Staff can raise it in sudo". Runs already going finish; the per-run cap still applies to them. It lifts when staff raise the budget or the month turns (UTC). |
+| The daily breaker | `PLATFORM_DAILY_SPEND_CAP_MICROS` | $75 a day (UTC) | New agent runs on g1t's hosted models that g1t would pay for are refused until 00:00 UTC. Not paused: agents on the workspace's own model provider, checks and builds, and workspaces paying with live payments on the plan (not given by staff) or an enterprise contract. In test mode that exemption covers no one. |
+
+`0` turns either off. `CLOUDFLARE_FIXED_MONTHLY_MICROS` ($30: Workers
+Paid and Workers for Platforms) is shown on the page only.
+
+The checks are cheap: `reserve` reads today's total (one indexed sum) and,
+for a comped account, its month's comped rows. Refusals come back as
+`paused`, which the compute gate honours for every plan, internal and
+enterprise included (`packages/contracts/src/compute.ts`). The runner tells
+billing whether an agent run is on hosted models (`hostedModel` on
+`reserve`); a caller that does not say is treated as hosted.
+
+### Alerts
+
+All to `COSTS_ALERT_EMAIL` (`hey@flagon.io`), through the `EMAIL` binding:
+
+- **Comped budget**: at 50, 75, 90 and 100%, once each per account and month
+  (`budget_alerts`), checked every 15 minutes. A jump past several levels
+  sends only the highest.
+- **Breaker**: at once, from the charge that trips it; if that email fails,
+  the 15-minute cron sends it (`spend_breaker.told_at`).
+
+While the breaker is open or a comped budget is used up, every sudo page
+shows a red **Spend cap** bar.
+
+### Raising and lifting
+
+- **Raise a comped budget**: sudo → the workspace → Billing → **Terms**, set
+  **Limit $** to the new monthly budget (blank goes back to the default),
+  with a note. It applies to the next start; nothing to deploy. The change
+  is in the account's audit log.
+- **Lift the breaker for today**: sudo → Costs & margin → **g1t's own
+  spend** → **Lift for today**, with why (`admin_lift_breaker`; audit action
+  `breaker_lifted`). It resets by itself at 00:00 UTC.
+- **Change a default**: edit the variable in `services/billing/wrangler.jsonc`
+  and deploy g1t-billing.

@@ -220,7 +220,7 @@ export function refusalMessage(
     case "limit":
       return `This workspace reached its spend limit for the month, so nothing new starts. An owner can raise it: ${link}#limit`;
     case "paused":
-      return `g1t paused compute for this workspace${detail ? `: ${detail}` : ""}. Contact support@g1t.sh to have it looked at.`;
+      return `g1t paused compute for this workspace${detail ? `: ${detail.replace(/.$/, "")}` : ""}. Contact support@g1t.sh to have it looked at.`;
     case "oss_pool_empty":
       return `g1t's open-source pool is used up for this month, so checks and workflows on public repositories wait until next month. Start the $20 plan to run them now: ${link}`;
     case "issue_cap":
@@ -419,6 +419,8 @@ export type ReserveRequest = {
   public: boolean;
   kind: ComputeKind;
   estimateMicros: number;
+  /** An agent run on g1t's hosted models, which g1t's daily spend breaker can pause. Unsaid, an agent run is taken to be one. */
+  hostedModel?: boolean;
 };
 
 /** The gate's answer: go ahead (with what was reserved, if anything), or why not. */
@@ -519,6 +521,7 @@ export class ComputeGate {
         public: request.public,
         kind: request.kind,
         estimateMicros: Math.max(0, Math.ceil(request.estimateMicros)),
+        ...(request.hostedModel === undefined ? {} : { hostedModel: request.hostedModel }),
       });
     } catch (error) {
       return this.unavailable(plan, refuse, ent, request, String(error));
@@ -530,7 +533,9 @@ export class ComputeGate {
     }
     const code = refusalCode(answer.error as { code?: unknown; reason?: unknown });
     if (!code) return this.unavailable(plan, refuse, ent, request, answer.error.message);
-    if (alwaysPasses(plan)) {
+    // A pause holds for every plan: g1t's own caps (a comped account's
+    // monthly budget, the daily spend breaker) and staff holds included.
+    if (alwaysPasses(plan) && code !== "paused") {
       this.log("compute gate: refusal ignored for", plan, workspace, request.kind, code, answer.error.message);
       return { ok: true, reservation: null, entitlements: ent };
     }

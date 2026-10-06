@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { CostDay } from "@g1t/contracts";
+import type { CostDay, SpendCaps } from "@g1t/contracts";
 
 import {
   daySeries,
@@ -13,6 +13,8 @@ import {
   parseMapping,
   parseRange,
   percentLabel,
+  spendBanner,
+  spendRows,
   unitDollars,
 } from "./costs.ts";
 
@@ -111,4 +113,40 @@ test("a mapping names Cloudflare's product and meter and one of g1t's products",
   assert.equal(parseMapping(form({ product: "r2", meter: "x y", bucket: "git" })).ok, false);
   assert.equal(parseMapping(form({ product: "r2", meter: "*", bucket: "" })).ok, false);
   assert.equal(parseMapping(form({ product: "r2", meter: "*", bucket: "git", driftPercent: "-1" })).ok, false);
+});
+
+const caps = (over: Partial<SpendCaps> = {}): SpendCaps => ({
+  day: "2026-10-06",
+  month: "2026-10",
+  todayMicros: 20_000_000,
+  dailyCapMicros: 75_000_000,
+  tripped: false,
+  trippedAt: null,
+  liftedBy: null,
+  liftedAt: null,
+  liftNote: null,
+  monthBuckets: [
+    { bucket: "comped", title: "Comped (g1t's own)", micros: 40_000_000 },
+    { bucket: "trial", title: "Trial pool", micros: 5_000_000 },
+  ],
+  comped: [{ account: "ws_flagon-io", name: "flagon-io", usedMicros: 40_000_000, ceilingMicros: 150_000_000, defaultCeiling: true, level: 0 }],
+  freeTierMicros: 1_000_000,
+  fixedMonthlyMicros: 30_000_000,
+  revenueMicros: 0,
+  ...over,
+});
+
+test("the spend bar shows only when a cap stops work", () => {
+  assert.equal(spendBanner(caps()), null);
+  assert.ok((spendBanner(caps({ tripped: true, todayMicros: 80_000_000 })) ?? "").startsWith("The daily breaker is open ($80.00 of $75.00 today)"));
+  const usedUp = caps({ comped: [{ account: "ws_flagon-io", name: "flagon-io", usedMicros: 150_000_000, ceilingMicros: 150_000_000, defaultCeiling: true, level: 100 }] });
+  assert.ok((spendBanner(usedUp) ?? "").startsWith("Flagon-io used its $150.00 monthly budget"));
+  // No budget set to zero is ever "used up".
+  assert.equal(spendBanner(caps({ comped: [{ account: "a", name: "a", usedMicros: 9, ceilingMicros: 0, defaultCeiling: false, level: 0 }] })), null);
+});
+
+test("what g1t paid this month adds every bucket, the free tier and subscriptions", () => {
+  const { rows, totalMicros } = spendRows(caps());
+  assert.deepEqual(rows.map((r) => r.key), ["comped", "trial", "free", "fixed"]);
+  assert.equal(totalMicros, 76_000_000);
 });

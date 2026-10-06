@@ -546,6 +546,7 @@ impl Billing {
                 self.enter(&run.workspace, EntryKind::Usage, -(charge - drawn.total()), &description, &run.id, Some(&row), Some(gateway_micros), None, None)
                     .await?;
                 self.record_drawn(&run.id, &drawn).await?;
+                self.count_spend(&run.workspace, gateway_micros, charge - drawn.total(), &drawn).await;
             }
             Some(charged) => {
                 let reported = charged.cost_micros.unwrap_or(0);
@@ -582,6 +583,7 @@ impl Billing {
                 )
                 .await?;
                 self.record_drawn(&reference, &drawn).await?;
+                self.count_spend(&run.workspace, delta, change - drawn.total(), &drawn).await;
             }
         }
         Ok(())

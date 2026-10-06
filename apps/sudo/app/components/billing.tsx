@@ -69,7 +69,16 @@ function describeTerms(terms: Terms): [string, string][] {
   return [
     ["Terms", terms.kind === "custom" ? "Custom" : terms.kind === "comped" ? "Comped" : "Standard"],
     ["Discount", terms.kind === "custom" ? `${terms.discountPercent}%` : "—"],
-    ["Limit", terms.ceilingMicros == null ? "By trust" : usd(terms.ceilingMicros)],
+    [
+      "Limit",
+      terms.kind === "comped"
+        ? terms.ceilingMicros == null
+          ? "The default monthly budget, at cost"
+          : `${usd(terms.ceilingMicros)} a month, at cost`
+        : terms.ceilingMicros == null
+          ? "By trust"
+          : usd(terms.ceilingMicros),
+    ],
     ["Until", terms.until ? terms.until.slice(0, 10) : "No end"],
     ["Note", terms.note || "—"],
   ];
@@ -242,7 +251,7 @@ export function TermsForm({ terms, pathname, error }: { terms: Terms; pathname: 
           <Field label="Discount %" hint="Custom only.">
             <Input name="discount" inputMode="numeric" pattern="\d{1,3}" placeholder="0" defaultValue={values?.discount ?? (terms.discountPercent ? String(terms.discountPercent) : "")} />
           </Field>
-          <Field label="Limit $" hint="Unpaid usage allowed. Blank: trust decides.">
+          <Field label="Limit $" hint="Unpaid usage allowed; blank: trust decides. Comped: the monthly budget at cost; blank: the default ($150).">
             <Input name="ceiling" inputMode="decimal" placeholder="By trust" defaultValue={values?.ceiling ?? dollarsField(terms.ceilingMicros)} />
           </Field>
           <Field label="Until" hint="Blank: no end. UTC.">
