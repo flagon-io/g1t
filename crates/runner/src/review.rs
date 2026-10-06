@@ -23,7 +23,7 @@ use crate::report::Reporter;
 use crate::{WORKDIR, auth_option, env, git, harness};
 
 const DIFF_FILE: &str = "/work/change.diff";
-const REVIEW_FILE: &str = "/work/review.json";
+pub(crate) const REVIEW_FILE: &str = "/work/review.json";
 
 const INSTRUCTIONS: &str = "You are reviewing a pull request. The repository is checked out in the current directory at the pull request's head. \
 The change under review is in /work/change.diff; read it first, then read the surrounding code as needed. You may run the project's tests. Do not modify the repository.

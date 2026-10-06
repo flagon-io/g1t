@@ -417,9 +417,16 @@ fn resolve(path: &str, place: &Place) -> String {
     format!("/{}", parts.join("/"))
 }
 
-/// Where file tools may go: the project, scratch space, and the caches
-/// where dependencies' sources are.
+/// The files the runner asks the agent to write its answer to, outside
+/// the project so they are never committed: a review, a plan, a reply.
+const ANSWER_FILES: [&str; 3] = [crate::review::REVIEW_FILE, crate::plan::PLAN_FILE, crate::reply::ANSWER_FILE];
+
+/// Where file tools may go: the project, scratch space, the caches where
+/// dependencies' sources are, and the answer files.
 fn inside_allowed(path: &str, place: &Place) -> bool {
+    if ANSWER_FILES.contains(&path) {
+        return true;
+    }
     let roots = [
         crate::WORKDIR.to_owned(),
         "/tmp".to_owned(),
@@ -811,6 +818,18 @@ mod tests {
 
     fn bash(policy: &Policy, command: &str) -> Option<String> {
         decide(policy, "Bash", &json!({ "command": command }), &place())
+    }
+
+    #[test]
+    fn the_answer_files_may_be_written_and_nothing_else_beside_the_project() {
+        let policy = all_on();
+        let write = |path: &str| decide(&policy, "Write", &json!({ "file_path": path, "content": "{}" }), &place());
+        for path in ["/work/review.json", "/work/plan.json", "/work/answer.md", "/work/repo/src/lib.rs", "/tmp/x"] {
+            assert_eq!(write(path), None, "{path}");
+        }
+        for path in ["/work/notes.json", "/work/review.json.bak", "/etc/hosts"] {
+            assert!(write(path).is_some(), "{path}");
+        }
     }
 
     #[test]

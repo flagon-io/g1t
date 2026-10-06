@@ -23,7 +23,7 @@ use serde_json::{Value, json};
 use crate::report::Reporter;
 use crate::{WORKDIR, auth_option, env, harness};
 
-const PLAN_FILE: &str = "/work/plan.json";
+pub(crate) const PLAN_FILE: &str = "/work/plan.json";
 
 const INSTRUCTIONS: &str = "You are planning work for a team of coding agents. The repository is checked out in the current directory. \
 Read enough of it to understand how it is built and tested. Do not modify it.

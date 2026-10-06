@@ -21,7 +21,7 @@ use anyhow::{Context, Result, bail};
 use crate::report::Reporter;
 use crate::{WORKDIR, auth_option, env, git, harness};
 
-const ANSWER_FILE: &str = "/work/answer.md";
+pub(crate) const ANSWER_FILE: &str = "/work/answer.md";
 const MAX_ANSWER_CHARS: usize = 20_000;
 
 const INSTRUCTIONS: &str = "Write your answer to /work/answer.md as Markdown, addressed to whoever asked: \
