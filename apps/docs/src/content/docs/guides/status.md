@@ -22,6 +22,7 @@ would make, over the public internet:
 | Website and sign-in | Loads `g1t.sh/login`, and asks the API about an access token no one holds, which the account service must refuse with `401` |
 | API | Loads `api.g1t.sh/` |
 | Git and repositories | Lists the branches of a public repository over HTTPS (`info/refs`), the first step of every clone |
+| Git storage | How the store that keeps every repository (Cloudflare Artifacts) answered g1t over the last five minutes. Down when a quarter or more of its calls failed, or g1t stopped asking after repeated failures; degraded when it rate limited g1t or its calls took over 1.5 seconds on average |
 | Page speed | Loads a public project page (`g1t.sh/flagon-io/g1t`) and `g1t.sh/explore`, timed to the first byte of each answer |
 | MCP server | Loads `mcp.g1t.sh/` |
 | Documentation | Loads `docs.g1t.sh/` |

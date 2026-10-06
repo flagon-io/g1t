@@ -247,6 +247,16 @@ pub fn refused(report: &[u8], commands: &[Command]) -> Vec<String> {
 }
 
 fn request(method: Method, url: &str, endpoint: &Endpoint, body: Option<(&str, Vec<u8>)>) -> Result<Request> {
+    // Requests to g1t's own store are metered (meters.rs); GitHub's are not.
+    if endpoint.authorization.starts_with("Bearer ") {
+        let sent = body.as_ref().map_or(0, |(_, body)| body.len() as u64);
+        let meter = match body.as_ref().map(|(service, _)| *service) {
+            Some("git-receive-pack") => "internal.git.receive_pack",
+            Some(_) => "internal.git.fetch",
+            None => "internal.git.info_refs",
+        };
+        crate::meters::record_remote(meter, &endpoint.url, sent, 0);
+    }
     let headers = Headers::new();
     headers.set("user-agent", USER_AGENT)?;
     headers.set("authorization", &endpoint.authorization)?;

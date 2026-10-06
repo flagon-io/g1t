@@ -79,11 +79,16 @@ fn sample(op: Op, example: &Value) -> Value {
             return through::<access::RepoInvitation>(op, as_is);
         }
         Op::ListOutsideCollaborators => return through::<Vec<access::OutsideCollaborator>>(op, as_is),
+        // Built by the API itself, in `snake_case`.
+        Op::ListSecurityAlerts => return through::<Vec<crate::alerts::SecurityAlert>>(op, as_is),
+        Op::DismissSecurityAlert | Op::ReopenSecurityAlert => {
+            return through::<crate::alerts::SecurityAlert>(op, as_is);
+        }
         _ => {}
     }
     let sent = as_services_send(example);
     match op {
-        Op::CreateWorkspace => through::<g1t_contracts::identity::Workspace>(op, sent),
+        Op::CreateWorkspace | Op::UpdateWorkspace => through::<g1t_contracts::identity::Workspace>(op, sent),
         Op::ListRepos => through::<Vec<repos::Repo>>(op, sent),
         Op::Search => through::<search::SearchResults>(op, sent),
         Op::GetRepo

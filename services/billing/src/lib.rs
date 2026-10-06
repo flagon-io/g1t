@@ -21,6 +21,9 @@ mod accounts;
 mod cards;
 mod closing;
 mod compute;
+mod costs;
+mod margin;
+mod pricing;
 mod credits;
 mod overages;
 mod requests;
@@ -799,14 +802,21 @@ impl Billing {
         let charge = charge - drawn.total();
         let cpu_note = parts.map_or(String::new(), |(_, cpu)| format!(", {cpu:.0} vCPU-seconds"));
         let description = format!("{}: {} of sandbox time{cpu_note}{terms_note}{}", a.description, duration(seconds), drawn.note());
+        // The price versions it was charged at (pricing.rs).
+        let meters: &[&str] = if parts.is_some() { &["sandbox_base_second", "sandbox_cpu_second"] } else { &["sandbox_second"] };
+        let mut versions = Vec::new();
+        for meter in meters {
+            versions.extend(self.version_now(meter).await?);
+        }
+        let price_version = versions.join(",");
         self.db
             .batch(vec![
                 self.db
                     .prepare(
                         "INSERT INTO ledger
                            (id, workspace, kind, amount_micros, description, repo, task,
-                            cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros)
-                         VALUES (?, ?, 'usage', ?, ?, ?, 'sandbox', ?, ?, ?, 'g1t', ?, ?, ?, ?)",
+                            cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros, price_version)
+                         VALUES (?, ?, 'usage', ?, ?, ?, 'sandbox', ?, ?, ?, 'g1t', ?, ?, ?, ?, ?)",
                     )
                     .bind(&[
                         new_id("led", now).into(),
@@ -821,6 +831,7 @@ impl Billing {
                         (drawn.trial as f64).into(),
                         (drawn.oss as f64).into(),
                         (drawn.given as f64).into(),
+                        optional(Some(price_version.as_str()).filter(|v| !v.is_empty())),
                     ])?,
                 self.db
                     .prepare(
@@ -978,6 +989,15 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
             worker::console_error!("checking costs against Cloudflare failed: {error}");
         }
     }
+    // Once a day: what Cloudflare charged, reconciled against what g1t
+    // counted and charged; prices whose day has come; margin alerts
+    // (margin.rs). After the keeper, so its proposals are in.
+    if event.cron() == keeper::DAILY {
+        match billing.costs_daily(&env, &keeper).await {
+            Ok(run) => worker::console_log!("costs: {} lines, {} days, {} proposals, {} alerts", run.lines, run.days, run.proposals, run.alerts),
+            Err(error) => worker::console_error!("reconciling costs failed: {error}"),
+        }
+    }
     // Once a day: what each workspace's private repositories hold, its git
     // operations, Deployments plans from before the g1t plan set to end,
     // and old reservations cleared.
@@ -1095,6 +1115,12 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_goodwill" => reply(&billing.admin_goodwill(args(body)?).await?),
         "admin_velocity" => reply(&billing.admin_velocity(args(body)?).await?),
         "admin_record_payment" => reply(&billing.admin_record_payment(args(body)?).await?),
+        "admin_costs" => reply(&billing.admin_costs(args(body)?, keeper::Keeper::from_env(&env).can_read_bill()).await?),
+        "admin_cost_alerts" => reply(&billing.admin_cost_alerts(args(body)?).await?),
+        "admin_decide_proposal" => reply(&billing.admin_decide_proposal(args(body)?).await?),
+        "admin_set_cost_settings" => reply(&billing.admin_set_cost_settings(args(body)?).await?),
+        "admin_set_cost_mapping" => reply(&billing.admin_set_cost_mapping(args(body)?).await?),
+        "admin_run_costs" => reply(&billing.admin_run_costs(&env, args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     };
     served.finish(answered)

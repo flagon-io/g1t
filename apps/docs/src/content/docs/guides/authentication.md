@@ -332,9 +332,9 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 
 | Scope | What it lets a token do |
 | --- | --- |
-| `repo:read` | See repositories, their settings, labels and timelines, and search |
+| `repo:read` | See repositories, their settings, labels, timelines and security alerts, and search |
 | `repo:write` | Create repositories, rename branches and change how pull requests merge |
-| `repo:admin` | Rename, archive, transfer, delete or change who can see a repository |
+| `repo:admin` | Rename, archive, transfer, delete or change who can see a repository, and dismiss security alerts |
 | `code:read` | Clone and fetch private repositories with git |
 | `code:write` | Push commits with git |
 | `issues:read` | Read issues, comments and plans |
@@ -394,7 +394,7 @@ any box.
 | Preset | Scopes |
 | --- | --- |
 | Read only | Every `read` scope. Changes nothing. |
-| Agent | Every `read` scope, and `code:write`, `issues:write`, `pull_requests:write`, `agents:run` and `memory:write`. Reads everything, works on issues and pull requests, pushes code and runs g1t agents. No admin scope. |
+| Agent | Every `read` scope except `runners:read`, and `code:write`, `issues:write`, `pull_requests:write`, `agents:run` and `memory:write`. Reads everything, works on issues and pull requests, pushes code and runs g1t agents. No admin scope. |
 | CI | `repo:read`, `code:read`, `code:write`, `workflows:read` and `workflows:write`. Clones and pushes code, and runs workflows. |
 | Full access | Everything you can do, including deleting repositories and changing who has access. Marked **Dangerous**. |
 
@@ -469,7 +469,7 @@ you cannot give it more than it asked for. Like a token, it reaches
 everything you can.
 
 An application that asks for no scopes in particular gets the
-[Agent preset](#presets): every `read` scope, and `code:write`,
+[Agent preset](#presets): every `read` scope except `runners:read`, and `code:write`,
 `issues:write`, `pull_requests:write`, `agents:run` and `memory:write`.
 It never gets an admin scope unless it asks for one and you leave it
 ticked.

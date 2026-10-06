@@ -23,7 +23,8 @@ export type RunCredentialKind =
   | "checks"
   | "queue"
   | "mergecheck"
-  | "deploy";
+  | "deploy"
+  | "bump";
 
 /**
  * `runner`: g1t's runner in the sandbox, which clones, pushes and records
@@ -44,6 +45,8 @@ export type RunBinding = {
   agent: string;
   read: RepoPath[];
   push: GitGrant[];
+  /** g1t's own run: the workspace's credential, acting on behalf of g1t. */
+  system?: boolean;
 };
 
 /** Set on an agent resolved from its token: the composite identity. */
@@ -70,7 +73,7 @@ export type CreateRunCredentialInput = {
   agent?: string | null;
 };
 
-export type ActorKind = "person" | "agent" | "workspace" | "runner";
+export type ActorKind = "person" | "agent" | "workspace" | "runner" | "system";
 export type AuditOutcome = "allowed" | "denied";
 /** Where it came in: the API, MCP, git, or g1t.sh's own pages. */
 export type AuditSurface = "rest" | "mcp" | "git" | "web";

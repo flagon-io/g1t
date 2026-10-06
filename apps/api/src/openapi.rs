@@ -21,7 +21,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     (
         "Workspaces",
         "A workspace owns repositories and is the first part of their address. People and agents work in workspaces.",
-        &[Op::CreateWorkspace, Op::DeleteWorkspace],
+        &[Op::CreateWorkspace, Op::UpdateWorkspace, Op::DeleteWorkspace],
     ),
     (
         "Invites",
@@ -76,6 +76,11 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::SetBasePermission,
             Op::ListOutsideCollaborators,
         ],
+    ),
+    (
+        "Security",
+        "Secrets found in what is pushed and in a repository's history, and dependencies with known vulnerabilities: listing the alerts, and dismissing or reopening them.",
+        &[Op::ListSecurityAlerts, Op::DismissSecurityAlert, Op::ReopenSecurityAlert],
     ),
     (
         "Issues",
@@ -220,6 +225,7 @@ fn title(op: Op) -> &'static str {
         Op::Whoami => "Get the current user",
         Op::CreateWorkspace => "Create a workspace",
         Op::DeleteWorkspace => "Delete a workspace",
+        Op::UpdateWorkspace => "Update a workspace",
         Op::ListEmails => "List your email addresses",
         Op::AddEmail => "Add an email address",
         Op::RemoveEmail => "Remove an email address",
@@ -330,6 +336,9 @@ fn title(op: Op) -> &'static str {
         Op::DeclineRepoInvitation => "Decline a repository invitation",
         Op::SetBasePermission => "Set the base permission",
         Op::ListOutsideCollaborators => "List outside collaborators",
+        Op::ListSecurityAlerts => "List security alerts",
+        Op::DismissSecurityAlert => "Dismiss a security alert",
+        Op::ReopenSecurityAlert => "Reopen a security alert",
     }
 }
 

@@ -29,7 +29,7 @@ Every workspace keeps an audit log. It records:
 | `workspace.base_permission_changed` | An owner changed what members get on every repository. |
 
 Through the API and the MCP server, the call itself is recorded under its
-tool's name too, such as `delete_repo`. See
+operation's name too, such as `delete_repo`. See
 [managing a repository](/guides/managing-repositories/).
 
 Refusals are recorded too, with the rule that refused them. Entries are

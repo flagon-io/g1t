@@ -22,7 +22,7 @@ shown to anyone else.
 | Field | |
 | --- | --- |
 | **Type** | **Secret**: sealed when saved and never shown again, hidden in logs. For passwords, API keys and tokens. **Config**: readable by whoever may see the list. For values that are not sensitive. Config can be changed to a secret; a secret can never become config. |
-| **Key** | Letters, digits and underscores, upper-cased: `STRIPE_KEY`. Keys starting with `G1T_` or `GITHUB_` are g1t's own. |
+| **Key** | Letters, digits and underscores, not starting with a digit, upper-cased: `STRIPE_KEY`. Keys starting with `G1T_` or `GITHUB_` are g1t's own. |
 | **Value** | Up to 48 KB. |
 | **Note** | Optional: where to rotate it, or who to ask. |
 | **Environments** | **All environments**, or only some: **Production**, **Preview**, or any name a workflow job uses in `environment:`, such as `staging`. |
@@ -113,14 +113,14 @@ The routes are GitHub's, and calls written for GitHub work unchanged: a
 key named without an `id` or `environments` is the key's row for all
 environments.
 
-| Tool | Route |
+| MCP (`secret` tool) | Route |
 | --- | --- |
-| `list_actions_secrets` | `GET /repos/{owner}/{repo}/actions/secrets` |
-| `set_actions_secret` | `PUT /repos/{owner}/{repo}/actions/secrets/{key}` |
-| `delete_actions_secret` | `DELETE /repos/{owner}/{repo}/actions/secrets/{key}` |
-| `list_actions_variables` | `GET /repos/{owner}/{repo}/actions/variables` |
-| `set_actions_variable` | `POST /repos/{owner}/{repo}/actions/variables`, `PATCH …/variables/{key}` |
-| `delete_actions_variable` | `DELETE /repos/{owner}/{repo}/actions/variables/{key}` |
+| `list_secrets` | `GET /repos/{owner}/{repo}/actions/secrets` |
+| `set_secret` | `PUT /repos/{owner}/{repo}/actions/secrets/{key}` |
+| `delete_secret` | `DELETE /repos/{owner}/{repo}/actions/secrets/{key}` |
+| `list_variables` | `GET /repos/{owner}/{repo}/actions/variables` |
+| `set_variable` | `POST /repos/{owner}/{repo}/actions/variables`, `PATCH …/variables/{key}` |
+| `delete_variable` | `DELETE /repos/{owner}/{repo}/actions/variables/{key}` |
 
 A workspace's are under `/workspaces/{workspace}/actions/secrets` and
 `…/variables`. Beyond GitHub's fields, a row takes:
@@ -139,5 +139,5 @@ curl -X PUT https://api.g1t.sh/repos/acme/web/actions/secrets/STRIPE_KEY \
   -d '{"value":"sk_live_…","environments":["production"],"available_to":["deployments"]}'
 ```
 
-Unlike GitHub's, a secret is sent as plain `value` over HTTPS, not
-encrypted to a public key.
+A secret is sent as plain `value` over HTTPS, not encrypted to a public
+key first.

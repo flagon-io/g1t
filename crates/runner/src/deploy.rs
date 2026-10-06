@@ -429,6 +429,31 @@ fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
     Ok(())
 }
 
+/// What a Workers config asks for that g1t.page does not provision, said
+/// as the deployment's warnings: bindings it runs without, and scheduled
+/// (`triggers.crons`) runs that never fire.
+fn config_warnings(config: &WranglerConfig) -> Vec<String> {
+    let mut warnings = Vec::new();
+    for binding in UNSUPPORTED_BINDINGS {
+        if config.rest.get(binding).is_some_and(|value| !value.is_null()) {
+            warnings.push(format!("`{binding}` is not provisioned on g1t.page yet, so the app runs without it."));
+        }
+    }
+    let crons = config
+        .rest
+        .get("triggers")
+        .and_then(|triggers| triggers.get("crons"))
+        .and_then(Value::as_array)
+        .map_or(0, |crons| crons.iter().filter(|cron| cron.as_str().is_some_and(|c| !c.trim().is_empty())).count());
+    if crons > 0 {
+        let schedules = if crons == 1 { "schedule" } else { "schedules" };
+        warnings.push(format!(
+            "`triggers.crons` ({crons} {schedules}) is not set up on g1t.page yet, so the Worker's `scheduled` handler never runs."
+        ));
+    }
+    warnings
+}
+
 /// What was built: the Worker's code and settings, and where its site is.
 struct Built {
     worker: Value,
@@ -459,13 +484,7 @@ fn build(log: &mut Log, secrets: &[String]) -> Result<Built> {
             if let Some(command) = &custom_build {
                 step(log, command, secrets)?;
             }
-            for binding in UNSUPPORTED_BINDINGS {
-                if config.rest.get(binding).is_some_and(|value| !value.is_null()) {
-                    warnings.push(format!(
-                        "`{binding}` is not provisioned on g1t.page yet, so the app runs without it."
-                    ));
-                }
-            }
+            warnings.extend(config_warnings(&config));
             let mut worker = json!({
                 "compatibilityDate": config.compatibility_date.clone().unwrap_or_else(|| "2026-09-26".to_owned()),
                 "compatibilityFlags": config.compatibility_flags,
@@ -704,6 +723,24 @@ mod tests {
         let config: WranglerConfig =
             serde_json::from_str(r#"{ "main": "a.js", "d1_databases": [{ "binding": "DB" }] }"#).unwrap();
         assert!(config.rest.contains_key("d1_databases"));
+    }
+
+    #[test]
+    fn crons_g1t_does_not_run_are_warned_about() {
+        let config: WranglerConfig =
+            serde_json::from_str(r#"{ "main": "a.js", "triggers": { "crons": ["*/5 * * * *", "0 3 * * *"] }, "kv_namespaces": [{ "binding": "KV" }] }"#)
+                .unwrap();
+        let warnings = config_warnings(&config);
+        assert_eq!(warnings.len(), 2);
+        assert!(warnings.iter().any(|w| w.contains("kv_namespaces")));
+        assert!(warnings.iter().any(|w| w.contains("triggers.crons") && w.contains("2 schedules")));
+        let none: WranglerConfig = serde_json::from_str(r#"{ "main": "a.js", "triggers": { "crons": [] } }"#).unwrap();
+        assert!(config_warnings(&none).is_empty());
+        let toml: WranglerConfig = toml::from_str("main = \"a.js\"
+[triggers]
+crons = [\"0 * * * *\"]
+").unwrap();
+        assert!(config_warnings(&toml)[0].contains("1 schedule)"));
     }
 
     #[test]

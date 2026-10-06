@@ -13,6 +13,7 @@ import {
   rpcMethodOf,
   serverTiming,
   serviceDuration,
+  databaseTime,
   sessionFor,
   SESSION_SERVICES,
 } from "./perf";
@@ -86,7 +87,13 @@ export function instrumented(name: string, binding: ServiceBinding): ServiceBind
       const timing = (perf.services[name] ??= { calls: 0, wallMs: 0, serviceMs: 0 });
       timing.calls += 1;
       timing.wallMs += to - from;
-      timing.serviceMs += serviceDuration(response.headers.get("server-timing")) ?? 0;
+      const reported = response.headers.get("server-timing");
+      timing.serviceMs += serviceDuration(reported) ?? 0;
+      const database = databaseTime(reported);
+      if (database) {
+        timing.dbMs = (timing.dbMs ?? 0) + database.ms;
+        timing.dbTrips = (timing.dbTrips ?? 0) + database.trips;
+      }
       const bookmark = response.headers.get("x-d1-bookmark");
       if (bookmark && SESSION_SERVICES.has(name)) perf.returned[name] = bookmark;
       return response;

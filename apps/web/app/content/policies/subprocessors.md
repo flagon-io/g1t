@@ -8,9 +8,9 @@ These are the companies that process information for g1t on our behalf, what eac
 | **Stripe, Inc.** | Payments, cards, invoices and receipts | Workspace owners' billing details, card details (entered on Stripe's page, never on g1t), and what each invoice charges | United States |
 | **Anthropic, PBC** | The AI model behind g1t's hosted agents | What an agent run needs: the issue or request, the relevant code and files, the conversation so far, and tool results. Not your account details. Only when a hosted agent runs | United States |
 
-**AI Gateway logs.** Each hosted agent's model request passes through Cloudflare AI Gateway, which records it with the workspace, repository and pull request it was for, so we can bill it accurately. **[PLACEHOLDER: confirm whether AI Gateway stores request and response bodies, and for how long.]**
+**AI Gateway logs.** Each hosted agent's model request passes through Cloudflare AI Gateway, which records it with the workspace, repository and pull request it was for, so we can bill it accurately.
 
-**Training.** Anthropic does not train its models on what g1t sends through its commercial API. **[PLACEHOLDER: confirm against Anthropic's current commercial terms, and record any zero-data-retention arrangement.]**
+**Training.** Anthropic does not train its models on what g1t sends through its commercial API.
 
 ## Other services g1t calls
 
@@ -21,7 +21,7 @@ These are the companies that process information for g1t on our behalf, what eac
 When you connect these, your information goes to them because you asked, under your own agreement with them. They are not g1t's subprocessors:
 
 - **Your own model providers**, such as OpenAI, Google, Groq, OpenRouter, or your own Anthropic or Azure account, when your workspace routes agents to them.
-- **Integrations**, such as Slack, Linear, Jira, Sentry and Datadog.
+- **Integrations**, such as GitHub, Linear, Jira, Sentry and Datadog.
 - **Webhooks** you add, which send events to the addresses you choose.
 - **Hosts your sandboxes reach**, such as package registries and anything you allow in your guardrails.
 - **Custom domains** you point at your deployments.

@@ -168,8 +168,7 @@ your own. Without one, neither button appears.
    | `GITHUB_APP_SLUG` | The slug |
    | `GITHUB_APP_CLIENT_ID` | The Client ID |
    | `GITHUB_APP_CLIENT_SECRET` | The client secret |
-   | `GITHUB_APP_PRIVATE_KEY` | The `.pem` file's contents, as downloaded. Line breaks may be written as `
-`. |
+   | `GITHUB_APP_PRIVATE_KEY` | The `.pem` file's contents, as downloaded. Line breaks may be written as `\n`. |
    | `GITHUB_APP_WEBHOOK_SECRET` | Only once the API is served: the webhook secret |
 
 5. Restart g1t: `docker compose -f deploy/self-host/docker-compose.yml up -d`.

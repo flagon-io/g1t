@@ -96,6 +96,13 @@ impl Work {
 
     /// Every message sent to the agent on a pull request, oldest first.
     pub(crate) async fn messages(&self, pull_id: &str) -> Result<Vec<AgentMessage>> {
+        if let Some(found) = self.prefetched_pull(pull_id) {
+            return Ok(found
+                .rows::<MessageRow>(crate::prefetch::Slot::Messages)?
+                .into_iter()
+                .map(AgentMessage::from)
+                .collect());
+        }
         Ok(self
             .db
             .prepare("SELECT * FROM agent_messages WHERE pull_id = ? ORDER BY created_at, id")

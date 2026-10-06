@@ -8,7 +8,7 @@ three kinds of connection:
 
 | Kind | Systems | What it does |
 | --- | --- | --- |
-| [Model providers](/guides/models/) | Anthropic, OpenAI, Google Gemini, and any Anthropic- or OpenAI-compatible endpoint | Your agents' model requests go to your own accounts, routed by kind of work. |
+| [Model providers](/guides/models/) | Anthropic, OpenAI, Google Gemini, xAI, Mistral, DeepSeek, Azure OpenAI, OpenRouter, Groq, Together AI, Fireworks AI, Cerebras, and any Anthropic- or OpenAI-compatible endpoint | Your agents' model requests go to your own accounts, routed by kind of work. |
 | [Alerts](#alerts) | Sentry, Datadog, a signed webhook | A problem opens an issue, once however often it fires, and an agent can start on it at once. |
 | [Trackers](#trackers) | Jira, Linear | Agents read the tickets that work mentions, people import tickets as issues, and tickets hear back when the work lands. |
 
@@ -219,8 +219,8 @@ curl -X POST https://api.g1t.sh/workspaces/acme/integrations \
   -d '{"provider": "jira", "config": {"site": "https://acme.atlassian.net", "email": "dev@acme.com", "keys": ["TECH"]}, "secret": "<api token>"}'
 ```
 
-`provider` is `anthropic`, `openai`, `gemini`, `anthropic_endpoint`,
-`openai_endpoint`, `sentry`, `datadog`, `webhook`, `jira` or `linear`. `config` takes `repo`, `assign`, `label`,
+`provider` is one of the [model providers](/guides/models/#from-the-api),
+or `sentry`, `datadog`, `webhook`, `jira` or `linear`. `config` takes `repo`, `assign`, `label`,
 `write_back`, `organization`, `site`, `email`, `keys`, `base_url`,
 `auth_header` and `model`; each provider uses the ones above. For `datadog`
 and `webhook`, the response's `signing_secret` is the only time the secret

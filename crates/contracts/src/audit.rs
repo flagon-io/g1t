@@ -29,6 +29,9 @@ pub enum ActorKind {
     Workspace,
     /// A self-hosted runner, with its own credential.
     Runner,
+    /// g1t itself: what the platform does on its own, such as a security
+    /// update or a merge from the queue.
+    System,
 }
 
 impl ActorKind {
@@ -38,6 +41,7 @@ impl ActorKind {
             ActorKind::Agent => "agent",
             ActorKind::Workspace => "workspace",
             ActorKind::Runner => "runner",
+            ActorKind::System => "system",
         }
     }
 }
@@ -94,6 +98,7 @@ impl AuditActor {
             PrincipalKind::User => ActorKind::Person,
             PrincipalKind::Agent => ActorKind::Agent,
             PrincipalKind::Workspace => ActorKind::Workspace,
+            PrincipalKind::System => ActorKind::System,
         };
         let acting: Option<&Acting> = user.acting.as_deref();
         AuditActor {
@@ -109,6 +114,16 @@ impl AuditActor {
                 .and_then(|acting| acting.run())
                 .map(|run| run.kind.as_str().to_owned()),
             credential_id: acting.map(|acting| acting.credential_id.clone()),
+        }
+    }
+
+    /// g1t itself, as the actor of what it does on its own.
+    pub fn system() -> Self {
+        AuditActor {
+            actor_kind: Some(ActorKind::System),
+            actor: crate::system::USERNAME.to_owned(),
+            actor_id: crate::system::ID.to_owned(),
+            ..AuditActor::default()
         }
     }
 
@@ -293,6 +308,7 @@ mod tests {
                         run_id: Some("run_3".to_owned()),
                         number: Some(4),
                         agent: "g1t-agent".to_owned(),
+                        system: false,
                         read: vec![],
                         push: vec![],
                     }),

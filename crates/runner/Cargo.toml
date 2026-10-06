@@ -7,6 +7,8 @@ description = "The program inside a g1t sandbox: runs an agent, checks, a catch-
 
 [dependencies]
 g1t-actions = { path = "../actions" }
+# Reading lockfiles again after a security update (bump.rs).
+g1t-scan = { workspace = true }
 sha2 = "0.10"
 serde_yaml = "0.9"
 toml = "0.8"

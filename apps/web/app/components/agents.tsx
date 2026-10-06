@@ -388,9 +388,15 @@ export function AgentPanel({
         <p className="text-sm">
           <span className="font-medium">{current.agent}</span>{" "}
           {current.startedBy && current.startedBy !== current.agent && (
-            <span className="text-muted">
-              on behalf of <span className="text-fg">{current.startedBy}</span>{" "}
-            </span>
+            current.startedBy === "g1t" ? (
+              <span className="text-muted">
+                (started by <span className="text-fg">g1t</span>){" "}
+              </span>
+            ) : (
+              <span className="text-muted">
+                on behalf of <span className="text-fg">{current.startedBy}</span>{" "}
+              </span>
+            )
           )}
           <span className="text-muted">
             {active

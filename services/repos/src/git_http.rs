@@ -1,11 +1,20 @@
 //! Git over HTTPS: the smart HTTP remote at `/<namespace>/<repo>.git`,
 //! proxied to the git store with a short-lived token.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use futures_util::StreamExt;
 use g1t_contracts::identity::GitCredentialsArgs;
 use g1t_contracts::repos::{GitAccess, GitService, RepoPath};
 use g1t_contracts::{FailureCode, Outcome, Viewer};
 use worker::js_sys::Uint8Array;
+use worker::wasm_bindgen::JsValue;
 use worker::{Fetch, Fetcher, Headers, Method, Request, RequestInit, Response, Result, Url};
+
+use crate::meters;
+use crate::pack_limits::{PackSizer, Violation};
+use crate::resilience::{self, Busy, Failure};
 
 const ENDPOINTS: [&str; 3] = ["info/refs", "git-upload-pack", "git-receive-pack"];
 const FORWARDED_HEADERS: [&str; 5] = [
@@ -415,6 +424,15 @@ pub struct Forwarded {
     pub pushed: Vec<Pushed>,
     /// For a push: the size of the pack it sent, for the storage meter.
     pub pack_bytes: u64,
+    /// The bytes sent to the store.
+    pub sent: u64,
+    /// Whether the answer is the store's own (not g1t's, for a store that
+    /// was busy).
+    pub from_store: bool,
+    /// For a push: whether it was too large to scan for secrets first and
+    /// was streamed to the store unscanned (`LargePushes::Unscanned`). Its
+    /// `git.push` events say so, and security scans it after it lands.
+    pub unscanned: bool,
 }
 
 /// What became of a git request.
@@ -424,6 +442,158 @@ pub enum Push {
     Refused(Response),
     /// A push that adds a secret nobody allowed, answered the same way.
     Blocked(Response),
+    /// A push the store could not hold: an object or the repository too
+    /// large, or too large to check. With the reason, for the audit log.
+    Declined(Response, String),
+}
+
+/// What a push may bring, checked as it arrives (pack_limits.rs).
+#[derive(Clone, Copy, Debug)]
+pub struct PushLimits {
+    /// The largest object the store holds.
+    pub max_object: u64,
+    /// What the repository holds now, as g1t counts it.
+    pub held: u64,
+    /// The most a repository may hold.
+    pub repo_limit: u64,
+    /// The largest push that is read whole and scanned for secrets.
+    pub scan_cap: usize,
+    /// What happens to a larger one.
+    pub large: LargePushes,
+}
+
+impl Default for PushLimits {
+    fn default() -> Self {
+        PushLimits {
+            max_object: crate::pack_limits::MAX_OBJECT_BYTES,
+            held: 0,
+            repo_limit: crate::pack_limits::DEFAULT_REPO_LIMIT_BYTES,
+            scan_cap: crate::secret_scan::MAX_SCANNED_PUSH,
+            large: LargePushes::Refuse,
+        }
+    }
+}
+
+/// What happens to a push larger than [`PushLimits::scan_cap`]: set by
+/// `LARGE_PUSHES`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LargePushes {
+    /// Declined (the default): push protection cannot read it, so it does
+    /// not let it in.
+    Refuse,
+    /// Streamed to the store without a scan for secrets; the size limits are
+    /// still checked as it passes.
+    Unscanned,
+}
+
+impl LargePushes {
+    pub fn from_var(value: Option<&str>) -> Self {
+        match value.map(str::trim) {
+            Some("unscanned") => LargePushes::Unscanned,
+            _ => LargePushes::Refuse,
+        }
+    }
+}
+
+/// A push the store could not hold.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SizeViolation {
+    Object { size: u64 },
+    Repository { held: u64, incoming: u64, limit: u64 },
+    Unscannable { size: u64, cap: usize },
+}
+
+/// Why a push is declined for its size, as git shows it: the `ng` reason,
+/// and the lines printed as `remote:`.
+pub fn size_refusal(violation: &SizeViolation) -> (String, Vec<String>) {
+    use crate::pack_limits::{MAX_OBJECT_BYTES, PLATFORM_BODY_LIMIT_BYTES, megabytes};
+    match violation {
+        SizeViolation::Object { size } => (
+            format!("a file of {} is over the {} limit", megabytes(*size), megabytes(MAX_OBJECT_BYTES)),
+            vec![
+                format!("g1t stores files of up to {} each; this push has one of {}.", megabytes(MAX_OBJECT_BYTES), megabytes(*size)),
+                "Take it out of the commits (git rm --cached, then amend or rebase), and keep large".to_owned(),
+                "files elsewhere: https://docs.g1t.sh/guides/git/#size-limits. Nothing was pushed.".to_owned(),
+            ],
+        ),
+        SizeViolation::Repository { held, incoming, limit } => (
+            "the repository would be over its size limit".to_owned(),
+            vec![
+                format!(
+                    "This repository holds about {} and the push adds {}, past the {} a repository may hold.",
+                    megabytes(*held),
+                    megabytes(*incoming),
+                    megabytes(*limit)
+                ),
+                "Delete what you no longer need, or split it: https://docs.g1t.sh/guides/git/#size-limits.".to_owned(),
+                "Nothing was pushed.".to_owned(),
+            ],
+        ),
+        SizeViolation::Unscannable { size, cap } => (
+            "the push is too large to check for secrets".to_owned(),
+            vec![
+                format!(
+                    "g1t checks every push for secrets and reads up to {} at once; this one is {}.",
+                    megabytes(*cap as u64),
+                    megabytes(*size)
+                ),
+                "Push in parts, oldest commits first, then push as usual:".to_owned(),
+                "  git rev-list --reverse HEAD | awk 'NR % 500 == 0' | xargs -I{} git push origin {}:refs/heads/main".to_owned(),
+                format!("A push over {} is refused by the network before it reaches g1t (HTTP 413).", megabytes(PLATFORM_BODY_LIMIT_BYTES)),
+                "See https://docs.g1t.sh/guides/git/#size-limits. Nothing was pushed.".to_owned(),
+            ],
+        ),
+    }
+}
+
+/// Feeds the next chunk of a push to the size check; the first violation.
+fn check_size(sizer: &mut Option<PackSizer>, chunk: &[u8], limits: &PushLimits) -> Option<SizeViolation> {
+    let walker = sizer.as_mut()?;
+    match walker.feed(chunk) {
+        Ok(()) => {}
+        Err(Violation::ObjectTooLarge { size }) => return Some(SizeViolation::Object { size }),
+        Err(Violation::Malformed(why)) => {
+            // Not for g1t to judge: the store will say.
+            worker::console_error!("push not checked for size: {why}");
+            *sizer = None;
+            return None;
+        }
+    }
+    let incoming = walker.pack_bytes();
+    crate::pack_limits::over_repo_limit(limits.held, incoming, limits.repo_limit).then_some(SizeViolation::Repository {
+        held: limits.held,
+        incoming,
+        limit: limits.repo_limit,
+    })
+}
+
+/// A request body that streams from `stream`, for `fetch`.
+pub(crate) fn stream_body<S>(stream: S) -> Result<JsValue>
+where
+    S: futures_util::TryStream + 'static,
+    S::Ok: Into<Vec<u8>>,
+    S::Error: Into<worker::Error>,
+{
+    let response: worker::web_sys::Response = Response::from_stream(stream)?.into();
+    Ok(response.body().map_or(JsValue::NULL, Into::into))
+}
+
+/// What git is told when the store is busy: 429 or 503, with when to try
+/// again (resilience.rs).
+pub fn busy_response(busy: Busy) -> Result<Response> {
+    let response = Response::error(busy.message(), busy.status())?;
+    response.headers().set("retry-after", &busy.retry_after.to_string())?;
+    Ok(response)
+}
+
+/// The rest of a request's body, read and thrown away so that git hears
+/// the answer; how many bytes it was.
+async fn drain(stream: &mut worker::ByteStream) -> Result<u64> {
+    let mut size = 0;
+    while let Some(chunk) = stream.next().await {
+        size += chunk?.len() as u64;
+    }
+    Ok(size)
 }
 
 /// One packet of a pkt-line stream: data, or a flush (`0000`), delimiter
@@ -526,10 +696,19 @@ fn names_head(git: &GitRequest, body: Option<&[u8]>) -> bool {
 }
 
 /// Sends the request on to the git store and returns its response as is,
-/// unless it is a push that would change the `protected` branch, or one
-/// that `scan` (push protection) answers itself. A fetch's ref listing has
-/// its `HEAD` pointed at `default_branch` (see [`with_head`]). A POST's
-/// body is `read` when the caller has read it already.
+/// unless it is a push that would change the `protected` branch, one the
+/// store could not hold (`limits`, pack_limits.rs), or one that `scan`
+/// (push protection) answers itself. A fetch's ref listing has its `HEAD`
+/// pointed at `default_branch` (see [`with_head`]). A POST's body is
+/// `read` when the caller has read it already.
+///
+/// A push is read as it arrives: up to `limits.scan_cap` is kept, to be
+/// scanned and sent on whole; past it, the push is declined, or streamed
+/// to the store unscanned (`LargePushes`), never held. Reads the store
+/// fails for a moment (429, 5xx) are tried again with backoff; a push never
+/// is. A store still busy after that is answered 429 or 503 with
+/// `Retry-After`.
+#[allow(clippy::too_many_arguments)]
 pub async fn forward(
     mut request: Request,
     read: Option<Vec<u8>>,
@@ -537,6 +716,7 @@ pub async fn forward(
     access: &GitAccess,
     protected: Option<&str>,
     default_branch: Option<&str>,
+    limits: PushLimits,
     scan: impl AsyncFnOnce(&[u8]) -> Result<Option<Response>>,
 ) -> Result<Push> {
     let headers = Headers::new();
@@ -546,43 +726,68 @@ pub async fn forward(
             headers.set(name, &value)?;
         }
     }
-    let query = request
-        .url()?
-        .query()
-        .map(|query| format!("?{query}"))
-        .unwrap_or_default();
-    let mut init = RequestInit::new();
-    init.with_method(request.method()).with_headers(headers);
-    let mut pushed = Vec::new();
-    let mut pack = 0;
-    let mut lists_head = request.method() == Method::Get && names_head(git, None);
-    if request.method() == Method::Post {
-        // Pushes are capped at 100 MB by the platform, so buffering is safe.
-        let body = match read {
-            Some(body) => body,
-            None => request.bytes().await?,
-        };
-        if git.endpoint == "git-receive-pack" {
-            if let Some(report) = protected.and_then(|branch| refusal(&body, branch)) {
-                let headers = Headers::new();
-                headers.set("content-type", "application/x-git-receive-pack-result")?;
-                headers.set("cache-control", "no-cache")?;
-                return Ok(Push::Refused(
-                    Response::from_bytes(report)?.with_headers(headers),
-                ));
-            }
-            if let Some(response) = scan(&body).await? {
-                return Ok(Push::Blocked(response));
-            }
-            pushed = pushed_branches(&body);
-            pack = pack_bytes(&body);
-        }
-        lists_head = names_head(git, Some(&body));
-        init.with_body(Some(Uint8Array::from(body.as_slice()).into()));
+    let query = request.url()?.query().map(|query| format!("?{query}")).unwrap_or_default();
+    let url = format!("{}/{}{query}", access.remote, git.endpoint);
+    let method = request.method();
+    let (namespace, _) = crate::store::locate(&crate::store::key_from_remote(&access.remote).unwrap_or_default());
+
+    if method == Method::Post && git.endpoint == "git-receive-pack" {
+        return push(request, &url, headers, protected, limits, scan, &namespace).await;
     }
-    let upstream =
-        Request::new_with_init(&format!("{}/{}{query}", access.remote, git.endpoint), &init)?;
-    let mut response = Fetch::Request(upstream).send().await?;
+
+    // A read: the ref advertisement, `ls-refs`, or a fetch of objects.
+    let body = match (&method, read) {
+        (Method::Post, Some(body)) => Some(body),
+        (Method::Post, None) => Some(request.bytes().await?),
+        _ => None,
+    };
+    let lists_head = match &body {
+        None => method == Method::Get && names_head(git, None),
+        Some(body) => names_head(git, Some(body)),
+    };
+    let sent = body.as_ref().map_or(0, |body| body.len() as u64);
+    let mut attempt = 0;
+    let mut response = loop {
+        let mut init = RequestInit::new();
+        init.with_method(method.clone()).with_headers(headers.clone());
+        if let Some(body) = &body {
+            init.with_body(Some(Uint8Array::from(body.as_slice()).into()));
+        }
+        let started = g1t_kit::now_ms();
+        let answered = Fetch::Request(Request::new_with_init(&url, &init)?).send().await;
+        let ms = g1t_kit::now_ms().saturating_sub(started);
+        let failure = match &answered {
+            Ok(response) => resilience::classify_status(response.status_code()),
+            Err(_) => Some(Failure::Transient),
+        };
+        let outcome = match failure {
+            None => meters::Outcome::Ok,
+            Some(Failure::RateLimited) => meters::Outcome::RateLimited,
+            Some(_) => meters::Outcome::Failed,
+        };
+        meters::record_health(&namespace, outcome, ms);
+        match (answered, failure) {
+            (Ok(response), None) => break response,
+            (answered, Some(failure)) if resilience::retry(failure, attempt) => {
+                drop(answered);
+                let wait = resilience::backoff_ms(failure, attempt, worker::js_sys::Math::random());
+                worker::Delay::from(std::time::Duration::from_millis(wait)).await;
+                attempt += 1;
+            }
+            (_, Some(failure)) => {
+                let busy = Busy { rate_limited: failure == Failure::RateLimited, retry_after: 5 };
+                return Ok(Push::Forwarded(Forwarded {
+                    response: busy_response(busy)?,
+                    pushed: Vec::new(),
+                    pack_bytes: 0,
+                    sent,
+                    from_store: false,
+                    unscanned: false,
+                }));
+            }
+            (Err(error), None) => return Err(error),
+        }
+    };
     if let (true, Some(branch)) = (lists_head, default_branch)
         && response.status_code() == 200
     {
@@ -594,8 +799,150 @@ pub async fn forward(
     }
     Ok(Push::Forwarded(Forwarded {
         response,
+        pushed: Vec::new(),
+        pack_bytes: 0,
+        sent,
+        from_store: true,
+        unscanned: false,
+    }))
+}
+
+/// A receive-pack request; see [`forward`].
+#[allow(clippy::too_many_arguments)]
+async fn push(
+    mut request: Request,
+    url: &str,
+    headers: Headers,
+    protected: Option<&str>,
+    limits: PushLimits,
+    scan: impl AsyncFnOnce(&[u8]) -> Result<Option<Response>>,
+    namespace: &str,
+) -> Result<Push> {
+    let mut stream = request.stream()?;
+    let mut head: Vec<u8> = Vec::new();
+    let mut sizer = Some(PackSizer::new(limits.max_object));
+    let mut violation = None;
+    let mut ended = false;
+    while head.len() <= limits.scan_cap {
+        match stream.next().await {
+            Some(chunk) => {
+                let chunk = chunk?;
+                if violation.is_none() {
+                    violation = check_size(&mut sizer, &chunk, &limits);
+                }
+                head.extend_from_slice(&chunk);
+            }
+            None => {
+                ended = true;
+                break;
+            }
+        }
+    }
+    let report_headers = || -> Result<Headers> {
+        let headers = Headers::new();
+        headers.set("content-type", "application/x-git-receive-pack-result")?;
+        headers.set("cache-control", "no-cache")?;
+        Ok(headers)
+    };
+    if let Some(report) = protected.and_then(|branch| refusal(&head, branch)) {
+        if !ended {
+            drain(&mut stream).await?;
+        }
+        return Ok(Push::Refused(Response::from_bytes(report)?.with_headers(report_headers()?)));
+    }
+    if !ended && limits.large == LargePushes::Refuse && violation.is_none() {
+        let size = head.len() as u64 + drain(&mut stream).await?;
+        violation = Some(SizeViolation::Unscannable { size, cap: limits.scan_cap });
+        ended = true;
+    }
+    if let Some(violation) = violation {
+        if !ended {
+            drain(&mut stream).await?;
+        }
+        let (reason, messages) = size_refusal(&violation);
+        return Ok(Push::Declined(declined(&head, &reason, &messages)?, reason));
+    }
+    let pushed = pushed_branches(&head);
+    let mut init = RequestInit::new();
+    init.with_method(Method::Post).with_headers(headers);
+    let started = g1t_kit::now_ms();
+    let (answered, pack_bytes, sent, unscanned) = if ended {
+        if let Some(response) = scan(&head).await? {
+            return Ok(Push::Blocked(response));
+        }
+        let pack = pack_bytes(&head);
+        let sent = head.len() as u64;
+        init.with_body(Some(Uint8Array::from(head.as_slice()).into()));
+        drop(head);
+        (Fetch::Request(Request::new_with_init(url, &init)?).send().await, pack, sent, false)
+    } else {
+        // Larger than can be scanned, and let through unscanned: streamed,
+        // with the size limits checked as it passes. A violation ends the
+        // stream before the pack does, so the store refuses it whole.
+        worker::console_warn!("a push of more than {} bytes goes to the store unscanned", limits.scan_cap);
+        let commands = head.iter().take(64 * 1024).copied().collect::<Vec<u8>>();
+        let found: Rc<RefCell<Option<SizeViolation>>> = Rc::default();
+        let walked = Rc::new(RefCell::new((sizer, 0u64)));
+        let rest = {
+            let found = found.clone();
+            let walked = walked.clone();
+            stream.map(move |chunk| {
+                let chunk = chunk?;
+                let mut walked = walked.borrow_mut();
+                walked.1 += chunk.len() as u64;
+                if let Some(violation) = check_size(&mut walked.0, &chunk, &limits) {
+                    *found.borrow_mut() = Some(violation);
+                    return Err(worker::Error::RustError("push over the size limit".into()));
+                }
+                Ok(chunk)
+            })
+        };
+        let first = head.len() as u64;
+        let body = futures_util::stream::once(async move { Ok::<Vec<u8>, worker::Error>(head) }).chain(rest);
+        init.with_body(Some(stream_body(body)?));
+        let answered = Fetch::Request(Request::new_with_init(url, &init)?).send().await;
+        if let Some(violation) = found.borrow_mut().take() {
+            let (reason, messages) = size_refusal(&violation);
+            return Ok(Push::Declined(declined(&commands, &reason, &messages)?, reason));
+        }
+        let walked = walked.borrow();
+        let pack = walked.0.as_ref().map_or_else(|| pack_bytes(&commands), PackSizer::pack_bytes);
+        (answered, pack, first + walked.1, true)
+    };
+    let ms = g1t_kit::now_ms().saturating_sub(started);
+    let failure = match &answered {
+        Ok(response) => resilience::classify_status(response.status_code()),
+        Err(_) => Some(Failure::Transient),
+    };
+    meters::record_health(
+        namespace,
+        match failure {
+            None => meters::Outcome::Ok,
+            Some(Failure::RateLimited) => meters::Outcome::RateLimited,
+            Some(_) => meters::Outcome::Failed,
+        },
+        ms,
+    );
+    // A push is never tried again: the store may have taken it.
+    let response = match (answered, failure) {
+        (Ok(response), None) => response,
+        (Ok(response), Some(Failure::RateLimited)) => {
+            drop(response);
+            busy_response(Busy { rate_limited: true, retry_after: 5 })?
+        }
+        (Ok(response), Some(_)) => response,
+        (Err(error), _) => {
+            worker::console_error!("a push did not reach the store: {error}");
+            busy_response(Busy { rate_limited: false, retry_after: 5 })?
+        }
+    };
+    Ok(Push::Forwarded(Forwarded {
+        response,
         pushed,
-        pack_bytes: pack,
+        pack_bytes,
+        sent,
+        from_store: true,
+        unscanned,
     }))
 }
 

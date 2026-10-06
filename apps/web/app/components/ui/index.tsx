@@ -3,6 +3,7 @@ import { type ComponentProps, type ReactNode, useState } from "react";
 import { Link, type LinkProps, NavLink, useLocation } from "react-router";
 
 import { isWaitingMessage, linkPaths } from "../../lib/compute";
+import { Mark } from "../logo";
 
 export function Field({
   label,
@@ -195,7 +196,15 @@ export function Pill({ children }: { children: ReactNode }) {
 const AVATAR_HUES = [82, 200, 262, 28, 330, 160];
 
 /** How g1t's agents are named: as reviewers and assignees, and as commit authors. */
-const AGENT_NAMES = new Set(["g1t-agent", "g1t agent", "g1t"]);
+const AGENT_NAMES = new Set(["g1t-agent", "g1t agent"]);
+
+/**
+ * g1t itself, as the author of security updates, the issues it opens and
+ * merges from the queue: a user of kind `system`, named `g1t`.
+ */
+export function isSystemName(name: string | null | undefined): boolean {
+  return name === "g1t";
+}
 
 /** Where an uploaded avatar is served, from the hash it is stored by. */
 export function avatarUrl(avatar: string): string {
@@ -212,14 +221,29 @@ export function Avatar({
   size = 20,
   square,
   image,
+  system,
 }: {
   name: string;
   size?: number;
   square?: boolean;
   /** The uploaded avatar's hash, as identity returns it. */
   image?: string | null;
+  /** g1t itself (a user of kind `system`), whatever the name. */
+  system?: boolean;
 }) {
   const [failed, setFailed] = useState<string | null>(null);
+  // g1t itself wears its own mark: the pixel 1 on a dark square.
+  if (system || isSystemName(name)) {
+    return (
+      <span
+        aria-hidden="true"
+        className="inline-flex shrink-0 items-center justify-center bg-[#0b0b0d] text-fg ring-1 ring-line-strong ring-inset"
+        style={{ width: size, height: size, borderRadius: size * 0.24 }}
+      >
+        <Mark className="size-full" />
+      </span>
+    );
+  }
   if (image && failed !== image) {
     return (
       <img

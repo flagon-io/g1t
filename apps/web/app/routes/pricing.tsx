@@ -80,7 +80,7 @@ const HOW = [
   },
   {
     title: "Prices follow costs, by themselves",
-    body: "Model runs are charged at what Cloudflare's AI Gateway priced each request at, so a provider's price change reaches you the same day. Every day, each Cloudflare cost is checked against what Cloudflare billed g1t; when one moves, its price moves with it, and the change is listed below.",
+    body: "Model runs are charged at what Cloudflare's AI Gateway priced each request at, so a provider's price change reaches you the same day. Every day, sandbox, build and app costs are checked against what Cloudflare billed g1t; when one moves, its price moves with it, and the change is listed below. The rest are Cloudflare's published prices, marked as such.",
   },
   {
     title: "The 20% is the overhead",
@@ -134,6 +134,11 @@ function rows(tier: Required<FreeTier>): Row[] {
       free: `${count(tier.gitOperationsIncluded)} a month, never charged. Past it, slowed to 60 an hour until the month turns.`,
       plan: `${count(tier.gitOperationsIncluded)} a month free, then at cost plus 20%. Never slowed.`,
       note: "Clones, fetches and pushes through g1t.",
+    },
+    {
+      what: "Actions cache",
+      free: "2 GiB an entry and 10 GiB a repository, never charged",
+      plan: "The same limits, with what it stores at cost plus 20%",
     },
     {
       what: "Audit log",
@@ -414,7 +419,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             <tr>
               <td className="px-4 py-3">
                 <p className="font-medium">Projects, previews and apps</p>
-                <p className="text-xs text-faint">An app costs only the requests and CPU it answers with</p>
+                <p className="text-xs text-faint">Having them. An app's requests and CPU time are charged below.</p>
               </td>
               <td className="px-4 py-3 text-muted">Next to nothing</td>
               <td className="hidden px-4 py-3 tabular-nums sm:table-cell">—</td>
@@ -425,6 +430,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
                 <td className="px-4 py-3">
                   <p className="font-medium">{price.title}</p>
                   <p className="text-xs text-faint">
+                    {price.meter === "actions_cache" ? "On the plan only. A free workspace is never charged for it. " : ""}
                     {price.source === "cloudflare" ? "Measured from Cloudflare's bill" : "Cloudflare's published price"}
                   </p>
                 </td>
@@ -496,7 +502,15 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
                   )}
                 </p>
                 <p className="mt-0.5 text-xs text-faint">
-                  {change.reason} · <TimeAgo at={change.createdAt} />
+                  {change.effectiveAt ? (
+                    <>
+                      {change.reason} · <span className="text-fg-soft">takes effect {change.effectiveAt.slice(0, 10)}</span>
+                    </>
+                  ) : (
+                    <>
+                      {change.reason} · <TimeAgo at={change.createdAt} />
+                    </>
+                  )}
                 </p>
               </li>
             );

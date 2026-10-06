@@ -219,23 +219,24 @@ starts.
 
 ## Through the API
 
-Every route is in the [API reference](/reference/api/). Each has an MCP
-tool of the same name.
+Every route is in the [API reference](/reference/api/). Each is also an
+action of an [MCP tool](/reference/mcp/): `access` for a repository's
+people and the base permission, `account` for invitations to you.
 
-| Route | MCP tool | What it does | Who |
+| Route | MCP tool and action | What it does | Who |
 | --- | --- | --- | --- |
-| `GET /repos/{owner}/{name}/collaborators` | `list_collaborators` | Everyone with access to a repository, their role and where it comes from. | Write |
-| `GET /repos/{owner}/{name}/collaborators/{username}/permission` | `get_collaborator_permission` | One person's role on a repository and what it lets them do. | Write, or about yourself |
-| `POST /repos/{owner}/{name}/collaborators` | `add_collaborator` | Give someone a role. Body: `invitee` (a username or an email address) and `role`. Answers with `result`: `granted` or `invited`. | Admin |
-| `PATCH /repos/{owner}/{name}/collaborators/{username}` | `update_collaborator` | Change someone's role, or a pending invitation's. Body: `role`. | Admin |
-| `DELETE /repos/{owner}/{name}/collaborators/{username}` | `remove_collaborator` | Take away the role given to someone on the repository. | Admin, or yourself |
-| `GET /repos/{owner}/{name}/invitations` | `list_repo_invitations` | A repository's pending invitations. | Admin |
-| `DELETE /repos/{owner}/{name}/invitations/{id}` | `revoke_repo_invitation` | Withdraw a pending invitation. | Admin |
-| `GET /user/repository_invitations` | `list_my_repo_invitations` | The invitations waiting for you. | You |
-| `PATCH /user/repository_invitations/{id}` | `accept_repo_invitation` | Accept one. | You |
-| `DELETE /user/repository_invitations/{id}` | `decline_repo_invitation` | Decline one. | You |
-| `PATCH /workspaces/{workspace}` | `set_base_permission` | Set the base permission. Body: `base_permission`: `none`, `read`, `write` or `admin`. | Owners |
-| `GET /workspaces/{workspace}/outside_collaborators` | `list_outside_collaborators` | A workspace's outside collaborators and the repositories each can reach. | Owners |
+| `GET /repos/{owner}/{name}/collaborators` | `access` `list_collaborators` | Everyone with access to a repository, their role and where it comes from. | Write |
+| `GET /repos/{owner}/{name}/collaborators/{username}/permission` | `access` `get_permission` | One person's role on a repository and what it lets them do. | Write, or about yourself |
+| `POST /repos/{owner}/{name}/collaborators` | `access` `add_collaborator` | Give someone a role. Body: `invitee` (a username or an email address) and `role`. Answers with `result`: `granted` or `invited`. | Admin |
+| `PATCH /repos/{owner}/{name}/collaborators/{username}` | `access` `update_collaborator` | Change someone's role, or a pending invitation's. Body: `role`. | Admin |
+| `DELETE /repos/{owner}/{name}/collaborators/{username}` | `access` `remove_collaborator` | Take away the role given to someone on the repository. | Admin, or yourself |
+| `GET /repos/{owner}/{name}/invitations` | `access` `list_invitations` | A repository's pending invitations. | Admin |
+| `DELETE /repos/{owner}/{name}/invitations/{id}` | `access` `revoke_invitation` | Withdraw a pending invitation. | Admin |
+| `GET /user/repository_invitations` | `account` `list_repository_invitations` | The invitations waiting for you. | You |
+| `PATCH /user/repository_invitations/{id}` | `account` `accept_repository_invitation` | Accept one. | You |
+| `DELETE /user/repository_invitations/{id}` | `account` `decline_repository_invitation` | Decline one. | You |
+| `PUT /workspaces/{workspace}/base_permission` | `access` `set_base_permission` | Set the base permission. Body: `base_permission`: `none`, `read`, `write` or `admin`. `PATCH /workspaces/{workspace}` (`workspace` `update`) takes `base_permission` too, with the `access:admin` scope. | Owners |
+| `GET /workspaces/{workspace}/outside_collaborators` | `access` `list_outside_collaborators` | A workspace's outside collaborators and the repositories each can reach. | Owners |
 
 Changing who has access, answering an invitation and setting the base
 permission are for people, signed in or with a personal access token.

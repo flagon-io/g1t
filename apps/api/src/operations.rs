@@ -11,8 +11,14 @@ use g1t_contracts::access::{
 };
 use g1t_contracts::identity::AgentScope;
 use g1t_contracts::events::{Event, ListArgs as ListEventsArgs};
-use g1t_contracts::identity::CreateWorkspaceArgs;
+use g1t_contracts::identity::{CreateWorkspaceArgs, UpdateWorkspaceArgs, Workspace};
 use g1t_contracts::repos::{CreateArgs, GetArgs, ListArgs as ListReposArgs, Repo, RepoPath};
+use g1t_contracts::security::{
+    AlertChange, AlertState, DismissArgs, DismissReason, OverviewArgs as SecurityOverviewArgs, ReopenArgs,
+    SecurityOverview,
+};
+
+use crate::alerts::{AlertKind, SecurityAlert};
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome, Viewer};
 use serde::Serialize;
@@ -35,6 +41,8 @@ pub struct Services {
     pub context: Fetcher,
     /// Search across all of g1t.
     pub search: Fetcher,
+    /// Secret and dependency alerts.
+    pub security: Fetcher,
     /// Where the request came in, for its audit entries.
     pub audit: crate::audit::AuditContext,
     /// Set for a request made with an agent's token: all it may do.
@@ -55,6 +63,7 @@ impl Services {
             actions: env.service("ACTIONS")?,
             context: env.service("CONTEXT")?,
             search: env.service("SEARCH")?,
+            security: env.service("SECURITY")?,
             scope: None,
             audit: crate::audit::AuditContext::default(),
         })
@@ -66,6 +75,7 @@ pub enum Op {
     Whoami,
     CreateWorkspace,
     DeleteWorkspace,
+    UpdateWorkspace,
     ListEmails,
     AddEmail,
     RemoveEmail,
@@ -176,6 +186,9 @@ pub enum Op {
     DeclineRepoInvitation,
     SetBasePermission,
     ListOutsideCollaborators,
+    ListSecurityAlerts,
+    DismissSecurityAlert,
+    ReopenSecurityAlert,
 }
 
 fn failed(code: FailureCode, message: &str) -> Result<Outcome<Value>> {
@@ -397,11 +410,19 @@ fn role_schema() -> Value {
     })
 }
 
+fn alert_id_schema() -> Value {
+    json!({
+        "type": "string",
+        "description": "The alert's id, from list_security_alerts: sec_… for a secret, vul_… for a dependency.",
+    })
+}
+
 impl Op {
-    pub const ALL: [Op; 113] = [
+    pub const ALL: [Op; 117] = [
         Op::Whoami,
         Op::CreateWorkspace,
         Op::DeleteWorkspace,
+        Op::UpdateWorkspace,
         Op::ListEmails,
         Op::AddEmail,
         Op::RemoveEmail,
@@ -512,6 +533,9 @@ impl Op {
         Op::DeclineRepoInvitation,
         Op::SetBasePermission,
         Op::ListOutsideCollaborators,
+        Op::ListSecurityAlerts,
+        Op::DismissSecurityAlert,
+        Op::ReopenSecurityAlert,
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -524,6 +548,7 @@ impl Op {
             Op::Whoami => "whoami",
             Op::CreateWorkspace => "create_workspace",
             Op::DeleteWorkspace => "delete_workspace",
+            Op::UpdateWorkspace => "update_workspace",
             Op::ListEmails => "list_emails",
             Op::AddEmail => "add_email",
             Op::RemoveEmail => "remove_email",
@@ -634,6 +659,9 @@ impl Op {
             Op::DeclineRepoInvitation => "decline_repo_invitation",
             Op::SetBasePermission => "set_base_permission",
             Op::ListOutsideCollaborators => "list_outside_collaborators",
+            Op::ListSecurityAlerts => "list_security_alerts",
+            Op::DismissSecurityAlert => "dismiss_security_alert",
+            Op::ReopenSecurityAlert => "reopen_security_alert",
         }
     }
 
@@ -675,6 +703,9 @@ impl Op {
             Op::RevokeWorkspaceInvite => "Revoke a workspace's pending invite. Owners only.",
             Op::DeleteWorkspace => {
                 "Delete a workspace. Owners only, signed in as a person, and confirm must be the workspace's slug. It must hold no repositories (move them with transfer_repo first) and no projects, and billing must be able to settle it: no unpaid invoice, no prepaid credit left, and no usage this month still being metered; what it owes is charged to its card at once. Its members, access tokens, webhooks, integrations and workspace secrets are removed; its statements, invoices and audit log are kept. The slug is never given to another workspace; the person whose username it is may create it again."
+            }
+            Op::UpdateWorkspace => {
+                "Change a workspace's display name and description, and what every member gets on each of its repositories (base_permission: none, read, write or admin). Only the fields given are changed; give at least one. An empty name falls back to the slug, which this never changes (that is a rename, on Settings); an empty description clears it. Owners only, signed in as a person. Returns the workspace as it is now."
             }
             Op::ListRepos => "Repositories you can see, optionally filtered by a search query.",
             Op::GetRepo => "One repository's details.",
@@ -944,6 +975,15 @@ impl Op {
             Op::ListOutsideCollaborators => {
                 "The people with a role on some of a workspace's repositories who are not its members, each with the repositories they can reach and their role on each. Owners only."
             }
+            Op::ListSecurityAlerts => {
+                "A repository's security alerts: secrets found in what was pushed or in its history (`kind` `secret`), and dependencies with a known vulnerability (`kind` `dependency`), secrets first. Each has a `state`: `open`, `dismissed` (someone said why it can stay) or `fixed` (a secret revoked, a dependency no longer vulnerable). Filter with `state` and `kind`; both are left out for all. A secret is never returned, only a `preview`. Needs the Write role on the repository; anyone else is told it does not exist, whether or not the repository is public."
+            }
+            Op::DismissSecurityAlert => {
+                "Dismiss an alert with a reason and an optional comment. A secret takes false_positive, used_in_tests, revoked or wont_fix; a dependency takes fix_started, no_bandwidth, tolerable_risk, inaccurate or not_used. A dismissed secret is let through push protection from then on, unless the reason is `revoked`, which marks it fixed, so dismissing a secret needs the Admin role on the repository; a dependency needs Write. Returns the alert as it is now. Reopen it with reopen_security_alert."
+            }
+            Op::ReopenSecurityAlert => {
+                "Open a dismissed alert again. A reopened secret stops pushes that carry it again. The same roles as dismissing: Admin for a secret, Write for a dependency. Returns the alert as it is now."
+            }
         }
     }
 
@@ -1046,6 +1086,25 @@ impl Op {
                     },
                 }),
                 &["workspace", "confirm"],
+            ),
+            Op::UpdateWorkspace => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "name": {
+                        "type": "string",
+                        "description": "Its display name, at most 80 characters; longer is cut. Empty: its slug.",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "One line saying what it is for, at most 160 characters; longer is cut. Empty clears it.",
+                    },
+                    "base_permission": {
+                        "type": "string",
+                        "enum": g1t_contracts::access::BasePermission::ALL.map(|base| base.as_str()),
+                        "description": "What every member gets on each repository: none, read, write or admin. Needs the access:admin scope as well.",
+                    },
+                }),
+                &["workspace"],
             ),
             Op::TransferRepo => object(
                 json!({
@@ -1784,6 +1843,36 @@ impl Op {
                 &["workspace", "base_permission"],
             ),
             Op::ListOutsideCollaborators => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
+            Op::ListSecurityAlerts => object(
+                json!({
+                    "repo": repo_schema(),
+                    "state": {
+                        "type": "string",
+                        "enum": ([AlertState::Open, AlertState::Dismissed, AlertState::Fixed].map(AlertState::as_str)),
+                        "description": "Only alerts in this state. Left out for all.",
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": AlertKind::ALL.map(AlertKind::as_str),
+                        "description": "Only secrets, or only vulnerable dependencies. Left out for both.",
+                    },
+                }),
+                &["repo"],
+            ),
+            Op::DismissSecurityAlert => object(
+                json!({
+                    "repo": repo_schema(),
+                    "id": alert_id_schema(),
+                    "reason": {
+                        "type": "string",
+                        "enum": DismissReason::ALL.map(DismissReason::as_str),
+                        "description": "Why it can stay. For a secret: false_positive, used_in_tests, revoked (it was rotated: the alert is fixed) or wont_fix. For a dependency: fix_started, no_bandwidth, tolerable_risk, inaccurate or not_used.",
+                    },
+                    "comment": { "type": "string", "description": "More about why, for whoever reads the alert next." },
+                }),
+                &["repo", "id", "reason"],
+            ),
+            Op::ReopenSecurityAlert => object(json!({ "repo": repo_schema(), "id": alert_id_schema() }), &["repo", "id"]),
         }
     }
 
@@ -1820,6 +1909,7 @@ impl Op {
             Op::Whoami
                 | Op::CreateWorkspace
                 | Op::DeleteWorkspace
+                | Op::UpdateWorkspace
                 | Op::ListEmails
                 | Op::AddEmail
                 | Op::RemoveEmail
@@ -2100,6 +2190,62 @@ impl Op {
                     }),
                 )
                 .await
+            }
+            Op::UpdateWorkspace => {
+                let base = match input.get("base_permission").filter(|value| !value.is_null()) {
+                    None => None,
+                    Some(value) => match value.as_str().and_then(BasePermission::parse) {
+                        Some(base) => Some(base),
+                        None => return failed(FailureCode::Invalid, "base_permission is none, read, write or admin."),
+                    },
+                };
+                let (name, description) = (optional_text(input, "name"), optional_text(input, "description"));
+                if base.is_none() && name.is_none() && description.is_none() {
+                    return failed(FailureCode::Invalid, "Give name, description or base_permission to change.");
+                }
+                let found = || async {
+                    g1t_kit::call::<_, Option<Workspace>>(identity, "get_workspace", &json!({ "slug": workspace() })).await
+                };
+                if name.is_some() || description.is_some() {
+                    // Identity sets both: what was not given stays as it is.
+                    let Some(current) = found().await? else {
+                        return failed(FailureCode::NotFound, "Workspace not found.");
+                    };
+                    let updated: Outcome<Workspace> = call(
+                        identity,
+                        "update_workspace",
+                        &UpdateWorkspaceArgs {
+                            actor: actor(),
+                            slug: workspace(),
+                            name: name.unwrap_or(current.name),
+                            description: description.unwrap_or(current.description.unwrap_or_default()),
+                        },
+                    )
+                    .await?;
+                    if let Outcome::Fail(failure) = updated {
+                        return Ok(Outcome::Fail(failure));
+                    }
+                }
+                if let Some(base) = base {
+                    let set: Outcome<BasePermission> = call(
+                        identity,
+                        "set_base_permission",
+                        &SetBasePermissionArgs {
+                            actor: actor(),
+                            slug: workspace(),
+                            base_permission: base,
+                            surface: Some(services.audit.surface),
+                        },
+                    )
+                    .await?;
+                    if let Outcome::Fail(failure) = set {
+                        return Ok(Outcome::Fail(failure));
+                    }
+                }
+                match found().await? {
+                    Some(workspace) => ok(&workspace),
+                    None => failed(FailureCode::NotFound, "Workspace not found."),
+                }
             }
             Op::TransferRepo => {
                 pass(
@@ -3178,7 +3324,107 @@ impl Op {
                 )
                 .await
             }
+            // Security alerts: the security service decides who may see and
+            // change them; the API gives them one public shape.
+            Op::ListSecurityAlerts => {
+                let filters = match alert_filters(input) {
+                    Ok(filters) => filters,
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
+                let overview: Outcome<SecurityOverview> = call(
+                    &services.security,
+                    "overview",
+                    &SecurityOverviewArgs { repo, viewer: viewer.clone() },
+                )
+                .await?;
+                match overview {
+                    Outcome::Ok(overview) => ok(&crate::alerts::list(
+                        overview.secrets,
+                        overview.vulnerabilities,
+                        filters.0,
+                        filters.1,
+                    )),
+                    Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
+                }
+            }
+            Op::DismissSecurityAlert => {
+                let id = text(input, "id");
+                let reason = match dismiss_reason(input, &id) {
+                    Ok(reason) => reason,
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
+                let comment = text(input, "comment").trim().to_owned();
+                let changed: Outcome<AlertChange> = call(
+                    &services.security,
+                    "dismiss",
+                    &DismissArgs { actor: actor(), repo, id, reason, comment },
+                )
+                .await?;
+                changed_alert(changed)
+            }
+            Op::ReopenSecurityAlert => {
+                let changed: Outcome<AlertChange> = call(
+                    &services.security,
+                    "reopen",
+                    &ReopenArgs { actor: actor(), repo, id: text(input, "id") },
+                )
+                .await?;
+                changed_alert(changed)
+            }
         }
+    }
+}
+
+/// `state` and `kind`, as list_security_alerts reads them.
+fn alert_filters(input: &Value) -> std::result::Result<(Option<AlertState>, Option<AlertKind>), String> {
+    let state = match optional_text(input, "state") {
+        None => None,
+        Some(state) => Some(
+            AlertState::parse(&state.to_lowercase())
+                .ok_or_else(|| format!("state is open, dismissed or fixed, not {state}."))?,
+        ),
+    };
+    let kind = match optional_text(input, "kind") {
+        None => None,
+        Some(kind) => Some(
+            AlertKind::parse(&kind.to_lowercase())
+                .ok_or_else(|| format!("kind is secret or dependency, not {kind}."))?,
+        ),
+    };
+    Ok((state, kind))
+}
+
+/// The reason dismiss_security_alert was given, checked against the kind
+/// of alert its id names.
+fn dismiss_reason(input: &Value, id: &str) -> std::result::Result<DismissReason, String> {
+    let all = || DismissReason::ALL.map(DismissReason::as_str).join(", ");
+    let given = text(input, "reason");
+    let Some(reason) = DismissReason::parse(given.trim()) else {
+        return Err(if given.is_empty() {
+            format!("Give a reason: one of {}.", all())
+        } else {
+            format!("{given} is not a reason. Give one of {}.", all())
+        });
+    };
+    match AlertKind::of_id(id) {
+        Some(kind) if !kind.takes(reason) => Err(format!(
+            "A {} alert is dismissed with {}, not {}.",
+            kind.as_str(),
+            kind.reasons().join(", "),
+            reason.as_str()
+        )),
+        _ => Ok(reason),
+    }
+}
+
+/// The alert dismiss or reopen changed, in its public shape.
+fn changed_alert(changed: Outcome<AlertChange>) -> Result<Outcome<Value>> {
+    match changed {
+        Outcome::Ok(change) => match SecurityAlert::from_change(change) {
+            Some(alert) => ok(&alert),
+            None => failed(FailureCode::NotFound, "No such alert."),
+        },
+        Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
     }
 }
 
@@ -3312,5 +3558,44 @@ mod tests {
         for op in ACCESS {
             assert!(op.needs_user(), "{}", op.name());
         }
+    }
+
+    /// An unknown reason, or one for the other kind of alert, is refused
+    /// before the security service is asked.
+    #[test]
+    fn dismiss_reasons_are_checked_against_the_alert() {
+        let reason = |reason: &str, id: &str| dismiss_reason(&json!({ "reason": reason }), id);
+        assert_eq!(reason("used_in_tests", "sec_1"), Ok(DismissReason::UsedInTests));
+        assert_eq!(reason("tolerable_risk", "vul_1"), Ok(DismissReason::TolerableRisk));
+        assert!(reason("because", "sec_1").unwrap_err().contains("not a reason"));
+        assert!(reason("", "sec_1").unwrap_err().starts_with("Give a reason"));
+        assert!(reason("not_used", "sec_1").unwrap_err().contains("false_positive"));
+        assert!(reason("revoked", "vul_1").unwrap_err().contains("fix_started"));
+        assert_eq!(
+            Op::DismissSecurityAlert.input()["properties"]["reason"]["enum"].as_array().unwrap().len(),
+            DismissReason::ALL.len()
+        );
+    }
+
+    #[test]
+    fn alert_filters_are_read_as_words() {
+        assert_eq!(alert_filters(&json!({})), Ok((None, None)));
+        assert_eq!(
+            alert_filters(&json!({ "state": "Dismissed", "kind": "secret" })),
+            Ok((Some(AlertState::Dismissed), Some(AlertKind::Secret)))
+        );
+        assert!(alert_filters(&json!({ "state": "closed" })).is_err());
+        assert!(alert_filters(&json!({ "kind": "vulnerability" })).is_err());
+    }
+
+    /// An agent's token reads alerts at most; it never dismisses or
+    /// reopens one, whatever its scope lists.
+    #[test]
+    fn agents_never_dismiss_alerts() {
+        use g1t_contracts::credentials::NEVER;
+        for op in [Op::DismissSecurityAlert, Op::ReopenSecurityAlert] {
+            assert!(NEVER.contains(&op.name()), "{}", op.name());
+        }
+        assert!(!NEVER.contains(&Op::ListSecurityAlerts.name()));
     }
 }

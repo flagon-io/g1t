@@ -117,8 +117,14 @@ pub const MAX_BUDGET_USD: f64 = 100.0;
 /// The longest any run may be allowed to take, in minutes.
 pub const MAX_MINUTES: u32 = 240;
 
-/// The cost cap on one run unless the workspace sets another, in US dollars.
-pub const DEFAULT_BUDGET_USD: f64 = 5.0;
+/// One run's spend cap unless an owner or g1t staff set another, in
+/// micro-dollars. The one source for both caps a run gets: billing's spend
+/// cap per run and the guardrails' cost per run, so the two never disagree.
+pub const DEFAULT_RUN_CAP_MICROS: i64 = 2_000_000;
+
+/// The cost cap on one run unless the workspace sets another, in US dollars:
+/// [`DEFAULT_RUN_CAP_MICROS`].
+pub const DEFAULT_BUDGET_USD: f64 = DEFAULT_RUN_CAP_MICROS as f64 / 1_000_000.0;
 
 /// How long each kind of run may take unless the workspace says otherwise.
 pub fn default_minutes(kind: RunKind) -> u32 {
@@ -653,6 +659,13 @@ mod tests {
         assert!(defaults.rules.values().all(|on| *on));
         assert_eq!(defaults.budget_usd, Some(DEFAULT_BUDGET_USD));
         assert_eq!(defaults.minutes_for(RunKind::Implement), 90);
+    }
+
+    #[test]
+    fn the_default_cost_cap_is_billings_run_cap() {
+        // One number: the guardrails never promise more than billing allows.
+        assert_eq!((DEFAULT_BUDGET_USD * 1_000_000.0).round() as i64, DEFAULT_RUN_CAP_MICROS);
+        assert_eq!(DEFAULT_BUDGET_USD, 2.0);
     }
 
     #[test]

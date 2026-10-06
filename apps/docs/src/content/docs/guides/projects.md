@@ -97,10 +97,15 @@ A project's **Settings** has a tab for each part:
 | --- | --- |
 | **General** | The project's name and description, its source, and its **root directory**. A project shows its repository's description, and follows it as it changes, until you give the project one of its own; **Use the repository's description** goes back. |
 | **Deployments** | Production, previews, build command, output directory and idle days. See [Deployments](/guides/deployments/#settings). |
+| **Domains** | Custom domains for production. See [custom domains](/guides/deployments/#custom-domains). |
 | **Dependencies** | The projects this one uses, and the ones that use it. See [Dependencies](#dependencies). |
-| **Secrets and variables** | The project's rows. See [Secrets and variables](/guides/secrets-and-variables/). |
+| **Agents** | How g1t's agents pick up work here, and what they read first. |
+| **Guardrails** | What agents may reach, run and spend while they work here. See [guardrails](/guides/guardrails/). |
 | **Repository** | The repository's name, description, website, [topics](/guides/search/#what-is-indexed) and default branch, and its danger zone: visibility, archive, transfer and delete. See [Managing a repository](/guides/managing-repositories/). |
+| **Access** | Who has a [role](/guides/access-and-roles/) on the repository, and invitations. |
 | **Branches and merging** | Branch protection, [required status checks](/guides/pull-requests/#required-status-checks), required approvals, the merge queue, auto-merge and how g1t's agents review. |
+| **Secrets and variables** | The project's rows. See [Secrets and variables](/guides/secrets-and-variables/). |
+| **Runners** | The project's own [self-hosted runners](/guides/self-hosted-runners/), and where its agents' work runs. |
 | **Webhooks** | The repository's [webhooks](/guides/webhooks/). |
 
 The **root directory** says where in the repository the project lives,
@@ -112,9 +117,10 @@ repository:
 
 | Tab | Needs |
 | --- | --- |
-| **General**, **Dependencies**, and on **Repository** its description, website and topics | Maintain |
+| **General**, **Dependencies**, **Agents**, and on **Repository** its description, website and topics | Maintain |
 | **Branches and merging**, **Guardrails** | Maintain |
-| **Deployments**, **Domains**, **Secrets and variables**, **Webhooks** | Admin |
+| **Access**: seeing who has a role; changing it | Write; Admin |
+| **Deployments**, **Domains**, **Secrets and variables**, **Runners**, **Webhooks** | Admin |
 | On **Repository**: its name, default branch, and the danger zone (visibility, archive) | Admin |
 | Transfer and delete | An owner of the workspace |
 

@@ -62,7 +62,26 @@
 			"member_count": 1,
 			"base_permission": "write"
 		},
-		"notes": "`base_permission` is what every member gets on each of its repositories: `write` until an owner changes it with `PATCH /workspaces/{workspace}`. See [Access and roles](/guides/access-and-roles/)."
+		"notes": "`base_permission` is what every member gets on each of its repositories: `write` until an owner changes it with `PATCH /workspaces/{workspace}` or `PUT /workspaces/{workspace}/base_permission`. See [Access and roles](/guides/access-and-roles/)."
+	},
+	"update_workspace": {
+		"params": {
+			"workspace": "acme-labs"
+		},
+		"request": {
+			"name": "Acme Labs",
+			"description": "Rockets, and the software that flies them."
+		},
+		"response": {
+			"id": "wsp_01m43teqa9em6bje0bhvdj4jkb",
+			"slug": "acme-labs",
+			"name": "Acme Labs",
+			"description": "Rockets, and the software that flies them.",
+			"created_at": "2026-10-04T16:02:51.337Z",
+			"member_count": 3,
+			"base_permission": "write"
+		},
+		"notes": "Only the fields given change. `name` is the display name; the slug, the first part of the workspace's addresses, stays as it is. `base_permission` needs the `access:admin` scope as well as `workspace:admin`; [`set_base_permission`](/reference/api/access/set-base-permission/) sets it alone. Refused with `403` for anyone but an owner signed in as a person. Recorded in the [audit log](/guides/audit-log/). See [Workspaces](/guides/workspaces/)."
 	},
 	"delete_workspace": {
 		"request": {
@@ -732,7 +751,7 @@
 			"updated_by": "syntaqx",
 			"updated_at": "2026-10-04T16:20:37.508Z"
 		},
-		"notes": "`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](#list_check_names) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6 and `max_revisions` at most 5. See [what a repository can ask for](/guides/g1t-agents/#what-a-repository-can-ask-for). `hold_low_confidence` is on unless turned off: see [confidence](/guides/g1t-agents/#how-sure-the-agent-is)."
+		"notes": "`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6 and `max_revisions` at most 5. See [what a repository can ask for](/guides/g1t-agents/#what-a-repository-can-ask-for). `hold_low_confidence` is on unless turned off: see [confidence](/guides/g1t-agents/#how-sure-the-agent-is)."
 	},
 	"list_check_names": {
 		"response": [
@@ -1625,7 +1644,7 @@
 				}
 			]
 		},
-		"notes": "| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `statuses` | Its checks: what each workflow run (or another tool, such as a deployment) reported on its head, as `pending`, `success`, `failure` or `error`, with a link to the run. |\n| `required_checks` | Each check the default branch requires (see [`update_repo_settings`](#update_repo_settings)), as it stands on the head: `success`, `failure`, `pending`, or `expected` when nothing has reported it yet. It merges only once all are `success`. |\n| `checks` | Set when the merge queue took it out, with why in `error`. Older pull requests may show a run of commands from their issue here, from before checks were workflows. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request the g1t agent is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n\n| `mergeable` | Whether it merges cleanly into its target: `clean`, `conflicting`, `checking` (being worked out) or `unknown`. Worked out ahead of time whenever it or its target moves. |\n| `conflicts` | When `mergeable` is `conflicting`, the files that conflict. Resolve them by merging the target in, or have the g1t agent do it. |\n| `earlier_checks` | Earlier records like `checks`, newest first. |\n\nChecks are the repository's workflows: they run on `pull_request` events when it is opened, marked ready and pushed to. Read why one failed with [`get_workflow_run`](#get_workflow_run) and [`get_job_logs`](#get_job_logs)."
+		"notes": "| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `statuses` | Its checks: what each workflow run (or another tool, such as a deployment) reported on its head, as `pending`, `success`, `failure` or `error`, with a link to the run. |\n| `required_checks` | Each check the default branch requires (see [`update_repo_settings`](/reference/api/repositories/update-repo-settings/)), as it stands on the head: `success`, `failure`, `pending`, or `expected` when nothing has reported it yet. It merges only once all are `success`. |\n| `checks` | Set when the merge queue took it out, with why in `error`. Older pull requests may show a run of commands from their issue here, from before checks were workflows. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request the g1t agent is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n\n| `mergeable` | Whether it merges cleanly into its target: `clean`, `conflicting`, `checking` (being worked out) or `unknown`. Worked out ahead of time whenever it or its target moves. |\n| `conflicts` | When `mergeable` is `conflicting`, the files that conflict. Resolve them by merging the target in, or have the g1t agent do it. |\n| `earlier_checks` | Earlier records like `checks`, newest first. |\n\nChecks are the repository's workflows: they run on `pull_request` events when it is opened, marked ready and pushed to. Read why one failed with [`get_workflow_run`](/reference/api/actions/get-workflow-run/) and [`get_job_logs`](/reference/api/actions/get-job-logs/)."
 	},
 	"get_pull_request_changes": {
 		"response": {
@@ -4054,5 +4073,135 @@
 			}
 		],
 		"notes": "By username, each with the repositories they have a role on. Refused with `403` for anyone but an owner. See [Access and roles](/guides/access-and-roles/)."
+	},
+	"list_security_alerts": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"query": {
+			"state": "open"
+		},
+		"response": [
+			{
+				"kind": "secret",
+				"id": "sec_01kp4a7b2c3d4e5f6g7h8j9k0m",
+				"state": "dismissed",
+				"secret_type": "aws_access_key",
+				"label": "an AWS access key",
+				"path": "test/fixtures/aws.env",
+				"line": 3,
+				"commit": "9f2c1e04b7d3a8e6f5c2b1a0d9e8f7c6b5a4d3e2",
+				"preview": "AKIA…MPLE",
+				"status": "allowed",
+				"source": "history",
+				"test_value": "the documented example key",
+				"found_by": null,
+				"found_at": "2026-10-01T12:00:00.000Z",
+				"dismissed_reason": "used_in_tests",
+				"dismissed_comment": "Only in the test fixtures.",
+				"dismissed_by": "syntaqx",
+				"dismissed_at": "2026-10-02T09:15:00.000Z"
+			},
+			{
+				"kind": "dependency",
+				"id": "vul_01kp4b8c3d4e5f6g7h8j9k0m1n",
+				"state": "open",
+				"ecosystem": "npm",
+				"package": "lodash",
+				"version": "4.17.20",
+				"manifest": "package-lock.json",
+				"advisory": "GHSA-35jh-r3h4-6jhm",
+				"osv_id": "GHSA-35jh-r3h4-6jhm",
+				"summary": "Command Injection in lodash",
+				"severity": "high",
+				"fixed_version": "4.17.21",
+				"fixed_at": null,
+				"update": {
+					"state": "open",
+					"target": "4.17.21",
+					"branch": "g1t/security/lodash-4.17.21",
+					"pull": 42,
+					"issue": null,
+					"error": null,
+					"updated_at": "2026-10-01T12:20:00.000Z"
+				},
+				"found_at": "2026-10-01T12:00:00.000Z",
+				"dismissed_reason": null,
+				"dismissed_comment": null,
+				"dismissed_by": null,
+				"dismissed_at": null
+			}
+		],
+		"notes": "Secrets come first, then dependencies. Fields only one kind has are left out of the other: a secret has `secret_type`, `label`, `path`, `line`, `commit`, `preview`, `status` (`open`, `blocked`, `allowed` or `resolved`), `source` (`push` or `history`), `test_value` and `found_by`; a dependency has `ecosystem`, `package`, `version`, `manifest`, `advisory`, `osv_id`, `summary`, `severity`, `fixed_version` (null when no patched version is available), `fixed_at` and `update`, the pull request g1t opens to upgrade it. `dismissed_reason`, `dismissed_comment`, `dismissed_by` and `dismissed_at` are null while an alert is open; a secret fixed by being revoked keeps them. `422` for a `state` or `kind` it does not know, and `404` for anyone without the Write role. See [Security](/guides/security/)."
+	},
+	"dismiss_security_alert": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"id": "vul_01kp4b8c3d4e5f6g7h8j9k0m1n"
+		},
+		"request": {
+			"reason": "tolerable_risk",
+			"comment": "Only the build uses it, on trusted input."
+		},
+		"response": {
+			"kind": "dependency",
+			"id": "vul_01kp4b8c3d4e5f6g7h8j9k0m1n",
+			"state": "dismissed",
+			"ecosystem": "npm",
+			"package": "lodash",
+			"version": "4.17.20",
+			"manifest": "package-lock.json",
+			"advisory": "GHSA-35jh-r3h4-6jhm",
+			"osv_id": "GHSA-35jh-r3h4-6jhm",
+			"summary": "Command Injection in lodash",
+			"severity": "high",
+			"fixed_version": "4.17.21",
+			"fixed_at": null,
+			"update": {
+				"state": "open",
+				"target": "4.17.21",
+				"branch": "g1t/security/lodash-4.17.21",
+				"pull": 42,
+				"issue": null,
+				"error": null,
+				"updated_at": "2026-10-01T12:20:00.000Z"
+			},
+			"found_at": "2026-10-01T12:00:00.000Z",
+			"dismissed_reason": "tolerable_risk",
+			"dismissed_comment": "Only the build uses it, on trusted input.",
+			"dismissed_by": "syntaqx",
+			"dismissed_at": "2026-10-06T10:00:00.000Z"
+		},
+		"notes": "| Kind | Reasons |\n| --- | --- |\n| `secret` | `false_positive`, `used_in_tests`, `revoked`, `wont_fix` |\n| `dependency` | `fix_started`, `no_bandwidth`, `tolerable_risk`, `inaccurate`, `not_used` |\n\nA reason for the other kind of alert, or one not in the table, is refused with `422`. A secret dismissed as `revoked` becomes `fixed`; with any other reason it becomes `dismissed` and pushes that carry it go through. Dismissing a secret needs the Admin role on the repository; a dependency needs the Write role. A token needs `repo:admin` for either, and a g1t agent’s token never dismisses alerts."
+	},
+	"reopen_security_alert": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"id": "sec_01kp4a7b2c3d4e5f6g7h8j9k0m"
+		},
+		"response": {
+			"kind": "secret",
+			"id": "sec_01kp4a7b2c3d4e5f6g7h8j9k0m",
+			"state": "open",
+			"secret_type": "aws_access_key",
+			"label": "an AWS access key",
+			"path": "test/fixtures/aws.env",
+			"line": 3,
+			"commit": "9f2c1e04b7d3a8e6f5c2b1a0d9e8f7c6b5a4d3e2",
+			"preview": "AKIA…MPLE",
+			"status": "open",
+			"source": "history",
+			"test_value": "the documented example key",
+			"found_by": null,
+			"found_at": "2026-10-01T12:00:00.000Z",
+			"dismissed_reason": null,
+			"dismissed_comment": null,
+			"dismissed_by": null,
+			"dismissed_at": null
+		},
+		"notes": "The alert is `open` again, and a reopened secret stops pushes that carry it. The same roles as dismissing: Admin for a secret, Write for a dependency."
 	}
 }

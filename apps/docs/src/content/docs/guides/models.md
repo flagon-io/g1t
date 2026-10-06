@@ -8,8 +8,11 @@ Each workspace decides where its agents' model spend goes:
 - **g1t's hosted models.** g1t chooses the model for each kind of work, pays
   the provider, and charges your workspace what it cost plus 20%. The
   plan's included usage and [the trial](/guides/usage-and-billing/#the-trial)
-  pay for it first. Open only to g1t's own workspaces while payments are
-  in test mode; once they go live, open to all.
+  pay for it first. While payments are in test mode, they are open only
+  to a few invited workspaces, g1t's own among them; a card check or a
+  trial does not open them. Every other workspace connects its own
+  provider, and an agent assigned without one is refused with a message
+  that says so. Once payments go live, they are open to all.
 - **Your own providers.** Connect as many as you use, then choose, for each
   kind of work, which provider and model it runs on. Each provider bills
   you directly. Open to every workspace now.
@@ -41,7 +44,7 @@ An endpoint behind an authenticated Cloudflare AI Gateway also takes the
 gateway's token, sent as `cf-aig-authorization`.
 
 g1t's agents run Claude Code, which speaks Anthropic's API. Every provider
-but Anthropic speaks OpenAI's, so g1t's model proxy translates each
+but Anthropic and an Anthropic-compatible endpoint speaks OpenAI's, so g1t's model proxy translates each
 request, and the streamed answer back, tool calls included, and meets each
 provider's quirks: the token limits DeepSeek and Groq set, how Mistral
 names a required tool, Azure's `api-key` header, and the thought signatures
@@ -72,7 +75,7 @@ Under **Which model does which work**, each kind of work has a choice:
 | Catching up | Bringing a change up to date with `main`. |
 
 Each can go to g1t's models, or to any of your providers on any of its
-models. An Anthropic provider also offers **g1t's choice of Claude model**,
+models. An Anthropic provider also offers **g1t's choice of Claude**,
 which runs g1t's pick for that kind of work on your key. For example: make
 changes on Claude through your Anthropic key, review on GPT through your
 OpenAI key, and catch up on a small model through OpenRouter.
@@ -107,17 +110,18 @@ printing its environment, so no key is ever in it:
    work is routed to, translates if the provider speaks OpenAI's API, and
    forwards the request. Answers stream straight back.
 
-The token stops working when the run ends (three hours at most), or at once
-if you disconnect the provider. Keys are sealed when you save them, and used
+The token stops working within seconds of the run finishing, however it
+ends, and within seconds if you disconnect the provider. A run whose end
+g1t never hears about loses it three hours after it starts. Keys are sealed when you save them, and used
 only by the proxy. g1t's own runs work the same way, with g1t's key.
 
 ## From the API
 
-| Tool | Route |
+| MCP tool and action | Route |
 | --- | --- |
-| `connect_integration` | `POST /workspaces/{workspace}/integrations` with `provider` one of `anthropic`, `openai`, `gemini`, `xai`, `mistral`, `deepseek`, `azure_openai`, `openrouter`, `groq`, `together`, `fireworks`, `cerebras`, `anthropic_endpoint`, `openai_endpoint` |
-| `get_model_routes` | `GET /workspaces/{workspace}/model-routes` |
-| `set_model_routes` | `PUT /workspaces/{workspace}/model-routes` |
+| `workspace` `connect_integration` | `POST /workspaces/{workspace}/integrations` with `provider` one of `anthropic`, `openai`, `gemini`, `xai`, `mistral`, `deepseek`, `azure_openai`, `openrouter`, `groq`, `together`, `fireworks`, `cerebras`, `anthropic_endpoint`, `openai_endpoint` |
+| `workspace` `get_model_routes` | `GET /workspaces/{workspace}/model-routes` |
+| `workspace` `set_model_routes` | `PUT /workspaces/{workspace}/model-routes` |
 
 ```sh
 curl -X PUT https://api.g1t.sh/workspaces/acme/model-routes \

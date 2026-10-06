@@ -17,6 +17,8 @@ Every workspace, with or without the plan, has the whole forge:
 
 - Public and private repositories, git, issues, pull requests and reviews.
 - Protected branches, code owners and secret push protection.
+- [Security scans](#storage-search-embeddings-and-scans) of history and
+  dependencies, which g1t pays for on a free workspace.
 - Search and Explore.
 - The [audit log](/guides/audit-log/), kept 90 days, with export.
 - Your own agent through [MCP](/reference/mcp/).
@@ -75,9 +77,9 @@ Every price is what g1t pays plus 20%. The live figures are on
 | What | Unit | Costs g1t | You pay |
 | --- | --- | --- | --- |
 | Models | A run | What the provider charged | Cost + 20% |
-| Sandbox time (agents, workflows, the merge queue) | Second | About $0.000016 | About $0.000019 |
+| Sandbox time (agents, workflows, the merge queue) | Second | About $0.001 a minute | About $0.0012 a minute |
 | [Larger machines](#workflow-jobs-on-larger-machines) for workflow jobs (`g1t-2core`, `g1t-4core`) | Second | About 2.8 and 5.1 times a sandbox second | Cost + 20% |
-| Deploy builds | Second | About $0.000016 | About $0.000019 ($0.0012 a minute) |
+| Deploy builds | Second | About $0.001 a minute | About $0.0012 a minute |
 | App requests | Million | $0.30 | $0.36 |
 | App CPU time | Million CPU milliseconds | $0.02 | $0.024 |
 | Custom domains | Domain-month | $0.10 | $0.12 |
@@ -90,6 +92,8 @@ Every price is what g1t pays plus 20%. The live figures are on
 
 Sandbox and build seconds follow what Cloudflare bills g1t, so the
 figures above move a little; the pricing page always has today's.
+Actions cache storage is charged at R2's published price, and is not on
+the pricing page yet.
 
 **The other $10** pays for running g1t, the free forge everyone uses, and
 the people building it.
@@ -150,7 +154,7 @@ but starts no trial.
 The card check unlocks:
 
 - [The trial](#the-trial): $5 of usage, once.
-- [The open-source pool](#the-open-source-pool): workflows and
+- [The open-source pool](#the-open-source-pool): checks, workflows and
   the merge queue on public repositories.
 
 ## The trial
@@ -167,6 +171,10 @@ the merge queue and semantic search. It never pays for deployments.
 - Billing and mission control show what is left.
 - While on the trial, a workspace runs at most 2 agents at once, and each
   run for at most 60 minutes. See [caps](#caps).
+- While payments are in test mode, the trial does not open g1t's hosted
+  models: its agents run on the workspace's own
+  [model provider](/guides/models/), and the trial pays for their sandbox
+  time.
 
 The trial does not turn into a charge. Nothing is charged until an owner
 starts the plan. If a free workspace's last trial run goes past what was
@@ -176,7 +184,7 @@ by g1t**. When the trial is used up, new compute waits for the plan.
 ## The open-source pool
 
 g1t sets aside **$25 a month** for public repositories, at most **$2 a
-month** for any one repository. It pays for **workflows and the
+month** for any one repository. It pays for **checks, workflows and the
 merge queue on public repositories**, after a card check. It does not pay
 for agents, deployments, storage or embeddings.
 
@@ -200,8 +208,8 @@ pool**.
 | [Deployments](/guides/deployments/) | Builds, requests, CPU time and custom domains, from the first. Projects and previews are not charged. |
 | [Private repository storage](#storage-search-embeddings-and-scans) | Past the free 1 GB, on the plan only |
 | [Git operations](#git-operations) | Past the free 50,000 a month, on the plan only |
-| [Search embeddings](#storage-search-embeddings-and-scans) | For private text |
-| [Security scans](#storage-search-embeddings-and-scans) | Yes |
+| [Search embeddings](#storage-search-embeddings-and-scans) | For private text, on the plan only |
+| [Security scans](#storage-search-embeddings-and-scans) | On the plan only |
 | Repositories, issues, pull requests, review, search, the API and MCP | No |
 
 Each run is charged when it finishes: what the model provider charged for
@@ -250,8 +258,25 @@ Prices keep themselves current as those costs move:
   against the seconds containers ran, Workers for Platforms per request
   and per CPU millisecond. When a cost moves, the price book moves with
   it, and the change is listed on the pricing page with the reason. A
-  measurement far from the current cost is not adopted, only logged, so
-  one odd day cannot reprice anything.
+  large move, or a measurement far from the current cost, waits for a
+  person at g1t to check it, so one odd day cannot reprice anything.
+
+### How we keep prices at cost
+
+Prices follow what Cloudflare charges g1t. Every day g1t reads its own
+Cloudflare bill and sets it beside what it counted and what it charged
+for the same things, product by product, so a price that no longer
+matches its cost is found and corrected.
+
+- **A price that goes down** changes at once.
+- **A price that goes up** is announced first: it is listed on
+  [g1t.sh/pricing](https://g1t.sh/pricing) with the day it takes effect,
+  and owners of workspaces on the plan are emailed. It takes effect 14
+  days later, and for something charged once a month (git operations,
+  storage, the actions cache, custom domains, embeddings, scans) at the
+  start of the month after that, so no month is charged at two prices.
+- **Nothing already charged changes.** Each charge records the price it
+  was made at.
 
 Some of the Cloudflare products g1t pays for are in beta and do not yet
 define exactly what they bill; see
@@ -296,8 +321,12 @@ so it often costs about the same.
 ## Git operations
 
 Cloudflare charges g1t **$0.15 per 1,000 git operations** from 2026-10-14.
-An operation is one clone, fetch or push through g1t's git endpoints.
-Pushes from agents' sandboxes go to the store directly and are not counted.
+An operation is one clone or fetch (a request that fetches objects) or one
+push, and making, forking or deleting a repository: what Cloudflare bills
+g1t for. Listing refs, and anything g1t answers from its own cache, is
+never an operation. g1t meters every request it makes to the store, and
+what counts follows what Cloudflare confirms it bills; this page changes
+with it.
 
 | | Each month (UTC) |
 | --- | --- |
@@ -311,14 +340,19 @@ what it uses, up to its spend limit. A free workspace is never charged for
 git operations: past 50,000 in a month, its git requests past 60 in an
 hour are answered `429` with when to try again.
 
-Counting starts on 2026-10-14. **Billing** shows this month's count under
-**Git operations & storage**.
+Charging starts on 2026-10-14: operations before then are never charged.
+**Billing** shows this month's count under **Git operations & storage**.
 
 ## Storage, search embeddings and scans
 
 These are counted through the month and charged once it is over, as one
 line dated the month's last day, so the limit counts them as they happen.
 The plan's included usage and the trial pay for them first.
+
+Security scans and search embeddings run on every workspace: no security
+feature is held back for the plan. On a free workspace g1t pays for them
+itself. They appear on the statement at $0, *covered by g1t*, never count
+toward the limit and never use the trial.
 
 | | What it costs g1t | What is counted |
 | --- | --- | --- |
@@ -334,7 +368,7 @@ month's GB-months are those days added up, divided by 30, charged at
 $0.018 a GB-month: R2's $0.015, plus 20%. It is charged from the first
 byte, to workspaces on the plan only, as **Actions cache storage** under
 **Git operations & storage**. A free workspace's caches are never charged;
-they are held to the same 10 GB a repository as everyone's.
+they are held to the same 10 GiB a repository as everyone's.
 
 ### Private repository storage
 
@@ -621,8 +655,10 @@ time. Every member can see it.
   | Agent runs | Runs on g1t's models: the model's cost plus the margin. |
   | Runs on your own model provider | Older months only: the flat fee runs on your own provider used to carry. |
   | Sandbox time | Each sandbox's time. |
+  | Self-hosted runner time | Each job on your own runners, at $0. |
   | Deployments | Builds as they finish; each month's requests, CPU time and custom domains when it closes. |
   | Private storage | Storage past the free 1 GB, once a month. |
+  | Actions cache storage | What `actions/cache` held, on the plan, once a month. |
   | Git operations | Operations past the free 50,000, once a month. |
   | Search embeddings | Private text put in the search index, once a month. |
   | Security scans | History scans and dependency checks, once a month. |

@@ -405,6 +405,8 @@ impl<S: GitStore> Repos<S> {
             ));
         }
 
+        // A working copy removed after its pull request closed is made again.
+        self.live(&source).await?;
         let source_git = self.store.open(&store_key(&source)).await?;
         let target_git = self.store.open(&store_key(&target)).await?;
         let (history, target_history) = try_join(

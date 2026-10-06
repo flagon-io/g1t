@@ -17,6 +17,12 @@
 			"migrations_dir": "migrations"
 		}
 	],
+	// The git store. Every repository made before sharding is in `g1t`.
+	// More namespaces (src/shards.rs) are more bindings, named in
+	// ARTIFACTS_NAMESPACES below, e.g.
+	//   { "binding": "ARTIFACTS_1", "namespace": "g1t-us-1" },
+	//   { "binding": "ARTIFACTS_EU", "namespace": "g1t-eu", "jurisdiction": "eu" }
+	// and new repositories go to those named in ARTIFACTS_NEW_REPOS.
 	"artifacts": [{ "binding": "ARTIFACTS", "namespace": "g1t" }],
 	// Shared between isolates (src/shared.rs): the git store's credentials
 	// (src/store.rs) and the ref listings git asks for first
@@ -40,13 +46,34 @@
 	// FREE_PRIVATE_STORAGE_BYTES: a free workspace's private repositories may
 	// hold this much (1 GB); past it, pushes to them stop. Billing reads the
 	// same amount.
+	//
+	// The git store (docs/ARTIFACTS.md):
+	// REPO_STORAGE_LIMIT_BYTES: pushes stop before a repository holds this
+	//   much; the store holds 1 GB (src/pack_limits.rs).
+	// LARGE_PUSHES: a push too large to scan for secrets (24 MiB) is
+	//   "refuse"d, or streamed to the store "unscanned" (src/git_http.rs).
+	// FORK_RETENTION_DAYS: a pull request working copy is removed this long
+	//   after its pull request merges or closes (src/forks.rs).
+	// ARTIFACTS_NAMESPACES: JSON, each Artifacts binding and its namespace;
+	//   ARTIFACTS_NEW_REPOS: comma-separated namespaces new repositories go
+	//   to (empty: g1t); ARTIFACTS_EU_NAMESPACE: for EU residency (src/shards.rs).
+	// ARTIFACTS_REMOTE_BASE (optional): where remotes start,
+	//   https://<account>.artifacts.cloudflare.net/git, so a new isolate
+	//   needs no info() call before its first credential (src/store.rs).
 	"vars": {
 		"GIT_OPERATIONS_FREE_CAP": "50000",
 		"GIT_OPERATIONS_FREE_HOURLY": "60",
-		"FREE_PRIVATE_STORAGE_BYTES": "1000000000"
+		"FREE_PRIVATE_STORAGE_BYTES": "1000000000",
+		"REPO_STORAGE_LIMIT_BYTES": "950000000",
+		"LARGE_PUSHES": "unscanned",
+		"FORK_RETENTION_DAYS": "7",
+		"ARTIFACTS_NAMESPACES": "{\"ARTIFACTS\":\"g1t\"}",
+		"ARTIFACTS_NEW_REPOS": ""
 	},
 	// Every hour, deleted repositories whose 30 days to be restored have
-	// passed are purged, their git data with them (src/lifecycle.rs).
+	// passed are purged, their git data with them (src/lifecycle.rs), and
+	// pull request working copies past FORK_RETENTION_DAYS are removed
+	// (src/forks.rs).
 	"triggers": { "crons": ["23 * * * *"] },
 	// A workspace renamed moves its repositories to the new slug; one
 	// deleted purges the repositories it left in Recently deleted.

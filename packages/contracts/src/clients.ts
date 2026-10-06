@@ -451,6 +451,24 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
     velocity: () => call("admin_velocity", {}),
     recordPayment: (workspace, amountMicros, reference, note, by) =>
       call("admin_record_payment", { workspace, amount_micros: amountMicros, reference, note, by }),
+    costs: (days) => call("admin_costs", { days: days ?? null }),
+    costAlerts: () => call("admin_cost_alerts", {}),
+    decideProposal: (id, decision, note, by) => call("admin_decide_proposal", { id, decision, note, by }),
+    setCostSettings: (settings, by) => call("admin_set_cost_settings", { settings, by }),
+    setCostMapping: (mapping, by) =>
+      call("admin_set_cost_mapping", {
+        product: mapping.product,
+        meter: mapping.meter,
+        bucket: mapping.bucket ?? "",
+        price_meter: mapping.priceMeter ?? null,
+        own_meter: mapping.ownMeter ?? null,
+        scale_to_own: mapping.scaleToOwn ?? false,
+        drift_percent: mapping.driftPercent ?? null,
+        note: mapping.note ?? "",
+        remove: mapping.remove ?? false,
+        by,
+      }),
+    runCosts: (by) => call("admin_run_costs", { by }),
   };
 }
 
@@ -478,6 +496,7 @@ export function integrationsClient(service: ServiceBinding): IntegrationsApi {
     modelProvider: (workspace) => call("model_provider", { workspace }),
     openModelSession: (run) => call("open_model_session", run),
     modelUpstream: (token) => call("model_upstream", { token }),
+    closeModelSessions: (tokenHashes) => call("close_model_sessions", { token_hashes: tokenHashes }),
     routes: (workspace, viewer) => call("routes", { workspace, viewer }),
     setRoutes: (actor, workspace, routes) => call("set_routes", { actor, workspace, routes }),
   };

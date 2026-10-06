@@ -110,7 +110,8 @@ test("shared crates and packages are read from workspace metadata", () => {
 
 test("the runner's image is built from the runner crate and what it uses, on the base its lock names", () => {
   const runner = unit("runner");
-  assert.deepEqual(runner.image.dirs, ["crates/actions", "crates/runner"]);
+  // The runner bumps lockfiles with the scanner's lockfile parser (security updates).
+  assert.deepEqual(runner.image.dirs, ["crates/actions", "crates/runner", "crates/scan"]);
   assert.deepEqual(runner.image.baseDirs, ["services/runner/base"]);
   assert.ok(runner.dependsOn.includes("crates/runner"));
   assert.ok(touchesImage(runner, ["crates/actions/src/expr.rs"]));
@@ -300,7 +301,7 @@ test("every import that leaves a unit's folder is covered by its dependencies or
 const ids = (units, files) => units.filter((u) => touches(u, files)).map((u) => u.id);
 
 test("a shared crate's change reaches every unit built from it, and no other", () => {
-  assert.deepEqual(ids(stack.units, ["crates/scan/src/lib.rs"]), ["repos", "security"]);
+  assert.deepEqual(ids(stack.units, ["crates/scan/src/lib.rs"]), ["repos", "security", "runner"]);
   assert.deepEqual(ids(stack.units, ["crates/secrets/src/lib.rs"]), ["identity", "repos", "integrations", "webhooks", "actions"]);
   const kit = ids(stack.units, ["crates/kit/src/lib.rs"]);
   assert.deepEqual(kit, stack.units.filter((u) => u.kind === "rust-worker").map((u) => u.id));

@@ -263,7 +263,7 @@ impl Identity {
         })
     }
 
-    async fn workspace_id_of(&self, slug: &str) -> Result<Option<String>> {
+    pub(crate) async fn workspace_id_of(&self, slug: &str) -> Result<Option<String>> {
         Ok(self
             .db
             .prepare("SELECT id FROM workspaces WHERE slug = ?")

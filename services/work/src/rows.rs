@@ -8,10 +8,18 @@ use g1t_contracts::work::{
 };
 use serde::Deserialize;
 
+/// An author or actor as stored: g1t itself when the id is its own (a
+/// security update it opened, a merge its settings made), a person otherwise.
 pub(crate) fn user(id: String, username: String) -> User {
+    let kind = if g1t_contracts::system::is_system_id(&id) {
+        g1t_contracts::PrincipalKind::System
+    } else {
+        g1t_contracts::PrincipalKind::User
+    };
     User {
         id,
         username,
+        kind,
         ..User::default()
     }
 }

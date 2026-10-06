@@ -585,6 +585,16 @@ pub struct ModelUpstreamArgs {
     pub token: String,
 }
 
+/// `close_model_sessions`: ends the model sessions whose tokens hash to
+/// these (SHA-256, lowercase hex), so a run's model token stops working
+/// when its run does rather than when it would lapse. Returns how many
+/// were open.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CloseModelSessionsArgs {
+    #[serde(alias = "tokenHashes")]
+    pub token_hashes: Vec<String>,
+}
+
 /// `model_provider`: the workspace's own model connection, if it has one.
 /// Returns `Option<Connection>`.
 #[derive(Debug, Serialize, Deserialize)]

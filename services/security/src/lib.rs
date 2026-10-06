@@ -4,31 +4,40 @@
 //! - Secrets. The repos service refuses pushes that add one
 //!   (`push_blocked` says which were allowed and records the rest), and
 //!   each repository's history is scanned once, in the background.
+//!   A push too large to scan first is let through, and its new commits
+//!   are scanned after they land (`history::advance_push_scan`).
+//! - Alerts are open, dismissed (with a reason, a comment and who) or
+//!   fixed, and each keeps an activity log. Likely test values are listed
+//!   apart and never block a push or count as critical.
 //! - Dependencies. On every push to a default branch, and daily, the
 //!   lockfiles are read and every package checked against OSV. Each
-//!   vulnerable package with a fix gets one upgrade issue, which a g1t
-//!   agent takes through the usual pull request, checks, review and merge
-//!   queue.
+//!   vulnerable package with a fix gets a security update: g1t itself
+//!   (`User::system`) opens a pull request raising its version, made in a
+//!   sandbox (the runner's `bump`), which lands through the branch's
+//!   required checks. Only when code has to change is g1t-agent put on an
+//!   issue for it.
 //!
 //! Other services reach it over `POST /rpc/<method>`; see
 //! `g1t_contracts::security`.
 
 mod deps;
 mod history;
+mod security_updates;
 mod store;
+mod updates;
 
 use g1t_contracts::access::{self, Capability};
 use g1t_contracts::events::{Event, WorkspaceRenamed};
-use g1t_contracts::identity::{SlugArgs, Workspace};
+use g1t_contracts::security::UPDATE_BRANCH_PREFIX;
 use g1t_contracts::repos::{GetArgs, PathByIdArgs, Repo, RepoPath, RepoStatus, StatusByIdArgs};
 use g1t_contracts::security::*;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::{FailureCode, Membership, Outcome, PrincipalKind, User};
+use g1t_contracts::{FailureCode, Outcome, User};
 use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::Deserialize;
 use worker::{Context, Env, Fetcher, MessageBatch, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
 
-use store::{RepoRow, Store};
+use store::{Activity, RepoRow, Store};
 
 /// Repositories whose history is continued per sweep, and pages each.
 const HISTORIES_PER_SWEEP: u32 = 5;
@@ -61,7 +70,32 @@ struct Pushed {
     repo_id: String,
     #[serde(default)]
     default_branch: bool,
+    #[serde(default, rename = "ref")]
+    git_ref: String,
+    #[serde(default)]
+    before: Option<String>,
+    #[serde(default)]
+    after: String,
+    /// Too large to scan before it was stored.
+    #[serde(default)]
+    unscanned: bool,
 }
+
+/// `pull.merged`, `pull.closed` and `checks.completed`, as far as this
+/// service reads them.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PullHappened {
+    repo_id: String,
+    number: u32,
+    #[serde(default)]
+    status: Option<String>,
+}
+
+/// The longest comment a dismissal keeps.
+const MAX_COMMENT_CHARS: usize = MAX_REASON_CHARS;
+/// Activity rows the Security page reads, newest first.
+const ACTIVITY_SHOWN: u32 = 500;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -79,21 +113,6 @@ impl Security {
             runner: env.service("RUNNER")?,
             billing: env.service("BILLING")?,
         })
-    }
-
-    /// The workspace itself, acting through no one: who opens upgrade
-    /// issues and asks for an agent on them.
-    async fn workspace_actor(&self, slug: &str) -> Result<Option<User>> {
-        let workspace: Option<Workspace> =
-            g1t_kit::call(&self.identity, "get_workspace", &SlugArgs { slug: slug.to_owned() }).await?;
-        Ok(workspace.map(|workspace| User {
-            id: workspace.id,
-            username: workspace.slug.clone(),
-            kind: PrincipalKind::Workspace,
-            verified: true,
-            workspaces: vec![Membership::member(workspace.slug)],
-            ..User::default()
-        }))
     }
 
     /// The repository at `path`, recorded here, if `viewer` may see its
@@ -170,49 +189,114 @@ impl Security {
         Ok(Outcome::Ok(SecurityOverview {
             repo_id: repo.repo_id.clone(),
             counts,
+            secret_counts: self.store.secret_counts(&repo.repo_id).await?,
             secrets: self.store.secrets(&repo.repo_id).await?,
             vulnerabilities: self.store.vulnerabilities(&repo.repo_id).await?,
+            activity: self.store.activity(&repo.repo_id, ACTIVITY_SHOWN).await?,
             scan: repo.scan_state(),
             upkeep: repo.upkeep != 0,
+            version_updates: repo.version_updates(),
         }))
     }
 
-    async fn decide_secret(&self, a: DecideSecretArgs) -> Result<Outcome<SecretFinding>> {
-        let repo = match self.member_repo(&a.repo, &Some(a.actor.clone()), Capability::ManageIntegrations).await? {
+    /// What dismissing or reopening alert `id` takes: Admin for a secret,
+    /// whose dismissal lets it through push protection, Write for a
+    /// vulnerable dependency.
+    fn capability_for(id: &str) -> Capability {
+        if id.starts_with("sec_") { Capability::ManageIntegrations } else { SEE_FINDINGS }
+    }
+
+    async fn dismiss(&self, a: DismissArgs) -> Result<Outcome<AlertChange>> {
+        let repo = match self.member_repo(&a.repo, &Some(a.actor.clone()), Self::capability_for(&a.id)).await? {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
         if !a.actor.verified {
             return Ok(fail(FailureCode::Forbidden, "Confirm your email address first."));
         }
-        let status = match a.decision.as_str() {
-            "allow" => SecretStatus::Allowed,
-            "resolve" => SecretStatus::Resolved,
-            "reopen" => SecretStatus::Open,
-            _ => return Ok(fail(FailureCode::Invalid, "Say whether to allow, resolve or reopen it.")),
+        let comment: String = a.comment.trim().chars().take(MAX_COMMENT_CHARS).collect();
+        let comment = (!comment.is_empty()).then_some(comment);
+        if let Some(finding) = self.store.secret(&repo.repo_id, &a.id).await? {
+            if !a.reason.for_secrets() {
+                return Ok(fail(
+                    FailureCode::Invalid,
+                    "A secret is dismissed as false_positive, used_in_tests, revoked or wont_fix.",
+                ));
+            }
+            if finding.state != AlertState::Open {
+                return Ok(fail(FailureCode::Conflict, "This alert is not open. Reopen it first to dismiss it again."));
+            }
+            self.store
+                .dismiss_secret(&repo.repo_id, &a.id, a.reason, &a.actor.username, comment.as_deref())
+                .await?;
+            self.store
+                .record(&repo.repo_id, &[Activity {
+                    alert_id: &a.id,
+                    action: "dismissed",
+                    actor: Some(&a.actor.username),
+                    reason: Some(a.reason),
+                    comment: comment.as_deref(),
+                    number: None,
+                }])
+                .await?;
+            return Ok(Outcome::Ok(AlertChange { secret: self.store.secret(&repo.repo_id, &a.id).await?, vulnerability: None }));
+        }
+        let Some(vuln) = self.store.vulnerability(&repo.repo_id, &a.id).await? else {
+            return Ok(fail(FailureCode::NotFound, "No such alert."));
         };
-        let reason: String = a.reason.trim().chars().take(MAX_REASON_CHARS).collect();
-        if status != SecretStatus::Open && reason.is_empty() {
+        if a.reason.for_secrets() {
             return Ok(fail(
                 FailureCode::Invalid,
-                "Say why: that it is a test fixture, that it was rotated, or that it is meant to be public.",
+                "A dependency is dismissed as fix_started, no_bandwidth, tolerable_risk, inaccurate or not_used.",
             ));
         }
-        let Some(finding) = self.store.secret(&repo.repo_id, &a.id).await? else {
-            return Ok(fail(FailureCode::NotFound, "No such finding."));
-        };
-        // A secret that never landed has nothing to reopen to but blocked.
-        let status = match (status, finding.status, finding.source.as_str()) {
-            (SecretStatus::Open, _, "push") => SecretStatus::Blocked,
-            (status, _, _) => status,
-        };
+        if vuln.state != AlertState::Open {
+            return Ok(fail(FailureCode::Conflict, "This alert is not open. Reopen it first to dismiss it again."));
+        }
         self.store
-            .decide(&repo.repo_id, &a.id, status, &a.actor.username, Some(&reason))
+            .dismiss_vulnerability(&repo.repo_id, &a.id, a.reason, &a.actor.username, comment.as_deref())
             .await?;
-        Ok(match self.store.secret(&repo.repo_id, &a.id).await? {
-            Some(finding) => Outcome::Ok(finding),
-            None => fail(FailureCode::NotFound, "No such finding."),
-        })
+        self.store
+            .record(&repo.repo_id, &[Activity {
+                alert_id: &a.id,
+                action: "dismissed",
+                actor: Some(&a.actor.username),
+                reason: Some(a.reason),
+                comment: comment.as_deref(),
+                number: None,
+            }])
+            .await?;
+        Ok(Outcome::Ok(AlertChange { secret: None, vulnerability: self.store.vulnerability(&repo.repo_id, &a.id).await? }))
+    }
+
+    async fn reopen(&self, a: ReopenArgs) -> Result<Outcome<AlertChange>> {
+        let repo = match self.member_repo(&a.repo, &Some(a.actor.clone()), Self::capability_for(&a.id)).await? {
+            Outcome::Ok(repo) => repo,
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        };
+        if !a.actor.verified {
+            return Ok(fail(FailureCode::Forbidden, "Confirm your email address first."));
+        }
+        let reopened = Activity { alert_id: &a.id, action: "reopened", actor: Some(&a.actor.username), reason: None, comment: None, number: None };
+        if let Some(finding) = self.store.secret(&repo.repo_id, &a.id).await? {
+            if finding.state == AlertState::Open {
+                return Ok(fail(FailureCode::Conflict, "This alert is already open."));
+            }
+            // A secret that never landed has nothing to reopen to but blocked.
+            let status = if finding.source == "push" && finding.test_value.is_none() { SecretStatus::Blocked } else { SecretStatus::Open };
+            self.store.reopen_secret(&repo.repo_id, &a.id, status).await?;
+            self.store.record(&repo.repo_id, &[reopened]).await?;
+            return Ok(Outcome::Ok(AlertChange { secret: self.store.secret(&repo.repo_id, &a.id).await?, vulnerability: None }));
+        }
+        let Some(vuln) = self.store.vulnerability(&repo.repo_id, &a.id).await? else {
+            return Ok(fail(FailureCode::NotFound, "No such alert."));
+        };
+        if vuln.state != AlertState::Dismissed {
+            return Ok(fail(FailureCode::Conflict, "Only a dismissed alert can be reopened; a fixed one reopens when it is found again."));
+        }
+        self.store.reopen_vulnerability(&repo.repo_id, &a.id).await?;
+        self.store.record(&repo.repo_id, &[reopened]).await?;
+        Ok(Outcome::Ok(AlertChange { secret: None, vulnerability: self.store.vulnerability(&repo.repo_id, &a.id).await? }))
     }
 
     async fn rescan(&self, a: RescanArgs) -> Result<Outcome<ScanState>> {
@@ -277,18 +361,19 @@ impl Security {
         self.store.register(&a.repo_id, &a.path.namespace, &a.path.name).await?;
         let fingerprints: Vec<String> = a.secrets.iter().map(|secret| secret.fingerprint.clone()).collect();
         let known = self.store.known(&a.repo_id, &fingerprints).await?;
-        let allowed: Vec<String> = known
-            .iter()
-            .filter(|(_, _, status)| status == "allowed")
-            .map(|(fingerprint, _, _)| fingerprint.clone())
-            .collect();
+        let allowed = let_through(&known, &a.secrets);
         let fresh: Vec<NewSecret> = a
             .secrets
             .into_iter()
             .filter(|secret| !known.iter().any(|(fingerprint, _, _)| *fingerprint == secret.fingerprint))
             .collect();
+        // A likely test value goes through, so it lands: open, not blocked.
+        let (tests, real): (Vec<NewSecret>, Vec<NewSecret>) = fresh.into_iter().partition(|secret| secret.test_value.is_some());
         self.store
-            .add_secrets(&a.repo_id, &fresh, SecretStatus::Blocked, "push", a.pusher.as_deref())
+            .add_secrets(&a.repo_id, &real, SecretStatus::Blocked, "push", a.pusher.as_deref())
+            .await?;
+        self.store
+            .add_secrets(&a.repo_id, &tests, SecretStatus::Open, "push", a.pusher.as_deref())
             .await?;
         let ids = self
             .store
@@ -308,6 +393,26 @@ impl Security {
                 let Ok(pushed) = serde_json::from_value::<Pushed>(event.data.clone()) else {
                     return Ok(());
                 };
+                // Too large to scan before it was stored: its new commits
+                // are scanned now, on whichever branch.
+                if pushed.unscanned
+                    && !pushed.after.is_empty()
+                    && let Some(repo) = self.register_by_id(&pushed.repo_id).await?
+                {
+                    let id = self
+                        .store
+                        .add_push_scan(&repo.repo_id, &pushed.git_ref, &pushed.after, pushed.before.as_deref(), event.actor.as_deref())
+                        .await?;
+                    self.advance_push_scan(&id, history::PUSH_PAGES_AT_ONCE).await?;
+                }
+                // A security update's branch, pushed by its sandbox: time for
+                // its pull request.
+                if let Some(branch) = pushed.git_ref.strip_prefix("refs/heads/")
+                    && branch.starts_with(UPDATE_BRANCH_PREFIX)
+                {
+                    self.update_pushed(&pushed.repo_id, branch).await?;
+                    return Ok(());
+                }
                 if !pushed.default_branch {
                     return Ok(());
                 }
@@ -316,6 +421,18 @@ impl Security {
                     if repo.history != "done" {
                         self.advance_history(&repo, 1).await?;
                     }
+                }
+            }
+            "pull.merged" | "pull.closed" | "checks.completed" => {
+                if let Ok(happened) = serde_json::from_value::<PullHappened>(event.data.clone()) {
+                    self.update_pull_event(
+                        &event.kind,
+                        &happened.repo_id,
+                        happened.number,
+                        happened.status.as_deref(),
+                        event.actor.as_deref(),
+                    )
+                    .await?;
                 }
             }
             "repo.created" => {
@@ -359,9 +476,18 @@ impl Security {
         Ok(())
     }
 
-    /// The sweep: continues history scans, and reads dependencies that
-    /// have not been read for a day.
+    /// The sweep: continues history scans and scans of pushes that landed
+    /// unscanned, catches security updates whose sandbox never pushed, and
+    /// reads dependencies that have not been read for a day.
     async fn sweep(&self) -> Result<()> {
+        for scan in self.store.pending_push_scans(HISTORIES_PER_SWEEP).await? {
+            if let Err(error) = self.advance_push_scan(&scan.id, PAGES_PER_SWEEP).await {
+                worker::console_error!("security: push scan {} not continued: {error}", scan.id);
+            }
+        }
+        if let Err(error) = self.stalled_updates().await {
+            worker::console_error!("security: stalled security updates not handled: {error}");
+        }
         // Archived and deleted repositories wait; a few more are looked at
         // so that they do not hold up the rest.
         let mut histories = 0;
@@ -393,6 +519,21 @@ impl Security {
     }
 }
 
+/// The fingerprints a push may carry: those someone dismissed (allowed),
+/// and likely test values, which are recorded but never stop a push.
+/// `known` is (fingerprint, id, status) of findings already recorded.
+fn let_through(known: &[(String, String, String)], secrets: &[NewSecret]) -> Vec<String> {
+    let mut allowed: Vec<String> = known
+        .iter()
+        .filter(|(_, _, status)| status == "allowed")
+        .map(|(fingerprint, _, _)| fingerprint.clone())
+        .chain(secrets.iter().filter(|secret| secret.test_value.is_some()).map(|secret| secret.fingerprint.clone()))
+        .collect();
+    allowed.sort();
+    allowed.dedup();
+    allowed
+}
+
 #[event(fetch)]
 async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response> {
     let Some(method) = rpc_method(&request) else {
@@ -402,7 +543,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     let body: serde_json::Value = request.json().await?;
     match method.as_str() {
         "overview" => reply(&security.overview(args(body)?).await?),
-        "decide_secret" => reply(&security.decide_secret(args(body)?).await?),
+        "dismiss" => reply(&security.dismiss(args(body)?).await?),
+        "reopen" => reply(&security.reopen(args(body)?).await?),
         "rescan" => reply(&security.rescan(args(body)?).await?),
         "set_upkeep" => reply(&security.set_upkeep(args(body)?).await?),
         "workspace" => reply(&security.workspace(args(body)?).await?),
@@ -434,5 +576,57 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
             }
         }
         Err(error) => worker::console_error!("security: could not start: {error}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn secret(fingerprint: &str, test_value: Option<&str>) -> NewSecret {
+        NewSecret {
+            fingerprint: fingerprint.into(),
+            kind: "aws_access_key".into(),
+            path: "a.env".into(),
+            line: 1,
+            commit: "c".into(),
+            preview: "AKIA…".into(),
+            test_value: test_value.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn dismissed_secrets_and_test_values_go_through() {
+        let known = vec![
+            ("allowed".to_owned(), "sec_1".to_owned(), "allowed".to_owned()),
+            ("resolved".to_owned(), "sec_2".to_owned(), "resolved".to_owned()),
+            ("blocked".to_owned(), "sec_3".to_owned(), "blocked".to_owned()),
+        ];
+        let secrets = [secret("allowed", None), secret("resolved", None), secret("example", Some("it says it is an example")), secret("real", None)];
+        assert_eq!(let_through(&known, &secrets), ["allowed", "example"]);
+    }
+
+    #[test]
+    fn a_push_says_when_it_landed_unscanned() {
+        let pushed: Pushed = serde_json::from_value(serde_json::json!({
+            "repoId": "rep_1", "ref": "refs/heads/import", "after": "abc", "defaultBranch": false, "unscanned": true
+        }))
+        .unwrap();
+        assert!(pushed.unscanned && pushed.before.is_none() && pushed.git_ref == "refs/heads/import");
+        let ordinary: Pushed = serde_json::from_value(serde_json::json!({ "repoId": "rep_1", "ref": "refs/heads/main", "after": "abc", "defaultBranch": true })).unwrap();
+        assert!(!ordinary.unscanned);
+    }
+
+    #[test]
+    fn owners_are_told_what_landed_and_what_to_do() {
+        let one = history::landed_secrets_intro("acme", "rocket", "import", 1);
+        assert!(one.contains("A push to import in acme/rocket") && one.contains("a secret that looks real") && one.contains("Rotate"));
+        assert!(history::landed_secrets_intro("acme", "rocket", "main", 3).contains("3 secrets that look real"));
+    }
+
+    #[test]
+    fn dismissing_a_secret_takes_admin_and_a_dependency_write() {
+        assert_eq!(Security::capability_for("sec_1"), Capability::ManageIntegrations);
+        assert_eq!(Security::capability_for("vul_1"), Capability::Push);
     }
 }

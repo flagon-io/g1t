@@ -22,7 +22,7 @@ Cloudflare Workers and Artifacts.
 - **Secure and healthy.** Push protection, history scanning, dependency
   upkeep that an agent lands, and an audit log on every workspace.
 - **Open and fair.** MIT licensed and self-hostable (an early Docker Compose
-  version of the core forge). The forge is free; compute is what it costs
+  version of the core forge, in `deploy/self-host`). The forge is free; compute is what it costs
   plus 20%, never per seat.
 
 g1t is made by Flagon, Inc. It is also an entry in Cloudflare's **Build the
@@ -69,14 +69,18 @@ Working today:
   verdicts, from people and from agents.
 - Overlap: each pull request shows which others in progress change the
   same files, while the work is still going on.
-- Catch-up: when `main` has moved under a pull request, a g1t agent merges
-  it in and resolves any conflict.
+- Catch-up: when `main` has moved under a pull request, g1t merges it in,
+  and a g1t agent resolves any conflict.
 - Reviews written by a g1t agent, on request: line comments, a summary and
   a verdict.
-- Importing a public repository from GitHub or any git host.
+- Importing a public repository from any git host by its address, and
+  public or private repositories through g1t's GitHub App, imported once,
+  mirrored, or pushed back to GitHub.
 - Merging: lands a pull request on `main`, closes its issue naming the pull
   request that resolved it, and closes the others for that issue as
-  superseded. Refused when the pull request is behind, so no commit is lost.
+  superseded. When `main` has moved, the pull request is brought up to date
+  first, or refused where the repository requires that, so no commit is
+  lost.
 - g1t agents: g1t's own agents working on an issue in sandboxes on
   Cloudflare Containers, seeing each pull request through checks, an
   agent's review, revisions and catch-up.
@@ -101,8 +105,8 @@ Working today:
 - An event bus: every state change is published, logged and delivered to
   subscribers.
 
-Not built yet: a code-search index and the Soon pages in each project's
-menu. Git over SSH waits on inbound TCP on port 22, which on Cloudflare
+Not built yet: what the Soon pages in each project's menu describe. Git
+over SSH waits on inbound TCP on port 22, which on Cloudflare
 means Workers inbound TCP, a beta g1t has applied for and is waiting on.
 Use HTTPS until then. See the build order in the plan.
 
@@ -131,24 +135,43 @@ full. An assistant can do it for you from <https://g1t.sh/llms.txt>.
 | `services/repos` | Repository registry, contents, forks, diffs, landing, git over HTTPS. Rust. |
 | `services/work` | Issues, pull requests, reviews, check runs and sessions. Rust. |
 | `services/events` | The event bus and its log. Rust. |
-| `services/runner` | Starts sandboxes: for g1t agents, workflow jobs and the merge queue. |
-| `services/og` | Social cards at `og.g1t.sh`: a PNG per page, showing only what anyone may see. |
+| `services/search` | Site-wide search and Explore. Rust. |
+| `services/billing` | Usage, the price book, limits, invoices and payments. Rust. |
+| `services/actions` | GitHub Actions workflows, runs, caches and self-hosted runners. Rust. |
+| `services/security` | Push protection findings, history scanning and dependency upkeep. Rust. |
+| `services/integrations` | Model providers, alerts, trackers and the GitHub App. Rust. |
+| `services/webhooks` | Webhook deliveries. Rust. |
+| `services/runner` | Starts sandboxes: for g1t agents, workflow jobs and the merge queue. TypeScript. |
+| `services/projects` | Projects and the dependencies between them. TypeScript. |
+| `services/deployments` | Builds, previews and production on `g1t.page`. TypeScript. |
+| `services/pages` | Serves every app deployed on `g1t.page`, and custom domains. TypeScript. |
+| `services/models` | The model proxy at `models.g1t.sh`. TypeScript. |
+| `services/context` | The context hub: catalog, search and scorecards. TypeScript. |
+| `services/og` | Social cards at `og.g1t.sh`: a PNG per page, showing only what anyone may see. TypeScript. |
+| `apps/status` | `status.g1t.sh`. TypeScript. |
+| `apps/sudo` | g1t's own staff console. |
 | `crates/runner` | The program inside a sandbox: runs an agent, a workflow job or a merge queue build, and reports back. Rust. |
 | `crates/contracts` | Types and service interfaces for the Rust services. |
 | `crates/kit` | Plumbing shared by Rust services on Workers. |
+| `crates/actions` | Reads workflows and evaluates their expressions. Rust. |
+| `crates/scan` | Secret and lockfile scanning, shared by services. Rust. |
+| `crates/secrets` | Secrets at rest and signatures. Rust. |
 | `crates/sshd` | Git over SSH, bridged to Artifacts. Not deployed yet. |
 | `packages/contracts` | The same interfaces for TypeScript callers. |
 | `packages/theme` | Design tokens and the logo, shared by the site and the docs. |
+| `deploy` | `stack.jsonc`, every deployable part and its resources; `self-host`, the Docker Compose version. |
 
-Each service is its own Worker with its own database. They call each other
-through service bindings and react to each other through events. Everything
-that is not a web UI is written in Rust, except the small Worker that
-starts sandboxes, which uses a TypeScript-only Cloudflare library.
+Each service is its own Worker, and each one that keeps data has its own
+database. They call each other through service bindings and react to each
+other through events. The core services (accounts, repositories, work,
+events, billing, Actions, security and the API) are written in Rust; the
+rest are the web apps and the Workers marked TypeScript above.
 
 ## Run your own
 
 You need a Cloudflare account on the Workers Paid plan (Artifacts requires
-it), Node 22 or newer, Rust with the `wasm32-unknown-unknown` target, and
+it), Node 22.22 or newer (`engines` in `package.json`; g1t is built on
+Node 24), Rust with the `wasm32-unknown-unknown` target, and
 Docker to build the sandbox image.
 
 ```sh
@@ -158,9 +181,10 @@ npx wrangler login
 
 Then, once:
 
-1. Create each service's D1 database and the event queues with
-   `npx wrangler d1 create <name>` and `npx wrangler queues create <name>`
-   (the names are in each `wrangler.jsonc`).
+1. Create the resources each part needs: D1 databases, queues, KV
+   namespaces, R2 buckets and the Artifacts namespace (`npx wrangler d1
+   create <name>`, `npx wrangler queues create <name>`, and so on), and set
+   each part's secrets. `deploy/stack.jsonc` lists them all.
 2. Put your own `account_id`, database ids and hostnames in each
    `wrangler.jsonc`.
 3. For [Deployments](https://docs.g1t.sh/guides/deployments/), which needs

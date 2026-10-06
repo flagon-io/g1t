@@ -4,6 +4,8 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 import {
   type AgentMessage,
   type AgentRun,
+  type BumpArgs,
+  UPDATE_BRANCH_PREFIX,
   type RunKind,
   agentsClient,
   type DelegateInput,
@@ -60,7 +62,9 @@ import {
 
 import { type AgentRoutes, type AgentTask, canReachModel, modelEnv } from "./model-env";
 import { hubContext } from "./hub";
+import { hostedOpen } from "./hosted";
 import { delegateInput, noModelMessage, notStarted, queued, started } from "./delegate";
+import { BUMP_MINUTES, BUMP_TOKEN_TTL_SECONDS, bumpEnv, bumpProblem, bumpSandboxName, systemActor } from "./bump";
 import { type ProjectSurroundings, readableSurroundings } from "./surroundings";
 import { holdCredentials, pushGrant, remotePath, revokeCredentials, runCredential } from "./credentials";
 import { buildMentionPrompt, describeThread, handleMention, planMention } from "./mentions";
@@ -195,7 +199,13 @@ type Run =
   /** One job of a GitHub Actions workflow. */
   | { kind: "actions"; jobId: string; token: string }
   /** A build of one commit, deployed to g1t.page. */
-  | { kind: "deploy"; deployId: string; token: string };
+  | { kind: "deploy"; deployId: string; token: string }
+  /**
+   * A security update: one package raised in its lockfiles and pushed to
+   * its branch. The security service opens the pull request when it hears
+   * the push, so a failure has no one to tell.
+   */
+  | { kind: "bump"; repo: RepoPath; branch: string };
 /**
  * Whose sandbox time it is, reported when the sandbox stops, and the
  * machine it ran on when it was not the standard one.
@@ -212,7 +222,7 @@ type Held = { id: string; workspace: string; microsPerSecond: number; modelBille
  * workflow job or a deploy build, in `repo`, for `minutes` at most.
  */
 type Build = {
-  kind: "actions" | "deploy";
+  kind: "actions" | "deploy" | "bump";
   /** The project whose guardrails apply: never a pull request's working copy. */
   repo: RepoPath;
   /** Its id, so it is found even if it moved since. */
@@ -244,6 +254,8 @@ function computeKindOf(kind: Run["kind"]): ComputeKind | null {
   switch (kind) {
     case "checks":
     case "mergecheck":
+    // A security update resolves lockfiles, as cheap as a check.
+    case "bump":
       return "check";
     case "queue":
       return "queue";
@@ -421,7 +433,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
         await this.schedule(guard.minutes * 60 + ALARM_GRACE_SECONDS, "timeUp");
       }
     } catch (error) {
-      await revokeCredentials(this.env.IDENTITY, this.ctx.storage);
+      await revokeCredentials(this.env.IDENTITY, this.ctx.storage, this.env.INTEGRATIONS);
       if (tracked) await this.closeRun("failed", `The sandbox could not start: ${String(error)}`);
       await this.settle(0);
       throw error;
@@ -606,7 +618,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
   }
 
   override async onStop({ exitCode, reason }: StopParams): Promise<void> {
-    await revokeCredentials(this.env.IDENTITY, this.ctx.storage);
+    await revokeCredentials(this.env.IDENTITY, this.ctx.storage, this.env.INTEGRATIONS);
     const tracked = await this.ctx.storage.get<TrackedRun>("agentRun");
     const started = await this.ctx.storage.get<number>("started");
     await this.meterStop();
@@ -642,6 +654,8 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       });
       return;
     }
+    // Nothing was pushed, so no pull request opens; why is in its log.
+    if (run.kind === "bump") return;
     if (run.kind === "deploy") {
       // Refused harmlessly if the build reported its end before it stopped.
       await this.env.DEPLOYMENTS.fetch(`https://deployments/jobs/${run.deployId}/fail`, {
@@ -1057,6 +1071,9 @@ export default class RunnerService
       await sandbox.remoteEnded(args.exitCode, args.reason ?? null);
       return Response.json(ok(true));
     }
+    if (request.method === "POST" && pathname === "/rpc/bump") {
+      return Response.json(await this.startBump(await request.json()));
+    }
     if (request.method === "POST" && pathname === "/rpc/start_deploy") {
       return Response.json(await this.startDeploy((await request.json()) as DeployJob));
     }
@@ -1146,14 +1163,20 @@ export default class RunnerService
    * for `minutes` reserved. Public repositories' checks, workflows and
    * queue can be paid by the open-source pool. Never throws.
    */
-  private async admitSandbox(kind: ComputeKind, repo: RepoPath, minutes: number, instance: InstanceType = STANDARD_INSTANCE): Promise<Admitted> {
+  private async admitSandbox(
+    kind: ComputeKind,
+    repo: RepoPath,
+    minutes: number,
+    instance: InstanceType = STANDARD_INSTANCE,
+    { selfHosted = true }: { selfHosted?: boolean } = {},
+  ): Promise<Admitted> {
     const workspace = repo.namespace.toLowerCase();
     const compute = gateFor(this.env);
     const ent = await compute.entitlements(workspace);
     if (ent?.paused) return { ok: false, waiting: false, code: "paused", message: refusalMessage("paused", workspace, kind, ent.paused) };
     // Checks and the merge queue go to the workspace's own runners when it
     // says so, and cost nothing there. Workflow jobs choose with `runs-on`.
-    const route = kind === "check" || kind === "queue" ? await selfHostedRoute(this.env.ACTIONS, repo) : null;
+    const route = selfHosted && (kind === "check" || kind === "queue") ? await selfHostedRoute(this.env.ACTIONS, repo) : null;
     if (route) return { ok: true, held: null, limits: limitsOf(ent), route };
     const [standardMicros, isPublic] = await Promise.all([compute.microsPerSecond(), this.isPublic(repo)]);
     // A larger machine is reserved for at what it costs with every vCPU busy.
@@ -1471,36 +1494,27 @@ export default class RunnerService
     return Boolean(this.env.MODELS_URL) || canReachModel(this.env);
   }
 
-  /** Whether g1t's hosted models are open to a workspace in the preview. */
-  private previewListed(namespace: string): boolean {
-    const listed = this.env.HOSTED_AGENT_WORKSPACES.split(",").map((name) => name.trim().toLowerCase());
-    return listed.includes("*") || listed.includes(namespace.toLowerCase());
-  }
-
   /**
    * How a workspace's agents reach a model, as the workspace decided: its
    * own provider, which it pays, or g1t's hosted models, which its credit
    * pays for. Hosted models are open to every workspace once billing takes
-   * real money; before that to those listed, and to any other on its free
-   * allowance while that lasts. Null when it can use neither yet.
+   * real money; before that (no card processor, or a test key, whose test
+   * cards pass any card check) only to those `HOSTED_AGENT_WORKSPACES`
+   * lists, and no trial opens them (see `hosted`).
    */
   async modelAccess(namespace: string): Promise<ModelAccess> {
-    if (!this.modelsReachable()) return { own: null, hosted: false, trial: null };
-    const billing = billingClient(this.env.BILLING);
+    if (!this.modelsReachable()) return { own: null, hosted: false, trial: null, preview: false };
     const [own, status] = await Promise.all([
       integrationsClient(this.env.INTEGRATIONS)
         .modelProvider(namespace)
         .catch(() => null),
-      billing.status(),
+      // Unknown counts as not live: hosted models stay closed to all but the listed.
+      billingClient(this.env.BILLING)
+        .status()
+        .catch(() => ({ enabled: false, live: false })),
     ]);
-    if (this.previewListed(namespace) || (status.enabled && status.live)) {
-      return { own: own?.name ?? null, hosted: true, trial: null };
-    }
-    const exempt = this.env.HOSTED_AGENT_WORKSPACES.split(",")
-      .map((name) => name.trim().toLowerCase())
-      .filter((name) => name && name !== "*");
-    const trial = await billing.trial(namespace, exempt).catch(() => null);
-    return { own: own?.name ?? null, hosted: Boolean(trial?.open), trial };
+    const open = hostedOpen(namespace, this.env.HOSTED_AGENT_WORKSPACES, status);
+    return { own: own?.name ?? null, hosted: open, trial: null, preview: !open };
   }
 
   /**
@@ -1625,6 +1639,63 @@ export default class RunnerService
       };
     }
     return ok(true);
+  }
+
+  /**
+   * Makes a security update in a sandbox of its own (crates/runner
+   * bump.rs): raises one package to a fixed version in the lockfiles
+   * named, commits that as g1t and pushes it to its `g1t/security/…`
+   * branch. Asked by the security service, which opens the pull request
+   * when it hears the push; nothing here opens one. Admitted, reserved and
+   * metered like checks, always in g1t's sandbox (a self-hosted runner may
+   * not know the mode), under the project's network list plus the package
+   * registries. Returns whether the sandbox started.
+   */
+  private async startBump(input: unknown): Promise<Result<boolean>> {
+    const problem = bumpProblem(input, UPDATE_BRANCH_PREFIX);
+    if (problem) return fail("invalid", problem);
+    const args = input as BumpArgs;
+    const repo = args.repo;
+    const actor = systemActor(repo.namespace);
+    const closed = await this.closedRepo(actor, repo);
+    if (closed) return closed;
+    const admitted = await this.admitSandbox("check", repo, BUMP_MINUTES, STANDARD_INSTANCE, { selfHosted: false });
+    if (!admitted.ok) return notAdmitted(admitted);
+    try {
+      const base = await this.defaultBranch(repo, actor);
+      // As g1t, for the workspace: reads the repository and pushes this
+      // branch only, with no API operations.
+      const token = await runCredential(this.env.IDENTITY, {
+        onBehalfOf: actor,
+        repo,
+        kind: "bump",
+        use: "runner",
+        read: [repo],
+        push: [{ repo, branch: args.branch }],
+        ttlSeconds: BUMP_TOKEN_TTL_SECONDS,
+        agent: actor.username,
+      });
+      const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(bumpSandboxName(args)));
+      await sandbox.run({
+        kind: "bump",
+        repo,
+        branch: args.branch,
+        reservation: admitted.held,
+        limits: admitted.limits,
+        build: { kind: "bump", repo, minutes: BUMP_MINUTES },
+        meter: meter(repo, `Security update in ${repo.namespace}/${repo.name}`),
+        envVars: bumpEnv(args, base, token),
+      });
+    } catch (error) {
+      await this.release(admitted.held);
+      return fail("conflict", `The runner could not start the security update: ${String(error).replace(/^Error: /, "")}`);
+    }
+    return ok(true);
+  }
+
+  /** Whether hosted models are closed to the workspace only because billing is not live yet. */
+  private async hostedPreview(namespace: string): Promise<boolean> {
+    return (await this.modelAccess(namespace).catch(() => null))?.preview ?? false;
   }
 
   /**
@@ -2178,7 +2249,7 @@ export default class RunnerService
     if (!(await this.workspaceAllowed(repo.namespace))) {
       return fail(
         "forbidden",
-        noModelMessage(repo.namespace),
+        noModelMessage(repo.namespace, await this.hostedPreview(repo.namespace)),
       );
     }
     if (!(await this.allowed(actor, repo))) {
@@ -2578,7 +2649,7 @@ export default class RunnerService
     const workspace = repo.namespace.toLowerCase();
     // From here the issue stays, and the answer says what became of the agent.
     if (!this.modelsReachable() || !(await this.workspaceAllowed(repo.namespace))) {
-      return ok(notStarted(issue, "no_model", noModelMessage(repo.namespace), workspace));
+      return ok(notStarted(issue, "no_model", noModelMessage(repo.namespace, await this.hostedPreview(repo.namespace)), workspace));
     }
     const admitted = await this.admitAgent("implement", repo, issue.number);
     if (!admitted.ok) {

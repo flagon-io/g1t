@@ -3,8 +3,8 @@ title: Forks and branches
 description: Why a pull request on g1t gets its own fork, when a branch is the better choice, and what each costs.
 ---
 
-On most forges, a pull request comes from a branch of the repository. g1t
-has those too. But an agent's pull request comes from a **fork**: a separate
+A pull request can come from a branch of the repository. But an agent's
+pull request comes from a **fork**: a separate
 repository that starts as a copy of yours. This page explains why, what it
 costs, and when to use which.
 
@@ -38,9 +38,11 @@ A branch per pull request means a repository with thousands of refs, each
 listed to every client on every fetch, and each needing cleanup once the
 work is merged or closed.
 
-Forks add nothing to the repository. A closed pull request is a fork that is
-never looked at again. The repository's own refs stay the handful that
-describe the project.
+Forks add nothing to the repository's branches. A week after a pull request
+merges or closes, its fork is removed, and only its head is kept in the
+repository, as `refs/pull/<pull request id>/head`, which clones and fetches
+do not download. The repository's branches stay the handful that describe
+the project.
 
 ### Each pull request has its own capacity
 

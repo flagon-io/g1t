@@ -20,7 +20,7 @@ the first thing you do is create a workspace, and repositories go in it.
 3. Optionally give it a display name.
 
 From the API, `POST /workspaces` with `slug` and `name`, or the
-`create_workspace` tool:
+`workspace` tool's `create` action:
 
 ```sh
 curl -X POST https://api.g1t.sh/workspaces \
@@ -48,7 +48,17 @@ A workspace has two names:
 
 Without a display name, the slug is shown. Where an address is shown, the
 slug is in monospace beside the name. Owners change the display name and
-description on **Settings → General**; from the API, `update_workspace`.
+description (up to 160 characters) on **Settings → General**, or with
+[`PATCH /workspaces/{workspace}`](/reference/api/workspaces/update-workspace/)
+(MCP: `workspace` `update`), which takes `name` and `description` and
+changes only the fields given. It needs the `workspace:admin` scope, and
+is recorded in the [audit log](/guides/audit-log/):
+
+```sh
+curl -X PATCH https://api.g1t.sh/workspaces/flagon \n  -H "Authorization: Bearer $G1T_TOKEN" \n  -H "Content-Type: application/json" \n  -d '{"name": "Flagon Industries", "description": "Rockets, and the software that flies them."}'
+```
+
+Neither changes the slug; that is a [rename](#rename-a-workspace).
 
 A workspace also has an icon. Without
 one, g1t draws its first letter in a colour of its own. To upload one, an
@@ -106,7 +116,7 @@ For 90 days after a rename, the old name keeps working:
 | --- | --- |
 | Web pages | Answer with a permanent redirect (301) to the same page under the new name, query string included. |
 | `git clone`, `fetch`, `pull` and `push` | Redirected to the new remote. Git follows it, but prints a warning each time until you update the remote. |
-| API | Calls to the old paths redirect to the new ones. |
+| API and MCP | A call that names the old slug runs under the new one. |
 | `g1t.page` apps | Production and preview addresses under the old name redirect to the new ones. |
 
 Update your remotes now rather than relying on the redirect:
@@ -157,7 +167,8 @@ Then:
 
 From the API, call
 [`DELETE /workspaces/{workspace}`](/reference/api/workspaces/delete-workspace/)
-with the slug in `confirm`; the MCP tool is `delete_workspace`.
+with the slug in `confirm`; over MCP, the `workspace` tool's `delete`
+action.
 
 ### What billing needs
 
@@ -223,7 +234,7 @@ in the workspace as a member, with a one-time welcome. See
 Pending invites are listed under the members, with a link to copy and
 **Revoke**. An owner can also remove a member there. Through the API, use
 [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/)
-(`invite_member`).
+(the `workspace` tool's `invite_member` action over MCP).
 
 To give someone a role on one repository without making them a member,
 add them as an [outside collaborator](/guides/access-and-roles/#outside-collaborators).

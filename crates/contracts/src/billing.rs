@@ -672,6 +672,10 @@ pub struct PriceChange {
     pub old_markup_percent: Option<u32>,
     pub reason: String,
     pub created_at: String,
+    /// When a change still to come takes effect: a rise is announced
+    /// before it is charged. Absent for changes already made.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective_at: Option<String>,
 }
 
 /// `prices`: every metered price and the recent changes. Public. Returns
@@ -1676,6 +1680,9 @@ pub enum SignalKind {
     FirstPayment,
     /// Spending enough that custom terms or an enterprise may suit it.
     HighSpend,
+    /// Costs g1t more on Cloudflare than it pays, over 30 days: a pricing
+    /// gap or abuse to look at (billing's `margin`).
+    CostOverRevenue,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -2188,6 +2195,313 @@ pub struct ChargeFeatureArgs {
     pub build_seconds: Option<u32>,
 }
 
+// ---------------------------------------------------------------------
+// Costs and margin: what Cloudflare charges g1t against what g1t
+// charges (billing's costs.rs, margin.rs and pricing.rs). Staff only.
+// ---------------------------------------------------------------------
+
+/// `admin_costs`: the Costs & margin page. Returns `CostsReport`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminCostsArgs {
+    /// How many days back, 7 to 90; 30 when absent.
+    #[serde(default)]
+    pub days: Option<u32>,
+}
+
+/// One of g1t's products on one day.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostDay {
+    pub day: String,
+    pub bucket: String,
+    /// What Cloudflare charged g1t.
+    pub cf_cost_micros: i64,
+    /// What g1t's meters recorded it cost, at the price book's cost.
+    pub own_cost_micros: i64,
+    /// What customers were charged for it at price, before included
+    /// usage, trials and pools paid for some.
+    pub value_micros: i64,
+    /// Of that, what workspaces paid.
+    pub cash_micros: i64,
+}
+
+/// One product over the range.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProductMargin {
+    pub bucket: String,
+    pub title: String,
+    /// The cost the margin is taken from: Cloudflare's bill, or g1t's own
+    /// figure for what Cloudflare does not bill (models).
+    pub cost_micros: i64,
+    pub cf_cost_micros: i64,
+    pub own_cost_micros: i64,
+    pub value_micros: i64,
+    pub margin_micros: i64,
+    pub margin_percent: Option<f64>,
+    /// `cloudflare` or `ledger`.
+    pub cost_source: String,
+    /// Running g1t itself, paid for by the plan.
+    pub overhead: bool,
+}
+
+/// All of g1t over the range: money in against every cost.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OverallMargin {
+    /// What workspaces paid for usage, and for the plan.
+    pub usage_micros: i64,
+    pub plans_micros: i64,
+    pub cost_micros: i64,
+    pub margin_micros: i64,
+    pub margin_percent: Option<f64>,
+}
+
+/// A count, cost or leak that does not add up.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostDrift {
+    pub bucket: String,
+    pub title: String,
+    /// `count` (units g1t counted against Cloudflare's), `cost` (the bill
+    /// against the price book's cost of the same usage), or `leak`.
+    pub kind: String,
+    pub ours: f64,
+    pub cloudflare: f64,
+    pub delta_percent: Option<f64>,
+    pub detail: String,
+    pub found_at: String,
+}
+
+/// A margin alert, open while its condition lasts.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarginAlert {
+    pub id: String,
+    /// `margin`, `overall`, `leak`, `drift` or `workspace`.
+    pub kind: String,
+    /// The product, or the workspace.
+    pub subject: String,
+    pub detail: String,
+    pub since: String,
+    pub opened_at: String,
+    pub emailed_at: Option<String>,
+}
+
+/// A change to a price the reconciler measured.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceProposal {
+    pub id: String,
+    pub meter: String,
+    pub title: String,
+    pub unit: String,
+    pub current_cost_micros: f64,
+    pub proposed_cost_micros: f64,
+    pub change_percent: f64,
+    pub markup_percent: u32,
+    pub reason: String,
+    /// `keeper` or `reconciler`.
+    pub source: String,
+    /// Far off the current cost: look before approving.
+    pub suspect: bool,
+    /// `open`, `applied`, `approved`, `rejected` or `superseded`.
+    pub status: String,
+    pub created_at: String,
+    pub decided_at: Option<String>,
+    pub decided_by: Option<String>,
+    pub note: Option<String>,
+    /// When it takes or took effect, once approved or applied.
+    pub effective_at: Option<String>,
+}
+
+/// One version of one meter's price. Never changed once written.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceVersion {
+    pub id: String,
+    pub meter: String,
+    pub version: u32,
+    pub cost_micros: f64,
+    pub markup_percent: u32,
+    pub price_micros: f64,
+    pub effective_at: String,
+    pub reason: String,
+    pub created_by: String,
+    /// When the price book took it on; absent while it waits for its date.
+    pub applied_at: Option<String>,
+}
+
+/// What a workspace cost g1t over the range, Cloudflare's costs shared
+/// out by g1t's own meters, against what it paid.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceCost {
+    pub workspace: String,
+    pub cost_micros: i64,
+    pub revenue_micros: i64,
+    /// One of g1t's own (comped) workspaces.
+    pub internal: bool,
+}
+
+/// One Cloudflare meter over the range, and the product it is a cost of.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostLineSummary {
+    pub product: String,
+    pub meter: String,
+    pub raw_name: String,
+    pub unit: String,
+    pub source: String,
+    pub quantity: f64,
+    pub cost_micros: i64,
+    /// Absent when no mapping claims it.
+    pub bucket: Option<String>,
+}
+
+/// A row of the mapping from Cloudflare's meters to g1t's products.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostMapping {
+    pub product: String,
+    pub meter: String,
+    pub bucket: String,
+    pub price_meter: Option<String>,
+    pub own_meter: Option<String>,
+    pub scale_to_own: bool,
+    pub drift_percent: f64,
+    pub note: String,
+    pub updated_at: String,
+    pub updated_by: String,
+}
+
+/// The guardrails on prices and the alerts.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostSettings {
+    /// Apply small moves without staff.
+    pub auto_apply: bool,
+    /// The largest move applied without staff, either way, in percent.
+    pub auto_apply_percent: f64,
+    /// Days between telling customers of a rise and charging it.
+    pub notice_days: u32,
+    /// Below this margin, in percent, for `alert_days` days in a row, alert.
+    pub margin_floor_percent: f64,
+    pub alert_days: u32,
+    /// Days with less cost than this say nothing about a margin.
+    pub min_daily_cost_micros: i64,
+    /// A workspace costing more than its revenue times this, over 30 days,
+    /// and at least `anomaly_floor_micros`, is flagged.
+    pub anomaly_factor: f64,
+    pub anomaly_floor_micros: i64,
+}
+
+impl Default for CostSettings {
+    fn default() -> Self {
+        CostSettings {
+            auto_apply: true,
+            auto_apply_percent: 25.0,
+            notice_days: 14,
+            margin_floor_percent: 10.0,
+            alert_days: 3,
+            min_daily_cost_micros: 100_000,
+            anomaly_factor: 1.0,
+            anomaly_floor_micros: 1_000_000,
+        }
+    }
+}
+
+/// The Costs & margin page.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostsReport {
+    /// A token to read Cloudflare's bill is set.
+    pub configured: bool,
+    /// When Cloudflare's bill was last read.
+    pub fetched_at: Option<String>,
+    /// The days shown, YYYY-MM-DD.
+    pub since: String,
+    pub until: String,
+    pub days: Vec<CostDay>,
+    pub products: Vec<ProductMargin>,
+    pub overall: OverallMargin,
+    pub drift: Vec<CostDrift>,
+    pub alerts: Vec<MarginAlert>,
+    pub proposals: Vec<PriceProposal>,
+    pub versions: Vec<PriceVersion>,
+    pub top_workspaces: Vec<WorkspaceCost>,
+    pub lines: Vec<CostLineSummary>,
+    pub mappings: Vec<CostMapping>,
+    pub settings: CostSettings,
+}
+
+/// `admin_cost_alerts`: the open margin alerts, for sudo's banner.
+/// Returns `Vec<MarginAlert>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminCostAlertsArgs {}
+
+/// `admin_decide_proposal`: approve or reject a price proposal. An
+/// approved rise takes effect after the notice period. Returns
+/// `Outcome<PriceProposal>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminDecideProposalArgs {
+    pub id: String,
+    /// `approve` or `reject`.
+    pub decision: String,
+    #[serde(default)]
+    pub note: String,
+    pub by: String,
+}
+
+/// `admin_set_cost_settings`. Returns `Outcome<CostSettings>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminSetCostSettingsArgs {
+    pub settings: CostSettings,
+    pub by: String,
+}
+
+/// `admin_set_cost_mapping`: adds, changes or (with `remove`) removes a
+/// mapping row. Returns `Outcome<CostMapping>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminSetCostMappingArgs {
+    pub product: String,
+    pub meter: String,
+    #[serde(default)]
+    pub bucket: String,
+    #[serde(default)]
+    pub price_meter: Option<String>,
+    #[serde(default)]
+    pub own_meter: Option<String>,
+    #[serde(default)]
+    pub scale_to_own: bool,
+    #[serde(default)]
+    pub drift_percent: Option<f64>,
+    #[serde(default)]
+    pub note: String,
+    #[serde(default)]
+    pub remove: bool,
+    pub by: String,
+}
+
+/// `admin_run_costs`: reads Cloudflare's bill and reconciles now, as the
+/// daily run does. Returns `Outcome<CostsRun>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminRunCostsArgs {
+    #[serde(default)]
+    pub by: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostsRun {
+    pub lines: u32,
+    pub days: u32,
+    pub proposals: u32,
+    pub alerts: u32,
+    /// What could not be read, in words.
+    pub problems: Vec<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2217,6 +2531,7 @@ mod tests {
             old_markup_percent: Some(138),
             reason: "Sandbox time is now charged at cost plus 20% from the first second".into(),
             created_at: "2026-10-05T00:00:00Z".into(),
+            effective_at: None,
         };
         assert_eq!(serde_json::to_value(&change).unwrap()["oldMarkupPercent"], 138);
         let cost_only = PriceChange { old_markup_percent: None, ..change };

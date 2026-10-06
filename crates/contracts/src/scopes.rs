@@ -244,9 +244,9 @@ impl Scope {
     /// What it lets a token do, in plain words.
     pub fn describe(self) -> &'static str {
         match self {
-            Scope::RepoRead => "See repositories, their settings, labels and timelines, and search",
+            Scope::RepoRead => "See repositories, their settings, labels, timelines and security alerts, and search",
             Scope::RepoWrite => "Create repositories, rename branches and change how pull requests merge",
-            Scope::RepoAdmin => "Rename, archive, transfer, delete or change who can see a repository",
+            Scope::RepoAdmin => "Rename, archive, transfer, delete or change who can see a repository, and dismiss security alerts",
             Scope::CodeRead => "Clone and fetch private repositories with git",
             Scope::CodeWrite => "Push commits with git",
             Scope::IssuesRead => "Read issues, comments and plans",
@@ -441,6 +441,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     // Workspaces, their invites and integrations.
     ("create_workspace", Scope::WorkspaceAdmin),
     ("delete_workspace", Scope::WorkspaceAdmin),
+    ("update_workspace", Scope::WorkspaceAdmin),
     ("list_workspace_invites", Scope::WorkspaceRead),
     ("invite_member", Scope::WorkspaceAdmin),
     ("revoke_workspace_invite", Scope::WorkspaceAdmin),
@@ -459,6 +460,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("get_repo_settings", Scope::RepoRead),
     ("list_check_names", Scope::RepoRead),
     ("list_deleted_repos", Scope::RepoRead),
+    ("list_security_alerts", Scope::RepoRead),
     ("create_repo", Scope::RepoWrite),
     ("update_repo", Scope::RepoWrite),
     ("update_repo_settings", Scope::RepoWrite),
@@ -471,6 +473,9 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("delete_repo", Scope::RepoAdmin),
     ("restore_repo", Scope::RepoAdmin),
     ("purge_repo", Scope::RepoAdmin),
+    // A dismissed secret is let through push protection.
+    ("dismiss_security_alert", Scope::RepoAdmin),
+    ("reopen_security_alert", Scope::RepoAdmin),
     // Issues and plans.
     ("list_issues", Scope::IssuesRead),
     ("get_issue", Scope::IssuesRead),
@@ -579,6 +584,10 @@ pub fn extra_scopes(operation: &str, input: &serde_json::Value) -> Vec<Scope> {
     // Opening the issue an agent is put on.
     if operation == "delegate" {
         extra.push(Scope::IssuesWrite);
+    }
+    // A workspace's base permission is who has access.
+    if operation == "update_workspace" && input.get("base_permission").is_some_and(|v| !v.is_null()) {
+        extra.push(Scope::AccessAdmin);
     }
     if operation == "update_repo" && (input.get("private").is_some_and(|v| !v.is_null()) || input.get("default_branch").is_some_and(|v| !v.is_null())) {
         extra.push(Scope::RepoAdmin);
@@ -725,6 +734,17 @@ mod tests {
         let maintainer = token(&[Scope::RepoWrite]);
         assert!(decide(&maintainer, "update_repo", &json!({ "description": "x" })).allowed);
         assert!(!decide(&maintainer, "update_repo", &json!({ "private": true })).allowed);
+    }
+
+    #[test]
+    fn a_workspaces_base_permission_needs_access_admin_too() {
+        let admin = token(&[Scope::WorkspaceAdmin]);
+        assert!(decide(&admin, "update_workspace", &json!({ "name": "Acme" })).allowed);
+        let refused = decide(&admin, "update_workspace", &json!({ "name": "Acme", "base_permission": "read" }));
+        assert!(refused.reason.unwrap().contains("access:admin"));
+        let both = token(&[Scope::WorkspaceAdmin, Scope::AccessAdmin]);
+        assert!(decide(&both, "update_workspace", &json!({ "base_permission": "read" })).allowed);
+        assert!(!decide(&token(&[Scope::WorkspaceRead]), "update_workspace", &json!({ "name": "Acme" })).allowed);
     }
 
     #[test]

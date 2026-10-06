@@ -33,10 +33,13 @@ pub enum RunCredentialKind {
     Queue,
     Mergecheck,
     Deploy,
+    /// A security update: raising one package's version in its lockfiles
+    /// and pushing that to a branch of its own. Not an agent.
+    Bump,
 }
 
 impl RunCredentialKind {
-    pub const ALL: [RunCredentialKind; 10] = [
+    pub const ALL: [RunCredentialKind; 11] = [
         RunCredentialKind::Implement,
         RunCredentialKind::Revise,
         RunCredentialKind::Review,
@@ -47,6 +50,7 @@ impl RunCredentialKind {
         RunCredentialKind::Queue,
         RunCredentialKind::Mergecheck,
         RunCredentialKind::Deploy,
+        RunCredentialKind::Bump,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -61,6 +65,7 @@ impl RunCredentialKind {
             RunCredentialKind::Queue => "queue",
             RunCredentialKind::Mergecheck => "mergecheck",
             RunCredentialKind::Deploy => "deploy",
+            RunCredentialKind::Bump => "bump",
         }
     }
 
@@ -130,6 +135,12 @@ pub struct RunBinding {
     /// Where it may push.
     #[serde(default)]
     pub push: Vec<GitGrant>,
+    /// g1t's own run (a security update, an agent g1t put on one): the
+    /// credential belongs to the workspace, and acts on behalf of g1t
+    /// (`system::ID`), so what it does is g1t's, and the pull request g1t
+    /// opened, and its working copy, are its own.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub system: bool,
 }
 
 /// A person, by id and name.
@@ -242,6 +253,7 @@ pub const READ_OPERATIONS: &[&str] = &[
     "list_webhook_deliveries",
     "list_actions_secrets",
     "list_actions_variables",
+    "list_security_alerts",
 ];
 
 /// What no agent's token may ever do, whatever its scope says: workspaces,
@@ -251,6 +263,7 @@ pub const READ_OPERATIONS: &[&str] = &[
 pub const NEVER: &[&str] = &[
     "create_workspace",
     "delete_workspace",
+    "update_workspace",
     "transfer_repo",
     "create_repo",
     "update_repo",
@@ -304,6 +317,9 @@ pub const NEVER: &[&str] = &[
     "decline_repo_invitation",
     "set_base_permission",
     "list_outside_collaborators",
+    // Dismissing a secret lets it through push protection.
+    "dismiss_security_alert",
+    "reopen_security_alert",
 ];
 
 /// Reading what an agent needs to know about its repository.
@@ -368,7 +384,7 @@ pub fn operations_for(kind: RunCredentialKind, usage: CredentialUse) -> Vec<&'st
                 operations.extend(["create_issue", "get_context"]);
             }
             K::Update => operations.extend(TOOLS_READ.iter().copied()),
-            K::Checks | K::Queue | K::Mergecheck | K::Deploy => {}
+            K::Checks | K::Queue | K::Mergecheck | K::Deploy | K::Bump => {}
         },
     }
     operations
@@ -386,7 +402,14 @@ pub fn run_scopes(kind: RunCredentialKind, usage: CredentialUse) -> Vec<crate::s
         .collect();
     if usage == CredentialUse::Runner {
         scopes.push(Scope::CodeRead);
-        if matches!(kind, RunCredentialKind::Implement | RunCredentialKind::Revise | RunCredentialKind::Answer | RunCredentialKind::Update) {
+        if matches!(
+            kind,
+            RunCredentialKind::Implement
+                | RunCredentialKind::Revise
+                | RunCredentialKind::Answer
+                | RunCredentialKind::Update
+                | RunCredentialKind::Bump
+        ) {
             scopes.push(Scope::CodeWrite);
         }
     }
@@ -719,7 +742,7 @@ mod tests {
             // The context hub's search stays its own tool beside it.
             assert!(tools.contains(&"search_context"), "{kind:?} keeps search_context");
         }
-        for kind in [RunCredentialKind::Checks, RunCredentialKind::Queue, RunCredentialKind::Mergecheck, RunCredentialKind::Deploy] {
+        for kind in [RunCredentialKind::Checks, RunCredentialKind::Queue, RunCredentialKind::Mergecheck, RunCredentialKind::Deploy, RunCredentialKind::Bump] {
             assert!(!operations_for(kind, CredentialUse::Tools).contains(&"search"));
         }
         assert!(!operations_for(RunCredentialKind::Implement, CredentialUse::Runner).contains(&"search"));
@@ -745,6 +768,7 @@ mod tests {
                 run_id: Some("run_1".to_owned()),
                 number: Some(7),
                 agent: "g1t-agent".to_owned(),
+                system: false,
                 read: vec![path("acme", "rocket")],
                 push: match kind {
                     RunCredentialKind::Implement
@@ -1108,5 +1132,17 @@ mod tests {
         assert!(written.contains(r#""kind":"review""#));
         let back: AgentScope = serde_json::from_str(&written).unwrap();
         assert_eq!(back.run.unwrap().kind, K::Review);
+        // Only g1t's own runs say so; every other reads as not.
+        assert!(!written.contains("system"));
+        assert!(!back_run(&written).system);
+        let mut own = scope(K::Bump, Runner);
+        own.run.as_mut().unwrap().system = true;
+        let written = serde_json::to_string(&own).unwrap();
+        assert!(written.contains(r#""system":true"#));
+        assert!(back_run(&written).system);
+    }
+
+    fn back_run(written: &str) -> RunBinding {
+        serde_json::from_str::<AgentScope>(written).unwrap().run.unwrap()
     }
 }

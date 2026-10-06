@@ -14,6 +14,7 @@ use sha2::{Digest, Sha256};
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
+use crate::prefetch::Slot;
 use crate::rows::{PULL_COLUMNS, PullRow};
 use crate::{Work, optional};
 
@@ -67,6 +68,9 @@ fn refused<T>(message: &str) -> Outcome<T> {
 impl Work {
     /// The most recent check run of a pull request.
     pub(crate) async fn latest_checks(&self, pull_id: &str) -> Result<Option<CheckRun>> {
+        if let Some(found) = self.prefetched_pull(pull_id) {
+            return Ok(found.first::<RunRow>(Slot::Runs)?.map(CheckRun::from));
+        }
         Ok(self
             .db
             .prepare("SELECT * FROM check_runs WHERE pull_id = ? ORDER BY id DESC LIMIT 1")
@@ -79,15 +83,23 @@ impl Work {
     /// The runs before the latest, newest first, without what each command
     /// printed: enough to see how the checks went over time.
     pub(crate) async fn earlier_checks(&self, pull_id: &str) -> Result<Vec<CheckRun>> {
-        let rows = self
-            .db
-            .prepare(
-                "SELECT * FROM check_runs WHERE pull_id = ? ORDER BY id DESC LIMIT ? OFFSET 1",
-            )
-            .bind(&[pull_id.into(), EARLIER_RUNS.into()])?
-            .all()
-            .await?
-            .results::<RunRow>()?;
+        let rows = match self.prefetched_pull(pull_id) {
+            Some(found) => found
+                .rows::<RunRow>(Slot::Runs)?
+                .into_iter()
+                .skip(1)
+                .take(EARLIER_RUNS as usize)
+                .collect(),
+            None => self
+                .db
+                .prepare(
+                    "SELECT * FROM check_runs WHERE pull_id = ? ORDER BY id DESC LIMIT ? OFFSET 1",
+                )
+                .bind(&[pull_id.into(), EARLIER_RUNS.into()])?
+                .all()
+                .await?
+                .results::<RunRow>()?,
+        };
         Ok(rows
             .into_iter()
             .map(|row| {

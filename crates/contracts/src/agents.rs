@@ -854,14 +854,16 @@ mod tests {
 
     #[test]
     fn credentials_are_refused() {
-        // Key-shaped values are joined at run time: no whole key sits in the
-        // source for secret scanners to flag.
+        // Key-shaped values are joined at run time, so no whole key sits in
+        // the source, and each is an issuer's documented example or says
+        // EXAMPLE: were one ever found, it would be listed as a likely test
+        // value, never as a leaked key.
         let join = |a: &str, b: &str| format!("{a}{b}");
         for text in [
-            join("The key is sk-", "ant-api03-abcdefghijklmnopqrstuvwxyz"),
-            join("use gh", "p_abcdefghijklmnopqrstuvwxyz0123456789 to clone"),
+            join("The key is sk-", "ant-api03-EXAMPLEKEY0EXAMPLEKEY0EXAMPLEKEY0EXAMPLE"),
+            join("use gh", "p_EXAMPLE0EXAMPLE0EXAMPLE0EXAMPLE0EXAMP to clone"),
             join("AWS: AK", "IAIOSFODNN7EXAMPLE"),
-            join("STRIPE_KEY=sk_l", "ive_51HabcdefghijklmnopQRSTUV"),
+            join("STRIPE_KEY=sk_l", "ive_EXAMPLE0EXAMPLE0EXAMPLE0"),
             "password = hunter2hunter2".to_owned(),
             "db: postgres://admin:s3cret@db.internal:5432/app".to_owned(),
             "token is 3f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a".to_owned(),

@@ -41,7 +41,9 @@ git config --global credential.helper store
 ## Creating a repository by pushing
 
 Pushing to a repository that does not exist, in a workspace you belong to,
-creates it as a public repository.
+creates it as a private repository, so nothing pushed by mistake is
+published. To make it public, see
+[change who can see a repository](/guides/managing-repositories/#change-who-can-see-a-repository).
 
 ```sh
 git push https://g1t.sh/<workspace>/new-repo.git main
@@ -119,8 +121,39 @@ update the pull request's head commit on its page.
 
 ## Limits
 
-Repositories are stored in Cloudflare Artifacts, which limits a repository to
-1 GB and a single file to 32 MB. A single push is limited to 100 MB.
+### Size limits
+
+Repositories are stored in Cloudflare Artifacts. g1t checks its limits
+before a push is stored, and declines a push that would cross one. git
+prints the reason beside each branch (`! [remote rejected] main (…)`), and
+what to do as `remote:` lines. Nothing in a declined push is stored.
+
+| Limit | Size | What happens past it |
+| --- | --- | --- |
+| A file | 32 MB | The push is declined, naming the file's size. |
+| A repository, with its pull requests' forks | 950 MB, as g1t counts what was pushed (the store holds 1 GB) | The push is declined; once full, pushes are refused with the reason before any data is sent. |
+| A push that push protection can scan before it lands | Most pushes; very large ones are scanned after they land | A very large push goes through and is scanned after it lands; secrets found are open alerts. To have it checked first, push in parts, oldest commits first. |
+| A push | 100 MB | Refused by the network with HTTP `413` before g1t sees it. |
+
+To push a large history in parts:
+
+```sh
+git rev-list --reverse HEAD | awk 'NR % 500 == 0' | xargs -I{} git push origin {}:refs/heads/main
+git push origin main
+```
+
+Each push sends only what the one before did not.
+
+### When the store is busy
+
+If Cloudflare Artifacts is rate limiting g1t or not answering, g1t tries
+reads again for a moment, then answers git with HTTP `429` (rate limited)
+or `503` (unavailable) and a `Retry-After` header saying how many seconds
+to wait. Pushes are never tried again on your behalf: run `git push`
+again. On g1t.sh the page says the git storage is busy instead of failing,
+and [status.g1t.sh](https://status.g1t.sh) shows **Git storage**.
+
+### Git operations
 
 Each clone, fetch and push is a git operation. Every workspace has 50,000
 a month included. Past that, a workspace on the g1t plan pays $0.18 per

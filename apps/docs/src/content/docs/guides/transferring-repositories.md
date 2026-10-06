@@ -43,7 +43,8 @@ curl -X POST https://api.g1t.sh/repos/acme/rocket/transfer \
   -d '{"to": "acme-labs"}'
 ```
 
-The MCP tool is `transfer_repo`, with `repo` and `to`. A token's owner must
+Over MCP, it is the `repository` tool's `transfer` action, with `repo` and
+`to`. A token's owner must
 own both workspaces, as on the site.
 
 ## When a transfer is refused

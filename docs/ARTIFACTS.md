@@ -1,6 +1,6 @@
 # Cloudflare Artifacts: due diligence for g1t at launch scale
 
-Status: research document, 2026-10-06. Read-only review: no code, config or production data was changed.
+Status: research document, 2026-10-06; R1–R5, R9, R10, R13 and R7 groundwork were built the same day (section 9).
 Scope: everything g1t stores in Cloudflare Artifacts (open beta since 2026-10-01; billing from 2026-10-14),
 measured against what Cloudflare documents, and what we must build so that a few thousand workspaces
 can run on it.
@@ -345,3 +345,126 @@ competition entrant (due 2026-10-14) we can also ask the competition organisers.
 - **Before agent volume ramps (about 1,000 pull requests a day):** R2 deletion, R3, R4, R5.
 - **Before a few thousand active workspaces:** R6, R7, R9, R10.
 - Everything else is resilience and exit planning, ideally done while the product is still invite-only.
+
+## 9. What was built (2026-10-06)
+
+Code in `services/repos` unless named; one migration,
+`migrations/0011_artifacts_meters_forks_health.sql` (new columns on `repos`, new tables
+`artifacts_meters`, `operation_mapping`, `store_health`; additive, no backfill).
+
+| # | Status | What |
+| --- | --- | --- |
+| R1 | Built; Cloudflare's answer still needed | Every interaction with the store is metered raw (`meters.rs` → `artifacts_meters`, per day, namespace, repository, workspace and meter, with bytes where known): client git (`git.info_refs`, `git.ls_refs`, `git.fetch`, `git.receive_pack`), g1t's own git (`internal.git.*`: landing, catch-up, mirrors, branch listings, fork retirement), every binding call (`binding.get`, `binding.create_token`, `binding.log`, `binding.read_tree`, …, each retry included), and answers g1t served from its own cache (`cache.*`, never operations). Which meters are operations is data: `operation_mapping` (`cost_operations` for g1t's bill, `billable_operations` for workspaces), read every 5 minutes, changed with `set_operation_mapping` without a deploy. Default: `git.fetch`, `git.receive_pack`, `internal.git.fetch`, `internal.git.receive_pack`, `binding.create`, `binding.fork`, `binding.delete` = 1, everything else 0. `git_operations` (what billing reads) is filled from the meters × `billable_operations`, by the hour. RPCs: `artifacts_usage { from, to, workspace?, by_repo? }` (raw meters and the mapping, for the reconciler), `operation_mapping`, `set_operation_mapping { meter, cost_operations, billable_operations, note? }`. Script: `scripts/ops/artifacts-usage.mjs`. |
+| R13 | Built | Nothing on the request path writes D1 for counting. Meters add up per isolate and are written in one batch from `ctx.wait_until` after every request (and at the end of the cron and queue handlers); a failed write is kept for the next. The free-workspace slow-down decides from counts the isolate read back after its last write plus what it added since (`git_ops::standing`, at most 10 minutes old) and billing's plan answer kept 5 minutes. The 63–98 ms `kept` step's D1 upsert is gone. A workspace whose counts this isolate never read is not slowed: nothing slows anyone on a guess. |
+| R2 | Built; the fork storage test is yours to run | `pull.merged` and `pull.closed` set the fork's `retire_after` (`FORK_RETENTION_DAYS`, default 7); `pull.reopened` clears it, or makes the fork again. The hourly sweep (`23 * * * *`, 25 a run) keeps the fork's head in its repository as `refs/pull/<pull id>/head` (only missing objects travel; an empty pack when merged), records `retired_at` and `retired_head`, then deletes the fork from the store (a failed delete puts the row back). Reads of a retired fork (the pull request's changes, divergence, tree, blob, log, branches) are answered from the repository with the fork's branch mapped to the kept head (`forks.rs` `Viewed`). Anything that writes or uses git on it (git over HTTPS, `git_access`, catch-up, land, `delete_branch`) makes it again first (`revive`: fork, then move its branch to the head) and schedules it to go again. Work never emits `pull.reopened` today; the handler is ready for it. Script: `scripts/ops/fork-storage-test.mjs`. |
+| R3 | Built | Credentials g1t uses itself: TTL 3,600 s, reused for 50 minutes (isolate and KV, key `cred2:<key>:<scope>:internal`). `git_access` hands out its own: TTL 300 s, reused 180 s (`…:handout`); `refs_open` still uses 300 s. Every internal path (land, catch-up, mirrors, branch listing, commits, deleting a branch) now reuses kept credentials instead of minting each time. The remote is worked out as `https://<account>.artifacts.cloudflare.net/git/<namespace>/<name>.git` (the documented format, `api/git-protocol`), learned per namespace from the first `info()` an isolate makes, which runs alongside `createToken` and so costs no time; after that a mint is `get` and `createToken`. Optional `ARTIFACTS_REMOTE_BASE` skips even the first `info()`. |
+| R4 | Built | Pushes are read as they arrive (`request.stream()`) and walked by `pack_limits::PackSizer` (each object inflated into a 32 KiB window and thrown away): an object over 32 MB (a delta measured by the object it makes), or a push taking the repository and its forks (`stored_bytes`) past `REPO_STORAGE_LIMIT_BYTES` (950 MB), is declined with `ng` lines and `remote:` text; a repository already at the limit is refused at the push's `info/refs` in plain text. Up to 24 MiB is kept, scanned and sent on as one copy, not three. Past 24 MiB push protection cannot read the push, so it is declined (`LARGE_PUSHES=refuse`, failing closed) with a command to push in parts, the 100 MB network limit named; `LARGE_PUSHES=unscanned` streams it to the store instead, still size-checked (a violation ends the stream before the pack's checksum, so the store keeps nothing). A pack too large for the scanner to inflate (48 MB inflated) is declined the same way instead of let through. Landing streams: upload-pack's side-band answer is taken apart chunk by chunk (`pack_limits::Sideband`) straight into the receive-pack body. |
+| R5 | Built | `resilience.rs` sorts errors into rate limited, transient (`INTERNAL_ERROR`, `UPSTREAM_UNAVAILABLE`, `*_IN_PROGRESS`, no code, HTTP 5xx) and permanent. Binding reads, `get`, `info`, `createToken`, `create` and `delete` try up to 3 times with exponential backoff and jitter (80 ms base, 400 ms for rate limits, 2 s cap); `fork` and every receive-pack never retry. Git reads (`info/refs`, upload-pack) retry on 429 and 5xx. Per isolate, each namespace has a breaker that opens after 5 transient failures in a row, for 10 s, then lets one probe through. Busy answers reach git as 429 (rate limited) or 503, with `Retry-After: 5`; the site's read RPCs (`tree`, `blob`, `log`, `branches`, `blame`, `compare`) answer an `Outcome` failure saying the git storage is busy; other RPCs answer 503 with the same words. Health is counted by the minute (`store_health`) and served by the `store_health { minutes }` RPC; status.g1t.sh lists **Git storage** through a new `REPOS` service binding (down: 25% or more of at least 5 calls failed, or the breaker refused calls; degraded: rate limited, or a mean call over 1.5 s). |
+| R9 | Built | `log(branch)`, `branches()` and `read_file(ref, path)` are kept in the colo cache under the repository's `refs_version` (5 minutes at most, and only while `refs_cache::usable`), and by commit hash for good; a log by branch also fills the by-hash entry; `readCommit` (parents) is kept for good. Read RPCs open repositories through `read_git`, which sets the version. |
+| R10 | Built in repos; work unchanged | `divergence` works out the target's side once per target head per isolate (`coalesce.rs`: the head under the refs version, then the history by hash, kept 60 s), and what the target changed between two trees once per pair (10 minutes). `readCommit` and logs by hash come from the cache. Work's fan-out (`after_push`, up to 100 pull requests) is unchanged: its 100 `divergence` calls now cost one walk of the target instead of 100. |
+| R7 | Groundwork | `shards.rs`: bindings named in `ARTIFACTS_NAMESPACES` (JSON, binding → namespace; `ARTIFACTS` → `g1t` always there), a repository's namespace kept in its `store` column as `<namespace>/<key>` (no prefix means the `ARTIFACTS` namespace, so every existing key reads the same), new repositories placed by `ARTIFACTS_NEW_REPOS` (comma-separated, spread by an FNV hash of the repository id; names not bound are skipped), forks always in their repository's namespace, `ARTIFACTS_EU_NAMESPACE` reserved for EU residency (no workspace setting yet). Works with only `ARTIFACTS` bound, as today. |
+| R8 | Not touched | Sandbox clone depth belongs to the runner work (`crates/runner`). |
+
+### R1: reading `scripts/ops/artifacts-usage.mjs`
+
+```sh
+export CLOUDFLARE_API_TOKEN=<token with Account Analytics: Read (and D1: Read, or set CLOUDFLARE_D1_TOKEN)>
+node scripts/ops/artifacts-usage.mjs            # last 31 days, a table
+node scripts/ops/artifacts-usage.mjs --days 7 --json > usage.json
+ARTIFACTS_NAMESPACE=g1t node scripts/ops/artifacts-usage.mjs
+```
+
+It prints, per day, Cloudflare's `pull`, `push`, `create`, `fork` and `delete` events and its
+errors beside g1t's fetch and push meters and `git_operations`, then, for each Cloudflare event,
+the ratio Cloudflare ÷ g1t for several combinations of meters. Read it like this:
+
+- `pull` ≈ `git.fetch + internal.git.fetch` (ratio 1.00): Cloudflare counts one pull per
+  upload-pack fetch, as assumed. Keep the default mapping.
+- `pull` ≈ a combination with `git.ls_refs` or `git.info_refs`: listing refs counts too. Set
+  `cost_operations` for those meters to 1 (`set_operation_mapping`), and decide whether
+  `billable_operations` follows (cost pass-through says yes).
+- Every ratio well under 1: Cloudflare counts per clone or fetch session, not per request.
+  Ratios over 1: something reaches Artifacts that g1t does not meter, such as sandboxes pushing
+  directly with handed-out credentials.
+- Only days after the meters were deployed compare; before that only `git_operations` exists.
+- Binding calls (`binding.*`) never appear among Cloudflare's event types; if Cloudflare says
+  they are billed, map them in `operation_mapping`.
+
+### R2: running and reading `scripts/ops/fork-storage-test.mjs`
+
+```sh
+export CLOUDFLARE_API_TOKEN=<token: Artifacts edit, Account Analytics read>
+node scripts/ops/fork-storage-test.mjs schema        # which Artifacts analytics datasets exist
+node scripts/ops/fork-storage-test.mjs run --keep    # namespace g1t-storage-test: 100 MB repository, 5 forks
+node scripts/ops/fork-storage-test.mjs measure       # again tomorrow (storage is billed as a daily peak)
+node scripts/ops/fork-storage-test.mjs cleanup       # delete the 6 repositories
+```
+
+It works only in its own namespace, through Cloudflare's REST API, never through g1t. Read:
+
+- Fork timing and response: a fork that returns in well under a second, with `objects` near the
+  source's count, is metadata (sharing). Seconds per fork, growing with size, suggests copying.
+- Storage figures (any dataset `schema` lists besides `artifactsEventsAdaptiveGroups`): about
+  100 MB after the forks means sharing; about 600 MB means each fork copied. The documentation
+  lists no storage dataset today, so this may print nothing: then the next day's usage in the
+  dashboard (Billing → Artifacts storage) is the measure, and the question stays with Cloudflare (Q2).
+- `events`: `storageLimitReached` or other errors during the test.
+
+Either way R2 retires forks; the answer decides `FORK_RETENTION_DAYS` (shared: a week is fine;
+copied: shorten it to 1 or 2 days and ask Cloudflare to raise the 1 TB account limit).
+
+### R7: making more namespaces (yours to run, when needed)
+
+```sh
+# A US shard, unrestricted like today's g1t, and an EU one.
+curl -X POST "https://api.cloudflare.com/client/v4/accounts/1e6f2cffa3f445920836e8ebe446bb58/artifacts/namespaces" \
+  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+  --data '{"namespace":"g1t-us-1"}'
+curl -X POST "https://api.cloudflare.com/client/v4/accounts/1e6f2cffa3f445920836e8ebe446bb58/artifacts/namespaces" \
+  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+  --data '{"namespace":"g1t-eu","jurisdiction":"eu"}'
+```
+
+Then in `services/repos/wrangler.jsonc`:
+
+```jsonc
+"artifacts": [
+  { "binding": "ARTIFACTS", "namespace": "g1t" },
+  { "binding": "ARTIFACTS_1", "namespace": "g1t-us-1" },
+  { "binding": "ARTIFACTS_EU", "namespace": "g1t-eu" }
+],
+"vars": {
+  "ARTIFACTS_NAMESPACES": "{\"ARTIFACTS\":\"g1t\",\"ARTIFACTS_1\":\"g1t-us-1\",\"ARTIFACTS_EU\":\"g1t-eu\"}",
+  "ARTIFACTS_NEW_REPOS": "g1t,g1t-us-1",   // new repositories spread over both
+  "ARTIFACTS_EU_NAMESPACE": "g1t-eu"       // used once a workspace can choose the EU
+}
+```
+
+Existing repositories stay where they are (`store` without a prefix). Deploy the binding before
+naming its namespace in `ARTIFACTS_NEW_REPOS`; a name that is not bound is skipped, never used.
+Moving an existing repository between namespaces is not built (a clone and push, then a `store`
+update).
+
+### Deploy order and what to watch
+
+1. Migration 0011 (the deploy tool applies migrations first). `forks_of` reads `retired_at`, so
+   the new code must not run before it.
+2. `g1t-repos` (new vars in `wrangler.jsonc`; no new bindings).
+3. `g1t-status` (a new `REPOS` service binding; **Git storage** appears once deployed).
+4. After a day: `scripts/ops/artifacts-usage.mjs`; then the fork test.
+
+Expected: `Server-Timing` `kept` on POSTs drops from 63–98 ms to the KV and Cache lookups only (a
+few ms); `mint` happens about once per repository and scope every 50 minutes per isolate instead
+of every 3 minutes, and costs `get` and `createToken` (about 0.5 s instead of 0.8 s) once an
+isolate knows its namespace's prefix; branch pages and repeated tree and file views skip
+Artifacts while the refs version holds; a burst of 100 mergeability checks walks the target once.
+
+Risks: what Cloudflare bills is still theirs to confirm (the mapping makes changing it cheap).
+Counts held by an isolate that is evicted before its `wait_until` write are lost (seconds of
+traffic). Pushes over 24 MiB now fail closed: bringing a large existing repository needs the
+push-in-parts command (in `guides/git.md`). Moving a revived fork's branch back to its old head
+is a non-fast-forward update, which depends on Artifacts accepting it as git does by default; if
+it refuses, the fork of a closed pull request cannot be made again and the error says so.
+`refs/pull/*` refs appear in full ref advertisements (mirrors, `--mirror` clones). Operations on
+pull request forks are metered under the workspace `pulls`, so they are counted for g1t's bill
+but not charged to a workspace (except the fork itself, metered on its repository).

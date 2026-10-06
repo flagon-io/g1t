@@ -414,7 +414,7 @@ export type GivenFigures = { source: "internal" | "trial" | "oss_pool" | "goodwi
 /** One internal workspace's use this month, and why it is not charged. */
 export type InternalUse = { workspace: string; reason: string; costMicros: number; entries: number };
 
-export type SignalKind = "at_limit" | "near_ceiling" | "declined" | "growing" | "established" | "first_payment" | "high_spend";
+export type SignalKind = "at_limit" | "near_ceiling" | "declined" | "growing" | "established" | "first_payment" | "high_spend" | "cost_over_revenue";
 
 /** Why a workspace is worth reaching out to. */
 export type Signal = {
@@ -546,6 +546,16 @@ export interface BillingAdminApi {
   velocity(): Promise<Velocity[]>;
   /** Money that reached g1t outside the card pages, such as a bank transfer: entered as a payment. */
   recordPayment(workspace: string, amountMicros: number, reference: string, note: string, by: string): Promise<Result<LedgerEntry>>;
+  /** Costs & margin: Cloudflare's bill against what g1t charged, over the last `days` (7 to 90, 30 by default). */
+  costs(days?: number): Promise<CostsReport>;
+  /** The open margin alerts, for the banner on every page. */
+  costAlerts(): Promise<MarginAlert[]>;
+  /** Approve or reject a price proposal; a rejection needs a note. An approved rise waits out the notice period. */
+  decideProposal(id: string, decision: "approve" | "reject", note: string, by: string): Promise<Result<PriceProposal>>;
+  setCostSettings(settings: CostSettings, by: string): Promise<Result<CostSettings>>;
+  setCostMapping(mapping: CostMappingInput, by: string): Promise<Result<CostMapping>>;
+  /** Reads Cloudflare's bill and reconciles now, as the daily run does. */
+  runCosts(by: string): Promise<Result<CostsRun>>;
 }
 
 /** How much a workspace has earned g1t's trust with money. */
@@ -624,6 +634,8 @@ export type PriceChange = {
   oldMarkupPercent?: number;
   reason: string;
   createdAt: string;
+  /** When a change still to come takes effect: a rise is announced before it is charged. */
+  effectiveAt?: string;
 };
 
 export type PriceBook = {
@@ -953,3 +965,154 @@ export type Usage = {
   /** Credit bought in the period. */
   addedMicros: number;
 };
+
+/** One of g1t's products (a "bucket") on one day. Money in micros. */
+export type CostDay = { day: string; bucket: string; cfCostMicros: number; ownCostMicros: number; valueMicros: number; cashMicros: number };
+
+/** One product over the range: what customers were charged at price against what it cost. */
+export type ProductMargin = {
+  bucket: string;
+  title: string;
+  /** Cloudflare's bill, or g1t's own figure where Cloudflare does not bill it (`costSource`). */
+  costMicros: number;
+  cfCostMicros: number;
+  ownCostMicros: number;
+  valueMicros: number;
+  marginMicros: number;
+  marginPercent: number | null;
+  costSource: "cloudflare" | "ledger" | string;
+  /** Running g1t, paid for by the plan. */
+  overhead: boolean;
+};
+
+/** All of g1t: money in (usage and the plan) against every cost. */
+export type OverallMargin = { usageMicros: number; plansMicros: number; costMicros: number; marginMicros: number; marginPercent: number | null };
+
+/** A count, cost or leak that does not add up. */
+export type CostDrift = {
+  bucket: string;
+  title: string;
+  kind: "count" | "cost" | "leak" | string;
+  ours: number;
+  cloudflare: number;
+  deltaPercent: number | null;
+  detail: string;
+  foundAt: string;
+};
+
+export type MarginAlert = {
+  id: string;
+  kind: "margin" | "overall" | "leak" | "drift" | "workspace" | string;
+  /** The product, or the workspace. */
+  subject: string;
+  detail: string;
+  since: string;
+  openedAt: string;
+  emailedAt: string | null;
+};
+
+/** A change to a price, measured from what Cloudflare charged. */
+export type PriceProposal = {
+  id: string;
+  meter: string;
+  title: string;
+  unit: string;
+  currentCostMicros: number;
+  proposedCostMicros: number;
+  changePercent: number;
+  markupPercent: number;
+  reason: string;
+  source: "keeper" | "reconciler" | string;
+  /** Far off the current cost: look before approving. */
+  suspect: boolean;
+  status: "open" | "applied" | "approved" | "rejected" | "superseded" | string;
+  createdAt: string;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  note: string | null;
+  effectiveAt: string | null;
+};
+
+/** One version of one meter's price; never changed once written. */
+export type PriceVersion = {
+  id: string;
+  meter: string;
+  version: number;
+  costMicros: number;
+  markupPercent: number;
+  priceMicros: number;
+  effectiveAt: string;
+  reason: string;
+  createdBy: string;
+  appliedAt: string | null;
+};
+
+export type WorkspaceCost = { workspace: string; costMicros: number; revenueMicros: number; internal: boolean };
+
+export type CostLineSummary = {
+  product: string;
+  meter: string;
+  rawName: string;
+  unit: string;
+  source: string;
+  quantity: number;
+  costMicros: number;
+  /** Absent when no mapping claims it. */
+  bucket: string | null;
+};
+
+export type CostMapping = {
+  product: string;
+  meter: string;
+  bucket: string;
+  priceMeter: string | null;
+  ownMeter: string | null;
+  scaleToOwn: boolean;
+  driftPercent: number;
+  note: string;
+  updatedAt: string;
+  updatedBy: string;
+};
+
+export type CostMappingInput = {
+  product: string;
+  meter: string;
+  bucket?: string;
+  priceMeter?: string | null;
+  ownMeter?: string | null;
+  scaleToOwn?: boolean;
+  driftPercent?: number | null;
+  note?: string;
+  remove?: boolean;
+};
+
+export type CostSettings = {
+  autoApply: boolean;
+  autoApplyPercent: number;
+  noticeDays: number;
+  marginFloorPercent: number;
+  alertDays: number;
+  minDailyCostMicros: number;
+  anomalyFactor: number;
+  anomalyFloorMicros: number;
+};
+
+export type CostsReport = {
+  configured: boolean;
+  fetchedAt: string | null;
+  since: string;
+  until: string;
+  days: CostDay[];
+  products: ProductMargin[];
+  overall: OverallMargin;
+  drift: CostDrift[];
+  alerts: MarginAlert[];
+  proposals: PriceProposal[];
+  versions: PriceVersion[];
+  topWorkspaces: WorkspaceCost[];
+  lines: CostLineSummary[];
+  mappings: CostMapping[];
+  settings: CostSettings;
+};
+
+export type CostsRun = { lines: number; days: number; proposals: number; alerts: number; problems: string[] };

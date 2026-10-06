@@ -8,10 +8,11 @@ export type User = {
   username: string;
   /**
    * `workspace` when a workspace is acting through one of its own access
-   * tokens: `id` is then the workspace's and `username` its slug. Absent
-   * means `user`.
+   * tokens: `id` is then the workspace's and `username` its slug. `system`
+   * is g1t itself doing platform work, such as a security update
+   * (`username` `g1t`). Absent means `user`.
    */
-  kind?: "user" | "workspace" | "agent";
+  kind?: "user" | "workspace" | "agent" | "system";
   /**
    * Whether the account's email address is confirmed. Only set on users
    * resolved from credentials; unverified accounts cannot change anything.

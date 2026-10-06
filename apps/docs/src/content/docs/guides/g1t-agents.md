@@ -360,7 +360,7 @@ the issue close as superseded. See
 
 ## Other things g1t agents do
 
-- **Review.** On a pull request that is ready, **Review by a g1t agent**
+- **Review.** On a pull request that is ready, **Request review from g1t agent**
   has an agent read the change and post comments on lines, a summary and a
   verdict.
 - **Catch up.** When `main` has moved under a pull request, **Catch up with
@@ -368,8 +368,14 @@ the issue close as superseded. See
   itself in seconds, with no agent; otherwise an agent merges it in a
   sandbox and resolves any conflict
   ([catching up](/guides/pull-requests/#catching-up)).
+- **Finish a security update.** g1t raises a vulnerable dependency to its
+  fixed version itself, with no agent. When raising the version is not
+  enough (the bump fails, or the pull request's required checks fail
+  because code must change), g1t opens an issue and puts g1t-agent on it.
+  That session shows as **started by g1t** on the project's **Agents** page.
+  See [security updates](/guides/security/#security-updates).
 
-Both run in sandboxes of their own.
+Each runs in a sandbox of its own.
 
 ## Mentioning g1t-agent
 
@@ -382,7 +388,7 @@ you type `@`.
 | An issue | A request: `@g1t-agent take this`, `@g1t-agent fix the empty case` | The issue is assigned to the agent, which opens a pull request, as if you had chosen **Assign**. |
 | An issue | A question: `@g1t-agent why does search time out?` | The agent reads the code on the default branch and answers in the thread. It changes nothing. |
 | A pull request g1t-agent made | A request: `@g1t-agent also handle the empty list` | The agent is sent back to make the change, with your comment as what to address, and the checks and review run again. If it is still working, it gets your comment as a message at its next step. |
-| Any pull request | `@g1t-agent review` | A review by a g1t agent, as with **Review by a g1t agent**. |
+| Any pull request | `@g1t-agent review` | A review by a g1t agent, as with **Request review from g1t agent**. |
 | Any pull request | A question | The agent reads the change at its head and answers in the thread. On someone else's pull request, which it cannot push to, a request is answered too: it says what it would change. |
 
 A request is a comment whose words after the mention start with what to
@@ -447,27 +453,32 @@ commits are authored by `g1t agent`.
 
 ## How model traffic is routed
 
-g1t agents send model requests through
-[Cloudflare AI Gateway](https://developers.cloudflare.com/ai-gateway/). The
-gateway is where an operator sees each request, caps spend, caches, and
-holds the provider's key so that no sandbox does. Each request is tagged
-with the kind of work, the repository and the pull request, so spend can be
-read per pull request.
+g1t agents send model requests to g1t's model proxy at
+`https://models.g1t.sh`, with a token for their run in place of a key; see
+[your keys never reach a sandbox](/guides/models/#your-keys-never-reach-a-sandbox).
+Requests for g1t's hosted models go on through
+[Cloudflare AI Gateway](https://developers.cloudflare.com/ai-gateway/),
+which holds g1t's key. Each of those requests is tagged with the kind of
+work, the repository and the pull request, so spend can be read per pull
+request. Requests for a workspace's own provider go to that provider.
 
-If you run your own copy of g1t, these settings on the runner control it:
+If you run your own copy of g1t, these settings control it:
 
-| Setting | What it does |
-| --- | --- |
-| `AGENT_ROUTES` | The model for each kind of work: `implement`, `review`, `update` and `plan`. |
-| `AI_GATEWAY_ID` | The gateway to route through. Empty sends requests to the provider directly. |
-| `AI_GATEWAY_TOKEN` | Secret. Authenticates to the gateway. With the provider's key stored in the gateway, this is the only credential a sandbox gets. |
-| `ANTHROPIC_API_KEY` | Secret. The provider's key, if the gateway does not hold it. |
+| Setting | Where | What it does |
+| --- | --- | --- |
+| `AGENT_ROUTES` | Runner | The model for each kind of work: `implement`, `review`, `update` and `plan`. |
+| `MODELS_URL` | Runner | Where sandboxes send model requests: the model proxy. |
+| `AI_GATEWAY_ID` | Model proxy | The gateway hosted requests go through. Empty sends them to the provider directly. |
+| `AI_GATEWAY_TOKEN` | Model proxy | Secret. Authenticates to the gateway. |
+| `ANTHROPIC_API_KEY` | Model proxy | Secret. The provider's key, if the gateway does not hold it. |
 
 ## What it costs
 
 A workspace pays for the g1t agents that work on its repositories, after
-they run: each run is charged what AI Gateway priced its model requests
-at, plus 20%, and its sandbox by the second, at cost plus 20%. See
+they run: each run is charged its sandbox by the second, at cost plus 20%,
+and, on g1t's hosted models, what AI Gateway priced its model requests at,
+plus 20%. A workspace's [own provider](/guides/models/) bills it for the
+model directly. See
 [Usage and billing](/guides/usage-and-billing/) for how prices are set and
 the limits on usage not yet paid for.
 The workspace's **Usage** page shows what its agents have cost, by day,

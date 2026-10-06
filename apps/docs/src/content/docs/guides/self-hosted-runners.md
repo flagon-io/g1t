@@ -9,6 +9,12 @@ Windows box with a GPU, or a pod in your cluster. You install `g1t-runner`
 on it, register it once, and it picks up jobs that ask for it with
 `runs-on: self-hosted`.
 
+**Not available yet:** the first release of `g1t-runner` has not been
+published, so the downloads below and the `flagonio/g1t-runner` image do
+not exist yet. g1t's side (**Settings → Runners**, registration tokens,
+groups and the API) is live. This page says how the runner works once it
+is released.
+
 - **Time on your runners is $0**, on every plan, including the free one.
   It shows on [usage](/guides/usage-and-billing/) as self-hosted minutes.
 - **It only connects out.** The runner polls `api.g1t.sh` over HTTPS for
@@ -146,8 +152,8 @@ and `runner.arch` are the machine's, and `RUNNER_ENVIRONMENT` is
   PowerShell on Windows; `shell: pwsh`, `powershell`, `cmd`, `bash` and
   `python` work where installed.
 
-A self-hosted job may run for up to 24 hours (`timeout-minutes`); g1t's own
-stop at 60 minutes.
+A self-hosted job stops at 60 minutes unless its `timeout-minutes` says
+more, up to 24 hours (1440). Jobs on g1t's own machines stop at 60 minutes.
 
 ## Groups
 

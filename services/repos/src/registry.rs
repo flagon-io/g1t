@@ -41,6 +41,12 @@ pub(crate) struct RepoRow {
     refs_version: Option<f64>,
     #[serde(default)]
     refs_open_until: Option<f64>,
+    /// A pull request working copy whose git data was removed, and the
+    /// head it had (forks.rs). Absent before the columns existed.
+    #[serde(default)]
+    retired_at: Option<String>,
+    #[serde(default)]
+    retired_head: Option<String>,
 }
 
 /// Where a repository's refs stand, as its row last said: `version` goes up
@@ -93,6 +99,32 @@ fn note_refs(id: &str, version: Option<f64>, open_until: Option<f64>) {
         };
         REFS.with(|refs| refs.borrow_mut().note(id, state));
     }
+}
+
+thread_local! {
+    /// Working copies whose git data was removed, by id, with the head
+    /// each had (forks.rs). Filled whenever a row is read.
+    static RETIRED: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
+
+/// The head a removed working copy had, if the repository with this id is one.
+pub fn retired(id: &str) -> Option<String> {
+    RETIRED.with(|retired| retired.borrow().get(id).cloned())
+}
+
+/// Records whether the repository with this id is a removed working copy.
+pub fn note_retired(id: &str, head: Option<&str>) {
+    RETIRED.with(|retired| {
+        let mut retired = retired.borrow_mut();
+        match head {
+            Some(head) => {
+                retired.insert(id.to_owned(), head.to_owned());
+            }
+            None => {
+                retired.remove(id);
+            }
+        }
+    });
 }
 
 thread_local! {
@@ -177,15 +209,19 @@ impl From<RepoRow> for Repo {
             remember_store(&repo, store);
         }
         note_refs(&repo.id, row.refs_version, row.refs_open_until);
+        note_retired(&repo.id, row.retired_at.as_ref().and(row.retired_head.as_deref()));
         repo
     }
 }
 
 /// The key a repo is stored under in the git store.
 pub fn store_key(repo: &Repo) -> String {
-    MOVED
+    let key = MOVED
         .with(|moved| moved.borrow().get(&repo.id).cloned())
-        .unwrap_or_else(|| path_key(repo))
+        .unwrap_or_else(|| path_key(repo));
+    // Its interactions with the store are metered for its workspace.
+    crate::meters::note_owner(&key, &repo.namespace);
+    key
 }
 
 /// The viewer's role on `repo` (see `g1t_contracts::access`): ownership of
@@ -553,19 +589,27 @@ impl Registry {
     /// remembers it: the one its path gives, unless a repository already
     /// holds that (one made in a workspace that has since been renamed,
     /// whose old name this workspace now has), when its id.
-    pub async fn claim_store_key(&self, repo: &Repo) -> Result<String> {
+    ///
+    /// `namespace` is the git store namespace it goes in (shards.rs), or
+    /// `None` for the default, `default`. A name is taken in any of them.
+    pub async fn claim_store_key(&self, repo: &Repo, namespace: Option<&str>, default: &str) -> Result<String> {
         let wanted = path_key(repo);
         let held = self
             .db
-            .prepare("SELECT 1 AS held FROM repos WHERE store = ?")
+            .prepare(
+                "SELECT 1 AS held FROM repos
+                 WHERE store = ?1 OR (instr(store, '/') > 0 AND substr(store, instr(store, '/') + 1) = ?1)",
+            )
             .bind(&[wanted.as_str().into()])?
             .first::<serde_json::Value>(None)
             .await?
             .is_some();
-        let key = if held { repo.id.clone() } else { wanted };
+        let name = if held { repo.id.clone() } else { wanted };
+        let key = crate::shards::compose(namespace, &name, default);
         remember_store(repo, &key);
         Ok(key)
     }
+
 
     /// Moves a renamed workspace's repositories to its current slug, from
     /// any of `stale`. A repository whose name the current slug already has
@@ -734,11 +778,21 @@ mod tests {
             deleted_at: None,
             refs_version: version,
             refs_open_until: None,
+            retired_at: None,
+            retired_head: None,
         };
         let old = Repo::from(row(None));
         assert_eq!(refs_state(&old.id), None);
         let new = Repo::from(row(Some(7.0)));
         assert_eq!(refs_state(&new.id), Some(RefsState { version: 7, open_until: 0 }));
+    }
+
+    #[test]
+    fn a_removed_working_copy_is_known_by_its_row() {
+        note_retired("rep_fork", Some("abc"));
+        assert_eq!(retired("rep_fork").as_deref(), Some("abc"));
+        note_retired("rep_fork", None);
+        assert_eq!(retired("rep_fork"), None);
     }
 
     #[test]

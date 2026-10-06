@@ -187,6 +187,12 @@ export interface IntegrationsApi {
   routes(workspace: string, viewer: Viewer): Promise<Result<ModelRoute[]>>;
   setRoutes(actor: User, workspace: string, routes: ModelRoute[]): Promise<Result<ModelRoute[]>>;
   modelUpstream(token: string): Promise<ModelUpstream | null>;
+  /**
+   * Ends the model sessions whose tokens hash to these (SHA-256, lowercase
+   * hex) when their run finishes, so the tokens stop working then. Returns
+   * how many were open.
+   */
+  closeModelSessions(tokenHashes: string[]): Promise<number>;
 }
 
 /** What each provider is for, as people choose between them. */

@@ -16,12 +16,14 @@
 //!   against the seconds containers ran, Workers for Platforms per request
 //!   and per CPU millisecond. When a measured cost moves, the price book
 //!   moves with it, since each price is its cost plus a set markup, and
-//!   the change is recorded where anyone can see it. A measurement far off
-//!   the current cost is not adopted, only logged, so one odd day of data
-//!   cannot reprice everything.
+//!   the change is recorded where anyone can see it. A measurement goes
+//!   through `pricing` as a proposal: a small move is applied on its own (a
+//!   rise only after customers have had notice), a large or suspect one
+//!   waits for staff in sudo, so one odd day of data cannot reprice
+//!   everything.
 
 use g1t_contracts::billing::{EntryKind, MICROS_PER_DOLLAR, Price, PriceBook, PriceChange};
-use g1t_contracts::new_id;
+
 use g1t_contracts::time::rfc3339;
 use g1t_kit::now_ms;
 use serde::Deserialize;
@@ -39,16 +41,16 @@ const SETTLE_AFTER_MS: u64 = 5 * 60 * 1000;
 const GIVE_UP_AFTER_MS: u64 = 3 * 60 * 60 * 1000;
 /// A run never finished after this died without reporting.
 const ABANDONED_AFTER_MS: u64 = 3 * 60 * 60 * 1000;
-/// Smaller moves are noise.
-const MIN_CHANGE: f64 = 0.02;
-/// A measurement outside this factor of the current cost is suspect.
-const MAX_FACTOR: f64 = 4.0;
 
 /// Where the keeper reads what g1t pays.
 pub(crate) struct Keeper {
     /// `CLOUDFLARE_USAGE_TOKEN`: Billing, Account Analytics and AI Gateway,
     /// read only.
     token: Option<String>,
+    /// What reads the bill for `costs`: `CLOUDFLARE_BILLING_TOKEN`
+    /// (Account: Billing Read and Account Analytics Read), or the usage
+    /// token, which has both.
+    billing_token: Option<String>,
     account: String,
     gateway: String,
 }
@@ -56,8 +58,11 @@ pub(crate) struct Keeper {
 impl Keeper {
     pub(crate) fn from_env(env: &Env) -> Self {
         let var = |name: &str| env.var(name).map(|v| v.to_string()).unwrap_or_default();
+        let secret = |name: &str| env.secret(name).ok().map(|v| v.to_string()).filter(|v| !v.is_empty());
+        let token = secret("CLOUDFLARE_USAGE_TOKEN");
         Keeper {
-            token: env.secret("CLOUDFLARE_USAGE_TOKEN").ok().map(|v| v.to_string()).filter(|v| !v.is_empty()),
+            billing_token: secret("CLOUDFLARE_BILLING_TOKEN").or_else(|| token.clone()),
+            token,
             account: var("CLOUDFLARE_ACCOUNT_ID"),
             gateway: var("AI_GATEWAY_ID"),
         }
@@ -67,21 +72,32 @@ impl Keeper {
         let Some(token) = &self.token else {
             return Err(worker::Error::RustError("no CLOUDFLARE_USAGE_TOKEN".into()));
         };
-        let headers = Headers::new();
-        headers.set("authorization", &format!("Bearer {token}"))?;
-        headers.set("content-type", "application/json")?;
-        let mut init = RequestInit::new();
-        init.with_method(method).with_headers(headers);
-        if let Some(body) = body {
-            init.with_body(Some(body.to_string().into()));
-        }
-        let mut response = Fetch::Request(Request::new_with_init(url, &init)?).send().await?;
-        let status = response.status_code();
-        let value: Value = response.json().await.unwrap_or(Value::Null);
-        if status != 200 {
-            return Err(worker::Error::RustError(format!("Cloudflare answered {status}: {value}")));
-        }
-        Ok(value)
+        send_with(token, method, url, body).await
+    }
+
+    /// Whether Cloudflare's bill can be read.
+    pub(crate) fn can_read_bill(&self) -> bool {
+        self.billing_token.is_some() && !self.account.is_empty()
+    }
+
+    fn billing_token(&self) -> Result<&str> {
+        self.billing_token
+            .as_deref()
+            .ok_or_else(|| worker::Error::RustError("no CLOUDFLARE_BILLING_TOKEN or CLOUDFLARE_USAGE_TOKEN".into()))
+    }
+
+    /// Billable usage from `from` to `to` (dates), as Cloudflare answers it.
+    pub(crate) async fn billable_usage_body(&self, from: &str, to: &str) -> Result<Value> {
+        send_with(self.billing_token()?, Method::Get, &self.api(&format!("/billable-usage?from={from}&to={to}")), None).await
+    }
+
+    /// A GraphQL Analytics query, as Cloudflare answers it, errors and all.
+    pub(crate) async fn graphql(&self, body: Value) -> Result<Value> {
+        send_with(self.billing_token()?, Method::Post, "https://api.cloudflare.com/client/v4/graphql", Some(body)).await
+    }
+
+    pub(crate) fn account(&self) -> &str {
+        &self.account
     }
 
     fn api(&self, path: &str) -> String {
@@ -153,6 +169,26 @@ impl Keeper {
             memory_byte_seconds: total.memory_byte_seconds + g["sum"]["allocatedMemory"].as_f64().unwrap_or(0.0),
         }))
     }
+}
+
+/// A request to Cloudflare's API with a bearer token; anything but 200 is
+/// an error with what Cloudflare said.
+async fn send_with(token: &str, method: Method, url: &str, body: Option<Value>) -> Result<Value> {
+    let headers = Headers::new();
+    headers.set("authorization", &format!("Bearer {token}"))?;
+    headers.set("content-type", "application/json")?;
+    let mut init = RequestInit::new();
+    init.with_method(method).with_headers(headers);
+    if let Some(body) = body {
+        init.with_body(Some(body.to_string().into()));
+    }
+    let mut response = Fetch::Request(Request::new_with_init(url, &init)?).send().await?;
+    let status = response.status_code();
+    let value: Value = response.json().await.unwrap_or(Value::Null);
+    if status != 200 {
+        return Err(worker::Error::RustError(format!("Cloudflare answered {status}: {value}")));
+    }
+    Ok(value)
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -265,18 +301,6 @@ impl UsageRow {
     }
 }
 
-/// What a cost should become from a measurement, or why not.
-pub(crate) fn adopt(current: f64, measured: f64) -> std::result::Result<Option<f64>, String> {
-    if !measured.is_finite() || measured <= 0.0 {
-        return Err("nothing to measure".into());
-    }
-    let ratio = measured / current;
-    if !(1.0 / MAX_FACTOR..=MAX_FACTOR).contains(&ratio) {
-        return Err(format!("measured {measured:.4} against {current:.4}, too far off to adopt"));
-    }
-    Ok(((ratio - 1.0).abs() >= MIN_CHANGE).then_some(measured))
-}
-
 #[derive(Deserialize)]
 struct PriceRow {
     meter: String,
@@ -351,6 +375,12 @@ impl Billing {
             .all()
             .await?
             .results::<ChangeRow>()?;
+        let mut plans = Vec::new();
+        for feature in g1t_contracts::billing::Feature::ALL.iter() {
+            plans.push(self.plan(*feature).await?);
+        }
+        // Changes still to come first, so a rise is seen before it is charged.
+        let coming = self.coming_changes().await?;
         Ok(PriceBook {
             prices: prices
                 .into_iter()
@@ -366,9 +396,9 @@ impl Billing {
                     updated_at: row.updated_at,
                 })
                 .collect(),
-            changes: changes
+            changes: coming
                 .into_iter()
-                .map(|row| PriceChange {
+                .chain(changes.into_iter().map(|row| PriceChange {
                     meter: row.meter,
                     old_cost_micros: row.old_cost_micros,
                     new_cost_micros: row.new_cost_micros,
@@ -376,10 +406,11 @@ impl Billing {
                     old_markup_percent: row.old_markup_percent,
                     reason: row.reason,
                     created_at: row.created_at,
-                })
+                    effective_at: None,
+                }))
                 .collect(),
             model_margin_percent: self.margin_percent,
-            plans: g1t_contracts::billing::Feature::ALL.iter().map(|feature| self.plan(*feature)).collect(),
+            plans,
             free: Some(g1t_contracts::billing::FreeTier {
                 trial_workspace_micros: if self.trials_on { self.plans.trial_workspace_micros } else { 0 },
                 trial_monthly_pool_micros: if self.trials_on { self.plans.trial_monthly_pool_micros } else { 0 },
@@ -657,37 +688,12 @@ impl Billing {
         Ok(())
     }
 
-    /// Moves a meter's cost to a measurement, if it is sound and different.
+    /// Proposes moving a meter's cost to a measurement (see `pricing`):
+    /// applied on its own when small, after notice when a rise; left for
+    /// staff when large or suspect.
     async fn measure(&self, meter: &str, measured: f64, reason: &str) -> Result<()> {
-        let Some((current, _)) = self.price(meter).await? else {
-            return Ok(());
-        };
-        match adopt(current, measured) {
-            Err(why) => worker::console_log!("{meter}: {why}"),
-            Ok(None) => {}
-            Ok(Some(cost)) => {
-                let now = now_ms();
-                self.db
-                    .batch(vec![
-                        self.db
-                            .prepare("UPDATE prices SET cost_micros = ?, source = 'cloudflare', updated_at = ? WHERE meter = ?")
-                            .bind(&[cost.into(), rfc3339(now).into(), meter.into()])?,
-                        self.db
-                            .prepare(
-                                "INSERT INTO price_changes (id, meter, old_cost_micros, new_cost_micros, markup_percent, reason, created_at)
-                                 SELECT ?, meter, ?, ?, markup_percent, ?, ? FROM prices WHERE meter = ?",
-                            )
-                            .bind(&[
-                                new_id("prc", now).into(),
-                                current.into(),
-                                cost.into(),
-                                reason.into(),
-                                rfc3339(now).into(),
-                                meter.into(),
-                            ])?,
-                    ])
-                    .await?;
-            }
+        if let Some(outcome) = self.propose(meter, measured, reason, "keeper").await? {
+            worker::console_log!("{meter}: {outcome}");
         }
         Ok(())
     }
@@ -707,15 +713,6 @@ mod tests {
         assert_eq!(correction(120_000, 100_000, 10_000), -10_000);
         // Paid entirely by a credit or pool: nothing back.
         assert_eq!(correction(120_000, 100_000, 0), 0);
-    }
-
-    #[test]
-    fn small_moves_are_noise_and_wild_ones_are_not_believed() {
-        assert_eq!(adopt(21.0, 21.2), Ok(None));
-        assert_eq!(adopt(21.0, 25.0), Ok(Some(25.0)));
-        assert_eq!(adopt(21.0, 15.0), Ok(Some(15.0)));
-        assert!(adopt(21.0, 200.0).is_err());
-        assert!(adopt(21.0, 0.0).is_err());
     }
 
     #[test]

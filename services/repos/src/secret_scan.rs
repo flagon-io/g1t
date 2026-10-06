@@ -33,8 +33,16 @@ const MAX_PUSH_COMMITS: usize = 300;
 const MAX_FILES_PER_COMMIT: usize = 300;
 /// Bases fetched from the store for a thin pack, at most.
 const MAX_BASES: usize = 500;
-/// Pushes larger than this are let through unscanned.
-const MAX_SCANNED_PUSH: usize = 24 * 1024 * 1024;
+/// The largest push that is read whole and scanned. A larger one is
+/// declined, since it cannot be checked (git_http.rs `LargePushes`).
+pub const MAX_SCANNED_PUSH: usize = 24 * 1024 * 1024;
+/// What marks an error as a push too large to scan.
+const UNSCANNABLE: &str = "push-unscannable:";
+
+/// Whether an error says the push was too large to scan.
+pub fn unscannable(error: &worker::Error) -> bool {
+    error.to_string().contains(UNSCANNABLE)
+}
 const READS_AT_ONCE: usize = 16;
 /// Directories never searched for lockfiles.
 const SKIPPED_DIRECTORIES: [&str; 8] = ["node_modules", "vendor", "target", ".git", "dist", "build", "third_party", ".venv"];
@@ -165,6 +173,7 @@ async fn scan_changes<R: GitRepo>(objects: &Objects<'_, R>, commit: &str, change
                     line: hit.line,
                     commit: commit.to_owned(),
                     preview: hit.preview(),
+                    test_value: hit.test_value().map(str::to_owned),
                 });
             }
         }
@@ -207,20 +216,22 @@ async fn supply_bases<R: GitRepo>(pack: &mut Pack, repo: &R) -> Result<()> {
     Ok(())
 }
 
-/// The secrets the commits in a push add, each secret once. Fails open: a
-/// pack that cannot be read is let through, and said so in the logs.
+/// The secrets the commits in a push add, each secret once. A push too
+/// large to read is an error ([`unscannable`]): it is declined, never let
+/// through unread. A pack that cannot be read for another reason is let
+/// through, and said so in the logs; the store will judge it.
 pub async fn scan_push<R: GitRepo>(repo: &R, body: &[u8]) -> Result<Vec<NewSecret>> {
-    // The request is already in memory; reading a pack this large as well
-    // could run the worker out of it, which would fail the push outright.
     if body.len() > MAX_SCANNED_PUSH {
-        worker::console_error!("a push of {} bytes was not scanned for secrets", body.len());
-        return Ok(Vec::new());
+        return Err(worker::Error::RustError(format!("{UNSCANNABLE} {} bytes", body.len())));
     }
     let Some(start) = pack_start(body) else {
         return Ok(Vec::new());
     };
     let mut pack = match Pack::parse(&body[start..]) {
         Ok(pack) => pack,
+        Err(problem) if problem.contains("too large") => {
+            return Err(worker::Error::RustError(format!("{UNSCANNABLE} {problem}")));
+        }
         Err(problem) => {
             worker::console_error!("push not scanned for secrets: {problem}");
             return Ok(Vec::new());
@@ -326,7 +337,16 @@ impl<S: GitStore> crate::Repos<S> {
                 &exposed_message(&commit, &email, &guard.noreply),
             )?));
         }
-        let found = found?;
+        let found = match found {
+            Err(error) if unscannable(&error) => {
+                let (reason, messages) = crate::git_http::size_refusal(&crate::git_http::SizeViolation::Unscannable {
+                    size: body.len() as u64,
+                    cap: MAX_SCANNED_PUSH,
+                });
+                return Ok(Some(crate::git_http::declined(body, &reason, &messages)?));
+            }
+            found => found?,
+        };
         if found.is_empty() {
             return Ok(None);
         }
@@ -357,6 +377,8 @@ impl<S: GitStore> crate::Repos<S> {
         let blocked: Vec<Blocked> = found
             .iter()
             .filter(|secret| !verdict.allowed.contains(&secret.fingerprint))
+            // A likely test value is recorded, never a reason to refuse.
+            .filter(|secret| secret.test_value.is_none())
             .filter_map(|secret| {
                 let kind = g1t_scan::secrets::SecretKind::parse(&secret.kind)?;
                 let id = verdict.ids.iter().find(|(fingerprint, _)| *fingerprint == secret.fingerprint);
@@ -388,9 +410,21 @@ impl<S: GitStore> crate::Repos<S> {
         };
         let git = self.store.open(&store_key(&repo)).await?;
         let limit = a.limit.clamp(1, 100);
-        let start = a.after.unwrap_or_else(|| repo.default_branch.clone());
+        // A page of a pushed range starts at its newest commit, and the
+        // history of the default branch at its head.
+        let start = a.after.or(a.from).unwrap_or_else(|| repo.default_branch.clone());
         let mut commits = git.log(&start, limit + 1).await?;
-        let next = (commits.len() > limit as usize).then(|| commits.pop().map(|commit| commit.hash)).flatten();
+        let mut next = (commits.len() > limit as usize).then(|| commits.pop().map(|commit| commit.hash)).flatten();
+        // A range ends where the branch was before the push.
+        if let Some(until) = a.until.as_deref()
+            && let Some(at) = commits.iter().position(|commit| commit.hash == until)
+        {
+            commits.truncate(at);
+            next = None;
+        }
+        if a.until.is_some() && next.as_deref() == a.until.as_deref() {
+            next = None;
+        }
         let empty = Pack::default();
         let objects = Objects { pack: &empty, repo: &git, reads: Cell::new(1) };
         let mut page = HistoryPage { next, ..HistoryPage::default() };
@@ -647,6 +681,20 @@ mod tests {
         let found = run(scan_push(&repo, &body)).unwrap();
         assert_eq!(found.len(), 1, "{found:?}");
         assert_eq!((found[0].path.as_str(), found[0].line), ("app.env", 2));
+    }
+
+    #[test]
+    fn a_push_too_large_to_read_is_never_let_through_unread() {
+        let body = vec![0u8; MAX_SCANNED_PUSH + 1];
+        let error = run(scan_push(&FakeRepo::default(), &body)).unwrap_err();
+        assert!(unscannable(&error));
+        let (reason, messages) = crate::git_http::size_refusal(&crate::git_http::SizeViolation::Unscannable {
+            size: body.len() as u64,
+            cap: MAX_SCANNED_PUSH,
+        });
+        assert_eq!(reason, "the push is too large to check for secrets");
+        assert!(messages.iter().any(|line| line.contains("100.0 MB")));
+        assert!(messages.iter().any(|line| line.contains("Push in parts")));
     }
 
     #[test]

@@ -25,8 +25,13 @@
 		}
 	],
 	// Billing has no public address: its price book is read through this.
-	// Nothing else is bound, so every other check goes over the internet.
-	"services": [{ "binding": "BILLING", "service": "g1t-billing" }],
+	// Git storage (Cloudflare Artifacts) has none either: how it answered
+	// lately is read from the repos service (`store_health`). Nothing else
+	// is bound, so every other check goes over the internet.
+	"services": [
+		{ "binding": "BILLING", "service": "g1t-billing" },
+		{ "binding": "REPOS", "service": "g1t-repos" }
+	],
 	// Email to subscribers (confirmations, incident and maintenance
 	// updates) and the staff alert for detected drafts, through Cloudflare
 	// Email Sending, as identity sends its own. Subscriptions also need the

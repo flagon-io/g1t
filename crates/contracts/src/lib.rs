@@ -97,6 +97,30 @@ pub enum PrincipalKind {
     /// as long as its run and can do only what that token's scope lists, in
     /// one repository. Its `username` is `g1t-agent`.
     Agent,
+    /// g1t itself: the platform acting on its own, as when it opens a
+    /// pull request to upgrade a vulnerable dependency or merges from the
+    /// queue. Never resolved from credentials: only services make one,
+    /// with [`User::system`]. Its `username` is `g1t`, which nobody can
+    /// register.
+    System,
+}
+
+/// g1t's own identity, as [`PrincipalKind::System`] work is recorded.
+pub mod system {
+    /// Its id wherever an author or actor id is stored.
+    pub const ID: &str = "g1t";
+    /// Its name, shown as the author of what it does.
+    pub const USERNAME: &str = "g1t";
+    /// The address on the commits it makes, which no mailbox receives.
+    pub const EMAIL: &str = "g1t@users.noreply.g1t.sh";
+    /// Ids that earlier versions stored for g1t's own actions, such as a
+    /// merge its settings made. Read as g1t too.
+    pub const LEGACY_IDS: [&str; 3] = ["g1t_policy", "svc_runner", "g1t_runner"];
+
+    /// Whether `id` is g1t's own.
+    pub fn is_system_id(id: &str) -> bool {
+        id == ID || LEGACY_IDS.contains(&id)
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -135,6 +159,24 @@ pub struct User {
 }
 
 impl User {
+    /// g1t itself, acting in `workspace`: what the platform's own work,
+    /// such as security updates, is done and recorded as.
+    pub fn system(workspace: &str) -> User {
+        User {
+            id: system::ID.to_owned(),
+            username: system::USERNAME.to_owned(),
+            kind: PrincipalKind::System,
+            verified: true,
+            workspaces: vec![Membership::member(workspace.to_lowercase())],
+            ..User::default()
+        }
+    }
+
+    /// Whether this is g1t itself.
+    pub fn is_system(&self) -> bool {
+        self.kind == PrincipalKind::System
+    }
+
     pub fn role_in(&self, slug: &str) -> Option<Role> {
         self.workspaces
             .iter()

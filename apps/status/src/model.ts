@@ -31,6 +31,7 @@ export const STALE_MS = 10 * 60 * 1000;
 export function classify(result: ProbeResult | null, slowMs = SLOW_MS): { state: StatusComponentState; detail: string } {
   if (!result) return { state: "unmonitored", detail: "Not monitored yet" };
   if (!result.ok) return { state: "down", detail: `Failed: ${result.error ?? "no answer"}` };
+  if (result.degraded) return { state: "degraded", detail: result.degraded };
   const ms = Math.round(result.ms);
   if (ms > slowMs) return { state: "degraded", detail: `Slow: answered in ${ms} ms` };
   return { state: "up", detail: `Answered in ${ms} ms` };

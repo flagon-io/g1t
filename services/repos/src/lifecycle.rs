@@ -44,12 +44,7 @@ use crate::registry::{Registry, remember_store, store_key};
 use crate::store::{GitRepo, GitStore, Scope};
 use crate::{Repos, SOURCE, UNVERIFIED, git_ops, land, not_found};
 
-/// A pack with no objects: what a push that only creates a ref at a commit
-/// the repository already has sends.
-const EMPTY_PACK: &[u8] = &[
-    b'P', b'A', b'C', b'K', 0, 0, 0, 2, 0, 0, 0, 0, 0x02, 0x9d, 0x08, 0x82, 0x3b, 0xd8, 0xa8,
-    0xea, 0xb5, 0x10, 0xad, 0x6a, 0xc7, 0x5c, 0x82, 0x3c, 0xfd, 0x3e, 0xd3, 0x1e,
-];
+use crate::land::EMPTY_PACK;
 
 /// How many pull request working copies follow a change of the default
 /// branch (newest first). Older ones keep the branch they were made with.
@@ -514,7 +509,7 @@ impl Registry {
         let rows = self
             .db
             .prepare(
-                "SELECT * FROM repos WHERE fork_of = ? AND deleted_at IS NULL
+                "SELECT * FROM repos WHERE fork_of = ? AND deleted_at IS NULL AND retired_at IS NULL
                  ORDER BY created_at DESC LIMIT ?",
             )
             .bind(&[id.into(), limit.into()])?
@@ -610,11 +605,7 @@ fn entry(actor: AuditActor, action: &str, surface: Option<Surface>, path: &RepoP
 
 /// g1t itself, as the actor of what its schedule does.
 fn g1t_actor() -> AuditActor {
-    AuditActor {
-        actor: "g1t".to_owned(),
-        actor_id: "g1t".to_owned(),
-        ..AuditActor::default()
-    }
+    AuditActor::system()
 }
 
 fn fail<T>((code, message): Refusal) -> Outcome<T> {

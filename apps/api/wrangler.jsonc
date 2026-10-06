@@ -27,7 +27,9 @@
 		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
 		// The context hub: search_context and get_entity.
 		{ "binding": "CONTEXT", "service": "g1t-context" },
-		{ "binding": "SEARCH", "service": "g1t-search" }
+		{ "binding": "SEARCH", "service": "g1t-search" },
+		// Secret and dependency alerts: list_security_alerts and dismissing them.
+		{ "binding": "SECURITY", "service": "g1t-security" }
 	],
 	// GitHub Actions artifacts, in chunks, with KV's own expiry (and cache
 	// entries saved before the cache moved to R2, until they expire).

@@ -341,7 +341,7 @@ ${past.length ? `<ul class="lines">${past.map(incidentLine).join("")}</ul>` : `<
 </section>
 <section class="block about">
 <h2>About these checks</h2>
-<p>Each part is checked every minute with one quick request, the same a visitor's would make, from outside g1t. A part that answers in over 1.5 seconds counts as slow; one that fails, or takes over 5 seconds, as down. A day shows green when at least 99.9% of its checks answered; checks during planned maintenance are not counted. This page runs apart from g1t itself, so it stays up when g1t does not.</p>
+<p>Each monitored part is checked every minute, most with one quick request, the same a visitor's would make, from outside g1t; what each check does is listed below. A part that answers in over 1.5 seconds counts as slow (page speed over 800 ms); one that fails, or takes over 5 seconds, as down. A day shows green when at least 99.9% of its checks answered; checks during planned maintenance are not counted. This page runs apart from g1t itself, so it stays up when g1t does not.</p>
 <dl>${components.map((c) => `<dt>${escape(c.name)}</dt><dd>${escape(c.checks)}</dd>`).join("")}</dl>
 </section>`;
   return layout(options, { title: `${overall.title} · g1t status`, description, body, live: true });

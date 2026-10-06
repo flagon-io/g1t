@@ -14,6 +14,7 @@ g1t-kit.workspace = true
 g1t-scan.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+serde_yaml = "0.9"
 worker.workspace = true
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 getrandom = { version = "0.2", features = ["js"] }

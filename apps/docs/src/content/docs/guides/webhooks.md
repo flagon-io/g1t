@@ -58,7 +58,7 @@ With these headers:
 | `X-G1t-Delivery` | The delivery's id. A redelivery has a new one. |
 | `X-G1t-Hook` | The webhook's id. |
 | `X-G1t-Signature-256` | `sha256=` and the HMAC-SHA256 of the body, keyed with the secret. |
-| `User-Agent` | `g1t-webhooks/1` |
+| `User-Agent` | `g1t-webhooks/1`, followed by a link to this page |
 
 ## Events
 
@@ -80,7 +80,7 @@ With these headers:
 | `pull.opened`, `pull.ready`, `pull.updated`, `pull.merge_requested`, `pull.merged`, `pull.closed` | A pull request changed. `data.number`, `data.issue`; on merge, `data.commit`. On a g1t agent's change, once g1t has worked it out, `data.confidence`: `level` (`high`, `medium` or `low`), `reasons`, `self_reported`, `uncertain_about`, `run_id` and `assessed_at`. See [how sure the agent is](/guides/g1t-agents/#how-sure-the-agent-is). |
 | `checks.completed` | A pull request's checks finished: every status on its head has reported and none is still pending, or the merge queue took it out. `data.number`, `data.commit`, and `data.status`, `passed` or `failed`. |
 | `review.completed` | A g1t agent reviewed a pull request. `data.verdict`. |
-| `workflow.completed` | A GitHub Actions run finished. `data.workflow`, `data.conclusion`, `data.run_id`, `data.sha`, `data.pull`. |
+| `workflow.completed` | A [workflow](/guides/actions/) run finished. `data.workflow`, `data.conclusion`, `data.run_id`, `data.sha`, `data.pull`. |
 | `queue.changed` | The merge queue gained, lost or settled an entry. |
 | `session.appended` | An agent's session grew. Busy: choose it only if you need it. |
 | `agent.asked` | An agent asked the agent on another pull request a question, or handed it work, while that one was not at work; g1t wakes it to answer. |
@@ -143,18 +143,19 @@ tunnel such as Cloudflare Tunnel.
 
 ## From the API
 
-The same tools work for a repository's webhooks (give `repo`) and a
-workspace's (give `workspace` instead).
+The same routes, and the MCP server's `webhook` tool, work for a
+repository's webhooks (give `repo`) and a workspace's (give `workspace`
+instead).
 
-| Tool | Route |
+| `webhook` action | Route |
 | --- | --- |
-| `list_webhooks` | `GET /repos/{owner}/{name}/hooks`, `GET /workspaces/{workspace}/hooks` |
-| `create_webhook` | `POST …/hooks` with `url`, `events`, `secret` |
-| `update_webhook` | `PATCH …/hooks/{id}` with `url`, `events`, `active` |
-| `delete_webhook` | `DELETE …/hooks/{id}` |
-| `ping_webhook` | `POST …/hooks/{id}/pings` |
-| `list_webhook_deliveries` | `GET …/hooks/{id}/deliveries` |
-| `redeliver_webhook` | `POST …/hooks/{id}/deliveries/{delivery}/redeliver` |
+| `list` | `GET /repos/{owner}/{name}/hooks`, `GET /workspaces/{workspace}/hooks` |
+| `create` | `POST …/hooks` with `url`, `events`, `secret` |
+| `update` | `PATCH …/hooks/{id}` with `url`, `events`, `active` |
+| `delete` | `DELETE …/hooks/{id}` |
+| `ping` | `POST …/hooks/{id}/pings` |
+| `list_deliveries` | `GET …/hooks/{id}/deliveries` |
+| `redeliver` | `POST …/hooks/{id}/deliveries/{delivery}/redeliver` |
 
 ```sh
 curl -X POST https://api.g1t.sh/repos/acme/web/hooks \

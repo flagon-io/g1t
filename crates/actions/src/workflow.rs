@@ -352,6 +352,12 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
             None => return Err(format!("Job `{id}` has no `steps`.")),
             Some(_) => return Err(format!("Job `{id}`: `steps` is a list.")),
         };
+        let runs_on = spec.get("runs-on").cloned().unwrap_or(Value::Null);
+        let labels: Vec<String> =
+            texts(Some(&runs_on)).into_iter().chain(runs_on.get("labels").map(|l| texts(Some(l))).unwrap_or_default()).collect();
+        // `self-hosted`, or a runner group, sends the job to the workspace's
+        // own runners, which may be Linux, macOS or Windows.
+        let self_hosted = runs_on.get("group").is_some() || labels.iter().any(|label| label.eq_ignore_ascii_case("self-hosted"));
         let mut steps = Vec::new();
         for (index, step) in steps_raw.iter().enumerate() {
             let Value::Object(fields) = step else {
@@ -376,23 +382,29 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
                 note(severity, Some(id), message);
             }
             if let Some(shell) = text(fields.get("shell"))
+                && !self_hosted
                 && matches!(shell.as_str(), "pwsh" | "powershell" | "cmd")
             {
                 note(Severity::Unsupported, Some(id), format!("Steps with `shell: {shell}` need Windows or PowerShell, which g1t's Linux runners do not have."));
             }
             steps.push(step);
         }
-        let runs_on = spec.get("runs-on").cloned().unwrap_or(Value::Null);
-        for label in texts(Some(&runs_on)).iter().chain(runs_on.get("labels").map(|l| texts(Some(l))).unwrap_or_default().iter()) {
-            let lower = label.to_ascii_lowercase();
-            if lower.contains("windows") || lower.contains("macos") {
-                note(
-                    Severity::Unsupported,
-                    Some(id),
-                    format!("`runs-on: {label}`: g1t runs jobs on Linux only, so this job fails."),
-                );
-            } else if lower == "self-hosted" {
-                note(Severity::Info, Some(id), "`self-hosted`: g1t runs it on its own Linux runner.".to_owned());
+        if self_hosted {
+            note(
+                Severity::Info,
+                Some(id),
+                "`self-hosted`: the job runs on one of the workspace's self-hosted runners that has every label in its `runs-on`, and waits until one does.".to_owned(),
+            );
+        } else {
+            for label in &labels {
+                let lower = label.to_ascii_lowercase();
+                if lower.contains("windows") || lower.contains("macos") {
+                    note(
+                        Severity::Unsupported,
+                        Some(id),
+                        format!("`runs-on: {label}`: g1t's own runners are Linux only, so this job fails. To run it on a Windows or macOS machine of your own, add a self-hosted runner and use `runs-on: [self-hosted, ...]`."),
+                    );
+                }
             }
         }
         if spec.contains_key("services") {
@@ -467,7 +479,7 @@ fn action_note(uses: &str, caches: bool) -> Option<(Severity, String)> {
         "actions/checkout" => Some((Severity::Info, "`actions/checkout` checks out from g1t.".to_owned())),
         "actions/cache" | "actions/cache/restore" | "actions/cache/save" => Some((
             Severity::Info,
-            format!("`{name}`: g1t keeps the cache per repository for 7 days, up to 60 MB an entry."),
+            format!("`{name}`: g1t keeps the cache per repository: up to 2 GiB an entry and 10 GiB a repository, until it goes 7 days unused, and at most 28 days."),
         )),
         "actions/upload-artifact" | "actions/download-artifact" => Some((
             Severity::Info,
@@ -579,6 +591,28 @@ jobs:
         assert!(unsupported.iter().any(|m| m.contains("pwsh")));
         assert!(workflow.notes.iter().any(|n| n.severity == Severity::Info && n.message.contains("actions/cache")));
         assert!(workflow.notes.iter().any(|n| n.severity == Severity::Warning && n.message.contains("actions/setup-node")));
+        assert!(workflow.notes.iter().any(|n| n.message.contains("2 GiB an entry")));
+    }
+
+    #[test]
+    fn self_hosted_jobs_may_run_on_any_os() {
+        let workflow = parse(
+            "on: push
+jobs:
+  win:
+    runs-on: [self-hosted, windows]
+    steps:
+      - run: dir
+        shell: pwsh
+  mac:
+    runs-on: { group: Macs, labels: [macos] }
+    steps: [{ run: 'true' }]",
+        )
+        .unwrap();
+        assert!(!workflow.notes.iter().any(|n| n.severity == Severity::Unsupported), "{:?}", workflow.notes);
+        let routed: Vec<&str> = workflow.notes.iter().filter(|n| n.message.starts_with("`self-hosted`")).map(|n| n.message.as_str()).collect();
+        assert_eq!(routed.len(), 2);
+        assert!(routed.iter().all(|m| m.contains("self-hosted runners") && !m.contains("Linux")));
     }
 
     #[test]

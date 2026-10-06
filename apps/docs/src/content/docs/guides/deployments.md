@@ -43,9 +43,10 @@ them off again.
 ## Turn on deployments
 
 1. **Start the g1t plan for the workspace**, if it is not on. An owner
-   opens **Settings → Billing**, `g1t.sh/<workspace>/-/billing`, and
-   starts it under **Plans**. Back on Billing, the plan says **On** with
-   its renewal date. The trial does not pay for deployments.
+   opens **Settings → Billing and plans**, `g1t.sh/<workspace>/-/billing`,
+   and chooses **Start the g1t plan** on the **g1t** card. Back on
+   Billing, the card says **On the g1t plan**. The trial does not pay for
+   deployments.
 2. **Turn on deployments for a project.** Someone with the Admin role on
    its repository opens the project's
    **Settings → Deployments**, `g1t.sh/<workspace>/<project>/settings/deployments`,
@@ -95,7 +96,8 @@ build: `dist`, `build`, `out`, `public`, `_site`, `.output/public`. Set
 
 - Your Worker's `fetch` handler runs as written, and its static assets
   are served under the binding name your config gives them. Cron triggers
-  in the config are not scheduled.
+  (`triggers.crons`) are not scheduled, so a `scheduled` handler never
+  runs; the deployment says so in its warnings.
 - `vars` are deployed as plain-text bindings (or JSON, for objects). Rows
   of the project's [secrets and variables](/guides/secrets-and-variables/)
   available to Deployments are bound too, and replace a `var` of the same
@@ -398,7 +400,7 @@ Usage from the month that is under way is still charged once it ends.
    network is restricted to the project's allowed domains, the package
    registries, GitHub and Cloudflare's API, as
    [workflow jobs'](/guides/actions/#what-a-job-can-reach) are, and it
-   stops at 30 minutes, or sooner if the workspace's plan caps runs lower.
+   stops at 30 minutes.
    When it stops, what it cost is settled against what was reserved.
 3. The sandbox builds, then lists its files. g1t opens an upload with
    Cloudflare for exactly those files and hands the sandbox a key that can
@@ -419,18 +421,19 @@ you sign in to.
 
 | You see | Do |
 | --- | --- |
-| "Deployments is a paid feature, and it is not on" | An owner starts the g1t plan under Billing. |
-| "Not started" or "Deployments need a paid workspace" | The build was refused before it started. Follow the link in the message: start the plan, or raise the spend limit, on Billing. |
+| "Deployments come with the g1t plan … and `<workspace>` does not have it" | An owner starts the g1t plan under Billing. |
+| A deployment **Skipped**, saying it reached its spend limit or that new compute is paused | The build was refused before it started. Follow the link in the message: raise the spend limit, prepay, or answer the spike, on Billing. |
 | "Stopped: unusual CPU use" | The build looked like it was mining. Contact support if it was a real build; see [abuse and mining](/guides/guardrails/#abuse-and-mining). |
 | "403" from a host in the build log | The build's network is restricted. Add the host to the project's allowed domains under **Settings → Guardrails**. |
 | "found nothing to serve" | Add a `build` script, an `index.html`, or a Workers config; or set **Output directory**. |
 | "the output directory `x` does not exist after the build" | The build wrote elsewhere: check its log, then fix **Output directory**. |
 | "`d1_databases` is not provisioned on g1t.page yet" | The app deployed without that binding. See [Workers projects](#workers-projects). |
+| "`triggers.crons` (1 schedule) is not set up on g1t.page yet" | The app deployed, but its `scheduled` handler never runs. See [Workers projects](#workers-projects). |
 | A preview page says "This preview is not up" | It came down (see [When apps come down](#when-apps-come-down)). Push, or choose **Redeploy**. |
 | "Custom domains are being switched on" | Custom domains are not on for g1t.page yet. Domains you add are kept, and set up by themselves once they are. |
 | A domain stays at **Waiting for DNS** | Check the record against the one listed, remove other `A`/`AAAA` records for the same name, then choose **Check now**. |
 | A domain says "This domain is not set up" | It points at g1t, but no project has added it. Add it under **Settings → Domains**. |
-| "The build did not finish in 45 minutes" | Builds are stopped after 45 minutes. Make the build faster, or build less for previews with **Build command**. |
+| "The build did not finish in 45 minutes" | The build stopped reporting: a build stops at 30 minutes, and one not heard from after 45 is failed. Make the build faster, or build less for previews with **Build command**. |
 
 ## Running your own g1t
 

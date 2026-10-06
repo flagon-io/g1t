@@ -85,7 +85,7 @@ import {
 } from "./incidents.ts";
 import { INCIDENT_STATUS, type PageModel, SLOW_MS, buildPage, classify, underMaintenance } from "./model.ts";
 import { stamp } from "./postmortem.ts";
-import { runCheck } from "./probe.ts";
+import { type StorageReport, runCheck } from "./probe.ts";
 import { readZone } from "./time.ts";
 import {
   FAVICON,
@@ -142,6 +142,8 @@ export interface Env extends Partial<Targets> {
   DB: D1Database;
   /** Billing, for reading its price book. Optional: without it, billing is not listed. */
   BILLING?: Fetcher;
+  /** The repos service, for git storage's recent health. Optional: without it, git storage is not listed. */
+  REPOS?: Fetcher;
   /** Where help is. */
   SUPPORT_URL?: string;
   /**
@@ -179,7 +181,7 @@ const BEHIND_MS = 3 * 60 * 1000;
 const MAX_RECIPIENTS = 900;
 
 function parts(env: Env) {
-  return components(env, env.BILLING != null);
+  return components(env, env.BILLING != null, env.REPOS != null);
 }
 
 function names(env: Env): Map<string, string> {
@@ -200,15 +202,28 @@ function emailOn(env: Env): boolean {
   return sender(env) != null && !!env.STATUS_SECRET;
 }
 
+/** Git storage's last five minutes, from the repos service (`store_health`). */
+async function storeHealth(repos: Fetcher): Promise<StorageReport> {
+  const response = await repos.fetch("https://service/rpc/store_health", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ minutes: 5 }),
+  });
+  if (!response.ok) throw new Error(`store_health failed with status ${response.status}`);
+  return (await response.json()) as StorageReport;
+}
+
 /** One round of checks, kept. Parts under maintenance are checked but not tallied. */
 export async function checkAll(env: Env, now = new Date()): Promise<Observation[]> {
   const billing = env.BILLING;
+  const repos = env.REPOS;
   const list = parts(env);
   const observations = await Promise.all(
     list.map(async (info): Promise<Observation> => {
       const result = await runCheck(info.check, {
         fetch: (url, init) => fetch(url, init),
         billing: billing ? () => billingClient(billing).prices() : null,
+        storage: repos ? () => storeHealth(repos) : null,
       });
       const { state, detail } = classify(result, info.slowMs);
       return { component: info.key, state, detail, latency_ms: result ? Math.round(result.ms) : null };

@@ -7,7 +7,7 @@ import sansFont from "@g1t/theme/fonts/hanken-grotesk-latin.woff2?url";
 import { MobileBar, Sidebar } from "./components/shell";
 import { ButtonLink } from "./components/ui";
 import type { NavCounts } from "./lib/nav";
-import { identity, statusAdmin } from "./lib/services.server";
+import { admin, identity, statusAdmin } from "./lib/services.server";
 import { settle } from "./lib/settle";
 import { requireStaff, zoneContext } from "./lib/staff";
 
@@ -26,11 +26,20 @@ export const meta: Route.MetaFunction = () => [
 export async function loader({ context }: Route.LoaderArgs) {
   const { email } = requireStaff(context);
   // The sidebar's counts: a service that does not answer shows none.
-  const [waitlist, incidents] = await Promise.all([settle(identity.waitlistPending()), settle(statusAdmin.openCount())]);
+  const [waitlist, incidents, alerts] = await Promise.all([
+    settle(identity.waitlistPending()),
+    settle(statusAdmin.openCount()),
+    settle(admin.costAlerts()),
+  ]);
   const counts: NavCounts = { waitlist: waitlist.ok ? waitlist.value : 0, incidents: incidents.ok ? incidents.value : 0 };
   // Every page says times in this zone (components/ui.tsx `When`).
   const { zone, chosen } = context.get(zoneContext);
-  return { email, counts, zone, zoneChosen: chosen };
+  // Margin alerts (billing's margin guard): a red bar on every page until they clear.
+  const rank = ["overall", "margin", "leak"];
+  const margin = alerts.ok
+    ? alerts.value.filter((alert) => rank.includes(alert.kind)).sort((a, b) => rank.indexOf(a.kind) - rank.indexOf(b.kind))
+    : [];
+  return { email, counts, zone, zoneChosen: chosen, margin };
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -47,7 +56,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <body className="min-h-screen">
         <Sidebar email={root?.email} counts={root?.counts} />
         <MobileBar email={root?.email} counts={root?.counts} />
-        <div className="lg:pl-60">{children}</div>
+        <div className="lg:pl-60">
+          {root?.margin && root.margin.length > 0 && (
+            <div role="alert" className="border-b border-danger/40 bg-danger/12 px-4 py-2 text-sm text-danger">
+              <span className="font-medium">Margin alert:</span> {root.margin[0]!.detail}
+              {root.margin.length > 1 && <span className="text-danger/80"> And {root.margin.length - 1} more.</span>}{" "}
+              <a href="/costs" className="underline underline-offset-2">
+                Costs &amp; margin
+              </a>
+            </div>
+          )}
+          {children}
+        </div>
         {/* No <Scripts />: sudo ships no JavaScript, and its policy allows none. */}
       </body>
     </html>

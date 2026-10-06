@@ -64,6 +64,11 @@ pub struct GitPush {
     pub after: String,
     /// Whether the ref is the repository's default branch.
     pub default_branch: bool,
+    /// Set when the push was too large to scan for secrets before it was
+    /// stored, and was let through: the security service scans
+    /// `before..after` after it landed. Absent otherwise.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub unscanned: bool,
 }
 
 /// The payload of `issue.opened`, `issue.updated`, `issue.assigned`,
@@ -533,6 +538,23 @@ pub struct QueueChanged {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_push_says_it_was_unscanned_only_when_it_was() {
+        let push = |unscanned| GitPush {
+            repo_id: "rep_1".into(),
+            git_ref: "refs/heads/import".into(),
+            before: None,
+            after: "abc".into(),
+            default_branch: false,
+            unscanned,
+        };
+        let quiet = serde_json::to_value(push(false)).unwrap();
+        assert!(quiet.get("unscanned").is_none());
+        let flagged = serde_json::to_value(push(true)).unwrap();
+        assert_eq!(flagged["unscanned"], true);
+        assert_eq!(flagged["ref"], "refs/heads/import");
+    }
 
     fn renamed(from: &str, to: &str) -> WorkspaceRenamed {
         WorkspaceRenamed {

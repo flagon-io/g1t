@@ -58,13 +58,23 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/user/repository_invitations", Op::ListMyRepoInvitations, &[]),
     route("PATCH", "/user/repository_invitations/:id", Op::AcceptRepoInvitation, &[]),
     route("DELETE", "/user/repository_invitations/:id", Op::DeclineRepoInvitation, &[]),
-    route("PATCH", "/workspaces/:workspace", Op::SetBasePermission, &[]),
+    route("PATCH", "/workspaces/:workspace", Op::UpdateWorkspace, &[]),
+    route("PUT", "/workspaces/:workspace/base_permission", Op::SetBasePermission, &[]),
     route(
         "GET",
         "/workspaces/:workspace/outside_collaborators",
         Op::ListOutsideCollaborators,
         &[],
     ),
+    // Security alerts: secrets and vulnerable dependencies.
+    route(
+        "GET",
+        "/repos/:owner/:name/security/alerts",
+        Op::ListSecurityAlerts,
+        &[("state", "state"), ("kind", "kind")],
+    ),
+    route("POST", "/repos/:owner/:name/security/alerts/:id/dismiss", Op::DismissSecurityAlert, &[]),
+    route("POST", "/repos/:owner/:name/security/alerts/:id/reopen", Op::ReopenSecurityAlert, &[]),
     route("GET", "/repos", Op::ListRepos, &[("q", "query")]),
     route(
         "GET",

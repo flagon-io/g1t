@@ -13,6 +13,12 @@ export const SIGNAL_KINDS: { kind: SignalKind; label: string; tone: Tone; about:
   { kind: "at_limit", label: "At limit", tone: "danger", about: "Work is stopped: it reached its limit or its owners' spend limit." },
   { kind: "declined", label: "Declined", tone: "danger", about: "Its card was declined or a payment disputed." },
   { kind: "near_ceiling", label: "Near limit", tone: "warn", about: "Past 80% of what is available to it; about to need more." },
+  {
+    kind: "cost_over_revenue",
+    label: "Costs more than it pays",
+    tone: "warn",
+    about: "Cost g1t more on Cloudflare than it paid over 30 days: a pricing gap, or abuse. See Costs & margin.",
+  },
   { kind: "high_spend", label: "High spend", tone: "lavender", about: "Spending enough that custom terms or an enterprise may suit it." },
   { kind: "growing", label: "Growing", tone: "mint", about: "This month is well ahead of last month." },
   { kind: "established", label: "Established", tone: "info", about: "Became Established: its limit now follows its spend." },

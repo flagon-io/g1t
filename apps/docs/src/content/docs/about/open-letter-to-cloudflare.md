@@ -7,10 +7,10 @@ Dear Cloudflare,
 
 We're the small team at Flagon, Inc. building g1t, a git platform where
 people and coding agents work in the same issues, pull requests and merge
-queue. Every part of it runs on you: about twenty Workers, a D1 database per
-service, Artifacts for every repository and every pull request, Containers
-for agents and CI, R2, KV, Queues, and Cloudflare for SaaS for our customers'
-domains. We have no servers.
+queue. Every part of it runs on you: about twenty Workers, a D1 database for
+each service that keeps data, Artifacts for every repository and every pull
+request's fork, Containers for agents and CI, R2, KV, Queues, and Cloudflare
+for SaaS for our customers' domains. We have no servers.
 
 This is a thank-you, and a list of what would help us most next.
 
@@ -32,8 +32,8 @@ us hand a sandbox a credential that dies with it. The read binding powers
 every page we render, blame, mergeability and search, without a git client
 anywhere.
 
-The rest of the platform held up too. Rust compiled to WebAssembly runs our
-services. D1's read replication is free and good. Containers gave us
+The rest of the platform held up too. Rust compiled to WebAssembly runs most of
+our services, and TypeScript the rest. D1's read replication is free and good. Containers gave us
 sandboxes in three sizes. With a cached credential and ref listing, a
 `git fetch` with nothing new answers in under half a second, and most of
 our pages answer in under 250 ms. We went from an empty repository to a
@@ -56,7 +56,8 @@ fetch and push ourselves, and hope it matches.
 **What a fork stores.** Forks are the natural primitive for a pull request,
 and agents open pull requests by the thousand. We can't find whether a fork
 shares objects with its source or copies them. If it copies, an agent-heavy
-account reaches the 1 TB account limit in days, and at that point every push
+account reaches the 1 TB account limit in days (it can be raised on
+request, but only by asking), and at that point every push
 in the account fails, for every customer at once. We keep forks for now,
 and are measuring it ourselves.
 
@@ -65,7 +66,8 @@ list refs, move them, or write objects. So to land a pull request we speak
 git's wire protocol to our own storage from inside a Worker, buffering packs
 in an isolate with 128 MB to share. With no hook before refs move, branch
 protection and secret scanning only hold for pushes through our proxy, which
-parses every pack in WebAssembly before forwarding it. We wrote a second
+parses each pack in WebAssembly before forwarding it, up to the size an
+isolate can hold. We wrote a second
 implementation of git's pack format to get there.
 
 **Ref-change events and the cost of a credential.** Push events need one
@@ -82,8 +84,8 @@ page took 0.85 s instead of 0.17 s. We turned placement off everywhere and
 measure each Worker by hand.
 
 **D1 sessions across service bindings.** Read replicas need a bookmark to
-give read-your-writes. Our site calls seven services, each with its own
-database, so we built a header protocol to carry bookmarks through service
+give read-your-writes. Our site reads from seven services, each with its
+own database, so we built a header protocol to carry bookmarks through service
 bindings into a cookie and back.
 
 **Containers that build images and keep disks.** We found no supported way
@@ -99,7 +101,7 @@ are waiting.
 ## What we built in the meantime
 
 A per-workspace operation counter that is our best guess at your invoice. A
-fork sweep we can switch on once we know what forks cost. A smart HTTP
+smart HTTP
 client inside a Worker for landing, catch-up, mirrors and imports. Our own
 push policy in front of Artifacts. A versioned ref cache with a test that
 guards it. Two layers of credential caching. A bookmark protocol for D1.
@@ -107,7 +109,8 @@ A probe that deploys throwaway Workers to measure placement, and a
 `Server-Timing` header on every response so we see the next regression.
 Image builds on a laptop.
 
-All of it works. Most of it is code we'd happily delete.
+All of it works. Most of it is code we'd happily delete. Next is a fork
+sweep, to switch on once we know what forks cost.
 
 ## What we're asking for
 

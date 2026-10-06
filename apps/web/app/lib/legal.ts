@@ -84,10 +84,15 @@ export const POLICIES: Policy[] = [
 ];
 
 /** When any policy last changed, `YYYY-MM-DD`. */
-export const POLICIES_UPDATED = "2026-10-05";
+export const POLICIES_UPDATED = "2026-10-06";
 
 /** Every change to the policies, newest first. */
 export const POLICY_HISTORY: { date: string; change: string }[] = [
+  {
+    date: "2026-10-06",
+    change:
+      "Privacy Policy: request logs are kept 7 days, and database history 30 days. Subprocessors: GitHub listed among the integrations you choose, in place of Slack, which g1t does not connect to.",
+  },
   {
     date: "2026-10-05",
     change:

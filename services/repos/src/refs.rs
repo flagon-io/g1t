@@ -11,8 +11,9 @@ use crate::land::read_pkt_lines;
 
 const HEADS: &str = "refs/heads/";
 
-/// The branches in a ref advertisement, in the order advertised.
-fn parse_advertisement(bytes: &[u8]) -> Vec<Branch> {
+/// Every ref in a ref advertisement, with its commit, in the order
+/// advertised: `(refs/heads/main, <hash>)`.
+fn parse_refs(bytes: &[u8]) -> Vec<(String, String)> {
     let (lines, _) = read_pkt_lines(bytes);
     lines
         .into_iter()
@@ -21,15 +22,30 @@ fn parse_advertisement(bytes: &[u8]) -> Vec<Branch> {
             let line = line.split(|byte| *byte == 0).next()?;
             let line = std::str::from_utf8(line).ok()?.trim_end();
             let (hash, name) = line.split_once(' ')?;
-            Some(Branch {
-                name: name.strip_prefix(HEADS)?.to_owned(),
-                hash: hash.to_owned(),
-            })
+            (hash.len() >= 40 && name.starts_with("refs/")).then(|| (name.to_owned(), hash.to_owned()))
         })
         .collect()
 }
 
+/// The branches in a ref advertisement, in the order advertised.
+fn parse_advertisement(bytes: &[u8]) -> Vec<Branch> {
+    parse_refs(bytes)
+        .into_iter()
+        .filter_map(|(name, hash)| Some(Branch { name: name.strip_prefix(HEADS)?.to_owned(), hash }))
+        .collect()
+}
+
 pub async fn branches(access: &GitAccess) -> Result<Vec<Branch>> {
+    Ok(parse_advertisement(&advertisement(access).await?))
+}
+
+/// Every ref the repository has: branches, tags, and the heads of pull
+/// requests kept there (forks.rs).
+pub async fn all(access: &GitAccess) -> Result<Vec<(String, String)>> {
+    Ok(parse_refs(&advertisement(access).await?))
+}
+
+async fn advertisement(access: &GitAccess) -> Result<Vec<u8>> {
     let headers = Headers::new();
     headers.set("authorization", &format!("Bearer {}", access.token))?;
     let mut init = RequestInit::new();
@@ -40,18 +56,19 @@ pub async fn branches(access: &GitAccess) -> Result<Vec<Branch>> {
     )?;
     let mut response = Fetch::Request(request).send().await?;
     let bytes = response.bytes().await?;
+    crate::meters::record_remote("internal.git.info_refs", &access.remote, 0, bytes.len() as u64);
     if response.status_code() != 200 {
         return Err(Error::RustError(format!(
             "listing refs returned {}",
             response.status_code()
         )));
     }
-    Ok(parse_advertisement(&bytes))
+    Ok(bytes)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::parse_advertisement;
+    use super::{parse_advertisement, parse_refs};
 
     fn pkt(payload: &str) -> Vec<u8> {
         format!("{:04x}{payload}", payload.len() + 4).into_bytes()
@@ -77,6 +94,9 @@ mod tests {
         let names: Vec<&str> = branches.iter().map(|branch| branch.name.as_str()).collect();
         assert_eq!(names, ["main", "shout"]);
         assert_eq!(branches[1].hash, shout);
+        let all = parse_refs(&advertisement);
+        assert_eq!(all.len(), 3);
+        assert_eq!(all[2], ("refs/tags/v1.0.0".to_owned(), shout.to_owned()));
     }
 
     #[test]

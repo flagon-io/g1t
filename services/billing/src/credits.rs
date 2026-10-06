@@ -94,7 +94,7 @@ impl Default for Config {
             min_charge_micros: 5_000_000,
             free_storage_bytes: 1_000_000_000,
             audit_days: 90,
-            run_cap_micros: 2_000_000,
+            run_cap_micros: g1t_contracts::guardrails::DEFAULT_RUN_CAP_MICROS,
             issue_cap_micros: 10_000_000,
             paid_start_micros: 100_000_000,
             spike_factor: 5,
@@ -750,7 +750,7 @@ mod tests {
         assert_eq!(c.min_charge_micros, 5_000_000);
         assert_eq!(c.free_storage_bytes, 1_000_000_000);
         assert_eq!(c.audit_days, 90);
-        assert_eq!(c.run_cap_micros, 2_000_000);
+        assert_eq!(c.run_cap_micros, g1t_contracts::guardrails::DEFAULT_RUN_CAP_MICROS);
         assert_eq!(c.issue_cap_micros, 10_000_000);
         assert_eq!(c.paid_start_micros, 100_000_000);
         assert_eq!(c.forgive_cost_micros, 50_000_000);

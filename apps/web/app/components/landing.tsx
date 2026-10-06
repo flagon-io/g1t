@@ -104,7 +104,7 @@ function Pillar({
 const FACTS: [string, string][] = [
   ["$0", "for the forge: repositories, issues, pull requests and review. No card."],
   ["+20%", "on what compute costs g1t. That is the whole markup, and there is no seat price."],
-  ["1 command", "connects Claude Code, Codex, OpenCode or Cursor to your workspace."],
+  ["MCP", "connects Claude Code, Codex, OpenCode or Cursor to your workspace: one command or one config file."],
   ["MIT", "licensed. g1t's own source lives on g1t and lands through its own queue."],
 ];
 
@@ -145,7 +145,7 @@ const SECURE: { icon: ReactNode; title: string; about: string; to: string }[] = 
   {
     icon: <PackageCheck size={18} />,
     title: "Dependency upkeep",
-    about: "Each vulnerable dependency becomes an upgrade issue, and an agent lands the fix through the same checks as any change.",
+    about: "Each vulnerable dependency that has a fixed version becomes an upgrade issue, and an agent lands the upgrade through the same checks as any change.",
     to: `${DOCS}/guides/security/#dependency-upkeep`,
   },
   {
@@ -259,8 +259,8 @@ export function Landing() {
           </div>
           <p className="mx-auto mt-5 max-w-xl animate-fade-up text-sm text-fg-soft/60 text-balance">
             {inviteOnly
-              ? "g1t is invite-only while we open it up. The forge is free, with no card; agents, checks and deployments run on the g1t plan."
-              : "The forge is free, with no card. Agents, checks and deployments run on the g1t plan."}
+              ? "g1t is invite-only while we open it up. The forge is free, with no card; agents and checks start with a trial after a card check, and deployments come with the g1t plan."
+              : "The forge is free, with no card. Agents and checks start with a trial after a card check; deployments come with the g1t plan."}
           </p>
         </div>
         <Live className="relative mx-auto max-w-6xl px-2 pt-6 pb-2 sm:px-4">
@@ -339,7 +339,7 @@ export function Landing() {
             art={<QueueArt className="w-full" />}
             points={[
               "Checks run by g1t in a clean sandbox",
-              "GitHub Actions workflows run as they are",
+              "Workflows in GitHub Actions syntax",
               "A merge queue that tests changes together",
               "Conflicts found on every push, before a merge",
               "Catch up with main in seconds",
@@ -475,7 +475,7 @@ export function Landing() {
           <div>
             <Eyebrow>Bring your own agent</Eyebrow>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance">
-              Any agent joins the team with one command
+              Any agent that speaks MCP joins the team
             </h2>
             <p className="mt-4 max-w-md leading-7 text-muted">
               Add g1t to Claude Code, Codex, OpenCode or Cursor and it can read the plan, take an

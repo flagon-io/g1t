@@ -1,0 +1,371 @@
+---
+title: Security
+description: How g1t keeps secrets out of your repositories, finds vulnerable dependencies, and opens the pull requests that fix them.
+---
+
+import Aside from '../../../components/Aside.astro';
+
+Every project has a **Security** page at `g1t.sh/<owner>/<project>/security`.
+It shows what g1t has found, and what is being done about each alert:
+
+- **Secrets.** A push that adds a key or a token is refused before it lands,
+  and each repository's history is scanned once, in the background.
+- **Dependencies.** Every package your lockfiles resolve is checked against
+  the [OSV](https://osv.dev) database of known vulnerabilities. For each
+  vulnerable package that has a fix, g1t opens a pull request that raises it
+  to the fixed version, and the pull request lands through your branch's
+  required checks and merge queue.
+
+Alerts are the workspace's to fix, so the Security page needs a
+[role](/guides/access-and-roles/) on the repository, whether the project
+is public or private:
+
+| | Needs |
+| --- | --- |
+| See alerts, **Re-scan now** | Write |
+| **Dismiss** or **Reopen** a dependency alert | Write |
+| **Security updates** on or off | Maintain |
+| **Dismiss** or **Reopen** a secret alert | Admin |
+
+Someone with Read or Triage is told the page needs Write. The workspace's
+own page, `g1t.sh/<owner>/-/security`, lists the open alerts of every
+project the member can see them on, most severe first.
+
+## The overview
+
+The top of the page counts open alerts by severity: critical, high,
+medium, low and unrated. The counts are:
+
+- each open vulnerability, by its severity, and
+- each secret in the repository's history that looks real, as critical.
+
+A secret that a push carried but that never landed (push blocked) is not
+counted, and neither is a [likely test value](#likely-test-values). A
+dismissed alert is not counted. Below the counts:
+
+- **Re-scan now** reads the dependencies again at once and scans the
+  history again from the start.
+- **Security updates** turns [security updates](#security-updates) on or off
+  for the project. It is on unless someone turns it off.
+
+The **Secrets** and **Dependencies** tabs list each alert. Filter either
+tab by state:
+
+| State | Meaning |
+| --- | --- |
+| Open | Needs attention. |
+| Dismissed | Someone dismissed it with a reason. |
+| Fixed | The secret was revoked, or the vulnerable version is no longer resolved by any lockfile. |
+
+## Secret scanning
+
+g1t looks for credentials whose format their issuer made recognisable, so a
+match is nearly always a real secret or a fake made to look like one:
+
+| What | What it looks like |
+| --- | --- |
+| AWS access keys | `AKIA`, `ASIA`, `ABIA` or `ACCA` and 16 more characters |
+| AWS secret access keys | 40 characters on a line that names an AWS secret |
+| GitHub tokens | `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_` |
+| GitLab tokens | `glpat-`, `gloas-`, `glrt-`, `glptt-`, `gldt-` |
+| Stripe live keys | `sk_live_`, `rk_live_` (test keys are left alone) |
+| Slack tokens | `xoxb-`, `xoxp-`, `xoxa-`, `xoxr-`, `xoxs-`, `xoxe-` |
+| Slack webhooks | `https://hooks.slack.com/services/` addresses |
+| Google API keys | `AIza` and 35 more characters |
+| Anthropic API keys | `sk-ant-` |
+| OpenAI API keys | `sk-proj-`, `sk-svcacct-`, `sk-admin-`, and older `sk-` keys |
+| Private keys | A PEM `BEGIN … PRIVATE KEY` header followed by the key |
+| Service-role JWTs | A JWT whose claims carry `service_role` |
+| npm tokens | `npm_` |
+| g1t tokens | `g1t_` and 40 hex characters |
+| SendGrid keys | `SG.` and two dotted parts |
+
+Placeholders made of a handful of characters, such as `ghp_xxxxxxxx…`, are
+not reported. Lockfiles, and files under `node_modules/` and `vendor/`, are
+not scanned.
+
+g1t never stores a secret it finds. It keeps a fingerprint, so it can
+recognise the same secret again, and a short preview, such as `AKIA…`, so
+you can recognise it.
+
+### Likely test values
+
+g1t judges each value it finds by the value alone, never by the file it is
+in: a key under `tests/` is as real as one under `src/` if it was ever
+issued. A value is a **likely test value** when it:
+
+- is a key its issuer publishes as an example, such as AWS's documented
+  example keys;
+- says it is an example: it contains `example`, `sample`, `dummy`, `fake`,
+  `placeholder`, `changeme`, `notreal`, `redacted` or `xxxxx`;
+- counts up for six or more characters in a row, like `abcdef` or `123456`;
+- repeats one character five or more times in a row;
+- is a short piece repeated; or
+- has too little randomness to be a real key.
+
+A likely test value is still listed, in its own group on the **Secrets**
+tab, with the reason. It never stops a push and is never counted as
+critical. Private keys are judged by the words only.
+
+### Push protection
+
+When a push over HTTPS adds a secret, g1t refuses the whole push and nothing
+is stored. Only the lines the push adds are checked, so a secret that is
+already in the repository does not block every later push to the same file.
+This applies to every push, including the pushes g1t and its agents make to
+pull requests.
+
+Very large pushes are scanned after they land, not before. Such a push is
+too large to read in full before it is stored, so it goes through, and g1t
+then scans every commit it added, on whichever branch, in the
+background. A secret found there is an open alert, as if it had been found
+in history, and the workspace's owners get an email when one looks real.
+To have a large push checked before it lands, push it in parts, as
+[Size limits](/guides/git/#size-limits) shows.
+
+Git lists every secret it found, by file and line, with a link to allow
+each one:
+
+```text
+$ git push
+remote: g1t found a secret in this push, so nothing was pushed.
+remote:
+remote:   config/prod.env:3  an AWS access key  (commit 4807077)
+remote:
+remote: Take the secret out of the commit that adds it (git commit --amend, or
+remote: git rebase -i for an older commit), rotate it if it was ever real, and
+remote: push again.
+remote:
+remote: If it is not a real secret, such as a test fixture:
+remote:   - add g1t:allow-secret in a comment on its line, or
+remote:   - allow it once at https://g1t.sh/acme/rocket/security?tab=secrets&finding=sec_…
+remote:     Allowing is recorded with your name, then the same push goes through.
+To https://g1t.sh/acme/rocket.git
+ ! [remote rejected] main -> main (secret found: config/prod.env:3 has an AWS access key)
+```
+
+To fix a real secret:
+
+1. Remove it from the commit that adds it: `git commit --amend` for the last
+   commit, `git rebase -i` for an older one.
+2. Rotate it with whoever issued it. Once a secret has been on any machine
+   but yours, treat it as known.
+3. Push again.
+
+### Letting a secret through
+
+A fake key that does not look made up is still reported, on purpose: it
+looks exactly like a real one. Two ways to let it through:
+
+- **Mark the line.** Put `g1t:allow-secret` anywhere on the line, usually in
+  a comment. The line is never reported, in any push or in history.
+
+  ```ts
+  const FIXTURE_KEY = "AKIA…"; // g1t:allow-secret
+  ```
+
+- **Dismiss the alert.** Open the link in git's message (or the alert on the
+  **Secrets** tab), choose **Dismiss** with the reason **False positive** or
+  **Used in tests**, and push again, unchanged: that secret no longer stops
+  a push to this project.
+
+Dismissing a secret alert needs the Admin [role](/guides/access-and-roles/)
+on the repository. Someone without it sees the same message and asks
+someone who has it.
+
+### Secrets in history
+
+The first time g1t sees a repository (when it is created, on its next push
+to the default branch, or when its Security page is first opened) it scans
+the default branch's history in the background, a page of commits at a
+time, comparing each commit with its first parent. The page shows how far
+it has got. Scanning is metered to the workspace like other usage, and it
+pauses if the workspace reaches its spending limit.
+
+A secret found in history is open: it is in the repository, and anyone
+who could clone it may have it. Rotate it, then dismiss it as **Revoked**.
+Removing it from the code is not enough, since it stays in history.
+
+### Dismissing a secret alert
+
+Choose **Dismiss**, pick a reason, and add a comment if you like (up to 500
+characters):
+
+| Reason | API value | What happens |
+| --- | --- | --- |
+| False positive | `false_positive` | Dismissed. Pushes carrying the secret go through. |
+| Used in tests | `used_in_tests` | Dismissed. Pushes carrying the secret go through. |
+| Revoked | `revoked` | Fixed. The secret was real and has been revoked or rotated. |
+| Won't fix | `wont_fix` | Dismissed. Pushes carrying the secret go through. |
+
+Who dismissed it, when, the reason and the comment are kept in the alert's
+activity log. **Reopen** puts the alert back to open; a secret that never
+landed goes back to blocking pushes.
+
+## Dependencies
+
+g1t reads these lockfiles on the default branch, up to four directories
+deep, skipping `node_modules`, `vendor`, `target`, `dist` and `build`:
+
+| Ecosystem | Files |
+| --- | --- |
+| npm | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock` |
+| Cargo | `Cargo.lock` |
+| Go | `go.mod` (or `go.sum` where there is no `go.mod`) |
+| Python | `poetry.lock`, and pinned lines (`name==1.2.3`) in `requirements.txt` |
+
+It reads them on every push to the default branch and again every day, and
+asks OSV about every package at the exact version locked. Each advisory
+found is listed with its id (its GHSA id when it has one), severity, the
+version that fixes it, and the lockfile that resolves the vulnerable
+version. A vulnerability that a later scan no longer finds is marked fixed.
+
+### Dismissing a dependency alert
+
+Dismissing a dependency alert needs the Write role. Pick a reason, and add
+a comment if you like (up to 500 characters):
+
+| Reason | API value |
+| --- | --- |
+| A fix has already been started | `fix_started` |
+| No bandwidth to fix this | `no_bandwidth` |
+| Risk is tolerable to this project | `tolerable_risk` |
+| This alert is inaccurate or incorrect | `inaccurate` |
+| Vulnerable code is not actually used | `not_used` |
+
+A dismissed vulnerability that a later scan finds again stays dismissed
+until someone reopens it. The activity log keeps who dismissed it, when,
+the reason and the comment.
+
+### When there is no fix yet
+
+When no patched version has been published, the alert links the advisory
+and nothing is opened for it. You can dismiss it as **Risk is tolerable to
+this project**. g1t checks your dependencies again every day, fetching
+OSV's record for each advisory without a fix again, and opens a security
+update as soon as a fix is published.
+
+## Security updates
+
+With **Security updates** on, g1t opens a pull request to upgrade each
+vulnerable dependency that has a fix. It lands through your branch's
+required checks.
+
+1. g1t starts a sandbox, which raises the package to the fixed version in
+   each lockfile that resolves it, using the ecosystem's own tool.
+2. It commits as `g1t <g1t@users.noreply.g1t.sh>` and pushes a branch named
+   `g1t/security/<package>-<version>`.
+3. It opens a pull request, authored by `g1t`, that names the advisories it
+   fixes, the old and new versions, and the lockfiles it changed.
+4. The pull request merges through the branch's
+   [required status checks](/guides/pull-requests/#required-status-checks)
+   and the [merge queue](/guides/merge-queue/), like any other. When it
+   merges, the next scan finds the vulnerability fixed.
+
+Each alert shows its update's status and links the pull request:
+
+| Status | Meaning |
+| --- | --- |
+| Making the change | The sandbox is raising the version. |
+| Open | The pull request is open. |
+| Merged | The pull request merged. |
+| Closed | The pull request was closed without merging. |
+| Superseded | A newer security update for the same package replaced it, or the package is no longer vulnerable. |
+| Needs code changes | Raising the version was not enough; an agent is working on it. |
+| Failed | The update could not be made. |
+
+A newer security update for the same package closes the older pull request
+as superseded. So does the package no longer being vulnerable.
+
+How each lockfile is changed:
+
+| Lockfile | How the version is raised |
+| --- | --- |
+| `package-lock.json` | `npm install --package-lock-only --ignore-scripts` for a direct dependency, keeping its range style; for an indirect one, `npm update`, then an `overrides` entry if that is not enough |
+| `pnpm-lock.yaml` | `pnpm update --lockfile-only`, then `pnpm.overrides` if needed |
+| `yarn.lock` | `yarn up` (Yarn 2 and later) or `yarn upgrade` (Yarn 1), then `resolutions` if needed |
+| `Cargo.lock` | `cargo update -p <package> --precise <version>` |
+| `go.mod`, `go.sum` | `go get <module>@<version>`, then `go mod tidy` |
+| `poetry.lock` | `poetry add <package>@^<version> --lock`, or `poetry update --lock` for an indirect one |
+| `requirements.txt` | The `==` pin is rewritten |
+
+Install scripts never run. A lockfile the sandbox cannot change this way,
+such as a `requirements.txt` that pins with `--hash`, is handled as
+[when code has to change](#when-code-has-to-change): if no branch has been
+pushed 45 minutes after the update started, g1t-agent gets an issue for it.
+
+### When code has to change
+
+Sometimes raising the version is not enough: the bump fails, or the pull
+request's required checks fail because code must change. Then g1t opens an
+issue and puts [g1t-agent](/guides/g1t-agents/) on it. That agent's session
+shows as **started by g1t**. This is the only time an agent is involved in
+a security update.
+
+Turn **Security updates** off on the Security page to stop g1t opening
+these pull requests for a project. Alerts are still listed.
+
+## Version updates
+
+`.g1t/dependencies.yml` on the default branch says which dependencies to
+keep current, how often, how to group them, and which to leave alone.
+
+<Aside type="note" title="Coming soon">
+g1t reads and checks this file today and shows what it found on the
+Security page; it does not open version update pull requests yet.
+</Aside>
+
+```yaml
+version: 1
+updates:
+  - ecosystem: npm
+    directory: /web
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 3
+    groups:
+      lint:
+        patterns: ["eslint*", "@typescript-eslint/*"]
+    ignore:
+      - dependency: react
+        versions: [">=19"]
+      - dependency: left-pad
+  - ecosystem: cargo
+```
+
+The file has `version: 1` and `updates`, a list of up to 50 entries. Each
+entry takes:
+
+| Key | Value | Default |
+| --- | --- | --- |
+| `ecosystem` | `npm`, `cargo`, `go` or `pip`. Required. | |
+| `directory` | Where the lockfile is, from the repository's root. It must stay inside the repository. | `/` |
+| `schedule.interval` | `daily`, `weekly` or `monthly`. | `weekly` |
+| `open-pull-requests-limit` | How many version update pull requests can be open at once, from 0 to 20. | `5` |
+| `groups` | Group names, each with `patterns`: a list of package names, where `*` matches anything. Matching packages are updated together. | |
+| `ignore` | A list of entries, each with a `dependency` pattern and an optional `versions` list of requirements, such as `>=19`. With no `versions`, the dependency is never updated. | |
+
+The same `ecosystem` and `directory` listed twice, an unknown key and an
+unknown value are errors. The Security page shows the error, naming the
+entry it is in.
+
+## The g1t identity
+
+Pull requests, issues and merges that g1t makes itself, such as security
+updates, are authored by `g1t`, shown with the pixel 1 avatar. `g1t` is not
+an account: no one can sign in to it, and the name cannot be registered.
+
+## API and MCP
+
+| Route | What it does | Scope |
+| --- | --- | --- |
+| `GET /repos/{owner}/{name}/security/alerts` | Lists alerts. Filter with `state` (`open`, `dismissed`, `fixed`) and `kind`. | `repo:read` |
+| `POST /repos/{owner}/{name}/security/alerts/{id}/dismiss` | Dismisses an alert, with `reason` and an optional `comment`. | `repo:admin` |
+| `POST /repos/{owner}/{name}/security/alerts/{id}/reopen` | Reopens a dismissed alert. | `repo:admin` |
+
+`reason` is one of the API values in the tables above. Over MCP, the
+[`repository` tool](/reference/mcp/#repository) has the actions
+`security_alerts`, `dismiss_alert` and `reopen_alert`. The token's scope
+does not replace the role: dismissing still needs Admin for a secret and
+Write for a dependency. See the [API reference](/reference/api/) for the
+fields of each.

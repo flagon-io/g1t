@@ -25,6 +25,9 @@
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "REPOS", "service": "g1t-repos" }
 	],
+	// Margin alerts to staff (src/margin.rs), through Cloudflare Email
+	// Sending like identity's and the status page's mail.
+	"send_email": [{ "name": "EMAIL", "remote": true }],
 	// Events from the bus: a workspace renamed moves its billing to the
 	// new slug (src/rename.rs).
 	"queues": {
@@ -73,9 +76,11 @@
 		"LIMIT_PAID_START_MICROS": "100000000",
 		"LIMIT_PAID_MIN_MICROS": "25000000",
 		"LIMIT_PAID_MAX_MICROS": "1000000000",
-		// Caps on agents (src/compute.rs): one run's spend, and what the
-		// agents on one issue may spend in all. Owners and staff can change them.
-		"RUN_CAP_MICROS": "2000000",
+		// Caps on agents (src/compute.rs): what the agents on one issue may
+		// spend in all. One run's spend cap is DEFAULT_RUN_CAP_MICROS in
+		// crates/contracts (guardrails.rs), shared with the guardrails' cost
+		// per run; RUN_CAP_MICROS here would override it. Owners and staff
+		// can change both.
 		"ISSUE_CAP_MICROS": "10000000",
 		// A spike: an hour's spend above 5 times the usual hour over the last
 		// week, and at least $5, pauses new compute until an owner confirms.
@@ -95,9 +100,17 @@
 		"MIN_CHARGE_MICROS": "5000000",
 		// Where the keeper reads what g1t pays (src/keeper.rs). Its token,
 		// CLOUDFLARE_USAGE_TOKEN, is a secret: Billing, Account Analytics
-		// and AI Gateway, read only.
+		// and AI Gateway, read only. The daily cost reconciliation
+		// (src/costs.rs, src/margin.rs) reads the bill with
+		// CLOUDFLARE_BILLING_TOKEN (Account: Billing Read, Account Analytics
+		// Read) when it is set, else with the usage token. With neither it
+		// reconciles only what g1t counted itself. See
+		// docs/BILLING_OPERATIONS.md.
 		"CLOUDFLARE_ACCOUNT_ID": "1e6f2cffa3f445920836e8ebe446bb58",
-		"AI_GATEWAY_ID": "g1t"
+		"AI_GATEWAY_ID": "g1t",
+		// Where margin alerts go: a product or all of g1t under the margin
+		// floor, leaks, drift. Empty sends none (sudo still shows them).
+		"COSTS_ALERT_EMAIL": "hey@flagon.io"
 	},
 	// Settling runs every 15 minutes; checking costs daily (keeper::DAILY).
 	"triggers": { "crons": ["*/15 * * * *", "17 4 * * *"] },

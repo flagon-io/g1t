@@ -30,7 +30,7 @@ import { Elapsed, formatCost, useLiveRefresh } from "../../components/agents";
 import { ActivityFeed, DeployStrip, Meter, NeedsList, Panel, Quiet, Unavailable, percent } from "../../components/mission";
 import { type ActiveBranch, ActiveBranches } from "../../components/branches";
 import { ProductionChecklist } from "../../components/checklist";
-import { SkeletonRows } from "../../components/ui/skeleton";
+import { Skeleton, SkeletonRows } from "../../components/ui/skeleton";
 import { ProductionShot } from "../../components/production-shot";
 import { GithubLinkStrip } from "../../components/github";
 import { githubApp } from "../../lib/github.server";
@@ -66,7 +66,18 @@ const BRANCHES_SHOWN = 5;
 const BRANCH_DEPTH = 40;
 const MAIN_DEPTH = 120;
 
-export async function loader({ params, context }: Route.LoaderArgs) {
+/**
+ * The overview streams: the layout's header and tabs (one repository
+ * lookup, one project) go out at once with a skeleton below them, and
+ * everything here, seventeen calls across six services, follows in the
+ * same response as it settles. Crawlers wait for all of it
+ * (entry.server.tsx). Before, the first byte waited on the slowest of them.
+ */
+export function loader({ params, context }: Route.LoaderArgs) {
+  return { overview: overviewData({ params, context }) };
+}
+
+async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params" | "context">) {
   const viewer = getViewer(context);
   const path = { namespace: params.owner, name: params.repo };
   const ref = { workspace: params.owner, slug: params.repo };
@@ -354,7 +365,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   return started.ok ? { notice: "Production is building." } : { error: started.error.message };
 }
 
-type Loaded = Route.ComponentProps["loaderData"];
+type Loaded = Awaited<ReturnType<typeof overviewData>>;
 type Card = Loaded["columns"]["working"][number];
 
 const STAGE_TONE: Record<PipelineStage, string> = {
@@ -463,6 +474,60 @@ function Stat({ label, value, to }: { label: string; value: ReactNode; to?: stri
 }
 
 export default function ProjectOverview({ loaderData, actionData, params }: Route.ComponentProps) {
+  return (
+    <Suspense fallback={<OverviewSkeleton />}>
+      <Await resolve={loaderData.overview} errorElement={<OverviewFailed />}>
+        {(overview) => <Overview loaderData={overview} actionData={actionData} params={params} />}
+      </Await>
+    </Suspense>
+  );
+}
+
+/** The overview's sections as they will sit, while they stream in. */
+function OverviewSkeleton() {
+  return (
+    <div className="space-y-8" aria-busy="true" aria-label="Loading the overview">
+      <section className="rounded-2xl border border-line bg-surface p-5 sm:p-6">
+        <Skeleton className="h-3 w-24" />
+        <Skeleton className="mt-3 h-5 w-64 max-w-full" />
+        <Skeleton className="mt-3 h-3 w-48 max-w-full" />
+      </section>
+      <section className="rounded-2xl border border-line bg-surface p-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {Array.from({ length: 5 }, (_, index) => (
+            <Skeleton key={index} className="h-24 rounded-xl" />
+          ))}
+        </div>
+      </section>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className="rounded-2xl border border-line bg-surface">
+          <SkeletonRows rows={4} />
+        </section>
+        <section className="rounded-2xl border border-line bg-surface">
+          <SkeletonRows rows={4} />
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function OverviewFailed() {
+  return (
+    <p className="rounded-2xl border border-line bg-surface p-6 text-sm text-muted">
+      The overview could not be loaded just now. Reload the page to try again.
+    </p>
+  );
+}
+
+function Overview({
+  loaderData,
+  actionData,
+  params,
+}: {
+  loaderData: Loaded;
+  actionData: Route.ComponentProps["actionData"];
+  params: Route.ComponentProps["params"];
+}) {
   const { member, project, settings, builds, live, commit, open, dependencies, agentsLive, columns, needs, landed, groups, health, knows, checklist, branches } =
     loaderData;
   const base = `/${params.owner}/${params.repo}`;

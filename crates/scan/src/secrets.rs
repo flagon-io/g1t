@@ -3,9 +3,11 @@
 //!
 //! Each rule knows a format exactly (its prefix, its alphabet, its length),
 //! so a match is almost always a real credential, or a fake made to look
-//! like one. Fakes in tests and docs are still found; a person marks them
-//! with [`ALLOW_MARKER`] on the same line, or allows the finding once on the
-//! project's Security page. Guesswork from entropy alone is left out: it is
+//! like one. Fakes in tests and docs are still found, and [`test_value`]
+//! says which look made up (a documented example key, a counting or
+//! repeating value), so they are listed apart and never stop a push. A
+//! person can also mark a line with [`ALLOW_MARKER`], or dismiss a finding
+//! on the project's Security page. Guesswork from entropy alone is left out: it is
 //! what makes scanners noisy, and noise is what makes people bypass them.
 
 use sha2::{Digest, Sha256};
@@ -122,6 +124,118 @@ impl Hit {
     pub fn preview(&self) -> String {
         preview(self.kind, &self.value)
     }
+
+    /// Why this looks like a value made for tests or documentation rather
+    /// than a real credential, or `None`. See [`test_value`].
+    pub fn test_value(&self) -> Option<&'static str> {
+        test_value(self.kind, &self.value)
+    }
+}
+
+/// Keys their issuers publish in documentation, so that examples never use
+/// a real one. Each is split in two here, so that this file holds no whole
+/// key for a scanner to find.
+const DOCUMENTED_EXAMPLES: &[&str] = &[
+    // AWS's documentation: two access keys and their secret keys.
+    concat!("AKIA", "IOSFODNN7EXAMPLE"),
+    concat!("wJalrXUtnFEMI/K7MDENG/", "bPxRfiCYEXAMPLEKEY"),
+    concat!("AKIA", "I44QH8DHBEXAMPLE"),
+    concat!("je7MtGbClwBF/2Zp9Utk/", "h3yCo8nvbEXAMPLEKEY"),
+];
+
+/// Words that say a value is not real.
+const TEST_WORDS: &[&str] = &[
+    "example",
+    "sample",
+    "dummy",
+    "fake",
+    "placeholder",
+    "changeme",
+    "notreal",
+    "redacted",
+    "xxxxx",
+];
+
+/// Why a secret the rules found looks like a value made for tests or
+/// documentation, or `None` when it looks real. Judged from the value
+/// alone, never from where it is: a key in `tests/` is as real as one in
+/// `src/` if it was ever issued.
+///
+/// A likely test value is still a finding, listed apart from the others;
+/// it never stops a push and is never counted as critical.
+pub fn test_value(kind: SecretKind, value: &str) -> Option<&'static str> {
+    if DOCUMENTED_EXAMPLES.iter().any(|example| value.contains(example)) {
+        return Some("a key its issuer publishes as an example");
+    }
+    let lower = value.to_ascii_lowercase();
+    if TEST_WORDS.iter().any(|word| lower.contains(word)) {
+        return Some("it says it is an example");
+    }
+    // A private key is judged by its words only: its body is base64 of
+    // structured bytes, which can look patterned without being made up.
+    if kind == SecretKind::PrivateKey {
+        return None;
+    }
+    let chars: Vec<char> = body_of(kind, value).chars().map(|c| c.to_ascii_lowercase()).collect();
+    if longest(&chars, |a, b| b as u32 == a as u32 + 1) >= 6 {
+        return Some("it counts up, like abcdef or 123456");
+    }
+    if longest(&chars, |a, b| a == b) >= 5 {
+        return Some("one character over and over");
+    }
+    if repeated_piece(&chars) {
+        return Some("a short piece repeated");
+    }
+    if chars.len() >= 20 && entropy(&chars) < 3.0 {
+        return Some("too little randomness for a real key");
+    }
+    None
+}
+
+/// The part of a value its issuer generated: what follows the prefix its
+/// rule starts with, for the kinds that have one.
+fn body_of(kind: SecretKind, value: &str) -> &str {
+    RULES
+        .iter()
+        .filter(|rule| rule.kind == kind)
+        .flat_map(|rule| rule.prefixes.iter())
+        .filter(|prefix| value.starts_with(**prefix))
+        .map(|prefix| &value[prefix.len()..])
+        .min_by_key(|body| body.len())
+        .unwrap_or(value)
+}
+
+/// The longest run of characters each following the one before it by `next`.
+fn longest(chars: &[char], next: impl Fn(char, char) -> bool) -> usize {
+    let mut best = usize::from(!chars.is_empty());
+    let mut run = 1;
+    for pair in chars.windows(2) {
+        run = if next(pair[0], pair[1]) { run + 1 } else { 1 };
+        best = best.max(run);
+    }
+    best
+}
+
+/// Whether the value is one piece of two to eight characters, three times
+/// or more.
+fn repeated_piece(chars: &[char]) -> bool {
+    (2..=8).any(|size| chars.len() >= size * 3 && chars.iter().enumerate().skip(size).all(|(at, c)| *c == chars[at % size]))
+}
+
+/// Shannon entropy, in bits per character.
+fn entropy(chars: &[char]) -> f64 {
+    let mut counts = std::collections::HashMap::new();
+    for c in chars {
+        *counts.entry(*c).or_insert(0u32) += 1;
+    }
+    let total = chars.len() as f64;
+    counts
+        .values()
+        .map(|count| {
+            let p = f64::from(*count) / total;
+            -p * p.log2()
+        })
+        .sum()
 }
 
 pub fn fingerprint(kind: SecretKind, value: &str) -> String {
@@ -469,6 +583,43 @@ mod tests {
         assert_eq!(kinds(&example), [SecretKind::AwsAccessKey]);
         assert!(kinds(&format!("{example} # g1t:allow-secret")).is_empty());
         assert!(kinds(&format!("{example} // {ALLOW_MARKER}")).is_empty());
+    }
+
+    fn test_value_of(line: &str) -> Option<&'static str> {
+        let hits = scan_text(line);
+        assert_eq!(hits.len(), 1, "{line}");
+        hits[0].test_value()
+    }
+
+    #[test]
+    fn test_values_are_told_from_real_ones() {
+        // Documented examples, words, counting, repeats, and too little randomness.
+        for (line, why) in [
+            (join("AWS: AK", "IAIOSFODNN7EXAMPLE"), "publishes as an example"),
+            (join("aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCY", "EXAMPLEKEY"), "publishes as an example"),
+            (join("use gh", "p_abcdefghijklmnopqrstuvwxyz0123456789 to clone"), "counts up"),
+            (join("STRIPE_KEY=sk_l", "ive_51HabcdefghijklmnopQRSTUV"), "counts up"),
+            (join("SLACK=xo", "xb-2048-1000000-Zq8wN3vR7tY2uI5oP1aS"), "over and over"),
+            (join("token: gh", "p_q8Zw3Rq8Zw3Rq8Zw3Rq8Zw3Rq8Zw3Rq8Zw3R"), "piece repeated"),
+            (join("key: sk-an", "t-api03-FAKEFAKEZq8wN3vR7tY2uI5oP1aS6dF4gH9jK0lXmC3b"), "says it is an example"),
+            (join("G1T_TOKEN=g1", "t_aa1aa2aa3aa4aa5aa6aa1aa2aa3aa4aa5aa6aa1a"), "too little randomness"),
+        ] {
+            let found = test_value_of(&line).unwrap_or_else(|| panic!("{line} looks real"));
+            assert!(found.contains(why), "{line}: {found}");
+        }
+        // Keys that look issued are not.
+        for line in [
+            join("aws_access_key_id = AK", "IAZ7Q4N2XWLM3KDTRV"),
+            join("token: gh", "p_Zq8wN3vR7tY2uI5oP1aS6dF4gH9jK0lXmC3b"),
+            join("G1T_TOKEN=g1", "t_3f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a"),
+            join("aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCY", "Q2x9Lm3Kd7"),
+            join("ANTHROPIC_API_KEY=sk-an", "t-api03-Zq8wN3vR7tY2uI5oP1aS6dF4gH9jK0lXmC3bVn8wQ2"),
+        ] {
+            assert_eq!(test_value_of(&line), None, "{line}");
+        }
+        // A file's path is never the reason: the same value is judged the same.
+        let key = join("AK", "IAZ7Q4N2XWLM3KDTRV");
+        assert_eq!(test_value(SecretKind::AwsAccessKey, &key), None);
     }
 
     #[test]

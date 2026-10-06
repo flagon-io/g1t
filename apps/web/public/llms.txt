@@ -182,24 +182,29 @@ for `/repos/{owner}/{name}`.
 - **Merge** (the Write role or higher on the repository):
   `POST {repo}/pulls/{number}/merge`. This closes the issue it was for and
   closes the other pull requests for that issue as superseded; send
-  `{"keep_issue_open": true}` if this is only part of the work. A `409`
-  saying main has moved means the fork is behind: pull main from
-  `https://g1t.sh/{owner}/{name}.git` into the fork, push, and merge again.
+  `{"keep_issue_open": true}` if this is only part of the work. If main has
+  moved, g1t brings the pull request up to date and lands it when that is
+  done. A repository that requires pull requests to be up to date answers
+  `409` instead: pull main from `https://g1t.sh/{owner}/{name}.git` into the
+  fork, push, and merge again.
   With the merge queue on, merging adds the pull request to the queue
   instead; `GET {repo}/queue` shows it being tested with the pull requests
   ahead of it, and it lands only if that combination passes.
 
 ## Hand work to g1t agents
 
-Agents, workflows, the merge queue and deployments run on g1t's
-machines, so they need a paid workspace, or the one-time $5 trial after a
-card check. Workflows and the merge queue on public repositories
+Agents, workflows and the merge queue run on g1t's machines, so they
+need a paid workspace, or the one-time $5 trial after a card check.
+Deployments need the plan; the trial never covers them. Workflows and the merge queue on public repositories
 can also run from g1t's open-source pool, after the same card check.
 Agents never run from the pool. Workflow jobs with `runs-on: self-hosted`
 run on the workspace's own machines (`g1t-runner`, any OS) at $0, on every
 plan; a workspace can send agent work there too. Each workspace decides how its agents
 reach a model: its own provider (connected under Integrations, billed by
-the provider) or g1t's hosted models; the sandbox is g1t's either way.
+the provider) or g1t's hosted models (while payments are in test mode,
+only for a few invited workspaces; a trial does not open them, and an
+agent assigned without a model is refused with `no_model`); the sandbox is g1t's unless the work goes to
+the workspace's own runners.
 When the plan refuses a start, these calls answer with a failure whose
 message says what to do and where (such as `/acme/-/billing`). When every
 agent slot of the workspace is busy, the message starts "Waiting for a
@@ -226,7 +231,8 @@ free slot" and the work starts by itself when one finishes.
   Write role, and nothing opens without it. The issue opens even when the
   agent cannot start: `agent.status` is `started` (with `pull`), `queued`,
   or `not_started` with `agent.code` (`not_paid`, `trial_used`, `limit`,
-  `paused`, `issue_cap`, `no_model`), `agent.message` and `agent.fix_url`.
+  `paused`, `issue_cap`, `billing_unavailable`, `no_model`), `agent.message`
+  and `agent.fix_url`.
 - **How sure g1t is of a change:** once a g1t agent finishes, the pull
   request's `confidence` is `high`, `medium` or `low` with short `reasons`
   ("tests not added", "3 revisions"), from its required checks, revisions, review,
@@ -281,7 +287,7 @@ what a call may do is the owner's role and the token's scopes together.
 A token sees only the MCP tools and actions its scopes allow. A missing scope answers `403` with
 `{"error": {"code": "forbidden", "message": "This access token needs the issues:write scope to use create_issue.", "needed_scope": "issues:write"}}`.
 Pushing needs `code:write`; cloning a private repository `code:read`. For
-an agent, use the Agent preset (every read scope, plus `code:write`,
+an agent, use the Agent preset (every read scope but `runners:read`, plus `code:write`,
 `issues:write`, `pull_requests:write`, `agents:run`, `memory:write`).
 OAuth clients may send `scope`;
 the person can untick any; asking for none gives the Agent preset. Tokens
@@ -310,8 +316,9 @@ never the workspace's. Who can do what elsewhere: deployments are seen with
 `read` (on a public repository, by anyone, build logs included), deployed
 with `write`, configured (settings, domains) with `admin`; project settings
 and dependencies need `maintain`; repository webhooks, secrets and
-variables need `admin`, seeing them included; security findings need
-`write`, allowing or resolving a secret `admin`, upkeep `maintain`;
+variables need `admin`, seeing them included; security alerts need
+`write` (dismissing a dependency alert too), dismissing or reopening a
+secret alert `admin`, turning security updates on or off `maintain`;
 enabling or disabling a workflow needs `maintain`; plans and project memory
 are read by anyone who can read the repository, and project memory is
 changed with `write`; workspace memory is for members. People: the
@@ -351,8 +358,8 @@ page, or with `POST /workspaces/{workspace}/integrations`:
   as it uses, with each
   kind of work routed to one of them or to g1t's hosted models
   (`PUT /workspaces/{workspace}/model-routes`). Those providers bill the
-  workspace; g1t charges nothing while it is being built out (later, only
-  each run's sandbox time, at cost plus 20%). Sandboxes never hold a key.
+  workspace; g1t charges only each run's sandbox time, at cost plus 20%
+  (nothing on the workspace's own runners). Sandboxes never hold a key.
 - **Alerts** (`sentry`, `datadog`, `webhook`): each problem opens one issue
   in a chosen repository, optionally with an agent put on it at once.
   Senders sign requests to `https://api.g1t.sh/hooks/{integration}`.
@@ -416,19 +423,44 @@ https://docs.g1t.sh/guides/projects/
 ## Security
 
 A push that adds a known key or token format (AWS, GitHub, GitLab, Stripe
-live, Slack, Google, Anthropic, OpenAI, npm, g1t, SendGrid, PEM private
-keys, service-role JWTs) is refused with `file:line` in git's output; this
-includes an agent's push to its pull request. Never commit a secret: read it
-from the environment. A test fixture that only looks like one carries
-`g1t:allow-secret` in a comment on its line; someone with admin can also allow a
-finding once at `g1t.sh/<owner>/<project>/security`. Lockfiles (npm, pnpm,
-yarn, Cargo, Go, Python) are checked against OSV on every default-branch
-push and daily; each vulnerable package with a fix gets an issue "Upgrade
-<package> to <version>: fixes <advisory>" labelled `dependencies` and
-`security`, whose Definition of done lists a command per lockfile that
-fails while it still resolves the vulnerable version, and the tests; its
-pull request merges on the repository's required checks. An agent on one upgrades the
-package and fixes whatever the upgrade breaks, in the same pull request.
+live, Slack tokens and webhooks, Google, Anthropic, OpenAI, npm, g1t,
+SendGrid, PEM private keys, service-role JWTs) is refused with every secret
+listed by `file:line` in git's output and a link to allow it; this includes
+an agent's push to its pull request. A very large push is scanned after it
+lands, not before: it goes through, its new commits (any branch) are
+scanned in the background, and a secret found is an open alert, emailed to
+the workspace's owners when it looks real. History is scanned once in the
+background. Never commit a secret: read it from the environment. Values are
+judged by the value alone, never the file's path: a documented example key,
+a value containing example/sample/dummy/fake/placeholder/changeme/notreal/
+redacted/xxxxx, one that counts up (six or more, like 123456), one
+character five or more times, a repeated short piece, or too little
+randomness is a "likely test value": listed apart, never blocks a push,
+never counted critical. Any other fixture carries `g1t:allow-secret` in a
+comment on its line. Alerts are `open`, `dismissed` or `fixed`. Dismissing a
+secret alert needs `admin`, with a reason (`false_positive`,
+`used_in_tests`, `wont_fix`: dismissed, and pushes carrying it go through;
+`revoked`: fixed) and an optional comment (500 characters); a dependency
+alert needs `write` (`fix_started`, `no_bandwidth`, `tolerable_risk`,
+`inaccurate`, `not_used`). Reopen undoes it. API:
+`GET {repo}/security/alerts` (`state`, `kind`),
+`POST {repo}/security/alerts/{id}/dismiss` (`reason`, `comment`),
+`POST {repo}/security/alerts/{id}/reopen`; MCP `repository` actions
+`security_alerts`, `dismiss_alert`, `reopen_alert` (`repo:read` to list,
+`repo:admin` to dismiss or reopen). Lockfiles (npm, pnpm, yarn, Cargo, Go,
+Python) on the default branch are checked against OSV on every push to it
+and daily. Security updates (on by default; `maintain` turns them off): for
+each vulnerable dependency with a fix, g1t itself opens a pull request
+authored by `g1t` from `g1t/security/<package>-<version>`, raising the
+version in each lockfile with the ecosystem's own tool; it merges through
+the branch's required checks and merge queue. A newer update for the same
+package, or the package no longer being vulnerable, closes it as
+superseded. Only when the bump fails, or required checks fail because code
+must change, does g1t open an issue and put g1t-agent on it (the session
+shows "started by g1t"). With no fix published, the alert links the
+advisory and is checked again daily. `.g1t/dependencies.yml` (version
+updates) is read and validated, but no version update pull requests are
+opened yet. `g1t` is not an account and cannot be signed in to.
 Guide: https://docs.g1t.sh/guides/security/
 
 ## Deployments
@@ -444,7 +476,8 @@ its overview). Production deploys from the default branch to
 `https://<project>-<owner>.g1t.page` on each push; every branch with an
 open pull request gets a preview at
 `https://<project>-git-<branch>-<owner>.g1t.page` (a fork's pull request is
-`pr-<n>`), shown on it as the check `g1t / deploy`. Builds and running apps
+`pr-<n>`), shown on it as the check `g1t / deploy` (`g1t / deploy (<project>)`
+for a workspace's other projects). Builds and running apps
 read the project's secrets and variables available to Deployments, each
 key's Production or Preview row. Workers projects (`wrangler.jsonc`) and
 static sites build without configuration. Previews come down when the pull
@@ -476,10 +509,12 @@ https://docs.g1t.sh/guides/search/
 
 ## Facts
 
-- API base: `https://api.g1t.sh`. `GET /` lists every URL as a template.
+- API base: `https://api.g1t.sh`. `GET /` lists the main URLs as templates;
+  every operation is in the OpenAPI document.
   Auth: `Authorization: Bearer g1t_…`. Public data needs no token. Errors are
   `{"error": {"code": "…", "message": "…"}}` with codes `unauthenticated`
-  (401), `forbidden` (403, with `needed_scope` when the token lacks a
+  (401), `payment_required` (402, when the plan or a limit refuses compute),
+  `forbidden` (403, with `needed_scope` when the token lacks a
   scope), `not_found` (404), `conflict` (409), `invalid` (422). Each
   operation's scope is `x-scope` in the OpenAPI document. The full description is at https://api.g1t.sh/openapi.json.
 - Git remote: `https://g1t.sh/{workspace}/{repo}.git`. In API paths,
@@ -501,7 +536,9 @@ https://docs.g1t.sh/guides/search/
   `{"ignore_checks": true}`. Checks that are not required never hold a
   merge. With the merge queue on, the workflows behind required checks
   need `merge_group` in their `on:`.
-- Not available yet: merge commits made on the server.
+- Landing fast-forwards the default branch: g1t makes no merge commit on
+  main. Bringing a pull request up to date makes a merge commit on its own
+  branch.
 - Pricing (https://g1t.sh/pricing): the forge is free. One plan, g1t, at
   $20 a month per workspace with unlimited members, includes $10 of usage
   at cost + 20% (unused does not roll over). Compute needs the plan or a
@@ -550,7 +587,7 @@ https://docs.g1t.sh/guides/search/
 ## Help, status and policies
 
 - [Status](https://status.g1t.sh/): whether each part of g1t is working now, 90 days of uptime, and incidents; the same as JSON at https://status.g1t.sh/status.json
-- [Support](https://g1t.sh/support): where to get help (hey@flagon.io, hey@flagon.io)
+- [Support](https://g1t.sh/support): where to get help (hey@flagon.io)
 - [Security](https://g1t.sh/security): how g1t protects code and accounts, and responsible disclosure (hey@flagon.io, https://g1t.sh/.well-known/security.txt)
 - [Policies](https://g1t.sh/policies): [Terms of Service](https://g1t.sh/policies/terms), [Privacy Policy](https://g1t.sh/policies/privacy), [Acceptable Use](https://g1t.sh/policies/acceptable-use), [Refunds and Cancellation](https://g1t.sh/policies/refunds), [Subprocessors](https://g1t.sh/policies/subprocessors)
 - g1t is made by Flagon, Inc. (https://www.flagon.io)

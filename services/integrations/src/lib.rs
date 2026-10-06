@@ -107,6 +107,22 @@ struct DeliveryRow {
     issue: Option<String>,
 }
 
+/// The token hashes a run may close: SHA-256 in lowercase hex, each once,
+/// a run's handful at most.
+fn closable_hashes(hashes: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for hash in hashes {
+        let hash = hash.trim().to_ascii_lowercase();
+        if hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()) && !out.contains(&hash) {
+            out.push(hash);
+        }
+        if out.len() == 20 {
+            break;
+        }
+    }
+    out
+}
+
 /// A model session's public id: the start of its token's hash.
 fn session_id(token_hash: &str) -> String {
     format!("ms_{}", &token_hash[..token_hash.len().min(24)])
@@ -1287,6 +1303,25 @@ impl Integrations {
         }))
     }
 
+    /// Ends the model sessions of a run that has finished: their tokens are
+    /// refused from now on, whatever time they had left.
+    async fn close_model_sessions(&self, a: CloseModelSessionsArgs) -> Result<u32> {
+        let hashes = closable_hashes(&a.token_hashes);
+        if hashes.is_empty() {
+            return Ok(0);
+        }
+        let marks = vec!["?"; hashes.len()].join(", ");
+        let mut values: Vec<JsValue> = hashes.iter().map(|hash| hash.as_str().into()).collect();
+        values.push(rfc3339(now_ms()).into());
+        let result = self
+            .db
+            .prepare(format!("DELETE FROM model_sessions WHERE token_hash IN ({marks}) AND expires_at > ?"))
+            .bind(&values)?
+            .run()
+            .await?;
+        Ok(result.meta()?.and_then(|meta| meta.changes).unwrap_or(0) as u32)
+    }
+
     // --- Writing back -----------------------------------------------------------
 
     async fn on_event(&self, event: &Event) -> Result<()> {
@@ -1407,6 +1442,7 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "model_provider" => reply(&service.model_provider(args(body)?).await?),
         "open_model_session" => reply(&service.open_model_session(args(body)?).await?),
         "model_upstream" => reply(&service.model_upstream(args(body)?).await?),
+        "close_model_sessions" => reply(&service.close_model_sessions(args(body)?).await?),
         "routes" => reply(&service.routes(args(body)?).await?),
         "set_routes" => reply(&service.set_routes(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
@@ -1443,3 +1479,16 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
     Ok(())
 }
 
+#[cfg(test)]
+mod close_tests {
+    use super::closable_hashes;
+
+    #[test]
+    fn only_token_hashes_are_closed() {
+        let hash = "a".repeat(64);
+        let got = closable_hashes(&[hash.clone(), hash.to_uppercase(), "nope".into(), "g".repeat(64), String::new()]);
+        assert_eq!(got, vec![hash]);
+        let many: Vec<String> = (0..40).map(|i| format!("{i:064x}")).collect();
+        assert_eq!(closable_hashes(&many).len(), 20);
+    }
+}

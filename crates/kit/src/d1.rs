@@ -19,7 +19,14 @@
 //!
 //! Every response that goes through [`Served::finish`] also carries
 //! `server-timing: svc;dur=<ms>;desc="<how D1 was read>"`, which the site
-//! adds up per service for its own `Server-Timing` header.
+//! adds up per service for its own `Server-Timing` header. A service that
+//! times its round trips with a [`Timing`] and answers through
+//! [`Served::finish_timed`] adds `db;dur=<ms>;desc="<n> round trips, <m>
+//! statements"` and `rpc;dur=<ms>;desc="<n> calls"` beside it: summed time
+//! spent waiting on its database and on other services.
+
+use std::cell::Cell;
+use std::future::Future;
 
 use worker::wasm_bindgen::JsCast;
 use worker::{D1Database, D1DatabaseSession, Env, Request, Response, Result};
@@ -97,9 +104,90 @@ impl Served {
     }
 }
 
+/// Where one RPC's time went: round trips to its database and calls to
+/// other services, each summed. One per request: a Worker serves several
+/// requests at once on one thread, so this is never global.
+#[derive(Default)]
+pub struct Timing {
+    db_ms: Cell<u64>,
+    db_trips: Cell<u32>,
+    db_statements: Cell<u32>,
+    rpc_ms: Cell<u64>,
+    rpc_calls: Cell<u32>,
+}
+
+impl Timing {
+    /// Times one round trip to the database carrying `statements`
+    /// statements (a batch is one round trip).
+    pub async fn db<T>(&self, statements: u32, work: impl Future<Output = T>) -> T {
+        let started = crate::now_ms();
+        let answer = work.await;
+        self.db_ms.set(self.db_ms.get() + crate::now_ms().saturating_sub(started));
+        self.db_trips.set(self.db_trips.get() + 1);
+        self.db_statements.set(self.db_statements.get() + statements);
+        answer
+    }
+
+    /// Times one call to another service.
+    pub async fn rpc<T>(&self, work: impl Future<Output = T>) -> T {
+        let started = crate::now_ms();
+        let answer = work.await;
+        self.rpc_ms.set(self.rpc_ms.get() + crate::now_ms().saturating_sub(started));
+        self.rpc_calls.set(self.rpc_calls.get() + 1);
+        answer
+    }
+
+    /// The `Server-Timing` entries, or `None` when nothing was timed.
+    pub fn header(&self) -> Option<String> {
+        let mut parts = Vec::new();
+        if self.db_trips.get() > 0 {
+            parts.push(format!(
+                "db;dur={};desc=\"{} round trips, {} statements\"",
+                self.db_ms.get(),
+                self.db_trips.get(),
+                self.db_statements.get()
+            ));
+        }
+        if self.rpc_calls.get() > 0 {
+            parts.push(format!("rpc;dur={};desc=\"{} calls\"", self.rpc_ms.get(), self.rpc_calls.get()));
+        }
+        (!parts.is_empty()).then(|| parts.join(", "))
+    }
+}
+
+impl Served {
+    /// [`Self::finish`], with what `timing` recorded.
+    pub fn finish_timed(&self, response: Result<Response>, timing: &Timing) -> Result<Response> {
+        let mut response = self.finish(response)?;
+        if let Some(header) = timing.header() {
+            response.headers_mut().append("server-timing", &header)?;
+        }
+        Ok(response)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::constraint;
+    use super::{Timing, constraint};
+
+    #[test]
+    fn nothing_timed_adds_nothing() {
+        assert_eq!(Timing::default().header(), None);
+    }
+
+    #[test]
+    fn round_trips_and_calls_are_summed() {
+        let timing = Timing::default();
+        timing.db_ms.set(30);
+        timing.db_trips.set(2);
+        timing.db_statements.set(21);
+        timing.rpc_ms.set(40);
+        timing.rpc_calls.set(1);
+        assert_eq!(
+            timing.header().as_deref(),
+            Some("db;dur=30;desc=\"2 round trips, 21 statements\", rpc;dur=40;desc=\"1 calls\"")
+        );
+    }
 
     #[test]
     fn no_header_means_the_primary_without_a_session() {

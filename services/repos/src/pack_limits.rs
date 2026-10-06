@@ -15,9 +15,6 @@
 //! gives back the pack's bytes, so a pack can go from one repository to
 //! another without being held whole (land.rs).
 
-// Not wired in yet (R4 in docs/ARTIFACTS.md).
-#![allow(dead_code)]
-
 use miniz_oxide::inflate::TINFLStatus;
 use miniz_oxide::inflate::core::{DecompressorOxide, decompress, inflate_flags};
 
@@ -120,6 +117,7 @@ impl PackSizer {
 
     /// Whether every object the pack said it holds has been read, or the
     /// push carries no pack (it only deletes).
+    #[cfg(test)]
     pub fn complete(&self) -> bool {
         match self.phase {
             Phase::Trailer => true,

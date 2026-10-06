@@ -43,6 +43,7 @@ fn urgency(kind: SignalKind) -> u8 {
         SignalKind::AtLimit => 0,
         SignalKind::Declined => 1,
         SignalKind::NearCeiling => 2,
+        SignalKind::CostOverRevenue => 2,
         SignalKind::HighSpend => 3,
         SignalKind::Growing => 4,
         SignalKind::Established => 5,
@@ -405,6 +406,14 @@ impl Billing {
             if row.first_paid.as_deref().is_some_and(|at| at >= fortnight_ago.as_str()) {
                 push(SignalKind::FirstPayment, "Paid g1t for the first time in the last two weeks: say hello.".to_owned(), this_month);
             }
+        }
+        // Workspaces costing g1t more than they pay (margin.rs), for a look
+        // before they cost more: a pricing gap, or abuse.
+        for (workspace, detail, value) in self.costing_more_than_they_pay().await? {
+            let record = self.record_row(&workspace).await?;
+            let (stage, owner, next_step, next_at) =
+                record.map_or((None, None, None, None), |r| (Some(r.stage), r.owner, r.next_step, r.next_at));
+            signals.push(Signal { workspace, kind: SignalKind::CostOverRevenue, detail, value_micros: value, stage, owner, next_step, next_at });
         }
         signals.sort_by(|a, b| urgency(a.kind).cmp(&urgency(b.kind)).then(b.value_micros.cmp(&a.value_micros)));
         Ok(signals)

@@ -44,7 +44,7 @@ If you email support, security, privacy or billing, we keep the conversation, so
 
 ### Technical information
 
-Our hosting provider, Cloudflare, sees every request to g1t, including your IP address, browser and the address you visited, to deliver it and to protect g1t from attacks. Our servers keep short-lived request logs for debugging and security. **[PLACEHOLDER: confirm how long request logs are kept in Cloudflare Workers Logs.]**
+Our hosting provider, Cloudflare, sees every request to g1t, including your IP address, browser and the address you visited, to deliver it and to protect g1t from attacks. Our servers keep request logs for debugging and security in Cloudflare Workers Logs, which deletes them after 7 days.
 
 ## Cookies and browser storage
 
@@ -57,7 +57,7 @@ g1t uses only the cookies it needs to work. There are **no analytics, advertisin
 | `g1t_seen` | Remembers when you last looked at mission control, so it can show what's new since. | 1 year |
 | `g1t_tz` | Your browser's time zone, so mission control's greeting and days fit your day. | 1 year |
 
-Cloudflare may set its own security cookies (such as `__cf_bm`) to tell people from bots when g1t is under attack. **[PLACEHOLDER: confirm whether Cloudflare bot management or challenge cookies are enabled on g1t.sh.]**
+Cloudflare may set its own security cookies (such as `__cf_bm`) to tell people from bots when g1t is under attack.
 
 The site also keeps a few preferences in your browser's local storage, which never leave your device: which coding agent you set up with, how you like diffs shown, and checklist items you've dismissed.
 
@@ -83,7 +83,7 @@ If you're in the European Economic Area or the United Kingdom, our legal bases a
 We share information only to run g1t, at your direction, or when the law requires it.
 
 - **Service providers ("subprocessors")** that run parts of g1t for us, under contracts that limit them to doing so: Cloudflare (hosting, storage, databases, sandboxes, email, search and the AI gateway), Stripe (payments) and Anthropic (the model behind hosted agents). The [subprocessors](/policies/subprocessors) page lists them and what each receives.
-- **Services you connect.** When you connect your own model provider, an issue tracker, chat, error tracking or a webhook, or let your sandboxes reach a host, we send them what that connection needs, because you asked us to.
+- **Services you connect.** When you connect your own model provider, an issue tracker, error tracking or a webhook, or let your sandboxes reach a host, we send them what that connection needs, because you asked us to.
 - **Other people on g1t**, as your settings allow: your workspace's members, and everyone for public projects and your public profile.
 - **Vulnerability databases.** To find vulnerable dependencies, we send the names and versions of packages in your lockfiles to OSV.dev, an open database run by Google. Nothing else about you or your repository is sent.
 - **The law.** We disclose information when we must by law, such as a valid court order, and when we need to protect the rights, property or safety of our users, the public or Flagon. Where we can, we tell you first.
@@ -96,10 +96,10 @@ We share information only to run g1t, at your direction, or when the law require
 | Your account, profile and content | While your account or workspace exists. Deleted within 30 days of deleting it. |
 | Agent sessions and logs | As long as their project, unless you delete them. |
 | The audit log | 90 days. |
-| Billing records | As long as tax and accounting law requires. **[PLACEHOLDER: retention period for billing records, e.g. 7 years.]** |
-| Email to us | As long as we need it to help you, then deleted. **[PLACEHOLDER: support email retention period.]** |
-| Request logs | A short time, for debugging and security (see above). |
-| Backups | Expire on their own schedule after the data is deleted. **[PLACEHOLDER: confirm backup retention, e.g. 30 days.]** |
+| Billing records | As long as tax and accounting law requires. |
+| Email to us | As long as we need it to help you, then deleted. |
+| Request logs | 7 days. |
+| Database history | g1t's databases keep 30 days of point-in-time history (Cloudflare D1 Time Travel), so deleted data leaves it within 30 days. |
 
 Some content can stay after you leave because it is part of someone else's work: forks others made of your public repositories, and comments and reviews you left in other people's projects. Ask us, and we'll remove your name from what stays where we can.
 
@@ -118,7 +118,7 @@ To use any of these rights, write to [hey@flagon.io](mailto:hey@flagon.io) from 
 
 ## Where your information is
 
-g1t runs on Cloudflare's global network, so your information may be processed in the United States and other countries where Cloudflare operates, which may have different data protection laws from yours. Flagon is based in the United States. Where the law requires it, we rely on the European Commission's Standard Contractual Clauses (and their UK equivalent) with our providers for these transfers. **[PLACEHOLDER: confirm transfer mechanism and whether Cloudflare's data localization is used.]**
+g1t runs on Cloudflare's global network, so your information may be processed in the United States and other countries where Cloudflare operates, which may have different data protection laws from yours. Flagon is based in the United States. Where the law requires it, we rely on the European Commission's Standard Contractual Clauses (and their UK equivalent) with our providers for these transfers.
 
 ## Security
 

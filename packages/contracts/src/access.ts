@@ -109,7 +109,9 @@ export function baseRole(base: BasePermission | null | undefined): RepoRole | nu
 }
 
 function membershipRole(user: User, membership: Membership): RepoRole | null {
-  if (user.kind === "workspace") return "admin";
+  // A workspace's own token, and g1t acting in the workspace, do what an
+  // owner can on its repositories.
+  if (user.kind === "workspace" || user.kind === "system") return "admin";
   return membership.role === "owner" ? "admin" : baseRole(membership.base_permission);
 }
 

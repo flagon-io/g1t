@@ -15,6 +15,12 @@
   $env:G1T_SESSION = "<64 hex characters>"
   powershell -File scripts/perf/measure.ps1 -Runs 7 -Out before.csv
 
+.EXAMPLE
+  # As a browser sees it: React Router streams to browsers and renders the
+  # whole page first for anything it takes for a crawler, which curl's own
+  # user agent is. Compare the two to see what streaming saves.
+  powershell -File scripts/perf/measure.ps1 -BrowserUA
+
 .NOTES
   Uses curl.exe (Windows' own). Git Bash's curl fails here with exit 43.
 #>
@@ -25,7 +31,10 @@ param(
   [int]$Issue = 2,
   [int]$Runs = 5,
   [string[]]$Paths = @(),
-  [string]$Out = ""
+  [string]$Out = "",
+  # Send a desktop Chrome user agent: streamed pages, as people get them.
+  # Without it the requests look like a crawler's and wait for the whole page.
+  [switch]$BrowserUA
 )
 
 $ErrorActionPreference = "Stop"
@@ -51,15 +60,20 @@ if ($Paths.Count -eq 0) {
 $signedIn = [bool]$env:G1T_SESSION
 $cookieArgs = @()
 if ($signedIn) { $cookieArgs = @("-H", "Cookie: g1t_session=$($env:G1T_SESSION)") }
+$agentArgs = @()
+if ($BrowserUA) {
+  $agentArgs = @("-A", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+}
 
 function Measure-Once([string]$url) {
   $headerFile = [System.IO.Path]::GetTempFileName()
   try {
-    $timing = & curl.exe -s -o NUL -D $headerFile -H "cache-control: no-cache" @cookieArgs `
+    $timing = & curl.exe -s -o NUL -D $headerFile -H "cache-control: no-cache" @cookieArgs @agentArgs `
       -w "%{http_code} %{time_connect} %{time_appconnect} %{time_starttransfer} %{time_total}" $url
     $parts = $timing.Trim().Split(" ")
     $headers = Get-Content $headerFile
     $serverTiming = ($headers | Where-Object { $_ -match "^server-timing:" } | ForEach-Object { ($_ -split ":", 2)[1].Trim() }) -join ", "
+    $cookie = [bool]($headers | Where-Object { $_ -match "^set-cookie:\s*g1t_d1=" })
     $placement = ($headers | Where-Object { $_ -match "^cf-placement:" } | ForEach-Object { ($_ -split ":", 2)[1].Trim() }) -join ""
     $ray = ($headers | Where-Object { $_ -match "^cf-ray:" } | ForEach-Object { (($_ -split ":", 2)[1].Trim() -split "-")[-1] }) -join ""
     [pscustomobject]@{
@@ -71,6 +85,9 @@ function Measure-Once([string]$url) {
       Placement = $placement
       Edge      = $ray
       Timing    = $serverTiming
+      # A read-only page should never set g1t_d1: it would then skip the
+      # public cache and send the person's next 30 s of reads to the primary.
+      SetsD1    = [bool]$cookie
     }
   } finally {
     Remove-Item $headerFile -ErrorAction SilentlyContinue
@@ -99,7 +116,7 @@ function Summarize-Timing([string]$header) {
   return ($shown -join " ")
 }
 
-Write-Host "Measuring $Base, $Runs runs each, $(if ($signedIn) { 'signed in' } else { 'signed out' })."
+Write-Host "Measuring $Base, $Runs runs each, $(if ($signedIn) { 'signed in' } else { 'signed out' }), $(if ($BrowserUA) { 'as a browser (streamed)' } else { 'as curl (a crawler: whole page first)' })."
 $rows = foreach ($path in $Paths) {
   $url = "$Base$path"
   $null = Measure-Once $url   # warm the connection and the isolate
@@ -114,6 +131,7 @@ $rows = foreach ($path in $Paths) {
     "TTFB p50"   = Percentile ($samples | ForEach-Object { [double]$_.TtfbMs }) 0.5
     Placement    = $last.Placement
     Edge         = $last.Edge
+    "Sets g1t_d1" = $last.SetsD1
     "Server-Timing (last run)" = Summarize-Timing $last.Timing
   }
 }

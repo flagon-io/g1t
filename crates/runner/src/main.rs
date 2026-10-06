@@ -11,8 +11,9 @@
 //! `review` has an agent review one, and `revise` sends the author back to
 //! address what the checks or a review found, `plan` turns an outcome
 //! into issues, `queue` builds and checks a state of the merge queue,
-//! `mergecheck` finds out whether a pull request merges cleanly, and
-//! `actions` runs one job of a GitHub Actions workflow.
+//! `mergecheck` finds out whether a pull request merges cleanly,
+//! `actions` runs one job of a GitHub Actions workflow, and `bump` makes a
+//! security update: one package raised in its lockfiles, pushed as g1t.
 //! See the modules of those names.
 //!
 //! Configuration comes from the environment:
@@ -32,6 +33,7 @@
 
 mod abuse;
 mod actions;
+mod bump;
 mod checks;
 mod clone;
 mod confidence;
@@ -215,6 +217,7 @@ fn main() {
     // The same image does the other jobs a sandbox is started for.
     match std::env::var("MODE").as_deref() {
         Ok("actions") => std::process::exit(actions::main()),
+        Ok("bump") => std::process::exit(bump::main()),
         Ok("checks") => std::process::exit(checks::main()),
         Ok("deploy") => std::process::exit(deploy::main()),
         Ok("update") => std::process::exit(update::main()),

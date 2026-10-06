@@ -61,7 +61,7 @@ To run hosted agents, we send the relevant content (such as the issue, the code 
 
 ## 7. Services you connect
 
-You can connect g1t to other services: your own model providers, issue trackers, chat, error tracking, webhooks, and anything your sandboxes are allowed to reach. When you do, you're telling us to send them the data that connection needs. Those services are run by others, under their own terms and privacy policies, and we're not responsible for them.
+You can connect g1t to other services: your own model providers, issue trackers, error tracking, webhooks, and anything your sandboxes are allowed to reach. When you do, you're telling us to send them the data that connection needs. Those services are run by others, under their own terms and privacy policies, and we're not responsible for them.
 
 ## 8. Paying for g1t
 

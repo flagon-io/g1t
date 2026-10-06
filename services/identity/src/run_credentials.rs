@@ -63,6 +63,19 @@ impl Identity {
             .as_ref()
             .map(|run| run.agent.clone())
             .unwrap_or_else(|| AGENT_NAME.to_owned());
+        // g1t's own run: the workspace's credential, acting as g1t, so the
+        // pull request and working copy g1t opened are its own (run.system).
+        let on_behalf_of = if scope.run.as_ref().is_some_and(|run| run.system) {
+            Principal {
+                id: g1t_contracts::system::ID.to_owned(),
+                username: g1t_contracts::system::USERNAME.to_owned(),
+            }
+        } else {
+            Principal {
+                id: person.id,
+                username: person.username,
+            }
+        };
         Ok(Some(User {
             id: AGENT_ID.to_owned(),
             username: AGENT_NAME.to_owned(),
@@ -76,10 +89,7 @@ impl Identity {
             acting: Some(Box::new(Acting {
                 credential_id: credential_id.to_owned(),
                 agent,
-                on_behalf_of: Principal {
-                    id: person.id,
-                    username: person.username,
-                },
+                on_behalf_of,
                 scope,
             })),
             ..User::default()
@@ -106,13 +116,30 @@ impl Identity {
                 run_id: None,
                 number: a.number,
                 agent: agent.clone(),
+                system: a.on_behalf_of.kind == PrincipalKind::System,
                 read: a.read,
                 push: a.push,
             }),
         };
+        // g1t's own work (a security update, an agent it put on an upgrade)
+        // has no person behind it: its credential acts for the workspace,
+        // as a workspace's own token would.
+        let on_behalf_of = if a.on_behalf_of.kind == PrincipalKind::System {
+            match self.workspace_id_of(&a.repo.namespace).await? {
+                Some(id) => User {
+                    id,
+                    username: a.repo.namespace.to_lowercase(),
+                    kind: PrincipalKind::Workspace,
+                    ..User::default()
+                },
+                None => return Err(worker::Error::RustError(format!("no workspace {}", a.repo.namespace))),
+            }
+        } else {
+            a.on_behalf_of
+        };
         let created = self
             .create_access_token(CreateAccessTokenArgs {
-                user: a.on_behalf_of,
+                user: on_behalf_of,
                 name: format!(
                     "{agent}: {} run in {}/{}{}",
                     a.kind.as_str(),

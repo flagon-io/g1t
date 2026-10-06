@@ -162,7 +162,7 @@ token can see. Clients use them to decide when to ask you before a call.
 | --- | --- |
 | `title` | The tool's name for people, such as `Pull requests`. |
 | `readOnlyHint` | `true` when every action shown only reads. |
-| `destructiveHint` | `true` when the tool is not read-only and an action shown cannot be undone or reaches beyond g1t's own records: deleting a workspace, deleting, purging or transferring a repository, changing its visibility, removing an email address or a collaborator, disconnecting an integration, deleting a webhook, setting or deleting secrets and variables, replacing model routes, setting a workspace's base permission, and merging a pull request. |
+| `destructiveHint` | `true` when the tool is not read-only and an action shown cannot be undone or reaches beyond g1t's own records: deleting a workspace, deleting, purging or transferring a repository, changing its visibility, removing an email address or a collaborator, disconnecting an integration, deleting a webhook, setting or deleting secrets and variables, replacing model routes, setting a workspace's base permission, merging a pull request, removing a self-hosted runner, deleting a runner group, and changing runner settings. |
 | `idempotentHint` | The same as `readOnlyHint`. |
 | `openWorldHint` | Always `false`. |
 
@@ -224,9 +224,10 @@ repositories, code on default branches, issues, pull requests and people.
 
 ## `repository`
 
-Repositories: find, read and create them, and change their settings.
-Deleting, purging and changing visibility need `confirm`, the repository's
-full name typed out.
+Repositories: find, read and create them, change their settings, and see
+and dismiss their [security alerts](/guides/security/). Deleting, purging
+and changing visibility need `confirm`, the repository's full name typed
+out.
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
@@ -249,6 +250,9 @@ full name typed out.
 | [`list_deleted`](/reference/api/repositories/list-deleted-repos/) | The workspace's recently deleted repositories, with when each is purged. Owners only; empty for anyone else. | `workspace` | `repo:read` |
 | [`restore`](/reference/api/repositories/restore-repo/) | Bring a deleted repository back at the path it had. Owners only. | `repo` | `repo:admin` |
 | [`purge`](/reference/api/repositories/purge-repo/) | Remove a deleted repository for good now, and free its name; `confirm` is its full name. Owners only. | `repo`, `confirm` | `repo:admin` |
+| [`security_alerts`](/reference/api/security/list-security-alerts/) | Its security alerts: secrets found in pushes and history (`kind` `secret`) and dependencies with known vulnerabilities (`dependency`), each `open`, `dismissed` or `fixed`. `state` and `kind` filter them. Write role. | `repo` | `repo:read` |
+| [`dismiss_alert`](/reference/api/security/dismiss-security-alert/) | Dismiss one by `id` with a `reason` and an optional `comment`. A secret takes `false_positive`, `used_in_tests`, `revoked` or `wont_fix`, and needs the Admin role, since a dismissed secret is let through push protection; a dependency takes `fix_started`, `no_bandwidth`, `tolerable_risk`, `inaccurate` or `not_used`, and needs Write. | `repo`, `id`, `reason` | `repo:admin` |
+| [`reopen_alert`](/reference/api/security/reopen-security-alert/) | Open a dismissed alert again. The same roles as dismissing. | `repo`, `id` | `repo:admin` |
 
 `update_settings` takes `required_checks` (at most 20 names),
 `required_approvals`, `count_agent_approvals`,
@@ -427,13 +431,14 @@ permission. An agent's token cannot use any of these.
 
 ## `workspace`
 
-Workspaces own repositories: create or delete one, invite members, and
+Workspaces own repositories: create, update or delete one, invite members, and
 connect [integrations](/guides/integrations/) and model providers. See
 [workspaces](/guides/workspaces/).
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
 | [`create`](/reference/api/workspaces/create-workspace/) | Create a workspace. | `slug` | `workspace:admin` |
+| [`update`](/reference/api/workspaces/update-workspace/) | Change its display name and description, and with the `access:admin` scope too, its `base_permission`. Only the fields given change; the slug never does. Owners only. | `workspace` | `workspace:admin` |
 | [`delete`](/reference/api/workspaces/delete-workspace/) | Delete an empty workspace whose billing is settled; `confirm` is its slug. Owners only. See [deleting a workspace](/guides/workspaces/#delete-a-workspace). | `workspace`, `confirm` | `workspace:admin` |
 | [`list_invites`](/reference/api/invites/list-workspace-invites/) | A workspace's invites. Owners only. | `workspace` | `workspace:read` |
 | [`invite_member`](/reference/api/invites/invite-member/) | Invite an address into a workspace, with an invite bound to it. Owners only. | `workspace`, `email` | `workspace:admin` |
@@ -488,7 +493,8 @@ No agent's token can use the `workspace`, `access`, `secret` or `webhook`
 tools, the controls of `workflow`, or `pull_request` `merge`, `agent`
 `assign` and `delegate`, `plan` `create` and `apply`, `issue` `import`, or
 any `repository` action that creates, changes, renames, archives,
-transfers, deletes, restores or purges a repository. Every repository it
+transfers, deletes, restores or purges a repository, or dismisses or
+reopens a security alert. Every repository it
 names must be its own. `tools/list` shows such a token only the tools and
 actions it may use; a call to any other is refused with the rule that
 refused it, and recorded in the workspace's [audit log](/guides/audit-log/),

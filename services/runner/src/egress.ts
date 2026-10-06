@@ -242,7 +242,7 @@ export function workflowHosts(entries: readonly WorkflowDomain[] | undefined, wo
  */
 export function jobHosts(
   policy: { workflowDomains?: readonly WorkflowDomain[] },
-  kind: "actions" | "deploy",
+  kind: "actions" | "deploy" | "bump",
   job: WorkflowJob | null | undefined,
 ): string[] {
   if (kind !== "actions" || !job?.trusted || !job.workflow) return [];
@@ -267,8 +267,29 @@ export function sandboxNamespace(env: object, className: string | undefined): Du
   return (bindings[binding] ?? bindings.SANDBOX) as DurableObjectNamespace;
 }
 
+/**
+ * What a security update's sandbox may reach on top of its project's
+ * list: the package registries its lockfile tools resolve versions from
+ * (npm, corepack's pnpm and yarn, crates.io, Go's module proxy and
+ * checksum database, PyPI), and nothing else. Mode `bump` in
+ * crates/runner bump.rs.
+ */
+export const BUMP_HOSTS: readonly string[] = [
+  "registry.npmjs.org",
+  "registry.yarnpkg.com",
+  "repo.yarnpkg.com",
+  "crates.io",
+  "index.crates.io",
+  "static.crates.io",
+  "proxy.golang.org",
+  "sum.golang.org",
+  "pypi.org",
+  "files.pythonhosted.org",
+];
+
 /** What a build sandbox may reach on top of its project's list. */
-export function buildHosts(kind: "actions" | "deploy"): string[] {
+export function buildHosts(kind: "actions" | "deploy" | "bump"): string[] {
+  if (kind === "bump") return [...BUMP_HOSTS];
   return kind === "deploy" ? [...BUILD_HOSTS, "api.cloudflare.com"] : [...BUILD_HOSTS];
 }
 

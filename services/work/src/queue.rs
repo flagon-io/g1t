@@ -108,15 +108,18 @@ impl Work {
 
     /// The entry a pull request has in the queue now, if any.
     pub(crate) async fn queued_entry(&self, pull_id: &str) -> Result<Option<(QueueState, Vec<u32>)>> {
-        let row = self
-            .db
-            .prepare(
-                "SELECT * FROM queue_entries
-                 WHERE pull_id = ? AND state IN ('waiting', 'testing', 'passed') LIMIT 1",
-            )
-            .bind(&[pull_id.into()])?
-            .first::<EntryRow>(None)
-            .await?;
+        let row = match self.prefetched_pull(pull_id) {
+            Some(found) => found.first::<EntryRow>(crate::prefetch::Slot::Queued)?,
+            None => self
+                .db
+                .prepare(
+                    "SELECT * FROM queue_entries
+                     WHERE pull_id = ? AND state IN ('waiting', 'testing', 'passed') LIMIT 1",
+                )
+                .bind(&[pull_id.into()])?
+                .first::<EntryRow>(None)
+                .await?,
+        };
         Ok(row.map(|row| (row.state(), row.ahead())))
     }
 

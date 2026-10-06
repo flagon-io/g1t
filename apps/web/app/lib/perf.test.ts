@@ -11,6 +11,7 @@ import {
   rpcMethodOf,
   serverTiming,
   serviceDuration,
+  databaseTime,
   sessionFor,
   writeBookmarks,
 } from "./perf.ts";
@@ -62,7 +63,7 @@ test("what each call asks for", () => {
 });
 
 test("only known reads are taken not to write", () => {
-  for (const method of ["get_pull", "list_pulls", "counts", "user_for_session", "explore", "usage"]) {
+  for (const method of ["get_pull", "list_pulls", "counts", "user_for_session", "explore", "usage", "get", "list", "queue", "pulls_for_repos"]) {
     assert.equal(mayWrite(method), false, method);
   }
   for (const method of ["merge_pull", "verify_email", "github_finish", "sign_in", "something_new"]) {
@@ -76,6 +77,8 @@ test("timings", () => {
   assert.equal(serviceDuration('svc;dur=12;desc="session"'), 12);
   assert.equal(serviceDuration("repo;dur=3, svc;dur=7.5"), 7.5);
   assert.equal(serviceDuration(null), null);
+  assert.deepEqual(databaseTime('svc;dur=40;desc="session", db;dur=22;desc="2 round trips, 21 statements", rpc;dur=18;desc="1 calls"'), { ms: 22, trips: 2 });
+  assert.equal(databaseTime('svc;dur=40;desc="session"'), null);
   // Overlapping calls are counted once.
   assert.equal(coveredMs([[0, 100], [50, 120], [200, 210]]), 130);
   assert.equal(coveredMs([]), 0);
@@ -85,7 +88,7 @@ test("timings", () => {
     loaders: [{ id: "routes/repo/pull", ms: 150, kind: "loader" }],
     rpcMs: 140,
     services: {
-      work: { calls: 3, wallMs: 120, serviceMs: 90 },
+      work: { calls: 3, wallMs: 120, serviceMs: 90, dbMs: 40, dbTrips: 3 },
       repos: { calls: 1, wallMs: 30, serviceMs: 0 },
     },
     sessions: "work=unconstrained",
@@ -93,6 +96,6 @@ test("timings", () => {
   assert.equal(
     header,
     'total;dur=180;desc="web to first byte", loader.repo.pull;dur=150, rpc;dur=140;desc="4 service calls, overlap counted once", ' +
-      'work;dur=120;desc="3 calls, 90ms inside", repos;dur=30;desc="1 call", d1;desc="work=unconstrained"',
+      'work;dur=120;desc="3 calls, 90ms inside, db 40ms in 3 round trips", repos;dur=30;desc="1 call", d1;desc="work=unconstrained"',
   );
 });

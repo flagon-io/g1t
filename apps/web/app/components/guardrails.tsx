@@ -276,7 +276,7 @@ export function GuardrailsForm({
                 Cost per run, in US dollars
               </label>
               <p className="mt-1 text-sm text-muted">
-                Empty: as {parent} ({formatCap(base.budgetUsd)}). 0: no cap.
+                Empty: as {parent} ({formatCap(base.budgetUsd)}). 0: no cap here. The workspace's spend cap per run, under Billing, applies as well, and a run stops at the lower of the two.
               </p>
             </div>
             <Input

@@ -15,6 +15,7 @@ export default [
   route("requests", "routes/requests.tsx"),
   route("overages", "routes/overages.tsx"),
   route("velocity", "routes/velocity.tsx"),
+  route("costs", "routes/costs.tsx"),
   route("abuse", "routes/abuse.tsx"),
   route("invoices", "routes/invoices.tsx"),
   route("stripe", "routes/stripe.tsx"),

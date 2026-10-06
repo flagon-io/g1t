@@ -39,13 +39,13 @@ Agents, checks, workflows and builds each run in **a container of their own** on
 
 - **Push protection.** A push that adds a recognisable secret (cloud keys, tokens, private keys and more) is refused before anything is stored, and git says which file and line. That includes pushes made by agents.
 - **Secret scanning.** Each repository's history is scanned too. We keep a fingerprint and a short preview of each finding, never the secret.
-- **Dependency scanning.** Every package your lockfiles resolve is checked against the OSV database of known vulnerabilities, and an agent can land the upgrade through the usual pull request, checks and review.
+- **Dependency scanning.** Every package your lockfiles resolve is checked against the OSV database of known vulnerabilities. For each one that has a fix, g1t opens a pull request that raises it to the fixed version, and it lands through your branch's required checks.
 - **Encryption at rest.** Workflow and deployment secrets, integration credentials and webhook signing secrets are encrypted with AES-256-GCM under a key held outside the database, bound to the record they belong to. They're never shown again after you save them.
 - **Signed webhooks.** Every webhook delivery is signed, so your server can check it came from g1t.
 
 ## Built on Cloudflare
 
-g1t runs on Cloudflare's network: Workers for the site, API and services, D1 for databases, Artifacts for git storage, Containers for sandboxes. Everything is served over HTTPS. The services behind the site talk to each other over Cloudflare service bindings, not the public internet, and only the site, the API, the MCP server, the model proxy and g1t.page are reachable from outside. Uploaded images are served with a policy that lets nothing in them run.
+g1t runs on Cloudflare's network: Workers for the site, API and services, D1 for databases, Artifacts for git storage, Containers for sandboxes. Everything is served over HTTPS. The services behind the site talk to each other over Cloudflare service bindings, not the public internet, and only the site, the API, the MCP server, the model proxy, link previews (og.g1t.sh), the documentation, the status page and g1t.page are reachable from outside. Uploaded images are served with a policy that lets nothing in them run.
 
 Staff access to accounts and billing goes through an internal tool behind Cloudflare Access. Every change made there is recorded with who made it and why.
 
@@ -73,7 +73,7 @@ What you found, where, how to reproduce it, and what an attacker could do with i
 
 ### In scope
 
-- g1t.sh, api.g1t.sh, mcp.g1t.sh, models.g1t.sh, og.g1t.sh and docs.g1t.sh;
+- g1t.sh, api.g1t.sh, mcp.g1t.sh, models.g1t.sh, og.g1t.sh, docs.g1t.sh and status.g1t.sh;
 - the g1t.page platform itself: routing, isolation between apps, custom domains;
 - the sandboxes: escaping one, reaching another run or workspace, or getting around guardrails, run credentials or the network allowlist;
 - authentication, authorization, the API, the MCP server and git over HTTPS;

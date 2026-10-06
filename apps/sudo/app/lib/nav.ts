@@ -220,22 +220,10 @@ export const NAV: NavGroup[] = [
     items: [
       { label: "Stripe", to: "/stripe", icon: "stripe", about: "Billing's Stripe keys, webhook, and the events Stripe sent." },
       {
-        label: "Cloudflare costs",
+        label: "Costs & margin",
         to: "/costs",
         icon: "costs",
-        about: "What running g1t costs on Cloudflare, measured, against what it charges.",
-        soon: {
-          summary: [
-            "What running g1t actually costs on Cloudflare, as the keeper measures it from Cloudflare's bill, against what g1t charges for the same usage. Prices follow costs, so this is where staff see whether they still do.",
-            "When a cost moves, the keeper updates the price book; this page shows what it measured, when, and the margin each meter earns as a result.",
-          ],
-          plans: [
-            "Each meter's measured cost per unit, the list price, and when the keeper last checked",
-            "Margin by meter and in total, this month and the last six",
-            "Cloudflare's invoice against what g1t charged for the same period",
-            "An alert when a meter's margin drops below its markup",
-          ],
-        },
+        about: "What Cloudflare charged g1t against what g1t charged, by product: margin, drift, and price proposals.",
       },
       {
         label: "Agents & models",

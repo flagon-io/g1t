@@ -96,10 +96,14 @@ export function sessionFor(service: string, bookmarks: Bookmarks, writing: boole
 /**
  * Methods that only read. Anything not listed is taken to write, so a new
  * method errs towards a cookie and a primary read, never a stale page.
+ * `get`, `list`, `queue` and `pulls_for_repos` were missing: every project
+ * page called `get` (repos, projects), so every one set the cookie, was
+ * never kept in the public cache, and sent the next 30 s of the person's
+ * reads to the primary.
  */
 const READS = new Set(
   (
-    "account active_agents all_ids blame blob branches by_author by_repo catalog check_invite check_limit " +
+    "account active_agents all_ids get list queue pulls_for_repos blame blob branches by_author by_repo catalog check_invite check_limit " +
     "check_workspace_deletion check_workspace_rename collaborator_permission compare counts deleted deliveries " +
     "dependencies domains entitlements entity explore features git_access graph has_feature invoices ledger limit " +
     "limit_requests links log logs managed_pulls memories_by_id memory_context my_repo_invitations " +
@@ -130,6 +134,13 @@ export type ServiceTiming = {
   wallMs: number;
   /** Summed time its own `server-timing: svc;dur` reported. */
   serviceMs: number;
+  /**
+   * Of that, summed time it reported waiting on its database
+   * (`db;dur`, crates/kit/src/d1.rs `Timing`) and in how many round trips.
+   * Absent for services that do not time them.
+   */
+  dbMs?: number;
+  dbTrips?: number;
 };
 
 /** The `svc;dur=N` a service reports, or null. */
@@ -137,6 +148,16 @@ export function serviceDuration(header: string | null): number | null {
   if (!header) return null;
   const match = /(?:^|,)\s*svc;dur=([0-9.]+)/.exec(header);
   return match ? Number(match[1]) : null;
+}
+
+/**
+ * The `db;dur=N;desc="T round trips, …"` a service reports: its summed
+ * database time and round trips, or null.
+ */
+export function databaseTime(header: string | null): { ms: number; trips: number } | null {
+  if (!header) return null;
+  const match = /(?:^|,)\s*db;dur=([0-9.]+)(?:;desc="(\d+) round trips?)?/.exec(header);
+  return match ? { ms: Number(match[1]), trips: Number(match[2] ?? 0) } : null;
 }
 
 /** Total time covered by overlapping [start, end] intervals. */
@@ -183,7 +204,8 @@ export function serverTiming(input: {
   if (calls > 0) parts.push(`rpc;dur=${input.rpcMs};desc="${calls} service calls, overlap counted once"`);
   const ranked = Object.entries(input.services).sort((a, b) => b[1].wallMs - a[1].wallMs);
   for (const [name, timing] of ranked) {
-    const inside = timing.serviceMs > 0 ? `, ${timing.serviceMs}ms inside` : "";
+    const db = timing.dbTrips ? `, db ${timing.dbMs ?? 0}ms in ${timing.dbTrips} round trip${timing.dbTrips === 1 ? "" : "s"}` : "";
+    const inside = timing.serviceMs > 0 ? `, ${timing.serviceMs}ms inside${db}` : "";
     parts.push(`${metricName(name)};dur=${timing.wallMs};desc="${timing.calls} call${timing.calls === 1 ? "" : "s"}${inside}"`);
   }
   if (input.sessions) parts.push(`d1;desc="${input.sessions}"`);

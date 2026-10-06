@@ -55,6 +55,20 @@ pub(crate) const CHARGED_HERE: [&str; 5] = ["security", "context", "storage", "g
 /// Sources only the plan is charged for: a free workspace's are not kept.
 pub(crate) const PLAN_ONLY: [&str; 1] = ["cache"];
 
+/// Sources g1t pays for itself on a free workspace: security scans and
+/// search embeddings. No security feature is held back for the plan, and
+/// a free workspace never runs up a bill, so on a workspace without the
+/// plan they are recorded at cost, covered by g1t, and charged nothing
+/// (not even from the trial). On the plan they are charged like any usage.
+pub(crate) const COVERED_FOR_FREE: [&str; 2] = ["security", "context"];
+
+/// What pays for a month-end source's charge: the plan's included usage
+/// and the trial, and for a covered source on a free workspace, g1t.
+pub(crate) fn month_end_eligible(source: &str, plan: bool) -> Eligible {
+    let covered = !plan && COVERED_FOR_FREE.contains(&source);
+    Eligible { trial: !covered, repo: None, cover_rest: covered }
+}
+
 /// What Artifacts charges g1t, when the price book cannot be read: $0.50
 /// a GB-month of storage, and $0.15 per 1,000 git operations.
 pub(crate) const STORAGE_MICROS_PER_GB_MONTH: i64 = 500_000;
@@ -122,14 +136,20 @@ impl Billing {
     /// Puts a usage entry on the ledger and takes it off the balance, as
     /// one write.
     pub(crate) async fn post_usage(&self, line: UsageLine<'_>) -> Result<()> {
+        // The price versions it was charged at (pricing.rs).
+        let mut versions = Vec::new();
+        for meter in crate::pricing::meters_of(line.task) {
+            versions.extend(self.version_now(meter).await?);
+        }
+        let price_version = versions.join(",");
         self.db
             .batch(vec![
                 self.db
                     .prepare(
                         "INSERT INTO ledger
                            (id, workspace, kind, amount_micros, description, repo, task, cost_micros, reference,
-                            created_at, billed_to, credit_micros, trial_micros, oss_micros)
-                         VALUES (?, ?, 'usage', ?, ?, ?, ?, ?, ?, ?, 'g1t', ?, ?, ?)",
+                            created_at, billed_to, credit_micros, trial_micros, oss_micros, price_version)
+                         VALUES (?, ?, 'usage', ?, ?, ?, ?, ?, ?, ?, 'g1t', ?, ?, ?, ?)",
                     )
                     .bind(&[
                         new_id("led", now_ms()).into(),
@@ -144,6 +164,7 @@ impl Billing {
                         (line.drawn.credit as f64).into(),
                         (line.drawn.trial as f64).into(),
                         (line.drawn.oss as f64).into(),
+                        optional(Some(price_version.as_str()).filter(|v| !v.is_empty())),
                     ])?,
                 self.db
                     .prepare(
@@ -167,7 +188,10 @@ impl Billing {
         cost_micros: i64,
         detail: Option<&str>,
     ) -> Result<()> {
-        let charge = credits::with_margin(cost_micros, self.margin_percent);
+        // A covered source on a free workspace is never charged, so it does
+        // not count toward the workspace's limit either.
+        let covered = COVERED_FOR_FREE.contains(&source) && !self.has_plan(&workspace.to_lowercase()).await?;
+        let charge = if covered { 0 } else { credits::with_margin(cost_micros, self.margin_percent) };
         self.db
             .prepare(
                 "INSERT INTO pending_usage (workspace, source, month, charge_micros, cost_micros, updated_at, detail)
@@ -232,7 +256,8 @@ impl Billing {
             }
             let base = credits::with_margin(cost, self.margin_percent);
             let (charge, terms_note) = self.charged(&row.workspace, base).await?;
-            let drawn = self.draw(&row.workspace, charge, &row.month, &Eligible { trial: true, repo: None, cover_rest: false }).await?;
+            let plan = self.has_plan(&row.workspace).await?;
+            let drawn = self.draw(&row.workspace, charge, &row.month, &month_end_eligible(&row.source, plan)).await?;
             let detail = if row.source == "storage" {
                 let gb_months = self.gb_months(&row.workspace, &row.month).await?;
                 format!(": {gb_months:.2} GB-months")
@@ -352,6 +377,23 @@ impl Billing {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scans_and_embeddings_on_a_free_workspace_are_covered_by_g1t() {
+        // No plan: g1t pays, and the trial is left alone.
+        let free = month_end_eligible("security", false);
+        assert!(free.cover_rest && !free.trial);
+        assert!(month_end_eligible("context", false).cover_rest);
+        // On the plan: charged like any usage, from its included usage first.
+        let plan = month_end_eligible("security", true);
+        assert!(!plan.cover_rest && plan.trial);
+        // Storage, git and the cache are never kept for a free workspace;
+        // were one at the close, it would not be covered either.
+        assert!(!month_end_eligible("storage", false).cover_rest);
+        assert!(!month_end_eligible("git", false).cover_rest);
+        // A covered source is still a source billing charges at the close.
+        assert!(COVERED_FOR_FREE.iter().all(|s| CHARGED_HERE.contains(s)));
+    }
 
     #[test]
     fn storage_past_the_free_amount_is_counted_by_the_day() {

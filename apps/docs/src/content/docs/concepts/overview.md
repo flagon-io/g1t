@@ -184,11 +184,13 @@ have passed. Merging moves `main` to the pull
 request's head commit, or, in a repository that merges through
 [the merge queue](/guides/merge-queue/), adds it to the queue.
 
-A pull request can only merge if it contains everything already on `main`.
-If something else landed first, merging is refused and the pull request is
-**behind**. Its page says so before you try.
+`main` only moves forward to a commit that contains everything already on
+it. If something else landed first, the pull request is **behind**, and its
+page says so. Merging it then brings it up to date first and lands it once
+that is done, unless the repository requires pull requests to be up to date
+before they merge; then merging is refused until it has caught up.
 
-**Catch up with main** fixes that. When the pull request and `main` changed
+**Catch up with main** brings it up to date. When the pull request and `main` changed
 different files, g1t merges `main` in itself and pushes the merge in a few
 seconds. When they changed some of the same files, a g1t agent merges `main`
 into the pull request in a sandbox: if the merge is clean, it is pushed as it
@@ -231,8 +233,10 @@ g1t is under active development. These are designed but not available yet
 [What g1t can't do yet](/about/limitations/)):
 
 - **Milestones.**
-- **g1t agents for everyone.** g1t can put its own agents on an issue, each
-  in a sandbox. A workspace that connects its own model provider can use
-  them today on the [g1t plan](/guides/usage-and-billing/#the-g1t-plan)
-  or the one-time $5 trial after a card check.
-  See [the trial](/guides/usage-and-billing/#the-trial).
+- **g1t's hosted models for everyone.** g1t can put its own agents on an
+  issue, each in a sandbox, on the
+  [g1t plan](/guides/usage-and-billing/#the-g1t-plan) or the one-time $5
+  [trial](/guides/usage-and-billing/#the-trial) after a card check. Agents
+  run on the workspace's own model provider, or on g1t's hosted models
+  while its trial has credit; hosted models open to every workspace once
+  payments go live. See [model providers](/guides/models/).

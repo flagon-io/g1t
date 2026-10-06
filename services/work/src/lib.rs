@@ -16,6 +16,7 @@ mod mentions;
 mod mergeability;
 mod plans;
 mod messages;
+mod prefetch;
 mod queue;
 mod retired;
 mod reviews;
@@ -72,6 +73,24 @@ fn no_issue<T>() -> Outcome<T> {
 
 fn no_pull<T>() -> Outcome<T> {
     Outcome::fail(FailureCode::NotFound, "Pull request not found.")
+}
+
+/// Whether a pull request was behind when its mergeability was last
+/// worked out, and for which pair of commits (mergeability.rs).
+#[derive(serde::Deserialize)]
+struct StoredBehind {
+    #[serde(default)]
+    behind: Option<u8>,
+    #[serde(default)]
+    mergeable_key: Option<String>,
+}
+
+impl StoredBehind {
+    /// The stored answer, if it was worked out for `head`.
+    fn for_head(&self, head: Option<&str>) -> Option<bool> {
+        let (worked_for, _) = self.mergeable_key.as_deref()?.split_once("..")?;
+        (Some(worked_for) == head).then_some(self.behind? != 0)
+    }
 }
 
 /// Refuses `actor` unless their role on `repo` has `capability`: not found
@@ -132,6 +151,11 @@ struct Work {
     events: Fetcher,
     /// GitHub Actions: runs a merge queue's `merge_group` workflows.
     actions: Fetcher,
+    /// Where this request's time went, for its `Server-Timing`.
+    timing: g1t_kit::d1::Timing,
+    /// A pull request's rows read in one batch for this request
+    /// (prefetch.rs), which the helpers below read instead of the database.
+    prefetched: std::cell::RefCell<Option<std::rc::Rc<prefetch::Prefetched>>>,
 }
 
 impl Work {
@@ -197,15 +221,16 @@ impl Work {
     /// The repository, if the viewer may see it. Whether they may is
     /// decided by the repos service.
     async fn repo(&self, path: &RepoPath, viewer: &Viewer) -> Result<Outcome<Repo>> {
-        g1t_kit::call(
-            &self.repos,
-            "get",
-            &GetArgs {
-                path: path.clone(),
-                viewer: viewer.clone(),
-            },
-        )
-        .await
+        self.timing
+            .rpc(g1t_kit::call(
+                &self.repos,
+                "get",
+                &GetArgs {
+                    path: path.clone(),
+                    viewer: viewer.clone(),
+                },
+            ))
+            .await
     }
 
     /// The next number in the repository's sequence. Taking it is one
@@ -245,19 +270,6 @@ impl Work {
             .first::<PullRow>(None)
             .await?
             .map(Pull::from))
-    }
-
-    async fn comments(&self, repo_id: &str, number: u32) -> Result<Vec<Comment>> {
-        let rows = self
-            .db
-            .prepare(
-                "SELECT * FROM comments WHERE repo_id = ? AND number = ? ORDER BY id LIMIT 500",
-            )
-            .bind(&[repo_id.into(), number.into()])?
-            .all()
-            .await?
-            .results::<CommentRow>()?;
-        Ok(rows.into_iter().map(Comment::from).collect())
     }
 
     /// The repository and one of its issues, as seen by `viewer`.
@@ -479,49 +491,72 @@ impl Work {
     }
 
     async fn list_issues(&self, a: ListIssuesArgs) -> Result<Outcome<Vec<Issue>>> {
-        let repo = check!(self.repo(&a.repo, &a.viewer).await?);
-        let state = state_name(a.state).map_or(JsValue::NULL, JsValue::from);
+        let state = state_name(a.state);
         let label = a
             .label
             .map(|label| label.trim().to_lowercase())
             .filter(|label| !label.is_empty());
-        let rows = self
-            .db
-            .prepare(format!(
-                "SELECT {ISSUE_COLUMNS} FROM issues
-                 WHERE repo_id = ? AND (? IS NULL OR state = ?)
-                   AND (? IS NULL OR EXISTS
-                     (SELECT 1 FROM json_each(issues.labels) WHERE json_each.value = ?))
-                 ORDER BY number DESC LIMIT ?"
-            ))
-            .bind(&[
-                repo.id.into(),
-                state.clone(),
-                state,
-                optional(&label),
-                optional(&label),
-                LIST_PAGE.into(),
-            ])?
-            .all()
-            .await?
-            .results::<IssueRow>()?;
+        let list = |repo_id: String| {
+            let label = label.clone();
+            async move {
+                let state = state.map_or(JsValue::NULL, JsValue::from);
+                let query = self
+                    .db
+                    .prepare(format!(
+                        "SELECT {ISSUE_COLUMNS} FROM issues
+                         WHERE repo_id = ? AND (? IS NULL OR state = ?)
+                           AND (? IS NULL OR EXISTS
+                             (SELECT 1 FROM json_each(issues.labels) WHERE json_each.value = ?))
+                         ORDER BY number DESC LIMIT ?"
+                    ))
+                    .bind(&[
+                        repo_id.into(),
+                        state.clone(),
+                        state,
+                        optional(&label),
+                        optional(&label),
+                        LIST_PAGE.into(),
+                    ])?;
+                self.timing.db(1, query.all()).await?.results::<IssueRow>()
+            }
+        };
+        let (_, rows) = check!(self.repo_then(&a.repo, &a.viewer, list).await?);
         Ok(Outcome::Ok(rows.into_iter().map(Issue::from).collect()))
     }
 
+    /// An issue, the pull requests for it and its comments: one batch,
+    /// started beside the access check (prefetch.rs).
     async fn get_issue(&self, a: ViewArgs) -> Result<Outcome<IssueDetail>> {
-        let (repo, issue) = check!(self.issue_at(&a.repo, a.number, &a.viewer).await?);
-        let pulls = self
-            .db
-            .prepare(format!("SELECT {PULL_COLUMNS} FROM pulls WHERE issue_id = ? ORDER BY number"))
-            .bind(&[issue.id.as_str().into()])?
-            .all()
-            .await?
-            .results::<PullRow>()?;
-        Ok(Outcome::Ok(IssueDetail {
-            comments: self.comments(&repo.id, issue.number).await?,
-            pulls: pulls.into_iter().map(Pull::from).collect(),
-            issue,
-        }))
+        let number = a.number;
+        let read = |repo_id: String| async move {
+            let key = [JsValue::from(repo_id.as_str()), JsValue::from(number)];
+            let statements = vec![
+                self.db
+                    .prepare(format!("SELECT {ISSUE_COLUMNS} FROM issues WHERE repo_id = ?1 AND number = ?2"))
+                    .bind(&key)?,
+                self.db
+                    .prepare(format!(
+                        "SELECT {PULL_COLUMNS} FROM pulls
+                         WHERE issue_id = (SELECT id FROM issues WHERE repo_id = ?1 AND number = ?2)
+                         ORDER BY number"
+                    ))
+                    .bind(&key)?,
+                self.db
+                    .prepare("SELECT * FROM comments WHERE repo_id = ?1 AND number = ?2 ORDER BY id LIMIT 500")
+                    .bind(&key)?,
+            ];
+            let results = self.timing.db(3, self.db.batch(statements)).await?;
+            let rows = |index: usize| results.get(index).ok_or_else(|| worker::Error::RustError("short batch".into()));
+            Ok::<_, worker::Error>((
+                rows(0)?.results::<IssueRow>()?.into_iter().next().map(Issue::from),
+                rows(1)?.results::<PullRow>()?.into_iter().map(Pull::from).collect::<Vec<_>>(),
+                rows(2)?.results::<CommentRow>()?.into_iter().map(Comment::from).collect::<Vec<_>>(),
+            ))
+        };
+        let Outcome::Ok((_, (Some(issue), pulls, comments))) = self.repo_then(&a.repo, &a.viewer, read).await? else {
+            return Ok(no_issue());
+        };
+        Ok(Outcome::Ok(IssueDetail { comments, pulls, issue }))
     }
 
     /// The issue, if `actor` wrote it or may triage the repository's issues.
@@ -764,18 +799,18 @@ impl Work {
 
     /// The default labels, then every other label in use on the repository.
     async fn list_labels(&self, a: ViewArgs) -> Result<Outcome<Vec<String>>> {
-        let repo = check!(self.repo(&a.repo, &a.viewer).await?);
-        let used = self
-            .db
-            .prepare(
-                "SELECT DISTINCT json_each.value AS value
-                 FROM issues, json_each(issues.labels)
-                 WHERE issues.repo_id = ? ORDER BY 1 LIMIT 200",
-            )
-            .bind(&[repo.id.into()])?
-            .all()
-            .await?
-            .results::<ValueRow>()?;
+        let read = |repo_id: String| async move {
+            let query = self
+                .db
+                .prepare(
+                    "SELECT DISTINCT json_each.value AS value
+                     FROM issues, json_each(issues.labels)
+                     WHERE issues.repo_id = ? ORDER BY 1 LIMIT 200",
+                )
+                .bind(&[repo_id.into()])?;
+            self.timing.db(1, query.all()).await?.results::<ValueRow>()
+        };
+        let (_, used) = check!(self.repo_then(&a.repo, &a.viewer, read).await?);
         let mut labels: Vec<String> = DEFAULT_LABELS.iter().map(|label| (*label).into()).collect();
         for row in used {
             if !labels.contains(&row.value) {
@@ -786,18 +821,19 @@ impl Work {
     }
 
     async fn counts(&self, a: ViewArgs) -> Result<Outcome<Counts>> {
-        let repo = check!(self.repo(&a.repo, &a.viewer).await?);
-        let counts = self
-            .db
-            .prepare(
-                "SELECT
-                   (SELECT count(*) FROM issues WHERE repo_id = ? AND state = 'open') AS issues,
-                   (SELECT count(*) FROM pulls
-                    WHERE repo_id = ? AND status IN ('draft', 'open')) AS pulls",
-            )
-            .bind(&[repo.id.as_str().into(), repo.id.as_str().into()])?
-            .first::<Counts>(None)
-            .await?;
+        let read = |repo_id: String| async move {
+            let query = self
+                .db
+                .prepare(
+                    "SELECT
+                       (SELECT count(*) FROM issues WHERE repo_id = ?1 AND state = 'open') AS issues,
+                       (SELECT count(*) FROM pulls
+                        WHERE repo_id = ?1 AND status IN ('draft', 'open')) AS pulls",
+                )
+                .bind(&[repo_id.into()])?;
+            self.timing.db(1, query.first::<Counts>(None)).await
+        };
+        let (_, counts) = check!(self.repo_then(&a.repo, &a.viewer, read).await?);
         Ok(Outcome::Ok(counts.unwrap_or(Counts {
             issues: 0,
             pulls: 0,
@@ -1098,21 +1134,21 @@ impl Work {
     }
 
     async fn list_pulls(&self, a: ListPullsArgs) -> Result<Outcome<Vec<Pull>>> {
-        let repo = check!(self.repo(&a.repo, &a.viewer).await?);
         let filter = match a.state {
             Some(State::Open) => "AND status IN ('draft', 'open')",
             Some(State::Closed) => "AND status IN ('merged', 'closed')",
             None => "",
         };
-        let rows = self
-            .db
-            .prepare(format!(
-                "SELECT {PULL_COLUMNS} FROM pulls WHERE repo_id = ? {filter} ORDER BY number DESC LIMIT ?"
-            ))
-            .bind(&[repo.id.into(), LIST_PAGE.into()])?
-            .all()
-            .await?
-            .results::<PullRow>()?;
+        let read = |repo_id: String| async move {
+            let query = self
+                .db
+                .prepare(format!(
+                    "SELECT {PULL_COLUMNS} FROM pulls WHERE repo_id = ? {filter} ORDER BY number DESC LIMIT ?"
+                ))
+                .bind(&[repo_id.into(), LIST_PAGE.into()])?;
+            self.timing.db(1, query.all()).await?.results::<PullRow>()
+        };
+        let (_, rows) = check!(self.repo_then(&a.repo, &a.viewer, read).await?);
         Ok(Outcome::Ok(rows.into_iter().map(Pull::from).collect()))
     }
 
@@ -1124,28 +1160,16 @@ impl Work {
         if ids.is_empty() {
             return Ok(Vec::new());
         }
-        let readable: Vec<Repo> = g1t_kit::call(&self.repos, "readable", &ReadableArgs { ids, viewer: a.viewer }).await?;
+        let limit = a.limit.clamp(1, LIST_PAGE);
+        // The rows are read beside the access check, for every id asked
+        // about; those of repositories the viewer cannot read are dropped.
+        let asked = serde_json::to_string(&ids)?;
+        let check = ReadableArgs { ids, viewer: a.viewer };
+        let readable = self.timing.rpc(g1t_kit::call::<_, Vec<Repo>>(&self.repos, "readable", &check));
+        let (readable, rows) = try_join(readable, self.timing.db(1, self.newest_pulls(asked, limit))).await?;
         if readable.is_empty() {
             return Ok(Vec::new());
         }
-        let ids: Vec<&str> = readable.iter().map(|repo| repo.id.as_str()).collect();
-        let limit = a.limit.clamp(1, LIST_PAGE);
-        // The newest `limit` of each repository's open (draft or open) and
-        // closed (merged or closed) pull requests.
-        let rows = self
-            .db
-            .prepare(format!(
-                "SELECT * FROM (
-                   SELECT {PULL_COLUMNS}, ROW_NUMBER() OVER (
-                     PARTITION BY pulls.repo_id, pulls.status IN ('draft', 'open') ORDER BY pulls.number DESC
-                   ) AS place
-                   FROM pulls WHERE pulls.repo_id IN (SELECT value FROM json_each(?1))
-                 ) WHERE place <= ?2"
-            ))
-            .bind(&[serde_json::to_string(&ids)?.into(), limit.into()])?
-            .all()
-            .await?
-            .results::<PullRow>()?;
         let mut answer: Vec<RepoPulls> = readable
             .iter()
             .map(|repo| RepoPulls { repo_id: repo.id.clone(), open: Vec::new(), closed: Vec::new() })
@@ -1166,13 +1190,57 @@ impl Work {
         Ok(answer)
     }
 
+    /// The newest `limit` of each repository's open (draft or open) and
+    /// closed (merged or closed) pull requests, for the ids in `ids` (JSON).
+    async fn newest_pulls(&self, ids: String, limit: u32) -> Result<Vec<PullRow>> {
+        self.db
+            .prepare(format!(
+                "SELECT * FROM (
+                   SELECT {PULL_COLUMNS}, ROW_NUMBER() OVER (
+                     PARTITION BY pulls.repo_id, pulls.status IN ('draft', 'open') ORDER BY pulls.number DESC
+                   ) AS place
+                   FROM pulls WHERE pulls.repo_id IN (SELECT value FROM json_each(?1))
+                 ) WHERE place <= ?2"
+            ))
+            .bind(&[ids.into(), limit.into()])?
+            .all()
+            .await?
+            .results::<PullRow>()
+    }
+
     async fn get_pull(&self, a: ViewArgs) -> Result<Outcome<PullDetail>> {
-        let (repo, pull) = check!(self.pull_at(&a.repo, a.number, &a.viewer).await?);
-        let issue = match pull.issue {
-            Some(number) => self.issue(&repo.id, number).await?,
-            None => None,
+        let number = a.number;
+        // Every row the page and the lifecycle read, in one batch started
+        // beside the access check; the helpers below read from it.
+        let read = |repo_id: String| self.prefetch_pull(repo_id, number);
+        let Outcome::Ok((repo, Some(found))) = self.repo_then(&a.repo, &a.viewer, read).await? else {
+            return Ok(no_pull());
         };
-        let mut pull = pull;
+        let Some(row) = found.first::<PullRow>(prefetch::Slot::Pull)? else {
+            return Ok(no_pull());
+        };
+        let stored = found.first::<StoredBehind>(prefetch::Slot::Pull)?;
+        let issue = found.first::<IssueRow>(prefetch::Slot::Issue)?.map(Issue::from);
+        let comments: Vec<Comment> =
+            found.rows::<CommentRow>(prefetch::Slot::Comments)?.into_iter().map(Comment::from).collect();
+        self.keep_prefetched(Some(found));
+        let detail = self.pull_detail(repo, Pull::from(row), issue, comments, stored).await;
+        self.keep_prefetched(None);
+        detail
+    }
+
+    async fn pull_detail(
+        &self,
+        repo: Repo,
+        mut pull: Pull,
+        issue: Option<Issue>,
+        comments: Vec<Comment>,
+        stored: Option<StoredBehind>,
+    ) -> Result<Outcome<PullDetail>> {
+        // Whether it is behind, as worked out with its mergeability on the
+        // last push to either side (mergeability.rs), when that was for
+        // its head as it is now; otherwise asked of the repos service.
+        let known_behind = stored.and_then(|stored| stored.for_head(pull.head_commit.as_deref()));
         // Worked out on each push; this covers a pull request from before
         // that was recorded.
         if pull.files.is_empty() && pull.head_commit.is_some() {
@@ -1183,8 +1251,31 @@ impl Work {
         let standing = async {
             // Mergeability first: where g1t sees a pull request through, a
             // conflict decides its next step.
-            let (merge, behind) =
-                try_join(self.mergeability(&pull), self.is_behind(&repo.id, &pull)).await?;
+            let behind = async {
+                match known_behind {
+                    Some(behind) => Ok(behind),
+                    None => {
+                        let behind = self.is_behind(&repo.id, &pull).await?;
+                        // Kept for the next view when the mergeability on
+                        // record is for this head: a pull request from
+                        // before `behind` was kept asks once.
+                        if let Some(head) = pull.head_commit.as_deref()
+                            && pull.status.is_active()
+                        {
+                            self.db
+                                .prepare(
+                                    "UPDATE pulls SET behind = ?1
+                                     WHERE id = ?2 AND behind IS NULL AND mergeable_key LIKE ?3 || '..%'",
+                                )
+                                .bind(&[u32::from(behind).into(), pull.id.as_str().into(), head.into()])?
+                                .run()
+                                .await?;
+                        }
+                        Ok(behind)
+                    }
+                }
+            };
+            let (merge, behind) = try_join(self.mergeability(&pull), behind).await?;
             let assessed = self.assess_with_confidence(&pull, &issue, behind).await?;
             let confidence = assessed.as_ref().and_then(|(_, _, confidence)| confidence.clone());
             let lifecycle = assessed.map(|(lifecycle, _, _)| lifecycle);
@@ -1192,7 +1283,7 @@ impl Work {
         };
         let (((behind, (lifecycle, confidence), (mergeable, conflicts)), (landing, stalled), comments), (checks, overlaps, review_pending)) =
             try_join(
-                try_join3(standing, self.landing_state(&pull.id), self.comments(&repo.id, pull.number)),
+                try_join3(standing, self.landing_state(&pull.id), async { Ok(comments) }),
                 try_join3(
                     self.latest_checks(&pull.id),
                     self.overlaps(&pull),
@@ -1693,25 +1784,47 @@ impl Work {
         let Some(viewer) = a.viewer else {
             return Ok(Vec::new());
         };
+        // The pull requests and their issues, in one round trip.
+        let author = [JsValue::from(viewer.id.as_str())];
         let found = self
-            .db
-            .prepare(format!(
-                "SELECT {PULL_COLUMNS} FROM pulls
-                 WHERE author_id = ? AND status IN ('draft', 'open')
-                 ORDER BY updated_at DESC LIMIT 50"
-            ))
-            .bind(&[viewer.id.into()])?
-            .all()
+            .timing
+            .db(
+                2,
+                self.db.batch(vec![
+                    self.db
+                        .prepare(format!(
+                            "SELECT {PULL_COLUMNS} FROM pulls
+                             WHERE author_id = ?1 AND status IN ('draft', 'open')
+                             ORDER BY updated_at DESC LIMIT 50"
+                        ))
+                        .bind(&author)?,
+                    self.db
+                        .prepare(format!(
+                            "SELECT {ISSUE_COLUMNS} FROM issues WHERE issues.id IN (
+                               SELECT issue_id FROM pulls
+                               WHERE author_id = ?1 AND status IN ('draft', 'open') AND issue_id IS NOT NULL
+                               ORDER BY updated_at DESC LIMIT 50)"
+                        ))
+                        .bind(&author)?,
+                ]),
+            )
             .await?;
+        let (Some(found), Some(issues)) = (found.first(), found.get(1)) else {
+            return Ok(Vec::new());
+        };
         let snapshots = found.results::<Snapshot>()?;
         let pulls: Vec<Pull> = found.results::<PullRow>()?.into_iter().map(Pull::from).collect();
-        // Each one at once: its issue, and where it stands. That is the
-        // remembered assessment when there is one, and worked out otherwise.
+        let issues: Vec<Issue> = issues.results::<IssueRow>()?.into_iter().map(Issue::from).collect();
+        let issues = &issues;
+        // Where each stands: the remembered assessment when there is one,
+        // and worked out otherwise.
         try_join_all(pulls.into_iter().zip(snapshots).map(|(pull, snapshot)| async move {
-            let issue = match pull.issue {
-                Some(number) => self.issue(&pull.repo_id, number).await?,
-                None => None,
-            };
+            let issue = pull.issue.and_then(|number| {
+                issues
+                    .iter()
+                    .find(|issue| issue.repo_id == pull.repo_id && issue.number == number)
+                    .cloned()
+            });
             // Only a pull request g1t is seeing through has a lifecycle.
             let lifecycle = if !lifecycle::made_by_g1t(&pull) || snapshot.managed == 0 {
                 None
@@ -1955,6 +2068,8 @@ fn service(env: &Env) -> Result<Work> {
         repos: env.service("REPOS")?,
         events: env.service("EVENTS")?,
         actions: env.service("ACTIONS")?,
+        timing: g1t_kit::d1::Timing::default(),
+        prefetched: std::cell::RefCell::new(None),
     })
 }
 
@@ -2064,7 +2179,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "set_agent_rules" => reply(&work.set_agent_rules(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     };
-    served.finish(answered)
+    served.finish_timed(answered, &work.timing)
 }
 
 /// Events from the bus, delivered on this service's own queue.

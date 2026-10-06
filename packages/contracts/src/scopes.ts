@@ -27,9 +27,9 @@ export type ScopeLevel = "read" | "write" | "run" | "admin";
 
 /** Every scope, grouped by resource, least first. */
 export const SCOPES = [
-  { scope: "repo:read", description: "See repositories, their settings, labels and timelines, and search" },
+  { scope: "repo:read", description: "See repositories, their settings, labels, timelines and security alerts, and search" },
   { scope: "repo:write", description: "Create repositories, rename branches and change how pull requests merge" },
-  { scope: "repo:admin", description: "Rename, archive, transfer, delete or change who can see a repository" },
+  { scope: "repo:admin", description: "Rename, archive, transfer, delete or change who can see a repository, and dismiss security alerts" },
   { scope: "code:read", description: "Clone and fetch private repositories with git" },
   { scope: "code:write", description: "Push commits with git" },
   { scope: "issues:read", description: "Read issues, comments and plans" },
@@ -167,6 +167,7 @@ export const OPERATION_SCOPES = [
   ["decline_repo_invitation", "account:write"],
   ["create_workspace", "workspace:admin"],
   ["delete_workspace", "workspace:admin"],
+  ["update_workspace", "workspace:admin"],
   ["list_workspace_invites", "workspace:read"],
   ["invite_member", "workspace:admin"],
   ["revoke_workspace_invite", "workspace:admin"],
@@ -184,6 +185,7 @@ export const OPERATION_SCOPES = [
   ["get_repo_settings", "repo:read"],
   ["list_check_names", "repo:read"],
   ["list_deleted_repos", "repo:read"],
+  ["list_security_alerts", "repo:read"],
   ["create_repo", "repo:write"],
   ["update_repo", "repo:write"],
   ["update_repo_settings", "repo:write"],
@@ -196,6 +198,8 @@ export const OPERATION_SCOPES = [
   ["delete_repo", "repo:admin"],
   ["restore_repo", "repo:admin"],
   ["purge_repo", "repo:admin"],
+  ["dismiss_security_alert", "repo:admin"],
+  ["reopen_security_alert", "repo:admin"],
   ["list_issues", "issues:read"],
   ["get_issue", "issues:read"],
   ["get_plan", "issues:read"],

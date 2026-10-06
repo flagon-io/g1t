@@ -273,7 +273,7 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
                 name="issues"
                 defaultChecked
                 label="Copy issues too"
-                description="Up to 200 per repository, with their labels, milestone and whether they are open. Pull requests stay on GitHub; their branches come across."
+                description="Up to 200 per repository, with their labels and whether they are open; a milestone is noted in the description. Pull requests stay on GitHub; their branches come across."
               />
 
               {actionData?.results && actionData.results.length > 0 && (

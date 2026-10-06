@@ -185,6 +185,15 @@ export function PersonLink({
   label?: string;
   children?: ReactNode;
 }) {
+  // g1t itself has no profile; its name carries a small label instead.
+  if (name === "g1t" && !children) {
+    return (
+      <span className="inline-flex items-baseline gap-1">
+        <span className={className}>g1t</span>
+        <span className="rounded border border-line px-1 text-[0.625rem] leading-[1.35] font-medium text-muted">bot</span>
+      </span>
+    );
+  }
   if (AGENTS.has(name) || !/^[a-z0-9-]{1,39}$/i.test(name)) {
     return <span className={className}>{children ?? name}</span>;
   }

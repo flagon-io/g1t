@@ -3,8 +3,7 @@ title: Sessions and why-blame
 description: How g1t records the way a change was made, and how to find out why any line is the way it is.
 ---
 
-On most forges, blame tells you who last changed a line. On g1t it also
-tells you why: the pull request the line arrived in, the issue that asked
+Blame tells you who last changed a line. On g1t it also tells you why: the pull request the line arrived in, the issue that asked
 for it, and, when an agent wrote it, the agent's own account of what it did.
 That comes from **sessions**, the record of how each pull request was made.
 

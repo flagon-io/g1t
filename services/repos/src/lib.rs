@@ -7,21 +7,26 @@
 
 mod blame;
 mod catch_up;
+mod coalesce;
 mod commit_file;
 mod diff;
+mod forks;
 mod git_http;
 mod git_ops;
 mod import;
 mod land;
 mod lifecycle;
 mod listing;
+mod meters;
 mod mirror;
 mod pack_limits;
 mod refs;
 mod refs_cache;
 mod registry;
+mod resilience;
 mod run_access;
 mod secret_scan;
+mod shards;
 mod shared;
 mod store;
 mod transfer;
@@ -48,7 +53,7 @@ use registry::{Registry, can_read, can_write, store_key};
 use store::{ArtifactsStore, GitRepo, GitStore, Scope};
 
 /// Namespace that holds every pull request's fork: `pulls/<pull id>`.
-const PULLS_NAMESPACE: &str = "pulls";
+pub(crate) const PULLS_NAMESPACE: &str = "pulls";
 const MAX_TEXT_BYTES: usize = 512 * 1024;
 /// How far back a pull request may have forked and still be landed.
 const MAX_ANCESTRY: u32 = 1000;
@@ -143,6 +148,19 @@ async fn nearest_ancestor_in<R: GitRepo>(
     Ok(None)
 }
 
+thread_local! {
+    /// Targets' sides of mergeability, by head (coalesce.rs).
+    static TARGETS: std::cell::RefCell<coalesce::Memo<coalesce::TargetKey, Rc<coalesce::TargetSide>>> =
+        std::cell::RefCell::new(coalesce::Memo::new(coalesce::TARGET_TTL_MS, 32));
+    /// What targets changed between two trees.
+    static THEIRS: std::cell::RefCell<coalesce::Memo<coalesce::TheirsKey, (Vec<String>, bool)>> =
+        std::cell::RefCell::new(coalesce::Memo::new(coalesce::THEIRS_TTL_MS, 256));
+    /// What repositories hold, as read for a push's first request, for the
+    /// same push's second: a push's POST does not wait on the database.
+    static HELD: std::cell::RefCell<coalesce::Memo<String, u64>> =
+        std::cell::RefCell::new(coalesce::Memo::new(60_000, 512));
+}
+
 pub(crate) struct Repos<S: GitStore> {
     registry: Registry,
     store: S,
@@ -155,6 +173,14 @@ pub(crate) struct Repos<S: GitStore> {
     identity: Option<Fetcher>,
     /// What a free workspace's private repositories may hold.
     free_private_bytes: i64,
+    /// Days a pull request's working copy is kept after it settles (forks.rs).
+    pub(crate) fork_days: u64,
+    /// The most a repository may hold (pack_limits.rs), and what happens
+    /// to a push too large to scan.
+    repo_limit: u64,
+    large_pushes: git_http::LargePushes,
+    /// Which git store namespace new repositories go in (shards.rs).
+    placement: shards::Placement,
     /// What isolates share: answers that list refs (refs_cache.rs).
     shared: Option<Rc<shared::Shared>>,
 }
@@ -467,7 +493,10 @@ impl<S: GitStore> Repos<S> {
             website: None,
             archived_at: None,
         };
-        self.registry.claim_store_key(&repo).await?;
+        let namespace = self.placement.place(&repo.id, shards::Residency::Anywhere, &self.store.namespaces());
+        self.registry
+            .claim_store_key(&repo, namespace.as_deref(), &self.store.default_namespace())
+            .await?;
         self.store
             .create(
                 &store_key(&repo),
@@ -562,7 +591,7 @@ impl<S: GitStore> Repos<S> {
         let Some(repo) = self.readable(&a.path, &a.viewer).await? else {
             return Ok(not_found());
         };
-        let git = self.store.open(&store_key(&repo)).await?;
+        let git = self.read_git(&repo).await?;
         let git_ref = a
             .git_ref
             .clone()
@@ -636,7 +665,7 @@ impl<S: GitStore> Repos<S> {
         let bytes = if a.file_path.is_empty() {
             None
         } else {
-            let git = self.store.open(&store_key(&repo)).await?;
+            let git = self.read_git(&repo).await?;
             git.read_file(&a.git_ref, &a.file_path).await?
         };
         let Some(bytes) = bytes else {
@@ -655,7 +684,7 @@ impl<S: GitStore> Repos<S> {
         let Some(repo) = self.readable(&a.path, &a.viewer).await? else {
             return Ok(not_found());
         };
-        let git = self.store.open(&store_key(&repo)).await?;
+        let git = self.read_git(&repo).await?;
         let git_ref = a.git_ref.unwrap_or_else(|| repo.default_branch.clone());
         Ok(match blame::blame(&git, &git_ref, &a.file_path).await? {
             Some(blame) => Outcome::Ok(blame),
@@ -667,7 +696,7 @@ impl<S: GitStore> Repos<S> {
         let Some(repo) = self.readable(&a.path, &a.viewer).await? else {
             return Ok(not_found());
         };
-        let git = self.store.open(&store_key(&repo)).await?;
+        let git = self.read_git(&repo).await?;
         let git_ref = a.git_ref.unwrap_or_else(|| repo.default_branch.clone());
         Ok(Outcome::Ok(git.log(&git_ref, a.limit).await?))
     }
@@ -677,7 +706,7 @@ impl<S: GitStore> Repos<S> {
         let Some(repo) = self.readable(&a.path, &a.viewer).await? else {
             return Ok(not_found());
         };
-        let mut branches = self.store.open(&store_key(&repo)).await?.branches().await?;
+        let mut branches = self.read_git(&repo).await?.branches().await?;
         branches.sort_by_key(|branch| branch.name != repo.default_branch);
         Ok(Outcome::Ok(branches))
     }
@@ -697,8 +726,7 @@ impl<S: GitStore> Repos<S> {
         };
         let branch = a.branch.unwrap_or_else(|| target.default_branch.clone());
         let target_head = self
-            .store
-            .open(&store_key(&target))
+            .read_git(&target)
             .await?
             .log(&target.default_branch, 1)
             .await?
@@ -708,7 +736,7 @@ impl<S: GitStore> Repos<S> {
         let Some(target_head) = target_head else {
             return Ok(false);
         };
-        let source_git = self.store.open(&store_key(&source)).await?;
+        let source_git = self.read_git(&source).await?;
         let history = source_git.log(&branch, MAX_ANCESTRY).await?;
         if history.is_empty() {
             return Ok(false);
@@ -731,19 +759,21 @@ impl<S: GitStore> Repos<S> {
             return Ok(None);
         };
         let branch = a.branch.unwrap_or_else(|| target.default_branch.clone());
-        let source_git = self.store.open(&store_key(&source)).await?;
-        let target_git = self.store.open(&store_key(&target)).await?;
-        let (history, target_history) = futures_util::future::try_join(
+        let source_git = self.read_git(&source).await?;
+        let target_git = self.read_git(&target).await?;
+        // The target's side is the same for every pull request into it, and
+        // worked out once per head (coalesce.rs).
+        let (history, side) = futures_util::future::try_join(
             source_git.log(&branch, MAX_ANCESTRY),
-            target_git.log(&target.default_branch, MAX_ANCESTRY),
+            self.target_side(&target, &target_git),
         )
         .await?;
+        let target_history = &side.history;
         let (Some(head), Some(base)) = (history.first(), target_history.first()) else {
             return Ok(None);
         };
         let behind = !descends_from(&source_git, &history, &base.hash).await?;
-        let shared: HashSet<String> = target_history.iter().map(|commit| commit.hash.clone()).collect();
-        let merge_base = nearest_ancestor_in(&source_git, &history, &shared).await?;
+        let merge_base = nearest_ancestor_in(&source_git, &history, &side.shared).await?;
         let mut divergence = Divergence {
             head: head.hash.clone(),
             base: base.hash.clone(),
@@ -768,12 +798,44 @@ impl<S: GitStore> Repos<S> {
         divergence.ours = ours;
         divergence.truncated = truncated_ours;
         if behind {
-            let (theirs, truncated_theirs) =
-                diff::changed_paths(&target_git, Some(&merge_base_tree), &base.tree_hash).await?;
+            let now = now_ms();
+            let key = (target.id.clone(), merge_base_tree.clone(), base.tree_hash.clone());
+            let (theirs, truncated_theirs) = match THEIRS.with(|memo| memo.borrow().get(&key, now)) {
+                Some(kept) => kept,
+                None => {
+                    let found = diff::changed_paths(&target_git, Some(&merge_base_tree), &base.tree_hash).await?;
+                    THEIRS.with(|memo| memo.borrow_mut().put(key, found.clone(), now));
+                    found
+                }
+            };
             divergence.theirs = theirs;
             divergence.truncated |= truncated_theirs;
         }
         Ok(Some(divergence))
+    }
+
+    /// A target branch's history from its head, worked out once per head
+    /// for every pull request asking about it (coalesce.rs). The head is
+    /// read under the refs version; the history by its hash, which the
+    /// object cache keeps for good.
+    async fn target_side<R: GitRepo>(&self, target: &Repo, git: &R) -> Result<Rc<coalesce::TargetSide>> {
+        let now = now_ms();
+        let key = refs_cache::usable(registry::refs_state(&target.id), now)
+            .map(|version| (target.id.clone(), target.default_branch.clone(), version));
+        if let Some(key) = &key
+            && let Some(side) = TARGETS.with(|memo| memo.borrow().get(key, now))
+        {
+            return Ok(side);
+        }
+        let history = match git.log(&target.default_branch, 1).await?.first() {
+            Some(head) => git.log(&head.hash, MAX_ANCESTRY).await?,
+            None => Vec::new(),
+        };
+        let side = coalesce::TargetSide::new(history);
+        if let Some(key) = key {
+            TARGETS.with(|memo| memo.borrow_mut().put(key, side.clone(), now));
+        }
+        Ok(side)
     }
 
     async fn head(&self, a: HeadArgs) -> Result<Option<String>> {
@@ -781,7 +843,7 @@ impl<S: GitStore> Repos<S> {
             return Ok(None);
         };
         let branch = if a.branch.is_empty() { &repo.default_branch } else { &a.branch };
-        let git = self.store.open(&store_key(&repo)).await?;
+        let git = self.read_git(&repo).await?;
         Ok(git
             .log(branch, 1)
             .await?
@@ -800,6 +862,7 @@ impl<S: GitStore> Repos<S> {
         let Some(repo) = self.registry.by_id(&a.repo_id).await? else {
             return Ok(not_found());
         };
+        self.live(&repo).await?;
         let git = self.store.open(&store_key(&repo)).await?;
         let Some(old) = git
             .branches()
@@ -852,7 +915,12 @@ impl<S: GitStore> Repos<S> {
             website: None,
             archived_at: None,
         };
-        self.registry.claim_store_key(&fork).await?;
+        // Artifacts forks within a namespace: the copy goes where its
+        // repository is.
+        let (namespace, _) = store::locate(&store_key(&source));
+        self.registry
+            .claim_store_key(&fork, Some(&namespace), &self.store.default_namespace())
+            .await?;
         self.store
             .open(&store_key(&source))
             .await?
@@ -878,6 +946,7 @@ impl<S: GitStore> Repos<S> {
         let found = self.registry.by_path(&a.path).await?;
         Ok(match self.authorize_git(&a.path, &a.viewer, a.service, found).await? {
             Outcome::Ok(repo) => {
+                self.live(&repo).await?;
                 let write = a.service == GitService::ReceivePack;
                 if write {
                     // A push with this credential would not pass through
@@ -892,7 +961,7 @@ impl<S: GitStore> Repos<S> {
                     }
                 }
                 let scope = if write { Scope::Write } else { Scope::Read };
-                Outcome::Ok(self.store.access(&store_key(&repo), scope).await?)
+                Outcome::Ok(self.store.handout(&store_key(&repo), scope).await?)
             }
             Outcome::Fail(failure) => Outcome::Fail(failure),
         })
@@ -990,17 +1059,7 @@ impl<S: GitStore> Repos<S> {
                 let Some(owner) = owner else {
                     return Ok(denied());
                 };
-                let created = self
-                    .create(CreateArgs {
-                        owner: owner.clone(),
-                        namespace: a.path.namespace.clone(),
-                        name: a.path.name.clone(),
-                        description: None,
-                        is_private: false,
-                        import_url: None,
-                        import_token: None,
-                    })
-                    .await?;
+                let created = self.create(push_to_create(owner, &a.path)).await?;
                 match created {
                     Outcome::Ok(repo) => repo,
                     Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
@@ -1055,6 +1114,7 @@ impl<S: GitStore> Repos<S> {
             }
         };
 
+        self.live(&source).await?;
         let source_git = self.store.open(&store_key(&source)).await?;
         let target_git = self.store.open(&store_key(&target)).await?;
         let history = source_git.log(&source_branch, MAX_ANCESTRY).await?;
@@ -1129,7 +1189,7 @@ impl<S: GitStore> Repos<S> {
         else {
             return Ok(not_found());
         };
-        let git = self.store.open(&store_key(&repo)).await?;
+        let git = self.read_git(&repo).await?;
         let head_ref = a.head.as_deref().unwrap_or(&repo.default_branch);
         // The head's history is only searched when the base is worked out
         // from another branch.
@@ -1144,7 +1204,7 @@ impl<S: GitStore> Repos<S> {
 
         // Where the head's history meets the default branch of `against`.
         let shared_with = async |against: &Repo| -> Result<Option<String>> {
-            let against_git = self.store.open(&store_key(against)).await?;
+            let against_git = self.read_git(against).await?;
             let shared: HashSet<String> = against_git
                 .log(&against.default_branch, MAX_ANCESTRY)
                 .await?
@@ -1195,6 +1255,20 @@ impl<S: GitStore> Repos<S> {
         after: &str,
         actor: Option<String>,
     ) -> Result<()> {
+        self.publish_git_push(repo, git_ref, before, after, actor, false).await
+    }
+
+    /// `publish_push`, saying whether the push reached the store without
+    /// being scanned for secrets first.
+    async fn publish_git_push(
+        &self,
+        repo: &Repo,
+        git_ref: &str,
+        before: Option<&str>,
+        after: &str,
+        actor: Option<String>,
+        unscanned: bool,
+    ) -> Result<()> {
         self.publish(NewEvent {
             kind: "git.push",
             source: SOURCE,
@@ -1207,6 +1281,7 @@ impl<S: GitStore> Repos<S> {
                 after: after.to_owned(),
                 default_branch: git_ref.strip_prefix("refs/heads/")
                     == Some(repo.default_branch.as_str()),
+                unscanned,
             },
         })
         .await
@@ -1222,7 +1297,14 @@ impl<S: GitStore> Repos<S> {
         let Some(git) = git_http::parse(&request.url()?) else {
             return Response::error("Not found", 404);
         };
-        let response = self.answer_git(request, &git, env, ctx, &mut timing).await?;
+        let response = match self.answer_git(request, &git, env, ctx, &mut timing).await {
+            Ok(response) => response,
+            // The git store is busy: git hears when to try again.
+            Err(error) => match resilience::busy(&error.to_string()) {
+                Some(busy) => git_http::busy_response(busy)?,
+                None => return Err(error),
+            },
+        };
         timing.apply(response)
     }
 
@@ -1294,6 +1376,9 @@ impl<S: GitStore> Repos<S> {
                 return Ok(response);
             }
         };
+        // A pull request's working copy removed after it closed is made
+        // again before git uses it (forks.rs).
+        self.live(&repo).await?;
         timing.mark("access");
         // A protected default branch takes changes only from a merged pull
         // request, which lands without going through here.
@@ -1308,6 +1393,8 @@ impl<S: GitStore> Repos<S> {
         // A fetch's POST is read here, to tell an `ls-refs` from a fetch of
         // objects; the store would have it read in full anyway.
         let body = if !write && !get { Some(request.bytes().await?) } else { None };
+        // What it asks the store, for the meters (meters.rs).
+        let call = git_ops::classify(git.service, git.endpoint, get, body.as_deref());
         // An answer that lists refs may have been kept: see refs_cache.rs.
         let kept_key = refs_cache::kind(git, get, protocol, body.as_deref())
             .zip(refs_cache::usable(registry::refs_state(&repo.id), now_ms()))
@@ -1326,7 +1413,7 @@ impl<S: GitStore> Repos<S> {
                         None => None,
                     }
                 },
-                self.git_limits(&request, git, &repo, env),
+                self.git_limits(call, git, &repo, env),
             ));
             let kept_access = std::pin::pin!(self.store.kept_access(&key, scope));
             match futures_util::future::select(answer_and_limits, kept_access).await {
@@ -1349,6 +1436,8 @@ impl<S: GitStore> Repos<S> {
                 let (kept_key, entry) = (kept_key.clone(), entry.clone());
                 ctx.wait_until(async move { refs_cache::keep_in_colo(&kept_key, &entry).await });
             }
+            // Never reached the store: never an operation.
+            meters::record(call.cached_meter(), &key, 0, entry.body.len() as u64);
             after.ended(200, None);
             after.spawn(env, ctx);
             return entry.response();
@@ -1376,6 +1465,18 @@ impl<S: GitStore> Repos<S> {
         let again = if get { Some(request.clone()?) } else { None };
         // Push protection: a push that adds a secret is refused. See secret_scan.rs.
         let scan = async |body: &[u8]| self.protect(&repo, viewer.as_ref(), body).await;
+        // What a push may bring (pack_limits.rs): the repository's size is
+        // its own and its pull requests' working copies'.
+        let limits = if write && !get {
+            git_http::PushLimits {
+                held: self.held(&repo).await,
+                repo_limit: self.repo_limit,
+                large: self.large_pushes,
+                ..git_http::PushLimits::default()
+            }
+        } else {
+            git_http::PushLimits::default()
+        };
         let mut outcome = git_http::forward(
             request,
             body,
@@ -1383,6 +1484,7 @@ impl<S: GitStore> Repos<S> {
             &access,
             protected.as_deref(),
             default_branch.as_deref(),
+            limits,
             scan,
         )
         .await?;
@@ -1395,8 +1497,17 @@ impl<S: GitStore> Repos<S> {
             if let Some(again) = again {
                 let access = self.store.mint_access(&key, scope).await?;
                 let nothing = async |_: &[u8]| Ok(None);
-                outcome = git_http::forward(again, None, git, &access, protected.as_deref(), default_branch.as_deref(), nothing)
-                    .await?;
+                outcome = git_http::forward(
+                    again,
+                    None,
+                    git,
+                    &access,
+                    protected.as_deref(),
+                    default_branch.as_deref(),
+                    git_http::PushLimits::default(),
+                    nothing,
+                )
+                .await?;
             }
         }
         let forwarded =
@@ -1412,7 +1523,21 @@ impl<S: GitStore> Repos<S> {
                     after.spawn(env, ctx);
                     return Ok(response);
                 }
+                git_http::Push::Declined(response, reason) => {
+                    after.ended(403, Some(format!("The push was declined: {reason}.")));
+                    after.spawn(env, ctx);
+                    return Ok(response);
+                }
             };
+        if forwarded.from_store {
+            let received = forwarded
+                .response
+                .headers()
+                .get("content-length")?
+                .and_then(|length| length.parse().ok())
+                .unwrap_or(0);
+            meters::record(call.meter(), &key, forwarded.sent, received);
+        }
         timing.mark("store");
         let mut response = forwarded.response;
         let status = response.status_code();
@@ -1448,44 +1573,59 @@ impl<S: GitStore> Repos<S> {
                 pushed: forwarded.pushed,
                 pack_bytes: forwarded.pack_bytes,
                 actor: viewer.map(|user: User| user.id),
+                unscanned: forwarded.unscanned,
             });
         }
         after.spawn(env, ctx);
         Ok(response)
     }
 
-    /// The answer for a request a free workspace's limits stop, with its
-    /// status and reason for the audit log; `None` to go on.
+    /// The answer for a request a free workspace's limits stop, or a push
+    /// to a full repository, with its status and reason for the audit log;
+    /// `None` to go on.
     ///
-    /// Each clone, fetch and push is a git operation, which the git store
-    /// charges g1t for: counted for billing, and a free workspace far past
-    /// its share is slowed down rather than charged (see git_ops.rs). And a
-    /// free workspace is never charged for private storage: once its
-    /// private repositories hold the free amount, pushes to them stop,
-    /// checked when a push begins so that git shows the reason.
+    /// A clone, fetch or push is a git operation, which the git store
+    /// charges g1t for: counted for billing once the answer has gone back
+    /// (meters.rs), and a free workspace far past its share is slowed down
+    /// rather than charged (see git_ops.rs). Whether it is past it is
+    /// decided from counts this isolate already holds: the database is not
+    /// asked on the way. A free workspace is never charged for private
+    /// storage: once its private repositories hold the free amount, pushes
+    /// to them stop, checked when a push begins so that git shows the
+    /// reason. So do pushes to a repository at the store's size limit.
     async fn git_limits(
         &self,
-        request: &Request,
+        call: git_ops::GitCall,
         git: &git_http::GitRequest,
         repo: &Repo,
         env: &Env,
     ) -> Result<Option<(Response, u16, &'static str)>> {
         let namespace = git.path.namespace.to_lowercase();
-        if request.method() == Method::Post && git.endpoint != "info/refs" {
-            match git_ops::count(&self.registry.db, &namespace, &rfc3339(now_ms())).await {
-                Ok((month, hour)) => {
-                    let limits = git_ops::Limits::from_env(env);
-                    if git_ops::slow_down(month, hour, limits.free_cap, limits.hourly)
-                        && git_ops::is_free(env.service("BILLING").ok().as_ref(), &namespace).await
-                    {
-                        return Ok(Some((
-                            git_ops::too_many(&namespace, limits.free_cap, limits.hourly)?,
-                            429,
-                            "Too many git operations this hour.",
-                        )));
-                    }
-                }
-                Err(error) => worker::console_error!("git operation for {namespace} not counted: {error}"),
+        if meters::mapping_now().billable(call.meter()) > 0.0 {
+            let now = now_ms();
+            let hour = git_ops::hour_key(&rfc3339(now));
+            let limits = git_ops::Limits::from_env(env);
+            if let Some((month, hour_ops)) = git_ops::standing(&namespace, &hour, now)
+                && git_ops::slow_down(month + 1, hour_ops + 1, limits.free_cap, limits.hourly)
+                && git_ops::is_free_kept(env.service("BILLING").ok().as_ref(), &namespace).await
+            {
+                return Ok(Some((
+                    git_ops::too_many(&namespace, limits.free_cap, limits.hourly)?,
+                    429,
+                    "Too many git operations this hour.",
+                )));
+            }
+        }
+        if git.service == GitService::ReceivePack && git.endpoint == "info/refs" {
+            let held = self.held(repo).await;
+            if held >= self.repo_limit {
+                let message = format!(
+                    "{}/{} holds about {}, the most a repository may hold on g1t, so it takes no more pushes. Delete what you no longer need, or split it: https://docs.g1t.sh/guides/git/#size-limits\n",
+                    repo.namespace,
+                    repo.name,
+                    pack_limits::megabytes(held)
+                );
+                return Ok(Some((Response::error(message, 403)?, 403, "The repository is full.")));
             }
         }
         if git.service == GitService::ReceivePack && git.endpoint == "info/refs" && repo.is_private {
@@ -1504,6 +1644,20 @@ impl<S: GitStore> Repos<S> {
         Ok(None)
     }
 
+    /// What a repository and its pull requests' working copies hold, as
+    /// g1t counts it: read for a push's first request, kept a minute for
+    /// the rest of it.
+    async fn held(&self, repo: &Repo) -> u64 {
+        let root = repo.fork_of.clone().unwrap_or_else(|| repo.id.clone());
+        let now = now_ms();
+        if let Some(held) = HELD.with(|held| held.borrow().get(&root, now)) {
+            return held;
+        }
+        let held = self.registry.stored_bytes(&root).await.unwrap_or(0).max(0) as u64;
+        HELD.with(|kept| kept.borrow_mut().put(root, held, now));
+        held
+    }
+
     /// What a push changed, recorded once git has its answer.
     async fn record_push(&self, push: PushDone) -> Result<()> {
         let PushDone {
@@ -1511,6 +1665,7 @@ impl<S: GitStore> Repos<S> {
             pushed,
             pack_bytes,
             actor,
+            unscanned,
         } = push;
         // What the push stored, for billing's storage meter. A failure only
         // leaves the count short.
@@ -1541,12 +1696,13 @@ impl<S: GitStore> Repos<S> {
                 }),
             };
             if moved {
-                self.publish_push(
+                self.publish_git_push(
                     &repo,
                     &pushed.git_ref,
                     pushed.before.as_deref(),
                     &pushed.after,
                     actor.clone(),
+                    unscanned,
                 )
                 .await?;
             }
@@ -1561,6 +1717,8 @@ struct PushDone {
     pushed: Vec<git_http::Pushed>,
     pack_bytes: u64,
     actor: Option<String>,
+    /// Too large to scan for secrets before it was stored.
+    unscanned: bool,
 }
 
 /// What a git request leaves for after its answer: its audit entry, with
@@ -1614,14 +1772,42 @@ fn service(env: &Env) -> Result<Repos<ArtifactsStore>> {
         billing: env.service("BILLING").ok(),
         identity: env.service("IDENTITY").ok(),
         free_private_bytes: git_ops::free_private_bytes(env),
+        fork_days: forks::retention_days(env),
+        repo_limit: env
+            .var("REPO_STORAGE_LIMIT_BYTES")
+            .ok()
+            .and_then(|value| value.to_string().parse().ok())
+            .unwrap_or(pack_limits::DEFAULT_REPO_LIMIT_BYTES),
+        large_pushes: git_http::LargePushes::from_var(env.var("LARGE_PUSHES").ok().map(|value| value.to_string()).as_deref()),
+        placement: shards::Placement::from_vars(
+            env.var("ARTIFACTS_NEW_REPOS").ok().map(|value| value.to_string()).as_deref(),
+            env.var("ARTIFACTS_EU_NAMESPACE").ok().map(|value| value.to_string()).as_deref(),
+        ),
     })
 }
+
+/// Writes what this isolate metered once the answer has gone back, every
+/// few seconds at most (meters.rs).
+fn flush_later(env: &Env, ctx: &Context) {
+    if !meters::take_due() {
+        return;
+    }
+    if let Ok(db) = env.d1("DB") {
+        ctx.wait_until(async move { meters::flush(&db).await });
+    }
+}
+
+/// Read methods whose answer is an `Outcome`: when the git store is busy,
+/// the site is told so in words instead of failing the page.
+const OUTCOME_READS: [&str; 6] = ["tree", "blob", "log", "branches", "blame", "compare"];
 
 #[event(fetch)]
 async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response> {
     let mut repos = service(&env)?;
     let Some(method) = rpc_method(&request) else {
-        return repos.git_http(request, &env, &ctx).await;
+        let answered = repos.git_http(request, &env, &ctx).await;
+        flush_later(&env, &ctx);
+        return answered;
     };
     // A replica near the caller when it asks for one (crates/kit/src/d1.rs).
     // Git over HTTPS above always reads the primary.
@@ -1629,7 +1815,7 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
     repos.registry.db = db;
     let body: serde_json::Value = request.json().await?;
 
-    let answered = match method.as_str() {
+    let answered = async { match method.as_str() {
         "get" => reply(&repos.get(args(body)?).await?),
         "get_by_id" => reply(&repos.get_by_id(args(body)?).await?),
         "readable" => {
@@ -1730,8 +1916,43 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
             let next = (ids.len() == limit as usize).then(|| ids.last().cloned()).flatten();
             reply(&IdPage { ids, next })
         }
+        // The raw meters of the git store, for reconciling with Cloudflare
+        // (meters.rs, scripts/ops/artifacts-usage.mjs).
+        "artifacts_usage" => {
+            let a: meters::UsageArgs = args(body)?;
+            reply(&meters::usage(&repos.registry.db, &a).await?)
+        }
+        "operation_mapping" => reply(&meters::read_mapping(&repos.registry.db).await?),
+        // Services only: which meters are operations, changed without a deploy.
+        "set_operation_mapping" => {
+            let row: meters::MappingRow = args(body)?;
+            meters::set_mapping(&repos.registry.db, &row, &rfc3339(now_ms())).await?;
+            reply(&meters::read_mapping(&repos.registry.db).await?)
+        }
+        // How the git store has been answering, for the status page.
+        "store_health" => {
+            let a: meters::HealthArgs = args(body)?;
+            reply(&meters::health(&repos.registry.db, &a).await?)
+        }
         _ => Response::error("Unknown method", 404),
+    } }
+    .await;
+    // The git store is busy: said in words, with when to try again.
+    let answered = match answered {
+        Err(error) => match resilience::busy(&error.to_string()) {
+            Some(busy) if OUTCOME_READS.contains(&method.as_str()) => {
+                reply(&Outcome::<()>::fail(FailureCode::Conflict, busy.message().trim()))
+            }
+            Some(busy) => {
+                let response = Response::error(busy.message(), 503)?;
+                response.headers().set("retry-after", &busy.retry_after.to_string())?;
+                Ok(response)
+            }
+            None => Err(error),
+        },
+        answered => answered,
     };
+    flush_later(&env, &ctx);
     served.finish(answered)
 }
 
@@ -1739,15 +1960,25 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
 /// passed are purged. See lifecycle.rs.
 #[event(scheduled)]
 async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
-    let purged = match service(&env) {
-        Ok(repos) => repos.purge_due(PurgeDueArgs::default()).await,
-        Err(error) => Err(error),
+    let repos = match service(&env) {
+        Ok(repos) => repos,
+        Err(error) => {
+            worker::console_error!("repos: the sweep could not start: {error}");
+            return;
+        }
     };
-    match purged {
+    match repos.purge_due(PurgeDueArgs::default()).await {
         Ok(0) => {}
         Ok(count) => worker::console_log!("repos: purged {count} deleted repositories"),
         Err(error) => worker::console_error!("repos: the purge sweep failed: {error}"),
     }
+    // Pull requests' working copies whose time has come (forks.rs).
+    match repos.retire_due().await {
+        Ok(0) => {}
+        Ok(count) => worker::console_log!("repos: removed {count} pull request working copies"),
+        Err(error) => worker::console_error!("repos: the working copy sweep failed: {error}"),
+    }
+    meters::flush(&repos.registry.db).await;
 }
 
 /// Events from the bus. A workspace's rename: its repositories move to the
@@ -1756,14 +1987,34 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
 /// were. A workspace's deletion: what it left in Recently deleted is
 /// purged with it.
 #[event(queue)]
-async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()> {
+async fn queue(batch: MessageBatch<Event>, env: Env, ctx: Context) -> Result<()> {
     let registry = Registry { db: env.d1("DB")? };
     let identity = env.service("IDENTITY")?;
+    let handled = handle_events(&batch, &env, &registry, &identity).await;
+    flush_later(&env, &ctx);
+    handled
+}
+
+async fn handle_events(batch: &MessageBatch<Event>, env: &Env, registry: &Registry, identity: &Fetcher) -> Result<()> {
     for message in batch.messages()? {
         let event = message.body();
+        // A pull request merged, closed or reopened: its working copy is
+        // kept or let go (forks.rs).
+        if let Some(change) = forks::pull_change(&event.kind) {
+            let Some(pull_id) = forks::pull_id_of(&event.data) else {
+                worker::console_error!("{} {} names no pull request", event.kind, event.id);
+                continue;
+            };
+            let repos = service(env)?;
+            match change {
+                forks::PullChange::Settled => repos.pull_settled(&pull_id).await?,
+                forks::PullChange::Reopened => repos.pull_reopened(&pull_id).await?,
+            }
+            continue;
+        }
         if event.kind == "workspace.deleted" {
             match serde_json::from_value::<WorkspaceDeleted>(event.data.clone()) {
-                Ok(deleted) => service(&env)?.purge_workspace(&deleted.slug.to_lowercase()).await?,
+                Ok(deleted) => service(env)?.purge_workspace(&deleted.slug.to_lowercase()).await?,
                 Err(_) => worker::console_error!("workspace.deleted {} could not be read", event.id),
             }
             continue;
@@ -1776,7 +2027,7 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
             continue;
         };
         let names: HashMap<String, String> = g1t_kit::call(
-            &identity,
+            identity,
             "usernames",
             &g1t_contracts::identity::UsernamesArgs {
                 ids: vec![renamed.workspace_id.clone()],
@@ -1799,4 +2050,32 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
         }
     }
     Ok(())
+}
+
+/// The repository a push to a path that does not exist yet creates: private,
+/// so nothing pushed by mistake is published. An owner makes it public on
+/// purpose (`POST /repos/{owner}/{repo}/visibility`).
+fn push_to_create(owner: &User, path: &RepoPath) -> CreateArgs {
+    CreateArgs {
+        owner: owner.clone(),
+        namespace: path.namespace.clone(),
+        name: path.name.clone(),
+        description: None,
+        is_private: true,
+        import_url: None,
+        import_token: None,
+    }
+}
+
+#[cfg(test)]
+mod push_to_create_tests {
+    use super::*;
+
+    #[test]
+    fn a_pushed_repository_starts_private() {
+        let owner: User = serde_json::from_value(serde_json::json!({ "id": "usr_1", "username": "ada" })).unwrap();
+        let args = push_to_create(&owner, &RepoPath { namespace: "acme".into(), name: "site".into() });
+        assert!(args.is_private);
+        assert_eq!((args.namespace.as_str(), args.name.as_str()), ("acme", "site"));
+    }
 }

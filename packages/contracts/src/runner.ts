@@ -27,6 +27,12 @@ export type ModelAccess = {
   hosted: boolean;
   /** Its free allowance, when that is how it reaches g1t's hosted models; null when it needs none. */
   trial: Trial | null;
+  /**
+   * True when hosted models are closed to it because billing takes no real
+   * money yet: until then they are open only to the workspaces g1t lists,
+   * and every other workspace uses its own provider.
+   */
+  preview: boolean;
 };
 
 /**

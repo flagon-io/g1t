@@ -257,3 +257,14 @@ test("buildPage: incident impacts and maintenance reach the parts and the banner
   const resolved = buildPage({ parts, current, checkedAt: "2026-10-05T12:29:30Z", days: [], incidents: [{ ...incident, resolved_at: "2026-10-05T12:20:00Z" }], now });
   assert.equal(resolved.report.components.find((c) => c.key === "api")!.state, "up", "a resolved incident no longer colours its part");
 });
+
+test("git storage is listed only with the repos service, and degraded says why", () => {
+  assert.equal(components(VARS, true).some((part) => part.key === "storage"), false);
+  const storage = components(VARS, true, true).find((part) => part.key === "storage");
+  assert.equal(storage?.check.kind, "storage");
+  assert.equal(storage?.core, false);
+  assert.deepEqual(classify({ ok: true, ms: 40, degraded: "Rate limited 2 times in 5 minutes" }), {
+    state: "degraded",
+    detail: "Rate limited 2 times in 5 minutes",
+  });
+});

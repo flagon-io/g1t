@@ -10,9 +10,11 @@ the order they have to land in. You read the plan, keep what you want, and open
 it. g1t agents then work on the issues, as many at once as the dependencies
 allow, and the outcome page shows each one until it lands.
 
-Planning and g1t agents work in any workspace with
-[its own model provider](/guides/models/), and in those g1t's hosted models
-are open to. The agents' runs are charged to the workspace; see
+Planning and g1t agents work in any workspace that
+[can run agents](/guides/g1t-agents/#who-can-run-agents) (the plan or the
+trial) and has a model: [its own model provider](/guides/models/), or g1t's
+hosted models where they are open to it. The agents' runs are charged to
+the workspace; see
 [usage and billing](/guides/usage-and-billing/). Planning work for a
 repository needs the Write [role](/guides/access-and-roles/) or higher on it; anyone who can
 read it can see its plans.

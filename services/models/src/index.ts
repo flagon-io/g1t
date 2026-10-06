@@ -8,7 +8,8 @@
  * when it does. A provider that speaks OpenAI's API gets the request
  * translated, and its answer translated back. So a sandbox that is tricked
  * into printing its environment gives away a token that stops working when
- * the run ends, and nothing of the workspace's.
+ * the run ends (the runner closes its session then, and lookups are kept
+ * only seconds), and nothing of the workspace's.
  *
  * Responses stream through.
  */
@@ -21,8 +22,12 @@ interface Env extends HostedRouting {
   INTEGRATIONS: ServiceBinding;
 }
 
-/** How long a looked-up token is trusted before it is looked up again. */
-const REMEMBER_MS = 60_000;
+/**
+ * How long a looked-up token is trusted before it is looked up again. Short,
+ * because a run's token is closed the moment the run ends (and a connection
+ * may be removed mid-run): the proxy refuses it again within this long.
+ */
+const REMEMBER_MS = 10_000;
 const remembered = new Map<string, { upstream: ModelUpstream | null; until: number }>();
 
 async function lookUp(env: Env, token: string): Promise<ModelUpstream | null> {

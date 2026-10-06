@@ -1,7 +1,9 @@
 //! Scanning a repository's history for secrets once, in the background, a
-//! page of commits at a time, metered to its workspace.
+//! page of commits at a time, metered to its workspace; and the new commits
+//! of a push too large to scan before it was stored, after it landed.
 
 use g1t_contracts::billing::{CheckLimitArgs, Limit, LimitState, NotePendingArgs};
+use g1t_contracts::identity::NotifyOwnersArgs;
 use g1t_contracts::security::{HistoryPage, ScanHistoryArgs, SecretStatus};
 use g1t_contracts::Outcome;
 use worker::Result;
@@ -11,6 +13,12 @@ use crate::store::RepoRow;
 
 /// Commits read per call to the repos service.
 const PAGE: u32 = 25;
+/// Pages of a large push scanned as soon as it is heard of; the sweep
+/// continues the rest.
+pub const PUSH_PAGES_AT_ONCE: u32 = 4;
+/// A push's scan stops after this many pages (25 000 commits): beyond it,
+/// a rescan of the whole history is the way to look.
+const MAX_PUSH_PAGES: i64 = 1_000;
 // What scanning costs g1t, from Cloudflare's published prices on the
 // Workers Paid plan (October 2026), the same as billing's `scan_cpu` and
 // `scan_rows` meters:
@@ -46,6 +54,15 @@ pub fn history_page_cost(reads: u32, secrets: usize) -> i64 {
     (cpu + rows).ceil() as i64
 }
 
+/// What the email about secrets in a push that landed unscanned says.
+pub fn landed_secrets_intro(namespace: &str, name: &str, branch: &str, count: usize) -> String {
+    let what = if count == 1 { "a secret that looks real".to_owned() } else { format!("{count} secrets that look real") };
+    format!(
+        "A push to {branch} in {namespace}/{name} was too large to check before it was stored, so g1t scanned it after it landed and found {what}. \
+         Rotate each one with whoever issued it, then mark the alert revoked, or dismiss it if it is not a real secret."
+    )
+}
+
 impl Security {
     /// Whether the workspace's usage has reached its limit, which stops
     /// background work. Unknown counts as not.
@@ -71,6 +88,85 @@ impl Security {
         Ok(())
     }
 
+    /// Scans up to `pages` pages of the new commits of a push that reached
+    /// the store unscanned, from where its scan stopped. What it finds is
+    /// recorded open (it has landed), never blocking anything; a secret that
+    /// looks real is emailed to the workspace's owners once per push.
+    pub async fn advance_push_scan(&self, id: &str, pages: u32) -> Result<()> {
+        let Some(scan) = self.store.push_scan(id).await? else {
+            return Ok(());
+        };
+        let Some(repo) = self.store.repo(&scan.repo_id).await? else {
+            return self.store.advance_push_scan(id, None, 0, 0).await;
+        };
+        if self.over_limit(&repo.namespace).await {
+            // Picked up again by the sweep once the workspace is under it.
+            return Ok(());
+        }
+        let mut cursor = scan.cursor.clone();
+        let mut real = 0usize;
+        for pages_done in (scan.pages + 1)..=(scan.pages + i64::from(pages)) {
+            let page: HistoryPage = g1t_kit::call(
+                &self.repos,
+                "scan_history",
+                &ScanHistoryArgs {
+                    repo_id: repo.repo_id.clone(),
+                    after: cursor.clone(),
+                    limit: PAGE,
+                    from: Some(scan.head.clone()),
+                    until: scan.base.clone(),
+                },
+            )
+            .await?;
+            let fingerprints: Vec<String> = page.secrets.iter().map(|secret| secret.fingerprint.clone()).collect();
+            let fresh: Vec<String> = {
+                let known = self.store.known(&repo.repo_id, &fingerprints).await?;
+                page.secrets
+                    .iter()
+                    .filter(|secret| secret.test_value.is_none())
+                    .filter(|secret| !known.iter().any(|(fingerprint, _, _)| *fingerprint == secret.fingerprint))
+                    .map(|secret| secret.fingerprint.clone())
+                    .collect()
+            };
+            real += fresh.len();
+            self.store.landed(&repo.repo_id, &fingerprints).await?;
+            self.store
+                .add_secrets(&repo.repo_id, &page.secrets, SecretStatus::Open, "history", scan.pusher.as_deref())
+                .await?;
+            let cost = history_page_cost(page.reads, page.secrets.len());
+            self.meter(&repo.namespace, page.reads, page.commits, 0, cost).await?;
+            let next = page.next.filter(|_| pages_done < MAX_PUSH_PAGES);
+            self.store
+                .advance_push_scan(id, next.as_deref(), page.commits, page.secrets.len() as u32)
+                .await?;
+            match next {
+                Some(next) => cursor = Some(next),
+                None => break,
+            }
+        }
+        if real > 0 {
+            self.tell_owners_of_landed_secrets(&repo, &scan.git_ref, real).await;
+        }
+        Ok(())
+    }
+
+    /// Emails a workspace's owners, who are Admins of every repository in
+    /// it, that a push which landed unscanned holds secrets that look real.
+    async fn tell_owners_of_landed_secrets(&self, repo: &RepoRow, git_ref: &str, count: usize) {
+        let branch = git_ref.strip_prefix("refs/heads/").unwrap_or(git_ref);
+        let args = NotifyOwnersArgs {
+            workspace: repo.namespace.clone(),
+            subject: format!("Secrets found in a push to {}/{}", repo.namespace, repo.name),
+            intro: landed_secrets_intro(&repo.namespace, &repo.name, branch, count),
+            action: "Review the alerts".to_owned(),
+            link: format!("https://g1t.sh/{}/{}/security?tab=secrets", repo.namespace, repo.name),
+            footer: "You get this because you own this workspace on g1t. Very large pushes are scanned for secrets after they land: https://docs.g1t.sh/guides/security/".to_owned(),
+        };
+        if let Err(error) = g1t_kit::call::<_, u32>(&self.identity, "notify_owners", &args).await {
+            worker::console_error!("security: owners of {} not told of landed secrets: {error}", repo.namespace);
+        }
+    }
+
     /// Scans up to `pages` pages of a repository's history from where the
     /// last scan stopped.
     pub async fn advance_history(&self, repo: &RepoRow, pages: u32) -> Result<()> {
@@ -85,7 +181,7 @@ impl Security {
             let page: HistoryPage = g1t_kit::call(
                 &self.repos,
                 "scan_history",
-                &ScanHistoryArgs { repo_id: repo.repo_id.clone(), after: cursor.clone(), limit: PAGE },
+                &ScanHistoryArgs { repo_id: repo.repo_id.clone(), after: cursor.clone(), limit: PAGE, from: None, until: None },
             )
             .await?;
             let fingerprints: Vec<String> = page.secrets.iter().map(|secret| secret.fingerprint.clone()).collect();

@@ -37,17 +37,15 @@ not work.
 ### Repositories up to 1 GB, files up to 32 MB, no LFS
 
 A repository can hold up to 1 GB and a single file up to 32 MB. Git LFS is
-not supported.
+not supported. A push that would cross either is declined before it is
+stored, and git prints why. See [Size limits](/guides/git/#size-limits).
 
 - **Why.** These are the limits of Cloudflare Artifacts, where every
-  repository is stored. g1t does not check them before a push reaches the
-  store yet, so a push that crosses them fails late, and git's message may
-  not say why.
+  repository is stored.
 - **Instead.** Keep large binaries out of the repository: in a release
   bucket, a package registry or object storage, fetched at build time.
-- **Status.** Checking both limits before the push, with a message git
-  shows you, is planned. Large file storage is planned. Raising the limits
-  themselves depends on Cloudflare.
+- **Status.** Large file storage is planned. Raising the limits themselves
+  depends on Cloudflare.
 
 ### Pushes up to 100 MB each
 
@@ -98,17 +96,21 @@ after its refs move.
 - **Status.** Not scheduled for your own scripts. A hook in the store,
   which would let g1t enforce more before refs move, depends on Cloudflare.
 
-### Push protection skips very large pushes
+### Very large pushes are scanned after they land, not before
 
-Very large pushes, by size or by number of commits, are not yet fully
-scanned for secrets. Most pushes are scanned in full; we are raising the
-limit by streaming the scan instead of reading the whole push at once.
+A very large push is too large for push protection to read before it is
+stored, so it is let through, and g1t scans every commit it added
+afterwards, in the background. A secret found that way is an open alert
+rather than a refused push, and the workspace's owners are emailed when one
+looks real. Most pushes are scanned before they land.
 
 - **Why.** Scanning reads the whole push inside a Worker, which has 128 MB
-  for everything it is doing at once. Past that size, scanning could fail
-  the push outright.
-- **Instead.** Push large histories in steps (see above), so each push is
-  scanned. Secrets already in history are listed under
+  for everything it is doing at once. Past a certain size, scanning could fail
+  the push outright, and refusing such pushes would block importing real
+  repositories.
+- **Instead.** To have a large history checked before it lands, push it in
+  steps (see above), so each push is scanned first. Secrets already in
+  history are listed under
   [Secrets in history](/guides/security/#secrets-in-history).
 - **Status.** Planned: scanning while the push streams, at any size.
 
@@ -140,16 +142,20 @@ pull request's own working copy, made when the pull request is opened.
   in your workspace; pushing creates it.
 - **Status.** Not scheduled.
 
-### Pull request forks are kept after they close
+### Pull request forks are removed a week after they close
 
-A pull request's fork stays after the pull request merges or closes.
+Seven days after a pull request merges or closes, its fork's git data is
+removed. The pull request's changes stay readable: its head is kept in the
+repository as `refs/pull/<pull request id>/head`. Pushing to the fork, or
+reopening the pull request, makes the fork again from there.
 
 - **Why.** Cloudflare has not documented whether a fork shares stored
-  objects with its source or copies them, and the answer decides how and
-  when forks should be cleaned up.
-- **Instead.** Nothing you need to do.
-- **Status.** Deleting forks some time after their pull request closes is
-  planned. Clear fork storage rules depend on Cloudflare.
+  objects with its source or copies them, so forks are not kept longer
+  than they are useful.
+- **Instead.** Nothing you need to do. To keep working on a closed pull
+  request's change, fetch `refs/pull/<pull request id>/head` and push it
+  to a branch.
+- **Status.** Clear fork storage rules depend on Cloudflare.
 
 ### No conflict resolution in the browser
 
@@ -163,17 +169,22 @@ You can't resolve a merge conflict on the pull request's page.
 
 ### No Docker in g1t's sandboxes
 
-On g1t's own machines, Docker container actions, `services:` containers and
-`container:` do not run, and a step cannot run `docker build`.
+On g1t's own machines, a job's `container:` image is not used (its steps
+run on g1t's runner image instead), and a step cannot run `docker build`.
+Docker container actions (`uses: docker://…`, or an action that runs as a
+Docker image) and `services:` containers, such as a database, do not run
+on any runner yet, self-hosted ones included.
 
 - **Why.** Jobs run in Cloudflare Containers, which offer no supported way
   to run Docker or another image builder inside a container.
-- **Instead.** Run those jobs on a [self-hosted runner](/guides/self-hosted-runners/).
-  A runner in Docker mode runs each job in its `container:` image. To build
-  images, register a runner with `--no-docker` on a machine that has Docker,
-  and its steps can call `docker build` and `docker push`. Self-hosted time
-  costs nothing.
-- **Status.** Image builds on g1t's machines depend on Cloudflare.
+- **Instead.** Run `container:` jobs and image builds on a
+  [self-hosted runner](/guides/self-hosted-runners/). A runner in Docker
+  mode runs each job in its `container:` image. To build images, register a
+  runner with `--no-docker` on a machine that has Docker, and its steps can
+  call `docker build` and `docker push`. Self-hosted time costs nothing. For
+  a database, start it from a `run:` step on a self-hosted runner.
+- **Status.** Docker container actions and `services:` are planned. Image
+  builds on g1t's machines depend on Cloudflare.
 
 ### Linux only on g1t's machines
 
@@ -190,8 +201,8 @@ machines.
 | --- | --- |
 | Largest machine | 4 vCPUs, 12 GiB of memory, 20 GB of disk (`g1t-4core`). No GPUs. |
 | One job on g1t's machines | 60 minutes. On a self-hosted runner, 24 hours. |
-| One cache entry | 2 GB, compressed. A larger one is not saved. |
-| A repository's caches | 10 GB together. Past it, the entries restored longest ago are removed. |
+| One cache entry | 2 GiB, compressed. A larger one is not saved. |
+| A repository's caches | 10 GiB together. Past it, the entries restored longest ago are removed. |
 | One artifact | 60 MB, kept for 14 days |
 
 The machine sizes are Cloudflare Containers' instance sizes. For more, use a
@@ -233,7 +244,8 @@ cron triggers are not scheduled.
 - **Why.** Each of these is a resource g1t has to create and bill per
   project, and that is not built yet.
 - **Instead.** Check that a binding exists before using it. The deployment
-  lists each one it left out.
+  lists each binding it left out, and warns when its cron triggers will
+  not run.
 - **Status.** Planned. See [Workers projects](/guides/deployments/#workers-projects).
 
 ### Build and size limits
@@ -275,8 +287,11 @@ billable operation.
 
 ### Payments are in test mode
 
-While payments are in test mode, no real card is charged, and g1t's hosted
-models are open only to g1t's own workspaces.
+While payments are in test mode, no real card is charged, so a card check
+proves nothing. g1t's hosted models are open only to a few invited
+workspaces, g1t's own among them. Every other workspace, trial or not,
+runs its agents on its own model provider; without one, assigning an agent
+is refused with a message that says so.
 
 - **Instead.** Connect your own [model provider](/guides/models/). Your
   agents then run on your keys, and the provider bills you directly.

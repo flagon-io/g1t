@@ -186,6 +186,13 @@ impl Work {
 
     pub(crate) async fn statuses(&self, repo_id: &str, sha: Option<&str>) -> Result<Vec<CommitStatus>> {
         let Some(sha) = sha else { return Ok(Vec::new()) };
+        if let Some(found) = self.prefetched_repo(repo_id).filter(|found| found.head.as_deref() == Some(sha)) {
+            return Ok(found
+                .rows::<StatusRow>(crate::prefetch::Slot::Statuses)?
+                .into_iter()
+                .map(CommitStatus::from)
+                .collect());
+        }
         Ok(self
             .db
             .prepare("SELECT context, state, description, target_url, updated_at FROM commit_statuses WHERE repo_id = ? AND sha = ? ORDER BY context")

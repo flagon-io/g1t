@@ -97,17 +97,10 @@ impl Work {
             return Ok(Vec::new());
         }
         let mine: HashSet<&str> = pull.files.iter().map(|file| file.path.as_str()).collect();
-        let others = self
-            .db
-            .prepare(
-                "SELECT number, title, issue_number, files FROM pulls
-                 WHERE repo_id = ? AND id != ? AND status IN ('draft', 'open')
-                 ORDER BY number LIMIT 200",
-            )
-            .bind(&[pull.repo_id.as_str().into(), pull.id.as_str().into()])?
-            .all()
-            .await?
-            .results::<OtherRow>()?;
+        let others = match self.prefetched_pull(&pull.id) {
+            Some(found) => found.rows::<OtherRow>(crate::prefetch::Slot::Others)?,
+            None => self.other_pulls(pull).await?,
+        };
         Ok(others
             .into_iter()
             .filter_map(|other| {
@@ -128,27 +121,41 @@ impl Work {
             .collect())
     }
 
+    /// The other pull requests in progress in its repository.
+    async fn other_pulls(&self, pull: &Pull) -> Result<Vec<OtherRow>> {
+        self
+            .db
+            .prepare(
+                "SELECT number, title, issue_number, files FROM pulls
+                 WHERE repo_id = ? AND id != ? AND status IN ('draft', 'open')
+                 ORDER BY number LIMIT 200",
+            )
+            .bind(&[pull.repo_id.as_str().into(), pull.id.as_str().into()])?
+            .all()
+            .await?
+            .results::<OtherRow>()
+    }
+
     /// Whether the branch a pull request would merge into has commits the
     /// pull request does not, so that it must catch up before it can merge.
     pub(crate) async fn is_behind(&self, repo_id: &str, pull: &Pull) -> Result<bool> {
         if !pull.status.is_active() || pull.head_commit.is_none() {
             return Ok(false);
         }
-        g1t_kit::call(
-            &self.repos,
-            "behind",
-            &BehindArgs {
-                source_id: pull
-                    .fork_repo_id
-                    .clone()
-                    .unwrap_or_else(|| repo_id.to_owned()),
-                branch: pull.branch.clone(),
-            },
-        )
-        .await
+        let asked = BehindArgs {
+            source_id: pull
+                .fork_repo_id
+                .clone()
+                .unwrap_or_else(|| repo_id.to_owned()),
+            branch: pull.branch.clone(),
+        };
+        self.timing.rpc(g1t_kit::call(&self.repos, "behind", &asked)).await
     }
 
     pub(crate) async fn review_pending(&self, pull_id: &str) -> Result<bool> {
+        if let Some(found) = self.prefetched_pull(pull_id) {
+            return Ok(found.first::<crate::rows::ValueRow>(crate::prefetch::Slot::ReviewPending)?.is_some());
+        }
         Ok(self
             .db
             .prepare(
@@ -158,7 +165,7 @@ impl Work {
             // A sandbox that never reported is forgotten after a while.
             .bind(&[
                 pull_id.into(),
-                rfc3339(now_ms().saturating_sub(30 * 60 * 1000)).into(),
+                rfc3339(now_ms().saturating_sub(crate::prefetch::REVIEW_PENDING_MS)).into(),
             ])?
             .first::<crate::rows::ValueRow>(None)
             .await?

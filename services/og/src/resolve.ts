@@ -98,7 +98,7 @@ const PAGES: Record<string, Card> = {
     eyebrow: "Pricing",
     title: "What it costs us, plus a markup",
     description:
-      "g1t passes its costs through: what Cloudflare and model providers charge g1t, plus a set markup. No seats.",
+      "The forge is free. One plan, $20 a month per workspace with $10 of usage included, and usage at what it costs g1t plus 20%. No seats.",
   },
   explore: {
     kind: "page",

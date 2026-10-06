@@ -35,6 +35,7 @@ use worker::wasm_bindgen::JsValue;
 use crate::Work;
 use crate::checks::hash;
 use crate::reviews::AGENT_ID;
+use crate::prefetch::Slot;
 use crate::rows::NumberRow;
 
 /// At this many points, low; at none, high; medium between.
@@ -430,6 +431,40 @@ impl Work {
     /// The signals for a pull request a g1t agent has finished, besides the
     /// ones its lifecycle already knows (`known`).
     async fn signals(&self, pull: &Pull, known: Signals) -> Result<(Signals, Option<String>)> {
+        let (runs, ((latest, halted), (denials, unanswered, expected))) = match self.prefetched_pull(&pull.id) {
+            Some(found) => (
+                found
+                    .rows::<CheckRow>(Slot::RunHistory)?
+                    .into_iter()
+                    .map(|row| (row.head_commit, row.status))
+                    .collect::<Vec<_>>(),
+                (
+                    (
+                        found.first::<LatestRun>(Slot::LatestRun)?,
+                        found.first::<Halted>(Slot::Halted)?.and_then(|row| row.halted),
+                    ),
+                    (
+                        found.first::<NumberRow>(Slot::Denials)?.map_or(0, |row| row.n),
+                        found.first::<NumberRow>(Slot::Unanswered)?.map_or(0, |row| row.n),
+                        found
+                            .first::<PlannedFiles>(Slot::Planned)?
+                            .and_then(|row| row.files)
+                            .and_then(|files| serde_json::from_str::<Vec<String>>(&files).ok())
+                            .unwrap_or_default(),
+                    ),
+                ),
+            ),
+            None => self.read_signals(pull).await?,
+        };
+        Ok(Self::signals_from(pull, known, runs, latest, halted, denials, unanswered, expected))
+    }
+
+    /// The rows [`Self::signals`] works from, read one query at a time.
+    #[allow(clippy::type_complexity)]
+    async fn read_signals(
+        &self,
+        pull: &Pull,
+    ) -> Result<(Vec<(String, String)>, ((Option<LatestRun>, Option<String>), (u32, u32, Vec<String>)))> {
         let checks = async {
             let rows = self
                 .db
@@ -511,8 +546,20 @@ impl Work {
             };
             Ok::<_, worker::Error>((denials, unanswered, planned))
         };
-        let (runs, ((latest, halted), (denials, unanswered, expected))) =
-            try_join(checks, try_join(run, counts)).await?;
+        try_join(checks, try_join(run, counts)).await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn signals_from(
+        pull: &Pull,
+        known: Signals,
+        runs: Vec<(String, String)>,
+        latest: Option<LatestRun>,
+        halted: Option<String>,
+        denials: u32,
+        unanswered: u32,
+        expected: Vec<String>,
+    ) -> (Signals, Option<String>) {
         let run_id = latest.as_ref().map(|run| run.id.clone());
         let share = |used: Option<f64>, cap: Option<f64>| match (used, cap) {
             (Some(used), Some(cap)) if cap > 0.0 => Some(used / cap),
@@ -540,7 +587,7 @@ impl Work {
                 .unwrap_or_default(),
             ..known
         };
-        Ok((signals, run_id))
+        (signals, run_id)
     }
 
     /// Works out how sure g1t is of a pull request a g1t agent has finished
@@ -643,6 +690,11 @@ impl Work {
     /// How many comments on lines a review by g1t's agent left, which it
     /// records at the moment it finished.
     pub(crate) async fn review_comments(&self, pull: &Pull, finished_at: &str) -> Result<u32> {
+        // Read for this request against the latest finished review, which
+        // is the one asked about whenever it is asked.
+        if let Some(found) = self.prefetched_pull(&pull.id) {
+            return Ok(found.first::<NumberRow>(Slot::ReviewComments)?.map_or(0, |row| row.n));
+        }
         Ok(self
             .db
             .prepare(
@@ -668,24 +720,44 @@ impl Work {
             verdict: String,
             created_at: String,
         }
-        let rows = self
-            .db
-            .prepare(
-                "SELECT verdict, created_at FROM comments
-                 WHERE repo_id = ? AND number = ? AND verdict IS NOT NULL
-                   AND author_id != ? AND author_id != ? AND author_id != ?
-                 ORDER BY id DESC LIMIT 20",
-            )
-            .bind(&[
-                pull.repo_id.as_str().into(),
-                pull.number.into(),
-                pull.author.id.as_str().into(),
-                AGENT_ID.into(),
-                crate::lifecycle::POLICY_ACTOR_ID.into(),
-            ])?
-            .all()
-            .await?
-            .results::<Latest>()?;
+        #[derive(Deserialize)]
+        struct ByAuthor {
+            author_id: String,
+            verdict: String,
+            created_at: String,
+        }
+        let rows = match self.prefetched_pull(&pull.id) {
+            Some(found) => found
+                .rows::<ByAuthor>(Slot::Verdicts)?
+                .into_iter()
+                .rev()
+                .filter(|row| {
+                    row.author_id != pull.author.id
+                        && row.author_id != AGENT_ID
+                        && row.author_id != crate::lifecycle::POLICY_ACTOR_ID
+                })
+                .take(20)
+                .map(|row| Latest { verdict: row.verdict, created_at: row.created_at })
+                .collect::<Vec<_>>(),
+            None => self
+                .db
+                .prepare(
+                    "SELECT verdict, created_at FROM comments
+                     WHERE repo_id = ? AND number = ? AND verdict IS NOT NULL
+                       AND author_id != ? AND author_id != ? AND author_id != ?
+                     ORDER BY id DESC LIMIT 20",
+                )
+                .bind(&[
+                    pull.repo_id.as_str().into(),
+                    pull.number.into(),
+                    pull.author.id.as_str().into(),
+                    AGENT_ID.into(),
+                    crate::lifecycle::POLICY_ACTOR_ID.into(),
+                ])?
+                .all()
+                .await?
+                .results::<Latest>()?,
+        };
         Ok(rows
             .first()
             .is_some_and(|latest| latest.verdict == "approve" && revised_at.is_none_or(|revised| latest.created_at.as_str() > revised)))

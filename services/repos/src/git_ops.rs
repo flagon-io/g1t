@@ -1,25 +1,88 @@
-//! Git operations through g1t's git endpoints, counted per workspace.
+//! Git operations, counted per workspace.
 //!
-//! Cloudflare Artifacts charges g1t for every operation from 2026-10-14
-//! ($0.15 per 1,000): each clone, fetch and push. Every upload-pack (clone
-//! or fetch) and receive-pack (push) request through here is one, counted
-//! by the hour. Billing reads the month's count each day (`git_operations`)
-//! and charges workspaces on the plan for what is past the amount that is
-//! free for everyone (50,000 a month), at cost plus 20%. A workspace on the
-//! plan is never slowed or refused for git operations or for storage: it
-//! pays for them as usage, up to its spend limit.
+//! Cloudflare Artifacts charges g1t per operation from 2026-10-14 ($0.15
+//! per 1,000) without having said exactly which calls are operations. So
+//! every interaction with the store is metered by kind (meters.rs), and
+//! which meters a workspace is counted for, and how much each is worth, is
+//! data (`operation_mapping`). By default: each clone or fetch (an
+//! upload-pack request that fetches objects, not `ls-refs` and never an
+//! answer g1t served from its own cache), each push (receive-pack), and
+//! making, forking and deleting a repository. The counts go to
+//! `git_operations` by the hour, after answers have gone back. Billing
+//! reads the month's count each day and charges workspaces on the plan for
+//! what is past the amount that is free for everyone (50,000 a month), at
+//! cost plus 20%. A workspace on the plan is never slowed or refused for
+//! git operations or for storage: it pays for them as usage, up to its
+//! spend limit.
 //!
 //! A free workspace is never charged for git operations. Past
 //! `GIT_OPERATIONS_FREE_CAP` in a month (50,000, billing's
 //! `GIT_OPERATIONS_INCLUDED`), it is slowed down instead: at most
 //! `GIT_OPERATIONS_FREE_HOURLY` (60) an hour, answered 429 with when to try
-//! again. Pushes from agents' sandboxes go to the store directly and are
-//! not counted.
+//! again. Whether it is past its cap is decided from counts this isolate
+//! read a moment ago and has added to since, never by asking the database
+//! on the way (63 to 98 ms a request, measured). Pushes from agents'
+//! sandboxes go to the store directly and are counted as the store's
+//! meters see them, not here.
 
-use g1t_contracts::repos::WorkspaceGitOperations;
+use std::cell::RefCell;
+use std::collections::HashMap;
+
+use g1t_contracts::repos::{GitService, WorkspaceGitOperations};
 use serde::Deserialize;
 use worker::wasm_bindgen::JsValue;
 use worker::{D1Database, Env, Fetcher, Response, Result};
+
+/// What a request to g1t's git endpoints asks the store.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GitCall {
+    /// `GET info/refs`: the refs, for a fetch or a push.
+    RefAdvertisement,
+    /// A protocol v2 `ls-refs`.
+    LsRefs,
+    /// An upload-pack request that fetches objects: a clone or fetch.
+    Fetch,
+    /// A push.
+    ReceivePack,
+}
+
+impl GitCall {
+    /// Its meter (meters.rs).
+    pub fn meter(self) -> &'static str {
+        match self {
+            GitCall::RefAdvertisement => "git.info_refs",
+            GitCall::LsRefs => "git.ls_refs",
+            GitCall::Fetch => "git.fetch",
+            GitCall::ReceivePack => "git.receive_pack",
+        }
+    }
+
+    /// The meter for an answer g1t served from its own cache, which never
+    /// reaches the store and is never an operation.
+    pub fn cached_meter(self) -> &'static str {
+        match self {
+            GitCall::RefAdvertisement => "cache.info_refs",
+            GitCall::LsRefs => "cache.ls_refs",
+            GitCall::Fetch => "cache.fetch",
+            GitCall::ReceivePack => "cache.receive_pack",
+        }
+    }
+}
+
+/// What a git request is. `body` is an upload-pack POST's, read already.
+pub fn classify(service: GitService, endpoint: &str, get: bool, body: Option<&[u8]>) -> GitCall {
+    if get || endpoint == "info/refs" {
+        return GitCall::RefAdvertisement;
+    }
+    if service == GitService::ReceivePack {
+        return GitCall::ReceivePack;
+    }
+    let ls_refs = body.is_some_and(|body| {
+        let (lines, _) = crate::land::read_pkt_lines(body);
+        lines.first().is_some_and(|line| line.strip_suffix(b"\n").unwrap_or(line) == b"command=ls-refs")
+    });
+    if ls_refs { GitCall::LsRefs } else { GitCall::Fetch }
+}
 
 /// The hour an operation is counted in: `YYYY-MM-DDTHH` of an RFC 3339 time.
 pub fn hour_key(timestamp: &str) -> String {
@@ -51,27 +114,87 @@ struct Counts {
     hour: Option<f64>,
 }
 
-/// Counts one operation for `namespace` now; returns the month's and the
-/// hour's counts with it.
-pub async fn count(db: &D1Database, namespace: &str, now: &str) -> Result<(u64, u64)> {
-    let hour = hour_key(now);
-    let month = &now[..7];
-    let results = db
-        .batch(vec![
-            db.prepare(
-                "INSERT INTO git_operations (namespace, hour, operations) VALUES (?1, ?2, 1)
-                 ON CONFLICT (namespace, hour) DO UPDATE SET operations = operations + 1",
-            )
-            .bind(&[namespace.into(), hour.as_str().into()])?,
-            db.prepare(
-                "SELECT SUM(operations) AS month, SUM(CASE WHEN hour = ?2 THEN operations END) AS hour
-                 FROM git_operations WHERE namespace = ?1 AND substr(hour, 1, 7) = ?3",
-            )
-            .bind(&[namespace.into(), hour.as_str().into(), month.into()])?,
-        ])
+/// Where a workspace stands this month and hour, as this isolate knows it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Standing {
+    /// `YYYY-MM-DDTHH` the counts are for.
+    hour_key: String,
+    month: f64,
+    hour: f64,
+    /// When the database was last read for it.
+    read_at: u64,
+}
+
+impl Standing {
+    /// The month's and the hour's counts at `hour_key`, if read recently
+    /// enough to go by: an hour that has turned starts at nothing, a month
+    /// that has turned likewise.
+    pub fn at(&self, hour_key: &str, now: u64) -> Option<(u64, u64)> {
+        if now.saturating_sub(self.read_at) > STANDING_TTL_MS {
+            return None;
+        }
+        let month = if self.hour_key.get(..7) == hour_key.get(..7) { self.month } else { 0.0 };
+        let hour = if self.hour_key == hour_key { self.hour } else { 0.0 };
+        Some((month as u64, hour as u64))
+    }
+
+    /// Adds operations counted here, not yet written.
+    pub fn add(&mut self, hour_key: &str, operations: f64) {
+        if self.hour_key != hour_key {
+            if self.hour_key.get(..7) != hour_key.get(..7) {
+                self.month = 0.0;
+            }
+            self.hour = 0.0;
+            self.hour_key = hour_key.to_owned();
+        }
+        self.month += operations;
+        self.hour += operations;
+    }
+}
+
+/// How long counts read from the database are gone by. Every write of the
+/// meters reads them again (meters.rs), so a busy workspace's are seconds old.
+const STANDING_TTL_MS: u64 = 10 * 60 * 1000;
+/// How long billing's answer about a workspace's plan is kept.
+const PLAN_TTL_MS: u64 = 5 * 60 * 1000;
+
+thread_local! {
+    static STANDING: RefCell<HashMap<String, Standing>> = RefCell::new(HashMap::new());
+    static FREE: RefCell<HashMap<String, (bool, u64)>> = RefCell::new(HashMap::new());
+}
+
+/// Adds operations this isolate counted for `namespace` (meters.rs).
+pub fn note_local(namespace: &str, hour_key: &str, operations: f64) {
+    STANDING.with(|standing| {
+        if let Some(kept) = standing.borrow_mut().get_mut(namespace) {
+            kept.add(hour_key, operations);
+        }
+    });
+}
+
+/// The month's and the hour's counts for `namespace`, as last read and
+/// added to here; `None` when not read lately, which never slows anyone.
+pub fn standing(namespace: &str, hour_key: &str, now: u64) -> Option<(u64, u64)> {
+    STANDING.with(|standing| standing.borrow().get(namespace).and_then(|kept| kept.at(hour_key, now)))
+}
+
+/// Reads `namespace`'s counts again, after the meters were written.
+pub async fn refresh(db: &D1Database, namespace: &str) -> Result<()> {
+    let now = g1t_kit::now_ms();
+    let hour = hour_key(&g1t_contracts::time::rfc3339(now));
+    let counts = db
+        .prepare(
+            "SELECT SUM(operations) AS month, SUM(CASE WHEN hour = ?2 THEN operations END) AS hour
+             FROM git_operations WHERE namespace = ?1 AND substr(hour, 1, 7) = ?3",
+        )
+        .bind(&[namespace.into(), hour.as_str().into(), hour[..7].into()])?
+        .first::<Counts>(None)
         .await?;
-    let counts = results.get(1).map(|r| r.results::<Counts>()).transpose()?.and_then(|rows| rows.into_iter().next());
-    Ok(counts.map_or((1, 1), |c| (c.month.unwrap_or(1.0) as u64, c.hour.unwrap_or(1.0) as u64)))
+    let (month, hour_count) = counts.map_or((0.0, 0.0), |c| (c.month.unwrap_or(0.0), c.hour.unwrap_or(0.0)));
+    STANDING.with(|standing| {
+        standing.borrow_mut().insert(namespace.to_owned(), Standing { hour_key: hour, month, hour: hour_count, read_at: now });
+    });
+    Ok(())
 }
 
 /// Each workspace's operations in `month`, from `since` (an hour) on.
@@ -108,6 +231,21 @@ pub async fn is_free(billing: Option<&Fetcher>, namespace: &str) -> bool {
             false
         }
     }
+}
+
+/// [`is_free`], kept for a few minutes: asked only of a workspace past its
+/// cap, on each of its requests.
+pub async fn is_free_kept(billing: Option<&Fetcher>, namespace: &str) -> bool {
+    let now = g1t_kit::now_ms();
+    let kept = FREE.with(|free| {
+        free.borrow().get(namespace).filter(|(_, at)| now.saturating_sub(*at) < PLAN_TTL_MS).map(|(free, _)| *free)
+    });
+    if let Some(free) = kept {
+        return free;
+    }
+    let free = is_free(billing, namespace).await;
+    FREE.with(|kept| kept.borrow_mut().insert(namespace.to_owned(), (free, now)));
+    free
 }
 
 /// The private storage a free workspace may push to: 1 GB unless set.
@@ -157,6 +295,51 @@ mod tests {
     #[test]
     fn operations_are_counted_by_the_hour() {
         assert_eq!(hour_key("2026-10-14T09:59:59.000Z"), "2026-10-14T09");
+    }
+
+    fn pkt(payload: &str) -> Vec<u8> {
+        format!("{:04x}{payload}", payload.len() + 4).into_bytes()
+    }
+
+    #[test]
+    fn each_git_request_is_metered_by_what_it_asks() {
+        use GitService::{ReceivePack, UploadPack};
+        assert_eq!(classify(UploadPack, "info/refs", true, None), GitCall::RefAdvertisement);
+        assert_eq!(classify(ReceivePack, "info/refs", true, None), GitCall::RefAdvertisement);
+        let ls_refs = [pkt("command=ls-refs\n"), b"0001".to_vec(), pkt("peel\n"), b"0000".to_vec()].concat();
+        assert_eq!(classify(UploadPack, "git-upload-pack", false, Some(&ls_refs)), GitCall::LsRefs);
+        let fetch = [pkt("command=fetch\n"), b"0001".to_vec(), pkt("want 1111111111111111111111111111111111111111\n"), pkt("done\n"), b"0000".to_vec()].concat();
+        assert_eq!(classify(UploadPack, "git-upload-pack", false, Some(&fetch)), GitCall::Fetch);
+        let v0 = [pkt("want 1111111111111111111111111111111111111111 side-band-64k\n"), b"0000".to_vec(), pkt("done\n")].concat();
+        assert_eq!(classify(UploadPack, "git-upload-pack", false, Some(&v0)), GitCall::Fetch);
+        assert_eq!(classify(ReceivePack, "git-receive-pack", false, None), GitCall::ReceivePack);
+        // By default only fetches and pushes are operations; listing refs,
+        // and anything g1t answered from its cache, never are.
+        let mapping = crate::meters::Mapping::defaults();
+        assert_eq!(mapping.billable(GitCall::Fetch.meter()), 1.0);
+        assert_eq!(mapping.billable(GitCall::ReceivePack.meter()), 1.0);
+        assert_eq!(mapping.billable(GitCall::LsRefs.meter()), 0.0);
+        assert_eq!(mapping.billable(GitCall::RefAdvertisement.meter()), 0.0);
+        for call in [GitCall::RefAdvertisement, GitCall::LsRefs, GitCall::Fetch, GitCall::ReceivePack] {
+            assert_eq!(mapping.billable(call.cached_meter()), 0.0);
+            assert_eq!(mapping.cost(call.cached_meter()), 0.0);
+        }
+    }
+
+    #[test]
+    fn the_standing_kept_here_moves_with_local_counts_and_turns_with_the_hour() {
+        let mut standing = Standing { hour_key: "2026-10-14T09".into(), month: 50_000.0, hour: 59.0, read_at: 1_000 };
+        assert_eq!(standing.at("2026-10-14T09", 1_000), Some((50_000, 59)));
+        standing.add("2026-10-14T09", 2.0);
+        assert_eq!(standing.at("2026-10-14T09", 2_000), Some((50_002, 61)));
+        // A new hour starts at nothing; the month goes on.
+        assert_eq!(standing.at("2026-10-14T10", 2_000), Some((50_002, 0)));
+        standing.add("2026-10-14T10", 1.0);
+        assert_eq!(standing.at("2026-10-14T10", 2_000), Some((50_003, 1)));
+        // A new month too.
+        assert_eq!(standing.at("2026-11-01T00", 2_000), Some((0, 0)));
+        // Read too long ago: not gone by, so nobody is slowed on old news.
+        assert_eq!(standing.at("2026-10-14T10", 1_000 + STANDING_TTL_MS + 1), None);
     }
 
     #[test]

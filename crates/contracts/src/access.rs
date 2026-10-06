@@ -269,7 +269,9 @@ impl<'a> From<&'a Repo> for RepoRef<'a> {
 
 /// What a membership gives on each of the workspace's repositories.
 fn membership_role(user: &User, membership: &Membership) -> Option<RepoRole> {
-    if user.kind == PrincipalKind::Workspace {
+    // A workspace's own token, and g1t acting in the workspace, do what an
+    // owner can on its repositories.
+    if matches!(user.kind, PrincipalKind::Workspace | PrincipalKind::System) {
         return Some(RepoRole::Admin);
     }
     match membership.role {

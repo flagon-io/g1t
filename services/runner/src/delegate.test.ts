@@ -41,6 +41,7 @@ test("the issue is kept whatever became of the agent", () => {
     fixUrl: "https://g1t.sh/acme/-/billing",
   });
   assert.match(noModelMessage("acme"), /Integrations/);
+  assert.match(noModelMessage("acme", true), /not open to the acme workspace yet.*Integrations/);
 });
 
 test("what to do is tidied, and checks may come one per line", () => {

@@ -104,6 +104,16 @@ struct VerdictRow {
 impl Work {
     /// The settings of a repository, by its id. Defaults if none were set.
     pub(crate) async fn settings(&self, repo_id: &str) -> Result<RepoSettings> {
+        if let Some(found) = self.prefetched_repo(repo_id) {
+            let row = found.first::<SettingsRow>(crate::prefetch::Slot::Settings)?;
+            let hold = found
+                .first::<crate::rows::NumberRow>(crate::prefetch::Slot::Hold)?
+                .is_none_or(|row| row.n != 0);
+            return Ok(RepoSettings {
+                hold_low_confidence: hold,
+                ..row.map_or_else(RepoSettings::default, RepoSettings::from)
+            });
+        }
         let row = async {
             self.db
                 .prepare("SELECT * FROM repo_settings WHERE repo_id = ?")
@@ -128,16 +138,19 @@ impl Work {
         if settings.required_approvals == 0 {
             return Ok(None);
         }
-        let rows = self
-            .db
-            .prepare(
-                "SELECT author_id, verdict FROM comments
-                 WHERE repo_id = ? AND number = ? AND verdict IS NOT NULL ORDER BY id",
-            )
-            .bind(&[pull.repo_id.as_str().into(), pull.number.into()])?
-            .all()
-            .await?
-            .results::<VerdictRow>()?;
+        let rows = match self.prefetched_pull(&pull.id) {
+            Some(found) => found.rows::<VerdictRow>(crate::prefetch::Slot::Verdicts)?,
+            None => self
+                .db
+                .prepare(
+                    "SELECT author_id, verdict FROM comments
+                     WHERE repo_id = ? AND number = ? AND verdict IS NOT NULL ORDER BY id",
+                )
+                .bind(&[pull.repo_id.as_str().into(), pull.number.into()])?
+                .all()
+                .await?
+                .results::<VerdictRow>()?,
+        };
         // Each reviewer's latest verdict is the one that stands.
         let mut latest: HashMap<String, Verdict> = HashMap::new();
         for row in rows {
@@ -148,11 +161,12 @@ impl Work {
     }
 
     pub(crate) async fn get_settings(&self, a: ViewArgs) -> Result<Outcome<RepoSettings>> {
-        let repo = match self.repo(&a.repo, &a.viewer).await? {
-            Outcome::Ok(repo) => repo,
-            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
-        };
-        Ok(Outcome::Ok(self.settings(&repo.id).await?))
+        // Read beside the access check (prefetch.rs), kept only if it passes.
+        let read = |repo_id: String| async move { self.timing.db(2, self.settings(&repo_id)).await };
+        Ok(match self.repo_then(&a.repo, &a.viewer, read).await? {
+            Outcome::Ok((_, settings)) => Outcome::Ok(settings),
+            Outcome::Fail(failure) => Outcome::Fail(failure),
+        })
     }
 
     pub(crate) async fn update_settings(

@@ -23,6 +23,7 @@ use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
 use crate::Work;
+use crate::prefetch::Slot;
 use crate::reviews::{AGENT_ID, AGENT_NAME};
 use crate::statuses::{self, WorkflowFacts};
 use crate::rows::ValueRow;
@@ -467,10 +468,25 @@ impl Work {
         behind: bool,
     ) -> Result<Option<(Lifecycle, Next, Option<Confidence>)>> {
         let assessed = self.assess_now(pull, issue, behind).await?;
-        if let Some((lifecycle, _, _)) = &assessed {
+        if let Some((lifecycle, _, _)) = &assessed
+            && !self.remembered_as(&pull.id, lifecycle)?
+        {
             self.remember(&pull.id, lifecycle).await?;
         }
         Ok(assessed)
+    }
+
+    /// Whether the row read for this request already says `lifecycle`, so
+    /// that showing a pull request does not write it again unchanged.
+    fn remembered_as(&self, pull_id: &str, lifecycle: &Lifecycle) -> Result<bool> {
+        let Some(found) = self.prefetched_pull(pull_id) else {
+            return Ok(false);
+        };
+        Ok(found
+            .first::<crate::rows::Snapshot>(Slot::Pull)?
+            .is_some_and(|stored| {
+                stored.stage == Some(lifecycle.stage) && stored.stage_detail.as_deref() == Some(lifecycle.detail.as_str())
+            }))
     }
 
     /// Saves where a pull request stands, for [`Self::remembered`].
@@ -499,17 +515,22 @@ impl Work {
         if !pull.status.is_active() {
             return Ok(None);
         }
-        let Some(progress) = self
-            .db
-            .prepare(
-                "SELECT managed, revisions, revised_at, working_on, working_until, stalled
-                 FROM pulls WHERE id = ?",
-            )
-            .bind(&[pull.id.as_str().into()])?
-            .first::<Progress>(None)
-            .await?
-            .filter(|progress| progress.managed != 0)
-        else {
+        // As read for this request (prefetch.rs), or now.
+        let prefetched = self.prefetched_pull(&pull.id);
+        let progress = match &prefetched {
+            Some(found) => found.first::<Progress>(Slot::Pull)?,
+            None => {
+                self.db
+                    .prepare(
+                        "SELECT managed, revisions, revised_at, working_on, working_until, stalled
+                         FROM pulls WHERE id = ?",
+                    )
+                    .bind(&[pull.id.as_str().into()])?
+                    .first::<Progress>(None)
+                    .await?
+            }
+        };
+        let Some(progress) = progress.filter(|progress| progress.managed != 0) else {
             return Ok(None);
         };
         let now = rfc3339(now_ms());
@@ -518,15 +539,19 @@ impl Work {
             .as_deref()
             .is_some_and(|until| until > now.as_str())
             .then(|| progress.working_on.clone().unwrap_or_default());
-        let review = self
-            .db
-            .prepare(
-                "SELECT finished_at, verdict FROM review_runs
-                 WHERE pull_id = ? AND finished_at IS NOT NULL ORDER BY id DESC LIMIT 1",
-            )
-            .bind(&[pull.id.as_str().into()])?
-            .first::<FinishedReview>(None)
-            .await?
+        let review = match &prefetched {
+            Some(found) => found.first::<FinishedReview>(Slot::Review)?,
+            None => {
+                self.db
+                    .prepare(
+                        "SELECT finished_at, verdict FROM review_runs
+                         WHERE pull_id = ? AND finished_at IS NOT NULL ORDER BY id DESC LIMIT 1",
+                    )
+                    .bind(&[pull.id.as_str().into()])?
+                    .first::<FinishedReview>(None)
+                    .await?
+            }
+        }
             // A review of what the change was before its last revision says
             // nothing about what it is now.
             .filter(|review| {
@@ -609,23 +634,30 @@ impl Work {
             verdict: Verdict,
             created_at: String,
         }
-        let rows = self
-            .db
-            .prepare(
-                "SELECT author_id, author_name, verdict, created_at FROM comments
-                 WHERE repo_id = ? AND number = ? AND verdict IS NOT NULL
-                   AND author_id != ? AND author_id != ?
-                 ORDER BY id",
-            )
-            .bind(&[
-                pull.repo_id.as_str().into(),
-                pull.number.into(),
-                pull.author.id.as_str().into(),
-                AGENT_ID.into(),
-            ])?
-            .all()
-            .await?
-            .results::<Verdicts>()?;
+        let rows = match self.prefetched_pull(&pull.id) {
+            Some(found) => found
+                .rows::<Verdicts>(Slot::Verdicts)?
+                .into_iter()
+                .filter(|row| row.author_id != pull.author.id && row.author_id != AGENT_ID)
+                .collect(),
+            None => self
+                .db
+                .prepare(
+                    "SELECT author_id, author_name, verdict, created_at FROM comments
+                     WHERE repo_id = ? AND number = ? AND verdict IS NOT NULL
+                       AND author_id != ? AND author_id != ?
+                     ORDER BY id",
+                )
+                .bind(&[
+                    pull.repo_id.as_str().into(),
+                    pull.number.into(),
+                    pull.author.id.as_str().into(),
+                    AGENT_ID.into(),
+                ])?
+                .all()
+                .await?
+                .results::<Verdicts>()?,
+        };
         // Each person's latest verdict is the one that stands.
         let mut latest: HashMap<String, Verdicts> = HashMap::new();
         for row in rows {
@@ -1148,12 +1180,7 @@ impl Work {
     /// The merge waiting on a pull request, if one was asked for recently
     /// enough to still stand.
     async fn land_request(&self, pull_id: &str) -> Result<Option<LandRequest>> {
-        let row = self
-            .db
-            .prepare("SELECT land_requested, land_requested_at, stalled FROM pulls WHERE id = ?")
-            .bind(&[pull_id.into()])?
-            .first::<LandRow>(None)
-            .await?;
+        let row = self.land_row(pull_id).await?;
         let oldest = rfc3339(now_ms().saturating_sub(CATCH_UP_MINUTES * 60 * 1000));
         Ok(row
             .filter(|row| {
@@ -1168,14 +1195,21 @@ impl Work {
     /// Whether a merge is waiting on a pull request, and why g1t stopped
     /// working on it if it did.
     pub(crate) async fn landing_state(&self, pull_id: &str) -> Result<(bool, Option<String>)> {
-        let stalled = self
-            .db
+        let stalled = self.land_row(pull_id).await?.and_then(|row| row.stalled);
+        Ok((self.land_request(pull_id).await?.is_some(), stalled))
+    }
+
+    /// The merge waiting on a pull request and why g1t stopped, as read
+    /// for this request (prefetch.rs) or now.
+    async fn land_row(&self, pull_id: &str) -> Result<Option<LandRow>> {
+        if let Some(found) = self.prefetched_pull(pull_id) {
+            return found.first::<LandRow>(Slot::Pull);
+        }
+        self.db
             .prepare("SELECT land_requested, land_requested_at, stalled FROM pulls WHERE id = ?")
             .bind(&[pull_id.into()])?
             .first::<LandRow>(None)
-            .await?
-            .and_then(|row| row.stalled);
-        Ok((self.land_request(pull_id).await?.is_some(), stalled))
+            .await
     }
 
     async fn forget_landing(&self, pull_id: &str) -> Result<()> {

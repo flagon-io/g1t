@@ -11,7 +11,47 @@ export type ProbeResult = {
   ms: number;
   /** Why it failed, in a few words: "timed out", "HTTP 502". */
   error?: string;
+  /** Why it worked but not well, when that is not just slowness. */
+  degraded?: string;
 };
+
+/** How one git store namespace answered lately: repos `store_health`. */
+export type StoreHealthRow = {
+  store: string;
+  calls: number;
+  errors: number;
+  rate_limited: number;
+  rejected: number;
+  ms_total: number;
+};
+
+export type StorageReport = { minutes: number; stores: StoreHealthRow[] };
+
+/** At least this many failed calls, and this share of them, before git storage is down. */
+const STORAGE_MIN_ERRORS = 5;
+const STORAGE_DOWN_SHARE = 0.25;
+
+/**
+ * What the git store's recent answers mean: down when a quarter or more of
+ * its calls failed (at least five), or calls were refused after repeated
+ * failures; degraded when it rate limited g1t; otherwise as fast as its
+ * mean call. Quiet is up.
+ */
+export function judgeStorage(report: StorageReport): ProbeResult {
+  const sum = (key: keyof Omit<StoreHealthRow, "store">) =>
+    report.stores.reduce((total, row) => total + (Number(row[key]) || 0), 0);
+  const calls = sum("calls");
+  const errors = sum("errors");
+  const limited = sum("rate_limited");
+  const rejected = sum("rejected");
+  const ms = calls > 0 ? sum("ms_total") / calls : 0;
+  if (rejected > 0) return { ok: false, ms, error: `calls refused after repeated failures (${rejected})` };
+  if (errors >= STORAGE_MIN_ERRORS && errors / Math.max(calls, 1) >= STORAGE_DOWN_SHARE) {
+    return { ok: false, ms, error: `${Math.round((100 * errors) / calls)}% of calls failed` };
+  }
+  if (limited > 0) return { ok: true, ms, degraded: `Rate limited ${limited} times in ${report.minutes} minutes` };
+  return { ok: true, ms };
+}
 
 /** No request waits longer than this. */
 export const TIMEOUT_MS = 5000;
@@ -74,6 +114,8 @@ export function combine(results: ProbeResult[]): ProbeResult {
 export type Probers = {
   fetch: Fetch;
   billing: (() => Promise<unknown>) | null;
+  /** Git storage's recent health, through the repos service; null when not bound. */
+  storage?: (() => Promise<StorageReport>) | null;
   timeoutMs?: number;
 };
 
@@ -87,6 +129,16 @@ export async function runCheck(check: Check, probers: Probers): Promise<ProbeRes
       const billing = probers.billing;
       if (!billing) return null;
       return timed(async () => ((await billing()) ? true : "no price book"), timeoutMs);
+    }
+    case "storage": {
+      const storage = probers.storage;
+      if (!storage) return null;
+      let report: StorageReport | null = null;
+      const asked = await timed(async () => {
+        report = await storage();
+        return true;
+      }, timeoutMs);
+      return report ? judgeStorage(report) : asked;
     }
     case "none":
       return null;

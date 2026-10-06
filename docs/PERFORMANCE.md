@@ -129,6 +129,15 @@ on the known-read list (`READS` in `perf.ts`; anything new counts as a
 write until listed); or a GET that started a session (signing in with
 GitHub). GETs that only read set no cookie, so public pages stay cacheable.
 
+Keep `READS` complete. Until 2026-10-06 it lacked `get` (repos and
+projects), `list`, `queue` and `pulls_for_repos`, so every project page
+and Mission control looked like a write: each set the cookie, which kept
+signed-out project pages out of the public cache (every view rendered,
+0.4 to 0.6 s, crawlers included), sent the person's next 30 seconds of
+reads to the primary, and turned off the sidebar cache
+(`mustReadFresh`). `scripts/perf/measure.ps1` shows a **Sets g1t_d1**
+column: it should say False for every page it measures.
+
 What a person can still see out of date: something someone else (or an
 agent, or the API) changed in the last fraction of a second, which a page
 would have missed by loading a moment earlier anyway; and a session
@@ -181,6 +190,9 @@ than it reads (indexing), so replicas help it least.
 | Registration mode | per isolate | 60 s | |
 | A commit's log by hash | repos' data-centre cache | for good | history from a commit never changes; Active branches asks by hash |
 | Git objects, trees, refs | repos' caches | see services/repos | |
+| A branch's log, the branch list, a file by branch and path | repos' data-centre cache | until the repository's refs change (`refs_version`), 5 min at most | only while no handed-out push credential is live; by commit hash for good (docs/ARTIFACTS.md R9) |
+| A target branch's history, for mergeability | the repos isolate | 60 s, per target head | 100 pull requests checked after a push walk it once (R10) |
+| Git store credentials | repos isolate and KV | reused 50 min (1 h tokens); 3 min for ones handed out | (R3) |
 
 ## Server-Timing
 
@@ -204,9 +216,16 @@ d1;desc="work=unconstrained repos=bookmark identity=primary"
   and how much of that the service itself reported (`svc;dur` from
   `Served::finish`). The difference is the trip between them.
 - `d1`: how each session-capable service was asked to read.
+- Inside a service entry, `db Nms in T round trips`: what the service
+  reported waiting on its own database (`db;dur`, from
+  `g1t_kit::d1::Timing` and `Served::finish_timed`). The work service
+  reports it, and `rpc;dur` for its own calls to other services; a service
+  call's own response carries both beside `svc;dur`.
 
 Git requests keep their own header (`repos;dur` plus the repos service's
-steps). Mission control keeps its per-section timings.
+steps). Counting git operations writes nothing on the way: the meters are
+written after the answer (`wait_until`), so `kept` no longer includes a D1
+upsert (63–98 ms before; docs/ARTIFACTS.md R13). Mission control keeps its per-section timings.
 
 ## What a page does, in rounds
 
@@ -219,6 +238,54 @@ Rounds are what cost: calls in the same round overlap.
 | Project overview | access, then 17 calls, one of which (Active branches) read the default branch's last 120 commits and up to 10 branches' last 40 | one round; Active branches streams in with a skeleton, reading logs by commit hash so a branch that has not moved costs nothing |
 | Mission control | per project: open pulls, closed pulls and events (3 × up to 10), then `get_by_id` per unknown repository | one `pulls_for_repos` call for every project (one access check, one query), events per project alongside, one `readable` for the rest |
 | Issue, issues | access, then the rest | one round |
+
+### Inside the work service
+
+Before 2026-10-06 a pull request's page cost the work service about
+twenty D1 round trips one after another, plus two calls to repos: the
+access check (`get`), then the pull request, its issue, then its
+lifecycle read progress, latest review, settings, statuses, review
+comments, the confidence signals (three in turn), approvals, requests
+for changes, the queue entry, and wrote the stage back on every view,
+then statuses and settings again, messages and earlier checks. It also
+asked repos `behind` on every view, which walks up to `MAX_ANCESTRY`
+commits in Artifacts. About 350 ms of the page's 0.5 s.
+
+Now (`services/work/src/prefetch.rs`):
+
+- **One batch.** Everything the page and the lifecycle read is one D1
+  batch of 20 statements keyed by repository id and number (subqueries
+  find the pull request's id, issue and head). The helpers that decide
+  the lifecycle (`settings`, `statuses`, `review_pending`,
+  `approvals_gap`, `signals`, …) read from it when it is there, so the
+  decision is the same code either way.
+- **Beside the access check.** `repo_then` starts the batch with the
+  repository id this isolate last saw for the path, at the same time as
+  repos' `get`; the rows are used only if `get` then allows that same
+  repository, and read again otherwise. Issues, lists, counts, labels and
+  settings do the same. `pulls_for_repos` reads its rows beside
+  `readable` and drops those of repositories the viewer cannot read.
+- **Precomputed `behind`.** `pulls.behind` is written with mergeability
+  on every push to either side (migration 0023); a view reads it when it
+  was worked out for the current head and asks repos only otherwise
+  (then keeps the answer).
+- **No write on a view** unless the stage changed.
+- `list_active_pulls` reads its pull requests' issues in the same batch
+  instead of one query each.
+
+A pull request is now the repos `get` (about 40 ms) and one batch beside
+it. The indexes were checked with `EXPLAIN QUERY PLAN` against the
+migrations: every statement is an index search; 0023 adds
+`agent_messages_by_sender` for the unanswered-questions count.
+
+### The overview streams
+
+`routes/repo/overview.tsx` returns its seventeen calls as one deferred
+promise. The layout's header and tabs (repository and project, two
+cheap calls) and a skeleton go out first; the sections follow in the
+same response. Crawlers still get the whole page (`entry.server.tsx`
+waits for `allReady` for bots), and signed out it is kept in the public
+cache like any other project page.
 
 ## Client navigation
 
@@ -263,12 +330,14 @@ Explore every minute and shows them as degraded over 800 ms
 ## Measuring
 
 ```powershell
-# Signed out
-powershell -File scripts/perf/measure.ps1 -Runs 7 -Out before.csv
+# Signed out, as a browser (streamed). Without -BrowserUA curl's own
+# user agent counts as a crawler, which waits for the whole page.
+powershell -File scripts/perf/measure.ps1 -BrowserUA -Runs 7 -Out before.csv
 # Signed in: your g1t_session cookie's value, from DevTools; never printed
 $env:G1T_SESSION = "<64 hex>"
 powershell -File scripts/perf/measure.ps1 -Runs 7 -Pull 12 -Issue 11 -Out before-signed-in.csv
 ```
 
 It prints p50 and p90 of the server's share (TLS handshake done to first
-byte), where the Worker ran, and the slowest Server-Timing entries.
+byte), where the Worker ran, whether the answer set `g1t_d1` (it should
+not, for a page that only reads), and the slowest Server-Timing entries.

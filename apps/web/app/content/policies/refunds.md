@@ -20,7 +20,7 @@ The credit appears on your statement with the day it happened, such as *Credit f
 ## When we refund to your card
 
 - **Charged in error.** If we charged you twice, charged the wrong amount, or charged for something that didn't run because of a fault on our side, we refund it to the card it was paid with.
-- **Unused prepaid balance**, when you close the workspace: write to us and we'll refund what's left to the card or account it came from. **[PLACEHOLDER: confirm the prepaid balance refund policy (e.g. any minimum, fees, or time limit).]**
+- **Unused prepaid balance**, when you close the workspace: write to us and we'll refund what's left to the card or account it came from.
 - **Anything else** is up to us, case by case. Write to [hey@flagon.io](mailto:hey@flagon.io) and we'll be fair about it.
 
 Refunds appear on the statement under **Refunds** and take as long as your bank takes to show them, usually 5 to 10 business days.

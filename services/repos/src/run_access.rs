@@ -169,6 +169,7 @@ impl<S: GitStore> Repos<S> {
                     PrincipalKind::Workspace => "workspace-token",
                     PrincipalKind::Agent => "agent-token",
                     PrincipalKind::User => "person",
+                    PrincipalKind::System => "g1t",
                 };
                 Some(Box::new(entry(
                     self.audit_target_of(&git.path, found).await?,

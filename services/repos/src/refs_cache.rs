@@ -352,6 +352,7 @@ mod tests {
             "land::push_pack(",
             "land::delete_ref(",
             "land::fast_forward(",
+            "land::push_ref(",
             "mirror::copy(",
             "copy(&theirs, &ours",
         ];
@@ -365,6 +366,7 @@ mod tests {
             ("secret_scan.rs", include_str!("secret_scan.rs")),
             ("run_access.rs", include_str!("run_access.rs")),
             ("git_http.rs", include_str!("git_http.rs")),
+            ("forks.rs", include_str!("forks.rs")),
         ];
         let mut all = Vec::new();
         for (file, source) in sources {
@@ -374,7 +376,7 @@ mod tests {
             }
         }
         // The writers known today, so that the check is seen to find them.
-        for expected in ["create", "delete_branch", "land", "update_pull_branch", "mirror", "rename_branch", "forks_follow"] {
+        for expected in ["create", "delete_branch", "land", "update_pull_branch", "mirror", "rename_branch", "forks_follow", "keep_head", "revive"] {
             assert!(
                 all.iter().any(|function| function.contains(&format!("fn {expected}("))),
                 "{expected} not found among {all:?}"

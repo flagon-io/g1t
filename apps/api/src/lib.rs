@@ -4,6 +4,7 @@
 //! operations (see [`operations::Op`]), which call the services that own
 //! the data. This Worker holds none.
 
+mod alerts;
 mod audit;
 mod blobs;
 mod mcp;

@@ -216,8 +216,10 @@ they are read from the repository's own branches, never from a fork.
 ## Caps
 
 **Cost per run**: the most one run may spend on its model, in US dollars.
-$5.00 by default; 0 means no cap; at most $100. The harness tracks the
-run's spend as it goes and stops the agent when it reaches the cap.
+$2.00 by default, the same as the workspace billing's spend cap per run;
+0 means no cap here, though billing's cap still applies; at most $100. The
+harness tracks the run's spend as it goes and stops the agent when it
+reaches the cap.
 
 **Time per run**: how long each kind of run may take, in minutes. By
 default:
@@ -237,8 +239,11 @@ default:
 At most 240 minutes, but a run's credentials last two hours, so a longer
 cap does not give an agent more than that to push.
 
-**The workspace's plan** can set lower caps: a new paid workspace's first
-month, and the trial, cap every run's time and cost (see
+**The workspace's billing** sets caps too. Every workspace has a spend cap
+per run, $2 by default, which owners can set from $0.10 to $100, so a run
+stops at $2 unless an owner raises it (see
+[caps](/guides/usage-and-billing/#caps)). A new paid workspace's first
+month, and the trial, also cap every run's time at 60 minutes (see
 [who can run agents](/guides/g1t-agents/#who-can-run-agents)). A run gets
 the lower of its guardrails' cap and its plan's, for time and for cost,
 and its page shows the cap it got.

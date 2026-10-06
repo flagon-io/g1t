@@ -23,7 +23,7 @@ pull requests and reviews, and every change can deploy to the edge.
 	/>
 	<LinkCard
 		title="Bring a repository"
-		description="Push any git repository, rename .github to .g1t, and your Actions workflows run here as they are."
+		description="Push any git repository, rename .github to .g1t, and your Actions workflows run here, most without changes."
 		href="/guides/actions/"
 	/>
 	<LinkCard
@@ -42,32 +42,31 @@ pull requests and reviews, and every change can deploy to the edge.
 	</Card>
 	<Card title="Agents that finish" icon="circle-check">
 		Each change runs your workflows, is reviewed and revised until its
-		[required checks](/guides/pull-requests/#required-status-checks) pass, then merged
-		through the [merge queue](/guides/merge-queue/). You step in only when asked.
+		[required checks](/guides/pull-requests/#required-status-checks) pass, then merged,
+		through the [merge queue](/guides/merge-queue/) if you turn it on. You step in only when asked.
 	</Card>
 	<Card title="Bring your own agent" icon="bot">
 		Claude Code, Codex, OpenCode, Cursor or any MCP client works on g1t as a teammate, and
 		[records its session](/guides/bring-your-own-agent/) onto its pull requests.
 	</Card>
-	<Card title="Actions workflows, unchanged" icon="workflow">
-		Workflows written for GitHub Actions [run from `.g1t/workflows` as they are](/guides/actions/),
-		and failing ones send the agent back to fix the cause. Run them on
-		[your own machines](/guides/self-hosted-runners/), any OS, for free.
+	<Card title="Actions workflows" icon="workflow">
+		Workflows written for GitHub Actions [run from `.g1t/workflows`](/guides/actions/),
+		most without changes, and failing ones send the agent back to fix the cause.
 	</Card>
 	<Card title="A preview for every change" icon="globe">
-		Every pull request gets a [live preview on g1t.page](/guides/deployments/), and
+		On the g1t plan, every pull request gets a [live preview on g1t.page](/guides/deployments/), and
 		the default branch goes to production. Apps cost nothing while no one visits.
 	</Card>
-	<Card title="Secrets kept out, upgrades landed" icon="shield-check">
+	<Card title="Secrets kept out, fixes opened" icon="shield-check">
 		Pushes that add a key or a token are refused, and each vulnerable dependency
-		gets an [upgrade issue that an agent lands](/guides/security/).
+		gets a [pull request that upgrades it](/guides/security/).
 	</Card>
 	<Card title="Your models, your tools" icon="plug">
 		Use g1t's models or [your own providers](/guides/models/), and pull context
 		from [Sentry, Jira and Linear](/guides/integrations/).
 	</Card>
 	<Card title="Everything has an API" icon="book-open">
-		Every action is a [REST endpoint and an MCP tool](/reference/api/), with
+		Repositories, issues, pull requests, agents and workflows are all a [REST endpoint](/reference/api/) and an [MCP tool action](/reference/mcp/) away, with
 		[webhooks](/guides/webhooks/) for every event.
 	</Card>
 </CardGrid>

@@ -137,7 +137,7 @@ Errors are JSON with a stable `code` and a human-readable `message`.
 | Status | Code | Meaning |
 | --- | --- | --- |
 | 401 | `unauthenticated` | A token is required, or the one sent is not valid. |
-| 402 | `payment_required` | The workspace cannot start this work: it needs the g1t plan or a card check, or it is at a limit. Only endpoints that start an agent answer this. See [usage and billing](/guides/usage-and-billing/#when-work-is-stopped). |
+| 402 | `payment_required` | The workspace cannot pay for this: to start an agent it needs the g1t plan or a card check, or it is at a limit; to make a repository private, or move a private one in, a free workspace needs room in its free private storage. Only endpoints that start an agent, change a repository's visibility or transfer it answer this. See [usage and billing](/guides/usage-and-billing/#when-work-is-stopped). |
 | 403 | `forbidden` | You are signed in but not allowed to do this: your role is not enough, or the token lacks a scope, which `needed_scope` names. |
 | 404 | `not_found` | It does not exist, or you cannot see it. A path that is not an endpoint answers this too. |
 | 409 | `conflict` | The request conflicts with the current state. |

@@ -44,7 +44,7 @@ gives their values out, so they cannot be copied across.
 | `secrets.*`, `vars.*`, `secrets.GITHUB_TOKEN` | The same. `secrets.G1T_TOKEN` is the workspace's own token for the run; `GITHUB_TOKEN` is its alias. |
 | `environment:` on a job | The job reads each key's row for that environment, as GitHub's environment secrets work. |
 | `actions/upload-artifact`, `actions/download-artifact` | Kept with the run for 14 days, passed between its jobs, and downloadable from the run's page. Up to 60 MB each. |
-| `actions/cache`, `actions/cache/restore`, `actions/cache/save` | Kept per repository, found by `key` or the newest under a `restore-keys` prefix. `path` takes globs and `!` exclusions. Up to 2 GB each; see [the cache](#the-cache). |
+| `actions/cache`, `actions/cache/restore`, `actions/cache/save` | Kept per repository, found by `key` or the newest under a `restore-keys` prefix. `path` takes globs and `!` exclusions. Up to 2 GiB each; see [the cache](#the-cache). |
 
 The **Actions** page of a workflow says, under *How this runs on g1t*,
 anything in it that runs differently.
@@ -55,7 +55,10 @@ anything in it that runs differently.
   job with `runs-on: windows-latest` or `macos-latest` fails, and says so.
   [Self-hosted runners](/guides/self-hosted-runners/) of any OS run them:
   `runs-on: [self-hosted, windows]`.
-- **Docker** container actions, `services:` containers and `container:`.
+- **Docker** container actions, `services:` containers and `container:` on
+  g1t's machines. A job's `container:` is ignored there and its steps run on
+  g1t's image; a [self-hosted runner](/guides/self-hosted-runners/#what-a-job-gets)
+  that runs jobs in Docker uses it.
 - **Reusable workflows from other repositories** (`uses: owner/repo/.github/workflows/x.yml@v1`); ones in the same repository work.
 - **The toolkit's own cache.** Actions that cache through GitHub's service
   themselves, such as `actions/setup-node` with `cache: npm`, run without
@@ -73,8 +76,9 @@ Why each of these is missing, and what to use instead, is on
 Jobs run in a fresh sandbox each: Debian with Node 24, Python 3, Go, Rust,
 `build-essential`, `git`, `curl`, `jq` and passwordless `sudo`, in GitHub's
 layout (`/home/runner/work`, `RUNNER_TEMP`, `RUNNER_TOOL_CACHE`).
-`runner.os` is `Linux`. `ubuntu-latest`, `ubuntu-24.04`, `self-hosted` and
-other Linux labels all run here. Setup actions such as
+`runner.os` is `Linux`. `ubuntu-latest`, `ubuntu-24.04` and other Linux
+labels all run here. A job whose `runs-on` names `self-hosted` waits for one
+of your [self-hosted runners](/guides/self-hosted-runners/) instead. Setup actions such as
 `actions/setup-node` and `actions/setup-python` install other versions as
 they do on GitHub.
 
@@ -102,9 +106,9 @@ sandbox time: see [usage and billing](/guides/usage-and-billing/#workflow-jobs-o
 Builds that compile, such as Rust or a large TypeScript project, finish
 several times faster on one.
 
-A job runs for at most 60 minutes, whatever its `timeout-minutes`, and
-for less if the workspace's plan caps runs lower (a new workspace's first
-month, or the trial). A job stopped at its time cap fails saying so.
+A job on g1t's machines runs for at most 60 minutes, whatever its
+`timeout-minutes`; one on a self-hosted runner can run for up to 24 hours.
+A job stopped at its time cap fails saying so.
 
 ### What a job can reach
 
@@ -139,8 +143,8 @@ looks like it is mining is stopped. See
 
 | | |
 | --- | --- |
-| One entry | Up to 2 GB, compressed. A larger one is not saved, and the job goes on. |
-| A repository's entries | Up to 10 GB together. Saving past it removes the entries restored longest ago. |
+| One entry | Up to 2 GiB, compressed. A larger one is not saved, and the job goes on. |
+| A repository's entries | Up to 10 GiB together. Saving past it removes the entries restored longest ago. |
 | How long | Until it has not been restored for 7 days, and at most 28 days after it was saved. |
 | Keys | Written once: saving under a key that exists does nothing. A restore finds its `key` exactly, else the newest entry whose key starts with one of its `restore-keys`. |
 | `path` | Files and folders; globs, `**` included; `~/` is the home folder; a line starting with `!` leaves matching paths out. |
@@ -233,7 +237,8 @@ with an **Add CI** button. Anyone who can push to the repository can use it:
    on `pull_request`, on `push` to the default branch, and on `merge_group`.
 3. Change it on the pull request if the steps are not how your project
    builds, and merge it.
-4. Once it has run, `CI` is offered under **Required status checks**.
+4. Once it has run, `CI` is offered under **Require status checks to pass
+   before merging**.
    Require it, so that nothing merges into the default branch unless it
    passes.
 
@@ -269,7 +274,9 @@ What you can do with a repository's workflows follows your
 
 Jobs run in g1t's sandboxes, so they need the
 [g1t plan](/guides/usage-and-billing/#the-g1t-plan) or
-[the trial](/guides/usage-and-billing/#the-trial). On a public repository,
+[the trial](/guides/usage-and-billing/#the-trial); jobs on
+[self-hosted runners](/guides/self-hosted-runners/#billing) need neither.
+On a public repository,
 [g1t's open-source pool](/guides/usage-and-billing/#the-open-source-pool)
 runs them too, after a card check, until the month's pool is spent.
 
@@ -279,7 +286,8 @@ ends; each job's sandbox is charged as
 [sandbox time](/guides/usage-and-billing/#sandbox-time), from the first
 second. A job billing refuses does not start: it is recorded as failed
 with "Not started:" and the reason, such as "Workflows run in g1t's
-sandboxes, which need a paid workspace", and what to do about it. The
+sandboxes, which cost real money, so they need the g1t plan ($20 a month)
+or a card check", and what to do about it. The
 Actions page tells people with Write on a repository whose workspace
 cannot run jobs before the first run.
 
@@ -298,8 +306,13 @@ usually work once they point at `https://api.g1t.sh`.
 | `cancel` | `POST /repos/{owner}/{repo}/actions/runs/{id}/cancel` |
 | `rerun` | `POST …/runs/{id}/rerun`, or `…/rerun-failed-jobs` |
 | `update` | `PUT …/workflows/{workflow}/enable` and `…/disable` |
-| `list_actions_secrets`, `set_actions_secret`, `delete_actions_secret` | `GET`, `PUT` and `DELETE /repos/{owner}/{repo}/actions/secrets/{name}` |
-| `list_actions_variables`, `set_actions_variable`, `delete_actions_variable` | `GET` and `POST /repos/{owner}/{repo}/actions/variables`, `PATCH` and `DELETE …/variables/{name}` |
+
+Secrets and variables have a tool of their own, `secret`:
+
+| `secret` action | Route |
+| --- | --- |
+| `list_secrets`, `set_secret`, `delete_secret` | `GET /repos/{owner}/{repo}/actions/secrets`, `PUT` and `DELETE …/secrets/{name}` |
+| `list_variables`, `set_variable`, `delete_variable` | `GET` and `POST /repos/{owner}/{repo}/actions/variables`, `PATCH` and `DELETE …/variables/{name}` |
 
 Workspace secrets and variables are under
 `/workspaces/{workspace}/actions/secrets` and `…/variables`. The fields

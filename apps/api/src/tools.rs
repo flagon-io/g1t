@@ -57,7 +57,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "repository",
         title: "Repositories",
-        description: "Repositories: find, read and create them, and change their settings. Name one as \"owner/name\". Deleting, transferring and changing visibility need `confirm`.",
+        description: "Repositories: find, read and create them, change their settings, and see and dismiss their security alerts (secrets and vulnerable dependencies). Name one as \"owner/name\". Deleting, transferring and changing visibility need `confirm`.",
         default_action: None,
         actions: &[
             a("list", Op::ListRepos, "Repositories you can see"),
@@ -79,6 +79,9 @@ pub const TOOLS: &[Tool] = &[
             a("list_deleted", Op::ListDeletedRepos, "A workspace's deleted repositories"),
             a("restore", Op::RestoreRepo, "Restore a deleted one"),
             a("purge", Op::PurgeRepo, "Remove a deleted one for good"),
+            a("security_alerts", Op::ListSecurityAlerts, "Secret and dependency alerts, filtered by state"),
+            a("dismiss_alert", Op::DismissSecurityAlert, "Dismiss an alert with a reason"),
+            a("reopen_alert", Op::ReopenSecurityAlert, "Reopen a dismissed alert"),
         ],
     },
     Tool {
@@ -224,11 +227,12 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "workspace",
         title: "Workspaces",
-        description: "Workspaces own repositories (g1t.sh/{workspace}/{repo}): create or delete one, invite members, and connect integrations and model providers.",
+        description: "Workspaces own repositories (g1t.sh/{workspace}/{repo}): create, update or delete one, invite members, and connect integrations and model providers.",
         default_action: None,
         actions: &[
             a("create", Op::CreateWorkspace, "Create a workspace"),
             a("delete", Op::DeleteWorkspace, "Delete an empty workspace"),
+            a("update", Op::UpdateWorkspace, "Change its name, description or base permission"),
             a("list_invites", Op::ListWorkspaceInvites, "Its invites"),
             a("invite_member", Op::InviteMember, "Invite an email address"),
             a("revoke_invite", Op::RevokeWorkspaceInvite, "Revoke a pending invite"),
@@ -267,6 +271,7 @@ fn destructive(op: Op) -> bool {
     matches!(
         op,
         Op::DeleteWorkspace
+            | Op::UpdateWorkspace
             | Op::DeleteRepo
             | Op::PurgeRepo
             | Op::TransferRepo

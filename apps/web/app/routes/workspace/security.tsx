@@ -41,11 +41,17 @@ export default function WorkspaceSecurity({ loaderData, params }: Route.Componen
           Security across projects
         </h2>
         <p className="mt-1.5 max-w-2xl text-sm text-muted">
-          Open findings in every project of {params.owner}: secrets found in pushes and history, and vulnerable
-          dependencies, each with the upgrade a g1t agent is landing for it.
+          Open alerts in every project of {params.owner}: secrets found in pushes and history, and vulnerable
+          dependencies. Each project's Security page has the details and the security update g1t opened for each.
         </p>
       </div>
-      <SeverityCountsGrid counts={total} />
+      <div>
+        <SeverityCountsGrid counts={total} />
+        <p className="mt-2 text-xs text-faint">
+          Open alerts by severity. A secret in the history that looks real counts as critical; blocked pushes and likely test
+          values do not.
+        </p>
+      </div>
       {projects.length === 0 ? (
         <p className="rounded-xl border border-dashed border-line px-4 py-6 text-sm text-muted">
           No project has been scanned yet. Each one is scanned on its next push to its default branch, or when its Security
@@ -62,7 +68,7 @@ export default function WorkspaceSecurity({ loaderData, params }: Route.Componen
                 <span className="min-w-0 grow">
                   <span className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-sm font-medium">{project.name}</span>
-                    {!project.upkeep && <Badge>upkeep off</Badge>}
+                    {!project.upkeep && <Badge>security updates off</Badge>}
                   </span>
                   <span className="mt-0.5 block text-xs text-faint">
                     {project.secrets} {project.secrets === 1 ? "secret" : "secrets"} · {project.vulnerabilities}{" "}

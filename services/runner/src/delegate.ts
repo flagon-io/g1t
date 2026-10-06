@@ -7,8 +7,14 @@ import type { AgentStart, Delegated, Issue, Pull } from "@g1t/contracts";
 
 const SITE = "https://g1t.sh";
 
-/** What the workspace's agents have no model is said as. */
-export function noModelMessage(workspace: string): string {
+/**
+ * What the workspace's agents have no model is said as. `preview`: g1t's
+ * hosted models are closed to it because billing takes no real money yet.
+ */
+export function noModelMessage(workspace: string, preview = false): string {
+  if (preview) {
+    return `g1t's hosted models are not open to the ${workspace} workspace yet: during the preview they run only for a few invited workspaces. An owner can connect the workspace's own model provider under Integrations, and its agents start at once.`;
+  }
   return `The ${workspace} workspace has no model for its agents: its free allowance on g1t's models is used up or over. An owner can connect the workspace's own model provider under Integrations, and its agents start at once.`;
 }
 

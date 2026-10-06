@@ -120,10 +120,18 @@ impl Work {
         };
         let key = key(&divergence);
         let now = now_ms();
+        let behind = u32::from(divergence.behind);
         let row = self.merge_row(&pull.id).await?;
         if let Some(row) = &row
             && row.mergeable_key.as_deref() == Some(key.as_str())
         {
+            // Whether it is behind goes with the pair of commits; a row from
+            // before it was kept gets it now.
+            self.db
+                .prepare("UPDATE pulls SET behind = ?1 WHERE id = ?2 AND behind IS NOT ?1")
+                .bind(&[behind.into(), pull.id.as_str().into()])?
+                .run()
+                .await?;
             let settled = match row.mergeable.as_deref() {
                 Some("clean" | "conflicting" | "unknown") => true,
                 // A probe that is still being waited for.
@@ -141,11 +149,11 @@ impl Work {
             self.db
                 .prepare(
                     "UPDATE pulls
-                     SET mergeable = 'clean', conflicts = '[]', mergeable_key = ?,
+                     SET mergeable = 'clean', conflicts = '[]', mergeable_key = ?, behind = ?,
                          mergeable_token_hash = NULL, mergeable_until = NULL
                      WHERE id = ?",
                 )
-                .bind(&[key.as_str().into(), pull.id.as_str().into()])?
+                .bind(&[key.as_str().into(), behind.into(), pull.id.as_str().into()])?
                 .run()
                 .await?;
             // It may have been conflicting before this push.
@@ -157,12 +165,13 @@ impl Work {
         self.db
             .prepare(
                 "UPDATE pulls
-                 SET mergeable = 'checking', conflicts = '[]', mergeable_key = ?,
+                 SET mergeable = 'checking', conflicts = '[]', mergeable_key = ?, behind = ?,
                      mergeable_token_hash = NULL, mergeable_until = ?
                  WHERE id = ?",
             )
             .bind(&[
                 key.as_str().into(),
+                behind.into(),
                 rfc3339(now + PROBE_MINUTES * 60 * 1000).into(),
                 pull.id.as_str().into(),
             ])?
@@ -248,7 +257,11 @@ impl Work {
         if !pull.status.is_active() || pull.head_commit.is_none() {
             return Ok((Mergeable::Unknown, Vec::new()));
         }
-        let row = self.merge_row(&pull.id).await?;
+        // As read for this request, if it was; read again after working it out.
+        let row = match self.prefetched_pull(&pull.id) {
+            Some(found) => found.first::<MergeRow>(crate::prefetch::Slot::Pull)?,
+            None => self.merge_row(&pull.id).await?,
+        };
         let now = rfc3339(now_ms());
         let stale = row.as_ref().is_none_or(|row| {
             row.mergeable_key.is_none()
@@ -259,6 +272,8 @@ impl Work {
             if let Err(error) = self.assess_mergeability(pull).await {
                 worker::console_warn!("mergeability of {}: {error}", pull.id);
             }
+            // What was read for this request is out of date now.
+            self.keep_prefetched(None);
             self.merge_row(&pull.id).await?
         } else {
             row
@@ -289,7 +304,11 @@ impl Work {
     /// The files that conflict, if the pull request as it is now is known
     /// to conflict with its target as it is now.
     pub(crate) async fn conflicting_files(&self, pull: &Pull) -> Result<Option<Vec<String>>> {
-        let Some(row) = self.merge_row(&pull.id).await? else {
+        let row = match self.prefetched_pull(&pull.id) {
+            Some(found) => found.first::<MergeRow>(crate::prefetch::Slot::Pull)?,
+            None => self.merge_row(&pull.id).await?,
+        };
+        let Some(row) = row else {
             return Ok(None);
         };
         if row.mergeable.as_deref() != Some("conflicting") {

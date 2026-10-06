@@ -38,6 +38,8 @@ export type Check =
   | { kind: "http"; steps: Step[] }
   /** Billing, through its binding: reading its price book. */
   | { kind: "billing" }
+  /** Git storage, through the repos service binding: how the store answered lately. */
+  | { kind: "storage" }
   /** No check yet: the page says so rather than showing green. */
   | { kind: "none" };
 
@@ -73,8 +75,11 @@ function host(url: string): string {
 
 const trim = (url: string | undefined) => (url ?? "").trim().replace(/\/+$/, "");
 
-/** The parts, in the order the page lists them. */
-export function components(vars: Partial<Targets>, billing = true): ComponentInfo[] {
+/** Git storage counts as degraded when its calls took longer than this on average. */
+export const STORAGE_SLOW_MS = 1500;
+
+/** The parts, in the order the page lists them. `storage`: whether the repos service is bound. */
+export function components(vars: Partial<Targets>, billing = true, storage = false): ComponentInfo[] {
   const site = trim(vars.SITE_URL);
   const api = trim(vars.API_URL);
   const mcp = trim(vars.MCP_URL);
@@ -121,6 +126,17 @@ export function components(vars: Partial<Targets>, billing = true): ComponentInf
           checks: "Listing the branches of a public repository over HTTPS, the first step of every clone.",
           core: true,
           check: { kind: "http", steps: [{ url: `${site}/${repo}.git/info/refs?service=git-upload-pack` }] },
+        }
+      : null,
+    storage && site
+      ? {
+          key: "storage",
+          name: "Git storage",
+          address: "Where every repository is kept",
+          checks: `How g1t's git storage answered over the last five minutes, as g1t saw it: failures, rate limits, and how long calls took. Rate limited, or slower than ${STORAGE_SLOW_MS} ms on average, counts as degraded.`,
+          core: false,
+          check: { kind: "storage" },
+          slowMs: STORAGE_SLOW_MS,
         }
       : null,
     site && repo

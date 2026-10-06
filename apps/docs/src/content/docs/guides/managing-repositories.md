@@ -66,7 +66,8 @@ curl -X PATCH https://api.g1t.sh/repos/acme/rocket \
   -d '{"description": "Launches things.", "website": "rocket.acme.dev", "topics": ["cli", "rust"]}'
 ```
 
-The MCP tool is `update_repo`, with `repo` and the same fields.
+Over MCP, it is the `repository` tool's `update` action, with `repo` and
+the same fields.
 
 ## Change the default branch
 
@@ -96,7 +97,8 @@ curl -X PATCH https://api.g1t.sh/repos/acme/rocket \
   -d '{"default_branch": "trunk"}'
 ```
 
-The MCP tool is `update_repo`, with `repo` and `default_branch`. When the
+Over MCP, it is the `repository` tool's `update` action, with `repo` and
+`default_branch`. When the
 same call changes other fields, they are changed first.
 
 ## Rename a branch
@@ -135,7 +137,8 @@ curl -X POST https://api.g1t.sh/repos/acme/rocket/branches/feature%2Flogin/renam
   -d '{"new_name": "feature/sign-in"}'
 ```
 
-The MCP tool is `rename_branch`, with `repo`, `branch` and `new_name`.
+Over MCP, it is the `repository` tool's `rename_branch` action, with
+`repo`, `branch` and `new_name`.
 
 ## Rename a repository
 
@@ -182,7 +185,8 @@ curl -X POST https://api.g1t.sh/repos/acme/rocket/rename \
   -d '{"name": "launcher"}'
 ```
 
-The MCP tool is `rename_repo`, with `repo` and `name`.
+Over MCP, it is the `repository` tool's `rename` action, with `repo` and
+`name`.
 
 ## Change who can see a repository
 
@@ -217,8 +221,8 @@ curl -X POST https://api.g1t.sh/repos/acme/rocket/visibility \
   -d '{"private": true, "confirm": "acme/rocket"}'
 ```
 
-The MCP tool is `set_repo_visibility`, with `repo`, `private` and
-`confirm`. `private` on
+Over MCP, it is the `repository` tool's `set_visibility` action, with
+`repo`, `private` and `confirm`. `private` on
 [`PATCH /repos/{owner}/{name}`](/reference/api/repositories/update-repo/)
 makes the same change without the confirmation, for people with Admin.
 
@@ -259,7 +263,8 @@ curl -X POST https://api.g1t.sh/repos/acme/rocket/archive \
   -H "Authorization: Bearer $G1T_TOKEN"
 ```
 
-The MCP tools are `archive_repo` and `unarchive_repo`, with `repo`. The
+Over MCP, they are the `repository` tool's `archive` and `unarchive`
+actions, with `repo`. The
 repository's `archived_at` field says when it was archived, and is null
 when it is not.
 
@@ -300,7 +305,8 @@ curl -X DELETE https://api.g1t.sh/repos/acme/rocket \
   -d '{"confirm": "acme/rocket"}'
 ```
 
-The MCP tool is `delete_repo`, with `repo` and `confirm`.
+Over MCP, it is the `repository` tool's `delete` action, with `repo` and
+`confirm`.
 
 To move a repository to another workspace instead of deleting it, see
 [transferring a repository](/guides/transferring-repositories/).
@@ -323,9 +329,9 @@ up on what they missed.
 
 From the API, list them with
 [`GET /workspaces/{workspace}/repos/deleted`](/reference/api/repositories/list-deleted-repos/)
-(MCP: `list_deleted_repos`), then call
+(the `repository` tool's `list_deleted` action over MCP), then call
 [`POST /repos/{owner}/{name}/restore`](/reference/api/repositories/restore-repo/)
-with the path it had (MCP: `restore_repo`):
+with the path it had (the `restore` action):
 
 ```sh
 curl https://api.g1t.sh/workspaces/acme/repos/deleted \
@@ -356,7 +362,8 @@ curl -X POST https://api.g1t.sh/repos/acme/rocket/purge \
   -d '{"confirm": "acme/rocket"}'
 ```
 
-The MCP tool is `purge_repo`, with `repo` and `confirm`.
+Over MCP, it is the `repository` tool's `purge` action, with `repo` and
+`confirm`.
 
 A workspace whose only repositories are recently deleted ones can itself
 be [deleted](/guides/workspaces/#delete-a-workspace); they are purged with

@@ -90,6 +90,12 @@ pub(crate) fn dollars(micros: i64) -> String {
     format!("${whole}.{fraction:0<2}")
 }
 
+/// `units` at `each` micros a unit, as the pricing page writes it: a
+/// build second's price times 60 is the build minute both quote.
+pub(crate) fn per_units(each: f64, units: f64) -> String {
+    dollars((each * units).round() as i64)
+}
+
 impl SubscriptionRow {
     fn subscription(&self) -> Option<Subscription> {
         Some(Subscription {
@@ -103,10 +109,25 @@ impl SubscriptionRow {
 }
 
 impl Billing {
-    /// What the g1t plan costs and includes, as it is sold now.
-    pub(crate) fn plan(&self, _feature: Feature) -> Plan {
+    /// What the g1t plan costs and includes, as it is sold now, at the
+    /// price book's prices (the same figures as the pricing page's table).
+    pub(crate) async fn plan(&self, _feature: Feature) -> Result<Plan> {
+        let mut book = std::collections::BTreeMap::new();
+        for meter in ["build_second", "app_requests", "app_cpu", "custom_domain_month", "private_storage", "git_operations"] {
+            if let Some((_, price)) = self.price(meter).await? {
+                book.insert(meter, price);
+            }
+        }
+        Ok(self.plan_at(&book))
+    }
+
+    /// The plan at the given prices per unit (micros, after the markup);
+    /// the published costs plus the margin for any not given.
+    pub(crate) fn plan_at(&self, book: &std::collections::BTreeMap<&str, f64>) -> Plan {
         let p = &self.plans;
-        let price = |cost: i64| dollars(crate::charge_micros(cost as f64 / MICROS_PER_DOLLAR as f64, self.margin_percent));
+        let price_of = |meter: &str, cost: i64, units: f64| {
+            per_units(book.get(meter).copied().unwrap_or_else(|| Price::price_for(cost as f64, self.margin_percent)), units)
+        };
         Plan {
             feature: Feature::Plan,
             title: Feature::Plan.title().to_owned(),
@@ -129,14 +150,14 @@ impl Billing {
             overage: format!(
                 "Everything is metered from the first unit at what it costs g1t plus {}%: sandbox time and deploy builds by the second ({} a build minute), models at what the provider charged, {} per million app requests, {} per million CPU milliseconds, {} a month per custom domain, private storage past the free {} at {} per GB-month, and git operations past the free {} a month at {} per 1,000. Unused included usage does not roll over.",
                 self.margin_percent,
-                price(costs::MICROS_PER_BUILD_SECOND * 60),
-                price(costs::MICROS_PER_MILLION_REQUESTS),
-                price(costs::MICROS_PER_MILLION_CPU_MS),
-                price(costs::MICROS_PER_DOMAIN_MONTH),
+                price_of("build_second", costs::MICROS_PER_BUILD_SECOND, 60.0),
+                price_of("app_requests", costs::MICROS_PER_MILLION_REQUESTS, 1.0),
+                price_of("app_cpu", costs::MICROS_PER_MILLION_CPU_MS, 1.0),
+                price_of("custom_domain_month", costs::MICROS_PER_DOMAIN_MONTH, 1.0),
                 bytes(p.free_storage_bytes),
-                price(crate::storage::STORAGE_MICROS_PER_GB_MONTH),
+                price_of("private_storage", crate::storage::STORAGE_MICROS_PER_GB_MONTH, 1.0),
                 thousands(p.git_included),
-                price(crate::storage::GIT_MICROS_PER_THOUSAND),
+                price_of("git_operations", crate::storage::GIT_MICROS_PER_THOUSAND, 1.0),
             ),
         }
     }
@@ -238,7 +259,7 @@ impl Billing {
         };
         let included = self.included(workspace).await?;
         Ok(FeatureState {
-            plan: self.plan(Feature::Plan),
+            plan: self.plan(Feature::Plan).await?,
             on: included || self.stripe.is_none() || subscription.as_ref().is_some_and(|s| s.status.on()),
             subscription,
             included,
@@ -348,7 +369,7 @@ impl Billing {
         if self.plan_on(&workspace, Feature::Plan).await? {
             return Ok(Outcome::fail(FailureCode::Conflict, format!("The g1t plan is already on for {workspace}.")));
         }
-        let plan = self.plan(feature);
+        let plan = self.plan(feature).await?;
         let customer = self.row(&workspace).await?.and_then(|row| row.customer_id);
         // The card from the card check: the plan starts on it at once, with
         // no second page. A card that needs the bank's approval again goes
@@ -591,6 +612,18 @@ pub(crate) fn thousands(n: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_plan_text_quotes_a_build_minute_as_the_table_does() {
+        // The price book's build second (16.44 millionths at cost, plus
+        // 20%) is 19.73 millionths: a minute is 1,184 millionths, $0.0012,
+        // as the pricing page's table says. The old fixed cost (15) gave
+        // $0.0011.
+        let each = Price::price_for(16.439_893_610_418_67, 20);
+        assert_eq!(per_units(each, 60.0), "$0.0012");
+        assert_eq!(per_units(Price::price_for(15.0, 20), 60.0), "$0.0011");
+        assert_eq!(per_units(Price::price_for(150_000.0, 20), 1.0), "$0.18");
+    }
 
     #[test]
     fn every_build_second_is_metered_at_cost_plus_the_margin() {

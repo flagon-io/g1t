@@ -60,8 +60,8 @@ export async function guardFor(work: ServiceBinding, repo: RepoPath, kind: RunKi
 }
 
 /**
- * The guardrails of a workflow job or deploy build in `repo`: its
- * project's network list, plus what builds need (`buildHosts`), and the
+ * The guardrails of a workflow job, deploy build or security update in
+ * `repo`: its project's network list, plus what builds need (`buildHosts`), and the
  * time cap it was given. `repo` is the project, not a pull request's
  * working copy; `repoId`, when known, finds it however it has moved.
  * A workflow job of a trusted run also gets the workflow-only domains
@@ -71,7 +71,7 @@ export async function guardFor(work: ServiceBinding, repo: RepoPath, kind: RunKi
 export async function buildGuardFor(
   work: ServiceBinding,
   repo: RepoPath,
-  kind: "actions" | "deploy",
+  kind: "actions" | "deploy" | "bump",
   minutes: number,
   repoId?: string | null,
   job?: WorkflowJob | null,
