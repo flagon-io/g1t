@@ -13,7 +13,16 @@ export const SETTLE_MS = 12_000;
 /** A screenshot that could not be taken is tried again after this long. */
 export const RETRY_AFTER_MS = 5 * 60 * 1000;
 
-export type ShotRequest = { host: string; commit: string };
+/**
+ * An app's production at `commit`. `since` is when it was last deployed:
+ * a resumed or moved app is deployed again at the same commit, and a
+ * screenshot from before that (of a page saying it was paused, say) is not
+ * current.
+ */
+export type ShotRequest = { host: string; commit: string; since?: string };
+
+/** Kept screenshots and attempt notes older than this are deleted; a page asking for one again takes it anew. */
+export const KEEP_DAYS = 30;
 
 /** Hostnames on g1t.page that are not apps. */
 const RESERVED = new Set(["domains", "www"]);
@@ -21,7 +30,7 @@ const RESERVED = new Set(["domains", "www"]);
 /** The request, if it names an app on g1t.page and a commit. */
 export function parseShot(input: unknown): ShotRequest | null {
   if (!input || typeof input !== "object") return null;
-  const { host, commit } = input as Record<string, unknown>;
+  const { host, commit, since } = input as Record<string, unknown>;
   if (typeof host !== "string" || typeof commit !== "string") return null;
   const name = host.toLowerCase();
   const suffix = `.${DEPLOYMENTS_DOMAIN}`;
@@ -29,7 +38,9 @@ export function parseShot(input: unknown): ShotRequest | null {
   const label = name.slice(0, -suffix.length);
   if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label) || RESERVED.has(label)) return null;
   if (!/^[0-9a-f]{7,64}$/i.test(commit)) return null;
-  return { host: name, commit: commit.toLowerCase() };
+  const shot: ShotRequest = { host: name, commit: commit.toLowerCase() };
+  if (typeof since === "string" && Number.isFinite(Date.parse(since))) shot.since = since;
+  return shot;
 }
 
 /** Where an app's screenshot is kept. */
@@ -40,6 +51,18 @@ export function shotKey(host: string): string {
 /** Where the last attempt at an app's screenshot is noted. */
 export function attemptKey(host: string): string {
   return `attempts/${host}`;
+}
+
+/** Whether a kept screenshot shows the request: its commit, taken after the deploy. */
+export function isCurrent(kept: { commit: string; capturedAt: string }, request: ShotRequest): boolean {
+  if (kept.commit !== request.commit) return false;
+  if (!request.since) return true;
+  return Date.parse(kept.capturedAt) >= Date.parse(request.since);
+}
+
+/** Whether a kept object is old enough to delete. */
+export function expired(uploaded: Date, now: number, days = KEEP_DAYS): boolean {
+  return now - uploaded.getTime() > days * 24 * 60 * 60 * 1000;
 }
 
 /** Whether to try again: not for the same commit within `RETRY_AFTER_MS`. */

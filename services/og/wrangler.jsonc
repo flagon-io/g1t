@@ -25,6 +25,8 @@
 	"browser": { "binding": "BROWSER" },
 	// Made by `npx wrangler r2 bucket create g1t-screenshots`.
 	"r2_buckets": [{ "binding": "SCREENSHOTS", "bucket_name": "g1t-screenshots" }],
+	// Once a day, screenshots older than 30 days are deleted (src/capture.ts).
+	"triggers": { "crons": ["37 5 * * *"] },
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "REPOS", "service": "g1t-repos" },

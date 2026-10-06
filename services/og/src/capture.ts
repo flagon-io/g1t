@@ -8,7 +8,7 @@
  */
 import puppeteer from "@cloudflare/puppeteer";
 
-import { SETTLE_MS, type ShotRequest, VIEWPORT, attemptKey, shotKey, shouldAttempt } from "./screenshot.ts";
+import { SETTLE_MS, type ShotRequest, VIEWPORT, attemptKey, expired, isCurrent, shotKey, shouldAttempt } from "./screenshot.ts";
 
 export type ShotEnv = {
   BROWSER: Fetcher;
@@ -64,9 +64,31 @@ export async function take(env: ShotEnv, { host, commit }: ShotRequest): Promise
   }
 }
 
-/** The screenshot of `commit`, taken now if it has not been; else the last one kept. */
+/** The screenshot of the request's deploy, taken now if it has not been; else the last one kept. */
 export async function screenshotOf(env: ShotEnv, request: ShotRequest): Promise<Shot | null> {
   const kept = await stored(env, request.host);
-  if (kept?.commit === request.commit) return kept;
+  if (kept && isCurrent(kept, request)) return kept;
   return (await take(env, request)) ?? kept;
+}
+
+/**
+ * Deletes screenshots and attempt notes older than `KEEP_DAYS`: apps that
+ * moved or were removed leave theirs behind, and a live app's is taken
+ * again the next time its page asks. Returns how many went.
+ */
+export async function sweep(env: ShotEnv, now = Date.now()): Promise<number> {
+  let removed = 0;
+  for (const prefix of ["production/", "attempts/"]) {
+    let cursor: string | undefined;
+    do {
+      const page = await env.SCREENSHOTS.list({ prefix, cursor, limit: 500 });
+      const old = page.objects.filter((object) => expired(object.uploaded, now)).map((object) => object.key);
+      if (old.length) {
+        await env.SCREENSHOTS.delete(old);
+        removed += old.length;
+      }
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+  }
+  return removed;
 }

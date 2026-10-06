@@ -58,6 +58,7 @@ import { agents, deployments, events as eventLog, projects, repos, work } from "
 import { madeByG1t } from "../../lib/opened-by";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 import { accessTo, countsFor, refusal, repoFor } from "../../lib/access.server";
+import { shotVersion } from "./production-screenshot";
 
 const MAX_LANDED = 6;
 /** Branches read for the Active branches list, and shown. */
@@ -554,7 +555,7 @@ function Overview({
         <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start sm:p-6">
           {member && (production || settings?.enabled) && (
             <ProductionShot
-              src={production ? `${base}/production.jpg?v=${production.commit}` : null}
+              src={production ? `${base}/production.jpg?v=${shotVersion(production)}` : null}
               href={production ? (productionUrl ?? production.url) : null}
               label={host(production ? (productionUrl ?? production.url) : (settings?.productionUrl ?? ""))}
               className="w-full shrink-0 sm:w-60 lg:w-72"

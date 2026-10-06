@@ -32,7 +32,7 @@ import mono400 from "./fonts/ibm-plex-mono-400.ttf";
 import mono500 from "./fonts/ibm-plex-mono-500.ttf";
 import { cardPng } from "./render.ts";
 import { cacheKey } from "./cache.ts";
-import { type Shot, screenshotOf, take } from "./capture.ts";
+import { type Shot, screenshotOf, sweep, take } from "./capture.ts";
 import { parseShot } from "./screenshot.ts";
 import { BRAND, type Card, docsCard, resolve } from "./resolve.ts";
 
@@ -101,6 +101,12 @@ const BRIEF_CACHE_CONTROL = "public, max-age=60";
 const NO_STORE = "no-store";
 
 export default {
+  /** Once a day: old screenshots out (capture.ts `sweep`). */
+  async scheduled(_event: ScheduledController, env: Env): Promise<void> {
+    const removed = await sweep(env).catch((error) => (console.error("og: sweep failed", error), 0));
+    if (removed) console.log(`og: removed ${removed} old screenshots`);
+  },
+
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (request.method !== "GET" && request.method !== "HEAD") {

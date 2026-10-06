@@ -22,7 +22,7 @@ declare global {
       SEARCH: ServiceBinding;
       /** Production screenshots, from the og service's `Screenshots` entrypoint. */
       SCREENSHOTS?: {
-        image(input: { host: string; commit: string }): Promise<{
+        image(input: { host: string; commit: string; since?: string }): Promise<{
           body: ArrayBuffer;
           contentType: string;
           commit: string;
