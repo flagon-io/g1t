@@ -772,9 +772,10 @@ async fn without_early_pack(mut response: Response) -> Result<Response> {
         match acknowledged(&head) {
             Acknowledged::CutAt(at) => {
                 head.truncate(at);
-                // A flush ends the acknowledgments; a response-end packet
-                // ends the stateless answer, as upload-pack's does.
-                head.extend_from_slice(b"00000002");
+                // A flush ends the acknowledgments and the answer. No
+                // response-end packet: git's HTTP transport adds its own
+                // and refuses one from the server.
+                head.extend_from_slice(b"0000");
                 return Ok(Response::from_bytes(head)?.with_headers(headers));
             }
             Acknowledged::Whole => break,
