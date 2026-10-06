@@ -200,6 +200,24 @@ Alerts close on their own when the condition clears. Open ones are
 emailed again weekly. The red bar on every sudo page shows margin,
 overall and leak alerts.
 
+## Token usage
+
+The model proxy (`services/models`) reads Anthropic's `usage` from every
+`/v1/messages` answer, streamed or whole, on g1t's models and on a
+workspace's own provider alike (OpenAI-shaped providers are translated
+first). Count-tokens requests are not answers and are skipped. After the
+answer, it calls `record_tokens`, which adds input, output, cache reads and
+cache writes to one row per day, workspace, person, session and model in
+`token_usage` (migration `0030_token_usage.sql`). The person is who the run
+was for, from the model session's `requested_by`; never g1t's agent. A
+report that fails is dropped and never affects the answer.
+
+`token_usage` reads a window (42 days by default, 366 at most) for the
+workspace or one person: totals, every day's tokens and the active days,
+with `costMicros` the window's run charges from the ledger, measured as
+`usage` measures them. These counts are for views only: runs are still
+priced from AI Gateway's logs, never from `token_usage`.
+
 ## Tables (migration `0022_costs_and_margin.sql`)
 
 `cost_lines`, `cost_map`, `revenue_map`, `own_counts`,

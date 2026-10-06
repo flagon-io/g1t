@@ -123,6 +123,13 @@ fn closable_hashes(hashes: &[String]) -> Vec<String> {
     out
 }
 
+/// Who a run is for, as kept on its session: a username, lowercased. The
+/// agent's own name is not a person, so it is kept as nobody.
+fn requester(username: Option<&str>) -> Option<String> {
+    let name = username?.trim().to_lowercase();
+    (!name.is_empty() && name != g1t_contracts::identity::AGENT_NAME).then_some(name)
+}
+
 /// A model session's public id: the start of its token's hash.
 fn session_id(token_hash: &str) -> String {
     format!("ms_{}", &token_hash[..token_hash.len().min(24)])
@@ -139,6 +146,8 @@ struct SessionRow {
     model: Option<String>,
     #[serde(default)]
     tier: Option<String>,
+    #[serde(default)]
+    requested_by: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1229,8 +1238,8 @@ impl Integrations {
                     .bind(&[rfc3339(now).into()])?,
                 self.db
                     .prepare(
-                        "INSERT INTO model_sessions (token_hash, workspace, connection_id, repo, number, task, expires_at, model, tier)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "INSERT INTO model_sessions (token_hash, workspace, connection_id, repo, number, task, expires_at, model, tier, requested_by)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     )
                     .bind(&[
                         crypto::sha256_hex(&token).into(),
@@ -1247,6 +1256,7 @@ impl Integrations {
                                 .as_deref()
                                 .filter(|tier| connection.is_none() && matches!(*tier, "small" | "large")),
                         ),
+                        optional(requester(a.requested_by.as_deref()).as_deref()),
                     ])?,
             ])
             .await?;
@@ -1282,6 +1292,7 @@ impl Integrations {
             task: session.task,
             session: session_id(&session.token_hash),
             tier: session.tier,
+            requested_by: session.requested_by,
             base_url: None,
             api_key: None,
             auth_header: None,
@@ -1490,7 +1501,16 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
 
 #[cfg(test)]
 mod close_tests {
-    use super::closable_hashes;
+    use super::{closable_hashes, requester};
+
+    #[test]
+    fn a_session_is_for_a_person_never_the_agent() {
+        assert_eq!(requester(Some(" Ada ")).as_deref(), Some("ada"));
+        assert_eq!(requester(Some("g1t")), None);
+        assert_eq!(requester(Some("G1T")), None);
+        assert_eq!(requester(Some("  ")), None);
+        assert_eq!(requester(None), None);
+    }
 
     #[test]
     fn only_token_hashes_are_closed() {

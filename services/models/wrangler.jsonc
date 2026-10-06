@@ -7,7 +7,11 @@
 	"workers_dev": false,
 	// Sandboxes reach models only through here, with a token for their run.
 	"routes": [{ "pattern": "models.g1t.sh", "custom_domain": true }],
-	"services": [{ "binding": "INTEGRATIONS", "service": "g1t-integrations" }],
+	"services": [
+		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" },
+		// Where each run's tokens are counted, for usage views.
+		{ "binding": "BILLING", "service": "g1t-billing" }
+	],
 	"vars": {
 		// g1t's own route, for runs g1t pays for: a Cloudflare AI Gateway,
 		// which holds g1t's key.

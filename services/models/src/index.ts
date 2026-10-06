@@ -11,15 +11,20 @@
  * the run ends (the runner closes its session then, and lookups are kept
  * only seconds), and nothing of the workspace's.
  *
- * Responses stream through.
+ * Responses stream through. What each answer used is read from a copy as
+ * it passes and reported to billing afterwards, counted per run for usage
+ * views.
  */
-import { type ModelUpstream, type ServiceBinding, integrationsClient } from "@g1t/contracts";
+import { type ModelUpstream, type ServiceBinding, billingClient, integrationsClient } from "@g1t/contracts";
 
 import { type AnthropicRequest, StreamTranslator, errorFromChat, estimateTokens, fromChat, toChat } from "./openai";
+import { isAnswer, tokenReport } from "./report";
 import { type HostedRouting, presentedToken, upstreamRequest } from "./route";
+import { measure } from "./usage";
 
 interface Env extends HostedRouting {
   INTEGRATIONS: ServiceBinding;
+  BILLING: ServiceBinding;
 }
 
 /**
@@ -46,6 +51,22 @@ function refuse(status: number, message: string): Response {
     { type: "error", error: { type: status === 401 ? "authentication_error" : "not_found_error", message } },
     { status },
   );
+}
+
+/**
+ * Passes an answer through and, once it has all gone by, tells billing what
+ * it used. Reporting happens after the answer, and a report that fails is
+ * dropped: the answer never waits on it or breaks for it.
+ */
+function counted(answer: Response, upstream: ModelUpstream, env: Env, ctx: ExecutionContext): Response {
+  const { response, tokens, model } = measure(answer);
+  ctx.waitUntil(
+    (async () => {
+      const report = tokenReport(upstream, await model, await tokens);
+      if (report) await billingClient(env.BILLING).recordTokens(report);
+    })().catch(() => undefined),
+  );
+  return response;
 }
 
 /** Sends an Anthropic request to a provider that speaks OpenAI's API. */
@@ -95,7 +116,7 @@ async function viaChat(upstream: ModelUpstream, path: string, request: Request):
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/" || url.pathname === "") {
       return new Response("g1t's model proxy, for g1t's sandboxes. See https://docs.g1t.sh/guides/models/\n");
@@ -107,7 +128,9 @@ export default {
     if (!upstream) return refuse(401, "This run's model token has expired, or its model connection was removed.");
 
     const path = url.pathname.slice("/anthropic".length) + url.search;
-    if (upstream.api === "openai") return viaChat(upstream, path, request);
+    // Both routes answer in Anthropic's shape, so one reading counts either.
+    const answer = (response: Response) => (isAnswer(url.pathname.slice("/anthropic".length)) ? counted(response, upstream, env, ctx) : response);
+    if (upstream.api === "openai") return answer(await viaChat(upstream, path, request));
 
     const { url: target, headers } = upstreamRequest(upstream, env, path, request.headers);
     // A route that names a model gets it for every request of the run,
@@ -118,6 +141,6 @@ export default {
       body = JSON.stringify({ ...parsed, model: upstream.model });
       headers.delete("content-length");
     }
-    return fetch(target, { method: request.method, headers, body });
+    return answer(await fetch(target, { method: request.method, headers, body }));
   },
 } satisfies ExportedHandler<Env>;

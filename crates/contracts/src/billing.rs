@@ -350,6 +350,79 @@ pub struct Usage {
     pub added_micros: i64,
 }
 
+/// `record_tokens`: what one model answer used, added to the day's count
+/// for its run. The model proxy sends it after each answer. For usage
+/// views only: runs are still priced from AI Gateway. Returns
+/// `Outcome<bool>`: false when there was nothing to count.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordTokensArgs {
+    pub workspace: String,
+    /// The model session's id (`ModelSession::id`), one per run.
+    pub session: String,
+    /// The person the run is for, by username. Absent when nobody asked.
+    #[serde(default)]
+    pub person: Option<String>,
+    pub model: String,
+    /// On g1t's hosted models: `small` or `large`.
+    #[serde(default)]
+    pub tier: Option<String>,
+    #[serde(default)]
+    pub input: u64,
+    #[serde(default)]
+    pub output: u64,
+    #[serde(default)]
+    pub cache_read: u64,
+    #[serde(default)]
+    pub cache_write: u64,
+}
+
+/// `token_usage`: the model tokens a workspace's runs used, day by day,
+/// for the whole workspace or for one person. Members only; a member may
+/// ask only for themselves, an owner for anyone. Returns
+/// `Outcome<TokenUsage>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TokenUsageArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+    /// A username: only the runs for them.
+    #[serde(default)]
+    pub person: Option<String>,
+    /// How many days, to today: 42 when absent, 366 at most.
+    #[serde(default)]
+    pub days: Option<u32>,
+}
+
+/// One day's tokens.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct DayTokens {
+    /// `YYYY-MM-DD`, UTC.
+    pub day: String,
+    pub tokens: u64,
+}
+
+/// The model tokens runs used over a window of days.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenUsage {
+    /// `YYYY-MM-DD`: the first day counted.
+    pub since: String,
+    pub days: u32,
+    /// Null for the whole workspace.
+    pub person: Option<String>,
+    pub total_tokens: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    /// What those runs were charged, as `usage` measures it.
+    pub cost_micros: i64,
+    /// Days in the window with any tokens.
+    pub active_days: u32,
+    /// Every day in the window, oldest first, zeros included.
+    pub by_day: Vec<DayTokens>,
+}
+
 /// What a workspace pays a monthly price for. There is one plan, `plan`
 /// ("g1t"): a flat price per workspace, never per person, with included
 /// usage each month, more private storage, and deployments. Never free:

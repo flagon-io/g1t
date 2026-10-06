@@ -112,6 +112,11 @@ printing its environment, so no key is ever in it:
    work is routed to, translates if the provider speaks OpenAI's API, and
    forwards the request. Answers stream straight back.
 
+As each answer passes, the proxy reads how many tokens it used (input,
+output, and cache reads and writes) and counts them for the run, under the
+person it was for. Those counts are for usage views; they never change what
+a run is charged.
+
 The token stops working within seconds of the run finishing, however it
 ends, and within seconds if you disconnect the provider. A run whose end
 g1t never hears about loses it three hours after it starts. Keys are sealed when you save them, and used

@@ -47,6 +47,8 @@ export function total(tokens: Tokens): number {
  */
 export class StreamUsage {
   tokens: Tokens = { ...NO_TOKENS };
+  /** The model that answered, as `message_start` names it. */
+  model: string | null = null;
   private pending = "";
 
   push(text: string): void {
@@ -67,13 +69,14 @@ export class StreamUsage {
 
   private line(line: string): void {
     if (!line.startsWith("data:")) return;
-    let event: { type?: string; message?: { usage?: Usage }; usage?: Usage };
+    let event: { type?: string; message?: { usage?: Usage; model?: unknown }; usage?: Usage };
     try {
       event = JSON.parse(line.slice(5).trim());
     } catch {
       return;
     }
     if (event.type === "message_start") {
+      if (typeof event.message?.model === "string") this.model = event.message.model;
       const start = fromUsage(event.message?.usage);
       this.tokens = { ...start, output: Math.max(this.tokens.output, start.output) };
     } else if (event.type === "message_delta" && event.usage) {
@@ -89,16 +92,24 @@ export class StreamUsage {
 
 /**
  * The answer as it was, and a promise of what it used, read from a copy of
- * its body. A failed answer, or one that is not a message, used nothing.
+ * its body, with the model that answered when it says. A failed answer, or
+ * one that is not a message, used nothing.
  */
-export function measure(answer: Response): { response: Response; tokens: Promise<Tokens> } {
-  if (!answer.ok || !answer.body) return { response: answer, tokens: Promise.resolve({ ...NO_TOKENS }) };
+export function measure(answer: Response): { response: Response; tokens: Promise<Tokens>; model: Promise<string | null> } {
+  if (!answer.ok || !answer.body) {
+    return { response: answer, tokens: Promise.resolve({ ...NO_TOKENS }), model: Promise.resolve(null) };
+  }
   const [passed, copy] = answer.body.tee();
   const response = new Response(passed, answer);
   const streaming = (answer.headers.get("content-type") ?? "").includes("text/event-stream");
+  let model: string | null = null;
   const tokens = (async () => {
     try {
-      if (!streaming) return fromUsage(((await new Response(copy).json()) as { usage?: Usage }).usage);
+      if (!streaming) {
+        const whole = (await new Response(copy).json()) as { usage?: Usage; model?: unknown };
+        if (typeof whole.model === "string") model = whole.model;
+        return fromUsage(whole.usage);
+      }
       const reader = copy.pipeThrough(new TextDecoderStream()).getReader();
       const usage = new StreamUsage();
       for (;;) {
@@ -106,10 +117,12 @@ export function measure(answer: Response): { response: Response; tokens: Promise
         if (done) break;
         usage.push(value);
       }
-      return usage.finish();
+      const used = usage.finish();
+      model = usage.model;
+      return used;
     } catch {
       return { ...NO_TOKENS };
     }
   })();
-  return { response, tokens };
+  return { response, tokens, model: tokens.then(() => model) };
 }

@@ -32,6 +32,7 @@ import { AgentSetup } from "./agent-setup";
 import type { ShellData } from "./shell";
 import { useLiveRefresh } from "./agents";
 import { Unavailable } from "./mission";
+import { TokenUsagePanel } from "./token-usage";
 import { Avatar, TimeAgo } from "./ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import type { Loaded } from "../routes/home";
@@ -1092,6 +1093,14 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
               </Link>
             )}
           </section>
+
+          {workspace && (
+            <TokenUsagePanel
+              workspace={loaderData.tokens.workspace}
+              mine={loaderData.tokens.mine}
+              usageHref={`/${workspace}/-/usage`}
+            />
+          )}
 
           <section id="activity" className="scroll-mt-20 rounded-xl border border-line bg-surface p-5">
             <div className="flex items-center justify-between">

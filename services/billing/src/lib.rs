@@ -40,6 +40,7 @@ mod rename;
 mod retention;
 mod stripe;
 mod stripe_sync;
+mod tokens;
 
 use g1t_contracts::billing::*;
 use g1t_contracts::time::rfc3339;
@@ -1106,6 +1107,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "account" => reply(&billing.account(args(body)?).await?),
         "ledger" => reply(&billing.ledger(args(body)?).await?),
         "usage" => reply(&billing.usage(args(body)?).await?),
+        "record_tokens" => reply(&billing.record_tokens(args(body)?).await?),
+        "token_usage" => reply(&billing.token_usage(args(body)?).await?),
         "checkout" => reply(&billing.checkout(args(body)?).await?),
         "confirm" => reply(&billing.confirm(args(body)?).await?),
         "can_start" => reply(&billing.can_start(args(body)?).await?),

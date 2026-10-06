@@ -1334,11 +1334,15 @@ export default class RunnerService
    * it (`chooseTier`), by what `route` says about it. Whether this is a
    * retry is asked only when it would change the answer: when the work
    * would otherwise go to the small tier.
+   *
+   * `requestedBy` is the person the run is for, by username, so the run's
+   * tokens are counted under them.
    */
   private async modelEnv(
     task: AgentTask,
     repo: RepoPath,
     pull: number,
+    requestedBy: string | null,
     route: RouteInput = {},
   ): Promise<Result<Record<string, string>>> {
     const routing = parseRouting(this.env.AGENT_ROUTING);
@@ -1358,6 +1362,7 @@ export default class RunnerService
         task,
         hostedOpen: (await this.modelAccess(repo.namespace)).hosted,
         tier,
+        requestedBy,
       });
       if (!opened.ok) return opened;
       session = opened.value;
@@ -1529,9 +1534,10 @@ export default class RunnerService
     task: AgentTask,
     repo: RepoPath,
     pull: number,
+    requestedBy: string | null,
     route: RouteInput = {},
   ): Promise<Record<string, string>> {
-    const vars = await this.modelEnv(task, repo, pull, route);
+    const vars = await this.modelEnv(task, repo, pull, requestedBy, route);
     if (!vars.ok) throw new Error(vars.error.message);
     return vars.value;
   }
@@ -2185,7 +2191,7 @@ export default class RunnerService
           job.repo,
           job.author,
         ),
-        ...(await this.modelEnvOrThrow("implement", job.repo, job.number)),
+        ...(await this.modelEnvOrThrow("implement", job.repo, job.number, job.author.username)),
       },
     });
   }
@@ -2238,7 +2244,7 @@ export default class RunnerService
           job.repo,
           job.author,
         ),
-        ...(await this.modelEnvOrThrow("implement", job.repo, job.number)),
+        ...(await this.modelEnvOrThrow("implement", job.repo, job.number, startedBy ?? job.author.username)),
       },
     });
   }
@@ -2492,7 +2498,7 @@ export default class RunnerService
           repo,
           actor,
         ),
-        ...(await this.modelEnvOrThrow("update", repo, number, {
+        ...(await this.modelEnvOrThrow("update", repo, number, actor.username, {
           retried: () => this.failedBefore(actor, repo, "update", number),
         })),
       },
@@ -2548,7 +2554,7 @@ export default class RunnerService
         `It is for issue #${job.issue.number}: ${job.issue.title}\n\n${job.issue.body}`,
       await this.peopleSaid(job.author, repo, number),
     ];
-    const model = await this.modelEnv("review", repo, number, {
+    const model = await this.modelEnv("review", repo, number, job.author.username, {
       change: job.files?.length ? changeSize(job.files, job.sensitive ?? []) : null,
       labels: job.issue?.labels ?? [],
       retried: () => this.failedBefore(job.author, repo, "review", number),
@@ -2612,7 +2618,7 @@ export default class RunnerService
     const started = await work.startPlan(actor, repo, brief);
     if (!started.ok) return started;
     const job = started.value;
-    const model = await this.modelEnv("plan", repo, 0, {
+    const model = await this.modelEnv("plan", repo, 0, actor.username, {
       retried: () => this.failedBefore(actor, repo, "plan", null, job.brief),
     });
     if (!model.ok) {
@@ -2767,7 +2773,7 @@ export default class RunnerService
     // Opened without a branch, so it has a fork.
     const fork = pull.fork!;
 
-    const model = await this.modelEnv("implement", repo, pull.number);
+    const model = await this.modelEnv("implement", repo, pull.number, actor.username);
     if (!model.ok) {
       await work.closePull(actor, repo, pull.number);
       return model;
@@ -2914,7 +2920,7 @@ export default class RunnerService
       ({ title, body } = found.value.issue);
       comments = found.value.comments;
     }
-    const model = await this.modelEnv("implement", job.repo, job.number);
+    const model = await this.modelEnv("implement", job.repo, job.number, job.actor.username);
     if (!model.ok) return model;
     const source = job.pull?.source ?? job.repo;
     // Reads the code; pushes nothing. Its answer is posted with its tools.

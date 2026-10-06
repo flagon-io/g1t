@@ -789,6 +789,30 @@ export interface BillingApi {
   /** What the workspace's agents cost since `since`, broken down. Members only. */
   usage(workspace: string, viewer: Viewer, since: string): Promise<Result<Usage>>;
   /**
+   * The model tokens the workspace's runs used, day by day over the last
+   * `days` (42, at most 366), for everyone or for one `person`. Members
+   * only; a member may ask only for themselves, an owner for anyone.
+   */
+  tokenUsage(workspace: string, viewer: User, options?: { person?: string; days?: number }): Promise<Result<TokenUsage>>;
+  /**
+   * What one model answer used, added to its run's count for the day. The
+   * model proxy sends it; for usage views only, as runs are priced from AI
+   * Gateway. False when there was nothing to count.
+   */
+  recordTokens(usage: {
+    workspace: string;
+    /** The model session's id, one per run. */
+    session: string;
+    /** The person the run is for, by username. */
+    person?: string | null;
+    model: string;
+    tier?: "small" | "large" | null;
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+  }): Promise<Result<boolean>>;
+  /**
    * Prepays usage ($25 at least) and returns the page to send the person to:
    * by card with 3-D Secure, or by bank transfer from $1,000. Owners only.
    * The payment's id comes back to `returnUrl` as `session`.
@@ -958,6 +982,27 @@ export interface BillingApi {
 
 /** One slice of usage: what it was for, what it cost, how many runs. */
 export type UsageSlice = { key: string; micros: number; runs: number };
+
+/** The model tokens runs used over a window of days. */
+export type TokenUsage = {
+  /** `YYYY-MM-DD`, the first day counted. */
+  since: string;
+  /** The window's length: 42 unless asked, 366 at most. */
+  days: number;
+  /** Null for the whole workspace. */
+  person: string | null;
+  totalTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  /** What those runs were charged, as `usage` measures it. */
+  costMicros: number;
+  /** Days in the window with any tokens. */
+  activeDays: number;
+  /** Every day in the window, oldest first, zeros included. */
+  byDay: { day: string; tokens: number }[];
+};
 
 /** What a workspace's agents cost over a period. */
 export type Usage = {

@@ -202,7 +202,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
     );
   });
 
-  const [repos, perRepo, active, models, profile, runs, overview, usage, projectList, memories, invitations] = await Promise.all([
+  const [repos, perRepo, active, models, profile, runs, overview, usage, projectList, memories, invitations, tokens, myTokens] = await Promise.all([
     reposP,
     soft("projects", perRepoP),
     soft("pulls", work.listActivePulls(viewer)),
@@ -215,6 +215,9 @@ export async function loader({ context, request }: Route.LoaderArgs) {
     slug ? soft("memories", agents.listMemories(viewer, slug, null)) : null,
     // Repositories someone has invited the viewer to.
     soft("invitations", identity.myRepoInvitations(viewer)),
+    // Model tokens over the last six weeks: the workspace's, and yours.
+    slug ? soft("tokens", billing.tokenUsage(slug, viewer)) : null,
+    slug ? soft("my_tokens", billing.tokenUsage(slug, viewer, { person: username })) : null,
   ]);
 
   const repoList = repos ?? [];
@@ -598,6 +601,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
         weekCost,
       },
       week,
+      tokens: { workspace: okOr(tokens), mine: okOr(myTokens) },
       groups,
       titles: shownTitles,
       // A run that is going makes the page worth refreshing on its own.

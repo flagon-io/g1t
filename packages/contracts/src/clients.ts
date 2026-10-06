@@ -373,6 +373,9 @@ export function billingClient(service: ServiceBinding): BillingApi {
         before: filter.before ?? null,
       }),
     usage: (workspace, viewer, since) => call("usage", { workspace, viewer, since }),
+    tokenUsage: (workspace, viewer, options = {}) =>
+      call("token_usage", { workspace, viewer, person: options.person ?? null, days: options.days ?? null }),
+    recordTokens: (usage) => call("record_tokens", usage),
     checkout: (actor, workspace, amountCents, returnUrl, method = "card") =>
       call("checkout", { actor, workspace, amountCents, returnUrl, method }),
     confirm: (workspace, viewer, session) => call("confirm", { workspace, viewer, session }),

@@ -387,6 +387,10 @@ pub struct ModelUpstream {
     /// For `g1t`: the tier the run was routed to, `small` or `large`.
     #[serde(default)]
     pub tier: Option<String>,
+    /// The person the run is for, by username: who asked g1t for the work.
+    /// Null when nobody did. Never `g1t`, the agent itself.
+    #[serde(default)]
+    pub requested_by: Option<String>,
     /// For `endpoint`: where to send requests.
     pub base_url: Option<String>,
     /// For `anthropic` and `endpoint`: the workspace's key.
@@ -566,6 +570,10 @@ pub struct OpenModelSessionArgs {
     /// when the run goes to g1t's models.
     #[serde(default)]
     pub tier: Option<String>,
+    /// The person the run is for, by username, so usage can be shown per
+    /// person. Null when nobody asked; `g1t`, the agent, is kept as null.
+    #[serde(default)]
+    pub requested_by: Option<String>,
 }
 
 /// `routes`: a workspace's model routes, one per kind of work that has its
