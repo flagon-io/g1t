@@ -49,6 +49,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     agentReview: on("agentReview"),
     maxRevisions: count(form.get("maxRevisions"), 0, 5),
     mergeQueue: on("mergeQueue"),
+    holdLowConfidence: on("holdLowConfidence"),
   });
   return settings.ok ? { saved: true, error: null } : { saved: false, error: settings.error.message };
 }
@@ -133,6 +134,15 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
             <Toggle name="autoMerge" on={settings.autoMerge} title="Merge automatically when ready">
               A g1t agent's pull request lands without anyone pressing merge once every rule above is met. With this
               off, it waits for a member. Pull requests from people and from other agents always wait.
+            </Toggle>
+            <Toggle
+              name="holdLowConfidence"
+              on={settings.holdLowConfidence}
+              title="Ask a person before merging low-confidence changes"
+            >
+              g1t rates how sure it is of each change an agent finishes, from its checks, revisions, review, tests, size
+              and guardrails. One it rates low waits for a member to approve it, instead of merging by itself or joining
+              the queue, and shows on Mission control as needing you.
             </Toggle>
             <Link
               to={`${base}/settings/guardrails`}

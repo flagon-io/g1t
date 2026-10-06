@@ -7,14 +7,16 @@ use worker::{Method, Request, Response, Result};
 
 use crate::oauth::MCP_CHALLENGE;
 use crate::operations::{Op, Services};
+use crate::tools::{Gate, TOOLS, Tool};
 
 const SUPPORTED_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
-const INSTRUCTIONS: &str = "g1t is a git forge with issues and pull requests, built so that many agents can work on the same issue at once.
-To work on an issue: get_issue to read it and see the pull requests already made for it, then create_pull_request with the issue's number. You get a draft pull request with its own fork to clone and push to. Call record_session as you work so people can see your reasoning, push your commits, and call mark_pull_request_ready with a summary.
-Before going far, read `overlaps` on get_pull_request: other pull requests in progress that change the same files. One for a different issue will conflict with yours, so narrow your change or say so. `behind` means main has moved; pull it into your fork and push. Once your pull request is ready, the issue's acceptance checks are run for you in a clean sandbox; read their output from get_pull_request and push a fix if they fail.
-Before you start, recall what the project and its workspace remember; when you learn something the next agent would need, remember it (scope project for this codebase, workspace for what holds across projects). Never a secret.
-Issues and pull requests are named by repository (\"owner/name\") and number, and share one sequence of numbers.";
+const INSTRUCTIONS: &str = "g1t is a git forge where people and agents work through issues and pull requests. Repositories are named \"owner/name\"; issues and pull requests in one share a sequence of numbers.
+Tools are resources, each with an `action`: search, repository, issue, pull_request, agent, plan, memory, workflow, secret, webhook, access, workspace, account. The `action` field lists each action and the fields it needs. You see only what your token's scopes allow; a refusal names the scope it needs.
+Find a repository: account whoami lists your workspaces; repository list or search finds one.
+Work on an issue: issue get (read it and the pull requests already made for it), memory recall, then pull_request create with the issue's number: you get a draft with its own fork to clone and push to. Record your reasoning with pull_request record_session as you go, push, then pull_request ready with a summary. Watch `overlaps` and `behind` on pull_request get, and read the acceptance checks' output there; push a fix if they fail.
+Hand work to g1t's agent: agent delegate opens an issue and starts it in one step; agent assign starts it on an existing issue. Each costs the workspace money.
+When you learn something the next agent needs, memory remember it (scope project or workspace). Never a secret.";
 
 fn result(id: &Value, value: Value) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "result": value })
@@ -22,6 +24,18 @@ fn result(id: &Value, value: Value) -> Value {
 
 fn error(id: &Value, code: i32, message: &str) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
+}
+
+/// What decides the actions a caller sees: an agent's run scope, an
+/// access token's scopes, or nothing beyond the person's role.
+fn gate<'a>(services: &'a Services, viewer: &'a Viewer) -> Gate<'a> {
+    if let Some(scope) = &services.scope {
+        return Gate::Agent(scope);
+    }
+    match viewer.as_ref().and_then(|user| user.token.as_deref()) {
+        Some(access) => Gate::Token(access),
+        None => Gate::Everything,
+    }
 }
 
 /// Answers one JSON-RPC request, or `None` for a notification.
@@ -50,25 +64,33 @@ async fn answer(services: &Services, viewer: &Viewer, request: &Value) -> Result
         }
         "ping" => result(id, json!({})),
         "tools/list" => {
-            // An agent sees only the tools its token may use.
-            let tools: Vec<Value> = Op::ALL
-                .into_iter()
-                .filter(|op| services.scope.as_ref().is_none_or(|scope| op.allowed_by(scope)))
-                .map(|op| {
-                    json!({
-                        "name": op.name(),
-                        "description": op.description(),
-                        "inputSchema": op.input(),
-                    })
-                })
-                .collect();
+            // A caller sees the tools, and the actions of each, that its
+            // token may use.
+            let gate = gate(services, viewer);
+            let tools: Vec<Value> = TOOLS.iter().filter_map(|tool| tool.listed(&gate)).collect();
             result(id, json!({ "tools": tools }))
         }
         "tools/call" => {
-            let Some(op) = Op::by_name(params["name"].as_str().unwrap_or_default()) else {
-                return Ok(Some(error(id, -32602, "Unknown tool.")));
+            let name = params["name"].as_str().unwrap_or_default();
+            let arguments = &params["arguments"];
+            let op = match Tool::by_name(name) {
+                Some(tool) => match crate::tools::resolve(tool, arguments) {
+                    Ok(op) => op,
+                    Err(problem) => {
+                        return Ok(Some(result(
+                            id,
+                            json!({ "content": [{ "type": "text", "text": problem }], "isError": true }),
+                        )));
+                    }
+                },
+                // A tool per operation, as the server had before its
+                // resource tools. Still answered, no longer listed.
+                None => match Op::by_name(name) {
+                    Some(op) => op,
+                    None => return Ok(Some(error(id, -32602, "Unknown tool."))),
+                },
             };
-            let outcome = crate::audit::run(op, services, viewer, &params["arguments"]).await?;
+            let outcome = crate::audit::run(op, services, viewer, arguments).await?;
             // A failed operation is a tool result the model can read and
             // act on, not a protocol error.
             let (text, failed) = match outcome {
@@ -93,9 +115,23 @@ async fn answer(services: &Services, viewer: &Viewer, request: &Value) -> Result
 /// What someone sees when they open the server's address in a browser:
 /// what this is, how to connect, and what it offers.
 fn card() -> Value {
-    let tools: Vec<Value> = Op::ALL
-        .into_iter()
-        .map(|op| json!({ "name": op.name(), "description": op.description() }))
+    let tools: Vec<Value> = TOOLS
+        .iter()
+        .map(|tool| {
+            let actions: Vec<&crate::tools::Action> = tool.actions.iter().collect();
+            json!({
+                "name": tool.name,
+                "title": tool.title,
+                "description": tool.description,
+                "actions": tool.actions.iter().map(|action| json!({
+                    "name": action.name,
+                    "description": action.summary,
+                    "operation": action.op.name(),
+                    "scope": g1t_contracts::scopes::scope_for(action.op.name()).map(|scope| scope.as_str()),
+                })).collect::<Vec<_>>(),
+                "input_schema": tool.discriminated(&actions),
+            })
+        })
         .collect();
     json!({
         "name": "g1t",

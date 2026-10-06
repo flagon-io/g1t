@@ -29,7 +29,7 @@ curl -X POST https://api.g1t.sh/workspaces \
   -d '{"slug": "acme", "name": "Acme"}'
 ```
 
-You can belong to up to ten workspaces. `GET /user`, or `whoami`, lists the
+You can belong to up to ten workspaces. `GET /user`, or the `account` tool's `whoami` action, lists the
 ones you belong to.
 
 Usernames and workspaces share one set of names, so a name means the same
@@ -334,7 +334,8 @@ for or lose the password to.
 | Belongs to | You | The workspace |
 | Acts as | You | The workspace: its name is the author of what it does |
 | Can reach | Every workspace you belong to | That workspace only |
-| Can do | Everything you can | Admin on the workspace's repositories; it cannot manage people, tokens or workspaces |
+| Can do | What its [scopes](/guides/authentication/#scopes) allow, never more than you can | What its scopes allow, on the workspace's repositories; it cannot manage people, tokens or workspaces |
+| Expires | 7, 30 or 90 days (the default), 1 year, or never | The same choices |
 | When its creator leaves | Stops working | Keeps working |
 | Created by | You, in [Settings → Access tokens](https://g1t.sh/settings/tokens) | An owner, under the workspace's **Settings → Access tokens** |
 
@@ -343,8 +344,11 @@ They are the same kind of token and are sent the same way; see
 username works; the token is the password. `GET /user` answers with
 `"kind": "workspace"` for one, and `"kind": "user"` for a personal token.
 
-Every member can see a workspace's tokens: the name, who created each and
-when it was last used. Only owners can create or delete them.
+Every member can see a workspace's tokens: the name, who created each,
+when it was last used and when it expires. Only owners can create or
+delete them. An owner creates one with a name, an expiry (No expiry shows
+a warning) and the same scope checklist as a personal token, starting on
+the CI preset.
 
 ## Profiles
 

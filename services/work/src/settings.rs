@@ -42,6 +42,8 @@ impl From<SettingsRow> for RepoSettings {
             agent_review: row.agent_review != 0,
             max_revisions: row.max_revisions,
             merge_queue: row.merge_queue != 0,
+            // Kept in its own table (confidence.rs), read beside this row.
+            hold_low_confidence: true,
             updated_by: Some(row.updated_by),
             updated_at: Some(row.updated_at),
         }
@@ -94,13 +96,18 @@ struct VerdictRow {
 impl Work {
     /// The settings of a repository, by its id. Defaults if none were set.
     pub(crate) async fn settings(&self, repo_id: &str) -> Result<RepoSettings> {
-        Ok(self
-            .db
-            .prepare("SELECT * FROM repo_settings WHERE repo_id = ?")
-            .bind(&[repo_id.into()])?
-            .first::<SettingsRow>(None)
-            .await?
-            .map_or_else(RepoSettings::default, RepoSettings::from))
+        let row = async {
+            self.db
+                .prepare("SELECT * FROM repo_settings WHERE repo_id = ?")
+                .bind(&[repo_id.into()])?
+                .first::<SettingsRow>(None)
+                .await
+        };
+        let (row, hold) = futures_util::future::try_join(row, self.holds_low_confidence(repo_id)).await?;
+        Ok(RepoSettings {
+            hold_low_confidence: hold,
+            ..row.map_or_else(RepoSettings::default, RepoSettings::from)
+        })
     }
 
     /// What is missing before a pull request has the approvals its
@@ -200,6 +207,13 @@ impl Work {
             ])?
             .run()
             .await?;
+        self.set_hold_low_confidence(
+            &repo.id,
+            settings.hold_low_confidence,
+            settings.updated_by.as_deref().unwrap_or_default(),
+            settings.updated_at.as_deref().unwrap_or_default(),
+        )
+        .await?;
         Ok(Outcome::Ok(settings))
     }
 }

@@ -14,6 +14,7 @@ mod renamed;
 #[cfg(test)]
 mod responses;
 mod rest;
+mod tools;
 
 use g1t_contracts::billing::FinishRunArgs;
 use g1t_contracts::identity::{
@@ -607,6 +608,25 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
                 Outcome::Fail(refused) => failure(&refused),
             };
         }
+        // How sure a run's agent is of its change; the same token.
+        ("POST", path) if path.starts_with("/agent-runs/") && path.ends_with("/confidence") => {
+            let run_id = path.trim_start_matches("/agent-runs/").trim_end_matches("/confidence");
+            let body = json_body(&mut request).await;
+            let said = json!({
+                "runId": run_id,
+                "token": body["token"].as_str().unwrap_or_default(),
+                "confidence": body["confidence"].as_str().unwrap_or_default(),
+                "uncertainAbout": body["uncertain_about"]
+                    .as_array()
+                    .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>())
+                    .unwrap_or_default(),
+            });
+            let recorded: Outcome<Value> = g1t_kit::call(&services.work, "report_confidence", &said).await?;
+            return match recorded {
+                Outcome::Ok(recorded) => reply(&json!({ "recorded": recorded })),
+                Outcome::Fail(refused) => failure(&refused),
+            };
+        }
         ("POST", path) if path.starts_with("/checks/") => {
             let run_id = path.trim_start_matches("/checks/").to_owned();
             return report_checks(&mut request, &services, &run_id).await;
@@ -643,7 +663,18 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     };
     match audit::run(route.op, &services, &viewer, &input).await? {
         Outcome::Ok(value) => reply(&value),
-        Outcome::Fail(refused) => failure(&refused),
+        // A token without the scope a call needs is told which one.
+        Outcome::Fail(refused) => match (refused.code, audit::missing_scope(route.op, &viewer, &input)) {
+            (FailureCode::Forbidden, Some(scope)) => Ok(reply(&json!({
+                "error": {
+                    "code": refused.code,
+                    "message": refused.message,
+                    "needed_scope": scope.as_str(),
+                }
+            }))?
+            .with_status(403)),
+            _ => failure(&refused),
+        },
     }
 }
 

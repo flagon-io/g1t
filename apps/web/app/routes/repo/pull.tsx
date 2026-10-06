@@ -681,7 +681,13 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               )}
               {lifecycle && <LifecyclePanel lifecycle={lifecycle} />}
               {/* The agent on it: who, doing what this minute, for how long, at what cost. */}
-              <AgentPanel owner={params.owner} repo={params.repo} number={pull.number} stage={lifecycle?.stage ?? null} />
+              <AgentPanel
+                owner={params.owner}
+                repo={params.repo}
+                number={pull.number}
+                stage={lifecycle?.stage ?? null}
+                confidence={pull.confidence ?? null}
+              />
 
               {/* Steering: while its agent works, people can tell it things. */}
               {canRun &&

@@ -77,7 +77,7 @@ With these headers:
 | `repo.deleted`, `repo.restored`, `repo.purged` | It was deleted, restored within its 30 days, or removed for good. |
 | `issue.opened`, `issue.updated`, `issue.assigned`, `issue.closed`, `issue.reopened` | An issue changed. `data.number`; on close, `data.reason` and `data.resolved_by`. |
 | `comment.created` | A comment or review on an issue or pull request. |
-| `pull.opened`, `pull.ready`, `pull.updated`, `pull.merge_requested`, `pull.merged`, `pull.closed` | A pull request changed. `data.number`, `data.issue`; on merge, `data.commit`. |
+| `pull.opened`, `pull.ready`, `pull.updated`, `pull.merge_requested`, `pull.merged`, `pull.closed` | A pull request changed. `data.number`, `data.issue`; on merge, `data.commit`. On a g1t agent's change, once g1t has worked it out, `data.confidence`: `level` (`high`, `medium` or `low`), `reasons`, `self_reported`, `uncertain_about`, `run_id` and `assessed_at`. See [how sure the agent is](/guides/g1t-agents/#how-sure-the-agent-is). |
 | `checks.completed` | An issue's acceptance checks finished on a pull request. `data.status` is `passed`, `failed` or `errored`. |
 | `review.completed` | A g1t agent reviewed a pull request. `data.verdict`. |
 | `workflow.completed` | A GitHub Actions run finished. `data.workflow`, `data.conclusion`, `data.run_id`, `data.sha`, `data.pull`. |

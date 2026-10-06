@@ -1,8 +1,9 @@
 import { env } from "cloudflare:workers";
 import { Suspense, lazy } from "react";
-import { type ShouldRevalidateFunctionArgs, data } from "react-router";
+import { type ShouldRevalidateFunctionArgs, data, redirect } from "react-router";
 
 import {
+  type Confidence,
   type Lifecycle,
   type Pull,
   type Repo,
@@ -35,6 +36,7 @@ import {
   type NeedRow,
   type QuickAction,
   RUN_LABEL,
+  confidenceAsk,
   dateLine,
   dayKey,
   landedToday,
@@ -48,7 +50,9 @@ import {
   weekOf,
   who,
   whyFor,
+  withConfidence,
 } from "../lib/mission-control";
+import { type NotStarted, chosenRepo, delegateForm, issuePath, notStarted } from "../lib/delegate";
 import { Landing } from "../components/landing";
 import {
   agents,
@@ -60,7 +64,7 @@ import {
   repos as reposApi,
   work,
 } from "../lib/services.server";
-import { getViewer } from "../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser } from "../lib/session.server";
 
 /** The viewer's time zone, which mission control sets, so the greeting fits their day. */
 const TZ_COOKIE = "g1t_tz";
@@ -98,7 +102,35 @@ export function shouldRevalidate({ currentUrl, nextUrl, formMethod, defaultShoul
 }
 
 /** Where a need came from, so its row can say what is known about it. */
-type Extra = Partial<Pick<NeedRow, "repo" | "ref" | "by" | "for" | "facts" | "quick" | "link" | "open">>;
+type Extra = Partial<Pick<NeedRow, "repo" | "ref" | "by" | "for" | "facts" | "quick" | "link" | "open">> & {
+  /** How sure g1t is of the agent's change, for a pull request. */
+  confidence?: Confidence | null;
+};
+
+/** What the composer said back, when the issue opened but the agent did not start, or nothing opened. */
+export type DelegateResult = { error: string; notStarted: null } | { error: null; notStarted: NotStarted };
+
+/**
+ * "Put an agent on it": opens an issue in one of the viewer's projects and
+ * puts g1t-agent on it, then lands on the issue. When the agent could not
+ * start, the issue is still open, and the composer says why and where to
+ * fix it.
+ */
+export async function action({ request, context }: Route.ActionArgs) {
+  assertSameOrigin(request);
+  const user = requireUser(context, request);
+  const form = await request.formData();
+  if (form.get("intent") !== "delegate") return data<DelegateResult>({ error: "Nothing to do.", notStarted: null }, { status: 400 });
+  const projects = await reposApi.list(user, { memberOnly: true }).catch(() => []);
+  const repo = chosenRepo(form.get("repo"), projects.map((repo) => ({ namespace: repo.namespace, name: repo.name })));
+  if (!repo) return data<DelegateResult>({ error: "Choose one of your projects.", notStarted: null }, { status: 400 });
+  const result = await env.RUNNER.delegate(user, repo, delegateForm(form));
+  if (!result.ok) return data<DelegateResult>({ error: result.error.message, notStarted: null }, { status: 400 });
+  const { issue, agent } = result.value;
+  const refused = notStarted(agent, repo, issue.number);
+  if (!refused) throw redirect(issuePath(repo, issue.number));
+  return data<DelegateResult>({ error: null, notStarted: refused });
+}
 
 export async function loader({ context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
@@ -216,8 +248,15 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       ref: `#${pull.number}`,
       by: agentWork ? who(pull.agent) : who(pull.author.username),
       for: agentWork ? pull.author.username : null,
-      facts: pullFacts({ checkStatus: pull.checkStatus, files: pull.files, lifecycle, runs: runsOn(repo, pull.number) }),
+      facts: pullFacts({
+        checkStatus: pull.checkStatus,
+        files: pull.files,
+        lifecycle,
+        runs: runsOn(repo, pull.number),
+        confidence: pull.confidence,
+      }),
       open: pull.issue != null ? `${base}/issues/${pull.issue}` : `${base}/pull/${pull.number}?tab=changes`,
+      confidence: pull.confidence ?? null,
     };
   };
   const pullAction = (repo: Repo, pull: Pull, quick: Omit<QuickAction, "to">): QuickAction => ({
@@ -290,24 +329,27 @@ export async function loader({ context, request }: Route.LoaderArgs) {
     const to = `/${repo.namespace}/${repo.name}/pull/${pull.number}`;
     const key = `pull:${pull.id}`;
     const extra = pullExtra(pull, repo, lifecycle);
+    // Held for its low confidence: the ask says so in a sentence of its own.
+    const lowConfidence = pull.confidence?.level === "low" ? pull.confidence : null;
     if (lifecycle?.stage === "needs_you") {
-      const conflict = /conflict/i.test(lifecycle.detail);
+      const held = lowConfidence != null && /confidence in this change is low/i.test(lifecycle.detail);
+      const conflict = !held && /conflict/i.test(lifecycle.detail);
       const need: Need = {
         key,
         kind: conflict ? "conflict" : "stalled",
         title: pull.title,
-        detail: lifecycle.detail,
+        detail: held && lowConfidence ? confidenceAsk(lowConfidence) : lifecycle.detail,
         to,
         action: conflict ? "Resolve" : "Decide",
         at: Date.parse(pull.updatedAt),
         where,
       };
       needs.push(need);
-      const reason = reasonFor(need);
+      const reason = held ? "low_confidence" : reasonFor(need);
       extras.set(key, {
         ...extra,
         quick:
-          reason === "needs_review"
+          reason === "needs_review" || reason === "low_confidence"
             ? approve(repo, pull)
             : /could not be run/i.test(lifecycle.detail)
               ? pullAction(repo, pull, { label: "Run the checks again", fields: { action: "recheck" }, done: "Checks started" })
@@ -315,7 +357,16 @@ export async function loader({ context, request }: Route.LoaderArgs) {
         link: reason === "outside_guardrails" ? { label: "Raise the cap", to: `/${repo.namespace}/${repo.name}/settings/guardrails` } : null,
       });
     } else if (lifecycle?.stage === "ready") {
-      needs.push({ key, kind: "ready", title: pull.title, detail: "Checks passed and it was approved. It lands when you merge it.", to, action: "Merge", at: Date.parse(pull.updatedAt), where });
+      needs.push({
+        key,
+        kind: "ready",
+        title: pull.title,
+        detail: lowConfidence ? confidenceAsk(lowConfidence) : "Checks passed and it was approved. It lands when you merge it.",
+        to,
+        action: "Merge",
+        at: Date.parse(pull.updatedAt),
+        where,
+      });
       extras.set(key, {
         ...extra,
         quick: pullAction(repo, pull, {
@@ -376,7 +427,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 
   const needRows: NeedRow[] = rankNeeds(needs).map((need) => {
     const extra = extras.get(need.key) ?? {};
-    const reason = reasonFor(need);
+    const reason = withConfidence(reasonFor(need), extra.confidence);
     return {
       key: need.key,
       reason,
@@ -390,7 +441,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       to: need.to,
       open: extra.open ?? need.to,
       facts: extra.facts ?? [],
-      why: whyFor(reason, need),
+      why: whyFor(reason, need, extra.confidence),
       quick: extra.quick ?? null,
       link: extra.link ?? null,
     };
@@ -531,11 +582,11 @@ export type Loaded = Extract<Route.ComponentProps["loaderData"], { signedIn: tru
 /** Mission control, loaded only for someone signed in (components/mission-control.tsx). */
 const MissionControl = lazy(() => import("../components/mission-control"));
 
-export default function Home({ loaderData }: Route.ComponentProps) {
+export default function Home({ loaderData, actionData }: Route.ComponentProps) {
   if (!loaderData.signedIn) return <Landing />;
   return (
     <Suspense fallback={null}>
-      <MissionControl loaderData={loaderData} />
+      <MissionControl loaderData={loaderData} delegated={actionData ?? null} />
     </Suspense>
   );
 }

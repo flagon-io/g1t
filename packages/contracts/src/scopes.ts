@@ -1,0 +1,284 @@
+/**
+ * Scopes: what an access token may do on its owner's behalf. Mirrors
+ * `crates/contracts/src/scopes.rs`, which is the source of truth; a Rust
+ * test keeps the tables here the same.
+ *
+ * A token reaches whatever its owner can reach (a workspace's token, that
+ * workspace); what a request may do is the intersection of the owner's
+ * role and the token's scopes.
+ */
+
+export type ScopeResource =
+  | "repo"
+  | "code"
+  | "issues"
+  | "pull_requests"
+  | "agents"
+  | "workflows"
+  | "memory"
+  | "account"
+  | "workspace"
+  | "access"
+  | "webhooks"
+  | "secrets";
+
+export type ScopeLevel = "read" | "write" | "run" | "admin";
+
+/** Every scope, grouped by resource, least first. */
+export const SCOPES = [
+  { scope: "repo:read", description: "See repositories, their settings, labels and timelines, and search" },
+  { scope: "repo:write", description: "Create repositories, rename branches and change how pull requests merge" },
+  { scope: "repo:admin", description: "Rename, archive, transfer, delete or change who can see a repository" },
+  { scope: "code:read", description: "Clone and fetch private repositories with git" },
+  { scope: "code:write", description: "Push commits with git" },
+  { scope: "issues:read", description: "Read issues, comments and plans" },
+  { scope: "issues:write", description: "Open, edit, close and comment on issues" },
+  { scope: "pull_requests:read", description: "Read pull requests, their changes, sessions and merge queues" },
+  { scope: "pull_requests:write", description: "Open, review, close and merge pull requests" },
+  { scope: "agents:run", description: "Put g1t agents to work and message them, which uses the workspace's money" },
+  { scope: "workflows:read", description: "Read workflows, runs and logs" },
+  { scope: "workflows:write", description: "Run, cancel, rerun and turn workflows on or off" },
+  { scope: "memory:read", description: "Recall memory and search the workspace's context" },
+  { scope: "memory:write", description: "Save memory for the next agent" },
+  { scope: "account:read", description: "Read your email addresses, invites and invitations" },
+  { scope: "account:write", description: "Change your email addresses, make invites and answer invitations" },
+  { scope: "workspace:read", description: "Read workspace invites, integrations and model routes" },
+  { scope: "workspace:admin", description: "Create and delete workspaces, invite members, connect integrations" },
+  { scope: "access:read", description: "See who has access to repositories" },
+  { scope: "access:admin", description: "Give and take away access to repositories" },
+  { scope: "webhooks:read", description: "See webhooks and their deliveries" },
+  { scope: "webhooks:admin", description: "Create, change and delete webhooks" },
+  { scope: "secrets:read", description: "List secrets (never their values) and read variables" },
+  { scope: "secrets:admin", description: "Set and delete secrets and variables" },
+] as const;
+
+export type Scope = (typeof SCOPES)[number]["scope"];
+
+/** Resources in the order settings show them, with their names for people. */
+export const SCOPE_RESOURCES: { resource: ScopeResource; label: string }[] = [
+  { resource: "repo", label: "Repositories" },
+  { resource: "code", label: "Code" },
+  { resource: "issues", label: "Issues" },
+  { resource: "pull_requests", label: "Pull requests" },
+  { resource: "agents", label: "g1t agents" },
+  { resource: "workflows", label: "Workflows" },
+  { resource: "memory", label: "Memory and context" },
+  { resource: "account", label: "Your account" },
+  { resource: "workspace", label: "Workspaces" },
+  { resource: "access", label: "Who has access" },
+  { resource: "webhooks", label: "Webhooks" },
+  { resource: "secrets", label: "Secrets and variables" },
+];
+
+const LEVEL_ORDER: Record<ScopeLevel, number> = { read: 0, write: 1, run: 2, admin: 3 };
+
+export function scopeResource(scope: Scope): ScopeResource {
+  return scope.split(":")[0] as ScopeResource;
+}
+
+export function scopeLevel(scope: Scope): ScopeLevel {
+  return scope.split(":")[1] as ScopeLevel;
+}
+
+export function isScope(text: string): text is Scope {
+  return SCOPES.some((row) => row.scope === text);
+}
+
+/** Changes that are hard to undo, or decide who can reach what. */
+export function isDangerous(scope: Scope): boolean {
+  return scopeLevel(scope) === "admin";
+}
+
+export function describeScope(scope: Scope): string {
+  return SCOPES.find((row) => row.scope === scope)?.description ?? scope;
+}
+
+/** Whether holding `held` gives `needed`: the same resource, at its level or lower. */
+export function scopeIncludes(held: Scope, needed: Scope): boolean {
+  return (
+    scopeResource(held) === scopeResource(needed) &&
+    LEVEL_ORDER[scopeLevel(held)] >= LEVEL_ORDER[scopeLevel(needed)]
+  );
+}
+
+/** The levels a resource has, least first. */
+export function levelsOf(resource: ScopeResource): ScopeLevel[] {
+  return SCOPES.filter((row) => scopeResource(row.scope) === resource).map((row) => scopeLevel(row.scope));
+}
+
+/** Scopes from text separated by spaces or commas, in table order; unknown ones are left out. */
+export function parseScopes(text: string): Scope[] {
+  const given = new Set(text.split(/[\s,]+/).map((part) => part.trim().toLowerCase()));
+  return SCOPES.map((row) => row.scope).filter((scope) => given.has(scope));
+}
+
+/** What a token stores for full access. */
+export const FULL_ACCESS = "*";
+
+export type PresetId = "read_only" | "agent" | "ci" | "full";
+
+/** Starting points for choosing scopes. `*` is full access. */
+export const PRESET_SCOPES = {
+  read_only: [
+    "repo:read", "code:read", "issues:read", "pull_requests:read", "workflows:read", "memory:read", "account:read", "workspace:read", "access:read", "webhooks:read", "secrets:read",
+  ] as const,
+  agent: [
+    "repo:read", "code:read", "code:write", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "agents:run", "workflows:read", "memory:read", "memory:write", "account:read", "workspace:read", "access:read", "webhooks:read", "secrets:read",
+  ] as const,
+  ci: [
+    "repo:read", "code:read", "code:write", "workflows:read", "workflows:write",
+  ] as const,
+  full: [
+    "*",
+  ] as const,
+};
+
+export const PRESETS: { id: PresetId; label: string; description: string }[] = [
+  { id: "read_only", label: "Read only", description: "Read everything you can read; change nothing." },
+  { id: "agent", label: "Agent", description: "Read everything, work on issues and pull requests, push code and run g1t agents." },
+  { id: "ci", label: "CI", description: "Clone and push code, and run workflows." },
+  { id: "full", label: "Full access", description: "Everything you can do, including deleting repositories and changing who has access." },
+];
+
+/** The scopes of a preset, or null for full access. */
+export function presetScopes(id: PresetId): Scope[] | null {
+  if (id === "full") return null;
+  return [...PRESET_SCOPES[id]] as Scope[];
+}
+
+/** What an OAuth client gets when it asks for nothing in particular. */
+export const OAUTH_DEFAULT_SCOPES: Scope[] = [...PRESET_SCOPES.agent];
+
+/** The operation each scope gates, by the API's operation names. */
+export const OPERATION_SCOPES = [
+  ["list_emails", "account:read"],
+  ["add_email", "account:write"],
+  ["remove_email", "account:write"],
+  ["update_email_settings", "account:write"],
+  ["list_invites", "account:read"],
+  ["create_invite", "account:write"],
+  ["revoke_invite", "account:write"],
+  ["list_my_repo_invitations", "account:read"],
+  ["accept_repo_invitation", "account:write"],
+  ["decline_repo_invitation", "account:write"],
+  ["create_workspace", "workspace:admin"],
+  ["delete_workspace", "workspace:admin"],
+  ["list_workspace_invites", "workspace:read"],
+  ["invite_member", "workspace:admin"],
+  ["revoke_workspace_invite", "workspace:admin"],
+  ["list_integrations", "workspace:read"],
+  ["connect_integration", "workspace:admin"],
+  ["disconnect_integration", "workspace:admin"],
+  ["test_integration", "workspace:admin"],
+  ["get_model_routes", "workspace:read"],
+  ["set_model_routes", "workspace:admin"],
+  ["list_repos", "repo:read"],
+  ["get_repo", "repo:read"],
+  ["search", "repo:read"],
+  ["list_events", "repo:read"],
+  ["list_labels", "repo:read"],
+  ["get_repo_settings", "repo:read"],
+  ["list_deleted_repos", "repo:read"],
+  ["create_repo", "repo:write"],
+  ["update_repo", "repo:write"],
+  ["update_repo_settings", "repo:write"],
+  ["rename_branch", "repo:write"],
+  ["rename_repo", "repo:admin"],
+  ["transfer_repo", "repo:admin"],
+  ["archive_repo", "repo:admin"],
+  ["unarchive_repo", "repo:admin"],
+  ["set_repo_visibility", "repo:admin"],
+  ["delete_repo", "repo:admin"],
+  ["restore_repo", "repo:admin"],
+  ["purge_repo", "repo:admin"],
+  ["list_issues", "issues:read"],
+  ["get_issue", "issues:read"],
+  ["get_plan", "issues:read"],
+  ["create_issue", "issues:write"],
+  ["update_issue", "issues:write"],
+  ["close_issue", "issues:write"],
+  ["reopen_issue", "issues:write"],
+  ["add_comment", "issues:write"],
+  ["import_issue", "issues:write"],
+  ["apply_plan", "issues:write"],
+  ["list_pull_requests", "pull_requests:read"],
+  ["get_pull_request", "pull_requests:read"],
+  ["get_pull_request_changes", "pull_requests:read"],
+  ["read_session", "pull_requests:read"],
+  ["get_merge_queue", "pull_requests:read"],
+  ["create_pull_request", "pull_requests:write"],
+  ["record_session", "pull_requests:write"],
+  ["mark_pull_request_ready", "pull_requests:write"],
+  ["close_pull_request", "pull_requests:write"],
+  ["review_pull_request", "pull_requests:write"],
+  ["merge_pull_request", "pull_requests:write"],
+  ["assign_issue", "agents:run"],
+  ["delegate", "agents:run"],
+  ["plan_work", "agents:run"],
+  ["message_agent", "agents:run"],
+  ["answer_message", "agents:run"],
+  ["take_messages", "agents:run"],
+  ["list_workflows", "workflows:read"],
+  ["list_workflow_runs", "workflows:read"],
+  ["get_workflow_run", "workflows:read"],
+  ["get_job_logs", "workflows:read"],
+  ["dispatch_workflow", "workflows:write"],
+  ["cancel_workflow_run", "workflows:write"],
+  ["rerun_workflow_run", "workflows:write"],
+  ["update_workflow", "workflows:write"],
+  ["recall", "memory:read"],
+  ["search_context", "memory:read"],
+  ["get_entity", "memory:read"],
+  ["get_context", "memory:read"],
+  ["remember", "memory:write"],
+  ["list_collaborators", "access:read"],
+  ["get_collaborator_permission", "access:read"],
+  ["list_repo_invitations", "access:read"],
+  ["list_outside_collaborators", "access:read"],
+  ["add_collaborator", "access:admin"],
+  ["update_collaborator", "access:admin"],
+  ["remove_collaborator", "access:admin"],
+  ["revoke_repo_invitation", "access:admin"],
+  ["set_base_permission", "access:admin"],
+  ["list_webhooks", "webhooks:read"],
+  ["list_webhook_deliveries", "webhooks:read"],
+  ["create_webhook", "webhooks:admin"],
+  ["update_webhook", "webhooks:admin"],
+  ["delete_webhook", "webhooks:admin"],
+  ["ping_webhook", "webhooks:admin"],
+  ["redeliver_webhook", "webhooks:admin"],
+  ["list_actions_secrets", "secrets:read"],
+  ["list_actions_variables", "secrets:read"],
+  ["set_actions_secret", "secrets:admin"],
+  ["delete_actions_secret", "secrets:admin"],
+  ["set_actions_variable", "secrets:admin"],
+  ["delete_actions_variable", "secrets:admin"],
+] as const;
+
+/**
+ * The scopes a token or grant holds, as stored: null for full access, or
+ * the list. `legacy` marks a token made before scopes, which has full
+ * access until someone narrows it.
+ */
+export type TokenScopes = {
+  scopes: Scope[] | null;
+  legacy: boolean;
+};
+
+/**
+ * How settings group scopes into a checklist: each group's scopes, least
+ * first. Admin scopes are not here; they are under "Dangerous" on their
+ * own (see `DANGEROUS_SCOPES`). Every other scope is in exactly one group.
+ */
+export const SCOPE_GROUPS: { id: string; label: string; scopes: Scope[] }[] = [
+  { id: "code", label: "Repositories & code", scopes: ["repo:read", "repo:write", "code:read", "code:write"] },
+  { id: "work", label: "Issues & pull requests", scopes: ["issues:read", "issues:write", "pull_requests:read", "pull_requests:write"] },
+  { id: "agents", label: "Agents", scopes: ["agents:run"] },
+  { id: "workflows", label: "Workflows", scopes: ["workflows:read", "workflows:write"] },
+  { id: "memory", label: "Memory & search", scopes: ["memory:read", "memory:write"] },
+  { id: "account", label: "Account", scopes: ["account:read", "account:write"] },
+  { id: "workspace", label: "Workspace", scopes: ["workspace:read", "access:read", "webhooks:read", "secrets:read"] },
+];
+
+/** The admin scopes, shown under "Dangerous" behind a warning. */
+export const DANGEROUS_SCOPES: Scope[] = SCOPES.map((row) => row.scope).filter(isDangerous);

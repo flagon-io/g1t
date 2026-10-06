@@ -173,7 +173,7 @@ Two pull requests for the *same* issue are expected to overlap: they are
 alternatives, and one will be merged. Two for *different* issues are heading
 for a conflict, and g1t says so while the work is still going on rather than
 when the second one tries to merge. Agents get the same list from
-`get_pull_request`, as `overlaps`.
+the `pull_request` tool's `get` action, as `overlaps`.
 
 A g1t agent is told about the other work before it starts. Its instructions
 list every pull request in progress in the repository, what each is for and

@@ -10,12 +10,15 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use g1t_contracts::identity::*;
 use g1t_contracts::time::{SQL_NOW, rfc3339, sql_after};
+use g1t_contracts::scopes::FULL_ACCESS;
 use g1t_contracts::{FailureCode, Outcome, User, new_id};
+use worker::wasm_bindgen::JsValue;
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use worker::Result;
 
+use crate::tokens::{Grant, stored_scopes};
 use crate::{Identity, crypto};
 
 const CODE_TTL_SECONDS: u64 = 5 * 60;
@@ -30,6 +33,7 @@ struct CodeRow {
     client_name: String,
     redirect_uri: String,
     code_challenge: String,
+    scopes: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -39,6 +43,7 @@ struct GrantRow {
     client_id: String,
     client_name: String,
     access_token_id: Option<String>,
+    scopes: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -47,6 +52,11 @@ struct GrantListRow {
     client_name: String,
     created_at: String,
     last_used_at: String,
+    scopes: Option<String>,
+}
+
+fn text(value: Option<&str>) -> JsValue {
+    value.map_or(JsValue::NULL, JsValue::from)
 }
 
 /// Whether `verifier` is the secret behind an S256 `challenge` (RFC 7636).
@@ -58,16 +68,31 @@ fn invalid_grant<T>(message: &str) -> Outcome<T> {
     Outcome::fail(FailureCode::Invalid, message)
 }
 
+fn grant(row: GrantListRow) -> OAuthGrant {
+    let (scopes, legacy) = stored_scopes(row.scopes.as_deref());
+    OAuthGrant {
+        id: row.id,
+        client_name: row.client_name,
+        created_at: row.created_at,
+        last_used_at: row.last_used_at,
+        scopes,
+        legacy,
+    }
+}
+
 impl Identity {
     /// Records that `user` approved the client and returns the one-time
     /// code the client exchanges for tokens.
     pub async fn oauth_authorize(&self, a: OAuthAuthorizeArgs) -> Result<OAuthCode> {
         let code = crypto::random_hex(32);
+        // What the person granted, carried through the code to the grant.
+        let grant = Grant::asked(&a.scopes);
         self.db
             .prepare(format!(
                 "INSERT INTO oauth_codes
-                   (id, user_id, client_id, client_name, redirect_uri, code_challenge, expires_at)
-                 VALUES (?, ?, ?, ?, ?, ?, {})",
+                   (id, user_id, client_id, client_name, redirect_uri, code_challenge, expires_at,
+                    scopes)
+                 VALUES (?, ?, ?, ?, ?, ?, {}, ?)",
                 sql_after(CODE_TTL_SECONDS)
             ))
             .bind(&[
@@ -77,6 +102,7 @@ impl Identity {
                 a.client_name.into(),
                 a.redirect_uri.into(),
                 a.code_challenge.into(),
+                grant.scopes_column().into(),
             ])?
             .run()
             .await?;
@@ -91,7 +117,7 @@ impl Identity {
             .db
             .prepare(format!(
                 "DELETE FROM oauth_codes WHERE id = ? AND expires_at > {SQL_NOW}
-                 RETURNING user_id, client_id, client_name, redirect_uri, code_challenge"
+                 RETURNING user_id, client_id, client_name, redirect_uri, code_challenge, scopes"
             ))
             .bind(&[id.into()])?
             .first::<CodeRow>(None)
@@ -112,8 +138,8 @@ impl Identity {
         self.db
             .prepare(
                 "INSERT INTO oauth_grants
-                   (id, user_id, client_id, client_name, created_at, last_used_at)
-                 VALUES (?, ?, ?, ?, ?, ?)",
+                   (id, user_id, client_id, client_name, created_at, last_used_at, scopes)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 grant_id.as_str().into(),
@@ -122,12 +148,18 @@ impl Identity {
                 row.client_name.as_str().into(),
                 rfc3339(now).into(),
                 rfc3339(now).into(),
+                text(row.scopes.as_deref()),
             ])?
             .run()
             .await?;
         Ok(Outcome::Ok(
-            self.issue_oauth_tokens(&grant_id, &row.user_id, &row.client_name)
-                .await?,
+            self.issue_oauth_tokens(
+                &grant_id,
+                &row.user_id,
+                &row.client_name,
+                row.scopes.as_deref(),
+            )
+            .await?,
         ))
     }
 
@@ -137,7 +169,8 @@ impl Identity {
         let row = self
             .db
             .prepare(format!(
-                "SELECT id, user_id, client_id, client_name, access_token_id FROM oauth_grants
+                "SELECT id, user_id, client_id, client_name, access_token_id, scopes
+                 FROM oauth_grants
                  WHERE refresh_hash = ? AND expires_at > {SQL_NOW}"
             ))
             .bind(&[crypto::sha256_hex(&a.refresh_token).into()])?
@@ -155,19 +188,29 @@ impl Identity {
                 .run()
                 .await?;
         }
+        // A refreshed token keeps what the grant allows now.
         Ok(Outcome::Ok(
-            self.issue_oauth_tokens(&row.id, &row.user_id, &row.client_name)
-                .await?,
+            self.issue_oauth_tokens(
+                &row.id,
+                &row.user_id,
+                &row.client_name,
+                row.scopes.as_deref(),
+            )
+            .await?,
         ))
     }
 
     /// A new access token and refresh token for a grant.
+    /// `scopes` is the grant's column: a grant made before scopes (null)
+    /// keeps full access.
     async fn issue_oauth_tokens(
         &self,
         grant_id: &str,
         user_id: &str,
         client_name: &str,
+        scopes: Option<&str>,
     ) -> Result<OAuthTokens> {
+        let (scopes, _) = stored_scopes(scopes);
         let access = self
             .create_access_token(CreateAccessTokenArgs {
                 user: User {
@@ -176,6 +219,8 @@ impl Identity {
                 },
                 name: client_name.to_owned(),
                 ttl_seconds: Some(ACCESS_TTL_SECONDS),
+                scopes: scopes.clone(),
+                listed: false,
             })
             .await?;
         let refresh_token = format!("{REFRESH_PREFIX}{}", crypto::random_hex(32));
@@ -198,6 +243,7 @@ impl Identity {
             access_token: access.token,
             refresh_token,
             expires_in: ACCESS_TTL_SECONDS,
+            scope: Some(scopes.map_or_else(|| FULL_ACCESS.to_owned(), |scopes| scopes.join(" "))),
         })
     }
 
@@ -206,22 +252,46 @@ impl Identity {
         let rows = self
             .db
             .prepare(format!(
-                "SELECT id, client_name, created_at, last_used_at FROM oauth_grants
+                "SELECT id, client_name, created_at, last_used_at, scopes FROM oauth_grants
                  WHERE user_id = ? AND expires_at > {SQL_NOW} ORDER BY last_used_at DESC"
             ))
             .bind(&[a.user.id.into()])?
             .all()
             .await?
             .results::<GrantListRow>()?;
-        Ok(rows
-            .into_iter()
-            .map(|row| OAuthGrant {
-                id: row.id,
-                client_name: row.client_name,
-                created_at: row.created_at,
-                last_used_at: row.last_used_at,
-            })
-            .collect())
+        Ok(rows.into_iter().map(grant).collect())
+    }
+
+    /// Changes what an application may do: its current access token at
+    /// once, and every token it is given from now on.
+    pub async fn update_oauth_grant(&self, a: UpdateOAuthGrantArgs) -> Result<Outcome<OAuthGrant>> {
+        let scopes = Grant::asked(&a.scopes).scopes_column();
+        let row = self
+            .db
+            .prepare(format!(
+                "UPDATE oauth_grants SET scopes = ?
+                 WHERE id = ? AND user_id = ? AND expires_at > {SQL_NOW}
+                 RETURNING id, client_name, created_at, last_used_at, scopes"
+            ))
+            .bind(&[
+                scopes.as_str().into(),
+                a.id.as_str().into(),
+                a.user.id.as_str().into(),
+            ])?
+            .first::<GrantListRow>(None)
+            .await?;
+        let Some(row) = row else {
+            return Ok(Outcome::fail(FailureCode::NotFound, "No such application."));
+        };
+        self.db
+            .prepare(
+                "UPDATE access_tokens SET scopes = ?
+                 WHERE id = (SELECT access_token_id FROM oauth_grants WHERE id = ?)",
+            )
+            .bind(&[scopes.as_str().into(), a.id.as_str().into()])?
+            .run()
+            .await?;
+        Ok(Outcome::Ok(grant(row)))
     }
 
     /// Signs an application out: its refresh token and access token stop

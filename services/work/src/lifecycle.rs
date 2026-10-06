@@ -9,7 +9,6 @@
 //! service asks, on every event that could change the answer, and carries
 //! the step out in a sandbox.
 
-use g1t_contracts::events::PullEvent;
 use g1t_contracts::repos::{GetByIdArgs, Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
@@ -166,6 +165,9 @@ struct Facts {
     queued: Option<(QueueState, Vec<u32>)>,
     /// What the workflows run on its head say.
     workflows: WorkflowFacts,
+    /// Why the agent's change has low confidence, when the repository asks
+    /// a person before merging one and no person has approved it since.
+    low_confidence: Option<String>,
 }
 
 /// Where a pull request stands, and the step to take if it is g1t's turn.
@@ -397,6 +399,16 @@ fn decide(facts: Facts) -> (Lifecycle, Next) {
     if let Some(missing) = &facts.approvals_missing {
         return wait(Stage::NeedsYou, missing);
     }
+    // Everything else is met, but g1t is not sure of the change: a person
+    // decides, rather than auto-merge or the queue.
+    if let Some(reasons) = &facts.low_confidence {
+        return wait(
+            Stage::NeedsYou,
+            &format!(
+                "The agent's confidence in this change is low ({reasons}). This repository asks a person before merging it: approve it to let it land, or ask for changes."
+            ),
+        );
+    }
     if facts.auto_merge {
         return (
             at(
@@ -427,8 +439,22 @@ impl Work {
         issue: &Option<Issue>,
         behind: bool,
     ) -> Result<Option<(Lifecycle, Next)>> {
+        Ok(self
+            .assess_with_confidence(pull, issue, behind)
+            .await?
+            .map(|(lifecycle, next, _)| (lifecycle, next)))
+    }
+
+    /// [`Self::assess`], with how sure g1t is of the change once the agent
+    /// has finished it.
+    pub(crate) async fn assess_with_confidence(
+        &self,
+        pull: &Pull,
+        issue: &Option<Issue>,
+        behind: bool,
+    ) -> Result<Option<(Lifecycle, Next, Option<Confidence>)>> {
         let assessed = self.assess_now(pull, issue, behind).await?;
-        if let Some((lifecycle, _)) = &assessed {
+        if let Some((lifecycle, _, _)) = &assessed {
             self.remember(&pull.id, lifecycle).await?;
         }
         Ok(assessed)
@@ -454,7 +480,7 @@ impl Work {
         pull: &Pull,
         issue: &Option<Issue>,
         behind: bool,
-    ) -> Result<Option<(Lifecycle, Next)>> {
+    ) -> Result<Option<(Lifecycle, Next, Option<Confidence>)>> {
         if !pull.status.is_active() {
             return Ok(None);
         }
@@ -495,13 +521,43 @@ impl Work {
                     .is_none_or(|revised| review.finished_at.as_str() >= revised)
             });
         let settings = self.settings(&pull.repo_id).await?;
-        Ok(Some(decide(Facts {
+        let has_checks = issue.as_ref().is_some_and(|issue| !issue.checks.is_empty());
+        // Once the agent has finished the change: how sure g1t is of it, and
+        // whether that holds it for a person.
+        let (confidence, low_confidence) = if pull.status == PullStatus::Draft {
+            (None, None)
+        } else {
+            let review_comments = match &review {
+                Some(review) => self.review_comments(pull, &review.finished_at).await?,
+                None => 0,
+            };
+            let confidence = self
+                .assess_confidence(
+                    pull,
+                    crate::confidence::Signals {
+                        has_checks,
+                        check_status: pull.check_status,
+                        revisions: progress.revisions,
+                        agent_review: settings.agent_review,
+                        review: review.as_ref().and_then(|review| review.verdict),
+                        review_comments,
+                        ..Default::default()
+                    },
+                )
+                .await?;
+            let held = settings.hold_low_confidence
+                && confidence.level == ConfidenceLevel::Low
+                && !self.person_approved(pull, progress.revised_at.as_deref()).await?;
+            let reasons = held.then(|| confidence.reasons.join(", "));
+            (Some(confidence), reasons)
+        };
+        let (lifecycle, next) = decide(Facts {
             draft: pull.status == PullStatus::Draft,
             stalled: progress.stalled,
             working_on,
             check_status: pull.check_status,
             review_pending: self.review_pending(&pull.id).await?,
-            has_checks: issue.as_ref().is_some_and(|issue| !issue.checks.is_empty()),
+            has_checks,
             revisions: progress.revisions,
             review,
             behind,
@@ -516,7 +572,9 @@ impl Work {
                 .await?,
             queued: self.queued_entry(&pull.id).await?,
             workflows: WorkflowFacts::of(&self.statuses(&pull.repo_id, pull.head_commit.as_deref()).await?),
-        })))
+            low_confidence,
+        });
+        Ok(Some((lifecycle, next, confidence)))
     }
 
     /// The latest request for changes by a person other than the author,
@@ -971,13 +1029,7 @@ impl Work {
             "pull.merge_requested",
             &pull.repo_id,
             actor,
-            PullEvent {
-                pull_id: pull.id.clone(),
-                repo_id: pull.repo_id.clone(),
-                number: pull.number,
-                issue: pull.issue,
-                ..PullEvent::default()
-            },
+            Self::pull_event(pull),
         )
         .await
     }
@@ -1250,6 +1302,7 @@ mod tests {
             person_request: None,
             queued: None,
             workflows: WorkflowFacts::default(),
+            low_confidence: None,
         }
     }
 
@@ -1552,6 +1605,39 @@ mod tests {
             ..facts()
         };
         assert_eq!(outcome(asked), (Stage::Reviewing, "wait"));
+    }
+
+    #[test]
+    fn a_low_confidence_change_waits_for_a_person_instead_of_merging() {
+        let held = || Facts {
+            review: reviewed(Some(Verdict::Approve)),
+            auto_merge: true,
+            low_confidence: Some("tests not added, 3 revisions".to_owned()),
+            ..facts()
+        };
+        let (lifecycle, next) = decide(held());
+        assert_eq!(lifecycle.stage, Stage::NeedsYou);
+        assert!(matches!(next, Next::Wait), "auto-merge must not land it");
+        assert_eq!(
+            lifecycle.detail,
+            "The agent's confidence in this change is low (tests not added, 3 revisions). This repository asks a person before merging it: approve it to let it land, or ask for changes."
+        );
+        // Without auto-merge it needs someone too, and says why.
+        assert_eq!(outcome(Facts { auto_merge: false, ..held() }), (Stage::NeedsYou, "wait"));
+        // Not held (the setting is off, or a person approved): it lands.
+        assert_eq!(outcome(Facts { low_confidence: None, ..held() }), (Stage::Ready, "merge"));
+        // It holds only a change that is otherwise ready: what comes first,
+        // such as failed checks, is still dealt with first.
+        let failing = Facts {
+            check_status: Some(CheckStatus::Failed),
+            ..held()
+        };
+        assert_eq!(outcome(failing), (Stage::Revising, "revise for checks"));
+        let unapproved = Facts {
+            approvals_missing: Some("This repository requires 1 approving review.".to_owned()),
+            ..held()
+        };
+        assert_eq!(decide(unapproved).0.detail, "This repository requires 1 approving review.");
     }
 
     #[test]

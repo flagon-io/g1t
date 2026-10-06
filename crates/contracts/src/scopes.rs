@@ -1,0 +1,794 @@
+//! Scopes: what an access token may do on its owner's behalf.
+//!
+//! A personal access token, a workspace's token and an application signed
+//! in with OAuth each carry a set of scopes. A token reaches whatever the
+//! one it acts as can reach: a person's token, that person's workspaces and
+//! repositories; a workspace's token, that workspace. What a request may do
+//! is the intersection of two things: the role of whoever the token acts as
+//! (see [`crate::access`]) and the token's scopes.
+//!
+//! Each scope is a resource and a level, written `resource:level`, such as
+//! `issues:write`. A higher level of a resource includes the lower ones:
+//! `repo:admin` includes `repo:write`, which includes `repo:read`.
+//!
+//! This module is the one source of truth: the API (REST and MCP) and git
+//! enforce it, and identity stores it. `packages/contracts/src/scopes.ts`
+//! mirrors the table for the site; a test keeps the two the same.
+
+use serde::{Deserialize, Serialize};
+
+use crate::credentials::Decision;
+
+/// Something a token can be given access to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Resource {
+    Account,
+    Workspace,
+    Repo,
+    Code,
+    Issues,
+    PullRequests,
+    Agents,
+    Workflows,
+    Memory,
+    Access,
+    Webhooks,
+    Secrets,
+}
+
+impl Resource {
+    pub const ALL: [Resource; 12] = [
+        Resource::Repo,
+        Resource::Code,
+        Resource::Issues,
+        Resource::PullRequests,
+        Resource::Agents,
+        Resource::Workflows,
+        Resource::Memory,
+        Resource::Account,
+        Resource::Workspace,
+        Resource::Access,
+        Resource::Webhooks,
+        Resource::Secrets,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Resource::Account => "account",
+            Resource::Workspace => "workspace",
+            Resource::Repo => "repo",
+            Resource::Code => "code",
+            Resource::Issues => "issues",
+            Resource::PullRequests => "pull_requests",
+            Resource::Agents => "agents",
+            Resource::Workflows => "workflows",
+            Resource::Memory => "memory",
+            Resource::Access => "access",
+            Resource::Webhooks => "webhooks",
+            Resource::Secrets => "secrets",
+        }
+    }
+
+    /// Its name, for people.
+    pub fn label(self) -> &'static str {
+        match self {
+            Resource::Account => "Your account",
+            Resource::Workspace => "Workspaces",
+            Resource::Repo => "Repositories",
+            Resource::Code => "Code",
+            Resource::Issues => "Issues",
+            Resource::PullRequests => "Pull requests",
+            Resource::Agents => "g1t agents",
+            Resource::Workflows => "Workflows",
+            Resource::Memory => "Memory and context",
+            Resource::Access => "Who has access",
+            Resource::Webhooks => "Webhooks",
+            Resource::Secrets => "Secrets and variables",
+        }
+    }
+}
+
+/// How much of a resource.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Level {
+    Read,
+    Write,
+    /// Starting g1t's agents, which spends the workspace's money.
+    Run,
+    Admin,
+}
+
+impl Level {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Level::Read => "read",
+            Level::Write => "write",
+            Level::Run => "run",
+            Level::Admin => "admin",
+        }
+    }
+}
+
+/// One scope. Its text form, `resource:level`, is what tokens store, OAuth
+/// clients ask for, and errors name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Scope {
+    RepoRead,
+    RepoWrite,
+    RepoAdmin,
+    CodeRead,
+    CodeWrite,
+    IssuesRead,
+    IssuesWrite,
+    PullRequestsRead,
+    PullRequestsWrite,
+    AgentsRun,
+    WorkflowsRead,
+    WorkflowsWrite,
+    MemoryRead,
+    MemoryWrite,
+    AccountRead,
+    AccountWrite,
+    WorkspaceRead,
+    WorkspaceAdmin,
+    AccessRead,
+    AccessAdmin,
+    WebhooksRead,
+    WebhooksAdmin,
+    SecretsRead,
+    SecretsAdmin,
+}
+
+impl Scope {
+    /// Every scope, grouped by resource, least first.
+    pub const ALL: [Scope; 24] = [
+        Scope::RepoRead,
+        Scope::RepoWrite,
+        Scope::RepoAdmin,
+        Scope::CodeRead,
+        Scope::CodeWrite,
+        Scope::IssuesRead,
+        Scope::IssuesWrite,
+        Scope::PullRequestsRead,
+        Scope::PullRequestsWrite,
+        Scope::AgentsRun,
+        Scope::WorkflowsRead,
+        Scope::WorkflowsWrite,
+        Scope::MemoryRead,
+        Scope::MemoryWrite,
+        Scope::AccountRead,
+        Scope::AccountWrite,
+        Scope::WorkspaceRead,
+        Scope::WorkspaceAdmin,
+        Scope::AccessRead,
+        Scope::AccessAdmin,
+        Scope::WebhooksRead,
+        Scope::WebhooksAdmin,
+        Scope::SecretsRead,
+        Scope::SecretsAdmin,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Scope::RepoRead => "repo:read",
+            Scope::RepoWrite => "repo:write",
+            Scope::RepoAdmin => "repo:admin",
+            Scope::CodeRead => "code:read",
+            Scope::CodeWrite => "code:write",
+            Scope::IssuesRead => "issues:read",
+            Scope::IssuesWrite => "issues:write",
+            Scope::PullRequestsRead => "pull_requests:read",
+            Scope::PullRequestsWrite => "pull_requests:write",
+            Scope::AgentsRun => "agents:run",
+            Scope::WorkflowsRead => "workflows:read",
+            Scope::WorkflowsWrite => "workflows:write",
+            Scope::MemoryRead => "memory:read",
+            Scope::MemoryWrite => "memory:write",
+            Scope::AccountRead => "account:read",
+            Scope::AccountWrite => "account:write",
+            Scope::WorkspaceRead => "workspace:read",
+            Scope::WorkspaceAdmin => "workspace:admin",
+            Scope::AccessRead => "access:read",
+            Scope::AccessAdmin => "access:admin",
+            Scope::WebhooksRead => "webhooks:read",
+            Scope::WebhooksAdmin => "webhooks:admin",
+            Scope::SecretsRead => "secrets:read",
+            Scope::SecretsAdmin => "secrets:admin",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Scope> {
+        let text = text.trim().to_ascii_lowercase();
+        Scope::ALL.into_iter().find(|scope| scope.as_str() == text)
+    }
+
+    pub fn resource(self) -> Resource {
+        let name = self.as_str().split_once(':').map_or("", |(resource, _)| resource);
+        Resource::ALL
+            .into_iter()
+            .find(|resource| resource.as_str() == name)
+            .unwrap_or(Resource::Account)
+    }
+
+    pub fn level(self) -> Level {
+        match self.as_str().rsplit_once(':').map_or("", |(_, level)| level) {
+            "write" => Level::Write,
+            "run" => Level::Run,
+            "admin" => Level::Admin,
+            _ => Level::Read,
+        }
+    }
+
+    /// Whether holding `self` gives `other`: the same resource, at the same
+    /// level or a lower one.
+    pub fn includes(self, other: Scope) -> bool {
+        self.resource() == other.resource() && self.level() >= other.level()
+    }
+
+    /// Changes that are hard or impossible to undo, or that decide who can
+    /// reach what. Shown behind a warning wherever scopes are chosen.
+    pub fn dangerous(self) -> bool {
+        self.level() == Level::Admin
+    }
+
+    /// What it lets a token do, in plain words.
+    pub fn describe(self) -> &'static str {
+        match self {
+            Scope::RepoRead => "See repositories, their settings, labels and timelines, and search",
+            Scope::RepoWrite => "Create repositories, rename branches and change how pull requests merge",
+            Scope::RepoAdmin => "Rename, archive, transfer, delete or change who can see a repository",
+            Scope::CodeRead => "Clone and fetch private repositories with git",
+            Scope::CodeWrite => "Push commits with git",
+            Scope::IssuesRead => "Read issues, comments and plans",
+            Scope::IssuesWrite => "Open, edit, close and comment on issues",
+            Scope::PullRequestsRead => "Read pull requests, their changes, sessions and merge queues",
+            Scope::PullRequestsWrite => "Open, review, close and merge pull requests",
+            Scope::AgentsRun => "Put g1t agents to work and message them, which uses the workspace's money",
+            Scope::WorkflowsRead => "Read workflows, runs and logs",
+            Scope::WorkflowsWrite => "Run, cancel, rerun and turn workflows on or off",
+            Scope::MemoryRead => "Recall memory and search the workspace's context",
+            Scope::MemoryWrite => "Save memory for the next agent",
+            Scope::AccountRead => "Read your email addresses, invites and invitations",
+            Scope::AccountWrite => "Change your email addresses, make invites and answer invitations",
+            Scope::WorkspaceRead => "Read workspace invites, integrations and model routes",
+            Scope::WorkspaceAdmin => "Create and delete workspaces, invite members, connect integrations",
+            Scope::AccessRead => "See who has access to repositories",
+            Scope::AccessAdmin => "Give and take away access to repositories",
+            Scope::WebhooksRead => "See webhooks and their deliveries",
+            Scope::WebhooksAdmin => "Create, change and delete webhooks",
+            Scope::SecretsRead => "List secrets (never their values) and read variables",
+            Scope::SecretsAdmin => "Set and delete secrets and variables",
+        }
+    }
+}
+
+impl Serialize for Scope {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for Scope {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Scope::parse(&text).ok_or_else(|| serde::de::Error::custom(format!("unknown scope {text}")))
+    }
+}
+
+/// Scopes as written in a token's row or an OAuth request: separated by
+/// spaces or commas. Unknown names are left out, so a client asking for a
+/// scope from a newer version gets the rest.
+pub fn parse_scopes(text: &str) -> Vec<Scope> {
+    let mut scopes: Vec<Scope> = text
+        .split(|c: char| c.is_whitespace() || c == ',')
+        .filter_map(Scope::parse)
+        .collect();
+    normalize(&mut scopes);
+    scopes
+}
+
+/// In table order, without repeats.
+pub fn normalize(scopes: &mut Vec<Scope>) {
+    let given = std::mem::take(scopes);
+    scopes.extend(Scope::ALL.into_iter().filter(|scope| given.contains(scope)));
+}
+
+/// Space-separated, as stored and as OAuth writes them.
+pub fn scopes_text(scopes: &[Scope]) -> String {
+    scopes.iter().map(|scope| scope.as_str()).collect::<Vec<_>>().join(" ")
+}
+
+/// What a token stores for full access, which is not a scope a client can
+/// ask for by name.
+pub const FULL_ACCESS: &str = "*";
+
+/// Starting points for choosing scopes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Preset {
+    ReadOnly,
+    Agent,
+    Ci,
+    Full,
+}
+
+impl Preset {
+    pub const ALL: [Preset; 4] = [Preset::ReadOnly, Preset::Agent, Preset::Ci, Preset::Full];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Preset::ReadOnly => "read_only",
+            Preset::Agent => "agent",
+            Preset::Ci => "ci",
+            Preset::Full => "full",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Preset::ReadOnly => "Read only",
+            Preset::Agent => "Agent",
+            Preset::Ci => "CI",
+            Preset::Full => "Full access",
+        }
+    }
+
+    /// Its scopes; `None` for full access.
+    pub fn scopes(self) -> Option<Vec<Scope>> {
+        let reads = || Scope::ALL.into_iter().filter(|scope| scope.level() == Level::Read);
+        match self {
+            Preset::ReadOnly => Some(reads().collect()),
+            Preset::Agent => {
+                let mut scopes: Vec<Scope> = reads().collect();
+                scopes.extend([
+                    Scope::CodeWrite,
+                    Scope::IssuesWrite,
+                    Scope::PullRequestsWrite,
+                    Scope::AgentsRun,
+                    Scope::MemoryWrite,
+                ]);
+                normalize(&mut scopes);
+                Some(scopes)
+            }
+            Preset::Ci => Some(vec![
+                Scope::RepoRead,
+                Scope::CodeRead,
+                Scope::CodeWrite,
+                Scope::WorkflowsRead,
+                Scope::WorkflowsWrite,
+            ]),
+            Preset::Full => None,
+        }
+    }
+}
+
+/// What an OAuth client gets when it asks for nothing in particular: the
+/// agent preset. Never an admin scope.
+pub fn oauth_default() -> Vec<Scope> {
+    Preset::Agent.scopes().unwrap_or_default()
+}
+
+/// Set on a [`crate::User`] resolved from an access token: what the token
+/// may do. Absent on a signed-in session, which may do whatever its person
+/// can.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TokenAccess {
+    /// The token's id, as audit entries and errors name it.
+    #[serde(default)]
+    pub token_id: String,
+    /// Its scopes, as `resource:level`. Absent: full access, everything the
+    /// person (or workspace) can do.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scopes: Option<Vec<String>>,
+    /// Made before tokens had scopes: full access until someone narrows it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub legacy: bool,
+}
+
+impl TokenAccess {
+    /// Full access to everything: the access tokens made before scopes had.
+    pub fn full() -> Self {
+        TokenAccess::default()
+    }
+
+    pub fn is_full(&self) -> bool {
+        self.scopes.is_none()
+    }
+
+    /// The scopes it holds, or `None` for full access.
+    pub fn granted(&self) -> Option<Vec<Scope>> {
+        self.scopes
+            .as_ref()
+            .map(|scopes| scopes.iter().filter_map(|scope| Scope::parse(scope)).collect())
+    }
+
+    pub fn allows(&self, needed: Scope) -> bool {
+        match self.granted() {
+            None => true,
+            Some(granted) => granted.iter().any(|held| held.includes(needed)),
+        }
+    }
+}
+
+/// Every operation of the API and MCP server, with the scope it needs. An
+/// operation in [`NO_SCOPE`] needs none. The API checks that every one of
+/// its operations is in exactly one of the two.
+pub const OPERATIONS: &[(&str, Scope)] = &[
+    // Your account.
+    ("list_emails", Scope::AccountRead),
+    ("add_email", Scope::AccountWrite),
+    ("remove_email", Scope::AccountWrite),
+    ("update_email_settings", Scope::AccountWrite),
+    ("list_invites", Scope::AccountRead),
+    ("create_invite", Scope::AccountWrite),
+    ("revoke_invite", Scope::AccountWrite),
+    ("list_my_repo_invitations", Scope::AccountRead),
+    ("accept_repo_invitation", Scope::AccountWrite),
+    ("decline_repo_invitation", Scope::AccountWrite),
+    // Workspaces, their invites and integrations.
+    ("create_workspace", Scope::WorkspaceAdmin),
+    ("delete_workspace", Scope::WorkspaceAdmin),
+    ("list_workspace_invites", Scope::WorkspaceRead),
+    ("invite_member", Scope::WorkspaceAdmin),
+    ("revoke_workspace_invite", Scope::WorkspaceAdmin),
+    ("list_integrations", Scope::WorkspaceRead),
+    ("connect_integration", Scope::WorkspaceAdmin),
+    ("disconnect_integration", Scope::WorkspaceAdmin),
+    ("test_integration", Scope::WorkspaceAdmin),
+    ("get_model_routes", Scope::WorkspaceRead),
+    ("set_model_routes", Scope::WorkspaceAdmin),
+    // Repositories.
+    ("list_repos", Scope::RepoRead),
+    ("get_repo", Scope::RepoRead),
+    ("search", Scope::RepoRead),
+    ("list_events", Scope::RepoRead),
+    ("list_labels", Scope::RepoRead),
+    ("get_repo_settings", Scope::RepoRead),
+    ("list_deleted_repos", Scope::RepoRead),
+    ("create_repo", Scope::RepoWrite),
+    ("update_repo", Scope::RepoWrite),
+    ("update_repo_settings", Scope::RepoWrite),
+    ("rename_branch", Scope::RepoWrite),
+    ("rename_repo", Scope::RepoAdmin),
+    ("transfer_repo", Scope::RepoAdmin),
+    ("archive_repo", Scope::RepoAdmin),
+    ("unarchive_repo", Scope::RepoAdmin),
+    ("set_repo_visibility", Scope::RepoAdmin),
+    ("delete_repo", Scope::RepoAdmin),
+    ("restore_repo", Scope::RepoAdmin),
+    ("purge_repo", Scope::RepoAdmin),
+    // Issues and plans.
+    ("list_issues", Scope::IssuesRead),
+    ("get_issue", Scope::IssuesRead),
+    ("get_plan", Scope::IssuesRead),
+    ("create_issue", Scope::IssuesWrite),
+    ("update_issue", Scope::IssuesWrite),
+    ("close_issue", Scope::IssuesWrite),
+    ("reopen_issue", Scope::IssuesWrite),
+    ("add_comment", Scope::IssuesWrite),
+    ("import_issue", Scope::IssuesWrite),
+    ("apply_plan", Scope::IssuesWrite),
+    // Pull requests.
+    ("list_pull_requests", Scope::PullRequestsRead),
+    ("get_pull_request", Scope::PullRequestsRead),
+    ("get_pull_request_changes", Scope::PullRequestsRead),
+    ("read_session", Scope::PullRequestsRead),
+    ("get_merge_queue", Scope::PullRequestsRead),
+    ("create_pull_request", Scope::PullRequestsWrite),
+    ("record_session", Scope::PullRequestsWrite),
+    ("mark_pull_request_ready", Scope::PullRequestsWrite),
+    ("close_pull_request", Scope::PullRequestsWrite),
+    ("review_pull_request", Scope::PullRequestsWrite),
+    ("merge_pull_request", Scope::PullRequestsWrite),
+    // g1t's agents.
+    ("assign_issue", Scope::AgentsRun),
+    ("delegate", Scope::AgentsRun),
+    ("plan_work", Scope::AgentsRun),
+    ("message_agent", Scope::AgentsRun),
+    ("answer_message", Scope::AgentsRun),
+    ("take_messages", Scope::AgentsRun),
+    // Workflows.
+    ("list_workflows", Scope::WorkflowsRead),
+    ("list_workflow_runs", Scope::WorkflowsRead),
+    ("get_workflow_run", Scope::WorkflowsRead),
+    ("get_job_logs", Scope::WorkflowsRead),
+    ("dispatch_workflow", Scope::WorkflowsWrite),
+    ("cancel_workflow_run", Scope::WorkflowsWrite),
+    ("rerun_workflow_run", Scope::WorkflowsWrite),
+    ("update_workflow", Scope::WorkflowsWrite),
+    // Memory and the context hub.
+    ("recall", Scope::MemoryRead),
+    ("search_context", Scope::MemoryRead),
+    ("get_entity", Scope::MemoryRead),
+    ("get_context", Scope::MemoryRead),
+    ("remember", Scope::MemoryWrite),
+    // Who has access.
+    ("list_collaborators", Scope::AccessRead),
+    ("get_collaborator_permission", Scope::AccessRead),
+    ("list_repo_invitations", Scope::AccessRead),
+    ("list_outside_collaborators", Scope::AccessRead),
+    ("add_collaborator", Scope::AccessAdmin),
+    ("update_collaborator", Scope::AccessAdmin),
+    ("remove_collaborator", Scope::AccessAdmin),
+    ("revoke_repo_invitation", Scope::AccessAdmin),
+    ("set_base_permission", Scope::AccessAdmin),
+    // Webhooks.
+    ("list_webhooks", Scope::WebhooksRead),
+    ("list_webhook_deliveries", Scope::WebhooksRead),
+    ("create_webhook", Scope::WebhooksAdmin),
+    ("update_webhook", Scope::WebhooksAdmin),
+    ("delete_webhook", Scope::WebhooksAdmin),
+    ("ping_webhook", Scope::WebhooksAdmin),
+    ("redeliver_webhook", Scope::WebhooksAdmin),
+    // Secrets and variables.
+    ("list_actions_secrets", Scope::SecretsRead),
+    ("list_actions_variables", Scope::SecretsRead),
+    ("set_actions_secret", Scope::SecretsAdmin),
+    ("delete_actions_secret", Scope::SecretsAdmin),
+    ("set_actions_variable", Scope::SecretsAdmin),
+    ("delete_actions_variable", Scope::SecretsAdmin),
+];
+
+/// Operations any token may use: saying who it is.
+pub const NO_SCOPE: &[&str] = &["whoami"];
+
+/// The scope `operation` needs. `None` for one in [`NO_SCOPE`]; an
+/// operation in neither list needs full access.
+pub fn scope_for(operation: &str) -> Option<Scope> {
+    OPERATIONS
+        .iter()
+        .find(|(name, _)| *name == operation)
+        .map(|(_, scope)| *scope)
+}
+
+/// What a token needs for `operation` with this input beyond its own
+/// scope: starting agents from an operation that can, and making a
+/// repository public or private.
+pub fn extra_scopes(operation: &str, input: &serde_json::Value) -> Vec<Scope> {
+    let mut extra = Vec::new();
+    let assigns = input["assign"].as_bool() == Some(true)
+        || input["agent"].as_bool() == Some(true)
+        || input["assign_agent"].as_bool() == Some(true);
+    if assigns && matches!(operation, "apply_plan" | "import_issue" | "create_issue") {
+        extra.push(Scope::AgentsRun);
+    }
+    // Opening the issue an agent is put on.
+    if operation == "delegate" {
+        extra.push(Scope::IssuesWrite);
+    }
+    if operation == "update_repo" && (input.get("private").is_some_and(|v| !v.is_null()) || input.get("default_branch").is_some_and(|v| !v.is_null())) {
+        extra.push(Scope::RepoAdmin);
+    }
+    extra
+}
+
+/// The scopes a call needs, its own first.
+pub fn needed(operation: &str, input: &serde_json::Value) -> Vec<Scope> {
+    scope_for(operation)
+        .into_iter()
+        .chain(extra_scopes(operation, input))
+        .collect()
+}
+
+/// Whether `access` may use `operation` with `input`. The person's (or
+/// workspace's) role is checked after this, by the service that owns what
+/// was asked about.
+pub fn decide(access: &TokenAccess, operation: &str, input: &serde_json::Value) -> Decision {
+    let rule = if access.legacy { "token:legacy" } else { "token:scope" };
+    if access.scopes.is_some() {
+        let known = NO_SCOPE.contains(&operation) || scope_for(operation).is_some();
+        if !known {
+            return Decision::deny("token:scope", format!("This access token cannot use {operation}: it needs full access."));
+        }
+        if let Some(missing) = needed(operation, input).into_iter().find(|scope| !access.allows(*scope)) {
+            return Decision::deny(
+                "token:scope",
+                format!("This access token needs the {} scope to use {operation}.", missing.as_str()),
+            );
+        }
+    }
+    Decision::allow(rule)
+}
+
+/// Whether a token may clone or fetch (`write` false), or push to (`write`
+/// true), a repository with git. `public` is whether anyone may read it,
+/// which needs no scope.
+pub fn decide_git(access: &TokenAccess, write: bool, public: bool) -> Decision {
+    let needed = if write { Scope::CodeWrite } else { Scope::CodeRead };
+    if !access.allows(needed) && (write || !public) {
+        return Decision::deny(
+            "token:scope",
+            format!("This access token needs the {} scope to {} with git.", needed.as_str(), if write { "push" } else { "clone or fetch a private repository" }),
+        );
+    }
+    Decision::allow(if access.legacy { "token:legacy" } else { "token:scope" })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn token(scopes: &[Scope]) -> TokenAccess {
+        TokenAccess {
+            token_id: "tok_1".to_owned(),
+            scopes: Some(scopes.iter().map(|scope| scope.as_str().to_owned()).collect()),
+            legacy: false,
+        }
+    }
+
+    #[test]
+    fn every_scope_reads_back_and_belongs_to_a_resource() {
+        for scope in Scope::ALL {
+            assert_eq!(Scope::parse(scope.as_str()), Some(scope));
+            assert!(scope.as_str().starts_with(scope.resource().as_str()));
+            assert!(scope.includes(scope));
+        }
+        assert_eq!(Scope::parse(" Issues:Write "), Some(Scope::IssuesWrite));
+        assert_eq!(Scope::parse("issues"), None);
+    }
+
+    #[test]
+    fn a_higher_level_includes_the_lower_ones_of_its_resource_only() {
+        assert!(Scope::RepoAdmin.includes(Scope::RepoRead));
+        assert!(Scope::RepoAdmin.includes(Scope::RepoWrite));
+        assert!(Scope::IssuesWrite.includes(Scope::IssuesRead));
+        assert!(!Scope::IssuesRead.includes(Scope::IssuesWrite));
+        assert!(!Scope::RepoAdmin.includes(Scope::CodeWrite));
+        assert!(!Scope::PullRequestsWrite.includes(Scope::IssuesWrite));
+    }
+
+    #[test]
+    fn operations_are_listed_once_and_never_also_free() {
+        let mut seen = std::collections::HashSet::new();
+        for (name, _) in OPERATIONS {
+            assert!(seen.insert(*name), "{name} twice");
+            assert!(!NO_SCOPE.contains(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn scopes_are_parsed_from_oauth_text_leaving_out_unknown_ones() {
+        assert_eq!(
+            parse_scopes("issues:write repo:read,bogus:thing issues:write"),
+            vec![Scope::RepoRead, Scope::IssuesWrite]
+        );
+        assert_eq!(scopes_text(&[Scope::RepoRead, Scope::IssuesWrite]), "repo:read issues:write");
+    }
+
+    #[test]
+    fn the_oauth_default_is_the_agent_preset_and_never_admin() {
+        let scopes = oauth_default();
+        assert!(scopes.contains(&Scope::IssuesWrite));
+        assert!(scopes.contains(&Scope::PullRequestsWrite));
+        assert!(scopes.contains(&Scope::AgentsRun));
+        assert!(scopes.iter().all(|scope| !scope.dangerous()), "{scopes:?}");
+        for read in Scope::ALL.into_iter().filter(|scope| scope.level() == Level::Read) {
+            assert!(scopes.contains(&read), "{read:?}");
+        }
+        assert!(Preset::ReadOnly.scopes().unwrap().iter().all(|scope| scope.level() == Level::Read));
+        assert_eq!(Preset::Full.scopes(), None);
+    }
+
+    #[test]
+    fn a_legacy_token_can_do_everything() {
+        let legacy = TokenAccess { legacy: true, ..TokenAccess::full() };
+        for (operation, _) in OPERATIONS {
+            assert!(decide(&legacy, operation, &json!({})).allowed, "{operation}");
+        }
+        assert_eq!(decide(&legacy, "delete_repo", &json!({})).rule, "token:legacy");
+    }
+
+    #[test]
+    fn a_missing_scope_is_named() {
+        let read = token(&[Scope::IssuesRead]);
+        assert!(decide(&read, "get_issue", &json!({})).allowed);
+        assert!(decide(&read, "whoami", &json!({})).allowed);
+        let refused = decide(&read, "create_issue", &json!({}));
+        assert!(!refused.allowed);
+        assert_eq!(refused.reason.as_deref(), Some("This access token needs the issues:write scope to use create_issue."));
+        // An operation the table does not know needs full access.
+        assert!(!decide(&read, "something_new", &json!({})).allowed);
+    }
+
+    #[test]
+    fn starting_agents_from_another_operation_needs_agents_run() {
+        let writer = token(&[Scope::IssuesWrite]);
+        assert!(decide(&writer, "apply_plan", &json!({})).allowed);
+        let refused = decide(&writer, "apply_plan", &json!({ "assign": true }));
+        assert!(refused.reason.unwrap().contains("agents:run"));
+        let maintainer = token(&[Scope::RepoWrite]);
+        assert!(decide(&maintainer, "update_repo", &json!({ "description": "x" })).allowed);
+        assert!(!decide(&maintainer, "update_repo", &json!({ "private": true })).allowed);
+    }
+
+    #[test]
+    fn delegating_needs_both_agents_and_issues() {
+        let agents = token(&[Scope::AgentsRun]);
+        assert!(decide(&agents, "delegate", &json!({})).reason.unwrap().contains("issues:write"));
+        let both = token(&[Scope::AgentsRun, Scope::IssuesWrite]);
+        assert!(decide(&both, "delegate", &json!({})).allowed);
+    }
+
+    #[test]
+    fn git_push_needs_code_write_and_private_reads_need_code_read() {
+        let reader = token(&[Scope::CodeRead]);
+        assert!(decide_git(&reader, false, false).allowed);
+        let refused = decide_git(&reader, true, false);
+        assert!(!refused.allowed);
+        assert!(refused.reason.unwrap().contains("code:write"));
+        let issues = token(&[Scope::IssuesWrite]);
+        assert!(!decide_git(&issues, false, false).allowed);
+        assert!(decide_git(&issues, false, true).allowed, "public code needs no scope");
+        assert!(!decide_git(&issues, true, true).allowed, "pushing to public code still needs code:write");
+        let writer = token(&[Scope::CodeWrite]);
+        assert!(decide_git(&writer, true, false).allowed);
+        assert!(decide_git(&writer, false, false).allowed, "code:write includes code:read");
+        assert!(decide_git(&TokenAccess::full(), true, false).allowed);
+    }
+
+    #[test]
+    fn token_access_travels_as_json() {
+        let access = token(&[Scope::IssuesRead]);
+        let wire = serde_json::to_value(&access).unwrap();
+        assert_eq!(wire["scopes"], json!(["issues:read"]));
+        assert!(wire.get("resources").is_none());
+        let back: TokenAccess = serde_json::from_value(wire).unwrap();
+        assert_eq!(back, access);
+        let full: TokenAccess = serde_json::from_value(json!({})).unwrap();
+        assert!(full.is_full());
+        // A reach written by an older version is ignored: a token reaches
+        // whatever its owner can.
+        let older: TokenAccess = serde_json::from_value(json!({
+            "token_id": "tok_1",
+            "scopes": ["issues:read"],
+            "resources": { "kind": "repositories", "repositories": ["acme/rocket"] },
+        }))
+        .unwrap();
+        assert_eq!(older, access);
+    }
+
+    /// The site's copy of the table, `packages/contracts/src/scopes.ts`,
+    /// lists the same scopes in the same order, the same operations with
+    /// the same scopes, and the same presets.
+    #[test]
+    fn the_typescript_mirror_has_the_same_table() {
+        let ts = include_str!("../../../packages/contracts/src/scopes.ts");
+        let section = |start: &str| {
+            ts.split_once(start)
+                .and_then(|(_, rest)| rest.split_once("] as const"))
+                .map(|(table, _)| table)
+                .unwrap_or_else(|| panic!("{start} in scopes.ts"))
+        };
+        let scopes: Vec<&str> = section("export const SCOPES = [")
+            .lines()
+            .filter_map(|line| line.split_once("scope: \"").and_then(|(_, rest)| rest.split_once('"')).map(|(scope, _)| scope))
+            .collect();
+        let expected: Vec<&str> = Scope::ALL.iter().map(|scope| scope.as_str()).collect();
+        assert_eq!(scopes, expected);
+        let operations: Vec<(String, String)> = section("export const OPERATION_SCOPES = [")
+            .lines()
+            .filter_map(|line| {
+                let mut quoted = line.split('"').skip(1).step_by(2);
+                Some((quoted.next()?.to_owned(), quoted.next()?.to_owned()))
+            })
+            .collect();
+        let expected: Vec<(String, String)> = OPERATIONS
+            .iter()
+            .map(|(name, scope)| ((*name).to_owned(), scope.as_str().to_owned()))
+            .collect();
+        assert_eq!(operations, expected);
+        for preset in Preset::ALL {
+            let list = section(&format!("{}: [", preset.as_str()));
+            let mirrored: Vec<&str> = list
+                .split(',')
+                .map(|item| item.trim().trim_matches('"'))
+                .filter(|item| !item.is_empty())
+                .collect();
+            let expected: Vec<&str> = preset
+                .scopes()
+                .map(|scopes| scopes.iter().map(|scope| scope.as_str()).collect())
+                .unwrap_or_else(|| vec!["*"]);
+            assert_eq!(mirrored, expected, "{}", preset.as_str());
+        }
+    }
+}

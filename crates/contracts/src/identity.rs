@@ -29,6 +29,15 @@ pub struct AccessToken {
     /// For a workspace's token, the username of the member who made it.
     /// Null once that account is gone, and on personal tokens.
     pub created_by: Option<String>,
+    /// Its scopes, as `resource:level`. Null: full access.
+    #[serde(default)]
+    pub scopes: Option<Vec<String>>,
+    /// Made before tokens had scopes: full access until someone narrows it.
+    #[serde(default)]
+    pub legacy: bool,
+    /// RFC 3339. Null: it does not expire.
+    #[serde(default)]
+    pub expires_at: Option<String>,
 }
 
 /// `sign_in`: verifies a username, or any confirmed email address of the
@@ -124,9 +133,29 @@ pub struct CreateAccessTokenArgs {
     pub user: User,
     pub name: String,
     /// When set, the token stops working after this many seconds and is
-    /// left out of the user's token list. Used for hosted attempts.
+    /// left out of the user's token list, unless `listed`. Used for hosted
+    /// attempts.
     #[serde(default)]
     pub ttl_seconds: Option<u64>,
+    /// Its scopes, as `resource:level`; unknown names are left out. Null:
+    /// full access.
+    #[serde(default)]
+    pub scopes: Option<Vec<String>>,
+    /// Listed with the person's tokens although it expires: one they made
+    /// themselves, with an expiry.
+    #[serde(default)]
+    pub listed: bool,
+}
+
+/// `update_access_token`: changes what one of a person's tokens may do.
+/// The token itself is unchanged. Returns `Outcome<AccessToken>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateAccessTokenArgs {
+    pub user: User,
+    pub id: String,
+    /// Null: full access.
+    #[serde(default)]
+    pub scopes: Option<Vec<String>>,
 }
 
 /// The plaintext token is returned once and never stored.
@@ -463,6 +492,13 @@ pub struct CreateWorkspaceTokenArgs {
     pub actor: User,
     pub slug: String,
     pub name: String,
+    /// Its scopes; null for full access.
+    #[serde(default)]
+    pub scopes: Option<Vec<String>>,
+    /// When set, the token stops working after this many seconds. It is
+    /// listed with the workspace's tokens either way. Null: no expiry.
+    #[serde(default)]
+    pub ttl_seconds: Option<u64>,
 }
 
 /// `remove_workspace_token`: owners only. Returns `Outcome<bool>`.
@@ -486,6 +522,9 @@ pub struct OAuthAuthorizeArgs {
     pub redirect_uri: String,
     /// PKCE challenge, method S256.
     pub code_challenge: String,
+    /// What the person granted, as `resource:level`. Null: full access.
+    #[serde(default)]
+    pub scopes: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -521,6 +560,9 @@ pub struct OAuthTokens {
     pub refresh_token: String,
     /// Seconds until the access token stops working.
     pub expires_in: u64,
+    /// The scopes granted, space-separated, or `*` for full access.
+    #[serde(default)]
+    pub scope: Option<String>,
 }
 
 /// An application a person has signed in to. Listed by `list_oauth_grants`
@@ -534,6 +576,23 @@ pub struct OAuthGrant {
     pub created_at: String,
     /// RFC 3339.
     pub last_used_at: String,
+    /// What the person granted. Null: full access.
+    #[serde(default)]
+    pub scopes: Option<Vec<String>>,
+    /// Signed in before applications were given scopes: full access until
+    /// someone narrows it.
+    #[serde(default)]
+    pub legacy: bool,
+}
+
+/// `update_oauth_grant`: changes what an application the person signed in
+/// to may do, at once and when it refreshes. Returns `Outcome<OAuthGrant>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateOAuthGrantArgs {
+    pub user: User,
+    pub id: String,
+    #[serde(default)]
+    pub scopes: Option<Vec<String>>,
 }
 
 

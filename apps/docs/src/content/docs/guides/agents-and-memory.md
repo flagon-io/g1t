@@ -99,7 +99,8 @@ or closed), or by pull request number.
 A session's page shows its runs, each with its steps, then the session
 itself: prompts, what the agent said, the tools it ran and, with **Show
 tool results**, what they returned. Sessions from your own agents, recorded
-with `record_session`, are listed the same way. See
+with the `pull_request` tool's `record_session` action, are listed the
+same way. See
 [sessions and why-blame](/guides/why-blame/) for what a session records.
 
 A session is as visible as its project. The model and the cost of a run
@@ -140,8 +141,8 @@ most recently, up to about 6,000 characters. Agents are told to treat it as
 notes from colleagues: usually right, sometimes out of date, and where it
 disagrees with the code, the code wins.
 
-Agents add to it as they work with the `remember` tool, choosing the scope
-themselves: `project` for this codebase, `workspace` for what holds across
+Agents add to it as they work with the `memory` tool's `remember` action,
+choosing the scope themselves: `project` for this codebase, `workspace` for what holds across
 projects. Each memory records where it came from: the person who wrote it,
 or the agent's run and the pull request it was working on, linked from the
 memory.
@@ -162,8 +163,8 @@ project's stack, owners, environments and the projects it uses with their
 live addresses, the kept memories closest to its task, and recent
 decisions.
 
-Your own agents can use memory too, through the [MCP tools](/reference/mcp/#memory)
-`remember` and `recall` or the API:
+Your own agents can use memory too, through the [`memory` tool](/reference/mcp/#memory)
+and its `remember` and `recall` actions, or the API:
 
 ```sh
 curl -X POST https://api.g1t.sh/repos/acme/web/memory \

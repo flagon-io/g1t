@@ -17,7 +17,7 @@ use sha2::{Digest, Sha256};
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
-use crate::rows::PullRow;
+use crate::rows::{PULL_COLUMNS, PullRow};
 use crate::{Work, optional};
 
 const MAX_OUTPUT_CHARS: usize = 16_000;
@@ -109,7 +109,7 @@ impl Work {
     pub(crate) async fn start_checks(&self, a: StartChecksArgs) -> Result<Outcome<CheckJob>> {
         let pull = self
             .db
-            .prepare("SELECT * FROM pulls WHERE id = ?")
+            .prepare(format!("SELECT {PULL_COLUMNS} FROM pulls WHERE id = ?"))
             .bind(&[a.pull_id.as_str().into()])?
             .first::<PullRow>(None)
             .await?
@@ -317,7 +317,7 @@ impl Work {
         if finished.is_some() {
             let pull = self
                 .db
-                .prepare("SELECT * FROM pulls WHERE id = ?")
+                .prepare(format!("SELECT {PULL_COLUMNS} FROM pulls WHERE id = ?"))
                 .bind(&[run.pull_id.as_str().into()])?
                 .first::<PullRow>(None)
                 .await?

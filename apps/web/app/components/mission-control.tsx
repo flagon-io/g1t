@@ -1,4 +1,4 @@
-import { ArrowDownWideNarrow, ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, LoaderCircle, Plus } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, LoaderCircle, Plus, Sparkles } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Link, useFetcher, useRouteLoaderData, useSearchParams } from "react-router";
 
@@ -27,6 +27,7 @@ import {
   whyFor,
 } from "../lib/mission-control";
 import { cn } from "../lib/cn";
+import { AgentComposer, type ComposerResult } from "./agent-composer";
 import { AgentSetup } from "./agent-setup";
 import type { ShellData } from "./shell";
 import { useLiveRefresh } from "./agents";
@@ -57,6 +58,7 @@ const CHIP_TONE: Record<Reason, string> = {
   blocking: "border-danger/35 bg-danger/10 text-danger",
   checks_failing: "border-danger/35 bg-danger/10 text-danger",
   outside_guardrails: "border-warn/35 bg-warn/10 text-warn",
+  low_confidence: "border-warn/35 bg-warn/10 text-warn",
   stalled: "border-warn/35 bg-warn/10 text-warn",
   asked_for_you: "border-merged/35 bg-merged/10 text-merged",
   needs_review: "border-info/35 bg-info/10 text-info",
@@ -97,9 +99,15 @@ function Facts({ facts }: { facts: Fact[] }) {
   return (
     <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5">
       {facts.map((fact) => (
-        <div key={fact.label} className="min-w-0">
+        <div key={fact.label} className={cn("min-w-0", fact.wide && "col-span-2")}>
           <dt className="text-xs text-faint">{fact.label}</dt>
-          <dd className={cn("mt-0.5 truncate text-sm font-medium tabular-nums", fact.tone ? FACT_TONE[fact.tone] : "text-fg-soft")}>
+          <dd
+            className={cn(
+              "mt-0.5 text-sm font-medium tabular-nums",
+              fact.wide ? "leading-5" : "truncate",
+              fact.tone ? FACT_TONE[fact.tone] : "text-fg-soft",
+            )}
+          >
             {fact.value}
           </dd>
         </div>
@@ -640,7 +648,7 @@ const TAB_LABEL: Record<Tab, string> = { needs: "Needs you", waiting: "Waiting o
 const TAB_SHORT: Record<Tab, string> = { needs: "Needs you", waiting: "Waiting", landed: "Today" };
 const SORT_LABEL: Record<Sort, string> = { impact: "By impact", newest: "Newest" };
 
-export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
+export default function MissionControl({ loaderData, delegated = null }: { loaderData: Loaded; delegated?: ComposerResult }) {
   const shell = useRouteLoaderData("root")?.shell as ShellData | null | undefined;
   const loaded: Loaded = loaderData;
   const [params] = useSearchParams();
@@ -774,10 +782,35 @@ export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
   const delta = change(week.total, week.previous);
   const feed = everyActivity ? groups : groups.slice(0, 8);
 
+  // "Put an agent on it" first, with "New issue" beside it as before: one
+  // split control, the agent the main way in.
   const newIssue =
     repos.length > 0 ? (
+      <div className="flex items-stretch">
+        <AgentComposer
+          repos={repos}
+          open={params.get("agent") === "new" || delegated != null}
+          result={delegated}
+          note={
+            canRunAgents ? null : (
+              <>
+                Agents need a model first.{" "}
+                {workspace && (
+                  <Link to={`/${workspace}/-/integrations`} className="font-medium text-fg hover:underline">
+                    Connect one
+                  </Link>
+                )}
+                . The issue still opens.
+              </>
+            )
+          }
+        >
+          <span className="inline-flex cursor-pointer items-center gap-1.5 rounded-l-md border border-line-strong bg-raised px-3 py-2 text-sm font-medium text-fg transition-colors hover:bg-line/60 group-open/composer:bg-line/60">
+            <Sparkles size={14} className="text-merged" /> Put an agent on it
+          </span>
+        </AgentComposer>
       <DropdownMenu>
-        <DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-md border border-line-strong px-3 py-2 text-sm font-medium text-fg/90 transition-colors hover:bg-raised hover:text-fg">
+        <DropdownMenuTrigger className="-ml-px inline-flex items-center gap-1.5 rounded-r-md border border-line-strong px-3 py-2 text-sm font-medium text-fg/90 transition-colors hover:bg-raised hover:text-fg">
           <Plus size={14} /> New issue
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
@@ -792,6 +825,7 @@ export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+      </div>
     ) : (
       <Link
         to={workspace ? `/new?workspace=${workspace}` : "/new"}

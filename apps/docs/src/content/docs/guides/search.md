@@ -156,7 +156,7 @@ still listed, labeled **archived**.
 ## From the API and agents
 
 The same search is `GET /search` in the API and the `search` tool over
-MCP. It takes `q` (the query), `type` and `page`, and needs no token for
+MCP, whose default action is `code`. It takes `q` (the query), `type` and `page`, and needs no token for
 public results:
 
 ```sh
@@ -169,5 +169,5 @@ agents can search too, with the token their run is given. See
 [MCP tools](/reference/mcp/#search).
 
 `search` looks across all of g1t. To ask about one workspace's catalog,
-docs and memory, use the [context hub](/guides/context-hub/) and its
-`search_context` tool.
+docs and memory, use the [context hub](/guides/context-hub/) and the
+`search` tool's `context` action.

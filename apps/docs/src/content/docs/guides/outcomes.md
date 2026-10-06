@@ -129,14 +129,14 @@ agents opened for work they found outside their own task.
 
 ## From the API or an agent
 
-The same flow is three operations. `plan_work` and `apply_plan` need the
-Write role or higher; `get_plan` needs Read.
+The same flow is three operations, the actions of the MCP `plan` tool.
+`create` and `apply` need the Write role or higher; `get` needs Read.
 
-| Tool | Route | |
+| `plan` action | Route | |
 | --- | --- | --- |
-| `plan_work` | `POST /repos/{owner}/{name}/plans` | Start a plan. Body: `brief`. Returns `plan_id` at once. |
-| `get_plan` | `GET /repos/{owner}/{name}/plans/{plan}` | The plan, its `status` and the issues it proposes. |
-| `apply_plan` | `POST /repos/{owner}/{name}/plans/{plan}/apply` | Open its issues. Body: `assign`, `keep`. |
+| `create` | `POST /repos/{owner}/{name}/plans` | Start a plan. Body: `brief`. Returns `plan_id` at once. |
+| `get` | `GET /repos/{owner}/{name}/plans/{plan}` | The plan, its `status` and the issues it proposes. |
+| `apply` | `POST /repos/{owner}/{name}/plans/{plan}/apply` | Open its issues. Body: `assign`, `keep`. |
 
 ```sh
 # 1. Start a plan.
@@ -162,7 +162,7 @@ proposed issue has `title`, `body`, `labels`, `checks`, `files`,
 `number`. `keep` takes positions counting from 1; leave it out to open
 every issue.
 
-Once a plan is applied, `get_plan` also returns:
+Once a plan is applied, `get` also returns:
 
 | Field | |
 | --- | --- |

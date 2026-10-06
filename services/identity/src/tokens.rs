@@ -7,6 +7,7 @@
 //! keeps working when the member who set it up leaves.
 
 use g1t_contracts::identity::*;
+use g1t_contracts::scopes::{FULL_ACCESS, Scope, TokenAccess, parse_scopes, scopes_text};
 use g1t_contracts::time::{SQL_NOW, rfc3339};
 use g1t_contracts::{FailureCode, Membership, Outcome, PrincipalKind, Role, User, Viewer, new_id};
 use g1t_kit::now_ms;
@@ -23,7 +24,8 @@ const MAX_TOKENS_PER_WORKSPACE: usize = 50;
 const WORKSPACE_ID_PREFIX: &str = "wsp_";
 
 const TOKEN_COLUMNS: &str = "access_tokens.id, access_tokens.name, access_tokens.created_at,
-  access_tokens.last_used_at, users.username AS created_by";
+  access_tokens.last_used_at, users.username AS created_by, access_tokens.scopes,
+  access_tokens.expires_at";
 
 /// Who a new token belongs to.
 enum Owner<'a> {
@@ -41,17 +43,50 @@ struct TokenRow {
     created_at: String,
     last_used_at: Option<String>,
     created_by: Option<String>,
+    scopes: Option<String>,
+    expires_at: Option<String>,
 }
 
-impl From<TokenRow> for AccessToken {
-    fn from(row: TokenRow) -> Self {
-        AccessToken {
-            id: row.id,
-            name: row.name,
-            created_at: row.created_at,
-            last_used_at: row.last_used_at,
-            created_by: row.created_by,
+/// What a token or grant may do, as it is to be stored. A token reaches
+/// whatever its owner can; only its scopes narrow that.
+///
+/// The `resources` columns (migration 0022) held a limit to some
+/// workspaces or repositories. That limit was retired (migration 0023);
+/// the columns stay, since D1 cannot drop them in place, and nothing
+/// reads or writes them.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Grant {
+    /// Null: full access.
+    pub scopes: Option<Vec<Scope>>,
+}
+
+impl Grant {
+    /// From what a caller asked for: unknown scopes are left out.
+    pub(crate) fn asked(scopes: &Option<Vec<String>>) -> Self {
+        Grant {
+            scopes: scopes.as_ref().map(|scopes| parse_scopes(&scopes.join(" "))),
         }
+    }
+
+    /// The `scopes` column: `*` for full access.
+    pub(crate) fn scopes_column(&self) -> String {
+        match &self.scopes {
+            None => FULL_ACCESS.to_owned(),
+            Some(scopes) => scopes_text(scopes),
+        }
+    }
+}
+
+/// A `scopes` column read back: the scopes (null for full access), and
+/// whether it is a legacy row, made before scopes.
+pub(crate) fn stored_scopes(column: Option<&str>) -> (Option<Vec<String>>, bool) {
+    match column {
+        None => (None, true),
+        Some(FULL_ACCESS) => (None, false),
+        Some(text) => (
+            Some(parse_scopes(text).iter().map(|scope| scope.as_str().to_owned()).collect()),
+            false,
+        ),
     }
 }
 
@@ -64,6 +99,7 @@ struct Presented {
     last_used_at: Option<String>,
     /// Set on an agent's token: what it may do, as JSON `AgentScope`.
     agent_scope: Option<String>,
+    scopes: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -84,7 +120,8 @@ impl Identity {
         let Some(presented) = self
             .db
             .prepare(format!(
-                "SELECT id, user_id, workspace_id, last_used_at, agent_scope FROM access_tokens
+                "SELECT id, user_id, workspace_id, last_used_at, agent_scope, scopes
+                 FROM access_tokens
                  WHERE token_hash = ? AND (expires_at IS NULL OR expires_at > {SQL_NOW})"
             ))
             .bind(&[crypto::sha256_hex(token).into()])?
@@ -110,7 +147,7 @@ impl Identity {
                 )
                 .await;
         }
-        let viewer = match (&presented.user_id, &presented.workspace_id) {
+        let mut viewer = match (&presented.user_id, &presented.workspace_id) {
             (Some(user_id), _) => {
                 self.find_user(
                     "SELECT id, username, email_verified_at IS NOT NULL AS verified
@@ -122,10 +159,30 @@ impl Identity {
             (None, Some(workspace_id)) => self.workspace_principal(workspace_id).await?,
             (None, None) => None,
         };
-        if viewer.is_some() {
+        if let Some(user) = viewer.as_mut() {
             self.note_use(&presented).await?;
+            let (scopes, legacy) = stored_scopes(presented.scopes.as_deref());
+            user.token = Some(Box::new(TokenAccess {
+                token_id: presented.id.clone(),
+                scopes,
+                legacy,
+            }));
         }
         Ok(viewer)
+    }
+
+    fn info(row: TokenRow) -> AccessToken {
+        let (scopes, legacy) = stored_scopes(row.scopes.as_deref());
+        AccessToken {
+            id: row.id,
+            name: row.name,
+            created_at: row.created_at,
+            last_used_at: row.last_used_at,
+            created_by: row.created_by,
+            scopes,
+            legacy,
+            expires_at: row.expires_at,
+        }
     }
 
     /// A workspace as the actor behind one of its own tokens. It can do
@@ -170,6 +227,8 @@ impl Identity {
         owner: Owner<'_>,
         name: &str,
         ttl_seconds: Option<u64>,
+        grant: &Grant,
+        listed: bool,
     ) -> Result<CreatedAccessToken> {
         let token = format!("{TOKEN_PREFIX}{}", crypto::random_hex(20));
         let now = now_ms();
@@ -181,18 +240,26 @@ impl Identity {
             Owner::User(id) => (Some(id), None, Some(id)),
             Owner::Workspace { id, created_by } => (None, Some(id), created_by),
         };
+        let expires_at = ttl_seconds.map(|ttl| rfc3339(now + ttl * 1000));
         let info = AccessToken {
             id: new_id("tok", now),
             name,
             created_at: rfc3339(now),
             last_used_at: None,
             created_by: None,
+            scopes: grant
+                .scopes
+                .as_ref()
+                .map(|scopes| scopes.iter().map(|scope| scope.as_str().to_owned()).collect()),
+            legacy: false,
+            expires_at: expires_at.clone(),
         };
         self.db
             .prepare(
                 "INSERT INTO access_tokens
-                   (id, user_id, workspace_id, created_by, name, token_hash, created_at, expires_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                   (id, user_id, workspace_id, created_by, name, token_hash, created_at, expires_at,
+                    scopes, listed)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 info.id.as_str().into(),
@@ -202,7 +269,9 @@ impl Identity {
                 info.name.as_str().into(),
                 crypto::sha256_hex(&token).into(),
                 info.created_at.as_str().into(),
-                ttl_seconds.map_or(JsValue::NULL, |ttl| rfc3339(now + ttl * 1000).into()),
+                text(expires_at.as_deref()),
+                grant.scopes_column().into(),
+                JsValue::from(u8::from(listed)),
             ])?
             .run()
             .await?;
@@ -223,7 +292,43 @@ impl Identity {
         } else {
             Owner::User(&a.user.id)
         };
-        self.mint(owner, &a.name, a.ttl_seconds).await
+        self.mint(owner, &a.name, a.ttl_seconds, &Grant::asked(&a.scopes), a.listed).await
+    }
+
+    /// Changes what one of a person's own tokens may do.
+    pub async fn update_access_token(&self, a: UpdateAccessTokenArgs) -> Result<Outcome<AccessToken>> {
+        let grant = Grant::asked(&a.scopes);
+        let found: Option<String> = self
+            .db
+            .prepare(
+                "UPDATE access_tokens SET scopes = ?
+                 WHERE id = ? AND user_id = ? AND agent_scope IS NULL
+                 RETURNING id",
+            )
+            .bind(&[
+                grant.scopes_column().into(),
+                a.id.as_str().into(),
+                a.user.id.as_str().into(),
+            ])?
+            .first(Some("id"))
+            .await?;
+        if found.is_none() {
+            return Ok(Outcome::fail(FailureCode::NotFound, "No such token."));
+        }
+        let row = self
+            .db
+            .prepare(format!(
+                "SELECT {TOKEN_COLUMNS} FROM access_tokens
+                 LEFT JOIN users ON users.id = access_tokens.created_by
+                 WHERE access_tokens.id = ?"
+            ))
+            .bind(&[a.id.into()])?
+            .first::<TokenRow>(None)
+            .await?;
+        match row {
+            Some(row) => Ok(Outcome::Ok(Self::info(row))),
+            None => Ok(Outcome::fail(FailureCode::NotFound, "No such token.")),
+        }
     }
 
     /// A token for a g1t agent working for `on_behalf_of`, which can do
@@ -235,6 +340,8 @@ impl Identity {
                 Owner::User(&a.on_behalf_of.id),
                 &format!("g1t agent in {}/{}", a.scope.repo.namespace, a.scope.repo.name),
                 Some(a.ttl_seconds),
+                &Grant::default(),
+                false,
             )
             .await?;
         self.db
@@ -269,22 +376,24 @@ impl Identity {
             .await
     }
 
-    /// Tokens that do not expire: the ones a person made on purpose, rather
-    /// than those issued to an application or a hosted agent.
+    /// The tokens a person or workspace made on purpose: those that do not
+    /// expire, and those made with an expiry from settings, rather than
+    /// those issued to an application or a hosted agent.
     async fn tokens_where(&self, owner: &str, id: &str) -> Result<Vec<AccessToken>> {
         let rows = self
             .db
             .prepare(format!(
                 "SELECT {TOKEN_COLUMNS} FROM access_tokens
                  LEFT JOIN users ON users.id = access_tokens.created_by
-                 WHERE {owner} AND access_tokens.expires_at IS NULL
+                 WHERE {owner} AND (access_tokens.expires_at IS NULL OR access_tokens.listed = 1)
+                   AND access_tokens.agent_scope IS NULL
                  ORDER BY access_tokens.id"
             ))
             .bind(&[id.into()])?
             .all()
             .await?
             .results::<TokenRow>()?;
-        Ok(rows.into_iter().map(AccessToken::from).collect())
+        Ok(rows.into_iter().map(Self::info).collect())
     }
 
     pub async fn list_workspace_tokens(
@@ -345,6 +454,9 @@ impl Identity {
                 "This workspace has the maximum number of access tokens. Delete one first.",
             ));
         }
+        // A workspace's token reaches that workspace only: it acts as the
+        // workspace (see `workspace_principal`), narrowed by its scopes.
+        let grant = Grant::asked(&a.scopes);
         let mut created = self
             .mint(
                 Owner::Workspace {
@@ -352,7 +464,9 @@ impl Identity {
                     created_by: Some(&a.actor.id),
                 },
                 &a.name,
-                None,
+                a.ttl_seconds,
+                &grant,
+                true,
             )
             .await?;
         created.info.created_by = Some(a.actor.username);
@@ -373,5 +487,28 @@ impl Identity {
             .run()
             .await?;
         Ok(Outcome::Ok(true))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_row_without_scopes_is_legacy_full_access() {
+        assert_eq!(stored_scopes(None), (None, true));
+        assert_eq!(stored_scopes(Some("*")), (None, false));
+        assert_eq!(
+            stored_scopes(Some("issues:write repo:read nonsense")),
+            (Some(vec!["repo:read".to_owned(), "issues:write".to_owned()]), false)
+        );
+    }
+
+    #[test]
+    fn scopes_are_stored_as_text() {
+        let grant = Grant::asked(&Some(vec!["issues:read".to_owned(), "bogus".to_owned()]));
+        assert_eq!(grant.scopes_column(), "issues:read");
+        assert_eq!(Grant::asked(&None).scopes_column(), "*");
+        assert_eq!(Grant::asked(&Some(vec![])).scopes_column(), "");
     }
 }

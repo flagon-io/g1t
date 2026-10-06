@@ -4,13 +4,14 @@
  * list. Stopping and messaging a run go through the project's
  * `agents.json` resource route, so every place behaves the same.
  */
-import { Bot, CircleSlash, Clock, Coins, Loader2, MessageSquare, OctagonX, Square, TriangleAlert } from "lucide-react";
+import { Bot, CircleSlash, Clock, Coins, Gauge, Loader2, MessageSquare, OctagonX, Square, TriangleAlert } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useFetcher, useRevalidator } from "react-router";
 
 import {
   type AgentRun,
   type AgentRunStatus,
+  type Confidence,
   type RunKind,
   RUN_KIND_LABEL,
   type Stage,
@@ -328,6 +329,27 @@ export function useRuns(owner: string, repo: string, query: Record<string, strin
   return fetcher.data ?? null;
 }
 
+/** "Agent confidence: Low — tests not added, 3 revisions", and what the agent said it was unsure of. */
+export function ConfidenceLine({ confidence }: { confidence: Confidence }) {
+  const tone = confidence.level === "low" ? "text-danger" : confidence.level === "medium" ? "text-warn" : "text-accent";
+  const level = { low: "Low", medium: "Medium", high: "High" }[confidence.level];
+  return (
+    <div className="mt-3 text-xs leading-5">
+      <p className="flex items-start gap-2">
+        <Gauge size={13} className={`mt-1 shrink-0 ${tone}`} />
+        <span className="min-w-0">
+          <span className="text-muted">Agent confidence: </span>
+          <span className={`font-medium ${tone}`}>{level}</span>
+          {confidence.reasons.length > 0 && <span className="text-fg-soft"> — {confidence.reasons.join(", ")}</span>}
+        </span>
+      </p>
+      {confidence.uncertainAbout.length > 0 && (
+        <p className="mt-0.5 pl-[1.3125rem] text-muted">Unsure about: {confidence.uncertainAbout.join("; ")}</p>
+      )}
+    </div>
+  );
+}
+
 /**
  * The agent on a pull request, near the top of its page: who is working
  * on it, at what stage, what it is doing this minute, for how long and at
@@ -338,11 +360,14 @@ export function AgentPanel({
   repo,
   number,
   stage,
+  confidence,
 }: {
   owner: string;
   repo: string;
   number: number;
   stage?: Stage | null;
+  /** How sure g1t is of the change, once the agent has finished it. */
+  confidence?: Confidence | null;
 }) {
   const data = useRuns(owner, repo, { number: String(number), limit: "5" });
   const runs = data?.runs ?? [];
@@ -388,6 +413,7 @@ export function AgentPanel({
           {current.step}
         </p>
       )}
+      {confidence && <ConfidenceLine confidence={confidence} />}
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted">
         <span className="flex items-center gap-1">
           <Clock size={12} />

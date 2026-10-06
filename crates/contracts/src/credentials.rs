@@ -373,6 +373,26 @@ pub fn operations_for(kind: RunCredentialKind, usage: CredentialUse) -> Vec<&'st
     operations
 }
 
+/// What a run's credential may do, in the scope vocabulary that access
+/// tokens use (see [`crate::scopes`]): the scopes of its operations, and
+/// for a runner, git's. Its operations, its repository and its run still
+/// bound it more tightly than these scopes say.
+pub fn run_scopes(kind: RunCredentialKind, usage: CredentialUse) -> Vec<crate::scopes::Scope> {
+    use crate::scopes::{Scope, normalize, scope_for};
+    let mut scopes: Vec<Scope> = operations_for(kind, usage)
+        .into_iter()
+        .filter_map(scope_for)
+        .collect();
+    if usage == CredentialUse::Runner {
+        scopes.push(Scope::CodeRead);
+        if matches!(kind, RunCredentialKind::Implement | RunCredentialKind::Revise | RunCredentialKind::Answer | RunCredentialKind::Update) {
+            scopes.push(Scope::CodeWrite);
+        }
+    }
+    normalize(&mut scopes);
+    scopes
+}
+
 /// Operations that change a pull request, which a runner may do only to
 /// the pull request its run works on.
 const PULL_WRITES: &[&str] = &["record_session", "mark_pull_request_ready"];
@@ -638,6 +658,7 @@ pub fn as_person(user: &User) -> Option<User> {
         avatar: None,
         acting: None,
         grants: user.grants.clone(),
+        token: None,
     })
 }
 
@@ -655,6 +676,19 @@ pub fn describe(user: &User) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_run_s_scopes_are_never_admin() {
+        for kind in RunCredentialKind::ALL {
+            for usage in [CredentialUse::Runner, CredentialUse::Tools] {
+                let scopes = run_scopes(kind, usage);
+                assert!(scopes.iter().all(|scope| !scope.dangerous()), "{kind:?} {usage:?}: {scopes:?}");
+            }
+        }
+        let review = run_scopes(RunCredentialKind::Review, CredentialUse::Tools);
+        assert!(review.contains(&crate::scopes::Scope::PullRequestsWrite));
+        assert!(!review.contains(&crate::scopes::Scope::CodeWrite));
+    }
 
     #[test]
     fn agents_can_search_the_context_hub() {
@@ -740,6 +774,7 @@ mod tests {
                 .collect(),
             avatar: None,
             grants: Vec::new(),
+            token: None,
             acting: Some(Box::new(Acting {
                 credential_id: "tok_1".to_owned(),
                 agent: "g1t-agent".to_owned(),

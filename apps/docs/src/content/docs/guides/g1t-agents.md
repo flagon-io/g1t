@@ -18,6 +18,46 @@ nothing on g1t.
 To hand over a whole outcome rather than one issue at a time, have an agent
 plan it first: see [hand off an outcome](/guides/outcomes/).
 
+## Put an agent on it in one step
+
+When the work is not written down yet, open the issue and hand it to the
+agent at once:
+
+1. On Mission control, choose **Put an agent on it**.
+2. Pick the project, give a title, and say what you want done in plain
+   words. Add acceptance checks, one command per line, if you know them.
+3. Choose **Put an agent on it**.
+
+You land on the new issue with the agent already at work on its pull
+request. The same choice is on a project's **New issue** page, as **Assign
+g1t-agent now**, and in the ⌘K palette as **Put an agent on …** followed by
+a project's name.
+
+Putting an agent to work needs the Write role on the project. Without it,
+nothing is opened. With it, the issue is always opened, even when the
+agent cannot start:
+
+| What happened | What you see |
+| --- | --- |
+| The agent started | The issue, with its draft pull request under **Assignees**. |
+| Every agent slot of the workspace is busy | The issue, queued for g1t-agent. It starts by itself when a slot frees up. |
+| The workspace's plan or limits refused it | The issue is opened, and the composer says why and links to the fix: start the plan or the trial (`not_paid`, `trial_used`), raise the monthly limit (`limit`) or the cap per issue (`issue_cap`), or connect a model (`no_model`). A workspace g1t `paused` says to contact support. |
+
+From the API or an agent of your own, it is one call:
+
+```sh
+curl -X POST https://api.g1t.sh/repos/<workspace>/<repo>/issues/delegate \
+  -H "Authorization: Bearer $G1T_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Retry webhooks with exponential backoff", "body": "Deliveries that fail are dropped today. Retry them up to six times.", "checks": ["npm test"]}'
+```
+
+The answer holds the `issue`, the `pull` request the agent opened (or
+`null`), and `agent`: its `status` (`started`, `queued` or `not_started`),
+and when it did not start, a `code`, a `message` and a `fix_url`. On the MCP
+server it is the `agent` tool's `delegate` action. See
+[put an agent on it](/reference/api/issues/delegate/).
+
 ## Assigning agents
 
 One issue:
@@ -40,7 +80,7 @@ curl -X POST https://api.g1t.sh/repos/<workspace>/<repo>/issues/12/assign \
   -H "Authorization: Bearer $G1T_TOKEN"
 ```
 
-The same thing is the `assign_issue` tool on the MCP server, so an agent
+The same thing is the `agent` tool's `assign` action on the MCP server, so an agent
 planning work can hand issues to g1t agents itself.
 
 In a comment: write `@g1t-agent take this` on the issue. See
@@ -174,6 +214,7 @@ Under a project's **Settings → Repository**, someone with the Maintain
 | Review by a second agent | On | Off leaves review to people. |
 | Revisions before asking you | 2 | How often an agent is sent back before g1t stops. |
 | Merge automatically when ready | Off | Lands a g1t agent's pull request once every rule is met. |
+| Ask a person before merging low-confidence changes | On | A g1t agent's change [rated low](#how-sure-the-agent-is) waits for a person's approval instead of merging by itself or joining the queue. |
 | Merge through a queue | Off | Merging tests a pull request together with those ahead of it; `main` only moves to a combination that passed. See [merge queue](/guides/merge-queue/). |
 
 A g1t agent's pull request follows the same rules as anyone's. If the
@@ -205,6 +246,73 @@ Every step is recorded: revisions and catch-ups in the pull request's
 This applies to pull requests made by g1t agents. One you or your own
 agent opened is yours to drive; the same checks run on it, and you can ask
 for a review or a catch-up from its page.
+
+### How sure the agent is
+
+Once a g1t agent has finished a change, g1t records how sure it is that the
+change is right: **high**, **medium** or **low**, with a few words saying
+why, such as "Low — tests not added, 3 revisions". It shows on the pull
+request, under the agent, and on Mission control. It is worked out again as
+the change moves through checks, review and revision, and kept with each
+run, so a run's page says how the change stood when that run left it.
+
+Confidence comes from what g1t can observe, not from how the agent sounds.
+Each signal below that tells against the change adds points, or makes it
+low on its own. No points is high, one or two is medium, and three or more
+is low.
+
+| Signal | Effect |
+| --- | --- |
+| The acceptance checks fail, or could not run | Low |
+| The reviewer agent asks for changes | Low |
+| A run was stopped at its cost or time cap | Low |
+| Sent back to revise | 1 point per revision, at most 3 |
+| The checks have not finished, or passed only on a retry | 1 point |
+| The issue has no acceptance checks | 1 point |
+| No review yet, or the repository has no reviewer agent | 1 point |
+| The reviewer approved but left three or more comments on lines | 1 point |
+| Code changed and no test was added or changed | 1 point |
+| More than 400 lines changed; more than 1,000 | 1 point; 2 points |
+| More than 30 files changed | 1 point |
+| Files changed outside the area its [plan](/guides/outcomes/) expected; four or more | 1 point; 2 points |
+| Touches CI workflows, repository automation, secrets, infrastructure or `CODEOWNERS` | 2 points |
+| Its latest run used 80% or more of its cost or time cap | 1 point each |
+| Steps refused by [guardrails](/guides/guardrails/); three or more | 1 point; 2 points |
+| A question or handoff it sent another agent is unanswered | 2 points |
+| The agent said it was unsure about something | 1 point |
+
+At the end of every run that makes or revises a change, the agent is also
+asked how sure it is, and what it could not verify. g1t takes the lower of
+the two: what it observes can lower the agent's own word, never raise it.
+When the agent's word is lower, the reasons start with "agent says low",
+and the pull request lists what it was unsure about.
+
+For high confidence, the reasons say what it rests on: checks pass,
+approved on the first review, tests added, a small change.
+
+The pull request's `confidence` in the
+[API](/reference/api/pull-requests/get-pull-request/) has the `level`,
+`reasons`, `self_reported`, `uncertain_about`, the `run_id` it was worked out
+after, and `assessed_at`. [Webhooks](/guides/webhooks/) for pull requests
+carry it too.
+
+### Low-confidence changes wait for a person
+
+With **Ask a person before merging low-confidence changes** on, which it is
+unless someone turns it off, a g1t agent's change rated low is not merged
+by itself and does not join the merge queue, even with **Merge
+automatically when ready** on. Once everything else the repository asks
+for is met, it stops at **Needs you**, saying why, and Mission control
+lists it under **Needs you** with a **Low confidence** chip, the reasons in
+**What the agent already knows**, and the reasons again in **Why this
+needs you**.
+
+To let it land, approve it: a person's approval since the agent last
+revised lifts the hold, and it merges as the repository's rules say. To
+send it back, request changes. Merging it yourself works as usual. The
+setting is under **Settings → Branches and merging**, in **g1t agents**,
+and is `hold_low_confidence` in
+[`update_repo_settings`](/reference/api/repositories/update-repo-settings/).
 
 ## Choosing between pull requests
 

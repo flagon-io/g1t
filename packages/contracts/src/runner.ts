@@ -3,7 +3,7 @@ import type { Trial } from "./billing";
 import type { User, Viewer } from "./identity";
 import type { Result } from "./result";
 import type { RepoPath } from "./repos";
-import type { Plan, Pull } from "./work";
+import type { DelegateInput, Delegated, Plan, Pull } from "./work";
 
 export type RunHostedInput = {
   /** Extra guidance given to the agent along with the issue. */
@@ -71,6 +71,14 @@ export interface RunnerApi {
    * Scale comes from assigning many issues, each to its own agent.
    */
   run(actor: User, repo: RepoPath, issue: number, input?: RunHostedInput): Promise<Result<Pull>>;
+  /**
+   * Puts an agent on something in one step: opens an issue and assigns it
+   * to g1t-agent. Refused, with nothing opened, unless `actor` may put
+   * agents to work in `repo` (Write). Once opened, the issue stays whatever
+   * becomes of the agent: `agent` says whether it started, waits for a
+   * free slot, or did not start, why and where to fix it.
+   */
+  delegate(actor: User, repo: RepoPath, input: DelegateInput): Promise<Result<Delegated>>;
   /**
    * Has an agent read the repository and turn an outcome into a plan: the
    * issues that would get there and the order they have to land in. Returns

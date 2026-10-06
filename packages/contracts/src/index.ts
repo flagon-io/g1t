@@ -22,6 +22,7 @@ export * from "./projects";
 export * from "./repos";
 export * from "./result";
 export * from "./runner";
+export * from "./scopes";
 export * from "./search";
 export * from "./security";
 export * from "./status";

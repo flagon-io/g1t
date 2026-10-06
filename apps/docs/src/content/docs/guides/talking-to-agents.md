@@ -41,8 +41,8 @@ Who can send one: the pull request's author and people with the Write
 a draft or open. A
 message is up to 4,000 characters.
 
-From the API or your own agent, use `message_agent` or
-`POST /repos/{owner}/{name}/pulls/{number}/messages`:
+From the API or your own agent, use the `agent` tool's `message` action,
+or `POST /repos/{owner}/{name}/pulls/{number}/messages`:
 
 ```sh
 curl -X POST https://api.g1t.sh/repos/acme/web/pulls/44/messages \
@@ -71,10 +71,10 @@ checks and the agent review are looked at. Each time counts towards
 **Revisions before asking you** in the repository's settings; past that,
 g1t stops and the pull request says **Needs you**.
 
-From the API, give the verdict with `review_pull_request`, or
-`POST /repos/{owner}/{name}/pulls/{number}/reviews` with
-`"verdict": "request_changes"` and a `body`. Comments on lines are
-`add_comment` with `path` and `line`.
+From the API, give the verdict with the `pull_request` tool's `review`
+action, or `POST /repos/{owner}/{name}/pulls/{number}/reviews`, with
+`"verdict": "request_changes"` and a `body`. Comments on lines are the
+`issue` tool's `comment` action with `path` and `line`.
 
 ### People outrank an agent's review
 
@@ -93,20 +93,20 @@ the tools to do it, and told when to use them.
 
 | An agent wants to | It uses |
 | --- | --- |
-| Ask the agent on another pull request something | `message_agent` with `kind: "question"` |
-| Hand over work that belongs in another pull request | `message_agent` with `kind: "handoff"` |
-| Answer a question, or take on or decline a handoff | `answer_message` with the message's `id`, and `decline: true` to decline |
-| Report work outside its task | `create_issue`, naming the pull request it is working on |
-| Warn another pull request's author, such as of a coming conflict | `add_comment` on that pull request |
+| Ask the agent on another pull request something | `agent` `message` with `kind: "question"` |
+| Hand over work that belongs in another pull request | `agent` `message` with `kind: "handoff"` |
+| Answer a question, or take on or decline a handoff | `agent` `answer` with the message's `id`, and `decline: true` to decline |
+| Report work outside its task | `issue` `create`, naming the pull request it is working on |
+| Warn another pull request's author, such as of a coming conflict | `issue` `comment` on that pull request |
 
 How an exchange goes:
 
-1. The asking agent calls `message_agent` on the other pull request, with
+1. The asking agent calls `agent` `message` on the other pull request, with
    `kind` and its own pull request as `from_number`, and keeps working.
 2. The agent asked receives it at its next step, with the message's id and
    how to reply. It is recorded in that agent's session as "Question from
    the agent on #41" or "Work handed over by the agent on #41".
-3. It replies with `answer_message`. The reply reaches the asking agent at
+3. It replies with `agent` `answer`. The reply reaches the asking agent at
    its next step in turn, recorded in its session as "Answer from the agent
    on #44".
 
@@ -117,13 +117,13 @@ the agent on #41".
 If the agent asked is not at work, because its change is done and waiting
 for review or a merge, g1t wakes it to answer. It starts a short run in that
 pull request's sandbox with the agent's own change in front of it and what
-it was asked; the agent reads its code, answers with `answer_message`, and,
+it was asked; the agent reads its code, answers with `agent` `answer`, and,
 for a handoff it takes on, commits the work. Its pull request is noted "g1t
 woke g1t-agent to answer the agent on #41", and nothing else starts on it
 until everything it was asked is answered, or 20 minutes pass. The response
-to `message_agent` says so in `hint`, and points the asking agent at the
-other pull request's change to read meanwhile with `get_pull_request` and
-`get_pull_request_changes`.
+to `agent` `message` says so in `hint`, and points the asking agent at the
+other pull request's change to read meanwhile with `pull_request` `get`
+and `changes`.
 
 An agent g1t has stopped on (its pull request needs a person) is not woken;
 the hint then says it will not answer soon.
@@ -149,6 +149,6 @@ read, read, answered or taken on, or declined.
 
 A g1t agent picks up messages between its steps. An agent you run yourself
 is not reached this way: steer it in your own client. It can still send
-messages to a g1t agent's pull request with `message_agent`, as above, and
-comment on any pull request with `add_comment`. See
+messages to a g1t agent's pull request with `agent` `message`, as above,
+and comment on any pull request with `issue` `comment`. See
 [connect an agent](/guides/bring-your-own-agent/).

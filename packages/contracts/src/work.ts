@@ -125,6 +125,69 @@ export type Pull = {
   createdAt: string;
   /** RFC 3339. */
   updatedAt: string;
+  /**
+   * How sure g1t is of a g1t agent's change, from what it can observe, once
+   * the agent has finished it. Absent before then, and on changes g1t is
+   * not seeing through.
+   */
+  confidence?: Confidence | null;
+};
+
+/** How sure g1t is that an agent's change is right. */
+export type ConfidenceLevel = "low" | "medium" | "high";
+
+/**
+ * How sure g1t is of a change an agent made, worked out from what can be
+ * observed: its checks, how often it was sent back, the reviewer agent's
+ * verdict, whether it touched tests, its size, where it reached, how close
+ * it came to its guardrails, and what it asked without an answer. The
+ * agent's own word can only lower it.
+ */
+export type Confidence = {
+  level: ConfidenceLevel;
+  /** A few words each, most telling first: what lowered it, or for `high`, what it rests on. */
+  reasons: string[];
+  /** What the agent said of its own change, if it said. */
+  selfReported: ConfidenceLevel | null;
+  /** What the agent said it was unsure about. */
+  uncertainAbout: string[];
+  /** The agent run it was worked out after. */
+  runId: string | null;
+  /** RFC 3339. */
+  assessedAt: string;
+};
+
+/** What became of the agent when an issue was opened and handed to it in one step. */
+export type AgentStartStatus = "started" | "queued" | "not_started";
+
+/** Whether the agent started, and if not, why and what fixes it. */
+export type AgentStart = {
+  status: AgentStartStatus;
+  /**
+   * Why it did not start: `not_paid`, `trial_used`, `limit`, `paused`,
+   * `issue_cap`, `billing_unavailable` or `no_model`; `waiting` when queued.
+   */
+  code: string | null;
+  /** What happened, in a sentence or two, with what to do. */
+  message: string | null;
+  /** Where the fix is: the workspace's billing or model settings. */
+  fixUrl: string | null;
+};
+
+/** An issue opened and handed to g1t-agent in one step. The issue exists whatever became of the agent. */
+export type Delegated = {
+  issue: Issue;
+  /** The pull request the agent opened, when it started. */
+  pull: Pull | null;
+  agent: AgentStart;
+};
+
+/** What to put an agent on: an issue's title, what to do in plain words, and the checks that prove it done. */
+export type DelegateInput = {
+  title: string;
+  body: string;
+  labels?: string[];
+  checks?: string[];
 };
 
 /** One file a pull request changes, and by how much. */
@@ -493,6 +556,11 @@ export type RepoSettings = {
    * branch.
    */
   mergeQueue: boolean;
+  /**
+   * Ask a person before merging a g1t agent's change whose confidence is
+   * low: auto-merge and the merge queue leave it until a person approves it.
+   */
+  holdLowConfidence: boolean;
   /** Username of the member who last changed the settings, if anyone has. */
   updatedBy: string | null;
   /** RFC 3339. */
@@ -560,6 +628,12 @@ export type OpenPullInput = {
 /** Issues, pull requests, comments and sessions. */
 export interface WorkApi {
   openIssue(actor: User, repo: RepoPath, input: OpenIssueInput): Promise<Result<Issue>>;
+  /**
+   * Opens an issue to put g1t-agent on at once: refused, with nothing
+   * opened, unless `actor` may put agents to work in `repo`. The runner's
+   * `delegate` calls it, then starts the agent.
+   */
+  delegateIssue(actor: User, repo: RepoPath, input: DelegateInput): Promise<Result<Issue>>;
   /** Newest first. */
   listIssues(
     repo: RepoPath,

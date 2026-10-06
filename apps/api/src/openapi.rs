@@ -4,6 +4,7 @@
 //! `apps/docs/src/data/openapi.json`. A test keeps the copy current: run
 //! `G1T_WRITE_OPENAPI=1 cargo test -p g1t-api openapi` to rewrite it.
 
+use g1t_contracts::scopes::scope_for;
 use serde_json::{Map, Value, json};
 
 use crate::operations::Op;
@@ -86,6 +87,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::CloseIssue,
             Op::ReopenIssue,
             Op::AssignIssue,
+            Op::Delegate,
             Op::AddComment,
             Op::ListLabels,
         ],
@@ -244,6 +246,7 @@ fn title(op: Op) -> &'static str {
         Op::CloseIssue => "Close an issue",
         Op::ReopenIssue => "Reopen an issue",
         Op::AssignIssue => "Assign an issue to the g1t agent",
+        Op::Delegate => "Put an agent on it",
         Op::PlanWork => "Plan work",
         Op::GetPlan => "Get a plan",
         Op::ApplyPlan => "Apply a plan",
@@ -466,7 +469,10 @@ fn operation(route: &Route) -> Value {
     if let Some(reason) = may_need_payment(op) {
         responses.insert("402".into(), error_response(reason));
     }
-    responses.insert("403".into(), error_response("Signed in, but not allowed to do this."));
+    responses.insert(
+        "403".into(),
+        error_response("Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names."),
+    );
     if !matches!(op, Op::Whoami | Op::ListRepos | Op::Search) {
         responses.insert("404".into(), error_response("It does not exist, or you cannot see it."));
     }
@@ -480,17 +486,30 @@ fn operation(route: &Route) -> Value {
         responses.insert("422".into(), error_response("The input is not valid."));
     }
     // Public data can be read without a token; everything else needs one.
+    let scope: Vec<&str> = scope_for(op.name()).map(|scope| scope.as_str()).into_iter().collect();
     let security = if op.needs_user() {
-        json!([{ "token": [] }])
+        json!([{ "token": scope }])
     } else {
-        json!([{ "token": [] }, {}])
+        json!([{ "token": scope }, {}])
     };
+    let (tool, action) = crate::tools::TOOLS
+        .iter()
+        .find_map(|tool| {
+            tool.actions
+                .iter()
+                .find(|action| action.op == op)
+                .map(|action| (tool.name, action.name))
+        })
+        .unwrap_or_default();
     let mut described = json!({
         "operationId": id,
         "tags": [tag(op)],
         "summary": summary(route, &id),
         "description": op.description(),
-        "x-mcp-tool": op.name(),
+        "x-operation": op.name(),
+        "x-mcp-tool": tool,
+        "x-mcp-action": action,
+        "x-scope": scope.first().copied(),
         "security": security,
         "parameters": parameters,
         "responses": responses,
@@ -591,8 +610,8 @@ fn attach_examples(paths: &mut Map<String, Value>) {
         let Some(methods) = methods.as_object_mut() else { continue };
         for operation in methods.values_mut() {
             let id = operation["operationId"].as_str().unwrap_or_default().to_owned();
-            let tool = operation["x-mcp-tool"].as_str().unwrap_or_default().to_owned();
-            let Some(example) = examples.get(&id).or_else(|| examples.get(&tool)) else {
+            let name = operation["x-operation"].as_str().unwrap_or_default().to_owned();
+            let Some(example) = examples.get(&id).or_else(|| examples.get(&name)) else {
                 continue;
             };
             if let Some(notes) = example.get("notes").and_then(Value::as_str) {
@@ -658,7 +677,7 @@ pub fn document() -> Value {
                 "token": {
                     "type": "http",
                     "scheme": "bearer",
-                    "description": "An access token, `g1t_…`. Public data needs none.",
+                    "description": "An access token, `g1t_…`. Public data needs none. Each operation names the scope a token needs for it; see https://docs.g1t.sh/guides/authentication/#scopes.",
                 },
             },
             "schemas": {
@@ -672,6 +691,10 @@ pub fn document() -> Value {
                             "properties": {
                                 "code": { "type": "string", "enum": codes },
                                 "message": { "type": "string" },
+                                "needed_scope": {
+                                    "type": "string",
+                                    "description": "On a 403 for an access token without the scope the call needs: that scope, such as `issues:write`.",
+                                },
                             },
                         },
                     },

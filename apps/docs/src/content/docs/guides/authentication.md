@@ -1,6 +1,6 @@
 ---
 title: Accounts and authentication
-description: Accounts, invites, email addresses, confirming them, personal access tokens, OAuth, signing in from a tool, password reset and your security log.
+description: Accounts, invites, email addresses, confirming them, personal access tokens and their scopes, OAuth, signing in from a tool, password reset and your security log.
 ---
 
 ## Creating an account
@@ -127,12 +127,12 @@ does not move you down the list.
 
 ### Invites through the API
 
-| Route | MCP tool | What it does |
+| Route | MCP tool and action | What it does |
 | --- | --- | --- |
-| [`GET /user/invites`](/reference/api/invites/list-invites/) | `list_invites` | Your invites and how many you have left |
-| [`POST /user/invites`](/reference/api/invites/create-invite/) | `create_invite` | Make an invite, optionally for one `email` |
-| [`DELETE /user/invites/{id}`](/reference/api/invites/revoke-invite/) | `revoke_invite` | Revoke a pending invite |
-| [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/) | `invite_member` | Invite an address into a workspace. Owners only. |
+| [`GET /user/invites`](/reference/api/invites/list-invites/) | `account` `list_invites` | Your invites and how many you have left |
+| [`POST /user/invites`](/reference/api/invites/create-invite/) | `account` `create_invite` | Make an invite, optionally for one `email` |
+| [`DELETE /user/invites/{id}`](/reference/api/invites/revoke-invite/) | `account` `revoke_invite` | Revoke a pending invite |
+| [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/) | `workspace` `invite_member` | Invite an address into a workspace. Owners only. |
 
 ## Confirming your email
 
@@ -245,12 +245,12 @@ commit.
 
 ### Email addresses through the API
 
-| Route | MCP tool | What it does |
+| Route | MCP tool and action | What it does |
 | --- | --- | --- |
-| [`GET /user/emails`](/reference/api/accounts/list-emails/) | `list_emails` | Your addresses and email settings |
-| [`POST /user/emails`](/reference/api/accounts/add-email/) | `add_email` | Add an address; takes `email` and `password` |
-| [`DELETE /user/emails/{email}`](/reference/api/accounts/remove-email/) | `remove_email` | Remove an address; takes `password` |
-| [`PATCH /user/email-settings`](/reference/api/accounts/update-email-settings/) | `update_email_settings` | Change `primary`, `backup`, `private_email` or `block_private_pushes` |
+| [`GET /user/emails`](/reference/api/accounts/list-emails/) | `account` `list_emails` | Your addresses and email settings |
+| [`POST /user/emails`](/reference/api/accounts/add-email/) | `account` `add_email` | Add an address; takes `email` and `password` |
+| [`DELETE /user/emails/{email}`](/reference/api/accounts/remove-email/) | `account` `remove_email` | Remove an address; takes `password` |
+| [`PATCH /user/email-settings`](/reference/api/accounts/update-email-settings/) | `account` `update_email_settings` | Change `primary`, `backup`, `private_email` or `block_private_pushes` |
 
 Through the API, `password` is the proof a sensitive change needs. Without
 it, or with the wrong one, the answer is `403` with the code
@@ -274,16 +274,182 @@ A token stands in for your password everywhere outside the website:
 | API | `Authorization: Bearer g1t_…` |
 | MCP | The same header, set when you add the server. |
 
-Create one in [Settings → Access tokens](https://g1t.sh/settings/tokens). A token is shown once,
-when it is created; g1t stores only a hash of it. If you lose one, delete it
-and create another. Delete a token the moment you think someone else has
-seen it.
+A token is shown once, when it is created; g1t stores only a hash of it.
+If you lose one, delete it and create another. Delete a token the moment
+you think someone else has seen it.
 
-A token has the full rights of your account. Scoped tokens are planned.
+A token reaches everything you can reach, and its [scopes](#scopes) say
+what it may do there. Give each token only the scopes the thing using it
+needs.
 
 For CI and integrations that work for a team, a workspace can have tokens
 of its own that act as the workspace and keep working when their creator
-leaves. See [workspace access tokens](/guides/workspaces/#workspace-access-tokens).
+leaves. See [workspace tokens](#workspace-tokens).
+
+### Create a token
+
+1. Open [Settings → Access tokens](https://g1t.sh/settings/tokens).
+2. Under **New token**, give it a **Name** after what will use it.
+3. Choose when it **Expires**: 7 days, 30 days, 90 days (the default),
+   1 year, or No expiry. An expired token stops working; make a new one.
+   No expiry shows a warning: the token works until someone deletes it.
+4. Under **Scopes**, tick the boxes for what it may do. They are grouped
+   by area. The form starts on the **Agent** [preset](#presets); select
+   another preset to tick its boxes instead.
+5. Select **Create token**, and copy the token. It is not shown again.
+
+The list shows each token's name, when it was made and last used, when it
+expires, and its access: a preset's name, its scopes, or Full access. To
+change what a token may do, select **Edit access**, tick or untick boxes,
+and select **Save access**. The token stays the same; the change applies
+from its next request.
+
+## Scopes
+
+A scope is a resource and a level, written `resource:level`, such as
+`issues:write`. A higher level includes the lower ones of the same
+resource: `repo:admin` includes `repo:write`, which includes `repo:read`.
+It never includes another resource: `repo:admin` does not let a token push,
+which is `code:write`.
+
+On the form, scopes are a checklist grouped by area:
+
+| Group | Scopes |
+| --- | --- |
+| Repositories & code | `repo:read`, `repo:write`, `code:read`, `code:write` |
+| Issues & pull requests | `issues:read`, `issues:write`, `pull_requests:read`, `pull_requests:write` |
+| Agents | `agents:run` |
+| Workflows | `workflows:read`, `workflows:write` |
+| Memory & search | `memory:read`, `memory:write` |
+| Account | `account:read`, `account:write` |
+| Workspace | `workspace:read`, `access:read`, `webhooks:read`, `secrets:read` |
+| Dangerous | `repo:admin`, `workspace:admin`, `access:admin`, `webhooks:admin`, `secrets:admin` |
+
+Ticking a higher level ticks the lower ones of its resource and greys
+them out: tick `issues:write` and `issues:read` is ticked too. Untick
+`issues:write` and `issues:read` stays ticked.
+
+| Scope | What it lets a token do |
+| --- | --- |
+| `repo:read` | See repositories, their settings, labels and timelines, and search |
+| `repo:write` | Create repositories, rename branches and change how pull requests merge |
+| `repo:admin` | Rename, archive, transfer, delete or change who can see a repository |
+| `code:read` | Clone and fetch private repositories with git |
+| `code:write` | Push commits with git |
+| `issues:read` | Read issues, comments and plans |
+| `issues:write` | Open, edit, close and comment on issues |
+| `pull_requests:read` | Read pull requests, their changes, sessions and merge queues |
+| `pull_requests:write` | Open, review, close and merge pull requests |
+| `agents:run` | Put g1t agents to work and message them, which uses the workspace's money |
+| `workflows:read` | Read workflows, runs and logs |
+| `workflows:write` | Run, cancel, rerun and turn workflows on or off |
+| `memory:read` | Recall memory and search the workspace's context |
+| `memory:write` | Save memory for the next agent |
+| `account:read` | Read your email addresses, invites and invitations |
+| `account:write` | Change your email addresses, make invites and answer invitations |
+| `workspace:read` | Read workspace invites, integrations and model routes |
+| `workspace:admin` | Create and delete workspaces, invite members, connect integrations |
+| `access:read` | See who has access to repositories |
+| `access:admin` | Give and take away access to repositories |
+| `webhooks:read` | See webhooks and their deliveries |
+| `webhooks:admin` | Create, change and delete webhooks |
+| `secrets:read` | List secrets (never their values) and read variables |
+| `secrets:admin` | Set and delete secrets and variables |
+
+Every operation of the API and the MCP server needs exactly one of these,
+except `whoami` (`GET /user`), which any token may use. Each endpoint's page
+in the [API reference](/reference/api/) names its scope, and so does each
+action in [MCP tools](/reference/mcp/). A few calls need a second scope for
+what they ask:
+
+| Call | Also needs |
+| --- | --- |
+| `delegate` (`POST /repos/{owner}/{name}/issues/delegate`, the `agent` tool's `delegate`), which opens an issue | `issues:write`, beside `agents:run` |
+| `apply_plan` or `import_issue` (the `plan` tool's `apply`, the `issue` tool's `import`) with `assign: true` | `agents:run` |
+| `update_repo` with `private` or `default_branch` | `repo:admin` |
+
+### What a token can do
+
+What a request may do is where two things overlap:
+
+1. **Your role.** A token reaches every workspace and repository you can,
+   including ones you join later, and never does more there than you could
+   on the website. A token with `repo:admin` still cannot delete a
+   repository unless you are an owner of its workspace. See
+   [access and roles](/guides/access-and-roles/).
+2. **Its scopes.** What kinds of thing it may do.
+
+To keep a token away from a workspace, use a
+[workspace token](#workspace-tokens) instead: it reaches only its own
+workspace.
+
+### Presets
+
+A preset ticks a starting set of boxes. Select one, then tick or untick
+any box.
+
+| Preset | Scopes |
+| --- | --- |
+| Read only | Every `read` scope. Changes nothing. |
+| Agent | Every `read` scope, and `code:write`, `issues:write`, `pull_requests:write`, `agents:run` and `memory:write`. Reads everything, works on issues and pull requests, pushes code and runs g1t agents. No admin scope. |
+| CI | `repo:read`, `code:read`, `code:write`, `workflows:read` and `workflows:write`. Clones and pushes code, and runs workflows. |
+| Full access | Everything you can do, including deleting repositories and changing who has access. Marked **Dangerous**. |
+
+Admin scopes change things that are hard to undo, or decide who can reach
+what. They are under **Dangerous**, with a warning. Give them only to
+something you trust as much as yourself.
+
+### Git and scopes
+
+Over HTTPS, git checks the same token:
+
+| To | Needs |
+| --- | --- |
+| Clone or fetch a public repository | No scope |
+| Clone or fetch a private repository | `code:read` |
+| Push | `code:write` |
+
+Your role on the repository applies too, as on the website. A refused push
+or clone says which scope is missing.
+
+### When a token lacks a scope
+
+The API answers `403` with the scope that was missing in `needed_scope`:
+
+```json
+{
+  "error": {
+    "code": "forbidden",
+    "message": "This access token needs the issues:write scope to use create_issue.",
+    "needed_scope": "issues:write"
+  }
+}
+```
+
+Through MCP the same message comes back as a tool result with `isError`
+set. Give the token that scope with **Edit access**, or make a new token.
+
+### Tokens made before scopes
+
+Tokens and OAuth sign-ins made before tokens had scopes keep full access,
+so nothing that uses them stops working. Settings marks each one
+**Legacy · full access**, and says to narrow it to what it needs. For a
+token, select **Narrow this token**; for an application, **Change access**
+in [Connected applications](https://g1t.sh/settings/applications). Then
+tick its scopes. A token you make with Full access on purpose is not marked
+legacy.
+
+A token from [signing in from a tool](#signing-in-from-a-tool), such as the
+g1t CLI, has full access.
+
+### Workspace tokens
+
+A workspace's own tokens act as the workspace rather than a person. An
+owner makes them in the workspace's **Settings → Access tokens**, with the
+same checklist and expiry choices; the form starts on the CI preset. A
+workspace token reaches all of that workspace's repositories, never
+another workspace, and cannot manage people, tokens or workspaces. See
+[workspace access tokens](/guides/workspaces/#workspace-access-tokens).
 
 ## Signing in with OAuth
 
@@ -293,9 +459,24 @@ You see a page on g1t naming the application and where it will send you
 back, and you approve or deny. The application never sees your password and
 there is no token to copy.
 
+The page lists what the application will be able to do, as the same
+checklist a token has, with only the scopes it asked for, all ticked.
+Untick anything you would rather it could not do, leaving at least one;
+you cannot give it more than it asked for. Like a token, it reaches
+everything you can.
+
+An application that asks for no scopes in particular gets the
+[Agent preset](#presets): every `read` scope, and `code:write`,
+`issues:write`, `pull_requests:write`, `agents:run` and `memory:write`.
+It never gets an admin scope unless it asks for one and you leave it
+ticked.
+
 Applications you have approved are listed in
-[Settings → Connected applications](https://g1t.sh/settings/applications). Signing one out ends its access at
-once.
+[Settings → Connected applications](https://g1t.sh/settings/applications),
+each with its access. Select **Change access** to tick or untick its
+scopes, then **Save access**: it stays signed in, the change applies at
+once, and its next refresh keeps it. Select **Sign out** to end its access
+at once.
 
 For people building a client:
 
@@ -313,6 +494,15 @@ For people building a client:
   client on `localhost` may use any port.
 - Registration stores nothing. The client id it returns encodes what was
   registered, so it cannot be used to fill g1t with junk.
+- Ask for scopes with `scope` on the authorization request, separated by
+  spaces, such as `scope=repo:read issues:write pull_requests:write`.
+  Names g1t does not know are left out. Leave `scope` out for the Agent
+  preset. The authorization server's metadata and
+  `https://mcp.g1t.sh/.well-known/oauth-protected-resource` list every
+  scope in `scopes_supported`.
+- The token response's `scope` holds the scopes the person granted,
+  separated by spaces, or `*` for a sign-in with full access. Refreshing
+  keeps them.
 - An access token lasts 30 days. The refresh token returned with it works
   once and returns the next pair; the previous access token stops working.
 - An authorization code lasts five minutes and works once.
@@ -320,8 +510,7 @@ For people building a client:
 ## Signing in from a tool
 
 A tool that cannot receive a redirect, such as a script on a remote machine,
-gets a token without ever handling your password, the same way
-`gh auth login` works:
+gets a token without ever handling your password:
 
 1. The tool asks g1t for a code and shows you a link and a short code such
    as `WDJB-MJHT`.
@@ -345,8 +534,9 @@ minutes. The token appears in
 [Settings → Access tokens](https://g1t.sh/settings/tokens) under the tool's name, where you
 can delete it.
 
-Only approve a code you asked for. Approving gives the tool the full rights
-of your account.
+Only approve a code you asked for. The token has full access: it can do
+everything you can. To give a tool less, make an
+[access token](#create-a-token) with only the scopes it needs instead.
 
 ## Resetting your password
 

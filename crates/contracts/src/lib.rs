@@ -22,6 +22,7 @@ mod names;
 mod outcome;
 pub mod projects;
 pub mod repos;
+pub mod scopes;
 pub mod search;
 pub mod security;
 pub mod time;
@@ -124,6 +125,12 @@ pub struct User {
     /// `workspaces`; see [`access`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub grants: Vec<access::RepoGrant>,
+    /// Set on a user resolved from an access token: its scopes and the
+    /// workspaces or repositories it is limited to. Absent on a signed-in
+    /// session and on an agent (whose `acting` scope applies instead).
+    /// See [`scopes`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<Box<scopes::TokenAccess>>,
 }
 
 impl User {

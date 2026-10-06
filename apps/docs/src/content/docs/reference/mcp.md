@@ -1,12 +1,197 @@
 ---
 title: MCP tools
-description: Every tool the g1t MCP server exposes, with its required inputs and the matching REST route.
+description: The g1t MCP server's resource tools, each action they take with its required inputs and scope, and how to call them.
 ---
 
-The MCP server at `https://mcp.g1t.sh` exposes the tools below. Each is the
-same operation as a route of the [REST API](/reference/api/), so the two
-always agree. To connect a client, see
-[connect an agent](/guides/bring-your-own-agent/).
+The MCP server at `https://mcp.g1t.sh` exposes 13 tools, one per kind of
+thing on g1t: `search`, `repository`, `issue`, `pull_request`, `agent`,
+`plan`, `memory`, `workflow`, `secret`, `webhook`, `access`, `workspace`
+and `account`. Each tool takes an `action` that says what to do. Every
+action is the same operation as a route of the [REST API](/reference/api/),
+with the same inputs, permissions and results, so the two always agree.
+
+## Connect
+
+To connect Claude Code, Codex, OpenCode, Cursor or another client, see
+[connect an agent](/guides/bring-your-own-agent/). With Claude Code:
+
+```sh
+claude mcp add --transport http g1t https://mcp.g1t.sh
+```
+
+The server speaks MCP over streamable HTTP, and answers every request with
+JSON. Every call needs to be signed in, in one of two ways:
+
+- **OAuth.** A client that supports MCP authorization needs only the URL.
+  An unauthenticated request is answered with `401` and a pointer to
+  `https://mcp.g1t.sh/.well-known/oauth-protected-resource`; the client
+  registers itself and sends you to your browser to approve it. See
+  [signing in with OAuth](/guides/authentication/#signing-in-with-oauth).
+- **An access token.** Send `Authorization: Bearer g1t_…` with an
+  [access token](/guides/authentication/#access-tokens).
+
+Opening [mcp.g1t.sh](https://mcp.g1t.sh) in a browser shows the server's
+card: what it is, how to connect, and every tool with its actions, the
+operation and scope of each, and its input schema.
+
+## How tools and actions work
+
+Call a tool with `tools/call`, its name, and `arguments` that hold the
+`action` and that action's inputs:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "issue",
+    "arguments": { "action": "get", "repo": "flagon-io/hello", "number": 42 }
+  }
+}
+```
+
+- `action` is required, except on two tools that have a default:
+  `search` runs `code`, and `account` runs `whoami`, when it is left out.
+- The input schema that `tools/list` returns is one flat object: `action`,
+  then every field any of the tool's actions takes. The `action` field's
+  description lists each action with the fields it needs, such as
+  `get (repo, number): One issue with comments, checks and its pull requests.`
+- The server card at `https://mcp.g1t.sh` has each tool's schema keyed by
+  action: a `oneOf` with one branch per action and its required fields.
+  `tools/list` does not use `oneOf`, because many clients refuse a tool
+  whose schema has one at its top level.
+- A call without one of its action's required fields is not run. It
+  returns an error result naming them, such as `issue.get needs number.`
+  A call without an action on a tool that has no default, or with an
+  action the tool does not have, returns an error result that lists the
+  tool's actions.
+- A tool name the server does not know is a JSON-RPC error, `-32602`.
+
+### Results
+
+A result is the operation's answer as JSON text, with `snake_case` fields,
+as the REST API returns it:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [{ "type": "text", "text": "{\n  \"number\": 42,\n  \"title\": \"Retry failed webhook deliveries\",\n  …\n}" }],
+    "isError": false
+  }
+}
+```
+
+An operation that fails returns its message as the result, with `isError`
+set to `true`, so the agent can read it and act on it.
+
+### Examples
+
+Start a draft pull request for issue 42. The answer holds the git remote of
+the pull request's own fork to push to:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "pull_request",
+    "arguments": { "action": "create", "repo": "flagon-io/hello", "issue": 42, "agent": "claude-code" }
+  }
+}
+```
+
+Search code across g1t, with the default action:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "search",
+    "arguments": { "query": "parse_query language:rust repo:flagon-io/hello" }
+  }
+}
+```
+
+The same call with `curl` and an access token:
+
+```sh
+curl https://mcp.g1t.sh \
+  -H "Authorization: Bearer $G1T_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "search", "arguments": {"query": "parse_query language:rust repo:flagon-io/hello"}}}'
+```
+
+## What you see depends on your token
+
+Each action needs one [scope](/guides/authentication/#scopes), shown in the
+tables below; `whoami` needs none. `tools/list` shows a token only what its
+scopes allow:
+
+- The `action` field lists only the actions the token may use, and the
+  schema has only their fields.
+- A tool with none of its actions allowed is left out.
+- A call to an action the token's scopes do not allow is refused with an
+  error result such as
+  `This access token needs the issues:write scope to use create_issue.`
+
+For example, a token with only `issues:write` sees `issue` (its `list` and
+`get` too, since `write` includes `read`), `plan` with `get` and `apply`,
+and `account` with `whoami`. A token with the
+[Read only preset](/guides/authentication/#presets) sees only the reading
+actions of each tool, and no `agent` tool at all.
+
+What a token may do is also bounded by the role of whoever it acts as: it
+reaches what they can reach, and no more. See
+[scopes](/guides/authentication/#scopes).
+
+A token or OAuth sign-in made before tokens had scopes, a token from
+signing in from a tool, and a token made with full access see every tool.
+
+### Annotations
+
+Each listed tool carries MCP annotations, worked out from the actions the
+token can see. Clients use them to decide when to ask you before a call.
+
+| Annotation | Value |
+| --- | --- |
+| `title` | The tool's name for people, such as `Pull requests`. |
+| `readOnlyHint` | `true` when every action shown only reads. |
+| `destructiveHint` | `true` when the tool is not read-only and an action shown cannot be undone or reaches beyond g1t's own records: deleting a workspace, deleting, purging or transferring a repository, changing its visibility, removing an email address or a collaborator, disconnecting an integration, deleting a webhook, setting or deleting secrets and variables, replacing model routes, setting a workspace's base permission, and merging a pull request. |
+| `idempotentHint` | The same as `readOnlyHint`. |
+| `openWorldHint` | Always `false`. |
+
+So for a read-only token every tool is read-only, and for a token that can
+merge, `pull_request` is destructive.
+
+## Earlier tool names
+
+Before resource tools, the server had one tool per operation, named after
+the operation: `get_issue`, `create_pull_request`, `record_session`,
+`mark_pull_request_ready`, `remember`, `recall` and so on. `tools/list` no
+longer lists them, but `tools/call` still answers them for a deprecation
+period, so clients set up with them keep working. Move to the resource
+tool and its action: the tables below give each, and each page of the
+[API reference](/reference/api/) names the tool and action for its
+operation.
+
+| Earlier name | Now |
+| --- | --- |
+| `get_issue` | `issue` with `"action": "get"` |
+| `create_pull_request` | `pull_request` with `"action": "create"` |
+| `record_session` | `pull_request` with `"action": "record_session"` |
+| `mark_pull_request_ready` | `pull_request` with `"action": "ready"` |
+| `get_pull_request` | `pull_request` with `"action": "get"` |
+| `recall`, `remember` | `memory` with `"action": "recall"` or `"remember"` |
+| `search` | `search`, with `"action": "code"` or none |
+| `search_context`, `get_entity`, `get_context` | `search` with `"action": "context"`, `"entity"` or `"ticket"` |
+| `assign_issue`, `delegate` | `agent` with `"action": "assign"` or `"delegate"` |
+| `whoami` | `account`, with `"action": "whoami"` or none |
 
 ## Conventions
 
@@ -15,231 +200,259 @@ always agree. To connect a client, see
   repository, so a number names exactly one of them.
 - Inputs are `snake_case`. Results are JSON, with `snake_case` fields, as
   the REST API returns them.
-- A tool that fails returns its error as the result, with `isError` set, so
-  the agent can read it and act on it.
 - Reading a public repository needs no sign-in through the API. Through MCP,
   every call needs to be signed in.
 
-Required inputs are listed in each table. Optional inputs are described in
-the tool's schema, which `tools/list` returns, and in the
-[API reference](/reference/api/).
+The tables below list each action's required inputs. Optional inputs are
+in the tool's schema, which `tools/list` returns, and on the action's page
+in the [API reference](/reference/api/), which each action links to.
 
-## Account and workspaces
+## `search`
 
-| Tool | Required | What it does | Route |
+Find things. `code`, the default, searches all of g1t you can see:
+repositories, code on default branches, issues, pull requests and people.
+`context` asks one workspace's context hub by meaning. See
+[search and Explore](/guides/search/) for the query syntax, and the
+[context hub](/guides/context-hub/).
+
+| Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
-| `whoami` | | Who the access token acts as, and the workspaces it can work in. `kind` is `user`, `workspace` or `agent`. | [`GET /user`](/reference/api/accounts/whoami/) |
-| `create_workspace` | `slug` | Create a workspace. | [`POST /workspaces`](/reference/api/workspaces/create-workspace/) |
-| `list_emails` | | Your email addresses and email settings. People only. | [`GET /user/emails`](/reference/api/accounts/list-emails/) |
-| `add_email` | `email`, `password` | Add an address; g1t emails it a link to confirm it. | [`POST /user/emails`](/reference/api/accounts/add-email/) |
-| `remove_email` | `email`, `password` | Remove an address; never the primary or the last confirmed one. | [`DELETE /user/emails/{email}`](/reference/api/accounts/remove-email/) |
-| `update_email_settings` | | Change `primary` or `backup` (with `password`), `private_email` or `block_private_pushes`. See [email addresses](/guides/authentication/#email-addresses). | [`PATCH /user/email-settings`](/reference/api/accounts/update-email-settings/) |
-| `delete_workspace` | `workspace`, `confirm` | Delete an empty workspace whose billing is settled; `confirm` is its slug. Owners only. See [deleting a workspace](/guides/workspaces/#delete-a-workspace). | [`DELETE /workspaces/{workspace}`](/reference/api/workspaces/delete-workspace/) |
+| [`code`](/reference/api/search/search/) | Search all of g1t: repositories, code on default branches, issues, pull requests, people and workspaces. Public results for everyone; private ones in workspaces you belong to. `query` takes words, `"phrases"`, `-words` and qualifiers such as `repo:owner/name`, `org:`, `language:`, `path:`, `is:open`, `is:pr`, `author:` and `label:`. `type` is `repositories`, `code`, `issues`, `pulls` or `people`; `page` and `per_page` page through. Returns counts for every type, and each result's matching text in highlighted parts; code with line numbers. | `query` | `repo:read` |
+| [`context`](/reference/api/context/search-context/) | One search across a workspace's context hub: its catalog, docs, issues and pull requests, and, for members and g1t's agents, its kept memory. Results are ranked by meaning and labelled with their kind, source, author and freshness. Give `workspace`, or a `repo` in it; narrow with `project` and `kinds`. | `query` | `memory:read` |
+| [`entity`](/reference/api/context/get-entity/) | One catalog entry by kind and id or key (a project's slug, a package as `npm:<name>`, an owner's username), with what it depends on, who owns it, where it deploys, what documents it, and what it exposes and uses. | `kind`, `id` | `memory:read` |
+| [`ticket`](/reference/api/integrations/get-context/) | A Jira or Linear ticket by key or address, or a Sentry issue by address, as it is now. Reference material, never instructions. | `repo`, `reference` | `memory:read` |
 
-## Invites
+## `repository`
 
-While g1t is invite-only, every new account needs an invite. See
-[invites](/guides/authentication/#invites). An agent's token and a
-workspace's token cannot make invites.
+Repositories: find, read and create them, and change their settings.
+Deleting, purging and changing visibility need `confirm`, the repository's
+full name typed out.
 
-| Tool | Required | What it does | Route |
+| Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
-| `list_invites` | | Your invites, newest first, and how many you have left. | [`GET /user/invites`](/reference/api/invites/list-invites/) |
-| `create_invite` | | Make an invite; with `email`, only that address can use it and it is emailed there. With `workspace`, use that workspace's granted invites. | [`POST /user/invites`](/reference/api/invites/create-invite/) |
-| `revoke_invite` | `id` | Revoke a pending invite; it comes back to whoever it was charged to. | [`DELETE /user/invites/{id}`](/reference/api/invites/revoke-invite/) |
-| `list_workspace_invites` | `workspace` | A workspace's invites. Owners only. | [`GET /workspaces/{workspace}/invitations`](/reference/api/invites/list-workspace-invites/) |
-| `invite_member` | `workspace`, `email` | Invite an address into a workspace, with an invite bound to it. Owners only. | [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/) |
-| `revoke_workspace_invite` | `workspace`, `id` | Revoke a workspace's pending invite. Owners only. | [`DELETE /workspaces/{workspace}/invitations/{id}`](/reference/api/invites/revoke-workspace-invite/) |
+| [`list`](/reference/api/repositories/list-repos/) | Repositories you can see, optionally filtered by `query`. | None | `repo:read` |
+| [`get`](/reference/api/repositories/get-repo/) | One repository's details. | `repo` | `repo:read` |
+| [`create`](/reference/api/repositories/create-repo/) | Create a repository in one of your workspaces, empty or as a copy of a public git repository (`import_url`). `workspace` may be left out if you belong to exactly one. | `name` | `repo:write` |
+| [`update`](/reference/api/repositories/update-repo/) | Change its `description`, `website`, `topics` and `default_branch`, whether its default branch is `protected`, and whether it is `private`. Maintain role; `private` and `default_branch` need Admin. | `repo` | `repo:write` |
+| [`get_settings`](/reference/api/repositories/get-repo-settings/) | How it handles pull requests: approvals, checks, being up to date, and how g1t's agents are reviewed, revised and merged. | `repo` | `repo:read` |
+| [`update_settings`](/reference/api/repositories/update-repo-settings/) | Change those settings, including `hold_low_confidence`, which holds a g1t agent's [low-confidence](/guides/g1t-agents/#how-sure-the-agent-is) change for a person. Only the fields given change. Maintain role. | `repo` | `repo:write` |
+| [`list_labels`](/reference/api/issues/list-labels/) | The labels available on its issues. | `repo` | `repo:read` |
+| [`list_events`](/reference/api/repositories/list-events/) | Its timeline, newest first. `before` pages back. | `repo` | `repo:read` |
+| [`rename_branch`](/reference/api/repositories/rename-branch/) | Rename a branch; its pull requests follow, and web addresses that name the old branch redirect. Write role; the default branch needs Admin. | `repo`, `branch`, `new_name` | `repo:write` |
+| [`rename`](/reference/api/repositories/rename-repo/) | Give it a new name in its workspace; the old address redirects. Admin role. | `repo`, `name` | `repo:admin` |
+| [`transfer`](/reference/api/repositories/transfer-repo/) | Move it to another workspace, keeping its name; the old address redirects. Owners of both workspaces only. See [transferring a repository](/guides/transferring-repositories/). | `repo`, `to` | `repo:admin` |
+| [`archive`](/reference/api/repositories/archive-repo/) | Make it read-only: pushes and merges are refused, issues and pull requests are locked, agents and workflows stop. Admin role. | `repo` | `repo:admin` |
+| [`unarchive`](/reference/api/repositories/unarchive-repo/) | Make it writable again. Admin role. | `repo` | `repo:admin` |
+| [`set_visibility`](/reference/api/repositories/set-repo-visibility/) | Make it public or private; `confirm` is its full name. Admin role. | `repo`, `private`, `confirm` | `repo:admin` |
+| [`delete`](/reference/api/repositories/delete-repo/) | Delete it; `confirm` is its full name. It can be restored for 30 days, then it is purged. Owners only. | `repo`, `confirm` | `repo:admin` |
+| [`list_deleted`](/reference/api/repositories/list-deleted-repos/) | The workspace's recently deleted repositories, with when each is purged. Owners only; empty for anyone else. | `workspace` | `repo:read` |
+| [`restore`](/reference/api/repositories/restore-repo/) | Bring a deleted repository back at the path it had. Owners only. | `repo` | `repo:admin` |
+| [`purge`](/reference/api/repositories/purge-repo/) | Remove a deleted repository for good now, and free its name; `confirm` is its full name. Owners only. | `repo`, `confirm` | `repo:admin` |
 
-## Repositories
-
-| Tool | Required | What it does | Route |
-| --- | --- | --- | --- |
-| `list_repos` | | Repositories you can see, optionally filtered by `query`. | [`GET /repos?q=`](/reference/api/repositories/list-repos/) |
-| `get_repo` | `repo` | One repository's details. | [`GET /repos/{owner}/{name}`](/reference/api/repositories/get-repo/) |
-| `create_repo` | `name` | Create a repository in one of your workspaces, empty or as a copy of a public git repository (`import_url`). `workspace` may be left out if you belong to exactly one. | [`POST /repos`](/reference/api/repositories/create-repo/) |
-| `update_repo` | `repo` | Change its `description`, `website`, `topics` and `default_branch`, whether its default branch is `protected`, and whether it is `private`. Maintain role; `private` and `default_branch` need Admin. | [`PATCH /repos/{owner}/{name}`](/reference/api/repositories/update-repo/) |
-| `rename_repo` | `repo`, `name` | Give it a new name in its workspace; the old address redirects. Admin role. | [`POST /repos/{owner}/{name}/rename`](/reference/api/repositories/rename-repo/) |
-| `rename_branch` | `repo`, `branch`, `new_name` | Rename a branch; its pull requests follow, and web addresses that name the old branch redirect. Write role; the default branch needs Admin. | [`POST /repos/{owner}/{name}/branches/{branch}/rename`](/reference/api/repositories/rename-branch/) |
-| `set_repo_visibility` | `repo`, `private`, `confirm` | Make it public or private; `confirm` is its full name. Admin role. | [`POST /repos/{owner}/{name}/visibility`](/reference/api/repositories/set-repo-visibility/) |
-| `archive_repo` | `repo` | Make it read-only: pushes and merges are refused, issues and pull requests are locked, agents and workflows stop. Admin role. | [`POST /repos/{owner}/{name}/archive`](/reference/api/repositories/archive-repo/) |
-| `unarchive_repo` | `repo` | Make it writable again. Admin role. | [`POST /repos/{owner}/{name}/unarchive`](/reference/api/repositories/unarchive-repo/) |
-| `transfer_repo` | `repo`, `to` | Move it to another workspace, keeping its name; the old address redirects. Owners of both workspaces only. See [transferring a repository](/guides/transferring-repositories/). | [`POST /repos/{owner}/{name}/transfer`](/reference/api/repositories/transfer-repo/) |
-| `delete_repo` | `repo`, `confirm` | Delete it; `confirm` is its full name. It can be restored for 30 days, then it is purged. Owners only. | [`DELETE /repos/{owner}/{name}`](/reference/api/repositories/delete-repo/) |
-| `list_deleted_repos` | `workspace` | The workspace's recently deleted repositories, with when each is purged. Owners only; empty for anyone else. | [`GET /workspaces/{workspace}/repos/deleted`](/reference/api/repositories/list-deleted-repos/) |
-| `restore_repo` | `repo` | Bring a deleted repository back at the path it had. Owners only. | [`POST /repos/{owner}/{name}/restore`](/reference/api/repositories/restore-repo/) |
-| `purge_repo` | `repo`, `confirm` | Remove a deleted repository for good now, and free its name; `confirm` is its full name. Owners only. | [`POST /repos/{owner}/{name}/purge`](/reference/api/repositories/purge-repo/) |
-| `get_repo_settings` | `repo` | How it handles pull requests: approvals, checks, being up to date, and how g1t's agents are reviewed, revised and merged. | [`GET /repos/{owner}/{name}/settings`](/reference/api/repositories/get-repo-settings/) |
-| `update_repo_settings` | `repo` | Change those settings. Only the fields given change. Maintain role. | [`PATCH /repos/{owner}/{name}/settings`](/reference/api/repositories/update-repo-settings/) |
-| `list_labels` | `repo` | The labels available on its issues. | [`GET /repos/{owner}/{name}/labels`](/reference/api/issues/list-labels/) |
-| `list_events` | `repo` | Its timeline, newest first. `before` pages back. | [`GET /repos/{owner}/{name}/events`](/reference/api/repositories/list-events/) |
+`update_settings` takes `required_approvals`, `count_agent_approvals`,
+`allow_ignoring_checks`, `require_up_to_date`, `agent_review`,
+`max_revisions`, `auto_merge`, `merge_queue` and `hold_low_confidence`. See
+[what a repository can ask for](/guides/g1t-agents/#what-a-repository-can-ask-for).
+`update` with `private` or `default_branch` also needs `repo:admin`.
 
 See [managing a repository](/guides/managing-repositories/) for what each
 of these changes, and what refuses it, and
 [access and roles](/guides/access-and-roles/) for the role each needs.
 
-`update_repo_settings` takes `required_approvals`, `count_agent_approvals`,
-`allow_ignoring_checks`, `require_up_to_date`, `agent_review`,
-`max_revisions`, `auto_merge` and `merge_queue`. See
-[what a repository can ask for](/guides/g1t-agents/#what-a-repository-can-ask-for).
+## `issue`
 
-## Access
+Issues: what should change. Read one before working on it, to see the pull
+requests already made for it. Issues and pull requests share numbers, so
+`comment` works on either.
+
+| Action | What it does | Required | Scope |
+| --- | --- | --- | --- |
+| [`list`](/reference/api/issues/list-issues/) | Issues, newest first, by `state` and `label`. | `repo` | `issues:read` |
+| [`get`](/reference/api/issues/get-issue/) | An issue: description, labels, acceptance checks, comments, and every pull request made for it. | `repo`, `number` | `issues:read` |
+| [`create`](/reference/api/issues/create-issue/) | Open an issue, with `body`, `labels` and `checks`. | `repo`, `title` | `issues:write` |
+| [`update`](/reference/api/issues/update-issue/) | Change its title, body, labels or assignees. Labels and assignees each replace the whole set. | `repo`, `number` | `issues:write` |
+| [`close`](/reference/api/issues/close-issue/) | Close it as `completed` or `not_planned`. | `repo`, `number` | `issues:write` |
+| [`reopen`](/reference/api/issues/reopen-issue/) | Reopen a closed issue. | `repo`, `number` | `issues:write` |
+| [`comment`](/reference/api/issues/add-comment/) | Comment on an issue or a pull request; with `path` and `line`, on one line of a pull request's change. | `repo`, `number`, `body` | `issues:write` |
+| [`import`](/reference/api/integrations/import-issue/) | Open an issue from a ticket, linked to it. `assign` puts a g1t agent on it. | `repo`, `reference` | `issues:write` |
+
+`import` with `assign` also needs `agents:run`, since it puts an agent to
+work.
+
+## `pull_request`
+
+Pull requests: start a change for an issue, record your session, mark it
+ready, review and merge. Read `overlaps` and `behind` on `get` before going
+far.
+
+| Action | What it does | Required | Scope |
+| --- | --- | --- | --- |
+| [`list`](/reference/api/pull-requests/list-pull-requests/) | Pull requests, newest first. `open` covers drafts and those ready for review. | `repo` | `pull_requests:read` |
+| [`get`](/reference/api/pull-requests/get-pull-request/) | Status, head commit, comments and reviews, its issue, the latest acceptance check results, `behind`, and `overlaps`. | `repo`, `number` | `pull_requests:read` |
+| [`changes`](/reference/api/pull-requests/get-pull-request-changes/) | The files it changes, with line-by-line diffs. | `repo`, `number` | `pull_requests:read` |
+| [`create`](/reference/api/pull-requests/create-pull-request/) | Open a draft pull request with its own fork and get its git remote; or, with `branch`, one from a branch already pushed. Give `issue` whenever there is one. | `repo` | `pull_requests:write` |
+| [`record_session`](/reference/api/sessions/record-session/) | Append entries to a pull request's session. Each has `kind` and `text`, and `tool` for tool entries. | `repo`, `number`, `entries` | `pull_requests:write` |
+| [`read_session`](/reference/api/sessions/read-session/) | The recorded session, oldest first. `after` skips to entries after a sequence number. | `repo`, `number` | `pull_requests:read` |
+| [`ready`](/reference/api/pull-requests/mark-pull-request-ready/) | Mark a draft ready for review. The summary becomes its description. | `repo`, `number`, `summary` | `pull_requests:write` |
+| [`review`](/reference/api/pull-requests/review-pull-request/) | `approve`, or `request_changes` with a `body`. Not on your own pull request. | `repo`, `number`, `verdict` | `pull_requests:write` |
+| [`close`](/reference/api/pull-requests/close-pull-request/) | Close it without merging. | `repo`, `number` | `pull_requests:write` |
+| [`merge`](/reference/api/pull-requests/merge-pull-request/) | Land it on `main` and resolve its issue, or add it to the [merge queue](/guides/merge-queue/). Write role. | `repo`, `number` | `pull_requests:write` |
+| [`merge_queue`](/reference/api/pull-requests/get-merge-queue/) | The pull requests waiting to land, in order, each with the state it is tested in and how that went; then those that recently landed or left. | `repo` | `pull_requests:read` |
+
+`record_session` takes a list of `entries`, each with a `kind` (`prompt`,
+`message`, `tool_call`, `tool_result` or `note`) and `text`, and `tool` for
+tool entries. See [sessions and why-blame](/guides/why-blame/) and the
+[merge queue](/guides/merge-queue/).
+
+## `agent`
+
+Put [g1t agents](/guides/g1t-agents/) to work and talk to them. One agent
+works on each issue; to do more at once, use more issues. Starting an agent
+uses the workspace's money. `delegate` also needs `issues:write`, since it
+opens the issue.
+
+| Action | What it does | Required | Scope |
+| --- | --- | --- | --- |
+| [`delegate`](/reference/api/issues/delegate/) | Put an agent on something in one step: open an issue, with `body` and `checks`, and assign it to the g1t agent at once. Write role; nothing is opened without it. The issue opens even when the agent cannot start: `agent.status` is `started`, `queued` or `not_started`, with `agent.code`, `agent.message` and `agent.fix_url` saying why and where to fix it. See [put an agent on it](/guides/g1t-agents/#put-an-agent-on-it-in-one-step). | `repo`, `title` | `agents:run` |
+| [`assign`](/reference/api/issues/assign-issue/) | Assign an existing issue to the [g1t agent](/guides/g1t-agents/), which opens a pull request and sees it through. Preview. | `repo`, `number` | `agents:run` |
+| [`message`](/reference/api/pull-requests/message-agent/) | Send the agent working on a pull request a message, received at its next step. A g1t agent sends a `question` or a `handoff`, with its own pull request as `from_number`. | `repo`, `number`, `body` | `agents:run` |
+| [`answer`](/reference/api/pull-requests/answer-message/) | Answer a question or a handoff by the message's id; `decline` a handoff that is not yours. The answer reaches the asking agent at its next step. | `repo`, `id`, `body` | `agents:run` |
+| [`take_messages`](/reference/api/pull-requests/take-messages/) | For a g1t agent at work: the messages it has not seen yet, each returned once. | `repo`, `number` | `agents:run` |
+
+See [talk to agents](/guides/talking-to-agents/).
+
+## `plan`
+
+Turn an outcome into issues: an agent proposes them with checks and
+dependencies, and nothing opens until you apply the plan. `apply` with
+`assign` also needs `agents:run`. See [hand off an outcome](/guides/outcomes/).
+
+| Action | What it does | Required | Scope |
+| --- | --- | --- | --- |
+| [`create`](/reference/api/plans/plan-work/) | Have an agent turn an outcome into proposed issues with checks and dependencies. Returns the plan's id at once. Write role. | `repo`, `brief` | `agents:run` |
+| [`get`](/reference/api/plans/get-plan/) | The plan: its status (`planning`, `ready`, `failed` or `applied`), the issues it proposes, and once applied, where each stands. | `repo`, `plan` | `issues:read` |
+| [`apply`](/reference/api/plans/apply-plan/) | Open its issues. `assign` puts g1t agents on them in dependency order; `keep` opens only some, by position from 1. | `repo`, `plan` | `issues:write` |
+
+## `memory`
+
+What the project and its workspace remember for the next agent: how to
+build, conventions, decisions and traps. Recall before you start; remember
+one short fact at a time, never a secret. See
+[agents, sessions and memory](/guides/agents-and-memory/).
+
+| Action | What it does | Required | Scope |
+| --- | --- | --- | --- |
+| [`recall`](/reference/api/memory/recall/) | What the project and its workspace remember, pinned first. `query` matches every word; `limit` caps each level. Anyone who can read the repository gets the project's memory; the workspace's is for its members. | `repo` | `memory:read` |
+| [`remember`](/reference/api/memory/remember/) | Save one fact, convention, decision or gotcha for the next agent. `scope` is `project` (this codebase, the default) or `workspace` (true across its projects); `kind` is `fact`, `convention`, `decision` or `gotcha`. Text that looks like a secret is refused. A project's memory needs the Write role or higher on its repository; the workspace's, a member. | `repo`, `text` | `memory:write` |
+
+## `workflow`
+
+Workflows in `.g1t/workflows/`: their runs, jobs and logs, and running,
+cancelling or rerunning them. See [GitHub Actions](/guides/actions/).
+
+| Action | What it does | Required | Scope |
+| --- | --- | --- | --- |
+| [`list`](/reference/api/actions/list-workflows/) | The workflows, with their events, state, problems, notes on what runs differently, manual-run inputs and last run. | `repo` | `workflows:read` |
+| [`list_runs`](/reference/api/actions/list-runs-of-workflow/) | Runs, newest first; filter by `workflow`, `branch`, `event`, `pull` or `sha`. | `repo` | `workflows:read` |
+| [`get_run`](/reference/api/actions/get-workflow-run/) | A run with its jobs, their steps and annotations. | `repo`, `id` | `workflows:read` |
+| [`job_logs`](/reference/api/actions/get-job-logs/) | A job's log after `after`; `done` says if more will come. | `repo`, `job` | `workflows:read` |
+| [`dispatch`](/reference/api/actions/dispatch-workflow/) | Run a `workflow_dispatch` workflow on `ref` with `inputs`. Write role. | `repo`, `workflow` | `workflows:write` |
+| [`cancel`](/reference/api/actions/cancel-workflow-run/) | Cancel a run. Write role. | `repo`, `id` | `workflows:write` |
+| [`rerun`](/reference/api/actions/rerun-workflow-run/) | Run it again; `failed_only` for the jobs that did not succeed. Write role. | `repo`, `id` | `workflows:write` |
+| [`update`](/reference/api/actions/update-workflow/) | Turn a workflow on or off. Maintain role. | `repo`, `workflow`, `enabled` | `workflows:write` |
+
+## `secret`
+
+A repository's or a workspace's secrets and variables, which workflows and
+deployments read. Give `repo` for a repository's, or `workspace` for a
+workspace's own. Secret values are never returned.
+
+| Action | What it does | Required | Scope |
+| --- | --- | --- | --- |
+| [`list_secrets`](/reference/api/secrets-and-variables/list-actions-secrets/) | Secrets' rows: key, environments, who reads them. Never values. | None | `secrets:read` |
+| [`set_secret`](/reference/api/secrets-and-variables/set-actions-secret/) | Add or change a secret's row: `value`, and optionally `id`, `environments`, `available_to`, `projects`, `note`. | `setting` | `secrets:admin` |
+| [`delete_secret`](/reference/api/secrets-and-variables/delete-actions-secret/) | Remove one row (`id`) or every row of the key. | `setting` | `secrets:admin` |
+| [`list_variables`](/reference/api/secrets-and-variables/list-actions-variables/) | Config rows with their values. | None | `secrets:read` |
+| [`set_variable`](/reference/api/secrets-and-variables/set-actions-variable/) | Add or change a config row, as for secrets. | `setting` | `secrets:admin` |
+| [`delete_variable`](/reference/api/secrets-and-variables/delete-actions-variable/) | Remove one row (`id`) or every row of the key. | `setting` | `secrets:admin` |
+
+## `webhook`
+
+HTTPS addresses that are sent signed events as they happen. Give `repo` for
+a repository's webhooks, or `workspace` for a workspace's own. See
+[webhooks](/guides/webhooks/).
+
+| Action | What it does | Required | Scope |
+| --- | --- | --- | --- |
+| [`list`](/reference/api/webhooks/list-webhooks/) | The webhooks, with how each one's latest delivery went. A repository's need the Admin role; a workspace's, a member. | None | `webhooks:read` |
+| [`create`](/reference/api/webhooks/create-webhook/) | Send events to an HTTPS address: `events` to choose them, `secret` to sign with. A ping is sent at once. | `url` | `webhooks:admin` |
+| [`update`](/reference/api/webhooks/update-webhook/) | Change its `url`, `events`, or whether it is `active`. | `id` | `webhooks:admin` |
+| [`delete`](/reference/api/webhooks/delete-webhook/) | Remove it and its delivery log. | `id` | `webhooks:admin` |
+| [`ping`](/reference/api/webhooks/ping-webhook/) | Send it a ping. | `id` | `webhooks:admin` |
+| [`list_deliveries`](/reference/api/webhooks/list-webhook-deliveries/) | Its latest deliveries, with request, response and retries. | `id` | `webhooks:read` |
+| [`redeliver`](/reference/api/webhooks/redeliver-webhook/) | Send a delivery again. | `delivery` | `webhooks:admin` |
+
+## `access`
 
 Who can do what in a repository: its people and their
 [roles](/guides/access-and-roles/) (read, triage, write, maintain and
-admin), invitations, and a workspace's base permission. Changing who has
-access takes a person's own token; an agent's token cannot use any of these.
+admin), invitations, outside collaborators, and a workspace's base
+permission. An agent's token cannot use any of these.
 
-| Tool | Required | What it does | Route |
+| Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
-| `list_collaborators` | `repo` | Everyone with a role on it, with the role, where it comes from (`owner`, `base` or `direct`) and whether they are members; the base permission; and, with the Admin role, pending invitations. Needs the Write role. | [`GET /repos/{owner}/{name}/collaborators`](/reference/api/access/list-collaborators/) |
-| `add_collaborator` | `repo`, `invitee`, `role` | Give someone a role by username or email address. A member gets it at once; anyone else is invited, and becomes an outside collaborator on accepting. Needs the Admin role. | [`POST /repos/{owner}/{name}/collaborators`](/reference/api/access/add-collaborator/) |
-| `update_collaborator` | `repo`, `username`, `role` | Change someone's direct role, or their pending invitation's. Needs the Admin role. | [`PATCH /repos/{owner}/{name}/collaborators/{username}`](/reference/api/access/update-collaborator/) |
-| `remove_collaborator` | `repo`, `username` | Take away someone's direct role. Needs the Admin role, or to be your own. | [`DELETE /repos/{owner}/{name}/collaborators/{username}`](/reference/api/access/remove-collaborator/) |
-| `get_collaborator_permission` | `repo`, `username` | Someone's role, where it comes from, and what it lets them do. Needs the Write role, or to be about yourself. | [`GET /repos/{owner}/{name}/collaborators/{username}/permission`](/reference/api/access/get-collaborator-permission/) |
-| `list_repo_invitations` | `repo` | Its pending invitations. Needs the Admin role. | [`GET /repos/{owner}/{name}/invitations`](/reference/api/access/list-repo-invitations/) |
-| `revoke_repo_invitation` | `repo`, `id` | Withdraw a pending invitation. Needs the Admin role. | [`DELETE /repos/{owner}/{name}/invitations/{id}`](/reference/api/access/revoke-repo-invitation/) |
-| `list_my_repo_invitations` | | The invitations to repositories waiting for your answer. | [`GET /user/repository_invitations`](/reference/api/access/list-my-repo-invitations/) |
-| `accept_repo_invitation` | `id` | Accept one; its role is yours at once. | [`PATCH /user/repository_invitations/{id}`](/reference/api/access/accept-repo-invitation/) |
-| `decline_repo_invitation` | `id` | Decline one. | [`DELETE /user/repository_invitations/{id}`](/reference/api/access/decline-repo-invitation/) |
-| `set_base_permission` | `workspace`, `base_permission` | What every member gets on each repository: `none`, `read`, `write` (the default) or `admin`. Owners only. | [`PATCH /workspaces/{workspace}`](/reference/api/access/set-base-permission/) |
-| `list_outside_collaborators` | `workspace` | People with roles on its repositories who are not members, and what they can reach. Owners only. | [`GET /workspaces/{workspace}/outside_collaborators`](/reference/api/access/list-outside-collaborators/) |
+| [`list_collaborators`](/reference/api/access/list-collaborators/) | Everyone with a role on it, with the role, where it comes from (`owner`, `base` or `direct`) and whether they are members; the base permission; and, with the Admin role, pending invitations. Needs the Write role. | `repo` | `access:read` |
+| [`get_permission`](/reference/api/access/get-collaborator-permission/) | Someone's role, where it comes from, and what it lets them do. Needs the Write role, or to be about yourself. | `repo`, `username` | `access:read` |
+| [`add_collaborator`](/reference/api/access/add-collaborator/) | Give someone a role by username or email address. A member gets it at once; anyone else is invited, and becomes an outside collaborator on accepting. Needs the Admin role. | `repo`, `invitee`, `role` | `access:admin` |
+| [`update_collaborator`](/reference/api/access/update-collaborator/) | Change someone's direct role, or their pending invitation's. Needs the Admin role. | `repo`, `username`, `role` | `access:admin` |
+| [`remove_collaborator`](/reference/api/access/remove-collaborator/) | Take away someone's direct role. Needs the Admin role, or to be your own. | `repo`, `username` | `access:admin` |
+| [`list_invitations`](/reference/api/access/list-repo-invitations/) | Its pending invitations. Needs the Admin role. | `repo` | `access:read` |
+| [`revoke_invitation`](/reference/api/access/revoke-repo-invitation/) | Withdraw a pending invitation. Needs the Admin role. | `repo`, `id` | `access:admin` |
+| [`set_base_permission`](/reference/api/access/set-base-permission/) | What every member gets on each repository: `none`, `read`, `write` (the default) or `admin`. Owners only. | `workspace`, `base_permission` | `access:admin` |
+| [`list_outside_collaborators`](/reference/api/access/list-outside-collaborators/) | People with roles on its repositories who are not members, and what they can reach. Owners only. | `workspace` | `access:read` |
 
-## Search
+## `workspace`
 
-| Tool | Required | What it does | Route |
+Workspaces own repositories: create or delete one, invite members, and
+connect [integrations](/guides/integrations/) and model providers. See
+[workspaces](/guides/workspaces/).
+
+| Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
-| `search` | `query` | Search all of g1t: repositories, code on default branches, issues, pull requests, people and workspaces. Public results for everyone; private ones in workspaces you belong to. `query` takes words, `"phrases"`, `-words` and qualifiers such as `repo:owner/name`, `org:`, `language:`, `path:`, `is:open`, `is:pr`, `author:` and `label:`. `type` is `repositories`, `code`, `issues`, `pulls` or `people`; `page` and `per_page` page through. Returns counts for every type, and each result's matching text in highlighted parts; code with line numbers. | [`GET /search`](/reference/api/search/search/) |
+| [`create`](/reference/api/workspaces/create-workspace/) | Create a workspace. | `slug` | `workspace:admin` |
+| [`delete`](/reference/api/workspaces/delete-workspace/) | Delete an empty workspace whose billing is settled; `confirm` is its slug. Owners only. See [deleting a workspace](/guides/workspaces/#delete-a-workspace). | `workspace`, `confirm` | `workspace:admin` |
+| [`list_invites`](/reference/api/invites/list-workspace-invites/) | A workspace's invites. Owners only. | `workspace` | `workspace:read` |
+| [`invite_member`](/reference/api/invites/invite-member/) | Invite an address into a workspace, with an invite bound to it. Owners only. | `workspace`, `email` | `workspace:admin` |
+| [`revoke_invite`](/reference/api/invites/revoke-workspace-invite/) | Revoke a workspace's pending invite. Owners only. | `workspace`, `id` | `workspace:admin` |
+| [`list_integrations`](/reference/api/integrations/list-integrations/) | The workspace's connections. Secrets are never returned. Members only. | `workspace` | `workspace:read` |
+| [`connect_integration`](/reference/api/integrations/connect-integration/) | Connect a model provider (Anthropic, OpenAI, Gemini, or a compatible endpoint), Sentry, Datadog, a webhook, Jira or Linear, with `config` and `secret`. Owners only. | `workspace`, `provider` | `workspace:admin` |
+| [`disconnect_integration`](/reference/api/integrations/disconnect-integration/) | Remove it and its secrets. Owners only. | `workspace`, `id` | `workspace:admin` |
+| [`test_integration`](/reference/api/integrations/test-integration/) | Check its credentials against the system it connects to. Owners only. | `workspace`, `id` | `workspace:admin` |
+| [`get_model_routes`](/reference/api/integrations/get-model-routes/) | Which provider and model each kind of work goes to. Members only. | `workspace` | `workspace:read` |
+| [`set_model_routes`](/reference/api/integrations/set-model-routes/) | Replace them: each route has `task`, `connection_id` (null for g1t's models) and `model`. Owners only. | `workspace`, `routes` | `workspace:admin` |
 
-See [search and Explore](/guides/search/) for the full syntax. `search`
-looks across all of g1t; `search_context`, under [Memory](#memory), asks one
-workspace's context hub.
+## `account`
 
-## Issues
+Who the token acts as and its workspaces, your email addresses, your
+invites while g1t is [invite-only](/guides/authentication/#invites), and
+invitations to repositories waiting for you. `whoami` is the default
+action, and needs no scope. An agent's token and a workspace's token cannot
+use the email and invite actions.
 
-| Tool | Required | What it does | Route |
+| Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
-| `list_issues` | `repo` | Issues, newest first, by `state` and `label`. | [`GET /repos/{owner}/{name}/issues`](/reference/api/issues/list-issues/) |
-| `get_issue` | `repo`, `number` | An issue: description, labels, acceptance checks, comments, and every pull request made for it. | [`GET /repos/{owner}/{name}/issues/{number}`](/reference/api/issues/get-issue/) |
-| `create_issue` | `repo`, `title` | Open an issue, with `body`, `labels` and `checks`. | [`POST /repos/{owner}/{name}/issues`](/reference/api/issues/create-issue/) |
-| `update_issue` | `repo`, `number` | Change its title, body, labels or assignees. Labels and assignees each replace the whole set. | [`PATCH /repos/{owner}/{name}/issues/{number}`](/reference/api/issues/update-issue/) |
-| `close_issue` | `repo`, `number` | Close it as `completed` or `not_planned`. | [`POST /repos/{owner}/{name}/issues/{number}/close`](/reference/api/issues/close-issue/) |
-| `reopen_issue` | `repo`, `number` | Reopen a closed issue. | [`POST /repos/{owner}/{name}/issues/{number}/reopen`](/reference/api/issues/reopen-issue/) |
-| `assign_issue` | `repo`, `number` | Assign it to the [g1t agent](/guides/g1t-agents/), which opens a pull request and sees it through. Preview. | [`POST /repos/{owner}/{name}/issues/{number}/assign`](/reference/api/issues/assign-issue/) |
-| `add_comment` | `repo`, `number`, `body` | Comment on an issue or a pull request; with `path` and `line`, on one line of a pull request's change. | [`POST /repos/{owner}/{name}/issues/{number}/comments`](/reference/api/issues/add-comment/) |
+| [`whoami`](/reference/api/accounts/whoami/) | Who the access token acts as, and the workspaces it can work in. `kind` is `user`, `workspace` or `agent`. | None | None |
+| [`list_emails`](/reference/api/accounts/list-emails/) | Your email addresses and email settings. People only. | None | `account:read` |
+| [`add_email`](/reference/api/accounts/add-email/) | Add an address; g1t emails it a link to confirm it. | `email`, `password` | `account:write` |
+| [`remove_email`](/reference/api/accounts/remove-email/) | Remove an address; never the primary or the last confirmed one. | `email`, `password` | `account:write` |
+| [`update_email_settings`](/reference/api/accounts/update-email-settings/) | Change `primary` or `backup` (with `password`), `private_email` or `block_private_pushes`. See [email addresses](/guides/authentication/#email-addresses). | None | `account:write` |
+| [`list_invites`](/reference/api/invites/list-invites/) | Your invites, newest first, and how many you have left. | None | `account:read` |
+| [`create_invite`](/reference/api/invites/create-invite/) | Make an invite; with `email`, only that address can use it and it is emailed there. With `workspace`, use that workspace's granted invites. | None | `account:write` |
+| [`revoke_invite`](/reference/api/invites/revoke-invite/) | Revoke a pending invite; it comes back to whoever it was charged to. | `id` | `account:write` |
+| [`list_repository_invitations`](/reference/api/access/list-my-repo-invitations/) | The invitations to repositories waiting for your answer. | None | `account:read` |
+| [`accept_repository_invitation`](/reference/api/access/accept-repo-invitation/) | Accept one; its role is yours at once. | `id` | `account:write` |
+| [`decline_repository_invitation`](/reference/api/access/decline-repo-invitation/) | Decline one. | `id` | `account:write` |
 
-## Pull requests
-
-| Tool | Required | What it does | Route |
-| --- | --- | --- | --- |
-| `list_pull_requests` | `repo` | Pull requests, newest first. `open` covers drafts and those ready for review. | [`GET /repos/{owner}/{name}/pulls`](/reference/api/pull-requests/list-pull-requests/) |
-| `get_pull_request` | `repo`, `number` | Status, head commit, comments and reviews, its issue, the latest acceptance check results, `behind`, and `overlaps`. | [`GET /repos/{owner}/{name}/pulls/{number}`](/reference/api/pull-requests/get-pull-request/) |
-| `create_pull_request` | `repo` | Open a draft pull request with its own fork and get its git remote; or, with `branch`, one from a branch already pushed. Give `issue` whenever there is one. | [`POST /repos/{owner}/{name}/pulls`](/reference/api/pull-requests/create-pull-request/) |
-| `get_pull_request_changes` | `repo`, `number` | The files it changes, with line-by-line diffs. | [`GET /repos/{owner}/{name}/pulls/{number}/changes`](/reference/api/pull-requests/get-pull-request-changes/) |
-| `mark_pull_request_ready` | `repo`, `number`, `summary` | Mark a draft ready for review. The summary becomes its description. | [`POST /repos/{owner}/{name}/pulls/{number}/ready`](/reference/api/pull-requests/mark-pull-request-ready/) |
-| `review_pull_request` | `repo`, `number`, `verdict` | `approve`, or `request_changes` with a `body`. Not on your own pull request. | [`POST /repos/{owner}/{name}/pulls/{number}/reviews`](/reference/api/pull-requests/review-pull-request/) |
-| `close_pull_request` | `repo`, `number` | Close it without merging. | [`POST /repos/{owner}/{name}/pulls/{number}/close`](/reference/api/pull-requests/close-pull-request/) |
-| `merge_pull_request` | `repo`, `number` | Land it on `main` and resolve its issue, or add it to the [merge queue](/guides/merge-queue/). Write role. | [`POST /repos/{owner}/{name}/pulls/{number}/merge`](/reference/api/pull-requests/merge-pull-request/) |
-
-## Sessions
-
-| Tool | Required | What it does | Route |
-| --- | --- | --- | --- |
-| `record_session` | `repo`, `number`, `entries` | Append entries to a pull request's session. Each has `kind` and `text`, and `tool` for tool entries. | [`POST /repos/{owner}/{name}/pulls/{number}/session`](/reference/api/sessions/record-session/) |
-| `read_session` | `repo`, `number` | The recorded session, oldest first. `after` skips to entries after a sequence number. | [`GET /repos/{owner}/{name}/pulls/{number}/session`](/reference/api/sessions/read-session/) |
-
-See [sessions and why-blame](/guides/why-blame/).
-
-## Memory
-
-| Tool | Required | What it does | Route |
-| --- | --- | --- | --- |
-| `remember` | `repo`, `text` | Save one fact, convention, decision or gotcha for the next agent. `scope` is `project` (this codebase, the default) or `workspace` (true across its projects); `kind` is `fact`, `convention`, `decision` or `gotcha`. Text that looks like a secret is refused. A project's memory needs the Write role or higher on its repository; the workspace's, a member. | [`POST /repos/{owner}/{name}/memory`](/reference/api/memory/remember/) |
-| `recall` | `repo` | What the project and its workspace remember, pinned first. `query` matches every word; `limit` caps each level. Anyone who can read the repository gets the project's memory; the workspace's is for its members. | [`GET /repos/{owner}/{name}/memory`](/reference/api/memory/recall/) |
-| `search_context` | `query` | One search across a workspace's context hub: its catalog, docs, issues and pull requests, and, for members and g1t's agents, its kept memory. Results are ranked by meaning and labelled with their kind, source, author and freshness. Give `workspace`, or a `repo` in it; narrow with `project` and `kinds`. | [`GET /workspaces/{workspace}/context/search`](/reference/api/context/search-context/) |
-| `get_entity` | `kind`, `id` | One catalog entry by kind and id or key (a project's slug, a package as `npm:<name>`, an owner's username), with what it depends on, who owns it, where it deploys, what documents it, and what it exposes and uses. | [`GET /workspaces/{workspace}/context/{kind}/{id}`](/reference/api/context/get-entity/) |
-
-See [agents, sessions and memory](/guides/agents-and-memory/).
-
-## Plans
-
-| Tool | Required | What it does | Route |
-| --- | --- | --- | --- |
-| `plan_work` | `repo`, `brief` | Have an agent turn an outcome into proposed issues with checks and dependencies. Returns the plan's id at once. Write role. | [`POST /repos/{owner}/{name}/plans`](/reference/api/plans/plan-work/) |
-| `get_plan` | `repo`, `plan` | The plan: its status (`planning`, `ready`, `failed` or `applied`), the issues it proposes, and once applied, where each stands. | [`GET /repos/{owner}/{name}/plans/{plan}`](/reference/api/plans/get-plan/) |
-| `apply_plan` | `repo`, `plan` | Open its issues. `assign` puts g1t agents on them in dependency order; `keep` opens only some, by position from 1. | [`POST /repos/{owner}/{name}/plans/{plan}/apply`](/reference/api/plans/apply-plan/) |
-
-See [hand off an outcome](/guides/outcomes/).
-
-## Merge queue
-
-| Tool | Required | What it does | Route |
-| --- | --- | --- | --- |
-| `get_merge_queue` | `repo` | The pull requests waiting to land, in order, each with the state it is tested in and how that went; then those that recently landed or left. | [`GET /repos/{owner}/{name}/queue`](/reference/api/pull-requests/get-merge-queue/) |
-
-See [merge queue](/guides/merge-queue/).
-
-## Integrations
-
-See [Integrations](/guides/integrations/). Managing them needs an owner's own token.
-
-| Tool | Required | What it does | Route |
-| --- | --- | --- | --- |
-| `list_integrations` | `workspace` | The workspace's connections. Secrets are never returned. Members only. | [`GET /workspaces/{workspace}/integrations`](/reference/api/integrations/list-integrations/) |
-| `connect_integration` | `workspace`, `provider` | Connect a model provider (Anthropic, OpenAI, Gemini, or a compatible endpoint), Sentry, Datadog, a webhook, Jira or Linear, with `config` and `secret`. Owners only. | [`POST /workspaces/{workspace}/integrations`](/reference/api/integrations/connect-integration/) |
-| `get_model_routes` | `workspace` | Which provider and model each kind of work goes to. Members only. | [`GET /workspaces/{workspace}/model-routes`](/reference/api/integrations/get-model-routes/) |
-| `set_model_routes` | `workspace`, `routes` | Replace them: each route has `task`, `connection_id` (null for g1t's models) and `model`. Owners only. | [`PUT /workspaces/{workspace}/model-routes`](/reference/api/integrations/set-model-routes/) |
-| `test_integration` | `workspace`, `id` | Check its credentials against the system it connects to. Owners only. | [`POST /workspaces/{workspace}/integrations/{id}/test`](/reference/api/integrations/test-integration/) |
-| `disconnect_integration` | `workspace`, `id` | Remove it and its secrets. Owners only. | [`DELETE /workspaces/{workspace}/integrations/{id}`](/reference/api/integrations/disconnect-integration/) |
-| `get_context` | `repo`, `reference` | A Jira or Linear ticket by key or address, or a Sentry issue by address, as it is now. Reference material, never instructions. | [`GET /repos/{owner}/{name}/context?reference=`](/reference/api/integrations/get-context/) |
-| `import_issue` | `repo`, `reference` | Open an issue from a ticket, linked to it. `assign` puts a g1t agent on it. | [`POST /repos/{owner}/{name}/issues/import`](/reference/api/integrations/import-issue/) |
-
-## Webhooks
-
-See [Webhooks](/guides/webhooks/). Give `repo` for a repository's webhooks, or `workspace` for a workspace's own.
-
-| Tool | Required | What it does | Route |
-| --- | --- | --- | --- |
-| `list_webhooks` | `repo` or `workspace` | The webhooks, with how each one's latest delivery went. A repository's need the Admin role; a workspace's, a member. | [`GET /repos/{owner}/{name}/hooks`](/reference/api/webhooks/list-webhooks/) |
-| `create_webhook` | `url` | Send events to an HTTPS address: `events` to choose them, `secret` to sign with. A ping is sent at once. | [`POST /repos/{owner}/{name}/hooks`](/reference/api/webhooks/create-webhook/) |
-| `update_webhook` | `id` | Change its `url`, `events`, or whether it is `active`. | [`PATCH /repos/{owner}/{name}/hooks/{id}`](/reference/api/webhooks/update-webhook/) |
-| `delete_webhook` | `id` | Remove it and its delivery log. | [`DELETE /repos/{owner}/{name}/hooks/{id}`](/reference/api/webhooks/delete-webhook/) |
-| `ping_webhook` | `id` | Send it a ping. | [`POST /repos/{owner}/{name}/hooks/{id}/pings`](/reference/api/webhooks/ping-webhook/) |
-| `list_webhook_deliveries` | `id` | Its latest deliveries, with request, response and retries. | [`GET /repos/{owner}/{name}/hooks/{id}/deliveries`](/reference/api/webhooks/list-webhook-deliveries/) |
-| `redeliver_webhook` | `id`, `delivery` | Send a delivery again. | [`POST /repos/{owner}/{name}/hooks/{id}/deliveries/{delivery}/redeliver`](/reference/api/webhooks/redeliver-webhook/) |
-
-Each has a workspace route too, under `/workspaces/{workspace}/hooks`.
-
-## GitHub Actions
-
-See [GitHub Actions](/guides/actions/). Workflows are GitHub's, kept in `.g1t/workflows/`. Routes are GitHub's own.
-
-| Tool | Required | What it does | Route |
-| --- | --- | --- | --- |
-| `list_workflows` | `repo` | The workflows, with their events, state, problems, notes on what runs differently, manual-run inputs and last run. | [`GET /repos/{owner}/{name}/actions/workflows`](/reference/api/actions/list-workflows/) |
-| `list_workflow_runs` | `repo` | Runs, newest first; filter by `workflow`, `branch`, `event`, `pull` or `sha`. | [`GET /repos/{owner}/{name}/actions/runs`](/reference/api/actions/list-runs-of-workflow/) |
-| `get_workflow_run` | `repo`, `id` | A run with its jobs, their steps and annotations. | [`GET /repos/{owner}/{name}/actions/runs/{id}`](/reference/api/actions/get-workflow-run/) |
-| `get_job_logs` | `repo`, `job` | A job's log after `after`; `done` says if more will come. | [`GET /repos/{owner}/{name}/actions/jobs/{job}/logs`](/reference/api/actions/get-job-logs/) |
-| `dispatch_workflow` | `repo`, `workflow` | Run a `workflow_dispatch` workflow on `ref` with `inputs`. Write role. | [`POST /repos/{owner}/{name}/actions/workflows/{workflow}/dispatches`](/reference/api/actions/dispatch-workflow/) |
-| `cancel_workflow_run` | `repo`, `id` | Cancel a run. Write role. | [`POST /repos/{owner}/{name}/actions/runs/{id}/cancel`](/reference/api/actions/cancel-workflow-run/) |
-| `rerun_workflow_run` | `repo`, `id` | Run it again; `failed_only` for the jobs that did not succeed. Write role. | [`POST /repos/{owner}/{name}/actions/runs/{id}/rerun`](/reference/api/actions/rerun-workflow-run/) |
-| `update_workflow` | `repo`, `workflow`, `enabled` | Turn a workflow on or off. Maintain role. | [`PATCH /repos/{owner}/{name}/actions/workflows/{workflow}`](/reference/api/actions/update-workflow/) |
-| `list_actions_secrets` | `repo` or `workspace` | Secrets' rows: key, environments, who reads them. Never values. | [`GET /repos/{owner}/{name}/actions/secrets`, `GET /workspaces/{workspace}/actions/secrets`](/reference/api/secrets-and-variables/list-actions-secrets/) |
-| `set_actions_secret` | `setting` | Add or change a secret's row: `value`, and optionally `id`, `environments`, `available_to`, `repositories`, `note`. | [`PUT …/actions/secrets/{name}`](/reference/api/secrets-and-variables/set-actions-secret/) |
-| `delete_actions_secret` | `setting` | Remove one row (`id`) or every row of the key. | [`DELETE …/actions/secrets/{name}`](/reference/api/secrets-and-variables/delete-actions-secret/) |
-| `list_actions_variables` | `repo` or `workspace` | Config rows with their values. | [`GET …/actions/variables`](/reference/api/secrets-and-variables/list-actions-variables/) |
-| `set_actions_variable` | `setting` | Add or change a config row, as for secrets. | [`POST …/actions/variables`, `PATCH …/variables/{name}`](/reference/api/secrets-and-variables/set-actions-variable/) |
-| `delete_actions_variable` | `setting` | Remove one row (`id`) or every row of the key. | [`DELETE …/actions/variables/{name}`](/reference/api/secrets-and-variables/delete-actions-variable/) |
-
-## Messages
-
-| Tool | Required | What it does | Route |
-| --- | --- | --- | --- |
-| `message_agent` | `repo`, `number`, `body` | Send the agent working on a pull request a message, received at its next step. A g1t agent sends a `question` or a `handoff`, with its own pull request as `from_number`. | [`POST /repos/{owner}/{name}/pulls/{number}/messages`](/reference/api/pull-requests/message-agent/) |
-| `answer_message` | `repo`, `id`, `body` | Answer a question or a handoff by the message's id; `decline` a handoff that is not yours. The answer reaches the asking agent at its next step. | [`POST /repos/{owner}/{name}/messages/{id}/answer`](/reference/api/pull-requests/answer-message/) |
-| `take_messages` | `repo`, `number` | For a g1t agent at work: the messages it has not seen yet, each returned once. | [`POST /repos/{owner}/{name}/pulls/{number}/messages/take`](/reference/api/pull-requests/take-messages/) |
-
-See [talk to agents](/guides/talking-to-agents/).
 
 ## What a g1t agent can use
 
@@ -247,25 +460,22 @@ A g1t agent works with a [run credential](/guides/g1t-agents/#credentials):
 a token bound to its run and its own repository, acting as `g1t-agent` on
 behalf of the person who started the work, and only while that person is
 still a member of the workspace or has a role on one of its repositories. It
-has that person's role on its repository, but never more than Write. Which tools it may use depends on the kind
-of run.
+has that person's role on its repository, but never more than Write. Which
+actions it may use depends on the kind of run.
 
-| Run | Tools |
+| Run | Actions |
 | --- | --- |
-| Implement, revise, answer | `get_repo`, `list_issues`, `get_issue`, `list_labels`, `list_pull_requests`, `get_pull_request`, `get_pull_request_changes`, `read_session`, `get_merge_queue`, `list_events`, `recall`, `search_context`, `get_entity`, `search`, `list_workflows`, `list_workflow_runs`, `get_workflow_run`, `get_job_logs`, and `create_issue`, `add_comment`, `take_messages`, `remember`, `message_agent`, `answer_message`, `get_context` |
-| Review | The same reading tools, and `add_comment`, `review_pull_request`, `get_context` |
-| Plan | The same reading tools, and `create_issue`, `get_context` |
-| Catch up | The reading tools only |
+| Implement, revise, answer | Reading: `repository` `get`, `list_labels` and `list_events`; `issue` `list` and `get`; `pull_request` `list`, `get`, `changes`, `read_session` and `merge_queue`; `memory` `recall`; `search` `code`, `context` and `entity`; `workflow` `list`, `list_runs`, `get_run` and `job_logs`. Then `issue` `create` and `comment`, `memory` `remember`, `agent` `message`, `answer` and `take_messages`, and `search` `ticket`. |
+| Review | The same reading actions, and `issue` `comment`, `pull_request` `review` and `search` `ticket`. |
+| Plan | The same reading actions, and `issue` `create` and `search` `ticket`. |
+| Catch up | The reading actions only. |
 
-No agent's token can use the tools for settings, members, tokens, billing,
-integrations, webhooks, secrets and variables, or workflows' controls, nor
-`merge_pull_request`, `assign_issue`, `plan_work`, `apply_plan`,
-`import_issue`, `create_repo`, `update_repo`, `rename_repo`,
-`rename_branch`, `set_repo_visibility`, `archive_repo`, `unarchive_repo`,
-`transfer_repo`, `delete_repo`, `list_deleted_repos`, `restore_repo`,
-`purge_repo`, `create_workspace` or `delete_workspace`, nor any of the
-[access](#access) tools. Every repository it
-names must be its own. `tools/list` shows such a token only the tools it
-may use; a call to any other is refused with the rule that refused it, and
-recorded in the workspace's [audit log](/guides/audit-log/), as is every
-call it makes.
+No agent's token can use the `workspace`, `access`, `secret` or `webhook`
+tools, the controls of `workflow`, or `pull_request` `merge`, `agent`
+`assign` and `delegate`, `plan` `create` and `apply`, `issue` `import`, or
+any `repository` action that creates, changes, renames, archives,
+transfers, deletes, restores or purges a repository. Every repository it
+names must be its own. `tools/list` shows such a token only the tools and
+actions it may use; a call to any other is refused with the rule that
+refused it, and recorded in the workspace's [audit log](/guides/audit-log/),
+as is every call it makes.

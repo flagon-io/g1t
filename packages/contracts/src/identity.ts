@@ -38,6 +38,15 @@ export type User = {
    * belong to its workspace. Set with `workspaces`; see `access.ts`.
    */
   grants?: RepoGrant[];
+  /**
+   * Set on a user resolved from an access token: its scopes (null for full
+   * access) and the workspaces or repositories it reaches. See scopes.ts.
+   */
+  token?: {
+    token_id: string;
+    scopes?: string[] | null;
+    legacy?: boolean;
+  };
 };
 
 /** What a member may do: an owner also manages the workspace's members. */
@@ -303,6 +312,18 @@ export type AccessToken = {
    * once that account is gone, and on personal tokens.
    */
   createdBy: string | null;
+  /** Its scopes, as `resource:level`. Null: full access. */
+  scopes: string[] | null;
+  /** Made before tokens had scopes: full access until someone narrows it. */
+  legacy: boolean;
+  /** RFC 3339. Null: it does not expire. */
+  expiresAt: string | null;
+};
+
+/** What a new or changed token may do. */
+export type TokenGrant = {
+  /** Null: full access. */
+  scopes: string[] | null;
 };
 
 export type DeviceStart = {
@@ -330,6 +351,8 @@ export type OAuthApproval = {
   redirectUri: string;
   /** PKCE challenge, method S256. */
   codeChallenge: string;
+  /** What the person granted. Null: full access. */
+  scopes: string[] | null;
 };
 
 export type OAuthTokens = {
@@ -338,6 +361,8 @@ export type OAuthTokens = {
   refreshToken: string;
   /** Seconds until the access token stops working. */
   expiresIn: number;
+  /** The scopes granted, space-separated, or `*` for full access. */
+  scope?: string | null;
 };
 
 /** An application a person has signed in to. */
@@ -348,6 +373,10 @@ export type OAuthGrant = {
   createdAt: string;
   /** RFC 3339. */
   lastUsedAt: string;
+  /** What the person granted. Null: full access. */
+  scopes: string[] | null;
+  /** Signed in before applications had scopes: full access until narrowed. */
+  legacy: boolean;
 };
 
 /** Accounts, credentials and sessions. */
@@ -419,6 +448,8 @@ export interface IdentityApi extends AccessClient {
   listOAuthGrants(user: User): Promise<OAuthGrant[]>;
   /** Signs an application out. */
   revokeOAuthGrant(user: User, id: string): Promise<void>;
+  /** Changes what an application may do, at once and when it refreshes. */
+  updateOAuthGrant(user: User, id: string, grant: TokenGrant): Promise<Result<OAuthGrant>>;
 
   createWorkspace(user: User, slug: string, name: string): Promise<Result<Workspace>>;
   /** Public details of a workspace, or null. */
@@ -468,7 +499,12 @@ export interface IdentityApi extends AccessClient {
    */
   listWorkspaceTokens(slug: string, viewer: Viewer): Promise<Result<AccessToken[]>>;
   /** Owners only. The plaintext token is returned once and never stored. */
-  createWorkspaceToken(actor: User, slug: string, name: string): Promise<Result<{ token: string; info: AccessToken }>>;
+  createWorkspaceToken(
+    actor: User,
+    slug: string,
+    name: string,
+    grant?: TokenGrant & { ttlSeconds?: number },
+  ): Promise<Result<{ token: string; info: AccessToken }>>;
   /** Owners only. */
   removeWorkspaceToken(actor: User, slug: string, id: string): Promise<Result<boolean>>;
 
@@ -543,7 +579,14 @@ export interface IdentityApi extends AccessClient {
    * form is used for hosted agents. A token made for a workspace acting
    * through a token of its own belongs to that workspace too.
    */
-  createAccessToken(user: User, name: string, ttlSeconds?: number): Promise<{ token: string; info: AccessToken }>;
+  createAccessToken(
+    user: User,
+    name: string,
+    ttlSeconds?: number,
+    grant?: TokenGrant & { listed?: boolean },
+  ): Promise<{ token: string; info: AccessToken }>;
+  /** Changes what one of a person's tokens may do; the token is unchanged. */
+  updateAccessToken(user: User, id: string, grant: TokenGrant): Promise<Result<AccessToken>>;
   /**
    * A token for a g1t agent working for `onBehalfOf`: it acts as
    * `g1t-agent`, in `scope.repo` only, and only for `scope.operations`.

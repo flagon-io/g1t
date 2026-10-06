@@ -176,6 +176,10 @@ pub struct AgentRun {
     /// `budget` or `time` when g1t stopped it for reaching a cap.
     #[serde(default)]
     pub halted: Option<String>,
+    /// How sure g1t was of the change as this run left it, for a run that
+    /// made or revised one.
+    #[serde(default)]
+    pub confidence: Option<crate::work::Confidence>,
     /// RFC 3339.
     pub created_at: String,
     pub started_at: Option<String>,

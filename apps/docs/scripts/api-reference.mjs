@@ -60,13 +60,13 @@ export function operations(document = loadDocument()) {
 			});
 		}
 	}
-	// By section, then by the section's own reading order (the MCP tool's
+	// By section, then by the section's own reading order (the operation's
 	// place in it), then a repository's address before a workspace's.
-	const order = new Map(document.tags.flatMap((tag) => (tag['x-tools'] ?? []).map((tool, i) => [tool, i])));
+	const order = new Map(document.tags.flatMap((tag) => (tag['x-tools'] ?? []).map((name, i) => [name, i])));
 	return found.sort(
 		(a, b) =>
 			tags.indexOf(a.tag) - tags.indexOf(b.tag) ||
-			(order.get(a['x-mcp-tool']) ?? -1) - (order.get(b['x-mcp-tool']) ?? -1) ||
+			(order.get(a['x-operation']) ?? -1) - (order.get(b['x-operation']) ?? -1) ||
 			Number(a.operationId.endsWith('_for_workspace')) - Number(b.operationId.endsWith('_for_workspace')) ||
 			a.position - b.position,
 	);
@@ -181,7 +181,7 @@ function split(description) {
 	return { lead: match[1], rest: [first.slice(match[0].length), ...paragraphs.slice(1)].join('\n\n') };
 }
 
-/** Each MCP tool's page: the first of its addresses, a repository's. */
+/** Each operation's page: the first of its addresses, a repository's. */
 const pages = new Map();
 
 /** Names of other operations in running text, linked to their pages. */
@@ -196,7 +196,10 @@ function linkTools(text, self) {
 /** The page for one operation. */
 function page(operation, all) {
 	const { lead, rest } = split(operation.description);
+	const name = operation['x-operation'];
 	const tool = operation['x-mcp-tool'];
+	const action = operation['x-mcp-action'];
+	const scope = operation['x-scope'];
 	const security = operation.security ?? [{ token: [] }];
 	const auth =
 		security.length === 0
@@ -204,7 +207,7 @@ function page(operation, all) {
 			: security.some((entry) => Object.keys(entry).length === 0)
 				? 'Optional. Public data can be read without a token; send one to see what is private.'
 				: 'Required. Send an [access token](/reference/api/#authentication) as `Authorization: Bearer`.';
-	const siblings = all.filter((other) => tool && other['x-mcp-tool'] === tool && other !== operation);
+	const siblings = all.filter((other) => name && other['x-operation'] === name && other !== operation);
 
 	const out = [];
 	out.push('---');
@@ -219,14 +222,24 @@ function page(operation, all) {
 	);
 	out.push('');
 	if (rest) {
-		out.push(linkTools(prose(rest), tool));
+		out.push(linkTools(prose(rest), name));
 		out.push('');
 	}
 	const facts = [['Authentication', auth]];
 	facts.push([
 		'MCP tool',
-		tool ? `[\`${tool}\`](/reference/mcp/), with the same inputs` : 'None. Signing in is on the REST API only.',
+		tool
+			? `[\`${tool}\`](/reference/mcp/#${tool}) with \`action\` \`${action}\`, and the same inputs`
+			: 'None. Signing in is on the REST API only.',
 	]);
+	if (tool) {
+		facts.push([
+			'Scope',
+			scope
+				? `An access token needs [\`${scope}\`](/guides/authentication/#scopes).`
+				: 'None. Any access token may use it.',
+		]);
+	}
 	if (siblings.length) {
 		facts.push([
 			'Also at',
@@ -294,9 +307,9 @@ export function generateApiReference() {
 	const all = operations(document);
 	pages.clear();
 	for (const operation of all) {
-		const tool = operation['x-mcp-tool'];
-		// A tool's name links to its first address: the repository's.
-		if (tool && !pages.has(tool)) pages.set(tool, operation.slug);
+		const name = operation['x-operation'];
+		// An operation's name links to its first address: the repository's.
+		if (name && !pages.has(name)) pages.set(name, operation.slug);
 	}
 
 	rmSync(OUT, { recursive: true, force: true });

@@ -160,6 +160,9 @@ impl Identity {
                 user: User { ..user.clone() },
                 name: row.client_name,
                 ttl_seconds: None,
+                // A tool a person signed in to themselves acts as them.
+                scopes: None,
+                listed: false,
             })
             .await?;
         Ok(DeviceClaim::Approved {

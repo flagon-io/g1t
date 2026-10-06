@@ -41,7 +41,8 @@ const SESSION_ENTRIES: u32 = 2000;
 const COLUMNS: &str = "id, workspace, repo_id, repo, number, pull_id, kind, agent, model, status,
   step, step_count, cost_usd, turns, sandbox, token_hash, started_by, error, created_at,
   started_at, finished_at, updated_at, budget_usd, time_cap_minutes, halted,
-  COALESCE((SELECT title FROM pulls WHERE pulls.id = agent_runs.pull_id), agent_runs.title) AS title";
+  COALESCE((SELECT title FROM pulls WHERE pulls.id = agent_runs.pull_id), agent_runs.title) AS title,
+  (SELECT detail FROM run_confidence WHERE run_confidence.run_id = agent_runs.id) AS confidence";
 
 #[derive(Deserialize)]
 pub(crate) struct RunRow {
@@ -78,6 +79,9 @@ pub(crate) struct RunRow {
     time_cap_minutes: Option<u32>,
     #[serde(default)]
     halted: Option<String>,
+    /// JSON of how sure g1t was of the change as the run left it.
+    #[serde(default)]
+    confidence: Option<String>,
 }
 
 impl RunRow {
@@ -115,6 +119,10 @@ impl RunRow {
             budget_usd: self.budget_usd.filter(|_| member),
             time_cap_minutes: self.time_cap_minutes,
             halted: self.halted,
+            confidence: self
+                .confidence
+                .as_deref()
+                .and_then(|detail| serde_json::from_str(detail).ok()),
             created_at: self.created_at,
             started_at: self.started_at,
             finished_at: self.finished_at,

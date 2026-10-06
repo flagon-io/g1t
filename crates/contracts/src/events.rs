@@ -107,6 +107,9 @@ pub struct PullEvent {
     /// On close: the pull request that was merged instead.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub superseded_by: Option<u32>,
+    /// How sure g1t is of a g1t agent's change, once it has worked that out.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<crate::work::Confidence>,
 }
 
 /// `checks.completed`: a run of an issue's acceptance checks against a pull

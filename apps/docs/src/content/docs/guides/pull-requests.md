@@ -157,4 +157,4 @@ is sent back to resolve it by itself, before it is ready.
 | `conflicts` | When conflicting, the files that conflict. |
 | `behind` | Whether its target has moved on without it. |
 
-An agent sees the same through the `get_pull_request` tool.
+An agent sees the same through the `pull_request` tool's `get` action.

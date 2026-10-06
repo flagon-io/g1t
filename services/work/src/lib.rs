@@ -8,6 +8,7 @@ mod authored;
 mod capture;
 mod checks;
 mod compute;
+mod confidence;
 mod guardrails;
 mod lifecycle;
 mod memory;
@@ -44,7 +45,7 @@ use worker::{
 };
 
 use retired::writable;
-use rows::{CommentRow, IssueRow, MovedRow, NumberRow, PullRow, SessionRow, Snapshot, ValueRow};
+use rows::{CommentRow, IssueRow, MovedRow, NumberRow, PULL_COLUMNS, PullRow, SessionRow, Snapshot, ValueRow};
 
 const SOURCE: &str = "work";
 const MAX_ENTRY_BATCH: usize = 200;
@@ -239,7 +240,7 @@ impl Work {
     async fn pull(&self, repo_id: &str, number: u32) -> Result<Option<Pull>> {
         Ok(self
             .db
-            .prepare("SELECT * FROM pulls WHERE repo_id = ? AND number = ?")
+            .prepare(format!("SELECT {PULL_COLUMNS} FROM pulls WHERE repo_id = ? AND number = ?"))
             .bind(&[repo_id.into(), number.into()])?
             .first::<PullRow>(None)
             .await?
@@ -388,11 +389,30 @@ impl Work {
             repo_id: pull.repo_id.clone(),
             number: pull.number,
             issue: pull.issue,
+            confidence: pull.confidence.clone(),
             ..PullEvent::default()
         }
     }
 
     // --- Issues ------------------------------------------------------------
+
+    /// Opens an issue for g1t-agent to take at once: refused before
+    /// anything is opened unless the actor may put agents to work here. The
+    /// runner's `delegate` starts the agent on it.
+    async fn delegate_issue(&self, a: DelegateIssueArgs) -> Result<Outcome<Issue>> {
+        let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
+        check!(writable(&repo));
+        check!(allowed(Some(&a.actor), &repo, Capability::Run));
+        self.open_issue(OpenIssueArgs {
+            actor: a.actor,
+            repo: a.repo,
+            title: a.title,
+            body: a.body,
+            labels: a.labels,
+            checks: a.checks,
+        })
+        .await
+    }
 
     async fn open_issue(&self, a: OpenIssueArgs) -> Result<Outcome<Issue>> {
         if !a.actor.verified {
@@ -494,7 +514,7 @@ impl Work {
         let (repo, issue) = check!(self.issue_at(&a.repo, a.number, &a.viewer).await?);
         let pulls = self
             .db
-            .prepare("SELECT * FROM pulls WHERE issue_id = ? ORDER BY number")
+            .prepare(format!("SELECT {PULL_COLUMNS} FROM pulls WHERE issue_id = ? ORDER BY number"))
             .bind(&[issue.id.as_str().into()])?
             .all()
             .await?
@@ -1089,7 +1109,7 @@ impl Work {
         let rows = self
             .db
             .prepare(format!(
-                "SELECT * FROM pulls WHERE repo_id = ? {filter} ORDER BY number DESC LIMIT ?"
+                "SELECT {PULL_COLUMNS} FROM pulls WHERE repo_id = ? {filter} ORDER BY number DESC LIMIT ?"
             ))
             .bind(&[repo.id.into(), LIST_PAGE.into()])?
             .all()
@@ -1117,13 +1137,12 @@ impl Work {
             // conflict decides its next step.
             let (merge, behind) =
                 try_join(self.mergeability(&pull), self.is_behind(&repo.id, &pull)).await?;
-            let lifecycle = self
-                .assess(&pull, &issue, behind)
-                .await?
-                .map(|(lifecycle, _)| lifecycle);
-            Ok::<_, worker::Error>((behind, lifecycle, merge))
+            let assessed = self.assess_with_confidence(&pull, &issue, behind).await?;
+            let confidence = assessed.as_ref().and_then(|(_, _, confidence)| confidence.clone());
+            let lifecycle = assessed.map(|(lifecycle, _, _)| lifecycle);
+            Ok::<_, worker::Error>((behind, (lifecycle, confidence), merge))
         };
-        let (((behind, lifecycle, (mergeable, conflicts)), (landing, stalled), comments), (checks, overlaps, review_pending)) =
+        let (((behind, (lifecycle, confidence), (mergeable, conflicts)), (landing, stalled), comments), (checks, overlaps, review_pending)) =
             try_join(
                 try_join3(standing, self.landing_state(&pull.id), self.comments(&repo.id, pull.number)),
                 try_join3(
@@ -1133,6 +1152,10 @@ impl Work {
                 ),
             )
             .await?;
+        // As just worked out, rather than as it was read.
+        if confidence.is_some() {
+            pull.confidence = confidence;
+        }
         Ok(Outcome::Ok(PullDetail {
             comments,
             checks,
@@ -1623,11 +1646,11 @@ impl Work {
         };
         let found = self
             .db
-            .prepare(
-                "SELECT * FROM pulls
+            .prepare(format!(
+                "SELECT {PULL_COLUMNS} FROM pulls
                  WHERE author_id = ? AND status IN ('draft', 'open')
-                 ORDER BY updated_at DESC LIMIT 50",
-            )
+                 ORDER BY updated_at DESC LIMIT 50"
+            ))
             .bind(&[viewer.id.into()])?
             .all()
             .await?;
@@ -1896,6 +1919,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
 
     match method.as_str() {
         "open_issue" => reply(&work.open_issue(args(body)?).await?),
+        "delegate_issue" => reply(&work.delegate_issue(args(body)?).await?),
+        "report_confidence" => reply(&work.report_confidence(args(body)?).await?),
         "list_issues" => reply(&work.list_issues(args(body)?).await?),
         "get_issue" => reply(&work.get_issue(args(body)?).await?),
         "update_issue" => reply(&work.update_issue(args(body)?).await?),

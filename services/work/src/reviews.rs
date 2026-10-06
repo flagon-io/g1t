@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
-use crate::rows::PullRow;
+use crate::rows::{PULL_COLUMNS, PullRow};
 use crate::{Work, optional_number};
 
 /// Beyond this a change is too large for per-file bookkeeping to be useful.
@@ -51,7 +51,7 @@ impl Work {
     pub(crate) async fn pull_by_id(&self, id: &str) -> Result<Option<Pull>> {
         Ok(self
             .db
-            .prepare("SELECT * FROM pulls WHERE id = ?")
+            .prepare(format!("SELECT {PULL_COLUMNS} FROM pulls WHERE id = ?"))
             .bind(&[id.into()])?
             .first::<PullRow>(None)
             .await?

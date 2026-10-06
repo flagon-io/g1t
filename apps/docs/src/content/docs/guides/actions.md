@@ -177,19 +177,19 @@ cannot run jobs before the first run.
 
 ## From the API
 
-The routes are GitHub's, so scripts written for GitHub's API mostly work
-with `https://api.g1t.sh` in place of `https://api.github.com`.
+The routes follow the standard Actions REST shape, so existing scripts
+usually work once they point at `https://api.g1t.sh`.
 
-| Tool | Route |
+| `workflow` action | Route |
 | --- | --- |
-| `list_workflows` | `GET /repos/{owner}/{repo}/actions/workflows` |
-| `list_workflow_runs` | `GET /repos/{owner}/{repo}/actions/runs`, with `workflow`, `branch`, `event`, `pull`, `head_sha` |
-| `get_workflow_run` | `GET /repos/{owner}/{repo}/actions/runs/{id}` |
-| `get_job_logs` | `GET /repos/{owner}/{repo}/actions/jobs/{job}/logs?after=` |
-| `dispatch_workflow` | `POST /repos/{owner}/{repo}/actions/workflows/{workflow}/dispatches` with `ref` and `inputs` |
-| `cancel_workflow_run` | `POST /repos/{owner}/{repo}/actions/runs/{id}/cancel` |
-| `rerun_workflow_run` | `POST …/runs/{id}/rerun`, or `…/rerun-failed-jobs` |
-| `update_workflow` | `PUT …/workflows/{workflow}/enable` and `…/disable` |
+| `list` | `GET /repos/{owner}/{repo}/actions/workflows` |
+| `list_runs` | `GET /repos/{owner}/{repo}/actions/runs`, with `workflow`, `branch`, `event`, `pull`, `head_sha` |
+| `get_run` | `GET /repos/{owner}/{repo}/actions/runs/{id}` |
+| `job_logs` | `GET /repos/{owner}/{repo}/actions/jobs/{job}/logs?after=` |
+| `dispatch` | `POST /repos/{owner}/{repo}/actions/workflows/{workflow}/dispatches` with `ref` and `inputs` |
+| `cancel` | `POST /repos/{owner}/{repo}/actions/runs/{id}/cancel` |
+| `rerun` | `POST …/runs/{id}/rerun`, or `…/rerun-failed-jobs` |
+| `update` | `PUT …/workflows/{workflow}/enable` and `…/disable` |
 | `list_actions_secrets`, `set_actions_secret`, `delete_actions_secret` | `GET`, `PUT` and `DELETE /repos/{owner}/{repo}/actions/secrets/{name}` |
 | `list_actions_variables`, `set_actions_variable`, `delete_actions_variable` | `GET` and `POST /repos/{owner}/{repo}/actions/variables`, `PATCH` and `DELETE …/variables/{name}` |
 

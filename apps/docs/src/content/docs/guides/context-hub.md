@@ -20,8 +20,8 @@ It has four tabs:
 | **Scorecards** | A few rules every project should meet, each failing one a click away from an issue an agent fixes |
 
 Every g1t agent run starts with a **Context** section drawn from the hub,
-and your own agents can ask it through the [MCP tools](#mcp-tools)
-`search_context` and `get_entity`.
+and your own agents can ask it through the [MCP tools](#mcp-tools):
+the `search` tool's `context` and `entity` actions.
 
 ## The catalog
 
@@ -68,8 +68,8 @@ again, and building twice from the same commit gives the same catalog.
 ## Memory that fills itself
 
 [Memory](/guides/agents-and-memory/#memory) is what agents are told about a
-project and its workspace. Besides what agents save with `remember` and
-what people add by hand, the hub captures it from four places:
+project and its workspace. Besides what agents save with the `memory` tool's
+`remember` action and what people add by hand, the hub captures it from four places:
 
 | Source | What it captures | Kind |
 | --- | --- | --- |
@@ -206,10 +206,13 @@ and new text waits for the next month's index.
 
 ## MCP tools
 
-| Tool | Takes | Does |
+Both are actions of the [`search` tool](/reference/mcp/#search), and need
+the `memory:read` scope.
+
+| `search` action | Takes | Does |
 | --- | --- | --- |
-| `search_context` | `query`, and `workspace` or `repo`; optional `project`, `kinds`, `limit` | One search across the catalog, docs, issues, pull requests and memory, as [Search](#search) |
-| `get_entity` | `kind`, `id`, and `workspace` or `repo` | One catalog entry by its id or key (a project's slug, `npm:<name>`, a username), with every relation |
+| `context` | `query`, and `workspace` or `repo`; optional `project`, `kinds`, `limit` | One search across the catalog, docs, issues, pull requests and memory, as [Search](#search) |
+| `entity` | `kind`, `id`, and `workspace` or `repo` | One catalog entry by its id or key (a project's slug, `npm:<name>`, a username), with every relation |
 
 g1t's own agents have both. Over REST:
 

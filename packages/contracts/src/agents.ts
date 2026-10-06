@@ -6,7 +6,7 @@ import type { ServiceBinding } from "./clients";
 import type { User, Viewer } from "./identity";
 import type { RepoPath } from "./repos";
 import type { Result } from "./result";
-import type { Pull, PullStatus, SessionEntry } from "./work";
+import type { Confidence, Pull, PullStatus, SessionEntry } from "./work";
 
 /** The work a run does. checks, queue and mergecheck run commands, not a model. */
 export type RunKind =
@@ -78,6 +78,8 @@ export type AgentRun = {
   timeCapMinutes?: number | null;
   /** `budget` or `time` when g1t stopped it for reaching that cap. */
   halted?: "budget" | "time" | "abuse" | null;
+  /** How sure g1t was of the change as this run left it, for a run that made or revised one. */
+  confidence?: Confidence | null;
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;

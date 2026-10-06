@@ -108,6 +108,7 @@ pub enum Op {
     CloseIssue,
     ReopenIssue,
     AssignIssue,
+    Delegate,
     PlanWork,
     GetPlan,
     ApplyPlan,
@@ -350,7 +351,7 @@ fn role_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 102] = [
+    pub const ALL: [Op; 103] = [
         Op::Whoami,
         Op::CreateWorkspace,
         Op::DeleteWorkspace,
@@ -396,6 +397,7 @@ impl Op {
         Op::CloseIssue,
         Op::ReopenIssue,
         Op::AssignIssue,
+        Op::Delegate,
         Op::PlanWork,
         Op::GetPlan,
         Op::ApplyPlan,
@@ -507,6 +509,7 @@ impl Op {
             Op::CloseIssue => "close_issue",
             Op::ReopenIssue => "reopen_issue",
             Op::AssignIssue => "assign_issue",
+            Op::Delegate => "delegate",
             Op::PlanWork => "plan_work",
             Op::GetPlan => "get_plan",
             Op::ApplyPlan => "apply_plan",
@@ -702,6 +705,9 @@ impl Op {
             }
             Op::AssignIssue => {
                 "Assign an issue to the g1t agent. It opens a pull request for the issue in a sandbox of its own and sees it through: the issue's acceptance checks, a review by a second agent, revision if either finds something, and catching up when main moves. Returns the pull request at once; follow its progress with get_pull_request. There is no model or agent count to choose. To put many agents to work, assign many issues. Needs the Write role or higher. In preview: only for accounts g1t agents are enabled for."
+            }
+            Op::Delegate => {
+                "Put an agent on something in one step: open an issue and assign it to the g1t agent at once. Say what you want done in plain words; give checks, commands that must pass, when you know them. Needs the Write role or higher, and nothing is opened without it. The issue is opened whatever happens next: agent.status is started (pull is the draft pull request the agent opened; follow it with get_pull_request), queued (every agent slot of the workspace is busy; it starts by itself when one frees up) or not_started, with agent.code saying why (not_paid, trial_used, limit, paused, issue_cap, billing_unavailable or no_model), agent.message saying what to do, and agent.fix_url where. There is no model or agent count to choose."
             }
             Op::ListLabels => "The labels available on a repository's issues.",
             Op::AddComment => {
@@ -1163,6 +1169,10 @@ impl Op {
                         "type": "integer",
                         "description": "How many times a g1t agent is sent back before a person is asked.",
                     },
+                    "hold_low_confidence": {
+                        "type": "boolean",
+                        "description": "Ask a person before merging a g1t agent's change whose confidence is low: auto-merge and the merge queue leave it until a person approves it. On by default.",
+                    },
                 }),
                 &["repo"],
             ),
@@ -1261,6 +1271,27 @@ impl Op {
                     },
                 }),
                 &["repo", "plan"],
+            ),
+            Op::Delegate => object(
+                json!({
+                    "repo": repo_schema(),
+                    "title": { "type": "string", "description": "What should be true when it is done, in one line." },
+                    "body": {
+                        "type": "string",
+                        "description": "Markdown. What you want done, in plain words: what is wrong or wanted, and anything the agent cannot see for itself.",
+                    },
+                    "checks": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Commands that must pass for its pull request to be accepted, e.g. \"npm test\".",
+                    },
+                    "labels": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "What kind of issue this is, e.g. \"bug\".",
+                    },
+                }),
+                &["repo", "title"],
             ),
             Op::AssignIssue => object(
                 numbered(json!({
@@ -2258,6 +2289,7 @@ impl Op {
                     agent_review: flag("agent_review", current.agent_review),
                     max_revisions: integer(input, "max_revisions").unwrap_or(current.max_revisions),
                     merge_queue: flag("merge_queue", current.merge_queue),
+                    hold_low_confidence: flag("hold_low_confidence", current.hold_low_confidence),
                     ..current
                 };
                 pass(
@@ -2370,6 +2402,21 @@ impl Op {
                         "planId": text(input, "plan"),
                         "assign": input["assign"].as_bool() == Some(true),
                         "keep": input["keep"].as_array(),
+                    }),
+                )
+                .await
+            }
+            Op::Delegate => {
+                pass(
+                    runner,
+                    "delegate",
+                    &json!({
+                        "actor": actor(),
+                        "repo": repo,
+                        "title": text(input, "title"),
+                        "body": text(input, "body"),
+                        "labels": strings(input, "labels").unwrap_or_default(),
+                        "checks": strings(input, "checks").unwrap_or_default(),
                     }),
                 )
                 .await

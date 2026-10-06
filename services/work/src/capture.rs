@@ -33,6 +33,7 @@ use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
 use crate::Work;
+use crate::rows::PULL_COLUMNS;
 use crate::checks::hash;
 use crate::rows::{CommentRow, PullRow};
 
@@ -659,7 +660,7 @@ impl Work {
         let limit = a.limit.unwrap_or(20).clamp(1, 50);
         let pulls: Vec<Pull> = self
             .db
-            .prepare("SELECT * FROM pulls WHERE repo_id = ? AND status = 'merged' ORDER BY merged_at DESC LIMIT ?")
+            .prepare(format!("SELECT {PULL_COLUMNS} FROM pulls WHERE repo_id = ? AND status = 'merged' ORDER BY merged_at DESC LIMIT ?"))
             .bind(&[a.repo_id.as_str().into(), limit.into()])?
             .all()
             .await?

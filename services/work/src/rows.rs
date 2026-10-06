@@ -85,6 +85,11 @@ pub struct Snapshot {
     pub managed: u32,
 }
 
+/// A pull request's columns, with its confidence (confidence.rs) beside
+/// them: what every read of a [`PullRow`] selects.
+pub const PULL_COLUMNS: &str =
+    "pulls.*, (SELECT detail FROM pull_confidence WHERE pull_confidence.pull_id = pulls.id) AS confidence";
+
 #[derive(Deserialize)]
 pub struct PullRow {
     pub id: String,
@@ -115,6 +120,9 @@ pub struct PullRow {
     pub author_name: String,
     pub created_at: String,
     pub updated_at: String,
+    /// JSON of its confidence, once worked out.
+    #[serde(default)]
+    pub confidence: Option<String>,
 }
 
 impl From<PullRow> for Pull {
@@ -151,6 +159,10 @@ impl From<PullRow> for Pull {
             author: user(row.author_id, row.author_name),
             created_at: row.created_at,
             updated_at: row.updated_at,
+            confidence: row
+                .confidence
+                .as_deref()
+                .and_then(|detail| serde_json::from_str(detail).ok()),
         }
     }
 }

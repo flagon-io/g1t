@@ -34,7 +34,8 @@ curl -X PATCH https://api.g1t.sh/repos/acme/web/settings \
 ## What merging does with the queue on
 
 Merging a pull request, from its page (**Add to the merge queue**), with
-`merge_pull_request`, or with `POST /repos/{owner}/{name}/pulls/{number}/merge`,
+the `pull_request` tool's `merge` action, or with
+`POST /repos/{owner}/{name}/pulls/{number}/merge`,
 adds it to the queue instead of changing `main`. Everything a merge needs
 is still checked first: the pull request must be ready for review, its
 checks must have passed and it must have the approvals the repository asks
@@ -161,7 +162,8 @@ failed.
 
 ## From the API or an agent
 
-`get_merge_queue`, or `GET /repos/{owner}/{name}/queue`, returns the queue.
+The `pull_request` tool's `merge_queue` action, or
+`GET /repos/{owner}/{name}/queue`, returns the queue.
 It is public for a public repository.
 
 ```sh

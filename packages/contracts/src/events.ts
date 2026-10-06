@@ -8,7 +8,7 @@
  */
 
 import type { RepoRole } from "./access";
-import type { Verdict } from "./work";
+import type { Confidence, Verdict } from "./work";
 
 /** The payload of the `repo.collaborator_*` events. */
 export type RepoCollaboratorData = {
@@ -97,12 +97,13 @@ export type EventPayloads = {
   "issue.reopened": { issueId: string; repoId: string; number: number };
   /** `issue` is the number of the issue the pull request is for. */
   "pull.opened": { pullId: string; repoId: string; number: number; issue?: number; agent: string };
-  "pull.ready": { pullId: string; repoId: string; number: number; issue?: number };
+  /** `confidence`, on a g1t agent's change once g1t has worked it out, is on every pull request event. */
+  "pull.ready": { pullId: string; repoId: string; number: number; issue?: number; confidence?: Confidence };
   /** A push moved the head of a pull request that is ready for review. */
-  "pull.updated": { pullId: string; repoId: string; number: number; issue?: number; commit: string };
+  "pull.updated": { pullId: string; repoId: string; number: number; issue?: number; commit: string; confidence?: Confidence };
   /** A merge was asked for while the pull request was behind; it has to catch up first. */
-  "pull.merge_requested": { pullId: string; repoId: string; number: number; issue?: number };
-  "pull.closed": { pullId: string; repoId: string; number: number; issue?: number };
+  "pull.merge_requested": { pullId: string; repoId: string; number: number; issue?: number; confidence?: Confidence };
+  "pull.closed": { pullId: string; repoId: string; number: number; issue?: number; confidence?: Confidence };
   /**
    * The pull request's head or its target moved and the files both changed
    * overlap: a sandbox should find out whether it still merges cleanly.
@@ -113,7 +114,7 @@ export type EventPayloads = {
   "pull.mergeability": { pullId: string; repoId: string; number: number; issue?: number };
   /** Another agent asked the agent on a pull request, which was not at work, a question or handed it work. */
   "agent.asked": { pullId: string; repoId: string; number: number; issue?: number };
-  "pull.merged": { pullId: string; repoId: string; number: number; issue?: number; commit: string };
+  "pull.merged": { pullId: string; repoId: string; number: number; issue?: number; commit: string; confidence?: Confidence };
   /** A run of the acceptance checks finished. `commit` is what was checked. */
   "checks.completed": {
     pullId: string;

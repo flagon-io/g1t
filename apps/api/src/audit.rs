@@ -9,6 +9,7 @@
 use g1t_contracts::audit::{AuditActor, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface};
 use g1t_contracts::credentials::{Decision, as_person, decide_operation, is_read};
 use g1t_contracts::repos::RepoPath;
+use g1t_contracts::scopes;
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, User, Viewer};
 use serde_json::Value;
 use worker::{Request, Result, console_error};
@@ -103,20 +104,40 @@ fn principal_rule(user: &User) -> &'static str {
     }
 }
 
-/// Whether the API refused an agent before anything ran, and why.
+/// Whether the API refused a caller before anything ran, and why: an
+/// agent against its run's scope, or an access token against its scopes.
+/// `None` for a signed-in session, which only the person's role limits.
+/// A token reaches whatever the one it acts as can reach; the service
+/// that owns what was asked about checks that.
 pub fn decide(op: Op, services: &Services, viewer: &Viewer, input: &Value) -> Option<Decision> {
-    let user = viewer
-        .as_ref()
-        .filter(|user| user.kind == PrincipalKind::Agent)?;
-    let scope = services.scope.as_ref()?;
-    Some(decide_operation(
-        user,
-        scope,
-        op.name(),
-        repo_path(input).as_ref(),
-        op.needs_repo(),
-        number(input),
-    ))
+    let user = viewer.as_ref()?;
+    if user.kind == PrincipalKind::Agent {
+        let scope = services.scope.as_ref()?;
+        return Some(decide_operation(
+            user,
+            scope,
+            op.name(),
+            repo_path(input).as_ref(),
+            op.needs_repo(),
+            number(input),
+        ));
+    }
+    token_decision(op, user, input)
+}
+
+/// What an access token's scopes decide about a call; `None` for a
+/// caller without one.
+fn token_decision(op: Op, user: &User, input: &Value) -> Option<Decision> {
+    let access = user.token.as_deref()?;
+    Some(scopes::decide(access, op.name(), input))
+}
+
+/// The scope a refused call lacked, for the error the caller is sent.
+pub fn missing_scope(op: Op, viewer: &Viewer, input: &Value) -> Option<scopes::Scope> {
+    let access = viewer.as_ref()?.token.as_deref()?;
+    scopes::needed(op.name(), input)
+        .into_iter()
+        .find(|scope| !access.allows(*scope))
 }
 
 /// Runs `op` for `viewer`: enforcing an agent's scope first, and recording
@@ -212,6 +233,7 @@ mod tests {
     use super::*;
     use g1t_contracts::credentials::{Acting, Principal};
     use g1t_contracts::identity::AgentScope;
+    use g1t_contracts::scopes::{Scope, TokenAccess};
     use serde_json::json;
 
     #[test]
@@ -233,6 +255,59 @@ mod tests {
             super::target(&person, &json!({ "workspace": "Ops" })).workspace,
             "ops"
         );
+    }
+
+    fn with_token(scopes: Option<&[Scope]>, legacy: bool) -> User {
+        User {
+            id: "usr_1".to_owned(),
+            username: "syntaqx".to_owned(),
+            token: Some(Box::new(TokenAccess {
+                token_id: "tok_1".to_owned(),
+                scopes: scopes.map(|scopes| scopes.iter().map(|scope| scope.as_str().to_owned()).collect()),
+                legacy,
+            })),
+            ..User::default()
+        }
+    }
+
+    #[test]
+    fn a_session_is_limited_only_by_the_person_s_role() {
+        let person = User { id: "usr_1".to_owned(), ..User::default() };
+        assert!(token_decision(Op::DeleteRepo, &person, &json!({})).is_none());
+    }
+
+    #[test]
+    fn a_legacy_token_still_does_everything() {
+        let legacy = with_token(None, true);
+        for op in Op::ALL {
+            let decision = token_decision(op, &legacy, &json!({ "repo": "acme/rocket" })).unwrap();
+            assert!(decision.allowed, "{}", op.name());
+            assert_eq!(decision.rule, "token:legacy");
+        }
+    }
+
+    #[test]
+    fn a_token_without_the_scope_is_refused_and_told_which() {
+        let reader = with_token(Some(&[Scope::IssuesRead]), false);
+        let input = json!({ "repo": "acme/rocket", "title": "x" });
+        assert!(token_decision(Op::GetIssue, &reader, &input).unwrap().allowed);
+        let refused = token_decision(Op::CreateIssue, &reader, &input).unwrap();
+        assert!(!refused.allowed);
+        assert!(refused.reason.unwrap().contains("issues:write"));
+        assert_eq!(missing_scope(Op::CreateIssue, &Some(reader.clone()), &input), Some(Scope::IssuesWrite));
+        assert_eq!(missing_scope(Op::GetIssue, &Some(reader), &input), None);
+    }
+
+    #[test]
+    fn a_token_reaches_what_its_owner_can() {
+        // Scopes are the only limit a token adds: which workspaces and
+        // repositories it reaches is the owner's, decided downstream.
+        let admin = with_token(Some(&[Scope::RepoAdmin]), false);
+        let moved = token_decision(Op::TransferRepo, &admin, &json!({ "repo": "acme/rocket", "to": "elsewhere" })).unwrap();
+        assert!(moved.allowed);
+        assert_eq!(moved.rule, "token:scope");
+        let full = with_token(None, false);
+        assert!(token_decision(Op::ListWebhooks, &full, &json!({ "workspace": "other" })).unwrap().allowed);
     }
 
     #[test]

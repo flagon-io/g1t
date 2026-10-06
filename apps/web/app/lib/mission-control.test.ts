@@ -4,6 +4,8 @@ import { test } from "node:test";
 import {
   type Merged,
   change,
+  confidenceAsk,
+  confidenceLine,
   dayKey,
   isTestFile,
   landedByAgents,
@@ -20,6 +22,7 @@ import {
   waitingRows,
   weekOf,
   whyFor,
+  withConfidence,
 } from "./mission-control.ts";
 
 const HOUR = 3_600_000;
@@ -89,6 +92,45 @@ test("what the agent knows lists only what is known", () => {
 
   const bare = pullFacts({ checkStatus: null, files: [] });
   assert.deepEqual(bare, [{ label: "Checks", value: "Not run", tone: null }]);
+});
+
+test("a change held for low confidence is its own reason, ahead of what it would read as", () => {
+  const held =
+    "The agent's confidence in this change is low (checks failing, tests not added). This repository asks a person before merging it: approve it to let it land, or ask for changes.";
+  // Its reasons name checks and approval, but it is held for its confidence.
+  assert.equal(stallReason(held), "low_confidence");
+  assert.equal(reasonFor({ kind: "stalled", detail: held }), "low_confidence");
+
+  const low = { level: "low" as const, reasons: ["tests not added", "3 revisions"], uncertainAbout: ["the retry limit"] };
+  assert.equal(withConfidence("ready_to_merge", low), "low_confidence");
+  assert.equal(withConfidence("needs_review", low), "low_confidence");
+  // A failure that needs someone anyway keeps its own chip.
+  assert.equal(withConfidence("checks_failing", low), "checks_failing");
+  assert.equal(withConfidence("ready_to_merge", { level: "medium" }), "ready_to_merge");
+  assert.equal(withConfidence("ready_to_merge", null), "ready_to_merge");
+
+  assert.equal(confidenceLine(low), "Low — tests not added, 3 revisions");
+  assert.equal(confidenceLine({ level: "high", reasons: [] }), "High");
+  assert.match(confidenceAsk(low), /not sure of the change: tests not added, 3 revisions\. Approve it/);
+
+  const why = whyFor("low_confidence", { kind: "stalled", detail: held }, low);
+  assert.match(why, /from tests not added, 3 revisions\./);
+  assert.match(why, /unsure about the retry limit/);
+  assert.match(why, /nothing merges it until you approve it/);
+  // Ready, not held: it says to look before merging.
+  assert.match(whyFor("low_confidence", { kind: "ready", detail: "" }, low), /Look at it before you merge it/);
+});
+
+test("what the agent knows gains its confidence, across the row", () => {
+  const facts = pullFacts({
+    checkStatus: "passed",
+    files: [{ path: "src/retry.ts", additions: 40, deletions: 2 }],
+    lifecycle: { revisions: 3 },
+    confidence: { level: "low", reasons: ["tests not added", "3 revisions"] },
+  });
+  const fact = facts.find((f) => f.label === "Confidence");
+  assert.deepEqual(fact, { label: "Confidence", value: "Low — tests not added, 3 revisions", tone: "bad", wide: true });
+  assert.equal(facts.at(-1)?.label, "Confidence");
 });
 
 test("test files are recognised by the names test runners use", () => {

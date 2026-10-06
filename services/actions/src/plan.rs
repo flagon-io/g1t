@@ -1298,6 +1298,8 @@ impl Actions {
                             user: workspace,
                             name: format!("G1T_TOKEN for {} run {}", run.repo, run.number),
                             ttl_seconds: Some(u64::from(job.timeout_minutes) * 60 + 600),
+                            scopes: None,
+                            listed: false,
                         },
                     )
                     .await?;

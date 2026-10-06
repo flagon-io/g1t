@@ -205,44 +205,72 @@ free slot" and the work starts by itself when one finishes.
   opens a pull request, meets the issue's checks, is reviewed by a second
   agent, revises, and catches up when main moves. There is no model or
   agent count to choose: to put more agents to work, assign more issues.
+- **Put an agent on something in one step:** `POST {repo}/issues/delegate`
+  with `title`, `body` (what to do, in plain words) and optionally
+  `checks`. It opens the issue and assigns g1t-agent at once; it needs the
+  Write role, and nothing opens without it. The issue opens even when the
+  agent cannot start: `agent.status` is `started` (with `pull`), `queued`,
+  or `not_started` with `agent.code` (`not_paid`, `trial_used`, `limit`,
+  `paused`, `issue_cap`, `no_model`), `agent.message` and `agent.fix_url`.
+- **How sure g1t is of a change:** once a g1t agent finishes, the pull
+  request's `confidence` is `high`, `medium` or `low` with short `reasons`
+  ("tests not added", "3 revisions"), from its checks, revisions, review,
+  tests, size, reach, guardrails and unanswered questions. The agent's own
+  word (`self_reported`, `uncertain_about`) can only lower it. With the
+  repository setting `hold_low_confidence` on (the default), a change rated
+  low waits for a person's approval instead of merging by itself.
 - **Steer a working agent:** `POST {repo}/pulls/{number}/messages` with
   `body`. It reads the message at its next step.
 - **g1t agents talk to each other.** A g1t agent asks the agent on another
-  pull request a question, or hands it work, with `message_agent` (`kind`
-  `question` or `handoff`, and `from_number`, its own pull request). The
-  other agent replies with `answer_message`
+  pull request a question, or hands it work, with `agent` `message`
+  (`kind` `question` or `handoff`, and `from_number`, its own pull
+  request). The other agent replies with `agent` `answer`
   (`POST {repo}/messages/{id}/answer`); one that is not at work is woken
   to answer, in its own pull request's sandbox. Plans show these exchanges under
-  "Agents talking". From any other caller, `message_agent` sends a plain
+  "Agents talking". From any other caller, `agent` `message` sends a plain
   message.
 
-Every one of these is also an MCP tool: `list_issues`, `get_issue`,
-`create_issue`, `update_issue`, `close_issue`, `reopen_issue`,
-`assign_issue`, `plan_work`, `get_plan`, `apply_plan`, `list_labels`,
-`add_comment`, `list_pull_requests`, `get_pull_request`,
-`create_pull_request`, `record_session`, `read_session`,
-`mark_pull_request_ready`, `close_pull_request`,
-`get_pull_request_changes`, `review_pull_request`, `merge_pull_request`,
-`get_merge_queue`, `message_agent`, `answer_message`, `take_messages`,
-`list_integrations`, `connect_integration`, `test_integration`,
-`disconnect_integration`, `get_model_routes`, `set_model_routes`,
-`get_context`, `import_issue`, `list_webhooks`, `create_webhook`,
-`update_webhook`, `delete_webhook`, `ping_webhook`,
-`list_webhook_deliveries`, `redeliver_webhook`,
-`list_workflows`, `list_workflow_runs`, `get_workflow_run`, `get_job_logs`,
-`dispatch_workflow`, `cancel_workflow_run`, `rerun_workflow_run`,
-`update_workflow`, `list_actions_secrets`, `set_actions_secret`,
-`delete_actions_secret`, `list_actions_variables`, `set_actions_variable`,
-`delete_actions_variable`,
-`list_repos`, `get_repo`, `create_repo`, `update_repo`, `rename_repo`,
-`rename_branch`, `set_repo_visibility`, `archive_repo`, `unarchive_repo`,
-`transfer_repo`, `delete_repo`, `list_deleted_repos`, `restore_repo`,
-`purge_repo`, `get_repo_settings`, `update_repo_settings`, `list_events`,
-`create_workspace`, `delete_workspace`, and `whoami`. A g1t agent's own
-token can never change a repository's details, rename it or its branches,
-make it public or private, archive, transfer, delete, restore or purge it,
-or delete a workspace. MCP tools take the repository as `repo`, written
-`owner/name`.
+Every one of these is also on the MCP server. Its tools are resources,
+each with an `action`: `search`, `repository`, `issue`, `pull_request`,
+`agent`, `plan`, `memory`, `workflow`, `secret`, `webhook`, `access`,
+`workspace` and `account`. Call `tools/call` with the tool's name and
+`arguments` holding `action` and its inputs, such as
+`{"name": "issue", "arguments": {"action": "get", "repo": "acme/web", "number": 12}}`.
+The flow above is: `issue` `get`, `memory` `recall`, `pull_request`
+`create` (with `issue`), push, `pull_request` `record_session` as you go,
+`pull_request` `ready` with `summary`; read `overlaps`, `behind` and checks
+on `pull_request` `get`. `agent` `delegate` and `agent` `assign` hand work
+to g1t's agent; `plan` `create`, `get` and `apply` plan an outcome;
+`memory` `remember` saves a fact. `search` runs `code` and `account` runs
+`whoami` when `action` is left out. A call missing a required field says
+which, such as "issue.get needs number.". The earlier one-tool-per-operation
+names (`get_issue`, `create_pull_request`, …) still answer for now but are
+no longer listed. Every tool and action, with its required fields and
+scope: https://docs.g1t.sh/reference/mcp/
+
+A g1t agent's own token can never change a repository's details, rename it
+or its branches, make it public or private, archive, transfer, delete,
+restore or purge it, or delete a workspace. MCP tools take the repository
+as `repo`, written `owner/name`.
+
+## Scopes
+
+Every access token and OAuth sign-in has scopes, `resource:level`:
+`repo`, `code`, `issues`, `pull_requests`, `workflows`, `memory`,
+`account`, `access`, `webhooks`, `secrets` (read, write or admin as each
+has them), `agents:run`, `workspace:read` and `workspace:admin`. A higher
+level includes the lower. A token may expire. It reaches every workspace
+and repository its owner can (a workspace's token, that workspace only);
+what a call may do is the owner's role and the token's scopes together.
+A token sees only the MCP tools and actions its scopes allow. A missing scope answers `403` with
+`{"error": {"code": "forbidden", "message": "This access token needs the issues:write scope to use create_issue.", "needed_scope": "issues:write"}}`.
+Pushing needs `code:write`; cloning a private repository `code:read`. For
+an agent, use the Agent preset (every read scope, plus `code:write`,
+`issues:write`, `pull_requests:write`, `agents:run`, `memory:write`).
+OAuth clients may send `scope`;
+the person can untick any; asking for none gives the Agent preset. Tokens
+from device sign-in (above) have full access. Guide:
+https://docs.g1t.sh/guides/authentication/#scopes
 
 ## Access and roles
 
@@ -395,7 +423,7 @@ Guide: https://docs.g1t.sh/guides/deployments/
 
 ## Search
 
-`GET https://api.g1t.sh/search?q=<query>&type=<type>` (MCP tool `search`)
+`GET https://api.g1t.sh/search?q=<query>&type=<type>` (MCP: `search`, action `code`, the default)
 searches all of g1t: repositories (name, description, topics, README), code
 on default branches, issues, pull requests, people and workspaces. No token
 needed for public results; with one, private results the token's person
@@ -412,7 +440,8 @@ over 512 KB are not indexed. Results give `counts` per type and each hit's
 `snippet` or code `lines` as parts with `highlight`. On the site:
 `https://g1t.sh/search?q=`, ⌘K, and `https://g1t.sh/explore` for public
 projects by activity, language (`?language=`) and topic (`?topic=`).
-`search_context` stays the search of one workspace's context hub. Guide:
+The `search` tool's `context` action stays the search of one workspace's
+context hub. Guide:
 https://docs.g1t.sh/guides/search/
 
 ## Facts
@@ -420,8 +449,9 @@ https://docs.g1t.sh/guides/search/
 - API base: `https://api.g1t.sh`. `GET /` lists every URL as a template.
   Auth: `Authorization: Bearer g1t_…`. Public data needs no token. Errors are
   `{"error": {"code": "…", "message": "…"}}` with codes `unauthenticated`
-  (401), `forbidden` (403), `not_found` (404), `conflict` (409), `invalid`
-  (422). The full description is at https://api.g1t.sh/openapi.json.
+  (401), `forbidden` (403, with `needed_scope` when the token lacks a
+  scope), `not_found` (404), `conflict` (409), `invalid` (422). Each
+  operation's scope is `x-scope` in the OpenAPI document. The full description is at https://api.g1t.sh/openapi.json.
 - Git remote: `https://g1t.sh/{workspace}/{repo}.git`. In API paths,
   `{owner}` is the workspace. Pull request forks:
   `https://g1t.sh/pulls/{pull_request_id}.git`. SSH is not available.

@@ -124,6 +124,9 @@ impl Identity {
                     a.ttl_seconds
                         .clamp(MIN_RUN_TTL_SECONDS, MAX_RUN_TTL_SECONDS),
                 ),
+                // A run credential's scope is its run's; see agent_scope.
+                scopes: None,
+                listed: false,
             })
             .await?;
         self.db

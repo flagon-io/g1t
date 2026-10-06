@@ -119,6 +119,9 @@ fn server_metadata() -> Value {
         "grant_types_supported": ["authorization_code", "refresh_token"],
         "code_challenge_methods_supported": ["S256"],
         "token_endpoint_auth_methods_supported": ["none"],
+        // A client may ask for some of these with `scope`; the person
+        // approving can trim them. Asking for none gives the agent preset.
+        "scopes_supported": g1t_contracts::scopes::Scope::ALL.map(|scope| scope.as_str()),
         "service_documentation": "https://docs.g1t.sh/guides/authentication/",
     })
 }
@@ -219,6 +222,7 @@ async fn token(request: &mut Request, services: &Services) -> Result<Response> {
         "token_type": "Bearer",
         "expires_in": tokens.expires_in,
         "refresh_token": tokens.refresh_token,
+        "scope": tokens.scope,
     }))?;
     response.headers_mut().set("cache-control", "no-store")?;
     Ok(response)
@@ -243,6 +247,7 @@ pub async fn handle(
                 "authorization_servers": [ISSUER],
                 "bearer_methods_supported": ["header"],
                 "resource_documentation": "https://docs.g1t.sh/guides/bring-your-own-agent/",
+                "scopes_supported": g1t_contracts::scopes::Scope::ALL.map(|scope| scope.as_str()),
             }))?
         }
         ("POST", "/oauth/register") => register(request).await?,

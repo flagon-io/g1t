@@ -189,6 +189,12 @@ pub const ROUTES: &[Route] = &[
         &[],
     ),
     route(
+        "POST",
+        "/repos/:owner/:name/issues/delegate",
+        Op::Delegate,
+        &[],
+    ),
+    route(
         "GET",
         "/repos/:owner/:name/context",
         Op::GetContext,

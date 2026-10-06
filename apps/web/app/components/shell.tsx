@@ -1324,6 +1324,9 @@ function commandsFor(user: User | null, shell: ShellData, here: string, signUpLa
   if (!user) return visitorCommands(shell, here, signUpLabel);
   const commands: Command[] = [
     { label: "Mission control", to: "/", icon: <House size={15} /> },
+    ...(shell.repos.length > 0
+      ? [{ label: "Put an agent on it", hint: "Open an issue and assign g1t-agent", to: "/?agent=new", icon: <Sparkles size={15} /> }]
+      : []),
     { label: "Explore repositories", to: "/explore", icon: <Compass size={15} /> },
     { label: "Search g1t", hint: "Repositories, code, issues, people", to: "/search", icon: <Search size={15} /> },
     { label: "New project", to: "/new", icon: <Plus size={15} /> },
@@ -1342,6 +1345,9 @@ function commandsFor(user: User | null, shell: ShellData, here: string, signUpLa
       { label: "Code", hint: name, to: `${base}/code`, icon: <Code2 size={15} /> },
       { label: "Issues", hint: name, to: `${base}/issues`, icon: <CircleDot size={15} /> },
       { label: "New issue", hint: name, to: `${base}/issues/new`, icon: <Plus size={15} /> },
+      ...(repo.member
+        ? [{ label: `Put an agent on ${repo.name}`, hint: name, to: `${base}/issues/new?agent=1`, icon: <Sparkles size={15} /> }]
+        : []),
       { label: "Pull requests", hint: name, to: `${base}/pulls`, icon: <GitPullRequest size={15} /> },
       { label: "Commits", hint: name, to: `${base}/commits`, icon: <History size={15} /> },
       ...(repo.member
@@ -1370,6 +1376,16 @@ function commandsFor(user: User | null, shell: ShellData, here: string, signUpLa
       hint: `${listed.namespace} · Project`,
       to: `/${listed.namespace}/${listed.name}`,
       icon: <Box size={15} />,
+    });
+  }
+  // "Put an agent on …": one per project, after the projects themselves.
+  for (const listed of shell.repos) {
+    if (repo && listed.namespace === repo.namespace && listed.name === repo.name) continue;
+    commands.push({
+      label: `Put an agent on ${listed.title ?? listed.name}`,
+      hint: `${listed.namespace}/${listed.name}`,
+      to: `/${listed.namespace}/${listed.name}/issues/new?agent=1`,
+      icon: <Sparkles size={15} />,
     });
   }
   return commands;

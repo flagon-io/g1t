@@ -4,8 +4,8 @@ description: The REST API at api.g1t.sh, its authentication, errors and conventi
 ---
 
 The REST API lives at `https://api.g1t.sh`. It exposes the same operations
-as the [MCP server](/reference/mcp/): every endpoint names the MCP tool that
-does the same thing, with the same inputs.
+as the [MCP server](/reference/mcp/): every endpoint names the MCP tool and
+action that do the same thing, with the same inputs.
 
 This page covers what every endpoint shares. The pages under each resource
 in the sidebar document one endpoint each: its parameters, an example
@@ -54,6 +54,28 @@ says whether it needs a token.
 A [workspace's own token](/guides/workspaces/#workspace-access-tokens) acts
 as the workspace. The token a g1t agent works with can use only the
 operations its task needs, in its own repository.
+
+### Scopes
+
+Each endpoint needs one [scope](/guides/authentication/#scopes), such as
+`issues:read` to read an issue or `issues:write` to open one. Its page
+says which, and the [OpenAPI document](https://api.g1t.sh/openapi.json)
+gives it as `x-scope` on each operation, beside `x-mcp-tool` and
+`x-mcp-action`, the MCP tool and action that do the same:
+
+```json
+{
+  "operationId": "get_issue",
+  "x-operation": "get_issue",
+  "x-mcp-tool": "issue",
+  "x-mcp-action": "get",
+  "x-scope": "issues:read"
+}
+```
+
+`x-scope` is `null` for `GET /user`, which any token may use. A token
+needs the scope, and whoever it acts as needs a role that allows the call.
+A token reaches every workspace and repository whoever it acts as can.
 
 ## Signing in from a tool
 
@@ -116,13 +138,30 @@ Errors are JSON with a stable `code` and a human-readable `message`.
 | --- | --- | --- |
 | 401 | `unauthenticated` | A token is required, or the one sent is not valid. |
 | 402 | `payment_required` | The workspace cannot start this work: it needs the g1t plan or a card check, or it is at a limit. Only endpoints that start an agent answer this. See [usage and billing](/guides/usage-and-billing/#when-work-is-stopped). |
-| 403 | `forbidden` | You are signed in but not allowed to do this. |
+| 403 | `forbidden` | You are signed in but not allowed to do this: your role is not enough, or the token lacks a scope, which `needed_scope` names. |
 | 404 | `not_found` | It does not exist, or you cannot see it. A path that is not an endpoint answers this too. |
 | 409 | `conflict` | The request conflicts with the current state. |
 | 422 | `invalid` | The input is not valid. |
 
 Branch on `code`, not on `message`: messages are written for people and
 may change.
+
+When an access token lacks the scope a call needs, the `403` also names
+that scope in `needed_scope`:
+
+```json
+{
+  "error": {
+    "code": "forbidden",
+    "message": "This access token needs the issues:write scope to use create_issue.",
+    "needed_scope": "issues:write"
+  }
+}
+```
+
+Give the token that scope in
+[Settings → Access tokens](https://g1t.sh/settings/tokens), or use another
+token. A `403` for any other reason has no `needed_scope`.
 
 ## Lists
 

@@ -105,6 +105,7 @@ fn sample(op: Op, example: &Value) -> Value {
             through::<work::Issue>(op, sent)
         }
         Op::GetIssue => through::<work::IssueDetail>(op, sent),
+        Op::Delegate => through::<work::Delegated>(op, sent),
         Op::ListPullRequests => through::<Vec<work::Pull>>(op, sent),
         Op::GetPullRequest => through::<work::PullDetail>(op, sent),
         Op::MarkPullRequestReady | Op::ClosePullRequest | Op::MergePullRequest | Op::AssignIssue => {
@@ -164,7 +165,7 @@ fn no_route_answers_with_camel_case() {
     for (path, methods) in document["paths"].as_object().unwrap() {
         for (method, operation) in methods.as_object().unwrap() {
             let example = &operation["responses"]["200"]["content"]["application/json"]["example"];
-            let tool = operation["x-mcp-tool"].as_str().unwrap_or_default();
+            let tool = operation["x-operation"].as_str().unwrap_or_default();
             let Some(op) = Op::by_name(tool) else {
                 // Device sign-in, which is written in `snake_case` by hand.
                 assert!(wire::camel_case_keys(example).is_empty(), "{method} {path}");

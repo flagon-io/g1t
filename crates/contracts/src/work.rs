@@ -181,6 +181,65 @@ pub struct Pull {
     pub created_at: String,
     /// RFC 3339.
     pub updated_at: String,
+    /// How sure g1t is of a g1t agent's change, from what it can observe,
+    /// once the agent has finished it. Absent before then, and on changes
+    /// g1t is not seeing through.
+    #[serde(default)]
+    pub confidence: Option<Confidence>,
+}
+
+/// How sure g1t is that an agent's change is right. Low is below medium,
+/// which is below high, so the lower of two is their minimum.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ConfidenceLevel {
+    Low,
+    Medium,
+    High,
+}
+
+impl ConfidenceLevel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ConfidenceLevel::Low => "low",
+            ConfidenceLevel::Medium => "medium",
+            ConfidenceLevel::High => "high",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<ConfidenceLevel> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "low" => Some(ConfidenceLevel::Low),
+            "medium" => Some(ConfidenceLevel::Medium),
+            "high" => Some(ConfidenceLevel::High),
+            _ => None,
+        }
+    }
+}
+
+/// How sure g1t is of a change an agent made, worked out from what can be
+/// observed: its checks, how often it was sent back, the reviewer agent's
+/// verdict, whether it touched tests, its size, where it reached, how close
+/// it came to its guardrails, and what it asked and was not answered. The
+/// agent may say how sure it is too; what g1t observes can only lower that.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Confidence {
+    pub level: ConfidenceLevel,
+    /// A few words each, most telling first: what lowered it, or for
+    /// `high`, what it rests on.
+    pub reasons: Vec<String>,
+    /// What the agent said of its own change, if it said.
+    #[serde(default)]
+    pub self_reported: Option<ConfidenceLevel>,
+    /// What the agent said it was unsure about.
+    #[serde(default)]
+    pub uncertain_about: Vec<String>,
+    /// The agent run it was worked out after.
+    #[serde(default)]
+    pub run_id: Option<String>,
+    /// RFC 3339.
+    pub assessed_at: String,
 }
 
 /// One file a pull request changes, and by how much.
@@ -736,6 +795,10 @@ pub struct RepoSettings {
     /// ahead of them, and only a combination that passed reaches the default
     /// branch.
     pub merge_queue: bool,
+    /// Ask a person before merging a g1t agent's change whose confidence is
+    /// low: auto-merge and the merge queue leave it, and it needs someone,
+    /// until a person approves it.
+    pub hold_low_confidence: bool,
     /// Username of the member who last changed the settings, if anyone has.
     pub updated_by: Option<String>,
     /// RFC 3339.
@@ -753,6 +816,7 @@ impl Default for RepoSettings {
             agent_review: true,
             max_revisions: 2,
             merge_queue: false,
+            hold_low_confidence: true,
             updated_by: None,
             updated_at: None,
         }
@@ -829,6 +893,80 @@ pub struct OpenIssueArgs {
     pub labels: Vec<String>,
     #[serde(default)]
     pub checks: Vec<String>,
+}
+
+/// `delegate_issue`: opens an issue to put g1t-agent on at once, refused
+/// before anything is opened unless `actor` may put agents to work in the
+/// repository (Run, which the Write role has). The runner service's
+/// `delegate` calls it and then starts the agent. Returns `Outcome<Issue>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DelegateIssueArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    pub title: String,
+    #[serde(default)]
+    pub body: String,
+    #[serde(default)]
+    pub labels: Vec<String>,
+    #[serde(default)]
+    pub checks: Vec<String>,
+}
+
+/// What became of the agent when an issue was opened and handed to it in
+/// one step.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentStartStatus {
+    /// It is at work on the issue's pull request.
+    Started,
+    /// Every agent slot of the workspace is busy: it starts on its own when
+    /// one frees up.
+    Queued,
+    /// It did not start, and will not until someone fixes what `code` says.
+    NotStarted,
+}
+
+/// Whether the agent started, and if not, why and what fixes it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentStart {
+    pub status: AgentStartStatus,
+    /// Why it did not start: `not_paid`, `trial_used`, `limit`, `paused`,
+    /// `issue_cap`, `billing_unavailable` or `no_model`; `waiting` when
+    /// queued.
+    #[serde(default)]
+    pub code: Option<String>,
+    /// What happened, in a sentence or two, with what to do.
+    #[serde(default)]
+    pub message: Option<String>,
+    /// Where the fix is: the workspace's billing or model settings.
+    #[serde(default)]
+    pub fix_url: Option<String>,
+}
+
+/// The runner service's `delegate`: the issue opened, and the agent put on
+/// it. The issue exists whatever became of the agent.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Delegated {
+    pub issue: Issue,
+    /// The pull request the agent opened, when it started.
+    #[serde(default)]
+    pub pull: Option<Pull>,
+    pub agent: AgentStart,
+}
+
+/// `report_confidence`: what the agent of a run says of its own change,
+/// with the run's own token. Kept with the run, and the pull request's
+/// confidence is worked out again with it. Returns `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportConfidenceArgs {
+    pub run_id: String,
+    pub token: String,
+    /// `high`, `medium` or `low`.
+    pub confidence: String,
+    #[serde(default)]
+    pub uncertain_about: Vec<String>,
 }
 
 /// `list_issues`, newest first. Returns `Outcome<Vec<Issue>>`.

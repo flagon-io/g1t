@@ -1,5 +1,7 @@
 import { Form } from "react-router";
 
+import { presetScopes } from "@g1t/contracts";
+
 import type { Route } from "./+types/tokens";
 import { page } from "../../lib/meta";
 import {
@@ -11,7 +13,9 @@ import {
   Input,
   TimeAgo,
 } from "../../components/ui";
+import { AccessSummary, ExpiryField, ScopeChecklist } from "../../components/token-scopes";
 import { identity } from "../../lib/services.server";
+import { describeExpiry, expiryTtl, grantFromForm } from "../../lib/token-scopes";
 import {
   assertSameOrigin,
   getViewer,
@@ -45,10 +49,13 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     );
     return { token: null, error: removed.ok ? null : removed.error.message };
   }
+  const grant = grantFromForm(form);
+  if (!grant.ok) return { token: null, error: grant.error };
   const created = await identity.createWorkspaceToken(
     user,
     params.owner,
     String(form.get("label") ?? ""),
+    { ...grant.value, ttlSeconds: expiryTtl(form.get("expires")) },
   );
   return created.ok
     ? { token: created.value, error: null }
@@ -71,6 +78,8 @@ export default function WorkspaceTokens({ loaderData, actionData }: Route.Compon
             <div className="mt-3">
               <CopyLine text={created.token} />
             </div>
+            <AccessSummary holder={created.info} className="mt-3" />
+            <p className="mt-1.5 text-xs text-faint">{describeExpiry(created.info.expiresAt)}</p>
           </div>
         )}
 
@@ -84,7 +93,7 @@ export default function WorkspaceTokens({ loaderData, actionData }: Route.Compon
           ) : (
             <ul className="divide-y divide-line rounded-xl border border-line">
               {tokens.map((token) => (
-                <li key={token.id} className="flex items-center gap-4 px-4 py-3">
+                <li key={token.id} className="flex items-start gap-4 px-4 py-3">
                   <div className="min-w-0 grow">
                     <p className="truncate text-sm font-medium">{token.name}</p>
                     <p className="mt-0.5 text-xs text-faint">
@@ -104,8 +113,19 @@ export default function WorkspaceTokens({ loaderData, actionData }: Route.Compon
                         </>
                       ) : (
                         "never used"
-                      )}
+                      )}{" "}
+                      ·{" "}
+                      <span className={describeExpiry(token.expiresAt) === "Expired" ? "text-danger" : undefined}>
+                        {describeExpiry(token.expiresAt)}
+                      </span>
                     </p>
+                    <AccessSummary holder={token} />
+                    {token.legacy && token.scopes === null && (
+                      <p className="mt-1.5 text-xs text-warn">
+                        Made before tokens had scopes, so it can do everything a member can here.
+                        Replace it with a narrower one.
+                      </p>
+                    )}
                   </div>
                   {role === "owner" && (
                     <Form method="post">
@@ -123,15 +143,16 @@ export default function WorkspaceTokens({ loaderData, actionData }: Route.Compon
         </div>
 
         {role === "owner" ? (
-          <Form method="post" className="mt-6 flex items-end gap-3">
-            <div className="grow">
-              <Field label="New token" hint="Name it after what will use it.">
+          <Form method="post" className="mt-6 space-y-5 rounded-xl border border-line p-4 sm:p-5">
+            <h2 className="font-medium">New token</h2>
+            <div className="grid gap-4 sm:grid-cols-[1fr_11rem]">
+              <Field label="Name" hint="Name it after what will use it.">
                 <Input name="label" required maxLength={100} placeholder="deploy pipeline" />
               </Field>
+              <ExpiryField />
             </div>
-            <div className="pb-6">
-              <Button type="submit">Create token</Button>
-            </div>
+            <ScopeChecklist initial={presetScopes("ci")} />
+            <Button type="submit">Create token</Button>
           </Form>
         ) : (
           <p className="mt-4 text-sm text-muted">
@@ -146,8 +167,9 @@ export default function WorkspaceTokens({ loaderData, actionData }: Route.Compon
           <h3 className="font-medium">What a token can do</h3>
           <ul className="mt-2 list-disc space-y-1.5 pl-4 text-muted">
             <li>
-              Everything a member can, in this workspace only: push, open and
-              merge pull requests, manage issues.
+              What its scopes allow, in this workspace only, and never more
+              than a member can: push, open and merge pull requests, manage
+              issues.
             </li>
             <li>
               It acts as <span className="font-mono text-fg">{slug}</span>, so

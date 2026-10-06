@@ -59,6 +59,8 @@ export function identityClient(service: ServiceBinding): IdentityApi {
       call("oauth_refresh", { refreshToken, clientId }),
     listOAuthGrants: (user) => call("list_oauth_grants", { user }),
     revokeOAuthGrant: (user, id) => call("revoke_oauth_grant", { user, id }),
+    updateOAuthGrant: (user, id, grant) =>
+      call("update_oauth_grant", { user, id, scopes: grant.scopes }),
     createWorkspace: (user, slug, name) => call("create_workspace", { user, slug, name }),
     getWorkspace: (slug) => call("get_workspace", { slug }),
     listMembers: (slug, viewer) => call("list_members", { slug, viewer }),
@@ -76,8 +78,14 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     setWorkspaceAvatar: (actor, slug, image) => call("set_workspace_avatar", { actor, slug, image }),
     setUserAvatar: (user, image) => call("set_user_avatar", { user, image }),
     listWorkspaceTokens: (slug, viewer) => call("list_workspace_tokens", { slug, viewer }),
-    createWorkspaceToken: (actor, slug, name) =>
-      call("create_workspace_token", { actor, slug, name }),
+    createWorkspaceToken: (actor, slug, name, grant) =>
+      call("create_workspace_token", {
+        actor,
+        slug,
+        name,
+        scopes: grant?.scopes ?? null,
+        ttl_seconds: grant?.ttlSeconds ?? null,
+      }),
     removeWorkspaceToken: (actor, slug, id) =>
       call("remove_workspace_token", { actor, slug, id }),
     userForSession: (sessionToken) => call("user_for_session", { sessionToken }),
@@ -113,8 +121,16 @@ export function identityClient(service: ServiceBinding): IdentityApi {
       call("add_ssh_key", { user, title, publicKey }),
     removeSshKey: (user, id) => call("remove_ssh_key", { user, id }),
     listAccessTokens: (user) => call("list_access_tokens", { user }),
-    createAccessToken: (user, name, ttlSeconds) =>
-      call("create_access_token", { user, name, ttlSeconds }),
+    createAccessToken: (user, name, ttlSeconds, grant) =>
+      call("create_access_token", {
+        user,
+        name,
+        ttlSeconds,
+        scopes: grant?.scopes ?? null,
+        listed: grant?.listed ?? false,
+      }),
+    updateAccessToken: (user, id, grant) =>
+      call("update_access_token", { user, id, scopes: grant.scopes }),
     createAgentToken: (onBehalfOf, scope, ttlSeconds) =>
       call("create_agent_token", { onBehalfOf, scope, ttlSeconds }),
     removeAccessToken: (user, id) => call("remove_access_token", { user, id }),
@@ -272,6 +288,7 @@ export function workClient(service: ServiceBinding): WorkApi {
   const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
   return {
     openIssue: (actor, repo, input) => call("open_issue", { actor, repo, ...input }),
+    delegateIssue: (actor, repo, input) => call("delegate_issue", { actor, repo, ...input }),
     listIssues: (repo, viewer, filter = {}) => call("list_issues", { repo, viewer, ...filter }),
     getIssue: (repo, number, viewer) => call("get_issue", { repo, number, viewer }),
     updateIssue: (actor, repo, number, input) =>

@@ -5,7 +5,7 @@
  * one sentence under the greeting. Pure, so it is tested on its own; it
  * imports only types.
  */
-import type { AgentRun, CheckStatus, ChangedFile, Lifecycle, RepoPath, RunKind, Stage } from "@g1t/contracts";
+import type { AgentRun, CheckStatus, ChangedFile, Confidence, ConfidenceLevel, Lifecycle, RepoPath, RunKind, Stage } from "@g1t/contracts";
 
 import type { Need } from "./mission";
 
@@ -19,13 +19,22 @@ export function isAgent(name: string | null | undefined): boolean {
 // --- Reasons ----------------------------------------------------------------
 
 /** Why something is waiting on a person, as the chip beside it says. */
-export type Reason = "blocking" | "asked_for_you" | "checks_failing" | "outside_guardrails" | "needs_review" | "stalled" | "ready_to_merge";
+export type Reason =
+  | "blocking"
+  | "asked_for_you"
+  | "checks_failing"
+  | "outside_guardrails"
+  | "low_confidence"
+  | "needs_review"
+  | "stalled"
+  | "ready_to_merge";
 
 export const REASON_LABEL: Record<Reason, string> = {
   blocking: "Blocking",
   asked_for_you: "Asked for you",
   checks_failing: "Checks failing",
   outside_guardrails: "Outside guardrails",
+  low_confidence: "Low confidence",
   needs_review: "Needs review",
   stalled: "Stalled",
   ready_to_merge: "Ready to merge",
@@ -57,6 +66,8 @@ export function reasonFor(need: Pick<Need, "kind" | "detail">): Reason {
 
 /** What a pull request's `needs_you` sentence says it is waiting for. */
 export function stallReason(detail: string): Reason {
+  // First: its reasons can name checks, caps or approval in passing.
+  if (/confidence in this change is low/i.test(detail)) return "low_confidence";
   if (/cost cap|time cap|unusual CPU/i.test(detail)) return "outside_guardrails";
   if (/conflict|could not (?:be )?merge/i.test(detail)) return "blocking";
   if (/checks? (?:still )?fail|still fails|could not be run/i.test(detail)) return "checks_failing";
@@ -64,8 +75,46 @@ export function stallReason(detail: string): Reason {
   return "stalled";
 }
 
+/**
+ * The reason a pull request's need is shown, given how sure g1t is of the
+ * change: one that is ready, or held, with low confidence says so.
+ */
+export function withConfidence(reason: Reason, confidence: Pick<Confidence, "level"> | null | undefined): Reason {
+  if (confidence?.level !== "low") return reason;
+  return reason === "ready_to_merge" || reason === "stalled" || reason === "needs_review" ? "low_confidence" : reason;
+}
+
+const LEVEL: Record<ConfidenceLevel, string> = { low: "Low", medium: "Medium", high: "High" };
+
+/** "Low — tests not added, 3 revisions": a confidence in one line. */
+export function confidenceLine(confidence: Pick<Confidence, "level" | "reasons">): string {
+  return confidence.reasons.length > 0 ? `${LEVEL[confidence.level]} — ${confidence.reasons.join(", ")}` : LEVEL[confidence.level];
+}
+
+/** The ask, for a change held for its low confidence. */
+export function confidenceAsk(confidence: Pick<Confidence, "reasons">): string {
+  const why = confidence.reasons.length > 0 ? `: ${confidence.reasons.join(", ")}` : "";
+  return `The agent finished, but g1t is not sure of the change${why}. Approve it to let it land, or ask for changes.`;
+}
+
 /** Why only a person can move it: the callout beside what the agent knows. */
-export function whyFor(reason: Reason, need: Pick<Need, "kind" | "detail">): string {
+export function whyFor(
+  reason: Reason,
+  need: Pick<Need, "kind" | "detail">,
+  confidence?: Pick<Confidence, "reasons" | "uncertainAbout"> | null,
+): string {
+  if (reason === "low_confidence") {
+    const reasons = confidence?.reasons ?? [];
+    const what = reasons.length > 0 ? reasons.join(", ") : "what g1t observed of the change";
+    const unsure =
+      confidence && confidence.uncertainAbout.length > 0 ? ` The agent said it was unsure about ${confidence.uncertainAbout.join("; ")}.` : "";
+    // Held: the repository asks a person first. Otherwise it is ready and waits for a merge anyway.
+    const held =
+      need.kind === "stalled"
+        ? "This repository asks a person before a change like that lands, so nothing merges it until you approve it."
+        : "Look at it before you merge it.";
+    return `g1t rates its confidence in this change low, from ${what}.${unsure} ${held}`;
+  }
   if (need.kind === "limit") return "Agents start nothing new past the workspace's usage limit. Only an owner can raise it or add a card.";
   if (need.kind === "deploy")
     return "Production still serves the build before this one. Every push to the default branch builds again, so this fails until what broke is fixed.";
@@ -97,7 +146,15 @@ export const BLOCKING: ReadonlySet<Reason> = new Set<Reason>(["blocking"]);
 // --- What the agent knows ---------------------------------------------------
 
 export type FactTone = "good" | "warn" | "bad" | null;
-export type Fact = { label: string; value: string; tone: FactTone };
+/** One thing known; a `wide` one takes the whole row and wraps. */
+export type Fact = { label: string; value: string; tone: FactTone; wide?: boolean };
+
+const CONFIDENCE_TONE: Record<ConfidenceLevel, FactTone> = { low: "bad", medium: "warn", high: "good" };
+
+/** How sure g1t is of the change, with its reasons, as a fact. */
+export function confidenceFact(confidence: Pick<Confidence, "level" | "reasons">): Fact {
+  return { label: "Confidence", value: confidenceLine(confidence), tone: CONFIDENCE_TONE[confidence.level], wide: true };
+}
 
 const CHECKS: Record<CheckStatus, { text: string; tone: FactTone }> = {
   passed: { text: "Passed", tone: "good" },
@@ -130,6 +187,7 @@ export function pullFacts(input: {
   files: ChangedFile[];
   lifecycle?: Pick<Lifecycle, "revisions"> | null;
   runs?: Pick<AgentRun, "costUsd" | "kind">[];
+  confidence?: Pick<Confidence, "level" | "reasons"> | null;
 }): Fact[] {
   const facts: Fact[] = [];
   const checks = input.checkStatus ? CHECKS[input.checkStatus] : null;
@@ -159,6 +217,7 @@ export function pullFacts(input: {
       tone: null,
     });
   }
+  if (input.confidence) facts.push(confidenceFact(input.confidence));
   return facts;
 }
 

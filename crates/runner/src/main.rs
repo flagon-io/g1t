@@ -29,6 +29,7 @@
 mod abuse;
 mod actions;
 mod checks;
+mod confidence;
 mod deploy;
 mod guard;
 mod harness;
@@ -153,8 +154,11 @@ pub(crate) fn run(reporter: &mut Reporter) -> Result<String> {
         }
     }
 
-    // The agent is asked what it learned; that goes to memory, not the summary.
-    let summary = learned::finish(harness::run_claude(workdir, &learned::ask(&prompt), reporter)?);
+    // The agent is asked what it learned, which goes to memory, and how sure
+    // it is of its change, which g1t weighs with what it observes. Neither
+    // stays in the summary.
+    let asked = confidence::ask(&learned::ask(&prompt));
+    let summary = confidence::finish(learned::finish(harness::run_claude(workdir, &asked, reporter)?));
 
     // Commit whatever the agent left in the working tree.
     if !git(workdir, &["status", "--porcelain"])?.is_empty() {

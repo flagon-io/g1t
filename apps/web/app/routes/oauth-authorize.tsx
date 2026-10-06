@@ -5,8 +5,10 @@ import { decodeOAuthClient, isRegisteredRedirect } from "@g1t/contracts";
 
 import type { Route } from "./+types/oauth-authorize";
 import { page } from "../lib/meta";
-import { Button } from "../components/ui";
+import { Button, ErrorText } from "../components/ui";
+import { ScopeChecklist } from "../components/token-scopes";
 import { identity } from "../lib/services.server";
+import { consentedScopes, requestedScopes } from "../lib/token-scopes";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
 
 export function meta(args: Route.MetaArgs) {
@@ -77,6 +79,8 @@ export function loader({ request, context }: Route.LoaderArgs) {
   return {
     user,
     request: check(searchParams),
+    // What the application asked for; nothing usable means the default set.
+    requested: requestedScopes(searchParams.get("scope")),
     // Sent back unchanged when the person decides.
     query: Object.fromEntries(searchParams),
   };
@@ -93,19 +97,25 @@ export async function action({ request, context }: Route.ActionArgs) {
       callback(checked.redirectUri, { error: "access_denied", state: checked.state }),
     );
   }
+  // Only what the application asked for, never more, whatever the form says.
+  const scopes = consentedScopes(form, requestedScopes(String(form.get("scope") ?? "")));
+  if (scopes.length === 0) {
+    return { error: "Leave at least one box ticked, or deny." };
+  }
   const { code } = await identity.oauthAuthorize(user, {
     clientId: checked.clientId,
     clientName: checked.clientName,
     redirectUri: checked.redirectUri,
     codeChallenge: checked.codeChallenge,
+    scopes,
   });
   throw redirect(
     callback(checked.redirectUri, { code, state: checked.state, iss: "https://api.g1t.sh" }),
   );
 }
 
-export default function Authorize({ loaderData }: Route.ComponentProps) {
-  const { user, request, query } = loaderData;
+export default function Authorize({ loaderData, actionData }: Route.ComponentProps) {
+  const { user, request, requested, query } = loaderData;
 
   if (!request.ok) {
     return (
@@ -130,37 +140,42 @@ export default function Authorize({ loaderData }: Route.ComponentProps) {
         <span className="font-mono font-medium text-fg">{user.username}</span> on g1t.
       </p>
 
-      <dl className="mt-6 space-y-3 rounded-xl border border-line bg-surface p-4 text-sm">
-        <div>
-          <dt className="text-xs text-faint">It will be able to</dt>
-          <dd className="mt-0.5">
-            Read and change what you can: repositories, issues and pull requests.
-          </dd>
-        </div>
-        <div>
+      <Form method="post" className="mt-6 space-y-6">
+        {Object.entries(query).map(([name, value]) => (
+          <input key={name} type="hidden" name={name} value={value} />
+        ))}
+        <section>
+          <h2 className="text-sm font-medium">It will be able to</h2>
+          <p className="mt-0.5 text-xs text-faint">
+            Everywhere you can, as you. Untick anything you would rather it could not do.
+          </p>
+          <div className="mt-3">
+            <ScopeChecklist initial={requested} only={requested} allowFull={false} />
+          </div>
+        </section>
+        <dl className="rounded-xl border border-line bg-surface p-4 text-sm">
           <dt className="text-xs text-faint">You will be sent back to</dt>
           <dd className="mt-0.5 font-mono text-[0.8125rem] break-all">
             {destination.protocol === "https:" || destination.protocol === "http:"
               ? destination.host + destination.pathname
               : request.redirectUri}
           </dd>
+        </dl>
+        <div>
+          <p className="text-xs text-faint">
+            Approve only if you started this from {request.clientName} yourself. You can change
+            what it may do, or sign it out, in Settings.
+          </p>
+          <ErrorText>{actionData?.error}</ErrorText>
+          <div className="mt-4 flex gap-2">
+            <Button variant="accent" type="submit" name="decision" value="approve">
+              Approve
+            </Button>
+            <Button variant="quiet" type="submit" name="decision" value="deny">
+              Deny
+            </Button>
+          </div>
         </div>
-      </dl>
-      <p className="mt-3 text-xs text-faint">
-        Approve only if you started this from {request.clientName} yourself. You can
-        sign it out again in Settings.
-      </p>
-
-      <Form method="post" className="mt-6 flex gap-2">
-        {Object.entries(query).map(([name, value]) => (
-          <input key={name} type="hidden" name={name} value={value} />
-        ))}
-        <Button variant="accent" type="submit" name="decision" value="approve">
-          Approve
-        </Button>
-        <Button variant="quiet" type="submit" name="decision" value="deny">
-          Deny
-        </Button>
       </Form>
     </main>
   );

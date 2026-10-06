@@ -907,12 +907,30 @@ impl<S: GitStore> Repos<S> {
         service: GitService,
         found: Option<Repo>,
     ) -> Result<Outcome<Repo>> {
-        let a = GitAccessArgs {
+        let mut a = GitAccessArgs {
             path: path.clone(),
             viewer: viewer.clone(),
             service,
         };
         let write = a.service == GitService::ReceivePack;
+        // An access token: pushing needs code:write, reading a private
+        // repository code:read. A public repository reads as it would for
+        // anyone. Which repositories a token reaches is its owner's, checked
+        // below as for anyone.
+        if let Some(access) = a.viewer.as_ref().and_then(|user| user.token.as_deref()).cloned() {
+            let public = found.as_ref().is_some_and(|repo| !repo.is_private);
+            let decision = g1t_contracts::scopes::decide_git(&access, write, public);
+            if !decision.allowed {
+                return Ok(Outcome::fail(
+                    FailureCode::Forbidden,
+                    format!("{}\n", decision.reason.unwrap_or_default()),
+                ));
+            }
+            if !write && !access.allows(g1t_contracts::scopes::Scope::CodeRead) {
+                a.viewer = None;
+            }
+        }
+
         // Anonymous callers are asked to authenticate whether or not the repo
         // exists, so private repos cannot be told apart from missing ones.
         let denied = || match &a.viewer {
@@ -932,7 +950,6 @@ impl<S: GitStore> Repos<S> {
         {
             return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
         }
-
         let repo = match found {
             Some(repo) => {
                 let allowed = if write {

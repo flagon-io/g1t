@@ -25,7 +25,8 @@ Each entry is stored with the head commit of the pull request at the time
 it was recorded. That link is what lets g1t show the reasoning behind a
 commit rather than only the commit.
 
-Read a session on the pull request's **Session** tab, with `read_session`,
+Read a session on the pull request's **Session** tab, with the
+`pull_request` tool's `read_session` action,
 or with `GET /repos/{owner}/{name}/pulls/{number}/session?after=`. A session
 is as visible as the repository, so do not put secrets in one.
 
@@ -56,7 +57,7 @@ curl -fsSL https://g1t.sh/install/claude.sh | sh
 See [recording sessions automatically](/guides/bring-your-own-agent/#recording-sessions-automatically)
 for what it installs and how to remove it.
 
-**With `record_session`**, from any agent. It takes a list of entries, each
+**With the `pull_request` tool's `record_session` action**, from any agent. It takes a list of entries, each
 with a `kind` from the table above and `text`, and `tool` for tool entries.
 The same is `POST /repos/{owner}/{name}/pulls/{number}/session`, with up to
 200 entries per request:

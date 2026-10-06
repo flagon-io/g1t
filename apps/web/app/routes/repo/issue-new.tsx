@@ -1,5 +1,6 @@
-import { Download } from "lucide-react";
-import { Form, redirect, useNavigation } from "react-router";
+import { env } from "cloudflare:workers";
+import { Download, Sparkles } from "lucide-react";
+import { Form, Link, redirect, useNavigation, useSearchParams } from "react-router";
 
 import { PROVIDERS } from "@g1t/contracts";
 
@@ -10,6 +11,9 @@ import { CheckboxOption } from "../../components/ui/checkbox";
 import { Label } from "../../components/work";
 import { integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, unwrap } from "../../lib/session.server";
+import { accessTo } from "../../lib/access.server";
+import { computeNoteFor } from "../../lib/compute.server";
+import { delegateForm, issuePath, notStarted } from "../../lib/delegate";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `New issue · ${params.owner}/${params.repo} · g1t` });
@@ -18,15 +22,19 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
   const path = { namespace: params.owner, name: params.repo };
-  const [labels, connections] = await Promise.all([
+  // Putting an agent on it needs Write (Run): Read cannot spend compute.
+  const { can } = await accessTo(context, params);
+  const [labels, connections, agents, computeNote] = await Promise.all([
     work.listLabels(path, user),
     integrations.list(params.owner.toLowerCase(), user),
+    can.run ? env.RUNNER.enabled(user, path) : false,
+    can.run ? computeNoteFor(params.owner, "agent") : null,
   ]);
   // Systems a ticket can be imported from.
   const sources = connections.ok
     ? [...new Set(connections.value.filter((c) => c.kind === "tracker" || c.provider === "sentry").map((c) => c.provider))]
     : [];
-  return { labels: unwrap(labels), sources };
+  return { labels: unwrap(labels), sources, canAssign: can.run, agents, computeNote };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -43,9 +51,19 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     if (!imported.ok) return { importError: imported.error.message };
     throw redirect(`/${params.owner}/${params.repo}/issues/${imported.value.number}`);
   }
+  const path = { namespace: params.owner, name: params.repo };
+  // Assigned to g1t-agent as it opens: one step, and the agent starts.
+  if (form.get("agent") === "on") {
+    const delegated = await env.RUNNER.delegate(user, path, delegateForm(form));
+    if (!delegated.ok) return { error: delegated.error.message };
+    const { issue, agent } = delegated.value;
+    const refused = notStarted(agent, path, issue.number);
+    if (!refused) throw redirect(issuePath(path, issue.number));
+    return { notStarted: refused };
+  }
   const result = await work.openIssue(
     user,
-    { namespace: params.owner, name: params.repo },
+    path,
     {
       title: String(form.get("title") ?? ""),
       body: String(form.get("body") ?? ""),
@@ -62,6 +80,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 export default function NewIssue({ loaderData, actionData }: Route.ComponentProps) {
   const busy = useNavigation().state === "submitting";
+  // "Put an agent on …" in the palette arrives with ?agent=1.
+  const [params] = useSearchParams();
+  const refused = actionData && "notStarted" in actionData ? actionData.notStarted : null;
   const names = loaderData.sources.map((source) => PROVIDERS[source].label);
   return (
     <div className="max-w-2xl">
@@ -129,6 +150,42 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
         >
           <Textarea name="checks" rows={3} placeholder="cargo test" />
         </Field>
+        {loaderData.canAssign && (
+          <div className="rounded-xl border border-merged/25 bg-merged/[0.04] px-3.5 py-3">
+            <CheckboxOption
+              name="agent"
+              defaultChecked={params.get("agent") === "1"}
+              label={
+                <span className="flex items-center gap-1.5 font-medium">
+                  <Sparkles size={14} className="text-merged" />
+                  Assign g1t-agent now
+                </span>
+              }
+              description="It opens a pull request for this issue in a sandbox of its own and sees it through checks and review. There is no model or agent count to choose."
+            />
+            {(!loaderData.agents || loaderData.computeNote) && (
+              <p className="mt-2 pl-6 text-xs text-warn">
+                {loaderData.computeNote ?? "This workspace's agents have no model yet. The issue still opens, and says why the agent did not start."}
+              </p>
+            )}
+          </div>
+        )}
+        {refused && (
+          <div className="rounded-lg border border-warn/30 bg-warn/[0.06] p-3 text-sm">
+            <p>
+              Opened{" "}
+              <Link to={refused.to} className="font-medium text-fg hover:underline">
+                #{refused.number}
+              </Link>
+              , but g1t-agent did not start. {refused.message}
+            </p>
+            {refused.fix && (
+              <Link to={refused.fix.to} className="mt-2 inline-block text-sm font-medium text-fg hover:underline">
+                {refused.fix.label}
+              </Link>
+            )}
+          </div>
+        )}
         <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
         <Button type="submit">Open issue</Button>
       </Form>

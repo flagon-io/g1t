@@ -7,6 +7,8 @@ import {
   type RunKind,
   agentsClient,
   type CheckJob,
+  type DelegateInput,
+  type Delegated,
   type G1tEvent,
   type Issue,
   type LifecycleJob,
@@ -56,6 +58,7 @@ import {
 
 import { type AgentRoutes, type AgentTask, canReachModel, modelEnv } from "./model-env";
 import { hubContext } from "./hub";
+import { delegateInput, noModelMessage, notStarted, queued, started } from "./delegate";
 import { type ProjectSurroundings, readableSurroundings } from "./surroundings";
 import { holdCredentials, pushGrant, remotePath, revokeCredentials, runCredential } from "./credentials";
 import { buildMentionPrompt, describeThread, handleMention, planMention } from "./mentions";
@@ -900,6 +903,10 @@ export default class RunnerService
       return Response.json(
         await this.run(args.actor, args.repo, args.issue, { instructions: args.instructions }),
       );
+    }
+    if (request.method === "POST" && pathname === "/rpc/delegate") {
+      const args = (await request.json()) as { actor: User; repo: RepoPath } & DelegateInput;
+      return Response.json(await this.delegate(args.actor, args.repo, args));
     }
     if (request.method === "POST" && pathname === "/rpc/start_actions_job") {
       const args = (await request.json()) as {
@@ -2057,7 +2064,7 @@ export default class RunnerService
     if (!(await this.workspaceAllowed(repo.namespace))) {
       return fail(
         "forbidden",
-        `The ${repo.namespace} workspace has no model for its agents: its free allowance on g1t's models is used up or over. An owner can connect the workspace's own model provider under Integrations, and its agents start at once.`,
+        noModelMessage(repo.namespace),
       );
     }
     if (!(await this.allowed(actor, repo))) {
@@ -2460,6 +2467,39 @@ export default class RunnerService
     const started = await this.holding(admitted, () => this.startImplement(actor, repo, issueNumber, input, admitted));
     if (!started.ok) await this.release(admitted.held);
     return started;
+  }
+
+  async delegate(actor: User, repo: RepoPath, input: DelegateInput): Promise<Result<Delegated>> {
+    // Who may put agents to work here is settled before anything is opened.
+    const closed = await this.closedRepo(actor, repo);
+    if (closed) return closed;
+    if (!actor || !(await this.repoAllows(actor, repo, "run"))) return fail("forbidden", needs("run"));
+    const work = workClient(this.env.WORK);
+    const opened = await work.delegateIssue(actor, repo, delegateInput(input));
+    if (!opened.ok) return opened;
+    const issue = opened.value;
+    const workspace = repo.namespace.toLowerCase();
+    // From here the issue stays, and the answer says what became of the agent.
+    if (!this.modelsReachable() || !(await this.workspaceAllowed(repo.namespace))) {
+      return ok(notStarted(issue, "no_model", noModelMessage(repo.namespace), workspace));
+    }
+    const admitted = await this.admitAgent("implement", repo, issue.number);
+    if (!admitted.ok) {
+      if (admitted.waiting) {
+        // Started by itself when a slot frees up (startReady).
+        await work.queueIssue(actor, repo, issue.number, true);
+        return ok(queued(issue, admitted.message));
+      }
+      return ok(notStarted(issue, admitted.code, admitted.message, workspace));
+    }
+    const begun = await this.holding(admitted, () => this.startImplement(actor, repo, issue.number, {}, admitted)).catch(
+      (error: unknown) => fail("conflict", String(error)),
+    );
+    if (!begun.ok) {
+      await this.release(admitted.held);
+      return ok(notStarted(issue, begun.error.code, begun.error.message, workspace));
+    }
+    return ok(started(issue, begun.value));
   }
 
   private async startImplement(

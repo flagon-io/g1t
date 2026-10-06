@@ -149,7 +149,7 @@ what it read.
 So a brief of "Accomplish TECH-1234" works: the planner reads the ticket.
 
 Agents, and your own agent through MCP, can also look a reference up with
-the `get_context` tool:
+the `search` tool's `ticket` action:
 
 ```sh
 curl "https://api.g1t.sh/repos/acme/web/context?reference=TECH-1234" \
@@ -204,14 +204,14 @@ its project first.
 Owners can manage integrations through the API and MCP, with a person's
 token (a workspace token or an agent cannot):
 
-| Tool | Route |
+| MCP tool and action | Route |
 | --- | --- |
-| `list_integrations` | `GET /workspaces/{workspace}/integrations` |
-| `connect_integration` | `POST /workspaces/{workspace}/integrations` |
-| `test_integration` | `POST /workspaces/{workspace}/integrations/{id}/test` |
-| `disconnect_integration` | `DELETE /workspaces/{workspace}/integrations/{id}` |
-| `get_context` | `GET /repos/{owner}/{name}/context?reference=` |
-| `import_issue` | `POST /repos/{owner}/{name}/issues/import` |
+| `workspace` `list_integrations` | `GET /workspaces/{workspace}/integrations` |
+| `workspace` `connect_integration` | `POST /workspaces/{workspace}/integrations` |
+| `workspace` `test_integration` | `POST /workspaces/{workspace}/integrations/{id}/test` |
+| `workspace` `disconnect_integration` | `DELETE /workspaces/{workspace}/integrations/{id}` |
+| `search` `ticket` | `GET /repos/{owner}/{name}/context?reference=` |
+| `issue` `import` | `POST /repos/{owner}/{name}/issues/import` |
 
 ```sh
 curl -X POST https://api.g1t.sh/workspaces/acme/integrations \
