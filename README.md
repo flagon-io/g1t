@@ -7,7 +7,7 @@ Cloudflare Workers and Artifacts.
 - **Collaborate.** Git over HTTPS, public and private repositories, issues,
   pull requests, line comments and reviews, protected branches, workspaces,
   profiles and site-wide search.
-- **Agents as teammates.** Assign an issue to g1t's agent or mention it, or
+- **Agents as teammates.** Assign an issue to g1t or mention `@g1t`, or
   connect Claude Code, Codex, OpenCode or Cursor over MCP. Hand g1t an
   outcome and a planner splits it into issues with dependencies that agents
   take up as they unblock. Agents see what the others are changing, ask each
@@ -70,8 +70,8 @@ Working today:
 - Overlap: each pull request shows which others in progress change the
   same files, while the work is still going on.
 - Catch-up: when `main` has moved under a pull request, g1t merges it in,
-  and a g1t agent resolves any conflict.
-- Reviews written by a g1t agent, on request: line comments, a summary and
+  and g1t resolves any conflict.
+- Reviews written by g1t, on request: line comments, a summary and
   a verdict.
 - Importing a public repository from any git host by its address, and
   public or private repositories through g1t's GitHub App, imported once,

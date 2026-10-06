@@ -81,11 +81,10 @@ pub fn prose(text: &str, terms: &[String]) -> Vec<Segment> {
         start = end.saturating_sub(PROSE_CHARS);
     }
     // Start and end on a word boundary where there is one nearby.
-    if start > 0 {
-        if let Some(space) = flat[start..first.max(start)].iter().position(|c| *c == ' ') {
+    if start > 0
+        && let Some(space) = flat[start..first.max(start)].iter().position(|c| *c == ' ') {
             start += space + 1;
         }
-    }
     let mut end = end;
     if end < flat.len()
         && let Some(space) = flat[start..end].iter().rposition(|c| *c == ' ')

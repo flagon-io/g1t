@@ -109,11 +109,7 @@ pub async fn list<R: GitRepo>(
         return Ok(FileList::default());
     };
     let base_tree = match base {
-        Some(base) => match resolve(repo, base).await? {
-            Some((_, tree)) => Some(tree),
-            // A base that cannot be read is treated as nothing: every file.
-            None => None,
-        },
+        Some(base) => resolve(repo, base).await?.map(|(_, tree)| tree),
         None => None,
     };
     let (files, truncated) = changed(repo, base_tree.as_deref(), &tree, skip, limit).await?;

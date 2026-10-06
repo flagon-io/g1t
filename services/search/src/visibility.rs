@@ -310,7 +310,7 @@ mod tests {
         let reader = Reader::of(&viewer(&["acme"]));
         let verdict = check(&reader, &[row("rep_1", "acme", false)], Some(&[repo("rep_1", "acme", true)]));
         assert!(verdict.keep.contains("rep_1"));
-        assert_eq!(verdict.corrections[0].private, true);
+        assert!(verdict.corrections[0].private);
     }
 
     #[test]
@@ -320,7 +320,7 @@ mod tests {
         let reader = Reader::of(&viewer(&["acme"]));
         let verdict = check(&reader, &[row("rep_2", "acme", true)], Some(&[repo("rep_2", "acme", false)]));
         assert!(verdict.keep.contains("rep_2"));
-        assert_eq!(verdict.corrections[0].private, false);
+        assert!(!verdict.corrections[0].private);
         // Once corrected, an outsider's first check lets it through too.
         assert!(Reader::of(&None).may_see("rep_2", "acme", false));
     }

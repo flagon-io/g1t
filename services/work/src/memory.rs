@@ -273,12 +273,12 @@ impl Work {
 
     /// The repository a project's memory is about; none for the workspace's.
     async fn memory_repo_id(&self, id: &str) -> Result<Option<String>> {
-        Ok(self
+        self
             .db
             .prepare("SELECT scope_key AS value FROM memories WHERE id = ? AND scope = 'project'")
             .bind(&[id.into()])?
             .first::<String>(Some("value"))
-            .await?)
+            .await
     }
 
     async fn mark_used(&self, ids: &[String]) -> Result<()> {
