@@ -85,13 +85,12 @@ jobs:
           name: linux-binaries
           path: release
       - name: Build and push for amd64 and arm64
+        # To g1t's own registry, where flagon-io keeps it public.
         env:
-          REGISTRY_USER: ${{ vars.RUNNER_IMAGE_REGISTRY_USER }}
-          REGISTRY_TOKEN: ${{ secrets.RUNNER_IMAGE_REGISTRY_TOKEN }}
-          IMAGE: ${{ vars.RUNNER_IMAGE }}
+          IMAGE: g1t.sh/flagon-io/g1t-runner
         run: |
           version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/runner/Cargo.toml | head -1)"
-          echo "$REGISTRY_TOKEN" | docker login --username "$REGISTRY_USER" --password-stdin
+          echo "${{ secrets.G1T_TOKEN }}" | docker login g1t.sh -u g1t --password-stdin
           for arch in amd64 arm64; do
             mkdir -p "context-$arch"
             cp deploy/runner/Dockerfile "context-$arch/"

@@ -550,7 +550,7 @@ there update themselves to each release.
 | The tool | `scripts/runner-release.mjs` (`keygen`, `build`, `sign`, `verify`, `publish`) |
 | The workflow | `.g1t/workflows/runner-release.yml`, on a tag `runner-v<version>` or by hand |
 | Where it is published | The R2 bucket `g1t-downloads`, served by the site at `g1t.sh/downloads/runner/<version>/<file>` and `/latest/<file>` (`apps/web/app/routes/downloads-runner.ts`) |
-| Its image | `deploy/runner/Dockerfile`, pushed as `RUNNER_IMAGE` (`flagonio/g1t-runner`) for amd64 and arm64 |
+| Its image | `deploy/runner/Dockerfile`, pushed to `g1t.sh/flagon-io/g1t-runner` (public) for amd64 and arm64 |
 
 A release is five binaries (Linux x64 and arm64, both static musl; macOS
 x64 and arm64; Windows x64), `SHA256SUMS`, and `manifest.json`;
@@ -568,10 +568,10 @@ The first time:
    updates itself.
 2. `npx wrangler r2 bucket create g1t-downloads`, and deploy the site so it
    has the `DOWNLOADS` binding.
-3. Set the variables `RUNNER_IMAGE` (the image's name in a public registry),
-   `RUNNER_IMAGE_REGISTRY_USER` and the secret `RUNNER_IMAGE_REGISTRY_TOKEN`,
-   and `RUNNER_AGENT_IMAGE` (a public copy of `g1t-runner-base`, the image
-   agent work runs in on customers' runners).
+3. The image job pushes to g1t's own registry with the run's `G1T_TOKEN`;
+   the `g1t-runner` package in flagon-io is public. Set the variable
+   `RUNNER_AGENT_IMAGE` (a public copy of `g1t-runner-base`, the image agent
+   work runs in on customers' runners) once there is one.
 4. Register a self-hosted runner with the `docker` label for the image job.
 
 Each release:

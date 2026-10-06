@@ -97,7 +97,7 @@ export interface RunnersApi {
  * The runner's container image: `g1t-runner` and the Docker CLI, for
  * running it in Docker or Kubernetes. Published with each release.
  */
-export const RUNNER_IMAGE = "flagonio/g1t-runner";
+export const RUNNER_IMAGE = "g1t.sh/flagon-io/g1t-runner";
 
 /** Where the runner binary is published: `g1t.sh/downloads/runner/<version>/<file>`. */
 export const RUNNER_DOWNLOADS = "https://g1t.sh/downloads/runner";

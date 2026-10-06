@@ -226,11 +226,6 @@ so you can see how much ran there.
 
 ## Docker and Kubernetes
 
-**The `flagonio/g1t-runner` image is not published yet.** Until it is, run
-the binary on the machine, or build the image from
-[`deploy/runner/Dockerfile`](https://g1t.sh/flagon-io/g1t/blob/main/deploy/runner/Dockerfile)
-with the Linux binary beside it.
-
 The runner's image runs `register-and-run`, which registers once and then
 runs. Each option can also come from `G1T_RUNNER_<OPTION>` in the
 environment, such as `G1T_RUNNER_TOKEN` and `G1T_RUNNER_LABELS`, so a
@@ -240,7 +235,7 @@ secret can hold the token:
 docker run -d --name g1t-runner --restart unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v g1t-runner:/data -e G1T_RUNNER_DIR=/data \
-  flagonio/g1t-runner register-and-run --url https://g1t.sh --token g1trt_…
+  g1t.sh/flagon-io/g1t-runner register-and-run --url https://g1t.sh --token g1trt_…
 ```
 
 With the host's Docker socket, each job runs in a sibling container.
@@ -266,7 +261,7 @@ spec:
     spec:
       containers:
         - name: runner
-          image: flagonio/g1t-runner
+          image: g1t.sh/flagon-io/g1t-runner
           command: ["sh", "-c"]
           args:
             - |

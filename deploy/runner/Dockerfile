@@ -8,7 +8,7 @@
 #   docker run -d --restart unless-stopped \
 #     -v /var/run/docker.sock:/var/run/docker.sock -v g1t-runner:/data \
 #     -e G1T_RUNNER_URL=https://g1t.sh -e G1T_RUNNER_TOKEN=g1trt_… \
-#     flagonio/g1t-runner
+#     g1t.sh/flagon-io/g1t-runner
 #
 # Build context: a folder holding `g1t-runner` for the image's platform,
 # the static Linux build that scripts/runner-release.mjs makes (or
