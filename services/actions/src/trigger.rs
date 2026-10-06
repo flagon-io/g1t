@@ -347,6 +347,12 @@ impl Actions {
         }
         let sender = self.username(event.actor.as_deref()).await?.unwrap_or_else(|| repo.namespace.clone());
         for (event_name, action) in mapped {
+            // Issues and comments start the default branch's workflows,
+            // which the synced table lists: when none listens, nothing is
+            // read from git. Agents make many of these events.
+            if matches!(event_name, "issues" | "issue_comment") && self.listens(repo_id, event_name).await? == Some(false) {
+                continue;
+            }
             let Some(mut subject) = self.subject(event, event_name, action, &repo, &ws, &sender).await? else {
                 continue;
             };

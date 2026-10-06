@@ -502,9 +502,9 @@ impl GitStore for ArtifactsStore {
 
     async fn open(&self, key: &str) -> Result<ArtifactsRepo> {
         let (namespace, name) = locate(key);
-        let handle = invoke(&namespace, key, self.binding(&namespace)?, "get", &[name.as_str().into()], true).await?;
         Ok(ArtifactsRepo {
-            handle,
+            handle: RefCell::new(None),
+            binding: self.binding(&namespace)?.clone(),
             key: key.to_owned(),
             name,
             namespace,
@@ -525,7 +525,12 @@ impl GitStore for ArtifactsStore {
 /// A handle to one Artifacts repository. It is an RPC stub, so it is
 /// released when dropped.
 pub struct ArtifactsRepo {
-    handle: JsValue,
+    /// The store's handle, asked for (`get`) on the first call that needs
+    /// the store: an answer from a cache, or a fetch over git with a kept
+    /// credential, never costs a `get`.
+    handle: RefCell<Option<JsValue>>,
+    /// The namespace's binding, for that `get`.
+    binding: JsValue,
     /// The repository's store key, which scopes its cached objects.
     key: String,
     /// Its name in its namespace.
@@ -584,21 +589,81 @@ pub fn branches_key(version: Option<u64>) -> Option<CacheKey> {
     version.map(|version| CacheKey::Versioned(format!("branches/{version}")))
 }
 
+/// Objects named by their content, kept in the isolate ahead of the Cache
+/// API, oldest out first past `MEMORY_CACHE_BYTES`. They never go stale,
+/// and each is under its repository's key.
+const MEMORY_CACHE_BYTES: usize = 16 * 1024 * 1024;
+
+#[derive(Default)]
+struct MemoryCache {
+    entries: HashMap<String, Rc<Vec<u8>>>,
+    order: std::collections::VecDeque<String>,
+    bytes: usize,
+}
+
+impl MemoryCache {
+    fn get(&self, url: &str) -> Option<Vec<u8>> {
+        self.entries.get(url).map(|bytes| bytes.as_ref().clone())
+    }
+
+    fn put(&mut self, url: String, bytes: &[u8]) {
+        if bytes.len() > MEMORY_CACHE_BYTES / 16 || self.entries.contains_key(&url) {
+            return;
+        }
+        self.bytes += bytes.len();
+        self.entries.insert(url.clone(), Rc::new(bytes.to_vec()));
+        self.order.push_back(url);
+        while self.bytes > MEMORY_CACHE_BYTES {
+            let Some(oldest) = self.order.pop_front() else { break };
+            if let Some(gone) = self.entries.remove(&oldest) {
+                self.bytes -= gone.len();
+            }
+        }
+    }
+}
+
+thread_local! {
+    static MEMORY: RefCell<MemoryCache> = RefCell::new(MemoryCache::default());
+}
+
 impl ArtifactsRepo {
     fn cache_url(&self, path: &str) -> String {
         format!("{OBJECT_CACHE}{}/{path}", self.key)
     }
 
-    async fn cached_at(&self, path: &str) -> Option<Vec<u8>> {
-        let mut response = worker::Cache::default().get(self.cache_url(path), false).await.ok()??;
-        response.bytes().await.ok()
+    /// A kept answer: from the isolate for one kept for good, else the
+    /// Cache API. Each look is metered (`cache.memory_hit`, `cache.edge_hit`,
+    /// `cache.miss`), so the usage check shows which cache answers.
+    async fn cached_at(&self, path: &str, forever: bool) -> Option<Vec<u8>> {
+        let url = self.cache_url(path);
+        if forever && let Some(bytes) = MEMORY.with(|memory| memory.borrow().get(&url)) {
+            meters::record_bytes("cache.memory_hit", &self.key, 0, bytes.len() as u64);
+            return Some(bytes);
+        }
+        let found = match worker::Cache::default().get(url.clone(), false).await {
+            Ok(Some(mut response)) => response.bytes().await.ok(),
+            _ => None,
+        };
+        match &found {
+            Some(bytes) => {
+                meters::record_bytes("cache.edge_hit", &self.key, 0, bytes.len() as u64);
+                if forever {
+                    MEMORY.with(|memory| memory.borrow_mut().put(url, bytes));
+                }
+            }
+            None => meters::record("cache.miss", &self.key, 0, 0),
+        }
+        found
     }
 
     async fn cached(&self, kind: &str, hash: &str) -> Option<Vec<u8>> {
-        self.cached_at(&format!("{kind}/{hash}")).await
+        self.cached_at(&format!("{kind}/{hash}"), true).await
     }
 
     async fn keep_at(&self, path: &str, bytes: Vec<u8>, max_age: &str) {
+        if max_age == OBJECT_MAX_AGE {
+            MEMORY.with(|memory| memory.borrow_mut().put(self.cache_url(path), &bytes));
+        }
         let Ok(mut response) = worker::Response::from_bytes(bytes) else {
             return;
         };
@@ -613,7 +678,8 @@ impl ArtifactsRepo {
 
     async fn get_key(&self, key: &CacheKey) -> Option<Vec<u8>> {
         match key {
-            CacheKey::Forever(path) | CacheKey::Versioned(path) => self.cached_at(path).await,
+            CacheKey::Forever(path) => self.cached_at(path, true).await,
+            CacheKey::Versioned(path) => self.cached_at(path, false).await,
         }
     }
 
@@ -625,7 +691,18 @@ impl ArtifactsRepo {
     }
 
     async fn call(&self, method: &str, args: &[JsValue], retry: bool) -> std::result::Result<JsValue, StoreError> {
-        invoke(&self.namespace, &self.key, &self.handle, method, args, retry).await
+        let handle = self.handle().await?;
+        invoke(&self.namespace, &self.key, &handle, method, args, retry).await
+    }
+
+    /// The store's handle, asked for the first time it is needed.
+    async fn handle(&self) -> std::result::Result<JsValue, StoreError> {
+        if let Some(handle) = self.handle.borrow().as_ref() {
+            return Ok(handle.clone());
+        }
+        let handle = invoke(&self.namespace, &self.key, &self.binding, "get", &[self.name.as_str().into()], true).await?;
+        *self.handle.borrow_mut() = Some(handle.clone());
+        Ok(handle)
     }
 
     /// A new credential from the store. Its remote is worked out from the
@@ -638,6 +715,7 @@ impl ArtifactsRepo {
             let token: RawToken = js::from_js(&self.call("createToken", &args, true).await?)?;
             return Ok(GitAccess { remote: remote_from(&prefix, &self.name), token: token.plaintext });
         }
+        self.handle().await?;
         let (info, token) = futures_util::future::join(self.call("info", &[], true), self.call("createToken", &args, true)).await;
         let info: RawInfo = js::from_js(&info?)?;
         let token: RawToken = js::from_js(&token?)?;
@@ -655,10 +733,9 @@ impl Drop for ArtifactsRepo {
     fn drop(&mut self) {
         let symbol = js::get(&worker::js_sys::global(), "Symbol");
         let dispose = js::get(&symbol, "dispose");
-        if let Ok(function) = Reflect::get(&self.handle, &dispose)
-            .and_then(|value| value.dyn_into::<worker::js_sys::Function>())
-        {
-            let _ = function.call0(&self.handle);
+        let Some(handle) = self.handle.borrow_mut().take() else { return };
+        if let Ok(function) = Reflect::get(&handle, &dispose).and_then(|value| value.dyn_into::<worker::js_sys::Function>()) {
+            let _ = function.call0(&handle);
         }
     }
 }
@@ -978,6 +1055,22 @@ mod tests {
         );
         assert_eq!(locate("g1t-us-1/acme--rocket"), ("g1t-us-1".to_owned(), "acme--rocket".to_owned()));
         assert_eq!(locate("acme--rocket"), ("g1t".to_owned(), "acme--rocket".to_owned()));
+    }
+
+    #[test]
+    fn the_memory_cache_drops_its_oldest_past_its_budget() {
+        let mut cache = MemoryCache::default();
+        let chunk = vec![7u8; MEMORY_CACHE_BYTES / 16];
+        for n in 0..17 {
+            cache.put(format!("k{n}"), &chunk);
+        }
+        // Sixteen chunks fit; the seventeenth pushed the first out.
+        assert!(cache.get("k0").is_none());
+        assert_eq!(cache.get("k16").map(|b| b.len()), Some(chunk.len()));
+        assert!(cache.bytes <= MEMORY_CACHE_BYTES);
+        // Too large to keep at all.
+        cache.put("big".into(), &vec![0u8; MEMORY_CACHE_BYTES / 16 + 1]);
+        assert!(cache.get("big").is_none());
     }
 
     #[test]

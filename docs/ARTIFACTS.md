@@ -413,9 +413,14 @@ A global API key works in place of the token: `CLOUDFLARE_API_KEY` with `CLOUDFL
   1,000, today's demo-scale traffic alone is about 3.2 million a month (~$480). Ask Cloudflare
   (Q1) before 2026-10-14. Either way the volume is mostly waste: every repos call opens a handle
   with `get` even when the answer is cached, and the object cache may not be hitting (no hit/miss
-  meter yet). Fixes, ranked: lazy `get`; a real cache for objects named by hash (KV or an
-  in-isolate LRU, with hit/miss meters); Actions reading workflows from the synced table instead
-  of the store on every event; caller attribution in the meters.
+  meter yet). Done on 2026-10-06: the handle's `get` waits for the first call that needs the
+  store (an answer from a cache, or `branches` over git, costs none); objects named by hash are
+  kept in the isolate (16 MB, oldest out first) ahead of the Cache API, and every look is
+  metered (`cache.memory_hit`, `cache.edge_hit`, `cache.miss`); issue and comment events start
+  nothing and read nothing when the synced `workflows` table has no workflow listening. Next:
+  read `cache.edge_hit` against `cache.miss` after a day; if the Cache API never hits from a
+  Worker reached only by service bindings, put objects in KV instead. Still to do: caller
+  attribution in the meters.
 - 476 client errors on 2026-10-06 are unexplained; the fetch fix below accounts for some (every
   failed negotiation was one).
 

@@ -40,6 +40,19 @@ pub struct WorkflowRow {
     pub updated_at: String,
 }
 
+/// What a workflow's row says once its file has left the default branch.
+pub const GONE: &str = "Its file is no longer on the default branch.";
+
+/// Whether a synced workflow could start on `event`: it lists the event,
+/// or it did not parse (and is still on the branch), so reading it again
+/// reports why.
+pub fn could_start(events: &str, error: Option<&str>, event: &str) -> bool {
+    match error {
+        Some(error) => error != GONE,
+        None => serde_json::from_str::<Vec<String>>(events).is_ok_and(|events| events.iter().any(|e| e == event)),
+    }
+}
+
 impl Actions {
     /// The workflow files of `path` as of `git_ref` (the default branch
     /// when absent).
@@ -146,8 +159,8 @@ impl Actions {
         for row in existing.iter().filter(|row| !kept.contains(&row.path)) {
             statements.push(
                 self.db
-                    .prepare("UPDATE workflows SET crons = '[]', error = 'Its file is no longer on the default branch.' WHERE id = ?")
-                    .bind(&[row.id.as_str().into()])?,
+                    .prepare("UPDATE workflows SET crons = '[]', error = ? WHERE id = ?")
+                    .bind(&[GONE.into(), row.id.as_str().into()])?,
             );
         }
         statements.push(
@@ -157,6 +170,27 @@ impl Actions {
         );
         self.db.batch(statements).await?;
         Ok(())
+    }
+
+    /// Whether any of the repository's default-branch workflows could
+    /// start on `event`, from the synced table; None before the first sync.
+    pub async fn listens(&self, repo_id: &str, event: &str) -> Result<Option<bool>> {
+        #[derive(Deserialize)]
+        struct Row {
+            events: String,
+            error: Option<String>,
+        }
+        if !self.synced(repo_id).await? {
+            return Ok(None);
+        }
+        let rows = self
+            .db
+            .prepare("SELECT events, error FROM workflows WHERE repo_id = ? AND state = 'active'")
+            .bind(&[repo_id.into()])?
+            .all()
+            .await?
+            .results::<Row>()?;
+        Ok(Some(rows.iter().any(|row| could_start(&row.events, row.error.as_deref(), event))))
     }
 
     pub async fn synced(&self, repo_id: &str) -> Result<bool> {
@@ -196,5 +230,20 @@ impl Actions {
             .first::<WorkflowRow>(None)
             .await?
             .ok_or_else(|| worker::Error::RustError("the workflow was not recorded".into()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_synced_workflow_starts_on_the_events_it_lists_or_when_broken() {
+        assert!(could_start(r#"["push","issues"]"#, None, "issues"));
+        assert!(!could_start(r#"["push","pull_request"]"#, None, "issue_comment"));
+        // A file that does not parse is read again, so its error shows.
+        assert!(could_start("[]", Some("bad yaml"), "issues"));
+        // A file gone from the branch starts nothing.
+        assert!(!could_start("[]", Some(GONE), "issues"));
     }
 }

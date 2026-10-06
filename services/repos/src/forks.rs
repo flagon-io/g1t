@@ -284,9 +284,13 @@ impl<S: GitStore> Repos<S> {
             Some(id) => self.registry.by_id(id).await?,
             None => None,
         };
-        let head = match self.store.open(&key).await {
-            Ok(git) => git.log(&fork.default_branch, 1).await?.into_iter().next().map(|commit| commit.hash),
-            // Already gone from the store.
+        // Already gone from the store: it says so when first asked.
+        let read = match self.store.open(&key).await {
+            Ok(git) => git.log(&fork.default_branch, 1).await,
+            Err(error) => Err(error),
+        };
+        let head = match read {
+            Ok(commits) => commits.into_iter().next().map(|commit| commit.hash),
             Err(error) if error.to_string().contains("NOT_FOUND") => None,
             Err(error) => return Err(error),
         };
