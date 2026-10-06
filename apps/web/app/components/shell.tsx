@@ -56,7 +56,7 @@ import type { Abilities, Membership, Spike, User } from "@g1t/contracts";
 
 import { CommandPalette, type PaletteCommand, usePaletteShortcut } from "./command-palette";
 import { StatusDot, useSiteStatus } from "./footer";
-import { Logo } from "./logo";
+import { Logo, Mark } from "./logo";
 import { Avatar, notACredential } from "./ui";
 import { Skeleton } from "./ui/skeleton";
 import {
@@ -1178,8 +1178,10 @@ function Sidebar({
       <div className="flex h-16 shrink-0 items-center gap-1 border-b border-line pr-2 pl-2.5">
         {user ? (
           <>
-            <Link to="/" aria-label="g1t home" className="flex h-9 shrink-0 items-center rounded-md px-2 transition-colors hover:bg-raised">
-              <Logo className="text-[1.25rem]" />
+            {/* The 1 alone beside the workspace: a square hover the height of the
+                switcher, the mark as tall as the workspace avatar. */}
+            <Link to="/" aria-label="g1t home" className="flex size-9 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-raised">
+              <Mark tight className="h-5 w-auto" />
             </Link>
             <span className="shrink-0 text-line-strong" aria-hidden="true">
               /
