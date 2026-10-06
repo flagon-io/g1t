@@ -163,10 +163,6 @@ impl Stripe {
         self.send(Method::Post, path, Some(form(fields)), Some(key)).await
     }
 
-    pub(crate) async fn delete<T: for<'a> Deserialize<'a>>(&self, path: &str) -> Result<T> {
-        self.call(Method::Delete, path, None).await
-    }
-
     async fn call<T: for<'a> Deserialize<'a>>(
         &self,
         method: Method,

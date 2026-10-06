@@ -64,6 +64,15 @@ pub(crate) const EVENTS: &[&str] = &[
     "setup_intent.succeeded",
 ];
 
+/// Events billing handles that `has` does not include, in billing's order.
+pub(crate) fn missing_events(has: &[String]) -> Vec<String> {
+    // `*` is every event.
+    if has.iter().any(|event| event == "*") {
+        return Vec::new();
+    }
+    EVENTS.iter().filter(|event| !has.iter().any(|h| h == *event)).map(|event| (*event).to_owned()).collect()
+}
+
 /// How old a signed event may be, so a captured one cannot be replayed.
 const TOLERANCE_SECONDS: i64 = 5 * 60;
 
@@ -94,14 +103,15 @@ pub(crate) fn verify(payload: &str, header: &str, secret: &str, now_seconds: i64
     })
 }
 
+/// The destination at billing's address, as Stripe lists it.
 #[derive(Deserialize)]
-pub(crate) struct WebhookRow {
-    pub(crate) endpoint_id: String,
-    secret: String,
+pub(crate) struct Destination {
+    pub(crate) id: String,
     url: String,
-    pub(crate) events: String,
-    created_by: String,
-    created_at: String,
+    /// `enabled` or `disabled`.
+    pub(crate) status: String,
+    pub(crate) enabled_events: Vec<String>,
+    created: i64,
 }
 
 #[derive(Deserialize)]
@@ -137,29 +147,47 @@ impl Billing {
         }
     }
 
-    pub(crate) async fn webhook_row(&self) -> Result<Option<WebhookRow>> {
-        self.db
-            .prepare("SELECT * FROM stripe_webhooks WHERE mode = ?")
-            .bind(&[self.mode().into()])?
-            .first::<WebhookRow>(None)
-            .await
+    /// The destination at billing's address in Stripe, for this key's
+    /// mode: an enabled one first. None when there is none.
+    pub(crate) async fn destination(&self) -> Result<Option<Destination>> {
+        let Some(stripe) = &self.stripe else { return Ok(None) };
+        #[derive(Deserialize)]
+        struct List {
+            data: Vec<Destination>,
+        }
+        let mut ours: Vec<Destination> =
+            stripe.get::<List>("/webhook_endpoints?limit=100").await?.data.into_iter().filter(|d| d.url == WEBHOOK_URL).collect();
+        ours.sort_by_key(|d| d.status != "enabled");
+        Ok(ours.into_iter().next())
     }
 
     // --- Staff ------------------------------------------------------------
 
     pub(crate) async fn admin_stripe(&self, a: AdminStripeArgs) -> Result<StripeStatus> {
         let mut error = None;
-        if a.setup
-            && let Err(e) = self.register_webhook(a.by.as_deref().unwrap_or("sudo")).await {
-                error = Some(e.to_string());
+        if a.fix
+            && let Err(e) = self.keep_endpoint(a.by.as_deref().unwrap_or("sudo")).await
+        {
+            error = Some(e.to_string());
+        }
+        let (webhook, missing_events) = match self.destination().await {
+            Ok(Some(d)) => {
+                let missing = missing_events(&d.enabled_events);
+                let webhook = StripeWebhook {
+                    url: d.url,
+                    endpoint_id: d.id,
+                    status: d.status,
+                    events: d.enabled_events,
+                    created_at: rfc3339(d.created.max(0) as u64 * 1000),
+                };
+                (Some(webhook), missing)
             }
-        let webhook = self.webhook_row().await?.map(|row| StripeWebhook {
-            url: row.url,
-            endpoint_id: row.endpoint_id,
-            events: row.events.split(',').map(str::to_owned).collect(),
-            created_by: row.created_by,
-            created_at: row.created_at,
-        });
+            Ok(None) => (None, Vec::new()),
+            Err(e) => {
+                error = error.or(Some(format!("Stripe could not be read: {e}")));
+                (None, Vec::new())
+            }
+        };
         let recent_events = self
             .db
             .prepare("SELECT * FROM stripe_events ORDER BY received_at DESC LIMIT 25")
@@ -169,74 +197,27 @@ impl Billing {
             .into_iter()
             .map(|row| StripeEventSummary { id: row.id, kind: row.r#type, outcome: row.outcome, received_at: row.received_at })
             .collect();
-        Ok(StripeStatus { mode: self.mode().to_owned(), webhook, recent_events, error })
-    }
-
-    /// Registers billing's endpoint at Stripe for the current mode,
-    /// replacing any it made before, and keeps the new signing secret.
-    async fn register_webhook(&self, by: &str) -> Result<()> {
-        let Some(stripe) = &self.stripe else {
-            return Err(worker::Error::RustError("payments are not set up".into()));
-        };
-        #[derive(Deserialize)]
-        struct Endpoint {
-            id: String,
-            url: String,
-            #[serde(default)]
-            secret: Option<String>,
-        }
-        #[derive(Deserialize)]
-        struct List {
-            data: Vec<Endpoint>,
-        }
-        // Ours from before, whose secret cannot be read again: replaced.
-        let existing: List = stripe.get("/webhook_endpoints?limit=100").await?;
-        for endpoint in existing.data.iter().filter(|e| e.url == WEBHOOK_URL) {
-            let _: Value = stripe.delete(&format!("/webhook_endpoints/{}", endpoint.id)).await?;
-        }
-        let mut fields = vec![
-            ("url", WEBHOOK_URL.to_owned()),
-            ("description", "g1t billing".to_owned()),
-            ("metadata[g1t]", "billing".to_owned()),
-        ];
-        let names: Vec<String> = (0..EVENTS.len()).map(|i| format!("enabled_events[{i}]")).collect();
-        for (name, event) in names.iter().zip(EVENTS) {
-            fields.push((name.as_str(), (*event).to_owned()));
-        }
-        let created: Endpoint = stripe.post("/webhook_endpoints", &fields).await?;
-        let Some(secret) = created.secret else {
-            return Err(worker::Error::RustError("Stripe returned no signing secret".into()));
-        };
-        self.db
-            .prepare(
-                "INSERT INTO stripe_webhooks (mode, endpoint_id, secret, url, events, created_by, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-                 ON CONFLICT (mode) DO UPDATE SET endpoint_id = ?2, secret = ?3, url = ?4, events = ?5,
-                   created_by = ?6, created_at = ?7",
-            )
-            .bind(&[
-                self.mode().into(),
-                created.id.as_str().into(),
-                secret.as_str().into(),
-                created.url.as_str().into(),
-                EVENTS.join(",").into(),
-                by.into(),
-                rfc3339(now_ms()).into(),
-            ])?
-            .run()
-            .await?;
-        self.audit("stripe", "webhook", &format!("Registered {WEBHOOK_URL} ({} mode)", self.mode()), by).await?;
-        Ok(())
+        Ok(StripeStatus {
+            mode: self.mode().to_owned(),
+            secret_set: self.webhook_secret.is_some(),
+            webhook,
+            missing_events,
+            recent_events,
+            error,
+        })
     }
 
     // --- Events -----------------------------------------------------------
 
     pub(crate) async fn stripe_webhook(&self, a: StripeWebhookArgs) -> Result<Outcome<bool>> {
-        let Some(webhook) = self.webhook_row().await? else {
-            return Ok(Outcome::fail(FailureCode::Conflict, "No webhook is registered for this mode."));
+        let Some(secret) = &self.webhook_secret else {
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "STRIPE_WEBHOOK_SECRET is not set, so billing cannot check that events come from Stripe.",
+            ));
         };
         let now_seconds = (now_ms() / 1000) as i64;
-        if !verify(&a.payload, &a.signature, &webhook.secret, now_seconds) {
+        if !verify(&a.payload, &a.signature, secret, now_seconds) {
             return Ok(Outcome::fail(FailureCode::Forbidden, "The signature does not match."));
         }
         let event: Value = serde_json::from_str(&a.payload).map_err(|e| worker::Error::RustError(e.to_string()))?;
@@ -887,6 +868,15 @@ mod tests {
         let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
         mac.update(format!("{t}.{payload}").as_bytes());
         format!("t={t},v1={}", hex::encode(mac.finalize().into_bytes()))
+    }
+
+    #[test]
+    fn a_destination_misses_the_events_billing_handles_that_it_does_not_send() {
+        let has: Vec<String> = EVENTS.iter().take(11).map(|e| (*e).to_owned()).collect();
+        assert_eq!(missing_events(&has), EVENTS[11..].iter().map(|e| (*e).to_owned()).collect::<Vec<_>>());
+        let all: Vec<String> = EVENTS.iter().map(|e| (*e).to_owned()).collect();
+        assert!(missing_events(&all).is_empty());
+        assert!(missing_events(&["*".to_owned()]).is_empty());
     }
 
     #[test]

@@ -287,14 +287,26 @@ shows a red **Spend cap** bar.
 Billing keeps what it needs from Stripe so reads never wait on it, and
 hears of changes three ways (`webhooks.rs`, `stripe_sync.rs`).
 
-**The webhook.** sudo → Stripe → **Register webhook** creates the endpoint
-`https://api.g1t.sh/stripe/webhook` through Stripe's API. Stripe returns the
-signing secret only in that answer; billing stores it in `stripe_webhooks`,
-one row per key mode (test, live). Never add the endpoint in Stripe's
-dashboard: its secret would not reach billing, and every event would fail
-with "The signature does not match". Register again in each mode (at
-launch, after the key changes to live). Events are claimed once each in
-`stripe_events`; a handler that fails forgets its claim, and Stripe retries.
+**The webhook.** A destination made in Stripe's dashboard (Developers →
+Webhooks → Add destination) with the endpoint URL
+`https://api.g1t.sh/stripe/webhook`, in the mode of billing's key (at
+launch, make one in live mode and put its secret). Its signing secret
+(`whsec_…`: the destination, Signing secret, Reveal) is the billing
+Worker's secret:
+
+```sh
+cd services/billing && npx wrangler secret put STRIPE_WEBHOOK_SECRET
+```
+
+Without it every event is refused with 400. After rolling the secret in
+Stripe, put the new one; during the roll Stripe signs with both, so there
+is no gap. The event list need not be exact: billing adds any event it
+handles that the destination does not send (daily, or **Fix destination**
+in sudo → Stripe), and enables it again if Stripe disabled it. It never
+changes the secret. sudo → Stripe shows whether the secret is set, the
+destination and its status, missing events, and the latest events.
+Events are claimed once each in `stripe_events`; a handler that fails
+forgets its claim, and Stripe retries.
 
 **What is kept, and how it stays current**
 
@@ -311,10 +323,10 @@ handled, back to the first failure otherwise, and stays when more than
 1,000 events were listed. Claims stuck at `handling` for 10 minutes are
 dropped so the replay retries them. The first run reads 3 days back.
 
-**Daily** (`keeper::DAILY`): the endpoint is given billing's event list in
-place (its secret stays) and enabled again if Stripe disabled it, both
-audited as `stripe`/`webhook`; then up to 25 stale cards and 25 stale plans
-are read again.
+**Daily** (`keeper::DAILY`): the destination at billing's address is
+enabled again if Stripe disabled it and given any missing event, audited as
+`stripe`/`webhook`; then up to 25 stale cards and 25 stale plans are read
+again.
 
 **What still calls Stripe on a request**: starting a payment page, a plan
 or a card check; opening the billing portal; settling a page the person

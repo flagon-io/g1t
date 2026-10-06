@@ -1444,12 +1444,12 @@ pub struct StripeWebhookArgs {
 }
 
 /// `admin_stripe`: where billing stands with Stripe. Staff only. Returns
-/// `StripeStatus`. With `setup: true`, registers (or replaces) the webhook
-/// endpoint for the current mode first.
+/// `StripeStatus`. With `fix: true`, first enables the destination at
+/// billing's address and gives it the events billing needs.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AdminStripeArgs {
     #[serde(default)]
-    pub setup: bool,
+    pub fix: bool,
     #[serde(default)]
     pub by: Option<String>,
 }
@@ -1459,10 +1459,15 @@ pub struct AdminStripeArgs {
 pub struct StripeStatus {
     /// `test` or `live`, from the key; `off` without one.
     pub mode: String,
+    /// Whether `STRIPE_WEBHOOK_SECRET` is set, so events can be checked.
+    pub secret_set: bool,
+    /// The destination at billing's address in Stripe, as Stripe has it.
     pub webhook: Option<StripeWebhook>,
+    /// Events billing handles that the destination does not send.
+    pub missing_events: Vec<String>,
     /// The latest events handled, newest first.
     pub recent_events: Vec<StripeEventSummary>,
-    /// What went wrong setting up, if it did.
+    /// What went wrong reading or fixing the destination, if it did.
     pub error: Option<String>,
 }
 
@@ -1471,8 +1476,9 @@ pub struct StripeStatus {
 pub struct StripeWebhook {
     pub url: String,
     pub endpoint_id: String,
+    /// `enabled` or `disabled`.
+    pub status: String,
     pub events: Vec<String>,
-    pub created_by: String,
     pub created_at: String,
 }
 

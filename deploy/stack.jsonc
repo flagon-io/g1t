@@ -113,7 +113,7 @@
 			"worker": "g1t-billing",
 			"d1": { "database": "g1t-billing", "migrations": "migrations" },
 			"stage": "core",
-			"secrets": ["STRIPE_SECRET_KEY", "CLOUDFLARE_USAGE_TOKEN"],
+			"secrets": ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "CLOUDFLARE_USAGE_TOKEN"],
 			"self_host": "run"
 		},
 		"integrations": {

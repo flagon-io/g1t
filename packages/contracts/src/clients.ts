@@ -421,7 +421,7 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
     attach: (workspace, account, by) => call("admin_attach", { workspace, account, by }),
     credit: (workspace, amountMicros, note, by) => call("admin_credit", { workspace, amount_micros: amountMicros, note, by }),
     billingLink: (workspace, by) => call("admin_billing_link", { workspace, by }),
-    stripe: (setup = false, by) => call("admin_stripe", { setup, by: by ?? null }),
+    stripe: (fix = false, by) => call("admin_stripe", { fix, by: by ?? null }),
     enterpriseBilling: (id, email, by) => call("admin_enterprise_billing", { id, email, by }),
     invoiceEnterprise: (id, by) => call("admin_invoice_enterprise", { id, by }),
     accountsFor: (workspaces) => call("admin_accounts", { query: null, workspaces }),

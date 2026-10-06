@@ -9,13 +9,14 @@
 //!   through the same once-only claim the webhook uses. A delivery that
 //!   failed for good, or an endpoint not registered yet, costs at most one
 //!   cron interval.
-//! - The endpoint, kept: once a day its events are made billing's list in
-//!   place (its signing secret stays), and it is enabled again if Stripe
-//!   turned it off after failures.
+//! - The destination, kept: once a day it is enabled again if Stripe turned
+//!   it off after failures, and given any event billing handles that it
+//!   does not send. Its signing secret, `STRIPE_WEBHOOK_SECRET`, is not
+//!   touched.
 
 use crate::Billing;
 use crate::stripe::form;
-use crate::webhooks::EVENTS;
+use crate::webhooks::{EVENTS, WEBHOOK_URL, missing_events};
 use g1t_contracts::billing::Card;
 use g1t_contracts::time::rfc3339;
 use g1t_kit::now_ms;
@@ -225,45 +226,34 @@ impl Billing {
         Ok(format!("{} listed, {handled} not seen before and handled", listed.len()))
     }
 
-    /// Keeps the registered endpoint listening to billing's events and
-    /// enabled. Nothing when no endpoint is registered for this mode.
-    pub(crate) async fn keep_endpoint(&self) -> Result<String> {
-        let (Some(stripe), Some(webhook)) = (&self.stripe, self.webhook_row().await?) else {
-            return Ok("no endpoint registered".to_owned());
+    /// Keeps the destination at billing's address enabled and sending
+    /// every event billing handles. Its signing secret is not touched.
+    /// Nothing when Stripe has no destination there.
+    pub(crate) async fn keep_endpoint(&self, by: &str) -> Result<String> {
+        let (Some(stripe), Some(destination)) = (&self.stripe, self.destination().await?) else {
+            return Ok(format!("no destination at {WEBHOOK_URL}"));
         };
-        #[derive(Deserialize)]
-        struct Endpoint {
-            status: String,
-            enabled_events: Vec<String>,
-        }
-        let path = format!("/webhook_endpoints/{}", webhook.endpoint_id);
-        let endpoint: Endpoint = stripe.get(&path).await?;
+        let path = format!("/webhook_endpoints/{}", destination.id);
         let mut fields: Vec<(String, String)> = Vec::new();
         let mut changes = Vec::new();
-        if endpoint.status != "enabled" {
+        if destination.status != "enabled" {
             fields.push(("disabled".to_owned(), "false".to_owned()));
             changes.push("enabled again".to_owned());
         }
-        let mut wanted: Vec<&str> = EVENTS.to_vec();
-        let mut has: Vec<&str> = endpoint.enabled_events.iter().map(String::as_str).collect();
-        wanted.sort_unstable();
-        has.sort_unstable();
-        if wanted != has {
-            fields.extend(EVENTS.iter().enumerate().map(|(i, event)| (format!("enabled_events[{i}]"), (*event).to_owned())));
-            changes.push(format!("events set to billing's {}", EVENTS.len()));
+        let missing = missing_events(&destination.enabled_events);
+        if !missing.is_empty() {
+            // Stripe replaces the list: what it sends now, plus what is missing.
+            let all = destination.enabled_events.iter().cloned().chain(missing.iter().cloned());
+            fields.extend(all.enumerate().map(|(i, event)| (format!("enabled_events[{i}]"), event)));
+            changes.push(format!("added {}", missing.join(", ")));
         }
         if changes.is_empty() {
-            return Ok("endpoint as it should be".to_owned());
+            return Ok("destination as it should be".to_owned());
         }
         let fields: Vec<(&str, String)> = fields.iter().map(|(name, value)| (name.as_str(), value.clone())).collect();
         let _: Value = stripe.post(&path, &fields).await?;
-        self.db
-            .prepare("UPDATE stripe_webhooks SET events = ? WHERE mode = ?")
-            .bind(&[EVENTS.join(",").into(), self.mode().into()])?
-            .run()
-            .await?;
-        let done = changes.join(", ");
-        self.audit("stripe", "webhook", &format!("Endpoint {}: {done}", webhook.endpoint_id), "billing").await?;
+        let done = changes.join("; ");
+        self.audit("stripe", "webhook", &format!("Destination {}: {done}", destination.id), by).await?;
         Ok(done)
     }
 

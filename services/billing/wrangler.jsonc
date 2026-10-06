@@ -128,7 +128,10 @@
 	},
 	// Settling runs every 15 minutes; checking costs daily (keeper::DAILY).
 	"triggers": { "crons": ["*/15 * * * *", "17 4 * * *"] },
-	// Secret: STRIPE_SECRET_KEY. Without it nothing is charged and the
+	// Secrets: STRIPE_SECRET_KEY. Without it nothing is charged and the
 	// runner decides who may start agents some other way.
+	// STRIPE_WEBHOOK_SECRET: the signing secret (whsec_…) of the destination
+	// made in Stripe's dashboard for https://api.g1t.sh/stripe/webhook.
+	// Without it every event is refused (the replay still reads them).
 	"observability": { "enabled": true }
 }

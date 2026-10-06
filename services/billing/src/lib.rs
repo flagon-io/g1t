@@ -167,6 +167,9 @@ struct Billing {
     db: D1Database,
     /// Absent when no card processor is configured.
     stripe: Option<Stripe>,
+    /// The destination's signing secret from Stripe (`STRIPE_WEBHOOK_SECRET`);
+    /// without it no event is believed.
+    webhook_secret: Option<String>,
     margin_percent: u32,
     /// While g1t is being built out, nothing is charged (`FREE_WHILE_BUILDING`).
     free: bool,
@@ -958,6 +961,11 @@ impl Billing {
                 .map(|key| key.to_string())
                 .filter(|key| !key.is_empty())
                 .map(Stripe::new),
+            webhook_secret: env
+                .secret("STRIPE_WEBHOOK_SECRET")
+                .ok()
+                .map(|secret| secret.to_string().trim().to_owned())
+                .filter(|secret| !secret.is_empty()),
             margin_percent: env
                 .var("MARGIN_PERCENT")
                 .ok()
@@ -1018,7 +1026,7 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     // Once a day: Stripe's endpoint kept listening to billing's events and
     // enabled, and saved cards and plans not read in a while read again.
     if event.cron() == keeper::DAILY {
-        match billing.keep_endpoint().await {
+        match billing.keep_endpoint("billing").await {
             Ok(done) => worker::console_log!("stripe endpoint: {done}"),
             Err(error) => worker::console_error!("keeping Stripe's endpoint failed: {error}"),
         }

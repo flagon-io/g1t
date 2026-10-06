@@ -342,7 +342,12 @@ export type WorkspaceFigures = { workspace: string; chargedMicros: number; costM
 export type StripeStatus = {
   /** `test` or `live`, from the key; `off` without one. */
   mode: "test" | "live" | "off" | string;
-  webhook: { url: string; endpointId: string; events: string[]; createdBy: string; createdAt: string } | null;
+  /** Whether `STRIPE_WEBHOOK_SECRET` is set, so events can be checked. */
+  secretSet: boolean;
+  /** The destination at billing's address in Stripe, as Stripe has it. */
+  webhook: { url: string; endpointId: string; status: "enabled" | "disabled" | string; events: string[]; createdAt: string } | null;
+  /** Events billing handles that the destination does not send. */
+  missingEvents: string[];
   recentEvents: { id: string; kind: string; outcome: string; receivedAt: string }[];
   error: string | null;
 };
@@ -513,7 +518,8 @@ export interface BillingAdminApi {
   /** The workspace's Stripe billing page, to send to the customer. Logged. */
   billingLink(workspace: string, by: string): Promise<Result<BillingLink>>;
   /** Where billing stands with Stripe; with `setup`, registers the webhook first. */
-  stripe(setup?: boolean, by?: string): Promise<StripeStatus>;
+  /** Stripe's state for billing; `fix` enables the destination and adds missing events first. */
+  stripe(fix?: boolean, by?: string): Promise<StripeStatus>;
   /** Where an enterprise's invoices go; makes its Stripe customer. */
   enterpriseBilling(id: string, email: string, by: string): Promise<Result<PayingAccount>>;
   /** Sends an enterprise its invoice now, for what its workspaces owe. */
