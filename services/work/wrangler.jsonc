@@ -7,7 +7,7 @@
 	// and each would otherwise cross the distance to it.
 	"placement": { "mode": "smart" },
 	"main": "build/index.js",
-	"build": { "command": "cargo install -q worker-build@0.8.7 && worker-build --release" },
+	"build": { "command": "node ../../scripts/build-rust-worker.mjs" },
 	"workers_dev": false,
 	"d1_databases": [
 		{

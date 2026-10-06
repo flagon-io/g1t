@@ -88,12 +88,18 @@ is graded:
 
 ### By service
 
+The deployable units, their stage and what each is built from are listed in
+`deploy/stack.jsonc` (see `docs/DEPLOYING.md`); its `self_host` field is
+what `deploy/self-host/configs.mjs` runs, turns off or leaves out. A test
+checks this table names every unit.
+
 | Service | Runs on | Cloudflare dependencies beyond Workers and D1 | Phase 1 self-hosted |
 | --- | --- | --- | --- |
 | `apps/web` | TS Worker plus assets | KV (`BLOBS`, `AVATARS`), Cache API, `cloudflare:workers` `env`, RPC to `RUNNER` | Runs unchanged |
 | `apps/api` | Rust Worker | KV `BLOBS`; hard-coded `api.g1t.sh`/`mcp.g1t.sh` issuer | Not started yet (phase 2) |
 | `apps/sudo` | TS Worker plus assets | Access JWT | Not run |
 | `apps/docs` | Static | — | Not run (docs.g1t.sh serves them) |
+| `apps/status` | TS Worker | Email Sending, cron; bound only to billing | Runs in a process of its own (`status.sh`), so it stays up when the site does not |
 | `services/identity` | Rust | Email Sending, KV `AVATARS` | Runs unchanged; `EMAIL` goes to the mail shim |
 | `services/repos` | Rust | **Artifacts**, Cache API, optional KV `GIT_CACHE` with `REPOS_KEY` | Runs unchanged; `ARTIFACTS` goes to the git store. Without `GIT_CACHE` and `REPOS_KEY`, credentials and ref listings are kept per isolate only |
 | `services/work` | Rust | Queue consumer | Runs unchanged |

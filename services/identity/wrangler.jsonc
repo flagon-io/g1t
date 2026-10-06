@@ -9,7 +9,7 @@
 	"main": "build/index.js",
 	// Staff waitlist summaries (src/lib.rs `scheduled`).
 	"triggers": { "crons": ["*/15 * * * *"] },
-	"build": { "command": "cargo install -q worker-build@0.8.7 && worker-build --release" },
+	"build": { "command": "node ../../scripts/build-rust-worker.mjs" },
 	// Reached only through service bindings.
 	"workers_dev": false,
 	"d1_databases": [

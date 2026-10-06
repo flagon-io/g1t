@@ -34,28 +34,23 @@ mkdirSync(out, { recursive: true });
 
 const PUBLIC_URL = (process.env.PUBLIC_URL ?? "http://localhost:8787").replace(/\/$/, "");
 
-/** Services that run, in the order Wrangler is given them (the site first). */
-export const RUNNING = [
-  { name: "g1t", dir: "apps/web", web: true },
-  { name: "g1t-identity", dir: "services/identity" },
-  { name: "g1t-repos", dir: "services/repos" },
-  { name: "g1t-work", dir: "services/work" },
-  { name: "g1t-events", dir: "services/events" },
-  { name: "g1t-projects", dir: "services/projects" },
-  { name: "g1t-search", dir: "services/search" },
-  { name: "g1t-billing", dir: "services/billing" },
-  { name: "g1t-security", dir: "services/security" },
-  { name: "g1t-actions", dir: "services/actions" },
-  { name: "g1t-webhooks", dir: "services/webhooks" },
-  { name: "g1t-integrations", dir: "services/integrations" },
-  { name: "g1t-deployments", dir: "services/deployments" },
-];
+// What runs, and what is off, is each unit's `self_host` in
+// deploy/stack.jsonc: the list hosted g1t deploys from.
+const STACK = Object.values(parseJsonc(readFileSync(join(root, "deploy/stack.jsonc"), "utf8")).units);
 
-/** Services that are off in phase 1, and what the off Worker calls them. */
-const OFF = {
+/** Services that run, in the order Wrangler is given them (the site first). */
+export const RUNNING = STACK.filter((unit) => unit.self_host === "run")
+  .map((unit) => ({ name: unit.worker, dir: unit.path, web: unit.kind === "react-router" }))
+  .sort((a, b) => Number(b.web) - Number(a.web));
+
+/** What the off Worker calls each service that is off in phase 1. */
+const OFF_NAMES = {
   "g1t-runner": "Agents",
   "g1t-context": "Context search and memory",
 };
+const OFF = Object.fromEntries(
+  STACK.filter((unit) => unit.self_host === "off").map((unit) => [unit.worker, OFF_NAMES[unit.worker] ?? unit.worker]),
+);
 
 /** Sealing keys, by the service that holds each (hosted: Wrangler secrets). */
 const SECRETS = {

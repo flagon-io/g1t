@@ -1,0 +1,261 @@
+// Everything g1t deploys to Cloudflare, in one place. Read by
+// scripts/deploy.mjs (plan, deploy), deploy/self-host/configs.mjs (what a
+// self-hosted installation runs) and the tests in scripts/deploy/.
+// docs/DEPLOYING.md explains each field and how to add a unit.
+//
+// What is written here is what the Wrangler configs cannot say. The rest is
+// read from each unit's wrangler.jsonc, never copied: its D1 databases and
+// migrations, the services it binds to, its KV, R2, queues and routes. The
+// shared crates and packages a unit is built from are read from Cargo's and
+// npm's workspace metadata. `worker` and `d1` are written here too, so the
+// file reads as an inventory, and a test checks they match the configs.
+{
+	// Deployed in this order. A stage starts only when the one before it
+	// succeeded. A unit binds only to units in its own stage or an earlier
+	// one (a test checks it), so new code never calls a service that has
+	// not shipped yet. Within a stage, units go out in parallel.
+	//
+	// migrations: every pending D1 migration, before any code.
+	// core:       the services, reached through service bindings.
+	// edge:       public endpoints other than the site: API, MCP, models, g1t.page, status.
+	// front:      the site, sudo and the docs.
+	"stages": ["migrations", "core", "edge", "front"],
+
+	// Names for the resources the configs refer to by id, for setup
+	// commands and the docs. A test checks every KV id in a config is here.
+	"resources": {
+		"kv": {
+			"16a4232cb746418db53782aa068be693": "g1t-actions-blobs",
+			"e627b571f07047e187c03e1fc2b3bbdd": "g1t-avatars",
+			"14bc5c233d4c46a5bbf23b5367cce5fd": "g1t-domains",
+			"be765052d0124c2a935b3db4dff99f1f": "g1t-repos-git-cache"
+		}
+	},
+
+	// Each deployable unit, by short name (`--only events,web`).
+	//
+	// kind:      rust-worker (worker-build), ts-worker (Wrangler bundles it),
+	//            react-router (vite build first), astro (astro build first).
+	// secrets:   names only; set with `npx wrangler secret put NAME` in its folder.
+	// setup:     one-time steps no config can say, for a first deploy.
+	// self_host: what deploy/self-host does with it: "run" (in the one
+	//            workerd), "off" (bound to the off Worker), "separate" (a
+	//            process of its own), or "none".
+	// inputs:    files outside its folder it is built from that no workspace
+	//            metadata names (a test finds such imports).
+	// image:     a Containers image, built with Docker on deploy.
+	"units": {
+		"events": {
+			"path": "services/events",
+			"kind": "rust-worker",
+			"worker": "g1t-events",
+			"d1": { "database": "g1t-events", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": [],
+			"self_host": "run"
+		},
+		"identity": {
+			"path": "services/identity",
+			"kind": "rust-worker",
+			"worker": "g1t-identity",
+			"d1": { "database": "g1t", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": ["GITHUB_APP_CLIENT_SECRET", "IDENTITY_KEY"],
+			"setup": ["Email Sending on g1t.sh (the EMAIL binding)"],
+			"self_host": "run"
+		},
+		"repos": {
+			"path": "services/repos",
+			"kind": "rust-worker",
+			"worker": "g1t-repos",
+			"d1": { "database": "g1t-repos", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": ["REPOS_KEY"],
+			"setup": ["The Artifacts namespace `g1t` (the ARTIFACTS binding)"],
+			"self_host": "run"
+		},
+		"work": {
+			"path": "services/work",
+			"kind": "rust-worker",
+			"worker": "g1t-work",
+			"d1": { "database": "g1t-work", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": [],
+			"self_host": "run"
+		},
+		"search": {
+			"path": "services/search",
+			"kind": "rust-worker",
+			"worker": "g1t-search",
+			"d1": { "database": "g1t-search", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": [],
+			"self_host": "run"
+		},
+		"projects": {
+			"path": "services/projects",
+			"kind": "ts-worker",
+			"worker": "g1t-projects",
+			"d1": { "database": "g1t-projects", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": [],
+			"self_host": "run"
+		},
+		"billing": {
+			"path": "services/billing",
+			"kind": "rust-worker",
+			"worker": "g1t-billing",
+			"d1": { "database": "g1t-billing", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": ["STRIPE_SECRET_KEY", "CLOUDFLARE_USAGE_TOKEN"],
+			"self_host": "run"
+		},
+		"integrations": {
+			"path": "services/integrations",
+			"kind": "rust-worker",
+			"worker": "g1t-integrations",
+			"d1": { "database": "g1t-integrations", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": ["INTEGRATIONS_KEY", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_WEBHOOK_SECRET"],
+			"self_host": "run"
+		},
+		"webhooks": {
+			"path": "services/webhooks",
+			"kind": "rust-worker",
+			"worker": "g1t-webhooks",
+			"d1": { "database": "g1t-webhooks", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": ["WEBHOOKS_KEY"],
+			"self_host": "run"
+		},
+		"actions": {
+			"path": "services/actions",
+			"kind": "rust-worker",
+			"worker": "g1t-actions",
+			"d1": { "database": "g1t-actions", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": ["ACTIONS_KEY"],
+			"self_host": "run"
+		},
+		"security": {
+			"path": "services/security",
+			"kind": "rust-worker",
+			"worker": "g1t-security",
+			"d1": { "database": "g1t-security", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": [],
+			"self_host": "run"
+		},
+		"deployments": {
+			"path": "services/deployments",
+			"kind": "ts-worker",
+			"worker": "g1t-deployments",
+			"d1": { "database": "g1t-deployments", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": ["CLOUDFLARE_API_TOKEN"],
+			"setup": [
+				"Workers for Platforms, and the dispatch namespace: scripts/setup-deployments.sh",
+				"Custom domains (Cloudflare for SaaS on g1t.page): scripts/setup-custom-domains.sh"
+			],
+			"self_host": "run"
+		},
+		"runner": {
+			"path": "services/runner",
+			"kind": "ts-worker",
+			"worker": "g1t-runner",
+			"stage": "core",
+			"secrets": ["AI_GATEWAY_TOKEN"],
+			"setup": ["Containers on the account; Docker on the machine that deploys a new image"],
+			"image": {
+				"dockerfile": "services/runner/Dockerfile",
+				// The image compiles this crate (and what it depends on).
+				"crate": "g1t-runner"
+			},
+			"self_host": "off"
+		},
+		"context": {
+			"path": "services/context",
+			"kind": "ts-worker",
+			"worker": "g1t-context",
+			"d1": { "database": "g1t-context", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": [],
+			"setup": [
+				"The Vectorize index: npx wrangler vectorize create g1t-context --dimensions=768 --metric=cosine, with metadata indexes on workspace, kind, project and private"
+			],
+			"self_host": "off"
+		},
+		"og": {
+			"path": "services/og",
+			"kind": "ts-worker",
+			"worker": "g1t-og",
+			"stage": "core",
+			"secrets": [],
+			"setup": ["Browser Rendering on the account (the BROWSER binding)"],
+			// The roadmap cards read the site's roadmap.
+			"inputs": ["apps/web/app/lib/roadmap.ts"],
+			"self_host": "none"
+		},
+		"api": {
+			"path": "apps/api",
+			"kind": "rust-worker",
+			"worker": "g1t-api",
+			"stage": "edge",
+			"secrets": [],
+			"self_host": "none"
+		},
+		"models": {
+			"path": "services/models",
+			"kind": "ts-worker",
+			"worker": "g1t-models",
+			"stage": "edge",
+			"secrets": ["AI_GATEWAY_TOKEN"],
+			"setup": ["The AI Gateway `g1t`"],
+			"self_host": "none"
+		},
+		"pages": {
+			"path": "services/pages",
+			"kind": "ts-worker",
+			"worker": "g1t-pages",
+			"stage": "edge",
+			"secrets": [],
+			"setup": ["A proxied wildcard DNS record on g1t.page (`*`, AAAA 100::): scripts/setup-deployments.sh"],
+			"self_host": "none"
+		},
+		"status": {
+			"path": "apps/status",
+			"kind": "ts-worker",
+			"worker": "g1t-status",
+			"d1": { "database": "g1t-status", "migrations": "migrations" },
+			"stage": "edge",
+			"secrets": ["STATUS_SECRET"],
+			"setup": ["Email Sending on g1t.sh (the EMAIL binding)"],
+			"self_host": "separate"
+		},
+		"web": {
+			"path": "apps/web",
+			"kind": "react-router",
+			"worker": "g1t",
+			"stage": "front",
+			"secrets": [],
+			"self_host": "run"
+		},
+		"sudo": {
+			"path": "apps/sudo",
+			"kind": "react-router",
+			"worker": "g1t-sudo",
+			"stage": "front",
+			"secrets": [],
+			"setup": ["A Cloudflare Access application on sudo.g1t.sh; its AUD tag is ACCESS_AUD"],
+			"self_host": "none"
+		},
+		"docs": {
+			"path": "apps/docs",
+			"kind": "astro",
+			"worker": "g1t-docs",
+			"stage": "front",
+			"secrets": [],
+			"self_host": "none"
+		}
+	}
+}

@@ -4,7 +4,7 @@
 	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
 	"compatibility_date": "2026-09-26",
 	"main": "build/index.js",
-	"build": { "command": "cargo install -q worker-build@0.8.7 && worker-build --release" },
+	"build": { "command": "node ../../scripts/build-rust-worker.mjs" },
 	// Reached only through service bindings; it reaches out to the
 	// addresses webhooks are registered at.
 	"workers_dev": false,

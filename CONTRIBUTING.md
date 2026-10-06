@@ -52,3 +52,12 @@ cd apps/docs && npm run build
   in `packages/contracts`).
 - Look at what you changed in a browser. Screenshots catch what type
   checks do not.
+
+## Deploying
+
+Pushes to `main` deploy themselves: `.g1t/workflows/deploy.yml` runs
+`scripts/deploy.mjs`, which deploys only the parts that changed, migrations
+first. Every deployable part is listed in `deploy/stack.jsonc`; a new service
+or app goes there (`npm run test:deploy` says what is missing). See
+[docs/DEPLOYING.md](docs/DEPLOYING.md) for the tool, the workflow, rollbacks
+and adding a service.

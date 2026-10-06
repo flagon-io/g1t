@@ -9,7 +9,8 @@
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "deploy": "npm run deploy -w @g1t/web"
+    "deploy": "npm run deploy -w @g1t/web",
+    "test:deploy": "node --test \"scripts/deploy/*.test.mjs\""
   },
   "devDependencies": {
     "typescript": "^5.9.3",
