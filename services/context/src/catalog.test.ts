@@ -5,7 +5,8 @@ import { assemble, authorsOf } from "./assemble.ts";
 import { extract } from "./extract.ts";
 import { composeRunContext, HEADER } from "./runcontext.ts";
 import { evaluate } from "./scorecards.ts";
-import { indexFilter, merge, readable, allowedKinds } from "./visibility.ts";
+import { granted } from "../../../packages/contracts/src/access.ts";
+import { indexFilter, memoryReadable, merge, readable, allowedKinds, countVisible, projectReadable, runMemoryReadable } from "./visibility.ts";
 
 const project = {
   id: "prj_1",
@@ -133,18 +134,74 @@ test("the run context marks its sources and keeps to its budget", () => {
 });
 
 test("search reads one workspace, and only what a reader may see", () => {
-  const member = { workspace: "acme", member: true, visible: new Set<string>() };
-  const outsider = { workspace: "acme", member: false, visible: new Set(["site"]) };
+  const member = { workspace: "acme", member: true, full: true, visible: new Set<string>() };
+  const outsider = { workspace: "acme", member: false, full: false, visible: new Set(["site"]) };
   assert.deepEqual(indexFilter(member, {}), { workspace: "acme" });
   assert.deepEqual(indexFilter(outsider, { project: "site", kinds: ["memory", "doc"] }), { workspace: "acme", private: false, project: "site", kind: { $in: ["doc"] } });
   assert.ok(!(allowedKinds(outsider) ?? []).includes("memory"));
   const row = { workspace: "acme", kind: "doc", project: "site", private: false };
   assert.ok(readable(row, outsider));
   assert.ok(!readable({ ...row, workspace: "other" }, member), "never another workspace");
-  assert.ok(!readable({ ...row, private: true }, outsider));
+  assert.ok(!readable({ ...row, project: "billing", private: true }, outsider), "a private project not listed for them");
   assert.ok(!readable({ ...row, kind: "memory" }, outsider), "memory is for members");
   assert.ok(!readable({ ...row, project: "made-private-since" }, outsider));
   assert.ok(readable({ ...row, kind: "memory", private: true }, member));
+});
+
+test("a member with no base permission sees only the private projects granted to them", () => {
+  const user = { id: "u", username: "u", kind: "user" as const, workspaces: [{ slug: "acme", role: "member" as const, base_permission: "none" as const }], grants: [{ repo_id: "repo_api", workspace: "acme", role: "read" as const }] };
+  assert.equal(granted(user, { id: "", namespace: "acme", isPrivate: true }), null, "does not read every repository");
+  // What the projects service lists for them: public ones, and the one granted.
+  const reader = { workspace: "acme", member: true, full: false, visible: new Set(["site", "api"]), privateVisible: true, repos: new Set(["acme/site", "acme/api"]) };
+  const row = { workspace: "acme", kind: "issue", project: "api", private: true };
+  assert.ok(readable(row, reader), "the granted private project");
+  assert.ok(!readable({ ...row, project: "billing" }, reader), "another private project");
+  assert.ok(!readable({ ...row, project: "" }, reader), "a private row with no project");
+  assert.ok(readable({ ...row, project: "site", private: false }, reader));
+  assert.ok(readable({ ...row, kind: "memory", project: "" }, reader), "workspace memory is for every member");
+  assert.ok(!readable({ ...row, kind: "memory", project: "billing" }, reader));
+  assert.ok(memoryReadable(null, reader));
+  assert.ok(memoryReadable({ namespace: "Acme", name: "API" }, reader));
+  assert.ok(!memoryReadable({ namespace: "acme", name: "billing" }, reader));
+  assert.ok(!memoryReadable(null, { ...reader, member: false }), "memory is for members");
+  assert.deepEqual(indexFilter(reader, {}), { workspace: "acme" }, "private rows are checked one by one");
+  assert.equal(indexFilter({ ...reader, member: false, privateVisible: false }, {}).private, false);
+});
+
+test("the hub's counts are over what the viewer may read", () => {
+  const rows = [
+    { kind: "project", project: "site", private: 0, n: 1 },
+    { kind: "project", project: "api", private: 1, n: 1 },
+    { kind: "project", project: "billing", private: 1, n: 1 },
+    { kind: "doc", project: "billing", private: 1, n: 7 },
+    { kind: "language", project: null, private: 0, n: 3 },
+  ];
+  const full = { workspace: "acme", member: true, full: true, visible: new Set<string>() };
+  assert.deepEqual(countVisible(rows, full), { project: 3, doc: 7, language: 3 });
+  const none = { workspace: "acme", member: true, full: false, visible: new Set(["site", "api"]), privateVisible: true };
+  assert.deepEqual(countVisible(rows, none), { project: 2, language: 3 }, "billing is not theirs");
+});
+
+test("an agent run is told only what the person it acts for may read", () => {
+  const web = { namespace: "acme", name: "web" };
+  const workspaceMemory = { scope: "workspace", repo: null };
+  const webMemory = { scope: "project", repo: web };
+  const billingMemory = { scope: "project", repo: { namespace: "acme", name: "billing" } };
+  // The workspace's own step: everything.
+  assert.ok(runMemoryReadable(workspaceMemory, null, "acme/web"));
+  assert.ok(projectReadable("billing", null));
+  // A member who reads everything.
+  const member = { workspace: "acme", member: true, full: true, visible: new Set<string>() };
+  assert.ok(runMemoryReadable(workspaceMemory, member, "acme/web"));
+  assert.ok(runMemoryReadable(billingMemory, member, "acme/web"));
+  // An outside collaborator with Write on acme/web.
+  const outside = { workspace: "acme", member: false, full: false, visible: new Set(["web", "site"]), repos: new Set(["acme/web", "acme/site"]) };
+  assert.ok(!runMemoryReadable(workspaceMemory, outside, "acme/web"), "never the workspace's memory");
+  assert.ok(runMemoryReadable(webMemory, outside, "Acme/Web"), "the project's memory");
+  assert.ok(!runMemoryReadable(billingMemory, outside, "acme/web"));
+  assert.ok(!runMemoryReadable({ scope: "project", repo: { namespace: "acme", name: "site" } }, outside, "acme/web"), "only the run's own project");
+  assert.ok(projectReadable("site", outside));
+  assert.ok(!projectReadable("billing", outside), "a dependency they cannot read is not named");
 });
 
 test("semantic hits come first, without repeats", () => {

@@ -1,6 +1,5 @@
 import {
   Activity,
-  ArrowLeft,
   GanttChart,
   KanbanSquare,
   Package,
@@ -9,6 +8,8 @@ import {
   BookMarked,
   BookOpen,
   Check,
+  ChevronLeft,
+  ChevronRight,
   ChevronsUpDown,
   Ellipsis,
   CircleDot,
@@ -17,10 +18,12 @@ import {
   CreditCard,
   GitPullRequest,
   History,
+  House,
   Fingerprint,
+  Gauge,
   KeyRound,
+  LifeBuoy,
   Box,
-  LayoutDashboard,
   LayoutGrid,
   ListTree,
   Lock,
@@ -44,12 +47,12 @@ import {
   X,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { Form, Link, NavLink, useLocation, useNavigation, useSubmit } from "react-router";
+import { Form, Link, NavLink, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
-import type { Membership, User } from "@g1t/contracts";
-import { MICROS_PER_DOLLAR } from "@g1t/contracts";
+import type { Abilities, Membership, Spike, User } from "@g1t/contracts";
 
 import { CommandPalette, type PaletteCommand, usePaletteShortcut } from "./command-palette";
+import { LegalRow } from "./footer";
 import { Logo, Mark } from "./logo";
 import { Avatar, notACredential } from "./ui";
 import {
@@ -61,8 +64,10 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { type RoadmapItem, roadmapIn } from "../lib/roadmap";
+import { SETTINGS_CAPABILITY, type ViewerAccess, seesSettings } from "../lib/access";
 import { VISITOR_LINKS, projectPages } from "../lib/chrome";
 import { withNext } from "../lib/next";
+import { useSignUpCopy } from "../lib/registration";
 
 /**
  * What the sidebar needs, worked out by the root loader. For a visitor who
@@ -74,6 +79,8 @@ export type ShellData = {
   workspace: Membership | null;
   /** Its projects, by name: `name` is the slug in their address. */
   repos: { namespace: string; name: string; title?: string; isPrivate: boolean }[];
+  /** Repositories shared with them in workspaces they do not belong to. */
+  shared?: { namespace: string; name: string; isPrivate: boolean }[];
   /** The project being looked at, if any, whoever owns it. */
   repo: {
     namespace: string;
@@ -94,6 +101,8 @@ export type ShellData = {
   /** What its agents have cost since the start of the month. */
   /** This month's usage: charged, or at cost while g1t is free. */
   monthUsageMicros: number | null;
+  /** Whether new compute is paused (a spend spike or a hold), and whether the viewer can answer it. */
+  compute?: { paused: string | null; spike: Spike | null; owner: boolean } | null;
 };
 
 function SidebarLink({
@@ -102,6 +111,7 @@ function SidebarLink({
   end,
   count,
   also,
+  drill,
   children,
 }: {
   to: string;
@@ -110,6 +120,8 @@ function SidebarLink({
   count?: number;
   /** Other path prefixes under which this link is the current one. */
   also?: string | string[];
+  /** It opens a list of its own: a chevron says so, always or on hover. */
+  drill?: boolean | "hover";
   children: ReactNode;
 }) {
   const { pathname } = useLocation();
@@ -136,6 +148,13 @@ function SidebarLink({
         <span className="rounded bg-line px-1.5 text-[0.6875rem] tabular-nums text-muted">
           {count}
         </span>
+      )}
+      {drill && (
+        <ChevronRight
+          size={14}
+          aria-hidden="true"
+          className={`-mr-0.5 shrink-0 text-faint transition-opacity ${drill === "hover" ? "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" : ""}`}
+        />
       )}
     </NavLink>
   );
@@ -213,9 +232,19 @@ function soonPaths(base: string, section: RoadmapItem["section"]): string[] {
   return roadmapIn(section).map((item) => `${base}/soon/${item.key}`);
 }
 
-function SidebarGroup({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
+function SidebarGroup({
+  title,
+  action,
+  className = "",
+  children,
+}: {
+  title: string;
+  action?: ReactNode;
+  className?: string;
+  children: ReactNode;
+}) {
   return (
-    <section className="mt-6">
+    <section className={className}>
       <div className="mb-1 flex h-6 items-center justify-between px-2">
         <h2 className="text-xs font-medium text-faint">{title}</h2>
         {action}
@@ -241,7 +270,7 @@ function WorkspaceSwitcher({ user, shell }: { user: User; shell: ShellData }) {
       <Link
         to={current ? `/${current}` : "/workspaces/new"}
         title={workspace ? `${label} · g1t.sh/${workspace.slug}` : undefined}
-        className="flex h-8 min-w-0 grow items-center gap-1.5 rounded-md px-1 transition-colors hover:bg-raised"
+        className="flex h-9 min-w-0 grow items-center gap-2 rounded-md px-2 transition-colors hover:bg-raised"
       >
         {workspace ? (
           <Avatar name={workspace.slug} image={workspace.avatar} size={20} square />
@@ -252,7 +281,7 @@ function WorkspaceSwitcher({ user, shell }: { user: User; shell: ShellData }) {
       </Link>
       <DropdownMenuTrigger
         aria-label="Switch workspace"
-        className="flex h-8 w-5 shrink-0 items-center justify-center rounded-md text-faint outline-none transition-colors hover:bg-raised hover:text-fg data-[state=open]:bg-raised data-[state=open]:text-fg"
+        className="flex h-9 w-7 shrink-0 items-center justify-center rounded-md text-faint outline-none transition-colors hover:bg-raised hover:text-fg data-[state=open]:bg-raised data-[state=open]:text-fg"
       >
         <ChevronsUpDown size={14} />
       </DropdownMenuTrigger>
@@ -287,53 +316,6 @@ function WorkspaceSwitcher({ user, shell }: { user: User; shell: ShellData }) {
   );
 }
 
-/**
- * This month's usage, and how close the workspace is to its usage limit,
- * as Vercel shows a plan's usage.
- */
-function UsageCard({ slug, shell }: { slug: string; shell: ShellData }) {
-  if (shell.monthUsageMicros == null) return null;
-  const spent = shell.monthUsageMicros;
-  const limit = shell.limit;
-  const ceiling = limit?.ceilingMicros ?? null;
-  const share = limit && ceiling ? Math.min(1, limit.exposureMicros / Math.max(ceiling, 1)) : 0;
-  const tone = limit?.state === "stopped" ? "text-danger" : limit?.state === "warning" ? "text-warn" : "text-faint";
-  const bar = limit?.state === "stopped" ? "bg-danger" : limit?.state === "warning" ? "bg-warn" : "bg-accent";
-  return (
-    <Link
-      to={`/${slug}/-/usage`}
-      className="block rounded-lg bg-surface p-3 ring-1 ring-line transition-colors hover:ring-line-strong"
-    >
-      <span className="flex items-baseline justify-between text-xs">
-        <span className="font-medium text-fg">Usage</span>
-        <span className="text-faint">this month</span>
-      </span>
-      <span className="mt-2 flex items-baseline justify-between">
-        <span className="font-mono text-sm tabular-nums">${(spent / MICROS_PER_DOLLAR).toFixed(2)}</span>
-        {shell.free ? (
-          <span className="text-xs text-accent">Free for now</span>
-        ) : limit?.comped ? (
-          <span className="text-xs text-accent">Comped</span>
-        ) : (
-          ceiling != null && (
-            <span className={`text-xs ${tone}`}>
-              {limit?.state === "stopped" ? "Limit reached" : `$${(ceiling / MICROS_PER_DOLLAR).toFixed(2)} limit`}
-            </span>
-          )
-        )}
-      </span>
-      {ceiling != null && !limit?.comped && (
-        <span className="mt-2 block h-1 overflow-hidden rounded-full bg-raised">
-          <span
-            className={`block h-full rounded-full ${bar}`}
-            style={{ width: `${Math.max(share * 100, share > 0 ? 3 : 0)}%` }}
-          />
-        </span>
-      )}
-    </Link>
-  );
-}
-
 function AccountMenu({ user }: { user: User }) {
   const submit = useSubmit();
   return (
@@ -343,7 +325,7 @@ function AccountMenu({ user }: { user: User }) {
         <span className="min-w-0 grow truncate text-[0.8125rem] font-medium">{user.username}</span>
         <Ellipsis size={15} className="shrink-0 text-faint" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" side="top" className="w-56">
+      <DropdownMenuContent align="start" side="top" className="w-64">
         <DropdownMenuLabel>
           Signed in as <span className="font-mono font-medium text-fg">{user.username}</span>
         </DropdownMenuLabel>
@@ -367,44 +349,278 @@ function AccountMenu({ user }: { user: User }) {
           <LogOut />
           Sign out
         </DropdownMenuItem>
+        {/* The site footer's row, slim: the app has no footer of its own.
+            Rendered only while the menu is open, so status is fetched then. */}
+        <DropdownMenuSeparator />
+        <div className="px-1.5 pt-1 pb-1.5">
+          <LegalRow user={user} compact />
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-/** A workspace's settings pages, which the sidebar slides over to. */
-const SETTINGS_PAGE = /^\/([^/]+)\/-\/(settings|people|tokens|billing|integrations|webhooks|secrets|guardrails|audit)(\/|$)/;
-/** A project's settings pages, which the project's menu gives way to. */
+/**
+ * A workspace's settings pages, which the sidebar drills into: who belongs,
+ * what it pays, and its record. What it builds and runs with (secrets,
+ * integrations, webhooks, guardrails) sits in the main list.
+ */
+const SETTINGS_PAGE = /^\/([^/]+)\/-\/(settings|people|repositories|tokens|billing|audit)(\/|$)/;
+/** A project's settings pages, which the project's menu drills into. */
 const REPO_SETTINGS_PAGE = /^\/([^/]+)\/([^/-][^/]*)\/settings(\/|$)/;
 
 /**
- * The sidebar's menus are two layers, the way a phone pushes a screen: the
- * one arriving slides in from the right over the full width, while the one
- * leaving drifts a quarter of the way left and fades, both on one long
+ * The sidebar's lists are a stack, the way a phone pushes a screen: one
+ * drilled into slides in from the right over the full width, while the one
+ * it covers drifts a quarter of the way left and fades, both on one long
  * ease-out, the fade quicker than the move so the two never blur together.
  * Going back reverses it.
  */
 const LAYER =
   "absolute inset-0 [transition:translate_380ms_cubic-bezier(0.32,0.72,0,1),opacity_220ms_ease-out] will-change-[translate,opacity] motion-reduce:transition-none";
-/** One menu, filling its layer. */
+/** One list, filling its layer. */
 const PANEL = "h-full overflow-y-auto px-2 pb-4";
 
-/** A workspace's settings, as the sidebar shows them in place of everything else. */
-function SettingsMenu({ slug, owner, open }: { slug: string; owner: boolean; open: boolean }) {
+/** One list in the stack: what it is, and its rows. */
+type Level = { key: string; node: ReactNode };
+
+/** True once the page has hydrated, so what the server drew never animates in. */
+function useHydrated(): boolean {
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
+  return hydrated;
+}
+
+/**
+ * Drilling in and out of the sidebar's lists. `trail` is the way from the
+ * main list to the one shown, worked out from the address, so a link
+ * straight to a settings page opens the sidebar already drilled in, and
+ * leaving it comes back out. Lists deeper than the one shown stay in
+ * place, off to the right, so going back slides them away rather than
+ * dropping them. Moving to a list at the same depth (a workspace's settings
+ * to a project) fades the new one in where it is.
+ */
+function Drill({ trail }: { trail: Level[] }) {
+  const depth = trail.length - 1;
+  const hydrated = useHydrated();
+  const stack = useRef<Level[]>(trail);
+  const before = stack.current;
+  const within = trail.every((level, index) => before[index]?.key === level.key);
+  stack.current = within ? [...trail, ...before.slice(trail.length)] : trail;
+  const levels = stack.current;
+  // What was showing last time, to tell drilling in from moving across.
+  const shown = useRef({ depth, keys: levels.map((level) => level.key) });
+  useEffect(() => {
+    shown.current = { depth, keys: levels.map((level) => level.key) };
+  });
   return (
-    <nav
-      aria-label="Workspace settings"
-      inert={!open}
-      className={PANEL}
+    <div className="relative min-h-0 grow overflow-hidden">
+      {levels.map((level, index) => {
+        const current = index === depth;
+        const place =
+          index < depth
+            ? "pointer-events-none -translate-x-1/4 opacity-0"
+            : current
+              ? "translate-x-0 opacity-100"
+              : "pointer-events-none translate-x-full opacity-0";
+        // A list that was not there before arrives: from the right when
+        // drilling in, in place when moving across.
+        const arriving = hydrated && current && !shown.current.keys.includes(level.key);
+        const enter = arriving
+          ? depth > shown.current.depth
+            ? "starting:translate-x-full starting:opacity-0"
+            : "starting:opacity-0"
+          : "";
+        return (
+          <div key={level.key} className={`${LAYER} ${place} ${enter}`} inert={!current} aria-hidden={!current || undefined}>
+            {level.node}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * The row at the top of a list drilled into: the list's name, which goes
+ * back out, and what it belongs to, faint at the end.
+ */
+function BackRow({ to, label, context }: { to: string; label: ReactNode; context?: ReactNode }) {
+  return (
+    <Link
+      to={to}
+      prefetch="intent"
+      className="group mt-3 flex h-8 items-center gap-1.5 rounded-md pr-2 pl-1 text-[0.8125rem] font-medium text-fg transition-colors hover:bg-raised/60"
     >
-      <Link
-        to={`/${slug}`}
-        className="group mt-3 flex h-8 items-center gap-2 rounded-md px-2 text-[0.8125rem] text-muted transition-colors hover:bg-raised/60 hover:text-fg"
+      <ChevronLeft size={16} className="shrink-0 text-faint transition-transform group-hover:-translate-x-0.5 group-hover:text-muted" />
+      <span className="min-w-0 shrink-0 truncate">{label}</span>
+      {context && (
+        <span className="ml-auto min-w-0 truncate pl-2 font-mono text-[0.6875rem] font-normal text-faint">{context}</span>
+      )}
+    </Link>
+  );
+}
+
+/** A thin rule between groups of a list. */
+function Rule() {
+  return <div role="separator" className="mx-2 my-2.5 h-px bg-line" />;
+}
+
+/**
+ * The main list: where you go, the projects, what the workspace builds and
+ * runs with across them, then its usage, support and settings.
+ */
+function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
+  const ws = shell.workspace;
+  const active = shell.repo;
+  // The repository being looked at is listed even when it is someone else's.
+  const listed =
+    active && !shell.repos.some((repo) => repo.namespace === active.namespace && repo.name === active.name)
+      ? [{ namespace: active.namespace, name: active.name, isPrivate: false }, ...shell.repos]
+      : shell.repos;
+  // A visitor browses: no workspace, no projects of their own.
+  if (!user) {
+    return (
+      <nav aria-label="g1t" className={PANEL}>
+        <div className="mt-3 space-y-px">
+          {VISITOR_LINKS.map((link) => (
+            <SidebarLink key={link.to} to={link.to} icon={link.to === "/search" ? <Search size={15} /> : <Compass size={15} />}>
+              {link.label}
+            </SidebarLink>
+          ))}
+        </div>
+      </nav>
+    );
+  }
+  return (
+    <nav aria-label="g1t" className={PANEL}>
+      <div className="mt-3 space-y-px">
+        <SidebarLink to="/" end icon={<House size={15} />}>
+          Mission control
+        </SidebarLink>
+        {ws && (
+          <SidebarLink to={`/${ws.slug}`} end icon={<LayoutGrid size={15} />}>
+            Overview
+          </SidebarLink>
+        )}
+        <SidebarLink to="/explore" icon={<Compass size={15} />}>
+          Explore
+        </SidebarLink>
+      </div>
+
+      <Rule />
+      <SidebarGroup
+        title="Projects"
+        action={
+          ws && (
+            <Link
+              to={`/new?workspace=${ws.slug}`}
+              aria-label="New project"
+              className="rounded p-0.5 text-faint hover:bg-raised hover:text-fg"
+            >
+              <Plus size={13} />
+            </Link>
+          )
+        }
       >
-        <ArrowLeft size={15} className="text-faint transition-transform group-hover:-translate-x-0.5 group-hover:text-muted" />
-        <span className="truncate">{slug}</span>
-      </Link>
-      <SidebarGroup title="Settings">
+        {listed.length === 0 && <p className="px-2 py-1 text-xs text-faint">None yet.</p>}
+        {listed.map((repo) => (
+          <SidebarLink
+            key={`${repo.namespace}/${repo.name}`}
+            to={`/${repo.namespace}/${repo.name}`}
+            icon={repo.isPrivate ? <Lock size={15} /> : <Box size={15} />}
+            drill="hover"
+          >
+            {repo.namespace !== ws?.slug && <span className="font-mono text-faint">{repo.namespace}/</span>}
+            {"title" in repo && repo.title ? repo.title : repo.name}
+          </SidebarLink>
+        ))}
+      </SidebarGroup>
+      {(shell.shared ?? []).length > 0 && (
+        <SidebarGroup title="Shared with you" className="mt-3">
+          {(shell.shared ?? []).map((repo) => (
+            <SidebarLink
+              key={`${repo.namespace}/${repo.name}`}
+              to={`/${repo.namespace}/${repo.name}`}
+              icon={repo.isPrivate ? <Lock size={15} /> : <Box size={15} />}
+              drill="hover"
+            >
+              <span className="font-mono text-faint">{repo.namespace}/</span>
+              {repo.name}
+            </SidebarLink>
+          ))}
+        </SidebarGroup>
+      )}
+
+      {ws && (
+        <>
+          <Rule />
+          <div className="space-y-px">
+            <SidebarLink to={`/${ws.slug}/-/agents`} icon={<Bot size={15} />}>
+              Agent fleet
+            </SidebarLink>
+            <SidebarLink to={`/${ws.slug}/-/context`} icon={<Network size={15} />}>
+              Context
+            </SidebarLink>
+            <SidebarLink to={`/${ws.slug}/-/memory`} icon={<Brain size={15} />}>
+              Memory
+            </SidebarLink>
+            <SidebarLink to={`/${ws.slug}/-/security`} icon={<ShieldCheck size={15} />}>
+              Security
+            </SidebarLink>
+            <SidebarLink to={`/${ws.slug}/-/guardrails`} icon={<Gauge size={15} />}>
+              Guardrails
+            </SidebarLink>
+            <SidebarLink to={`/${ws.slug}/-/secrets`} icon={<Lock size={15} />}>
+              Secrets and variables
+            </SidebarLink>
+            <SidebarLink to={`/${ws.slug}/-/integrations`} icon={<Plug size={15} />}>
+              Integrations
+            </SidebarLink>
+            <SidebarLink to={`/${ws.slug}/-/webhooks`} icon={<Webhook size={15} />}>
+              Webhooks
+            </SidebarLink>
+            {roadmapIn("Workspace").map((item) => (
+              <SidebarSoonLink
+                key={item.key}
+                to={`/${ws.slug}/-/soon/${item.key}`}
+                icon={WORKSPACE_ICONS[item.key] ?? <Sparkles size={15} />}
+                about={item.summary}
+              >
+                {item.title === "Board" ? "Boards" : item.title}
+              </SidebarSoonLink>
+            ))}
+          </div>
+
+          <Rule />
+          <div className="space-y-px">
+            <SidebarLink to={`/${ws.slug}/-/usage`} icon={<BarChart3 size={15} />}>
+              Usage
+            </SidebarLink>
+            <SidebarLink to="/support" icon={<LifeBuoy size={15} />}>
+              Support
+            </SidebarLink>
+            {/* Who belongs, what it pays and its record: a list of their own. */}
+            <SidebarLink
+              to={ws.role === "owner" ? `/${ws.slug}/-/settings` : `/${ws.slug}/-/people`}
+              icon={<Settings size={15} />}
+              drill
+            >
+              Settings
+            </SidebarLink>
+          </div>
+        </>
+      )}
+    </nav>
+  );
+}
+
+/** A workspace's settings, drilled into from Settings in the main list. */
+function SettingsMenu({ slug, owner }: { slug: string; owner: boolean }) {
+  return (
+    <nav aria-label="Workspace settings" className={PANEL}>
+      <BackRow to={`/${slug}`} label="Settings" context={slug} />
+      <div className="mt-2 space-y-px">
         {owner && (
           <SidebarLink to={`/${slug}/-/settings`} icon={<Settings size={15} />}>
             General
@@ -413,28 +629,22 @@ function SettingsMenu({ slug, owner, open }: { slug: string; owner: boolean; ope
         <SidebarLink to={`/${slug}/-/people`} icon={<Users size={15} />}>
           Members
         </SidebarLink>
+        <SidebarLink to={`/${slug}/-/repositories`} icon={<BookMarked size={15} />}>
+          Repositories
+        </SidebarLink>
         <SidebarLink to={`/${slug}/-/tokens`} icon={<KeyRound size={15} />}>
           Access tokens
         </SidebarLink>
+      </div>
+      <Rule />
+      <div className="space-y-px">
         <SidebarLink to={`/${slug}/-/billing`} icon={<CreditCard size={15} />}>
           Billing and plans
-        </SidebarLink>
-        <SidebarLink to={`/${slug}/-/integrations`} icon={<Plug size={15} />}>
-          Integrations
-        </SidebarLink>
-        <SidebarLink to={`/${slug}/-/secrets`} icon={<Lock size={15} />}>
-          Secrets and variables
-        </SidebarLink>
-        <SidebarLink to={`/${slug}/-/guardrails`} icon={<ShieldCheck size={15} />}>
-          Guardrails
-        </SidebarLink>
-        <SidebarLink to={`/${slug}/-/webhooks`} icon={<Webhook size={15} />}>
-          Webhooks
         </SidebarLink>
         <SidebarLink to={`/${slug}/-/audit`} icon={<History size={15} />}>
           Audit log
         </SidebarLink>
-      </SidebarGroup>
+      </div>
     </nav>
   );
 }
@@ -448,6 +658,10 @@ type MenuRepo = {
   namespace: string;
   name: string;
   member: boolean;
+  /** Whether they see its settings; from the repository's page once it loads. */
+  settings?: boolean;
+  /** What they may do there, once the repository's page loads. */
+  can?: Abilities;
   issues?: number;
   pulls?: number;
 };
@@ -462,40 +676,32 @@ function sameRepo(a: { namespace: string; name: string } | null, b: { namespace:
 }
 
 /**
- * A project's own menu, which the sidebar slides to while you are in it,
- * as it does for settings: everything about the project, running and its
- * code, and nothing else, with the way back to everything.
+ * A project's own list, drilled into while you are in it: everything about
+ * the project, running and its code, and nothing else, with the way back
+ * out to all of them.
  */
 function RepoMenu({
   repo,
   isPrivate,
-  open,
-  visitor = false,
+  back,
 }: {
   repo: MenuRepo;
   isPrivate: boolean;
-  open: boolean;
-  /** Not signed in: the way back is Explore, not mission control. */
-  visitor?: boolean;
+  /** Where the way back leads: the workspace's projects, mission control, or Explore. */
+  back: { to: string; label: string };
 }) {
   const base = `/${repo.namespace}/${repo.name}`;
   // What a member sees, and what everyone who can see the project does.
-  const shows = new Set(projectPages(repo.member));
+  const shows = new Set(projectPages(repo.member, repo.can));
   return (
-    <nav aria-label={`${repo.namespace}/${repo.name}`} inert={!open} className={PANEL}>
-      <Link
-        to={visitor ? "/explore" : "/"}
-        className="group mt-3 flex h-8 items-center gap-2 rounded-md px-2 text-[0.8125rem] text-muted transition-colors hover:bg-raised/60 hover:text-fg"
-      >
-        <ArrowLeft size={15} className="text-faint transition-transform group-hover:-translate-x-0.5 group-hover:text-muted" />
-        {visitor ? "Explore" : "Mission control"}
-      </Link>
+    <nav aria-label={`${repo.namespace}/${repo.name}`} className={PANEL}>
+      <BackRow to={back.to} label={back.label} />
       <NavLink
         to={base}
         end
         title="Overview"
         className={({ isActive }) =>
-          `mt-3 flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors ${isActive ? "bg-raised" : "hover:bg-raised/60"}`
+          `mt-2 flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors ${isActive ? "bg-raised" : "hover:bg-raised/60"}`
         }
       >
         <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-raised text-muted ring-1 ring-line">
@@ -506,9 +712,10 @@ function RepoMenu({
           <span className="font-semibold text-fg">{repo.name}</span>
         </span>
       </NavLink>
-      {/* A project's pages, flat and in the order people use them. A page
-          with more than one view shows them as tabs across its top. */}
-      <div className="mt-3 space-y-px">
+      {/* A project's pages, in the order people use them. A page with more
+          than one view shows them as tabs across its top. */}
+      <Rule />
+      <div className="space-y-px">
         <SidebarLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`, ...soonPaths(base, "Code")]} icon={<Code2 size={15} />}>
           Code
         </SidebarLink>
@@ -524,6 +731,9 @@ function RepoMenu({
         <SidebarLink to={`${base}/actions`} icon={<PlayCircle size={15} />}>
           Workflows
         </SidebarLink>
+      </div>
+      <Rule />
+      <div className="space-y-px">
         {shows.has("deployments") ? (
           <SidebarLink to={`${base}/deployments`} also={soonPaths(base, "Deployments")} icon={<Rocket size={15} />}>
             Deployments
@@ -540,9 +750,98 @@ function RepoMenu({
         <SidebarSoonLink to={`${base}/soon/delivery`} also={soonPaths(base, "Insights")} icon={<BarChart3 size={15} />} about="Delivery metrics, costs and the work agents do.">
           Insights
         </SidebarSoonLink>
-        {shows.has("settings") && (
-          <SidebarLink to={`${base}/settings`} icon={<Settings size={15} />}>
+      </div>
+      {(repo.settings ?? shows.has("settings")) && (
+        <>
+          <Rule />
+          <SidebarLink to={`${base}/settings`} icon={<Settings size={15} />} drill>
             Settings
+          </SidebarLink>
+        </>
+      )}
+    </nav>
+  );
+}
+
+/**
+ * A project's settings, drilled into from its list: what is about running
+ * it, then its agents, then its code and who can reach it. The way back
+ * leads to the project.
+ */
+function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
+  const base = `/${repo.namespace}/${repo.name}`;
+  // Each page shows to the roles that can use it, once the role is known.
+  const shows = (page: string) => !repo.can || repo.can[SETTINGS_CAPABILITY[page] ?? "administer"];
+  const running = shows("deployments");
+  const agents = shows("agents") || shows("guardrails");
+  return (
+    <nav aria-label={`${repo.namespace}/${repo.name} settings`} className={PANEL}>
+      <BackRow to={base} label="Settings" context={`${repo.namespace}/${repo.name}`} />
+      {shows("") && (
+        <div className="mt-2 space-y-px">
+          <SidebarLink to={`${base}/settings`} end icon={<Settings size={15} />}>
+            General
+          </SidebarLink>
+        </div>
+      )}
+      {running && (
+        <>
+          {shows("") && <Rule />}
+          <div className={shows("") ? "space-y-px" : "mt-2 space-y-px"}>
+            <SidebarLink to={`${base}/settings/deployments`} icon={<Rocket size={15} />}>
+              Deployments
+            </SidebarLink>
+            <SidebarLink to={`${base}/settings/domains`} icon={<Globe size={15} />}>
+              Domains
+            </SidebarLink>
+            <SidebarLink to={`${base}/settings/dependencies`} icon={<Network size={15} />}>
+              Dependencies
+            </SidebarLink>
+          </div>
+        </>
+      )}
+      {agents && (
+        <>
+          <Rule />
+          <div className="space-y-px">
+            {shows("agents") && (
+              <SidebarLink to={`${base}/settings/agents`} icon={<Bot size={15} />}>
+                Agents
+              </SidebarLink>
+            )}
+            {shows("guardrails") && (
+              <SidebarLink to={`${base}/settings/guardrails`} icon={<ShieldCheck size={15} />}>
+                Guardrails
+              </SidebarLink>
+            )}
+          </div>
+        </>
+      )}
+      <Rule />
+      <div className="space-y-px">
+        {shows("repository") && (
+          <SidebarLink to={`${base}/settings/repository`} icon={<BookMarked size={15} />}>
+            Repository
+          </SidebarLink>
+        )}
+        {shows("access") && (
+          <SidebarLink to={`${base}/settings/access`} icon={<Users size={15} />}>
+            Access
+          </SidebarLink>
+        )}
+        {shows("branches") && (
+          <SidebarLink to={`${base}/settings/branches`} icon={<GitBranch size={15} />}>
+            Branches and merging
+          </SidebarLink>
+        )}
+        {shows("secrets") && (
+          <SidebarLink to={`${base}/settings/secrets`} icon={<Lock size={15} />}>
+            Secrets and variables
+          </SidebarLink>
+        )}
+        {shows("webhooks") && (
+          <SidebarLink to={`${base}/settings/webhooks`} icon={<Webhook size={15} />}>
+            Webhooks
           </SidebarLink>
         )}
       </div>
@@ -550,66 +849,8 @@ function RepoMenu({
   );
 }
 
-/**
- * A project's settings, as the sidebar shows them in place of the project's
- * menu: what is about running it, then its agents, then its code and who
- * can reach it. The way back leads to the project.
- */
-function RepoSettingsMenu({ repo, open }: { repo: MenuRepo; open: boolean }) {
-  const base = `/${repo.namespace}/${repo.name}`;
-  return (
-    <nav aria-label={`${repo.namespace}/${repo.name} settings`} inert={!open} className={PANEL}>
-      <Link
-        to={base}
-        className="group mt-3 flex h-8 items-center gap-2 rounded-md px-2 text-[0.8125rem] text-muted transition-colors hover:bg-raised/60 hover:text-fg"
-      >
-        <ArrowLeft size={15} className="text-faint transition-transform group-hover:-translate-x-0.5 group-hover:text-muted" />
-        <span className="min-w-0 truncate font-mono">
-          <span className="text-faint">{repo.namespace}/</span>
-          {repo.name}
-        </span>
-      </Link>
-      <SidebarGroup title="Settings">
-        <SidebarLink to={`${base}/settings`} end icon={<Settings size={15} />}>
-          General
-        </SidebarLink>
-      </SidebarGroup>
-      <SidebarGroup title="Running">
-        <SidebarLink to={`${base}/settings/deployments`} icon={<Rocket size={15} />}>
-          Deployments
-        </SidebarLink>
-        <SidebarLink to={`${base}/settings/domains`} icon={<Globe size={15} />}>
-          Domains
-        </SidebarLink>
-        <SidebarLink to={`${base}/settings/dependencies`} icon={<Network size={15} />}>
-          Dependencies
-        </SidebarLink>
-      </SidebarGroup>
-      <SidebarGroup title="Agents">
-        <SidebarLink to={`${base}/settings/agents`} icon={<Bot size={15} />}>
-          Agents
-        </SidebarLink>
-        <SidebarLink to={`${base}/settings/guardrails`} icon={<ShieldCheck size={15} />}>
-          Guardrails
-        </SidebarLink>
-      </SidebarGroup>
-      <SidebarGroup title="Code and access">
-        <SidebarLink to={`${base}/settings/repository`} icon={<GitBranch size={15} />}>
-          Repository
-        </SidebarLink>
-        <SidebarLink to={`${base}/settings/secrets`} icon={<Lock size={15} />}>
-          Secrets and variables
-        </SidebarLink>
-        <SidebarLink to={`${base}/settings/webhooks`} icon={<Webhook size={15} />}>
-          Webhooks
-        </SidebarLink>
-      </SidebarGroup>
-    </nav>
-  );
-}
-
 /** Your own settings, as the sidebar shows them on the settings page. */
-function AccountSettingsMenu({ open }: { open: boolean }) {
+function AccountSettingsMenu() {
   const { hash } = useLocation();
   const item = (id: string, icon: ReactNode, label: string) => (
     <Link
@@ -623,23 +864,13 @@ function AccountSettingsMenu({ open }: { open: boolean }) {
     </Link>
   );
   return (
-    <nav
-      aria-label="Your settings"
-      inert={!open}
-      className={PANEL}
-    >
-      <Link
-        to="/"
-        className="group mt-3 flex h-8 items-center gap-2 rounded-md px-2 text-[0.8125rem] text-muted transition-colors hover:bg-raised/60 hover:text-fg"
-      >
-        <ArrowLeft size={15} className="text-faint transition-transform group-hover:-translate-x-0.5 group-hover:text-muted" />
-        Mission control
-      </Link>
-      <SidebarGroup title="Account">
+    <nav aria-label="Your settings" className={PANEL}>
+      <BackRow to="/" label="Your settings" />
+      <div className="mt-2 space-y-px">
         {item("ssh-keys", <Fingerprint size={15} />, "SSH keys")}
         {item("tokens", <KeyRound size={15} />, "Access tokens")}
         {item("applications", <Plug size={15} />, "Connected applications")}
-      </SidebarGroup>
+      </div>
     </nav>
   );
 }
@@ -650,6 +881,7 @@ function AccountSettingsMenu({ open }: { open: boolean }) {
  */
 function VisitorPanel() {
   const { pathname, search } = useLocation();
+  const signUp = useSignUpCopy();
   return (
     <div className="space-y-2">
       <p className="px-1 text-xs text-muted">Sign in to open issues, review pull requests and run agents.</p>
@@ -665,34 +897,53 @@ function VisitorPanel() {
           to={withNext("/register", pathname + search)}
           className="flex h-9 items-center justify-center rounded-md bg-fg text-[0.8125rem] font-medium text-bg transition-colors hover:bg-white"
         >
-          Sign up
+          {signUp.primary}
         </Link>
       </div>
+      <nav aria-label="About g1t" className="flex flex-wrap justify-center gap-x-2 gap-y-0.5 px-1 pt-1 text-[0.6875rem] text-faint">
+        <Link to="/status" className="hover:text-fg">Status</Link>
+        <Link to="/support" className="hover:text-fg">Support</Link>
+        <Link to="/policies" className="hover:text-fg">Policies</Link>
+        <Link to="/policies/privacy" className="hover:text-fg">Privacy</Link>
+        <Link to="/security" className="hover:text-fg">Security</Link>
+      </nav>
     </div>
   );
 }
 
-function Sidebar({ user, shell, onFind }: { user: User | null; shell: ShellData; onFind: () => void }) {
+function Sidebar({
+  user,
+  shell,
+  onFind,
+  onClose,
+}: {
+  user: User | null;
+  shell: ShellData;
+  onFind: () => void;
+  /** In the sheet on a small screen: closing it, at the end of the top row. */
+  onClose?: () => void;
+}) {
   const ws = shell.workspace;
   const { pathname } = useLocation();
   const going = useNavigation().location?.pathname;
-  // On a workspace's settings page, or on the way to one, its settings take
-  // the sidebar over.
-  const inSettings = ws != null && SETTINGS_PAGE.exec(going ?? pathname)?.[1]?.toLowerCase() === ws.slug;
-  const inAccount = (going ?? pathname) === "/settings";
-  const active = shell.repo;
-  // In a repository, or on the way into one, its own menu takes the sidebar.
+  // Where the sidebar is drilled to follows the page being gone to, so it
+  // moves as the link is followed, not once the page arrives.
   const target = going ?? pathname;
+  const inSettings = ws != null && SETTINGS_PAGE.exec(target)?.[1]?.toLowerCase() === ws.slug;
+  const inAccount = target === "/settings";
+  const active = shell.repo;
+  // In a repository, or on the way into one, its own list.
   const repoPath = /^\/([^/]+)\/([^/-][^/]*)(\/|$)/.exec(target);
-  const reserved = new Set(["settings", "explore", "search", "new", "u", "pricing", "avatars", "workspaces", "login", "logout", "register", "verify", "forgot", "reset", "device", "oauth"]);
-  const inRepo = repoPath != null && !reserved.has(repoPath[1]) && repoPath[2] !== "-";
-  // A project's settings take its menu over in turn.
+  const reserved = new Set(["settings", "explore", "search", "new", "u", "pricing", "avatars", "workspaces", "login", "logout", "register", "verify", "forgot", "reset", "device", "oauth", "policies", "security", "support", "status", "invite", ".well-known"]);
+  // An invitation to a repository is answered before its menu means anything.
+  const inRepo =
+    repoPath != null && !reserved.has(repoPath[1]) && repoPath[2] !== "-" && !/^\/[^/]+\/[^/]+\/invitations\/?$/.test(target);
+  // A project's settings, one level further in.
   const inRepoSettings = inRepo && REPO_SETTINGS_PAGE.test(target);
-  const away = inSettings || inAccount || inRepo;
   // The repository the menu is for: the one loaded if it is the one being
   // gone to, else what the address says, at once.
   const targetRepo = inRepo && repoPath ? { namespace: repoPath[1], name: repoPath[2] } : null;
-  const menuRepo: MenuRepo | null = targetRepo
+  const guessed: MenuRepo | null = targetRepo
     ? sameRepo(active, targetRepo)
       ? active
       : {
@@ -700,34 +951,43 @@ function Sidebar({ user, shell, onFind }: { user: User | null; shell: ShellData;
           member: (user?.workspaces ?? []).some((m) => m.slug === targetRepo.namespace.toLowerCase()),
         }
     : null;
-  // What sits on the far side of the track. Kept while sliding back, so it
-  // does not vanish on the way out.
-  const side = useRef<"workspace" | "account" | "repo" | "repo-settings">("workspace");
-  if (inAccount) side.current = "account";
-  else if (inSettings) side.current = "workspace";
-  else if (inRepoSettings) side.current = "repo-settings";
-  else if (inRepo) side.current = "repo";
-  // The repository last shown, kept for the slide back.
-  const shown = useRef<MenuRepo | null>(menuRepo);
-  if (menuRepo) shown.current = menuRepo;
-  // Moving between two of the far-side menus (settings to a repository,
-  // one repository to another) crossfades in place instead of sliding.
-  const detailKey =
-    side.current === "repo" || side.current === "repo-settings"
-      ? `${side.current}:${shown.current?.namespace}/${shown.current?.name}`
-      : side.current;
-  const lastAway = useRef(away);
-  const lastKey = useRef(detailKey);
-  const swapped = lastAway.current && away && lastKey.current !== detailKey;
-  useEffect(() => {
-    lastAway.current = away;
-    lastKey.current = detailKey;
-  });
-  // The repository being looked at is listed even when it is someone else's.
-  const listed =
-    active && !shell.repos.some((repo) => repo.namespace === active.namespace && repo.name === active.name)
-      ? [{ namespace: active.namespace, name: active.name, isPrivate: false }, ...shell.repos]
-      : shell.repos;
+  // The viewer's role there, from the repository's page once it has loaded.
+  const page = useRouteLoaderData("routes/repo/layout") as
+    | { repo?: { namespace: string; name: string }; access?: ViewerAccess }
+    | undefined;
+  const menuRepo: MenuRepo | null =
+    guessed && page?.access && page.repo && sameRepo(page.repo, guessed)
+      ? { ...guessed, member: page.access.insider, settings: seesSettings(page.access), can: page.access.can }
+      : guessed;
+
+  // The way from the main list to the one shown.
+  const trail: Level[] = [{ key: "main", node: <MainMenu user={user} shell={shell} /> }];
+  if (user && inAccount) {
+    trail.push({ key: "account", node: <AccountSettingsMenu /> });
+  } else if (ws && inSettings) {
+    trail.push({ key: `settings:${ws.slug}`, node: <SettingsMenu slug={ws.slug} owner={ws.role === "owner"} /> });
+  } else if (menuRepo) {
+    const key = `repo:${menuRepo.namespace}/${menuRepo.name}`.toLowerCase();
+    // Out of a project: to its workspace's projects when they are yours.
+    const home = (user?.workspaces ?? []).find((m) => m.slug === menuRepo.namespace.toLowerCase());
+    const back = !user
+      ? { to: "/explore", label: "Explore" }
+      : home
+        ? { to: `/${home.slug}`, label: "All projects" }
+        : { to: "/", label: "Mission control" };
+    trail.push({
+      key,
+      node: (
+        <RepoMenu
+          repo={menuRepo}
+          isPrivate={[...shell.repos, ...(shell.shared ?? [])].some((repo) => sameRepo(repo, menuRepo) && repo.isPrivate)}
+          back={back}
+        />
+      ),
+    });
+    if (inRepoSettings) trail.push({ key: `${key}:settings`, node: <RepoSettingsMenu repo={menuRepo} /> });
+  }
+
   return (
     <div className="flex h-full flex-col">
       {/* The same height and rule as the top bar, so the two read as one line. */}
@@ -743,9 +1003,19 @@ function Sidebar({ user, shell, onFind }: { user: User | null; shell: ShellData;
             <WorkspaceSwitcher user={user} shell={shell} />
           </>
         ) : (
-          <Link to="/" aria-label="g1t home" className="rounded-md px-1.5 py-1 hover:bg-raised">
+          <Link to="/" aria-label="g1t home" className="mr-auto flex rounded-md px-1.5 py-1.5 hover:bg-raised">
             <Logo />
           </Link>
+        )}
+        {onClose && (
+          <button
+            type="button"
+            aria-label="Close menu"
+            onClick={onClose}
+            className="flex size-9 shrink-0 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-fg"
+          >
+            <X size={16} />
+          </button>
         )}
       </div>
       <div className="px-2 pt-3">
@@ -759,138 +1029,9 @@ function Sidebar({ user, shell, onFind }: { user: User | null; shell: ShellData;
           <kbd className="rounded bg-raised px-1.5 font-mono text-[0.625rem] text-muted ring-1 ring-line">⌘K</kbd>
         </button>
       </div>
-      <div className="relative min-h-0 grow overflow-hidden">
-      <div className={`${LAYER} ${away ? "pointer-events-none -translate-x-1/4 opacity-0" : "translate-x-0 opacity-100"}`}>
-      <nav aria-label="g1t" inert={away} className={PANEL}>
-        {/* A visitor browses: no workspace, no projects of their own. */}
-        {!user ? (
-          <div className="mt-3 space-y-px">
-            {VISITOR_LINKS.map((link) => (
-              <SidebarLink key={link.to} to={link.to} icon={link.to === "/search" ? <Search size={15} /> : <Compass size={15} />}>
-                {link.label}
-              </SidebarLink>
-            ))}
-          </div>
-        ) : (
-        <>
-        <div className="mt-3 space-y-px">
-          <SidebarLink to="/" end icon={<LayoutDashboard size={15} />}>
-            Mission control
-          </SidebarLink>
-          <SidebarLink to="/explore" icon={<Compass size={15} />}>
-            Explore
-          </SidebarLink>
-        </div>
-
-        <SidebarGroup
-          title="Projects"
-          action={
-            ws && (
-              <Link
-                to={`/new?workspace=${ws.slug}`}
-                aria-label="New project"
-                className="rounded p-0.5 text-faint hover:bg-raised hover:text-fg"
-              >
-                <Plus size={13} />
-              </Link>
-            )
-          }
-        >
-          {listed.length === 0 && (
-            <p className="px-2 py-1 text-xs text-faint">None yet.</p>
-          )}
-          {listed.map((repo) => {
-            const base = `/${repo.namespace}/${repo.name}`;
-            return (
-              <div key={base}>
-                <SidebarLink
-                  to={base}
-                  icon={repo.isPrivate ? <Lock size={15} /> : <Box size={15} />}
-                >
-                  <span className="text-[0.8125rem]">
-                    {repo.namespace !== ws?.slug && (
-                      <span className="font-mono text-faint">{repo.namespace}/</span>
-                    )}
-                    {"title" in repo && repo.title ? repo.title : repo.name}
-                  </span>
-                </SidebarLink>
-              </div>
-            );
-          })}
-        </SidebarGroup>
-        {ws && (
-          <SidebarGroup title="Across projects">
-            <SidebarLink to={`/${ws.slug}/-/agents`} icon={<Bot size={15} />}>
-              Agent fleet
-            </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/context`} icon={<Network size={15} />}>
-              Context
-            </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/memory`} icon={<Brain size={15} />}>
-              Memory
-            </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/security`} icon={<ShieldCheck size={15} />}>
-              Security
-            </SidebarLink>
-            {roadmapIn("Workspace").map((item) => (
-              <SidebarSoonLink
-                key={item.key}
-                to={`/${ws.slug}/-/soon/${item.key}`}
-                icon={WORKSPACE_ICONS[item.key] ?? <Sparkles size={15} />}
-                about={item.summary}
-              >
-                {item.title === "Board" ? "Boards" : item.title}
-              </SidebarSoonLink>
-            ))}
-          </SidebarGroup>
-        )}
-        </>
-        )}
-      </nav>
-      </div>
-      <div className={`${LAYER} ${away ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-full opacity-0"}`}>
-        <div key={detailKey} className={`h-full ${swapped ? "animate-[g1t-swap_220ms_ease-out]" : ""}`}>
-          {side.current === "repo-settings" && shown.current ? (
-            <RepoSettingsMenu repo={shown.current} open={inRepoSettings} />
-          ) : side.current === "repo" && shown.current ? (
-            <RepoMenu
-              repo={shown.current}
-              isPrivate={shell.repos.some((repo) => sameRepo(repo, shown.current) && repo.isPrivate)}
-              open={inRepo}
-              visitor={!user}
-            />
-          ) : side.current === "account" || !ws ? (
-            <AccountSettingsMenu open={inAccount} />
-          ) : (
-            <SettingsMenu slug={ws.slug} owner={ws.role === "owner"} open={inSettings} />
-          )}
-        </div>
-      </div>
-      </div>
-
-      {/* The workspace's own things sit at the bottom, by its usage and the
-          account: a panel of their own, ruled off from whatever menu is above,
-          however long it grows. */}
-      <div className="shrink-0 space-y-2 border-t border-line bg-surface/50 p-2 pt-3">
-        {ws && (
-          <div className="space-y-px">
-            <p className="flex items-center gap-2 px-2 pb-1 text-[0.6875rem] font-medium uppercase tracking-wider text-faint">
-              <span>Workspace</span>
-              <span className="min-w-0 truncate font-mono normal-case tracking-normal text-muted">{ws.slug}</span>
-            </p>
-            <SidebarLink to={`/${ws.slug}/-/usage`} icon={<BarChart3 size={15} />}>
-              Usage
-            </SidebarLink>
-            {/* Everything else about the workspace lives in its settings, and only there. */}
-            <SidebarLink
-              to={ws.role === "owner" ? `/${ws.slug}/-/settings` : `/${ws.slug}/-/people`}
-              icon={<Settings size={15} />}
-            >
-              Settings
-            </SidebarLink>
-          </div>
-        )}
-        {ws && <UsageCard slug={ws.slug} shell={shell} />}
+      <Drill trail={trail} />
+      {/* The account, or signing in, as one row at the very bottom. */}
+      <div className="shrink-0 border-t border-line p-2">
         {user ? <AccountMenu user={user} /> : <VisitorPanel />}
       </div>
     </div>
@@ -908,6 +1049,10 @@ const SECTIONS: Record<string, string> = {
   soon: "Soon",
   deployments: "Deployments",
   repository: "Repository",
+  access: "Access",
+  invitations: "Invitation",
+  repositories: "Repositories",
+  branches: "Branches and merging",
   dependencies: "Dependencies",
   code: "Files",
   secrets: "Secrets and variables",
@@ -918,6 +1063,9 @@ const SECTIONS: Record<string, string> = {
   billing: "Billing and plans",
   integrations: "Integrations",
   webhooks: "Webhooks",
+  domains: "Domains",
+  guardrails: "Guardrails",
+  audit: "Audit log",
   tree: "Code",
   blob: "Code",
 };
@@ -925,7 +1073,7 @@ const SECTIONS: Record<string, string> = {
 /** Where the page is, as a trail of links: workspace / repository / section. */
 function Breadcrumbs({ pathname }: { pathname: string }) {
   const parts = pathname.split("/").filter(Boolean);
-  const reserved = ["settings", "explore", "new", "search", "workspaces"];
+  const reserved = ["settings", "explore", "new", "search", "workspaces", "policies", "security", "support", "status", "invite"];
   if (parts.length === 0) return <span className="text-sm font-medium">Mission control</span>;
   if (reserved.includes(parts[0]!)) {
     const words: Record<string, string> = {
@@ -934,6 +1082,11 @@ function Breadcrumbs({ pathname }: { pathname: string }) {
       new: "New project",
       search: "Search",
       workspaces: "New workspace",
+      policies: "Policies",
+      security: "Security",
+      support: "Support",
+      status: "Status",
+      invite: "Invite",
     };
     return <span className="text-sm font-medium">{words[parts[0]!]}</span>;
   }
@@ -966,7 +1119,7 @@ function Breadcrumbs({ pathname }: { pathname: string }) {
   return (
     <nav aria-label="Where you are" className="flex min-w-0 items-center gap-1.5 text-sm">
       {trail.map((crumb, index) => (
-        <span key={crumb.to} className="flex min-w-0 items-center gap-1.5">
+        <span key={index} className="flex min-w-0 items-center gap-1.5">
           {index > 0 && <span className="text-line-strong">/</span>}
           <Link
             to={crumb.to}
@@ -985,10 +1138,10 @@ function Breadcrumbs({ pathname }: { pathname: string }) {
 type Command = PaletteCommand;
 
 /** Everything the palette can jump to, from what the sidebar already knows. */
-function commandsFor(user: User | null, shell: ShellData, here: string): Command[] {
-  if (!user) return visitorCommands(shell, here);
+function commandsFor(user: User | null, shell: ShellData, here: string, signUpLabel = "Sign up"): Command[] {
+  if (!user) return visitorCommands(shell, here, signUpLabel);
   const commands: Command[] = [
-    { label: "Mission control", to: "/", icon: <LayoutDashboard size={15} /> },
+    { label: "Mission control", to: "/", icon: <House size={15} /> },
     { label: "Explore repositories", to: "/explore", icon: <Compass size={15} /> },
     { label: "Search g1t", hint: "Repositories, code, issues, people", to: "/search", icon: <Search size={15} /> },
     { label: "New project", to: "/new", icon: <Plus size={15} /> },
@@ -1023,7 +1176,7 @@ function commandsFor(user: User | null, shell: ShellData, here: string): Command
       { label: "Usage", hint: membership.slug, to: `/${membership.slug}/-/usage`, icon: <BarChart3 size={15} /> },
       { label: "Billing and plans", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/billing`, icon: <CreditCard size={15} /> },
       { label: "Access tokens", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/tokens`, icon: <KeyRound size={15} /> },
-      { label: "Integrations", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/integrations`, icon: <Plug size={15} /> },
+      { label: "Integrations", hint: membership.slug, to: `/${membership.slug}/-/integrations`, icon: <Plug size={15} /> },
     );
   }
   for (const listed of shell.repos) {
@@ -1038,7 +1191,7 @@ function commandsFor(user: User | null, shell: ShellData, here: string): Command
 }
 
 /** What the palette offers a visitor: browsing, the project they are in, and signing in. */
-function visitorCommands(shell: ShellData, here: string): Command[] {
+function visitorCommands(shell: ShellData, here: string, signUpLabel: string): Command[] {
   const commands: Command[] = [];
   const repo = shell.repo;
   if (repo) {
@@ -1058,7 +1211,7 @@ function visitorCommands(shell: ShellData, here: string): Command[] {
     { label: "Pricing", to: "/pricing", icon: <CreditCard size={15} /> },
     { label: "Documentation", to: "https://docs.g1t.sh/", icon: <BookOpen size={15} /> },
     { label: "Sign in", to: withNext("/login", here), icon: <LogIn size={15} /> },
-    { label: "Sign up", to: withNext("/register", here), icon: <Plus size={15} /> },
+    { label: signUpLabel, to: withNext("/register", here), icon: <Plus size={15} /> },
   );
   return commands;
 }
@@ -1126,7 +1279,8 @@ export function AppShell({
   const [drawer, setDrawer] = useState(false);
   const [palette, setPalette] = useState(false);
   const here = pathname + search;
-  const commands = useMemo(() => commandsFor(user, shell, here), [user, shell, here]);
+  const signUpLabel = useSignUpCopy().primary;
+  const commands = useMemo(() => commandsFor(user, shell, here, signUpLabel), [user, shell, here, signUpLabel]);
 
   // A new page closes the drawer on small screens.
   useEffect(() => setDrawer(false), [pathname]);
@@ -1147,15 +1301,7 @@ export function AppShell({
             onClick={() => setDrawer(false)}
           />
           <aside className="absolute inset-y-0 left-0 w-72 border-r border-line bg-surface">
-            <button
-              type="button"
-              aria-label="Close menu"
-              onClick={() => setDrawer(false)}
-              className="absolute top-3 right-3 rounded-md p-1 text-faint hover:bg-raised hover:text-fg"
-            >
-              <X size={16} />
-            </button>
-            <Sidebar user={user} shell={shell} onFind={() => setPalette(true)} />
+            <Sidebar user={user} shell={shell} onFind={() => setPalette(true)} onClose={() => setDrawer(false)} />
           </aside>
         </div>
       )}

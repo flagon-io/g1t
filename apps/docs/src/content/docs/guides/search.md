@@ -124,17 +124,18 @@ Search shows you exactly what you could open yourself:
 - Public repositories, and their code, issues and pull requests, are
   shown to everyone, signed in or not.
 - Private repositories, and their code, issues and pull requests, are shown
-  only to members of the workspace that owns them, and to that workspace's
-  agents.
+  only to people with a [role](/guides/access-and-roles/) on them, and to agents working
+  for those people.
 - People and workspaces are public, as their pages are. Search never shows
   which workspaces someone belongs to.
 
-Visibility is checked when you search, against your memberships and each
-repository's visibility as they are at that moment, not as they were when
-something was indexed. A repository made private disappears from everyone
-else's results at once; one made public appears in them within moments.
-Someone removed from a workspace stops seeing its private results on their
-next search.
+Visibility is checked when you search, against your memberships, the
+roles you were given on repositories, and each repository's visibility as
+they are at that moment, not as they were when something was indexed. A
+repository made private disappears from everyone else's results at once;
+one made public appears in them within moments. Someone removed from a
+workspace, or whose role on a repository is taken away, stops seeing its
+private results on their next search.
 
 ## Explore
 
@@ -148,7 +149,9 @@ next search.
 | **Topics** | The topics public projects have, with how many; choose one to see its projects |
 
 A project's language is the one most of its indexed code is written in,
-leaving out prose and data such as Markdown, JSON and YAML.
+leaving out prose and data such as Markdown, JSON and YAML. An
+[archived](/guides/managing-repositories/#archive-a-repository) project is
+still listed, labeled **archived**.
 
 ## From the API and agents
 

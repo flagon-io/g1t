@@ -33,6 +33,9 @@ pub trait GitStore {
         default_branch: &str,
     ) -> Result<()>;
     async fn open(&self, key: &str) -> Result<Self::Repo>;
+    /// Removes a repository and everything in it, for good. Succeeds if it
+    /// is already gone.
+    async fn delete(&self, key: &str) -> Result<()>;
 }
 
 /// One open repository.
@@ -82,6 +85,14 @@ impl GitStore for ArtifactsStore {
         match js::call(&self.binding, "create", &[key.into(), options]).await {
             // Left behind by an earlier failed attempt; adopt it.
             Err(thrown) if !thrown.is("ALREADY_EXISTS") => Err(thrown.into()),
+            _ => Ok(()),
+        }
+    }
+
+    async fn delete(&self, key: &str) -> Result<()> {
+        match js::call(&self.binding, "delete", &[key.into()]).await {
+            // Gone already: an earlier purge got this far.
+            Err(thrown) if !thrown.is("NOT_FOUND") => Err(thrown.into()),
             _ => Ok(()),
         }
     }

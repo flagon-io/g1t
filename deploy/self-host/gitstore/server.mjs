@@ -18,6 +18,7 @@ import { spawn } from "node:child_process";
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 const ROOT = process.env.GITSTORE_ROOT ?? "/data/git";
@@ -442,6 +443,12 @@ async function api(request, response, parts, params) {
   }
   const [key, action, arg] = parts;
   if (method === "GET" && !action) return send(response, 200, await info(key));
+  // DELETE /api/repos/<key>               delete (a purged repository)
+  if (method === "DELETE" && !action) {
+    if (!exists(key)) return send(response, 404, { code: "NOT_FOUND", message: "no such repository" });
+    await rm(repoDir(key), { recursive: true, force: true });
+    return send(response, 200, { deleted: true });
+  }
   if (method === "POST" && action === "tokens") {
     requireRepo(key);
     const body = await readJson(request);

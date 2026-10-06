@@ -20,7 +20,7 @@ const ROLE: Record<RepoInstructions["files"][number]["role"], string> = {
 export function AgentInstructions({ instructions, base }: { instructions: RepoInstructions; base: string }) {
   const { branch, files, limits } = instructions;
   return (
-    <section className="mt-10">
+    <section id="instructions" className="mt-10 scroll-mt-20">
       <div className="flex items-baseline justify-between">
         <h3 className="flex items-center gap-2 text-sm font-medium">
           <ScrollText size={15} className="text-muted" />

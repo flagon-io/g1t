@@ -434,6 +434,15 @@ struct Built {
     worker: Value,
     assets_dir: Option<PathBuf>,
     warnings: Vec<String>,
+    /// What kind of project it was found to be, for its settings page:
+    /// `workers`, `static` (a build's output) or `html` (the files as they are).
+    detected: &'static str,
+}
+
+/// What a project without a Workers config is: a site it built, or its own
+/// files served as they are.
+fn static_kind(project: &Path, assets_dir: &Path, built: bool) -> &'static str {
+    if !built && assets_dir == project { "html" } else { "static" }
 }
 
 fn build(log: &mut Log, secrets: &[String]) -> Result<Built> {
@@ -483,9 +492,11 @@ fn build(log: &mut Log, secrets: &[String]) -> Result<Built> {
                 worker,
                 assets_dir,
                 warnings,
+                detected: "workers",
             })
         }
         None => {
+            let built = custom_build.is_some() || has_build_script(dir);
             if let Some(command) = &custom_build {
                 step(log, command, secrets)?;
             } else if has_build_script(dir) {
@@ -517,6 +528,7 @@ fn build(log: &mut Log, secrets: &[String]) -> Result<Built> {
                     "vars": {},
                     "notFoundHandling": if spa { "single-page-application" } else { "404-page" },
                 }),
+                detected: static_kind(dir, &assets_dir, built),
                 assets_dir: Some(assets_dir),
                 warnings,
             })
@@ -571,6 +583,7 @@ fn deploy(reporter: &Reporter, log: &mut Log, secrets: &[String]) -> Result<Valu
     let mut finish = json!({
         "worker": built.worker,
         "warnings": built.warnings,
+        "detected": built.detected,
     });
     if let Some(dir) = &built.assets_dir {
         let skip_project = *dir == project_dir();
@@ -691,6 +704,14 @@ mod tests {
         let config: WranglerConfig =
             serde_json::from_str(r#"{ "main": "a.js", "d1_databases": [{ "binding": "DB" }] }"#).unwrap();
         assert!(config.rest.contains_key("d1_databases"));
+    }
+
+    #[test]
+    fn a_site_is_plain_html_only_when_its_own_files_are_served_unbuilt() {
+        let project = Path::new("/w/site");
+        assert_eq!(static_kind(project, project, false), "html");
+        assert_eq!(static_kind(project, project, true), "static");
+        assert_eq!(static_kind(project, &project.join("dist"), false), "static");
     }
 
     #[test]

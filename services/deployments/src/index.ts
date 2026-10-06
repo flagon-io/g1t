@@ -27,18 +27,28 @@ import {
   CUSTOM_DOMAIN_TARGET,
   DEPLOYMENTS_ALLOWANCE,
   SLUG_HOLD_DAYS,
+  ComputeGate,
+  allows,
   billingClient,
+  can,
+  needs,
+  permission,
+  sandboxEstimateMicros,
+  currentMovedPath,
   currentWorkspaceSlug,
   fail,
   identityClient,
   newId,
   ok,
   projectsClient,
+  repoMove,
   reposClient,
+  staleMovedPaths,
   staleSlugs,
   workClient,
   type DeployKind,
   type DeploySettings,
+  type DetectedKind,
   type DeployStatus,
   type DeployUsage,
   type Deployment,
@@ -47,6 +57,7 @@ import {
   type LiveApp,
   type Project,
   type ProjectDeploys,
+  type RepoMove,
   type ProjectDomains,
   type ProjectRef,
   type RepoPath,
@@ -56,6 +67,7 @@ import {
   type Viewer,
 } from "@g1t/contracts";
 
+import { NEEDS, repoRef, type Method } from "./access";
 import { Cloudflare, type BuiltWorker, type Manifest } from "./cloudflare";
 import { CustomHostnames } from "./custom-hostnames";
 import { Domains, NOT_ENABLED_NOTICE, extraDomains, toDomain } from "./domains";
@@ -80,6 +92,8 @@ type Env = {
   DOMAINS?: KVNamespace;
   /** The g1t.page zone, where custom hostnames are added (Cloudflare for SaaS). */
   CUSTOM_HOSTNAMES_ZONE_ID?: string;
+  /** The og service's `Screenshots`: production's screenshot, taken once per deploy. */
+  SCREENSHOTS?: { capture(input: { host: string; commit: string }): Promise<boolean> };
 };
 
 /** A build that has not reported in this long has died. */
@@ -93,6 +107,11 @@ const STATUS_CONTEXT = "g1t / deploy";
  * have seen it too, before going ahead with the new slug regardless.
  */
 const RENAME_WAITS = 3;
+
+/** A build's report of what it found the project to be, if it is one g1t knows. */
+export function detectedKind(value: unknown): DetectedKind | null {
+  return value === "workers" || value === "static" || value === "html" ? value : null;
+}
 
 const now = () => new Date().toISOString();
 const month = (at = new Date()) => at.toISOString().slice(0, 7);
@@ -111,6 +130,27 @@ function isMember(viewer: Viewer, slug: string): boolean {
 }
 
 /** The repository a project builds from. */
+/** One compute gate per isolate, so entitlements and prices are kept between calls. */
+let computeGate: ComputeGate | null = null;
+function gateFor(billing: ServiceBinding): ComputeGate {
+  computeGate ??= new ComputeGate(billing);
+  return computeGate;
+}
+
+/** The longest a build may run, in minutes: as long as its read token lasts. */
+const BUILD_MINUTES = 30;
+
+/**
+ * A build that was skipped before it started (its plan, its limit, or
+ * billing's refusal) as a failure, so whoever asked for it sees why.
+ */
+function notStarted(result: Result<Deployment>): Result<Deployment> {
+  if (result.ok && result.value.status === "skipped" && result.value.error) {
+    return fail("payment_required", result.value.error);
+  }
+  return result;
+}
+
 function repoOf(project: Project): { id: string; path: RepoPath; defaultBranch: string } {
   if (project.source.kind !== "hosted") throw new Error("Only projects hosted on g1t deploy so far.");
   return { id: project.source.repoId, path: project.source.repo, defaultBranch: project.source.defaultBranch };
@@ -127,6 +167,8 @@ type SettingsRow = {
   build_command: string | null;
   output_dir: string | null;
   idle_days: number;
+  /** Set while its repository is deleted (restorable); see `repoDeleted`. */
+  repo_deleted_at: string | null;
 };
 
 type DeploymentRow = {
@@ -303,17 +345,16 @@ class Deployments {
 
   /**
    * Whether a pull request's author is trusted with the project's secrets:
-   * g1t's agent, or a member of the workspace. Someone from outside gets a
-   * preview built without them, as their workflows run.
+   * g1t's agent, or someone who can push to the repository (Write or more,
+   * a member's or a collaborator's). Anyone else gets a preview built
+   * without them, as their workflows run.
    */
   private async insider(repo: RepoPath, author: User, actor: User): Promise<boolean> {
     if (author.kind === "agent" || author.username === "g1t-agent") return true;
-    // On a private repository only members can open one at all.
-    const found = await reposClient(this.env.REPOS).get(repo, actor);
-    if (found.ok && found.value.isPrivate) return true;
-    if (author.workspaces?.some((m) => m.slug === repo.namespace.toLowerCase())) return true;
-    const members = await identityClient(this.env.IDENTITY).listMembers(repo.namespace, actor);
-    return members.ok && members.value.some((m) => m.username.toLowerCase() === author.username.toLowerCase());
+    const found = await identityClient(this.env.IDENTITY)
+      .collaboratorPermission(actor, repo.namespace, repo.name, author.username)
+      .catch(() => null);
+    return !!found?.ok && allows(found.value.role, "push");
   }
 
   private async settingsRow(projectId: string): Promise<SettingsRow | null> {
@@ -344,19 +385,41 @@ class Deployments {
       idleDays: row?.idle_days ?? 7,
       productionUrl: appUrl(await this.scriptFor(project, null)),
       primaryDomain: await this.domains.primary(project.id).catch(() => null),
+      detected: await this.lastDetected(project.id),
     };
   }
 
-  /** The project, if `viewer` belongs to its workspace. */
-  private async memberProject(ref: ProjectRef, viewer: Viewer): Promise<Result<Project>> {
-    if (!isMember(viewer, ref.workspace)) return fail("forbidden", "Only members of the workspace can manage its deployments.");
-    return this.projects.get(ref.workspace, ref.slug, viewer);
+  /** What the project's last finished build found it to be; null before one has. */
+  private async lastDetected(projectId: string): Promise<DetectedKind | null> {
+    const row = await this.db
+      .prepare(
+        "SELECT detected FROM deployments WHERE project_id = ? AND detected IS NOT NULL ORDER BY finished_at DESC LIMIT 1",
+      )
+      .bind(projectId)
+      .first<{ detected: string }>()
+      .catch(() => null);
+    return detectedKind(row?.detected);
+  }
+
+  /**
+   * The project, if `viewer` may do what `method` needs on its repository
+   * (see `NEEDS`): not found when they cannot read it, refused when they can
+   * but their role is too low.
+   */
+  private async projectFor(ref: ProjectRef, viewer: Viewer, method: Method): Promise<Result<Project>> {
+    const found = await this.projects.get(ref.workspace, ref.slug, viewer);
+    if (!found.ok) return found;
+    const repo = repoRef(found.value);
+    if (!permission(viewer, repo)) return fail("not_found", "There is no such project.");
+    const capability = NEEDS[method];
+    if (!can(viewer, repo, capability)) return fail("forbidden", needs(capability));
+    return found;
   }
 
   // ---- Methods for the site and the API ------------------------------
 
   async settings(a: { project: ProjectRef; viewer: Viewer }): Promise<Result<DeploySettings>> {
-    const project = await this.memberProject(a.project, a.viewer);
+    const project = await this.projectFor(a.project, a.viewer, "settings");
     if (!project.ok) return project;
     return ok(await this.toSettings(project.value, await this.settingsRow(project.value.id)));
   }
@@ -366,7 +429,7 @@ class Deployments {
     project: ProjectRef;
     changes: Partial<DeploySettings>;
   }): Promise<Result<DeploySettings>> {
-    const found = await this.memberProject(a.project, a.actor);
+    const found = await this.projectFor(a.project, a.actor, "updateSettings");
     if (!found.ok) return found;
     const project = found.value;
     const before = await this.toSettings(project, await this.settingsRow(project.id));
@@ -415,7 +478,7 @@ class Deployments {
   }
 
   async list(a: { project: ProjectRef; viewer: Viewer }): Promise<Result<{ deployments: Deployment[]; live: LiveApp[] }>> {
-    const project = await this.memberProject(a.project, a.viewer);
+    const project = await this.projectFor(a.project, a.viewer, "list");
     if (!project.ok) return project;
     const [deployments, apps] = await Promise.all([
       this.db
@@ -431,7 +494,7 @@ class Deployments {
   }
 
   async get(a: { project: ProjectRef; id: string; viewer: Viewer }): Promise<Result<Deployment & { log: string | null }>> {
-    const project = await this.memberProject(a.project, a.viewer);
+    const project = await this.projectFor(a.project, a.viewer, "get");
     if (!project.ok) return project;
     const row = await this.db
       .prepare("SELECT * FROM deployments WHERE id = ? AND project_id = ?")
@@ -442,13 +505,13 @@ class Deployments {
   }
 
   async redeploy(a: { actor: User; project: ProjectRef; branch: string | null }): Promise<Result<Deployment>> {
-    const found = await this.memberProject(a.project, a.actor);
+    const found = await this.projectFor(a.project, a.actor, "redeploy");
     if (!found.ok) return found;
     const project = found.value;
     const settings = await this.settingsRow(project.id);
     if (!settings?.enabled) return fail("conflict", "Deployments are off for this project.");
     if (a.branch == null) {
-      return (await this.deployProduction(project, null, a.actor.username)) ?? fail("conflict", "There was nothing to deploy.");
+      return notStarted((await this.deployProduction(project, null, a.actor.username)) ?? fail("conflict", "There was nothing to deploy."));
     }
     // A branch's preview comes from its pull request.
     const app = await this.db
@@ -456,7 +519,7 @@ class Deployments {
       .bind(project.id, a.branch)
       .first<{ number: number }>();
     if (!app) return fail("not_found", `No pull request has deployed ${a.branch}.`);
-    return (await this.deployPreview(project, app.number, a.actor.username, true)) ?? fail("conflict", "Its pull request is not open.");
+    return notStarted((await this.deployPreview(project, app.number, a.actor.username, true)) ?? fail("conflict", "Its pull request is not open."));
   }
 
   /**
@@ -469,7 +532,7 @@ class Deployments {
     a: { actor: User; project: ProjectRef; branch: string },
     background: (work: Promise<unknown>) => void,
   ): Promise<Result<string[]>> {
-    const found = await this.memberProject(a.project, a.actor);
+    const found = await this.projectFor(a.project, a.actor, "stack");
     if (!found.ok) return found;
     const upstream = await this.db
       .prepare("SELECT script FROM apps WHERE project_id = ? AND kind = 'preview' AND branch = ?")
@@ -480,9 +543,10 @@ class Deployments {
     const ready: { project: Project; settings: SettingsRow }[] = [];
     for (const dependent of graph.usedBy) {
       const project = await this.projects.get(dependent.workspace, dependent.slug, a.actor);
-      if (!project.ok) continue;
+      // Each build spends compute on its own repository: only those the actor can run.
+      if (!project.ok || !can(a.actor, repoRef(project.value), NEEDS.stack)) continue;
       const settings = await this.settingsRow(project.value.id);
-      if (settings?.enabled && settings.previews) ready.push({ project: project.value, settings });
+      if (settings?.enabled && settings.previews && !settings.repo_deleted_at) ready.push({ project: project.value, settings });
     }
     if (ready.length === 0) return fail("conflict", "No project that uses this one has previews turned on.");
     // The builds start after the answer: a person moving on from the page
@@ -506,7 +570,7 @@ class Deployments {
             reader: actor,
             createdBy: a.actor.username,
             settings,
-            // Its own default branch, asked for by a member.
+            // Its own default branch, asked for by someone who can run it.
             trusted: true,
           });
         }
@@ -516,7 +580,7 @@ class Deployments {
   }
 
   async takeDown(a: { actor: User; project: ProjectRef; branch: string | null }): Promise<Result<true>> {
-    const project = await this.memberProject(a.project, a.actor);
+    const project = await this.projectFor(a.project, a.actor, "takeDown");
     if (!project.ok) return project;
     await this.takeDownWhere(project.value.id, a.branch == null ? "production" : "preview", a.branch ?? undefined);
     return ok(true);
@@ -525,8 +589,14 @@ class Deployments {
   async overview(a: { workspace: string; viewer: Viewer }): Promise<Result<ProjectDeploys[]>> {
     const workspace = a.workspace.toLowerCase();
     if (!isMember(a.viewer, workspace)) return fail("forbidden", "Only members can see a workspace's deployments.");
+    // Only the projects whose repositories the viewer can read: the
+    // projects service lists no others.
+    const listed = await this.projects.list(workspace, a.viewer);
+    if (!listed.ok) return listed;
+    const readable = new Set(listed.value.map((project) => project.slug));
     const [settings, apps, latest] = await Promise.all([
-      this.db.prepare("SELECT slug, enabled FROM settings WHERE workspace = ?").bind(workspace).all<{ slug: string; enabled: number }>(),
+      // A deleted repository's projects are hidden until it is restored.
+      this.db.prepare("SELECT slug, enabled FROM settings WHERE workspace = ? AND repo_deleted_at IS NULL").bind(workspace).all<{ slug: string; enabled: number }>(),
       this.db.prepare("SELECT * FROM apps WHERE workspace = ?").bind(workspace).all<AppRow>(),
       this.db
         .prepare(
@@ -536,7 +606,7 @@ class Deployments {
         .all<DeploymentRow>(),
     ]);
     return ok(
-      settings.results.map((row) => {
+      settings.results.filter((row) => readable.has(row.slug)).map((row) => {
         const own = apps.results.filter((app) => app.slug === row.slug);
         const production = own.find((app) => app.kind === "production");
         const newest = latest.results.find((d) => d.slug === row.slug);
@@ -583,7 +653,7 @@ class Deployments {
   // ---- Custom domains ------------------------------------------------
 
   async listDomains(a: { project: ProjectRef; viewer: Viewer }): Promise<Result<ProjectDomains>> {
-    const project = await this.memberProject(a.project, a.viewer);
+    const project = await this.projectFor(a.project, a.viewer, "listDomains");
     if (!project.ok) return project;
     const domains = this.domains;
     await domains.catchUp(project.value.id).catch((error) => console.error("could not check domains", error));
@@ -603,7 +673,7 @@ class Deployments {
   }
 
   async addDomain(a: { actor: User; project: ProjectRef; hostname: string; twin?: boolean }): Promise<Result<Domain[]>> {
-    const found = await this.memberProject(a.project, a.actor);
+    const found = await this.projectFor(a.project, a.actor, "addDomain");
     if (!found.ok) return found;
     const project = found.value;
     const plan = await billingClient(this.env.BILLING).hasFeature(project.workspace, "deployments");
@@ -621,7 +691,7 @@ class Deployments {
   }
 
   async removeDomain(a: { actor: User; project: ProjectRef; id: string }): Promise<Result<true>> {
-    const found = await this.memberProject(a.project, a.actor);
+    const found = await this.projectFor(a.project, a.actor, "removeDomain");
     if (!found.ok) return found;
     const row = await this.domains.byId(found.value.id, String(a.id ?? ""));
     if (!row) return fail("not_found", "No such domain.");
@@ -630,7 +700,7 @@ class Deployments {
   }
 
   async refreshDomain(a: { actor: User; project: ProjectRef; id: string }): Promise<Result<Domain>> {
-    const found = await this.memberProject(a.project, a.actor);
+    const found = await this.projectFor(a.project, a.actor, "refreshDomain");
     if (!found.ok) return found;
     const domains = this.domains;
     const row = await domains.byId(found.value.id, String(a.id ?? ""));
@@ -676,13 +746,41 @@ class Deployments {
     const plan = await billingClient(this.env.BILLING).hasFeature(project.workspace, "deployments");
     const limit = await billingClient(this.env.BILLING).checkLimit(project.workspace);
     const cloudflare = this.cloudflare;
-    const refused = !plan.ok
+    let refused = !plan.ok
       ? plan.error.message
       : limit.ok && limit.value.state === "stopped"
         ? (limit.value.message ?? "The workspace reached its usage limit.")
       : !cloudflare
         ? "Deployments are not set up on this g1t: it has no Cloudflare token."
         : null;
+    // A build is compute: reserved with billing before it starts, and
+    // settled by its sandbox when it stops. A refusal is the deployment's
+    // status, saying what to do.
+    const compute = gateFor(this.env.BILLING);
+    let reservation: string | null = null;
+    let microsPerSecond = 0;
+    let maxRunMinutes: number | null = null;
+    if (!refused) {
+      const ent = await compute.entitlements(project.workspace);
+      microsPerSecond = await compute.microsPerSecond();
+      maxRunMinutes = ent && ent.maxRunMinutes > 0 ? ent.maxRunMinutes : null;
+      const isPrivate = await reposClient(this.env.REPOS)
+        .get(repo.path, null)
+        .then((found) => !found.ok || found.value.isPrivate)
+        .catch(() => true);
+      const admitted = await compute.admit(
+        {
+          workspace: project.workspace,
+          repo: repo.path,
+          public: !isPrivate,
+          kind: "deploy",
+          estimateMicros: sandboxEstimateMicros(Math.min(BUILD_MINUTES, maxRunMinutes ?? BUILD_MINUTES), microsPerSecond),
+        },
+        ent,
+      );
+      if (admitted.ok) reservation = admitted.reservation?.id ?? null;
+      else refused = admitted.message;
+    }
     await this.db
       .prepare(
         `INSERT INTO deployments (id, project_id, workspace, slug, repo_id, repo, kind, branch, number, commit_sha,
@@ -733,6 +831,10 @@ class Deployments {
       body: JSON.stringify({
         deployId: id,
         token,
+        workspace: project.workspace,
+        reservation,
+        microsPerSecond,
+        maxRunMinutes,
         actor: input.reader,
         source: input.source,
         commit: input.commit,
@@ -744,13 +846,17 @@ class Deployments {
       }),
     });
     const started = response.ok ? ((await response.json()) as Result<true>) : fail("conflict", `The runner answered ${response.status}.`);
-    if (!started.ok) await this.finishFailed(id, started.error.message, null, null);
+    if (!started.ok) {
+      // Never reached a sandbox: what was reserved is given back.
+      if (reservation) await compute.settle(reservation, 0);
+      await this.finishFailed(id, started.error.message, null, null);
+    }
     return ok(toDeployment((await this.deploymentRow(id))!));
   }
 
   private async deployProduction(project: Project, commit: string | null, createdBy: string): Promise<Result<Deployment> | null> {
     const settings = await this.settingsRow(project.id);
-    if (!settings?.enabled || !settings.production) return null;
+    if (!settings?.enabled || !settings.production || settings.repo_deleted_at) return null;
     const actor = await this.workspaceActor(project.workspace);
     if (!actor) return null;
     const repo = repoOf(project);
@@ -777,7 +883,7 @@ class Deployments {
 
   private async deployPreview(project: Project, number: number, createdBy: string, force = false): Promise<Result<Deployment> | null> {
     const settings = await this.settingsRow(project.id);
-    if (!settings?.enabled || !settings.previews) return null;
+    if (!settings?.enabled || !settings.previews || settings.repo_deleted_at) return null;
     const actor = await this.workspaceActor(project.workspace);
     if (!actor) return null;
     const repo = repoOf(project);
@@ -879,10 +985,17 @@ class Deployments {
         await this.db.batch([
           this.db
             .prepare(
-              `UPDATE deployments SET status = 'ready', warnings = ?, log = ?, build_seconds = ?, finished_at = ?
+              `UPDATE deployments SET status = 'ready', warnings = ?, log = ?, build_seconds = ?, finished_at = ?, detected = ?
                WHERE id = ?`,
             )
-            .bind(JSON.stringify(Array.isArray(body.warnings) ? body.warnings : []), String(body.log ?? ""), seconds, at, id),
+            .bind(
+              JSON.stringify(Array.isArray(body.warnings) ? body.warnings : []),
+              String(body.log ?? ""),
+              seconds,
+              at,
+              detectedKind(body.detected),
+              id,
+            ),
           // The build it replaces is no longer what the app serves.
           this.db
             .prepare(`UPDATE deployments SET status = 'replaced' WHERE script = ? AND id != ? AND status = 'ready'`)
@@ -913,6 +1026,12 @@ class Deployments {
         await this.chargeBuild(row, seconds);
         await this.notePeak(row.workspace);
         await this.statusFor(row, "success", row.kind === "preview" ? "Preview is live" : "Production is live", appUrl(row.script));
+        // A screenshot of production as it now is, for the project's overview.
+        if (row.kind === "production") {
+          await this.env.SCREENSHOTS?.capture({ host: appHost(row.script), commit: row.commit_sha }).catch((error) =>
+            console.error("could not ask for a screenshot", error),
+          );
+        }
         return Response.json(ok(true));
       }
       case "fail":
@@ -1087,6 +1206,26 @@ class Deployments {
       case "workspace.renamed":
         await this.renamed(event.data, attempts);
         break;
+      case "repo.transferred":
+      case "repo.renamed":
+        await this.moved(repoMove(event)!, attempts);
+        break;
+      case "repo.deleted":
+        await this.repoDeleted(event.data.repoId);
+        break;
+      case "repo.restored":
+        await this.repoRestored(event.data.repoId, attempts);
+        break;
+      case "repo.purged":
+        await this.repoPurged(event.data.repoId);
+        break;
+      case "repo.default_branch_changed":
+        await this.defaultBranchChanged(event.data.repoId, event.data.to, event.actor ?? "g1t");
+        break;
+      case "branch.renamed":
+        await this.branchRenamed(event.data.repoId, event.data.from, event.data.to);
+        break;
+
       case "pull.opened":
       case "pull.ready":
       case "pull.updated":
@@ -1244,6 +1383,275 @@ class Deployments {
     }
   }
 
+  /**
+   * A repository moved: transferred to another workspace, and its projects
+   * with it, or renamed within its own, when its own project's slug follows
+   * its name (see the projects service). Each app's name is
+   * `<project>-<workspace>`, so the apps of every project whose workspace or
+   * slug changed (production and every preview) are built again, from the
+   * same commit, under the new name. As after a workspace rename, the old
+   * name keeps serving until the new one is live, then redirects to it
+   * (see `supersede`) for `SLUG_HOLD_DAYS`. The project's custom domains
+   * follow its production. Builds under way are started again under the
+   * new name. What the apps used this month stays on the old workspace's
+   * meter; from now on, the new workspace's counts it.
+   *
+   * Projects whose name did not change (a rename where the new name was
+   * taken, or a project of another name) only learn the repository's new
+   * path. Rows are compared with where the project is now, so a second or
+   * late delivery builds nothing.
+   */
+  private async moved(move: RepoMove, attempts: number): Promise<void> {
+    const current = await currentMovedPath(this.env.REPOS, move);
+    if (staleMovedPaths(move, current).length === 0) return;
+    const [workspace, name] = current.split("/") as [string, string];
+    const settings = await this.db
+      .prepare("SELECT project_id, workspace, slug FROM settings WHERE repo_id = ?")
+      .bind(move.repoId)
+      .all<{ project_id: string; workspace: string; slug: string }>();
+    if (settings.results.length === 0) return;
+
+    // The projects service hears of the move on its own queue: wait for it
+    // a few deliveries, so builds read the project where and as it is now.
+    const projects = new Map<string, Project>();
+    for (const project of await this.projects.byRepo(move.repoId)) projects.set(project.id, project);
+    const behind = settings.results.some(({ project_id }) => {
+      const project = projects.get(project_id);
+      if (!project || project.source.kind !== "hosted") return false;
+      return project.workspace !== workspace || `${project.source.repo.namespace}/${project.source.repo.name}` !== current;
+    });
+    if (behind && attempts < RENAME_WAITS) throw new Error(`projects has not seen ${current} moved yet`);
+
+    // Its history goes with it, as the repository's issues do.
+    const statements: D1PreparedStatement[] = [
+      this.db.prepare("UPDATE deployments SET repo = ? WHERE repo_id = ?").bind(current, move.repoId),
+    ];
+    // The projects whose apps' names change.
+    const moving = settings.results.filter(
+      (row) => row.workspace !== workspace || (projects.get(row.project_id)?.slug ?? row.slug) !== row.slug,
+    );
+    const projectIds = moving.map((row) => row.project_id);
+    if (projectIds.length === 0) {
+      await this.db.batch(statements);
+      return;
+    }
+    const ids = projectIds.map(() => "?").join(", ");
+
+    const [apps, building] = await Promise.all([
+      this.db.prepare(`SELECT * FROM apps WHERE project_id IN (${ids}) AND paused_at IS NULL`).bind(...projectIds).all<AppRow>(),
+      this.db
+        .prepare(`SELECT * FROM deployments WHERE project_id IN (${ids}) AND status IN ('queued', 'building') ORDER BY id`)
+        .bind(...projectIds)
+        .all<DeploymentRow>(),
+    ]);
+    type Target = { projectId: string; kind: DeployKind; branch: string | null; number: number | null; commit: string };
+    const targets = new Map<string, Target>();
+    const key = (t: { project_id: string; kind: DeployKind; branch: string | null }) => `${t.project_id}/${t.kind}/${t.branch ?? ""}`;
+    for (const app of apps.results) {
+      targets.set(key(app), { projectId: app.project_id, kind: app.kind, branch: app.branch, number: app.number, commit: app.commit_sha });
+    }
+    // A build under way is newer than what is up.
+    for (const row of building.results) {
+      targets.set(key(row), { projectId: row.project_id, kind: row.kind, branch: row.branch, number: row.number, commit: row.commit_sha });
+    }
+
+    const at = now();
+    statements.push(
+      this.db
+        .prepare(
+          `UPDATE deployments SET status = 'skipped', error = 'The repository moved: built again under its new name.',
+             finished_at = ? WHERE project_id IN (${ids}) AND status IN ('queued', 'building')`,
+        )
+        .bind(at, ...projectIds),
+    );
+    for (const projectId of projectIds) {
+      const slug = projects.get(projectId)?.slug ?? null;
+      statements.push(
+        this.db
+          .prepare("UPDATE settings SET workspace = ?1, slug = COALESCE(?2, slug) WHERE project_id = ?3")
+          .bind(workspace, slug, projectId),
+        this.db
+          .prepare("UPDATE domains SET workspace = ?1, slug = COALESCE(?2, slug) WHERE project_id = ?3")
+          .bind(workspace, slug, projectId),
+        this.db
+          .prepare("UPDATE deployments SET workspace = ?1, slug = COALESCE(?2, slug) WHERE project_id = ?3")
+          .bind(workspace, slug, projectId),
+        // Within the workspace its apps are listed under the project's name
+        // now. One left behind in another workspace stays as it is until the
+        // new name is live and redirects it.
+        this.db
+          .prepare("UPDATE apps SET slug = COALESCE(?2, slug) WHERE project_id = ?3 AND workspace = ?1")
+          .bind(workspace, slug, projectId),
+      );
+    }
+    await this.db.batch(statements);
+
+    // Each app again, under its new name. App rows under the old name stay
+    // until the new one is live, which redirects them.
+    const actor = await this.workspaceActor(workspace);
+    for (const target of targets.values()) {
+      const found = projects.get(target.projectId);
+      if (!found) continue;
+      const project: Project =
+        found.source.kind === "hosted"
+          ? { ...found, workspace, source: { ...found.source, repo: { ...found.source.repo, namespace: workspace, name } } }
+          : { ...found, workspace };
+      try {
+        const started =
+          target.kind === "production"
+            ? await this.deployProduction(project, target.commit, "g1t")
+            : target.number != null
+              ? await this.deployPreview(project, target.number, "g1t", true)
+              : await this.rebuildStack(project, target.branch, target.commit, actor);
+        if (started && !started.ok) console.log("could not rebuild", project.slug, target.branch, started.error.message);
+      } catch (error) {
+        console.error("could not rebuild after move", project.slug, target.branch, error);
+      }
+    }
+  }
+
+  /** The projects built from a repository, as this service has them (projects hides a deleted one's). */
+  private async projectIdsFor(repoId: string): Promise<string[]> {
+    const rows = await this.db
+      .prepare("SELECT project_id FROM settings WHERE repo_id = ?")
+      .bind(repoId)
+      .all<{ project_id: string }>();
+    return rows.results.map((row) => row.project_id);
+  }
+
+  /**
+   * A repository was deleted, restorable for a while: every app of its
+   * projects (production and previews) comes down, builds under way are
+   * dropped, and nothing builds for it until it is restored. Its settings
+   * and custom domains are kept for the restore; until then a domain has
+   * nothing up to serve, as when production is turned off.
+   */
+  private async repoDeleted(repoId: string): Promise<void> {
+    const projectIds = await this.projectIdsFor(repoId);
+    if (projectIds.length === 0) return;
+    const at = now();
+    await this.db.batch([
+      this.db.prepare("UPDATE settings SET repo_deleted_at = COALESCE(repo_deleted_at, ?) WHERE repo_id = ?").bind(at, repoId),
+      this.db
+        .prepare(
+          `UPDATE deployments SET status = 'skipped', error = 'The repository was deleted.', finished_at = ?
+           WHERE repo_id = ? AND status IN ('queued', 'building')`,
+        )
+        .bind(at, repoId),
+    ]);
+    for (const projectId of projectIds) await this.takeDownWhere(projectId, null);
+  }
+
+  /**
+   * A deleted repository is back: production goes up again from its
+   * default branch, for each project that has it on. Previews come back
+   * with the next push to their pull requests.
+   */
+  private async repoRestored(repoId: string, attempts: number): Promise<void> {
+    const deleted = await this.db
+      .prepare("SELECT project_id FROM settings WHERE repo_id = ? AND repo_deleted_at IS NOT NULL")
+      .bind(repoId)
+      .all<{ project_id: string }>();
+    const ids = deleted.results.map((row) => row.project_id);
+    if (ids.length === 0) return;
+    // The projects service hears of the restore on its own queue, and hides
+    // the projects until then: wait for it a few deliveries.
+    const projects = (await this.projects.byRepo(repoId)).filter((project) => ids.includes(project.id));
+    if (projects.length < ids.length && attempts < RENAME_WAITS) throw new Error(`projects has not seen ${repoId} restored yet`);
+    await this.db.prepare("UPDATE settings SET repo_deleted_at = NULL WHERE repo_id = ?").bind(repoId).run();
+    for (const project of projects) {
+      try {
+        const started = await this.deployProduction(project, null, "g1t");
+        if (started && !started.ok) console.log("could not deploy after restore", project.slug, started.error.message);
+      } catch (error) {
+        console.error("could not deploy after restore", project.slug, error);
+      }
+    }
+  }
+
+  /**
+   * A deleted repository is gone for good: its projects' custom domains are
+   * removed (from the dispatcher and from Cloudflare), any app or redirect
+   * still up comes down, and every row kept for them goes. What they used
+   * stays on their workspace's meter.
+   */
+  private async repoPurged(repoId: string): Promise<void> {
+    const projectIds = await this.projectIdsFor(repoId);
+    const domains = this.domains;
+    for (const projectId of projectIds) {
+      await this.takeDownWhere(projectId, null);
+      // One Cloudflare does not let go of yet is left `removing`, for the sweep.
+      await domains.removeWhere("project_id", projectId);
+    }
+    // The redirects left at names its apps had before.
+    const scripts = await this.db
+      .prepare("SELECT DISTINCT script FROM deployments WHERE repo_id = ?")
+      .bind(repoId)
+      .all<{ script: string }>();
+    const hosts = scripts.results.map(({ script }) => appHost(script));
+    for (let i = 0; i < hosts.length; i += 50) {
+      const chunk = hosts.slice(i, i + 50);
+      const redirects = await this.db
+        .prepare(`SELECT script FROM redirects WHERE target IN (${chunk.map(() => "?").join(", ")})`)
+        .bind(...chunk)
+        .all<{ script: string }>();
+      for (const { script } of redirects.results) {
+        await this.cloudflare?.deleteScript(script);
+        await this.db.prepare("DELETE FROM redirects WHERE script = ?").bind(script).run();
+      }
+    }
+    await this.db.batch([
+      this.db.prepare("DELETE FROM deployments WHERE repo_id = ?").bind(repoId),
+      this.db.prepare("DELETE FROM settings WHERE repo_id = ?").bind(repoId),
+    ]);
+  }
+
+  /**
+   * The default branch is another one now: production is built from it, as
+   * from a push to it, unless production already serves (or is building)
+   * its commit, as when the default branch was only renamed.
+   */
+  private async defaultBranchChanged(repoId: string, branch: string, createdBy: string): Promise<void> {
+    for (const found of await this.projects.byRepo(repoId)) {
+      if (found.source.kind !== "hosted") continue;
+      // Projects may not have heard yet: the event names the branch.
+      const project: Project = { ...found, source: { ...found.source, defaultBranch: branch } };
+      const actor = await this.workspaceActor(project.workspace);
+      if (!actor) continue;
+      const branches = await reposClient(this.env.REPOS).branches(repoOf(project).path, actor);
+      const head = branches.ok ? branches.value.find((b) => b.name === branch)?.hash : undefined;
+      if (!head) continue;
+      const same = await this.db
+        .prepare(
+          `SELECT 1 FROM deployments WHERE project_id = ? AND kind = 'production' AND commit_sha = ?
+             AND status IN ('queued', 'building', 'ready')`,
+        )
+        .bind(project.id, head)
+        .first();
+      if (same) continue;
+      await this.deployProduction(project, head, createdBy);
+    }
+  }
+
+  /**
+   * A branch was renamed: its preview is the same app, so its rows follow.
+   * The app keeps its name until it is next built; then it goes up under
+   * the new branch's name, and the old one redirects there (see `supersede`).
+   */
+  private async branchRenamed(repoId: string, from: string, to: string): Promise<void> {
+    const projectIds = await this.projectIdsFor(repoId);
+    if (projectIds.length === 0) return;
+    const ids = projectIds.map(() => "?").join(", ");
+    await this.db.batch([
+      this.db
+        .prepare(`UPDATE apps SET branch = ? WHERE kind = 'preview' AND branch = ? AND project_id IN (${ids})`)
+        .bind(to, from, ...projectIds),
+      this.db
+        .prepare(`UPDATE deployments SET branch = ? WHERE kind = 'preview' AND branch = ? AND project_id IN (${ids})`)
+        .bind(to, from, ...projectIds),
+    ]);
+  }
+
   /** `project` under the workspace's slug now, whether or not projects has caught up. */
   private underSlug(project: Project, current: string, stale: string[]): Project {
     const source =
@@ -1257,7 +1665,7 @@ class Deployments {
   private async rebuildStack(project: Project, branch: string | null, commit: string, actor: User | null): Promise<Result<Deployment> | null> {
     if (!actor || branch == null) return null;
     const settings = await this.settingsRow(project.id);
-    if (!settings?.enabled || !settings.previews) return null;
+    if (!settings?.enabled || !settings.previews || settings.repo_deleted_at) return null;
     return this.start({
       project,
       kind: "preview",

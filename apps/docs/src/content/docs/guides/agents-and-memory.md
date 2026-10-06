@@ -14,9 +14,9 @@ projects: the **Agent fleet** and **Workspace memory**.
 | Stop a run, or tell it something | **Stop** or **Message** on the run |
 | See how a pull request was made | **Agents → Sessions**, or the pull request's Agent panel |
 | Teach every agent something about this code | **Agents → Memory** |
-| Teach every agent something true in every project | **Workspace memory**, under Across projects |
+| Teach every agent something true in every project | **Memory**, in the workspace's sidebar |
 | Review what agents, reviews and docs taught | **Agents → Memory**, or **Context → Memory** for the workspace |
-| See every agent across the workspace, and its cost | **Agent fleet**, under Across projects |
+| See every agent across the workspace, and its cost | **Agent fleet**, in the workspace's sidebar |
 
 ## Runs
 
@@ -62,7 +62,8 @@ shows which agent picked it up and its current step.
 
 ### Stop a run
 
-Members of the workspace can stop a run with **Stop**:
+Anyone with the Write [role](/guides/access-and-roles/) or higher on the repository can stop a
+run with **Stop**:
 
 - its sandbox shuts down at once, and nothing more is pushed;
 - what it already pushed stays on the pull request;
@@ -102,7 +103,9 @@ with `record_session`, are listed the same way. See
 [sessions and why-blame](/guides/why-blame/) for what a session records.
 
 A session is as visible as its project. The model and the cost of a run
-are shown only to members of the workspace.
+are shown only to members of the workspace: an
+[outside collaborator](/guides/access-and-roles/#outside-collaborators)
+sees what their agents did, not what model ran or what it cost.
 
 ## Memory
 
@@ -177,8 +180,9 @@ of what agents are given.
 
 ### Curate it
 
-Memory is only as good as it is true. On **Agents → Memory** and on
-**Workspace memory**, members can:
+Memory is only as good as it is true. On a project's **Agents → Memory**,
+anyone with the Write [role](/guides/access-and-roles/) or higher on its
+repository can, and on **Workspace memory**, members can:
 
 - **add** a memory, with its kind: fact, convention, decision or gotcha;
 - **pin** one, so every agent gets it first, whatever the budget;
@@ -192,14 +196,24 @@ memory that has not been given to an agent for a long time is a good one to
 check. Saving the same text twice keeps one memory. A project or a
 workspace keeps up to 500.
 
-The project's Memory page also lists the workspace's memory, read-only,
-since agents there get both; manage it from **Workspace memory**.
+For members, the project's Memory page also lists the workspace's memory,
+read-only, since agents there get both; manage it from **Workspace
+memory**.
 
 ### Who can see it
 
-Memory is for members of the workspace and their agents. It is never shown
-on a public project's pages, since it can hold what the workspace keeps to
-itself.
+| Memory | Who reads it | Who changes it |
+| --- | --- | --- |
+| A project's | Anyone who can read its repository: for a public one, anyone | Write or higher on the repository |
+| The workspace's | Members of the workspace | Members of the workspace |
+| Candidates waiting for review | Members of the workspace | Members of the workspace |
+
+Since a public project's memory can be read by anyone, keep what the
+workspace keeps to itself in workspace memory, or in a private project.
+
+An agent run is given only the memory the person it acts for can read: a
+run for an outside collaborator gets the project's memory, never the
+workspace's.
 
 ### Never a secret
 

@@ -10,8 +10,8 @@ import { roleIn } from "./session.server";
 export const audit = auditClient(env.EVENTS);
 
 /**
- * How many days of the workspace's log its plan keeps: 30, or a year on
- * Team. Null when billing cannot say, and then nothing is held back.
+ * How many days of the workspace's log are kept: 90, the same on every
+ * plan. Null when billing cannot say, and then nothing is held back.
  */
 export async function auditRetention(workspace: string): Promise<number | null> {
   const found = await billing.entitlements(workspace.toLowerCase()).catch(() => null);

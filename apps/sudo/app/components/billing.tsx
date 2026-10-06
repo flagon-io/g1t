@@ -1,9 +1,9 @@
 /**
  * The billing sections shared by a workspace's page and an enterprise's:
- * confirmations, terms, credit, the Stripe billing link, the ledger and the
- * audit log. Plain forms; sudo ships no JavaScript.
+ * confirmations, terms, plan, pools and caps, credit, bank transfers, the
+ * Stripe billing link, the ledger and the audit log. Plain forms; sudo ships no JavaScript.
  */
-import { CreditCard, Gift, ScrollText, UserRound } from "lucide-react";
+import { CreditCard, Gift, Landmark, ScrollText, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -12,6 +12,7 @@ import type { AdminAction, AdminOwner, Allowances, BillingLink, LedgerEntry, Ter
 import { Avatar, Badge, Button, EmptyState, Field, Input, Notice, Section, Select, Textarea, When } from "~/components/ui";
 import { actionLabel } from "~/lib/ledgers";
 import { dollarsField, usd } from "~/lib/money";
+import { givenParts } from "~/lib/pricing";
 import type { Review, SectionError } from "~/lib/review";
 
 export function Hidden({ values }: { values: Record<string, string> }) {
@@ -259,11 +260,29 @@ export function TermsForm({ terms, pathname, error }: { terms: Terms; pathname: 
   );
 }
 
-// --- Plan and pools -----------------------------------------------------------
+// --- Plan, pools and caps -------------------------------------------------------
+
+/** What staff have set beyond the terms, one line each; defaults left out. */
+export function allowanceLines(allowances: Allowances | undefined, comped: boolean): string[] {
+  const lines: string[] = [];
+  if (comped) lines.push("The g1t plan, without its price (comped)");
+  else if (allowances?.plan) lines.push("The g1t plan, without its price");
+  if (!allowances) return lines;
+  if (allowances.ossRepoMicros != null) lines.push(`Open-source pool: ${usd(allowances.ossRepoMicros)} a month for each public repository`);
+  if (allowances.trialMicros != null) lines.push(`Trial: ${usd(allowances.trialMicros)}, outside the monthly pool`);
+  if (allowances.maxConcurrentAgents != null) {
+    lines.push(`${allowances.maxConcurrentAgents} agent${allowances.maxConcurrentAgents === 1 ? "" : "s"} at once`);
+  }
+  if (allowances.runCapMicros != null) lines.push(`Run cap: ${usd(allowances.runCapMicros)} a run`);
+  if (allowances.issueCapMicros != null) lines.push(`Issue cap: ${usd(allowances.issueCapMicros)} an issue`);
+  if (allowances.hold) lines.push(`Held: ${allowances.hold}`);
+  return lines;
+}
 
 /**
- * The Team plan without charge, and the account's share of g1t's pools.
- * Comped accounts have Team anyway; this is for partners on other terms.
+ * The g1t plan without its price, the account's share of g1t's pools, and
+ * staff's overrides of what owners set: agents at once, the run and issue
+ * caps, and a hold on new compute. Comped accounts have the plan anyway.
  */
 export function AllowancesForm({
   allowances,
@@ -277,40 +296,138 @@ export function AllowancesForm({
   error: SectionError;
 }) {
   const values = error?.values;
-  const current = allowances ?? { team: false, ossRepoMicros: null, trialMicros: null };
+  const current: Allowances = allowances ?? { plan: false, ossRepoMicros: null, trialMicros: null };
+  const lines = allowanceLines(allowances, comped);
   return (
     <Section
       id="allowances"
-      title="Plan and pools"
+      title="Plan, pools and caps"
       description={
         comped
-          ? "Comped: the Team plan is on without charge whatever is set here. The pool shares still apply."
-          : "The Team plan without charge, and this account's share of g1t's open-source pool and of trials."
+          ? "Comped: the g1t plan is on without its price whatever is set here. The pools and caps still apply."
+          : "The g1t plan without its price, this account's share of g1t's pools, and overrides of what owners set."
       }
     >
+      <div className="mb-4 rounded-md border border-line bg-bg px-3.5 py-2.5 text-sm">
+        <p className="text-xs text-faint">Set now</p>
+        {lines.length === 0 ? (
+          <p className="mt-0.5 text-muted">Nothing: the defaults.</p>
+        ) : (
+          <ul className="mt-1 space-y-0.5">
+            {lines.map((line) => (
+              <li key={line} className={line.startsWith("Held:") ? "text-danger" : "text-fg-soft"}>
+                {line}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
       <form method="post" action={`${pathname}#allowances`} className="space-y-4">
         <input type="hidden" name="intent" value="allowances" />
         {error && <Notice tone="error">{error.error}</Notice>}
         <label className="flex cursor-pointer items-start gap-2.5 text-sm">
-          <input type="checkbox" name="team" defaultChecked={values ? values.team === "on" : current.team} className="mt-0.5" />
+          <input type="checkbox" name="plan" defaultChecked={values ? values.plan === "on" : current.plan} className="mt-0.5" />
           <span>
-            <span className="block font-medium">Team, without charge</span>
-            <span className="block text-xs text-muted">Its credit, storage and audit log, with no plan to pay for.</span>
+            <span className="block font-medium">The g1t plan, without its price</span>
+            <span className="block text-xs text-muted">
+              Its included usage, storage and caps, with no $20 a month. Usage past it is charged as usual.
+            </span>
           </span>
         </label>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Open-source share $" hint="Each public repository, a month. Blank: the default.">
+          <Field label="Open-source share $" hint="Each public repository, a month. Blank: the default ($2).">
             <Input name="oss" inputMode="decimal" placeholder="Default" defaultValue={values?.oss ?? dollarsField(current.ossRepoMicros)} />
           </Field>
-          <Field label="Trial credit $" hint="Each workspace, outside the monthly pool. Blank: the default.">
+          <Field label="Trial $" hint="Each workspace, outside the monthly pool. Blank: the default ($5).">
             <Input name="trial" inputMode="decimal" placeholder="Default" defaultValue={values?.trial ?? dollarsField(current.trialMicros)} />
+          </Field>
+          <Field label="Agents at once" hint="Blank: the plan's (2 in the first month or on the trial, then 10).">
+            <Input
+              name="agents"
+              inputMode="numeric"
+              pattern="\d{1,3}"
+              placeholder="Default"
+              defaultValue={values?.agents ?? (current.maxConcurrentAgents != null ? String(current.maxConcurrentAgents) : "")}
+            />
+          </Field>
+          <Field label="Run cap $" hint="One run's spend, over the owners'. Blank: theirs, or $2.">
+            <Input name="runCap" inputMode="decimal" placeholder="Owners'" defaultValue={values?.runCap ?? dollarsField(current.runCapMicros)} />
+          </Field>
+          <Field label="Issue cap $" hint="One issue's agents in all, over the owners'. Blank: theirs, or $10.">
+            <Input name="issueCap" inputMode="decimal" placeholder="Owners'" defaultValue={values?.issueCap ?? dollarsField(current.issueCapMicros)} />
+          </Field>
+          <Field label="Hold" hint="Pauses new compute and tells the owners why. Blank: no hold.">
+            <Input name="hold" maxLength={200} placeholder="No hold" defaultValue={values?.hold ?? current.hold ?? ""} />
           </Field>
         </div>
         <Field label="Note" hint="Required. Why, for whoever looks next.">
-          <Textarea name="note" rows={2} required maxLength={500} defaultValue={values?.note ?? ""} placeholder="e.g. Open-source foundation, larger share through 2027" />
+          <Textarea
+            name="note"
+            rows={2}
+            required
+            maxLength={500}
+            defaultValue={values?.note ?? ""}
+            placeholder="e.g. Open-source foundation, larger share through 2027"
+          />
         </Field>
         <div className="flex justify-end">
-          <Button type="submit">Save plan and pools</Button>
+          <Button type="submit">Save plan, pools and caps</Button>
+        </div>
+      </form>
+    </Section>
+  );
+}
+
+// --- Bank transfer ---------------------------------------------------------------
+
+/**
+ * Money that reached g1t outside Stripe's page, such as a bank transfer
+ * for a $1,000+ prepayment, entered as a payment.
+ */
+export function PaymentForm({ workspace, pathname, error }: { workspace: string; pathname: string; error: SectionError }) {
+  const values = error?.values;
+  return (
+    <Section
+      id="payment"
+      title="Record a bank transfer"
+      description="Money that reached g1t's bank without Stripe's page, such as a $1,000+ prepayment. It goes on the statement as a payment and counts toward the limit at once."
+    >
+      <form method="post" action={`${pathname}#payment`} className="space-y-4">
+        <input type="hidden" name="intent" value="payment" />
+        {error && <Notice tone="error">{error.error}</Notice>}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Amount $" hint="As it arrived, up to $100,000.">
+            <Input name="amount" inputMode="decimal" required placeholder="1,500.00" defaultValue={values?.amount ?? ""} />
+          </Field>
+          <Field label="Reference" hint="As the bank shows it. Each is recorded once.">
+            <Input name="reference" required maxLength={100} className="font-mono" defaultValue={values?.reference ?? ""} />
+          </Field>
+        </div>
+        <Field label="Note" hint="Required. Shown on the statement after “Paid by bank transfer”.">
+          <Textarea
+            name="note"
+            rows={2}
+            required
+            maxLength={500}
+            placeholder="e.g. Prepayment for October, invoice INV-0042"
+            defaultValue={values?.note ?? ""}
+          />
+        </Field>
+        <Field
+          label="Confirm"
+          hint={
+            <>
+              Type the workspace's slug (<span className="font-mono text-muted">{workspace}</span>) to record it.
+            </>
+          }
+        >
+          <Input name="confirmation" required placeholder={workspace} className="font-mono" />
+        </Field>
+        <div className="flex justify-end">
+          <Button type="submit" variant="lavender">
+            <Landmark size={14} />
+            Record the payment
+          </Button>
         </div>
       </form>
     </Section>
@@ -471,6 +588,11 @@ export function LedgerSection({
                         </Link>
                       )}
                       <span className="break-words">{entry.description}</span>
+                      {givenParts(entry).map((part) => (
+                        <Badge key={part.label} tone="lavender">
+                          Given · {part.label} {usd(part.micros)}
+                        </Badge>
+                      ))}
                     </div>
                     <p className="mt-0.5 font-mono text-xs text-faint">
                       {[

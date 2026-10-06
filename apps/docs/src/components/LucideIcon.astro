@@ -1,0 +1,15 @@
+---
+// One Lucide icon by its name on lucide.dev (kebab-case, like `git-branch`).
+// Every interface icon in the docs comes from Lucide; see CONTRIBUTING.md.
+import { icons } from '@lucide/astro';
+import type { LucideProps } from '@lucide/astro';
+
+type Props = LucideProps & { name: string };
+
+const { name, ...rest } = Astro.props;
+const key = name.replace(/(^|-)([a-z0-9])/g, (_, __, c: string) => c.toUpperCase()) as keyof typeof icons;
+const Icon = icons[key];
+if (!Icon) throw new Error(`No Lucide icon named "${name}". Pick one from https://lucide.dev/icons.`);
+---
+
+<Icon {...rest} />

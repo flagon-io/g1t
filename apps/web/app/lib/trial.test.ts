@@ -17,3 +17,10 @@ test("a spent trial and a given-out month say so", () => {
     "This month's free trials are all given out; new ones start on November 1.",
   );
 });
+
+test("a workspace without a card check is told it needs one", () => {
+  assert.equal(
+    trialClosed({ ...base, open: false, reason: "verify" as never }, "acme"),
+    "acme needs a card check before its trial starts. The card is never charged.",
+  );
+});

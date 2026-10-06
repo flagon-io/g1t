@@ -22,6 +22,11 @@ if [ ! -f "$KEYS" ]; then
     echo "WEBHOOKS_KEY=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
   } > "$KEYS"
 fi
+# Identity's key seals the GitHub tokens of linked accounts; added to keys
+# made before it existed.
+if ! grep -q '^IDENTITY_KEY=' "$KEYS"; then
+  echo "IDENTITY_KEY=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')" >> "$KEYS"
+fi
 set -a
 # shellcheck disable=SC1090
 . "$KEYS"

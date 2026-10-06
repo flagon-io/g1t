@@ -5,6 +5,7 @@ import type { Blame, BlobView as Blob, Commit, TreeView as Tree } from "@g1t/con
 
 import { BlameView } from "./blame-view";
 
+import { AgentSetup } from "./agent-setup";
 import { CloneBox } from "./clone-box";
 import { Markdown } from "./markdown";
 import { Avatar, CopyLine, TimeAgo } from "./ui";
@@ -91,6 +92,12 @@ export function TreeView({ tree }: { tree: Tree }) {
           <CopyLine prompt text={`git remote add g1t ${cloneUrl}`} />
           <CopyLine prompt text={`git push -u g1t ${ref}`} />
         </div>
+        <h3 className="mt-7 text-sm font-medium">Or have your coding agent start it</h3>
+        <p className="mt-1 text-sm text-muted">
+          Connect it to g1t, then ask it to build the first version of{" "}
+          <span className="font-mono text-fg">{repo.name}</span> and push it here.
+        </p>
+        <AgentSetup className="mt-3" />
       </div>
     );
   }

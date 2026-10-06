@@ -5,6 +5,8 @@ import { useEffect } from "react";
 import { Form, Link, data, useNavigation, useRevalidator } from "react-router";
 
 import type { Route } from "./+types/plan";
+import { refusal, requireRepo } from "../../lib/access.server";
+import { whyNot } from "../../lib/access";
 import { page } from "../../lib/meta";
 import { Markdown } from "../../components/markdown";
 import { Activity, Exchanges } from "../../components/activity";
@@ -17,7 +19,6 @@ import {
   assertSameOrigin,
   getViewer,
   requireUser,
-  roleIn,
   unwrap,
 } from "../../lib/session.server";
 
@@ -29,8 +30,8 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  // Members only; to anyone else the page does not exist.
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
+  // Anyone who can read the repository: a public one's to anyone, a private one's to people with a role.
+  const { access } = await requireRepo(context, params, "read");
   const path = { namespace: params.owner, name: params.repo };
   const [plan, ledger] = await Promise.all([
     work.getPlan(path, viewer, params.id),
@@ -70,7 +71,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     const known: Record<string, string> = { ...named, usr_g1t_agent: "g1t-agent", g1t_policy: "g1t" };
     activity = activity.map((event) => ({ ...event, actor: event.actor ? (known[event.actor] ?? event.actor) : null }));
   }
-  return { plan: found, costMicros, activity };
+  return { plan: found, costMicros, activity, can: access.can };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -78,6 +79,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const user = requireUser(context, request);
   const form = await request.formData();
   const path = { namespace: params.owner, name: params.repo };
+  // Opening the issues and putting agents on them: Write and up.
+  const refused = await refusal(context, params, "run");
+  if (refused) return { error: refused };
   const applied = await env.RUNNER.applyPlan(user, path, params.id, {
     assign: form.get("action") === "assign",
     keep: form.getAll("keep").map(Number),
@@ -266,11 +270,11 @@ export default function PlanPage({ loaderData, actionData, params }: Route.Compo
 
           {plan.status === "ready" && (
             <div className="mt-6 flex flex-wrap items-center gap-3">
-              <Button variant="accent" type="submit" name="action" value="assign" disabled={applying}>
+              <Button variant="accent" type="submit" name="action" value="assign" disabled={applying || !loaderData.can.run} title={whyNot(loaderData.can, "run")}>
                 <Sparkles size={15} />
                 {applying ? "Opening issues…" : "Open these and assign g1t agents"}
               </Button>
-              <Button variant="quiet" type="submit" name="action" value="open" disabled={applying}>
+              <Button variant="quiet" type="submit" name="action" value="open" disabled={applying || !loaderData.can.run} title={whyNot(loaderData.can, "run")}>
                 Only open the issues
               </Button>
               <span className="text-xs text-muted">

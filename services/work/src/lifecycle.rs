@@ -791,7 +791,7 @@ impl Work {
             },
         )
         .await?;
-        let (Outcome::Ok(repo), Some(source)) = (repo, pull.fork.clone()) else {
+        let (Outcome::Ok(repo), Some(source)) = (crate::retired::unless_archived(repo), pull.fork.clone()) else {
             return Ok(Advance::None);
         };
         let issue = match pull.issue {
@@ -891,12 +891,13 @@ impl Work {
         if !self.claim(&pull.id, "merge", MERGE_MINUTES, false).await? {
             return Ok(());
         }
-        // g1t acts for the workspace whose members turned this on.
+        // g1t acts for the workspace whose members turned this on, with the
+        // default base permission (Write), which merging needs.
         let actor = User {
             id: POLICY_ACTOR_ID.to_owned(),
             username: POLICY_ACTOR_NAME.to_owned(),
             verified: true,
-            workspaces: vec![Membership::member(repo.namespace.clone())],
+            workspaces: vec![Membership::member(repo.namespace.to_lowercase())],
             ..User::default()
         };
         let merged = self
@@ -1047,7 +1048,7 @@ impl Work {
             },
         )
         .await?;
-        let Outcome::Ok(repo) = repo else {
+        let Outcome::Ok(repo) = crate::retired::unless_archived(repo) else {
             return Ok(());
         };
         let merged = self
@@ -1095,7 +1096,7 @@ impl Work {
             },
         )
         .await?;
-        let Outcome::Ok(repo) = repo else {
+        let Outcome::Ok(repo) = crate::retired::unless_archived(repo) else {
             return Ok(None);
         };
         let path = RepoPath {

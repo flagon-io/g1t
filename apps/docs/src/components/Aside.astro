@@ -1,0 +1,31 @@
+---
+// Starlight's <Aside>, with a Lucide icon for each type (or `icon`, a name
+// from lucide.dev). Its look comes from Starlight's global aside styles.
+import LucideIcon from './LucideIcon.astro';
+
+type AsideType = 'note' | 'tip' | 'caution' | 'danger';
+
+interface Props {
+	type?: AsideType;
+	title?: string;
+	icon?: string;
+}
+
+const ICONS: Record<AsideType, string> = {
+	note: 'info',
+	tip: 'lightbulb',
+	caution: 'triangle-alert',
+	danger: 'octagon-alert',
+};
+
+const { type = 'note', icon } = Astro.props;
+if (!(type in ICONS)) throw new Error(`Aside type must be one of ${Object.keys(ICONS).join(', ')}, not "${type}".`);
+const title = Astro.props.title ?? Astro.locals.t(`aside.${type}`);
+---
+
+<aside aria-label={title} class={`starlight-aside starlight-aside--${type}`}>
+	<p class="starlight-aside__title" aria-hidden="true">
+		<LucideIcon name={icon ?? ICONS[type]} class="starlight-aside__icon" />{title}
+	</p>
+	<div class="starlight-aside__content"><slot /></div>
+</aside>

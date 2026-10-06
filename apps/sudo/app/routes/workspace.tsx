@@ -2,7 +2,7 @@ import { ArrowLeft, Building2, LogOut } from "lucide-react";
 import type { ReactNode } from "react";
 import { data, Link, useLocation } from "react-router";
 
-import { type AccountSummary, type AdminAction, type Limit, type Terms, httpStatus } from "@g1t/contracts";
+import { type AccountSummary, type AdminAction, type Entitlements, type Limit, type Overage, type Terms, httpStatus } from "@g1t/contracts";
 
 import type { Route } from "./+types/workspace";
 import {
@@ -13,18 +13,37 @@ import {
   Figure,
   LedgerSection,
   Owners,
+  PaymentForm,
   ReviewPanel,
   TermsForm,
 } from "~/components/billing";
 import { MonthsChart } from "~/components/charts";
 import { SalesSection, StageBadge, WorkspaceInvoicesSection } from "~/components/sales";
-import { Avatar, Badge, Button, EmptyState, ExposureBar, Field, Notice, Section, Select, StateBadge, TermsBadge, TrustBadge, When, trustAbout } from "~/components/ui";
+import {
+  Avatar,
+  Badge,
+  Button,
+  EmptyState,
+  ExposureBar,
+  Field,
+  Input,
+  Notice,
+  Section,
+  Select,
+  StateBadge,
+  TermsBadge,
+  Textarea,
+  TrustBadge,
+  When,
+  trustAbout,
+} from "~/components/ui";
 import { type Subject, billingAction } from "~/lib/billing-actions.server";
 import { parseSlug, text } from "~/lib/forms";
 import { usd } from "~/lib/money";
 import { type ActionData, DONE, type SectionError, doneKey } from "~/lib/review";
 import { SALES_INTENTS, salesAction } from "~/lib/sales-actions.server";
-import { admin, identity } from "~/lib/services.server";
+import { goodwillWarning, spikeLabel } from "~/lib/pricing";
+import { admin, entitlements as entitlementsOf, identity, priceBook } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
 import { requireStaff } from "~/lib/staff";
 import type { Enterprise } from "~/lib/workspaces";
@@ -69,7 +88,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const figures = billedTo
     ? { charged: share?.chargedMicros ?? 0, cost: share?.costMicros ?? 0, paid: share?.paidMicros ?? 0 }
     : { charged: summary.chargedMicros, cost: summary.costMicros, paid: summary.paidMicros };
-  const [enterprises, sales, invoices] = await Promise.all([
+  const [enterprises, sales, invoices, plan, overages, book] = await Promise.all([
     billedTo
       ? Promise.resolve([])
       : admin
@@ -81,6 +100,9 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
           ),
     settle(admin.sales(slug)),
     settle(admin.workspaceInvoices(slug)),
+    settle(entitlementsOf(slug)),
+    settle(admin.overages()),
+    settle(priceBook()),
   ]);
   const done = doneKey(request.url);
   return {
@@ -99,6 +121,10 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     salesError: sales.ok ? null : sales.error,
     invoices: invoices.ok ? invoices.value : [],
     invoicesError: invoices.ok ? null : invoices.error,
+    entitlements: plan.ok ? plan.value : null,
+    entitlementsError: plan.ok ? null : plan.error,
+    overage: overages.ok ? (overages.value.find((row) => row.workspace === slug) ?? null) : null,
+    forgiveCap: (book.ok && book.value.free?.overageForgiveCostMicros) || 50_000_000,
     ledger: billedTo ? detail.ledger.filter((entry) => !entry.workspace || entry.workspace === slug) : detail.ledger,
     audit: billedTo ? detail.audit.filter((entry) => mentions(entry, slug)) : detail.audit,
     done: done && !SALES_DONE.has(done) ? DONE[done] : null,
@@ -119,6 +145,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 const SECTIONS = [
   { id: "members", label: "Members" },
   { id: "sales", label: "Sales" },
+  { id: "plan", label: "Plan" },
   { id: "billing", label: "Billing" },
   { id: "invoices", label: "Invoices" },
   { id: "ledger", label: "Ledger" },
@@ -126,8 +153,31 @@ const SECTIONS = [
 ];
 
 export default function Workspace({ loaderData, actionData }: Route.ComponentProps) {
-  const { me, slug, name, person, billedTo, terms, allowances, limit, figures, months, enterprises, sales, salesError, invoices, invoicesError, ledger, audit, done, salesDone } =
-    loaderData;
+  const {
+    me,
+    slug,
+    name,
+    person,
+    billedTo,
+    terms,
+    allowances,
+    limit,
+    figures,
+    months,
+    enterprises,
+    sales,
+    salesError,
+    invoices,
+    invoicesError,
+    entitlements,
+    entitlementsError,
+    overage,
+    forgiveCap,
+    ledger,
+    audit,
+    done,
+    salesDone,
+  } = loaderData;
   const { pathname } = useLocation();
   const result = actionData as ActionData | undefined;
   const review = result && "review" in result ? result.review : null;
@@ -216,7 +266,9 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
                     <td className="px-4 py-2.5 sm:pl-5">
                       <span className="inline-flex items-center gap-2 font-mono">
                         <Avatar name={member.username} size={18} square={false} />
-                        {member.username}
+                        <Link to={`/users/${member.username}`} className="hover:underline">
+                          {member.username}
+                        </Link>
                       </span>
                     </td>
                     <td className="px-4 py-2.5 break-all text-muted">{member.email ?? <span className="text-faint">—</span>}</td>
@@ -243,6 +295,11 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
           noteError={error("note")}
           done={salesDone}
         />
+      </div>
+
+      {/* Plan */}
+      <div className="mt-6">
+        <PlanSection entitlements={entitlements} unavailable={entitlementsError} />
       </div>
 
       {/* Billing */}
@@ -292,6 +349,10 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
 
         <div className="space-y-6">
           <BillingLinkSection link={link} pathname={pathname} error={error("billing-link")} />
+          {!billedTo && terms.kind !== "comped" && (
+            <GoodwillForm overage={overage} cap={forgiveCap} pathname={pathname} error={error("goodwill")} />
+          )}
+          <PaymentForm workspace={slug} pathname={pathname} error={error("payment")} />
           <CreditForm workspaces={[slug]} pathname={pathname} error={error("credit")} />
           <div id="audit" className="scroll-mt-20">
             <AuditSection
@@ -434,6 +495,143 @@ function BilledToSection({
           </Button>
         </form>
       )}
+    </Section>
+  );
+}
+
+const PLAN_LABEL: Record<string, string> = { free: "Free", paid: "The g1t plan", internal: "Internal (comped)", enterprise: "Enterprise" };
+
+function gigabytes(bytes: number): string {
+  return `${Math.round((bytes / 1e9) * 100) / 100} GB`;
+}
+
+/** What billing tells every service about the workspace now: plan, caps, pause, trial and what the plan gives it. */
+function PlanSection({ entitlements: e, unavailable }: { entitlements: Entitlements | null; unavailable: string | null }) {
+  if (!e) {
+    return (
+      <Section id="plan" title="Plan and entitlements">
+        <Notice tone="warn">Billing did not answer for entitlements{unavailable ? `: ${unavailable}` : "."}</Notice>
+      </Section>
+    );
+  }
+  const spike = e.spike ? spikeLabel(e.spike.status) : null;
+  const facts: [string, string][] = [
+    ["Compute", e.compute ? "Yes" : e.plan === "free" && e.trialVerified && e.trialMicrosLeft > 0 ? "On the trial" : "No"],
+    ["Card check", e.trialVerified ? "Done" : "Not yet"],
+    ["Trial left", usd(e.trialMicrosLeft)],
+    ["First month", e.firstMonth ? "Yes" : "No"],
+    ["Agents at once", String(e.maxConcurrentAgents)],
+    ["Longest run", e.maxRunMinutes ? `${e.maxRunMinutes} min` : "The guardrails'"],
+    ["Run cap", usd(e.runCapMicros)],
+    ["Issue cap", usd(e.issueCapMicros)],
+    ["Ceiling", e.ceilingMicros >= 1e15 ? "None" : usd(e.ceilingMicros)],
+    ["Not yet paid", usd(e.exposureMicros)],
+    ["Held by reservations", usd(e.heldMicros ?? 0)],
+    ["Prepaid", usd(e.prepaidMicros ?? 0)],
+    ["Included usage", e.includedMicros ? `${usd(e.includedUsedMicros ?? 0)} of ${usd(e.includedMicros)}` : "—"],
+    ["Private storage", `${gigabytes(e.privateStorageBytes)} of ${gigabytes(e.freePrivateStorageBytes)}`],
+    ["Open-source pool paid", usd(e.ossPaidMicros)],
+    ["Build minutes", `${Math.ceil(e.buildSecondsUsed / 60)} of ${Math.floor(e.buildSecondsIncluded / 60)}`],
+    [
+      "Git operations",
+      e.gitOperations != null
+        ? `${e.gitOperations.toLocaleString("en-US")}${e.gitOperationsIncluded ? ` of ${e.gitOperationsIncluded.toLocaleString("en-US")}` : ""}`
+        : "—",
+    ],
+    ["Audit log", `${e.auditRetentionDays} days`],
+  ];
+  return (
+    <Section
+      id="plan"
+      title="Plan and entitlements"
+      description="What billing tells every service that starts compute for this workspace, now."
+      actions={
+        <span className="flex flex-wrap gap-1.5">
+          <Badge tone={e.plan === "free" ? "plain" : e.plan === "internal" ? "mint" : "lavender"}>{PLAN_LABEL[e.plan] ?? e.plan}</Badge>
+          {spike && <Badge tone={spike.tone === "plain" ? "plain" : spike.tone}>{spike.label}</Badge>}
+        </span>
+      }
+    >
+      {e.paused && (
+        <div className="mb-4">
+          <Notice tone="error">Compute paused: {e.paused}</Notice>
+        </div>
+      )}
+      {(e.alerts ?? []).length > 0 && (
+        <ul className="mb-4 space-y-1 text-sm">
+          {(e.alerts ?? []).map((alert) => (
+            <li key={`${alert.meter}-${alert.level}`} className={alert.level >= 90 ? "text-warn" : "text-muted"}>
+              {alert.level}% · {alert.message || `${alert.meter}: ${usd(alert.usedMicros)} of ${usd(alert.limitMicros)}`}
+            </li>
+          ))}
+        </ul>
+      )}
+      <dl className="grid gap-x-6 gap-y-1 text-xs sm:grid-cols-2 lg:grid-cols-3">
+        {facts.map(([label, value]) => (
+          <div key={label} className="flex justify-between gap-3 border-b border-line/60 py-1">
+            <dt className="text-faint">{label}</dt>
+            <dd className="tabular text-right text-fg-soft">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-3 text-xs text-faint">Agents at once, the run and issue caps, and holds are set under Plan, pools and caps below.</p>
+    </Section>
+  );
+}
+
+/** A goodwill credit from the workspace's page; Overages shows the same math for the whole queue. */
+function GoodwillForm({ overage, cap, pathname, error }: { overage: Overage | null; cap: number; pathname: string; error: SectionError }) {
+  const values = error?.values;
+  const quote = overage ? goodwillWarning(null, overage.goodwill, overage.lastGoodwillAt, cap) : null;
+  return (
+    <Section id="goodwill" title="Goodwill credit" description="For usage past what the owners meant. One click, once in 12 months; more needs a reason.">
+      {overage ? (
+        <dl className="mb-4 space-y-1 text-sm">
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted">Over the typical month</dt>
+            <dd className="tabular">{usd(overage.goodwill.overageMicros)}</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted">g1t's margin, returned</dt>
+            <dd className="tabular text-accent">{usd(overage.goodwill.marginMicros)}</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted">Real cost absorbed</dt>
+            <dd className={`tabular ${quote?.overCap ? "text-danger" : "text-warn"}`}>{usd(overage.goodwill.absorbedMicros)}</dd>
+          </div>
+          <div className="flex justify-between gap-3 border-t border-line pt-1 font-medium">
+            <dt>One-click credit</dt>
+            <dd className="tabular">{usd(overage.goodwill.creditMicros)}</dd>
+          </div>
+          {!overage.goodwillAvailable && (
+            <p className="pt-1 text-xs text-danger">
+              A goodwill credit was given <When at={overage.lastGoodwillAt} />: another needs a reason.
+            </p>
+          )}
+        </dl>
+      ) : (
+        <p className="mb-4 text-sm text-muted">Not in the Overages queue this month: give an amount and a reason.</p>
+      )}
+      <form method="post" action={`${pathname}#goodwill`} className="space-y-3">
+        <input type="hidden" name="intent" value="goodwill" />
+        {error && <Notice tone="error">{error.error}</Notice>}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Amount $" hint={overage ? "Blank: the one-click credit." : "Required here."}>
+            <Input name="amount" inputMode="decimal" defaultValue={values?.amount ?? ""} />
+          </Field>
+          <Field label="Day of the usage" hint="Blank: billing chooses.">
+            <Input type="date" name="day" defaultValue={values?.day ?? ""} />
+          </Field>
+        </div>
+        <Field label="Reason" hint={`Needed past the one-click credit. Past ${usd(cap)} of real cost, use Overages to see it in red first.`}>
+          <Textarea name="reason" rows={2} maxLength={500} defaultValue={values?.reason ?? ""} />
+        </Field>
+        <div className="flex justify-end">
+          <Button type="submit" variant="lavender">
+            Give goodwill credit
+          </Button>
+        </div>
+      </form>
     </Section>
   );
 }

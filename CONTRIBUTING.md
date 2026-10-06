@@ -1,7 +1,7 @@
 # Contributing to g1t
 
 g1t is built the way it asks others to build: issues and pull requests on
-[g1t.sh/syntaqx/g1t](https://g1t.sh/syntaqx/g1t), checks that prove a change
+[g1t.sh/flagon-io/g1t](https://g1t.sh/flagon-io/g1t), checks that prove a change
 done, and a merge queue that keeps `main` passing.
 
 ## A change ships with its docs
@@ -28,6 +28,22 @@ Check the docs build before you push:
 ```sh
 cd apps/docs && npm run build
 ```
+
+## Icons
+
+- **Interface icons come from [Lucide](https://lucide.dev/icons).** In the
+  apps, import them from `lucide-react`. In the docs, use `@lucide/astro`:
+  import an icon component, or give `apps/docs/src/components/Card.astro`
+  and `Aside.astro` a Lucide name such as `icon="git-branch"`. Starlight's
+  own `<Card>`, `<LinkCard>` and `<Aside>` draw Starlight's icon set, so the
+  docs import the wrappers in `apps/docs/src/components/` instead.
+- **Brand marks come from [Simple Icons](https://simpleicons.org)**
+  (`simple-icons`), and follow each brand's own usage guidelines. Add the
+  dependency with the first one you show.
+- **The g1t logo and illustrations are our own artwork**, in
+  `apps/web/app/components/logo.tsx` and `art.tsx`.
+- Never hand-copy an icon's SVG paths into a file. If Lucide lacks the
+  icon you need, pick the closest one that it has.
 
 ## Before you push
 

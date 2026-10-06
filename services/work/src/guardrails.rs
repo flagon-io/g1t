@@ -6,6 +6,7 @@
 //!
 //! See `g1t_contracts::guardrails` for the rules and how levels merge.
 
+use g1t_contracts::access::{self, Capability};
 use g1t_contracts::agents::RunStatus;
 use g1t_contracts::guardrails::*;
 use g1t_contracts::repos::{Repo, RepoPath};
@@ -26,6 +27,13 @@ use crate::runs::member_of;
 pub(crate) const RENAMED: &[&str] = &[
     "UPDATE guardrails SET scope_key = ?1 WHERE scope = 'workspace' AND scope_key = ?2",
     "UPDATE guardrails SET workspace = ?1 WHERE workspace = ?2",
+];
+
+/// A repository transferred: its own guardrails follow it to the new
+/// workspace (see `g1t_kit::transfer`; `?3` the workspace now, `?4` the one
+/// before, `?5` the repository's id).
+pub(crate) const TRANSFERRED: &[&str] = &[
+    "UPDATE guardrails SET workspace = ?3 WHERE scope <> 'workspace' AND scope_key = ?5 AND workspace = ?4",
 ];
 
 #[derive(Deserialize)]
@@ -49,11 +57,15 @@ fn is_person(actor: &User) -> bool {
     actor.verified && actor.kind == PrincipalKind::User
 }
 
+/// What a run stopped for looking like mining says, everywhere it shows.
+pub(crate) const ABUSE_MESSAGE: &str = "Stopped: unusual CPU use; contact support if this was a real job.";
+
 /// What a halted run is told, and what its pull request says.
 fn halt_message(halt: Halt) -> &'static str {
     match halt {
         Halt::Budget => "Stopped: it reached its cost cap.",
         Halt::Time => "Stopped: it reached its time cap.",
+        Halt::Abuse => ABUSE_MESSAGE,
     }
 }
 
@@ -89,7 +101,8 @@ impl Work {
 
     pub(crate) async fn get_guardrails(&self, a: GetGuardrailsArgs) -> Result<Outcome<GuardrailsView>> {
         let workspace = a.workspace.to_lowercase();
-        if !a.viewer.as_ref().is_some_and(|viewer| viewer.is_member(&workspace)) {
+        let member = a.viewer.as_ref().is_some_and(|viewer| viewer.is_member(&workspace));
+        if !member && a.repo.is_none() {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
                 "Guardrails are for members of the workspace.",
@@ -102,6 +115,18 @@ impl Work {
             },
             None => None,
         };
+        // Members see them; so does anyone else who may change the
+        // project's, such as an outside collaborator with Maintain.
+        if !member
+            && !repo
+                .as_ref()
+                .is_some_and(|repo| access::can(a.viewer.as_ref(), repo, Capability::ManageProtection))
+        {
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                "Guardrails are for members of the workspace.",
+            ));
+        }
         Ok(Outcome::Ok(self.guardrails_view(&workspace, repo.as_ref()).await?))
     }
 
@@ -115,22 +140,22 @@ impl Work {
             },
             None => None,
         };
-        // A project's guardrails are its members' to set, as its other
-        // settings are; the defaults every project inherits are the owners'.
+        // A project's guardrails go with its branch protection (Maintain);
+        // the defaults every project inherits are the owners'.
         let allowed = is_person(&a.actor)
-            && match repo {
-                Some(_) => a.actor.is_member(&workspace),
+            && match &repo {
+                Some(repo) => access::can(Some(&a.actor), repo, Capability::ManageProtection),
                 None => a.actor.role_in(&workspace) == Some(Role::Owner),
             };
         if !allowed {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                if repo.is_some() {
-                    "Only members of the workspace can change a project's guardrails."
-                } else {
-                    "Only owners of the workspace can change its guardrails."
-                },
-            ));
+            let message = match &repo {
+                Some(repo) => access::needs(
+                    Capability::ManageProtection,
+                    &format!("{}/{}", repo.namespace, repo.name),
+                ),
+                None => "Only owners of the workspace can change its guardrails.".to_owned(),
+            };
+            return Ok(Outcome::fail(FailureCode::Forbidden, message));
         }
         let mut settings = match validate(a.settings) {
             Ok(settings) => settings,
@@ -221,24 +246,25 @@ impl Work {
         }
         self.add_step(run_id, &now, &said)?.run().await?;
         if let (Some(pull_id), Some(number)) = (pull_id, number) {
-            let cap = match halt {
-                Halt::Budget => "cost cap",
-                Halt::Time => "time cap",
+            let (reason, noted) = match halt {
+                Halt::Abuse => (
+                    format!("g1t stopped the agent's {kind} run for unusual CPU use and is holding it for review. Contact hey@flagon.io if this was a real job."),
+                    format!("stopped its {kind} run for unusual CPU use"),
+                ),
+                Halt::Budget | Halt::Time => {
+                    let cap = if halt == Halt::Budget { "cost cap" } else { "time cap" };
+                    (
+                        format!("g1t stopped the agent's {kind} run when it reached its {cap}. Raise the cap under Settings, Guardrails, then ask for a review, a revision or a catch-up to start again."),
+                        format!("stopped its {kind} run at its {cap}"),
+                    )
+                }
             };
             self.stall(StallArgs {
                 pull_id: pull_id.to_owned(),
-                reason: format!(
-                    "g1t stopped the agent's {kind} run when it reached its {cap}. Raise the cap under Settings, Guardrails, then ask for a review, a revision or a catch-up to start again."
-                ),
+                reason,
             })
             .await?;
-            self.note(
-                repo_id,
-                number,
-                (AGENT_ID, AGENT_NAME),
-                &format!("stopped its {kind} run at its {cap}"),
-            )
-            .await?;
+            self.note(repo_id, number, (AGENT_ID, AGENT_NAME), &noted).await?;
         }
         Ok(Outcome::Ok(RunStatus::Stopped))
     }

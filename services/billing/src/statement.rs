@@ -30,6 +30,7 @@ pub(crate) const KIND_SQL: &str = "CASE
     WHEN task = 'security' THEN 'Security scans'
     WHEN task = 'context' THEN 'Search embeddings'
     WHEN task = 'storage' THEN 'Private storage'
+    WHEN task = 'git' THEN 'Git operations'
     WHEN billed_to = 'workspace' THEN 'Runs on your own model provider'
     ELSE 'Agent runs' END";
 
@@ -41,25 +42,27 @@ pub(crate) fn kind_order(kind: &str) -> u8 {
         "Sandbox time" => 2,
         "Deployments" => 3,
         "Private storage" => 4,
-        "Search embeddings" => 5,
-        "Security scans" => 6,
-        "Payments" => 7,
-        "Credits from g1t" => 8,
-        "Refunds" => 9,
-        _ => 10,
+        "Git operations" => 5,
+        "Search embeddings" => 6,
+        "Security scans" => 7,
+        "Payments" => 8,
+        "Credits from g1t" => 9,
+        "Refunds" => 10,
+        _ => 11,
     }
 }
 
 /// What paid for usage before it was charged, as the statement names it,
 /// with the ledger column that holds it.
-pub(crate) const COVERED: [(&str, &str, &str); 3] = [
-    ("team_credit", "credit_micros", "Paid by your Team plan's credit"),
+pub(crate) const COVERED: [(&str, &str, &str); 4] = [
+    ("included", "credit_micros", "Paid by your plan's included usage"),
     ("trial", "trial_micros", "Paid by your trial credit"),
     ("oss_pool", "oss_micros", "Paid by g1t's open-source pool"),
+    ("given", "given_micros", "Covered by g1t"),
 ];
 
 /// The statement's lines for what paid: each source with anything to show.
-pub(crate) fn covered_lines(sums: [i64; 3]) -> Vec<Covered> {
+pub(crate) fn covered_lines(sums: [i64; 4]) -> Vec<Covered> {
     COVERED
         .iter()
         .zip(sums)
@@ -89,6 +92,7 @@ struct Row {
     credit: Option<i64>,
     trial: Option<i64>,
     oss: Option<i64>,
+    given: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -112,7 +116,8 @@ impl Billing {
             .prepare(format!(
                 "SELECT {group_sql} AS group_key, {KIND_SQL} AS kind, COUNT(*) AS count,
                         SUM(amount_micros) AS amount, SUM(cost_micros) AS cost,
-                        SUM(credit_micros) AS credit, SUM(trial_micros) AS trial, SUM(oss_micros) AS oss
+                        SUM(credit_micros) AS credit, SUM(trial_micros) AS trial, SUM(oss_micros) AS oss,
+                        SUM(given_micros) AS given
                  FROM ledger WHERE workspace = ?1 AND created_at >= ?2 AND created_at < ?3
                  GROUP BY 1, 2"
             ))
@@ -122,11 +127,11 @@ impl Billing {
             .results::<Row>()?;
 
         let mut groups: Vec<StatementGroup> = vec![];
-        let mut covered = [0i64; 3];
+        let mut covered = [0i64; 4];
         for row in rows {
             let key = row.group_key.unwrap_or_default();
             let amount = row.amount.unwrap_or(0);
-            let paid_for = [row.credit.unwrap_or(0), row.trial.unwrap_or(0), row.oss.unwrap_or(0)];
+            let paid_for = [row.credit.unwrap_or(0), row.trial.unwrap_or(0), row.oss.unwrap_or(0), row.given.unwrap_or(0)];
             for (total, micros) in covered.iter_mut().zip(paid_for) {
                 *total += micros;
             }
@@ -259,10 +264,13 @@ mod tests {
 
     #[test]
     fn the_statement_says_what_paid_before_the_workspace_did() {
-        let lines = covered_lines([0, 250_000, 120_000]);
+        let lines = covered_lines([0, 250_000, 120_000, 0]);
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].label, "Paid by your trial credit");
         assert_eq!(lines[1], Covered { source: "oss_pool".into(), label: "Paid by g1t's open-source pool".into(), micros: 120_000 });
-        assert!(covered_lines([0, 0, 0]).is_empty());
+        assert!(covered_lines([0, 0, 0, 0]).is_empty());
+        let lines = covered_lines([4_000_000, 0, 0, 30_000]);
+        assert_eq!(lines[0].label, "Paid by your plan's included usage");
+        assert_eq!(lines[1].label, "Covered by g1t");
     }
 }

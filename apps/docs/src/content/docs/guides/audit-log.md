@@ -11,6 +11,27 @@ Every workspace keeps an audit log. It records:
   MCP server and git: opening and closing issues, comments, merges,
   settings, pushes. Reads by people are not recorded.
 
+- **A repository's lifecycle**, wherever the change was made, g1t.sh
+  included. A transfer is recorded in both workspaces' logs, and a
+  workspace's deletion as `workspace.deleted`, its log's last entry.
+
+| Action | Recorded when |
+| --- | --- |
+| `repo.renamed` | A repository was renamed. |
+| `repo.visibility_changed` | It was made public or private. |
+| `repo.default_branch_changed` | Its default branch changed. |
+| `branch.renamed` | A branch was renamed. |
+| `repo.archived`, `repo.unarchived` | It was archived, or unarchived. |
+| `repo.transferred` | It moved to another workspace. |
+| `repo.deleted`, `repo.restored`, `repo.purged` | It was deleted, restored, or removed for good. |
+| `repo.collaborator_added`, `repo.collaborator_role_changed`, `repo.collaborator_removed` | Someone was given a role on it, had it changed, or lost it. See [access and roles](/guides/access-and-roles/). |
+| `repo.invitation_created`, `repo.invitation_revoked` | Someone was invited to it, or an invitation was withdrawn. |
+| `workspace.base_permission_changed` | An owner changed what members get on every repository. |
+
+Through the API and the MCP server, the call itself is recorded under its
+tool's name too, such as `delete_repo`. See
+[managing a repository](/guides/managing-repositories/).
+
 Refusals are recorded too, with the rule that refused them. Entries are
 only ever added: nothing edits or removes one.
 
@@ -54,9 +75,9 @@ runs did. Both link to the full log, filtered to the run.
 
 ## How long it is kept
 
-The log can be read and exported back **30 days**, or **a year** on the
-[Team plan](/guides/usage-and-billing/#plans). The Audit log page says
-which applies. Entries older than a year are removed.
+The log can be read and exported back **90 days**, on every workspace,
+with or without the [g1t plan](/guides/usage-and-billing/#the-g1t-plan).
+Entries older than 90 days are removed.
 
 ## Export
 

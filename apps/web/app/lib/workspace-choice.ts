@@ -37,3 +37,8 @@ export function workspaceFor<M extends Membership>(
 export function rememberWorkspace(slug: string, secure: boolean): string {
   return `${WORKSPACE_COOKIE}=${encodeURIComponent(slug.toLowerCase())}; Path=/; Max-Age=31536000; SameSite=Lax${secure ? "; Secure" : ""}`;
 }
+
+/** The Set-Cookie header that forgets the choice: after its workspace is deleted. */
+export function forgetWorkspace(secure: boolean): string {
+  return `${WORKSPACE_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${secure ? "; Secure" : ""}`;
+}

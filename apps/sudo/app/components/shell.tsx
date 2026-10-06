@@ -7,6 +7,7 @@
  * holding the current page. All of it comes from lib/nav.ts.
  */
 import {
+  Activity,
   Bot,
   Building2,
   Boxes,
@@ -18,6 +19,7 @@ import {
   FileText,
   Gauge,
   HandCoins,
+  HandHelping,
   Inbox,
   LayoutDashboard,
   LifeBuoy,
@@ -29,6 +31,8 @@ import {
   ShieldAlert,
   ShieldCheck,
   Tags,
+  Ticket,
+  TrendingUp,
   UserCog,
   Users,
   UsersRound,
@@ -59,7 +63,12 @@ const ICONS: Record<NavIcon, LucideIcon> = {
   announcements: Megaphone,
   staff: UserCog,
   audit: ScrollText,
+  requests: HandHelping,
+  overages: TrendingUp,
+  velocity: Activity,
+  invites: Ticket,
   customers: UsersRound,
+  spend: Gauge,
   revenue: CircleDollarSign,
   platform: Server,
   support: LifeBuoy,
@@ -193,7 +202,7 @@ export function Sidebar({ email }: { email: string | null | undefined }) {
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-line bg-surface/50 lg:flex">
       <div className="flex h-14 shrink-0 items-center px-4">
-        <Link to="/" aria-label="sudo overview">
+        <Link to="/" aria-label="sudo overview" className="flex">
           <Logo />
         </Link>
       </div>
@@ -213,7 +222,7 @@ export function MobileBar({ email }: { email: string | null | undefined }) {
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/95 backdrop-blur lg:hidden">
       <div className="flex h-14 items-center justify-between gap-2 px-4">
-        <Link to="/" aria-label="sudo overview">
+        <Link to="/" aria-label="sudo overview" className="flex">
           <Logo />
         </Link>
         {/* A details element: it opens and closes with no script. A link

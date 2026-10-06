@@ -1,6 +1,6 @@
 import { ExternalLink, Globe, Rocket, RotateCw, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
-import { Form, Link, data, useNavigation } from "react-router";
+import { Form, Link, useNavigation } from "react-router";
 
 import type { Deployment, FeatureState } from "@g1t/contracts";
 
@@ -8,9 +8,12 @@ import { host, StatusDot } from "../../components/deploy";
 
 import type { Route } from "./+types/deployments";
 import { page } from "../../lib/meta";
-import { Button, ButtonLink, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
+import { Button, ButtonLink, ComputeNote, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
+import { computeNoteFor } from "../../lib/compute.server";
 import { billing, deployments } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
+import { refusal, requireRepo } from "../../lib/access.server";
+import { whyNot } from "../../lib/access";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Deployments · ${params.owner}/${params.repo} · g1t` });
@@ -18,17 +21,19 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  const role = roleIn(viewer, params.owner);
-  // Members only; to anyone else the page does not exist.
-  if (!role) throw data(null, { status: 404 });
+  // Anyone who can read the repository: a public one's to anyone, a private one's to people with a role.
+  const { access } = await requireRepo(context, params, "read");
   const ref = { workspace: params.owner, slug: params.repo };
-  const [settings, list, features] = await Promise.all([
+  const [settings, list, features, computeNote] = await Promise.all([
     deployments.settings(ref, viewer),
     deployments.list(ref, viewer),
     billing.features(params.owner, viewer),
+    // Builds are compute: said before a deploy is refused for it.
+    computeNoteFor(params.owner, "deploy"),
   ]);
-  const plan = unwrap(features).find((state) => state.plan.feature === "deployments") ?? null;
-  return { role, settings: unwrap(settings), ...unwrap(list), plan };
+  // Someone outside the workspace does not see its plans; the page works without.
+  const plan = features.ok ? (features.value.find((state) => state.plan.feature === "deployments") ?? null) : null;
+  return { can: access.can, settings: unwrap(settings), ...unwrap(list), plan, computeNote };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -38,6 +43,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const ref = { workspace: params.owner, slug: params.repo };
   const intent = form.get("intent");
   const branch = form.get("branch") ? String(form.get("branch")) : null;
+  // Deploying is compute (Write); turning deployments on or off is a deployment setting (Admin).
+  const refused = await refusal(context, params, intent === "enable" || intent === "disable" ? "manage_integrations" : "run");
+  if (refused) return { error: refused };
   if (intent === "redeploy") {
     const started = await deployments.redeploy(user, ref, branch);
     return started.ok ? { notice: "Build started." } : { error: started.error.message };
@@ -56,7 +64,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function RepoDeployments({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { settings, deployments: builds, live, plan } = loaderData;
+  const { settings, deployments: builds, live, plan, can } = loaderData;
   const busy = useNavigation().state === "submitting";
   const base = `/${params.owner}/${params.repo}`;
   const production = live.find((app) => app.kind === "production");
@@ -92,20 +100,22 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
       <div className="mt-4 min-h-6">
         {actionData && "notice" in actionData && <p className="text-sm text-accent">{actionData.notice}</p>}
         <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
+        {!actionData && <ComputeNote note={loaderData.computeNote} />}
       </div>
 
       {!plan?.on ? (
         <PlanNeeded plan={plan} owner={params.owner} />
       ) : !settings.enabled ? (
         <section className="mt-2 rounded-xl border border-accent/30 bg-accent/5 p-6">
-          <h2 className="font-medium">Deploy {params.repo}</h2>
+          <h2 className="font-medium">Deployments are off</h2>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Production goes up from <span className="font-mono text-fg">{host(settings.productionUrl)}</span>{" "}
-            as soon as you turn this on, and every open pull request gets its own preview. Workers projects (a{" "}
-            <code className="font-mono text-fg">wrangler.jsonc</code>) and static sites deploy without configuration.
+            Each project turns deployments on for itself; until then nothing builds or runs. Once on, production goes
+            up at <span className="font-mono text-fg">{host(settings.productionUrl)}</span> and every open pull request
+            gets its own preview. Workers projects (a <code className="font-mono text-fg">wrangler.jsonc</code>) and
+            static sites deploy without configuration.
           </p>
           <Form method="post" className="mt-4">
-            <Button variant="accent" type="submit" name="intent" value="enable" disabled={busy}>
+            <Button variant="accent" type="submit" name="intent" value="enable" disabled={busy || !can.manage_integrations} title={whyNot(can, "manage_integrations")}>
               <Rocket size={14} />
               Turn on deployments
             </Button>
@@ -120,7 +130,7 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
               app={production}
               off={!settings.production}
               actions={
-                <AppActions branch={null} up={!!production} busy={busy} />
+                can.run ? <AppActions branch={null} up={!!production} busy={busy} /> : null
               }
             />
             <div className="rounded-xl border border-line bg-surface p-5">
@@ -148,7 +158,7 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
                         {host(app.url)}
                       </a>
                       <span className="ml-auto shrink-0">
-                        <AppActions branch={app.branch} up busy={busy} compact />
+                        {can.run && <AppActions branch={app.branch} up busy={busy} compact />}
                       </span>
                     </li>
                   ))}

@@ -3,8 +3,8 @@
 //! it. Staff only, through sudo.g1t.sh.
 
 use g1t_contracts::billing::{
-    AdminAddNoteArgs, AdminOverviewArgs, AdminSalesArgs, AdminSetSalesArgs, AdminSignalsArgs, KindFigures,
-    LimitState, MonthFigures, Overview, SalesNote, SalesRecord, Signal, SignalKind, TermsKind, Trust,
+    AdminAddNoteArgs, AdminOverviewArgs, AdminOveragesArgs, AdminSalesArgs, AdminSetSalesArgs, AdminSignalsArgs, GivenFigures,
+    InternalUse, KindFigures, LimitState, MonthFigures, Overview, SalesNote, SalesRecord, Signal, SignalKind, TermsKind, Trust,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, new_id};
@@ -69,12 +69,62 @@ fn days_in(month: &str) -> u32 {
     }
 }
 
-#[derive(Deserialize)]
-struct MonthRow {
-    month: String,
-    charged: Option<i64>,
-    cost: Option<i64>,
-    paid: Option<i64>,
+/// The workspaces g1t does not charge (comped terms): its own and
+/// Flagon's, and any enterprise on comped terms. Their usage is recorded at
+/// what it cost and shown as given, apart from margin.
+pub(crate) const INTERNAL_SQL: &str = "SELECT substr(id, 4) FROM billing_accounts WHERE kind = 'workspace' AND terms_kind = 'comped'
+     UNION SELECT m.workspace FROM account_members m JOIN billing_accounts b ON b.id = m.account_id WHERE b.terms_kind = 'comped'";
+
+/// One group of ledger rows in a month, as sudo's figures add them up.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub(crate) struct LedgerGroup {
+    pub month: String,
+    /// `usage` or `top_up`.
+    pub kind: String,
+    /// `g1t`, or `workspace` for a run on the workspace's own provider.
+    pub billed_to: Option<String>,
+    /// A credit from g1t rather than a payment (`crd…`), and of those, a
+    /// goodwill credit.
+    pub credit: i64,
+    pub goodwill: i64,
+    /// One of g1t's own workspaces (comped).
+    pub internal: i64,
+    pub amount: Option<i64>,
+    pub cost: Option<i64>,
+    /// What the trial, the open-source pool and g1t itself paid.
+    pub pools: Option<i64>,
+}
+
+/// A month's figures from its ledger groups and the plan's price paid.
+///
+/// - **Cost** is only what g1t paid: a run on the workspace's own model
+///   provider was paid for there, so its cost is never g1t's.
+/// - **Given** is what g1t gave at price, apart from its margin: internal
+///   use (its cost plus the margin, since nothing was charged), what the
+///   trial, the open-source pool and g1t itself paid, and goodwill credits.
+/// - **Paid** is money in: payments, never credits from g1t.
+pub(crate) fn fold_month(month: &str, groups: &[LedgerGroup], plans: i64, margin_percent: u32) -> MonthFigures {
+    let mut figures = MonthFigures { month: month.to_owned(), plans_micros: plans, ..MonthFigures::default() };
+    for g in groups.iter().filter(|g| g.month == month) {
+        let amount = g.amount.unwrap_or(0);
+        let own_provider = g.billed_to.as_deref() == Some("workspace");
+        if g.kind == "usage" {
+            figures.charged_micros += -amount;
+            if !own_provider {
+                let cost = g.cost.unwrap_or(0);
+                figures.cost_micros += cost;
+                if g.internal == 1 {
+                    figures.given_micros += crate::credits::with_margin(cost, margin_percent);
+                }
+            }
+            figures.given_micros += g.pools.unwrap_or(0);
+        } else if g.credit == 0 {
+            figures.paid_micros += amount;
+        } else if g.goodwill == 1 {
+            figures.given_micros += amount;
+        }
+    }
+    figures
 }
 
 #[derive(Deserialize)]
@@ -95,7 +145,9 @@ struct NoteRow {
 }
 
 impl Billing {
-    /// Month-by-month figures for some workspaces (all, when empty).
+    /// Month-by-month figures for some workspaces (all, when empty): usage
+    /// charged, what it cost g1t (never a workspace's own provider), money
+    /// paid, the plan's price paid, and what g1t gave.
     pub(crate) async fn months_for(&self, workspaces: &[String], count: usize) -> Result<Vec<MonthFigures>> {
         let months = last_months(&rfc3339(now_ms())[..7], count);
         let since = format!("{}-01", months[0]);
@@ -105,29 +157,42 @@ impl Billing {
             let marks = vec!["?"; workspaces.len()].join(", ");
             (format!("AND workspace IN ({marks})"), workspaces.iter().map(|w| JsValue::from(w.as_str())).collect())
         };
-        let rows = self
+        let groups = self
             .db
             .prepare(format!(
-                "SELECT substr(created_at, 1, 7) AS month,
-                        -SUM(CASE WHEN kind = 'usage' THEN amount_micros END) AS charged,
-                        SUM(CASE WHEN kind = 'usage' THEN cost_micros END) AS cost,
-                        SUM(CASE WHEN kind = 'top_up' AND reference NOT LIKE 'crd%' THEN amount_micros END) AS paid
-                 FROM ledger WHERE created_at >= '{since}' {filter} GROUP BY 1"
+                "SELECT substr(created_at, 1, 7) AS month, kind, COALESCE(billed_to, 'g1t') AS billed_to,
+                        CASE WHEN reference LIKE 'crd%' THEN 1 ELSE 0 END AS credit,
+                        CASE WHEN reference LIKE '{goodwill}%' THEN 1 ELSE 0 END AS goodwill,
+                        CASE WHEN workspace IN ({INTERNAL_SQL}) THEN 1 ELSE 0 END AS internal,
+                        SUM(amount_micros) AS amount, SUM(cost_micros) AS cost,
+                        SUM(trial_micros + oss_micros + given_micros) AS pools
+                 FROM ledger WHERE created_at >= '{since}' {filter} GROUP BY 1, 2, 3, 4, 5, 6",
+                goodwill = crate::overages::GOODWILL_PREFIX
             ))
             .bind(&values)?
             .all()
             .await?
-            .results::<MonthRow>()?;
+            .results::<LedgerGroup>()?;
+        #[derive(Deserialize)]
+        struct Plans {
+            month: String,
+            micros: Option<i64>,
+        }
+        let plans = self
+            .db
+            .prepare(format!(
+                "SELECT substr(paid_at, 1, 7) AS month, SUM(amount_micros) AS micros FROM plan_payments
+                 WHERE paid_at >= '{since}' {filter} GROUP BY 1"
+            ))
+            .bind(&values)?
+            .all()
+            .await?
+            .results::<Plans>()?;
         Ok(months
             .into_iter()
             .map(|month| {
-                let row = rows.iter().find(|r| r.month == month);
-                MonthFigures {
-                    charged_micros: row.and_then(|r| r.charged).unwrap_or(0),
-                    cost_micros: row.and_then(|r| r.cost).unwrap_or(0),
-                    paid_micros: row.and_then(|r| r.paid).unwrap_or(0),
-                    month,
-                }
+                let paid_plans = plans.iter().find(|p| p.month == month).and_then(|p| p.micros).unwrap_or(0);
+                fold_month(&month, &groups, paid_plans, self.margin_percent)
             })
             .collect())
     }
@@ -459,9 +524,11 @@ impl Billing {
                           WHEN task = 'security' THEN 'Security scans'
                           WHEN task = 'context' THEN 'Search embeddings'
                           WHEN task = 'storage' THEN 'Private storage'
+                          WHEN task = 'git' THEN 'Git operations'
                           WHEN billed_to = 'workspace' THEN 'Own-provider runs'
                           ELSE 'Models' END AS kind,
-                        -SUM(amount_micros) AS charged, SUM(cost_micros) AS cost
+                        -SUM(amount_micros) AS charged,
+                        SUM(CASE WHEN COALESCE(billed_to, 'g1t') = 'g1t' THEN cost_micros ELSE 0 END) AS cost
                  FROM ledger WHERE kind = 'usage' AND created_at >= ? GROUP BY 1 ORDER BY charged DESC",
             )
             .bind(&[format!("{month}-01").into()])?
@@ -504,7 +571,24 @@ impl Billing {
         .await?;
         let signals = self.admin_signals(AdminSignalsArgs {}).await?;
         let tally = |kind: SignalKind| signals.iter().filter(|s| s.kind == kind).count() as u32;
+        let this = months.last().cloned().unwrap_or_default();
+        let active_plans = count(
+            "SELECT COUNT(*) AS n FROM subscriptions WHERE feature = 'plan' AND status IN ('active', 'canceling')",
+            vec![],
+        )
+        .await?;
+        let open_requests = count("SELECT COUNT(*) AS n FROM limit_requests WHERE status = 'open'", vec![]).await?;
+        let open_spikes = count("SELECT COUNT(*) AS n FROM spikes WHERE status = 'open'", vec![]).await?;
+        let overages = self.admin_overages(AdminOveragesArgs {}).await?.len() as u32;
         Ok(Overview {
+            revenue_micros: this.charged_micros + this.plans_micros,
+            active_plans: active_plans as u32,
+            plan_mrr_micros: active_plans * i64::from(self.plans.plan_monthly_cents) * 10_000,
+            given: self.given_this_month(&month).await?,
+            internal: self.internal_use(&month).await?,
+            open_requests: open_requests as u32,
+            open_spikes: open_spikes as u32,
+            overages,
             month,
             months,
             by_kind,
@@ -517,11 +601,132 @@ impl Billing {
             pools: Some(self.pools().await?),
         })
     }
+
+    /// What g1t gave in `month`, by source, at price and at cost.
+    async fn given_this_month(&self, month: &str) -> Result<Vec<GivenFigures>> {
+        #[derive(Deserialize)]
+        struct Row {
+            internal_cost: Option<i64>,
+            trial: Option<i64>,
+            oss: Option<i64>,
+            covered: Option<i64>,
+            goodwill: Option<i64>,
+        }
+        let row = self
+            .db
+            .prepare(format!(
+                "SELECT
+                   SUM(CASE WHEN kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' AND workspace IN ({INTERNAL_SQL})
+                            THEN cost_micros END) AS internal_cost,
+                   SUM(CASE WHEN kind = 'usage' THEN trial_micros END) AS trial,
+                   SUM(CASE WHEN kind = 'usage' THEN oss_micros END) AS oss,
+                   SUM(CASE WHEN kind = 'usage' THEN given_micros END) AS covered,
+                   SUM(CASE WHEN kind = 'top_up' AND reference LIKE '{goodwill}%' THEN amount_micros END) AS goodwill
+                 FROM ledger WHERE created_at >= ?",
+                goodwill = crate::overages::GOODWILL_PREFIX
+            ))
+            .bind(&[format!("{month}-01").into()])?
+            .first::<Row>(None)
+            .await?;
+        let Some(row) = row else { return Ok(vec![]) };
+        let at_cost = |price: i64| price * 100 / i64::from(100 + self.margin_percent);
+        let internal_cost = row.internal_cost.unwrap_or(0);
+        Ok([
+            ("internal", "g1t's and Flagon's own use", crate::credits::with_margin(internal_cost, self.margin_percent), internal_cost),
+            ("trial", "Trials", row.trial.unwrap_or(0), at_cost(row.trial.unwrap_or(0))),
+            ("oss_pool", "Open-source pool", row.oss.unwrap_or(0), at_cost(row.oss.unwrap_or(0))),
+            ("covered", "Covered past a trial's end", row.covered.unwrap_or(0), at_cost(row.covered.unwrap_or(0))),
+            ("goodwill", "Goodwill credits", row.goodwill.unwrap_or(0), row.goodwill.unwrap_or(0)),
+        ]
+        .into_iter()
+        .map(|(source, label, micros, cost)| GivenFigures { source: source.to_owned(), label: label.to_owned(), micros, cost_micros: cost })
+        .collect())
+    }
+
+    /// g1t's own workspaces' use in `month`, with why each is not charged.
+    async fn internal_use(&self, month: &str) -> Result<Vec<InternalUse>> {
+        #[derive(Deserialize)]
+        struct Row {
+            workspace: String,
+            cost: Option<i64>,
+            entries: Option<u32>,
+        }
+        let rows = self
+            .db
+            .prepare(format!(
+                "SELECT workspace, SUM(cost_micros) AS cost, COUNT(*) AS entries FROM ledger
+                 WHERE kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' AND created_at >= ? AND workspace IN ({INTERNAL_SQL})
+                 GROUP BY workspace ORDER BY cost DESC"
+            ))
+            .bind(&[format!("{month}-01").into()])?
+            .all()
+            .await?
+            .results::<Row>()?;
+        let mut list = vec![];
+        for row in rows {
+            let terms = self.terms_of(&row.workspace).await?;
+            list.push(InternalUse {
+                reason: if terms.note.is_empty() { "Comped".to_owned() } else { terms.note },
+                cost_micros: row.cost.unwrap_or(0),
+                entries: row.entries.unwrap_or(0),
+                workspace: row.workspace,
+            });
+        }
+        Ok(list)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn group(kind: &str, billed_to: &str, amount: i64, cost: i64) -> LedgerGroup {
+        LedgerGroup {
+            month: "2026-10".into(),
+            kind: kind.into(),
+            billed_to: Some(billed_to.into()),
+            amount: Some(amount),
+            cost: Some(cost),
+            ..LedgerGroup::default()
+        }
+    }
+
+    #[test]
+    fn a_workspaces_own_provider_is_never_g1ts_cost() {
+        let groups = [
+            // Runs on g1t's models: charged $12, cost g1t $10.
+            group("usage", "g1t", -12_000_000, 10_000_000),
+            // A run on the workspace's own provider: it paid that $0.21 itself.
+            group("usage", "workspace", -100_000, 209_700),
+        ];
+        let month = fold_month("2026-10", &groups, 0, 20);
+        assert_eq!(month.cost_micros, 10_000_000);
+        assert_eq!(month.charged_micros, 12_100_000);
+    }
+
+    #[test]
+    fn plan_revenue_counts_and_what_g1t_gives_is_kept_apart() {
+        let groups = [
+            group("usage", "g1t", -12_000_000, 10_000_000),
+            // Paid for by the trial and the open-source pool: $3 at price.
+            LedgerGroup { pools: Some(3_000_000), ..group("usage", "g1t", 0, 2_500_000) },
+            // g1t's own workspace: nothing charged, $5 of cost.
+            LedgerGroup { internal: 1, ..group("usage", "g1t", 0, 5_000_000) },
+            // A payment, a goodwill credit, and another credit from g1t.
+            group("top_up", "g1t", 40_000_000, 0),
+            LedgerGroup { credit: 1, goodwill: 1, ..group("top_up", "g1t", 15_000_000, 0) },
+            LedgerGroup { credit: 1, ..group("top_up", "g1t", 2_000_000, 0) },
+            // Another month is not this one.
+            LedgerGroup { month: "2026-09".into(), ..group("usage", "g1t", -1, 1) },
+        ];
+        let month = fold_month("2026-10", &groups, 20_000_000, 20);
+        assert_eq!(month.plans_micros, 20_000_000);
+        assert_eq!(month.paid_micros, 40_000_000);
+        assert_eq!(month.charged_micros, 12_000_000);
+        assert_eq!(month.cost_micros, 17_500_000);
+        // $6 of internal use at price, $3 of pools, $15 of goodwill.
+        assert_eq!(month.given_micros, 6_000_000 + 3_000_000 + 15_000_000);
+    }
 
     #[test]
     fn six_months_end_with_this_one() {

@@ -209,9 +209,8 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
     Ok(())
 }
 
-/// Once a day: audit entries older than any plan keeps are removed
-/// (`AUDIT_KEEP_DAYS`, a year by default). Shorter windows, such as 30 days
-/// without the Team plan, are applied where the log is read.
+/// Once a day: audit entries older than the audit log keeps are removed
+/// (`AUDIT_KEEP_DAYS`, 90 days by default, the same on every plan).
 #[event(scheduled)]
 async fn scheduled(_event: worker::ScheduledEvent, env: Env, _ctx: worker::ScheduleContext) {
     let keep_days = env

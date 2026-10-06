@@ -17,9 +17,10 @@ mod deps;
 mod history;
 mod store;
 
+use g1t_contracts::access::{self, Capability};
 use g1t_contracts::events::{Event, WorkspaceRenamed};
 use g1t_contracts::identity::{SlugArgs, Workspace};
-use g1t_contracts::repos::{GetArgs, PathByIdArgs, Repo, RepoPath};
+use g1t_contracts::repos::{GetArgs, PathByIdArgs, Repo, RepoPath, RepoStatus, StatusByIdArgs};
 use g1t_contracts::security::*;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Membership, Outcome, PrincipalKind, User};
@@ -36,6 +37,9 @@ const PAGES_PER_SWEEP: u32 = 4;
 const DEPENDENCIES_PER_SWEEP: u32 = 10;
 const DAY_MS: u64 = 24 * 60 * 60 * 1000;
 const MAX_REASON_CHARS: usize = 500;
+/// What seeing a repository's findings takes: the Write role, as changing
+/// its code does. Dismissing or allowing one takes Admin.
+const SEE_FINDINGS: Capability = Capability::Push;
 
 pub struct Security {
     store: Store,
@@ -92,23 +96,50 @@ impl Security {
         }))
     }
 
-    /// The repository at `path`, recorded here, if `viewer` is a member of
-    /// its workspace. Findings are the workspace's own business: to anyone
-    /// else the page does not exist, public repository or not.
-    async fn member_repo(&self, path: &RepoPath, viewer: &Option<User>) -> Result<Outcome<RepoRow>> {
-        let namespace = path.namespace.to_lowercase();
+    /// The repository at `path`, recorded here, if `viewer` may see its
+    /// findings (the Write role) and do `capability`. Findings are for those
+    /// who can change the code: to anyone else the page does not exist,
+    /// public repository or not.
+    async fn member_repo(
+        &self,
+        path: &RepoPath,
+        viewer: &Option<User>,
+        capability: Capability,
+    ) -> Result<Outcome<RepoRow>> {
         let hidden = || fail(FailureCode::NotFound, "Repository not found.");
-        if !viewer.as_ref().is_some_and(|user| user.is_member(&namespace)) {
+        if viewer.is_none() {
             return Ok(hidden());
         }
         let repo: Outcome<Repo> =
             g1t_kit::call(&self.repos, "get", &GetArgs { path: path.clone(), viewer: viewer.clone() }).await?;
-        match repo {
-            Outcome::Ok(repo) if repo.fork_of.is_none() => {
-                Ok(Outcome::Ok(self.store.register(&repo.id, &repo.namespace, &repo.name).await?))
-            }
-            _ => Ok(hidden()),
+        let repo = match repo {
+            Outcome::Ok(repo) if repo.fork_of.is_none() => repo,
+            _ => return Ok(hidden()),
+        };
+        if !access::can(viewer.as_ref(), &repo, SEE_FINDINGS) {
+            return Ok(hidden());
         }
+        if !access::can(viewer.as_ref(), &repo, capability) {
+            return Ok(fail(
+                FailureCode::Forbidden,
+                access::needs(capability, &format!("{}/{}", repo.namespace, repo.name)),
+            ));
+        }
+        Ok(Outcome::Ok(self.store.register(&repo.id, &repo.namespace, &repo.name).await?))
+    }
+
+    /// Whether the repository is neither archived nor deleted. When repos
+    /// cannot say, it is taken as active.
+    async fn active(&self, repo_id: &str) -> Result<bool> {
+        let status: Result<RepoStatus> =
+            g1t_kit::call(&self.repos, "status_by_id", &StatusByIdArgs { id: repo_id.to_owned() }).await;
+        Ok(match status {
+            Ok(status) => status.active(),
+            Err(error) => {
+                worker::console_error!("security: status_by_id {repo_id}: {error}");
+                true
+            }
+        })
     }
 
     /// Records a repository named in an event, by id. Forks are not
@@ -125,7 +156,7 @@ impl Security {
     }
 
     async fn overview(&self, a: OverviewArgs) -> Result<Outcome<SecurityOverview>> {
-        let mut repo = match self.member_repo(&a.repo, &a.viewer).await? {
+        let mut repo = match self.member_repo(&a.repo, &a.viewer, SEE_FINDINGS).await? {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
@@ -147,7 +178,7 @@ impl Security {
     }
 
     async fn decide_secret(&self, a: DecideSecretArgs) -> Result<Outcome<SecretFinding>> {
-        let repo = match self.member_repo(&a.repo, &Some(a.actor.clone())).await? {
+        let repo = match self.member_repo(&a.repo, &Some(a.actor.clone()), Capability::ManageIntegrations).await? {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
@@ -185,7 +216,7 @@ impl Security {
     }
 
     async fn rescan(&self, a: RescanArgs) -> Result<Outcome<ScanState>> {
-        let repo = match self.member_repo(&a.repo, &Some(a.actor.clone())).await? {
+        let repo = match self.member_repo(&a.repo, &Some(a.actor.clone()), SEE_FINDINGS).await? {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
@@ -199,7 +230,9 @@ impl Security {
     }
 
     async fn set_upkeep(&self, a: SetUpkeepArgs) -> Result<Outcome<bool>> {
-        let repo = match self.member_repo(&a.repo, &Some(a.actor.clone())).await? {
+        // Whether agents keep its dependencies up to date is one of its
+        // settings.
+        let repo = match self.member_repo(&a.repo, &Some(a.actor.clone()), Capability::ManageSettings).await? {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
@@ -217,6 +250,13 @@ impl Security {
         }
         let mut list = Vec::new();
         for repo in self.store.in_namespace(&workspace).await? {
+            // Only the repositories whose findings the viewer may see. The
+            // Write role is never had through being public, so treating
+            // each as private changes nothing.
+            let target = access::RepoRef { id: &repo.repo_id, namespace: &workspace, private: true };
+            if !access::can(a.viewer.as_ref(), target, SEE_FINDINGS) {
+                continue;
+            }
             let (counts, secrets, vulnerabilities) = self.store.counts(&repo.repo_id).await?;
             list.push(RepoSecurity {
                 repo_id: repo.repo_id,
@@ -283,6 +323,32 @@ impl Security {
                     self.register_by_id(&created.repo_id).await?;
                 }
             }
+            // A repository transferred or renamed: it is recorded under its new path.
+            "repo.transferred" | "repo.renamed" => {
+                if let Some(moved) = g1t_kit::transfer::read(event) {
+                    // Where it is now, so moves heard out of order end in
+                    // the same place.
+                    let now: Option<g1t_contracts::repos::RepoPath> = g1t_kit::call(
+                        &self.repos,
+                        "path_by_id",
+                        &g1t_contracts::repos::PathByIdArgs { id: moved.repo_id.clone() },
+                    )
+                    .await?;
+                    let current = now.map_or_else(
+                        || moved.destination().to_owned(),
+                        |path| format!("{}/{}", path.namespace, path.name),
+                    );
+                    if let Some((namespace, name)) = current.split_once('/') {
+                        self.store.moved(&moved.repo_id, namespace, name).await?;
+                    }
+                }
+            }
+            // A repository purged: everything found in it goes.
+            "repo.purged" => {
+                if let Some(g1t_kit::lifecycle::Lifecycle::Purged(purged)) = g1t_kit::lifecycle::read(event) {
+                    self.store.purge(&purged.repo_id).await?;
+                }
+            }
             "workspace.renamed" => {
                 if let Ok(renamed) = serde_json::from_value::<WorkspaceRenamed>(event.data.clone()) {
                     self.store.rename_namespace(&renamed.stale_slugs(&renamed.to), &renamed.to).await?;
@@ -296,13 +362,29 @@ impl Security {
     /// The sweep: continues history scans, and reads dependencies that
     /// have not been read for a day.
     async fn sweep(&self) -> Result<()> {
-        for repo in self.store.unfinished_histories(HISTORIES_PER_SWEEP).await? {
+        // Archived and deleted repositories wait; a few more are looked at
+        // so that they do not hold up the rest.
+        let mut histories = 0;
+        for repo in self.store.unfinished_histories(HISTORIES_PER_SWEEP * 4).await? {
+            if histories == HISTORIES_PER_SWEEP {
+                break;
+            }
+            if !self.active(&repo.repo_id).await? {
+                continue;
+            }
+            histories += 1;
             if let Err(error) = self.advance_history(&repo, PAGES_PER_SWEEP).await {
                 worker::console_error!("security: history of {} not scanned: {error}", repo.repo_id);
             }
         }
         let day_ago = rfc3339(now_ms().saturating_sub(DAY_MS));
         for repo in self.store.stale_dependencies(&day_ago, DEPENDENCIES_PER_SWEEP).await? {
+            if !self.active(&repo.repo_id).await? {
+                self.store
+                    .skip_dependencies(&repo.repo_id, "Dependencies are not checked while the repository is archived or deleted.")
+                    .await?;
+                continue;
+            }
             if let Err(error) = self.scan_dependencies(&repo).await {
                 worker::console_error!("security: dependencies of {} not read: {error}", repo.repo_id);
             }

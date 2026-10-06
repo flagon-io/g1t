@@ -568,11 +568,18 @@ pub struct RecallArgs {
 /// `budget` characters: pinned first, then the most recently used, the
 /// workspace's and the project's labelled apart. Marks what it gives as
 /// used. Called by the runner service only. Returns `MemoryContext`.
+///
+/// `requester` is the person the run acts for. The workspace's memory is
+/// its members': for a requester who is not one (an outside collaborator),
+/// only the project's memory is given. None, as from a runner that does not
+/// say, is the workspace's own step and gets both.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MemoryContextArgs {
     pub repo: RepoPath,
     #[serde(default)]
     pub budget: Option<u32>,
+    #[serde(default)]
+    pub requester: Option<User>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -713,6 +720,112 @@ pub fn secret_in(text: &str) -> Option<&'static str> {
         }
     }
     None
+}
+
+// --- Compute gating ---------------------------------------------------------
+//
+// What the runner needs from the work service to apply a workspace's plan
+// caps: how many agents it has at work, what an issue's agents have spent,
+// and somewhere for runs to wait for a free slot.
+
+/// The kinds of run that count against a workspace's agents-at-once cap.
+pub const AGENT_KINDS: [RunKind; 6] = [
+    RunKind::Implement,
+    RunKind::Revise,
+    RunKind::Review,
+    RunKind::Answer,
+    RunKind::Update,
+    RunKind::Plan,
+];
+
+/// `active_agents`: how many agent runs a workspace has queued or running
+/// now. Called by the runner. Returns `u32`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ActiveAgentsArgs {
+    pub workspace: String,
+}
+
+/// `issue_spend`: what the agents on an issue have cost so far, in all its
+/// pull requests' runs and the runs on the issue itself. `number` may name
+/// the issue or one of its pull requests. Called by the runner. Returns
+/// `Outcome<IssueSpend>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IssueSpendArgs {
+    pub repo: RepoPath,
+    pub number: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueSpend {
+    /// The issue counted: the one `number` names, or its pull request's.
+    /// A pull request with no issue counts as its own.
+    pub issue: u32,
+    /// What the model providers charged for its runs, in millionths of a
+    /// dollar.
+    pub spent_micros: i64,
+}
+
+/// `wait_for_slot`: gives back a lifecycle step the runner claimed but
+/// could not start because the workspace's agents were all busy, so the
+/// next sweep takes it again, and says so on the pull request. Returns
+/// `bool`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WaitForSlotArgs {
+    pub pull_id: String,
+    pub reason: String,
+}
+
+/// `agent_comment`: a comment from g1t-agent on an issue or pull request,
+/// for what it could not do there. Called by the runner. Returns `bool`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AgentCommentArgs {
+    pub repo: RepoPath,
+    pub number: u32,
+    pub body: String,
+}
+
+/// `add_wait`: a run a person asked for, waiting for one of the
+/// workspace's agent slots. `payload` is what the runner needs to start it
+/// later; the work service only keeps it. Returns `bool`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AddWaitArgs {
+    pub workspace: String,
+    pub kind: String,
+    pub payload: serde_json::Value,
+}
+
+/// `waiting_workspaces`: the workspaces with runs waiting, oldest first.
+/// Returns `Vec<String>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct WaitingWorkspacesArgs {}
+
+/// `take_wait`: the oldest run waiting in a workspace, taken out of the
+/// queue in one statement. Returns `Option<AgentWait>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TakeWaitArgs {
+    pub workspace: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentWait {
+    pub id: String,
+    pub workspace: String,
+    pub kind: String,
+    pub payload: serde_json::Value,
+    pub created_at: String,
+}
+
+/// `run_cost`: what a run's model cost, as its sandbox reported it, for
+/// the runner settling the run's reservation. Needs the run's token.
+/// Returns `Option<f64>`, in US dollars.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunCostArgs {
+    pub run_id: String,
+    pub token: String,
 }
 
 #[cfg(test)]

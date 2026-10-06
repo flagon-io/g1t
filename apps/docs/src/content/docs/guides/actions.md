@@ -73,7 +73,29 @@ other Linux labels all run here. Setup actions such as
 `actions/setup-node` and `actions/setup-python` install other versions as
 they do on GitHub.
 
-A job runs for at most 60 minutes, whatever its `timeout-minutes`.
+A job runs for at most 60 minutes, whatever its `timeout-minutes`, and
+for less if the workspace's plan caps runs lower (a new workspace's first
+month, or the trial). A job stopped at its time cap fails saying so.
+
+### What a job can reach
+
+A job's network is restricted, as an agent's is (see
+[guardrails](/guides/guardrails/)): it reaches the hosts its project's
+guardrails allow, g1t itself, and what builds need, and nothing else.
+What builds need is the package registries (npm, PyPI, crates.io, the Go
+proxy, RubyGems, Packagist, NuGet, Maven and Gradle, Debian's mirrors),
+GitHub, where `uses:` actions and the setup actions' downloads come from,
+and the toolchains' download sites (`nodejs.org`, `go.dev`,
+`static.rust-lang.org`). A request anywhere else gets `403` with
+the reason. To reach another host, someone with the Maintain [role](/guides/access-and-roles/) or
+higher adds it to the project's
+allowed domains under **Settings → Guardrails**; a project whose guardrails
+turn the network restriction off runs its jobs with an open network.
+
+g1t does not run cryptocurrency miners: a step that names one (`xmrig`,
+a `stratum+tcp://` pool, `--donate-level`) is not run, and a job that
+looks like it is mining is stopped. See
+[abuse and mining](/guides/guardrails/#abuse-and-mining).
 
 ## Runs and logs
 
@@ -97,7 +119,8 @@ A run on a pull request's latest commit is a check on it:
 
 - While a workflow runs, the pull request waits for it before merging.
 - When one fails, merging is refused, as for failed acceptance checks.
-  Where the repository allows ignoring checks, a member can merge anyway.
+  Where the repository allows ignoring checks, anyone who can merge can
+  merge anyway.
 - In a repository that merges through the [merge queue](/guides/merge-queue/),
   workflows with `on: merge_group` run on each combined state the queue
   builds, as on GitHub, and the state lands only if they pass.
@@ -116,21 +139,41 @@ key's Production row; other jobs read the rows for all environments. See
 environments and the workspace's rows work.
 
 Every trusted job also gets `${{ secrets.G1T_TOKEN }}`, the workspace's own
-token for the run, with `GITHUB_TOKEN` as its alias. Pull requests from
-people outside the workspace run without secrets, and with an empty
-token.
+token for the run, with `GITHUB_TOKEN` as its alias. A pull request's runs
+get secrets and the token only when its author has the Write
+[role](/guides/access-and-roles/) or higher on the repository, a member or
+an outside collaborator, or is g1t's agent. Anyone else's, such as one
+from a fork or by someone with Read or Triage, runs without secrets and
+with an empty token. See
+[who gets secrets](/guides/secrets-and-variables/#who-gets-secrets).
 
 ## Who may run workflows
 
-Workflows run in every workspace that can use g1t's agents: one with its
-own [model provider](/guides/models/) connected, or one with
-[trial credit](/guides/usage-and-billing/#trials) left. Each job's sandbox
-is charged as [sandbox time](/guides/usage-and-billing/#sandbox-time), from
-the first second; on a public repository,
-[g1t's open-source pool](/guides/usage-and-billing/#public-repositories-and-open-source)
-pays for it first. Elsewhere a run is
-recorded with its jobs failed and the reason, and the Actions page says so
-before the first run.
+What you can do with a repository's workflows follows your
+[role](/guides/access-and-roles/) on it:
+
+| | Needs |
+| --- | --- |
+| See workflows, runs and their logs | Read: on a public repository, anyone |
+| Run a workflow by hand, cancel or re-run a run | Write |
+| Enable or disable a workflow | Maintain |
+| The repository's secrets and variables, seeing them included | Admin |
+
+Jobs run in g1t's sandboxes, so they need the
+[g1t plan](/guides/usage-and-billing/#the-g1t-plan) or
+[the trial](/guides/usage-and-billing/#the-trial). On a public repository,
+[g1t's open-source pool](/guides/usage-and-billing/#the-open-source-pool)
+runs them too, after a card check, until the month's pool is spent.
+
+Before each job starts, g1t reserves what it may cost (its time limit at
+the sandbox price) with billing, and settles what it really cost when it
+ends; each job's sandbox is charged as
+[sandbox time](/guides/usage-and-billing/#sandbox-time), from the first
+second. A job billing refuses does not start: it is recorded as failed
+with "Not started:" and the reason, such as "Workflows run in g1t's
+sandboxes, which need a paid workspace", and what to do about it. The
+Actions page tells people with Write on a repository whose workspace
+cannot run jobs before the first run.
 
 ## From the API
 

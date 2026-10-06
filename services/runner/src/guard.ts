@@ -14,10 +14,10 @@ import type { OutboundHandlerContext } from "@cloudflare/containers";
 
 import { type RepoPath, type RunKind, type ServiceBinding, guardrailsClient } from "@g1t/contracts";
 
-import { type ModelHosts, type RunGuard, allows, refusal, sandboxHosts } from "./egress";
+import { ABUSE_HOST, type ModelHosts, type RunGuard, allows, buildHosts, refusal, sandboxHosts } from "./egress";
 
-export { harnessEnv, newlyBlocked, timeCapMessage } from "./egress";
-export type { RunGuard } from "./egress";
+export { ABUSE_EXIT_CODE, ABUSE_HOST, ABUSE_MESSAGE, harnessEnv, newlyBlocked, timeCapMessage, withPlanLimits } from "./egress";
+export type { PlanLimits, RunGuard } from "./egress";
 
 /** What the outbound handler is given: the hosts this sandbox may reach. */
 export type EgressParams = { hosts: string[] };
@@ -36,6 +36,24 @@ export async function guardFor(work: ServiceBinding, repo: RepoPath, kind: RunKi
   return { policy, minutes: policy.minutes[kind] ?? 60 };
 }
 
+/**
+ * The guardrails of a workflow job or deploy build in `repo`: its
+ * project's network list, plus what builds need (`buildHosts`), and the
+ * time cap it was given. Throws when they cannot be read: no build starts
+ * without them.
+ */
+export async function buildGuardFor(
+  work: ServiceBinding,
+  repo: RepoPath,
+  kind: "actions" | "deploy",
+  minutes: number,
+): Promise<RunGuard> {
+  const found = await guardrailsClient(work).runGuardrails(repo);
+  if (!found.ok) throw new Error(`g1t could not read this project's guardrails: ${found.error.message}`);
+  const policy = found.value;
+  return { policy: { ...policy, hosts: [...new Set([...policy.hosts, ...buildHosts(kind)])] }, minutes };
+}
+
 /** Every host the sandbox may reach, for the outbound handler. */
 export function egressHosts(guard: RunGuard, env: ModelHosts, sandboxEnv: Record<string, string>): string[] {
   return sandboxHosts(guard.policy.hosts, env, sandboxEnv);
@@ -52,6 +70,8 @@ export async function egress(
   ctx: OutboundHandlerContext<EgressParams>,
 ): Promise<Response> {
   const host = new URL(request.url).host;
+  // A sandbox reporting that it stopped itself for mining.
+  if (host === ABUSE_HOST) return abuse(request, env, ctx);
   if (allows(ctx.params?.hosts ?? [], host)) return fetch(request);
   try {
     const sandbox = env.SANDBOX.get(env.SANDBOX.idFromString(ctx.containerId)) as unknown as {
@@ -64,11 +84,38 @@ export async function egress(
   return refusal(host);
 }
 
+/**
+ * A sandbox's report that it stopped itself for mining (crates/runner
+ * abuse.rs), handed to its Durable Object. Reached through `egress` for a
+ * guarded sandbox and as the handler for `ABUSE_HOST` for any other.
+ */
+export async function abuse(
+  request: Request,
+  env: { SANDBOX: DurableObjectNamespace },
+  ctx: OutboundHandlerContext<unknown>,
+): Promise<Response> {
+  let verdict: unknown = null;
+  try {
+    verdict = ((await request.json()) as { verdict?: unknown }).verdict ?? null;
+  } catch {
+    // A report without its metrics still stops the run.
+  }
+  try {
+    const sandbox = env.SANDBOX.get(env.SANDBOX.idFromString(ctx.containerId)) as unknown as {
+      flagAbuse(verdict: unknown): Promise<void>;
+    };
+    await sandbox.flagAbuse(verdict);
+  } catch (error) {
+    console.log("abuse report not handled", String(error));
+  }
+  return new Response("noted\n");
+}
+
 /** Adds a step to a run, with its token. Never fails the caller. */
 export async function reportRun(
   work: ServiceBinding,
   tracked: { runId: string; token: string },
-  report: { steps?: string[]; halt?: "budget" | "time"; error?: string },
+  report: { steps?: string[]; halt?: "budget" | "time" | "abuse"; error?: string },
 ): Promise<void> {
   await work
     .fetch("https://service/rpc/report_run", {

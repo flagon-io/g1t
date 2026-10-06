@@ -415,6 +415,8 @@ mod tests {
             protected: false,
             created_at: String::new(),
             topics: Vec::new(),
+            website: None,
+            archived_at: None,
         };
         assert!(is_named(&repo, "acme/rocket"));
         assert!(is_named(&repo, "ACME/Rocket"));

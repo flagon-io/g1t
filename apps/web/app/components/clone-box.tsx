@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 
+import { AgentSetup } from "./agent-setup";
 import { CopyLine } from "./ui";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
@@ -29,14 +30,9 @@ export function CloneBox({ path }: { path: string }) {
         </p>
       </TabsContent>
       <TabsContent value="agent">
-        <CopyLine
-          prompt
-          text="claude mcp add --transport http g1t https://mcp.g1t.sh"
-        />
+        <AgentSetup />
         <p className="mt-2 text-xs text-muted">
-          Connects Claude Code to g1t; it signs in through your browser.
-          Then ask it to work on an issue in{" "}
-          <span className="font-mono text-fg">{path}</span>.{" "}
+          Then ask it to work on an issue in <span className="font-mono text-fg">{path}</span>.{" "}
           <Link to="https://docs.g1t.sh/guides/bring-your-own-agent/" className="text-fg underline underline-offset-4">
             More
           </Link>

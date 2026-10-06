@@ -66,12 +66,12 @@ test("on anyone else's pull request, it reviews or answers", () => {
   assert.equal(planMention(onPull("question", { agentAuthored: false, status: "closed" })).kind, "answer");
 });
 
-test("someone outside the workspace is thanked and nothing starts", async () => {
+test("someone without Write on the repository is thanked and nothing starts", async () => {
   const { ports, replies, started } = fakePorts();
   const plan = await handleMention(onIssue("work", { member: false }), ports);
   assert.equal(plan.kind, "not_member");
   assert.deepEqual(started, []);
-  assert.match(replies[0], /Only members of the acme workspace can put g1t-agent to work here/);
+  assert.match(replies[0], /Putting g1t-agent to work needs the Write role on acme\/[^,]+, so I have left this/);
 });
 
 test("a workspace that cannot run agents is told why, and the run is recorded", async () => {

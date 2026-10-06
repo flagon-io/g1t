@@ -1,3 +1,4 @@
+import type { ComputeKind, Reservation } from "./compute";
 import type { User, Viewer } from "./identity";
 import type { RepoPath } from "./repos";
 import type { Result } from "./result";
@@ -59,12 +60,14 @@ export type LedgerEntry = {
   createdAt: string;
   /** The workspace the line belongs to, which tells an enterprise's lines apart. */
   workspace?: string | null;
-  /** For usage: what the Team plan's credit paid of it. `amountMicros` is what is left to pay. */
+  /** For usage: what the plan's included usage paid of it. `amountMicros` is what is left to pay. */
   creditMicros?: number;
   /** For usage: what the workspace's trial credit paid of it. */
   trialMicros?: number;
   /** For usage: what g1t's open-source pool paid of it. */
   ossMicros?: number;
+  /** For usage: what g1t covered itself, such as a trial's last run past its credit. */
+  givenMicros?: number;
 };
 
 /** What lets a sandbox, and nothing else, report what its run cost. */
@@ -112,35 +115,203 @@ export type PayingAccount = {
 
 /** Set per account by g1t staff in sudo, on top of its terms. */
 export type Allowances = {
-  /** The Team plan without paying for it. Comped accounts have it anyway. */
-  team: boolean;
+  /** The g1t plan without its monthly price; usage is charged as usual. Comped accounts have it anyway. */
+  plan: boolean;
   /** Each public repository's monthly cap on g1t's open-source pool; null for the default. */
   ossRepoMicros: number | null;
   /** Each workspace's trial credit, outside the monthly pool; null for the default. */
   trialMicros: number | null;
+  /** Agents at once, in place of the plan's (2 in the first month or on the trial, then 10); null for the default. */
+  maxConcurrentAgents?: number | null;
+  /** One run's spend cap, in place of the owners' and the default $2; null for none. */
+  runCapMicros?: number | null;
+  /** What one issue's agents may spend in all, in place of the owners' and the default $10; null for none. */
+  issueCapMicros?: number | null;
+  /** A hold on new compute, with why; null for none. */
+  hold?: string | null;
 };
 
-/** What a workspace's plans give it now. Mirrors `Entitlements` in `crates/contracts/src/billing.rs`. */
+// --- Entitlements, and compute started under a reservation ------------------
+//
+// Every service that starts compute asks billing first:
+// 1. `entitlements(workspace)`: what it may do at all, its caps, and whether compute is paused.
+// 2. `reserve(...)`: holds the estimate against what may pay for it, so starts at the same moment
+//    cannot overshoot together. Answers who pays first, or refuses with a stable code
+//    (`not_paid`, `trial_used`, `limit`, `paused`, `oss_pool_empty`) and a message for the owner.
+// 3. `settle(reservationId, actualMicros)`: releases the hold. The charge goes on the ledger the usual way.
+// A reservation never settled lapses after `RESERVATION_HOURS`.
+
+/** A reservation that is never settled stops holding after this long. */
+export const RESERVATION_HOURS = 3;
+/** What a ceiling reads as when there is none (g1t's own workspaces). */
+export const UNLIMITED_MICROS = 1_000_000_000_000_000;
+
+/** What a workspace pays g1t on, as far as compute is concerned. Mirrors `PlanKind`. */
+export type PlanKind = "free" | "paid" | "internal" | "enterprise";
+
+// `ComputeKind` (what compute is for), `PaidBy` (who pays first: credit, trial, oss, on_demand) and
+// `Reservation` are in `./compute`, with the gate that calls `reserve` and `settle`.
+
+/** One level reached: 50, 75, 90 or 100 percent. */
+export type UsageAlert = {
+  /** `included` (the plan's included usage), `spend_limit` or `ceiling`. */
+  meter: "included" | "spend_limit" | "ceiling" | string;
+  level: number;
+  usedMicros: number;
+  limitMicros: number;
+  message: string;
+};
+
+/** An hour's spend well above the workspace's usual: new compute waits for an owner. */
+export type Spike = {
+  id: string;
+  /** `open` (waiting), `continued` (keep going) or `stopped`. */
+  status: "open" | "continued" | "stopped" | string;
+  hourMicros: number;
+  averageMicros: number;
+  detectedAt: string;
+  decidedBy?: string | null;
+  decidedAt?: string | null;
+  /** While continued: until when, unless spend doubles again first. */
+  until?: string | null;
+};
+
+/** What a workspace may do now. Mirrors `Entitlements` in `crates/contracts/src/billing.rs`. */
 export type Entitlements = {
   workspace: string;
-  /** Whether the Team plan is on: paid for, comped, or given by g1t. */
-  team: boolean;
-  /** How far back the audit log can be read and exported. */
+  plan: PlanKind;
+  /** May start sandboxes, models, deployments and semantic search at all: paid, internal, enterprise, or free with trial credit left. */
+  compute: boolean;
+  /** The one-time trial credit left; 0 if none or used. */
+  trialMicrosLeft: number;
+  /** A card check has been done; the trial and the open-source pool need it. */
+  trialVerified: boolean;
+  /** A paid workspace still in its first billing cycle. */
+  firstMonth: boolean;
+  /** 2 in the first month or on the trial, 10 after; staff can override it. */
+  maxConcurrentAgents: number;
+  /** 60 in the first month or on the trial; otherwise the guardrails' own caps. */
+  maxRunMinutes: number;
+  /** One run's spend cap, $2 by default; staff can override it. */
+  runCapMicros: number;
+  /** Agent spend on one issue in all, $10 by default. */
+  issueCapMicros: number;
+  /** g1t's ceiling on usage not yet paid for; `UNLIMITED_MICROS` for g1t's own; 0 for free. */
+  ceilingMicros: number;
+  /** Usage not yet paid for this month, prepayment taken off. */
+  exposureMicros: number;
+  /** Why new compute is paused, for the owner; null when it is not. */
+  paused: string | null;
+  /** What open reservations hold now. */
+  heldMicros?: number;
+  /** Paid in advance and not used yet. */
+  prepaidMicros?: number;
+  /** The plan's included usage each month, and what of it is used. */
+  includedMicros?: number;
+  includedUsedMicros?: number;
+  /** How far back the audit log can be read and exported: the same on every plan. */
   auditRetentionDays: number;
   /** Private repository storage included before it is charged. */
   freePrivateStorageBytes: number;
   /** The last daily measure of the workspace's private repositories (a lower bound). */
   privateStorageBytes: number;
-  /** The Team credit each month, and what of it is used this month. */
-  teamCreditMicros: number;
-  teamCreditUsedMicros: number;
   /** What g1t's open-source pool paid for the workspace this month. */
   ossPaidMicros: number;
-  /** Build time the Deployments plan includes each month, and used. */
+  /** Build time the plan includes each month, and used. */
   buildSecondsIncluded: number;
   buildSecondsUsed: number;
-  /** The smallest amount a card is charged; less carries over. */
+  /** Git operations this month, and how many are included. */
+  gitOperations?: number;
+  gitOperationsIncluded?: number;
+  /** The smallest amount a card is charged when a month closes. */
   minChargeMicros: number;
+  /** A spend spike waiting for an owner, or decided. */
+  spike?: Spike | null;
+  /** Where usage stands against what is included and the limits, from 50%. */
+  alerts?: UsageAlert[];
+};
+
+/** A hold on a start's estimated cost, as billing answers it (`Reservation` in `./compute`, and more). */
+export type ReservationHeld = Reservation & {
+  /** What is held, at cost; may be less than the estimate for a free workspace's last bit of trial. */
+  heldMicros?: number;
+  /** When the hold lapses if never settled. */
+  expiresAt?: string;
+};
+
+/** A request to g1t: a higher limit, or help with usage past what was meant. */
+export type LimitRequest = {
+  id: string;
+  workspace: string;
+  kind: "limit" | "overage" | string;
+  amountMicros: number;
+  reason: string;
+  expectedMonthlyMicros: number;
+  status: "open" | "approved" | "declined" | string;
+  decidedMicros?: number | null;
+  decidedBy?: string | null;
+  /** The answer, as the owner sees it. */
+  answer?: string | null;
+  createdBy: string;
+  createdAt: string;
+  decidedAt?: string | null;
+};
+
+/** What staff see beside a request. */
+export type WorkspaceHistory = {
+  plan: PlanKind | null;
+  months: MonthFigures[];
+  paidClearedMicros: number;
+  payments: number;
+  disputes: number;
+  declines: number;
+  firstSeen: string | null;
+  ceilingMicros: number | null;
+  maxCeilingMicros: number | null;
+  spendLimitMicros: number | null;
+  lastHourMicros: number;
+  averageHourMicros: number;
+  lastDayMicros: number;
+};
+
+export type LimitRequestReview = { request: LimitRequest; history: WorkspaceHistory };
+
+/** What a one-time goodwill credit comes to: the margin on the overage, always, plus its cost up to the cap. */
+export type Goodwill = {
+  overageMicros: number;
+  marginMicros: number;
+  costMicros: number;
+  creditMicros: number;
+  absorbedMicros: number;
+};
+
+/** A workspace whose month went well past its usual, or hit a spike. */
+export type Overage = {
+  workspace: string;
+  plan: PlanKind;
+  typicalMonthMicros: number;
+  thisMonthMicros: number;
+  costMicros: number;
+  marginMicros: number;
+  spike: Spike | null;
+  topEntries: LedgerEntry[];
+  goodwill: Goodwill;
+  goodwillAvailable: boolean;
+  lastGoodwillAt: string | null;
+  request: LimitRequest | null;
+};
+
+/** One workspace's recent pace. */
+export type Velocity = {
+  workspace: string;
+  plan: PlanKind;
+  lastHourMicros: number;
+  averageHourMicros: number;
+  lastDayMicros: number;
+  thisMonthMicros: number;
+  ratio: number;
+  spike: Spike | null;
+  firstSeen: string | null;
 };
 
 /** g1t's capped budgets for free usage this month. */
@@ -209,7 +380,7 @@ export type Statement = {
   groups: {
     key: string;
     label: string;
-    /** `coveredMicros`: what the Team credit, the trial or the open-source pool paid, not in `chargedMicros`. */
+    /** `coveredMicros`: what the plan's included usage, the trial, the open-source pool or g1t paid, not in `chargedMicros`. */
     lines: { kind: string; count: number; chargedMicros: number; costMicros: number; coveredMicros?: number }[];
     chargedMicros: number;
   }[];
@@ -219,13 +390,30 @@ export type Statement = {
     costMicros: number;
     entries: number;
     /** What paid for usage before it was charged, such as "Paid by g1t's open-source pool". */
-    covered?: { source: "team_credit" | "trial" | "oss_pool" | string; label: string; micros: number }[];
+    covered?: { source: "included" | "trial" | "oss_pool" | "given" | string; label: string; micros: number }[];
     /** Owed when the month closed but under the minimum charge: on the next invoice. */
     carriedMicros?: number;
   };
 };
 
-export type MonthFigures = { month: string; chargedMicros: number; costMicros: number; paidMicros: number };
+export type MonthFigures = {
+  month: string;
+  /** Usage charged, after what paid for it first. */
+  chargedMicros: number;
+  /** What usage cost g1t: never a workspace's own model provider. */
+  costMicros: number;
+  paidMicros: number;
+  /** The plan's monthly price, paid. */
+  plansMicros?: number;
+  /** What g1t gave at price (internal use, trials, the open-source pool, goodwill, covered). Not margin. */
+  givenMicros?: number;
+};
+
+/** What g1t gave this month from one source. */
+export type GivenFigures = { source: "internal" | "trial" | "oss_pool" | "goodwill" | "covered" | string; label: string; micros: number; costMicros: number };
+
+/** One internal workspace's use this month, and why it is not charged. */
+export type InternalUse = { workspace: string; reason: string; costMicros: number; entries: number };
 
 export type SignalKind = "at_limit" | "near_ceiling" | "declined" | "growing" | "established" | "first_payment" | "high_spend";
 
@@ -281,6 +469,17 @@ export type Overview = {
   followUpsDue: number;
   /** g1t's capped budgets for free usage, this month. */
   pools?: Pools | null;
+  /** Usage charged plus the plan's price paid, this month. */
+  revenueMicros?: number;
+  activePlans?: number;
+  planMrrMicros?: number;
+  /** What g1t gave this month, by source, apart from its margin. */
+  given?: GivenFigures[];
+  /** g1t's own and Flagon's workspaces: what their use cost, and why they are not charged. */
+  internal?: InternalUse[];
+  openRequests?: number;
+  overages?: number;
+  openSpikes?: number;
 };
 
 /** A customer's Stripe billing page, for staff to send them. */
@@ -336,6 +535,18 @@ export interface BillingAdminApi {
   allInvoices(filter?: { status?: string; month?: string }): Promise<InvoiceSummary[]>;
   /** Every change made in sudo and by Stripe, newest first, 100 at a time. */
   audit(filter?: { by?: string; action?: string; before?: string }): Promise<AdminAction[]>;
+  /** Limit and overage requests, with each workspace's history; `open` by default. */
+  limitRequests(status?: "open" | "approved" | "declined" | "all"): Promise<LimitRequestReview[]>;
+  /** Approve (at the amount asked, or another) or decline; the owner is told in the app and by email. */
+  decideLimitRequest(id: string, decision: "approve" | "decline", amountMicros: number | null, note: string, by: string): Promise<Result<LimitRequest>>;
+  /** The Overages queue. */
+  overages(): Promise<Overage[]>;
+  /** A goodwill credit; no amount is the one-click credit. Larger, or a second in 12 months, needs a reason. */
+  goodwill(workspace: string, amountMicros: number | null, reason: string, by: string, day?: string | null): Promise<Result<LedgerEntry>>;
+  /** Workspaces spending in the last day, fastest first. */
+  velocity(): Promise<Velocity[]>;
+  /** Money that reached g1t outside the card pages, such as a bank transfer: entered as a payment. */
+  recordPayment(workspace: string, amountMicros: number, reference: string, note: string, by: string): Promise<Result<LedgerEntry>>;
 }
 
 /** How much a workspace has earned g1t's trust with money. */
@@ -364,10 +575,20 @@ export type Limit = {
   spentMicros?: number;
   /** True while the owners have not chosen a limit, so the automatic one applies: $200, or twice last month's spend. */
   defaultSpendLimit?: boolean;
-  /** The most owners may set their own limit to; past it, they contact g1t. */
+  /** The most owners may set their own limit to without asking: the highest ceiling ever, plus what is prepaid. */
   availableMicros?: number | null;
   /** How the ceiling grows from here, in a sentence. */
   growth?: string | null;
+  /** Paid in advance and not used yet; raises what can be used before work stops by as much. */
+  prepaidMicros?: number;
+  /** The highest ceiling the workspace has had. */
+  maxCeilingMicros?: number | null;
+  /** The most owners may raise the limit to themselves, once: twice the highest ceiling. Null once used. */
+  raiseOnceMicros?: number | null;
+  /** When the one-time raise was used. */
+  raisedAt?: string | null;
+  /** A paid workspace's first billing cycle, on the starting ceiling. */
+  firstMonth?: boolean;
 };
 
 /** One metered unit: what it costs g1t and what it is sold at; the price follows the cost. */
@@ -427,10 +648,19 @@ export type FreeTier = {
   ossRepoMicros: number;
   /** Private repository storage before it is charged. */
   freePrivateStorageBytes: number;
-  /** Days of audit log without Team. */
+  /** Days of audit log, the same on every plan. */
   auditRetentionDays: number;
-  /** The smallest amount a card is charged; less carries over. */
+  /** The smallest amount a card is charged when a month closes; less carries over. */
   minChargeMicros: number;
+  /** Git operations included each month on every plan; past the free cap, a free workspace is slowed down. */
+  gitOperationsIncluded?: number;
+  gitOperationsFreeCap?: number;
+  /** Private storage on the plan before it is charged. */
+  planPrivateStorageBytes?: number;
+  /** A new paid workspace's ceiling in its first month. */
+  paidStartCeilingMicros?: number;
+  /** The most a one-click goodwill credit can cost g1t. */
+  overageForgiveCostMicros?: number;
 };
 
 /**
@@ -453,14 +683,13 @@ export type Trial = {
 };
 
 /**
- * A paid feature a workspace turns on with a monthly plan, as Cloudflare's
- * Workers for Platforms or Vercel's Pro are bought. Never free: neither
- * `free` nor the model allowance covers it. Mirrors `Feature` in
- * `crates/contracts/src/billing.rs`.
+ * What a workspace pays a monthly price for: the g1t plan (`plan`). Deployments
+ * are part of it; `has_feature` for `deployments` answers whether the workspace
+ * has the plan. Mirrors `Feature` in `crates/contracts/src/billing.rs`.
  */
-export type Feature = "deployments" | "team";
+export type Feature = "plan" | "deployments";
 
-/** What the Deployments plan includes each month. Mirrors `deployments_allowance`. */
+/** What the g1t plan includes for deployments each month. Mirrors `deployments_allowance`. */
 export const DEPLOYMENTS_ALLOWANCE = {
   apps: 10,
   requests: 1_000_000,
@@ -471,8 +700,8 @@ export const DEPLOYMENTS_ALLOWANCE = {
   microsPerAppMonth: 20_000,
   microsPerMillionRequests: 300_000,
   microsPerMillionCpuMs: 20_000,
-  /** One second of a build's sandbox, past the included build time. */
-  microsPerBuildSecond: 21,
+  /** One second of a build's sandbox past the included build time: a fallback; billing charges the price book's `build_second`. */
+  microsPerBuildSecond: 15,
   /** Custom domains across the workspace, and what each one past that costs g1t a month. */
   customDomains: 3,
   microsPerDomainMonth: 100_000,
@@ -527,11 +756,17 @@ export interface BillingApi {
   /** What the workspace's agents cost since `since`, broken down. Members only. */
   usage(workspace: string, viewer: Viewer, since: string): Promise<Result<Usage>>;
   /**
-   * Starts a card payment for credit and returns the page to send the
-   * person to. Owners only. The payment's id comes back to `returnUrl` as
-   * `session`.
+   * Prepays usage ($25 at least) and returns the page to send the person to:
+   * by card with 3-D Secure, or by bank transfer from $1,000. Owners only.
+   * The payment's id comes back to `returnUrl` as `session`.
    */
-  checkout(actor: User, workspace: string, amountCents: number, returnUrl: string): Promise<Result<{ url: string }>>;
+  checkout(
+    actor: User,
+    workspace: string,
+    amountCents: number,
+    returnUrl: string,
+    method?: "card" | "bank_transfer",
+  ): Promise<Result<{ url: string }>>;
   /**
    * Stripe's hosted billing page for the workspace: card, invoices, billing
    * email and address. g1t never handles card numbers. Owners only.
@@ -584,8 +819,41 @@ export interface BillingApi {
    * its own.
    */
   notePending(workspace: string, source: "deployments" | "context" | "security", costMicros: number): Promise<boolean>;
-  /** What the workspace's plans give it now: Team, audit retention, storage, credit used. */
+  /** What the workspace may do now: its plan, caps, pause, trial, and what the plan gives it. */
   entitlements(workspace: string): Promise<Entitlements>;
+  /**
+   * Holds a start's estimated cost before the work starts. A failure's code says why not:
+   * `paused`, `limit`, `not_paid`, `trial_used` or `oss_pool_empty`, with a message for the owner.
+   */
+  reserve(reservation: {
+    workspace: string;
+    repo: RepoPath;
+    public: boolean;
+    kind: ComputeKind;
+    /** The most the work is expected to cost g1t, before the margin. */
+    estimateMicros: number;
+  }): Promise<Result<ReservationHeld>>;
+  /** Releases a reservation's hold with what the work cost g1t, before the margin. Safe to repeat. */
+  settle(reservationId: string, actualMicros: number): Promise<Result<boolean>>;
+  /** Stripe's page to save and verify a card (3-D Secure, never charged). Owners only. */
+  cardCheck(actor: User, workspace: string, returnUrl: string): Promise<Result<{ url: string }>>;
+  /** Records the card check once Stripe says it passed, and grants the trial if it can. Safe to repeat. */
+  confirmCardCheck(workspace: string, viewer: Viewer, session: string): Promise<Result<Entitlements>>;
+  /** An owner asks for a higher limit, or for help with usage past what was meant. */
+  requestLimit(
+    actor: User,
+    workspace: string,
+    request: { kind: "limit" | "overage"; amountMicros: number; reason: string; expectedMonthlyMicros: number },
+  ): Promise<Result<LimitRequest>>;
+  /** The workspace's requests and their answers, newest first. Members only. */
+  limitRequests(workspace: string, viewer: Viewer): Promise<Result<LimitRequest[]>>;
+  /**
+   * The owners' own caps on agents: one run's spend ($0.10 to $100) and one issue's ($1 to $1,000).
+   * Null goes back to the default ($2 and $10). A cap staff set wins. Owners only.
+   */
+  setCaps(actor: User, workspace: string, caps: { runCapMicros: number | null; issueCapMicros: number | null }): Promise<Result<Entitlements>>;
+  /** An owner's answer to a spend spike: keep going for 24 hours, or stop. */
+  confirmSpike(actor: User, workspace: string, keepGoing: boolean): Promise<Result<Entitlements>>;
   /** Every metered price and the recent changes. Public. */
   prices(): Promise<PriceBook>;
   /** A workspace's limit, for its members. */
@@ -596,7 +864,14 @@ export interface BillingApi {
    * The owners' own monthly limit, up to what is available; null goes back
    * to the default, and `useFullLimit` uses everything available. Owners only.
    */
-  setSpendLimit(actor: User, workspace: string, spendLimitMicros: number | null, useFullLimit?: boolean): Promise<Result<Limit>>;
+  setSpendLimit(
+    actor: User,
+    workspace: string,
+    spendLimitMicros: number | null,
+    useFullLimit?: boolean,
+    /** Use the one-time raise: up to twice the highest ceiling, once per workspace. */
+    raiseOnce?: boolean,
+  ): Promise<Result<Limit>>;
   /** The workspace's invoices from g1t, newest first. Members only. */
   invoices(workspace: string, viewer: Viewer): Promise<Result<WorkspaceInvoice[]>>;
   /**
@@ -610,6 +885,12 @@ export interface BillingApi {
     description: string;
     repo?: string | null;
     reference: string;
+    /** What ran; checks, workflows and the merge queue on public repositories may use the open-source pool. */
+    kind?: ComputeKind | null;
+    /** vCPU-seconds used, when the sandbox can tell: the run is priced on its own CPU. */
+    cpuSeconds?: number | null;
+    /** The reservation it started under, settled with this cost. */
+    reservationId?: string | null;
   }): Promise<Result<boolean>>;
   startRun(run: {
     workspace: string;

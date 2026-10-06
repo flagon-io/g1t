@@ -4,6 +4,7 @@ import { Link, data } from "react-router";
 import { MICROS_PER_DOLLAR, type UsageSlice } from "@g1t/contracts";
 
 import type { Route } from "./+types/usage";
+import { usageTask } from "../../lib/billing";
 import { page } from "../../lib/meta";
 import { ButtonLink } from "../../components/ui";
 import { billing } from "../../lib/services.server";
@@ -18,15 +19,7 @@ const PERIODS = {
 type Period = keyof typeof PERIODS;
 
 /** What each kind of agent work is called, and its colour. */
-const TASKS: Record<string, { label: string; color: string }> = {
-  implement: { label: "Making changes", color: "var(--color-merged)" },
-  review: { label: "Reviews", color: "var(--color-info)" },
-  revise: { label: "Revisions", color: "var(--color-warn)" },
-  update: { label: "Catching up", color: "var(--color-accent)" },
-  plan: { label: "Planning", color: "#f0a6ca" },
-  other: { label: "Other", color: "var(--color-faint)" },
-};
-const task = (key: string) => TASKS[key] ?? TASKS.other!;
+const task = usageTask;
 
 function start(period: Period, now = new Date()): Date {
   if (period === "month") return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));

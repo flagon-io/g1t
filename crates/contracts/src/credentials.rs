@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::identity::AgentScope;
 use crate::repos::RepoPath;
+use crate::access::{BasePermission, RepoGrant, RepoRole};
 use crate::{Membership, PrincipalKind, Role, User};
 
 /// What a run does, as far as its credentials are concerned. The same names
@@ -208,6 +209,12 @@ pub const READ_OPERATIONS: &[&str] = &[
     "whoami",
     "list_repos",
     "get_repo",
+    "list_deleted_repos",
+    "list_collaborators",
+    "get_collaborator_permission",
+    "list_repo_invitations",
+    "list_my_repo_invitations",
+    "list_outside_collaborators",
     "get_repo_settings",
     "get_merge_queue",
     "recall",
@@ -242,8 +249,19 @@ pub const READ_OPERATIONS: &[&str] = &[
 /// to work.
 pub const NEVER: &[&str] = &[
     "create_workspace",
+    "delete_workspace",
+    "transfer_repo",
     "create_repo",
     "update_repo",
+    "delete_repo",
+    "list_deleted_repos",
+    "restore_repo",
+    "purge_repo",
+    "rename_repo",
+    "archive_repo",
+    "unarchive_repo",
+    "set_repo_visibility",
+    "rename_branch",
     "update_repo_settings",
     "merge_pull_request",
     "assign_issue",
@@ -273,6 +291,18 @@ pub const NEVER: &[&str] = &[
     "list_actions_variables",
     "set_actions_variable",
     "delete_actions_variable",
+    "list_collaborators",
+    "get_collaborator_permission",
+    "add_collaborator",
+    "update_collaborator",
+    "remove_collaborator",
+    "list_repo_invitations",
+    "revoke_repo_invitation",
+    "list_my_repo_invitations",
+    "accept_repo_invitation",
+    "decline_repo_invitation",
+    "set_base_permission",
+    "list_outside_collaborators",
 ];
 
 /// Reading what an agent needs to know about its repository.
@@ -425,8 +455,10 @@ pub fn decide_operation(
         );
     }
     // The intersection: the person it acts for must still be able to work
-    // in the repository's workspace.
-    if !user.is_member(&scope.repo.namespace.to_lowercase()) {
+    // in the repository's workspace, as a member or with a role on its
+    // repositories. What it may do in the repository itself is their
+    // role there, which services check (`access::can`).
+    if !crate::access::has_access_in(user, &scope.repo.namespace) {
         return Decision::deny(
             "on-behalf-of:membership",
             format!(
@@ -542,16 +574,46 @@ pub fn decide_refs(scope: &AgentScope, repo: &RepoPath, refs: &[String]) -> Deci
     repo_decision
 }
 
+/// The most an agent may be on a repository, whoever it works for: it
+/// can push, merge and run, never change settings or who has access.
+pub const AGENT_CEILING: RepoRole = RepoRole::Write;
+
 /// The memberships an agent working for `person` has: the run's
-/// workspace, as a member, only if the person is in it now.
+/// workspace, as a member, only if the person is in it now, with the
+/// person's role on its repositories (an owner's Admin included) cut down
+/// to [`AGENT_CEILING`].
 pub fn intersect(person: &[Membership], namespace: &str) -> Vec<Membership> {
     let namespace = namespace.to_lowercase();
     person
         .iter()
         .filter(|membership| membership.slug == namespace)
-        .map(|membership| Membership {
-            role: Role::Member,
-            ..membership.clone()
+        .map(|membership| {
+            let base = match membership.role {
+                Role::Owner => BasePermission::Admin,
+                Role::Member => membership.base_permission.unwrap_or_default(),
+            };
+            Membership {
+                role: Role::Member,
+                base_permission: Some(match base {
+                    BasePermission::Admin => BasePermission::Write,
+                    base => base,
+                }),
+                ..membership.clone()
+            }
+        })
+        .collect()
+}
+
+/// The repository grants an agent working for `person` has: those in the
+/// run's workspace, each cut down to [`AGENT_CEILING`].
+pub fn intersect_grants(person: &[RepoGrant], namespace: &str) -> Vec<RepoGrant> {
+    let namespace = namespace.to_lowercase();
+    person
+        .iter()
+        .filter(|grant| grant.workspace == namespace)
+        .map(|grant| RepoGrant {
+            role: grant.role.min(AGENT_CEILING),
+            ..grant.clone()
         })
         .collect()
 }
@@ -575,6 +637,7 @@ pub fn as_person(user: &User) -> Option<User> {
         workspaces: user.workspaces.clone(),
         avatar: None,
         acting: None,
+        grants: user.grants.clone(),
     })
 }
 
@@ -676,6 +739,7 @@ mod tests {
                 .map(|slug| Membership::member(*slug))
                 .collect(),
             avatar: None,
+            grants: Vec::new(),
             acting: Some(Box::new(Acting {
                 credential_id: "tok_1".to_owned(),
                 agent: "g1t-agent".to_owned(),
@@ -843,6 +907,7 @@ mod tests {
                 role: Role::Owner,
                 name: None,
                 avatar: None,
+                base_permission: Some(BasePermission::None),
             },
             Membership::member("elsewhere"),
         ];
@@ -851,6 +916,46 @@ mod tests {
         assert_eq!(memberships[0].slug, "acme");
         assert_eq!(memberships[0].role, Role::Member);
         assert!(intersect(&owner, "nowhere").is_empty());
+    }
+
+    /// An agent gets at most the person's role on the repository, and
+    /// never more than Write; nothing outside the run's workspace.
+    #[test]
+    fn an_agent_has_at_most_its_persons_role() {
+        use crate::access::{Capability, RepoRef, can, permission};
+        let rocket = RepoRef { id: "rep_1", namespace: "acme", private: true };
+        let other = RepoRef { id: "rep_2", namespace: "acme", private: true };
+        let elsewhere = RepoRef { id: "rep_3", namespace: "globex", private: true };
+        let tools = scope(K::Implement, Tools);
+        let scope = scope(K::Implement, Runner);
+        // An owner's agent: Write, never Admin.
+        let owner = [Membership { role: Role::Owner, ..Membership::member("acme") }, Membership::member("globex")];
+        let mut agent_user = agent(&[], scope.clone());
+        agent_user.workspaces = intersect(&owner, "acme");
+        assert_eq!(permission(Some(&agent_user), rocket), Some(RepoRole::Write));
+        assert!(!can(Some(&agent_user), rocket, Capability::ManageSettings));
+        assert_eq!(permission(Some(&agent_user), elsewhere), None);
+        // A member whose workspace gives Read: Read, so it cannot push.
+        let reader = [Membership { base_permission: Some(BasePermission::Read), ..Membership::member("acme") }];
+        agent_user.workspaces = intersect(&reader, "acme");
+        assert_eq!(permission(Some(&agent_user), rocket), Some(RepoRole::Read));
+        assert!(!can(Some(&agent_user), rocket, Capability::Push));
+        // An outside collaborator with Maintain on one repository: Write
+        // there, nothing elsewhere, and the run is allowed.
+        let grants = [
+            RepoGrant { repo_id: "rep_1".into(), workspace: "acme".into(), role: RepoRole::Maintain },
+            RepoGrant { repo_id: "rep_3".into(), workspace: "globex".into(), role: RepoRole::Admin },
+        ];
+        agent_user.workspaces = intersect(&[], "acme");
+        agent_user.grants = intersect_grants(&grants, "Acme");
+        assert_eq!(permission(Some(&agent_user), rocket), Some(RepoRole::Write));
+        assert_eq!(permission(Some(&agent_user), other), None);
+        assert_eq!(permission(Some(&agent_user), elsewhere), None);
+        let decision = decide_operation(&agent_user, &tools, "get_issue", Some(&path("acme", "rocket")), true, Some(1));
+        assert!(decision.allowed, "{}", decision.reason.unwrap_or_default());
+        // The person, downstream of a runner's credential, carries the same.
+        let person = as_person(&agent_user).expect("a runner acts as the person");
+        assert_eq!(permission(Some(&person), rocket), Some(RepoRole::Write));
     }
 
     #[test]

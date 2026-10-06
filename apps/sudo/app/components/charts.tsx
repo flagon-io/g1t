@@ -110,24 +110,28 @@ export function MonthsChart({
           <span className="hidden group-open:inline">Hide the table</span>
         </summary>
         <div className="mt-2 overflow-x-auto">
-          <table className="w-full min-w-[26rem] text-xs">
+          <table className="w-full min-w-[34rem] text-xs">
             <thead>
               <tr className="border-b border-line text-left text-muted">
                 <th className="py-1.5 pr-3 font-medium">Month</th>
                 <th className="py-1.5 pr-3 text-right font-medium">Charged</th>
+                <th className="py-1.5 pr-3 text-right font-medium">Plans</th>
                 <th className="py-1.5 pr-3 text-right font-medium">Cost</th>
-                <th className="py-1.5 pr-3 text-right font-medium">Margin</th>
+                <th className="py-1.5 pr-3 text-right font-medium">Given</th>
+                <th className="py-1.5 pr-3 text-right font-medium">Net</th>
                 <th className="py-1.5 text-right font-medium">Paid</th>
               </tr>
             </thead>
             <tbody>
               {months.map((month) => {
-                const margin = marginOf(month.chargedMicros, month.costMicros);
+                const margin = marginOf(month.chargedMicros + (month.plansMicros ?? 0), month.costMicros);
                 return (
                   <tr key={month.month} className="tabular border-b border-line last:border-0">
                     <td className="py-1.5 pr-3 text-fg-soft">{monthLong(month.month)}</td>
                     <td className="py-1.5 pr-3 text-right">{usd(month.chargedMicros)}</td>
+                    <td className="py-1.5 pr-3 text-right">{usd(month.plansMicros ?? 0)}</td>
                     <td className="py-1.5 pr-3 text-right text-muted">{usd(month.costMicros)}</td>
+                    <td className="py-1.5 pr-3 text-right text-merged">{usd(month.givenMicros ?? 0)}</td>
                     <td className={`py-1.5 pr-3 text-right ${margin.micros < 0 ? "text-danger" : "text-fg-soft"}`}>
                       {usd(margin.micros)}
                       {margin.percent != null && <span className="text-faint"> {margin.percent}%</span>}

@@ -1,19 +1,28 @@
 ---
-// The fleet, the name and "Docs": the same mark as g1t.sh, so the two read
-// as one product.
+// The wordmark and "Docs": the same G1T in pixel capitals as g1t.sh, the 1
+// in lavender, so the two read as one product. Copied from
+// apps/web/app/components/logo.tsx; keep the two in step.
+const G = ['.###.', '#...#', '#....', '#.###', '#...#', '#...#', '.###.'];
+const ONE = ['..#..', '.##..', '#.#..', '..#..', '..#..', '..#..', '#####'];
+const T = ['#####', '..#..', '..#..', '..#..', '..#..', '..#..', '..#..'];
+const pixels = (rows: string[], dx: number, one: boolean) =>
+	rows.flatMap((row, y) => [...row].flatMap((c, x) => (c === '#' ? [{ x: dx + x, y, one }] : [])));
+const word = [...pixels(G, 0, false), ...pixels(ONE, 6, true), ...pixels(T, 10, false)];
 ---
 
 <a href="/" class="g1t-title" aria-label="g1t docs home">
 	<span class="g1t-title-lockup">
-	<svg viewBox="6.9 5 18.2 22" aria-hidden="true">
-		<g transform="translate(0.7 0.5)">
-			<rect x="6.2" y="9.5" width="4.4" height="17" rx="2.2" fill="var(--g1t-merged)" fill-opacity="0.35"></rect>
-			<rect x="12.4" y="7" width="4.8" height="19.5" rx="2.4" fill="var(--g1t-merged)" fill-opacity="0.65"></rect>
-			<rect x="19" y="4.5" width="5.4" height="22" rx="2.7" fill="currentColor"></rect>
-			<path d="M21.7 7.2 17.6 10.9" fill="none" stroke="currentColor" stroke-width="4.6" stroke-linecap="round"></path>
-		</g>
-	</svg>
-	<span class="g1t-title-name">g1t</span>
+		<svg viewBox="1 1 148 68" role="img" aria-label="g1t">
+			{word.map((p) => (
+				<rect
+					x={p.x * 10 + 1}
+					y={p.y * 10 + 1}
+					width="8"
+					height="8"
+					fill={p.one ? 'var(--g1t-merged)' : 'currentColor'}
+				/>
+			))}
+		</svg>
 	</span>
 	<span class="g1t-title-docs">Docs</span>
 </a>
@@ -26,22 +35,17 @@
 		color: var(--g1t-fg);
 		text-decoration: none;
 	}
-	/* As on g1t.sh: the mark as tall as the capitals, on the baseline. */
+	/* As on g1t.sh: a cell is 0.125em, the letters 0.85em tall. */
 	.g1t-title-lockup {
 		display: inline-flex;
 		align-items: baseline;
-		gap: 0.3em;
-		font-size: 1.25rem;
-		font-weight: 700;
+		font-size: 1.5rem;
 		line-height: 1;
 	}
 	svg {
-		height: 0.74em;
+		height: 0.85em;
 		width: auto;
 		flex-shrink: 0;
-	}
-	.g1t-title-name {
-		letter-spacing: -0.045em;
 	}
 	.g1t-title-docs {
 		border-radius: 999px;

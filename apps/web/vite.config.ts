@@ -12,4 +12,15 @@ export default defineConfig({
   resolve: {
     tsconfigPaths: true,
   },
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          // Icons are shared by nearly every page, a few hundred bytes each:
+          // one file for all of them, not a request per icon.
+          groups: [{ name: "icons", test: /[\\/]node_modules[\\/]lucide-react[\\/]/ }],
+        },
+      },
+    },
+  },
 });

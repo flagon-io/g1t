@@ -3,6 +3,7 @@
 //! Each reaches its agent at the agent's next step: the sandbox asks for
 //! undelivered messages after each tool call and before it stops.
 
+use g1t_contracts::access::Capability;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, new_id};
@@ -113,6 +114,9 @@ impl Work {
             Outcome::Ok(found) => found,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
+        if let Outcome::Fail(failure) = crate::retired::writable(&repo) {
+            return Ok(Outcome::Fail(failure));
+        }
         let from_agent = a.actor.kind == PrincipalKind::Agent;
         let kind = match (&a.kind, from_agent) {
             (Some(kind), true) if ASKS.contains(&kind.as_str()) => kind.clone(),
@@ -131,13 +135,14 @@ impl Work {
                 "Say which pull request you are working on, as from_number; it is where the answer goes.",
             ));
         }
-        if !a.actor.verified
-            || (pull.author.id != a.actor.id && !a.actor.is_member(&repo.namespace))
+        if !a.actor.verified {
+            return Ok(Outcome::fail(FailureCode::Forbidden, crate::UNVERIFIED));
+        }
+        // Its author may always steer it; anyone else puts compute to work.
+        if pull.author.id != a.actor.id
+            && let Outcome::Fail(failure) = crate::allowed(Some(&a.actor), &repo, Capability::Run)
         {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only the pull request's author and members of the workspace can message its agent.",
-            ));
+            return Ok(Outcome::Fail(failure));
         }
         if !pull.status.is_active() {
             return Ok(Outcome::fail(
@@ -274,8 +279,11 @@ impl Work {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        if !a.actor.is_member(&repo.namespace) {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only members and g1t's agents answer."));
+        if let Outcome::Fail(failure) = crate::retired::writable(&repo) {
+            return Ok(Outcome::Fail(failure));
+        }
+        if let Outcome::Fail(failure) = crate::allowed(Some(&a.actor), &repo, Capability::Run) {
+            return Ok(Outcome::Fail(failure));
         }
         let row = self
             .db
@@ -433,7 +441,7 @@ impl Work {
             },
         )
         .await?;
-        let Outcome::Ok(repo) = repo else {
+        let Outcome::Ok(repo) = crate::retired::unless_archived(repo) else {
             return Ok(None);
         };
         let path = g1t_contracts::repos::RepoPath {

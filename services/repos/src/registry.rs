@@ -4,13 +4,14 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use g1t_contracts::Viewer;
+use g1t_contracts::access::{self, Capability, RepoRole};
 use g1t_contracts::repos::{Repo, RepoPath};
 use serde::Deserialize;
 use worker::wasm_bindgen::JsValue;
 use worker::{D1Database, Result};
 
 #[derive(Deserialize)]
-struct RepoRow {
+pub(crate) struct RepoRow {
     id: String,
     namespace: String,
     name: String,
@@ -28,6 +29,12 @@ struct RepoRow {
     /// JSON; absent on rows read before the column existed.
     #[serde(default)]
     topics: Option<String>,
+    #[serde(default)]
+    website: Option<String>,
+    #[serde(default)]
+    archived_at: Option<String>,
+    #[serde(default)]
+    deleted_at: Option<String>,
 }
 
 thread_local! {
@@ -70,6 +77,8 @@ impl From<RepoRow> for Repo {
                 .as_deref()
                 .and_then(|topics| serde_json::from_str(topics).ok())
                 .unwrap_or_default(),
+            website: row.website,
+            archived_at: row.archived_at,
         };
         if let Some(store) = &row.store {
             remember_store(&repo, store);
@@ -85,23 +94,44 @@ pub fn store_key(repo: &Repo) -> String {
         .unwrap_or_else(|| path_key(repo))
 }
 
-/// Whether the viewer may read `repo`, going by the repository alone. A
-/// private pull request fork is also readable by whoever can read the
-/// repository it came from, which `Repos::may_read` checks.
-pub fn can_read(repo: &Repo, viewer: &Viewer) -> bool {
-    !repo.is_private || can_write(repo, viewer)
+/// The viewer's role on `repo` (see `g1t_contracts::access`): ownership of
+/// its workspace, the workspace's base permission, a direct grant, or
+/// Read on a public repository. A pull request's fork is its author's to
+/// write; whoever can read the repository it came from can read it too,
+/// which `Repos::may_read` checks.
+pub fn role(repo: &Repo, viewer: &Viewer) -> Option<RepoRole> {
+    if repo.fork_of.is_some() {
+        let author = viewer.as_ref().is_some_and(|user| user.id == repo.owner_id);
+        return if author {
+            Some(RepoRole::Write)
+        } else if repo.is_private {
+            None
+        } else {
+            Some(RepoRole::Read)
+        };
+    }
+    access::permission(viewer.as_ref(), repo)
 }
 
-/// A repository belongs to its workspace, so any member may write to it. A
-/// pull request's fork belongs to whoever opened the pull request.
+/// Whether the viewer may read `repo`, going by the repository alone.
+pub fn can_read(repo: &Repo, viewer: &Viewer) -> bool {
+    role(repo, viewer).is_some()
+}
+
+/// Whether the viewer may push to `repo`: Write or higher, or the author
+/// of a pull request's fork.
 pub fn can_write(repo: &Repo, viewer: &Viewer) -> bool {
-    viewer.as_ref().is_some_and(|user| {
-        if repo.fork_of.is_some() {
-            user.id == repo.owner_id
-        } else {
-            user.is_member(&repo.namespace)
-        }
-    })
+    can(repo, viewer, Capability::Push)
+}
+
+/// Whether the viewer may do `capability` in `repo`. A fork has only its
+/// author's Write.
+pub fn can(repo: &Repo, viewer: &Viewer, capability: Capability) -> bool {
+    if repo.fork_of.is_some() {
+        return role(repo, viewer).is_some_and(|role| access::allows(role, capability))
+            && !access::OWNER_ONLY.contains(&capability);
+    }
+    access::can(viewer.as_ref(), repo, capability)
 }
 
 fn optional(value: &Option<String>) -> JsValue {
@@ -116,7 +146,7 @@ impl Registry {
     pub async fn by_path(&self, path: &RepoPath) -> Result<Option<Repo>> {
         Ok(self
             .db
-            .prepare("SELECT * FROM repos WHERE namespace = ? AND name = ?")
+            .prepare("SELECT * FROM repos WHERE namespace = ? AND name = ? AND deleted_at IS NULL")
             .bind(&[
                 path.namespace.to_lowercase().into(),
                 path.name.to_lowercase().into(),
@@ -126,21 +156,22 @@ impl Registry {
             .map(Repo::from))
     }
 
+    /// Its details; who can see it changes with `set_private`.
     pub async fn update(
         &self,
         id: &str,
         description: Option<&str>,
-        is_private: bool,
         protected: bool,
         topics: &[String],
+        website: Option<&str>,
     ) -> Result<()> {
         self.db
-            .prepare("UPDATE repos SET description = ?, is_private = ?, protected = ?, topics = ? WHERE id = ?")
+            .prepare("UPDATE repos SET description = ?, protected = ?, topics = ?, website = ? WHERE id = ?")
             .bind(&[
                 description.map_or(JsValue::NULL, JsValue::from),
-                u32::from(is_private).into(),
                 u32::from(protected).into(),
                 serde_json::to_string(topics)?.into(),
+                website.map_or(JsValue::NULL, JsValue::from),
                 id.into(),
             ])?
             .run()
@@ -151,11 +182,28 @@ impl Registry {
     pub async fn by_id(&self, id: &str) -> Result<Option<Repo>> {
         Ok(self
             .db
-            .prepare("SELECT * FROM repos WHERE id = ?")
+            .prepare("SELECT * FROM repos WHERE id = ? AND deleted_at IS NULL")
             .bind(&[id.into()])?
             .first::<RepoRow>(None)
             .await?
             .map(Repo::from))
+    }
+
+    /// The repository at `path`, deleted or not: what holds the name.
+    pub async fn by_path_any(&self, path: &RepoPath) -> Result<Option<(Repo, Option<String>)>> {
+        Ok(self
+            .db
+            .prepare("SELECT * FROM repos WHERE namespace = ? AND name = ?")
+            .bind(&[
+                path.namespace.to_lowercase().into(),
+                path.name.to_lowercase().into(),
+            ])?
+            .first::<RepoRow>(None)
+            .await?
+            .map(|mut row| {
+                let deleted_at = row.deleted_at.take();
+                (Repo::from(row), deleted_at)
+            }))
     }
 
     /// Repos the viewer may see, newest first. Excludes pull request forks.
@@ -172,22 +220,38 @@ impl Registry {
             .flat_map(|user| &user.workspaces)
             .map(|membership| membership.slug.as_str())
             .collect();
-        // An empty IN list is not valid SQL, so a viewer in no workspace
-        // gets a name no workspace can have.
-        let mut params: Vec<JsValue> = if workspaces.is_empty() {
-            vec!["".into()]
-        } else {
-            workspaces.iter().map(|slug| JsValue::from(*slug)).collect()
-        };
-        let mine = format!("namespace IN ({})", vec!["?"; params.len()].join(", "));
-        let mut conditions = vec![
-            "fork_of IS NULL".to_owned(),
-            if member_only {
-                mine
-            } else {
-                format!("(is_private = 0 OR {mine})")
-            },
+        // The workspaces whose private repositories the viewer reads all
+        // of (an owner, or a base permission other than none), and the
+        // repositories they were given a role on: see access.rs. A probe
+        // repository in each workspace stands for all of them.
+        let reading: Vec<&str> = viewer
+            .iter()
+            .flat_map(|user| {
+                user.workspaces.iter().filter(move |membership| {
+                    let probe = access::RepoRef { id: "", namespace: &membership.slug, private: true };
+                    access::granted(user, probe).is_some()
+                })
+            })
+            .map(|membership| membership.slug.as_str())
+            .collect();
+        let granted: Vec<&str> = viewer
+            .iter()
+            .flat_map(|user| &user.grants)
+            .map(|grant| grant.repo_id.as_str())
+            .collect();
+        let mut params: Vec<JsValue> = vec![
+            serde_json::to_string(&reading)?.into(),
+            serde_json::to_string(&granted)?.into(),
         ];
+        let private_ok = "(namespace IN (SELECT value FROM json_each(?)) OR id IN (SELECT value FROM json_each(?)))";
+        let mut conditions = vec![
+            "fork_of IS NULL AND deleted_at IS NULL".to_owned(),
+            format!("(is_private = 0 OR {private_ok})"),
+        ];
+        if member_only {
+            conditions.push("namespace IN (SELECT value FROM json_each(?))".to_owned());
+            params.push(serde_json::to_string(&workspaces)?.into());
+        }
         if let Some(namespace) = namespace {
             conditions.push("namespace = ?".to_owned());
             params.push(namespace.to_lowercase().into());
@@ -232,7 +296,7 @@ impl Registry {
             .db
             .prepare(
                 "SELECT * FROM repos
-                 WHERE id IN (SELECT value FROM json_each(?)) AND fork_of IS NULL",
+                 WHERE id IN (SELECT value FROM json_each(?)) AND fork_of IS NULL AND deleted_at IS NULL",
             )
             .bind(&[serde_json::to_string(&ids)?.into()])?
             .all()
@@ -255,7 +319,7 @@ impl Registry {
             .db
             .prepare(
                 "SELECT DISTINCT namespace FROM repos
-                 WHERE owner_id = ? AND is_private = 0 AND fork_of IS NULL
+                 WHERE owner_id = ? AND is_private = 0 AND fork_of IS NULL AND deleted_at IS NULL
                  ORDER BY namespace",
             )
             .bind(&[owner_id.into()])?
@@ -275,7 +339,7 @@ impl Registry {
         }
         Ok(self
             .db
-            .prepare("SELECT id FROM repos WHERE fork_of IS NULL AND id > ? ORDER BY id LIMIT ?")
+            .prepare("SELECT id FROM repos WHERE fork_of IS NULL AND deleted_at IS NULL AND id > ? ORDER BY id LIMIT ?")
             .bind(&[after.unwrap_or("").into(), limit.into()])?
             .all()
             .await?
@@ -337,7 +401,7 @@ impl Registry {
                 "SELECT namespace,
                         SUM(CASE WHEN is_private = 1 THEN stored_bytes ELSE 0 END) AS private_bytes,
                         SUM(CASE WHEN is_private = 0 THEN stored_bytes ELSE 0 END) AS public_bytes
-                 FROM repos WHERE fork_of IS NULL AND stored_bytes > 0 GROUP BY namespace",
+                 FROM repos WHERE fork_of IS NULL AND deleted_at IS NULL AND stored_bytes > 0 GROUP BY namespace",
             )
             .all()
             .await?
@@ -349,6 +413,22 @@ impl Registry {
                 public_bytes: row.public_bytes.unwrap_or(0.0) as i64,
             })
             .collect())
+    }
+
+    /// What one workspace's private repositories are counted as holding.
+    pub async fn private_bytes(&self, namespace: &str) -> Result<i64> {
+        #[derive(Deserialize)]
+        struct Row {
+            bytes: Option<f64>,
+        }
+        Ok(self
+            .db
+            .prepare("SELECT SUM(stored_bytes) AS bytes FROM repos WHERE namespace = ? AND is_private = 1 AND fork_of IS NULL AND deleted_at IS NULL")
+            .bind(&[namespace.into()])?
+            .first::<Row>(None)
+            .await?
+            .and_then(|row| row.bytes)
+            .unwrap_or(0.0) as i64)
     }
 
     /// Forgets a repository that could not be filled.
@@ -404,6 +484,24 @@ impl Registry {
                         "SELECT count(*) AS left FROM repos WHERE namespace IN ({marks})"
                     ))
                     .bind(&left)?,
+                // Git operations follow the workspace, added together.
+                self.db
+                    .prepare(format!(
+                        "INSERT INTO git_operations (namespace, hour, operations)
+                         SELECT ?, hour, SUM(operations) FROM git_operations WHERE namespace IN ({marks}) GROUP BY hour
+                         ON CONFLICT (namespace, hour) DO UPDATE SET operations = git_operations.operations + excluded.operations"
+                    ))
+                    .bind(&moved)?,
+                self.db
+                    .prepare(format!("DELETE FROM git_operations WHERE namespace IN ({marks})"))
+                    .bind(&left)?,
+                // Paths repositories were transferred away from follow the
+                // workspace too, so the old slug's redirect then finds them.
+                self.db
+                    .prepare(format!(
+                        "UPDATE OR IGNORE repo_redirects SET namespace = ? WHERE namespace IN ({marks})"
+                    ))
+                    .bind(&moved)?,
             ])
             .await?;
         #[derive(Deserialize)]
@@ -441,5 +539,94 @@ impl Registry {
             .run()
             .await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use g1t_contracts::access::{BasePermission, RepoGrant};
+    use g1t_contracts::{Membership, Role, User};
+
+    fn repo(private: bool) -> Repo {
+        Repo {
+            id: "rep_1".into(),
+            namespace: "acme".into(),
+            name: "rocket".into(),
+            description: None,
+            is_private: private,
+            owner_id: "usr_owner".into(),
+            default_branch: "main".into(),
+            fork_of: None,
+            protected: false,
+            created_at: String::new(),
+            topics: Vec::new(),
+            website: None,
+            archived_at: None,
+        }
+    }
+
+    fn person(id: &str, memberships: Vec<Membership>, grants: Vec<(&str, RepoRole)>) -> Viewer {
+        Some(User {
+            id: id.into(),
+            username: id.into(),
+            verified: true,
+            workspaces: memberships,
+            grants: grants
+                .into_iter()
+                .map(|(repo_id, role)| RepoGrant { repo_id: repo_id.into(), workspace: "acme".into(), role })
+                .collect(),
+            ..User::default()
+        })
+    }
+
+    /// What git asks: clone and fetch need Read on a private repository,
+    /// push needs Write.
+    #[test]
+    fn git_reads_with_read_and_pushes_with_write() {
+        let private = repo(true);
+        let reader = person("usr_r", vec![], vec![("rep_1", RepoRole::Read)]);
+        assert!(can_read(&private, &reader));
+        assert!(!can_write(&private, &reader));
+        let writer = person("usr_w", vec![], vec![("rep_1", RepoRole::Write)]);
+        assert!(can_read(&private, &writer) && can_write(&private, &writer));
+        let stranger = person("usr_s", vec![], vec![("rep_2", RepoRole::Admin)]);
+        assert!(!can_read(&private, &stranger) && !can_write(&private, &stranger));
+        assert!(!can_read(&private, &None));
+        // A public repository: anyone clones, nobody without Write pushes.
+        let public = repo(false);
+        assert!(can_read(&public, &None) && !can_write(&public, &None));
+        assert!(can_read(&public, &stranger) && !can_write(&public, &stranger));
+    }
+
+    #[test]
+    fn members_follow_the_base_permission_and_owners_have_admin() {
+        let private = repo(true);
+        let default_member = person("usr_m", vec![Membership::member("acme")], vec![]);
+        assert!(can_write(&private, &default_member));
+        assert!(!can(&private, &default_member, Capability::ManageIntegrations));
+        let none = Membership { base_permission: Some(BasePermission::None), ..Membership::member("acme") };
+        let locked_out = person("usr_n", vec![none.clone()], vec![]);
+        assert!(!can_read(&private, &locked_out));
+        let given = person("usr_g", vec![none], vec![("rep_1", RepoRole::Triage)]);
+        assert!(can_read(&private, &given) && !can_write(&private, &given));
+        let owner = person("usr_o", vec![Membership { role: Role::Owner, ..Membership::member("acme") }], vec![]);
+        assert_eq!(role(&private, &owner), Some(RepoRole::Admin));
+        assert!(can(&private, &owner, Capability::Delete));
+    }
+
+    #[test]
+    fn a_pull_requests_fork_is_its_authors() {
+        let fork = Repo {
+            namespace: "pulls".into(),
+            fork_of: Some("rep_1".into()),
+            owner_id: "usr_a".into(),
+            ..repo(true)
+        };
+        let author = person("usr_a", vec![], vec![]);
+        assert!(can_write(&fork, &author));
+        assert!(!can(&fork, &author, Capability::ManageSettings));
+        let other = person("usr_b", vec![Membership::member("acme")], vec![]);
+        assert!(!can_write(&fork, &other));
     }
 }

@@ -2,12 +2,16 @@
 //! (push protection), and in a repository's history, a page at a time, for
 //! the security service. Also finds the lockfiles it reads dependencies
 //! from. What counts as a secret is `g1t_scan`'s business.
+//!
+//! Push protection also keeps a person's private address out of what they
+//! push, when they asked g1t to (see [`exposed_address`]).
 
 use std::cell::Cell;
 use std::collections::{HashSet, VecDeque};
 
 use futures_util::future::try_join_all;
 use g1t_contracts::User;
+use g1t_contracts::accounts::{CommitIdentityArgs, PushEmailGuard, mask_email};
 use g1t_contracts::repos::{EntryKind, RepoPath};
 use g1t_contracts::security::{
     FindLockfilesArgs, HistoryPage, LockfileText, Lockfiles, NewSecret, PushBlockedArgs, PushVerdict,
@@ -253,10 +257,67 @@ pub async fn scan_push<R: GitRepo>(repo: &R, body: &[u8]) -> Result<Vec<NewSecre
     Ok(found)
 }
 
+/// A commit in a push that would publish one of the pusher's own
+/// addresses while they keep it private: its id and the address. Only the
+/// commits the push adds are read; anyone else's address is no concern
+/// here. A pack that cannot be read is let through.
+pub fn exposed_address(body: &[u8], guard: &PushEmailGuard) -> Option<(String, String)> {
+    if body.len() > MAX_SCANNED_PUSH {
+        return None;
+    }
+    let pack = Pack::parse(&body[pack_start(body)?..]).ok()?;
+    pack.commits().iter().find_map(|id| {
+        let commit = pack.commit(id)?;
+        [commit.author_email, commit.committer_email]
+            .into_iter()
+            .flatten()
+            .find(|email| guard.exposes(email))
+            .map(|email| (id.clone(), email))
+    })
+}
+
+/// What git shows a person whose push would publish their private address.
+pub fn exposed_message(commit: &str, email: &str, noreply: &str) -> Vec<String> {
+    let short: String = commit.chars().take(7).collect();
+    vec![
+        format!(
+            "push declined: commit {short} would publish {} while your email is private.",
+            mask_email(&email.to_lowercase())
+        ),
+        format!("Commit with {noreply} (git config user.email {noreply}) and amend,"),
+        format!("or change this in {}/settings#emails.", SITE.trim_start_matches("https://")),
+    ]
+}
+
 impl<S: GitStore> crate::Repos<S> {
+    /// What a push by `pusher` must not publish: their own addresses, when
+    /// they keep them private and block such pushes. An agent's push is
+    /// its person's. `None` when nothing is guarded, or identity cannot say.
+    async fn push_email_guard(&self, pusher: Option<&User>) -> Option<PushEmailGuard> {
+        let pusher = pusher?;
+        let person = pusher.acting.as_ref().map_or(pusher.id.clone(), |acting| acting.on_behalf_of.id.clone());
+        let identity = self.identity.as_ref()?;
+        g1t_kit::call::<_, Option<PushEmailGuard>>(identity, "push_email_guard", &CommitIdentityArgs { user_id: person })
+            .await
+            .unwrap_or_else(|error| {
+                worker::console_error!("push_email_guard failed: {error}");
+                None
+            })
+    }
+
     /// Push protection: the response refusing a push that adds secrets
-    /// nobody has allowed, or `None` to let it through.
+    /// nobody has allowed, or that would publish the pusher's private
+    /// address, or `None` to let it through.
     pub(crate) async fn protect(&self, path: &RepoPath, pusher: Option<&User>, body: &[u8]) -> Result<Option<Response>> {
+        if let Some(guard) = self.push_email_guard(pusher).await
+            && let Some((commit, email)) = exposed_address(body, &guard)
+        {
+            return Ok(Some(crate::git_http::declined(
+                body,
+                "push would publish a private email",
+                &exposed_message(&commit, &email, &guard.noreply),
+            )?));
+        }
         let Some(repo) = self.registry.by_path(path).await? else {
             return Ok(None);
         };
@@ -598,5 +659,30 @@ mod tests {
         assert!(run(scan_push(&FakeRepo::default(), &body)).unwrap().is_empty());
         // A deletion sends commands and no pack.
         assert!(run(scan_push(&FakeRepo::default(), b"0000")).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_push_carrying_the_pushers_private_address_is_declined_with_a_masked_address() {
+        let tree = encode_tree(&[]);
+        let tree_id = object_id(ObjectKind::Tree, &tree);
+        let mine = format!("tree {tree_id}
+author S <Sam@Gmail.com> 0 +0000
+committer S <sam@gmail.com> 0 +0000
+
+x
+").into_bytes();
+        let mine_id = object_id(ObjectKind::Commit, &mine);
+        let guard = PushEmailGuard { emails: vec!["sam@gmail.com".into()], noreply: "1abc2def+sam@users.noreply.g1t.sh".into() };
+        let body = push(&[Entry::Whole(ObjectKind::Commit, mine), Entry::Whole(ObjectKind::Tree, tree.clone())]);
+        let (found, email) = exposed_address(&body, &guard).unwrap();
+        assert_eq!(found, mine_id);
+        let message = exposed_message(&found, &email, &guard.noreply);
+        assert!(message[0].starts_with(&format!("push declined: commit {} would publish s***@gmail.com", &mine_id[..7])));
+        assert!(message[1].contains("git config user.email 1abc2def+sam@users.noreply.g1t.sh"));
+        assert!(message[2].contains("g1t.sh/settings#emails"));
+        // Someone else's commits, and no pack at all, go through.
+        let theirs = push(&[Entry::Whole(ObjectKind::Commit, commit(&tree_id, None)), Entry::Whole(ObjectKind::Tree, tree)]);
+        assert_eq!(exposed_address(&theirs, &guard), None);
+        assert_eq!(exposed_address(b"0000", &guard), None);
     }
 }

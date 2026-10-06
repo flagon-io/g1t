@@ -44,10 +44,17 @@ import {
   type ServiceBinding,
   type User,
   type Viewer,
+  ComputeGate,
   billingClient,
+  embeddingEstimateMicros,
+  localRefusal,
+  currentMovedPath,
   currentWorkspaceSlug,
+  repoMove,
+  staleMovedPaths,
   deploymentsClient,
   fail,
+  granted,
   identityClient,
   integrationsClient,
   memoryReviewClient,
@@ -64,7 +71,7 @@ import { assemble, authorsOf, integrationEntities, type EntityDraft, type FileRe
 import { extract, interesting, type FileFacts } from "./extract";
 import { composeRunContext, type ContextNote, type ProjectContext } from "./runcontext";
 import { evaluate } from "./scorecards";
-import { allowedKinds, indexFilter, merge, readable, type IndexMeta, type Reader } from "./visibility";
+import { allowedKinds, countVisible, indexFilter, memoryReadable, merge, projectReadable, readable, runMemoryReadable, type IndexMeta, type Reader } from "./visibility";
 
 type Job =
   | { type: "backfill_project"; workspace: string; slug: string }
@@ -111,6 +118,13 @@ const ITEM_CHARS = 4000;
 const SNIPPET_CHARS = 280;
 /** Kinds every project shares rather than owns. */
 const SHARED: Set<EntityKind> = new Set(["owner", "language", "integration"]);
+
+/** One compute gate per isolate, so entitlements are kept between calls. */
+let computeGate: ComputeGate | null = null;
+function gateFor(billing: ServiceBinding): ComputeGate {
+  computeGate ??= new ComputeGate(billing);
+  return computeGate;
+}
 
 const now = () => new Date().toISOString();
 const month = () => now().slice(0, 7);
@@ -275,10 +289,44 @@ class Context {
 
   // ---- Search index --------------------------------------------------------
 
-  /** Embeds and stores rows in the search index, within the workspace's monthly allowance. Never throws. */
+  /**
+   * Whether semantic search is open to a workspace: embeddings are compute,
+   * so only on a paid plan or the trial (`localRefusal`). Text search
+   * answers for everyone else. Closed when billing cannot say, which
+   * leaves text search; open where there is no billing service at all.
+   */
+  private async semanticOpen(workspace: string): Promise<boolean> {
+    if (!this.env.BILLING) return true;
+    const ent = await gateFor(this.env.BILLING).entitlements(workspace);
+    return ent != null && localRefusal(ent, "embedding", false) == null;
+  }
+
+  /**
+   * Embeds and stores rows in the search index, within the workspace's
+   * monthly allowance, reserving what it costs with billing first and
+   * settling what it did. Never throws.
+   */
   private async index(workspace: string, rows: { id: string; text: string; meta: IndexMeta }[]): Promise<number> {
     const { AI, VECTORS } = this.env;
     if (!AI || !VECTORS || rows.length === 0) return 0;
+    if (!(await this.semanticOpen(workspace))) return 0;
+    let reservation: string | null = null;
+    let spentTokens = 0;
+    if (this.env.BILLING) {
+      const estimate = rows.reduce((sum, row) => sum + Math.ceil(Math.min(row.text.length, EMBED_CHARS) / 4), 0);
+      const admitted = await gateFor(this.env.BILLING).admit({
+        workspace,
+        repo: { namespace: workspace, name: rows[0].meta.project ?? "" },
+        public: rows.every((row) => !row.meta.private),
+        kind: "embedding",
+        estimateMicros: embeddingEstimateMicros(estimate),
+      });
+      if (!admitted.ok) {
+        console.log("embeddings not started for", workspace, admitted.code, admitted.message);
+        return 0;
+      }
+      reservation = admitted.reservation?.id ?? null;
+    }
     try {
       const used = await this.db
         .prepare("SELECT tokens FROM usage WHERE workspace = ? AND month = ?")
@@ -299,13 +347,51 @@ class Context {
         stored += vectors.length;
         const tokens = (rows: { text: string }[]) => rows.reduce((sum, row) => sum + Math.ceil(row.text.length / 4), 0);
         const all = texts.map((text) => ({ text }));
+        spentTokens += tokens(all);
         await this.meter(workspace, tokens(all), tokens(all.filter((_, i) => batch[i].meta.private)));
       }
       return stored;
     } catch (error) {
       console.error("could not index", rows.length, "rows for", workspace, error);
       return 0;
+    } finally {
+      if (reservation && this.env.BILLING) {
+        await gateFor(this.env.BILLING).settle(reservation, embeddingEstimateMicros(spentTokens));
+      }
     }
+  }
+
+  /** Drops a repository's rows kept under any of `workspaces`, and their index entries. */
+  private async forgetRepo(repoId: string, workspaces: string[]): Promise<void> {
+    const marks = workspaces.map(() => "?").join(", ");
+    const items = await this.db
+      .prepare(`SELECT id FROM items WHERE repo_id = ? AND workspace IN (${marks})`)
+      .bind(repoId, ...workspaces)
+      .all<{ id: string }>();
+    for (let i = 0; i < items.results.length; i += 100) {
+      await this.unindex(items.results.slice(i, i + 100).map((row) => row.id));
+    }
+    const projects = `SELECT project_id FROM entities WHERE repo_id = ? AND workspace IN (${marks}) AND project_id IS NOT NULL`;
+    await this.db.batch([
+      this.db.prepare(`DELETE FROM relations WHERE project_id IN (${projects})`).bind(repoId, ...workspaces),
+      this.db.prepare(`DELETE FROM files WHERE project_id IN (${projects})`).bind(repoId, ...workspaces),
+      this.db.prepare(`DELETE FROM items WHERE repo_id = ? AND workspace IN (${marks})`).bind(repoId, ...workspaces),
+      this.db.prepare(`DELETE FROM scans WHERE repo_id = ? AND workspace IN (${marks})`).bind(repoId, ...workspaces),
+      this.db.prepare(`DELETE FROM entities WHERE repo_id = ? AND workspace IN (${marks})`).bind(repoId, ...workspaces),
+    ]);
+  }
+
+  /** A deleted workspace's hub: everything but its usage, which billing has already read. */
+  private async forgetWorkspace(slug: string): Promise<void> {
+    const items = await this.db.prepare("SELECT id FROM items WHERE workspace = ?").bind(slug).all<{ id: string }>();
+    for (let i = 0; i < items.results.length; i += 100) {
+      await this.unindex(items.results.slice(i, i + 100).map((row) => row.id));
+    }
+    await this.db.batch(
+      ["items", "relations", "entities", "scans", "backfills"].map((table) =>
+        this.db.prepare(`DELETE FROM ${table} WHERE workspace = ?`).bind(slug),
+      ),
+    );
   }
 
   private async unindex(ids: string[]): Promise<void> {
@@ -342,8 +428,14 @@ class Context {
     }
   }
 
+  /**
+   * A query's embedding, for semantic search. Too small to reserve one by
+   * one (a few hundred tokens, a fraction of a cent): it needs the plan or
+   * the trial, as indexing does, and is metered with the month's usage.
+   */
   private async embedQuery(workspace: string, query: string): Promise<number[] | null> {
     if (!this.env.AI || !this.env.VECTORS) return null;
+    if (!(await this.semanticOpen(workspace))) return null;
     try {
       const embedded = (await this.env.AI.run(EMBED_MODEL, { text: [query.slice(0, EMBED_CHARS)] })) as { data?: number[][] };
       await this.meter(workspace, Math.ceil(query.length / 4));
@@ -767,6 +859,41 @@ class Context {
         await this.indexMemories(workspace, memories);
         return;
       }
+      case "repo.transferred":
+      case "repo.renamed": {
+        // What the hub knew about the repository under its old path goes,
+        // index included (its rows carry the path: a transfer's old
+        // workspace, a rename's old name); the workspace it is in now is
+        // built again, which reads it where and as it is now. Nothing here
+        // is the only copy.
+        const move = repoMove(event)!;
+        const current = await currentMovedPath(this.env.REPOS, move);
+        const stale = staleMovedPaths(move, current);
+        if (stale.length === 0) return;
+        const workspace = current.split("/")[0]!.toLowerCase();
+        await this.forgetRepo(move.repoId, [...new Set(stale.map((path) => path.split("/")[0]!.toLowerCase()))]);
+        const actor = await this.workspaceActor(workspace);
+        if (actor) await this.backfill({ actor, workspace });
+        return;
+      }
+      case "repo.deleted":
+      case "repo.purged": {
+        // Deleted, it is hidden: what the hub knew of it goes, index
+        // included, so no search or agent finds it. A restore builds it
+        // again; a purge finds nothing left.
+        await this.forgetRepo(event.data.repoId, [event.data.namespace.toLowerCase()]);
+        return;
+      }
+      case "repo.restored": {
+        const workspace = event.data.namespace.toLowerCase();
+        const actor = await this.workspaceActor(workspace);
+        if (actor) await this.backfill({ actor, workspace });
+        return;
+      }
+      case "workspace.deleted": {
+        await this.forgetWorkspace(event.data.slug);
+        return;
+      }
       case "workspace.renamed": {
         const current = await currentWorkspaceSlug(this.env.IDENTITY, event.data);
         for (const old of staleSlugs(event.data, current)) {
@@ -904,12 +1031,29 @@ class Context {
 
   // ---- Reading -------------------------------------------------------------
 
-  /** Who is reading, and what of the workspace they may see. */
+  /**
+   * Who is reading, and what of the workspace they may see. Someone who can
+   * read every repository in it (an owner, a member while its base
+   * permission is Read or more, its own token) sees everything; anyone else
+   * sees the projects the projects service lists for them, which are those
+   * whose repositories they can read.
+   */
   private async reader(workspace: string, viewer: Viewer): Promise<Reader> {
     const member = isMember(viewer, workspace);
-    if (member) return { workspace, member, visible: new Set() };
+    const full = member && !!viewer && granted(viewer, { id: "", namespace: workspace, isPrivate: true }) != null;
+    if (full) return { workspace, member, full, visible: new Set() };
     const listed = await projectsClient(this.env.PROJECTS).list(workspace, viewer).catch(() => null);
-    return { workspace, member, visible: new Set(listed?.ok ? listed.value.filter((p) => !p.private).map((p) => p.slug) : []) };
+    const projects = listed?.ok ? listed.value : [];
+    return {
+      workspace,
+      member,
+      full,
+      visible: new Set(projects.map((p) => p.slug)),
+      privateVisible: projects.some((p) => p.private),
+      repos: new Set(
+        projects.flatMap((p) => (p.source.kind === "hosted" ? [`${p.source.repo.namespace}/${p.source.repo.name}`.toLowerCase()] : [])),
+      ),
+    };
   }
 
   private visibleRow(row: { private: number; project: string | null }, reader: Reader): boolean {
@@ -928,15 +1072,22 @@ class Context {
         backfill = started.ok ? started.value : null;
       }
     }
-    const [counts, usage] = await Promise.all([
-      this.db.prepare("SELECT kind, COUNT(*) AS n FROM entities WHERE workspace = ? GROUP BY kind").bind(workspace).all<{ kind: EntityKind; n: number }>(),
+    // Counted over what the viewer may read: a member whose base permission
+    // is None counts only the projects they were given.
+    const reader = await this.reader(workspace, a.viewer);
+    const [counted, usage] = await Promise.all([
+      this.db
+        .prepare("SELECT kind, project, private, COUNT(*) AS n FROM entities WHERE workspace = ? GROUP BY kind, project, private")
+        .bind(workspace)
+        .all<{ kind: EntityKind; project: string | null; private: number; n: number }>(),
       this.db.prepare("SELECT tokens, cost_micros FROM usage WHERE workspace = ? AND month = ?").bind(workspace, month()).first<{ tokens: number; cost_micros: number }>(),
     ]);
     return ok({
       backfill,
-      counts: Object.fromEntries(counts.results.map((row) => [row.kind, row.n])),
+      counts: countVisible(counted.results, reader),
       usage: { month: month(), tokens: usage?.tokens ?? 0, costMicros: usage?.cost_micros ?? 0 },
-      semantic: !!(this.env.AI && this.env.VECTORS),
+      // Embeddings are compute: a paid plan or the trial (semanticOpen).
+      semantic: !!(this.env.AI && this.env.VECTORS) && (await this.semanticOpen(workspace)),
     });
   }
 
@@ -995,7 +1146,7 @@ class Context {
     const query = (a.query ?? "").trim().slice(0, 500);
     if (!query) return fail("invalid", "Say what to search for.");
     const reader = await this.reader(workspace, a.viewer);
-    if (!reader.member && reader.visible.size === 0) return ok({ query, hits: [], mode: "text" });
+    if (!reader.full && !reader.member && reader.visible.size === 0) return ok({ query, hits: [], mode: "text" });
     const limit = Math.min(Math.max(a.limit ?? 20, 1), 50);
     const kinds = allowedKinds(reader, a.kinds);
     const wants = (kind: SearchKind) => !kinds || kinds.includes(kind);
@@ -1029,7 +1180,7 @@ class Context {
         if (memoryIds.length) {
           const kept = new Set(
             (await memoryReviewClient(this.env.WORK).memoriesById(workspace, memoryIds))
-              .filter((memory) => (memory.status ?? "kept") === "kept")
+              .filter((memory) => (memory.status ?? "kept") === "kept" && memoryReadable(memory.repo, reader))
               .map((memory) => memory.id),
           );
           semantic = semantic.filter((hit) => hit.kind !== "memory" || kept.has(hit.id));
@@ -1072,7 +1223,7 @@ class Context {
     }
     if (reader.member && wants("memory")) {
       const memories = await memoryReviewClient(this.env.WORK).searchMemories(workspace, query, { limit: 10 }).catch(() => [] as Memory[]);
-      for (const memory of memories) {
+      for (const memory of memories.filter((m) => memoryReadable(m.repo, reader))) {
         text.push({
           kind: "memory",
           id: memory.id,
@@ -1150,14 +1301,23 @@ class Context {
     return ok(cards);
   }
 
-  /** The Context section for an agent starting work. Never fails a run: on any trouble, nothing. */
-  async runContext(a: { repoId: string; task?: string; budget?: number }): Promise<RunContext> {
+  /**
+   * The Context section for an agent starting work, holding only what the
+   * person it acts for (`requester`) may read: an outside collaborator's run
+   * is told the project's memory, never the workspace's, and only the
+   * projects around it they can read. No requester is the workspace's own
+   * step. Never fails a run: on any trouble, nothing.
+   */
+  async runContext(a: { repoId: string; task?: string; budget?: number; requester?: Viewer }): Promise<RunContext> {
     try {
       const projects = (await projectsClient(this.env.PROJECTS).byRepo(a.repoId)).slice(0, 2);
       if (projects.length === 0) return { text: null, sources: [] };
       const workspace = projects[0].workspace;
       const actor = await this.workspaceActor(workspace);
       if (!actor) return { text: null, sources: [] };
+      const reader = a.requester ? await this.reader(workspace, a.requester) : null;
+      const home = projects.find((project) => project.source.kind === "hosted");
+      const repoKey = home?.source.kind === "hosted" ? `${home.source.repo.namespace}/${home.source.repo.name}` : "";
       const cache = new WorkspaceCache(this.env, workspace, actor);
       const deploys = await cache.deployments();
       const live = new Map(deploys.map((d) => [d.slug, d]));
@@ -1177,15 +1337,18 @@ class Context {
           packages: rows.filter((row) => row.kind === "package").map((row) => row.name).slice(0, 5),
           testCommands: Array.isArray(entry?.data.testCommands) ? (entry!.data.testCommands as string[]) : [],
           owners: Array.isArray(entry?.data.owners) ? (entry!.data.owners as string[]) : [],
-          dependsOn: graph.dependsOn.map((dep) => ({ slug: dep.slug, as: dep.as, url: live.get(dep.slug)?.production?.url ?? null })),
-          usedBy: graph.usedBy.map((dep) => ({ slug: dep.slug })),
+          dependsOn: graph.dependsOn
+            .filter((dep) => projectReadable(dep.slug, reader))
+            .map((dep) => ({ slug: dep.slug, as: dep.as, url: live.get(dep.slug)?.production?.url ?? null })),
+          usedBy: graph.usedBy.filter((dep) => projectReadable(dep.slug, reader)).map((dep) => ({ slug: dep.slug })),
           environments: deploy?.enabled
             ? [{ name: "Production", url: deploy.production?.url ?? null, status: deploy.latest?.kind === "production" ? deploy.latest.status : deploy.production ? "ready" : null }]
             : [],
           docs: rows.filter((row) => row.kind === "doc").map((row) => String(row.data.path ?? row.name)),
         });
       }
-      const slugs = new Set(["", ...projects.map((project) => project.slug)]);
+      // Workspace memory (no project) only for a run its members may be told it.
+      const slugs = new Set([...(reader && !reader.member ? [] : [""]), ...projects.map((project) => project.slug)]);
       const review = memoryReviewClient(this.env.WORK);
       // The memories closest to the task, less the pinned ones every run already has.
       let memories: ContextNote[] = [];
@@ -1200,14 +1363,14 @@ class Context {
           const byId = new Map((await review.memoriesById(workspace, ids)).map((memory) => [memory.id, memory]));
           memories = ids
             .map((id) => byId.get(id))
-            .filter((memory): memory is Memory => !!memory && (memory.status ?? "kept") === "kept" && !memory.pinned)
+            .filter((memory): memory is Memory => !!memory && (memory.status ?? "kept") === "kept" && !memory.pinned && runMemoryReadable(memory, reader, repoKey))
             .slice(0, 6)
             .map((memory) => ({ id: memory.id, kind: memory.kind, text: memory.text, source: memorySource(memory) }));
         }
       }
       const shown = new Set(memories.map((note) => note.id));
       const decisions = (await review.searchMemories(workspace, null, { repoIds: [a.repoId], limit: 100 }).catch(() => [] as Memory[]))
-        .filter((memory) => memory.kind === "decision" && !memory.pinned && !shown.has(memory.id))
+        .filter((memory) => memory.kind === "decision" && !memory.pinned && !shown.has(memory.id) && runMemoryReadable(memory, reader, repoKey))
         .sort((x, y) => y.updatedAt.localeCompare(x.updatedAt))
         .slice(0, 3)
         .map((memory) => ({ id: memory.id, kind: memory.kind, text: memory.text, source: memorySource(memory) }));

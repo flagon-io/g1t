@@ -26,24 +26,49 @@ import {
   type ModelSession,
   type MentionJob,
   type RepoInstructions,
+  type AgentRunKind,
+  type ComputeEntitlements,
+  type ComputeKind,
+  ComputeGate,
+  actualMicros,
+  agentEstimateMicros,
+  eventsClient,
+  isWaiting,
+  issueCapReached,
+  refusalMessage,
+  sandboxEstimateMicros,
+  slotFree,
+  waitingMessage,
   mentionsClient,
   billingClient,
+  can,
+  granted,
+  projectsClient,
   fail,
   identityClient,
   integrationsClient,
+  needs,
   ok,
   reposClient,
   workClient,
+  type Capability,
 } from "@g1t/contracts";
 
 import { type AgentRoutes, type AgentTask, canReachModel, modelEnv } from "./model-env";
 import { hubContext } from "./hub";
+import { type ProjectSurroundings, readableSurroundings } from "./surroundings";
 import { holdCredentials, pushGrant, remotePath, revokeCredentials, runCredential } from "./credentials";
 import { buildMentionPrompt, describeThread, handleMention, planMention } from "./mentions";
 import { instructionsFor, repoInstructions, withBlock } from "./repo-instructions";
 import {
+  ABUSE_EXIT_CODE,
+  ABUSE_HOST,
+  ABUSE_MESSAGE,
   ALARM_GRACE_SECONDS,
+  type PlanLimits,
   type RunGuard,
+  abuse,
+  buildGuardFor,
   egress,
   egressHosts,
   guardFor,
@@ -51,6 +76,7 @@ import {
   newlyBlocked,
   reportRun,
   timeCapMessage,
+  withPlanLimits,
 } from "./guard";
 
 // Outbound interception, which network guardrails use, needs this exported.
@@ -71,6 +97,8 @@ export interface RunnerEnv {
   PROJECTS: ServiceBinding;
   /** The context hub: the Context section every agent run starts with. */
   CONTEXT?: ServiceBinding;
+  /** The event bus: `abuse.flagged`, for g1t's staff. */
+  EVENTS?: ServiceBinding;
   /**
    * The model proxy, which every sandbox's model requests go through with a
    * token for their run, so that no sandbox holds a key. When unset,
@@ -111,6 +139,13 @@ export interface RunnerEnv {
    * Worker misbehave. Anything else enforces them.
    */
   EGRESS?: string;
+  /**
+   * `off` stops sandboxes watching themselves for mining (crates/runner
+   * abuse.rs): a switch for the operator, should it stop real work.
+   * Anything else leaves it on. Miners named in commands are refused
+   * either way.
+   */
+  ABUSE_WATCH?: string;
 }
 
 /** A run that takes longer than this has its token expire under it. */
@@ -148,8 +183,53 @@ type Run =
   | { kind: "deploy"; deployId: string; token: string };
 /** Whose sandbox time it is, reported when the sandbox stops. */
 type Meter = { workspace: string; repo: string; description: string };
+/**
+ * What billing reserved for a sandbox's work (`ComputeGate.admit`), settled
+ * when it stops at what it cost: its seconds, plus its model when g1t paid
+ * for that.
+ */
+type Held = { id: string; workspace: string; microsPerSecond: number; modelBilled: boolean };
+/**
+ * A sandbox that is not an agent run but still runs under guardrails: a
+ * workflow job or a deploy build, in `repo`, for `minutes` at most.
+ */
+type Build = { kind: "actions" | "deploy"; repo: RepoPath; minutes: number };
 /** Deploy builds are metered by the Deployments plan, not here. */
-type RunRequest = Run & { envVars: Record<string, string>; meter?: Meter; track?: Track };
+type RunRequest = Run & {
+  envVars: Record<string, string>;
+  meter?: Meter;
+  track?: Track;
+  /** The workspace's plan's caps, applied under its guardrails' (lower of each). */
+  limits?: PlanLimits;
+  reservation?: Held | null;
+  build?: Build;
+  /** Whose sandbox it is, when it has no meter: for `abuse.flagged`. */
+  owner?: { workspace: string; repo: string };
+};
+
+/** What a sandbox is, as billing meters it. */
+function computeKindOf(kind: Run["kind"]): ComputeKind | null {
+  switch (kind) {
+    case "checks":
+    case "mergecheck":
+      return "check";
+    case "queue":
+      return "queue";
+    case "actions":
+      return "workflow";
+    case "deploy":
+      return "deploy";
+    default:
+      return "agent";
+  }
+}
+
+/** One gate per isolate, so entitlements and prices are kept between calls. */
+let gate: ComputeGate | null = null;
+function gateFor(env: { BILLING: ServiceBinding }): ComputeGate {
+  gate ??= new ComputeGate(env.BILLING);
+  return gate;
+}
 
 /**
  * What to record the sandbox as, so people can watch it in the Agents
@@ -177,6 +257,14 @@ function meter(repo: RepoPath, description: string): Meter {
 /** What the deployments service asks a sandbox to build. */
 type DeployJob = {
   deployId: string;
+  /** The workspace the project is in, which pays. */
+  workspace?: string;
+  /** What the deployments service reserved for the build, settled when it stops. */
+  reservation?: string | null;
+  /** The price it reserved at, per second. */
+  microsPerSecond?: number | null;
+  /** The plan's longest run, in minutes; the build gets the lower of this and its own. */
+  maxRunMinutes?: number | null;
   /** Lets the sandbox, and nothing else, report this build. */
   token: string;
   /** Whose access reads the commit. */
@@ -218,16 +306,33 @@ export class AttemptSandbox extends Container<RunnerEnv> {
   static {
     // Assigned, not declared: a class field would hide the setter that
     // registers the handler with the containers library.
-    AttemptSandbox.outboundHandlers = { egress };
+    AttemptSandbox.outboundHandlers = { egress, abuse };
   }
 
   async run(request: RunRequest): Promise<void> {
-    const { envVars, meter, track, ...run } = request;
-    // A tracked run gets its project's guardrails; no sandbox for one
-    // starts without them.
-    const guard = track ? await guardFor(this.env.WORK, track.repo, track.kind) : null;
+    const { envVars, meter, track, limits, reservation, build, owner, ...run } = request;
+    // What billing reserved is settled however this ends, once.
+    if (reservation) await this.ctx.storage.put("reservation", reservation);
+    let guard: RunGuard | null;
+    try {
+      // A tracked run gets its project's guardrails, and so do workflow
+      // jobs and deploy builds; no sandbox for one starts without them.
+      // The plan's caps apply under them: the lower of each.
+      guard = track
+        ? withPlanLimits(await guardFor(this.env.WORK, track.repo, track.kind), limits)
+        : build
+          ? withPlanLimits(await buildGuardFor(this.env.WORK, build.repo, build.kind, build.minutes), limits)
+          : null;
+    } catch (error) {
+      await this.settle(0);
+      throw error;
+    }
     await this.ctx.storage.put("run", run);
+    await this.ctx.storage.delete(["abuse", "stopReason"]);
     if (meter) await this.ctx.storage.put("meter", { ...meter, started: Date.now() });
+    await this.ctx.storage.put("started", Date.now());
+    const who = meter ? { workspace: meter.workspace, repo: meter.repo } : owner;
+    if (who) await this.ctx.storage.put("owner", { ...who, kind: track?.kind ?? run.kind });
     const tracked = track ? await this.openRun(track, envVars, guard) : null;
     // Its credentials are tied to the run, and revoked when it stops.
     await holdCredentials(this.env.IDENTITY, this.ctx.storage, envVars, tracked?.runId ?? null);
@@ -237,11 +342,18 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       if (guard && restricted) {
         this.enableInternet = false;
         await this.setOutboundHandler("egress", { hosts: egressHosts(guard, this.env, vars) });
+      } else if (this.env.EGRESS !== "off") {
+        // An open sandbox can still report that it stopped itself for
+        // mining; a guarded one does through `egress`.
+        await this.setOutboundByHost(ABUSE_HOST, "abuse").catch((error: unknown) =>
+          console.log("abuse reports not routed", String(error)),
+        );
       }
-      await this.start({
-        envVars: guard ? { ...vars, ...harnessEnv(guard, vars, restricted) } : vars,
-        enableInternet: !restricted,
-      });
+      const harness = guard ? harnessEnv(guard, vars, restricted) : {};
+      // A build needs only the certificate variables, not an agent's rules.
+      if (build) delete harness.GUARDRAILS;
+      const watch: Record<string, string> = this.env.ABUSE_WATCH === "off" ? { G1T_ABUSE: "off" } : {};
+      await this.start({ envVars: { ...vars, ...harness, ...watch }, enableInternet: !restricted });
       if (guard) {
         await this.ctx.storage.put("timeCap", guard.minutes);
         await this.schedule(guard.minutes * 60 + ALARM_GRACE_SECONDS, "timeUp");
@@ -249,8 +361,70 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     } catch (error) {
       await revokeCredentials(this.env.IDENTITY, this.ctx.storage);
       if (tracked) await this.closeRun("failed", `The sandbox could not start: ${String(error)}`);
+      await this.settle(0);
       throw error;
     }
+  }
+
+  /** Settles what billing reserved for this sandbox at `micros`, once. */
+  private async settle(micros: number): Promise<void> {
+    const held = await this.ctx.storage.get<Held>("reservation");
+    if (!held) return;
+    await this.ctx.storage.delete("reservation");
+    await gateFor(this.env).settle(held.id, micros);
+  }
+
+  /**
+   * Settles the reservation at what the sandbox cost: its seconds at the
+   * price billing reserved at, plus the model's cost when g1t paid for it
+   * (read from the run's record, which the sandbox reported it to).
+   */
+  private async settleStopped(started: number | undefined, tracked: TrackedRun | undefined): Promise<void> {
+    const held = await this.ctx.storage.get<Held>("reservation");
+    if (!held) return;
+    const seconds = started ? Math.max(1, Math.ceil((Date.now() - started) / 1000)) : 0;
+    let modelUsd = 0;
+    if (held.modelBilled && tracked) {
+      modelUsd = (await agentsClient(this.env.WORK).runCost(tracked.runId, tracked.token).catch(() => null)) ?? 0;
+    }
+    await this.settle(actualMicros(seconds, held.microsPerSecond, modelUsd));
+  }
+
+  /**
+   * The sandbox stopped itself because it looked like it was mining
+   * (crates/runner abuse.rs), or exited saying so. Stops the run with
+   * `ABUSE_MESSAGE`, tells g1t's staff with `abuse.flagged`, and destroys
+   * the sandbox. Once.
+   */
+  async flagAbuse(verdict: unknown): Promise<void> {
+    if (await this.ctx.storage.get<boolean>("abuse")) return;
+    await this.ctx.storage.put("abuse", true);
+    const tracked = await this.ctx.storage.get<TrackedRun>("agentRun");
+    if (tracked) await reportRun(this.env.WORK, tracked, { halt: "abuse", error: ABUSE_MESSAGE });
+    const owner = await this.ctx.storage.get<{ workspace: string; repo: string | null; kind: string }>("owner");
+    console.log("abuse flagged", owner?.workspace, owner?.repo, owner?.kind, JSON.stringify(verdict));
+    if (this.env.EVENTS && owner) {
+      await eventsClient(this.env.EVENTS)
+        .publish([
+          {
+            type: "abuse.flagged",
+            source: "runner",
+            // Never on a repository's timeline or its webhooks.
+            repoId: null,
+            actor: null,
+            data: {
+              workspace: owner.workspace,
+              repo: owner.repo ?? null,
+              run: tracked?.runId ?? null,
+              kind: owner.kind,
+              sandbox: this.ctx.id.toString(),
+              metrics: verdict && typeof verdict === "object" ? (verdict as Record<string, unknown>) : null,
+            },
+          },
+        ])
+        .catch((error: unknown) => console.log("abuse.flagged not published", String(error)));
+    }
+    await this.destroy().catch((error: unknown) => console.log("sandbox not destroyed for abuse", String(error)));
   }
 
   /**
@@ -287,10 +461,13 @@ export class AttemptSandbox extends Container<RunnerEnv> {
 
   /** The run's time cap has passed: stop it, as stopped for time. */
   async timeUp(): Promise<void> {
+    // It already stopped: nothing to stop.
+    if (!(await this.ctx.storage.get<number>("started"))) return;
     const tracked = await this.ctx.storage.get<TrackedRun>("agentRun");
-    if (!tracked) return;
     const minutes = (await this.ctx.storage.get<number>("timeCap")) ?? 0;
-    await reportRun(this.env.WORK, tracked, { halt: "time", error: timeCapMessage(minutes) });
+    // A workflow job or a build has no run to halt: it fails saying why.
+    await this.ctx.storage.put("stopReason", timeCapMessage(minutes));
+    if (tracked) await reportRun(this.env.WORK, tracked, { halt: "time", error: timeCapMessage(minutes) });
     await this.destroy().catch((error: unknown) => console.log("sandbox not destroyed at its time cap", String(error)));
   }
 
@@ -314,6 +491,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     if (!metered) return;
     await this.ctx.storage.delete("meter");
     const seconds = Math.max(1, Math.ceil((Date.now() - metered.started) / 1000));
+    const run = await this.ctx.storage.get<Run>("run");
     const recorded = await billingClient(this.env.BILLING)
       .recordSandbox({
         workspace: metered.workspace,
@@ -321,6 +499,8 @@ export class AttemptSandbox extends Container<RunnerEnv> {
         description: metered.description,
         repo: metered.repo,
         reference: `sandbox/${this.ctx.id.toString()}/${metered.started}`,
+        // Whether g1t's open-source pool may pay for it.
+        kind: run ? computeKindOf(run.kind) : null,
       })
       .catch((error: unknown) => ({ ok: false as const, error: { message: String(error) } }));
     if (!recorded.ok) console.log("sandbox time not recorded", metered.workspace, seconds, recorded.error.message);
@@ -328,12 +508,23 @@ export class AttemptSandbox extends Container<RunnerEnv> {
 
   override async onStop({ exitCode, reason }: StopParams): Promise<void> {
     await revokeCredentials(this.env.IDENTITY, this.ctx.storage);
+    const tracked = await this.ctx.storage.get<TrackedRun>("agentRun");
+    const started = await this.ctx.storage.get<number>("started");
     await this.meterStop();
+    // It stopped itself for mining, and could not say so before it went.
+    if (exitCode === ABUSE_EXIT_CODE && !(await this.ctx.storage.get<boolean>("abuse"))) {
+      await this.flagAbuse(null);
+    }
+    const flagged = (await this.ctx.storage.get<boolean>("abuse")) ?? false;
+    // Why it stopped, when g1t stopped it: said in place of a plain failure.
+    const why = flagged ? ABUSE_MESSAGE : ((await this.ctx.storage.get<string>("stopReason")) ?? null);
     const ended = await this.closeRun(
       exitCode === 0 ? "succeeded" : "failed",
-      exitCode === 0 ? undefined : `The sandbox exited with ${exitCode}.`,
+      exitCode === 0 ? undefined : (why ?? `The sandbox exited with ${exitCode}.`),
     );
-    if (exitCode === 0) return;
+    await this.settleStopped(started, tracked);
+    await this.ctx.storage.delete("started");
+    if (exitCode === 0 && !flagged) return;
     const run = await this.ctx.storage.get<Run>("run");
     // A person stopped it: g1t has already left the pull request for them.
     if (ended === "stopped" && run && STOP_ENDS.has(run.kind)) return;
@@ -347,7 +538,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
         body: JSON.stringify({
           job: run.jobId,
           token: run.token,
-          report: { kind: "done", conclusion: "failure", reason: "The runner stopped before the job finished." },
+          report: { kind: "done", conclusion: "failure", reason: why ?? "The runner stopped before the job finished." },
         }),
       });
       return;
@@ -357,7 +548,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       await this.env.DEPLOYMENTS.fetch(`https://deployments/jobs/${run.deployId}/fail`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token: run.token, message: "The build stopped before it finished." }),
+        body: JSON.stringify({ token: run.token, message: why ?? "The build stopped before it finished." }),
       });
       return;
     }
@@ -365,27 +556,27 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     if (run.kind === "checks") {
       // Refused harmlessly if the run did report before it stopped.
       await work.reportChecks(run.runId, run.token, {
-        error: "The sandbox stopped before the checks finished.",
+        error: why ?? "The sandbox stopped before the checks finished.",
       });
       return;
     }
     if (run.kind === "review") {
-      await work.failReview(run.runId, run.token, "The sandbox stopped before the review was written.");
+      await work.failReview(run.runId, run.token, why ?? "The sandbox stopped before the review was written.");
       return;
     }
     if (run.kind === "queue") {
       // Refused harmlessly if the state was reported before it stopped.
-      await work.failQueue(run.entryId, run.token, "The sandbox stopped before the state was checked.");
+      await work.failQueue(run.entryId, run.token, why ?? "The sandbox stopped before the state was checked.");
       return;
     }
     if (run.kind === "mergecheck") {
       // Refused harmlessly if the probe reported before it stopped.
-      await work.failMergecheck(run.pullId, run.token, "The sandbox stopped before the merge check finished.");
+      await work.failMergecheck(run.pullId, run.token, why ?? "The sandbox stopped before the merge check finished.");
       return;
     }
     if (run.kind === "plan") {
       // Refused harmlessly if the plan was reported before it stopped.
-      await work.failPlan(run.planId, run.token, "The sandbox stopped before the plan was written.");
+      await work.failPlan(run.planId, run.token, why ?? "The sandbox stopped before the plan was written.");
       return;
     }
     // An answer that never came: the claim lapses and the asker reads the
@@ -408,6 +599,57 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     await work.closePull(run.actor, run.repo, run.number);
   }
 }
+
+/**
+ * What the compute gate decided for one start: go, with what billing
+ * reserved and the plan's caps; or not, waiting for a free agent slot or
+ * refused with what to tell people.
+ */
+type Granted = { ok: true; held: Held | null; limits: PlanLimits };
+type Admitted = Granted | { ok: false; waiting: boolean; code: string; message: string };
+
+/**
+ * The guardrails' default time cap of each kind of run, for estimating what
+ * it may cost before it starts; the sandbox applies the project's own.
+ */
+const DEFAULT_MINUTES: Record<AgentRunKind | "checks" | "queue" | "mergecheck", number> = {
+  implement: 90,
+  revise: 60,
+  review: 30,
+  answer: 20,
+  reply: 20,
+  update: 45,
+  plan: 30,
+  checks: 45,
+  queue: 45,
+  mergecheck: 10,
+};
+
+/** A plan's caps on one run, for the sandbox to apply under its guardrails'. */
+function limitsOf(ent: ComputeEntitlements | null): PlanLimits {
+  return {
+    minutes: ent && ent.maxRunMinutes > 0 ? ent.maxRunMinutes : null,
+    budgetUsd: ent && ent.runCapMicros > 0 ? ent.runCapMicros / 1_000_000 : null,
+  };
+}
+
+/** The shorter of a kind's time cap and the plan's, for an estimate. */
+function estimateMinutes(minutes: number, ent: ComputeEntitlements | null): number {
+  return ent && ent.maxRunMinutes > 0 ? Math.min(minutes, ent.maxRunMinutes) : minutes;
+}
+
+/** A start the gate did not let through, as a result for whoever asked. */
+function notAdmitted(admitted: Exclude<Admitted, Granted>): Result<never> {
+  return fail(admitted.waiting ? "conflict" : "payment_required", admitted.message);
+}
+
+/** A run waiting for a free slot, by what starts it again. */
+type Waiting =
+  | { kind: "review" | "update"; actor: User; repo: RepoPath; number: number }
+  | { kind: "plan"; actor: User; repo: RepoPath; brief: string }
+  | { kind: "reply"; job: MentionJob }
+  | { kind: "revise"; job: LifecycleJob; startedBy: string }
+  | { kind: "catchup"; pullId: string; repo: RepoPath; number: number };
 
 /** How many other pull requests an agent is told about. */
 const MAX_IN_FLIGHT = 12;
@@ -685,6 +927,185 @@ export default class RunnerService
     return new Response("Not found\n", { status: 404 });
   }
 
+  // ---- The compute gate (@g1t/contracts compute.ts) -------------------------
+
+  /** Whether `repo` is public: what g1t's open-source pool can pay for. */
+  private async isPublic(repo: RepoPath): Promise<boolean> {
+    const found = await reposClient(this.env.REPOS)
+      .get(repo, null)
+      .catch(() => null);
+    return Boolean(found?.ok && !found.value.isPrivate);
+  }
+
+  /**
+   * Whether an agent run may start in `repo` now, under its workspace's
+   * plan: not paused, the issue (`about`, an issue or pull request number)
+   * under its spending cap, a free slot under the agents-at-once cap, and
+   * what it is expected to cost reserved with billing. Never throws.
+   */
+  private async admitAgent(task: AgentRunKind, repo: RepoPath, about: number | null): Promise<Admitted> {
+    const workspace = repo.namespace.toLowerCase();
+    const compute = gateFor(this.env);
+    const agents = agentsClient(this.env.WORK);
+    const ent = await compute.entitlements(workspace);
+    if (ent?.paused) return { ok: false, waiting: false, code: "paused", message: refusalMessage("paused", workspace, "agent", ent.paused) };
+    if (about != null && about > 0 && ent && ent.issueCapMicros > 0) {
+      const spend = await agents.issueSpend(repo, about).catch(() => null);
+      const capped = spend?.ok ? issueCapReached(spend.value.spentMicros, ent, spend.value.issue) : null;
+      if (capped) return { ok: false, waiting: false, code: "issue_cap", message: refusalMessage("issue_cap", workspace, "agent", capped) };
+    }
+    if (ent && !slotFree(await agents.activeAgents(workspace).catch(() => 0), ent)) {
+      return { ok: false, waiting: true, code: "waiting", message: waitingMessage(ent.maxConcurrentAgents) };
+    }
+    const [microsPerSecond, access, isPublic] = await Promise.all([
+      compute.microsPerSecond(),
+      this.modelAccess(workspace).catch(() => null),
+      this.isPublic(repo),
+    ]);
+    // The workspace's own provider pays for its model; g1t only for the sandbox.
+    const ownModel = access?.own != null;
+    const minutes = estimateMinutes(DEFAULT_MINUTES[task], ent);
+    const admission = await compute.admit(
+      { workspace, repo, public: isPublic, kind: "agent", estimateMicros: agentEstimateMicros(task, minutes, microsPerSecond, ownModel) },
+      ent,
+    );
+    if (!admission.ok) return { ok: false, waiting: false, code: admission.code, message: admission.message };
+    return {
+      ok: true,
+      held: admission.reservation
+        ? { id: admission.reservation.id, workspace, microsPerSecond, modelBilled: !ownModel }
+        : null,
+      limits: limitsOf(ent),
+    };
+  }
+
+  /**
+   * Whether a sandbox that is not an agent (checks, the merge queue, a
+   * merge check, a workflow job) may start in `repo`, with what it may cost
+   * for `minutes` reserved. Public repositories' checks, workflows and
+   * queue can be paid by the open-source pool. Never throws.
+   */
+  private async admitSandbox(kind: ComputeKind, repo: RepoPath, minutes: number): Promise<Admitted> {
+    const workspace = repo.namespace.toLowerCase();
+    const compute = gateFor(this.env);
+    const ent = await compute.entitlements(workspace);
+    if (ent?.paused) return { ok: false, waiting: false, code: "paused", message: refusalMessage("paused", workspace, kind, ent.paused) };
+    const [microsPerSecond, isPublic] = await Promise.all([compute.microsPerSecond(), this.isPublic(repo)]);
+    const admission = await compute.admit(
+      { workspace, repo, public: isPublic, kind, estimateMicros: sandboxEstimateMicros(estimateMinutes(minutes, ent), microsPerSecond) },
+      ent,
+    );
+    if (!admission.ok) return { ok: false, waiting: false, code: admission.code, message: admission.message };
+    return {
+      ok: true,
+      held: admission.reservation ? { id: admission.reservation.id, workspace, microsPerSecond, modelBilled: false } : null,
+      limits: limitsOf(ent),
+    };
+  }
+
+  /** Gives back what was reserved for a start that never reached its sandbox. */
+  private async release(held: Held | null): Promise<void> {
+    if (held) await gateFor(this.env).settle(held.id, 0);
+  }
+
+  /**
+   * Runs `start`, giving back what was reserved if it fails. A sandbox that
+   * could not start has given it back already; settling twice at nothing
+   * is harmless.
+   */
+  private async holding<T>(granted: Granted, start: () => Promise<T>): Promise<T> {
+    try {
+      return await start();
+    } catch (error) {
+      await this.release(granted.held);
+      throw error;
+    }
+  }
+
+  /**
+   * Puts a run a person asked for in its workspace's queue for a free
+   * slot. Returns what to tell them.
+   */
+  private async wait(repo: RepoPath, waiting: Waiting, message: string): Promise<string> {
+    const added = await agentsClient(this.env.WORK)
+      .addWait(repo.namespace.toLowerCase(), waiting.kind, waiting)
+      .catch((error: unknown) => fail("conflict", String(error)));
+    return added.ok ? message : added.error.message;
+  }
+
+  /**
+   * Starts runs that were waiting for a free slot, oldest first, in each
+   * workspace that has room now.
+   */
+  private async drainWaits(): Promise<void> {
+    const agents = agentsClient(this.env.WORK);
+    const workspaces = await agents.waitingWorkspaces().catch((): string[] => []);
+    for (const workspace of workspaces) {
+      const ent = await gateFor(this.env).entitlements(workspace);
+      let active = await agents.activeAgents(workspace).catch(() => Number.POSITIVE_INFINITY);
+      while (slotFree(active, ent)) {
+        const taken = await agents.takeWait(workspace).catch(() => null);
+        if (!taken) break;
+        await this.resume(taken.payload as Waiting).catch((error: unknown) =>
+          console.log("a waiting run could not start", workspace, taken.kind, String(error)),
+        );
+        active += 1;
+      }
+    }
+  }
+
+  /** Starts a run that was waiting; says so where it was asked if it cannot. */
+  private async resume(waiting: Waiting): Promise<void> {
+    let result: Result<unknown>;
+    let where: { repo: RepoPath; number: number } | null = null;
+    switch (waiting.kind) {
+      case "review":
+        where = waiting;
+        result = await this.review(waiting.actor, waiting.repo, waiting.number);
+        break;
+      case "update":
+        where = waiting;
+        result = await this.update(waiting.actor, waiting.repo, waiting.number);
+        break;
+      case "plan":
+        result = await this.plan(waiting.actor, waiting.repo, waiting.brief);
+        break;
+      case "reply":
+        where = waiting.job;
+        result = await this.startReply(waiting.job);
+        break;
+      case "revise": {
+        where = waiting.job;
+        const said = await this.reviseWhenFree(waiting.job, waiting.startedBy).catch((error: unknown) => String(error));
+        result = said && !isWaiting(said) ? fail("payment_required", said) : ok(true);
+        break;
+      }
+      case "catchup":
+        await this.catchUpForMerge(waiting.pullId);
+        return;
+    }
+    // Waiting again was re-queued by the start itself.
+    if (!result.ok && !isWaiting(result.error.message) && where) {
+      await agentsClient(this.env.WORK)
+        .agentComment(where.repo, where.number, `I could not start the ${waiting.kind} that was waiting for a free slot: ${result.error.message}`)
+        .catch(() => false);
+    }
+  }
+
+  /**
+   * Sends g1t-agent back to revise once there is room: starts it, or
+   * queues it and returns what to say. Throws when the plan refuses it.
+   */
+  private async reviseWhenFree(job: LifecycleJob, startedBy: string): Promise<string | null> {
+    const admitted = await this.admitAgent("revise", job.repo, job.number);
+    if (!admitted.ok) {
+      if (!admitted.waiting) throw new Error(admitted.message);
+      return this.wait(job.repo, { kind: "revise", job, startedBy }, admitted.message);
+    }
+    await this.holding(admitted, () => this.startRevision(job, startedBy, admitted));
+    return null;
+  }
+
   /**
    * What a sandbox needs to reach the model routed for `task`, having
    * opened the run the repository's workspace will be charged for. Refused
@@ -759,7 +1180,7 @@ export default class RunnerService
       integrationsClient(this.env.INTEGRATIONS)
         .references(repo.namespace, text)
         .catch((): ContextItem[] => []),
-      this.projectAndMemory(repo, text),
+      this.projectAndMemory(repo, text, actor),
     ]);
     if (items.length === 0) return projects;
     if (number > 0) {
@@ -774,12 +1195,12 @@ export default class RunnerService
   }
 
   /** The project's surroundings and what is remembered about it, for an agent. */
-  private async projectAndMemory(repo: RepoPath, task = ""): Promise<string | null> {
+  private async projectAndMemory(repo: RepoPath, task: string, requester: User): Promise<string | null> {
     const [projects, memory, hub] = await Promise.all([
-      this.projectContext(repo).catch(() => null),
-      this.memoryContext(repo),
+      this.projectContext(repo, requester).catch(() => null),
+      this.memoryContext(repo, requester),
       // The context hub: catalog, relevant memory, recent decisions (hub.ts).
-      hubContext(this.env, repo, task),
+      hubContext(this.env, repo, task, requester),
     ]);
     return [projects, memory, hub].filter(Boolean).join("\n\n") || null;
   }
@@ -787,18 +1208,19 @@ export default class RunnerService
   /**
    * What the project and its workspace remember, for every g1t agent run:
    * pinned first, then what was used most recently, within a budget, each
-   * level labelled. Never holds up a run.
+   * level labelled. A run for someone outside the workspace (an outside
+   * collaborator) is told the project's only. Never holds up a run.
    */
-  private async memoryContext(repo: RepoPath): Promise<string | null> {
+  private async memoryContext(repo: RepoPath, requester: User): Promise<string | null> {
     const context = await agentsClient(this.env.WORK)
-      .memoryContext(repo)
+      .memoryContext(repo, undefined, requester)
       .catch(() => null);
     return context?.text ?? null;
   }
 
-  /** `prompt` with what is remembered added. */
-  private async withMemory(prompt: string, repo: RepoPath): Promise<string> {
-    const [memory, hub] = await Promise.all([this.memoryContext(repo), hubContext(this.env, repo, prompt)]);
+  /** `prompt` with what is remembered added: only what `requester`, whom the run acts for, may read. */
+  private async withMemory(prompt: string, repo: RepoPath, requester: User): Promise<string> {
+    const [memory, hub] = await Promise.all([this.memoryContext(repo, requester), hubContext(this.env, repo, prompt, requester)]);
     return [prompt, memory, hub].filter(Boolean).join("\n\n");
   }
 
@@ -822,9 +1244,10 @@ export default class RunnerService
   /**
    * The projects this repository is the source of, what they use and what
    * uses them: so an agent changing an interface knows who calls it, and
-   * opens issues there rather than widening its change.
+   * opens issues there rather than widening its change. Only the projects
+   * `requester`, whom the run acts for, can read are named.
    */
-  private async projectContext(repo: RepoPath): Promise<string | null> {
+  private async projectContext(repo: RepoPath, requester: User): Promise<string | null> {
     const found = await reposClient(this.env.REPOS).get(repo, null);
     if (!found.ok) return null;
     const response = await this.env.PROJECTS.fetch("https://projects/rpc/context_for_repo", {
@@ -833,11 +1256,7 @@ export default class RunnerService
       body: JSON.stringify({ repoId: found.value.id }),
     });
     if (!response.ok) return null;
-    const projects = (await response.json()) as {
-      slug: string;
-      name: string;
-      dependencies: { dependsOn: { slug: string; as: string | null }[]; usedBy: { slug: string; as: string | null }[] };
-    }[];
+    const projects = readableSurroundings((await response.json()) as ProjectSurroundings[], await this.readableProjects(repo.namespace, requester));
     const lines: string[] = [];
     for (const project of projects) {
       const { dependsOn, usedBy } = project.dependencies;
@@ -853,6 +1272,19 @@ export default class RunnerService
       ...lines,
       "If your change alters what the projects that use this one rely on (an API, a package's exports, a message's shape), keep it working for them, or open an issue on each with create_issue saying what they need to change, and mention it in your summary. Do not change their code from here.",
     ].join("\n");
+  }
+
+  /**
+   * The slugs of the projects in `workspace` that `viewer` can read, or null
+   * when they read every repository there (an owner, a member whose base
+   * permission is Read or more).
+   */
+  private async readableProjects(workspace: string, viewer: User): Promise<Set<string> | null> {
+    const slug = workspace.toLowerCase();
+    const member = (viewer.workspaces ?? []).some((membership) => membership.slug.toLowerCase() === slug);
+    if (member && granted(viewer, { id: "", namespace: slug, isPrivate: true }) != null) return null;
+    const listed = await projectsClient(this.env.PROJECTS).list(slug, viewer).catch(() => null);
+    return new Set(listed?.ok ? listed.value.map((project) => project.slug.toLowerCase()) : []);
   }
 
   /** The same, for a step g1t takes by itself: a refusal stops the step. */
@@ -915,25 +1347,21 @@ export default class RunnerService
     repo: RepoPath;
     timeoutMinutes: number;
   }): Promise<Result<true>> {
-    const over = await this.overLimit(args.repo.namespace);
-    if (over) return { ok: false, error: { code: "payment_required", message: over } };
-    // The same workspaces that may use g1t's sandboxes for agents.
-    if (!(await this.workspaceAllowed(args.repo.namespace))) {
-      return {
-        ok: false,
-        error: {
-          code: "forbidden",
-          message:
-            "Workflows run on g1t's runners for workspaces that can use g1t's agents, and this one has no model to use: its free allowance on g1t's models is used up or over. Connect your own model provider under Integrations; g1t is free while it is being built out.",
-        },
-      };
-    }
+    // Workflow jobs run on g1t's machines: only as the workspace's plan
+    // allows, or on a public repository, from the open-source pool.
+    const admitted = await this.admitSandbox("workflow", args.repo, args.timeoutMinutes);
+    if (!admitted.ok) return fail("payment_required", `Not started: ${admitted.message}`);
     const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`actions:${args.job}`));
     try {
       await sandbox.run({
         kind: "actions",
         jobId: args.job,
         token: args.token,
+        reservation: admitted.held,
+        limits: admitted.limits,
+        // The project's network list plus what builds need, and the job's
+        // own time limit as the sandbox's.
+        build: { kind: "actions", repo: args.repo, minutes: Math.max(1, args.timeoutMinutes) },
         meter: meter(args.repo, `A workflow job in ${args.repo.namespace}/${args.repo.name}`),
         envVars: {
           MODE: "actions",
@@ -971,11 +1399,20 @@ export default class RunnerService
       ttlSeconds: DEPLOY_TOKEN_TTL_SECONDS,
     });
     const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`deploy:${job.deployId}`));
+    const workspace = (job.workspace ?? job.source.namespace).toLowerCase();
     try {
       await sandbox.run({
         kind: "deploy",
         deployId: job.deployId,
         token: job.token,
+        reservation: job.reservation
+          ? { id: job.reservation, workspace, microsPerSecond: job.microsPerSecond ?? 0, modelBilled: false }
+          : null,
+        limits: { minutes: job.maxRunMinutes ?? null },
+        // The project's network list plus registries and Cloudflare's API,
+        // for as long as its read token lasts.
+        build: { kind: "deploy", repo: job.source, minutes: DEPLOY_TOKEN_TTL_SECONDS / 60 },
+        owner: { workspace, repo: `${job.source.namespace}/${job.source.name}` },
         envVars: {
           MODE: "deploy",
           G1T_API: "https://api.g1t.sh",
@@ -1001,35 +1438,27 @@ export default class RunnerService
     return ok(true);
   }
 
-  /** Whether a workspace's repositories may use g1t's agents and sandboxes at all. */
+  /**
+   * Whether a workspace's agents have a model to use: its own provider or
+   * g1t's hosted models. Whether its plan lets them start is the compute
+   * gate's question (`admitAgent`).
+   */
   private async workspaceAllowed(namespace: string): Promise<boolean> {
-    if (await this.overLimit(namespace)) return false;
     const access = await this.modelAccess(namespace);
     return access.own != null || access.hosted;
   }
 
   /**
-   * Why the workspace can start no sandbox: it reached its limit for usage
-   * not yet paid for. Null when it can, or when billing cannot say.
-   */
-  private async overLimit(namespace: string): Promise<string | null> {
-    const limit = await billingClient(this.env.BILLING)
-      .checkLimit(namespace)
-      .catch(() => null);
-    if (!limit?.ok || limit.value.state !== "stopped") return null;
-    return limit.value.message ?? `The ${namespace} workspace reached its usage limit.`;
-  }
-
-  /**
-   * Whether `viewer` may put agents to work: in `repo`'s workspace, which
-   * must be allowed and theirs, or with no repo named, in any workspace of
-   * theirs that is allowed.
+   * Whether `viewer` may put agents to work: in `repo`, where they need
+   * Write or more (a member's base permission, or a collaborator's role) and
+   * its workspace must be allowed, or with no repo named, in any workspace
+   * of theirs that is allowed.
    */
   private async allowed(viewer: Viewer, repo?: RepoPath): Promise<boolean> {
     if (!viewer || !this.modelsReachable()) return false;
     const theirs = (viewer.workspaces ?? []).map((membership) => membership.slug.toLowerCase());
     if (repo) {
-      return theirs.includes(repo.namespace.toLowerCase()) && (await this.workspaceAllowed(repo.namespace));
+      return !!(await this.repoAllows(viewer, repo, "run")) && (await this.workspaceAllowed(repo.namespace));
     }
     for (const slug of theirs) if (await this.workspaceAllowed(slug)) return true;
     return false;
@@ -1049,7 +1478,7 @@ export default class RunnerService
         case "pull.opened":
         case "pull.ready":
         case "pull.updated":
-          if (!(await this.startChecks(event.data.pullId))) {
+          if (!(await this.startChecks(event.data.pullId)).started) {
             await this.advance(event.data.pullId);
           }
           // An agent that has finished its change leaves room for another.
@@ -1102,13 +1531,21 @@ export default class RunnerService
         case "pull.closed":
           await this.startReady(event.data.repoId);
           break;
+        // Read-only or gone: what agents are doing there stops.
+        case "repo.archived":
+        case "repo.deleted":
+          await this.stopRunsIn(event.data.repoId);
+          break;
       }
       message.ack();
     }
+    // Something may have finished and left a slot for a run that waits.
+    await this.drainWaits();
   }
 
   /** A sweep, for steps whose trigger was missed or whose sandbox died. */
   async scheduled(): Promise<void> {
+    await this.drainWaits();
     await this.advanceAll();
     await this.startReady();
   }
@@ -1124,7 +1561,18 @@ export default class RunnerService
       const started = await this.run(issue.actor, issue.repo, issue.number).catch(
         (error: unknown) => fail("conflict", String(error)),
       );
-      if (!started.ok) await work.queueIssue(issue.actor, issue.repo, issue.number, true);
+      if (started.ok) continue;
+      // Waiting for a slot: `run` put it back in the queue itself.
+      if (isWaiting(started.error.message)) continue;
+      // The workspace's plan refused it: said on the issue, once, rather
+      // than tried again every few minutes.
+      if (started.error.code === "payment_required") {
+        await agentsClient(this.env.WORK)
+          .agentComment(issue.repo, issue.number, `I could not start on this: ${started.error.message}`)
+          .catch(() => false);
+        continue;
+      }
+      await work.queueIssue(issue.actor, issue.repo, issue.number, true);
     }
   }
 
@@ -1147,13 +1595,24 @@ export default class RunnerService
       if (!this.modelsReachable() || !(await this.workspaceAllowed(job.repo.namespace))) {
         throw new Error("g1t agents are not enabled for this workspace yet.");
       }
+      const task = next.action === "review" ? "review" : next.action === "revise" ? "revise" : "update";
+      const admitted = await this.admitAgent(task, job.repo, job.number);
+      if (!admitted.ok) {
+        // Every slot is busy: the step is given back, and the sweep takes
+        // it again when one is free.
+        if (admitted.waiting) {
+          await agentsClient(this.env.WORK).waitForSlot(pullId, admitted.message);
+          return;
+        }
+        throw new Error(admitted.message);
+      }
       if (next.action === "review") {
-        const started = await this.startReview(pullId);
+        const started = await this.startReview(pullId, admitted);
         if (!started.ok) throw new Error(started.error.message);
       } else if (next.action === "revise") {
-        await this.startRevision(job);
+        await this.holding(admitted, () => this.startRevision(job, undefined, admitted));
       } else {
-        await this.startCatchUp(job);
+        await this.holding(admitted, () => this.startCatchUp(job, admitted));
       }
     } catch (error) {
       // Stop, and say so on the pull request, instead of trying forever.
@@ -1171,7 +1630,15 @@ export default class RunnerService
     if (!job) return;
     try {
       if (!this.modelsReachable()) throw new Error("g1t agents are not set up.");
-      await this.startCatchUp(job);
+      const admitted = await this.admitAgent("update", job.repo, job.number);
+      if (!admitted.ok) {
+        if (!admitted.waiting) throw new Error(admitted.message);
+        // The merge waits with it; it starts when a slot is free.
+        await this.wait(job.repo, { kind: "catchup", pullId, repo: job.repo, number: job.number }, admitted.message);
+        await work.appendSession(job.author, job.repo, job.number, [{ kind: "note", text: admitted.message }]);
+        return;
+      }
+      await this.holding(admitted, () => this.startCatchUp(job, admitted));
     } catch (error) {
       await work.stall(
         pullId,
@@ -1180,8 +1647,9 @@ export default class RunnerService
     }
   }
 
-  private async startCatchUp(job: LifecycleJob): Promise<void> {
+  private async startCatchUp(job: LifecycleJob, granted: Granted): Promise<void> {
     await this.startUpdate({
+      granted,
       actor: job.author,
       repo: job.repo,
       number: job.number,
@@ -1222,33 +1690,25 @@ export default class RunnerService
   private async buildQueue(repoId: string): Promise<void> {
     const work = workClient(this.env.WORK);
     const jobs = await work.queueBuild(repoId);
-    // Merge queue sandboxes, like any other, only where they are enabled.
-    const open = await Promise.all(jobs.map((job) => this.workspaceAllowed(job.repo.namespace)));
-    const blocked = jobs.filter((_, at) => !open[at]);
-    if (blocked.length > 0) {
-      await Promise.all(
-        blocked.map((job) =>
-          work.failQueue(
-            job.entryId,
-            job.token,
-            "The merge queue runs in g1t's sandboxes, which need g1t's hosted models or the workspace's own model provider. An owner can connect one under Integrations, or turn the queue off to merge directly.",
-          ),
-        ),
-      );
-      return;
-    }
-    // A state whose sandbox could not start fails at once, rather than
-    // holding the queue until it times out.
+    // Merge queue sandboxes, like any other, only as the workspace's plan
+    // allows: refused states fail at once, saying why. A state whose
+    // sandbox could not start fails at once too, rather than holding the
+    // queue until it times out.
     await Promise.all(
-      jobs.map((job) =>
-        this.startQueueRun(job).catch((error: unknown) =>
+      jobs.map(async (job) => {
+        const admitted = await this.admitSandbox("queue", job.repo, DEFAULT_MINUTES.queue);
+        if (!admitted.ok) {
+          await work.failQueue(job.entryId, job.token, `Not started: ${admitted.message}`);
+          return;
+        }
+        await this.holding(admitted, () => this.startQueueRun(job, admitted)).catch((error: unknown) =>
           work.failQueue(job.entryId, job.token, `Its sandbox could not start: ${String(error)}`),
-        ),
-      ),
+        );
+      }),
     );
   }
 
-  private async startQueueRun(job: QueueJob): Promise<void> {
+  private async startQueueRun(job: QueueJob, granted: Granted): Promise<void> {
     // To read the changes and push the tested state, as a member.
     // Reads each queued change; pushes only the queue's own branch.
     const token = await runCredential(this.env.IDENTITY, {
@@ -1267,6 +1727,8 @@ export default class RunnerService
       kind: "queue",
       entryId: job.entryId,
       token: job.token,
+      reservation: granted.held,
+      limits: granted.limits,
       track: {
         actor: job.actor,
         repo: job.repo,
@@ -1340,44 +1802,10 @@ export default class RunnerService
       if (!this.modelsReachable() || !(await this.workspaceAllowed(job.repo.namespace))) {
         throw new Error("g1t agents are not enabled for this workspace.");
       }
-      const token = await runCredential(this.env.IDENTITY, {
-        onBehalfOf: job.author,
-        repo: job.repo,
-        kind: "answer",
-        use: "runner",
-        number: job.number,
-        read: [job.repo, job.source],
-        push: [pushGrant(job.repo, job.source, job.branch ?? job.defaultBranch)],
-        ttlSeconds: TOKEN_TTL_SECONDS,
-      });
-      const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`answer-${job.pullId}-${messages[0]?.id ?? Date.now()}`));
-      await sandbox.run({
-        kind: "answer",
-        pullId: job.pullId,
-        track: { actor: job.author, repo: job.repo, kind: "answer", number: job.number, pullId: job.pullId },
-        meter: meter(job.repo, `Agent answering on ${job.repo.namespace}/${job.repo.name}#${job.number}`),
-        envVars: {
-          // Answered from its change as it stands: no merging in of the
-          // default branch, which would push a commit for a question.
-          MODE: "answer",
-          G1T_API: "https://api.g1t.sh",
-          G1T_TOKEN: token,
-          G1T_USER: job.author.username,
-          G1T_REPO: `${job.repo.namespace}/${job.repo.name}`,
-          PULL_NUMBER: String(job.number),
-          GIT_REMOTE: `https://g1t.sh/${job.source.namespace}/${job.source.name}.git`,
-          COMMIT_MESSAGE: `Take on work handed over to #${job.number}`,
-          G1T_AGENT_TOKEN: await this.agentToken(job.author, job.repo, "answer", job.number),
-          PROMPT: await this.withMemory(
-            withBlock(
-              buildAnswerPrompt(job, messages, await this.inFlight(job.author, job.repo, job.number)),
-              await this.guidance("answer", job.author, job.repo, job.number, job.title),
-            ),
-            job.repo,
-          ),
-          ...(await this.modelEnvOrThrow("implement", job.repo, job.number)),
-        },
-      });
+      const admitted = await this.admitAgent("answer", job.repo, job.number);
+      // Waiting or refused: said in the session; the askers read the change.
+      if (!admitted.ok) throw new Error(admitted.message);
+      await this.holding(admitted, () => this.startAnswer(job, messages, admitted));
     } catch (error) {
       // Said on the pull request; the askers were told to read the change.
       await work.appendSession(job.author, job.repo, job.number, [
@@ -1389,8 +1817,53 @@ export default class RunnerService
     }
   }
 
+  /** Starts the sandbox in which the agent on a pull request answers what it was asked. */
+  private async startAnswer(job: LifecycleJob, messages: AgentMessage[], granted: Granted): Promise<void> {
+    const token = await runCredential(this.env.IDENTITY, {
+      onBehalfOf: job.author,
+      repo: job.repo,
+      kind: "answer",
+      use: "runner",
+      number: job.number,
+      read: [job.repo, job.source],
+      push: [pushGrant(job.repo, job.source, job.branch ?? job.defaultBranch)],
+      ttlSeconds: TOKEN_TTL_SECONDS,
+    });
+    const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`answer-${job.pullId}-${messages[0]?.id ?? Date.now()}`));
+    await sandbox.run({
+      kind: "answer",
+      pullId: job.pullId,
+      reservation: granted.held,
+      limits: granted.limits,
+      track: { actor: job.author, repo: job.repo, kind: "answer", number: job.number, pullId: job.pullId },
+      meter: meter(job.repo, `Agent answering on ${job.repo.namespace}/${job.repo.name}#${job.number}`),
+      envVars: {
+        // Answered from its change as it stands: no merging in of the
+        // default branch, which would push a commit for a question.
+        MODE: "answer",
+        G1T_API: "https://api.g1t.sh",
+        G1T_TOKEN: token,
+        G1T_USER: job.author.username,
+        G1T_REPO: `${job.repo.namespace}/${job.repo.name}`,
+        PULL_NUMBER: String(job.number),
+        GIT_REMOTE: `https://g1t.sh/${job.source.namespace}/${job.source.name}.git`,
+        COMMIT_MESSAGE: `Take on work handed over to #${job.number}`,
+        G1T_AGENT_TOKEN: await this.agentToken(job.author, job.repo, "answer", job.number),
+        PROMPT: await this.withMemory(
+          withBlock(
+            buildAnswerPrompt(job, messages, await this.inFlight(job.author, job.repo, job.number)),
+            await this.guidance("answer", job.author, job.repo, job.number, job.title),
+          ),
+          job.repo,
+          job.author,
+        ),
+        ...(await this.modelEnvOrThrow("implement", job.repo, job.number)),
+      },
+    });
+  }
+
   /** `startedBy` is set when a person sent it back, by mentioning it. */
-  private async startRevision(job: LifecycleJob, startedBy?: string): Promise<void> {
+  private async startRevision(job: LifecycleJob, startedBy: string | undefined, granted: Granted): Promise<void> {
     const token = await runCredential(this.env.IDENTITY, {
       onBehalfOf: job.author,
       repo: job.repo,
@@ -1407,6 +1880,8 @@ export default class RunnerService
     await sandbox.run({
       kind: "revise",
       pullId: job.pullId,
+      reservation: granted.held,
+      limits: granted.limits,
       track: { actor: job.author, repo: job.repo, kind: "revise", number: job.number, pullId: job.pullId, startedBy: startedBy ?? null },
       meter: meter(job.repo, `Agent revising ${job.repo.namespace}/${job.repo.name}#${job.number}`),
       envVars: {
@@ -1432,6 +1907,7 @@ export default class RunnerService
             await this.guidance("revise", job.author, job.repo, job.number, job.feedback),
           ),
           job.repo,
+          job.author,
         ),
         ...(await this.modelEnvOrThrow("implement", job.repo, job.number)),
       },
@@ -1442,17 +1918,25 @@ export default class RunnerService
    * Runs a pull request's acceptance checks in a sandbox of its own. Does
    * nothing when there is nothing to run.
    */
-  private async startChecks(pullId: string): Promise<boolean> {
+  private async startChecks(pullId: string): Promise<{ started: boolean; refused?: string }> {
     const work = workClient(this.env.WORK);
     const started = await work.startChecks(pullId);
-    if (!started.ok) return false;
+    if (!started.ok) return { started: false };
     const job: CheckJob = started.value;
     // Checks are commands one person wrote, run against code another
-    // pushed, on g1t's machines: only for workspaces that can use agents.
-    if (!(await this.workspaceAllowed(job.repo.namespace))) {
-      await work.reportChecks(job.runId, job.token, { skip: true });
-      return false;
+    // pushed, on g1t's machines: only as the workspace's plan allows, or
+    // on a public repository, from the open-source pool. A refusal is the
+    // run's outcome, so people see why nothing ran.
+    const admitted = await this.admitSandbox("check", job.repo, DEFAULT_MINUTES.checks);
+    if (!admitted.ok) {
+      await work.reportChecks(job.runId, job.token, { error: `Not started: ${admitted.message}` });
+      return { started: false, refused: admitted.message };
     }
+    await this.holding(admitted, () => this.startCheckRun(job, pullId, admitted));
+    return { started: true };
+  }
+
+  private async startCheckRun(job: CheckJob, pullId: string, granted: Granted): Promise<void> {
     // To read the commit, which may be private, as the one who pushed it.
     const token = await runCredential(this.env.IDENTITY, {
       onBehalfOf: job.author,
@@ -1468,6 +1952,8 @@ export default class RunnerService
       kind: "checks",
       runId: job.runId,
       token: job.token,
+      reservation: granted.held,
+      limits: granted.limits,
       track: { actor: job.author, repo: job.repo, kind: "checks", number: job.number, pullId },
       meter: meter(job.repo, `Checks on ${job.repo.namespace}/${job.repo.name}#${job.number}`),
       envVars: {
@@ -1482,7 +1968,6 @@ export default class RunnerService
         CHECKS: JSON.stringify(job.commands),
       },
     });
-    return true;
   }
 
   /**
@@ -1495,11 +1980,12 @@ export default class RunnerService
     const started = await work.startMergecheck(pullId);
     if (!started.ok) return;
     const job = started.value;
+    let granted: Granted | null = null;
     try {
-      // Like any sandbox, only for workspaces that may use g1t's machines.
-      if (!(await this.workspaceAllowed(job.repo.namespace))) {
-        throw new Error("This workspace cannot use g1t's sandboxes.");
-      }
+      // Like any sandbox, only as the workspace's plan allows.
+      const admitted = await this.admitSandbox("check", job.repo, DEFAULT_MINUTES.mergecheck);
+      if (!admitted.ok) throw new Error(`Not started: ${admitted.message}`);
+      granted = admitted;
       // To read the change, which may be private, as whoever opened it.
       const token = await runCredential(this.env.IDENTITY, {
         onBehalfOf: job.author,
@@ -1519,6 +2005,8 @@ export default class RunnerService
         kind: "mergecheck",
         pullId: job.pullId,
         token: job.token,
+        reservation: granted.held,
+        limits: granted.limits,
         meter: meter(job.repo, `Merge check of ${job.repo.namespace}/${job.repo.name}#${job.number}`),
         envVars: {
           MODE: "mergecheck",
@@ -1535,16 +2023,21 @@ export default class RunnerService
         },
       });
     } catch (error) {
+      if (granted) await this.release(granted.held);
       await work.failMergecheck(job.pullId, job.token, error instanceof Error ? error.message : String(error));
     }
   }
 
   /**
-   * A refusal if `actor` may not put g1t agents to work on `repo`: agents
-   * are not enabled for them, or the work would be charged to a workspace
-   * they do not belong to or that has no credit.
+   * A refusal if `actor` may not put g1t agents to work on `repo`: it is
+   * archived (read-only) or deleted, agents are not enabled for its
+   * workspace, or the actor's role there is below Write (Read cannot spend
+   * compute). The work is charged to the repository's workspace, whether
+   * the actor is a member or a collaborator.
    */
   private async refusal(actor: User, repo: RepoPath): Promise<Result<never> | null> {
+    const closed = await this.closedRepo(actor, repo);
+    if (closed) return closed;
     if (!(await this.workspaceAllowed(repo.namespace))) {
       return fail(
         "forbidden",
@@ -1552,21 +2045,66 @@ export default class RunnerService
       );
     }
     if (!(await this.allowed(actor, repo))) {
-      return fail("forbidden", `Only members of ${repo.namespace} can put g1t agents to work there.`);
+      return fail("forbidden", needs("run"));
     }
-    const billing = billingClient(this.env.BILLING);
-    if (!(await billing.status()).enabled) return null;
-    const member = (actor.workspaces ?? []).some(
-      (membership) => membership.slug === repo.namespace.toLowerCase(),
-    );
-    if (!member) {
+    // Whether its plan pays is the compute gate's question (`admitAgent`).
+    return null;
+  }
+
+  /**
+   * A refusal if `repo` takes no agents from anyone: it is archived, so
+   * read-only, or it was deleted (repos hides a deleted one, so it is not
+   * found). Null when repos cannot answer now; the other checks still run.
+   */
+  private async closedRepo(actor: User, repo: RepoPath): Promise<Result<never> | null> {
+    const repos = reposClient(this.env.REPOS);
+    const found = await repos.get(repo, actor).catch(() => null);
+    if (!found) return null;
+    if (!found.ok) {
+      return found.error.code === "not_found"
+        ? fail("not_found", `There is no repository at ${repo.namespace}/${repo.name}, or it was deleted.`)
+        : null;
+    }
+    const status = await repos.statusById(found.value.id).catch(() => null);
+    if (status?.deleted) {
+      return fail("not_found", `${found.value.namespace}/${found.value.name} was deleted. An owner can restore it from the workspace's settings.`);
+    }
+    if (status?.archived || found.value.archivedAt) {
       return fail(
         "forbidden",
-        `Agents are charged to the ${repo.namespace} workspace, so only its members can put them to work here.`,
+        `${found.value.namespace}/${found.value.name} is archived, so it is read-only. An owner can unarchive it in its settings.`,
       );
     }
-    const credit = await billing.canStart(repo.namespace);
-    return credit.ok ? null : credit;
+    return null;
+  }
+
+  /**
+   * Stops every agent run in a repository that was archived or deleted: the
+   * work service marks them stopped when it hears of it, and lists them
+   * here (`runs_in_repo`, by id, so a deleted repository's runs are found
+   * too), and each sandbox is destroyed. Never throws.
+   */
+  private async stopRunsIn(repoId: string): Promise<void> {
+    try {
+      const response = await this.env.WORK.fetch("https://work/rpc/runs_in_repo", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ repoId }),
+      });
+      if (!response.ok) return;
+      const runs = (await response.json()) as { runId: string; sandbox: string | null }[];
+      for (const run of runs) {
+        if (!run.sandbox) continue;
+        try {
+          await this.env.SANDBOX.get(this.env.SANDBOX.idFromString(run.sandbox)).destroy();
+        } catch (error) {
+          // Already gone, or never started.
+          console.log("sandbox not destroyed", run.runId, String(error));
+        }
+      }
+    } catch (error) {
+      console.error("could not stop the runs in", repoId, error);
+    }
   }
 
   async update(actor: User, repo: RepoPath, number: number): Promise<Result<boolean>> {
@@ -1581,19 +2119,20 @@ export default class RunnerService
     if (!behind) return fail("conflict", "This pull request is already up to date.");
     // The result is pushed as the person asking, so they must be able to
     // push there: a fork takes pushes only from whoever opened it.
-    const member = (actor.workspaces ?? []).some(
-      (membership) => membership.slug === repo.namespace,
-    );
-    if (pull.fork ? pull.author.id !== actor.id : !member) {
+    if (pull.fork ? pull.author.id !== actor.id : !(await this.repoAllows(actor, repo, "push"))) {
       return fail(
         "forbidden",
-        pull.fork
-          ? "Only whoever opened this pull request can update it."
-          : "Only members of the workspace can update this pull request.",
+        pull.fork ? "Only whoever opened this pull request can update it." : needs("push"),
       );
     }
+    const admitted = await this.admitAgent("update", repo, number);
+    if (!admitted.ok) {
+      if (!admitted.waiting) return notAdmitted(admitted);
+      return fail("conflict", await this.wait(repo, { kind: "update", actor, repo, number }, admitted.message));
+    }
     const defaultBranch = await this.defaultBranch(repo, actor);
-    await this.startUpdate({
+    await this.holding(admitted, () => this.startUpdate({
+      granted: admitted,
       actor,
       repo,
       number,
@@ -1609,12 +2148,14 @@ export default class RunnerService
         conflicts.length > 0 &&
           `g1t found ahead of time that merging ${defaultBranch} into this pull request conflicts in these files: ${conflicts.join(", ")}.`,
       ],
-    });
+    }));
     return ok(true);
   }
 
   /** Starts a sandbox that merges the default branch into a pull request. */
   private async startUpdate(update: {
+    /** What the compute gate let through for it. */
+    granted: Granted;
     /** Who the result is pushed as. */
     actor: User;
     repo: RepoPath;
@@ -1647,6 +2188,8 @@ export default class RunnerService
     await sandbox.run({
       kind: "update",
       pullId: update.pullId,
+      reservation: update.granted.held,
+      limits: update.granted.limits,
       track: {
         actor,
         repo,
@@ -1671,6 +2214,7 @@ export default class RunnerService
         PROMPT: await this.withMemory(
           withBlock(update.about.filter(Boolean).join("\n\n"), await this.guidance("update", actor, repo, number)),
           repo,
+          actor,
         ),
         ...(await this.modelEnvOrThrow("update", repo, number)),
       },
@@ -1686,11 +2230,24 @@ export default class RunnerService
     if (found.value.reviewPending) {
       return fail("conflict", "A g1t agent is already reviewing this pull request.");
     }
-    return this.startReview(found.value.pull.id);
+    const admitted = await this.admitAgent("review", repo, number);
+    if (!admitted.ok) {
+      if (!admitted.waiting) return notAdmitted(admitted);
+      return fail("conflict", await this.wait(repo, { kind: "review", actor, repo, number }, admitted.message));
+    }
+    return this.startReview(found.value.pull.id, admitted);
   }
 
   /** Starts a sandbox in which a g1t agent reviews a pull request. */
-  private async startReview(pullId: string): Promise<Result<boolean>> {
+  private async startReview(pullId: string, granted: Granted): Promise<Result<boolean>> {
+    return this.holding(granted, async () => {
+      const started = await this.startReviewRun(pullId, granted);
+      if (!started.ok) await this.release(granted.held);
+      return started;
+    });
+  }
+
+  private async startReviewRun(pullId: string, granted: Granted): Promise<Result<boolean>> {
     const started = await workClient(this.env.WORK).startReview(pullId);
     if (!started.ok) return started;
     const job = started.value;
@@ -1725,6 +2282,8 @@ export default class RunnerService
       kind: "review",
       runId: job.runId,
       token: job.token,
+      reservation: granted.held,
+      limits: granted.limits,
       track: { actor: job.author, repo, kind: "review", number, pullId },
       meter: meter(repo, `Review of ${repo.namespace}/${repo.name}#${number}`),
       envVars: {
@@ -1741,6 +2300,7 @@ export default class RunnerService
         PROMPT: await this.withMemory(
           withBlock(about.filter(Boolean).join("\n\n"), await this.guidance("review", job.author, repo, number, job.description)),
           repo,
+          job.author,
         ),
         ...model.value,
       },
@@ -1757,23 +2317,34 @@ export default class RunnerService
     const found = await workClient(this.env.WORK).getPull(repo, number, actor);
     if (!found.ok) return found;
     const { pull } = found.value;
-    const member = (actor.workspaces ?? []).some(
-      (membership) => membership.slug === repo.namespace,
-    );
-    if (!member && pull.author.id !== actor.id) {
+    // Checks spend compute: whoever opened it, or someone with Write.
+    if (pull.author.id !== actor.id && !(await this.repoAllows(actor, repo, "run"))) {
       return fail(
         "forbidden",
-        "Only whoever opened a pull request, or a member of the workspace, can run its checks.",
+        "Only whoever opened a pull request, or someone with the Write role or higher, can run its checks.",
       );
     }
-    return (await this.startChecks(pull.id))
-      ? ok(true)
+    const checks = await this.startChecks(pull.id);
+    if (checks.started) return ok(true);
+    return checks.refused
+      ? fail("payment_required", checks.refused)
       : fail("conflict", "There are no checks to run for this pull request right now.");
   }
 
   async plan(actor: User, repo: RepoPath, brief: string): Promise<Result<{ planId: string }>> {
     const refused = await this.refusal(actor, repo);
     if (refused) return refused;
+    const admitted = await this.admitAgent("plan", repo, null);
+    if (!admitted.ok) {
+      if (!admitted.waiting) return notAdmitted(admitted);
+      return fail("conflict", await this.wait(repo, { kind: "plan", actor, repo, brief }, admitted.message));
+    }
+    const planned = await this.holding(admitted, () => this.startPlan(actor, repo, brief, admitted));
+    if (!planned.ok) await this.release(admitted.held);
+    return planned;
+  }
+
+  private async startPlan(actor: User, repo: RepoPath, brief: string, granted: Granted): Promise<Result<{ planId: string }>> {
     const work = workClient(this.env.WORK);
     const started = await work.startPlan(actor, repo, brief);
     if (!started.ok) return started;
@@ -1797,6 +2368,8 @@ export default class RunnerService
       kind: "plan",
       planId: job.planId,
       token: job.token,
+      reservation: granted.held,
+      limits: granted.limits,
       track: { actor, repo, kind: "plan", title: job.brief, startedBy: actor.username },
       meter: meter(repo, `Planning for ${repo.namespace}/${repo.name}`),
       envVars: {
@@ -1838,6 +2411,16 @@ export default class RunnerService
     return applied;
   }
 
+  /**
+   * Whether `viewer` may do `capability` in `repo`, by their role there;
+   * false when they cannot read it, null when repos cannot answer now.
+   */
+  private async repoAllows(viewer: Viewer, repo: RepoPath, capability: Capability): Promise<boolean | null> {
+    const found = await reposClient(this.env.REPOS).get(repo, viewer).catch(() => null);
+    if (!found) return null;
+    return found.ok && can(viewer, found.value, capability);
+  }
+
   async enabled(viewer: Viewer, repo?: RepoPath): Promise<boolean> {
     return this.allowed(viewer, repo);
   }
@@ -1851,7 +2434,26 @@ export default class RunnerService
     const refused = await this.refusal(actor, repo);
     if (refused) return refused;
     const work = workClient(this.env.WORK);
+    const admitted = await this.admitAgent("implement", repo, issueNumber);
+    if (!admitted.ok) {
+      // Over the workspace's agents-at-once cap: queued, and started by
+      // itself when one finishes (startReady).
+      if (admitted.waiting) await work.queueIssue(actor, repo, issueNumber, true);
+      return notAdmitted(admitted);
+    }
+    const started = await this.holding(admitted, () => this.startImplement(actor, repo, issueNumber, input, admitted));
+    if (!started.ok) await this.release(admitted.held);
+    return started;
+  }
 
+  private async startImplement(
+    actor: User,
+    repo: RepoPath,
+    issueNumber: number,
+    input: RunHostedInput,
+    granted: Granted,
+  ): Promise<Result<Pull>> {
+    const work = workClient(this.env.WORK);
     const found = await work.getIssue(repo, issueNumber, actor);
     if (!found.ok) return found;
     const { issue } = found.value;
@@ -1892,6 +2494,8 @@ export default class RunnerService
       actor,
       repo,
       number: pull.number,
+      reservation: granted.held,
+      limits: granted.limits,
       track: { actor, repo, kind: "implement", number: pull.number, pullId: pull.id, startedBy: actor.username },
       meter: meter(repo, `Agent on ${repo.namespace}/${repo.name}#${pull.number}`),
       envVars: {
@@ -1951,7 +2555,7 @@ export default class RunnerService
         return refused && !refused.ok ? refused.error.message : null;
       },
       assign: (job) => this.run(job.actor, job.repo, job.number),
-      revise: (lifecycle, startedBy) => this.startRevision(lifecycle, startedBy),
+      revise: (lifecycle, startedBy) => this.reviseWhenFree(lifecycle, startedBy),
       review: (job) => this.review(job.actor, job.repo, job.number),
       answer: (job) => this.startReply(job),
       message: (job) => workClient(this.env.WORK).messageAgent(job.actor, job.repo, job.number, job.body),
@@ -1983,6 +2587,17 @@ export default class RunnerService
    * posts the answer in the thread. It changes nothing.
    */
   private async startReply(job: MentionJob): Promise<Result<true>> {
+    const admitted = await this.admitAgent("reply", job.repo, job.number);
+    if (!admitted.ok) {
+      if (!admitted.waiting) return notAdmitted(admitted);
+      return fail("conflict", await this.wait(job.repo, { kind: "reply", job }, admitted.message));
+    }
+    const started = await this.holding(admitted, () => this.startReplyRun(job, admitted));
+    if (!started.ok) await this.release(admitted.held);
+    return started;
+  }
+
+  private async startReplyRun(job: MentionJob, granted: Granted): Promise<Result<true>> {
     const work = workClient(this.env.WORK);
     let title: string;
     let body: string;
@@ -2021,6 +2636,8 @@ export default class RunnerService
       // Nothing to undo if it fails: the run says so in the thread itself.
       kind: "answer",
       pullId: job.pull?.id ?? "",
+      reservation: granted.held,
+      limits: granted.limits,
       track: {
         actor: job.actor,
         repo: job.repo,
@@ -2041,7 +2658,7 @@ export default class RunnerService
         GIT_REMOTE: `https://g1t.sh/${source.namespace}/${source.name}.git`,
         GIT_REF: job.pull ? (job.pull.headCommit ?? job.pull.branch ?? "") : job.defaultBranch,
         G1T_AGENT_TOKEN: await this.agentToken(job.actor, job.repo, "answer", job.number),
-        PROMPT: await this.withMemory(prompt, job.repo),
+        PROMPT: await this.withMemory(prompt, job.repo, job.actor),
         ...model.value,
       },
     });

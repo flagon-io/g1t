@@ -9,7 +9,7 @@ and what people and agents have learned along the way. It fills itself
 from your repositories, deployments and integrations, and from the work
 agents and people do, so it is never a wiki someone has to keep up.
 
-Open it from **Context**, under Across projects in the workspace's sidebar.
+Open it from **Context**, in the workspace's sidebar.
 It has four tabs:
 
 | Tab | What it shows |
@@ -122,13 +122,32 @@ Each result says what kind of thing it is, where it came from, who wrote it
 and how fresh it is. When the search index cannot answer, g1t matches the
 words of your query instead, and says so.
 
+Searching by meaning uses embeddings, which are compute, so it is for
+workspaces on the [g1t plan](/guides/usage-and-billing/#the-g1t-plan) and
+the [trial](/guides/usage-and-billing/#the-trial). Every other workspace gets the catalog,
+memory and search by matching words, with nothing to set up; the Context
+page says which it has. If g1t cannot reach its billing service, search
+matches words until it can.
+
 ### Who sees what
 
+What you find follows what you can read, project by project:
+
 - Search never reads another workspace's rows.
-- Members of the workspace, and its agents, find everything in it.
-- Anyone else who can see a public project finds that project's catalog
-  entries, docs, issues and pull requests, and never memory.
-- A project made private is hidden from people outside the workspace at
+- Owners, members while the workspace's
+  [base permission](/guides/access-and-roles/#the-base-permission) is Read
+  or higher, and the workspace's own agents find everything in it.
+- A member whose base permission is **None** finds the public projects and
+  the private ones whose repositories they were given a role on, and
+  nothing of the others: the counts on the Context page, the catalog,
+  search and scorecards leave them out.
+- An [outside collaborator](/guides/access-and-roles/#outside-collaborators)
+  finds the projects shared with them, and anyone else the public ones:
+  their catalog entries, docs, issues and pull requests.
+- Workspace memory is for members only. A project's memory is for members
+  who can read the project; no one outside the workspace finds memory in
+  search.
+- A project made private is hidden from everyone who cannot read it at
   once, even before it is searched again.
 
 ## Scorecards
@@ -165,6 +184,10 @@ Each line says where it came from (`[source: catalog]`,
 `[source: AGENTS.md]`, `[source: review on #12]`). Agents are told it is
 reference material: where it disagrees with the code, the code wins.
 
+The section holds only what the person the run acts for can read. A run
+for an outside collaborator is told the project's own memory, never the
+workspace's, and names only the projects around it that they can read.
+
 ## Building it for a workspace
 
 The first time anyone opens a workspace's Context page, g1t builds its hub:
@@ -174,8 +197,12 @@ the search index for docs, recent issues and pull requests, and kept
 memory. **Rebuild** does it again, reading every file afresh.
 
 Putting text in the search index uses Workers AI and is counted per
-workspace and month; a workspace that passes 20 million tokens in a month
-keeps text search, and new text waits for the next month's index.
+workspace and month. Before each batch is embedded, g1t reserves what it
+may cost with billing, and settles what it really cost afterwards; a
+workspace billing refuses (no plan or trial, its spend limit reached,
+compute paused) keeps text search, and its new text is not embedded. A
+workspace that passes 20 million tokens in a month keeps text search too,
+and new text waits for the next month's index.
 
 ## MCP tools
 

@@ -63,6 +63,8 @@ pub enum Surface {
     Rest,
     Mcp,
     Git,
+    /// g1t.sh itself: settings changed on its pages.
+    Web,
 }
 
 /// The actor of an entry, from whoever made the request.

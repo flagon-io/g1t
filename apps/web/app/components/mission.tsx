@@ -23,6 +23,7 @@ import {
   Terminal,
   TimerOff,
   TriangleAlert,
+  UserPlus,
 } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { Link } from "react-router";
@@ -105,6 +106,7 @@ export function Quiet({ children, action }: { children: ReactNode; action?: Reac
 const NEED: Record<NeedKind, { icon: ReactNode; tone: string; label: string }> = {
   limit: { icon: <CreditCard size={15} />, tone: "text-danger", label: "Usage" },
   deploy: { icon: <Rocket size={15} />, tone: "text-danger", label: "Production" },
+  invitation: { icon: <UserPlus size={15} />, tone: "text-accent", label: "Invitation" },
   conflict: { icon: <Swords size={15} />, tone: "text-warn", label: "Conflict" },
   stalled: { icon: <Hand size={15} />, tone: "text-warn", label: "Stopped" },
   stuck: { icon: <TimerOff size={15} />, tone: "text-warn", label: "Quiet agent" },

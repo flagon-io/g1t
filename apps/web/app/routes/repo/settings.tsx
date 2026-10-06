@@ -1,12 +1,13 @@
 import { Box, Code2, GitBranch } from "lucide-react";
-import { Form, Link, data, useNavigation } from "react-router";
+import { Form, Link, useNavigation } from "react-router";
 
 import type { Route } from "./+types/settings";
 import { page } from "../../lib/meta";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { Button, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
 import { projects } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
+import { requireCapability, requireInsider } from "../../lib/access.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Settings · ${params.owner}/${params.repo} · g1t` });
@@ -14,14 +15,15 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  // Members only; to anyone else the page does not exist.
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
+  // Maintain and up; to anyone without a role here the page does not exist.
+  await requireInsider(context, params, "manage_settings");
   return { project: unwrap(await projects.get(params.owner, params.repo, viewer)) };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
+  await requireCapability(context, params, "manage_settings");
   const form = await request.formData();
   const saved = await projects.update(user, params.owner, params.repo, {
     name: String(form.get("name") ?? ""),

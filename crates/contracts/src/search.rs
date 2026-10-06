@@ -292,6 +292,9 @@ pub struct ExploreRepo {
     pub created_at: String,
     /// RFC 3339: the last push to its default branch, if any.
     pub pushed_at: Option<String>,
+    /// Whether it is archived: read-only, kept for reference.
+    #[serde(default)]
+    pub archived: bool,
 }
 
 /// A language or topic, with how many public repositories have it.

@@ -1,6 +1,11 @@
 //! The card processor, behind the calls billing needs: start a payment
-//! page, ask whether a payment was made, and read or end a monthly plan. Stripe speaks form-encoded
-//! requests and JSON answers.
+//! page, save and verify a card, ask whether a payment was made, and start,
+//! read or end the monthly plan. Stripe speaks form-encoded requests and
+//! JSON answers.
+//!
+//! Every Stripe object billing needs beyond customers and their payments
+//! (the plan's product, the billing page's settings) is made the first time
+//! it is needed, and found again by its `metadata[g1t]` after that.
 
 use serde::Deserialize;
 use worker::{Error, Fetch, Headers, Method, Request, RequestInit, Result};
@@ -25,6 +30,21 @@ pub struct Session {
     /// For a plan's page: the subscription it started.
     #[serde(default)]
     pub subscription: Option<String>,
+    /// For a card check's page: the setup that saved and verified the card.
+    #[serde(default)]
+    pub setup_intent: Option<String>,
+}
+
+/// A card saved and verified: what a card check found.
+#[derive(Debug, Deserialize)]
+pub struct CheckedCard {
+    pub payment_method: String,
+    pub fingerprint: Option<String>,
+    pub brand: Option<String>,
+    pub last4: Option<String>,
+    /// `credit`, `debit`, `prepaid` or `unknown`.
+    pub funding: Option<String>,
+    pub country: Option<String>,
 }
 
 /// g1t's settings for Stripe's hosted billing page.
@@ -277,22 +297,35 @@ impl Stripe {
         Ok(methods.data.into_iter().next().and_then(|m| m.card))
     }
 
-    /// Starts a page on which `amount_cents` of credit is paid for by card.
-    /// The card is kept for the workspace, so that topping up again, by
-    /// hand or automatically, needs no retyping.
+    /// Starts a page on which `amount_cents` is paid in advance: by card,
+    /// with 3-D Secure asked for wherever the card supports it, the card
+    /// kept for later charges; or, with `bank_transfer` and a customer, by
+    /// bank transfer to the account details Stripe gives, counted when the
+    /// money arrives.
     pub async fn start_checkout(
         &self,
         workspace: &str,
         amount_cents: u32,
         customer: Option<&str>,
         return_url: &str,
+        bank_transfer: bool,
     ) -> Result<Session> {
         let separator = if return_url.contains('?') { '&' } else { '?' };
-        let mut fields = vec![
-            ("mode", "payment".to_owned()),
-            // Cards only: credit is bought on the spot, and the card is kept
-            // for topping up again.
-            ("payment_method_types[0]", "card".to_owned()),
+        let mut fields = vec![("mode", "payment".to_owned())];
+        if bank_transfer {
+            fields.extend([
+                ("payment_method_types[0]", "customer_balance".to_owned()),
+                ("payment_method_options[customer_balance][funding_type]", "bank_transfer".to_owned()),
+                ("payment_method_options[customer_balance][bank_transfer][type]", "us_bank_transfer".to_owned()),
+            ]);
+        } else {
+            fields.extend([
+                ("payment_method_types[0]", "card".to_owned()),
+                ("payment_method_options[card][request_three_d_secure]", "any".to_owned()),
+                ("payment_intent_data[setup_future_usage]", "off_session".to_owned()),
+            ]);
+        }
+        fields.extend([
             (
                 "success_url",
                 // Stripe fills in the payment's id.
@@ -309,13 +342,9 @@ impl Stripe {
             ),
             (
                 "line_items[0][price_data][product_data][name]",
-                format!("g1t agent credit for {workspace}"),
+                format!("g1t usage paid in advance for {workspace}"),
             ),
-            (
-                "payment_intent_data[setup_future_usage]",
-                "off_session".to_owned(),
-            ),
-        ];
+        ]);
         match customer {
             Some(customer) => fields.push(("customer", customer.to_owned())),
             None => fields.push(("customer_creation", "always".to_owned())),
@@ -368,6 +397,132 @@ impl Stripe {
         }
         self.call(Method::Post, "/checkout/sessions", Some(form(&fields)))
             .await
+    }
+
+    /// Starts a page that saves and verifies a card, with 3-D Secure asked
+    /// for wherever the card supports it. Nothing is charged: the card's
+    /// bank sees at most a $0 or $1 authorization that is never captured.
+    pub async fn start_card_check(&self, workspace: &str, customer: &str, return_url: &str) -> Result<Session> {
+        let separator = if return_url.contains('?') { '&' } else { '?' };
+        let fields = [
+            ("mode", "setup".to_owned()),
+            ("customer", customer.to_owned()),
+            ("payment_method_types[0]", "card".to_owned()),
+            ("payment_method_options[card][request_three_d_secure]", "any".to_owned()),
+            ("success_url", format!("{return_url}{separator}card_check={{CHECKOUT_SESSION_ID}}")),
+            ("cancel_url", return_url.to_owned()),
+            ("client_reference_id", workspace.to_owned()),
+            ("metadata[workspace]", workspace.to_owned()),
+            ("metadata[purpose]", "card_check".to_owned()),
+            ("setup_intent_data[metadata][workspace]", workspace.to_owned()),
+            ("setup_intent_data[description]", format!("Card check for g1t workspace {workspace}; never charged")),
+        ];
+        self.call(Method::Post, "/checkout/sessions", Some(form(&fields))).await
+    }
+
+    /// What a card check's setup found, once it succeeded.
+    pub async fn checked_card(&self, setup_intent: &str) -> Result<Option<CheckedCard>> {
+        #[derive(Deserialize)]
+        struct Setup {
+            status: String,
+            payment_method: Option<String>,
+        }
+        #[derive(Deserialize)]
+        struct Card {
+            fingerprint: Option<String>,
+            brand: Option<String>,
+            last4: Option<String>,
+            funding: Option<String>,
+            country: Option<String>,
+        }
+        #[derive(Deserialize)]
+        struct PaymentMethod {
+            card: Option<Card>,
+        }
+        let setup: Setup = self.call(Method::Get, &format!("/setup_intents/{}", encode(setup_intent)), None).await?;
+        let (true, Some(method)) = (setup.status == "succeeded", setup.payment_method) else { return Ok(None) };
+        let found: PaymentMethod = self.call(Method::Get, &format!("/payment_methods/{}", encode(&method)), None).await?;
+        let card = found.card;
+        Ok(Some(CheckedCard {
+            payment_method: method,
+            fingerprint: card.as_ref().and_then(|c| c.fingerprint.clone()),
+            brand: card.as_ref().and_then(|c| c.brand.clone()),
+            last4: card.as_ref().and_then(|c| c.last4.clone()),
+            funding: card.as_ref().and_then(|c| c.funding.clone()),
+            country: card.as_ref().and_then(|c| c.country.clone()),
+        }))
+    }
+
+    /// Makes `payment_method` the card the customer's invoices are charged to.
+    pub async fn set_default_card(&self, customer: &str, payment_method: &str) -> Result<()> {
+        let _: serde_json::Value = self
+            .call(
+                Method::Post,
+                &format!("/customers/{}", encode(customer)),
+                Some(form(&[("invoice_settings[default_payment_method]", payment_method.to_owned())])),
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// The plan's product at Stripe, made the first time it is needed.
+    async fn plan_product(&self, title: &str) -> Result<String> {
+        #[derive(Deserialize)]
+        struct Product {
+            id: String,
+            #[serde(default)]
+            metadata: Option<std::collections::HashMap<String, String>>,
+        }
+        #[derive(Deserialize)]
+        struct List {
+            data: Vec<Product>,
+        }
+        let list: List = self.call(Method::Get, "/products?active=true&limit=100", None).await?;
+        let ours = |p: &Product| p.metadata.as_ref().and_then(|m| m.get("g1t")).map(String::as_str) == Some("plan");
+        if let Some(found) = list.data.into_iter().find(ours) {
+            return Ok(found.id);
+        }
+        let created: Product = self
+            .call(
+                Method::Post,
+                "/products",
+                Some(form(&[("name", format!("{title} plan")), ("metadata[g1t]", "plan".to_owned())])),
+            )
+            .await?;
+        Ok(created.id)
+    }
+
+    /// Starts the monthly plan on a saved card, at once. Fails rather than
+    /// leaving it half-started when the card's bank wants the person again;
+    /// the caller then sends them to Stripe's page.
+    pub async fn subscribe_with_card(
+        &self,
+        workspace: &str,
+        feature: &str,
+        title: &str,
+        monthly_cents: u32,
+        customer: &str,
+        payment_method: &str,
+    ) -> Result<StripeSubscription> {
+        let product = self.plan_product(title).await?;
+        let fields = [
+            ("customer", customer.to_owned()),
+            ("default_payment_method", payment_method.to_owned()),
+            ("payment_behavior", "error_if_incomplete".to_owned()),
+            ("items[0][price_data][currency]", "usd".to_owned()),
+            ("items[0][price_data][product]", product),
+            ("items[0][price_data][unit_amount]", monthly_cents.to_string()),
+            ("items[0][price_data][recurring][interval]", "month".to_owned()),
+            ("metadata[workspace]", workspace.to_owned()),
+            ("metadata[feature]", feature.to_owned()),
+            ("description", format!("{title} plan for {workspace}")),
+        ];
+        self.call(Method::Post, "/subscriptions", Some(form(&fields))).await
+    }
+
+    /// Ends a subscription now: one that never started properly.
+    pub async fn cancel_now(&self, id: &str) -> Result<StripeSubscription> {
+        self.call(Method::Delete, &format!("/subscriptions/{}", encode(id)), None).await
     }
 
     pub async fn subscription(&self, id: &str) -> Result<StripeSubscription> {

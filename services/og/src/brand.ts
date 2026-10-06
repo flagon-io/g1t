@@ -1,7 +1,7 @@
 /**
- * The brand, as SVG for satori: the Fleet mark and the "g1t" wordmark, the
- * same shapes as `.g1t/brand/svg/logo.svg`. The wordmark is outlined, so
- * the card needs no ExtraBold font.
+ * The brand, as SVG for satori: G1T in 5×7 pixel capitals, the 1 in
+ * lavender, the same shapes as `.g1t/brand/svg/logo.svg`. Pixels need no
+ * font.
  */
 
 export const COLOR = {
@@ -22,59 +22,60 @@ export const COLOR = {
   danger: "#ff8394",
 } as const;
 
-/** The mark's shapes, in its 32-unit box. */
-function markShapes(front: string, behind: string): string {
-  return (
-    `<g transform="translate(0.7 0.5)">` +
-    `<rect x="6.2" y="9.5" width="4.4" height="17" rx="2.2" fill="${behind}" fill-opacity="0.35"/>` +
-    `<rect x="12.4" y="7" width="4.8" height="19.5" rx="2.4" fill="${behind}" fill-opacity="0.65"/>` +
-    `<rect x="19" y="4.5" width="5.4" height="22" rx="2.7" fill="${front}"/>` +
-    `<path d="M21.7 7.2 17.6 10.9" fill="none" stroke="${front}" stroke-width="4.6" stroke-linecap="round"/>` +
-    `</g>`
-  );
+const G = [".###.", "#...#", "#....", "#.###", "#...#", "#...#", ".###."];
+const ONE = ["..#..", ".##..", "#.#..", "..#..", "..#..", "..#..", "#####"];
+const T = ["#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#.."];
+
+type Pixel = { x: number; y: number; one: boolean };
+
+function pixels(rows: string[], dx: number, one: boolean): Pixel[] {
+  return rows.flatMap((row, y) => [...row].flatMap((c, x) => (c === "#" ? [{ x: dx + x, y, one }] : [])));
 }
 
-const WORDMARK =
-  "M30.42 21.29Q22.8 21.29 17.5 19.26Q12.21 17.24 9.16 13.67Q6.1 10.11 5.22 5.42L20.75 4.1Q21.19 5.66 22.46 6.86Q23.73 8.06 25.71 8.74Q27.69 9.42 30.37 9.42Q35.3 9.42 37.89 6.93Q40.48 4.44 40.48 -0.59V-9.28H39.89Q38.72 -6.54 36.65 -4.57Q34.57 -2.59 31.67 -1.56Q28.76 -0.54 25.1 -0.54Q18.7 -0.54 13.7 -3.64Q8.69 -6.74 5.83 -12.6Q2.98 -18.46 2.98 -26.76Q2.98 -35.3 5.91 -41.36Q8.84 -47.41 13.82 -50.63Q18.8 -53.86 25 -53.86Q28.81 -53.86 31.71 -52.66Q34.62 -51.46 36.77 -49.41Q38.92 -47.36 40.23 -44.73H40.48V-52.93H57.23V-2.1Q57.23 5.91 53.91 11.08Q50.59 16.26 44.56 18.77Q38.53 21.29 30.42 21.29ZM30.32 -13.38Q33.54 -13.38 35.89 -15.01Q38.23 -16.65 39.53 -19.7Q40.82 -22.75 40.82 -26.95Q40.82 -31.15 39.53 -34.23Q38.23 -37.3 35.89 -38.99Q33.54 -40.67 30.32 -40.67Q27.15 -40.67 24.88 -38.99Q22.61 -37.3 21.41 -34.23Q20.21 -31.15 20.21 -26.95Q20.21 -22.71 21.41 -19.65Q22.61 -16.6 24.88 -14.99Q27.15 -13.38 30.32 -13.38ZM94.12 -72.75V0H77.08V-57.37H76.84L60.33 -46.53V-61.57L77.47 -72.75ZM130.48 -52.93V-40.09H95.18V-52.93ZM103.28 -66.5H120.22V-17.04Q120.22 -14.75 121.23 -13.75Q122.23 -12.74 124.81 -12.74Q125.89 -12.74 127.62 -12.84Q129.36 -12.94 130.14 -13.04L131.11 -0.29Q129.11 0.1 126.43 0.22Q123.74 0.34 121.1 0.34Q112.07 0.34 107.68 -3.42Q103.28 -7.18 103.28 -14.79Z";
+/** G at 0, the 1 at 6, the T at 10, its bar tucked in over the 1's foot. */
+const WORD = [...pixels(G, 0, false), ...pixels(ONE, 6, true), ...pixels(T, 10, false)];
+const THE_ONE = pixels(ONE, 0, true);
+
+/** Pixels on cells of 10 units, each a square of 8, centred. */
+function pixelShapes(of: Pixel[], ink: string, accent: string): string {
+  return of
+    .map((p) => `<rect x="${p.x * 10 + 1}" y="${p.y * 10 + 1}" width="8" height="8" fill="${p.one ? accent : ink}"/>`)
+    .join("");
+}
 
 /**
- * The lockup: the mark as tall as the wordmark's capitals, standing on its
- * baseline. Its box is 233 by 95; the baseline is at 72.75.
+ * The wordmark, cropped to its ink: 148 by 68, standing on its baseline,
+ * which is its bottom edge.
  */
-export const LOCKUP_BOX = { width: 233, height: 95, baseline: 72.75 } as const;
+export const LOCKUP_BOX = { width: 148, height: 68, baseline: 68 } as const;
 
-export function lockupSvg(front: string = COLOR.fg, behind: string = COLOR.lavender): string {
+export function lockupSvg(ink: string = COLOR.fg, accent: string = COLOR.lavender): string {
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${LOCKUP_BOX.width} ${LOCKUP_BOX.height}">` +
-    `<g transform="translate(-22.77 -16.35) scale(3.3)">${markShapes(front, behind)}</g>` +
-    `<path transform="translate(101.08 72.75)" fill="${front}" d="${WORDMARK}"/>` +
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="1 1 ${LOCKUP_BOX.width} ${LOCKUP_BOX.height}">` +
+    pixelShapes(WORD, ink, accent) +
     `</svg>`
   );
 }
 
-/** The mark alone, cropped to the figure: 18.2 by 22. */
-export function markSvg(front: string = COLOR.fg, behind: string = COLOR.lavender): string {
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="6.9 5 18.2 22">${markShapes(front, behind)}</svg>`
-  );
+/** The icon alone, the pixel 1, cropped to its ink: 48 by 68. */
+export function markSvg(accent: string = COLOR.lavender): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="1 1 48 68">${pixelShapes(THE_ONE, accent, accent)}</svg>`;
 }
 
 /** As an image source; base64, which both satori and resvg read. The SVG is ASCII. */
 /**
  * The card's backdrop: the brand card's dot grid, lavender light from the
- * top right, and the fleet standing large off the right edge, its 1s
- * fading downwards into the dark. Darker towards the bottom, where the
- * facts sit.
+ * top right, and the pixel 1 standing large off the right edge, fading
+ * downwards into the dark. Darker towards the bottom, where the facts sit.
  */
-export function backdropSvg(width: number, height: number, withFleet: boolean): string {
-  // The fleet at 24 times its 32-unit size, its front 1 cut by the edge.
-  const scale = 24;
-  // Drawn solid and faded as a whole, so the flag and the bar it joins
-  // read as one shape.
-  const fleet = withFleet
-    ? `<g mask="url(#fleetFade)" opacity="0.34">` +
-      `<g transform="translate(${width - 22.4 * scale} ${height - 27.5 * scale + 40}) scale(${scale})">` +
-      markShapes(COLOR.lavender, COLOR.lavender) +
+export function backdropSvg(width: number, height: number, withOne: boolean): string {
+  // The 1 on 90px cells, its stem cut by the right edge and its foot by the
+  // bottom; its flag starts below the address in the top right.
+  const cell = 90;
+  const one = withOne
+    ? `<g mask="url(#oneFade)" opacity="0.34">` +
+      `<g transform="translate(${width - 2.75 * cell} ${height - 6.3 * cell}) scale(${cell / 10})">` +
+      pixelShapes(THE_ONE, COLOR.lavender, COLOR.lavender) +
       `</g></g>`
     : "";
   return (
@@ -92,13 +93,13 @@ export function backdropSvg(width: number, height: number, withFleet: boolean): 
     `<linearGradient id="fadeMask" x1="0" y1="0" x2="0" y2="1">` +
     `<stop offset="0.1" stop-color="#fff"/>` +
     `<stop offset="0.95" stop-color="#000"/></linearGradient>` +
-    `<mask id="fleetFade" maskUnits="userSpaceOnUse" x="0" y="0" width="${width}" height="${height}">` +
+    `<mask id="oneFade" maskUnits="userSpaceOnUse" x="0" y="0" width="${width}" height="${height}">` +
     `<rect width="${width}" height="${height}" fill="url(#fadeMask)"/></mask>` +
     `</defs>` +
     `<rect width="${width}" height="${height}" fill="${COLOR.bg}"/>` +
     `<rect width="${width}" height="${height}" fill="url(#dots)"/>` +
     `<rect width="${width}" height="${height}" fill="url(#light)"/>` +
-    fleet +
+    one +
     `<rect width="${width}" height="${height}" fill="url(#dusk)"/>` +
     `</svg>`
   );

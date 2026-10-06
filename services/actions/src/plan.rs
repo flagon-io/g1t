@@ -7,6 +7,7 @@ use g1t_actions::events::{RunInfo, runner_context};
 use g1t_actions::expr::{self, Scope, Status};
 use g1t_actions::matrix;
 use g1t_actions::workflow::{self, Workflow};
+use g1t_contracts::access::Capability;
 use g1t_contracts::actions::{JobCallArgs, RunActionArgs, StartJobArgs, WorkflowRun};
 use g1t_contracts::identity::{CreateAccessTokenArgs, CreatedAccessToken};
 use g1t_contracts::repos::{Repo, RepoPath};
@@ -26,6 +27,20 @@ const MAX_LOG_BYTES: usize = 4 * 1024 * 1024;
 /// The most a single log report may add.
 const MAX_CHUNK_BYTES: usize = 256 * 1024;
 const MAX_ANNOTATIONS: usize = 50;
+
+/// The repository whose unfinished runs `event` stops, by id: one deleted,
+/// or archived (not unarchived).
+pub fn stops_runs(event: &g1t_contracts::events::Event) -> Option<String> {
+    let stops = match event.kind.as_str() {
+        "repo.deleted" => true,
+        "repo.archived" => event.data["archived"].as_bool() != Some(false),
+        _ => false,
+    };
+    if !stops {
+        return None;
+    }
+    event.repo_id.clone().or_else(|| event.data["repoId"].as_str().map(str::to_owned))
+}
 
 pub struct NewRun {
     pub repo: Repo,
@@ -223,6 +238,11 @@ impl Actions {
     /// Makes a run and its jobs, and starts what can start. `None` when the
     /// event already started this workflow.
     pub async fn create_run(&self, new: NewRun) -> Result<Option<String>> {
+        // Nothing starts on an archived repository. A deleted one is never
+        // found to start anything on.
+        if new.repo.archived() {
+            return Ok(None);
+        }
         let workflow_row = self.workflow_row(&new.repo, &new.path, &new.workflow.display_name(&new.path), &new.source).await?;
         let numbered = self
             .db
@@ -1107,8 +1127,24 @@ impl Actions {
         self.advance(&run.id).await
     }
 
+    /// Cancels every run of the repository that has not finished, for
+    /// `repo.deleted` and `repo.archived`.
+    pub async fn stop_runs(&self, repo_id: &str) -> Result<()> {
+        let runs = self
+            .db
+            .prepare("SELECT * FROM runs WHERE repo_id = ? AND status != 'completed'")
+            .bind(&[repo_id.into()])?
+            .all()
+            .await?
+            .results::<RunRow>()?;
+        for run in runs {
+            self.cancel_run(&run, "The repository was archived or deleted.").await?;
+        }
+        Ok(())
+    }
+
     pub async fn cancel(&self, a: RunActionArgs) -> Result<Outcome<WorkflowRun>> {
-        if let Some(Outcome::Fail(refused)) = Self::member(&a.actor, &a.repo) {
+        if let Outcome::Fail(refused) = self.may(&a.actor, &a.repo, Capability::Run).await? {
             return Ok(Outcome::Fail(refused));
         }
         let run = check!(self.run_in(&a.repo, &a.id).await?);
@@ -1122,12 +1158,20 @@ impl Actions {
     /// Runs again: every job, or with `failed_only` those that did not
     /// succeed and the jobs that need them.
     pub async fn rerun(&self, a: RunActionArgs) -> Result<Outcome<WorkflowRun>> {
-        if let Some(Outcome::Fail(refused)) = Self::member(&a.actor, &a.repo) {
+        if let Outcome::Fail(refused) = self.may(&a.actor, &a.repo, Capability::Run).await? {
             return Ok(Outcome::Fail(refused));
         }
         let run = check!(self.run_in(&a.repo, &a.id).await?);
         if run.status != "completed" {
             return Ok(fail(FailureCode::Conflict, "The run is still going: cancel it first."));
+        }
+        // Nothing starts again on an archived repository.
+        match self.visible_repo(&a.repo, &Some(a.actor.clone())).await? {
+            Some(repo) if repo.archived() => {
+                return Ok(fail(FailureCode::Forbidden, g1t_contracts::repos::archived_message(&repo.namespace, &repo.name)));
+            }
+            Some(_) => {}
+            None => return Ok(fail(FailureCode::NotFound, "There is no such repository.")),
         }
         if run.error.is_some() {
             return Ok(fail(FailureCode::Conflict, "This run never started: fix the workflow file and push again."));
@@ -1507,3 +1551,31 @@ impl Actions {
     }
 }
 
+
+#[cfg(test)]
+mod stopping {
+    use super::stops_runs;
+    use g1t_contracts::events::Event;
+    use serde_json::{Value, json};
+
+    fn event(kind: &str, data: Value) -> Event {
+        Event {
+            id: "evt_1".into(),
+            kind: kind.into(),
+            source: "repos".into(),
+            time: "2026-10-05T00:00:00Z".into(),
+            repo_id: Some("rep_1".into()),
+            actor: None,
+            data,
+        }
+    }
+
+    #[test]
+    fn deleting_or_archiving_stops_runs() {
+        assert_eq!(stops_runs(&event("repo.deleted", json!({ "repoId": "rep_1" }))).as_deref(), Some("rep_1"));
+        assert_eq!(stops_runs(&event("repo.archived", json!({ "archived": true }))).as_deref(), Some("rep_1"));
+        assert_eq!(stops_runs(&event("repo.unarchived", json!({ "archived": false }))), None);
+        assert_eq!(stops_runs(&event("repo.restored", json!({}))), None);
+        assert_eq!(stops_runs(&event("git.push", json!({}))), None);
+    }
+}

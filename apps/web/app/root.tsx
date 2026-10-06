@@ -6,11 +6,12 @@ import {
   LayoutDashboard,
   LogIn,
   LogOut,
+  Menu,
   Plus,
   Search,
   Settings,
 } from "lucide-react";
-import { useState } from "react";
+import { Suspense, lazy, useState } from "react";
 import {
   Form,
   isRouteErrorResponse,
@@ -28,10 +29,12 @@ import {
   useSubmit,
 } from "react-router";
 
-import type { User } from "@g1t/contracts";
+import { type User, hasAccessIn, sharedWorkspaces } from "@g1t/contracts";
 
 import type { Route } from "./+types/root";
 import "./app.css";
+import displayFont from "@g1t/theme/fonts/bricolage-grotesque-latin.woff2?url";
+import sansFont from "@g1t/theme/fonts/hanken-grotesk-latin.woff2?url";
 import { Logo } from "./components/logo";
 import { Avatar, ButtonLink, notACredential } from "./components/ui";
 import {
@@ -43,29 +46,29 @@ import {
   DropdownMenuTrigger,
 } from "./components/ui/dropdown-menu";
 import { AppShell, Progress, type ShellData } from "./components/shell";
+import { SiteFooter } from "./components/footer";
 import { readCookie } from "./lib/mission";
 import { WORKSPACE_COOKIE, workspaceFor } from "./lib/workspace-choice";
 import { NotFound } from "./components/not-found";
 import { usesAppShell } from "./lib/chrome";
 import { CommandPalette, type PaletteCommand, usePaletteShortcut } from "./components/command-palette";
-import { billing, projects, work } from "./lib/services.server";
-import { getViewer, roleIn, viewerMiddleware } from "./lib/session.server";
+import { billing, projects, repos, work } from "./lib/services.server";
+import { getViewer, viewerMiddleware } from "./lib/session.server";
+import { registrationMode } from "./lib/registration.server";
+import { useSignUpCopy } from "./lib/registration";
+
+/** Shown only while a workspace's compute is held, so loaded only then. */
+const SpikeBanner = lazy(() => import("./components/billing").then((module) => ({ default: module.SpikeBanner })));
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/favicon.ico", sizes: "32x32" },
   { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
   { rel: "icon", type: "image/png", sizes: "192x192", href: "/icon-192.png" },
   { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
-  { rel: "preconnect", href: "https://fonts.googleapis.com" },
-  {
-    rel: "preconnect",
-    href: "https://fonts.gstatic.com",
-    crossOrigin: "anonymous",
-  },
-  {
-    rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&family=JetBrains+Mono:wght@400;500;600&display=swap",
-  },
+  // The text and headline faces are wanted on every page, so they start
+  // loading with the stylesheet; mono waits until something uses it.
+  { rel: "preload", href: sansFont, as: "font", type: "font/woff2", crossOrigin: "anonymous" },
+  { rel: "preload", href: displayFont, as: "font", type: "font/woff2", crossOrigin: "anonymous" },
 ];
 
 export const middleware: Route.MiddlewareFunction[] = [viewerMiddleware];
@@ -73,7 +76,12 @@ export const middleware: Route.MiddlewareFunction[] = [viewerMiddleware];
 export async function loader({ context, params, request }: Route.LoaderArgs) {
   const user = getViewer(context);
   const chosen = readCookie(request.headers.get("cookie"), WORKSPACE_COOKIE);
-  return { user, shell: user ? await shellFor(user, params, chosen) : await visitorShell(params) };
+  // What sign-up buttons say: Request access while g1t is invite-only.
+  const [shell, mode] = await Promise.all([
+    user ? shellFor(user, params, chosen) : visitorShell(params),
+    user ? Promise.resolve(null) : registrationMode(),
+  ]);
+  return { user, shell, inviteOnly: mode !== "open" };
 }
 
 /**
@@ -122,13 +130,15 @@ async function shellFor(
   const path = params.owner && params.repo ? { namespace: params.owner, name: params.repo } : null;
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
-  const [listed, counts, account, usage, limit] = await Promise.all([
+  const [listed, counts, account, usage, limit, entitlements] = await Promise.all([
     workspace ? projects.list(workspace.slug, user) : Promise.resolve(null),
     path ? work.counts(path, user) : Promise.resolve(null),
     workspace ? billing.account(workspace.slug, user) : Promise.resolve(null),
     workspace ? billing.usage(workspace.slug, user, monthStart) : Promise.resolve(null),
     workspace ? billing.limit(workspace.slug, user).catch(() => null) : Promise.resolve(null),
+    workspace ? billing.entitlements(workspace.slug).catch(() => null) : Promise.resolve(null),
   ]);
+  const shared = await sharedRepos(user);
   return {
     workspace,
     // Projects are what the sidebar lists: what the workspace builds and runs.
@@ -144,7 +154,8 @@ async function shellFor(
       path && counts?.ok
         ? {
             ...path,
-            member: roleIn(user, path.namespace) != null,
+            // Until the repository's own page says what their role is.
+            member: hasAccessIn(user, path.namespace),
             issues: counts.value.issues,
             pulls: counts.value.pulls,
           }
@@ -160,9 +171,32 @@ async function shellFor(
           }
         : null,
     free: account?.ok ? Boolean(account.value.status.free) : false,
+    // A spend spike or a hold pauses new compute: the shell says so on every page.
+    compute:
+      workspace && entitlements && (entitlements.paused || entitlements.spike?.status === "open")
+        ? { paused: entitlements.paused, spike: entitlements.spike ?? null, owner: workspace.role === "owner" }
+        : null,
+    shared,
     // While g1t is free every charge is zero, so usage is shown at cost.
     monthUsageMicros: usage?.ok ? (usage.value.free ? usage.value.usedMicros : usage.value.spentMicros) : null,
   };
+}
+
+/** Most repositories listed under Shared with you. */
+const MAX_SHARED = 20;
+
+/**
+ * Repositories shared with the user in workspaces they do not belong to,
+ * by their grants: only those, never the workspace's other repositories.
+ */
+async function sharedRepos(user: User): Promise<ShellData["shared"]> {
+  const outside = new Set(sharedWorkspaces(user));
+  if (outside.size === 0) return [];
+  const ids = (user.grants ?? []).filter((grant) => outside.has(grant.workspace)).map((grant) => grant.repo_id).slice(0, MAX_SHARED);
+  const found = await Promise.all(ids.map((id) => repos.getById(id, user).catch(() => null)));
+  return found
+    .flatMap((repo) => (repo?.ok ? [{ namespace: repo.value.namespace, name: repo.value.name, isPrivate: repo.value.isPrivate }] : []))
+    .sort((a, b) => `${a.namespace}/${a.name}`.localeCompare(`${b.namespace}/${b.name}`));
 }
 
 function HeaderLink({ to, children }: { to: string; children: React.ReactNode }) {
@@ -190,8 +224,15 @@ const PUBLIC_COMMANDS: PaletteCommand[] = [
   { label: "Sign up", to: "/register", icon: <Plus size={15} /> },
 ];
 
+/** Sign up, or Request access while g1t is invite-only. */
+function SignUpButton() {
+  const copy = useSignUpCopy();
+  return <ButtonLink to="/register">{copy.primary}</ButtonLink>;
+}
+
 function Header({ user }: { user: User | null | undefined }) {
   const submit = useSubmit();
+  const signUp = useSignUpCopy();
   const [palette, setPalette] = useState(false);
   usePaletteShortcut(() => setPalette((open) => !open));
   const params = useParams();
@@ -199,7 +240,7 @@ function Header({ user }: { user: User | null | undefined }) {
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4">
-        <Link to="/" aria-label="g1t home" className="mr-2">
+        <Link to="/" aria-label="g1t home" className="mr-2 flex">
           <Logo />
         </Link>
         <Form action="/search" role="search" className="relative hidden grow sm:block sm:max-w-xs">
@@ -222,22 +263,62 @@ function Header({ user }: { user: User | null | undefined }) {
           type="button"
           aria-label="Search g1t"
           onClick={() => setPalette(true)}
-          className="rounded-md p-1.5 text-muted transition-colors hover:bg-raised hover:text-fg sm:hidden"
+          className="flex size-10 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-fg sm:hidden"
         >
-          <Search size={16} />
+          <Search size={18} />
         </button>
         <CommandPalette
           open={palette}
           onOpenChange={setPalette}
-          commands={user ? [{ label: "Mission control", to: "/", icon: <LayoutDashboard size={15} /> }, ...PUBLIC_COMMANDS.slice(0, 4)] : PUBLIC_COMMANDS}
+          commands={user ? [{ label: "Mission control", to: "/", icon: <LayoutDashboard size={15} /> }, ...PUBLIC_COMMANDS.slice(0, 4)] : PUBLIC_COMMANDS.map((command) => (command.to === "/register" ? { ...command, label: signUp.primary } : command))}
           repo={repo}
         />
-        <nav className="flex items-center gap-0.5">
+        <nav aria-label="Main" className="hidden items-center gap-0.5 sm:flex">
           <HeaderLink to="/explore">Explore</HeaderLink>
           <HeaderLink to="/pricing">Pricing</HeaderLink>
           <HeaderLink to="https://docs.g1t.sh/">Docs</HeaderLink>
         </nav>
         <div className="ml-auto flex items-center gap-2">
+          {/* On a phone the links fold into one menu, so the bar fits. */}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label="Menu"
+              className="flex size-10 items-center justify-center rounded-md text-muted outline-none transition-colors hover:bg-raised hover:text-fg data-[state=open]:bg-raised data-[state=open]:text-fg sm:hidden"
+            >
+              <Menu size={18} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem asChild className="min-h-11">
+                <Link to="/explore">
+                  <Compass />
+                  Explore
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild className="min-h-11">
+                <Link to="/pricing">
+                  <CreditCard />
+                  Pricing
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild className="min-h-11">
+                <Link to="https://docs.g1t.sh/">
+                  <BookOpen />
+                  Docs
+                </Link>
+              </DropdownMenuItem>
+              {!user && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild className="min-h-11">
+                    <Link to="/login">
+                      <LogIn />
+                      Sign in
+                    </Link>
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           {user ? (
             <>
               <Link
@@ -317,8 +398,10 @@ function Header({ user }: { user: User | null | undefined }) {
             </>
           ) : (
             <>
-              <HeaderLink to="/login">Sign in</HeaderLink>
-              <ButtonLink to="/register">Sign up</ButtonLink>
+              <span className="hidden sm:contents">
+                <HeaderLink to="/login">Sign in</HeaderLink>
+              </span>
+              <SignUpButton />
             </>
           )}
         </div>
@@ -327,81 +410,23 @@ function Header({ user }: { user: User | null | undefined }) {
   );
 }
 
-const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
-  {
-    title: "Product",
-    links: [
-      ["Explore repositories", "/explore"],
-      ["Pricing", "/pricing"],
-      ["g1t agents", "https://docs.g1t.sh/guides/g1t-agents/"],
-      ["Bring your own agent", "https://docs.g1t.sh/guides/bring-your-own-agent/"],
-      ["Integrations", "https://docs.g1t.sh/guides/integrations/"],
-      ["Model providers", "https://docs.g1t.sh/guides/models/"],
-      ["Sign up", "/register"],
-    ],
-  },
-  {
-    title: "Developers",
-    links: [
-      ["Quickstart", "https://docs.g1t.sh/quickstart/"],
-      ["How g1t works", "https://docs.g1t.sh/concepts/overview/"],
-      ["API reference", "https://docs.g1t.sh/reference/api/"],
-      ["OpenAPI", "https://api.g1t.sh/openapi.json"],
-      ["llms.txt", "/llms.txt"],
-    ],
-  },
-  {
-    title: "Project",
-    links: [
-      ["Source on g1t", "/syntaqx/g1t"],
-      ["MIT license", "/syntaqx/g1t/blob/main/LICENSE"],
-    ],
-  },
-];
-
-function Footer() {
-  return (
-    <footer className="mt-24 border-t border-line">
-      <div className="mx-auto flex max-w-6xl flex-wrap gap-x-20 gap-y-8 px-4 py-12">
-        <div className="grow">
-          <Logo />
-          <p className="mt-3 max-w-xs text-sm text-muted">
-            A git forge for agents. Open source under the MIT license, built on
-            Cloudflare Workers and Artifacts.
-          </p>
-        </div>
-        {FOOTER_LINKS.map((group) => (
-          <div key={group.title}>
-            <p className="text-sm font-medium">{group.title}</p>
-            <ul className="mt-3 space-y-2 text-sm text-muted">
-              {group.links.map(([label, to]) => (
-                <li key={to}>
-                  {/* Plain links: some targets are files or other hosts. */}
-                  <a href={to} className="hover:text-fg">
-                    {label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-      <div className="border-t border-line">
-        <p className="mx-auto max-w-6xl px-4 py-5 text-xs text-faint">
-          g1t is open source software, built on Cloudflare Workers and
-          Artifacts.
-        </p>
-      </div>
-    </footer>
-  );
-}
-
 export function Layout({ children }: { children: React.ReactNode }) {
   // Undefined when the root loader itself failed.
   const root = useRouteLoaderData<typeof loader>("root");
   const user = root?.user;
   const { pathname } = useLocation();
-  const banner = user && !user.verified && (
+  // The billing page shows the full banner itself.
+  const paused = root?.shell?.compute && root.shell.workspace && !pathname.endsWith("/-/billing") && (
+    <Suspense fallback={null}>
+      <SpikeBanner
+        compact
+        slug={root.shell.workspace.slug}
+        entitlements={{ paused: root.shell.compute.paused, spike: root.shell.compute.spike }}
+        owner={root.shell.compute.owner}
+      />
+    </Suspense>
+  );
+  const verify = user && !user.verified && (
     <Form
       method="post"
       action="/verify"
@@ -416,6 +441,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </button>
     </Form>
   );
+  const banner =
+    paused || verify ? (
+      <>
+        {paused}
+        {verify}
+      </>
+    ) : null;
   return (
     <html lang="en">
       <head>
@@ -436,7 +468,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <Header user={user} />
             {banner}
             <div className="grow">{children}</div>
-            <Footer />
+            <SiteFooter user={user} />
           </>
         )}
         <ScrollRestoration />

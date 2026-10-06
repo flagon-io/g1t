@@ -723,6 +723,19 @@ project and branch at `<project>-<workspace>.g1t.page` and
 `<project>-git-<branch>-<workspace>.g1t.page`; secrets and variables owned
 by the project.
 
+**Step 5, GitHub, built 2026-10-05:** one GitHub App (`g1t-sh`) for both
+sign-in and repository access. Sign-in is its user authorization with PKCE
+(identity, `src/github.rs`): accounts known by GitHub's numeric id, a
+matching verified email never linked without signing in to the account,
+new accounts behind the invite check. Repositories come through its
+installations (integrations, `src/github.rs`), copied with every branch and
+tag by the repos service (`src/mirror.rs`) as **import**, **mirror** (g1t
+follows GitHub on its push webhook) or **move to g1t** (GitHub follows g1t
+on `git.push`). A mirror is a hosted repository that keeps a full copy, so
+its project stays `hosted` and deploys like any other; the tie lives in
+integrations' `github_repos`. Not yet: previews and statuses on GitHub's own
+pull requests, comments and pull requests copied, GitLab and Bitbucket.
+
 ### People and search
 
 > **2026-10-04:** "pull up user profiles, using a /u/username prefix kinda
@@ -1164,6 +1177,10 @@ for volume splits storage by how the data is read.
 - GitHub sign-in, SSH keys, access tokens, active sessions.
 - Profiles, public and private repositories, repository search (D1 full-text).
 - Rendered README, syntax highlighting, commit history, diffs.
+- Transferring a repository between workspaces (by id: its git store key
+  never moves; every service follows `repo.transferred`; old paths redirect
+  until reused) and deleting an empty, settled workspace (its slug is
+  tombstoned, never reissued except to the person whose username it is).
 
 ## Built on Cloudflare
 

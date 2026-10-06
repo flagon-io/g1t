@@ -16,8 +16,8 @@ turn the queue off to merge directly.
 
 ## Turn it on
 
-1. Open the project's **Settings → Repository**. You need to be a member of its
-   workspace.
+1. Open the project's **Settings → Repository**. You need the Maintain
+   [role](/guides/access-and-roles/) or higher on its repository.
 2. Turn on **Merge through a queue**.
 3. Save.
 
@@ -38,11 +38,12 @@ Merging a pull request, from its page (**Add to the merge queue**), with
 adds it to the queue instead of changing `main`. Everything a merge needs
 is still checked first: the pull request must be ready for review, its
 checks must have passed and it must have the approvals the repository asks
-for. Only members of the workspace can add to the queue. Merging a pull
+for. Only people with the Write [role](/guides/access-and-roles/) or higher can add to the
+queue. Merging a pull
 request that is already queued changes nothing.
 
 The pull request's conversation records who added it, and its page shows
-where it is in the queue. A member can take it out with **Remove from the
+where it is in the queue. Anyone who can merge can take it out with **Remove from the
 queue**. Closing a pull request also takes it out.
 
 ## How entries are tested
@@ -134,7 +135,7 @@ A g1t agent's pull request is then sent back to revise, like any failed
 check, starting from `main` as it is now. The revision counts towards
 **Revisions before asking you**. Once it is ready again, a repository with
 **Merge automatically when ready** on adds it to the queue again by itself;
-otherwise it waits for a member to merge it again. A pull request you or
+otherwise it waits for someone to merge it again. A pull request you or
 your own agent opened is yours to fix and merge again.
 
 ## The Merge queue page

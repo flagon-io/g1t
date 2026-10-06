@@ -278,9 +278,8 @@ pub async fn list(db: &D1Database, a: ListAuditArgs) -> Result<AuditPage> {
 }
 
 /// Entries are kept this many days unless `AUDIT_KEEP_DAYS` says otherwise:
-/// the longest any plan reads back (a year, on Team). Shorter windows,
-/// such as 30 days without Team, are applied where the log is read.
-pub const DEFAULT_KEEP_DAYS: u32 = 365;
+/// what the audit log reads back, the same on every plan (90 days).
+pub const DEFAULT_KEEP_DAYS: u32 = 90;
 /// Rows removed per statement, so one purge never runs long.
 const PURGE_BATCH: u32 = 5_000;
 
@@ -353,7 +352,7 @@ mod tests {
         // 2026-10-05T00:00:00Z, a year back.
         let now = 1_791_158_400_000;
         assert_eq!(keep_from(now, 365), "2025-10-05T00:00:00.000Z");
-        assert_eq!(DEFAULT_KEEP_DAYS, 365);
+        assert_eq!(DEFAULT_KEEP_DAYS, 90);
     }
 
     fn args() -> ListAuditArgs {

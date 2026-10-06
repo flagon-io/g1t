@@ -5,7 +5,7 @@ members = ["apps/api", "crates/*", "services/actions", "services/billing", "serv
 [workspace.package]
 edition = "2024"
 license = "MIT"
-repository = "https://g1t.sh/syntaqx/g1t"
+repository = "https://g1t.sh/flagon-io/g1t"
 
 [workspace.dependencies]
 g1t-actions = { path = "crates/actions" }

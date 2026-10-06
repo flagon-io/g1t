@@ -6,7 +6,7 @@ import type { Commit } from "@g1t/contracts";
 import type { Route } from "./+types/commits";
 import { page } from "../../lib/meta";
 import { Avatar, EmptyState, TimeAgo } from "../../components/ui";
-import { repos } from "../../lib/services.server";
+import { accounts, repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
 const PAGE_SIZE = 50;
@@ -17,9 +17,11 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
-  return {
-    commits: unwrap(await repos.log(path, getViewer(context), null, PAGE_SIZE)),
-  };
+  const commits = unwrap(await repos.log(path, getViewer(context), null, PAGE_SIZE));
+  // Who wrote each commit, by its author address: confirmed and noreply
+  // addresses only. Without an answer, the name in the commit is shown.
+  const owners = await accounts.emailOwners([...new Set(commits.map((commit) => commit.author.email))]).catch(() => ({}));
+  return { commits, owners: owners as Record<string, { username: string; avatar: string | null }> };
 }
 
 /** Commits by the day they were made, newest first. */
@@ -44,7 +46,7 @@ function dayLabel(day: string): string {
 }
 
 export default function Commits({ loaderData, params }: Route.ComponentProps) {
-  const { commits } = loaderData;
+  const { commits, owners } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   if (commits.length === 0) {
     return <EmptyState title="No commits yet" />;
@@ -62,16 +64,24 @@ export default function Commits({ loaderData, params }: Route.ComponentProps) {
               const [subject, ...body] = commit.message.split("\n");
               const rest = body.join("\n").trim();
               const to = `${base}/commit/${commit.hash}`;
+              const owner = owners[commit.author.email.toLowerCase()];
               return (
                 <li key={commit.hash} className="group relative flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface">
-                  <Avatar name={commit.author.name} size={24} />
+                  <Avatar name={owner?.username ?? commit.author.name} image={owner?.avatar} size={24} />
                   <div className="min-w-0 grow">
                     <Link to={to} prefetch="intent" className="block truncate font-medium after:absolute after:inset-0 group-hover:text-accent">
                       {subject}
                     </Link>
                     {rest && <p className="mt-1 line-clamp-1 text-sm text-muted">{rest}</p>}
                     <p className="mt-1 text-xs text-faint">
-                      {commit.author.name} committed <TimeAgo at={commit.authoredAt} />
+                      {owner ? (
+                        <Link to={`/u/${owner.username}`} className="relative z-10 text-muted hover:text-fg" title={commit.author.name}>
+                          {owner.username}
+                        </Link>
+                      ) : (
+                        commit.author.name
+                      )}{" "}
+                      committed <TimeAgo at={commit.authoredAt} />
                       {commit.parents.length > 1 && " · merge"}
                     </p>
                   </div>

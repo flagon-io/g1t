@@ -14,7 +14,7 @@ export const OG = "https://og.g1t.sh";
 
 /** What g1t is, for pages with nothing more particular to say. */
 export const DESCRIPTION =
-  "A git forge for teams of agents: every change isolated, every decision recorded, every change landed in order. Open source, built on Cloudflare.";
+  "The open-source git platform where people and agents ship software together, from the first issue to production on the edge. Priced at cost plus 20%, never per seat.";
 
 /** As much of `MetaArgs` as the tags need. */
 export type PageArgs = {

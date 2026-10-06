@@ -28,6 +28,8 @@ ORDER=(
   services/models
   services/deployments
   services/runner
+  services/security
+  services/context
   apps/api
   services/pages
   services/og

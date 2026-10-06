@@ -3,11 +3,13 @@
 //! workspace's is true across its projects ("we use pnpm everywhere",
 //! "staging lives at …").
 //!
-//! It is members-only, since it can hold internal knowledge, and it never
-//! holds a secret: text that looks like a key or a token is refused. Every
+//! A workspace's memory is members-only, since it can hold internal
+//! knowledge; a project's is for whoever can read the project, and changed
+//! by whoever can push to it. It never holds a secret: text that looks like a key or a token is refused. Every
 //! g1t agent run is given it (`memory_context`): pinned first, then what
 //! was used most recently, within a size budget.
 
+use g1t_contracts::access::{self, Capability};
 use g1t_contracts::agents::*;
 use g1t_contracts::repos::{Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
@@ -29,6 +31,24 @@ pub(crate) const RENAMED: &[&str] = &[
     "UPDATE memories SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE memories SET repo = ?1 || substr(repo, length(?2) + 1) WHERE substr(repo, 1, length(?2) + 1) = ?2 || '/'",
     "UPDATE memories SET source_repo = ?1 || substr(source_repo, length(?2) + 1) WHERE substr(source_repo, 1, length(?2) + 1) = ?2 || '/'",
+];
+
+/// A repository transferred (see `g1t_kit::transfer`): its agent runs and
+/// its project's memory go with it, as its issues and pull requests do by
+/// id. `?1`/`?2` the path now and before, `?3`/`?4` the workspaces, `?5`
+/// the repository's id.
+pub(crate) const TRANSFERRED: &[&str] = &[
+    "UPDATE agent_runs SET workspace = ?3, repo = ?1 WHERE repo_id = ?5 AND repo = ?2",
+    "UPDATE memories SET workspace = ?3, repo = ?1 WHERE scope = 'project' AND scope_key = ?5 AND workspace = ?4",
+    "UPDATE memories SET source_repo = ?1 WHERE source_repo = ?2",
+];
+
+/// A workspace deleted: its own memory, guardrails and queued runs go.
+/// `?1` is its slug. Project memory went with each repository's transfer.
+pub(crate) const DELETED: &[&str] = &[
+    "DELETE FROM memories WHERE scope = 'workspace' AND scope_key = ?1",
+    "DELETE FROM guardrails WHERE scope = 'workspace' AND scope_key = ?1",
+    "DELETE FROM agent_waits WHERE workspace = ?1",
 ];
 
 /// The most memories one project, or one workspace, keeps.
@@ -133,6 +153,9 @@ fn valid_text(text: &str) -> std::result::Result<String, String> {
     Ok(text.to_owned())
 }
 
+/// Why a person cannot change a memory.
+const CHANGE_DENIED: &str = "Only members of the workspace can change its memory, and a project's only with the Write role on it.";
+
 fn denied<T>() -> Outcome<T> {
     Outcome::fail(
         FailureCode::Forbidden,
@@ -140,9 +163,21 @@ fn denied<T>() -> Outcome<T> {
     )
 }
 
-/// Whether `actor` may change `workspace`'s memory.
-fn may_write(actor: &User, workspace: &str) -> bool {
-    actor.is_member(workspace) && (actor.verified || actor.kind != PrincipalKind::User)
+/// Whether `actor` may change a memory of `workspace`: the workspace's own
+/// needs a member; a project's (`repo_id`, its repository) the Write role
+/// on that repository, as pushing to it does.
+fn may_write(actor: &User, workspace: &str, repo_id: Option<&str>) -> bool {
+    let able = actor.verified || actor.kind != PrincipalKind::User;
+    able && match repo_id {
+        None => actor.is_member(workspace),
+        // Write is never had through being public, so treating it as
+        // private changes nothing.
+        Some(id) => access::can(
+            Some(actor),
+            access::RepoRef { id, namespace: workspace, private: true },
+            Capability::Push,
+        ),
+    }
 }
 
 /// The order memories are given and listed in: pinned, then most recently
@@ -269,7 +304,9 @@ impl Work {
 
     pub(crate) async fn list_memories(&self, a: ListMemoriesArgs) -> Result<Outcome<Memories>> {
         let workspace = a.workspace.to_lowercase();
-        if !a.viewer.as_ref().is_some_and(|viewer| viewer.is_member(&workspace)) {
+        let member = a.viewer.as_ref().is_some_and(|viewer| viewer.is_member(&workspace));
+        // Someone else who can read the project sees its memory alone.
+        if !member && a.repo.is_none() {
             return Ok(denied());
         }
         let project = match &a.repo {
@@ -279,15 +316,17 @@ impl Work {
             },
             None => Vec::new(),
         };
-        Ok(Outcome::Ok(Memories {
-            project,
-            workspace: self.memories_of(MemoryScope::Workspace, &workspace, MAX_PER_SCOPE).await?,
-        }))
+        let workspace = if member {
+            self.memories_of(MemoryScope::Workspace, &workspace, MAX_PER_SCOPE).await?
+        } else {
+            Vec::new()
+        };
+        Ok(Outcome::Ok(Memories { project, workspace }))
     }
 
     pub(crate) async fn add_memory(&self, a: AddMemoryArgs) -> Result<Outcome<Memory>> {
         let workspace = a.workspace.to_lowercase();
-        if !may_write(&a.actor, &workspace) {
+        if a.scope == MemoryScope::Workspace && !may_write(&a.actor, &workspace, None) {
             return Ok(denied());
         }
         let text = match valid_text(&a.text) {
@@ -304,7 +343,12 @@ impl Work {
         };
         let key = match (a.scope, &repo) {
             (MemoryScope::Workspace, _) => workspace.clone(),
-            (MemoryScope::Project, Some(repo)) => repo.id.clone(),
+            (MemoryScope::Project, Some(repo)) => {
+                if !may_write(&a.actor, &workspace, Some(&repo.id)) {
+                    return Ok(Outcome::fail(FailureCode::Forbidden, CHANGE_DENIED));
+                }
+                repo.id.clone()
+            }
             (MemoryScope::Project, None) => {
                 return Ok(Outcome::fail(FailureCode::Invalid, "Name the project this memory is about."));
             }
@@ -407,8 +451,9 @@ impl Work {
 
     pub(crate) async fn update_memory(&self, a: UpdateMemoryArgs) -> Result<Outcome<Memory>> {
         let workspace = a.workspace.to_lowercase();
-        if !may_write(&a.actor, &workspace) || a.actor.kind == PrincipalKind::Agent {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only members of the workspace can change its memory."));
+        let repo_id = self.memory_repo_id(&a.id).await?;
+        if !may_write(&a.actor, &workspace, repo_id.as_deref()) || a.actor.kind == PrincipalKind::Agent {
+            return Ok(Outcome::fail(FailureCode::Forbidden, CHANGE_DENIED));
         }
         let Some(before) = self.memory_row(&workspace, &a.id).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Memory not found."));
@@ -436,7 +481,6 @@ impl Work {
             ])?
             .run()
             .await?;
-        let repo_id = self.memory_repo_id(&a.id).await?;
         self.memory_changed(&a.id, &workspace, before.status.as_str(), repo_id.as_deref()).await;
         Ok(match self.memory_row(&workspace, &a.id).await? {
             Some(memory) => Outcome::Ok(memory),
@@ -446,10 +490,10 @@ impl Work {
 
     pub(crate) async fn delete_memory(&self, a: DeleteMemoryArgs) -> Result<Outcome<bool>> {
         let workspace = a.workspace.to_lowercase();
-        if !may_write(&a.actor, &workspace) || a.actor.kind == PrincipalKind::Agent {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only members of the workspace can change its memory."));
-        }
         let repo_id = self.memory_repo_id(&a.id).await?;
+        if !may_write(&a.actor, &workspace, repo_id.as_deref()) || a.actor.kind == PrincipalKind::Agent {
+            return Ok(Outcome::fail(FailureCode::Forbidden, CHANGE_DENIED));
+        }
         let gone = self
             .db
             .prepare("DELETE FROM memories WHERE id = ? AND workspace = ? RETURNING id AS value")
@@ -471,9 +515,9 @@ impl Work {
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
         let workspace = repo.namespace.to_lowercase();
-        if !a.viewer.as_ref().is_some_and(|viewer| viewer.is_member(&workspace)) {
-            return Ok(denied());
-        }
+        // Found for the viewer, so they can read the project and its
+        // memory; the workspace's is its members'.
+        let member = a.viewer.as_ref().is_some_and(|viewer| viewer.is_member(&workspace));
         let words: Vec<String> = a
             .query
             .as_deref()
@@ -494,7 +538,11 @@ impl Work {
         };
         let found = Memories {
             project: matching(self.memories_of(MemoryScope::Project, &repo.id, MAX_PER_SCOPE).await?),
-            workspace: matching(self.memories_of(MemoryScope::Workspace, &workspace, MAX_PER_SCOPE).await?),
+            workspace: if member {
+                matching(self.memories_of(MemoryScope::Workspace, &workspace, MAX_PER_SCOPE).await?)
+            } else {
+                Vec::new()
+            },
         };
         let ids: Vec<String> = found
             .project
@@ -515,9 +563,14 @@ impl Work {
         let Outcome::Ok(repo) = self.repo(&a.repo, &member_of(&service, &a.repo.namespace)).await? else {
             return Ok(MemoryContext::default());
         };
-        let workspace = self
-            .memories_of(MemoryScope::Workspace, &repo.namespace.to_lowercase(), MAX_PER_SCOPE)
-            .await?;
+        // The workspace's memory is its members': a run for an outside
+        // collaborator is told only the project's.
+        let workspace = if workspace_memory_for(a.requester.as_ref(), &repo.namespace) {
+            self.memories_of(MemoryScope::Workspace, &repo.namespace.to_lowercase(), MAX_PER_SCOPE)
+                .await?
+        } else {
+            Vec::new()
+        };
         let project = self.memories_of(MemoryScope::Project, &repo.id, MAX_PER_SCOPE).await?;
         let budget = a.budget.unwrap_or(DEFAULT_BUDGET).clamp(500, MAX_BUDGET) as usize;
         let path = RepoPath {
@@ -533,9 +586,45 @@ impl Work {
     }
 }
 
+/// Whether a run for `requester` in `namespace` is told the workspace's
+/// memory: for its members, and for the workspace's own steps (no
+/// requester), never for an outside collaborator.
+fn workspace_memory_for(requester: Option<&User>, namespace: &str) -> bool {
+    requester.is_none_or(|user| user.is_member(&namespace.to_lowercase()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workspace_memory_is_for_members_runs_only() {
+        let member = User {
+            id: "u_ana".into(),
+            username: "ana".into(),
+            workspaces: vec![g1t_contracts::Membership::member("acme")],
+            ..User::default()
+        };
+        let outside = User {
+            id: "u_oli".into(),
+            username: "oli".into(),
+            ..User::default()
+        };
+        assert!(workspace_memory_for(None, "acme"));
+        assert!(workspace_memory_for(Some(&member), "Acme"));
+        assert!(!workspace_memory_for(Some(&outside), "acme"));
+    }
+
+    #[test]
+    fn transfer_and_deletion_statements_take_what_they_name() {
+        for sql in TRANSFERRED.iter().chain(crate::guardrails::TRANSFERRED) {
+            let n = g1t_kit::transfer::parameters(sql);
+            assert!((1..=5).contains(&n), "{sql}");
+        }
+        for sql in DELETED {
+            assert_eq!(g1t_kit::rename::parameters(sql), 1, "{sql}");
+        }
+    }
 
     fn memory(id: &str, text: &str, pinned: bool) -> Memory {
         Memory {
@@ -604,5 +693,41 @@ mod tests {
         assert!(refused.contains("never holds secrets"));
         assert_eq!(valid_text("  We use pnpm. ").unwrap(), "We use pnpm.");
         assert!(valid_text("   ").is_err());
+    }
+
+    fn person(base: Option<access::BasePermission>, grants: &[(&str, access::RepoRole)], member: bool) -> User {
+        User {
+            id: "usr_1".into(),
+            username: "ana".into(),
+            verified: true,
+            workspaces: if member {
+                vec![g1t_contracts::Membership { base_permission: base, ..g1t_contracts::Membership::member("acme") }]
+            } else {
+                Vec::new()
+            },
+            grants: grants
+                .iter()
+                .map(|(id, role)| access::RepoGrant { repo_id: (*id).into(), workspace: "acme".into(), role: *role })
+                .collect(),
+            ..User::default()
+        }
+    }
+
+    #[test]
+    fn a_workspaces_memory_is_its_members_and_a_projects_needs_write() {
+        use access::{BasePermission, RepoRole};
+        let member = person(None, &[], true);
+        assert!(may_write(&member, "acme", None));
+        assert!(may_write(&member, "acme", Some("rep_1")));
+        // A reader may not change a project's memory, nor may an outsider.
+        let reader = person(Some(BasePermission::Read), &[], true);
+        assert!(may_write(&reader, "acme", None));
+        assert!(!may_write(&reader, "acme", Some("rep_1")));
+        let outsider = person(None, &[("rep_1", RepoRole::Write)], false);
+        assert!(may_write(&outsider, "acme", Some("rep_1")));
+        assert!(!may_write(&outsider, "acme", Some("rep_2")));
+        assert!(!may_write(&outsider, "acme", None));
+        let unverified = User { verified: false, ..person(None, &[], true) };
+        assert!(!may_write(&unverified, "acme", None));
     }
 }

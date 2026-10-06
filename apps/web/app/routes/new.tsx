@@ -1,6 +1,6 @@
 import { Box, Download, GitBranch, Globe, Lock, Sparkles } from "lucide-react";
 import { useState } from "react";
-import { Form, redirect, useNavigation } from "react-router";
+import { Form, redirect, useNavigate, useNavigation } from "react-router";
 
 import type { Route } from "./+types/new";
 import { page } from "../lib/meta";
@@ -10,13 +10,15 @@ import { Input, InputAddon, InputGroup } from "../components/ui/input";
 import { RadioCard, RadioGroup } from "../components/ui/radio-group";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "../components/ui/select";
 import { repos } from "../lib/services.server";
+import { GithubMark } from "../components/github";
+import { githubApp } from "../lib/github.server";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
 
 export function meta(args: Route.MetaArgs) {
   return page(args, { title: "New project · g1t" });
 }
 
-export function loader({ request, context }: Route.LoaderArgs) {
+export async function loader({ request, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
   const workspaces = (user.workspaces ?? []).map((membership) => ({
     slug: membership.slug,
@@ -27,10 +29,10 @@ export function loader({ request, context }: Route.LoaderArgs) {
   // Projects live in a workspace, so there has to be one first.
   if (workspaces.length === 0) throw redirect("/workspaces/new");
   const asked = new URL(request.url).searchParams.get("workspace");
-  return {
-    workspaces,
-    selected: asked && workspaces.some((workspace) => workspace.slug === asked) ? asked : workspaces[0].slug,
-  };
+  const selected = asked && workspaces.some((workspace) => workspace.slug === asked) ? asked : workspaces[0].slug;
+  // With g1t's GitHub App configured, repositories can come from GitHub.
+  const github = await githubApp.status(user, selected).catch(() => null);
+  return { workspaces, selected, github: Boolean(github?.ok && github.value.configured) };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -68,7 +70,7 @@ const SOURCES: { id: Source | "mirror"; title: string; text: string; icon: React
   {
     id: "mirror",
     title: "Mirror GitHub, GitLab or Bitbucket",
-    text: "Keep the code where it is and get g1t's deployments and agents on it.",
+    text: "Keep the code where it is and work on it with g1t's agents. Deployments are yours to turn on.",
     icon: <GitBranch />,
     soon: true,
   },
@@ -76,8 +78,19 @@ const SOURCES: { id: Source | "mirror"; title: string; text: string; icon: React
 
 const ROLE_LABELS: Record<string, string> = { owner: "Owner", admin: "Admin", member: "Member" };
 
+/** Replaces the mirror card when g1t's GitHub App is configured. */
+const GITHUB_SOURCE = {
+  id: "github" as const,
+  title: "Import from GitHub",
+  text: "Import, mirror or move repositories you can reach on GitHub, private ones too.",
+  icon: <GithubMark />,
+  soon: false,
+};
+
 export default function NewProject({ loaderData, actionData }: Route.ComponentProps) {
   const [source, setSource] = useState<Source>("empty");
+  const navigate = useNavigate();
+  const sources = loaderData.github ? SOURCES.map((option) => (option.id === "mirror" ? GITHUB_SOURCE : option)) : SOURCES;
   const [workspace, setWorkspace] = useState(loaderData.selected);
   const [name, setName] = useState("");
   const busy = useNavigation().state === "submitting";
@@ -98,11 +111,13 @@ export default function NewProject({ loaderData, actionData }: Route.ComponentPr
           <RadioGroup
             name="source"
             value={source}
-            onValueChange={(value) => setSource(value as Source)}
+            onValueChange={(value) =>
+              value === "github" ? navigate(`/new/github?workspace=${workspace}`) : setSource(value as Source)
+            }
             aria-label="Where its code comes from"
             className="gap-3 sm:grid-cols-3"
           >
-            {SOURCES.map((option) => (
+            {sources.map((option) => (
               <RadioCard
                 key={option.id}
                 value={option.id}

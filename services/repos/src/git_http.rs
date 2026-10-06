@@ -150,6 +150,19 @@ pub async fn renamed(url: &Url, identity: &Fetcher) -> Result<Option<String>> {
     Ok(current.and_then(|slug| with_namespace(url, &slug)))
 }
 
+/// `url` with its repository, the first two path segments, replaced by
+/// `to`: where a request for a transferred repository's old path goes.
+/// Keeps whether the old address ended in `.git`.
+pub fn transferred(url: &Url, to: &RepoPath) -> Option<String> {
+    let path = url.path().strip_prefix('/')?;
+    let mut segments = path.splitn(3, '/');
+    let (_, name, rest) = (segments.next()?, segments.next()?, segments.next()?);
+    let suffix = if name.ends_with(".git") { ".git" } else { "" };
+    let mut moved = url.clone();
+    moved.set_path(&format!("/{}/{}{suffix}/{rest}", to.namespace, to.name));
+    Some(moved.to_string())
+}
+
 /// A permanent redirect: 301 for git's first request for refs, which it
 /// follows and then uses the new address for the rest; 308 for the
 /// others, so a POST stays a POST.
@@ -356,14 +369,115 @@ pub enum Push {
     Blocked(Response),
 }
 
+/// One packet of a pkt-line stream: data, or a flush (`0000`), delimiter
+/// (`0001`) or response-end (`0002`) packet, kept as its four bytes.
+#[derive(Debug, PartialEq, Eq)]
+enum Packet {
+    Data(Vec<u8>),
+    Special([u8; 4]),
+}
+
+/// The packets in `bytes`, or `None` if it is not a whole pkt-line stream.
+fn packets(bytes: &[u8]) -> Option<Vec<Packet>> {
+    let mut out = Vec::new();
+    let mut position = 0;
+    while position < bytes.len() {
+        let header = bytes.get(position..position + 4)?;
+        let length = usize::from_str_radix(std::str::from_utf8(header).ok()?, 16).ok()?;
+        if length < 4 {
+            out.push(Packet::Special(header.try_into().ok()?));
+            position += 4;
+            continue;
+        }
+        out.push(Packet::Data(bytes.get(position + 4..position + length)?.to_vec()));
+        position += length;
+    }
+    Some(out)
+}
+
+fn encode(packets: &[Packet]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for packet in packets {
+        match packet {
+            Packet::Data(data) => out.extend(pkt_line(data)),
+            Packet::Special(bytes) => out.extend_from_slice(bytes),
+        }
+    }
+    out
+}
+
+/// A ref advertisement (`info/refs` for upload-pack) or a protocol v2
+/// `ls-refs` answer with `HEAD` pointing at `branch`, the repository's
+/// default branch as g1t keeps it, so a clone checks it out. The git store
+/// holds the HEAD it was created with; g1t can change the default branch
+/// since. `None` when there is nothing to change: no `HEAD` line, `HEAD`
+/// already names `branch`, or `branch` is not advertised.
+pub fn with_head(body: &[u8], branch: &str) -> Option<Vec<u8>> {
+    let mut packets = packets(body)?;
+    let target = format!("{HEADS}{branch}");
+    let oid = packets.iter().find_map(|packet| {
+        let Packet::Data(data) = packet else { return None };
+        let line = data.split(|byte| *byte == 0).next()?;
+        let line = std::str::from_utf8(line).ok()?.trim_end();
+        let (oid, name) = line.split_once(' ')?;
+        // v2 lines may carry attributes after the name.
+        let name = name.split(' ').next()?;
+        (name == target).then(|| oid.to_owned())
+    })?;
+    let mut changed = false;
+    for packet in &mut packets {
+        let Packet::Data(data) = packet else { continue };
+        let text = String::from_utf8_lossy(data).into_owned();
+        let Some((_, rest)) = text.split_once(' ') else { continue };
+        if !(rest.starts_with("HEAD\0") || rest.starts_with("HEAD\n") || rest.starts_with("HEAD ") || rest == "HEAD") {
+            continue;
+        }
+        let mut line = format!("{oid} {rest}");
+        // v0: `symref=HEAD:refs/heads/<old>` among the capabilities.
+        // v2: `symref-target:refs/heads/<old>` after the name.
+        for marker in ["symref=HEAD:", "symref-target:"] {
+            if let Some(at) = line.find(marker) {
+                let start = at + marker.len();
+                let end = line[start..]
+                    .find([' ', '\n', '\0'])
+                    .map_or(line.len(), |offset| start + offset);
+                line.replace_range(start..end, &target);
+            }
+        }
+        changed = line != text;
+        if changed {
+            *data = line.into_bytes();
+        }
+        break;
+    }
+    changed.then(|| encode(&packets))
+}
+
+/// Whether a request to the git store is one whose answer names `HEAD`:
+/// the ref advertisement for a fetch, or a protocol v2 `ls-refs`.
+fn names_head(git: &GitRequest, body: Option<&[u8]>) -> bool {
+    if git.service != GitService::UploadPack {
+        return false;
+    }
+    match body {
+        None => git.endpoint == "info/refs",
+        Some(body) => {
+            git.endpoint == "git-upload-pack"
+                && body.windows(b"command=ls-refs".len()).any(|window| window == b"command=ls-refs")
+        }
+    }
+}
+
 /// Sends the request on to the git store and returns its response as is,
 /// unless it is a push that would change the `protected` branch, or one
-/// that `scan` (push protection) answers itself.
+/// that `scan` (push protection) answers itself. A fetch's ref listing has
+/// its `HEAD` pointed at `default_branch` (see [`with_head`]).
 pub async fn forward(
     mut request: Request,
     git: &GitRequest,
     access: &GitAccess,
     protected: Option<&str>,
+    default_branch: Option<&str>,
     scan: impl AsyncFnOnce(&[u8]) -> Result<Option<Response>>,
 ) -> Result<Push> {
     let headers = Headers::new();
@@ -382,6 +496,7 @@ pub async fn forward(
     init.with_method(request.method()).with_headers(headers);
     let mut pushed = Vec::new();
     let mut pack = 0;
+    let mut lists_head = request.method() == Method::Get && names_head(git, None);
     if request.method() == Method::Post {
         // Pushes are capped at 100 MB by the platform, so buffering is safe.
         let body = request.bytes().await?;
@@ -400,12 +515,23 @@ pub async fn forward(
             pushed = pushed_branches(&body);
             pack = pack_bytes(&body);
         }
+        lists_head = names_head(git, Some(&body));
         init.with_body(Some(Uint8Array::from(body.as_slice()).into()));
     }
     let upstream =
         Request::new_with_init(&format!("{}/{}{query}", access.remote, git.endpoint), &init)?;
+    let mut response = Fetch::Request(upstream).send().await?;
+    if let (true, Some(branch)) = (lists_head, default_branch)
+        && response.status_code() == 200
+    {
+        let headers = response.headers().clone();
+        headers.delete("content-length")?;
+        let body = response.bytes().await?;
+        let body = with_head(&body, branch).unwrap_or(body);
+        response = Response::from_bytes(body)?.with_headers(headers);
+    }
     Ok(Push::Forwarded(Forwarded {
-        response: Fetch::Request(upstream).send().await?,
+        response,
         pushed,
         pack_bytes: pack,
     }))
@@ -413,7 +539,64 @@ pub async fn forward(
 
 #[cfg(test)]
 mod tests {
-    use super::{Pushed, ZERO_ID, framed, pack_bytes, pushed_branches, refusal, with_namespace};
+    use super::{Pushed, RepoPath, Url, ZERO_ID, framed, pack_bytes, pushed_branches, refusal, transferred, with_head, with_namespace};
+
+    #[test]
+    fn a_renamed_repository_redirects_to_its_new_name() {
+        // A rename keeps the old path in the same table as a transfer, so
+        // the old remote is sent to the new name the same way.
+        let to = RepoPath {
+            namespace: "acme".into(),
+            name: "booster".into(),
+        };
+        let url = Url::parse("https://g1t.sh/acme/rocket.git/info/refs?service=git-upload-pack").unwrap();
+        assert_eq!(
+            transferred(&url, &to).as_deref(),
+            Some("https://g1t.sh/acme/booster.git/info/refs?service=git-upload-pack")
+        );
+    }
+
+    #[test]
+    fn head_follows_the_default_branch_in_a_v0_advertisement() {
+        let main = "1111111111111111111111111111111111111111";
+        let trunk = "2222222222222222222222222222222222222222";
+        let body = [
+            pkt("# service=git-upload-pack\n"),
+            b"0000".to_vec(),
+            pkt(&format!("{main} HEAD\0multi_ack symref=HEAD:refs/heads/main agent=git/2\n")),
+            pkt(&format!("{main} refs/heads/main\n")),
+            pkt(&format!("{trunk} refs/heads/trunk\n")),
+            b"0000".to_vec(),
+        ]
+        .concat();
+        let changed = String::from_utf8(with_head(&body, "trunk").unwrap()).unwrap();
+        assert!(changed.contains(&format!("{trunk} HEAD\0multi_ack symref=HEAD:refs/heads/trunk agent=git/2\n")));
+        assert!(changed.contains(&format!("{main} refs/heads/main\n")));
+        assert!(changed.starts_with("001e# service=git-upload-pack\n0000"));
+        // Already right, or a branch it does not have: left alone.
+        assert!(with_head(&body, "main").is_none());
+        assert!(with_head(&body, "gone").is_none());
+    }
+
+    #[test]
+    fn head_follows_the_default_branch_in_a_v2_listing() {
+        let main = "1111111111111111111111111111111111111111";
+        let trunk = "2222222222222222222222222222222222222222";
+        let body = [
+            pkt(&format!("{main} HEAD symref-target:refs/heads/main\n")),
+            pkt(&format!("{main} refs/heads/main\n")),
+            pkt(&format!("{trunk} refs/heads/trunk\n")),
+            b"0000".to_vec(),
+        ]
+        .concat();
+        let changed = String::from_utf8(with_head(&body, "trunk").unwrap()).unwrap();
+        assert!(changed.starts_with(&String::from_utf8(pkt(&format!("{trunk} HEAD symref-target:refs/heads/trunk\n"))).unwrap()));
+        assert!(changed.ends_with("0000"));
+        // Without symrefs asked for, only the commit changes.
+        let plain = [pkt(&format!("{main} HEAD\n")), pkt(&format!("{trunk} refs/heads/trunk\n")), b"0000".to_vec()].concat();
+        let changed = String::from_utf8(with_head(&plain, "trunk").unwrap()).unwrap();
+        assert!(changed.starts_with(&format!("0032{trunk} HEAD\n")));
+    }
 
     #[test]
     fn a_push_is_measured_by_the_pack_after_its_commands() {
@@ -431,6 +614,24 @@ mod tests {
         let body = [pkt(&format!("{old} {ZERO_ID} refs/heads/gone\n")), b"0000".to_vec()].concat();
         assert_eq!(pack_bytes(&body), 0);
         assert_eq!(pack_bytes(b"garbage"), 0);
+    }
+
+    #[test]
+    fn a_transferred_repository_keeps_the_rest_of_the_address() {
+        let to = RepoPath {
+            namespace: "flagon-io".into(),
+            name: "g1t".into(),
+        };
+        let url = Url::parse("https://g1t.sh/syntaqx/g1t.git/info/refs?service=git-receive-pack").unwrap();
+        assert_eq!(
+            transferred(&url, &to).as_deref(),
+            Some("https://g1t.sh/flagon-io/g1t.git/info/refs?service=git-receive-pack")
+        );
+        let url = Url::parse("https://g1t.sh/syntaqx/g1t/git-upload-pack").unwrap();
+        assert_eq!(
+            transferred(&url, &to).as_deref(),
+            Some("https://g1t.sh/flagon-io/g1t/git-upload-pack")
+        );
     }
 
     #[test]

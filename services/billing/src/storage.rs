@@ -1,26 +1,38 @@
 //! Usage other services meter through the month, charged once it is over:
-//! security scans, search embeddings, and private repository storage,
-//! which billing measures itself each day.
+//! security scans, search embeddings, and two billing measures itself each
+//! day: private repository storage and git operations.
 //!
 //! Each reports what it cost g1t so far this month (`note_pending`), so the
 //! workspace's limit counts it as it happens. When the month is over,
 //! billing charges it once: at cost plus the margin, on the account's
-//! terms, after the Team credit and the trial credit (see `credits`), dated
-//! the month's last second so it falls in that month's statement and
-//! invoice.
+//! terms, after the plan's included usage and the trial credit (see
+//! `credits`), dated the month's last second so it falls in that month's
+//! statement and invoice.
+//!
+//! **Git operations.** Cloudflare Artifacts charges g1t $0.15 per 1,000
+//! operations (clones, fetches, pushes) from 2026-10-14. The repos service
+//! counts those through g1t's git endpoints. Every workspace has
+//! `GIT_OPERATIONS_INCLUDED` (10,000) a month, about twenty times what an
+//! active workspace uses; past it, the plan pays at cost plus the margin.
+//! A free workspace is never charged for them: past
+//! `GIT_OPERATIONS_FREE_CAP` (50,000) in a month, the repos service slows
+//! it down instead.
 //!
 //! **Storage.** The git store does not report a repository's size, so the
 //! repos service counts the packs pushed through g1t's git endpoints (see
 //! `g1t_contracts::repos::StorageArgs`): a lower bound. Each day billing
 //! records what each workspace's private repositories hold and what is
-//! free that day (`FREE_PRIVATE_STORAGE_BYTES`, or
-//! `TEAM_PRIVATE_STORAGE_BYTES` on Team). Like Cloudflare's own storage
+//! free that day (`FREE_PRIVATE_STORAGE_BYTES`, 1 GB, or
+//! `PLAN_PRIVATE_STORAGE_BYTES`, 10 GB, on the plan). Like Cloudflare's own storage
 //! billing, a month's GB-months are the days' amounts past the free one,
-//! added up and divided by 30. Public repositories are never charged.
+//! added up and divided by 30, and only the plan is charged for them. A
+//! free workspace is never charged for storage: pushes to its private
+//! repositories stop once they hold its free amount. Public repositories
+//! are never charged.
 
-use g1t_contracts::billing::{Entitlements, EntitlementsArgs};
+use g1t_contracts::billing::PlanKind;
 use g1t_contracts::new_id;
-use g1t_contracts::repos::{StorageArgs, WorkspaceStorage};
+use g1t_contracts::repos::{GitOperationsArgs, StorageArgs, WorkspaceGitOperations, WorkspaceStorage};
 use g1t_contracts::time::rfc3339;
 use g1t_kit::now_ms;
 use serde::Deserialize;
@@ -30,7 +42,24 @@ use crate::credits::{self, Drawn, Eligible};
 use crate::{Billing, optional};
 
 /// Sources billing charges itself when the month is over.
-pub(crate) const CHARGED_HERE: [&str; 3] = ["security", "context", "storage"];
+pub(crate) const CHARGED_HERE: [&str; 4] = ["security", "context", "storage", "git"];
+
+/// When Cloudflare starts charging for Artifacts operations: none before
+/// count.
+pub(crate) const GIT_BILLING_STARTS: &str = "2026-10-14T00";
+
+/// What git operations past what is included cost g1t, at
+/// `micros_per_thousand`: nothing up to the included amount.
+pub(crate) fn git_cost(operations: u64, included: u64, micros_per_thousand: f64) -> i64 {
+    let past = operations.saturating_sub(included);
+    (past as f64 * micros_per_thousand / 1000.0).ceil() as i64
+}
+
+/// The first hour of `month` to count git operations from.
+pub(crate) fn git_since(month: &str) -> String {
+    let start = format!("{month}-01T00");
+    if start.as_str() < GIT_BILLING_STARTS { GIT_BILLING_STARTS.to_owned() } else { start }
+}
 
 /// A gigabyte, as Cloudflare bills storage.
 pub(crate) const GB: f64 = 1_000_000_000.0;
@@ -52,6 +81,7 @@ pub(crate) fn title(source: &str) -> &'static str {
         "security" => "Security scans",
         "context" => "Search embeddings",
         "storage" => "Private repository storage past the free amount",
+        "git" => "Git operations past the included amount",
         _ => "Metered usage",
     }
 }
@@ -174,7 +204,7 @@ impl Billing {
             }
             let base = credits::with_margin(cost, self.margin_percent);
             let (charge, terms_note) = self.charged(&row.workspace, base).await?;
-            let drawn = self.draw(&row.workspace, charge, &row.month, &Eligible { trial: true, repo: None }).await?;
+            let drawn = self.draw(&row.workspace, charge, &row.month, &Eligible { trial: true, repo: None, cover_rest: false }).await?;
             let detail = if row.source == "storage" {
                 let gb_months = self.gb_months(&row.workspace, &row.month).await?;
                 format!(": {gb_months:.2} GB-months")
@@ -227,7 +257,8 @@ impl Billing {
         let price = self.price("private_storage").await?.map_or(500_000.0, |(cost, _)| cost);
         for workspace in list {
             let slug = workspace.namespace.to_lowercase();
-            let free = if self.team_on(&slug).await? { self.plans.team_storage_bytes } else { self.plans.free_storage_bytes };
+            let plan = self.has_plan(&slug).await?;
+            let free = if plan { self.plans.plan_storage_bytes } else { self.plans.free_storage_bytes };
             self.db
                 .prepare(
                     "INSERT INTO storage_days (workspace, day, private_bytes, free_bytes) VALUES (?1, ?2, ?3, ?4)
@@ -236,7 +267,10 @@ impl Billing {
                 .bind(&[slug.as_str().into(), day.into(), (workspace.private_bytes as f64).into(), (free as f64).into()])?
                 .run()
                 .await?;
-            let gb_months = self.gb_months(&slug, &month).await?;
+            // Only the plan pays for storage past its amount. A free
+            // workspace is never charged: the repos service stops its pushes
+            // to private repositories once it is full (see git_ops.rs there).
+            let gb_months = if plan { self.gb_months(&slug, &month).await? } else { 0.0 };
             if gb_months > 0.0 {
                 self.set_pending(&slug, "storage", &month, storage_cost(gb_months, price)).await?;
             }
@@ -244,49 +278,39 @@ impl Billing {
         Ok(())
     }
 
-    /// `entitlements`: what the workspace's plans give it now.
-    pub(crate) async fn entitlements(&self, a: EntitlementsArgs) -> Result<Entitlements> {
-        let workspace = a.workspace.to_lowercase();
-        let team = self.team_on(&workspace).await?;
-        let now = rfc3339(now_ms());
-        let month = credits::month_of(&now);
-        #[derive(Deserialize)]
-        struct Stored {
-            private_bytes: Option<i64>,
+    /// Git operations this month for each workspace, from the repos
+    /// service: what is past the included amount goes to the month's
+    /// pending usage for workspaces on the plan. Free workspaces are never
+    /// charged for them.
+    pub(crate) async fn measure_git(&self) -> Result<()> {
+        let Some(repos) = &self.repos else { return Ok(()) };
+        let month = credits::month_of(&rfc3339(now_ms()));
+        let list: Vec<WorkspaceGitOperations> =
+            g1t_kit::call(repos, "git_operations", &GitOperationsArgs { since: Some(git_since(&month)), month: month.clone(), namespace: None }).await?;
+        let price = self.price("git_operations").await?.map_or(150_000.0, |(cost, _)| cost);
+        for workspace in list {
+            let slug = workspace.namespace.to_lowercase();
+            if self.plan_kind(&slug).await? == PlanKind::Free {
+                continue;
+            }
+            let cost = git_cost(workspace.operations, self.plans.git_included, price);
+            if cost > 0 {
+                self.set_pending(&slug, "git", &month, cost).await?;
+            }
         }
-        let stored = self
-            .db
-            .prepare("SELECT private_bytes FROM storage_days WHERE workspace = ? ORDER BY day DESC LIMIT 1")
-            .bind(&[workspace.as_str().into()])?
-            .first::<Stored>(None)
-            .await?
-            .and_then(|s| s.private_bytes)
-            .unwrap_or(0);
-        #[derive(Deserialize)]
-        struct Sum {
-            micros: Option<i64>,
-        }
-        let oss = self
-            .db
-            .prepare("SELECT SUM(oss_micros) AS micros FROM ledger WHERE workspace = ? AND created_at >= ?")
-            .bind(&[workspace.as_str().into(), format!("{month}-01").into()])?
-            .first::<Sum>(None)
-            .await?
-            .and_then(|s| s.micros)
-            .unwrap_or(0);
-        Ok(Entitlements {
-            team,
-            audit_retention_days: if team { self.plans.team_audit_days } else { self.plans.audit_days },
-            free_private_storage_bytes: if team { self.plans.team_storage_bytes } else { self.plans.free_storage_bytes },
-            private_storage_bytes: stored,
-            team_credit_micros: if team { self.plans.team_included_micros } else { 0 },
-            team_credit_used_micros: if team { self.allowance_used("team_credit", &workspace, &month).await? } else { 0 },
-            oss_paid_micros: oss,
-            build_seconds_included: self.plans.build_seconds,
-            build_seconds_used: self.allowance_used("build_seconds", &workspace, &month).await?.max(0) as u32,
-            min_charge_micros: self.plans.min_charge_micros,
-            workspace,
-        })
+        Ok(())
+    }
+
+    /// The workspace's git operations this month, as last measured.
+    pub(crate) async fn git_operations_this_month(&self, workspace: &str) -> Result<u64> {
+        let Some(repos) = &self.repos else { return Ok(0) };
+        let month = credits::month_of(&rfc3339(now_ms()));
+        let list: Result<Vec<WorkspaceGitOperations>> =
+            g1t_kit::call(repos, "git_operations", &GitOperationsArgs { since: Some(format!("{month}-01T00")), month, namespace: Some(workspace.to_lowercase()) }).await;
+        Ok(list
+            .ok()
+            .and_then(|list| list.into_iter().find(|w| w.namespace.eq_ignore_ascii_case(workspace)))
+            .map_or(0, |w| w.operations))
     }
 }
 
@@ -301,8 +325,10 @@ mod tests {
         assert!((storage_gb_months(&month) - 2.0).abs() < 1e-9);
         // Under the free amount: nothing.
         assert_eq!(storage_gb_months(&[(500_000_000, 1_000_000_000); 30]), 0.0);
-        // Team: 50 GB free.
-        assert_eq!(storage_gb_months(&[(30_000_000_000, 50_000_000_000); 30]), 0.0);
+        // The plan: 10 GB free.
+        assert_eq!(storage_gb_months(&[(8_000_000_000, 10_000_000_000); 30]), 0.0);
+        // 12 GB on the plan: 2 GB-months, $1.00 to g1t, $1.20 charged.
+        assert!((storage_gb_months(&[(12_000_000_000, 10_000_000_000); 30]) - 2.0).abs() < 1e-9);
         // Ten days of 4 GB past it: a third of 4 GB-months.
         let days = vec![(5_000_000_000, 1_000_000_000); 10];
         assert!((storage_gb_months(&days) - 4.0 / 3.0).abs() < 1e-9);
@@ -325,5 +351,27 @@ mod tests {
         assert_eq!(title("context"), "Search embeddings");
         assert_eq!(title("security"), "Security scans");
         assert!(CHARGED_HERE.contains(&"storage") && !CHARGED_HERE.contains(&"deployments"));
+        assert!(CHARGED_HERE.contains(&"git"));
+    }
+
+    #[test]
+    fn git_operations_are_charged_past_what_is_included_at_cloudflares_price() {
+        // $0.15 per 1,000 to g1t.
+        let per_thousand = 150_000.0;
+        assert_eq!(git_cost(9_000, 10_000, per_thousand), 0);
+        assert_eq!(git_cost(10_000, 10_000, per_thousand), 0);
+        // 30,000 operations: 20,000 past it, $3.00 to g1t, $3.60 charged.
+        assert_eq!(git_cost(30_000, 10_000, per_thousand), 3_000_000);
+        assert_eq!(credits::with_margin(git_cost(30_000, 10_000, per_thousand), 20), 3_600_000);
+        // One past it: a fraction of a cent, rounded up to a millionth.
+        assert_eq!(git_cost(10_001, 10_000, per_thousand), 150);
+        assert_eq!(title("git"), "Git operations past the included amount");
+    }
+
+    #[test]
+    fn git_operations_count_from_when_cloudflare_starts_charging() {
+        assert_eq!(git_since("2026-10"), "2026-10-14T00");
+        assert_eq!(git_since("2026-11"), "2026-11-01T00");
+        assert_eq!(git_since("2026-09"), "2026-10-14T00");
     }
 }

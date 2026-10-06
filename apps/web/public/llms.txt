@@ -1,12 +1,16 @@
 # g1t
 
-> g1t (https://g1t.sh) is a git forge where a team of agents ships the work.
-> It is ordinary git over HTTPS, with issues and pull requests. You hand it
-> an outcome; a planner splits it into issues with dependencies, agents work
-> them in parallel and talk to each other, and a merge queue lands each
-> change on main only once it passes together with everything ahead of it.
-> Each pull request lives in its own fork and carries a recording of how it
-> was made.
+> g1t (https://g1t.sh) is the open-source git platform where people and
+> agents ship software together. It is ordinary git over HTTPS, with
+> issues, pull requests and reviews. Agents are members of the forge: you
+> assign an issue to g1t-agent or connect your own over MCP, or hand g1t an
+> outcome and a planner splits it into issues with dependencies that agents
+> work in parallel, aware of each other. Checks run in clean sandboxes, a
+> merge queue lands each change on main only once it passes together with
+> everything ahead of it, and deployments put a preview of every pull
+> request and production on g1t.page. Each pull request lives in its own
+> fork and carries a recording of how it was made. The forge is free;
+> compute is priced at what it costs g1t plus 20%, never per seat.
 
 This file tells an assistant everything needed to get a person set up on g1t
 and working. You never ask for, see, or send the person's password. Accounts
@@ -51,17 +55,41 @@ are created and approved only in their browser.
    never write it into a repository. If `verified` is `false`, the
    confirmation email has not been followed yet.
 
-4. **Connect the MCP server** (Claude Code shown; any MCP client with HTTP
-   transport works):
+4. **Connect the MCP server** (any MCP client with HTTP transport works).
+   Claude Code:
 
    ```sh
    claude mcp add --transport http g1t https://mcp.g1t.sh \
      --header "Authorization: Bearer $G1T_TOKEN"
    ```
 
+   Codex, in `~/.codex/config.toml`:
+
+   ```toml
+   [mcp_servers.g1t]
+   url = "https://mcp.g1t.sh"
+   bearer_token_env_var = "G1T_TOKEN"
+   ```
+
+   OpenCode, in `opencode.json`:
+
+   ```json
+   { "mcp": { "g1t": { "type": "remote", "url": "https://mcp.g1t.sh", "oauth": false,
+     "headers": { "Authorization": "Bearer {env:G1T_TOKEN}" } } } }
+   ```
+
+   Cursor, in `.cursor/mcp.json`:
+
+   ```json
+   { "mcpServers": { "g1t": { "url": "https://mcp.g1t.sh",
+     "headers": { "Authorization": "Bearer ${env:G1T_TOKEN}" } } } }
+   ```
+
    Without the header, a client that supports MCP authorization signs the
-   person in through their browser instead (in Claude Code: `/mcp`, then
-   choose g1t). The MCP server always needs one or the other.
+   person in through their browser instead (Claude Code: `/mcp`, then
+   choose g1t; Codex: `codex mcp login g1t`; OpenCode: `opencode mcp auth
+   g1t`; Cursor: when it first connects). The MCP server always needs one
+   or the other.
 
 5. **Create a workspace** if `GET /user` shows none. A workspace owns
    repositories and is the first part of their address. Ask the person what
@@ -140,7 +168,7 @@ for `/repos/{owner}/{name}`.
 - **Review** someone else's pull request:
   `POST {repo}/pulls/{number}/reviews` with `verdict` (`approve` or
   `request_changes`) and `body`.
-- **Merge** (members of the repository's workspace):
+- **Merge** (the Write role or higher on the repository):
   `POST {repo}/pulls/{number}/merge`. This closes the issue it was for and
   closes the other pull requests for that issue as superseded; send
   `{"keep_issue_open": true}` if this is only part of the work. A `409`
@@ -152,12 +180,17 @@ for `/repos/{owner}/{name}`.
 
 ## Hand work to g1t agents
 
-Each workspace decides how its agents reach a model: its own provider
-(connected under Integrations, billed by the provider) works for any
-workspace; every new workspace also gets $1 of trial credit for g1t's
-hosted models and sandboxes, no key needed, from a budget that renews
-each month. Work on public repositories is paid by g1t's open-source pool
-first. Without either, these calls answer with a message saying so.
+Agents, checks, workflows, the merge queue and deployments run on g1t's
+machines, so they need a paid workspace, or the one-time $5 trial after a
+card check. Checks, workflows and the merge queue on public repositories
+can also run from g1t's open-source pool, after the same card check.
+Agents never run from the pool. Each workspace decides how its agents
+reach a model: its own provider (connected under Integrations, billed by
+the provider) or g1t's hosted models; the sandbox is g1t's either way.
+When the plan refuses a start, these calls answer with a failure whose
+message says what to do and where (such as `/acme/-/billing`). When every
+agent slot of the workspace is busy, the message starts "Waiting for a
+free slot" and the work starts by itself when one finishes.
 
 - **Hand off an outcome:** `POST {repo}/plans` with `brief`: what should be
   true when the work is done. A planner reads the repository and proposes
@@ -200,10 +233,67 @@ Every one of these is also an MCP tool: `list_issues`, `get_issue`,
 `update_workflow`, `list_actions_secrets`, `set_actions_secret`,
 `delete_actions_secret`, `list_actions_variables`, `set_actions_variable`,
 `delete_actions_variable`,
-`list_repos`, `get_repo`, `create_repo`, `update_repo`,
-`get_repo_settings`, `update_repo_settings`, `list_events`,
-`create_workspace`, and `whoami`. MCP tools take the repository as `repo`,
-written `owner/name`.
+`list_repos`, `get_repo`, `create_repo`, `update_repo`, `rename_repo`,
+`rename_branch`, `set_repo_visibility`, `archive_repo`, `unarchive_repo`,
+`transfer_repo`, `delete_repo`, `list_deleted_repos`, `restore_repo`,
+`purge_repo`, `get_repo_settings`, `update_repo_settings`, `list_events`,
+`create_workspace`, `delete_workspace`, and `whoami`. A g1t agent's own
+token can never change a repository's details, rename it or its branches,
+make it public or private, archive, transfer, delete, restore or purge it,
+or delete a workspace. MCP tools take the repository as `repo`, written
+`owner/name`.
+
+## Access and roles
+
+Everyone's access to a repository is a role: `read` (read, clone, open
+issues and pull requests, comment), `triage` (also label, assign, close),
+`write` (also push, merge, and put agents to work: anything that spends
+compute), `maintain` (also settings, branch protection, guardrails) or
+`admin` (also webhooks, secrets, deployments, domains, who has access,
+rename, archive, visibility, default branch). Owners of a workspace have
+admin on all of its repositories and alone transfer or delete them;
+members get the workspace's base permission (write unless owners change
+it); anyone can be given a role on one repository, as an outside
+collaborator; anyone reads a public repository. The highest wins. A
+private repository you cannot read answers `404`; one you can read but
+lack the role for answers `403` naming the role needed. An agent works
+with the role of the person it acts for on its repository, never more
+than `write`, and its token can never change who has access. An outside
+collaborator with `write` can put agents to work; the runs are charged to
+the repository's workspace, and their agents are told the project's memory,
+never the workspace's. Who can do what elsewhere: deployments are seen with
+`read` (on a public repository, by anyone, build logs included), deployed
+with `write`, configured (settings, domains) with `admin`; project settings
+and dependencies need `maintain`; repository webhooks, secrets and
+variables need `admin`, seeing them included; security findings need
+`write`, allowing or resolving a secret `admin`, upkeep `maintain`;
+enabling or disabling a workflow needs `maintain`; plans and project memory
+are read by anyone who can read the repository, and project memory is
+changed with `write`; workspace memory is for members. People: the
+workspace's Settings → Members (`g1t.sh/<owner>/-/people`, with an Outside
+collaborators tab and the Base permission for owners); a repository's
+Settings → Access (`g1t.sh/<owner>/<repo>/settings/access`); invitations
+are answered at `g1t.sh/<owner>/<repo>/invitations`.
+`GET {repo}/collaborators/{username}/permission` gives a role and what it
+allows. Guide: https://docs.g1t.sh/guides/access-and-roles/
+
+## Manage a repository
+
+People with the admin role rename it (`POST {repo}/rename` with `name`; the
+old address redirects), make it public or private
+(`POST {repo}/visibility` with `private` and its full name in `confirm`),
+archive or unarchive it (`POST {repo}/archive`, `POST {repo}/unarchive`),
+and owners of its workspace delete it (`DELETE {repo}` with its full name
+in `confirm`). A deleted
+repository can be restored for 30 days (`POST {repo}/restore`, listed by
+`GET /workspaces/{workspace}/repos/deleted`) and is then purged; its name
+stays taken until then, or until `POST {repo}/purge`. Maintain changes the
+description, `website` and `topics` with `PATCH {repo}`, admin the
+`default_branch`, and write renames branches with
+`POST {repo}/branches/{branch}/rename` and `new_name` (slashes in the
+branch URL-encoded); only admin renames the default branch. An archived
+repository is read-only: pushes and merges are refused, issues and pull
+requests are locked, and agents and workflows do not run on it.
 
 ## Integrations
 
@@ -250,7 +340,10 @@ deployments or both read it. API: `{repo}/actions/secrets` and
 `{repo}/actions/variables` (GitHub's routes) with extra `environments`,
 `available_to`, `repositories`, `note`, `id`. Trusted jobs get
 `secrets.G1T_TOKEN` (the workspace's token; `GITHUB_TOKEN` is its alias),
-which cannot change secrets. Guide:
+which cannot change secrets. A pull request's runs and preview are trusted
+only when its author has `write` or higher on the repository (a member or
+an outside collaborator) or is g1t's agent; anyone else's run with config
+only. Guide:
 https://docs.g1t.sh/guides/secrets-and-variables/
 
 ## Projects
@@ -269,7 +362,7 @@ live, Slack, Google, Anthropic, OpenAI, npm, g1t, SendGrid, PEM private
 keys, service-role JWTs) is refused with `file:line` in git's output; this
 includes an agent's push to its pull request. Never commit a secret: read it
 from the environment. A test fixture that only looks like one carries
-`g1t:allow-secret` in a comment on its line; a member can also allow a
+`g1t:allow-secret` in a comment on its line; someone with admin can also allow a
 finding once at `g1t.sh/<owner>/<project>/security`. Lockfiles (npm, pnpm,
 yarn, Cargo, Go, Python) are checked against OSV on every default-branch
 push and daily; each vulnerable package with a fix gets an issue "Upgrade
@@ -281,9 +374,10 @@ Guide: https://docs.g1t.sh/guides/security/
 
 ## Deployments
 
-A paid feature: an owner turns on the Deployments plan under the
-workspace's Billing ($5 a month: 10 apps, 1M requests, 3M CPU ms; builds
-and usage past that from credit at cost + 20%; never free). Then a member
+Part of the g1t plan ($20 a month per workspace, started by an owner
+under the workspace's Billing): 10 apps, 1M requests, 3M CPU ms, 3 custom
+domains and 200 build minutes a month; past that at cost + 20%. The trial
+never covers deployments. Then someone with admin on the repository
 turns deployments on for a project (Settings → Deployments, or Deploy on
 its overview). Production deploys from the default branch to
 `https://<project>-<owner>.g1t.page` on each push; every branch with an
@@ -301,8 +395,9 @@ Guide: https://docs.g1t.sh/guides/deployments/
 `GET https://api.g1t.sh/search?q=<query>&type=<type>` (MCP tool `search`)
 searches all of g1t: repositories (name, description, topics, README), code
 on default branches, issues, pull requests, people and workspaces. No token
-needed for public results; with one, private results in the token's
-workspaces are included, checked against current membership. `type` is
+needed for public results; with one, private results the token's person
+can read are included (their workspaces' repositories, and those they were
+given a role on), checked against current membership and roles. `type` is
 `repositories`, `code`, `issues`, `pulls` or `people` (worked out from the
 qualifiers when left out); `page` and `per_page` (at most 50) page through.
 The query takes words, `"exact phrases"`, `-word` to leave out, and
@@ -335,8 +430,19 @@ https://docs.g1t.sh/guides/search/
   `https://api.g1t.sh/.well-known/oauth-authorization-server`; authorization
   code with PKCE (S256), public clients, dynamic registration.
 - A pull request whose checks have not passed is refused a merge with
-  `409`; a workspace member can send `{"ignore_checks": true}`.
+  `409`; someone who can merge can send `{"ignore_checks": true}`.
 - Not available yet: merge commits made on the server.
+- Pricing (https://g1t.sh/pricing): the forge is free. One plan, g1t, at
+  $20 a month per workspace with unlimited members, includes $10 of usage
+  at cost + 20% (unused does not roll over). Compute needs the plan or a
+  card check (never charged); the $5 trial needs a credit or debit card,
+  not a prepaid one. Private storage: 1 GB free, never charged (pushes to
+  private repositories stop past it), 10 GB on the plan. Limits: $100 in a
+  paid workspace's first month, rising as payments clear; owners set a
+  spend limit, prepay, or ask with Raise my limit. Caps: $2 a run and $10
+  an issue by default. A spend spike pauses new compute until an owner
+  chooses Keep going or Stop (`/<workspace>/-/billing`). Audit log: 90 days
+  on every plan.
 
 ## More
 
@@ -352,6 +458,8 @@ https://docs.g1t.sh/guides/search/
 - [Forks and branches](https://docs.g1t.sh/concepts/forks/)
 - [Accounts and sign-in](https://docs.g1t.sh/guides/authentication/)
 - [Workspaces and tokens](https://docs.g1t.sh/guides/workspaces/)
+- [Access and roles](https://docs.g1t.sh/guides/access-and-roles/)
+- [Managing a repository](https://docs.g1t.sh/guides/managing-repositories/)
 - [Integrations](https://docs.g1t.sh/guides/integrations/)
 - [Model providers](https://docs.g1t.sh/guides/models/)
 - [Webhooks](https://docs.g1t.sh/guides/webhooks/)
@@ -360,4 +468,12 @@ https://docs.g1t.sh/guides/search/
 - [Git](https://docs.g1t.sh/guides/git/)
 - [MCP tools](https://docs.g1t.sh/reference/mcp/)
 - [API reference](https://docs.g1t.sh/reference/api/)
-- [Source](https://g1t.sh/syntaqx/g1t), MIT licensed
+- [Source](https://g1t.sh/flagon-io/g1t), MIT licensed
+
+## Help, status and policies
+
+- [Status](https://g1t.sh/status): whether each part of g1t is working now; the same as JSON at https://g1t.sh/status.json
+- [Support](https://g1t.sh/support): where to get help (hey@flagon.io, hey@flagon.io)
+- [Security](https://g1t.sh/security): how g1t protects code and accounts, and responsible disclosure (hey@flagon.io, https://g1t.sh/.well-known/security.txt)
+- [Policies](https://g1t.sh/policies): [Terms of Service](https://g1t.sh/policies/terms), [Privacy Policy](https://g1t.sh/policies/privacy), [Acceptable Use](https://g1t.sh/policies/acceptable-use), [Refunds and Cancellation](https://g1t.sh/policies/refunds), [Subprocessors](https://g1t.sh/policies/subprocessors)
+- g1t is made by Flagon, Inc. (https://www.flagon.io)

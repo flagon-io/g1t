@@ -1,110 +1,147 @@
 ---
 title: Usage and billing
-description: What g1t costs, how a workspace pays, the limits that keep unpaid usage in check, and enterprise billing.
+description: What is free on g1t, what the g1t plan costs and includes, how compute is paid for, the limits that keep spend in check, and enterprise billing.
 ---
 
-Hosting repositories, git, issues, pull requests, review, search and your
-own agent cost nothing on g1t. Public repositories are free, and so is the
-compute their agents use, up to a monthly budget g1t pays for. What costs
-money is what g1t runs for you on private work: its agents' models, the
-sandboxes they and your checks run in, deployed apps, and private storage
-past the free amount. Each is charged at what it costs g1t plus 20%, after
-it is used, to the workspace that owns the repository. There is no seat
-price, ever.
+The forge is free: repositories, git, issues, pull requests and review cost
+nothing, for public and private work. What costs money is compute, the
+things g1t runs for you: agents, the sandboxes they and your checks run in,
+deployed apps, and, on the plan, storage and git traffic past what is
+included. Each is
+charged at what it costs g1t plus 20%, to the workspace that owns the
+repository. There is no seat price.
 
-Some features are paid for with a monthly plan the workspace turns on, and
-are never free, including while the rest of g1t is. See
-[Plans](#plans).
+## What is free
 
-## Plans
+Every workspace, with or without the plan, has the whole forge:
 
-A plan is one flat price a month for the whole workspace, however many
-people and agents are in it: never per person.
+- Public and private repositories, git, issues, pull requests and reviews.
+- Protected branches, code owners and secret push protection.
+- Search and Explore.
+- The [audit log](/guides/audit-log/), kept 90 days, with export.
+- Your own agent through [MCP](/reference/mcp/).
+- 1 GB of private repository storage, and 10,000
+  [git operations](#git-operations) a month.
 
-| Plan | Price | Includes each month |
-| --- | --- | --- |
-| Team | $20 a month per workspace | $5 of usage credit, 50 GB of private storage, and a year of [audit log](/guides/audit-log/) |
-| [Deployments](/guides/deployments/) | $5 a month | 10 apps up at once, 200 build minutes, 1 million requests, 3 million CPU milliseconds and 3 custom domains |
+None of this is charged. A free workspace is never charged for storage:
+once its private repositories hold 1 GB, pushes to them are refused at the
+start of the push, with what to do: make the repository public, delete what
+you do not need, or start the plan for 10 GB. Public repositories are never
+charged for storage.
 
-Usage past what a plan includes is charged at cost plus 20%, as it is
-without the plan.
+Compute is not free. Agents, checks, workflows, the merge queue,
+deployments and semantic search need [the g1t plan](#the-g1t-plan), or a
+[card check](#no-card-no-compute) for the trial and the open-source pool.
 
-### Team
+## The g1t plan
 
-| | Without Team | With Team |
-| --- | --- | --- |
-| Usage credit | None | $5 a month |
-| Private repository storage | 1 GB | 50 GB |
-| Audit log | 30 days | 1 year |
-| People | Everyone, no seat price | Everyone, no seat price |
+One plan, **$20 a month per workspace**, however many people and agents
+are in it. It is never priced per person.
 
-The **usage credit** pays for the month's usage first, at cost plus 20%:
-agents, sandbox time, builds, storage, search embeddings and security
-scans. Past it, usage is charged as usual. It starts again on the 1st of
-each month (UTC), and what is left unused does not carry over. Billing
-shows how much of it this month's usage has drawn.
-
-### Turning a plan on
-
-Only an owner can turn a plan on or off.
-
-1. Open **Settings → Billing**, `g1t.sh/<workspace>/-/billing`.
-2. Under **Plans**, choose **Turn on Team** (or **Turn on Deployments**),
-   and pay on the card page you are sent to.
-
-Back on Billing, the plan says **On** and when it renews; the card is kept
-and charged each month. **Turn off at the end of the period** ends the plan
-on its renewal date, with nothing more charged after; **Keep Team** takes
-that back. If a renewal payment fails, the plan says **Payment failed** and
-the plan's features stop until it is paid.
-
-A plan that says **Included, no charge** is on under terms g1t set with the
-workspace, such as [comped](#enterprises-and-custom-terms) terms, with
-nothing to pay or turn off.
-
-## What is free, and what pays for it
-
-Everything free on g1t is paid for by something: a plan, or a fixed
-budget g1t sets aside each month. None of it is an open-ended allowance.
-
-### Public repositories and open source
-
-Hosting, git, issues, pull requests, review and search on a public
-repository are never charged.
-
-The compute its agents use, **sandbox time and model cost**, is paid by
-**g1t's open-source pool** first:
-
-| | Each month (UTC) |
+| Each month (UTC) | |
 | --- | --- |
-| The pool, for every public repository together | $10 |
-| One repository's share of it, at most | $1 |
+| Included usage | $10, at cost plus 20% |
+| Members | Unlimited |
+| Private repository storage | 10 GB |
+| Git operations | 10,000 |
+| [Deployments](/guides/deployments/) | 10 apps, 1 million requests, 3 million CPU milliseconds, 3 custom domains and 200 build minutes |
 
-When the pool or the repository's share is spent, that month's usage is
-charged to the workspace as usual. Each statement line the pool paid says
-so, as in *Work on acme/lib#12 ($0.04 paid by g1t's open-source pool)*,
+**Included usage** pays for the month's usage first, at the same prices as
+everything else: agents, sandbox time, builds, storage, git operations,
+search embeddings and security scans. Past it, usage is charged at cost
+plus 20%. It starts again on the 1st of each month (UTC). **Unused
+included usage does not roll over.** Billing shows how much of it this
+month's usage has drawn.
+
+**The other $10** pays for running g1t, the free forge everyone uses, and
+the people building it.
+
+Deployments are part of the plan. There is no separate Deployments
+purchase.
+
+### Start or end the plan
+
+Only an owner can start or end the plan.
+
+1. Open **Settings → Billing and plans**, `g1t.sh/<workspace>/-/billing`.
+2. On the **g1t** card, choose **Start the g1t plan**.
+3. If the workspace already has a checked card, the plan starts on it at
+   once. Otherwise, pay on the card page you are sent to.
+
+Back on Billing, the card says **On the g1t plan** (**first month** in
+the first billing cycle), with a meter for the month's included usage and
+one for deployments. **Manage on Stripe** opens the card, invoices and
+billing details. **End at the end of the period** ends the plan then, with
+nothing more charged after; **Keep the plan** takes that back until then.
+If a renewal payment fails, the card says **Payment failed**, with
+**Update payment on Stripe**, and the plan's features stop until it is
+paid.
+
+A card that says **Comped by g1t** or **Included by g1t** is on under terms
+g1t set with the workspace, such as
+[comped](#enterprises-and-custom-terms) terms, with nothing to pay or end.
+
+## No card, no compute
+
+Compute costs g1t real money from the first second, and free compute
+attracts people who use it to mine cryptocurrency. A card check is the
+smallest gate that stops that: it puts a real card behind each workspace,
+and each card gets one trial.
+
+A free workspace needs a card check before its trial or g1t's open-source
+pool pays for anything. Only an owner can do it.
+
+1. Open **Settings → Billing and plans**.
+2. Under **Try it with $5 of usage**, choose **Check a card**. You are sent
+   to Stripe's card page.
+3. Enter the card. If your bank asks for 3-D Secure, confirm it there.
+
+The card check is **never charged**: Stripe saves and verifies the card,
+and nothing is taken. Back on Billing, a line says whether the trial
+started. The card is saved as the workspace's card, so starting the plan
+later needs no second card page.
+
+The trial needs a credit or debit card; prepaid cards can still pay for the
+plan. A prepaid card passes the check, and unlocks the open-source pool,
+but starts no trial.
+
+The card check unlocks:
+
+- [The trial](#the-trial): $5 of usage, once.
+- [The open-source pool](#the-open-source-pool): checks, workflows and
+  the merge queue on public repositories.
+
+## The trial
+
+Once its card is checked, a workspace gets **$5 of trial credit**, once. It
+pays for usage at cost plus 20%: agents, sandbox time, checks, workflows,
+the merge queue and semantic search. It never pays for deployments.
+
+- Each card gets one trial, whichever workspace it is checked in. Prepaid
+  cards start none.
+- Trials come from a pool of **$100 a month** for everyone together. It
+  renews on the 1st of each month (UTC). When a month's pool is given out,
+  new trials wait until the 1st, and **Settings → Billing** says so.
+- Billing and mission control show what is left.
+- While on the trial, a workspace runs at most 2 agents at once, and each
+  run for at most 60 minutes. See [caps](#caps).
+
+The trial does not turn into a charge. Nothing is charged until an owner
+starts the plan. If a free workspace's last trial run goes past what was
+left, g1t covers the difference, and the statement shows it as **Covered
+by g1t**. When the trial is used up, new compute waits for the plan.
+
+## The open-source pool
+
+g1t sets aside **$25 a month** for public repositories, at most **$2 a
+month** for any one repository. It pays for **checks, workflows and the
+merge queue on public repositories**, after a card check. It does not pay
+for agents, deployments, storage or embeddings.
+
+When the pool or the repository's share is spent, those runs wait for the
+next month, or for the plan. Each statement line the pool paid says so,
 and the month's statement totals it under **Paid by g1t's open-source
-pool**. Builds, storage, embeddings and scans are not paid by the pool.
-
-### Trials
-
-So anyone can try g1t's agents without a key or a card, each new workspace
-gets **$1 of trial credit**, once. It is given the first time the
-workspace uses something, and pays for its usage at cost plus 20%, after
-any Team credit: g1t's models, sandbox time, storage, embeddings and
-scans, but never deployments. That is roughly 10 to 25 agent runs.
-
-- Trials come from a budget of **$40 a month** for every new workspace
-  together. It renews on the 1st of each month (UTC). When a month's
-  budget is given out, new trials wait for the next month, and mission
-  control and **Settings → Integrations** say when they start again.
-- Mission control and **Settings → Integrations** show what is left.
-- When it is used up, agents and workflow runs on g1t's models stop
-  starting, and the pages that start them say so and link to
-  Integrations. Connect your own model provider there and everything
-  carries on at once.
-- Workspaces that had the free allowance before trials renewed monthly keep
-  what they had left of it.
+pool**.
 
 ## What is charged
 
@@ -118,33 +155,42 @@ scans, but never deployments. That is roughly 10 to 25 agent runs.
 | Acceptance checks | [Sandbox time](#sandbox-time) |
 | The [merge queue](/guides/merge-queue/) | [Sandbox time](#sandbox-time) |
 | [Workflow](/guides/actions/) jobs | [Sandbox time](#sandbox-time) |
-| [Deployments](/guides/deployments/) | The plan, and builds and usage past it. Never free. |
-| [Private repository storage](#storage-search-embeddings-and-scans) | Past 1 GB (50 GB on Team) |
+| [Deployments](/guides/deployments/) | Past what the plan includes |
+| [Private repository storage](#storage-search-embeddings-and-scans) | Past 10 GB, on the plan only |
+| [Git operations](#git-operations) | Past 10,000 a month, on the plan only |
 | [Search embeddings](#storage-search-embeddings-and-scans) | For private text |
 | [Security scans](#storage-search-embeddings-and-scans) | Yes |
-| Repositories, git, issues, pull requests, search, the API and MCP | No |
-| Agents and sandboxes on a public repository | From [the open-source pool](#public-repositories-and-open-source) first |
+| Repositories, issues, pull requests, review, search, the API and MCP | No |
 
 Each run is charged when it finishes: what the model provider charged for
-it, plus 20%. A small change costs a few cents.
+it, plus 20%, and its sandbox time. A small change costs a few cents.
 
 Work a workspace routes to [its own model providers](/guides/models/) is
 paid for at those providers instead. Such a run is charged here only for
 its [sandbox time](#sandbox-time), like any other sandbox.
 
 The charge goes to the workspace that owns the repository, whoever
-assigned the issue. That is why only members of a workspace can put g1t
-agents to work on its repositories.
+assigned the issue. That is why putting g1t agents to work on a
+repository needs the Write [role](/guides/access-and-roles/) or higher on it.
 
 ## How prices are set
 
-g1t passes its own costs through. Everything a workspace uses costs g1t
-money first, at Cloudflare or a model provider, and is charged at that
-cost plus 20%. The 20% pays for running g1t and for building and keeping
-up its features; g1t is not trying to make money on top of that. There is
-no seat price, and nothing is bundled to hide what it costs. The live prices are on
+Every price is what g1t pays for the thing, at Cloudflare or a model
+provider, plus 20%. The live prices are on
 [g1t.sh/pricing](https://g1t.sh/pricing), straight from the price book
 billing charges from.
+
+| Meter | Unit |
+| --- | --- |
+| Models | What the provider charged for the run |
+| Sandbox time | Per second: memory, disk and the Durable Object behind each container, plus CPU |
+| Deploy builds | Per second |
+| App requests, CPU and apps | Per million requests, per million CPU milliseconds, per app-month |
+| Custom domains past the plan | Per domain-month |
+| Private storage | Per GB-month |
+| Git operations | Per 1,000 |
+| Search embeddings | Per million tokens |
+| Security scans | Per million CPU milliseconds and per million rows written |
 
 Prices keep themselves current as those costs move:
 
@@ -154,128 +200,203 @@ Prices keep themselves current as those costs move:
   about 15 minutes it is **settled** to the gateway's figure, and any
   difference appears on the statement as a correction, such as
   *Correction to "Work on acme/api#12": AI Gateway priced its 41 model
-  requests at $0.0312, not $0.0298*. When a provider changes its prices,
-  runs are charged the new ones from that day. A run whose sandbox stopped
-  without reporting is charged from the gateway's logs instead of not at
-  all.
+  requests at $0.0312, not $0.0298*. A run whose sandbox stopped without
+  reporting is charged from the gateway's logs instead of not at all.
 - **Cloudflare.** Every day, g1t checks what Cloudflare billed its account
-  against what was used: Containers against the seconds containers ran,
-  Workers for Platforms per request and per CPU millisecond. When a cost
-  moves by 2% or more, the price book moves with it, since each price is
-  its cost plus its markup, and the change is listed on the pricing page
-  with the reason. A measurement far from the current cost (more than 4×
-  either way) is not adopted, only logged, so one odd day cannot reprice
-  anything.
+  against what was used: Containers and the Durable Objects behind them
+  against the seconds containers ran, Workers for Platforms per request
+  and per CPU millisecond. When a cost moves, the price book moves with
+  it, and the change is listed on the pricing page with the reason. A
+  measurement far from the current cost is not adopted, only logged, so
+  one odd day cannot reprice anything.
 
-| | Markup |
-| --- | --- |
-| Models | 20% |
-| Sandbox time | 20% |
-| Deploy builds | 20% |
-| App requests, CPU and apps | 20% |
-| Custom domains past the plan | 20% |
-| Private storage, search embeddings and security scans | 20% |
+### Sandbox time
 
-## Sandbox time
+Every sandbox g1t starts runs on Cloudflare Containers, and Cloudflare
+charges g1t for every second of it. So each one is metered by the second,
+from start to stop, whatever it was for: agents, reviews, revisions,
+catch-ups, planning, acceptance checks, the merge queue and workflow jobs.
+There are no free minutes.
 
-Every sandbox g1t starts for a workspace runs on Cloudflare Containers, and
-Cloudflare charges g1t for every second of it. So each one is metered by
-the second, from start to stop, whatever it was for: agents, reviews,
-revisions, catch-ups, planning, acceptance checks, the merge queue and
-workflow jobs. It is charged to the workspace that owns the repository.
-
-| | |
-| --- | --- |
-| What it costs g1t | about $0.0009 a minute (Containers, standard-1, at the CPU sandboxes really use) |
-| What you pay | that plus 20%, about $0.0011 a minute, by the second from the first |
-
-Both follow what Cloudflare bills, so they move; today's exact figures are
-on [g1t.sh/pricing](https://g1t.sh/pricing). See
-[How prices are set](#how-prices-are-set).
-
-Deploy builds are not counted here: [Deployments](/guides/deployments/)
-charges them by the second on its own plan.
+A sandbox second is priced in two parts: memory, disk and the Durable
+Object behind the container, for every second; and CPU, for the vCPU it
+used. A run whose sandbox reports its own CPU use is priced on it. One
+that does not is priced at the average CPU sandboxes use.
 
 Each sandbox is one line on the [statement](#the-statement), such as
-*Checks on acme/api#12: 3m 12s of sandbox time*.
+*Checks on acme/api#12: 3m 12s of sandbox time*. Deploy builds are not
+counted here: [Deployments](/guides/deployments/) charges them by the
+second, after the plan's 200 build minutes.
+
+## Git operations
+
+Cloudflare charges g1t **$0.15 per 1,000 git operations** from 2026-10-14.
+An operation is one clone, fetch or push through g1t's git endpoints.
+Pushes from agents' sandboxes go to the store directly and are not counted.
+
+| | Each month (UTC) |
+| --- | --- |
+| Included, on every workspace | 10,000 |
+| On the plan, past 10,000 | $0.18 per 1,000 (cost plus 20%) |
+| Free workspace, past 50,000 | Not charged. Slowed to 60 an hour until the month turns. |
+
+10,000 is about twenty times what an active workspace uses; an agent run
+takes two to four. A free workspace is never charged for git operations.
+Past 50,000 in a month, its git requests past 60 in an hour are answered
+`429` with when to try again.
+
+Counting starts on 2026-10-14. **Billing** shows this month's count
+against what is included.
 
 ## Storage, search embeddings and scans
 
-Three things g1t used to absorb are metered at what they cost plus 20%,
-like the rest. Each is counted through the month and charged once it is
-over, as one line dated the month's last day, so the limit counts it as it
-happens.
+These are counted through the month and charged once it is over, as one
+line dated the month's last day, so the limit counts them as they happen.
+The plan's included usage and the trial pay for them first.
 
 | | What it costs g1t | What is counted |
 | --- | --- | --- |
-| Private repository storage | $0.50 a GB-month (Cloudflare Artifacts) | Each day, what the workspace's private repositories hold past 1 GB (50 GB on Team). A month's GB-months are those days added up, divided by 30. |
+| Private repository storage | $0.50 a GB-month (Cloudflare Artifacts) | On the plan, each day, what the workspace's private repositories hold past 10 GB. A month's GB-months are those days added up, divided by 30. |
 | Search embeddings | $0.067 per million tokens (Workers AI) | The text of private repositories, issues and pull requests put in the search index. Public text and searches are not charged. |
-| Security scans | $0.02 per million CPU milliseconds and $1.00 per million rows written (Workers and D1) | The CPU each history scan and dependency check takes and the rows it writes. Calls to OSV are free. |
+| Security scans | $0.02 per million CPU milliseconds and $1.00 per million rows written (Workers and D1) | The CPU each history scan and dependency check takes and the rows it writes. |
 
-Storage is measured from the packs pushed through g1t's git endpoints to
-each repository and its pull requests' working copies. Pushes made by
-g1t's own agents and imports are not counted yet, so what is charged is
-never more than what is stored. Public repositories are never charged.
+Storage is charged at $0.60 a GB-month (cost plus 20%). It is measured from
+the packs pushed through g1t's git endpoints to each repository and its
+pull requests' working copies, so what is charged is never more than what
+is stored. Public repositories are never charged, and neither is a free
+workspace: its pushes to private repositories stop at 1 GB instead.
 
-The live prices are on [g1t.sh/pricing](https://g1t.sh/pricing).
+## Limits
 
-## Usage limits
+Every workspace has two limits: **g1t's ceiling** on usage not yet paid
+for, and **your spend limit** on what is charged in a month. Work stops at
+whichever is lower. Both are in the **Spend limit** section of **Settings →
+Billing and plans**, on the plan.
 
-Every workspace has two limits. One protects you from a surprise bill;
-the other protects g1t from usage that is never paid for. Both are on
-**Settings → Billing → Limits**.
-
-### Your monthly spend limit
-
-What the workspace may spend in a month (UTC). At it, work stops until the
-month turns or an owner raises it. Owners choose one of:
-
-- **Automatic** (the default): $200, or twice last month's spend,
-  whichever is more. It keeps up as you grow: a workspace that spent $900
-  last month can spend $1,800 this month without anyone changing a thing.
-- **Fixed**: an amount you set.
-- **None**: work never stops for spend.
-
-You are emailed at 50%, 80% and 100% of it.
-
-### What g1t lets go unpaid
+### The ceiling
 
 Usage is charged after it runs, so at any moment some of it is not yet
-paid for. g1t lets that reach a ceiling that grows with your history:
+paid. g1t lets that reach a ceiling that grows with your history:
 
 | | Ceiling on what is unpaid |
 | --- | --- |
-| **New**: has not paid g1t yet | $3 |
-| **Paid** | twice what you have paid, from $25 up to $1,000 |
-| **Established**: three steady months | three times your monthly spend, up to $10,000, by itself |
-| **Reviewed** | what g1t set with you; contact us |
-
-With a card on file, **g1t charges it as you near the ceiling** (80%):
-an invoice for what you owe, paid at once, after which the ceiling is
-yours again. So a workspace that pays keeps going, however much it uses;
-the ceiling only stops one that does not.
-
-How the ceiling grows:
+| **Free** | None to reach: a free workspace is never charged. The trial and g1t's pools pay for its compute. |
+| **First month on the plan** | $100 |
+| **Paid** | Twice what you have paid, never below $100, up to $1,000 |
+| **Established**: three steady months | Three times your monthly spend, up to $10,000 |
+| **Reviewed** | What g1t set with you |
 
 - A payment counts once it has **cleared for 7 days**, the time in which
-  most bad cards are caught. Payments with prepaid cards pay, but do not
-  raise the ceiling, nor do credits g1t gives or payments in test mode.
-- **Established** comes by itself after three months in a row of real spend
-  ($20 or more each), every monthly invoice paid, nothing declined in 90
-  days and nothing ever disputed. From then the ceiling follows your
-  spend.
-- Past $10,000, or for terms of your own, **contact us**: we set it with
-  you, often with an enterprise account and invoices.
+  most bad cards are caught. Credits g1t gives and payments in test mode
+  do not raise the ceiling.
+- **Established** comes by itself after three months in a row of $20 or
+  more, every invoice paid, nothing declined in 90 days and nothing ever
+  disputed.
+- **Prepaying** raises what can be used before work stops by the same
+  amount, at once. See [prepay](#prepay).
+
+With a card on file, **g1t charges it as you near the ceiling** (80%): an
+invoice for what you owe, paid at once, after which the ceiling is yours
+again. A workspace that pays keeps going; the ceiling stops one that does
+not.
 
 What counts as unpaid is each item at what it cost g1t or what it is
 charged, whichever is more, less what was paid this month, plus anything
-left unpaid from earlier months: a new month is not a fresh allowance.
-What a plan's credit, a trial or the open-source pool paid for does not
-count: those are paid for already.
+left unpaid from earlier months. What included usage, the trial or the
+open-source pool paid for does not count.
 
-A **declined card** stops work until it is paid, as does a payment
-disputed with the card's bank. Paying under Billing with another card
-clears it at once.
+### Your spend limit
+
+What the workspace may be charged in a month (UTC). At it, new work stops
+until the month turns or an owner raises it. Until owners set one, it is
+**automatic**: $200, or twice last month's spend, whichever is more, up to
+what is available.
+
+Owners set it under **Your monthly spend limit**: **Automatic**, **Fixed
+at** an amount, **Everything available**, or, once, **Use my one-time
+raise**, then **Save limit**. The section says how far you can go yourself,
+and whether the one-time raise is still yours:
+
+| | Up to |
+| --- | --- |
+| Any amount | The highest ceiling the workspace has had, plus what is prepaid |
+| **The one-time raise**, once per workspace | Twice the highest ceiling |
+| Past that | **Raise my limit**: a request to g1t |
+
+To ask for more, use the **Raise my limit** section: give the limit you
+need, what you expect to spend a month, and what it is for, then **Send the
+request**. A person at g1t answers **within one business day**, in the app
+and by email, and the section shows the request and its answer. An approved amount becomes a
+floor under your ceiling, and your spend limit can go up to it.
+
+### Prepay
+
+Paying in advance pays for usage as it happens, after the plan's included
+usage, and raises what can be used before work stops by the same amount,
+at once. It is never needed to start work. Only an owner can prepay.
+
+1. Open **Settings → Billing and plans**, and find **Prepay**.
+2. Choose **By card, with 3-D Secure** or **By bank transfer** (from
+   $1,000).
+3. Choose $100, $500 or $1,000, or type your own amount, from $25, and
+   choose **Prepay**. By card, the most is $10,000.
+4. Pay on the page you are sent to, confirming 3-D Secure if your bank
+   asks. A bank transfer page gives the account details, and the amount
+   counts when the money arrives.
+
+**Prepaid balance** shows what is paid in advance and not used yet.
+
+### Caps
+
+The plan also caps what agents can do at once and spend:
+
+| Cap | First month on the plan, or the trial | After | Who sets it |
+| --- | --- | --- | --- |
+| Agents at once | 2 | 10 | g1t |
+| Time per run | 60 minutes | The [guardrails](/guides/guardrails/)' own caps | g1t |
+| Spend per run | $2 | $2 | Owners, from $0.10 to $100 |
+| Agents' spend per issue | $10 | $10 | Owners, from $1 to $1,000 |
+
+Owners set the run and issue caps under **Caps on agents** on **Billing**,
+then **Save caps**; a blank field goes back to the default. A cap g1t staff
+set for the workspace wins over both. When an issue's agents reach its cap,
+the message links straight to that section. See
+[caps on a plan](/guides/g1t-agents/#caps-on-a-plan) for what happens at
+each.
+
+### Alerts
+
+Owners are told at **50%, 75%, 90% and 100%** of each of:
+
+- the plan's included usage,
+- your spend limit,
+- g1t's ceiling.
+
+Each alert shows at the top of **Billing** and is emailed.
+
+### Spikes
+
+If the last hour's spend is more than **5 times the workspace's usual
+hour** over the last week, and at least **$5**, new compute pauses until an
+owner answers. Runs already under way finish. A banner across the top of
+every page in the workspace says so, and **Billing** shows the spike with
+two choices, for owners on both:
+
+- **Keep going**: compute starts again, for 24 hours or until the hour's
+  spend doubles again, whichever comes first.
+- **Stop**: compute stays paused until an owner chooses **Keep going**.
+
+g1t's own workspaces are never paused.
+
+### Spent more than you meant to
+
+If a month went past what you meant to spend, use **Spent more than you
+meant to? Tell us.** on **Billing**: say what happened and choose **Tell
+g1t**. Once in 12 months per workspace, g1t can credit the overage above
+your usual month: always the 20% g1t added to it, and what it cost g1t up
+to $50. Larger credits, or a second one within 12 months, are reviewed by a
+person. The credit appears on the statement with the day it happened,
+such as *Credit from g1t: accidental usage on 2026-11-12*.
 
 ## Invoices
 
@@ -283,90 +404,44 @@ Every charge is a real invoice from g1t, kept on Stripe's billing page
 with its PDF and emailed as a receipt:
 
 - **When each month closes**, an invoice for what the workspace owes,
-  itemised: agents on g1t's models, sandbox time, and deployments past
-  the plan. Credit you paid in advance
-  is taken off as *Paid in advance*; anything left unpaid from before is
-  added.
+  itemised: the plan, usage past what it includes, and anything left
+  unpaid from before. Prepaid money is taken off as *Paid in advance*.
 - **When the workspace nears its ceiling** mid-month, the same, sooner.
+- **When the workspace is deleted**, a final invoice for what it owes,
+  charged at once with no minimum. See
+  [deleting a workspace](/guides/workspaces/#what-billing-needs).
 
 Each is charged to the card on file. The Billing page lists them, with
 links to view each on Stripe and download its PDF.
 
 ### The minimum charge
 
-No card is charged less than **$5**, so a payment's fee is never most of
-what is paid. When a month closes owing less, nothing is charged: the
-amount carries over and goes on the next invoice that reaches $5, as
-*Unpaid from earlier*. That month's statement says what carried over. A
-charge made because a workspace is near its limit goes through whatever
-the amount, so work can carry on.
+Only the month's close has a minimum: a card is not charged less than
+**$5** then, so a payment's fee is never most of what is paid. When a month
+closes owing less, the amount carries over to the next invoice that reaches
+$5, as *Unpaid from earlier*. A charge made because a workspace is at or
+near a limit always goes through, whatever the amount, so work can carry
+on.
 
-## Enterprises and custom terms
+## Moving a repository between workspaces
 
-Some accounts are billed differently, set up by g1t with you:
+When a repository is [transferred](/guides/transferring-repositories/#billing),
+usage from that moment is charged to the workspace it moved to: agent runs,
+builds, app traffic, git operations and storage. What it used before stays
+on the old workspace's bill, and runs already under way finish on the bill
+they started on.
 
-- **Enterprise**: one billing account paying for several workspaces.
-  Their usage and payments count together, against
-  one limit, on one set of terms, and each workspace's Billing page says
-  which enterprise pays for it. An enterprise is invoiced: when each month
-  closes, Stripe emails one invoice to the enterprise's billing address,
-  with a line for each workspace, due in 30 days and paid on Stripe's
-  invoice page by card or bank transfer. Paying it clears every workspace
-  on it; if it goes overdue, their work stops until it is paid.
-- **Comped**: g1t covers the account's usage. Usage is still recorded with
-  what it cost, so the Usage page stays accurate, and paid features,
-  Team among them, are on without a plan.
-- **Plan and pools**: Team without charge, such as for a partner, or a
-  larger share of the open-source pool or of trials.
-- **Custom**: a discount on every usage charge, a limit of its own, or
-  both, sometimes until a date, after which standard terms apply.
-
-Each change is made by g1t staff in g1t's billing console and recorded with
-who made it and why. To ask for one, write to
-[billing@g1t.sh](mailto:billing@g1t.sh).
-
-An enterprise account also has the [audit log](/guides/audit-log/) of each
-of its workspaces, exported as CSV or JSON, and a year of it with Team.
-Single sign-on through your identity provider is coming; it is not
-available yet.
-
-## Your card, invoices and billing details
+## Your card and billing details
 
 These live on **Stripe's billing page**, not on g1t: g1t never sees or
-stores card numbers. An owner opens it from **Settings → Billing → Card
-and invoices → Manage billing on Stripe** (or **Add a card on Stripe**),
-and there adds or replaces the card, downloads invoices and receipts, and
-sets the billing email, address and tax ID. Saving a card charges
-nothing. g1t support never takes card details by phone or email; if you
-need help, we send you a link to that same Stripe page.
+stores card numbers. An owner opens it with **Open Stripe billing** under
+**Card and invoices** on **Settings → Billing and plans**, and there adds or replaces the card, downloads invoices and
+receipts, and sets the billing email, address and tax ID. g1t support
+never takes card details by phone or email.
 
-With a card on file:
-
-- **Near the ceiling** on what is unpaid (80%), g1t sends an
-  [invoice](#invoices) for what the workspace owes and charges it, so work
-  does not stop.
-- **When each month closes**, the month's [invoice](#invoices) is charged
-  to it.
-- **If it is declined**, work stops until the workspace pays, and the
-  Billing page and the API say why. Replace the card or add credit to pay.
-
-Comped workspaces are never charged, and an enterprise's workspaces are
-billed through the enterprise. Test-mode cards are never charged
-automatically.
-
-## Add credit
-
-Credit is a payment in advance: it pays for usage as it happens, and lowers
-what the workspace owes against its limit. It is never needed to start
-work. Only an owner of the workspace can add credit.
-
-1. Open the workspace's **Settings → Billing**, `g1t.sh/<workspace>/-/billing`.
-2. Under **Add credit by card**, choose an amount: $10, $25, $50 or $100.
-3. Pay on the card page you are sent to.
-
-You come back to the Billing page, and the credit is there once the payment
-has gone through. The amount credited is what the card processor says was
-paid.
+If a card is declined, work stops until the workspace pays, and the
+Billing page and the API say why. Replace the card or prepay to clear it.
+A payment disputed with the card's bank stops work the same way.
 
 While payments on g1t are in test mode, no real card is charged. Use the
 test card `4242 4242 4242 4242` with any future date and any code. The
@@ -374,46 +449,77 @@ Billing page says when payments are in test mode.
 
 ## When work is stopped
 
-A workspace at its limit, or with a declined card, starts nothing new.
-Assigning an issue, planning, or asking for a review is refused with `402`
-and the reason:
-
-```json
-{
-  "error": {
-    "code": "payment_required",
-    "message": "The acme workspace reached its $3.00 limit for usage not yet paid for, so its sandboxes, builds and apps are stopped. The limit grows as a workspace pays g1t; an owner can pay under Billing, or write to support to have it raised."
-  }
-}
-```
+A workspace that cannot start compute starts nothing new. Assigning an
+issue, planning, or asking for a review is refused with `402` and a
+message saying why and what to do, with the page to do it on: start the
+plan, check a card, raise the spend limit, answer a spike, or wait for the
+next month's pool.
 
 A step g1t would take by itself, such as a revision or a review, stops
-instead, and the pull request says **Needs you** with the reason. Runs
-already under way finish, so usage can go slightly past the limit.
+instead, and the pull request says **Needs you** with the reason. A
+workflow job is recorded as failed with "Not started:" and the reason.
+Runs already under way finish, so usage can go slightly past a limit.
+
+## Security on every plan
+
+Security is never a paid extra. Every workspace, free or on the plan, has
+the same [audit log](/guides/audit-log/), kept 90 days, and the same CSV
+and JSON export. Single sign-on through your identity provider is not
+built yet; when it is, it will be on every plan.
+
+## Enterprises and custom terms
+
+Some accounts are billed differently, set up by g1t with you. Every price
+is public; custom terms change how you pay, not what things cost.
+
+- **Enterprise**: one billing account paying for several workspaces.
+  Their usage and payments count together, against one limit, and each
+  workspace's Billing page says which enterprise pays for it. An
+  enterprise is **invoiced**: when each month closes, one invoice goes to
+  the enterprise's billing address, with a line for each workspace, due in
+  30 days and paid by card or bank transfer. If it goes overdue, the
+  workspaces' work stops until it is paid.
+- **Comped**: g1t covers the account's usage. The plan is on without being
+  charged, and usage is still recorded at what it cost, so the Usage page
+  stays accurate.
+- **Custom**: a discount on usage, a limit of its own, or a larger share
+  of the pools, sometimes until a date.
+
+g1t's own workspaces and those of Flagon, Inc., the company that makes g1t,
+run comped. Their usage is recorded at cost, apart from what customers
+pay.
+
+Each change is made by g1t staff and recorded with who made it and why. To
+ask for one, write to [hey@flagon.io](mailto:hey@flagon.io).
+
+## Earlier plans
+
+Deployments used to be a $5 plan of its own. It is part of the g1t plan
+now. A Deployments subscription bought before keeps working until its
+current period ends, and is not renewed.
 
 ## The Usage page
 
 A workspace's **Usage** page, `g1t.sh/<workspace>/-/usage`, shows what its
-agents have cost. Every member can see it. The sidebar shows this month's
-spend.
-
-While g1t is free, nothing is charged, so the page and the sidebar show
-what runs **used**, at what they cost: g1t's models and your own provider's
-together. Credit is not drawn down.
+agents have cost. Every member can see it, from **Usage** in the
+workspace's sidebar. The workspace's overview, `g1t.sh/<workspace>`, has a
+**Usage** card with this month's spend: the plan's included usage or the
+trial credit used so far, on-demand charges past what is included, what it
+went on, and a way to **Billing**.
 
 These figures are what the agent harness reports for each run. Your model
-provider's or gateway's own figures can differ by a few percent, because
-each prices the same tokens itself; the provider's invoice is what counts.
+provider's own figures can differ by a few percent, because each prices
+the same tokens itself; the provider's invoice is what counts.
 
 Pick a period: **This month**, **Last 7 days**, **Last 30 days** or **Last
 90 days**. The page then shows:
 
 | | |
 | --- | --- |
-| Spent | What the period cost, and how much of it was the model provider's. **Used**, at cost, while g1t is free. |
+| Spent | What the period cost, and how much of it was the model provider's. |
 | Agent runs | How many runs there were. |
 | Average run | What a run cost on average. |
-| Credit left | The balance, and about how many days it lasts at the period's rate. |
+| Credit left | What is prepaid and not used yet, and about how many days it lasts at the period's rate. |
 | Spend per day | A chart of each day, split by kind of work. |
 | By kind of work | Making changes, reviews, catching up and planning. A revision counts as making a change. |
 | By repository | Each repository's share. |
@@ -422,10 +528,6 @@ Pick a period: **This month**, **Last 7 days**, **Last 30 days** or **Last
 
 ## The statement
 
-Beside the balance, the **Billing** page shows what the workspace has
-spent this month and in total, and what it has paid and been credited in
-total: every agent run, sandbox, build and app, at what was charged.
-
 The **Billing** page ends with the workspace's statement, a month at a
 time. Every member can see it.
 
@@ -433,55 +535,90 @@ time. Every member can see it.
   many entries make it up.
 - **Grouped by day or by project.** Each day (or project) has one line
   per kind of charge, with how many entries it holds and what they come
-  to, rather than a row for every run:
+  to:
 
   | Line | What it holds |
   | --- | --- |
-  | Agent runs | Runs on g1t's model provider: the model's cost plus the margin. |
+  | Agent runs | Runs on g1t's models: the model's cost plus the margin. |
   | Runs on your own model provider | Older months only: the flat fee runs on your own provider used to carry. |
-  | Sandbox time | Each sandbox's time, memory and disk. |
-  | Deployments | Builds and apps beyond the allowance. |
-  | Private storage | Storage past the free amount, once a month. |
+  | Sandbox time | Each sandbox's time. |
+  | Deployments | Builds and apps past what the plan includes. |
+  | Private storage | Storage past what is included, once a month. |
+  | Git operations | Operations past what is included, once a month. |
   | Search embeddings | Private text put in the search index, once a month. |
   | Security scans | History scans and dependency checks, once a month. |
   | Payments | Card payments and invoices paid. |
   | Credits from g1t | Credit g1t added, such as a goodwill credit. |
   | Refunds | Money given back to your card. |
 
-- **Paid for.** Below the totals, what paid for usage before it was
-  charged: **Paid by your Team plan's credit**, **Paid by your trial
-  credit** and **Paid by g1t's open-source pool**, each with its amount.
-  Lines show how much of them was paid this way, and each entry says so
-  in its description. A month that closed under the
-  [minimum charge](#the-minimum-charge) says what carried over.
+- **Covered.** Below the totals, what paid for usage before it was
+  charged, each with its amount:
+
+  | Line | What paid |
+  | --- | --- |
+  | Paid by your plan's included usage | The plan's $10 a month. |
+  | Paid by your trial credit | The one-time trial. |
+  | Paid by g1t's open-source pool | The pool, for public repositories. |
+  | Covered by g1t | A free workspace's last trial run past its trial. |
+
+  Each entry says in its description how much of it was paid this way. A
+  month that closed under the [minimum charge](#the-minimum-charge) says
+  what carried over.
 - **Open a line** to see its entries, 50 at a time, newest first. Each
   run links to the pull request it was for.
-- **Pick a month** to see an earlier one; months with no entries are not
-  listed.
-- **CSV** downloads every entry of the month, with the line it falls
-  under and what the Team credit, the trial and the open-source pool paid
-  of it, for your own books. Invoices from Stripe remain the record for
-  what was charged to your card.
-
-Each pull request's session also ends with what its run cost before the
-margin.
+- **Pick a month** to see an earlier one.
+- **CSV** downloads every entry of the month, with the line it falls under
+  and what covered it, for your own books. Invoices from Stripe remain the
+  record for what was charged to your card.
 
 ## The preview
 
-g1t is in preview.
+While payments on g1t are in test mode, g1t's hosted models are open only
+to the workspaces g1t runs itself. Every other workspace's agents, checks
+and merge queue work with [its own model provider](/guides/models/), and
+the sandbox time is paid as above. When payments go live, every workspace
+can use g1t's hosted models.
 
-- **Open to everyone:** accounts, workspaces, repositories, git, issues,
-  pull requests, review, the API, and your own agent through MCP.
-- **g1t's agents, for any workspace with its own model provider:** connect
-  an Anthropic key or endpoint under [Integrations](/guides/models/) and the
-  workspace's agents, acceptance checks and merge queue work at once. Your
-  provider bills you for the models; g1t charges nothing for now, and only
-  each run's sandbox time once pricing starts.
-- **g1t's hosted models:** while payments are in test mode, every
-  workspace can use g1t's own models on [its trial credit](#trials) ($1
-  each, from a budget that renews monthly), and a few g1t has opened them
-  to without limit. When payments go live, every workspace can use them,
-  paid from its credit.
+## For services: entitlements, reserve, settle
 
-Each workspace decides where its model spend goes. A workspace that can use
-neither sees a message saying so, with the way to connect its own provider.
+Every g1t service that starts something that costs money asks billing
+first. These RPCs are internal; they are documented so the behavior above
+can be traced.
+
+| RPC | Takes | Returns |
+| --- | --- | --- |
+| `entitlements` | `workspace` | What the workspace may do now (below). |
+| `reserve` | `workspace`, `repo`, `public`, `kind`, `estimateMicros` | A reservation, or a refusal. |
+| `settle` | `reservationId`, `actualMicros` | `true`, or `false` if it was settled or had lapsed before. Safe to repeat. |
+
+**`entitlements`** returns, among others: `plan` (`free`, `paid`,
+`internal` or `enterprise`), `compute` (may start compute at all),
+`trialMicrosLeft`, `trialVerified` (a card check is done), `firstMonth`,
+`maxConcurrentAgents`, `maxRunMinutes`, `runCapMicros`, `issueCapMicros`,
+`ceilingMicros`, `exposureMicros`, `heldMicros`, `prepaidMicros`,
+`includedMicros`, `includedUsedMicros`, `paused` (why compute is paused,
+or none), `spike`, `alerts`, `gitOperations` and `gitOperationsIncluded`.
+
+**`reserve`** holds the work's estimated cost before it starts, so starts
+at the same moment cannot overshoot together. `kind` is `agent`, `check`,
+`workflow`, `queue`, `deploy` or `embedding`. `estimateMicros` is the most
+the work is expected to cost g1t **in millionths of a dollar, before the
+margin**; billing adds the margin. For an agent, that is its model's
+average plus its sandbox for its whole time cap.
+
+A reservation has an `id`, `paidBy` (`credit` for included usage, `trial`,
+`oss` or `on_demand`), `heldMicros` and `expiresAt`. A hold never settled
+**lapses after 3 hours**. A refusal has one of these codes and a message
+for the owner with the page to fix it on:
+
+| Code | Why |
+| --- | --- |
+| `not_paid` | No plan, and nothing else pays for this kind of work, or no card check yet. |
+| `trial_used` | The one-time trial is spent. |
+| `limit` | The spend limit or g1t's ceiling would be passed. |
+| `paused` | A spend spike is waiting for an owner, or g1t staff put a hold on compute. |
+| `oss_pool_empty` | The open-source pool, or the repository's share of it, is spent this month. |
+
+**`settle`** releases the hold with what the work cost, at cost before the
+margin. It never charges: the charge goes on the ledger the usual way when
+the work reports its usage.

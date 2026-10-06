@@ -2,7 +2,9 @@ import { redirect } from "react-router";
 
 import { isValidNamespace } from "@g1t/contracts";
 
-import { identity } from "./services.server";
+import type { Viewer } from "@g1t/contracts";
+
+import { identity, repos } from "./services.server";
 
 /**
  * A workspace that was renamed keeps its old address as a redirect for
@@ -27,5 +29,33 @@ export async function redirectIfRenamed(request: Request, slug: string): Promise
   const segments = url.pathname.split("/");
   // segments[0] is the empty string before the leading slash.
   segments[1] = current;
+  throw redirect(segments.join("/") + url.search, 301);
+}
+
+/**
+ * A repository transferred to another workspace keeps its old address as a
+ * redirect until a repository is made there. Call this where a project page
+ * is about to 404: if `owner/repo` is a path a repository left, and the
+ * viewer may see it where it is now, it throws a 301 to the same page
+ * there. A private repository's new address is never shown to someone who
+ * cannot see it; they get the 404 as before.
+ */
+export async function redirectIfTransferred(
+  request: Request,
+  owner: string,
+  repo: string,
+  viewer: Viewer,
+): Promise<void> {
+  let now: { namespace: string; name: string } | null = null;
+  try {
+    now = await repos.resolvePath({ namespace: owner, name: repo });
+    if (!now || !(await repos.get(now, viewer)).ok) return;
+  } catch {
+    return;
+  }
+  const url = new URL(request.url);
+  const segments = url.pathname.split("/");
+  segments[1] = now.namespace;
+  segments[2] = now.name;
   throw redirect(segments.join("/") + url.search, 301);
 }

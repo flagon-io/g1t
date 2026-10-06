@@ -49,14 +49,27 @@ struct AccountRow {
     oss_repo_micros: Option<i64>,
     #[serde(default)]
     trial_micros: Option<i64>,
+    #[serde(default)]
+    max_concurrent_agents: Option<u32>,
+    #[serde(default)]
+    run_cap_micros: Option<i64>,
+    #[serde(default)]
+    issue_cap_micros: Option<i64>,
+    #[serde(default)]
+    hold: Option<String>,
 }
 
 impl AccountRow {
     fn allowances(&self) -> Allowances {
         Allowances {
-            team: self.team_granted.unwrap_or(0) != 0,
+            // The column is named for the plan's old name.
+            plan: self.team_granted.unwrap_or(0) != 0,
             oss_repo_micros: self.oss_repo_micros,
             trial_micros: self.trial_micros,
+            max_concurrent_agents: self.max_concurrent_agents,
+            run_cap_micros: self.run_cap_micros,
+            issue_cap_micros: self.issue_cap_micros,
+            hold: self.hold.clone().filter(|h| !h.trim().is_empty()),
         }
     }
 }
@@ -279,8 +292,9 @@ impl Billing {
         let totals = self
             .db
             .prepare(format!(
-                "SELECT workspace, -SUM(amount_micros) AS charged, SUM(cost_micros) AS cost FROM ledger
-                 WHERE kind = 'usage' AND workspace IN ({marks}) AND created_at >= ? GROUP BY workspace"
+                "SELECT workspace, -SUM(amount_micros) AS charged,
+                        SUM(CASE WHEN COALESCE(billed_to, 'g1t') = 'g1t' THEN cost_micros ELSE 0 END) AS cost
+                 FROM ledger WHERE kind = 'usage' AND workspace IN ({marks}) AND created_at >= ? GROUP BY workspace"
             ))
             .bind(&with_month)?
             .all()
@@ -480,14 +494,18 @@ impl Billing {
         Ok(Outcome::Ok(self.find_account(&account.id).await?.unwrap_or(account)))
     }
 
-    /// Team without charge, and the account's share of g1t's pools.
+    /// The plan without its price, the plan's caps, a hold on new compute,
+    /// and the account's share of g1t's pools.
     pub(crate) async fn admin_set_allowances(&self, a: AdminSetAllowancesArgs) -> Result<Outcome<BillingAccount>> {
         if a.by.trim().is_empty() || a.note.trim().is_empty() {
             return Ok(Outcome::fail(FailureCode::Invalid, "Say who is making the change, and why, in the note."));
         }
         let money = |m: Option<i64>| m.is_none_or(|m| (0..=1_000 * g1t_contracts::billing::MICROS_PER_DOLLAR).contains(&m));
-        if !money(a.allowances.oss_repo_micros) || !money(a.allowances.trial_micros) {
-            return Ok(Outcome::fail(FailureCode::Invalid, "A pool share is between $0 and $1,000."));
+        if !money(a.allowances.oss_repo_micros) || !money(a.allowances.trial_micros) || !money(a.allowances.run_cap_micros) || !money(a.allowances.issue_cap_micros) {
+            return Ok(Outcome::fail(FailureCode::Invalid, "A pool share or run cap is between $0 and $1,000."));
+        }
+        if a.allowances.max_concurrent_agents.is_some_and(|n| n == 0 || n > 1_000) {
+            return Ok(Outcome::fail(FailureCode::Invalid, "Agents at once is between 1 and 1,000."));
         }
         let Some(account) = self.find_account(&a.id).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "No such account."));
@@ -498,9 +516,10 @@ impl Billing {
         self.db
             .prepare(
                 "INSERT INTO billing_accounts (id, kind, name, terms_kind, discount_percent, note, created_by, created_at,
-                   team_granted, oss_repo_micros, trial_micros)
-                 VALUES (?1, ?2, ?3, 'standard', 0, '', ?4, ?5, ?6, ?7, ?8)
-                 ON CONFLICT (id) DO UPDATE SET team_granted = ?6, oss_repo_micros = ?7, trial_micros = ?8",
+                   team_granted, oss_repo_micros, trial_micros, max_concurrent_agents, run_cap_micros, hold, issue_cap_micros)
+                 VALUES (?1, ?2, ?3, 'standard', 0, '', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                 ON CONFLICT (id) DO UPDATE SET team_granted = ?6, oss_repo_micros = ?7, trial_micros = ?8,
+                   max_concurrent_agents = ?9, run_cap_micros = ?10, hold = ?11, issue_cap_micros = ?12",
             )
             .bind(&[
                 account.id.as_str().into(),
@@ -508,9 +527,13 @@ impl Billing {
                 account.name.as_str().into(),
                 a.by.as_str().into(),
                 now.as_str().into(),
-                u32::from(a.allowances.team).into(),
+                u32::from(a.allowances.plan).into(),
                 opt(a.allowances.oss_repo_micros),
                 opt(a.allowances.trial_micros),
+                a.allowances.max_concurrent_agents.map_or(JsValue::NULL, JsValue::from),
+                opt(a.allowances.run_cap_micros),
+                optional(a.allowances.hold.as_deref().map(str::trim).filter(|h| !h.is_empty())),
+                opt(a.allowances.issue_cap_micros),
             ])?
             .run()
             .await?;
@@ -676,12 +699,24 @@ impl Billing {
 
 /// Allowances as the audit log reads them.
 fn describe_allowances(a: &Allowances) -> String {
-    let mut parts = vec![if a.team { "Team on" } else { "Team off" }.to_owned()];
+    let mut parts = vec![if a.plan { "plan given" } else { "plan not given" }.to_owned()];
     if let Some(m) = a.oss_repo_micros {
         parts.push(format!("open-source share {} a repository", crate::features::dollars(m)));
     }
     if let Some(m) = a.trial_micros {
         parts.push(format!("trial {}", crate::features::dollars(m)));
+    }
+    if let Some(n) = a.max_concurrent_agents {
+        parts.push(format!("{n} agents at once"));
+    }
+    if let Some(m) = a.run_cap_micros {
+        parts.push(format!("run cap {}", crate::features::dollars(m)));
+    }
+    if let Some(m) = a.issue_cap_micros {
+        parts.push(format!("issue cap {}", crate::features::dollars(m)));
+    }
+    if let Some(hold) = &a.hold {
+        parts.push(format!("hold: {hold}"));
     }
     parts.join(", ")
 }
@@ -723,9 +758,20 @@ mod tests {
 
     #[test]
     fn allowances_read_plainly_in_the_audit_log() {
-        assert_eq!(describe_allowances(&Allowances::default()), "Team off");
-        let given = Allowances { team: true, oss_repo_micros: Some(5_000_000), trial_micros: Some(2_000_000) };
-        assert_eq!(describe_allowances(&given), "Team on, open-source share $5.00 a repository, trial $2.00");
+        assert_eq!(describe_allowances(&Allowances::default()), "plan not given");
+        let given = Allowances {
+            plan: true,
+            oss_repo_micros: Some(5_000_000),
+            trial_micros: Some(2_000_000),
+            max_concurrent_agents: Some(4),
+            run_cap_micros: Some(3_000_000),
+            issue_cap_micros: None,
+            hold: Some("mining".into()),
+        };
+        assert_eq!(
+            describe_allowances(&given),
+            "plan given, open-source share $5.00 a repository, trial $2.00, 4 agents at once, run cap $3.00, hold: mining"
+        );
     }
 
     #[test]

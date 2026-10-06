@@ -500,6 +500,9 @@ pub enum Halt {
     Budget,
     /// It reached its time cap.
     Time,
+    /// Its sandbox looked like it was mining cryptocurrency: CPU pinned for
+    /// a long time with little I/O and no progress. Held for review.
+    Abuse,
 }
 
 impl Halt {
@@ -507,11 +510,12 @@ impl Halt {
         match self {
             Halt::Budget => "budget",
             Halt::Time => "time",
+            Halt::Abuse => "abuse",
         }
     }
 
     pub fn parse(value: &str) -> Option<Halt> {
-        [Halt::Budget, Halt::Time].into_iter().find(|halt| halt.as_str() == value)
+        [Halt::Budget, Halt::Time, Halt::Abuse].into_iter().find(|halt| halt.as_str() == value)
     }
 }
 

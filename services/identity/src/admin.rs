@@ -53,7 +53,7 @@ struct MemberRow {
 
 /// A `LIKE` pattern matching `query` anywhere, lowercased, with `%`, `_`
 /// and the escape character itself taken literally. None for a blank query.
-fn like_pattern(query: Option<&str>) -> Option<String> {
+pub(crate) fn like_pattern(query: Option<&str>) -> Option<String> {
     let query = query.map(str::trim).filter(|q| !q.is_empty())?;
     let mut pattern = String::from("%");
     for c in query.to_lowercase().chars().take(100) {

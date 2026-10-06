@@ -9,7 +9,9 @@ import { ScanSummary, SecretsList, SeverityCountsGrid, type UpgradeFix, Vulnerab
 import { Switch } from "../../components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { security, work } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
+import { refusal, requireInsider } from "../../lib/access.server";
+import { whyNot } from "../../lib/access";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Security · ${params.owner}/${params.repo} · g1t` });
@@ -21,8 +23,8 @@ const MAX_FIXES = 30;
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   // Git's refusal links here; someone signed out signs in first.
   const viewer = getViewer(context) ?? requireUser(context, request);
-  // Findings are the workspace's own business, public project or not.
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
+  // Findings are for people who can push, public project or not: Write and up.
+  const { access } = await requireInsider(context, params, "push");
   const repo = { namespace: params.owner, name: params.repo };
   const overview = unwrap(await security.overview(repo, viewer));
   const numbers = [...new Set(overview.vulnerabilities.map((vuln) => vuln.issue).filter((n): n is number => n != null))].slice(
@@ -42,7 +44,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       pull: latest ? { number: latest.number, status: latest.status, agent: latest.runtime === "hosted" ? latest.agent : null } : null,
     };
   }
-  return { overview, fixes };
+  return { overview, fixes, can: access.can };
 }
 
 export async function action({ params, context, request }: Route.ActionArgs) {
@@ -51,6 +53,10 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   const repo = { namespace: params.owner, name: params.repo };
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
+  // Scanning spends compute (Write); upkeep is a setting (Maintain); allowing
+  // or resolving a finding is for Admins, who manage the repository's secrets.
+  const refused = await refusal(context, params, intent === "rescan" ? "run" : intent === "upkeep" ? "manage_settings" : "manage_integrations");
+  if (refused) return { ok: false, error: refused };
   if (intent === "decide") {
     const decision = String(form.get("decision") ?? "") as SecretDecision;
     const decided = await security.decideSecret(user, repo, String(form.get("id") ?? ""), decision, String(form.get("reason") ?? ""));
@@ -68,7 +74,7 @@ export async function action({ params, context, request }: Route.ActionArgs) {
 }
 
 export default function ProjectSecurity({ loaderData, params }: Route.ComponentProps) {
-  const { overview, fixes } = loaderData;
+  const { overview, fixes, can } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const action = `${base}/security`;
   const [search, setSearch] = useSearchParams();
@@ -93,7 +99,7 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
             agent lands through checks, review and the merge queue.
           </p>
         </div>
-        <rescan.Form method="post" action={action}>
+        {can.run && <rescan.Form method="post" action={action}>
           <input type="hidden" name="intent" value="rescan" />
           <button
             type="submit"
@@ -104,7 +110,7 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
             {rescan.state !== "idle" ? "Scanning…" : "Re-scan now"}
           </button>
           {rescan.data?.error && <p className="mt-1.5 text-xs text-danger">{rescan.data.error}</p>}
-        </rescan.Form>
+        </rescan.Form>}
       </div>
 
       <div className="mt-6">
@@ -128,7 +134,8 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
         <Switch
           className="mt-0.5"
           checked={upkeepOn}
-          disabled={upkeep.state !== "idle"}
+          disabled={upkeep.state !== "idle" || !can.manage_settings}
+          title={whyNot(can, "manage_settings")}
           onCheckedChange={(checked) => upkeep.submit({ intent: "upkeep", enabled: String(checked) }, { method: "post", action })}
         />
       </label>
@@ -148,7 +155,7 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
           <TabsTrigger value="dependencies">Dependencies{openVulns > 0 ? ` · ${openVulns}` : ""}</TabsTrigger>
         </TabsList>
         <TabsContent value="secrets">
-          <SecretsList secrets={overview.secrets} base={base} action={action} focus={focus} />
+          <SecretsList secrets={overview.secrets} base={base} action={action} focus={focus} decide={can.manage_integrations} />
           <p className="mt-3 text-xs text-faint">
             Not a real secret, such as a test fixture? Add <code>g1t:allow-secret</code> in a comment on its line, or allow it
             here. Allowing is recorded with your name and reason.

@@ -92,6 +92,7 @@ fn handle_event(
                         }
                     }
                     Some("tool_use") => {
+                        crate::abuse::touch();
                         let tool = block["name"].as_str().unwrap_or("tool");
                         if let Some(progress) = progress {
                             progress.step(&progress::describe_tool(tool, &block["input"]));

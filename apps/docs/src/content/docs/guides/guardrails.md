@@ -12,16 +12,20 @@ They apply to every sandbox g1t starts for a project's agents (implement,
 revise, answer, catch up, review, plan, and replies to mentions). The
 sandboxes of its acceptance checks and merge queue get the network list and
 the time cap; they run the project's commands, not an agent, so command
-rules and the cost cap do not apply to them. GitHub Actions jobs, deploy
-builds and merge checks are not covered; see
-[What is not covered](#what-is-not-covered).
+rules and the cost cap do not apply to them. GitHub Actions jobs and deploy
+builds get the network list too, with what builds need added (see
+[builds](#builds)), and their own time limit. Merge checks are not covered;
+see [What is not covered](#what-is-not-covered). Every sandbox, whatever
+it runs, is watched for [mining](#abuse-and-mining).
 
 ## Where to set them
 
 - **Workspace defaults**: the workspace's **Settings**, **Guardrails**.
   Owners can change them; members can read them.
 - **A project's overrides**: the project's **Settings**, **Guardrails**.
-  Members can change them.
+  People with the Maintain [role](/guides/access-and-roles/) or higher on
+  its repository can see and change them; the page is not shown to anyone
+  else.
 
 Every setting on a project's page starts as "As the workspace", which
 follows the workspace's default, whatever it is now. Choose a value to
@@ -82,6 +86,27 @@ Each refused host appears once as a step of the run, such as
 
 Setting **Only allowed hosts** to Open gives that project's sandboxes the
 whole internet, as before guardrails.
+
+### Builds
+
+GitHub Actions jobs and deploy builds reach the project's list, plus what
+real builds need, which no setting removes:
+
+- GitHub, where `uses:` actions, `actions/checkout`'s helpers and the
+  setup actions' downloads come from: `github.com`, `api.github.com`,
+  `codeload.github.com`, `objects.githubusercontent.com`,
+  `raw.githubusercontent.com`, `release-assets.githubusercontent.com`,
+  `ghcr.io`;
+- toolchains: `nodejs.org`, `go.dev`, `dl.google.com`,
+  `static.rust-lang.org`, `sh.rustup.rs`;
+- every package registry above, whatever the project turned on for its
+  agents, and RubyGems, Packagist, NuGet, Maven Central, Gradle and
+  Debian's mirrors;
+- for deploy builds, Cloudflare's API, which the build uploads its app to.
+
+The repository itself is cloned from g1t, which is always reachable. A
+project whose guardrails set **Only allowed hosts** to Open runs its jobs
+and builds with an open network too.
 
 ## Commands
 
@@ -175,6 +200,12 @@ default:
 At most 240 minutes, but a run's credentials last two hours, so a longer
 cap does not give an agent more than that to push.
 
+**The workspace's plan** can set lower caps: a new paid workspace's first
+month, and the trial, cap every run's time and cost (see
+[who can run agents](/guides/g1t-agents/#who-can-run-agents)). A run gets
+the lower of its guardrails' cap and its plan's, for time and for cost,
+and its page shows the cap it got.
+
 A run that reaches a cap is stopped and marked **Stopped**, with "Stopped
 at its cost cap" or "Stopped at its time cap" on its page. A pull request it
 was working on is left open for you, as when a person stops a run: raise
@@ -197,11 +228,47 @@ the cap, not a running total.
   passes, and the sandbox itself is stopped three minutes after, whatever
   is running in it.
 
+## Abuse and mining
+
+g1t does not run cryptocurrency miners, on any plan. Mining needs a mining
+pool and hours of CPU; g1t's sandboxes withhold the first and watch for the
+second:
+
+- **No pool to reach.** No mining pool is on any allowed list, so a
+  restricted sandbox's miner has nowhere to send its work.
+- **Miners by name.** A shell command an agent runs, a check, a build
+  command or a workflow step that names a known miner (`xmrig`,
+  `cpuminer`, `t-rex` and others), a pool address (`stratum+tcp://`) or a
+  miner's flags (`--donate-level`, `--algo=rx/0`) is refused, whatever the
+  project's rules. A running process whose command line names one stops
+  the sandbox at once.
+- **The CPU signature.** Every sandbox samples itself every 30 seconds:
+  CPU use, file and disk I/O, network bytes, new processes, and whether the
+  run did anything (a tool call, an agent step, a new check command or
+  workflow step). It is stopped when, for 10 minutes straight, CPU stays at
+  or above 90% (one dip allowed) while file and disk I/O average under
+  64 KB a second, the network under 16 KB a second, fewer than five new
+  processes start, and nothing else happens.
+
+  Compiling and testing are CPU-bound too, but they read sources, write
+  objects and start processes (a `cargo build` or `npm test` starts
+  hundreds), so they do not match. A compiler can spend minutes in code
+  generation with little I/O, so when the busiest process is a known
+  compiler or runtime (`rustc`, `cc1`, `clang`, `go`, `javac`, `node` and
+  others) the sandbox is not stopped for CPU alone.
+
+A sandbox stopped this way ends with "Stopped: unusual CPU use; contact
+support if this was a real job." An agent run shows it under **Agents**
+and leaves its pull request for you, a check or merge queue run fails with
+it, a workflow job fails with it, and a deployment's status says it. g1t's
+staff are told, with the measurements, and look at what ran. If it was a
+real job, write to hey@flagon.io and say which run.
+
 ## What is not covered
 
-- **GitHub Actions jobs and deploy builds** run in sandboxes with an open
-  network and no command rules. They run commands from the repository's
-  workflows and build settings, not an agent.
+- **GitHub Actions jobs and deploy builds** get the network list and their
+  time limit, but no command rules or cost cap: they run commands from the
+  repository's workflows and build settings, not an agent.
 - **Merge checks** only merge two commits; they are not given guardrails.
 - The **commit history** an agent produces is reviewed like any other
   change: guardrails limit what an agent can do while it works, not what

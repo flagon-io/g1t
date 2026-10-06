@@ -2,18 +2,17 @@ import { isRouteErrorResponse, Links, Meta, Outlet, useRouteLoaderData } from "r
 
 import type { Route } from "./+types/root";
 import "./app.css";
+import displayFont from "@g1t/theme/fonts/bricolage-grotesque-latin.woff2?url";
+import sansFont from "@g1t/theme/fonts/hanken-grotesk-latin.woff2?url";
 import { MobileBar, Sidebar } from "./components/shell";
 import { ButtonLink } from "./components/ui";
 import { requireStaff } from "./lib/staff";
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
-  { rel: "preconnect", href: "https://fonts.googleapis.com" },
-  { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-  {
-    rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&family=JetBrains+Mono:wght@400;500;600&display=swap",
-  },
+  // The faces are served by sudo itself (@g1t/theme); these two are on every page.
+  { rel: "preload", href: sansFont, as: "font", type: "font/woff2", crossOrigin: "anonymous" },
+  { rel: "preload", href: displayFont, as: "font", type: "font/woff2", crossOrigin: "anonymous" },
 ];
 
 export const meta: Route.MetaFunction = () => [

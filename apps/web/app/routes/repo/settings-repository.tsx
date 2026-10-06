@@ -1,22 +1,36 @@
-import { Globe, Lock } from "lucide-react";
-import type { ReactNode } from "react";
-import { Form, data, useNavigation } from "react-router";
+import { ChevronRight, GitBranch } from "lucide-react";
+import { useState } from "react";
+import { Form, Link, redirect, useNavigation } from "react-router";
 
+import { RESTORE_DAYS, type Result, needs } from "@g1t/contracts";
+
+import { DangerAction, DangerZone } from "../../components/danger-zone";
+import { ConfirmDialog } from "../../components/repo-lifecycle";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
+import { SettingsSection as Section } from "../../components/settings-section";
 import type { Route } from "./+types/settings-repository";
 import { page } from "../../lib/meta";
-import { Button, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
-import { RadioCard, RadioGroup } from "../../components/ui/radio-group";
+import { confirmsName, tidyName } from "../../lib/repo-lifecycle";
+import { Button, ErrorText, Field, Input } from "../../components/ui";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
-import { SwitchCard } from "../../components/ui/switch";
-import { repos, work } from "../../lib/services.server";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../components/ui/alert-dialog";
+import { FieldLabel, Field as FormField } from "../../components/ui/field";
+import { Input as TextInput } from "../../components/ui/input";
+import { repos } from "../../lib/services.server";
 import {
   assertSameOrigin,
   getViewer,
   requireUser,
-  roleIn,
-  unwrap,
 } from "../../lib/session.server";
+import { refusal, requireInsider } from "../../lib/access.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Repository settings · ${params.owner}/${params.repo} · g1t` });
@@ -24,271 +38,617 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  // Members only; to anyone else the page does not exist.
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
+  // Maintain and up; to anyone without a role here the page does not exist.
+  const { repo, access } = await requireInsider(context, params, "manage_settings");
   const path = { namespace: params.owner, name: params.repo };
-  const [repo, settings] = await Promise.all([
-    repos.get(path, viewer),
-    work.getSettings(path, viewer),
-  ]);
-  return { repo: unwrap(repo), settings: unwrap(settings) };
+  const branches = await repos.branches(path, viewer);
+  // Renaming, visibility, archiving and the default branch are for Admins;
+  // moving and deleting, for owners of the workspace.
+  const owner = access.can.administer;
+  const destinations = access.can.delete
+    ? (viewer?.workspaces ?? [])
+        .filter((m) => m.role === "owner" && m.slug !== params.owner.toLowerCase())
+        .map((m) => ({ slug: m.slug, name: m.name ?? m.slug }))
+    : [];
+  return {
+    repo,
+    // An empty repository has no branches yet; the page still works.
+    branches: branches.ok ? branches.value.map((b) => b.name) : [],
+    owner,
+    remove: access.can.delete,
+    destinations,
+  };
 }
 
-/** A whole number from a form field, kept within `min` and `max`. */
-function count(value: FormDataEntryValue | null, min: number, max: number): number {
-  const number = Math.trunc(Number(value));
-  return Number.isFinite(number) ? Math.min(Math.max(number, min), max) : min;
+/** What a form on this page came back with: which one, and how it went. */
+type Outcome = { intent: string; saved: boolean; error: string | null };
+
+function outcome(intent: string, result: Result<unknown>): Outcome {
+  return result.ok ? { intent, saved: true, error: null } : { intent, saved: false, error: result.error.message };
 }
 
-export async function action({ request, params, context }: Route.ActionArgs) {
+export async function action({ request, params, context }: Route.ActionArgs): Promise<Outcome> {
   assertSameOrigin(request);
   const user = requireUser(context, request);
   const form = await request.formData();
   const path = { namespace: params.owner, name: params.repo };
-  const on = (name: string) => form.get(name) === "on";
+  const full = `${params.owner}/${params.repo}`;
+  const intent = String(form.get("intent") ?? "details");
+  const text = (name: string) => String(form.get(name) ?? "").trim();
+  const typed = text("confirm");
+  // What each form needs: the details are settings, renaming a branch other
+  // than the default is pushing, transfer and delete are for owners.
+  const capability =
+    intent === "details"
+      ? "manage_settings"
+      : intent === "rename-branch"
+        ? "push"
+        : intent === "transfer" || intent === "delete"
+          ? "delete"
+          : "administer";
+  const refused = await refusal(context, params, capability);
+  if (refused) return { intent, saved: false, error: refused };
 
-  // The repository's own details belong to one service and how its pull
-  // requests are handled to another; the page is one form over both.
-  const repo = await repos.update(user, path, {
-    description: String(form.get("description") ?? ""),
-    isPrivate: form.get("visibility") === "private",
-    protected: on("protected"),
-    // Typed with commas or spaces between them; the service tidies the rest.
-    topics: String(form.get("topics") ?? "")
-      .split(/[\s,]+/)
-      .filter(Boolean),
-  });
-  if (!repo.ok) return { saved: false, error: repo.error.message };
-  const settings = await work.updateSettings(user, path, {
-    autoMerge: on("autoMerge"),
-    requireUpToDate: on("requireUpToDate"),
-    requiredApprovals: count(form.get("requiredApprovals"), 0, 6),
-    countAgentApprovals: on("countAgentApprovals"),
-    allowIgnoringChecks: !on("requireChecks"),
-    agentReview: on("agentReview"),
-    maxRevisions: count(form.get("maxRevisions"), 0, 5),
-    mergeQueue: on("mergeQueue"),
-  });
-  return settings.ok
-    ? { saved: true, error: null }
-    : { saved: false, error: settings.error.message };
+  switch (intent) {
+    case "rename": {
+      const renamed = await repos.rename(user, path, tidyName(text("name")));
+      if (!renamed.ok) return outcome(intent, renamed);
+      // The old address redirects, but the page moves with it now.
+      throw redirect(`/${renamed.value.namespace}/${renamed.value.name}/settings/repository`);
+    }
+    case "default-branch":
+      return outcome(intent, await repos.setDefaultBranch(user, path, text("branch")));
+    case "rename-branch":
+      return outcome(intent, await repos.renameBranch(user, path, text("from"), text("to")));
+    case "visibility": {
+      if (!confirmsName(typed, full)) return { intent, saved: false, error: `Type ${full} to confirm.` };
+      return outcome(intent, await repos.setVisibility(user, path, text("visibility") === "private", typed));
+    }
+    case "archive":
+      return outcome(intent, await repos.archive(user, path, text("archived") === "true"));
+    case "transfer": {
+      // repos checks both workspaces' owners, the name and storage, and
+      // keeps the old address as a redirect.
+      const to = text("to").toLowerCase();
+      if (!confirmsName(typed, full)) return { intent, saved: false, error: `Type ${full} to confirm.` };
+      const moved = await repos.transfer(user, path, to);
+      if (!moved.ok) return outcome(intent, moved);
+      throw redirect(`/${moved.value.namespace}/${moved.value.name}/settings/repository`);
+    }
+    case "delete": {
+      if (!confirmsName(typed, full)) return { intent, saved: false, error: `Type ${full} to confirm.` };
+      const deleted = await repos.delete(user, path, typed);
+      if (!deleted.ok) return outcome(intent, deleted);
+      throw redirect(`/${params.owner}/-/repositories?deleted=${encodeURIComponent(deleted.value.name)}`);
+    }
+    default:
+      return outcome(
+        "details",
+        await repos.update(user, path, {
+          description: text("description"),
+          website: text("website"),
+          // Typed with commas or spaces between them; the service tidies the rest.
+          topics: text("topics").split(/[\s,]+/).filter(Boolean),
+        }),
+      );
+  }
 }
 
-function Section({
-  title,
-  about,
-  children,
-}: {
-  title: string;
-  about: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="grid gap-x-10 gap-y-4 border-t border-line pt-8 first:border-t-0 first:pt-0 lg:grid-cols-[16rem_1fr]">
-      <div>
-        <h2 className="font-medium">{title}</h2>
-        <p className="mt-1 text-sm text-muted">{about}</p>
-      </div>
-      <div className="space-y-3">{children}</div>
-    </section>
-  );
-}
-
-/** A setting that is on or off, with what it means. */
-function Toggle({
-  name,
-  on,
-  title,
-  children,
-}: {
-  name: string;
-  on: boolean;
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <SwitchCard name={name} defaultChecked={on} title={title}>
-      {children}
-    </SwitchCard>
-  );
-}
-
-/** A setting chosen from a few numbers. */
-function Choice({
-  name,
-  value,
-  options,
-  title,
-  children,
-}: {
-  name: string;
-  value: number;
-  options: [number, string][];
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex items-start gap-4 rounded-xl border border-line bg-surface p-4">
-      <div className="grow">
-        <p className="text-sm font-medium">{title}</p>
-        <p className="mt-1 text-sm text-muted">{children}</p>
-      </div>
-      <Select name={name} defaultValue={String(value)}>
-        <SelectTrigger size="sm" aria-label={title} className="w-auto min-w-28 shrink-0">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent align="end">
-          {options.map(([option, label]) => (
-            <SelectItem key={option} value={String(option)}>
-              {label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
+/** Saved, or the error, for the form that posted `intent`. */
+function Status({ intent, data: result, saved = "Saved." }: { intent: string; data: Outcome | undefined; saved?: string }) {
+  if (result?.intent !== intent) return null;
+  return result.saved ? <span className="text-sm text-muted">{saved}</span> : <ErrorText>{result.error}</ErrorText>;
 }
 
 export default function RepoSettings({ loaderData, actionData }: Route.ComponentProps) {
-  const { repo, settings } = loaderData;
-  const saving = useNavigation().state === "submitting";
-  const branch = repo.defaultBranch;
+  const { repo, branches, owner, remove, destinations } = loaderData;
+  const navigation = useNavigation();
+  const posting = (intent: string) => navigation.state !== "idle" && navigation.formData?.get("intent") === intent;
+  const base = `/${repo.namespace}/${repo.name}`;
+  const full = `${repo.namespace}/${repo.name}`;
+  const archived = Boolean(repo.archivedAt);
+  const errorFor = (intent: string) => (actionData?.intent === intent ? actionData.error : null);
   return (
     <>
-      <RepoSettingsHeading base={`/${repo.namespace}/${repo.name}`} />
-      <Form method="post" className="max-w-4xl space-y-8">
-        <Section title="General" about="What the repository is and who can see it.">
-          <Field label="Description">
-            <Input name="description" maxLength={200} defaultValue={repo.description ?? ""} />
-          </Field>
-          <Field
-            label="Topics"
-            hint="What it is about, for search and Explore: words such as cli, rust or design-system, separated by commas or spaces. Up to 20."
-          >
-            <Input name="topics" maxLength={800} defaultValue={(repo.topics ?? []).join(", ")} placeholder="cli, rust" />
-          </Field>
-          <fieldset>
-            <legend className="sr-only">Visibility</legend>
-            <RadioGroup
-              name="visibility"
-              defaultValue={repo.isPrivate ? "private" : "public"}
-              aria-label="Visibility"
-              className="gap-3 sm:grid-cols-2"
-            >
-              <RadioCard value="public" icon={<Globe />} title="Public" description="Anyone can see and clone it." />
-              <RadioCard value="private" icon={<Lock />} title="Private" description="Only members of the workspace can see it." />
-            </RadioGroup>
-          </fieldset>
+      <RepoSettingsHeading base={base} />
+      <div className="max-w-4xl space-y-8">
+        <Section title="Name" about="Its address on g1t, in git remotes and in the API.">
+          <RenameForm repo={repo} owner={owner} archived={archived} busy={posting("rename")} result={actionData} />
+        </Section>
+
+        <Section title="Details" about="What the repository is, for its page, search and Explore.">
+          <Form method="post">
+            <fieldset disabled={archived} className="min-w-0 space-y-3 disabled:cursor-not-allowed disabled:opacity-60">
+              <input type="hidden" name="intent" value="details" />
+              <Field label="Description">
+                <Input name="description" maxLength={200} defaultValue={repo.description ?? ""} />
+              </Field>
+              <Field label="Website" hint="Its home page, shown on its page. An http or https address.">
+                <Input name="website" type="url" maxLength={300} defaultValue={repo.website ?? ""} placeholder="https://" />
+              </Field>
+              <Field
+                label="Topics"
+                hint="What it is about, for search and Explore: words such as cli, rust or design-system, separated by commas or spaces. Up to 20."
+              >
+                <Input name="topics" maxLength={800} defaultValue={(repo.topics ?? []).join(", ")} placeholder="cli, rust" />
+              </Field>
+              <div className="flex flex-wrap items-center gap-4 pt-1">
+                <Button type="submit" disabled={posting("details")}>
+                  {posting("details") ? "Saving…" : "Save"}
+                </Button>
+                <Status intent="details" data={actionData} />
+              </div>
+            </fieldset>
+          </Form>
         </Section>
 
         <Section
-          title="Branch protection"
-          about={`Rules for ${branch}, the branch everything lands on.`}
+          title="Branches"
+          about="The branch everything lands on, and renaming branches."
         >
-          <Toggle
-            name="protected"
-            on={repo.protected}
-            title={`Require a pull request to change ${branch}`}
+          <DefaultBranchForm repo={repo} branches={branches} archived={archived || !owner} busy={posting("default-branch")} result={actionData} />
+          <RenameBranchForm
+            repo={repo}
+            branches={branches}
+            owner={owner}
+            archived={archived}
+            busy={posting("rename-branch")}
+            result={actionData}
+          />
+          <Link
+            to={`${base}/settings/branches`}
+            className="group flex items-center gap-3 rounded-xl border border-line p-4 transition-colors hover:border-line-strong hover:bg-surface"
           >
-            Pushing to {branch} is refused, for members and agents alike, and git says why.
-            Changes reach it only by merging a pull request. The first push to an empty
-            repository is still allowed.
-          </Toggle>
-          <Choice
-            name="requiredApprovals"
-            value={settings.requiredApprovals}
-            title="Required approvals"
-            options={[
-              [0, "None"],
-              [1, "1"],
-              [2, "2"],
-              [3, "3"],
-            ]}
-          >
-            How many reviewers must approve before a pull request can merge. A reviewer
-            who has since asked for changes blocks it, and nobody approves their own.
-          </Choice>
-          <Toggle
-            name="countAgentApprovals"
-            on={settings.countAgentApprovals}
-            title="A g1t agent's approval counts"
-          >
-            With this off, required approvals have to come from people, and an agent's
-            review is advice.
-          </Toggle>
-          <Toggle
-            name="requireChecks"
-            on={!settings.allowIgnoringChecks}
-            title="Require acceptance checks to pass"
-          >
-            With this off, a member can choose to merge although the issue's checks
-            failed or have not finished. With it on, nobody can.
-          </Toggle>
-          <Toggle
-            name="requireUpToDate"
-            on={settings.requireUpToDate}
-            title="Require pull requests to be up to date before merging"
-          >
-            With this off, a pull request can be merged after {branch} has moved: g1t
-            brings it up to date as part of merging, and asks you only if there is a
-            conflict it cannot resolve. With it on, it has to catch up first and its
-            checks run again on the result, so what lands is exactly what was checked.
-          </Toggle>
-          <Toggle name="mergeQueue" on={settings.mergeQueue} title="Merge through a queue">
-            Merging adds a pull request to the queue instead of changing {branch} at once.
-            g1t tests it together with every pull request ahead of it, several
-            combinations at a time, and {branch} only ever moves to a combination whose
-            checks passed. One that fails leaves the queue and goes back to its author,
-            and the ones behind it are tested again without it.
-          </Toggle>
-        </Section>
-
-        <Section
-          title="g1t agents"
-          about="What happens to a pull request a g1t agent makes, from the moment it is ready."
-        >
-          <Toggle name="agentReview" on={settings.agentReview} title="Review by a second agent">
-            A different agent reads each change and posts comments on lines, a summary
-            and a verdict. If it asks for changes, the author is sent back to make them.
-            With this off, review is left to people.
-          </Toggle>
-          <Choice
-            name="maxRevisions"
-            value={settings.maxRevisions}
-            title="Revisions before asking you"
-            options={[
-              [0, "None"],
-              [1, "1"],
-              [2, "2"],
-              [3, "3"],
-              [5, "5"],
-            ]}
-          >
-            How many times an agent is sent back to fix failed checks or address a
-            review before g1t stops and the pull request says it needs you.
-          </Choice>
-          <Toggle name="autoMerge" on={settings.autoMerge} title="Merge automatically when ready">
-            A g1t agent's pull request lands without anyone pressing merge once every
-            rule above is met. With this off, it waits for a member. Pull requests from
-            people and from other agents always wait.
-          </Toggle>
-        </Section>
-
-        <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-4 border-t border-line bg-bg/90 px-4 py-4 backdrop-blur">
-          <Button type="submit" disabled={saving}>
-            {saving ? "Saving…" : "Save settings"}
-          </Button>
-          {actionData?.saved && <span className="text-sm text-muted">Saved.</span>}
-          <ErrorText>{actionData?.error}</ErrorText>
-          {settings.updatedBy && settings.updatedAt && !actionData && (
-            <span className="text-xs text-faint">
-              Merge rules last changed by{" "}
-              <span className="font-mono">{settings.updatedBy}</span>{" "}
-              <TimeAgo at={settings.updatedAt} />
+            <GitBranch size={16} className="shrink-0 text-accent" />
+            <span className="min-w-0 grow">
+              <span className="block text-sm font-medium">Branches and merging</span>
+              <span className="mt-0.5 block text-sm text-muted">
+                Protection for {repo.defaultBranch}, required approvals, the merge queue and what agents do.
+              </span>
             </span>
-          )}
-        </div>
-      </Form>
+            <ChevronRight size={16} className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        </Section>
+
+        {owner ? (
+          <div id="danger-zone" className="scroll-mt-20 border-t border-line pt-8">
+            <DangerZone>
+              <VisibilityAction full={full} isPrivate={repo.isPrivate} error={errorFor("visibility")} />
+              <ArchiveAction full={full} archived={archived} error={errorFor("archive")} />
+              {remove && <TransferAction repo={full} destinations={destinations} error={errorFor("transfer") ?? undefined} />}
+              {remove && <DeleteAction full={full} error={errorFor("delete")} />}
+            </DangerZone>
+            {!remove && <p className="mt-4 text-sm text-muted">Only an owner of the workspace can transfer or delete it.</p>}
+          </div>
+        ) : (
+          <p className="border-t border-line pt-8 text-sm text-muted">
+            Renaming it, changing who can see it and archiving it need the Admin role. Only an owner of the workspace can
+            transfer or delete it.
+          </p>
+        )}
+      </div>
     </>
+  );
+}
+
+type RepoLike = { namespace: string; name: string; defaultBranch: string; isPrivate: boolean };
+
+/** The repository's name, which owners can change; its old address keeps redirecting. */
+function RenameForm({
+  repo,
+  owner,
+  archived,
+  busy,
+  result,
+}: {
+  repo: RepoLike;
+  owner: boolean;
+  archived: boolean;
+  busy: boolean;
+  result: Outcome | undefined;
+}) {
+  const [name, setName] = useState(repo.name);
+  const wanted = tidyName(name);
+  const changed = wanted !== "" && wanted !== repo.name;
+  return (
+    <Form method="post">
+      <fieldset disabled={!owner || archived} className="min-w-0 space-y-3">
+        <input type="hidden" name="intent" value="rename" />
+        <FormField>
+          <FieldLabel htmlFor="repo-name" className="sr-only">Name</FieldLabel>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <TextInput
+              id="repo-name"
+              name="name"
+              value={name}
+              maxLength={100}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoComplete="off"
+              onChange={(event) => setName(event.target.value)}
+              className="font-mono"
+            />
+            <Button type="submit" variant="quiet" disabled={!changed || busy}>
+              {busy ? "Renaming…" : "Rename"}
+            </Button>
+          </div>
+        </FormField>
+        <p className="text-xs text-faint">
+          {!owner ? (
+            needs("administer")
+          ) : changed ? (
+            <>
+              It moves to <span className="font-mono break-all text-fg">g1t.sh/{repo.namespace}/{wanted}</span>. Links, git
+              remotes and API calls to <span className="font-mono break-all">g1t.sh/{repo.namespace}/{repo.name}</span>{" "}
+              redirect there until a repository is made at the old address.
+            </>
+          ) : (
+            <>
+              At <span className="font-mono break-all">g1t.sh/{repo.namespace}/{repo.name}</span>. After a rename, the old
+              address redirects to the new one.
+            </>
+          )}
+        </p>
+        <Status intent="rename" data={result} />
+      </fieldset>
+    </Form>
+  );
+}
+
+/** Which branch is the default: what pull requests open against and protection covers. */
+function DefaultBranchForm({
+  repo,
+  branches,
+  archived,
+  busy,
+  result,
+}: {
+  repo: RepoLike;
+  branches: string[];
+  archived: boolean;
+  busy: boolean;
+  result: Outcome | undefined;
+}) {
+  const [branch, setBranch] = useState(repo.defaultBranch);
+  const options = branches.includes(repo.defaultBranch) ? branches : [repo.defaultBranch, ...branches];
+  return (
+    <Form method="post" className="rounded-xl border border-line bg-surface p-4">
+      <fieldset disabled={archived} className="min-w-0">
+        <input type="hidden" name="intent" value="default-branch" />
+        <p className="text-sm font-medium">Default branch</p>
+        <p className="mt-1 text-sm text-muted">
+          What the repository opens on, what pull requests target, and what branch protection covers.
+        </p>
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Select name="branch" value={branch} onValueChange={setBranch} disabled={archived || options.length < 2}>
+            <SelectTrigger aria-label="Default branch" className="font-mono sm:max-w-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {options.map((name) => (
+                <SelectItem key={name} value={name} className="font-mono">
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button type="submit" variant="quiet" disabled={busy || branch === repo.defaultBranch}>
+            {busy ? "Changing…" : "Change default branch"}
+          </Button>
+        </div>
+        {options.length < 2 && (
+          <p className="mt-2 text-xs text-faint">Push another branch to make it the default instead.</p>
+        )}
+        <div className="mt-2">
+          <Status intent="default-branch" data={result} />
+        </div>
+      </fieldset>
+    </Form>
+  );
+}
+
+/** Renaming a branch: pull requests from it follow, and old addresses redirect. */
+function RenameBranchForm({
+  repo,
+  branches,
+  owner,
+  archived,
+  busy,
+  result,
+}: {
+  repo: RepoLike;
+  branches: string[];
+  owner: boolean;
+  archived: boolean;
+  busy: boolean;
+  result: Outcome | undefined;
+}) {
+  // Only Admins rename the default branch.
+  const renamable = owner ? branches : branches.filter((b) => b !== repo.defaultBranch);
+  const [from, setFrom] = useState(renamable[0] ?? "");
+  const [to, setTo] = useState("");
+  const ready = from !== "" && to.trim() !== "" && to.trim() !== from;
+  return (
+    <Form method="post" className="rounded-xl border border-line bg-surface p-4" onSubmit={() => setTo(to.trim())}>
+      <fieldset disabled={archived || renamable.length === 0} className="min-w-0">
+        <input type="hidden" name="intent" value="rename-branch" />
+        <p className="text-sm font-medium">Rename a branch</p>
+        <p className="mt-1 text-sm text-muted">
+          Pull requests from it follow it, and addresses that name the old branch redirect to the new one.
+          {owner ? "" : ` Renaming ${repo.defaultBranch} needs the Admin role.`}
+        </p>
+        {renamable.length === 0 ? (
+          <p className="mt-3 text-sm text-faint">There is no branch you can rename yet.</p>
+        ) : (
+          <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+            <FormField>
+              <FieldLabel htmlFor="rename-from">Branch</FieldLabel>
+              <Select name="from" value={from} onValueChange={setFrom}>
+                <SelectTrigger id="rename-from" aria-label="Branch" className="font-mono">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {renamable.map((name) => (
+                    <SelectItem key={name} value={name} className="font-mono">
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField>
+              <FieldLabel htmlFor="rename-to">New name</FieldLabel>
+              <TextInput
+                id="rename-to"
+                name="to"
+                value={to}
+                maxLength={200}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoComplete="off"
+                placeholder={from === repo.defaultBranch ? "main" : "feature/new-name"}
+                onChange={(event) => setTo(event.target.value)}
+                className="font-mono"
+              />
+            </FormField>
+            <Button type="submit" variant="quiet" disabled={!ready || busy}>
+              {busy ? "Renaming…" : "Rename branch"}
+            </Button>
+          </div>
+        )}
+        <div className="mt-2">
+          <Status intent="rename-branch" data={result} saved="Renamed." />
+        </div>
+      </fieldset>
+    </Form>
+  );
+}
+
+/** Public to private or back, with what changes, typed out to confirm. */
+function VisibilityAction({ full, isPrivate, error }: { full: string; isPrivate: boolean; error: string | null }) {
+  const next = isPrivate ? "public" : "private";
+  return (
+    <ConfirmDialog
+      intent="visibility"
+      fields={{ visibility: next }}
+      title={`Make ${full} ${next}?`}
+      confirm={full}
+      submit={`Make ${next}`}
+      busy="Changing…"
+      error={error}
+      trigger={(open) => (
+        <DangerAction
+          title="Change visibility"
+          action={
+            <Button type="button" variant="danger" onClick={open}>
+              Make {next}
+            </Button>
+          }
+        >
+          It is {isPrivate ? "private: only people with access can see it" : "public: anyone can see and clone it"}.
+        </DangerAction>
+      )}
+    >
+      {isPrivate ? (
+        <>
+          <li>Anyone can see its code, issues and pull requests, and clone it, without signing in.</li>
+          <li>It shows in search and on Explore.</li>
+          <li>Links to it show a preview card with its name and description where they are shared.</li>
+        </>
+      ) : (
+        <>
+          <li>Only people with access can see it: owners, members by the workspace's base permission, and people you add. Anyone else gets a page that says it does not exist.</li>
+          <li>It leaves search and Explore, and links to it stop showing a preview card.</li>
+          <li>Its storage counts toward the workspace's private storage. A free workspace has 1 GB, and making it private is refused when that would go over.</li>
+        </>
+      )}
+    </ConfirmDialog>
+  );
+}
+
+/** Read-only, or back to normal. */
+function ArchiveAction({ full, archived, error }: { full: string; archived: boolean; error: string | null }) {
+  return (
+    <ConfirmDialog
+      intent="archive"
+      fields={{ archived: archived ? "false" : "true" }}
+      title={archived ? `Unarchive ${full}?` : `Archive ${full}?`}
+      description={archived ? "It goes back to working as before." : "It becomes read-only. You can unarchive it at any time."}
+      submit={archived ? "Unarchive" : "Archive"}
+      busy={archived ? "Unarchiving…" : "Archiving…"}
+      danger={!archived}
+      error={error}
+      trigger={(open) => (
+        <DangerAction
+          title={archived ? "Unarchive this repository" : "Archive this repository"}
+          action={
+            <Button type="button" variant="danger" onClick={open}>
+              {archived ? "Unarchive" : "Archive"}
+            </Button>
+          }
+        >
+          {archived
+            ? "It is archived and read-only. Unarchiving lets pushes, merges, agents and workflows work again."
+            : "Make it read-only: everything stays where it is and can be read, and nothing changes it."}
+        </DangerAction>
+      )}
+    >
+      {archived ? (
+        <>
+          <li>Pushes and merges are accepted again.</li>
+          <li>Issues and pull requests unlock.</li>
+          <li>Agents and workflows run again.</li>
+        </>
+      ) : (
+        <>
+          <li>Pushes and merges are refused, for members and agents alike.</li>
+          <li>Issues and pull requests are locked. They stay readable.</li>
+          <li>Agents and workflows do not run.</li>
+          <li>Its deployments keep serving, and anyone who could see it still can.</li>
+        </>
+      )}
+    </ConfirmDialog>
+  );
+}
+
+/** Deleting: hidden at once, restorable for a while, then gone. */
+function DeleteAction({ full, error }: { full: string; error: string | null }) {
+  const namespace = full.split("/")[0];
+  return (
+    <ConfirmDialog
+      intent="delete"
+      title={`Delete ${full}?`}
+      description={`You can restore it for ${RESTORE_DAYS} days.`}
+      confirm={full}
+      submit="Delete repository"
+      busy="Deleting…"
+      error={error}
+      trigger={(open) => (
+        <DangerAction
+          title="Delete this repository"
+          action={
+            <Button type="button" variant="danger" onClick={open}>
+              Delete
+            </Button>
+          }
+        >
+          It can be restored from the workspace's repositories for {RESTORE_DAYS} days, then it is removed for good.
+        </DangerAction>
+      )}
+    >
+      <li>It disappears at once: its pages, git remote and API stop answering, for everyone.</li>
+      <li>
+        Owners can restore it, as it was, from <span className="font-mono text-fg">{namespace}</span>'s Recently deleted
+        repositories for {RESTORE_DAYS} days. After that it is removed for good, its git data with it.
+      </li>
+      <li>Its name stays taken until then, so no other repository can be made at its address.</li>
+    </ConfirmDialog>
+  );
+}
+
+/**
+ * Moving the repository to another workspace the owner also owns. The
+ * dialog says what moves and what changes, and asks for the full name.
+ */
+function TransferAction({
+  repo,
+  destinations,
+  error,
+}: {
+  repo: string;
+  destinations: { slug: string; name: string }[];
+  error?: string;
+}) {
+  const [open, setOpen] = useState(Boolean(error));
+  const [to, setTo] = useState(destinations[0]?.slug ?? "");
+  const [confirm, setConfirm] = useState("");
+  const navigation = useNavigation();
+  const moving = navigation.state !== "idle" && navigation.formData?.get("intent") === "transfer";
+  const name = repo.split("/")[1];
+  return (
+    <DangerAction
+      title="Transfer this repository"
+      action={
+        <Button type="button" variant="danger" disabled={destinations.length === 0} onClick={() => setOpen(true)}>
+          Transfer
+        </Button>
+      }
+    >
+      {destinations.length === 0 ? (
+        <>Move it to another workspace you own. You own no other workspace yet.</>
+      ) : (
+        <>Move it to another workspace you own. Its old address keeps redirecting.</>
+      )}
+      <AlertDialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          setConfirm("");
+        }}
+      >
+        <AlertDialogContent>
+          <Form method="post" className="grid gap-4">
+            <input type="hidden" name="intent" value="transfer" />
+            <AlertDialogHeader>
+              <AlertDialogTitle>Transfer {repo}</AlertDialogTitle>
+              <AlertDialogDescription>
+                It keeps its name and moves with everything in it: code, issues, pull requests, workflow runs,
+                deployments, its project, and its own secrets, variables and webhooks.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <FormField>
+              <FieldLabel htmlFor="transfer-to">New workspace</FieldLabel>
+              <Select name="to" value={to} onValueChange={setTo}>
+                <SelectTrigger id="transfer-to" aria-label="New workspace">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {destinations.map((d) => (
+                    <SelectItem key={d.slug} value={d.slug}>
+                      {d.name === d.slug ? d.slug : `${d.name} (${d.slug})`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted">
+              <li>
+                It moves to <span className="font-mono text-fg">g1t.sh/{to}/{name}</span>. Links, git remotes and API
+                calls to <span className="font-mono">g1t.sh/{repo}</span> redirect there until a repository is made at
+                the old address.
+              </li>
+              <li>
+                Apps it deploys move to <span className="font-mono">*.g1t.page</span> names with the new workspace; the
+                old ones redirect for 90 days. Custom domains follow.
+              </li>
+              <li>The old workspace's secrets, webhooks and integrations stop reaching it; the new one's start.</li>
+              <li>Usage from now on is charged to {to}. What it used before stays on the old workspace's bill.</li>
+            </ul>
+            <FormField>
+              <FieldLabel htmlFor="transfer-confirm">
+                Type <span className="font-mono text-fg">{repo}</span> to confirm
+              </FieldLabel>
+              <TextInput
+                id="transfer-confirm"
+                name="confirm"
+                value={confirm}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoComplete="off"
+                onChange={(event) => setConfirm(event.target.value)}
+                className="font-mono"
+              />
+            </FormField>
+            <ErrorText>{error}</ErrorText>
+            <AlertDialogFooter>
+              <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
+              <Button type="submit" variant="danger" disabled={!to || !confirmsName(confirm, repo) || moving}>
+                {moving ? "Transferring…" : "Transfer"}
+              </Button>
+            </AlertDialogFooter>
+          </Form>
+        </AlertDialogContent>
+      </AlertDialog>
+    </DangerAction>
   );
 }

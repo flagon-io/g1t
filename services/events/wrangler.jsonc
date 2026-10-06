@@ -38,9 +38,10 @@
 		],
 		"consumers": [{ "queue": "g1t-events", "max_batch_size": 100, "max_batch_timeout": 1 }]
 	},
-	// Once a day, audit entries older than any plan reads back are removed.
-	// Keep it at least billing's TEAM_AUDIT_RETENTION_DAYS.
+	// Once a day, audit entries older than the audit log reads back are
+	// removed. The same on every plan: keep it at least billing's
+	// AUDIT_RETENTION_DAYS.
 	"triggers": { "crons": ["41 3 * * *"] },
-	"vars": { "AUDIT_KEEP_DAYS": "365" },
+	"vars": { "AUDIT_KEEP_DAYS": "90" },
 	"observability": { "enabled": true }
 }

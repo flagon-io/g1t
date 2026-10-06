@@ -9,6 +9,8 @@
 //! the sender give up and send it again.
 
 mod alerts;
+mod github;
+mod github_jwt;
 mod http;
 mod models;
 mod refs;
@@ -1373,6 +1375,10 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         return Response::error("Not found", 404);
     };
     let body: Value = request.json().await?;
+    // The GitHub App's installations, repositories and webhook; see github.rs.
+    if let Some(answer) = github::route(&method, &body, &env, &ctx).await {
+        return answer;
+    }
     let service = Integrations::new(&env)?;
     match method.as_str() {
         "list" => reply(&service.list(args(body)?).await?),
@@ -1418,6 +1424,19 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
             message.ack();
             continue;
         }
+        // A repository transferred: its rows follow its new path.
+        if g1t_kit::transfer::on_event(&env, &env.d1("DB")?, message.body(), rename::TRANSFERRED).await? {
+            message.ack();
+            continue;
+        }
+        // A workspace deleted: what it kept for itself goes.
+        if g1t_kit::deleted::on_event(&env.d1("DB")?, message.body(), rename::DELETED).await? {
+            message.ack();
+            continue;
+        }
+        // A repository purged: what was kept for it goes.
+        rename::on_purged(&env.d1("DB")?, message.body()).await?;
+        github::on_event(&env, message.body()).await?;
         service.on_event(message.body()).await?;
         message.ack();
     }

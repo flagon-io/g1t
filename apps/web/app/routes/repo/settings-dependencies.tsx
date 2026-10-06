@@ -1,5 +1,5 @@
 import { ArrowDownLeft, ArrowUpRight, FileCode2, Network, Trash2 } from "lucide-react";
-import { Form, Link, data, useNavigation } from "react-router";
+import { Form, Link, useNavigation } from "react-router";
 
 import type { DependencyLink } from "@g1t/contracts";
 
@@ -9,7 +9,8 @@ import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { Avatar, Button, EmptyState, ErrorText, Field, Input } from "../../components/ui";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { projects } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
+import { requireCapability, requireInsider } from "../../lib/access.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Dependencies · ${params.owner}/${params.repo} · g1t` });
@@ -17,7 +18,8 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
+  // Admins; to anyone without a role here the page does not exist.
+  await requireInsider(context, params, "manage_settings");
   const [deps, all] = await Promise.all([
     projects.dependencies(params.owner, params.repo, viewer),
     projects.list(params.owner, viewer),
@@ -28,6 +30,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
+  await requireCapability(context, params, "manage_settings");
   const form = await request.formData();
   const on = String(form.get("on") ?? "");
   if (form.get("intent") === "remove") {

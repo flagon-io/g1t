@@ -4,6 +4,8 @@
  * across its top, the way GitHub and Vercel do. Soon tabs come from the
  * roadmap and open its page for them, under the same tabs.
  */
+import type { Abilities, Capability } from "@g1t/contracts";
+
 import { type RoadmapItem, roadmapIn } from "./roadmap";
 
 export type Tab = {
@@ -16,6 +18,8 @@ export type Tab = {
   about?: string;
   /** Members only. */
   members?: boolean;
+  /** Only for viewers whose role has this capability, once it is known. */
+  needs?: Capability;
 };
 
 export type Section = {
@@ -40,7 +44,7 @@ export const SECTIONS: Section[] = [
     key: "Issues",
     tabs: [
       { label: "Issues", path: "issues" },
-      { label: "Outcomes", path: "plans", members: true },
+      { label: "Outcomes", path: "plans" },
       ...soon("Issues"),
     ],
   },
@@ -49,18 +53,18 @@ export const SECTIONS: Section[] = [
     tabs: [
       { label: "At work", path: "agents" },
       { label: "Sessions", path: "sessions" },
-      { label: "Memory", path: "memory", members: true },
+      { label: "Memory", path: "memory" },
       ...soon("Agents"),
     ],
   },
   {
     key: "Deployments",
-    tabs: [{ label: "Deployments", path: "deployments", members: true }, ...soon("Deployments")],
+    tabs: [{ label: "Deployments", path: "deployments" }, ...soon("Deployments")],
   },
   { key: "Observability", tabs: soon("Observability") },
   {
     key: "Security",
-    tabs: [{ label: "Overview", path: "security", members: true }, ...soon("Security")],
+    tabs: [{ label: "Overview", path: "security", members: true, needs: "push" }, ...soon("Security")],
   },
   { key: "Insights", tabs: soon("Insights") },
 ];
@@ -82,9 +86,11 @@ function matches(rest: string, tab: Tab): boolean {
  * The tabs for the page at `rest` (the path under the project), if it
  * belongs to a page with more than one view.
  */
-export function tabsFor(rest: string, member: boolean): Tab[] | null {
+export function tabsFor(rest: string, member: boolean, can?: Partial<Abilities>): Tab[] | null {
   for (const section of [...SECTIONS, PULLS]) {
-    const visible = section.tabs.filter((tab) => member || !tab.members);
+    const visible = section.tabs.filter(
+      (tab) => (member || !tab.members) && (!tab.needs || !can || Boolean(can[tab.needs])),
+    );
     if (visible.length > 1 && visible.some((tab) => matches(rest, tab))) return visible;
   }
   return null;

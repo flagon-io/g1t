@@ -3,16 +3,23 @@
 //! Reached only through service bindings; see `g1t_contracts::identity` for
 //! the methods and their arguments.
 
+mod access;
 mod admin;
 mod avatars;
 mod crypto;
+mod deletion;
 mod device;
 mod directory;
 mod email;
+mod emails;
+mod github;
+mod invites;
 mod oauth;
 mod profiles;
 mod rename;
 mod run_credentials;
+mod security;
+mod throttle;
 mod tokens;
 mod workspaces;
 
@@ -67,7 +74,10 @@ struct UserRow {
 struct TokenOwner {
     id: String,
     username: String,
-    email: Option<String>,
+    /// The address a link was sent to; null on links from before accounts
+    /// had several, which are for the primary.
+    #[serde(default)]
+    email_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -113,7 +123,12 @@ impl Identity {
         let Some(mut user) = user else {
             return Ok(None);
         };
-        user.workspaces = self.memberships(&user.id).await?;
+        let memberships = self.memberships(&user.id).await?;
+        // Access to a workspace is used only within its policy; see security.rs.
+        user.workspaces = self.within_policy(&user.id, memberships).await?;
+        // Roles on single repositories, under the same policy (access.rs).
+        let grants = self.grants_of(&user.id).await?;
+        user.grants = self.grants_within_policy(&user.id, grants).await?;
         Ok(Some(user))
     }
 
@@ -148,7 +163,7 @@ impl Identity {
         let owner = self
             .db
             .prepare(format!(
-                "SELECT users.id, users.username, users.email FROM email_tokens
+                "SELECT users.id, users.username, email_tokens.email_id FROM email_tokens
                  JOIN users ON users.id = email_tokens.user_id
                  WHERE email_tokens.id = ? AND email_tokens.kind = ?
                    AND email_tokens.expires_at > {SQL_NOW}"
@@ -157,10 +172,19 @@ impl Identity {
             .first::<TokenOwner>(None)
             .await?;
         if let Some(owner) = &owner {
-            // Every outstanding token of this kind dies with the one used.
+            // Every outstanding token of this kind dies with the one used:
+            // every reset link, and every confirmation link for the same
+            // address (another address's links still work).
             self.db
-                .prepare("DELETE FROM email_tokens WHERE user_id = ? AND kind = ?")
-                .bind(&[owner.id.as_str().into(), kind.into()])?
+                .prepare(
+                    "DELETE FROM email_tokens WHERE user_id = ?1 AND kind = ?2
+                       AND (?2 = 'reset' OR email_id IS ?3)",
+                )
+                .bind(&[
+                    owner.id.as_str().into(),
+                    kind.into(),
+                    owner.email_id.as_deref().map_or(JsValue::NULL, Into::into),
+                ])?
                 .run()
                 .await?;
         }
@@ -175,25 +199,10 @@ impl Identity {
     }
 
     async fn resend_verification(&self, a: UserArgs) -> Result<Outcome<bool>> {
-        let row = self
-            .db
-            .prepare(
-                "SELECT id, username, email FROM users WHERE id = ? AND email_verified_at IS NULL",
-            )
-            .bind(&[a.user.id.as_str().into()])?
-            .first::<TokenOwner>(None)
-            .await?;
-        let Some(TokenOwner {
-            email: Some(email), ..
-        }) = row
-        else {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                "This account's email is already confirmed.",
-            ));
-        };
-        self.send_verification(&a.user, &email).await?;
-        Ok(Outcome::Ok(true))
+        if !self.allow(throttle::CONFIRM_ACCOUNT, &a.user.id).await? {
+            return Ok(Outcome::fail(FailureCode::Conflict, "Too many confirmation emails this hour. Check your inbox, or try again later."));
+        }
+        self.resend_primary(&a.user).await
     }
 
     async fn verify_email(&self, a: EmailTokenArgs) -> Result<Outcome<User>> {
@@ -203,38 +212,57 @@ impl Identity {
                 "This confirmation link is not valid or has expired.",
             ));
         };
-        self.db
-            .prepare(format!(
-                "UPDATE users SET email_verified_at = {SQL_NOW} WHERE id = ?"
-            ))
-            .bind(&[owner.id.as_str().into()])?
-            .run()
-            .await?;
+        if let Outcome::Fail(failure) = self.confirm_address(&owner.id, owner.email_id.as_deref()).await? {
+            return Ok(Outcome::Fail(failure));
+        }
+        // Whether the account is confirmed: whether its primary is.
+        let verified = self
+            .find_public_user(
+                "SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE id = ?",
+                &owner.id,
+            )
+            .await?
+            .is_some_and(|user| user.verified);
         Ok(Outcome::Ok(User {
             id: owner.id,
             username: owner.username,
-            verified: true,
+            verified,
             ..User::default()
         }))
     }
 
+    /// Any confirmed address of an account can ask for a reset; so can the
+    /// unconfirmed address a new account signed up with. See emails.rs.
     async fn request_password_reset(&self, a: EmailArgs) -> Result<bool> {
-        let row = self
-            .db
-            .prepare("SELECT id, username, email FROM users WHERE email = ?")
-            .bind(&[a.email.trim().to_lowercase().into()])?
-            .first::<TokenOwner>(None)
-            .await?;
-        if let Some(TokenOwner {
-            id,
-            username,
-            email: Some(email),
-        }) = row
-        {
-            let token = self
-                .issue_email_token(&id, "reset", RESET_TTL_SECONDS)
+        let allowed = self.allow(throttle::RESET_EMAIL, &a.email).await?
+            && match a.client.as_deref() {
+                Some(client) => self.allow(throttle::RESET_CLIENT, client).await?,
+                None => true,
+            };
+        if allowed && let Some(target) = self.reset_target(&a.email).await? {
+            let token = crypto::random_hex(32);
+            self.db
+                .prepare(format!(
+                    "INSERT INTO email_tokens (id, user_id, kind, expires_at, email_id)
+                     VALUES (?, ?, 'reset', {}, ?)",
+                    sql_after(RESET_TTL_SECONDS)
+                ))
+                .bind(&[
+                    crypto::sha256_hex(&token).into(),
+                    target.user_id.as_str().into(),
+                    target.email_id.as_str().into(),
+                ])?
+                .run()
                 .await?;
-            email::send_password_reset(&self.env, &email, &username, &token).await?;
+            email::send_password_reset(&self.env, &target.display, &target.username, &token).await?;
+            // The primary and the backup hear of it when it went elsewhere.
+            let elsewhere = self.notice_recipients(&target.user_id, false).await?;
+            for address in elsewhere.iter().filter(|address| !address.eq_ignore_ascii_case(&target.display)) {
+                let change = format!("A password reset was asked for through {}", target.display);
+                if let Err(error) = email::send_security_notice(&self.env, address, &target.username, &change).await {
+                    worker::console_error!("security notice failed: {error}");
+                }
+            }
         }
         // The same answer either way, so addresses cannot be probed.
         Ok(true)
@@ -250,48 +278,97 @@ impl Identity {
                 "This reset link is not valid or has expired.",
             ));
         };
-        // Following an emailed link also proves the address.
         self.db
-            .prepare(format!(
-                "UPDATE users SET password_hash = ?,
-                   email_verified_at = COALESCE(email_verified_at, {SQL_NOW})
-                 WHERE id = ?"
-            ))
+            .prepare("UPDATE users SET password_hash = ? WHERE id = ?")
             .bind(&[
                 crypto::hash_password(&a.password).into(),
                 owner.id.as_str().into(),
             ])?
             .run()
             .await?;
-        // Anyone signed in with the old password is signed out.
+        // Following an emailed link also proves the address it went to
+        // (unless another account confirmed it first).
+        let _ = self.confirm_address(&owner.id, owner.email_id.as_deref()).await?;
+        // Anyone signed in with the old password is signed out, and nobody
+        // stays locked out by the wrong guesses before it.
         self.db
             .prepare("DELETE FROM sessions WHERE user_id = ?")
             .bind(&[owner.id.as_str().into()])?
             .run()
             .await?;
+        self.clear(&throttle::key(throttle::PASSWORD_ACCOUNT, &owner.id)).await?;
+        self.log_security(&owner.id, "password_changed", None, None).await;
+        self.tell_primary_and_backup(&owner.id, &owner.username, "Your password was changed").await;
+        let verified = self
+            .find_public_user(
+                "SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE id = ?",
+                &owner.id,
+            )
+            .await?
+            .is_some_and(|user| user.verified);
         Ok(Outcome::Ok(User {
             id: owner.id,
             username: owner.username,
-            verified: true,
+            verified,
             ..User::default()
         }))
     }
 
-    async fn user_for_password(&self, username: &str, password: &str) -> Result<Viewer> {
-        let row = self
-            .db
-            .prepare("SELECT id, username, password_hash, email_verified_at IS NOT NULL AS verified FROM users WHERE username = ?")
-            .bind(&[JsValue::from(username.to_lowercase())])?
+    /// The account a login names: a username, or any confirmed address.
+    async fn password_row(&self, login: &str) -> Result<Option<UserRow>> {
+        let login = login.trim().to_lowercase();
+        let (column, value) = if login.contains('@') {
+            match self.user_with_verified_email(&login).await? {
+                Some(id) => ("id", id),
+                None => return Ok(None),
+            }
+        } else {
+            ("username", login)
+        };
+        self.db
+            .prepare(format!(
+                "SELECT id, username, password_hash, email_verified_at IS NOT NULL AS verified FROM users WHERE {column} = ?"
+            ))
+            .bind(&[JsValue::from(value)])?
             .first::<UserRow>(None)
-            .await?;
-        let user = row
-            .filter(|row| crypto::verify_password(password, &row.password_hash))
-            .map(|row| User {
-                id: row.id,
-                username: row.username,
-                verified: row.verified != 0,
-                ..User::default()
-            });
+            .await
+    }
+
+    /// Checks a password for a login, throttled (see throttle.rs). The
+    /// refusal is one of two messages, the same for every account.
+    async fn checked_password(
+        &self,
+        login: &str,
+        password: &str,
+        client: Option<&str>,
+    ) -> Result<std::result::Result<User, &'static str>> {
+        let row = self.password_row(login).await?;
+        let subject = row.as_ref().map_or_else(|| login.trim().to_lowercase(), |row| row.id.clone());
+        let (account_key, client_key) = Identity::password_keys(&subject, client);
+        if self.password_locked(&account_key, client_key.as_deref()).await? {
+            return Ok(Err(throttle::THROTTLED));
+        }
+        let owner = row.as_ref().map(|row| (row.id.clone(), row.username.clone()));
+        match row.filter(|row| !row.password_hash.is_empty() && crypto::verify_password(password, &row.password_hash)) {
+            Some(row) => {
+                self.clear(&account_key).await?;
+                Ok(Ok(User {
+                    id: row.id,
+                    username: row.username,
+                    verified: row.verified != 0,
+                    ..User::default()
+                }))
+            }
+            None => {
+                let owner = owner.as_ref().map(|(id, name)| (id.as_str(), name.as_str()));
+                self.password_failed(&account_key, client_key.as_deref(), owner).await?;
+                Ok(Err("Incorrect username or password."))
+            }
+        }
+    }
+
+    async fn user_for_password(&self, login: &str, password: &str) -> Result<Viewer> {
+        let user = self.checked_password(login, password, None).await?.ok();
         self.with_workspaces(user).await
     }
 
@@ -299,6 +376,11 @@ impl Identity {
         let username = a.username.trim().to_lowercase();
         let email = a.email.trim().to_lowercase();
         let invalid = |message: &str| Ok(Outcome::fail(FailureCode::Invalid, message));
+        let invite_code = a.invite_code.as_deref().map(str::trim).filter(|code| !code.is_empty());
+        // The invite first: without one, nothing else on the form matters.
+        if self.invites_required() && invite_code.is_none() {
+            return Ok(Outcome::fail(FailureCode::Forbidden, invites::MISSING));
+        }
         if !is_valid_namespace(&username) {
             return invalid(
                 "Usernames use lowercase letters, digits and single hyphens, up to 39 characters.",
@@ -318,8 +400,11 @@ impl Identity {
             .db
             // Usernames and workspaces share one namespace, so that a name
             // means the same thing wherever it appears.
+            // An address is taken once an account has confirmed it; an
+            // unconfirmed one goes to whoever confirms it first (emails.rs).
             .prepare(
-                "SELECT username FROM users WHERE username = ? OR email = ?
+                "SELECT username FROM users WHERE username = ?
+                 UNION ALL SELECT email FROM user_emails WHERE email = ? AND verified_at IS NOT NULL
                  UNION ALL SELECT slug FROM workspaces WHERE slug = ?",
             )
             .bind(&[
@@ -329,28 +414,29 @@ impl Identity {
             ])?
             .first::<serde_json::Value>(None)
             .await?;
-        // A renamed workspace's old slug stays reserved for it a while.
-        if taken.is_some() || self.slug_held(&username).await? {
+        // A renamed workspace's old slug stays reserved for it a while, and
+        // a deleted workspace's for good.
+        if taken.is_some() || self.slug_held(&username).await? || self.slug_deleted(&username).await? {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
                 "That username or email is already registered.",
             ));
         }
-        let user = User {
-            id: new_id("usr", now_ms()),
-            username,
-            ..User::default()
+        let password_hash = crypto::hash_password(&a.password);
+        let user = match self
+            .create_account(invites::NewAccount {
+                username: &username,
+                email: &email,
+                password_hash: &password_hash,
+                verified: false,
+                invite_code,
+                client: a.client.as_deref(),
+            })
+            .await?
+        {
+            Outcome::Ok(user) => user,
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        self.db
-            .prepare("INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)")
-            .bind(&[
-                user.id.as_str().into(),
-                user.username.as_str().into(),
-                email.as_str().into(),
-                crypto::hash_password(&a.password).into(),
-            ])?
-            .run()
-            .await?;
         // The account exists either way; the email can be sent again later.
         if let Err(error) = self.send_verification(&user, &email).await {
             worker::console_error!("verification email failed: {error}");
@@ -359,12 +445,11 @@ impl Identity {
     }
 
     async fn sign_in(&self, a: SignInArgs) -> Result<Outcome<SignedIn>> {
-        let Some(user) = self.user_for_password(&a.username, &a.password).await? else {
-            return Ok(Outcome::fail(
-                FailureCode::Unauthenticated,
-                "Incorrect username or password.",
-            ));
+        let user = match self.checked_password(&a.username, &a.password, a.client.as_deref()).await? {
+            Ok(user) => user,
+            Err(message) => return Ok(Outcome::fail(FailureCode::Unauthenticated, message)),
         };
+        let user = self.with_workspaces(Some(user)).await?.unwrap_or_default();
         self.start_session(user).await
     }
 
@@ -372,7 +457,8 @@ impl Identity {
         let session_token = crypto::random_hex(32);
         self.db
             .prepare(format!(
-                "INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, {})",
+                // Signing in is proof it is the person: see security.rs.
+                "INSERT INTO sessions (id, user_id, expires_at, authenticated_at) VALUES (?, ?, {}, {SQL_NOW})",
                 sql_after(SESSION_TTL_SECONDS)
             ))
             .bind(&[
@@ -572,6 +658,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "rename_workspace" => reply(&identity.rename_workspace(args(body)?).await?),
         "check_workspace_rename" => reply(&identity.check_workspace_rename(args(body)?).await?),
         "resolve_slug" => reply(&identity.resolve_slug(args(body)?).await?),
+        "check_workspace_deletion" => reply(&identity.check_workspace_deletion(args(body)?).await?),
+        "delete_workspace" => reply(&identity.delete_workspace(args(body)?).await?),
+        "transfer_repo_scopes" => reply(&identity.transfer_repo_scopes(args(body)?).await?),
         "set_workspace_avatar" => {
             let outcome = identity.set_workspace_avatar(args(body)?).await?;
             if let Outcome::Ok(workspace) = &outcome {
@@ -591,6 +680,18 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "list_workspace_tokens" => reply(&identity.list_workspace_tokens(args(body)?).await?),
         "create_workspace_token" => reply(&identity.create_workspace_token(args(body)?).await?),
         "remove_workspace_token" => reply(&identity.remove_workspace_token(args(body)?).await?),
+        // Signing in with GitHub; see github.rs.
+        "github_enabled" => reply(&identity.github_enabled()),
+        "github_start" => reply(&identity.github_start(args(body)?).await?),
+        "github_finish" => reply(&identity.github_finish(args(body)?).await?),
+        "github_pending" => reply(&identity.github_pending(args(body)?).await?),
+        "github_sign_up" => reply(&identity.github_sign_up(args(body)?).await?),
+        "github_claim" => reply(&identity.github_claim(args(body)?).await?),
+        "github_account" => reply(&identity.github_account(args(body)?).await?),
+        "github_unlink" => reply(&identity.github_unlink(args(body)?).await?),
+        "github_user_token" => reply(&identity.github_user_token(args(body)?).await?),
+        "github_revoked" => reply(&identity.github_revoked(args(body)?).await?),
+        "github_usernames" => reply(&identity.github_usernames(args(body)?).await?),
         "oauth_authorize" => reply(&identity.oauth_authorize(args(body)?).await?),
         "oauth_exchange" => reply(&identity.oauth_exchange(args(body)?).await?),
         "oauth_refresh" => reply(&identity.oauth_refresh(args(body)?).await?),
@@ -604,6 +705,19 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "verify_email" => reply(&identity.verify_email(args(body)?).await?),
         "request_password_reset" => reply(&identity.request_password_reset(args(body)?).await?),
         "reset_password" => reply(&identity.reset_password(args(body)?).await?),
+        // A person's email addresses; see emails.rs and security.rs.
+        "list_emails" => reply(&identity.list_emails(args(body)?).await?),
+        "add_email" => reply(&identity.add_email(args(body)?).await?),
+        "remove_email" => reply(&identity.remove_email(args(body)?).await?),
+        "resend_email_verification" => reply(&identity.resend_email_verification(args(body)?).await?),
+        "update_email_settings" => reply(&identity.update_email_settings(args(body)?).await?),
+        "reauthenticate" => reply(&identity.reauthenticate(args(body)?).await?),
+        "security_log" => reply(&identity.security_log(args(body)?).await?),
+        "email_owners" => reply(&identity.email_owners(args(body)?).await?),
+        "commit_identity" => reply(&identity.commit_identity(args(body)?).await?),
+        "push_email_guard" => reply(&identity.push_email_guard(args(body)?).await?),
+        "admin_user" => reply(&identity.admin_user(args(body)?).await?),
+        "admin_remove_email" => reply(&identity.admin_remove_email(args(body)?).await?),
         "sign_out" => reply(&identity.sign_out(args(body)?).await?),
         "user_for_session" => reply(&identity.user_for_session(args(body)?).await?),
         "user_for_git_credentials" => reply(&identity.user_for_git_credentials(args(body)?).await?),
@@ -635,10 +749,41 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "bind_run_credentials" => reply(&identity.bind_run_credentials(args(body)?).await?),
         "revoke_run_credentials" => reply(&identity.revoke_run_credentials(args(body)?).await?),
         "remove_access_token" => reply(&identity.remove("access_tokens", args(body)?).await?),
+        // Invites and the waitlist; see invites.rs.
+        "registration" => reply(&identity.registration_mode()),
+        "list_invites" => reply(&identity.list_invites(args(body)?).await?),
+        "create_invite" => reply(&identity.create_invite(args(body)?).await?),
+        "revoke_invite" => reply(&identity.revoke_invite(args(body)?).await?),
+        "check_invite" => reply(&identity.check_invite(args(body)?).await?),
+        "accept_invite" => reply(&identity.accept_invite(args(body)?).await?),
+        "invite_member" => reply(&identity.invite_member(args(body)?).await?),
+        "workspace_invites" => reply(&identity.workspace_invites(args(body)?).await?),
+        "revoke_workspace_invite" => reply(&identity.revoke_workspace_invite(args(body)?).await?),
+        "request_access" => reply(&identity.request_access(args(body)?).await?),
+        // Who has access to a repository; see access.rs.
+        "repo_access" => reply(&identity.repo_access(args(body)?).await?),
+        "add_collaborator" => reply(&identity.add_collaborator(args(body)?).await?),
+        "set_collaborator_role" => reply(&identity.set_collaborator_role(args(body)?).await?),
+        "remove_collaborator" => reply(&identity.remove_collaborator(args(body)?).await?),
+        "collaborator_permission" => reply(&identity.collaborator_permission(args(body)?).await?),
+        "my_repo_invitations" => reply(&identity.my_repo_invitations(args(body)?).await?),
+        "respond_repo_invitation" => reply(&identity.respond_repo_invitation(args(body)?).await?),
+        "revoke_repo_invitation" => reply(&identity.revoke_repo_invitation(args(body)?).await?),
+        "set_base_permission" => reply(&identity.set_base_permission(args(body)?).await?),
+        "outside_collaborators" => reply(&identity.outside_collaborators(args(body)?).await?),
+        "forget_repo_access" => reply(&identity.forget_repo_access(args(body)?).await?),
         // Staff only: sudo.g1t.sh, over its service binding. See admin.rs.
         "notify_owners" => reply(&identity.notify_owners(args(body)?).await?),
         "admin_workspaces" => reply(&identity.admin_workspaces(args(body)?).await?),
         "admin_workspace" => reply(&identity.admin_workspace(args(body)?).await?),
+        "admin_waitlist" => reply(&identity.admin_waitlist(args(body)?).await?),
+        "admin_decide_waitlist" => reply(&identity.admin_decide_waitlist(args(body)?).await?),
+        "admin_invites" => reply(&identity.admin_invites(args(body)?).await?),
+        "admin_revoke_invite" => reply(&identity.admin_revoke_invite(args(body)?).await?),
+        "admin_mint_invite" => reply(&identity.admin_mint_invite(args(body)?).await?),
+        "admin_grant_invites" => reply(&identity.admin_grant_invites(args(body)?).await?),
+        "admin_invite_tree" => reply(&identity.admin_invite_tree(args(body)?).await?),
+        "admin_workspace_invites" => reply(&identity.admin_workspace_invites(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }

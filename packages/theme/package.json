@@ -3,9 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
-  "description": "g1t's design tokens and marks, shared by every public site.",
+  "description": "g1t's design tokens, typefaces and marks, shared by every public site.",
   "exports": {
     "./tokens.css": "./tokens.css",
+    "./fonts.css": "./fonts.css",
+    "./fonts/*": "./fonts/*",
     "./mark.svg": "./mark.svg",
     "./favicon.svg": "./favicon.svg"
   }

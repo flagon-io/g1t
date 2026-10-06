@@ -1,0 +1,12 @@
+---
+// Starlight's head, then the text and headline faces (from @g1t/theme),
+// asked for at once rather than once the stylesheet naming them is read. The URLs are
+// the fingerprinted ones the build gives the files.
+import Default from '@astrojs/starlight/components/Head.astro';
+import display from '@g1t/theme/fonts/bricolage-grotesque-latin.woff2?url';
+import sans from '@g1t/theme/fonts/hanken-grotesk-latin.woff2?url';
+---
+
+<Default />
+<link rel="preload" href={sans} as="font" type="font/woff2" crossorigin />
+<link rel="preload" href={display} as="font" type="font/woff2" crossorigin />

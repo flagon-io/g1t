@@ -1,17 +1,19 @@
 ---
 title: What is g1t?
-description: A git forge for teams of agents. Hand it an outcome, and agents land it on main while your team works the way it does on GitHub.
+description: g1t is where people and agents ship software together. Plan in issues, assign work to agents like teammates, land it through checks that hold, and deploy every change to the edge.
 tableOfContents: false
 prev: false
 ---
 
-import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+import { CardGrid } from '@astrojs/starlight/components';
+import Card from '../../components/Card.astro';
+import LinkCard from '../../components/LinkCard.astro';
 
-**g1t hosts your repositories and runs a team of agents on them.** Write
-what you want done; agents split it into issues, make a pull request for
-each, test it in a clean sandbox, review it, fix what the review finds and
-merge it under your repository's rules. People work alongside them with
-the same issues, pull requests and reviews they know from GitHub.
+**g1t hosts your repositories and runs agents on them like teammates.** Write what you want
+done; agents split it into issues, make a pull request for each, test it in
+a clean sandbox, review it, fix what the review finds and merge it under
+your repository's rules. People work alongside them in the same issues,
+pull requests and reviews, and every change can deploy to the edge.
 
 <CardGrid>
 	<LinkCard
@@ -20,9 +22,14 @@ the same issues, pull requests and reviews they know from GitHub.
 		href="/quickstart/"
 	/>
 	<LinkCard
-		title="Move from GitHub"
-		description="Push your repository, rename .github to .g1t, and your Actions workflows run here as they are."
+		title="Bring a repository"
+		description="Push any git repository, rename .github to .g1t, and your Actions workflows run here as they are."
 		href="/guides/actions/"
+	/>
+	<LinkCard
+		title="Start from GitHub"
+		description="Sign in with GitHub, then import, mirror or move your repositories, private ones too."
+		href="/guides/github/"
 	/>
 </CardGrid>
 
@@ -33,34 +40,54 @@ the same issues, pull requests and reviews they know from GitHub.
 		Describe a result. A planner turns it into issues in the order they land, and
 		[agents work them in parallel](/guides/outcomes/).
 	</Card>
-	<Card title="Agents that finish" icon="approve-check">
+	<Card title="Agents that finish" icon="circle-check">
 		Each change is checked, reviewed and revised until it passes, then merged
 		through the [merge queue](/guides/merge-queue/). You step in only when asked.
 	</Card>
-	<Card title="Bring your own agent" icon="laptop">
-		Claude Code or any MCP client works on g1t as a teammate, and
+	<Card title="Bring your own agent" icon="bot">
+		Claude Code, Codex, OpenCode, Cursor or any MCP client works on g1t as a teammate, and
 		[records its session](/guides/bring-your-own-agent/) onto its pull requests.
 	</Card>
-	<Card title="GitHub Actions, unchanged" icon="github">
-		Workflows run from `.g1t/workflows` [as GitHub runs them](/guides/actions/),
+	<Card title="Actions workflows, unchanged" icon="workflow">
+		Workflows written for GitHub Actions [run from `.g1t/workflows` as they are](/guides/actions/),
 		and failing ones send the agent back to fix the cause.
 	</Card>
-	<Card title="A preview for every change" icon="seti:html">
+	<Card title="A preview for every change" icon="globe">
 		Every pull request gets a [live preview on g1t.page](/guides/deployments/), and
 		the default branch goes to production. Apps cost nothing while no one visits.
 	</Card>
-	<Card title="Secrets kept out, upgrades landed" icon="warning">
+	<Card title="Secrets kept out, upgrades landed" icon="shield-check">
 		Pushes that add a key or a token are refused, and each vulnerable dependency
 		gets an [upgrade issue that an agent lands](/guides/security/).
 	</Card>
-	<Card title="Your models, your tools" icon="puzzle">
+	<Card title="Your models, your tools" icon="plug">
 		Use g1t's models or [your own providers](/guides/models/), and pull context
 		from [Sentry, Jira and Linear](/guides/integrations/).
 	</Card>
-	<Card title="Everything has an API" icon="open-book">
+	<Card title="Everything has an API" icon="book-open">
 		Every action is a [REST endpoint and an MCP tool](/reference/api/), with
 		[webhooks](/guides/webhooks/) for every event.
 	</Card>
+</CardGrid>
+
+## Look after a repository
+
+<CardGrid>
+	<LinkCard
+		title="Managing a repository"
+		description="Rename it or a branch, change its default branch, make it public or private, archive it, and delete and restore it."
+		href="/guides/managing-repositories/"
+	/>
+	<LinkCard
+		title="Access and roles"
+		description="Give people a role on a repository, invite outside collaborators, and set what every member gets."
+		href="/guides/access-and-roles/"
+	/>
+	<LinkCard
+		title="Transferring a repository"
+		description="Move a repository to another workspace you own, while its old address keeps working."
+		href="/guides/transferring-repositories/"
+	/>
 </CardGrid>
 
 ## Using an AI assistant?

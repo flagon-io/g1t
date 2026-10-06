@@ -32,28 +32,365 @@
 			"workspaces": [
 				{
 					"slug": "acme",
-					"role": "member"
+					"role": "member",
+					"base_permission": "write"
 				},
 				{
-					"slug": "syntaqx",
-					"role": "owner"
+					"slug": "flagon-io",
+					"role": "owner",
+					"base_permission": "write"
 				}
 			]
 		},
-		"notes": "`kind` is `user`, `workspace` for a [workspace access token](/guides/workspaces/#workspace-access-tokens), or `agent` for the token a g1t agent works with. For a workspace token, `username` is the workspace's slug and `workspaces` holds only that workspace."
+		"notes": "`kind` is `user`, `workspace` for a [workspace access token](/guides/workspaces/#workspace-access-tokens), or `agent` for the token a g1t agent works with. For a workspace token, `username` is the workspace's slug and `workspaces` holds only that workspace. Each workspace carries its `base_permission`: what a member gets on each of its repositories (owners have Admin). Roles given on single repositories are in `grants`, each with `repo_id`, `workspace` and `role`; it is left out when there are none. See [Access and roles](/guides/access-and-roles/)."
 	},
 	"create_workspace": {
 		"request": {
-			"slug": "syntaqx-labs",
-			"name": "Syntaqx Labs"
+			"slug": "acme-labs",
+			"name": "Acme Labs"
 		},
 		"response": {
 			"id": "wsp_01m43teqa9em6bje0bhvdj4jkb",
-			"slug": "syntaqx-labs",
-			"name": "Syntaqx Labs",
+			"slug": "acme-labs",
+			"name": "Acme Labs",
 			"description": null,
 			"created_at": "2026-10-04T16:02:51.337Z",
-			"member_count": 1
+			"member_count": 1,
+			"base_permission": "write"
+		},
+		"notes": "`base_permission` is what every member gets on each of its repositories: `write` until an owner changes it with `PATCH /workspaces/{workspace}`. See [Access and roles](/guides/access-and-roles/)."
+	},
+	"delete_workspace": {
+		"request": {
+			"confirm": "acme-labs"
+		},
+		"response": true,
+		"notes": "Refused with `409` while the workspace holds repositories or projects, and with `402` while billing cannot settle it, each with a message that says what to do. See [Delete a workspace](/guides/workspaces/#delete-a-workspace)."
+	},
+	"list_emails": {
+		"response": {
+			"emails": [
+				{
+					"email": "ada@example.com",
+					"verified": true,
+					"primary": true,
+					"backup": false,
+					"created_at": "2026-09-01T10:00:00.000Z",
+					"verified_at": "2026-09-01T10:02:11.000Z"
+				},
+				{
+					"email": "ada@acme.com",
+					"verified": true,
+					"primary": false,
+					"backup": true,
+					"created_at": "2026-10-02T09:30:00.000Z",
+					"verified_at": "2026-10-02T09:31:40.000Z"
+				},
+				{
+					"email": "ada.l@example.org",
+					"verified": false,
+					"primary": false,
+					"backup": false,
+					"created_at": "2026-10-05T14:12:03.000Z",
+					"verified_at": null
+				}
+			],
+			"private_email": true,
+			"block_private_pushes": false,
+			"noreply": "6c1d0efg+ada@users.noreply.g1t.sh",
+			"commit_email": "6c1d0efg+ada@users.noreply.g1t.sh",
+			"limit": 10
+		},
+		"notes": "Your primary address comes first, then confirmed addresses, then unconfirmed ones. Any confirmed address signs you in, can reset your password and attributes commits to you. See [Email addresses](/guides/authentication/#email-addresses)."
+	},
+	"add_email": {
+		"request": {
+			"email": "ada.l@example.org",
+			"password": "…"
+		},
+		"response": {
+			"emails": [
+				{
+					"email": "ada@example.com",
+					"verified": true,
+					"primary": true,
+					"backup": false,
+					"created_at": "2026-09-01T10:00:00.000Z",
+					"verified_at": "2026-09-01T10:02:11.000Z"
+				},
+				{
+					"email": "ada@acme.com",
+					"verified": true,
+					"primary": false,
+					"backup": true,
+					"created_at": "2026-10-02T09:30:00.000Z",
+					"verified_at": "2026-10-02T09:31:40.000Z"
+				},
+				{
+					"email": "ada.l@example.org",
+					"verified": false,
+					"primary": false,
+					"backup": false,
+					"created_at": "2026-10-05T14:12:03.000Z",
+					"verified_at": null
+				}
+			],
+			"private_email": true,
+			"block_private_pushes": false,
+			"noreply": "6c1d0efg+ada@users.noreply.g1t.sh",
+			"commit_email": "6c1d0efg+ada@users.noreply.g1t.sh",
+			"limit": 10
+		},
+		"notes": "Answers `403` with code `reauth_required` when `password` is missing or wrong, and `409` when another account has confirmed the address. The new address stays unconfirmed until its link is followed."
+	},
+	"remove_email": {
+		"request": {
+			"password": "…"
+		},
+		"response": {
+			"emails": [
+				{
+					"email": "ada@example.com",
+					"verified": true,
+					"primary": true,
+					"backup": false,
+					"created_at": "2026-09-01T10:00:00.000Z",
+					"verified_at": "2026-09-01T10:02:11.000Z"
+				},
+				{
+					"email": "ada@acme.com",
+					"verified": true,
+					"primary": false,
+					"backup": true,
+					"created_at": "2026-10-02T09:30:00.000Z",
+					"verified_at": "2026-10-02T09:31:40.000Z"
+				},
+				{
+					"email": "ada.l@example.org",
+					"verified": false,
+					"primary": false,
+					"backup": false,
+					"created_at": "2026-10-05T14:12:03.000Z",
+					"verified_at": null
+				}
+			],
+			"private_email": true,
+			"block_private_pushes": false,
+			"noreply": "6c1d0efg+ada@users.noreply.g1t.sh",
+			"commit_email": "6c1d0efg+ada@users.noreply.g1t.sh",
+			"limit": 10
+		},
+		"notes": "Give the address in the path, URL-encoded: `DELETE /user/emails/ada.l%40example.org`. Answers `409` for your primary address or your last confirmed one."
+	},
+	"update_email_settings": {
+		"request": {
+			"primary": "ada@acme.com",
+			"password": "…"
+		},
+		"response": {
+			"emails": [
+				{
+					"email": "ada@example.com",
+					"verified": true,
+					"primary": true,
+					"backup": false,
+					"created_at": "2026-09-01T10:00:00.000Z",
+					"verified_at": "2026-09-01T10:02:11.000Z"
+				},
+				{
+					"email": "ada@acme.com",
+					"verified": true,
+					"primary": false,
+					"backup": true,
+					"created_at": "2026-10-02T09:30:00.000Z",
+					"verified_at": "2026-10-02T09:31:40.000Z"
+				},
+				{
+					"email": "ada.l@example.org",
+					"verified": false,
+					"primary": false,
+					"backup": false,
+					"created_at": "2026-10-05T14:12:03.000Z",
+					"verified_at": null
+				}
+			],
+			"private_email": true,
+			"block_private_pushes": false,
+			"noreply": "6c1d0efg+ada@users.noreply.g1t.sh",
+			"commit_email": "6c1d0efg+ada@users.noreply.g1t.sh",
+			"limit": 10
+		},
+		"notes": "Only the fields given change. `primary` and `backup` need `password`; `private_email` and `block_private_pushes` do not."
+	},
+	"list_invites": {
+		"response": {
+			"mode": "invite",
+			"allowance": {
+				"limit": 5,
+				"used": 2,
+				"remaining": 3
+			},
+			"workspaces": [
+				{
+					"slug": "acme-labs",
+					"allowance": {
+						"limit": 20,
+						"used": 4,
+						"remaining": 16
+					}
+				}
+			],
+			"invites": [
+				{
+					"id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
+					"code": "g1t-k7m2-q9xd-4hpw-…",
+					"hint": "g1t-k7m2",
+					"email": "ada@example.com",
+					"kind": "account",
+					"workspace": null,
+					"status": "pending",
+					"charged_to": "user",
+					"invited_by": "syntaqx",
+					"redeemed_by": null,
+					"created_at": "2026-10-05T17:00:00.000Z",
+					"expires_at": "2026-11-04T17:00:00.000Z",
+					"redeemed_at": null,
+					"revoked_at": null
+				},
+				{
+					"id": "inv_01kp1v3c4d5e6f7g8h9j0k1m2n",
+					"code": null,
+					"hint": "g1t-p3rt",
+					"email": null,
+					"kind": "account",
+					"workspace": null,
+					"status": "redeemed",
+					"charged_to": "user",
+					"invited_by": "syntaqx",
+					"redeemed_by": "grace",
+					"created_at": "2026-10-02T09:12:40.000Z",
+					"expires_at": "2026-11-01T09:12:40.000Z",
+					"redeemed_at": "2026-10-02T11:30:05.000Z",
+					"revoked_at": null
+				}
+			]
+		},
+		"notes": "`allowance.limit` and `allowance.remaining` are null when you have no limit. A revoked or expired invite that was never used is not counted. Ask for more at hey@flagon.io with the subject `[g1t Invites]`. See [Invites](/guides/authentication/#invites)."
+	},
+	"create_invite": {
+		"request": {
+			"email": "ada@example.com"
+		},
+		"response": {
+			"id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
+			"code": "g1t-k7m2-q9xd-4hpw-…",
+			"hint": "g1t-k7m2",
+			"email": "ada@example.com",
+			"kind": "account",
+			"workspace": null,
+			"status": "pending",
+			"charged_to": "user",
+			"invited_by": "syntaqx",
+			"redeemed_by": null,
+			"created_at": "2026-10-05T17:00:00.000Z",
+			"expires_at": "2026-11-04T17:00:00.000Z",
+			"redeemed_at": null,
+			"revoked_at": null
+		},
+		"notes": "Refused with `402` (`limit`) when you have no invites left, with `409` when you already have a pending invite for that address or it already has a g1t account, and with `403` for an agent's or a workspace's token. The code is returned in full; send people the link `https://g1t.sh/invite/<code>`."
+	},
+	"revoke_invite": {
+		"response": {
+			"id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
+			"code": null,
+			"hint": "g1t-k7m2",
+			"email": "ada@example.com",
+			"kind": "account",
+			"workspace": null,
+			"status": "revoked",
+			"charged_to": "user",
+			"invited_by": "syntaqx",
+			"redeemed_by": null,
+			"created_at": "2026-10-05T17:00:00.000Z",
+			"expires_at": "2026-11-04T17:00:00.000Z",
+			"redeemed_at": null,
+			"revoked_at": "2026-10-06T08:00:00.000Z"
+		}
+	},
+	"list_workspace_invites": {
+		"response": [
+			{
+				"id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
+				"code": "g1t-k7m2-q9xd-4hpw-…",
+				"hint": "g1t-k7m2",
+				"email": "ada@example.com",
+				"kind": "account",
+				"workspace": "acme-labs",
+				"status": "pending",
+				"charged_to": "workspace",
+				"invited_by": "syntaqx",
+				"redeemed_by": null,
+				"created_at": "2026-10-05T17:00:00.000Z",
+				"expires_at": "2026-11-04T17:00:00.000Z",
+				"redeemed_at": null,
+				"revoked_at": null
+			},
+			{
+				"id": "inv_01kp1z9y8x7w6v5t4s3r2q1p0n",
+				"code": "g1t-k7m2-q9xd-4hpw-…",
+				"hint": "g1t-w2vb",
+				"email": "linus@example.com",
+				"kind": "workspace",
+				"workspace": "acme-labs",
+				"status": "pending",
+				"charged_to": "none",
+				"invited_by": "syntaqx",
+				"redeemed_by": null,
+				"created_at": "2026-10-05T17:00:00.000Z",
+				"expires_at": "2026-11-04T17:00:00.000Z",
+				"redeemed_at": null,
+				"revoked_at": null
+			}
+		]
+	},
+	"invite_member": {
+		"request": {
+			"email": "ada@example.com"
+		},
+		"response": {
+			"id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
+			"code": "g1t-k7m2-q9xd-4hpw-…",
+			"hint": "g1t-k7m2",
+			"email": "ada@example.com",
+			"kind": "account",
+			"workspace": "acme-labs",
+			"status": "pending",
+			"charged_to": "workspace",
+			"invited_by": "syntaqx",
+			"redeemed_by": null,
+			"created_at": "2026-10-05T17:00:00.000Z",
+			"expires_at": "2026-11-04T17:00:00.000Z",
+			"redeemed_at": null,
+			"revoked_at": null
+		},
+		"notes": "`kind` is `workspace` when the address already has a g1t account (`charged_to` is then `none`), and `account` when accepting makes one. Both answers look alike to the caller on purpose: the invite is emailed either way."
+	},
+	"revoke_workspace_invite": {
+		"response": {
+			"id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
+			"code": null,
+			"hint": "g1t-k7m2",
+			"email": "ada@example.com",
+			"kind": "account",
+			"workspace": "acme-labs",
+			"status": "revoked",
+			"charged_to": "workspace",
+			"invited_by": "syntaqx",
+			"redeemed_by": null,
+			"created_at": "2026-10-05T17:00:00.000Z",
+			"expires_at": "2026-11-04T17:00:00.000Z",
+			"redeemed_at": null,
+			"revoked_at": "2026-10-06T08:00:00.000Z"
 		}
 	},
 	"list_repos": {
@@ -63,7 +400,7 @@
 		"response": [
 			{
 				"id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-				"namespace": "syntaqx",
+				"namespace": "flagon-io",
 				"name": "hello",
 				"description": "A tiny service that says hello.",
 				"is_private": false,
@@ -71,21 +408,23 @@
 				"default_branch": "main",
 				"fork_of": null,
 				"protected": true,
-				"created_at": "2026-09-28T14:11:52.640Z"
+				"created_at": "2026-09-28T14:11:52.640Z",
+				"website": "https://hello.g1t.page",
+				"archived_at": null
 			}
 		],
 		"notes": "Returns at most 50 repositories, newest first. Forks made for pull requests are left out."
 	},
 	"create_repo": {
 		"request": {
-			"workspace": "syntaqx",
+			"workspace": "flagon-io",
 			"name": "hello-cli",
 			"description": "Command-line client for hello.",
 			"private": false
 		},
 		"response": {
 			"id": "rep_01m43tk1jhehztx23drs87f5fc",
-			"namespace": "syntaqx",
+			"namespace": "flagon-io",
 			"name": "hello-cli",
 			"description": "Command-line client for hello.",
 			"is_private": false,
@@ -93,14 +432,16 @@
 			"default_branch": "main",
 			"fork_of": null,
 			"protected": false,
-			"created_at": "2026-10-04T16:05:12.913Z"
+			"created_at": "2026-10-04T16:05:12.913Z",
+			"website": "https://hello.g1t.page",
+			"archived_at": null
 		},
 		"notes": "`owner_id` is the id of the person who created the repository. With `import_url`, `default_branch` is the default branch of the repository copied."
 	},
 	"get_repo": {
 		"response": {
 			"id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-			"namespace": "syntaqx",
+			"namespace": "flagon-io",
 			"name": "hello",
 			"description": "A tiny service that says hello.",
 			"is_private": false,
@@ -108,26 +449,239 @@
 			"default_branch": "main",
 			"fork_of": null,
 			"protected": true,
-			"created_at": "2026-09-28T14:11:52.640Z"
+			"created_at": "2026-09-28T14:11:52.640Z",
+			"website": "https://hello.g1t.page",
+			"archived_at": null
 		}
 	},
 	"update_repo": {
 		"request": {
 			"description": "Says hello, politely.",
+			"website": "hello.g1t.page",
+			"default_branch": "trunk",
 			"protected": true
 		},
 		"response": {
 			"id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-			"namespace": "syntaqx",
+			"namespace": "flagon-io",
 			"name": "hello",
 			"description": "Says hello, politely.",
+			"is_private": false,
+			"owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+			"default_branch": "trunk",
+			"fork_of": null,
+			"protected": true,
+			"created_at": "2026-09-28T14:11:52.640Z",
+			"topics": [
+				"http",
+				"example"
+			],
+			"website": "https://hello.g1t.page",
+			"archived_at": null
+		},
+		"notes": "Only the fields given change. `website` gets `https://` when no scheme is given; an empty string clears it. `default_branch` must name a branch that exists (`422` otherwise); it is changed after the other fields. `description`, `website`, `topics` and `protected` need the Maintain role or higher, and `private` and `default_branch` the Admin role (`403` otherwise, saying which role). Changing `private` here needs no confirmation; `POST /repos/{owner}/{name}/visibility` asks for one. Making it private is refused with `402` when a free workspace's private storage has no room for it. See [Managing a repository](/guides/managing-repositories/) and [Access and roles](/guides/access-and-roles/)."
+	},
+	"transfer_repo": {
+		"request": {
+			"to": "flagon-io"
+		},
+		"response": {
+			"id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"namespace": "flagon-io",
+			"name": "hello",
+			"description": "A tiny service that says hello.",
 			"is_private": false,
 			"owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
 			"default_branch": "main",
 			"fork_of": null,
 			"protected": true,
-			"created_at": "2026-09-28T14:11:52.640Z"
-		}
+			"created_at": "2026-09-28T14:11:52.640Z",
+			"website": "https://hello.g1t.page",
+			"archived_at": null
+		},
+		"notes": "The repository at its new address. Refused with `409` when the destination already has a repository of that name, `403` unless you own both workspaces, and `402` when a free destination has no room for a private repository. The old address redirects. See [Transferring a repository](/guides/transferring-repositories/)."
+	},
+	"rename_repo": {
+		"request": {
+			"name": "greeter"
+		},
+		"response": {
+			"id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"namespace": "flagon-io",
+			"name": "greeter",
+			"description": "A tiny service that says hello.",
+			"is_private": false,
+			"owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+			"default_branch": "main",
+			"fork_of": null,
+			"protected": true,
+			"created_at": "2026-09-28T14:11:52.640Z",
+			"topics": [
+				"http",
+				"example"
+			],
+			"website": "https://hello.g1t.page",
+			"archived_at": null
+		},
+		"notes": "The repository under its new name. Needs the Admin role (`403` otherwise). Refused with `409` when the workspace already has a repository of that name, a recently deleted one included, and with `422` when the name is not valid. The old address redirects. See [Rename a repository](/guides/managing-repositories/#rename-a-repository)."
+	},
+	"rename_branch": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"branch": "feature/login"
+		},
+		"request": {
+			"new_name": "feature/sign-in"
+		},
+		"response": {
+			"id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"namespace": "flagon-io",
+			"name": "hello",
+			"description": "A tiny service that says hello.",
+			"is_private": false,
+			"owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+			"default_branch": "main",
+			"fork_of": null,
+			"protected": true,
+			"created_at": "2026-09-28T14:11:52.640Z",
+			"topics": [
+				"http",
+				"example"
+			],
+			"website": "https://hello.g1t.page",
+			"archived_at": null
+		},
+		"notes": "The repository after the rename; renaming the default branch changes `default_branch`. Send a branch name with slashes URL-encoded, as one path segment. Refused with `404` when there is no such branch, `409` when a branch named `new_name` exists, `422` when `new_name` is not a valid branch name, and `403` without the Write role, or without the Admin role for the default branch. See [Rename a branch](/guides/managing-repositories/#rename-a-branch)."
+	},
+	"set_repo_visibility": {
+		"request": {
+			"private": true,
+			"confirm": "flagon-io/hello"
+		},
+		"response": {
+			"id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"namespace": "flagon-io",
+			"name": "hello",
+			"description": "A tiny service that says hello.",
+			"is_private": true,
+			"owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+			"default_branch": "main",
+			"fork_of": null,
+			"protected": true,
+			"created_at": "2026-09-28T14:11:52.640Z",
+			"topics": [
+				"http",
+				"example"
+			],
+			"website": "https://hello.g1t.page",
+			"archived_at": null
+		},
+		"notes": "Needs the Admin role (`403` otherwise). Refused with `422` when `confirm` is not the repository's full name, and with `402` when a free workspace's private storage has no room for it. See [Change who can see a repository](/guides/managing-repositories/#change-who-can-see-a-repository)."
+	},
+	"archive_repo": {
+		"response": {
+			"id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"namespace": "flagon-io",
+			"name": "hello",
+			"description": "A tiny service that says hello.",
+			"is_private": false,
+			"owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+			"default_branch": "main",
+			"fork_of": null,
+			"protected": true,
+			"created_at": "2026-09-28T14:11:52.640Z",
+			"topics": [
+				"http",
+				"example"
+			],
+			"website": "https://hello.g1t.page",
+			"archived_at": "2026-10-05T09:30:00.000Z"
+		},
+		"notes": "The repository, with `archived_at` set. Needs the Admin role (`403` otherwise). See [Archive a repository](/guides/managing-repositories/#archive-a-repository)."
+	},
+	"unarchive_repo": {
+		"response": {
+			"id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"namespace": "flagon-io",
+			"name": "hello",
+			"description": "A tiny service that says hello.",
+			"is_private": false,
+			"owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+			"default_branch": "main",
+			"fork_of": null,
+			"protected": true,
+			"created_at": "2026-09-28T14:11:52.640Z",
+			"topics": [
+				"http",
+				"example"
+			],
+			"website": "https://hello.g1t.page",
+			"archived_at": null
+		},
+		"notes": "The repository, with `archived_at` null. Needs the Admin role (`403` otherwise)."
+	},
+	"delete_repo": {
+		"request": {
+			"confirm": "flagon-io/hello"
+		},
+		"response": {
+			"id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"namespace": "flagon-io",
+			"name": "hello",
+			"description": "A tiny service that says hello.",
+			"is_private": false,
+			"deleted_at": "2026-10-05T09:30:00.000Z",
+			"deleted_by": "syntaqx",
+			"purge_after": "2026-11-04T09:30:00.000Z"
+		},
+		"notes": "The deleted repository and when it will be purged, 30 days on. Owners of the workspace only (`403`), whatever their role on the repository. Refused with `422` when `confirm` is not its full name. Its name stays taken until it is purged. See [Delete a repository](/guides/managing-repositories/#delete-a-repository)."
+	},
+	"list_deleted_repos": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"response": [
+			{
+				"id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+				"namespace": "flagon-io",
+				"name": "hello",
+				"description": "A tiny service that says hello.",
+				"is_private": false,
+				"deleted_at": "2026-10-05T09:30:00.000Z",
+				"deleted_by": "syntaqx",
+				"purge_after": "2026-11-04T09:30:00.000Z"
+			}
+		],
+		"notes": "Newest first. Empty for anyone who is not an owner of the workspace."
+	},
+	"restore_repo": {
+		"response": {
+			"id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"namespace": "flagon-io",
+			"name": "hello",
+			"description": "A tiny service that says hello.",
+			"is_private": false,
+			"owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+			"default_branch": "main",
+			"fork_of": null,
+			"protected": true,
+			"created_at": "2026-09-28T14:11:52.640Z",
+			"topics": [
+				"http",
+				"example"
+			],
+			"website": "https://hello.g1t.page",
+			"archived_at": null
+		},
+		"notes": "The repository, back at its address. Name it by the path it had. Owners only (`403`); `404` when no deleted repository had that path, or it has been purged. See [Restore a repository](/guides/managing-repositories/#restore-a-repository)."
+	},
+	"purge_repo": {
+		"request": {
+			"confirm": "flagon-io/hello"
+		},
+		"response": true,
+		"notes": "Permanent: it cannot be restored afterwards, and its name is free again. Only a deleted repository can be purged (`404` otherwise). Owners only (`403`); `422` when `confirm` is not its full name."
 	},
 	"get_repo_settings": {
 		"response": {
@@ -593,7 +1147,7 @@
 				"verified": true,
 				"workspaces": [
 					{
-						"slug": "syntaqx",
+						"slug": "flagon-io",
 						"role": "owner"
 					}
 				]
@@ -1089,7 +1643,7 @@
 				"verified": true,
 				"workspaces": [
 					{
-						"slug": "syntaqx",
+						"slug": "flagon-io",
 						"role": "member"
 					}
 				]
@@ -1786,7 +2340,7 @@
 	},
 	"list_actions_secrets_for_workspace": {
 		"params": {
-			"workspace": "syntaqx"
+			"workspace": "flagon-io"
 		},
 		"response": [
 			{
@@ -1843,7 +2397,7 @@
 	},
 	"set_actions_secret_for_workspace": {
 		"params": {
-			"workspace": "syntaqx",
+			"workspace": "flagon-io",
 			"setting": "NPM_TOKEN"
 		},
 		"request": {
@@ -1878,7 +2432,7 @@
 	},
 	"delete_actions_secret_for_workspace": {
 		"params": {
-			"workspace": "syntaqx",
+			"workspace": "flagon-io",
 			"setting": "NPM_TOKEN"
 		},
 		"response": true
@@ -1906,7 +2460,7 @@
 	},
 	"list_actions_variables_for_workspace": {
 		"params": {
-			"workspace": "syntaqx"
+			"workspace": "flagon-io"
 		},
 		"response": [
 			{
@@ -1952,7 +2506,7 @@
 	},
 	"set_actions_variable_for_workspace": {
 		"params": {
-			"workspace": "syntaqx"
+			"workspace": "flagon-io"
 		},
 		"request": {
 			"setting": "NODE_VERSION",
@@ -2001,7 +2555,7 @@
 	},
 	"update_actions_variable_for_workspace": {
 		"params": {
-			"workspace": "syntaqx",
+			"workspace": "flagon-io",
 			"setting": "NODE_VERSION"
 		},
 		"request": {
@@ -2032,7 +2586,7 @@
 	},
 	"delete_actions_variable_for_workspace": {
 		"params": {
-			"workspace": "syntaqx",
+			"workspace": "flagon-io",
 			"setting": "NODE_VERSION"
 		},
 		"response": true
@@ -2042,8 +2596,8 @@
 			{
 				"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
 				"scope": "repo",
-				"workspace": "syntaqx",
-				"repo": "syntaqx/hello",
+				"workspace": "flagon-io",
+				"repo": "flagon-io/hello",
 				"url": "https://hooks.example.com/g1t",
 				"events": [
 					"git.push",
@@ -2060,13 +2614,13 @@
 	},
 	"list_webhooks_for_workspace": {
 		"params": {
-			"workspace": "syntaqx"
+			"workspace": "flagon-io"
 		},
 		"response": [
 			{
 				"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
 				"scope": "workspace",
-				"workspace": "syntaqx",
+				"workspace": "flagon-io",
 				"repo": null,
 				"url": "https://hooks.example.com/g1t",
 				"events": [
@@ -2094,8 +2648,8 @@
 			"hook": {
 				"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
 				"scope": "repo",
-				"workspace": "syntaqx",
-				"repo": "syntaqx/hello",
+				"workspace": "flagon-io",
+				"repo": "flagon-io/hello",
 				"url": "https://hooks.example.com/g1t",
 				"events": [
 					"git.push",
@@ -2114,7 +2668,7 @@
 	},
 	"create_webhook_for_workspace": {
 		"params": {
-			"workspace": "syntaqx"
+			"workspace": "flagon-io"
 		},
 		"request": {
 			"url": "https://hooks.example.com/g1t"
@@ -2123,7 +2677,7 @@
 			"hook": {
 				"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
 				"scope": "workspace",
-				"workspace": "syntaqx",
+				"workspace": "flagon-io",
 				"repo": null,
 				"url": "https://hooks.example.com/g1t",
 				"events": [
@@ -2150,8 +2704,8 @@
 		"response": {
 			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
 			"scope": "repo",
-			"workspace": "syntaqx",
-			"repo": "syntaqx/hello",
+			"workspace": "flagon-io",
+			"repo": "flagon-io/hello",
 			"url": "https://hooks.example.com/g1t",
 			"events": [
 				"git.push",
@@ -2167,7 +2721,7 @@
 	},
 	"update_webhook_for_workspace": {
 		"params": {
-			"workspace": "syntaqx",
+			"workspace": "flagon-io",
 			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd"
 		},
 		"request": {
@@ -2176,7 +2730,7 @@
 		"response": {
 			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
 			"scope": "workspace",
-			"workspace": "syntaqx",
+			"workspace": "flagon-io",
 			"repo": null,
 			"url": "https://hooks.example.com/g1t",
 			"events": [
@@ -2199,7 +2753,7 @@
 	},
 	"delete_webhook_for_workspace": {
 		"params": {
-			"workspace": "syntaqx",
+			"workspace": "flagon-io",
 			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd"
 		},
 		"response": true
@@ -2228,7 +2782,7 @@
 	},
 	"ping_webhook_for_workspace": {
 		"params": {
-			"workspace": "syntaqx",
+			"workspace": "flagon-io",
 			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd"
 		},
 		"response": {
@@ -2290,7 +2844,7 @@
 	},
 	"list_webhook_deliveries_for_workspace": {
 		"params": {
-			"workspace": "syntaqx",
+			"workspace": "flagon-io",
 			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd"
 		},
 		"response": [
@@ -2353,7 +2907,7 @@
 	},
 	"redeliver_webhook_for_workspace": {
 		"params": {
-			"workspace": "syntaqx",
+			"workspace": "flagon-io",
 			"id": "hk_01kpx5p9s4h0t1w6x8y2a3b4cd",
 			"delivery": "dlv_01kpx6a2b3c4d5e6f7g8h9j0kz"
 		},
@@ -2376,12 +2930,12 @@
 	},
 	"list_integrations": {
 		"params": {
-			"workspace": "syntaqx"
+			"workspace": "flagon-io"
 		},
 		"response": [
 			{
 				"id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab",
-				"workspace": "syntaqx",
+				"workspace": "flagon-io",
 				"provider": "anthropic",
 				"kind": "models",
 				"name": "Anthropic",
@@ -2402,7 +2956,7 @@
 			},
 			{
 				"id": "con_01kpx4n8r3g9s0v5w7x1z2a3bc",
-				"workspace": "syntaqx",
+				"workspace": "flagon-io",
 				"provider": "jira",
 				"kind": "tracker",
 				"name": "Jira",
@@ -2428,24 +2982,24 @@
 	},
 	"connect_integration": {
 		"params": {
-			"workspace": "syntaqx"
+			"workspace": "flagon-io"
 		},
 		"request": {
 			"provider": "webhook",
 			"config": {
-				"repo": "syntaqx/hello",
+				"repo": "flagon-io/hello",
 				"label": "bug"
 			}
 		},
 		"response": {
 			"connection": {
 				"id": "con_01kpx4n8r3g9s0v5w7x1z2a3bd",
-				"workspace": "syntaqx",
+				"workspace": "flagon-io",
 				"provider": "webhook",
 				"kind": "alerts",
 				"name": "Webhook",
 				"config": {
-					"repo": "syntaqx/hello",
+					"repo": "flagon-io/hello",
 					"label": "bug",
 					"assign": false,
 					"write_back": true
@@ -2464,14 +3018,14 @@
 	},
 	"disconnect_integration": {
 		"params": {
-			"workspace": "syntaqx",
+			"workspace": "flagon-io",
 			"id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab"
 		},
 		"response": true
 	},
 	"test_integration": {
 		"params": {
-			"workspace": "syntaqx",
+			"workspace": "flagon-io",
 			"id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab"
 		},
 		"response": {
@@ -2482,7 +3036,7 @@
 	},
 	"get_model_routes": {
 		"params": {
-			"workspace": "syntaqx"
+			"workspace": "flagon-io"
 		},
 		"response": [
 			{
@@ -2499,7 +3053,7 @@
 	},
 	"set_model_routes": {
 		"params": {
-			"workspace": "syntaqx"
+			"workspace": "flagon-io"
 		},
 		"request": {
 			"routes": [
@@ -2571,9 +3125,9 @@
 		"response": {
 			"id": "mem_01m43v8q2w3e4r5t6y7u8i9o0p",
 			"scope": "project",
-			"workspace": "syntaqx",
+			"workspace": "flagon-io",
 			"repo": {
-				"namespace": "syntaqx",
+				"namespace": "flagon-io",
 				"name": "hello"
 			},
 			"text": "The tests need TZ=UTC or the date tests fail.",
@@ -2582,7 +3136,7 @@
 				"kind": "run",
 				"run_id": "arn_01m43v2c1p9k8d7e6f5a4b3c2d",
 				"repo": {
-					"namespace": "syntaqx",
+					"namespace": "flagon-io",
 					"name": "hello"
 				},
 				"number": 14
@@ -2605,7 +3159,7 @@
 				{
 					"id": "mem_01m43t0a1s2d3f4g5h6j7k8l9z",
 					"scope": "workspace",
-					"workspace": "syntaqx",
+					"workspace": "flagon-io",
 					"repo": null,
 					"text": "We use pnpm everywhere, never npm or yarn.",
 					"kind": "convention",
@@ -2623,7 +3177,7 @@
 				}
 			]
 		},
-		"notes": "Members of the workspace only. Each memory returned is marked used, which keeps it near the front of what agents are given."
+		"notes": "Anyone who can read the repository gets its project memory; `workspace` is filled only for members of the workspace, and is empty for anyone else. Each memory returned is marked used, which keeps it near the front of what agents are given."
 	},
 	"search": {
 		"query": {
@@ -2704,7 +3258,7 @@
 			],
 			"notes": []
 		},
-		"notes": "`q` takes words, `\"exact phrases\"`, `-words` to leave out, and qualifiers: `repo:owner/name`, `org:` (or `workspace:`), `language:`, `path:` (a glob when it has `*`), `is:issue`, `is:pr`, `is:open`, `is:closed`, `is:merged`, `is:draft`, `is:public`, `is:private`, `author:` and `label:`; most can be left out with a leading `-`, as in `-label:wontfix`. `type` is `repositories`, `code`, `issues`, `pulls` or `people`; without it, `path:` means code, `is:pr` pull requests, `is:open`, `author:` or `label:` issues, and anything else repositories. `counts` says how many results each type has, up to 1,000. Each result's `snippet` (or, for code, each of its `lines`) is a list of parts, `highlight` true where the query matched. Code is searched on default branches and needs a word of three characters or more, unless the query names a `repo:`. Public content is returned to anyone, without a token; private content only to members of its workspace, checked when the search runs, so a repository made private stops appearing at once. A g1t agent's token can search too."
+		"notes": "`q` takes words, `\"exact phrases\"`, `-words` to leave out, and qualifiers: `repo:owner/name`, `org:` (or `workspace:`), `language:`, `path:` (a glob when it has `*`), `is:issue`, `is:pr`, `is:open`, `is:closed`, `is:merged`, `is:draft`, `is:public`, `is:private`, `author:` and `label:`; most can be left out with a leading `-`, as in `-label:wontfix`. `type` is `repositories`, `code`, `issues`, `pulls` or `people`; without it, `path:` means code, `is:pr` pull requests, `is:open`, `author:` or `label:` issues, and anything else repositories. `counts` says how many results each type has, up to 1,000. Each result's `snippet` (or, for code, each of its `lines`) is a list of parts, `highlight` true where the query matched. Code is searched on default branches and needs a word of three characters or more, unless the query names a `repo:`. Public content is returned to anyone, without a token; private content only to people who can read it (members of its workspace, and people given a role on the repository), checked when the search runs, so a repository made private, or a role taken away, stops appearing at once. A g1t agent's token can search too."
 	},
 	"search_context": {
 		"params": {
@@ -2756,7 +3310,7 @@
 				}
 			]
 		},
-		"notes": "Give `workspace`, or `repo` as `owner/name` for its workspace. `kinds` narrows to some of `project`, `app`, `api`, `package`, `language`, `owner`, `environment`, `integration`, `doc`, `memory`, `issue` and `pull`; in a URL, comma-separated. `mode` is `text` when the search index could not answer and words were matched instead. Memory, and anything from a private project, is returned only to members of the workspace and its agents. A g1t agent searches its own workspace only."
+		"notes": "Give `workspace`, or `repo` as `owner/name` for its workspace. `kinds` narrows to some of `project`, `app`, `api`, `package`, `language`, `owner`, `environment`, `integration`, `doc`, `memory`, `issue` and `pull`; in a URL, comma-separated. `mode` is `text` when the search index could not answer and words were matched instead. Memory is returned only to members of the workspace and its agents; anything from a private project, only to those who can read it (members, unless the base permission is None, and people given a role on its repository). A g1t agent searches its own workspace only."
 	},
 	"get_entity": {
 		"params": {
@@ -2834,5 +3388,294 @@
 			]
 		},
 		"notes": "`id` is the entry's id, or its key: a project's or app's slug, `npm:<name>` (or `cargo:`, `go:`, `pypi:`) for a package, a username for an owner, `<project>/production` for an environment. `data` depends on the kind: a package's version and dependencies, an API's routes, an app's production address."
+	},
+	"list_collaborators": {
+		"response": {
+			"repo": "flagon-io/hello",
+			"base_permission": "write",
+			"people": [
+				{
+					"username": "syntaqx",
+					"name": "Chase Pierce",
+					"avatar": null,
+					"role": "admin",
+					"source": "owner",
+					"direct": null,
+					"workspace_role": "owner"
+				},
+				{
+					"username": "linus",
+					"name": null,
+					"avatar": null,
+					"role": "maintain",
+					"source": "direct",
+					"direct": "maintain",
+					"workspace_role": "member"
+				},
+				{
+					"username": "grace",
+					"name": "Grace Hopper",
+					"avatar": null,
+					"role": "write",
+					"source": "base",
+					"direct": null,
+					"workspace_role": "member"
+				},
+				{
+					"username": "ada",
+					"name": "Ada Lovelace",
+					"avatar": null,
+					"role": "triage",
+					"source": "direct",
+					"direct": "triage",
+					"workspace_role": null
+				}
+			],
+			"invitations": [
+				{
+					"id": "rin_01kp3c4d5e6f7g8h9j0k1m2n3p",
+					"repo": "flagon-io/hello",
+					"repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+					"invitee": "alan",
+					"email": null,
+					"role": "write",
+					"invited_by": "syntaqx",
+					"inviter_avatar": null,
+					"status": "pending",
+					"created_at": "2026-10-05T17:00:00.000Z",
+					"expires_at": "2026-10-12T17:00:00.000Z"
+				},
+				{
+					"id": "rin_01kp3d7e8f9g0h1j2k3m4n5p6q",
+					"repo": "flagon-io/hello",
+					"repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+					"invitee": null,
+					"email": "joan@example.com",
+					"role": "read",
+					"invited_by": "syntaqx",
+					"inviter_avatar": null,
+					"status": "pending",
+					"created_at": "2026-10-05T17:00:00.000Z",
+					"expires_at": "2026-10-12T17:00:00.000Z"
+				}
+			],
+			"viewer_role": "admin",
+			"can_manage": true
+		},
+		"notes": "Owners are listed with `source` `owner`, members with the base permission with `base`, and anyone given a role on this repository with `direct`; `role` is the highest of these, and `direct` shows a direct role even when ownership or the base permission gives more. `workspace_role` null means an outside collaborator. Anyone can read a public repository, which is not listed. `invitations` is empty unless you have the Admin role (`can_manage`). Refused with `403` below the Write role, and `404` for a private repository you cannot see. See [Access and roles](/guides/access-and-roles/)."
+	},
+	"add_collaborator": {
+		"request": {
+			"invitee": "ada",
+			"role": "triage"
+		},
+		"response": {
+			"result": "invited",
+			"invitation": {
+				"id": "rin_01kp3e9f0g1h2j3k4m5n6p7q8r",
+				"repo": "flagon-io/hello",
+				"repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+				"invitee": "ada",
+				"email": null,
+				"role": "triage",
+				"invited_by": "syntaqx",
+				"inviter_avatar": null,
+				"status": "pending",
+				"created_at": "2026-10-05T17:00:00.000Z",
+				"expires_at": "2026-10-12T17:00:00.000Z"
+			}
+		},
+		"notes": "`invitee` is a username or an email address. A member of the workspace answers `{\"result\": \"granted\", \"collaborator\": {…}}` with the role already given, shown as list_collaborators shows a person. Anyone else answers `{\"result\": \"invited\", \"invitation\": {…}}`: the invitation is emailed and waits 7 days, and the role is theirs once they accept it. An email address without an account gets an invitation with `email` set and `invitee` null, and an invite that makes the account and accepts in one step. Refused with `404` when no account has that username, `409` when they already have a role of their own or a pending invitation (change it with update_collaborator), and `403` without the Admin role, from an agent's or a workspace's token, or when the person does not meet what the workspace asks of everyone with access. The `repo.collaborator_added` webhook event is sent once they have the role. See [Access and roles](/guides/access-and-roles/)."
+	},
+	"update_collaborator": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"username": "ada"
+		},
+		"request": {
+			"role": "write"
+		},
+		"response": {
+			"username": "ada",
+			"name": "Ada Lovelace",
+			"avatar": null,
+			"role": "write",
+			"source": "direct",
+			"direct": "write",
+			"workspace_role": null
+		},
+		"notes": "Changes a direct role, or the role of the person's pending invitation. `404` when they have neither: an owner's Admin and a member's base permission are not changed here. Changing a direct role sends the `repo.collaborator_role_changed` webhook event. See [Access and roles](/guides/access-and-roles/)."
+	},
+	"remove_collaborator": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"username": "ada"
+		},
+		"response": true,
+		"notes": "Takes away a direct role. Anyone may remove their own, to leave a repository. `404` when the person has no role of their own on it. A member keeps the workspace's base permission. Sends the `repo.collaborator_removed` webhook event. See [Access and roles](/guides/access-and-roles/)."
+	},
+	"get_collaborator_permission": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"username": "ada"
+		},
+		"response": {
+			"username": "ada",
+			"role": "triage",
+			"source": "direct",
+			"capabilities": [
+				"read",
+				"participate",
+				"triage"
+			]
+		},
+		"notes": "`capabilities` lists what the role allows, in the table's order: `read`, `participate`, `triage`, `push`, `merge`, `run`, `manage_settings`, `manage_protection`, `manage_integrations`, `manage_access`, `administer` and `delete` (which also takes an owner of the workspace). `role` and `source` are null, and `capabilities` empty, for someone with no role. Refused with `403` below the Write role, unless you ask about yourself. See [Access and roles](/guides/access-and-roles/)."
+	},
+	"list_repo_invitations": {
+		"response": [
+			{
+				"id": "rin_01kp3c4d5e6f7g8h9j0k1m2n3p",
+				"repo": "flagon-io/hello",
+				"repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+				"invitee": "alan",
+				"email": null,
+				"role": "write",
+				"invited_by": "syntaqx",
+				"inviter_avatar": null,
+				"status": "pending",
+				"created_at": "2026-10-05T17:00:00.000Z",
+				"expires_at": "2026-10-12T17:00:00.000Z"
+			},
+			{
+				"id": "rin_01kp3d7e8f9g0h1j2k3m4n5p6q",
+				"repo": "flagon-io/hello",
+				"repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+				"invitee": null,
+				"email": "joan@example.com",
+				"role": "read",
+				"invited_by": "syntaqx",
+				"inviter_avatar": null,
+				"status": "pending",
+				"created_at": "2026-10-05T17:00:00.000Z",
+				"expires_at": "2026-10-12T17:00:00.000Z"
+			}
+		],
+		"notes": "Pending invitations only, newest first. `email` is set for an invitation sent to an address that had no account. Refused with `403` without the Admin role. See [Access and roles](/guides/access-and-roles/)."
+	},
+	"revoke_repo_invitation": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"id": "rin_01kp3c4d5e6f7g8h9j0k1m2n3p"
+		},
+		"response": {
+			"id": "rin_01kp3c4d5e6f7g8h9j0k1m2n3p",
+			"repo": "flagon-io/hello",
+			"repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"invitee": "alan",
+			"email": null,
+			"role": "write",
+			"invited_by": "syntaqx",
+			"inviter_avatar": null,
+			"status": "revoked",
+			"created_at": "2026-10-05T17:00:00.000Z",
+			"expires_at": "2026-10-12T17:00:00.000Z"
+		},
+		"notes": "`404` when there is no pending invitation with that id on this repository."
+	},
+	"list_my_repo_invitations": {
+		"response": [
+			{
+				"id": "rin_01kp3e9f0g1h2j3k4m5n6p7q8r",
+				"repo": "flagon-io/hello",
+				"repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+				"invitee": "ada",
+				"email": null,
+				"role": "triage",
+				"invited_by": "syntaqx",
+				"inviter_avatar": null,
+				"status": "pending",
+				"created_at": "2026-10-05T17:00:00.000Z",
+				"expires_at": "2026-10-12T17:00:00.000Z"
+			}
+		],
+		"notes": "Invitations sent to your username, and to any of your confirmed addresses before you had an account, newest first. Accept one with `PATCH /user/repository_invitations/{id}`, or decline it with `DELETE`. Expired and answered ones are left out."
+	},
+	"accept_repo_invitation": {
+		"params": {
+			"id": "rin_01kp3e9f0g1h2j3k4m5n6p7q8r"
+		},
+		"response": {
+			"id": "rin_01kp3e9f0g1h2j3k4m5n6p7q8r",
+			"repo": "flagon-io/hello",
+			"repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"invitee": "ada",
+			"email": null,
+			"role": "triage",
+			"invited_by": "syntaqx",
+			"inviter_avatar": null,
+			"status": "accepted",
+			"created_at": "2026-10-05T17:00:00.000Z",
+			"expires_at": "2026-10-12T17:00:00.000Z"
+		},
+		"notes": "The role is yours at once. `404` when you have no pending invitation with that id (it may have expired or been revoked), and `403` when your account does not meet what the workspace asks of everyone with access, such as two-factor authentication, with a message that says what to turn on. See [Access and roles](/guides/access-and-roles/)."
+	},
+	"decline_repo_invitation": {
+		"params": {
+			"id": "rin_01kp3e9f0g1h2j3k4m5n6p7q8r"
+		},
+		"response": {
+			"id": "rin_01kp3e9f0g1h2j3k4m5n6p7q8r",
+			"repo": "flagon-io/hello",
+			"repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"invitee": "ada",
+			"email": null,
+			"role": "triage",
+			"invited_by": "syntaqx",
+			"inviter_avatar": null,
+			"status": "declined",
+			"created_at": "2026-10-05T17:00:00.000Z",
+			"expires_at": "2026-10-12T17:00:00.000Z"
+		},
+		"notes": "`404` when you have no pending invitation with that id."
+	},
+	"set_base_permission": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"request": {
+			"base_permission": "read"
+		},
+		"response": {
+			"workspace": "flagon-io",
+			"base_permission": "read"
+		},
+		"notes": "`base_permission` is `none`, `read`, `write` (the default) or `admin`. Owners keep Admin, and a role given on a repository directly still counts where it is higher. Refused with `403` for anyone but an owner signed in as a person. See [Access and roles](/guides/access-and-roles/)."
+	},
+	"list_outside_collaborators": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"response": [
+			{
+				"username": "ada",
+				"name": "Ada Lovelace",
+				"avatar": null,
+				"repos": [
+					{
+						"repo": "flagon-io/docs",
+						"role": "write"
+					},
+					{
+						"repo": "flagon-io/hello",
+						"role": "triage"
+					}
+				]
+			}
+		],
+		"notes": "By username, each with the repositories they have a role on. Refused with `403` for anyone but an owner. See [Access and roles](/guides/access-and-roles/)."
 	}
 }

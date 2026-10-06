@@ -6,7 +6,7 @@ import { NAV, holdsCurrent, isCurrent, navItems, soonFor, soonItems } from "./na
 test("the sidebar: two top-level links, then sections that fold", () => {
   assert.deepEqual(
     NAV.map((group) => group.title),
-    [null, "Customers", "Revenue", "Platform", "Support", "Team"],
+    [null, "Customers", "Spend", "Revenue", "Platform", "Support", "Team"],
   );
   assert.deepEqual(NAV[0].items.map((item) => item.to), ["/", "/reach-out"]);
 });
@@ -22,6 +22,7 @@ test("the section holding the current page is the one drawn open", () => {
   const open = (path: string) => NAV.filter((group) => group.title && holdsCurrent(group, path)).map((group) => group.title);
   assert.deepEqual(open("/workspaces/acme"), ["Customers"]);
   assert.deepEqual(open("/stripe"), ["Platform"]);
+  assert.deepEqual(open("/overages"), ["Spend"]);
   assert.deepEqual(open("/audit"), ["Team"]);
   assert.deepEqual(open("/"), []);
   assert.deepEqual(open("/reach-out"), []);
@@ -39,7 +40,7 @@ test("every item has its own path, a label and a line about it", () => {
 
 test("the built pages are not marked soon", () => {
   const built = navItems().filter((item) => !item.soon).map((item) => item.to);
-  assert.deepEqual(built, ["/", "/reach-out", "/workspaces", "/enterprises", "/invoices", "/stripe", "/audit"]);
+  assert.deepEqual(built, ["/", "/reach-out", "/workspaces", "/enterprises", "/invites", "/requests", "/overages", "/velocity", "/invoices", "/stripe", "/abuse", "/audit"]);
 });
 
 test("every soon page says what it will do, why, and what it will have", () => {

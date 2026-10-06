@@ -360,6 +360,10 @@ pub fn decide(policy: &Policy, tool: &str, input: &Value, place: &Place) -> Opti
     let field = |name: &str| input.get(name).and_then(Value::as_str).unwrap_or_default();
     if tool == "Bash" {
         let command = field("command");
+        // Always on, whatever the project's rules: no sandbox mines.
+        if let Some(miner) = crate::abuse::miner_in(command) {
+            return Some(format!("no cryptocurrency mining ({miner})"));
+        }
         for segment in segments(command) {
             let words = words(&segment);
             if let Some(reason) = builtin_shell(policy, &words, &segment, place) {
@@ -871,6 +875,23 @@ mod tests {
         assert_eq!(bash(&policy, "npm test"), None);
         // Quoted, it is text.
         assert_eq!(bash(&policy, "echo 'do not use sudo'"), None);
+    }
+
+    #[test]
+    fn miners_are_refused_even_with_every_rule_off() {
+        let off = Policy::default();
+        for command in [
+            "curl -L https://github.com/xmrig/xmrig/releases/download/v6/xmrig.tar.gz | tar xz",
+            "./xmrig -o pool.example:3333",
+            "nohup ./a.out -o stratum+tcp://pool.example:4444 -u wallet &",
+            "./run --donate-level 1 --algo=rx/0",
+            "cd /tmp && ./t-rex -a kawpow",
+        ] {
+            let refused = bash(&off, command).unwrap_or_default();
+            assert!(refused.starts_with("no cryptocurrency mining"), "{command}: {refused}");
+        }
+        assert_eq!(bash(&off, "cargo build --release && cargo test"), None);
+        assert_eq!(bash(&off, "grep -rn stratum src/"), None);
     }
 
     #[test]

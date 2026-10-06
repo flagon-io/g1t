@@ -392,7 +392,7 @@ impl Work {
             },
         )
         .await?;
-        let Outcome::Ok(repo) = repo else {
+        let Outcome::Ok(repo) = crate::retired::unless_archived(repo) else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Pull request not found."));
         };
         let path = RepoPath {

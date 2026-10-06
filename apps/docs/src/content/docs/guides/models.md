@@ -6,10 +6,10 @@ description: Connect Anthropic, OpenAI, Gemini or any compatible endpoint, choos
 Each workspace decides where its agents' model spend goes:
 
 - **g1t's hosted models.** g1t chooses the model for each kind of work, pays
-  the provider, and charges your workspace's credit what it cost plus a
-  margin. Every new workspace gets $1 of trial credit that pays for it
-  first (see [trials](/guides/usage-and-billing/#trials)); once payments
-  go live, open to all.
+  the provider, and charges your workspace what it cost plus 20%. The
+  plan's included usage and [the trial](/guides/usage-and-billing/#the-trial)
+  pay for it first. Open only to g1t's own workspaces while payments are
+  in test mode; once they go live, open to all.
 - **Your own providers.** Connect as many as you use, then choose, for each
   kind of work, which provider and model it runs on. Each provider bills
   you directly. Open to every workspace now.

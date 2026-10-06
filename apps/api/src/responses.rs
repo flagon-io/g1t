@@ -7,7 +7,7 @@
 //! encoded again, so that every field the type has is sent, not only the
 //! ones an example shows.
 
-use g1t_contracts::{actions, integrations, repos, search, webhooks, work};
+use g1t_contracts::{access, actions, integrations, repos, search, webhooks, work};
 use g1t_kit::wire::{self, USER_KEYED};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -63,11 +63,41 @@ fn through<T: DeserializeOwned + Serialize>(op: Op, value: Value) -> Value {
 
 /// What the service behind an operation sends, from its example.
 fn sample(op: Op, example: &Value) -> Value {
+    // Types serde already writes in `snake_case`: a person, and who has
+    // access. Sent as they are.
+    let as_is = example.clone();
+    match op {
+        Op::Whoami => return through::<g1t_contracts::User>(op, as_is),
+        Op::ListCollaborators => return through::<access::RepoAccess>(op, as_is),
+        Op::AddCollaborator => return through::<access::Added>(op, as_is),
+        Op::UpdateCollaborator => return through::<access::Collaborator>(op, as_is),
+        Op::GetCollaboratorPermission => return through::<access::PermissionInfo>(op, as_is),
+        Op::ListRepoInvitations | Op::ListMyRepoInvitations => {
+            return through::<Vec<access::RepoInvitation>>(op, as_is);
+        }
+        Op::RevokeRepoInvitation | Op::AcceptRepoInvitation | Op::DeclineRepoInvitation => {
+            return through::<access::RepoInvitation>(op, as_is);
+        }
+        Op::ListOutsideCollaborators => return through::<Vec<access::OutsideCollaborator>>(op, as_is),
+        _ => {}
+    }
     let sent = as_services_send(example);
     match op {
+        Op::CreateWorkspace => through::<g1t_contracts::identity::Workspace>(op, sent),
         Op::ListRepos => through::<Vec<repos::Repo>>(op, sent),
         Op::Search => through::<search::SearchResults>(op, sent),
-        Op::GetRepo | Op::CreateRepo | Op::UpdateRepo => through::<repos::Repo>(op, sent),
+        Op::GetRepo
+        | Op::CreateRepo
+        | Op::UpdateRepo
+        | Op::TransferRepo
+        | Op::RenameRepo
+        | Op::RenameBranch
+        | Op::ArchiveRepo
+        | Op::UnarchiveRepo
+        | Op::SetRepoVisibility
+        | Op::RestoreRepo => through::<repos::Repo>(op, sent),
+        Op::DeleteRepo => through::<repos::DeletedRepo>(op, sent),
+        Op::ListDeletedRepos => through::<Vec<repos::DeletedRepo>>(op, sent),
         Op::GetRepoSettings | Op::UpdateRepoSettings => through::<work::RepoSettings>(op, sent),
         Op::GetMergeQueue => through::<work::QueueView>(op, sent),
         Op::ListIssues => through::<Vec<work::Issue>>(op, sent),
@@ -92,7 +122,14 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::ListIntegrations => through::<Vec<integrations::Connection>>(op, sent),
         Op::GetModelRoutes | Op::SetModelRoutes => through::<Vec<integrations::ModelRoute>>(op, sent),
         Op::ListEvents => through::<Vec<g1t_contracts::events::Event>>(op, sent),
-        Op::Whoami => through::<g1t_contracts::User>(op, sent),
+        Op::ListEmails | Op::AddEmail | Op::RemoveEmail | Op::UpdateEmailSettings => {
+            through::<g1t_contracts::accounts::AccountEmails>(op, sent)
+        }
+        Op::ListInvites => through::<g1t_contracts::identity::InvitesOverview>(op, sent),
+        Op::CreateInvite | Op::RevokeInvite | Op::InviteMember | Op::RevokeWorkspaceInvite => {
+            through::<g1t_contracts::identity::Invite>(op, sent)
+        }
+        Op::ListWorkspaceInvites => through::<Vec<g1t_contracts::identity::Invite>>(op, sent),
         _ => sent,
     }
 }

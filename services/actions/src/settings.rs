@@ -15,6 +15,7 @@
 //! they are touched. Names are upper-cased, as GitHub treats
 //! them without regard to case. Agents never read any.
 
+use g1t_contracts::access::Capability;
 use g1t_contracts::actions::{
     CONSUMERS, DeleteSettingArgs, ResolveSettingsArgs, ResolvedSettings, SetSettingArgs, Setting, SettingsArgs,
     SettingsOwner,
@@ -174,11 +175,11 @@ impl Actions {
         }
         match (&owner.repo, &owner.workspace) {
             (Some(path), _) => {
-                if !actor.is_member(&path.namespace.to_lowercase()) {
-                    return Ok(fail(FailureCode::Forbidden, format!("Only members of {} can see its secrets and variables.", path.namespace)));
-                }
-                let Some(repo) = self.visible_repo(path, &Some(actor.clone())).await? else {
-                    return Ok(fail(FailureCode::NotFound, "There is no such repository."));
+                // A repository's secrets and variables, seen or changed,
+                // go with its webhooks and deployments: the Admin role.
+                let repo = match self.may(actor, path, Capability::ManageIntegrations).await? {
+                    Outcome::Ok(repo) => repo,
+                    Outcome::Fail(refused) => return Ok(Outcome::Fail(refused)),
                 };
                 let Some(project) = self.project_of(&repo.id).await? else {
                     return Ok(fail(FailureCode::NotFound, "The repository has no project."));

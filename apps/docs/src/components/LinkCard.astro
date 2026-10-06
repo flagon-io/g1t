@@ -1,0 +1,71 @@
+---
+// Starlight's <LinkCard>, with Lucide's arrow.
+import type { HTMLAttributes } from 'astro/types';
+
+import LucideIcon from './LucideIcon.astro';
+
+interface Props extends Omit<HTMLAttributes<'a'>, 'title'> {
+	title: string;
+	description?: string;
+}
+
+const { title, description, ...attributes } = Astro.props;
+---
+
+<div class="sl-link-card">
+	<span class="sl-flex stack">
+		<a {...attributes}>
+			<span class="title" set:html={title} />
+		</a>
+		{description && <span class="description" set:html={description} />}
+	</span>
+	<LucideIcon name="arrow-right" size="1.333em" class="icon rtl:flip" />
+</div>
+
+<style>
+	@layer starlight.components {
+		.sl-link-card {
+			display: grid;
+			grid-template-columns: 1fr auto;
+			gap: 0.5rem;
+			border: 1px solid var(--sl-color-gray-5);
+			border-radius: 0.5rem;
+			padding: 1rem;
+			box-shadow: var(--sl-shadow-sm);
+			position: relative;
+		}
+		a {
+			text-decoration: none;
+			line-height: var(--sl-line-height-headings);
+		}
+		/* The whole card is the link. */
+		a::before {
+			content: '';
+			position: absolute;
+			inset: 0;
+		}
+		.stack {
+			flex-direction: column;
+			gap: 0.5rem;
+		}
+		.title {
+			color: var(--sl-color-white);
+			font-weight: 600;
+			font-size: var(--sl-text-lg);
+		}
+		.description {
+			color: var(--sl-color-gray-3);
+			line-height: 1.5;
+		}
+		.sl-link-card :global(.icon) {
+			color: var(--sl-color-gray-3);
+		}
+		.sl-link-card:hover {
+			background: var(--sl-color-gray-7, var(--sl-color-gray-6));
+			border-color: var(--sl-color-gray-2);
+		}
+		.sl-link-card:hover :global(.icon) {
+			color: var(--sl-color-white);
+		}
+	}
+</style>

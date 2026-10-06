@@ -15,17 +15,45 @@ export type ChangelogEntry = {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     date: "2026-10-05",
+    title: "Invites",
+    about:
+      "g1t is invite-only while we open it up. You have 5 invites: make one for anyone with the link or for one email address, copy it, and revoke it until it is used; an unused one comes back when it expires. Owners can invite an email address straight into a workspace, and it makes the account and joins in one step.",
+    href: "/settings#invites",
+  },
+  {
+    date: "2026-10-05",
+    title: "Status, security and policies",
+    about:
+      "g1t.sh/status checks every public part of g1t each minute and says plainly what it can't check yet; the dot beside Status in the footer and your account menu follows it. Security describes what protects your code and how to report a vulnerability, Support says who to write to, and Policies has the terms, privacy policy, acceptable use, refunds and subprocessors, with every change listed.",
+    href: "/status",
+  },
+  {
+    date: "2026-10-05",
+    title: "One plan, and limits you control",
+    about:
+      "The forge stays free. The g1t plan is $20 a month per workspace, with $10 of usage included and deployments part of it. Billing now has the $5 trial after a card check, your spend limit with how far you can raise it yourself, Raise my limit, Prepay, caps per run and per issue, and Keep going or Stop when spending spikes.",
+    href: "/{workspace}/-/billing",
+  },
+  {
+    date: "2026-10-05",
+    title: "A project overview that shows the way to production",
+    about:
+      "Production shows a screenshot of the live site, taken on each deploy. A checklist counts the steps to production, from first push to a first issue for g1t-agent, each linking to where it is done. Active branches show how far each has moved from main, with its pull request and preview.",
+    href: "https://docs.g1t.sh/guides/projects/#the-overview",
+  },
+  {
+    date: "2026-10-05",
+    title: "Setup for Claude Code, Codex, OpenCode and Cursor",
+    about:
+      "Wherever g1t shows how to connect your coding agent, pick yours: the command or config for it, with a copy button. Every block on the page follows your choice, and it is remembered.",
+    href: "https://docs.g1t.sh/guides/bring-your-own-agent/",
+  },
+  {
+    date: "2026-10-05",
     title: "Browse public projects in the sidebar",
     about:
       "Public projects, Explore, Search and profiles use the sidebar whether you are signed in or not. A page you cannot see says so plainly, the same for private and missing, with a way to sign in or switch account.",
     href: "https://docs.g1t.sh/guides/git/#browsing-without-an-account",
-  },
-  {
-    date: "2026-10-05",
-    title: "The Team plan, and free open source",
-    about:
-      "Team is $20 a month per workspace, never per person, with $5 of usage credit, 50 GB of private storage and a year of audit log. Work on public repositories is paid by g1t's open-source pool first, trials renew monthly, and no card is charged under $5.",
-    href: "/pricing",
   },
   {
     date: "2026-10-05",

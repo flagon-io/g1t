@@ -63,6 +63,17 @@ pub(crate) fn redact(text: &str, secrets: &[String]) -> String {
 
 /// Runs one command in the checkout, without this process's credentials.
 pub(crate) fn run_command(command: &str, workdir: &Path, secrets: &[String]) -> CheckResult {
+    crate::abuse::touch();
+    // Mining is never a check's or a build's job (abuse.rs).
+    if let Some(miner) = crate::abuse::miner_in(command) {
+        return CheckResult {
+            command: command.to_owned(),
+            passed: false,
+            exit_code: None,
+            output: format!("g1t does not run cryptocurrency miners ({miner}). This command was not run."),
+            duration_ms: 0,
+        };
+    }
     let started = Instant::now();
     let output = Command::new("timeout")
         .args([

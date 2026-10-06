@@ -16,7 +16,9 @@
 //
 // Usage: node configs.mjs [outDir]
 // Environment: PUBLIC_URL, GITSTORE_URL, GITSTORE_SECRET, MAIL_URL,
-// ACTIONS_KEY, INTEGRATIONS_KEY, WEBHOOKS_KEY.
+// ACTIONS_KEY, INTEGRATIONS_KEY, WEBHOOKS_KEY, IDENTITY_KEY, and optionally
+// your own GitHub App: GITHUB_APP_ID, GITHUB_APP_SLUG, GITHUB_APP_CLIENT_ID,
+// GITHUB_APP_CLIENT_SECRET, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_WEBHOOK_SECRET.
 //
 // The output is for `wrangler dev` (see start.sh): every Worker in one
 // workerd, the site first, with D1, KV and Queues kept on disk.
@@ -60,6 +62,17 @@ const SECRETS = {
   "g1t-actions": "ACTIONS_KEY",
   "g1t-integrations": "INTEGRATIONS_KEY",
   "g1t-webhooks": "WEBHOOKS_KEY",
+};
+
+/**
+ * g1t.sh's GitHub App is its own: an installation registers one of its
+ * own, or has none, and then no GitHub buttons appear. Its public settings
+ * replace the hosted vars; its secrets go only to the service that uses each.
+ */
+const GITHUB_VARS = ["GITHUB_APP_ID", "GITHUB_APP_SLUG", "GITHUB_APP_CLIENT_ID"];
+const GITHUB_SECRETS = {
+  "g1t-identity": ["GITHUB_APP_CLIENT_SECRET", "IDENTITY_KEY", "REGISTRATION_MODE"],
+  "g1t-integrations": ["GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_WEBHOOK_SECRET"],
 };
 
 /** Queues whose consumers are off: events stops sending to them. */
@@ -155,10 +168,24 @@ function selfHosted(service) {
   // only to the service that uses it.
   const secret = SECRETS[hosted.name];
   if (secret && process.env[secret]) config.vars[secret] = process.env[secret];
+  for (const name of GITHUB_VARS) {
+    if (name in config.vars) config.vars[name] = process.env[name] ?? "";
+  }
+  for (const name of GITHUB_SECRETS[hosted.name] ?? []) {
+    if (process.env[name]) config.vars[name] = process.env[name];
+  }
 
   // Self-hosted g1t charges nothing: billing records usage at cost and never
   // stops work for it.
   if (hosted.name === "g1t-billing") config.vars.FREE_WHILE_BUILDING = "true";
+  // Anyone may register on an installation of your own unless you set
+  // REGISTRATION_MODE=invite; invites then work as on g1t.sh, and the owners
+  // of INVITE_STAFF_WORKSPACES (yours, not g1t.sh's) invite without limit.
+  if (hosted.name === "g1t-identity") {
+    config.vars.REGISTRATION_MODE = process.env.REGISTRATION_MODE || "open";
+    config.vars.INVITE_STAFF_WORKSPACES = process.env.INVITE_STAFF_WORKSPACES ?? "";
+    if (process.env.INVITES_PER_USER) config.vars.INVITES_PER_USER = process.env.INVITES_PER_USER;
+  }
   // Nothing to deploy to: deployments are off (no Cloudflare API token).
   if (hosted.name === "g1t-deployments") delete config.vars.CUSTOM_HOSTNAMES_ZONE_ID;
 

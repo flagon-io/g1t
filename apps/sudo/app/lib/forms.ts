@@ -179,24 +179,164 @@ export function parseCredit(raw: string): Parsed<number> {
 
 /** The most staff can set an account's share of a pool to, against a slipped finger. */
 export const MAX_POOL_SHARE_MICROS = 1_000 * MICROS_PER_DOLLAR;
+/** The most agents at once staff can allow one account. */
+export const MAX_AGENTS_AT_ONCE = 100;
+/** Staff's overrides of the owners' caps: one run, and one issue's agents in all. */
+export const MAX_RUN_CAP_MICROS = 1_000 * MICROS_PER_DOLLAR;
+export const MAX_ISSUE_CAP_MICROS = 10_000 * MICROS_PER_DOLLAR;
+/** The smallest cap: ten cents, as owners may set. */
+const MIN_CAP_MICROS = 100_000;
+const MAX_HOLD = 200;
 
 /**
- * Allowances from the plan-and-pools form: Team without charge, and the
- * account's share of the open-source pool and of trials. A blank amount
- * means the default.
+ * Allowances from the plan-and-pools form: the g1t plan without its price,
+ * the account's share of the open-source pool and of trials, and staff's
+ * overrides of agents at once, the run cap and the issue cap. A blank
+ * amount means the default (for a cap, no override). A hold is a line
+ * saying why new compute is held; blank is no hold.
  */
 export function parseAllowances(form: FormData): Parsed<Allowances> {
-  const amount = (name: string, what: string): Parsed<number | null> => {
+  const amount = (name: string, what: string, max: number, maxText: string, min = 0): Parsed<number | null> => {
     const raw = text(form, name);
     if (!raw) return { ok: true, value: null };
     const micros = parseDollars(raw);
-    if (micros == null || micros < 0) return { ok: false, error: `${what} is dollars and cents, such as 5 or 2.50, or blank for the default.` };
-    if (micros > MAX_POOL_SHARE_MICROS) return { ok: false, error: `${what} is at most $1,000.` };
+    if (micros == null) return { ok: false, error: `${what} is dollars and cents, such as 5 or 2.50, or blank for the default.` };
+    if (micros < min) return { ok: false, error: `${what} is at least $${(min / MICROS_PER_DOLLAR).toFixed(2)}, or blank for the default.` };
+    if (micros > max) return { ok: false, error: `${what} is at most ${maxText}.` };
     return { ok: true, value: micros };
   };
-  const oss = amount("oss", "The open-source share");
+  const oss = amount("oss", "The open-source share", MAX_POOL_SHARE_MICROS, "$1,000");
   if (!oss.ok) return oss;
-  const trial = amount("trial", "The trial credit");
+  const trial = amount("trial", "The trial credit", MAX_POOL_SHARE_MICROS, "$1,000");
   if (!trial.ok) return trial;
-  return { ok: true, value: { team: text(form, "team") === "on", ossRepoMicros: oss.value, trialMicros: trial.value } };
+  const runCap = amount("runCap", "The run cap", MAX_RUN_CAP_MICROS, "$1,000", MIN_CAP_MICROS);
+  if (!runCap.ok) return runCap;
+  const issueCap = amount("issueCap", "The issue cap", MAX_ISSUE_CAP_MICROS, "$10,000", MIN_CAP_MICROS);
+  if (!issueCap.ok) return issueCap;
+
+  let maxConcurrentAgents: number | null = null;
+  const rawAgents = text(form, "agents");
+  if (rawAgents) {
+    if (!/^\d{1,3}$/.test(rawAgents) || Number(rawAgents) < 1 || Number(rawAgents) > MAX_AGENTS_AT_ONCE) {
+      return { ok: false, error: `Agents at once is a whole number from 1 to ${MAX_AGENTS_AT_ONCE}, or blank for the default.` };
+    }
+    maxConcurrentAgents = Number(rawAgents);
+  }
+
+  const hold = text(form, "hold").replace(/\s+/g, " ");
+  if (hold.length > MAX_HOLD) return { ok: false, error: `Keep the hold's reason under ${MAX_HOLD} characters.` };
+
+  return {
+    ok: true,
+    value: {
+      plan: text(form, "plan") === "on",
+      ossRepoMicros: oss.value,
+      trialMicros: trial.value,
+      maxConcurrentAgents,
+      runCapMicros: runCap.value,
+      issueCapMicros: issueCap.value,
+      hold: hold || null,
+    },
+  };
+}
+
+/** The most one recorded payment can be; billing refuses more. */
+export const MAX_PAYMENT_MICROS = 100_000 * MICROS_PER_DOLLAR;
+const MAX_REFERENCE = 100;
+
+export type PaymentInput = { amountMicros: number; reference: string; note: string };
+
+/**
+ * A bank transfer that reached g1t outside Stripe's page, from its form:
+ * the amount, the transfer's reference (each is recorded once), a note,
+ * and the workspace's slug typed out to confirm.
+ */
+export function parsePayment(form: FormData, workspace: string): Parsed<PaymentInput> {
+  const amountMicros = parseDollars(text(form, "amount"));
+  if (amountMicros == null || amountMicros <= 0) {
+    return { ok: false, error: "The amount is dollars and cents, more than zero, such as 1,500 or 2400.50." };
+  }
+  if (amountMicros > MAX_PAYMENT_MICROS) {
+    return { ok: false, error: "One payment is at most $100,000. Record a larger transfer in parts, each with its own reference." };
+  }
+  const reference = text(form, "reference").replace(/\s+/g, " ");
+  if (!reference) return { ok: false, error: "Give the transfer's reference, as the bank shows it, so it is recorded once." };
+  if (reference.length > MAX_REFERENCE) return { ok: false, error: `Keep the reference under ${MAX_REFERENCE} characters.` };
+  const note = parseNote(text(form, "note"));
+  if (!note.ok) return note;
+  if (text(form, "confirmation") !== workspace) {
+    return { ok: false, error: `Type the workspace's slug, ${workspace}, exactly, to record the payment.` };
+  }
+  return { ok: true, value: { amountMicros, reference, note: note.value } };
+}
+
+/** The most staff can approve on a request; billing refuses more. */
+export const MAX_REQUEST_MICROS = 1_000_000 * MICROS_PER_DOLLAR;
+
+export type Decision = { id: string; decision: "approve" | "decline"; amountMicros: number | null; note: string };
+
+/**
+ * A decision on a limit or overage request. Approve takes the amount asked
+ * (blank) or another; decline needs a note, which the owner reads.
+ */
+export function parseDecision(form: FormData): Parsed<Decision> {
+  const id = text(form, "id");
+  if (!/^[A-Za-z0-9_-]{1,80}$/.test(id)) return { ok: false, error: "That is not a request." };
+  const decision = text(form, "decision");
+  if (decision !== "approve" && decision !== "decline") return { ok: false, error: "Approve or decline." };
+  const note = text(form, "note");
+  if (note.length > MAX_NOTE) return { ok: false, error: `Keep the note under ${MAX_NOTE} characters.` };
+  if (decision === "decline") {
+    if (!note) return { ok: false, error: "Say why, for the owner: they read it in the app and by email." };
+    return { ok: true, value: { id, decision, amountMicros: null, note } };
+  }
+  let amountMicros: number | null = null;
+  const raw = text(form, "amount");
+  if (raw) {
+    const micros = parseDollars(raw);
+    if (micros == null || micros < MICROS_PER_DOLLAR) return { ok: false, error: "The amount is dollars and cents, at least $1, such as 750." };
+    if (micros > MAX_REQUEST_MICROS) return { ok: false, error: "Approve at most $1,000,000." };
+    amountMicros = micros;
+  }
+  return { ok: true, value: { id, decision, amountMicros, note } };
+}
+
+export type GoodwillInput = { amountMicros: number | null; reason: string; day: string | null };
+
+/** A typed reason is a sentence: billing asks for at least this many characters. */
+export const MIN_REASON = 10;
+
+/**
+ * A goodwill credit from its form. No amount is the one-click credit. A
+ * reason is required when `needsReason` says so (more than the one-click
+ * credit, or a second within 12 months). The day is when the accidental
+ * usage happened; blank lets billing choose it.
+ */
+export function parseGoodwill(
+  form: FormData,
+  needsReason: (amountMicros: number | null) => boolean,
+  now = new Date(),
+): Parsed<GoodwillInput> {
+  let amountMicros: number | null = null;
+  const raw = text(form, "amount");
+  if (raw) {
+    const micros = parseDollars(raw);
+    if (micros == null || micros <= 0) return { ok: false, error: "The amount is dollars and cents, more than zero, such as 40 or 12.50." };
+    if (micros > MAX_CREDIT_MICROS) return { ok: false, error: "A goodwill credit is at most $10,000." };
+    amountMicros = micros;
+  }
+  const reason = text(form, "reason").replace(/\s+/g, " ");
+  if (reason.length > MAX_NOTE) return { ok: false, error: `Keep the reason under ${MAX_NOTE} characters.` };
+  if (needsReason(amountMicros) && reason.length < MIN_REASON) {
+    return { ok: false, error: "This credit needs a reason: say why, in a sentence, for whoever looks next." };
+  }
+  let day: string | null = null;
+  const rawDay = text(form, "day");
+  if (rawDay) {
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDay) ? new Date(`${rawDay}T00:00:00Z`) : null;
+    if (!date || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== rawDay) return { ok: false, error: "The day is not a date." };
+    if (date.getTime() > now.getTime()) return { ok: false, error: "The day of the usage cannot be in the future." };
+    day = rawDay;
+  }
+  return { ok: true, value: { amountMicros, reason, day } };
 }

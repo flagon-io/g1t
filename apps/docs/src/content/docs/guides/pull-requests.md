@@ -46,8 +46,9 @@ stopped, the box says why instead of listing results.
 ### Running them again
 
 **Re-run checks** runs the acceptance checks again on the current head.
-Whoever opened the pull request and members of the workspace can. Members
-can also **Re-run failed jobs** of a workflow that failed.
+Whoever opened the pull request and people with the Write [role](/guides/access-and-roles/)
+or higher can. People with Write can also **Re-run failed jobs** of a
+workflow that failed.
 
 **Earlier runs of the acceptance checks** lists the runs before the latest,
 with the commit each ran on and how it went.
@@ -79,7 +80,7 @@ ways to resolve them:
   resolves the conflicts keeping what both sides meant, and pushes the
   result. It is told which files conflict. Available to whoever can push to
   the pull request: for a pull request's fork, whoever opened it; for a
-  branch, any member.
+  branch, anyone with the Write role or higher.
 - **Resolve in the browser.** Coming soon.
 - **On the command line.** The box lists the commands, each with a copy
   button. For a pull request from a branch:
@@ -113,7 +114,8 @@ requires pull requests to be up to date.
 
 When the target branch has moved, the merge box says **main has moved since
 this was made**. Whoever can push to the pull request (whoever opened it,
-for one in its own fork; any member of the workspace, for a branch) can
+for one in its own fork; anyone with the Write [role](/guides/access-and-roles/) or higher,
+for a branch) can
 press **Catch up with main now**:
 
 1. **When the two changed different files**, g1t merges `main` in itself,

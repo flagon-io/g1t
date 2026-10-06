@@ -1,10 +1,10 @@
 import { env } from "cloudflare:workers";
 import { GitPullRequest, MessageSquare, Plus, Sparkles, X } from "lucide-react";
-import { Form, Link, useNavigation } from "react-router";
+import { Form, Link, useNavigation, useRouteLoaderData } from "react-router";
 
 import type { Route } from "./+types/issues";
 import { page } from "../../lib/meta";
-import { Button, ButtonLink, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
+import { Button, ButtonLink, ComputeNote, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
 import { Checkbox } from "../../components/ui/checkbox";
 import {
   Assignee,
@@ -13,8 +13,11 @@ import {
   Label,
   StateTabs,
 } from "../../components/work";
+import { computeNoteFor } from "../../lib/compute.server";
+import { isWaitingMessage } from "../../lib/compute";
 import { work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
+import { accessTo, refusal } from "../../lib/access.server";
 
 /** As many sandboxes as one request may start. */
 const MAX_ASSIGNED_AT_ONCE = 10;
@@ -29,17 +32,22 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const query = new URL(request.url).searchParams;
   const state = query.get("state") === "closed" ? "closed" : "open";
   const label = query.get("label") ?? "";
-  const [issues, labels, agentsEnabled] = await Promise.all([
+  // Assigning agents needs Write: Read cannot spend compute.
+  const { can } = await accessTo(context, params);
+  const [issues, labels, agentsEnabled, computeNote] = await Promise.all([
     work.listIssues(path, viewer, { state, label: label || undefined }),
     work.listLabels(path, viewer),
     env.RUNNER.enabled(viewer, path),
+    // Before a member assigns: whether the workspace's plan lets agents start.
+    can.run ? computeNoteFor(params.owner, "agent") : null,
   ]);
   return {
     issues: unwrap(issues),
     labels: unwrap(labels),
     state,
     label,
-    agentsEnabled,
+    agentsEnabled: agentsEnabled && can.run,
+    computeNote,
   } as const;
 }
 
@@ -53,16 +61,21 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     .map(Number)
     .filter((number) => Number.isInteger(number) && number > 0);
   if (numbers.length === 0) return { error: "Select the issues to assign first." };
+  const denied = await refusal(context, params, "run");
+  if (denied) return { error: denied };
   if (numbers.length > MAX_ASSIGNED_AT_ONCE) {
     return { error: `Assign at most ${MAX_ASSIGNED_AT_ONCE} issues at a time.` };
   }
   const results = await Promise.all(
     numbers.map((number) => env.RUNNER.run(user, path, number)),
   );
-  const refused = results.find((result) => !result.ok);
+  // Over the workspace's agents-at-once cap, the rest wait in the queue.
+  const waiting = results.filter((result) => !result.ok && isWaitingMessage(result.error.message)).length;
+  const refused = results.find((result) => !result.ok && !isWaitingMessage(result.error.message));
   const started = results.filter((result) => result.ok).length;
   return {
     started,
+    waiting,
     error:
       refused && !refused.ok
         ? `${started} of ${numbers.length} assigned. ${refused.error.message}`
@@ -77,6 +90,9 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
   const stateQuery = state === "closed" ? "state=closed" : "";
   const assignable = agentsEnabled && state === "open" && issues.length > 0;
   const assigning = useNavigation().state === "submitting";
+  // An archived repository's issues are locked: no new ones.
+  const layout = useRouteLoaderData("routes/repo/layout") as { repo?: { archivedAt?: string | null } } | undefined;
+  const archived = Boolean(layout?.repo?.archivedAt);
   return (
     <div>
       <StateTabs
@@ -84,10 +100,12 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
         state={state}
         query={label ? `label=${encodeURIComponent(label)}` : ""}
         action={
-          <ButtonLink to={`${base}/new`}>
-            <Plus size={15} />
-            New issue
-          </ButtonLink>
+          archived ? undefined : (
+            <ButtonLink to={`${base}/new`}>
+              <Plus size={15} />
+              New issue
+            </ButtonLink>
+          )
         }
       />
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
@@ -121,6 +139,11 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
             <Button variant="accent" type="submit" disabled={assigning}>
               {assigning ? "Starting sandboxes…" : "Assign to g1t agent"}
             </Button>
+            {loaderData.computeNote && (
+              <div className="basis-full">
+                <ComputeNote note={loaderData.computeNote} />
+              </div>
+            )}
           </div>
         )}
         {actionData?.error ? (
@@ -133,6 +156,9 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
               {actionData.started}{" "}
               {actionData.started === 1 ? "agent is" : "agents are"} starting. Each
               issue shows its pull request as it appears.
+              {actionData.waiting
+                ? ` ${actionData.waiting} more ${actionData.waiting === 1 ? "waits" : "wait"} for a free slot and start by themselves.`
+                : ""}
             </p>
           )
         )}

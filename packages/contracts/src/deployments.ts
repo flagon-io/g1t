@@ -38,7 +38,15 @@ export type DeploySettings = {
    * until one is.
    */
   primaryDomain: string | null;
+  /**
+   * What the last finished build found the project to be: a Workers
+   * project (it has a Workers config), a static site its build wrote, or
+   * plain HTML served as it is. Null until a build has finished. Read-only.
+   */
+  detected: DetectedKind | null;
 };
+
+export type DetectedKind = "workers" | "static" | "html";
 
 export type DeployKind = "preview" | "production";
 

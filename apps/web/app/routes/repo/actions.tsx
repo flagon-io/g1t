@@ -1,5 +1,4 @@
 import { AlertTriangle, FileCode2, GitBranch, Play, PlayCircle } from "lucide-react";
-import { env } from "cloudflare:workers";
 import { useEffect, useState } from "react";
 import { Form, Link, useNavigation, useRevalidator, useSearchParams } from "react-router";
 
@@ -8,11 +7,13 @@ import type { DispatchInput, Workflow, WorkflowRun } from "@g1t/contracts";
 import type { Route } from "./+types/actions";
 import { page } from "../../lib/meta";
 import { Notes, StatusIcon, duration, shortRef } from "../../components/actions";
-import { Button, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
+import { Button, ComputeNote, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { computeNoteFor } from "../../lib/compute.server";
 import { actions } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
+import { accessFor, refusal, repoFor } from "../../lib/access.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Workflows · ${params.owner}/${params.repo} · g1t` });
@@ -22,19 +23,26 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const repo = { namespace: params.owner, name: params.repo };
   const selected = new URL(request.url).searchParams.get("workflow") ?? undefined;
-  const member = roleIn(viewer, params.owner) != null;
-  const [workflows, runs, models] = await Promise.all([
+  const found = await repoFor(context, params);
+  const can = found.ok ? accessFor(viewer, found.value).can : null;
+  // Starting runs needs Write; turning a workflow on or off, Maintain.
+  const member = can?.run ?? false;
+  const [workflows, runs, computeNote] = await Promise.all([
     actions.workflows(repo, viewer),
     actions.runs(repo, viewer, { workflow: selected, limit: 50 }),
-    // Jobs run on g1t's machines for workspaces whose agents can reach a
-    // model; members are told before a run fails for it.
-    member ? env.RUNNER.modelAccess(params.owner).catch(() => null) : Promise.resolve(null),
+    // Jobs run on g1t's machines as the workspace's plan allows, or from
+    // the open-source pool on a public repository; members are told
+    // before a run is refused for it.
+    member && found.ok
+      ? computeNoteFor(params.owner, "workflow", !found.value.isPrivate).catch(() => null)
+      : Promise.resolve(null),
   ]);
   return {
     workflows: unwrap(workflows),
     runs: runs.ok ? runs.value : [],
     member,
-    runnable: models == null || models.hosted || models.own != null,
+    manage: can?.manage_settings ?? false,
+    computeNote,
     selected: selected ?? null,
   };
 }
@@ -45,6 +53,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const repo = { namespace: params.owner, name: params.repo };
   const form = await request.formData();
   const workflow = String(form.get("workflow") ?? "");
+  const refused = await refusal(context, params, form.get("intent") === "toggle" ? "manage_settings" : "run");
+  if (refused) return { error: refused };
   if (form.get("intent") === "toggle") {
     const changed = await actions.setWorkflowEnabled(user, repo, workflow, form.get("enabled") === "true");
     return changed.ok ? {} : { error: changed.error.message };
@@ -209,7 +219,7 @@ function RunWorkflow({ workflow }: { workflow: Workflow }) {
   );
 }
 
-function WorkflowHeader({ workflow, base, member }: { workflow: Workflow; base: string; member: boolean }) {
+function WorkflowHeader({ workflow, base, member, manage }: { workflow: Workflow; base: string; member: boolean; manage: boolean }) {
   const busy = useNavigation().state === "submitting";
   return (
     <div className="space-y-4">
@@ -227,20 +237,20 @@ function WorkflowHeader({ workflow, base, member }: { workflow: Workflow; base: 
         {member && !workflow.error && (
           <div className="flex items-center gap-2">
             {workflow.dispatch && workflow.state === "active" && <RunWorkflow workflow={workflow} />}
-            <Form method="post">
+            {manage && <Form method="post">
               <input type="hidden" name="intent" value="toggle" />
               <input type="hidden" name="workflow" value={workflow.id} />
               <input type="hidden" name="enabled" value={workflow.state === "active" ? "false" : "true"} />
               <Button type="submit" variant="quiet" disabled={busy}>
                 {workflow.state === "active" ? "Turn off" : "Turn on"}
               </Button>
-            </Form>
+            </Form>}
           </div>
         )}
       </div>
       {workflow.error && <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{workflow.error}</p>}
       {workflow.state === "disabled" && (
-        <p className="rounded-lg bg-raised px-3 py-2 text-sm text-muted">Turned off: nothing starts it until a member turns it on.</p>
+        <p className="rounded-lg bg-raised px-3 py-2 text-sm text-muted">Turned off: nothing starts it until someone with the Maintain role turns it on.</p>
       )}
       <Notes notes={workflow.notes} />
     </div>
@@ -264,7 +274,7 @@ jobs:
       - run: npm test`;
 
 export default function Actions({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { workflows, runs, member, runnable, selected } = loaderData;
+  const { workflows, runs, member, manage, computeNote, selected } = loaderData;
   const [search] = useSearchParams();
   const base = `/${params.owner}/${params.repo}`;
   const workflow = workflows.find((w) => w.id === selected || w.path.endsWith(`/${selected}`)) ?? null;
@@ -288,16 +298,10 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
         </a>
       </header>
 
-      {member && !runnable && (
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-surface px-4 py-3 text-sm ring-1 ring-line">
-          <span className="flex items-center gap-2 text-muted">
-            <AlertTriangle size={15} className="shrink-0 text-warn" />
-            Workflows run on g1t's runners once this workspace connects a model provider for its agents. Free while g1t is
-            being built out.
-          </span>
-          <Link to={`/${params.owner}/-/integrations`} className="text-accent hover:underline">
-            Connect a model
-          </Link>
+      {member && computeNote && (
+        <div className="mb-6 flex flex-wrap items-center gap-2 rounded-xl bg-surface px-4 py-3 text-sm ring-1 ring-line">
+          <AlertTriangle size={15} className="shrink-0 text-warn" />
+          <ComputeNote note={computeNote} />
         </div>
       )}
 
@@ -344,7 +348,7 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
             ))}
           </nav>
           <div className="min-w-0 space-y-6">
-            {workflow && <WorkflowHeader workflow={workflow} base={base} member={member} />}
+            {workflow && <WorkflowHeader workflow={workflow} base={base} member={member} manage={manage} />}
             {started && (
               <p className="text-sm text-muted">
                 Started{" "}

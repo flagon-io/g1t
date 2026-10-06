@@ -5,6 +5,7 @@ declare global {
     interface Env {
       BILLING: ServiceBinding;
       IDENTITY: ServiceBinding;
+      EVENTS: ServiceBinding;
       ASSETS: Fetcher;
       ACCESS_TEAM_DOMAIN: string;
       ACCESS_AUD: string;

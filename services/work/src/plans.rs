@@ -10,6 +10,7 @@
 
 use std::collections::HashMap;
 
+use g1t_contracts::access::Capability;
 use g1t_contracts::events::IssueEvent;
 use g1t_contracts::repos::{GetByIdArgs, Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
@@ -152,15 +153,18 @@ impl Work {
     }
 
     /// Records an outcome to plan for, and returns what a sandbox needs to
-    /// plan it. Members of the repository's workspace only: a plan becomes
-    /// issues and agents at work, which the workspace pays for.
+    /// plan it. Needs the Write role: a plan becomes issues and agents at
+    /// work, which the workspace pays for.
     pub(crate) async fn start_plan(&self, a: StartPlanArgs) -> Result<Outcome<PlanJob>> {
         let repo = match self.repo(&a.repo, &Some(a.actor.clone())).await? {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        if !a.actor.verified || !a.actor.is_member(&repo.namespace) {
-            return Ok(members_only());
+        if let Outcome::Fail(failure) = crate::retired::writable(&repo) {
+            return Ok(Outcome::Fail(failure));
+        }
+        if let Some(refused) = may_plan(&a.actor, &repo) {
+            return Ok(refused);
         }
         let brief: String = a.brief.trim().chars().take(MAX_BRIEF_CHARS).collect();
         if brief.is_empty() {
@@ -247,12 +251,8 @@ impl Work {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        if !a
-            .viewer
-            .is_some_and(|viewer| viewer.is_member(&repo.namespace))
-        {
-            return Ok(members_only());
-        }
+        // The repos service found it for the viewer, so they can read it,
+        // and whoever can read a repository can read its plans.
         Ok(
             match self
                 .plan_row(&a.id)
@@ -353,12 +353,7 @@ impl Work {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        if !a
-            .viewer
-            .is_some_and(|viewer| viewer.is_member(&repo.namespace))
-        {
-            return Ok(members_only());
-        }
+        // Found for the viewer: they can read it, and so its plans.
         let rows = self
             .db
             .prepare("SELECT * FROM plans WHERE repo_id = ? ORDER BY id DESC LIMIT ?")
@@ -378,8 +373,11 @@ impl Work {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        if !a.actor.verified || !a.actor.is_member(&repo.namespace) {
-            return Ok(members_only());
+        if let Outcome::Fail(failure) = crate::retired::writable(&repo) {
+            return Ok(Outcome::Fail(failure));
+        }
+        if let Some(refused) = may_plan(&a.actor, &repo) {
+            return Ok(refused);
         }
         let Some(row) = self
             .plan_row(&a.id)
@@ -505,12 +503,22 @@ impl Work {
         Ok(Outcome::Ok(plan))
     }
 
-    /// Queues an issue for a g1t agent, or takes it out of the queue.
+    /// Queues an issue for a g1t agent, which needs the Write role, or
+    /// takes it out of the queue, as whoever may change the issue.
     pub(crate) async fn queue_issue(&self, a: QueueIssueArgs) -> Result<Outcome<bool>> {
         let issue = match self.manageable_issue(&a.actor, &a.repo, a.number).await? {
             Outcome::Ok(issue) => issue,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
+        if a.queued {
+            let repo = match self.repo(&a.repo, &Some(a.actor.clone())).await? {
+                Outcome::Ok(repo) => repo,
+                Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+            };
+            if let Outcome::Fail(failure) = crate::allowed(Some(&a.actor), &repo, Capability::Run) {
+                return Ok(Outcome::Fail(failure));
+            }
+        }
         let queued_by = a
             .queued
             .then(|| serde_json::to_string(&a.actor))
@@ -564,6 +572,12 @@ impl Work {
             };
             // How many more agents this repository has room for.
             if !room.contains_key(&row.repo_id) {
+                // An archived or deleted repository's issues stay queued,
+                // untaken, for when it is writable again.
+                if !self.repo_active(&row.repo_id).await? {
+                    room.insert(row.repo_id.clone(), 0);
+                    continue;
+                }
                 let working = self
                     .db
                     .prepare(
@@ -623,11 +637,15 @@ impl Work {
     }
 }
 
-fn members_only<T>() -> Outcome<T> {
-    Outcome::fail(
-        FailureCode::Forbidden,
-        "Only members of the repository's workspace can plan work for it.",
-    )
+/// Refuses whoever may not plan work in `repo`: the Write role, verified.
+fn may_plan<T>(actor: &User, repo: &Repo) -> Option<Outcome<T>> {
+    if !actor.verified {
+        return Some(Outcome::fail(FailureCode::Forbidden, crate::UNVERIFIED));
+    }
+    match crate::allowed(Some(actor), repo, Capability::Run) {
+        Outcome::Ok(()) => None,
+        Outcome::Fail(failure) => Some(Outcome::Fail(failure)),
+    }
 }
 
 #[cfg(test)]

@@ -32,7 +32,22 @@ export default function Soon({ loaderData, params }: Route.ComponentProps) {
  * A Soon page, for a project's (under `base`, `/<owner>/<project>`) or the
  * workspace's (`/<owner>/-`).
  */
-export function SoonView({ item, base }: { item: RoadmapItem; base: string }) {
+/**
+ * What is coming, and what to use until then. In a project, "until then"
+ * is a page of that project. Across a workspace it lives in each project,
+ * so `inProjects` lists them, or offers to make the first one.
+ */
+export function SoonView({
+  item,
+  base,
+  inProjects,
+  newProject,
+}: {
+  item: RoadmapItem;
+  base: string;
+  inProjects?: { name: string; to: string }[];
+  newProject?: string;
+}) {
   const siblings = roadmapIn(item.section).filter((other) => other.key !== item.key);
   const inWorkspace = item.section === "Workspace";
   return (
@@ -67,7 +82,41 @@ export function SoonView({ item, base }: { item: RoadmapItem; base: string }) {
         </ul>
       </section>
 
-      {item.today && (
+      {item.today && inProjects && (
+        <section className="mt-4 rounded-xl border border-line px-5 py-4">
+          <span className="block text-xs text-faint">Until then: {item.today.label.toLowerCase()} in each project</span>
+          {inProjects.length > 0 ? (
+            <ul className="mt-2 divide-y divide-line">
+              {inProjects.map((project) => (
+                <li key={project.to}>
+                  <Link
+                    to={`${project.to}/${item.today!.path}`}
+                    className="group flex items-center justify-between gap-4 py-2.5 text-sm"
+                  >
+                    <span className="font-medium">
+                      {item.today!.label} in {project.name}
+                    </span>
+                    <ArrowRight size={16} className="text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-fg" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Link
+              to={newProject ?? "/new"}
+              className="group mt-2 flex items-center justify-between gap-4 text-sm"
+            >
+              <span>
+                <span className="font-medium">Create a project</span>
+                <span className="text-muted"> to plan {item.today.label.toLowerCase()} in it.</span>
+              </span>
+              <ArrowRight size={16} className="text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-fg" />
+            </Link>
+          )}
+        </section>
+      )}
+
+      {item.today && !inProjects && (
         <Link
           to={`${base}/${item.today.path}`}
           className="group mt-4 flex items-center justify-between gap-4 rounded-xl border border-line px-5 py-4 transition-colors hover:border-line-strong hover:bg-surface"
@@ -103,7 +152,7 @@ export function SoonView({ item, base }: { item: RoadmapItem; base: string }) {
 
       <p className="mt-10 text-xs text-faint">
         {ROADMAP.length} things are on the way to every project. Want this one sooner, or something else?{" "}
-        <a href="https://g1t.sh/syntaqx/g1t/issues/new" className="text-muted hover:text-fg">
+        <a href="https://g1t.sh/flagon-io/g1t/issues/new" className="text-muted hover:text-fg">
           Tell us
         </a>
         .

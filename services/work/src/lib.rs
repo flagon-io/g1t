@@ -7,6 +7,7 @@
 mod authored;
 mod capture;
 mod checks;
+mod compute;
 mod guardrails;
 mod lifecycle;
 mod memory;
@@ -15,6 +16,7 @@ mod mergeability;
 mod plans;
 mod messages;
 mod queue;
+mod retired;
 mod reviews;
 mod rows;
 mod runs;
@@ -29,6 +31,7 @@ use g1t_contracts::repos::{
     ForkArgs, GetArgs, HeadArgs, LandArgs, Landed, NeedsAgentReason, PullBranchUpdate, Repo, RepoPath,
     UpdatePullBranchArgs,
 };
+use g1t_contracts::access::{self, Capability, Denied};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
 use futures_util::future::{try_join, try_join3, try_join_all};
@@ -40,6 +43,7 @@ use worker::{
     Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, Request, Response, Result, event,
 };
 
+use retired::writable;
 use rows::{CommentRow, IssueRow, MovedRow, NumberRow, PullRow, SessionRow, Snapshot, ValueRow};
 
 const SOURCE: &str = "work";
@@ -67,6 +71,19 @@ fn no_issue<T>() -> Outcome<T> {
 
 fn no_pull<T>() -> Outcome<T> {
     Outcome::fail(FailureCode::NotFound, "Pull request not found.")
+}
+
+/// Refuses `actor` unless their role on `repo` has `capability`: not found
+/// when they cannot read it, forbidden with the role it needs otherwise.
+pub(crate) fn allowed(actor: Option<&User>, repo: &Repo, capability: Capability) -> Outcome<()> {
+    match access::check(actor, repo, capability) {
+        Ok(()) => Outcome::Ok(()),
+        Err(Denied::NotFound) => Outcome::fail(FailureCode::NotFound, "Repository not found."),
+        Err(Denied::Forbidden) => Outcome::fail(
+            FailureCode::Forbidden,
+            access::needs(capability, &format!("{}/{}", repo.namespace, repo.name)),
+        ),
+    }
 }
 
 fn optional(value: &Option<String>) -> JsValue {
@@ -130,7 +147,8 @@ impl Work {
 
     /// A pull request's author as a viewer who can read its repository and
     /// source. Stored authors carry no memberships, so a private repository
-    /// would otherwise look missing to them.
+    /// would otherwise look missing to them. The membership given reads
+    /// and nothing more: it is for looking, never for acting.
     pub(crate) async fn author_viewer(&self, pull: &Pull) -> Result<Viewer> {
         let path: Option<RepoPath> = g1t_kit::call(
             &self.repos,
@@ -142,7 +160,10 @@ impl Work {
         if let Some(path) = path
             && !author.is_member(&path.namespace.to_lowercase())
         {
-            author.workspaces.push(g1t_contracts::Membership::member(path.namespace.to_lowercase()));
+            author.workspaces.push(g1t_contracts::Membership {
+                base_permission: Some(access::BasePermission::Read),
+                ..g1t_contracts::Membership::member(path.namespace.to_lowercase())
+            });
         }
         Ok(Some(author))
     }
@@ -388,6 +409,7 @@ impl Work {
             ));
         };
         let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
+        check!(writable(&repo));
         let checks: Vec<&str> = a
             .checks
             .iter()
@@ -484,7 +506,7 @@ impl Work {
         }))
     }
 
-    /// The issue, if `actor` wrote it or belongs to the repository's workspace.
+    /// The issue, if `actor` wrote it or may triage the repository's issues.
     async fn manageable_issue(
         &self,
         actor: &User,
@@ -492,11 +514,9 @@ impl Work {
         number: u32,
     ) -> Result<Outcome<Issue>> {
         let (repo, issue) = check!(self.issue_at(path, number, &Some(actor.clone())).await?);
-        if issue.author.id != actor.id && !actor.is_member(&repo.namespace) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only the author or a member of the workspace can change an issue.",
-            ));
+        check!(writable(&repo));
+        if issue.author.id != actor.id {
+            check!(allowed(Some(actor), &repo, Capability::Triage));
         }
         Ok(Outcome::Ok(issue))
     }
@@ -793,6 +813,7 @@ impl Work {
             ));
         }
         let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
+        check!(writable(&repo));
         // The number names an issue or a pull request, never both.
         let mut pull_id = None;
         let table = if self.issue(&repo.id, a.number).await?.is_some() {
@@ -887,6 +908,12 @@ impl Work {
             return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
         }
         let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
+        check!(writable(&repo));
+        // g1t's own agent at work spends the workspace's compute; a pull
+        // request anyone else's agent makes is like any other.
+        if matches!(a.runtime, Runtime::Hosted) {
+            check!(allowed(Some(&a.actor), &repo, Capability::Run));
+        }
         let issue = match a.issue {
             Some(number) => match self.issue(&repo.id, number).await? {
                 Some(issue) if issue.state == State::Open => Some(issue),
@@ -1126,7 +1153,7 @@ impl Work {
     }
 
     /// The pull request, if it is still active and `actor` opened it or
-    /// belongs to the repository's workspace.
+    /// may triage the repository's pull requests.
     async fn manageable_pull(
         &self,
         actor: &User,
@@ -1134,11 +1161,9 @@ impl Work {
         number: u32,
     ) -> Result<Outcome<Pull>> {
         let (repo, pull) = check!(self.pull_at(path, number, &Some(actor.clone())).await?);
-        if pull.author.id != actor.id && !actor.is_member(&repo.namespace) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only whoever opened a pull request, or a member of the workspace, can change it.",
-            ));
+        check!(writable(&repo));
+        if pull.author.id != actor.id {
+            check!(allowed(Some(actor), &repo, Capability::Triage));
         }
         if !pull.status.is_active() {
             return Ok(Outcome::fail(
@@ -1152,31 +1177,27 @@ impl Work {
     /// Brings a pull request up to date with the default branch without a
     /// sandbox, where the repos service can do that safely. Whoever could
     /// have pushed the merge themselves may ask: whoever opened it, for a
-    /// fork; any member, for a branch of the repository. When it needs a
+    /// fork; anyone who may push, for a branch of the repository. When it needs a
     /// real merge, says so, naming the conflicting files if a probe found
     /// them, and pushes nothing.
     async fn catch_up_pull(&self, a: PullActionArgs) -> Result<Outcome<PullBranchUpdate>> {
         let (repo, pull) = check!(self.pull_at(&a.repo, a.number, &Some(a.actor.clone())).await?);
+        check!(writable(&repo));
         if !pull.status.is_active() {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
                 format!("This pull request is already {}.", pull.status.as_str()),
             ));
         }
-        let allowed = if pull.fork_repo_id.is_some() {
-            pull.author.id == a.actor.id
+        if pull.fork_repo_id.is_some() {
+            if pull.author.id != a.actor.id {
+                return Ok(Outcome::fail(
+                    FailureCode::Forbidden,
+                    "Only whoever opened this pull request can update it.",
+                ));
+            }
         } else {
-            a.actor.is_member(&repo.namespace)
-        };
-        if !allowed {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                if pull.fork_repo_id.is_some() {
-                    "Only whoever opened this pull request can update it."
-                } else {
-                    "Only members of the workspace can update this pull request."
-                },
-            ));
+            check!(allowed(Some(&a.actor), &repo, Capability::Push));
         }
         let updated: Outcome<PullBranchUpdate> = g1t_kit::call(
             &self.repos,
@@ -1371,6 +1392,7 @@ impl Work {
     async fn merge_pull(&self, a: PullActionArgs) -> Result<Outcome<Pull>> {
         let viewer = Some(a.actor.clone());
         let (repo, pull) = check!(self.pull_at(&a.repo, a.number, &viewer).await?);
+        check!(writable(&repo));
         match pull.status {
             PullStatus::Open => {}
             PullStatus::Draft => {
@@ -1439,12 +1461,7 @@ impl Work {
             if !a.actor.verified {
                 return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
             }
-            if !a.actor.is_member(&repo.namespace) {
-                return Ok(Outcome::fail(
-                    FailureCode::Forbidden,
-                    "Only members of the repository's workspace can merge a pull request.",
-                ));
-            }
+            check!(allowed(Some(&a.actor), &repo, Capability::Merge));
             return self.enqueue(&repo, &pull, &a.actor, a.keep_issue_open).await;
         }
 
@@ -1464,12 +1481,7 @@ impl Work {
             if !a.actor.verified {
                 return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
             }
-            if !a.actor.is_member(&repo.namespace) {
-                return Ok(Outcome::fail(
-                    FailureCode::Forbidden,
-                    "Only members of the repository's workspace can merge a pull request.",
-                ));
-            }
+            check!(allowed(Some(&a.actor), &repo, Capability::Merge));
             self.request_landing(&pull, &a.actor, a.keep_issue_open)
                 .await?;
             return Ok(Outcome::Ok(pull));
@@ -1950,6 +1962,17 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "get_guardrails" => reply(&work.get_guardrails(args(body)?).await?),
         "update_guardrails" => reply(&work.update_guardrails(args(body)?).await?),
         "run_guardrails" => reply(&work.run_guardrails(args(body)?).await?),
+        // Plan caps the runner applies (compute.rs).
+        "active_agents" => reply(&work.active_agents(args(body)?).await?),
+        "issue_spend" => reply(&work.issue_spend(args(body)?).await?),
+        "wait_for_slot" => reply(&work.wait_for_slot(args(body)?).await?),
+        "agent_comment" => reply(&work.agent_comment(args(body)?).await?),
+        "add_wait" => reply(&work.add_wait(args(body)?).await?),
+        "waiting_workspaces" => reply(&work.waiting_workspaces(args(body)?).await?),
+        "take_wait" => reply(&work.take_wait(args(body)?).await?),
+        // The runs whose sandboxes stop with their repository (retired.rs).
+        "runs_in_repo" => reply(&work.runs_in_repo(args(body)?).await?),
+        "run_cost" => reply(&work.run_cost(args(body)?).await?),
         "start_mergecheck" => reply(&work.start_mergecheck(args(body)?).await?),
         "report_mergecheck" => reply(&work.report_mergecheck(args(body)?).await?),
         // Memory that fills itself, and its review queue (capture.rs).
@@ -1971,6 +1994,22 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
     for message in batch.messages()? {
         // A workspace renamed: its agent runs and memory move to the slug it has now.
         if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), &[memory::RENAMED, guardrails::RENAMED].concat()).await? {
+            message.ack();
+            continue;
+        }
+        // A repository renamed or transferred: its runs, memory, guardrails
+        // and runs waiting for a slot follow.
+        if g1t_kit::transfer::on_event(&env, &env.d1("DB")?, message.body(), &[memory::TRANSFERRED, guardrails::TRANSFERRED, retired::WAITS_MOVED].concat()).await? {
+            message.ack();
+            continue;
+        }
+        // A workspace deleted: what it kept for itself goes.
+        if g1t_kit::deleted::on_event(&env.d1("DB")?, message.body(), memory::DELETED).await? {
+            message.ack();
+            continue;
+        }
+        // A repository deleted, archived or purged, or a branch renamed (retired.rs).
+        if work.on_retired(message.body()).await? {
             message.ack();
             continue;
         }

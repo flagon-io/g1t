@@ -4,9 +4,12 @@
  * Each site maps these onto whatever its own framework calls them.
  */
 :root {
-	--g1t-font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
-		'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
-	--g1t-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	/* The faces themselves are in fonts.css. */
+	--g1t-font-sans: 'Hanken Grotesk', 'Hanken Grotesk Fallback', ui-sans-serif, system-ui, sans-serif,
+		'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+	--g1t-font-display: 'Bricolage Grotesque', 'Bricolage Grotesque Fallback', ui-sans-serif, system-ui,
+		sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+	--g1t-font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
 	/* Very dark gray, nearly neutral, three elevations. */
 	--g1t-bg: #0f0f11;
@@ -18,7 +21,7 @@
 	--g1t-fg: #ededef;
 	--g1t-fg-soft: #dcdce0;
 	--g1t-muted: #a0a0a8;
-	--g1t-faint: #6a6a72;
+	--g1t-faint: #86868e;
 
 	/* Mint: what is live, what passed, what was added. */
 	--g1t-accent: #86efc4;

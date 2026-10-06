@@ -1,4 +1,4 @@
-import { Link, data, useNavigation } from "react-router";
+import { Link, useNavigation } from "react-router";
 
 import { RUN_KINDS } from "@g1t/contracts";
 
@@ -8,7 +8,8 @@ import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { settingsFromForm } from "../../lib/guardrails";
 import { page } from "../../lib/meta";
 import { guardrails } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
+import { requireCapability, requireInsider } from "../../lib/access.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Guardrails · ${params.owner}/${params.repo} · g1t` });
@@ -16,8 +17,8 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  // Members only; to anyone else the page does not exist.
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
+  // Maintain and up; to anyone without a role here the page does not exist.
+  await requireInsider(context, params, "manage_protection");
   const view = await guardrails.getGuardrails(viewer, params.owner, { namespace: params.owner, name: params.repo });
   return { view: unwrap(view) };
 }
@@ -25,6 +26,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
+  await requireCapability(context, params, "manage_protection");
   const form = await request.formData();
   const current = await guardrails.getGuardrails(user, params.owner);
   if (!current.ok) return { saved: false, error: current.error.message };

@@ -27,6 +27,21 @@ pub struct RepoCreated {
     pub is_private: bool,
 }
 
+/// The payload of `repo.collaborator_added`, `repo.collaborator_removed`
+/// and `repo.collaborator_role_changed`: a person's own role on one
+/// repository (see `access`). `role` is the role they have now (null once
+/// removed); `previous_role` what they had before (null when added).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoCollaborator {
+    pub repo_id: String,
+    pub namespace: String,
+    pub name: String,
+    pub username: String,
+    pub role: Option<crate::access::RepoRole>,
+    pub previous_role: Option<crate::access::RepoRole>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepoForked {
@@ -279,20 +294,165 @@ pub struct RepoVisibilityChanged {
     pub is_private: bool,
 }
 
-/// `repo.renamed`: a repository's path changed.
-#[derive(Debug, Serialize, serde::Deserialize)]
+/// `repo.renamed`: a repository's name changed within its workspace,
+/// keeping its id and its git store key. Like `repo.transferred`, a path
+/// change: every service that keeps rows under the repository's path moves
+/// them to its *current* path (ask repos `path_by_id`), so a repeated or
+/// late delivery after a second rename or a transfer still lands in the
+/// right place. `g1t_kit::transfer::on_event` handles both.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepoRenamed {
+    pub repo_id: String,
+    /// The workspace it is in.
+    pub namespace: String,
+    /// Its old name.
+    pub from: String,
+    /// Its new name.
+    pub to: String,
+}
+
+impl RepoRenamed {
+    /// The paths whose rows move to `current` (`namespace/name`): the two
+    /// this rename names, minus `current`.
+    pub fn stale_paths(&self, current: &str) -> Vec<String> {
+        let mut paths: Vec<String> = Vec::new();
+        for name in [&self.from, &self.to] {
+            let path = format!("{}/{name}", self.namespace);
+            if path != current && !paths.contains(&path) {
+                paths.push(path);
+            }
+        }
+        paths
+    }
+}
+
+/// `repo.deleted`: a repository was deleted. It is hidden everywhere and
+/// git refuses it, but it can be restored until `purge_after`, so services
+/// stop what runs for it (agents, workflows, deployments, indexing,
+/// webhook deliveries) and hide it, and keep what they hold until
+/// `repo.purged`. `repo.restored` brings it back.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoDeleted {
+    pub repo_id: String,
+    #[serde(default)]
+    pub namespace: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub is_private: bool,
+    /// RFC 3339: when it is purged unless restored first.
+    #[serde(default)]
+    pub purge_after: String,
+}
+
+/// `repo.restored`: a deleted repository is back, at its path, as it was.
+/// Services start again what `repo.deleted` stopped: index it, deploy its
+/// production, show it.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoRestored {
+    pub repo_id: String,
+    pub namespace: String,
+    pub name: String,
+    pub is_private: bool,
+}
+
+/// `repo.purged`: a deleted repository is gone for good, its git data
+/// with it. Services drop every row they keep for it by `repo_id`, except
+/// history that belongs to its workspace: ledgers, invoices and the audit
+/// log. Its path is free for a new repository.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoPurged {
     pub repo_id: String,
     pub namespace: String,
     pub name: String,
 }
 
-/// `repo.deleted`: a repository is gone, and everything about it with it.
-#[derive(Debug, Serialize, serde::Deserialize)]
+/// `repo.archived` and `repo.unarchived`: a repository became read-only,
+/// or writable again. While archived, pushes are refused, issues and pull
+/// requests are locked, and agents and workflows do not run for it; its
+/// deployments keep serving.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RepoDeleted {
+pub struct RepoArchived {
     pub repo_id: String,
+    pub namespace: String,
+    pub name: String,
+    pub archived: bool,
+}
+
+/// `repo.default_branch_changed`: the branch everything lands on is now
+/// `to`. `renamed` says whether `from` was renamed to `to` (open pull
+/// requests into it now target `to`) rather than another branch chosen.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoDefaultBranchChanged {
+    pub repo_id: String,
+    pub from: String,
+    pub to: String,
+    #[serde(default)]
+    pub renamed: bool,
+}
+
+/// `branch.renamed`: a branch was renamed. Pull requests from or into
+/// `from` follow it to `to`, and web addresses that name `from` redirect.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchRenamed {
+    pub repo_id: String,
+    pub from: String,
+    pub to: String,
+    /// Whether it is the default branch.
+    #[serde(default)]
+    pub default_branch: bool,
+}
+
+/// `repo.transferred`: a repository moved from one workspace to another,
+/// keeping its id and its name. Every service that keeps a repository
+/// under its path (`namespace/name`) or its workspace's slug moves those
+/// rows to the repository's *current* path (ask repos `path_by_id`), so a
+/// repeated or late delivery after a second transfer still lands in the
+/// right place. What was charged or recorded before the transfer stays
+/// with the workspace it happened in.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoTransferred {
+    pub repo_id: String,
+    pub name: String,
+    /// The workspace it left.
+    pub from: String,
+    /// The workspace it went to.
+    pub to: String,
+}
+
+impl RepoTransferred {
+    /// The paths whose rows move to `current` (`namespace/name`): the two
+    /// this transfer names, minus `current`. Moving rows keyed by either
+    /// converges whatever order transfers are delivered in.
+    pub fn stale_paths(&self, current: &str) -> Vec<String> {
+        let mut paths: Vec<String> = Vec::new();
+        for namespace in [&self.from, &self.to] {
+            let path = format!("{namespace}/{}", self.name);
+            if path != current && !paths.contains(&path) {
+                paths.push(path);
+            }
+        }
+        paths
+    }
+}
+
+/// `workspace.deleted`: a workspace is gone. Services drop what they keep
+/// for it alone (its webhooks, integrations, secrets, memory, guardrails,
+/// agent queue) and keep what is history: ledgers, invoices and the audit
+/// log stay under its slug, which is never given to another workspace.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceDeleted {
+    pub workspace_id: String,
+    pub slug: String,
 }
 
 /// `user.updated`: an account was made, or changed what its profile shows
@@ -303,6 +463,18 @@ pub struct UserUpdated {
     pub username: String,
 }
 
+/// `user.email_added`, `user.email_verified`, `user.email_removed` and
+/// `user.primary_email_changed`: an account's addresses changed. Never the
+/// address itself; ask identity, as the person, for that.
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserEmailChanged {
+    pub user_id: String,
+    /// Whether g1t staff made the change.
+    #[serde(default)]
+    pub by_staff: bool,
+}
+
 /// `workspace.updated`: a workspace was made, or its name, description or
 /// icon changed. Ask identity for it by slug.
 #[derive(Debug, Serialize, serde::Deserialize)]
@@ -310,6 +482,41 @@ pub struct UserUpdated {
 pub struct WorkspaceUpdated {
     pub workspace_id: String,
     pub slug: String,
+}
+
+/// `invite.created`: someone (or staff) made an invite. Never the code or
+/// the address it is for.
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InviteCreated {
+    pub invite_id: String,
+    /// The account that made it; null when staff did.
+    pub inviter_id: Option<String>,
+    /// The workspace it joins.
+    pub workspace_id: Option<String>,
+    /// Whether it is bound to one email address.
+    pub bound: bool,
+}
+
+/// `invite.redeemed`: an invite was used, by a new account or by an
+/// existing one joining a workspace.
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InviteRedeemed {
+    pub invite_id: String,
+    pub user_id: String,
+    pub inviter_id: Option<String>,
+    pub workspace_id: Option<String>,
+    /// Whether it made the account.
+    pub created_account: bool,
+}
+
+/// `waitlist.requested`: someone asked for access. Ask identity's staff
+/// methods for the entry; the address is not in the event.
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WaitlistRequested {
+    pub entry_id: String,
 }
 
 /// `queue.changed`: a repository's merge queue gained, lost or settled an
@@ -339,6 +546,47 @@ mod tests {
         assert_eq!(renamed("a", "b").stale_slugs("c"), vec!["a", "b"]);
         // Renamed back: a → b → a.
         assert_eq!(renamed("a", "b").stale_slugs("a"), vec!["b"]);
+    }
+
+    fn transferred(from: &str, to: &str) -> RepoTransferred {
+        RepoTransferred {
+            repo_id: "rep_1".into(),
+            name: "rocket".into(),
+            from: from.into(),
+            to: to.into(),
+        }
+    }
+
+    #[test]
+    fn stale_paths_leave_out_the_current_one() {
+        assert_eq!(transferred("a", "b").stale_paths("b/rocket"), vec!["a/rocket"]);
+        // Delivered after a second transfer, b → c: both move to c.
+        assert_eq!(
+            transferred("a", "b").stale_paths("c/rocket"),
+            vec!["a/rocket", "b/rocket"]
+        );
+        // Transferred back: a → b → a.
+        assert_eq!(transferred("a", "b").stale_paths("a/rocket"), vec!["b/rocket"]);
+    }
+
+    #[test]
+    fn a_transfer_reads_as_published() {
+        let data = serde_json::json!({ "repoId": "rep_1", "name": "rocket", "from": "a", "to": "b" });
+        let event: RepoTransferred = serde_json::from_value(data).unwrap();
+        assert_eq!((event.from.as_str(), event.to.as_str()), ("a", "b"));
+    }
+
+    #[test]
+    fn a_rename_names_both_paths_in_its_workspace() {
+        let renamed = RepoRenamed {
+            repo_id: "rep_1".into(),
+            namespace: "acme".into(),
+            from: "old".into(),
+            to: "new".into(),
+        };
+        assert_eq!(renamed.stale_paths("acme/new"), vec!["acme/old"]);
+        // Delivered after a transfer: both names in acme move.
+        assert_eq!(renamed.stale_paths("flagon/new"), vec!["acme/old", "acme/new"]);
     }
 
     #[test]

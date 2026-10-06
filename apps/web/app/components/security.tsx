@@ -135,7 +135,7 @@ function Decide({ finding, decision, action }: { finding: SecretFinding; decisio
   );
 }
 
-function SecretItem({ finding, base, action, focused }: { finding: SecretFinding; base: string; action: string; focused: boolean }) {
+function SecretItem({ finding, base, action, focused, decide }: { finding: SecretFinding; base: string; action: string; focused: boolean; decide: boolean }) {
   const reopen = useFetcher<Done>();
   const ref = useRef<HTMLLIElement>(null);
   useEffect(() => {
@@ -189,7 +189,7 @@ function SecretItem({ finding, base, action, focused }: { finding: SecretFinding
         </p>
         {reopen.data?.error && <p className="mt-1.5 text-xs text-danger">{reopen.data.error}</p>}
       </div>
-      <div className="flex shrink-0 items-center gap-1.5">
+      {decide && <div className="flex shrink-0 items-center gap-1.5">
         {finding.status === "open" || finding.status === "blocked" ? (
           <>
             <Decide finding={finding} decision="allow" action={action} />
@@ -205,7 +205,7 @@ function SecretItem({ finding, base, action, focused }: { finding: SecretFinding
             Reopen
           </button>
         )}
-      </div>
+      </div>}
     </li>
   );
 }
@@ -215,11 +215,14 @@ export function SecretsList({
   base,
   action,
   focus,
+  decide = true,
 }: {
   secrets: SecretFinding[];
   base: string;
   action: string;
   focus: string | null;
+  /** Whether the viewer may allow, resolve and reopen findings. */
+  decide?: boolean;
 }) {
   if (secrets.length === 0) {
     return (
@@ -235,7 +238,7 @@ export function SecretsList({
   return (
     <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
       {secrets.map((finding) => (
-        <SecretItem key={finding.id} finding={finding} base={base} action={action} focused={finding.id === focus} />
+        <SecretItem key={finding.id} finding={finding} base={base} action={action} focused={finding.id === focus} decide={decide} />
       ))}
     </ul>
   );

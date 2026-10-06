@@ -3,27 +3,31 @@
 //! Every charge is worked out the same way: its cost plus the margin, then
 //! the account's terms. What is left is drawn down, in this order, from:
 //!
-//! 1. **The Team plan's credit** (`TEAM_INCLUDED_MICROS` a month), when
-//!    the workspace has Team. Any usage draws on it. Unused credit does not
-//!    roll over.
+//! 1. **The plan's included usage** (`PLAN_INCLUDED_MICROS` a month, $10),
+//!    when the workspace has the g1t plan. Any usage draws on it. Unused
+//!    included usage does not roll over.
 //! 2. **The trial credit**: one grant per workspace
-//!    (`TRIAL_WORKSPACE_MICROS`), made the first time it uses something,
-//!    out of a pool for everyone that resets each calendar month
-//!    (`TRIAL_MONTHLY_POOL_MICROS`). Never for deployments, which are never
-//!    free.
-//! 3. **g1t's open-source pool** (`OSS_POOL_MICROS` a month, at most
-//!    `OSS_REPO_MICROS` for any one repository): only sandbox time and
-//!    model cost for work on a public repository.
+//!    (`TRIAL_WORKSPACE_MICROS`, $5), made once its card is checked (see
+//!    `cards`), out of a pool for everyone that resets each calendar month
+//!    (`TRIAL_MONTHLY_POOL_MICROS`, $100). Never for deployments.
+//! 3. **g1t's open-source pool** (`OSS_POOL_MICROS` a month, $25, at most
+//!    `OSS_REPO_MICROS`, $2, for any one repository): checks, workflows and
+//!    the merge queue on a public repository.
 //!
-//! Whatever is left is charged. Each source is a fixed, capped budget that
-//! something pays for: the plan, or g1t. Nothing here is an open-ended
-//! allowance per workspace.
+//! Whatever is left is charged: from what was paid in advance first, since
+//! a charge comes off the balance, and then owed. For a free workspace's
+//! compute, what is left past its trial is covered by g1t (`given`): a free
+//! workspace is never charged for compute, and `reserve` keeps that to the
+//! runs already in flight when the trial ran out.
+//!
+//! Each source is a fixed, capped budget that something pays for: the
+//! plan, or g1t. Nothing here is an open-ended allowance per workspace.
 //!
 //! Months are calendar months in UTC, the same as the limits'. Every draw
 //! is one D1 batch, which runs as a transaction, so two charges at once
 //! never take more than a budget holds.
 
-use g1t_contracts::billing::{Feature, MICROS_PER_DOLLAR, Pools, TermsKind, Trial, TrialArgs};
+use g1t_contracts::billing::{ComputeKind, Feature, PlanKind, Pools, TermsKind, Trial, TrialArgs};
 use g1t_contracts::time::rfc3339;
 use g1t_kit::now_ms;
 use serde::Deserialize;
@@ -32,14 +36,14 @@ use worker::{Env, Result};
 use crate::Billing;
 use crate::features::dollars;
 
-/// Every number of the plans and pools, from the billing service's
+/// Every number of the plan and the pools, from the billing service's
 /// variables, each with its default.
 #[derive(Clone, Debug)]
 pub(crate) struct Config {
-    /// `TEAM_MONTHLY_CENTS`: the Team plan's price, per workspace.
-    pub team_monthly_cents: u32,
-    /// `TEAM_INCLUDED_MICROS`: its usage credit each month.
-    pub team_included_micros: i64,
+    /// `PLAN_MONTHLY_CENTS`: the plan's price, per workspace: $20.
+    pub plan_monthly_cents: u32,
+    /// `PLAN_INCLUDED_MICROS`: its included usage each month: $10.
+    pub plan_included_micros: i64,
     /// `OSS_POOL_MICROS`: g1t's open-source pool each month, in all.
     pub oss_pool_micros: i64,
     /// `OSS_REPO_MICROS`: any one public repository's share of it.
@@ -48,36 +52,58 @@ pub(crate) struct Config {
     pub trial_workspace_micros: i64,
     /// `TRIAL_MONTHLY_POOL_MICROS`: trial grants each month, in all.
     pub trial_monthly_pool_micros: i64,
-    /// `MIN_CHARGE_MICROS`: no card is charged less; smaller amounts carry
-    /// over to the next invoice.
+    /// `MIN_CHARGE_MICROS`: a month's close charges no less; smaller
+    /// amounts carry over. Charges at a limit always go through.
     pub min_charge_micros: i64,
-    /// `DEPLOYMENTS_BUILD_SECONDS`: build time the Deployments plan
-    /// includes each month.
+    /// `DEPLOYMENTS_BUILD_SECONDS`: build time the plan includes each month.
     pub build_seconds: u32,
-    /// `FREE_PRIVATE_STORAGE_BYTES` and `TEAM_PRIVATE_STORAGE_BYTES`:
+    /// `FREE_PRIVATE_STORAGE_BYTES` and `PLAN_PRIVATE_STORAGE_BYTES`:
     /// private repository storage before it is charged.
     pub free_storage_bytes: i64,
-    pub team_storage_bytes: i64,
-    /// `AUDIT_RETENTION_DAYS` and `TEAM_AUDIT_RETENTION_DAYS`.
+    pub plan_storage_bytes: i64,
+    /// `AUDIT_RETENTION_DAYS`: the same on every plan.
     pub audit_days: u32,
-    pub team_audit_days: u32,
+    /// `RUN_CAP_MICROS` and `ISSUE_CAP_MICROS`: one run's spend cap, and
+    /// agents' spend on one issue in all.
+    pub run_cap_micros: i64,
+    pub issue_cap_micros: i64,
+    /// `LIMIT_PAID_START_MICROS`: a new paid workspace's ceiling in its
+    /// first month.
+    pub paid_start_micros: i64,
+    /// `SPIKE_FACTOR` and `SPIKE_FLOOR_MICROS`: an hour above this many
+    /// times the usual hour, and at least this much, is a spike.
+    pub spike_factor: i64,
+    pub spike_floor_micros: i64,
+    /// `OVERAGE_FORGIVE_COST_MICROS`: the most of an overage's real cost a
+    /// one-click goodwill credit covers.
+    pub forgive_cost_micros: i64,
+    /// `GIT_OPERATIONS_INCLUDED` and `GIT_OPERATIONS_FREE_CAP`.
+    pub git_included: u64,
+    pub git_free_cap: u64,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Config {
-            team_monthly_cents: 2_000,
-            team_included_micros: 5_000_000,
-            oss_pool_micros: 10_000_000,
-            oss_repo_micros: 1_000_000,
-            trial_workspace_micros: 1_000_000,
-            trial_monthly_pool_micros: 40_000_000,
+            plan_monthly_cents: 2_000,
+            plan_included_micros: 10_000_000,
+            oss_pool_micros: 25_000_000,
+            oss_repo_micros: 2_000_000,
+            trial_workspace_micros: 5_000_000,
+            trial_monthly_pool_micros: 100_000_000,
             min_charge_micros: 5_000_000,
             build_seconds: g1t_contracts::billing::deployments_allowance::BUILD_SECONDS,
             free_storage_bytes: 1_000_000_000,
-            team_storage_bytes: 50_000_000_000,
-            audit_days: 30,
-            team_audit_days: 365,
+            plan_storage_bytes: 10_000_000_000,
+            audit_days: 90,
+            run_cap_micros: 2_000_000,
+            issue_cap_micros: 10_000_000,
+            paid_start_micros: 100_000_000,
+            spike_factor: 5,
+            spike_floor_micros: 5_000_000,
+            forgive_cost_micros: 50_000_000,
+            git_included: 10_000,
+            git_free_cap: 50_000,
         }
     }
 }
@@ -89,8 +115,8 @@ impl Config {
             env.var(name).ok().and_then(|v| v.to_string().trim().parse::<i64>().ok()).filter(|n| *n >= 0).unwrap_or(default)
         };
         Config {
-            team_monthly_cents: number("TEAM_MONTHLY_CENTS", d.team_monthly_cents.into()) as u32,
-            team_included_micros: number("TEAM_INCLUDED_MICROS", d.team_included_micros),
+            plan_monthly_cents: number("PLAN_MONTHLY_CENTS", d.plan_monthly_cents.into()) as u32,
+            plan_included_micros: number("PLAN_INCLUDED_MICROS", d.plan_included_micros),
             oss_pool_micros: number("OSS_POOL_MICROS", d.oss_pool_micros),
             oss_repo_micros: number("OSS_REPO_MICROS", d.oss_repo_micros),
             trial_workspace_micros: number("TRIAL_WORKSPACE_MICROS", d.trial_workspace_micros),
@@ -98,22 +124,32 @@ impl Config {
             min_charge_micros: number("MIN_CHARGE_MICROS", d.min_charge_micros),
             build_seconds: number("DEPLOYMENTS_BUILD_SECONDS", d.build_seconds.into()) as u32,
             free_storage_bytes: number("FREE_PRIVATE_STORAGE_BYTES", d.free_storage_bytes),
-            team_storage_bytes: number("TEAM_PRIVATE_STORAGE_BYTES", d.team_storage_bytes),
+            plan_storage_bytes: number("PLAN_PRIVATE_STORAGE_BYTES", d.plan_storage_bytes),
             audit_days: number("AUDIT_RETENTION_DAYS", d.audit_days.into()) as u32,
-            team_audit_days: number("TEAM_AUDIT_RETENTION_DAYS", d.team_audit_days.into()) as u32,
+            run_cap_micros: number("RUN_CAP_MICROS", d.run_cap_micros),
+            issue_cap_micros: number("ISSUE_CAP_MICROS", d.issue_cap_micros),
+            paid_start_micros: number("LIMIT_PAID_START_MICROS", d.paid_start_micros),
+            spike_factor: number("SPIKE_FACTOR", d.spike_factor).max(1),
+            spike_floor_micros: number("SPIKE_FLOOR_MICROS", d.spike_floor_micros),
+            forgive_cost_micros: number("OVERAGE_FORGIVE_COST_MICROS", d.forgive_cost_micros),
+            git_included: number("GIT_OPERATIONS_INCLUDED", d.git_included as i64) as u64,
+            git_free_cap: number("GIT_OPERATIONS_FREE_CAP", d.git_free_cap as i64) as u64,
         }
     }
 }
 
-/// What may pay for a charge besides the Team credit, which any usage may
-/// draw on.
+/// What may pay for a charge besides the plan's included usage, which any
+/// usage may draw on.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Eligible {
     /// The trial credit: everything but deployments.
     pub trial: bool,
-    /// The open-source pool: sandbox time and model cost for work on this
-    /// repository (`owner/name`), if it is public.
+    /// The open-source pool: this repository (`owner/name`), if it is
+    /// public. Only checks, workflows and the merge queue name one.
     pub repo: Option<String>,
+    /// g1t covers what is left, rather than charging it, when the workspace
+    /// has no plan: a free workspace's compute.
+    pub cover_rest: bool,
 }
 
 /// What paid for a charge before the workspace did.
@@ -122,24 +158,27 @@ pub(crate) struct Drawn {
     pub credit: i64,
     pub trial: i64,
     pub oss: i64,
+    /// What g1t covered itself.
+    pub given: i64,
 }
 
 impl Drawn {
     pub fn total(&self) -> i64 {
-        self.credit + self.trial + self.oss
+        self.credit + self.trial + self.oss + self.given
     }
 
     /// For the statement: what paid for the entry, e.g. ` ($0.12 paid by
     /// g1t's open-source pool)`. Empty when nothing did.
     pub fn note(&self) -> String {
         let parts: Vec<String> = [
-            (self.credit, "your Team plan's credit"),
-            (self.trial, "your trial credit"),
-            (self.oss, "g1t's open-source pool"),
+            (self.credit, "paid by your plan's included usage"),
+            (self.trial, "paid by your trial credit"),
+            (self.oss, "paid by g1t's open-source pool"),
+            (self.given, "covered by g1t"),
         ]
         .iter()
         .filter(|(micros, _)| *micros > 0)
-        .map(|(micros, by)| format!("{} paid by {by}", dollars(*micros)))
+        .map(|(micros, by)| format!("{} {by}", dollars(*micros)))
         .collect();
         if parts.is_empty() { String::new() } else { format!(" ({})", parts.join(", ")) }
     }
@@ -220,17 +259,32 @@ pub(crate) struct Grant {
 }
 
 impl Billing {
-    /// Whether the workspace has the Team plan now: paid for, comped, or
-    /// given by g1t in sudo.
-    pub(crate) async fn team_on(&self, workspace: &str) -> Result<bool> {
+    /// The workspace's plan: comped terms are internal, an enterprise's
+    /// workspaces are invoiced, and otherwise the plan is paid for (or
+    /// given by staff without its price) or not. A Deployments subscription
+    /// from before the plan counts as the plan until its period ends.
+    /// Without a card processor every workspace has the plan: a g1t that
+    /// does not charge has nothing to gate.
+    pub(crate) async fn plan_kind(&self, workspace: &str) -> Result<PlanKind> {
         let account = self.account_of(workspace).await?;
-        if account.terms.kind == TermsKind::Comped || account.allowances.team {
-            return Ok(true);
+        if account.terms.kind == TermsKind::Comped {
+            return Ok(PlanKind::Internal);
         }
-        if self.stripe.is_none() {
-            return Ok(false);
+        if account.kind == g1t_contracts::billing::AccountKind::Enterprise {
+            return Ok(PlanKind::Enterprise);
         }
-        self.plan_on(workspace, Feature::Team).await
+        if self.stripe.is_none() || account.allowances.plan {
+            return Ok(PlanKind::Paid);
+        }
+        if self.plan_on(workspace, Feature::Plan).await? || self.plan_on(workspace, Feature::Deployments).await? {
+            return Ok(PlanKind::Paid);
+        }
+        Ok(PlanKind::Free)
+    }
+
+    /// Whether the workspace has the g1t plan now, whoever pays for it.
+    pub(crate) async fn has_plan(&self, workspace: &str) -> Result<bool> {
+        Ok(self.plan_kind(workspace).await? != PlanKind::Free)
     }
 
     /// What one monthly allowance has used.
@@ -317,8 +371,10 @@ impl Billing {
     }
 
     /// The workspace's grant, made now out of this month's pool if it has
-    /// none and the pool has room. A grant g1t staff set comes from no pool.
-    async fn ensure_grant(&self, workspace: &str) -> Result<Option<Grant>> {
+    /// none and the pool has room. Called once its card is checked, never
+    /// before: the trial needs a card check. A grant g1t staff set comes
+    /// from no pool.
+    pub(crate) async fn ensure_grant(&self, workspace: &str) -> Result<Option<Grant>> {
         if let Some(grant) = self.grant_of(workspace).await? {
             return Ok(Some(grant));
         }
@@ -353,9 +409,10 @@ impl Billing {
         self.grant_of(workspace).await
     }
 
-    /// Takes up to `want` from the workspace's trial credit.
+    /// Takes up to `want` from the workspace's trial credit, if it has a
+    /// grant.
     async fn draw_trial(&self, workspace: &str, want: i64) -> Result<i64> {
-        if want <= 0 || self.ensure_grant(workspace).await?.is_none() {
+        if want <= 0 || self.grant_of(workspace).await?.is_none() {
             return Ok(0);
         }
         #[derive(Deserialize)]
@@ -379,7 +436,9 @@ impl Billing {
         Ok((read(2)? - read(0)?).max(0))
     }
 
-    /// `trial`: where the workspace's trial credit stands.
+    /// `trial`: where the workspace's trial credit stands. Not granted yet,
+    /// it waits for a card check (`verify`), or for next month's pool
+    /// (`pool`).
     pub(crate) async fn trial(&self, a: TrialArgs) -> Result<Trial> {
         let workspace = a.workspace.to_lowercase();
         let closed = |reason: &str| Trial {
@@ -415,11 +474,11 @@ impl Billing {
         let (granted, _) = self.trial_granted(&month).await?;
         let room = staff.is_some() || pool_has_room(self.plans.trial_monthly_pool_micros, granted, amount);
         Ok(Trial {
-            open: room,
+            open: false,
             used_micros: 0,
             limit_micros: amount,
             ends_at: None,
-            reason: (!room).then(|| "pool".to_owned()),
+            reason: Some(if room { "verify" } else { "pool" }.to_owned()),
             granted: false,
             waits_until: (!room).then(|| next_month_start(&month)),
         })
@@ -430,7 +489,7 @@ impl Billing {
     /// Whether `repo` (`owner/name`) is public, asked of the repos service.
     /// Unknown counts as private: the pool pays only for what is known to
     /// be open.
-    async fn is_public(&self, repo: &str) -> bool {
+    pub(crate) async fn is_public(&self, repo: &str) -> bool {
         let Some(repos) = &self.repos else { return false };
         let found: Result<Vec<g1t_contracts::repos::RepoVisibility>> = g1t_kit::call(
             repos,
@@ -449,8 +508,16 @@ impl Billing {
 
     /// A public repository's monthly cap on the pool: its account's own
     /// from sudo, or `OSS_REPO_MICROS`.
-    async fn oss_repo_cap(&self, workspace: &str) -> Result<i64> {
+    pub(crate) async fn oss_repo_cap(&self, workspace: &str) -> Result<i64> {
         Ok(self.account_of(workspace).await?.allowances.oss_repo_micros.unwrap_or(self.plans.oss_repo_micros))
+    }
+
+    /// What the open-source pool has left this month for `repo`: the
+    /// pool's and the repository's share, whichever is less.
+    pub(crate) async fn oss_left(&self, workspace: &str, repo: &str, month: &str) -> Result<i64> {
+        let pool = left(self.plans.oss_pool_micros, self.allowance_used("oss_pool", "", month).await?);
+        let share = left(self.oss_repo_cap(workspace).await?, self.allowance_used("oss_repo", &repo.to_lowercase(), month).await?);
+        Ok(pool.min(share))
     }
 
     /// Takes up to `want` from the open-source pool for `repo`, within the
@@ -468,28 +535,22 @@ impl Billing {
 
     // --- Drawing down -----------------------------------------------------
 
-    /// Pays for a `gross` charge from the Team credit, the trial credit and
-    /// the open-source pool, in that order, for usage in `month`. Returns
-    /// what each paid; the rest is the workspace's to pay.
+    /// Pays for a `gross` charge from the plan's included usage, the trial
+    /// credit and the open-source pool, in that order, for usage in
+    /// `month`; then, for a free workspace's compute, g1t covers the rest.
+    /// Returns what each paid; the rest is the workspace's to pay.
     pub(crate) async fn draw(&self, workspace: &str, gross: i64, month: &str, eligible: &Eligible) -> Result<Drawn> {
         if gross <= 0 {
             return Ok(Drawn::default());
         }
-        let team = self.team_on(workspace).await?;
-        let credit_left = if team {
-            left(self.plans.team_included_micros, self.allowance_used("team_credit", workspace, month).await?)
+        let plan = self.has_plan(workspace).await?;
+        let credit_left = if plan {
+            left(self.plans.plan_included_micros, self.allowance_used("plan_credit", workspace, month).await?)
         } else {
             0
         };
         let trial_left = if eligible.trial {
-            match self.grant_of(workspace).await? {
-                Some(grant) => left(grant.granted_micros, grant.used_micros),
-                // Granted on first use, if the pool has room.
-                None => match self.trial(TrialArgs { workspace: workspace.to_owned(), exempt: vec![] }).await? {
-                    trial if trial.open => trial.limit_micros,
-                    _ => 0,
-                },
-            }
+            self.grant_of(workspace).await?.map_or(0, |grant| left(grant.granted_micros, grant.used_micros))
         } else {
             0
         };
@@ -499,16 +560,20 @@ impl Billing {
             _ => None,
         };
         let oss_left = match &public_repo {
-            Some(repo) => left(self.plans.oss_pool_micros, self.allowance_used("oss_pool", "", month).await?)
-                .min(left(self.oss_repo_cap(workspace).await?, self.allowance_used("oss_repo", &repo.to_lowercase(), month).await?)),
+            Some(repo) => self.oss_left(workspace, repo, month).await?,
             None => 0,
         };
         let planned = split(gross, &[credit_left, trial_left, oss_left]);
-        let mut drawn = Drawn::default();
-        drawn.credit = self.draw_allowance("team_credit", workspace, month, planned[0], self.plans.team_included_micros).await?;
-        drawn.trial = self.draw_trial(workspace, planned[1]).await?;
+        let mut drawn = Drawn {
+            credit: self.draw_allowance("plan_credit", workspace, month, planned[0], self.plans.plan_included_micros).await?,
+            trial: self.draw_trial(workspace, planned[1]).await?,
+            ..Drawn::default()
+        };
         if let Some(repo) = &public_repo {
             drawn.oss = self.draw_oss(workspace, repo, month, planned[2]).await?;
+        }
+        if eligible.cover_rest && !plan {
+            drawn.given = (gross - drawn.credit - drawn.trial - drawn.oss).max(0);
         }
         Ok(drawn)
     }
@@ -519,11 +584,12 @@ impl Billing {
             return Ok(());
         }
         self.db
-            .prepare("UPDATE ledger SET credit_micros = ?, trial_micros = ?, oss_micros = ? WHERE reference = ?")
+            .prepare("UPDATE ledger SET credit_micros = ?, trial_micros = ?, oss_micros = ?, given_micros = ? WHERE reference = ?")
             .bind(&[
                 (drawn.credit as f64).into(),
                 (drawn.trial as f64).into(),
                 (drawn.oss as f64).into(),
+                (drawn.given as f64).into(),
                 reference.into(),
             ])?
             .run()
@@ -547,9 +613,22 @@ impl Billing {
     }
 }
 
+/// What may pay for compute: the trial (never for deployments), the
+/// open-source pool for checks, workflows and the merge queue on `repo`,
+/// and g1t for a free workspace's overrun. Work whose kind is not known is
+/// taken as an agent's: never the pool.
+pub(crate) fn eligible_for(kind: Option<ComputeKind>, repo: Option<&str>) -> Eligible {
+    let kind = kind.unwrap_or(ComputeKind::Agent);
+    Eligible {
+        trial: kind != ComputeKind::Deploy,
+        repo: repo.filter(|_| kind.open_source_pool()).map(str::to_owned),
+        cover_rest: kind != ComputeKind::Deploy,
+    }
+}
+
 /// A charge in millionths of a dollar for `micros` of cost plus `margin`.
 pub(crate) fn with_margin(cost_micros: i64, margin_percent: u32) -> i64 {
-    crate::charge_micros(cost_micros.max(0) as f64 / MICROS_PER_DOLLAR as f64, margin_percent)
+    crate::charge_micros(cost_micros.max(0) as f64 / g1t_contracts::billing::MICROS_PER_DOLLAR as f64, margin_percent)
 }
 
 #[cfg(test)]
@@ -557,10 +636,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn team_credit_pays_first_then_the_trial_then_the_pool_then_the_workspace() {
-        // $0.50 of usage; $0.20 of Team credit, $1 of trial, $1 of pool.
+    fn included_usage_pays_first_then_the_trial_then_the_pool_then_the_workspace() {
+        // $0.50 of usage; $0.20 included, $1 of trial, $1 of pool.
         assert_eq!(split(500_000, &[200_000, 1_000_000, 1_000_000]), [200_000, 300_000, 0]);
-        // No Team: the trial pays all of it.
+        // No plan: the trial pays all of it.
         assert_eq!(split(500_000, &[0, 1_000_000, 1_000_000]), [0, 500_000, 0]);
         // Trial spent: the pool pays, where it applies.
         assert_eq!(split(500_000, &[0, 0, 1_000_000]), [0, 0, 500_000]);
@@ -583,9 +662,26 @@ mod tests {
         assert_eq!(left(1_000_000, 1_000_000), 0);
         assert_eq!(left(1_000_000, 1_200_000), 0);
         // The open-source pool: the repository's share and the pool's both bound it.
-        let pool = left(10_000_000, 9_900_000);
-        let repo = left(1_000_000, 300_000);
+        let pool = left(25_000_000, 24_900_000);
+        let repo = left(2_000_000, 300_000);
         assert_eq!(split(800_000, &[pool.min(repo)]), [100_000]);
+        // A repository past its $2 share gets nothing, however full the pool.
+        assert_eq!(split(800_000, &[left(25_000_000, 0).min(left(2_000_000, 2_000_000))]), [0]);
+    }
+
+    #[test]
+    fn the_open_source_pool_pays_only_for_checks_workflows_and_the_queue() {
+        assert_eq!(eligible_for(Some(ComputeKind::Check), Some("acme/web")).repo.as_deref(), Some("acme/web"));
+        assert_eq!(eligible_for(Some(ComputeKind::Queue), Some("acme/web")).repo.as_deref(), Some("acme/web"));
+        assert_eq!(eligible_for(Some(ComputeKind::Workflow), Some("acme/web")).repo.as_deref(), Some("acme/web"));
+        // An agent on a public repository pays as any agent does.
+        assert!(eligible_for(Some(ComputeKind::Agent), Some("acme/web")).repo.is_none());
+        // Unknown work is never the pool's.
+        assert!(eligible_for(None, Some("acme/web")).repo.is_none());
+        // Deployments are never the trial's, and never covered.
+        let deploy = eligible_for(Some(ComputeKind::Deploy), Some("acme/web"));
+        assert!(!deploy.trial && !deploy.cover_rest && deploy.repo.is_none());
+        assert!(eligible_for(Some(ComputeKind::Agent), None).trial);
     }
 
     #[test]
@@ -594,20 +690,19 @@ mod tests {
         assert_eq!(month_of("2026-11-01T00:00:00Z"), "2026-11");
         assert_eq!(next_month_start("2026-10"), "2026-11-01T00:00:00Z");
         assert_eq!(next_month_start("2026-12"), "2027-01-01T00:00:00Z");
-        // A pool given out this month has room again next month, since
-        // grants count only against the month they were made in.
-        assert!(!pool_has_room(40_000_000, 40_000_000, 1_000_000));
-        assert!(!pool_has_room(40_000_000, 39_500_000, 1_000_000));
-        assert!(pool_has_room(40_000_000, 0, 1_000_000));
-        assert!(pool_has_room(40_000_000, 39_000_000, 1_000_000));
-        assert!(!pool_has_room(40_000_000, 0, 0));
+        // $100 a month in $5 grants: twenty trials, then the next month.
+        assert!(pool_has_room(100_000_000, 95_000_000, 5_000_000));
+        assert!(!pool_has_room(100_000_000, 100_000_000, 5_000_000));
+        assert!(!pool_has_room(100_000_000, 97_500_000, 5_000_000));
+        assert!(pool_has_room(100_000_000, 0, 5_000_000));
+        assert!(!pool_has_room(100_000_000, 0, 0));
     }
 
     #[test]
     fn a_trial_grant_is_the_default_unless_staff_set_one() {
         let config = Config::default();
-        assert_eq!(grant_size(&config, None), 1_000_000);
-        assert_eq!(grant_size(&config, Some(5_000_000)), 5_000_000);
+        assert_eq!(grant_size(&config, None), 5_000_000);
+        assert_eq!(grant_size(&config, Some(20_000_000)), 20_000_000);
         assert_eq!(grant_size(&config, Some(-1)), 0);
     }
 
@@ -622,24 +717,35 @@ mod tests {
     #[test]
     fn what_paid_is_said_on_the_statement() {
         assert_eq!(Drawn::default().note(), "");
-        let drawn = Drawn { credit: 0, trial: 0, oss: 120_000 };
+        let drawn = Drawn { oss: 120_000, ..Drawn::default() };
         assert_eq!(drawn.note(), " ($0.12 paid by g1t's open-source pool)");
-        let drawn = Drawn { credit: 50_000, trial: 20_000, oss: 0 };
-        assert_eq!(drawn.note(), " ($0.05 paid by your Team plan's credit, $0.02 paid by your trial credit)");
+        let drawn = Drawn { credit: 50_000, trial: 20_000, ..Drawn::default() };
+        assert_eq!(drawn.note(), " ($0.05 paid by your plan's included usage, $0.02 paid by your trial credit)");
         assert_eq!(drawn.total(), 70_000);
+        let drawn = Drawn { trial: 300_000, given: 40_000, ..Drawn::default() };
+        assert_eq!(drawn.note(), " ($0.30 paid by your trial credit, $0.04 covered by g1t)");
+        assert_eq!(drawn.total(), 340_000);
     }
 
     #[test]
     fn the_defaults_are_the_published_ones() {
         let c = Config::default();
-        assert_eq!(c.team_monthly_cents, 2_000);
-        assert_eq!(c.team_included_micros, 5_000_000);
-        assert_eq!(c.oss_pool_micros, 10_000_000);
-        assert_eq!(c.oss_repo_micros, 1_000_000);
-        assert_eq!(c.trial_monthly_pool_micros, 40_000_000);
+        assert_eq!(c.plan_monthly_cents, 2_000);
+        assert_eq!(c.plan_included_micros, 10_000_000);
+        assert_eq!(c.oss_pool_micros, 25_000_000);
+        assert_eq!(c.oss_repo_micros, 2_000_000);
+        assert_eq!(c.trial_workspace_micros, 5_000_000);
+        assert_eq!(c.trial_monthly_pool_micros, 100_000_000);
         assert_eq!(c.min_charge_micros, 5_000_000);
         assert_eq!(c.build_seconds, 12_000);
         assert_eq!(c.free_storage_bytes, 1_000_000_000);
-        assert_eq!(c.team_storage_bytes, 50_000_000_000);
+        assert_eq!(c.plan_storage_bytes, 10_000_000_000);
+        assert_eq!(c.audit_days, 90);
+        assert_eq!(c.run_cap_micros, 2_000_000);
+        assert_eq!(c.issue_cap_micros, 10_000_000);
+        assert_eq!(c.paid_start_micros, 100_000_000);
+        assert_eq!(c.forgive_cost_micros, 50_000_000);
+        assert_eq!(c.git_included, 10_000);
+        assert_eq!(c.git_free_cap, 50_000);
     }
 }

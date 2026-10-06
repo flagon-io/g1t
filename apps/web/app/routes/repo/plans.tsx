@@ -1,18 +1,20 @@
 import { env } from "cloudflare:workers";
 import { Sparkles } from "lucide-react";
-import { Form, Link, data, redirect, useNavigation } from "react-router";
+import { Form, Link, redirect, useNavigation } from "react-router";
 
 import type { Plan } from "@g1t/contracts";
 
 import type { Route } from "./+types/plans";
+import { refusal, requireRepo } from "../../lib/access.server";
+import { whyNot } from "../../lib/access";
 import { page } from "../../lib/meta";
-import { Button, EmptyState, ErrorText, Textarea, TimeAgo } from "../../components/ui";
+import { Button, ComputeNote, EmptyState, ErrorText, Textarea, TimeAgo } from "../../components/ui";
+import { computeNoteFor } from "../../lib/compute.server";
 import { work } from "../../lib/services.server";
 import {
   assertSameOrigin,
   getViewer,
   requireUser,
-  roleIn,
   unwrap,
 } from "../../lib/session.server";
 
@@ -22,10 +24,15 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  // Members only; to anyone else the page does not exist.
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
+  // Anyone who can read the repository: a public one's to anyone, a private one's to people with a role.
+  const { access } = await requireRepo(context, params, "read");
   const path = { namespace: params.owner, name: params.repo };
-  return { plans: unwrap(await work.listPlans(path, viewer)) };
+  const [plans, computeNote] = await Promise.all([
+    work.listPlans(path, viewer),
+    // Planning is an agent run: said before it is refused for the plan.
+    computeNoteFor(params.owner, "agent"),
+  ]);
+  return { plans: unwrap(plans), computeNote, can: access.can };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -33,6 +40,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const user = requireUser(context, request);
   const form = await request.formData();
   const path = { namespace: params.owner, name: params.repo };
+  // Planning is an agent run: Write and up.
+  const refused = await refusal(context, params, "run");
+  if (refused) return { error: refused };
   const started = await env.RUNNER.plan(user, path, String(form.get("brief") ?? ""));
   if (!started.ok) return { error: started.error.message };
   throw redirect(`/${params.owner}/${params.repo}/plans/${started.value.planId}`);
@@ -69,7 +79,7 @@ export default function Plans({ loaderData, actionData, params }: Route.Componen
             }
           />
           <div className="flex flex-wrap items-center gap-3">
-            <Button variant="accent" type="submit" disabled={starting}>
+            <Button variant="accent" type="submit" disabled={starting || !loaderData.can.run} title={whyNot(loaderData.can, "run")}>
               <Sparkles size={15} />
               {starting ? "Starting the planner…" : "Plan it"}
             </Button>
@@ -77,7 +87,7 @@ export default function Plans({ loaderData, actionData, params }: Route.Componen
               Nothing is opened until you have read the plan.
             </span>
           </div>
-          <ErrorText>{actionData?.error}</ErrorText>
+          {actionData?.error ? <ErrorText>{actionData.error}</ErrorText> : <ComputeNote note={loaderData.computeNote} />}
         </Form>
 
         <h3 className="mt-10 text-sm font-medium text-muted">Plans</h3>

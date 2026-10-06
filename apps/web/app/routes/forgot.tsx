@@ -5,7 +5,7 @@ import { page } from "../lib/meta";
 import { AuthCard } from "../components/auth-card";
 import { Button, Field, Input } from "../components/ui";
 import { identity } from "../lib/services.server";
-import { assertSameOrigin } from "../lib/session.server";
+import { assertSameOrigin, clientOf } from "../lib/session.server";
 
 export function meta(args: Route.MetaArgs) {
   return page(args, { title: "Reset your password · g1t" });
@@ -14,7 +14,7 @@ export function meta(args: Route.MetaArgs) {
 export async function action({ request }: Route.ActionArgs) {
   assertSameOrigin(request);
   const form = await request.formData();
-  await identity.requestPasswordReset(String(form.get("email") ?? ""));
+  await identity.requestPasswordReset(String(form.get("email") ?? ""), clientOf(request));
   return { sent: true };
 }
 
@@ -31,8 +31,8 @@ export default function Forgot({ actionData }: Route.ComponentProps) {
     >
       {actionData?.sent ? (
         <p className="rounded-lg border border-line bg-surface p-4 text-sm leading-6">
-          If that address has an account, a reset link is on its way. It works
-          for one hour.
+          If that address belongs to an account, a reset link is on its way to
+          it. It works for one hour.
         </p>
       ) : (
         <Form method="post" className="space-y-4">

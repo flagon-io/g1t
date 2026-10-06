@@ -51,13 +51,23 @@ export interface MentionPorts {
   /** Why `actor` cannot put g1t agents to work in `repo` now, or null. */
   refusal(actor: User, repo: RepoPath): Promise<string | null>;
   assign(job: MentionJob): Promise<Result<Pull>>;
-  revise(job: LifecycleJob, startedBy: string): Promise<void>;
+  /**
+   * Sends g1t-agent back to revise. Returns what to say instead when the
+   * revision waits for a free slot.
+   */
+  revise(job: LifecycleJob, startedBy: string): Promise<string | null | void>;
   review(job: MentionJob): Promise<Result<boolean>>;
   answer(job: MentionJob): Promise<Result<true>>;
   message(job: MentionJob): Promise<Result<unknown>>;
   /** Records a mention that started nothing as a failed agent run, so it shows with the others. */
   record(job: MentionJob, why: string): Promise<void>;
 }
+
+/**
+ * How a run that waits for a free agent slot says so: `WAITING_PREFIX` in
+ * @g1t/contracts compute.ts, kept here so this file has no runtime imports.
+ */
+export const WAITING = "Waiting for a free slot";
 
 function reason(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -69,13 +79,18 @@ export async function handleMention(job: MentionJob, ports: MentionPorts): Promi
   const who = `@${job.actor.username}`;
   const reply = (text: string) => ports.mentions.replyMention(job.commentId, text).catch(() => false);
   const refuse = async (why: string) => {
+    // Not refused, only waiting: said as it is, and not recorded as a failure.
+    if (why.startsWith(WAITING)) {
+      await reply(`${who}, ${why}`);
+      return;
+    }
     await ports.record(job, why).catch(() => undefined);
     await reply(`${who}, I could not start on this: ${why}`);
   };
   try {
     if (plan.kind === "not_member") {
       await reply(
-        `Thanks for the mention, ${who}. Only members of the ${job.repo.namespace} workspace can put g1t-agent to work here, so I have left this for them.`,
+        `Thanks for the mention, ${who}. Putting g1t-agent to work needs the Write role on ${job.repo.namespace}/${job.repo.name}, so I have left this for someone who has it.`,
       );
       return plan;
     }
@@ -109,8 +124,9 @@ export async function handleMention(job: MentionJob, ports: MentionPorts): Promi
           await refuse(revision.error.message);
           break;
         }
-        await ports.revise(revision.value, job.actor.username);
-        await reply(`Going back to this, ${who}. I will push the change here when it is made.`);
+        const waiting = await ports.revise(revision.value, job.actor.username);
+        if (waiting) await reply(`${who}, ${waiting}`);
+        else await reply(`Going back to this, ${who}. I will push the change here when it is made.`);
         break;
       }
       case "message": {

@@ -1,10 +1,15 @@
 @import "tailwindcss" source(".");
 @import "@g1t/theme/tokens.css";
+@import "@g1t/theme/fonts.css";
 
 /* Tailwind's names for the shared g1t tokens. */
 @theme {
   --font-sans: var(--g1t-font-sans);
+  --font-display: var(--g1t-font-display);
   --font-mono: var(--g1t-font-mono);
+
+  /* Hanken and Bricolage want less tightening than a text face set close. */
+  --tracking-tight: -0.012em;
 
   --color-bg: var(--g1t-bg);
   --color-surface: var(--g1t-surface);
@@ -77,9 +82,10 @@
   }
 }
 
+/* Never from nothing: the first paint already shows the words. */
 @keyframes fade-up {
   from {
-    opacity: 0;
+    opacity: 0.4;
     transform: translateY(8px);
   }
 }
@@ -97,7 +103,6 @@ html {
 
 body {
   @apply bg-bg font-sans text-fg antialiased;
-  font-feature-settings: "cv11", "ss01";
 }
 
 ::selection {
@@ -118,6 +123,20 @@ body {
    */
   .grid > * {
     min-width: 0;
+  }
+
+  /*
+   * Headlines are set in Bricolage Grotesque, its optical size following
+   * the font size; small section labels that happen to be headings stay in
+   * the text face. A utility on the element still wins.
+   */
+  :where(h1, h2),
+  :where(h3):is(.text-xl, .text-2xl, .text-3xl, .text-4xl) {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+  }
+  :where(h2):is(.text-xs, .text-sm, .text-base) {
+    font-family: var(--font-sans);
   }
 
   /* Checkboxes, radios and ranges in g1t's own colour, not the browser's. */
@@ -237,13 +256,301 @@ body {
   @apply mr-5 inline-block w-10 text-right text-faint select-none;
 }
 
-/* Artwork: dashes that flow along a track. */
+/*
+ * Artwork (components/art.tsx). Every piece loops on its drawing's
+ * `--dur` and starts at its own `--delay`, so the parts of one drawing
+ * stay in step. Only transforms, opacity and stroke offsets move. The
+ * resting style of each class is the finished picture: that is what
+ * prefers-reduced-motion shows, since the rule above stops every
+ * animation.
+ */
 .art-flow {
   animation: dash 1.6s linear infinite;
 }
+
+/* Something travelling along a track (pathLength 100). Unseen at rest. */
+.art-packet {
+  opacity: 0;
+  stroke-dasharray: 4 200;
+  stroke-dashoffset: 4;
+  animation: art-travel var(--dur, 3s) cubic-bezier(0.45, 0, 0.35, 1) infinite;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes art-travel {
+  0% {
+    stroke-dashoffset: 4;
+    opacity: 0;
+  }
+  3% {
+    opacity: 1;
+  }
+  32% {
+    opacity: 1;
+  }
+  36%,
+  100% {
+    stroke-dashoffset: -100;
+    opacity: 0;
+  }
+}
+
+/* A face that lights up for most of the loop. Lit at rest. */
+.art-lit {
+  opacity: 0.85;
+  animation: art-lit var(--dur, 8s) ease-in-out infinite both;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes art-lit {
+  0%,
+  4% {
+    opacity: 0;
+  }
+  12%,
+  70% {
+    opacity: 0.9;
+  }
+  88%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* A short flash, as a check runs over a layer. Unseen at rest. */
+.art-scan {
+  opacity: 0;
+  animation: art-scan var(--dur, 8s) ease-out infinite both;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes art-scan {
+  0% {
+    opacity: 0;
+  }
+  4% {
+    opacity: 1;
+  }
+  16%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* A line that draws itself, then fades. Drawn at rest. */
+.art-draw {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 0;
+  animation: art-draw var(--dur, 8s) ease-in-out infinite both;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes art-draw {
+  0% {
+    stroke-dashoffset: 100;
+    opacity: 1;
+  }
+  14%,
+  70% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  88%,
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+/* Something that appears, stays, and goes. Shown at rest. */
+.art-pop {
+  animation: art-pop var(--dur, 8s) ease-out infinite both;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes art-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  6%,
+  72% {
+    opacity: 1;
+    transform: none;
+  }
+  86%,
+  100% {
+    opacity: 0;
+    transform: none;
+  }
+}
+
+/* A layer dropping onto a stack. In place at rest. */
+.art-drop {
+  animation: art-drop var(--dur, 7s) cubic-bezier(0.2, 0.9, 0.3, 1.2) infinite both;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes art-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-26px);
+  }
+  8%,
+  74% {
+    opacity: 1;
+    transform: none;
+  }
+  88%,
+  100% {
+    opacity: 0;
+    transform: none;
+  }
+}
+
+/* The layer that fails: drops, shakes, and is sent back. */
+.art-eject {
+  animation: art-eject var(--dur, 7s) ease-in-out infinite both;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes art-eject {
+  0% {
+    opacity: 0;
+    transform: translateY(-26px);
+  }
+  8%,
+  30% {
+    opacity: 1;
+    transform: none;
+  }
+  33% {
+    transform: translateX(-3px);
+  }
+  36% {
+    transform: translateX(3px);
+  }
+  39% {
+    transform: translateX(-2px);
+  }
+  42% {
+    opacity: 1;
+    transform: none;
+  }
+  56%,
+  100% {
+    opacity: 0;
+    transform: translate(-40px, -22px);
+  }
+}
+
+/* A layer rising out of the one below it. In place at rest. */
+.art-rise {
+  animation: art-rise var(--dur, 7s) cubic-bezier(0.2, 0.8, 0.3, 1) infinite both;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes art-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  10%,
+  70% {
+    opacity: 1;
+    transform: none;
+  }
+  86%,
+  100% {
+    opacity: 0;
+    transform: none;
+  }
+}
+
+/* A soft glow breathing around a point. */
+.art-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: art-pulse var(--dur, 4s) ease-in-out infinite;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes art-pulse {
+  0%,
+  100% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.5);
+    opacity: 0.35;
+  }
+}
+
+/* Drawings off-screen hold still (components/art.tsx, Live). */
+[data-paused] * {
+  animation-play-state: paused !important;
+}
+/*
+ * Each drawing on its own layer, so a frame of its motion repaints only the
+ * drawing, not the page around it or the blurred header passing over it.
+ */
+[data-live] {
+  will-change: transform;
+}
+
+/* The landing page's steps, lit in turn along their line. */
+/* The ring is drawn once and only fades and grows, so the compositor runs it. */
+.flow-step::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-merged) 18%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  animation: flow-step 10s ease-in-out infinite both;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes flow-step {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  6% {
+    opacity: 1;
+    transform: none;
+  }
+  16% {
+    opacity: 0;
+    transform: none;
+  }
+}
+.flow-runner {
+  animation: flow-runner 10s cubic-bezier(0.45, 0, 0.35, 1) infinite both;
+}
+@keyframes flow-runner {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  4%,
+  76% {
+    opacity: 1;
+  }
+  80%,
+  100% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .art-flow {
-    animation: none;
+  .flow-runner {
+    display: none;
+  }
+}
+
+/* The sidebar trading one far-side menu for another, in place. */
+@keyframes g1t-swap {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 
@@ -265,16 +572,4 @@ body {
 .dusk-planet {
   background: radial-gradient(circle at 70% 30%, rgb(182 168 255 / 0.12), rgb(255 189 140 / 0.04) 45%, transparent 70%);
   box-shadow: inset 14px -8px 50px rgb(255 214 186 / 0.07);
-}
-
-/* The sidebar trading one far-side menu for another, in place. */
-@keyframes g1t-swap {
-  from {
-    opacity: 0;
-    transform: translateX(10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
 }

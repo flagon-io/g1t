@@ -14,7 +14,7 @@ https://g1t.sh/<workspace>/<repo>.git
 Public repositories can be cloned without signing in:
 
 ```sh
-git clone https://g1t.sh/syntaqx/g1t.git
+git clone https://g1t.sh/flagon-io/g1t.git
 ```
 
 If the workspace is [renamed](/guides/workspaces/#rename-a-workspace), the
@@ -49,7 +49,9 @@ git push https://g1t.sh/<workspace>/new-repo.git main
 
 ## Private repositories
 
-A private repository is visible only to members of its workspace. To
+A private repository is visible only to people with a
+[role](/guides/access-and-roles/) on it. Cloning and fetching need
+Read, and pushing needs Write. To
 everyone else it looks exactly like a repository that does not exist, both
 on the site and to git.
 
@@ -59,7 +61,7 @@ status 404:
 | You are | The page says |
 | --- | --- |
 | Signed out | **Sign in to see this project**: it may be private, or it may not exist. Signing in brings you back to the same address. |
-| Signed in | **This project doesn't exist, or you don't have access to it**, which account you are signed in as, and a link to switch account. If you should have access, ask an owner of the workspace to add you. |
+| Signed in | **This project doesn't exist, or you don't have access to it**, which account you are signed in as, and a link to switch account. If you should have access, ask someone with the Admin role on it to add you. |
 
 Issues, pull requests and workspace pages work the same way. A profile
 that does not exist says **No one goes by that name**, since profiles are
@@ -69,15 +71,16 @@ public.
 
 Public projects, Explore, Search and profiles are open to everyone, in the
 same sidebar members use. Signed out, the sidebar has Explore and Search,
-and in a project its Code, Issues, Pull requests, Agents and Workflows;
-pages only members see, such as Deployments, Security and Settings, are
-left out. **Sign in** and **Sign up** sit at the bottom, and both bring you
+and in a project its Code, Issues, Pull requests, Agents, Workflows and
+Deployments; pages only people with a role on the repository see, such as
+Security and Settings, are left out. **Sign in** and **Sign up** sit at the bottom, and both bring you
 back to the page you were on.
 
 ## Protected branches
 
 A repository can protect its default branch under **Settings → Repository**. Pushing to
-it is then refused, for members and agents alike, and git says why:
+it is then refused for everyone, whatever their role, and for agents, and
+git says why:
 
 ```text
  ! [remote rejected] main -> main (main is protected: push a branch and open a pull request)
@@ -112,6 +115,13 @@ update the pull request's head commit on its page.
 
 Repositories are stored in Cloudflare Artifacts, which limits a repository to
 1 GB and a single file to 32 MB. A single push is limited to 100 MB.
+
+Each clone, fetch and push is a git operation. Every workspace has 10,000
+a month included. Past that, a workspace on the g1t plan pays $0.18 per
+1,000, and a free workspace is never charged: past 50,000 in a month, its
+git requests past 60 in an hour are answered `429` with when to try again,
+until the month turns. Counting starts on 2026-10-14. See
+[git operations](/guides/usage-and-billing/#git-operations).
 
 ## SSH
 

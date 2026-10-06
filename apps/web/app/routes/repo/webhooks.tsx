@@ -3,7 +3,8 @@ import { page } from "../../lib/meta";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { WebhooksPanel } from "../../components/webhooks";
 import { actOnWebhooks, loadWebhooks } from "../../lib/webhooks.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
+import { requireCapability, requireInsider } from "../../lib/access.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Webhooks · ${params.owner}/${params.repo} · g1t` });
@@ -15,14 +16,15 @@ function ownerOf(params: { owner: string; repo: string }) {
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  // A repository's settings are its workspace's members' to see.
-  if (!roleIn(viewer, params.owner)) throw new Response(null, { status: 404 });
+  // Admins; to anyone without a role here the page does not exist.
+  await requireInsider(context, params, "manage_integrations");
   return loadWebhooks(ownerOf(params), viewer, request);
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
+  await requireCapability(context, params, "manage_integrations");
   return actOnWebhooks(ownerOf(params), user, await request.formData());
 }
 

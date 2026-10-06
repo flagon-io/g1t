@@ -184,7 +184,8 @@ impl Security {
         self.store.replace_vulnerabilities(&repo.repo_id, &found).await?;
         self.store.set_dependencies_scanned(&repo.repo_id, files.commit.as_deref(), &paths, None).await?;
         self.meter(&repo.namespace, 0, 0, calls, dependency_check_cost(calls, found.len())).await?;
-        if repo.upkeep != 0 {
+        // No upgrade issues on an archived (read-only) or deleted repository.
+        if repo.upkeep != 0 && self.active(&repo.repo_id).await? {
             self.open_upgrades(repo, &located).await?;
         }
         Ok(None)

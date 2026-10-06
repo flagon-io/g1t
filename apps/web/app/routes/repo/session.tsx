@@ -8,7 +8,8 @@ import { page } from "../../lib/meta";
 import { RunCard, formatCost, useLiveRefresh } from "../../components/agents";
 import { Avatar, TimeAgo } from "../../components/ui";
 import { agents } from "../../lib/services.server";
-import { getViewer, roleIn, unwrap } from "../../lib/session.server";
+import { getViewer, unwrap } from "../../lib/session.server";
+import { accessTo } from "../../lib/access.server";
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   return page(args, {
@@ -19,7 +20,7 @@ export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const session = await agents.getSession(viewer, { namespace: params.owner, name: params.repo }, Number(params.number));
-  return { session: unwrap(session), member: roleIn(viewer, params.owner) != null };
+  return { session: unwrap(session), member: (await accessTo(context, params)).can.run };
 }
 
 function Entry({ entry }: { entry: SessionEntry }) {

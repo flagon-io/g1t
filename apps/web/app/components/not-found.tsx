@@ -4,6 +4,7 @@ import { Form, Link, useLocation, useRouteLoaderData } from "react-router";
 import type { User } from "@g1t/contracts";
 
 import { withNext } from "../lib/next";
+import { useSignUpCopy } from "../lib/registration";
 import { missingKind, notFoundCopy } from "../lib/not-found";
 import { Avatar, ButtonLink } from "./ui";
 
@@ -18,6 +19,7 @@ export function NotFound({ data }: { data?: unknown }) {
   const kind = missingKind(data, pathname);
   const copy = notFoundCopy(kind, user?.username);
   const here = pathname + search;
+  const signUp = useSignUpCopy();
   const Icon = kind === "person" ? UserX : copy.signIn ? KeyRound : EyeOff;
   return (
     <main className="mx-auto flex max-w-lg flex-col items-center px-4 py-24 text-center sm:py-32">
@@ -38,7 +40,7 @@ export function NotFound({ data }: { data?: unknown }) {
           <p className="mt-5 text-sm text-muted">
             New to g1t?{" "}
             <Link to={withNext("/register", here)} className="font-medium text-fg underline-offset-4 hover:underline">
-              Sign up
+              {signUp.primary}
             </Link>
           </p>
         </>

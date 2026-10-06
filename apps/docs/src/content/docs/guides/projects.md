@@ -32,7 +32,7 @@ requests. The sidebar lists them too.
 
 | Page | Address | |
 | --- | --- | --- |
-| **Overview** | `g1t.sh/<workspace>/<project>` | Production and its address, live previews, what is in progress, recent builds, and the source. |
+| **Overview** | `g1t.sh/<workspace>/<project>` | Production with a screenshot, the steps left to get to production, what is in progress, active branches, live previews, recent builds, and the source. See [the overview](#the-overview). |
 | **Code** | `…/code` | The repository's files, commits and branches. |
 | **Issues**, **Pull requests**, **Merge queue**, **Plan** | `…/issues` and so on | As they always were. |
 | **Actions** | `…/actions` | [GitHub Actions workflows](/guides/actions/). |
@@ -41,6 +41,53 @@ requests. The sidebar lists them too.
 
 Every address that pointed into a repository before still works: the
 project has the repository's name.
+
+## The overview
+
+A project's overview is the first page you see. People with a
+[role](/guides/access-and-roles/) on its repository see all of it; anyone
+else sees what the project shares publicly.
+
+| Part | What it shows |
+| --- | --- |
+| **Production** | A screenshot of the live site, which opens it; its address, the commit it runs and when it went up; **Visit** and **Redeploy**. See [the production screenshot](/guides/deployments/#the-production-screenshot). |
+| **Get to production** | The checklist below, until every step is done or you dismiss it. |
+| **Right now** | Agents at work, and open pull requests moving from working to landed. |
+| **Needs you** | What is waiting on a person: a failed production build, a pull request to merge or review, a stuck run. |
+| **Active branches** | Branches other than the default, newest first. See [active branches](#active-branches). |
+| **Recent changes**, **Activity**, **Previews** | What landed, everything that happened, and the previews that are up. |
+| **Health**, **Dependencies**, **Clone** | How often checks pass, recent builds and open issues by age; what it uses and what uses it; the clone address. |
+
+### Get to production
+
+People with a role on its repository see a card that counts what the project has done towards
+production, such as **3/6**. Each step is worked out from the project
+itself, and each links to where you do it:
+
+| Step | Done when | Links to |
+| --- | --- | --- |
+| Connect a source or push code | The default branch has a commit, or the source is a mirror. | **Code**, which shows how to push, or how to have your coding agent start the project. |
+| Deploy to production | A production build has gone live. | Deployments settings, or **Deployments** once they are on. |
+| Add a custom domain | The project has a [custom domain](/guides/deployments/#custom-domains). | Domain settings. |
+| Open a preview | A branch or pull request has had a [preview](/guides/deployments/#previews-of-branches). | A new pull request. |
+| Set up repository instructions | `AGENTS.md` or `CLAUDE.md` is at the root of the default branch. | The instructions on the **Agents** page. See [repository instructions](/guides/g1t-agents/#repository-instructions). |
+| Assign a first issue to g1t-agent | g1t-agent has had a run, a pull request or an issue here. | A new issue. |
+
+The card goes away when every step is done. To hide it sooner, choose
+**×** on it. That hides it for this project in this browser only.
+
+### Active branches
+
+Up to five branches other than the default, the most recently changed
+first. Each shows its last commit and who made it, how many commits it is
+ahead of the default branch and behind it, and its open pull request,
+with its checks, and preview, if it has them. A branch with no pull
+request links to opening one.
+
+Ahead and behind are counted from the last 40 commits of the branch and
+the last 120 of the default branch. A count that runs past that shows as
+`40+`. Ten branches are read, those with open pull requests first; a
+project with more says how many it has.
 
 ## Settings
 
@@ -52,12 +99,26 @@ A project's **Settings** has a tab for each part:
 | **Deployments** | Production, previews, build command, output directory and idle days. See [Deployments](/guides/deployments/#settings). |
 | **Dependencies** | The projects this one uses, and the ones that use it. See [Dependencies](#dependencies). |
 | **Secrets and variables** | The project's rows. See [Secrets and variables](/guides/secrets-and-variables/). |
-| **Repository** | The repository's description, [topics](/guides/search/#what-is-indexed), visibility, branch protection, required approvals, checks, the merge queue and auto-merge. |
+| **Repository** | The repository's name, description, website, [topics](/guides/search/#what-is-indexed) and default branch, and its danger zone: visibility, archive, transfer and delete. See [Managing a repository](/guides/managing-repositories/). |
+| **Branches and merging** | Branch protection, required approvals, checks, the merge queue, auto-merge and how g1t's agents review. |
 | **Webhooks** | The repository's [webhooks](/guides/webhooks/). |
 
 The **root directory** says where in the repository the project lives,
 such as `apps/web`. Builds run there. Leave it empty for the whole
 repository.
+
+Each tab needs a [role](/guides/access-and-roles/) on the project's
+repository:
+
+| Tab | Needs |
+| --- | --- |
+| **General**, **Dependencies**, and on **Repository** its description, website and topics | Maintain |
+| **Branches and merging**, **Guardrails** | Maintain |
+| **Deployments**, **Domains**, **Secrets and variables**, **Webhooks** | Admin |
+| On **Repository**: its name, default branch, and the danger zone (visibility, archive) | Admin |
+| Transfer and delete | An owner of the workspace |
+
+Someone without the role does not see the tab.
 
 ## Create a project
 
@@ -66,6 +127,9 @@ repository.
    - **Start empty**: a new repository on g1t.
    - **Import code**: copy a public repository from GitHub or any git host
      into a new one on g1t.
+   - **Import from GitHub**: import, mirror or move repositories you can
+     reach on GitHub, private ones too, with every branch and tag and,
+     if you like, their issues. See [GitHub](/guides/github/).
 3. Give it a name and say who can see it, then choose **Create project**.
 
 Pushing a repository that does not exist yet makes one, and with it a
@@ -77,11 +141,15 @@ git push https://g1t.sh/acme/my-app.git main
 
 ## Sources
 
-Today a project's source is a repository hosted on g1t. Coming next:
+A project's source is a repository hosted on g1t. A repository can be a
+**mirror of one on GitHub**: the code stays there, every push to GitHub is
+fetched into g1t, and the project gets g1t's deployments, secrets and
+agents on it. See [GitHub](/guides/github/#import-mirror-or-move-a-repository).
 
-- **Mirrored from GitHub, GitLab or Bitbucket.** The code stays there; the
-  project gets g1t's deployments, previews on its pull requests, secrets
-  and agents.
+Coming next:
+
+- **Mirrored from GitLab or Bitbucket**, and previews on GitHub's own pull
+  requests.
 - **Several projects on one repository**, each from its own root
   directory, with a push building only the projects it touched.
 

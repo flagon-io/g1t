@@ -24,7 +24,9 @@
 		// Deployments belong to projects.
 		{ "binding": "PROJECTS", "service": "g1t-projects" },
 		// Secrets and variables, with who may read each.
-		{ "binding": "ACTIONS", "service": "g1t-actions" }
+		{ "binding": "ACTIONS", "service": "g1t-actions" },
+		// Production's screenshot, asked for once per deploy (services/og).
+		{ "binding": "SCREENSHOTS", "service": "g1t-og", "entrypoint": "Screenshots" }
 	],
 	// Pull requests opened, pushed to, closed and merged; pushes to the
 	// default branch.

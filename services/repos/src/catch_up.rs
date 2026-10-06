@@ -352,14 +352,20 @@ impl<S: GitStore> Repos<S> {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
                 if source.fork_of.is_some() {
-                    "Only whoever opened this pull request can update it."
+                    "Only whoever opened this pull request can update it.".to_owned()
                 } else {
-                    "Only members of the workspace can update this pull request."
+                    g1t_contracts::access::needs(
+                        g1t_contracts::access::Capability::Push,
+                        &format!("{}/{}", source.namespace, source.name),
+                    )
                 },
             ));
         }
         if !a.actor.verified {
             return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
+        }
+        if let Some((code, message)) = crate::lifecycle::archived_refusal(&target) {
+            return Ok(Outcome::fail(code, message));
         }
         let from_fork = source.id != target.id;
         let base_branch = target.default_branch.clone();
@@ -463,13 +469,37 @@ impl<S: GitStore> Repos<S> {
             }
         };
 
-        let email = format!("{}@users.g1t.sh", a.actor.username);
+        // The person's commit name and address: their noreply address
+        // unless they chose to show their own. An agent's commit is its
+        // person's. Without identity, the noreply address all the same.
+        let person = a
+            .actor
+            .acting
+            .as_ref()
+            .map_or((a.actor.id.clone(), a.actor.username.clone()), |acting| {
+                (acting.on_behalf_of.id.clone(), acting.on_behalf_of.username.clone())
+            });
+        let author = match &self.identity {
+            Some(identity) => g1t_kit::call::<_, Option<g1t_contracts::accounts::CommitIdentity>>(
+                identity,
+                "commit_identity",
+                &g1t_contracts::accounts::CommitIdentityArgs { user_id: person.0.clone() },
+            )
+            .await
+            .ok()
+            .flatten(),
+            None => None,
+        }
+        .unwrap_or_else(|| g1t_contracts::accounts::CommitIdentity {
+            name: person.1.clone(),
+            email: g1t_contracts::accounts::noreply_address(&person.0, &person.1),
+        });
         let commit = commit_object(
             &merged.tree,
             &[&head.hash, &base.hash],
             &Signature {
-                name: &a.actor.username,
-                email: &email,
+                name: &author.name,
+                email: &author.email,
                 seconds: now_ms() / 1000,
             },
             &merge_message(&base_branch, &branch, a.number),

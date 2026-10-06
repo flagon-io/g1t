@@ -1,7 +1,13 @@
-//! Paid features a workspace turns on with a monthly plan, the way
-//! Cloudflare's Workers for Platforms is bought: a price that includes an
-//! allowance, and usage past it charged from credit at cost plus the
-//! margin. None of it is free, whatever `FREE_WHILE_BUILDING` says.
+//! The g1t plan: one monthly price per workspace, never per person, that
+//! includes usage, private storage and deployments; usage past what it
+//! includes is charged at cost plus the margin. None of it is free,
+//! whatever `FREE_WHILE_BUILDING` says.
+//!
+//! Deployments were once a plan of their own. They come with the g1t plan
+//! now: `has_feature(deployments)` answers whether the workspace has the
+//! plan, and a Deployments subscription from before keeps working until
+//! its period ends. Billing sets each one to end then, once
+//! (`retire_deployments_plans`), so no one pays for both.
 
 use g1t_contracts::billing::deployments_allowance as allowance;
 use g1t_contracts::billing::*;
@@ -92,86 +98,58 @@ impl SubscriptionRow {
 }
 
 impl Billing {
-    pub(crate) fn plan(&self, feature: Feature) -> Plan {
-        match feature {
-            Feature::Team => Plan {
-                feature,
-                title: feature.title().to_owned(),
-                monthly_cents: self.plans.team_monthly_cents,
-                includes: vec![
-                    format!(
-                        "{} of usage credit each month, drawn first by the month's usage at cost plus {}%. Unused credit does not roll over.",
-                        dollars(self.plans.team_included_micros),
-                        self.margin_percent
-                    ),
-                    format!(
-                        "{} of private repository storage, rather than {}",
-                        bytes(self.plans.team_storage_bytes),
-                        bytes(self.plans.free_storage_bytes)
-                    ),
-                    format!(
-                        "The audit log kept {}, rather than {} days",
-                        if self.plans.team_audit_days % 365 == 0 {
-                            match self.plans.team_audit_days / 365 {
-                                1 => "for 1 year".to_owned(),
-                                years => format!("for {years} years"),
-                            }
-                        } else {
-                            format!("for {} days", self.plans.team_audit_days)
-                        },
-                        self.plans.audit_days
-                    ),
-                    "Everyone in the workspace, at one price: never per person".to_owned(),
-                ],
-                overage: format!(
-                    "Usage past the credit is charged as it is without the plan: at cost plus {}%.",
+    /// What the g1t plan costs and includes, as it is sold now.
+    pub(crate) fn plan(&self, _feature: Feature) -> Plan {
+        let p = &self.plans;
+        let price = |cost: i64| dollars(crate::charge_micros(cost as f64 / MICROS_PER_DOLLAR as f64, self.margin_percent));
+        Plan {
+            feature: Feature::Plan,
+            title: Feature::Plan.title().to_owned(),
+            monthly_cents: p.plan_monthly_cents,
+            includes: vec![
+                format!(
+                    "{} of usage each month at cost plus {}%, used first. Unused usage does not roll over.",
+                    dollars(p.plan_included_micros),
                     self.margin_percent
                 ),
-            },
-            Feature::Deployments => Plan {
-                feature,
-                title: feature.title().to_owned(),
-                monthly_cents: self.deployments_monthly_cents,
-                includes: vec![
-                    format!(
-                        "{} apps deployed at once, production and previews together",
-                        allowance::APPS
-                    ),
-                    format!("{} build minutes", self.plans.build_seconds / 60),
-                    format!("{} million requests", allowance::REQUESTS / 1_000_000),
-                    format!("{} million CPU milliseconds", allowance::CPU_MS / 1_000_000),
-                    format!(
-                        "{} custom domains, with certificates, then {} each a month",
-                        allowance::CUSTOM_DOMAINS,
-                        dollars(crate::charge_micros(
-                            allowance::MICROS_PER_DOMAIN_MONTH as f64 / MICROS_PER_DOLLAR as f64,
-                            self.margin_percent
-                        )),
-                    ),
-                    "Previews that cost nothing while no one visits them".to_owned(),
-                ],
-                overage: format!(
-                    "Usage past that is charged at Cloudflare's price plus {3}%: {4} per build minute, by the second, {0} per extra app a month, {1} per million requests and {2} per million CPU milliseconds.",
-                    dollars(crate::charge_micros(
-                        allowance::MICROS_PER_APP_MONTH as f64 / MICROS_PER_DOLLAR as f64,
-                        self.margin_percent
-                    )),
-                    dollars(crate::charge_micros(
-                        allowance::MICROS_PER_MILLION_REQUESTS as f64 / MICROS_PER_DOLLAR as f64,
-                        self.margin_percent
-                    )),
-                    dollars(crate::charge_micros(
-                        allowance::MICROS_PER_MILLION_CPU_MS as f64 / MICROS_PER_DOLLAR as f64,
-                        self.margin_percent
-                    )),
-                    self.margin_percent,
-                    dollars(crate::charge_micros(
-                        (allowance::MICROS_PER_BUILD_SECOND * 60) as f64 / MICROS_PER_DOLLAR as f64,
-                        self.margin_percent
-                    )),
+                "Everyone in the workspace, at one price: never per person".to_owned(),
+                "Agents, checks, workflows, the merge queue and semantic search, on demand past the included usage, up to your spend limit".to_owned(),
+                format!(
+                    "Deployments: {} apps, {} build minutes, {} million requests, {} million CPU milliseconds and {} custom domains a month",
+                    allowance::APPS,
+                    p.build_seconds / 60,
+                    allowance::REQUESTS / 1_000_000,
+                    allowance::CPU_MS / 1_000_000,
+                    allowance::CUSTOM_DOMAINS,
                 ),
-            },
+                format!("{} of private repository storage, rather than {}", bytes(p.plan_storage_bytes), bytes(p.free_storage_bytes)),
+                format!(
+                    "The other {} of the price pays for running g1t, the free forge for everyone, and the people building it",
+                    dollars(i64::from(p.plan_monthly_cents) * 10_000 - p.plan_included_micros)
+                ),
+            ],
+            overage: format!(
+                "Usage past what is included is charged at cost plus {}%: sandbox time by the second, models at what the provider charged, and for deployments {} per build minute, {} per extra app a month, {} per million requests, {} per million CPU milliseconds and {} per extra custom domain a month.",
+                self.margin_percent,
+                price(allowance::MICROS_PER_BUILD_SECOND * 60),
+                price(allowance::MICROS_PER_APP_MONTH),
+                price(allowance::MICROS_PER_MILLION_REQUESTS),
+                price(allowance::MICROS_PER_MILLION_CPU_MS),
+                price(allowance::MICROS_PER_DOMAIN_MONTH),
+            ),
         }
+    }
+
+    /// When the workspace's plan started, and when the period paid for
+    /// ends: its first billing cycle is the first month.
+    pub(crate) async fn plan_cycle(&self, workspace: &str) -> Result<Option<(String, Option<String>)>> {
+        let row = match self.current(workspace, Feature::Plan).await? {
+            Some(row) => Some(row),
+            None => self.current(workspace, Feature::Deployments).await?,
+        };
+        Ok(row
+            .filter(|row| status_from(&row.status).on())
+            .map(|row| (row.started_at, row.period_end)))
     }
 
     async fn subscription_row(&self, workspace: &str, feature: Feature) -> Result<Option<SubscriptionRow>> {
@@ -245,26 +223,85 @@ impl Billing {
         Ok(Some(row))
     }
 
-    async fn state(&self, workspace: &str, feature: Feature) -> Result<FeatureState> {
-        let subscription = self
-            .current(workspace, feature)
-            .await?
-            .and_then(|row| row.subscription());
-        let included = self.included(workspace, feature).await?;
+    /// The plan as a workspace sees it. A Deployments subscription from
+    /// before the plan shows as the plan until its period ends.
+    async fn state(&self, workspace: &str, _feature: Feature) -> Result<FeatureState> {
+        let subscription = match self.current(workspace, Feature::Plan).await?.and_then(|row| row.subscription()) {
+            Some(plan) if plan.status.on() => Some(plan),
+            plan => self
+                .current(workspace, Feature::Deployments)
+                .await?
+                .and_then(|row| row.subscription())
+                .filter(|legacy| legacy.status.on())
+                .or(plan),
+        };
+        let included = self.included(workspace).await?;
         Ok(FeatureState {
-            plan: self.plan(feature),
+            plan: self.plan(Feature::Plan),
             on: included || self.stripe.is_none() || subscription.as_ref().is_some_and(|s| s.status.on()),
             subscription,
             included,
         })
     }
 
-    /// Whether the feature is on without a plan: comped terms have every
-    /// feature, and g1t staff can give an account Team.
-    async fn included(&self, workspace: &str, feature: Feature) -> Result<bool> {
+    /// Whether the plan is on without its price: comped terms, an
+    /// enterprise's workspaces, or given by g1t staff.
+    async fn included(&self, workspace: &str) -> Result<bool> {
         let account = self.account_of(workspace).await?;
         Ok(account.terms.kind == g1t_contracts::billing::TermsKind::Comped
-            || (feature == Feature::Team && account.allowances.team))
+            || account.kind == g1t_contracts::billing::AccountKind::Enterprise
+            || account.allowances.plan)
+    }
+
+    /// Sets every Deployments subscription from before the plan to end
+    /// with its period, once, so no one pays for it and the plan both.
+    /// Until then it counts as the plan.
+    pub(crate) async fn retire_deployments_plans(&self) -> Result<()> {
+        let Some(stripe) = &self.stripe else { return Ok(()) };
+        #[derive(Deserialize)]
+        struct Legacy {
+            workspace: String,
+            subscription_id: String,
+            started_by: String,
+            period_end: Option<String>,
+        }
+        let legacy = self
+            .db
+            .prepare(
+                "SELECT workspace, subscription_id, started_by, period_end FROM subscriptions
+                 WHERE feature = 'deployments' AND status = 'active' LIMIT 20",
+            )
+            .all()
+            .await?
+            .results::<Legacy>()?;
+        for plan in legacy {
+            match stripe.cancel_at_period_end(&plan.subscription_id, true).await {
+                Ok(subscription) => {
+                    self.record(&plan.workspace, Feature::Deployments, &subscription, &plan.started_by).await?;
+                    let account = self.account_of(&plan.workspace).await?;
+                    self.audit(
+                        &account.id,
+                        "migration",
+                        &format!(
+                            "{}: the Deployments plan ends {} and is not renewed; deployments come with the g1t plan now",
+                            plan.workspace,
+                            plan.period_end.as_deref().map_or("at the end of its period", |end| &end[..10])
+                        ),
+                        "billing",
+                    )
+                    .await?;
+                }
+                Err(error) if is_missing(&error) => {
+                    self.db
+                        .prepare("UPDATE subscriptions SET status = 'canceled', updated_at = ? WHERE workspace = ? AND feature = 'deployments'")
+                        .bind(&[rfc3339(now_ms()).into(), plan.workspace.as_str().into()])?
+                        .run()
+                        .await?;
+                }
+                Err(error) => worker::console_error!("could not end {}'s Deployments plan: {error}", plan.workspace),
+            }
+        }
+        Ok(())
     }
 
     /// Whether the workspace's plan for the feature is paid up.
@@ -281,11 +318,7 @@ impl Billing {
         if !a.viewer.is_some_and(|viewer| viewer.is_member(&workspace)) {
             return Ok(members_only());
         }
-        let mut states = Vec::new();
-        for feature in Feature::ALL {
-            states.push(self.state(&workspace, feature).await?);
-        }
-        Ok(Outcome::Ok(states))
+        Ok(Outcome::Ok(vec![self.state(&workspace, Feature::Plan).await?]))
     }
 
     pub(crate) async fn subscribe(&self, a: SubscribeArgs) -> Result<Outcome<Checkout>> {
@@ -299,24 +332,46 @@ impl Billing {
         let Some(stripe) = &self.stripe else {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
-                "Payments are not set up on this g1t, so every feature is already on.",
+                "Payments are not set up on this g1t, so the plan is already on.",
             ));
         };
-        let state = self.state(&workspace, a.feature).await?;
+        // Deployments come with the plan: asking for them starts the plan.
+        let feature = Feature::Plan;
+        let state = self.state(&workspace, feature).await?;
         if state.included {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
-                format!("{} is included for {workspace} already, at no charge.", a.feature.title()),
+                format!("The g1t plan is included for {workspace} already, at no charge."),
             ));
         }
-        if state.subscription.is_some_and(|s| s.status.on()) {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                format!("{} is already on for {workspace}.", a.feature.title()),
-            ));
+        if self.plan_on(&workspace, Feature::Plan).await? {
+            return Ok(Outcome::fail(FailureCode::Conflict, format!("The g1t plan is already on for {workspace}.")));
         }
-        let plan = self.plan(a.feature);
+        let plan = self.plan(feature);
         let customer = self.row(&workspace).await?.and_then(|row| row.customer_id);
+        // The card from the card check: the plan starts on it at once, with
+        // no second page. A card that needs the bank's approval again goes
+        // through Stripe's page instead.
+        if let (Some(customer), Some(method)) = (customer.as_deref(), self.checked_card(&workspace).await?) {
+            match stripe
+                .subscribe_with_card(&workspace, feature.as_str(), &plan.title, plan.monthly_cents, customer, &method)
+                .await
+            {
+                Ok(subscription) if matches!(subscription.status.as_str(), "active" | "trialing") => {
+                    self.record(&workspace, feature, &subscription, &a.actor.username).await?;
+                    let account = self.account_of(&workspace).await?;
+                    self.audit(&account.id, "plan", &format!("{workspace}: the g1t plan started on the checked card"), &a.actor.username)
+                        .await?;
+                    let separator = if a.return_url.contains('?') { '&' } else { '?' };
+                    return Ok(Outcome::Ok(Checkout { url: format!("{}{separator}plan=started", a.return_url) }));
+                }
+                Ok(subscription) => {
+                    // Incomplete: let it lapse, and use the page.
+                    let _ = stripe.cancel_now(&subscription.id).await;
+                }
+                Err(error) => worker::console_log!("{workspace}: the plan could not start on the checked card: {error}"),
+            }
+        }
         let start = |customer: Option<String>| {
             let plan = &plan;
             let workspace = &workspace;
@@ -325,7 +380,7 @@ impl Billing {
                 stripe
                     .start_subscription(
                         workspace,
-                        a.feature.as_str(),
+                        feature.as_str(),
                         &plan.title,
                         plan.monthly_cents,
                         customer.as_deref(),
@@ -359,7 +414,7 @@ impl Billing {
                 plan.monthly_cents.into(),
                 a.actor.username.into(),
                 rfc3339(now_ms()).into(),
-                a.feature.as_str().into(),
+                feature.as_str().into(),
             ])?
             .run()
             .await?;
@@ -385,10 +440,10 @@ impl Billing {
             .await?;
         let (Some(stripe), Some(checkout)) = (&self.stripe, checkout) else {
             // Unknown, someone else's, or already done: show where it stands.
-            return Ok(Outcome::Ok(self.state(&workspace, Feature::Deployments).await?));
+            return Ok(Outcome::Ok(self.state(&workspace, Feature::Plan).await?));
         };
         let Some(feature) = Feature::parse(&checkout.feature) else {
-            return Ok(Outcome::fail(FailureCode::NotFound, "No such feature."));
+            return Ok(Outcome::fail(FailureCode::NotFound, "No such plan."));
         };
         let session = stripe.session(&a.session).await?;
         if let (Some(subscription_id), true) = (&session.subscription, session.payment_status == "paid") {
@@ -429,38 +484,39 @@ impl Billing {
         if a.actor.role_in(&workspace) != Some(Role::Owner) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
-                "Only an owner can change a workspace's plans.",
+                "Only an owner can change the workspace's plan.",
             ));
         }
-        let (Some(stripe), Some(row)) = (&self.stripe, self.current(&workspace, a.feature).await?) else {
-            return Ok(Outcome::fail(
-                FailureCode::NotFound,
-                format!("{} is not on for {workspace}.", a.feature.title()),
-            ));
+        // The plan, or a Deployments subscription from before it.
+        let row = match self.current(&workspace, Feature::Plan).await? {
+            Some(row) if status_from(&row.status) != SubscriptionStatus::Canceled => Some((Feature::Plan, row)),
+            _ => self.current(&workspace, Feature::Deployments).await?.map(|row| (Feature::Deployments, row)),
+        };
+        let (Some(stripe), Some((feature, row))) = (&self.stripe, row) else {
+            return Ok(Outcome::fail(FailureCode::NotFound, format!("The g1t plan is not on for {workspace}.")));
         };
         let subscription = stripe
             .cancel_at_period_end(&row.subscription_id, !a.resume)
             .await?;
-        self.record(&workspace, a.feature, &subscription, &row.started_by)
+        self.record(&workspace, feature, &subscription, &row.started_by)
             .await?;
-        Ok(Outcome::Ok(self.state(&workspace, a.feature).await?))
+        Ok(Outcome::Ok(self.state(&workspace, Feature::Plan).await?))
     }
 
+    /// Whether the workspace has the plan, which deployments come with.
     pub(crate) async fn has_feature(&self, a: HasFeatureArgs) -> Result<Outcome<bool>> {
         let workspace = a.workspace.to_lowercase();
-        // Comped accounts have every feature without a plan, and staff can
-        // give an account Team.
-        if self.included(&workspace, a.feature).await? {
+        if self.has_plan(&workspace).await? {
             return Ok(Outcome::Ok(true));
         }
-        if self.state(&workspace, a.feature).await?.on {
-            return Ok(Outcome::Ok(true));
-        }
+        let what = match a.feature {
+            Feature::Deployments => "Deployments come with the g1t plan",
+            Feature::Plan => "This needs the g1t plan",
+        };
         Ok(Outcome::fail(
             FailureCode::PaymentRequired,
             format!(
-                "{} is a paid feature, and it is not on for {workspace}. An owner can turn it on under Billing on the workspace's page.",
-                a.feature.title()
+                "{what} ($20 a month for the workspace, with $10 of usage included), and {workspace} does not have it. An owner can start it at /{workspace}/-/billing."
             ),
         ))
     }
@@ -482,9 +538,14 @@ impl Billing {
         let timestamp = rfc3339(now_ms());
         let month = crate::credits::month_of(&timestamp);
         let mut description = a.description.clone();
-        // A build: the plan's build time this month pays for what it can.
+        // A build: the plan's build time this month pays for what it can,
+        // and the rest is priced at the price book's build second, which the
+        // keeper keeps at what Cloudflare bills, rather than at what the
+        // caller worked out.
         let cost_micros = match a.build_seconds.filter(|s| *s > 0 && a.feature == Feature::Deployments) {
             Some(seconds) => {
+                let measured = self.price("build_second").await?.map(|(cost, _)| (f64::from(seconds) * cost).ceil() as i64);
+                let cost_micros = measured.unwrap_or(a.cost_micros);
                 let included = self
                     .draw_allowance("build_seconds", &workspace, &month, seconds.into(), self.plans.build_seconds.into())
                     .await?;
@@ -494,14 +555,14 @@ impl Billing {
                         if included == i64::from(seconds) { "all".to_owned() } else { format!("{included} s") }
                     ));
                 }
-                billable_build_cost(a.cost_micros, seconds, included)
+                billable_build_cost(cost_micros, seconds, included)
             }
             None => a.cost_micros,
         };
         let cost = cost_micros as f64 / MICROS_PER_DOLLAR as f64;
         // Never free: the margin applies whatever FREE_WHILE_BUILDING says,
-        // and only the account's terms change it. The Team credit pays what
-        // it can; the trial and the open-source pool never pay for
+        // and only the account's terms change it. The plan's included usage
+        // pays what it can; the trial and the open-source pool never pay for
         // deployments.
         let charge = self.terms_of(&workspace).await?.apply(crate::charge_micros(cost, self.margin_percent));
         let drawn = self.draw(&workspace, charge, &month, &crate::credits::Eligible::default()).await?;
@@ -538,17 +599,17 @@ mod tests {
 
     #[test]
     fn the_plan_pays_for_its_build_minutes_and_the_rest_is_charged() {
-        // A 5-minute build at 21 millionths a second costs 6,300.
-        assert_eq!(billable_build_cost(6_300, 300, 300), 0);
-        assert_eq!(billable_build_cost(6_300, 300, 0), 6_300);
+        // A 5-minute build at 15 millionths a second costs 4,500.
+        assert_eq!(billable_build_cost(4_500, 300, 300), 0);
+        assert_eq!(billable_build_cost(4_500, 300, 0), 4_500);
         // The allowance ran out a minute into it: four minutes are charged.
-        assert_eq!(billable_build_cost(6_300, 300, 60), 5_040);
+        assert_eq!(billable_build_cost(4_500, 300, 60), 3_600);
         // Then at cost plus 20%.
-        assert_eq!(crate::credits::with_margin(5_040, 20), 6_048);
-        // 200 minutes a month cost g1t about $0.25 of the plan's $5.
+        assert_eq!(crate::credits::with_margin(3_600, 20), 4_320);
+        // 200 minutes a month cost g1t about $0.18.
         let month = crate::credits::Config::default().build_seconds;
         assert_eq!(month, 12_000);
-        assert_eq!(i64::from(month) * allowance::MICROS_PER_BUILD_SECOND, 252_000);
+        assert_eq!(i64::from(month) * allowance::MICROS_PER_BUILD_SECOND, 180_000);
     }
 
     #[test]

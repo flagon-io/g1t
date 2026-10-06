@@ -10,6 +10,7 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
+    "@cloudflare/puppeteer": "^1.4.0",
     "@g1t/contracts": "*",
     "@resvg/resvg-wasm": "^2.6.2",
     "satori": "0.32.0"

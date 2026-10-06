@@ -80,7 +80,7 @@ fn in_list(filter: &Filter, column: &str, out: &mut Where) {
 /// check, then `repo:`, `org:` and `is:public`/`is:private`.
 fn scope(query: &Query, reader: &Reader, alias: &str) -> Where {
     let mut out = Where::default();
-    out.add(clause(alias), vec![Param::Text(reader.members_json())]);
+    out.add(clause(alias), vec![Param::Text(reader.namespaces_json()), Param::Text(reader.granted_json())]);
     in_list(&query.repos, &format!("({alias}.namespace || '/' || {alias}.name)"), &mut out);
     in_list(&query.owners, &format!("{alias}.namespace"), &mut out);
     match query.visibility {
@@ -469,6 +469,7 @@ mod tests {
             items_count(&query, &reader, ItemKind::Pull),
         ] {
             assert!(sql.text.contains("r.private = 0 OR r.namespace IN"), "{}", sql.text);
+            assert!(sql.text.contains("OR r.repo_id IN"), "{}", sql.text);
             assert!(sql.params.contains(&Param::Text(r#"["acme"]"#.into())));
             assert_eq!(placeholders(&sql), sql.params.len(), "{}", sql.text);
         }

@@ -1,27 +1,44 @@
-//! How far a workspace can run up costs g1t has not been paid for.
+//! How far a workspace can run up costs g1t has not been paid for, and how
+//! far its owners let it spend.
 //!
 //! Every sandbox second, build, app request and model token costs g1t
 //! money at Cloudflare or a model provider before the workspace pays for
-//! it. So, like Fly or Cloudflare with new accounts, each workspace has a
-//! ceiling on that unpaid usage, set by how much it has paid g1t before:
+//! it. So each workspace has a ceiling on that unpaid usage:
 //!
-//! - **New**: no live payment yet. A few dollars, enough for the free
-//!   allowances and a little more.
-//! - **Paid**: twice what it has paid g1t, within bounds.
-//! - **Reviewed**: a ceiling g1t set by hand.
+//! - **Free**: a few dollars (`LIMIT_NEW_MICROS`), for what a free
+//!   workspace can owe at all (private storage past 1 GB). Free workspaces
+//!   have no on-demand compute: the trial and g1t's pools pay for it.
+//! - **Paid, first month**: `LIMIT_PAID_START_MICROS` ($100) while the plan
+//!   is in its first billing cycle.
+//! - **Paid, after**: twice what it has paid g1t once payments clear
+//!   (`SETTLE_DAYS`), never less than the starting ceiling; after three
+//!   steady months it follows the monthly spend, up to $10,000.
+//! - **Reviewed**: a ceiling g1t staff set by hand.
 //! - **Internal**: g1t's own workspaces, with none.
 //!
-//! An owner can set a lower spend limit of their own. Past 80% the
-//! workspace is warned; at the ceiling its work stops: no new sandboxes,
-//! builds or app requests, until it pays or the month turns. Runs already
+//! A ceiling g1t granted (an approved request, or the owners' one-time
+//! raise) is a floor under the trust ceiling. Money paid in advance raises
+//! what can be used before work stops by the same amount, at once: it comes
+//! off what is owed before anything counts against the ceiling.
+//!
+//! Owners also set a monthly **spend limit** on what is charged. They may
+//! put it anywhere up to the highest ceiling the workspace has ever had,
+//! plus what is prepaid, without asking anyone; once per workspace they may
+//! raise it to twice that highest ceiling themselves. Past that, they ask
+//! (see `requests`), and g1t answers within one business day.
+//!
+//! Alerts go out at 50, 75, 90 and 100% of the plan's included usage, the
+//! spend limit and the ceiling, in the app and by email. At the ceiling or
+//! the spend limit, new work stops: no new sandboxes, builds or app
+//! requests until it is paid, raised, or the month turns. Runs already
 //! under way finish.
 //!
 //! Usage counts at what it cost g1t or what it is charged, whichever is
-//! more, so it counts while g1t is free too: free is a price, not an
-//! exemption from the ceiling. Test-mode payments are not money, so they
-//! do not raise trust.
+//! more. Test-mode payments are not money, so they do not raise trust.
 
-use g1t_contracts::billing::{CheckLimitArgs, Limit, LimitArgs, NotePendingArgs, TermsKind, LimitState, SetSpendLimitArgs, Trust};
+use g1t_contracts::billing::{
+    CheckLimitArgs, Limit, LimitArgs, LimitState, NotePendingArgs, PlanKind, SetSpendLimitArgs, TermsKind, Trust,
+};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, Role};
 use g1t_kit::now_ms;
@@ -34,9 +51,10 @@ use crate::{Billing, members_only};
 
 /// The ceilings, from the billing service's variables.
 pub(crate) struct Ceilings {
-    /// `LIMIT_NEW_MICROS`.
+    /// `LIMIT_NEW_MICROS`: a free workspace's.
     pub new: i64,
-    /// `LIMIT_PAID_MIN_MICROS` and `LIMIT_PAID_MAX_MICROS`.
+    /// `LIMIT_PAID_MIN_MICROS` and `LIMIT_PAID_MAX_MICROS`: the bounds of a
+    /// paid workspace's, from what it has paid.
     pub paid_min: i64,
     pub paid_max: i64,
 }
@@ -78,7 +96,7 @@ const ESTABLISHED_MAX_MICROS: i64 = 10_000_000_000;
 const ESTABLISHED_MONTH_MICROS: i64 = 20_000_000;
 /// Payments raise trust once this old: past the time most bad cards are
 /// caught.
-const SETTLE_DAYS: u64 = 7;
+pub(crate) const SETTLE_DAYS: u64 = 7;
 
 /// The automatic spend limit: $200, or twice last month's spend.
 pub(crate) fn automatic_spend_limit(last_month_charged: i64) -> i64 {
@@ -95,6 +113,104 @@ pub(crate) fn established_ceiling(months: &[i64]) -> Option<i64> {
     Some((average * ESTABLISHED_FACTOR).min(ESTABLISHED_MAX_MICROS))
 }
 
+/// Days since 1970-01-01 of a `YYYY-MM-DD…` date, for comparing dates
+/// without a clock (Howard Hinnant's days-from-civil).
+pub(crate) fn days(date: &str) -> i64 {
+    let year: i64 = date.get(..4).and_then(|y| y.parse().ok()).unwrap_or(1970);
+    let month: i64 = date.get(5..7).and_then(|m| m.parse().ok()).unwrap_or(1);
+    let day: i64 = date.get(8..10).and_then(|d| d.parse().ok()).unwrap_or(1);
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = (month + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// Whether a plan that started at `started_at` is still in its first
+/// billing cycle: its paid period ends no more than a month after it
+/// started (a renewal moves the end a month on), or, with no period known,
+/// it started within the last 31 days.
+pub(crate) fn in_first_cycle(started_at: &str, period_end: Option<&str>, now: &str) -> bool {
+    match period_end {
+        Some(end) => days(end) - days(started_at) <= 32 && days(now) <= days(end),
+        None => days(now) - days(started_at) <= 31,
+    }
+}
+
+/// g1t's ceiling for a workspace on the plan: the starting one in its
+/// first month; after it, what it has paid (or its Established ceiling),
+/// never less than the starting one.
+pub(crate) fn paid_ceiling(ceilings: &Ceilings, start: i64, first_month: bool, paid: i64, established: Option<i64>) -> i64 {
+    if first_month {
+        return start;
+    }
+    let from_paid = if paid > 0 { ceilings.for_paid(paid) } else { 0 };
+    start.max(from_paid).max(established.unwrap_or(0))
+}
+
+/// What the owners may set their spend limit to without asking, and the
+/// one-time raise if it is still theirs to use: up to the highest ceiling
+/// ever (or the current one, if higher) plus what is prepaid; once, twice
+/// the highest ceiling.
+pub(crate) fn spend_bounds(ceiling: i64, max_ever: i64, prepaid: i64, raised: bool) -> (i64, Option<i64>) {
+    let highest = ceiling.max(max_ever);
+    let available = highest + prepaid.max(0);
+    let once = (!raised).then(|| (highest * 2 + prepaid.max(0)).max(available));
+    (available, once)
+}
+
+/// Whether `requested` is a spend limit the owners may set themselves.
+/// `Ok(true)` when it takes the one-time raise.
+pub(crate) fn self_serve(requested: i64, available: i64, once: Option<i64>, raise_once: bool) -> std::result::Result<bool, String> {
+    if requested < 0 {
+        return Err("A spend limit cannot be negative.".to_owned());
+    }
+    if requested <= available {
+        return Ok(false);
+    }
+    match once {
+        Some(once) if raise_once && requested <= once => Ok(true),
+        Some(once) if raise_once => Err(format!(
+            "The one-time raise goes up to {}. For more, ask g1t with Raise my limit; the answer comes within one business day.",
+            dollars_plain(once)
+        )),
+        Some(once) => Err(format!(
+            "You can set up to {} yourself, or use your one-time raise to go up to {}. For more, ask g1t with Raise my limit.",
+            dollars_plain(available),
+            dollars_plain(once)
+        )),
+        None => Err(format!(
+            "You can set up to {} yourself, and the one-time raise is used. For more, ask g1t with Raise my limit; the answer comes within one business day.",
+            dollars_plain(available)
+        )),
+    }
+}
+
+/// Which alert a measure has reached: 100, 90, 75, 50, or none (0).
+pub(crate) fn alert_level(used: i64, limit: i64) -> u32 {
+    if limit <= 0 || used <= 0 {
+        return 0;
+    }
+    for level in [100u32, 90, 75, 50] {
+        if used * 100 >= limit * i64::from(level) {
+            return level;
+        }
+    }
+    0
+}
+
+/// What is owed and what is prepaid, from this month's usage and payments
+/// and the balance the month started with (positive: paid in advance;
+/// negative: owed from before).
+pub(crate) fn exposure(used: i64, paid_month: i64, balance_before: i64) -> (i64, i64) {
+    let prepaid_in = balance_before.max(0);
+    let carried = (-balance_before).max(0);
+    let net = used - paid_month - prepaid_in;
+    (net.max(0) + carried, (-net).max(0))
+}
+
 #[derive(Deserialize)]
 struct LimitRow {
     spend_limit_micros: Option<i64>,
@@ -102,6 +218,12 @@ struct LimitRow {
     spend_limit_full: Option<i64>,
     autopay_failed_at: Option<String>,
     autopay_error: Option<String>,
+    #[serde(default)]
+    max_ceiling_micros: Option<i64>,
+    #[serde(default)]
+    granted_ceiling_micros: Option<i64>,
+    #[serde(default)]
+    raised_at: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -124,11 +246,16 @@ impl Billing {
         let account = self.account_of(&workspace).await?;
         let row = self
             .db
-            .prepare("SELECT spend_limit_micros, spend_limit_full, autopay_failed_at, autopay_error FROM limits WHERE workspace = ?")
+            .prepare(
+                "SELECT spend_limit_micros, spend_limit_full, autopay_failed_at, autopay_error,
+                        max_ceiling_micros, granted_ceiling_micros, raised_at
+                 FROM limits WHERE workspace = ?",
+            )
             .bind(&[workspace.as_str().into()])?
             .first::<LimitRow>(None)
             .await?;
-        let month_start = format!("{}-01", &rfc3339(now_ms())[..7]);
+        let now = rfc3339(now_ms());
+        let month_start = format!("{}-01", &now[..7]);
         let marks = vec!["?"; account.workspaces.len().max(1)].join(", ");
         let members: Vec<JsValue> = if account.workspaces.is_empty() {
             vec![JsValue::from(workspace.as_str())]
@@ -138,9 +265,10 @@ impl Billing {
         let mut with_month = members.clone();
         with_month.push(month_start.as_str().into());
         // Each usage entry at its cost to g1t or its charge, whichever is
-        // more; on the workspace's own provider, only g1t's fee is g1t's.
-        // What a plan's credit, the trial or the open-source pool paid for
-        // is not unpaid: those are capped budgets already paid for.
+        // more; on the workspace's own provider, only what g1t charged.
+        // What the plan's included usage, the trial, the open-source pool
+        // or g1t itself paid for is not unpaid: those are budgets already
+        // paid for.
         let month = self
             .db
             .prepare(format!(
@@ -148,7 +276,8 @@ impl Billing {
                    SUM(CASE WHEN kind = 'usage' THEN
                          CASE WHEN COALESCE(billed_to, 'g1t') = 'g1t'
                               THEN MAX(COALESCE(cost_micros, 0) - COALESCE(credit_micros, 0)
-                                         - COALESCE(trial_micros, 0) - COALESCE(oss_micros, 0),
+                                         - COALESCE(trial_micros, 0) - COALESCE(oss_micros, 0)
+                                         - COALESCE(given_micros, 0),
                                        -amount_micros)
                               ELSE -amount_micros END
                        END) AS used,
@@ -175,12 +304,13 @@ impl Billing {
         let used = used + pending;
         // Test-mode payments are not money: they pay nothing off.
         let live = self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live);
-        // Charges from earlier months still unpaid carry over, so a new
-        // month is not a fresh allowance for an account that never pays.
-        // Credits g1t gave count as paid; test-mode payments do not.
+        // The balance the month started with: owed from before (so a new
+        // month is not a fresh allowance for an account that never pays),
+        // or paid in advance. Credits g1t gave count; test-mode payments
+        // do not.
         let mut before = members.clone();
         before.push(month_start.as_str().into());
-        let carried = self
+        let balance_before = self
             .db
             .prepare(format!(
                 "SELECT SUM(CASE WHEN kind = 'usage' THEN amount_micros
@@ -193,30 +323,62 @@ impl Billing {
             .first::<Paid>(None)
             .await?
             .and_then(|row| row.paid)
-            .map_or(0, |balance| (-balance).max(0));
-        let exposure = (used - if live { paid_month } else { 0 }).max(0) + carried;
+            .unwrap_or(0);
+        let (exposure, prepaid) = exposure(used, if live { paid_month } else { 0 }, balance_before);
 
+        let plan = self.plan_kind(&workspace).await?;
+        let mut first_month = false;
         let (trust, trust_ceiling) = match account.terms.kind {
             TermsKind::Comped => (Trust::Internal, None),
             _ if account.terms.ceiling_micros.is_some() => (Trust::Reviewed, account.terms.ceiling_micros),
             _ => {
                 let paid = self.live_paid(&members).await?;
                 let established = if paid > 0 { self.established(&members).await? } else { None };
-                match established {
-                    Some(ceiling) => (Trust::Established, Some(ceiling.max(self.ceilings.for_paid(paid)))),
-                    None if paid > 0 => (Trust::Paid, Some(self.ceilings.for_paid(paid))),
-                    None => (Trust::New, Some(self.ceilings.new)),
+                if plan == PlanKind::Free {
+                    // Nothing on demand: only what a free workspace can owe.
+                    (Trust::New, Some(self.ceilings.new))
+                } else {
+                    first_month = plan == PlanKind::Paid && self.first_month(&workspace).await?;
+                    let ceiling = paid_ceiling(&self.ceilings, self.plans.paid_start_micros, first_month, paid, established);
+                    (if established.is_some() { Trust::Established } else { Trust::Paid }, Some(ceiling))
                 }
             }
         };
+        // A ceiling g1t granted is a floor under the trust ceiling.
+        let granted = row.as_ref().and_then(|row| row.granted_ceiling_micros);
+        let ceiling = trust_ceiling.map(|c| c.max(granted.unwrap_or(0)));
+        // The highest ceiling ever, kept as it rises.
+        let stored_max = row.as_ref().and_then(|row| row.max_ceiling_micros);
+        let max_ever = match (stored_max, ceiling) {
+            (Some(stored), Some(now)) => Some(stored.max(now)),
+            (stored, now) => stored.or(now),
+        };
+        if let (Some(max), true) = (max_ever, ceiling.is_some() && max_ever != stored_max && plan != PlanKind::Free) {
+            self.db
+                .prepare(
+                    "INSERT INTO limits (workspace, max_ceiling_micros, updated_at) VALUES (?1, ?2, ?3)
+                     ON CONFLICT (workspace) DO UPDATE SET max_ceiling_micros = MAX(COALESCE(max_ceiling_micros, 0), ?2), updated_at = ?3",
+                )
+                .bind(&[workspace.as_str().into(), (max as f64).into(), now.as_str().into()])?
+                .run()
+                .await?;
+        }
         // This month's charges, and last month's, for the spend limit.
         let (spent, last_month) = self.charged_months(&members, &month_start).await?;
         let spent = spent + pending;
+        let raised_at = row.as_ref().and_then(|row| row.raised_at.clone());
+        let self_serve = matches!(trust, Trust::New | Trust::Paid | Trust::Established) && plan != PlanKind::Free;
+        let (available, raise_once) = match (ceiling, self_serve) {
+            (Some(ceiling), true) => {
+                let (available, once) = spend_bounds(ceiling, max_ever.unwrap_or(ceiling), prepaid, raised_at.is_some());
+                (Some(available), once)
+            }
+            (ceiling, _) => (ceiling, None),
+        };
         // The owners' own monthly limit: theirs, none, or the automatic one
         // ($200, or twice last month), which self-serve workspaces start on.
         let chosen = row.as_ref().and_then(|row| row.spend_limit_micros);
         let full = row.as_ref().and_then(|row| row.spend_limit_full).unwrap_or(0) == 1;
-        let self_serve = matches!(trust, Trust::New | Trust::Paid | Trust::Established);
         let default_spend_limit = chosen.is_none() && !full && self_serve;
         let spend_limit = match (chosen, full) {
             (Some(own), _) => Some(own),
@@ -228,7 +390,6 @@ impl Billing {
         // it is paid; any payment clears it.
         let declined = row.as_ref().and_then(|row| row.autopay_failed_at.clone().map(|at| (at, row.autopay_error.clone())));
         // Two limits: g1t's on what is unpaid, the owners' on what is spent.
-        let ceiling = trust_ceiling;
         let risk = state(exposure, ceiling);
         let budget = state(spent, spend_limit);
         let over_budget = budget == LimitState::Stopped;
@@ -246,40 +407,45 @@ impl Billing {
         } else {
             format!("The {workspace} workspace")
         };
+        let billing = format!("/{workspace}/-/billing");
         let message = match state {
             LimitState::Ok => None,
             LimitState::Warning if budget == LimitState::Warning => Some(format!(
-                "{who} has spent {} of its {} monthly spend limit. At the limit, its sandboxes, builds and apps stop until the month turns or an owner raises it under Billing.",
+                "{who} has spent {} of its {} monthly spend limit. At the limit, its sandboxes, builds and apps stop until the month turns or an owner raises it at {billing}.",
                 dollars_plain(spent),
                 dollars_plain(spend_limit.unwrap_or_default()),
             )),
             LimitState::Warning => Some(format!(
-                "{who} has {} of usage not yet paid for, of the {} g1t allows. With a card on file g1t charges it now; without one, at the limit its sandboxes, builds and apps stop until it pays.",
+                "{who} has {} of usage not yet paid for, of the {} g1t allows. With a card on file g1t charges it now; prepaying at {billing} raises what it can use at once.",
                 dollars_plain(exposure),
                 dollars_plain(ceiling.unwrap_or_default()),
             )),
             LimitState::Stopped if declined.is_some() => Some(format!(
-                "{who} could not be charged for its usage ({}), so its sandboxes, builds and apps are stopped. An owner can pay under Billing with another card.",
+                "{who} could not be charged for its usage ({}), so its sandboxes, builds and apps are stopped. An owner can pay with another card at {billing}.",
                 declined.as_ref().and_then(|(_, error)| error.clone()).unwrap_or_else(|| "the card was declined".to_owned()),
             )),
             LimitState::Stopped => Some(if over_budget {
                 format!(
-                    "{who} reached its {} monthly spend limit, so its sandboxes, builds and apps are stopped until the month turns. An owner can raise it under Billing.",
+                    "{who} reached its {} monthly spend limit, so its sandboxes, builds and apps are stopped until the month turns. An owner can raise it at {billing}.",
                     dollars_plain(spend_limit.unwrap_or_default()),
                 )
             } else {
                 format!(
-                    "{who} reached its {} limit for usage not yet paid for, so its sandboxes, builds and apps are stopped. The limit grows as a workspace pays g1t; an owner can pay under Billing, or write to support to have it raised.",
+                    "{who} reached its {} limit for usage not yet paid for, so its sandboxes, builds and apps are stopped. An owner can pay or prepay, or ask for a higher limit, at {billing}.",
                     dollars_plain(ceiling.unwrap_or_default()),
                 )
             }),
         };
         let growth = match trust {
-            Trust::New => Some("Pay g1t once, by card or credit, and this grows to $25; after that it grows with every payment.".to_owned()),
-            Trust::Paid => Some(format!(
-                "Grows to twice what you have paid, as payments clear (after {SETTLE_DAYS} days), up to $1,000. After three steady months it follows your monthly spend, up to $10,000, by itself."
+            Trust::New => Some("Free workspaces have no on-demand usage: the g1t plan starts at a $100 limit.".to_owned()),
+            Trust::Paid if first_month => Some(format!(
+                "Your first month's limit is {}. After it, the limit grows to twice what you have paid as payments clear ({SETTLE_DAYS} days), up to $1,000. Prepaying raises it at once, and you can ask for more.",
+                dollars_plain(self.plans.paid_start_micros)
             )),
-            Trust::Established => Some("Follows your monthly spend, up to $10,000, by itself. For more, contact us.".to_owned()),
+            Trust::Paid => Some(format!(
+                "Grows to twice what you have paid, as payments clear ({SETTLE_DAYS} days), up to $1,000. After three steady months it follows your monthly spend, up to $10,000, by itself. Prepaying raises it at once."
+            )),
+            Trust::Established => Some("Follows your monthly spend, up to $10,000, by itself. Prepaying raises it at once, and you can ask for more.".to_owned()),
             Trust::Reviewed | Trust::Internal => None,
         };
         Ok(Limit {
@@ -288,7 +454,7 @@ impl Billing {
             account_name: account.name,
             spent_micros: spent,
             default_spend_limit,
-            available_micros: trust_ceiling,
+            available_micros: available,
             growth,
             trust,
             exposure_micros: exposure,
@@ -297,27 +463,44 @@ impl Billing {
             spend_limit_micros: spend_limit,
             state,
             message,
+            prepaid_micros: prepaid,
+            max_ceiling_micros: max_ever.filter(|_| plan != PlanKind::Free),
+            raise_once_micros: raise_once,
+            raised_at,
+            first_month,
         })
     }
 
-    /// Real money the workspaces have paid g1t. Nothing in test mode, and
-    /// credits g1t gave are not payments.
-    async fn live_paid(&self, members: &[JsValue]) -> Result<i64> {
+    /// Whether the workspace's plan is in its first billing cycle.
+    pub(crate) async fn first_month(&self, workspace: &str) -> Result<bool> {
+        Ok(match self.plan_cycle(workspace).await? {
+            Some((started_at, period_end)) => in_first_cycle(&started_at, period_end.as_deref(), &rfc3339(now_ms())),
+            None => false,
+        })
+    }
+
+    /// Real money the workspaces have paid g1t, cleared: usage payments and
+    /// the plan's price. Nothing in test mode, and credits g1t gave are not
+    /// payments.
+    pub(crate) async fn live_paid(&self, members: &[JsValue]) -> Result<i64> {
         if !self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live) {
             return Ok(0);
         }
         let marks = vec!["?"; members.len().max(1)].join(", ");
+        let settled = rfc3339(now_ms() - SETTLE_DAYS * 24 * 60 * 60 * 1000);
         Ok(self
             .db
             .prepare(format!(
-                "SELECT SUM(amount_micros) AS paid FROM ledger
-                 WHERE workspace IN ({marks}) AND kind = 'top_up' AND reference NOT LIKE 'crd%'
-                   AND (amount_micros < 0
-                        OR (disputed = 0 AND COALESCE(funding, '') <> 'prepaid'
-                            AND created_at <= '{settled}'))",
-                settled = rfc3339(now_ms() - SETTLE_DAYS * 24 * 60 * 60 * 1000)
+                "SELECT
+                   (SELECT COALESCE(SUM(amount_micros), 0) FROM ledger
+                     WHERE workspace IN ({marks}) AND kind = 'top_up' AND reference NOT LIKE 'crd%'
+                       AND (amount_micros < 0
+                            OR (disputed = 0 AND COALESCE(funding, '') <> 'prepaid'
+                                AND created_at <= '{settled}')))
+                 + (SELECT COALESCE(SUM(amount_micros), 0) FROM plan_payments
+                     WHERE workspace IN ({marks}) AND paid_at <= '{settled}') AS paid"
             ))
-            .bind(members)?
+            .bind(&[members, members].concat())?
             .first::<Paid>(None)
             .await?
             .and_then(|row| row.paid)
@@ -434,9 +617,9 @@ impl Billing {
         Ok(Outcome::Ok(self.limit_of(&workspace).await?))
     }
 
-    /// What a source cost so far this month. `security`, `context` and
-    /// `storage` are charged by billing once the month is over (see
-    /// `storage`); `deployments` charges its own.
+    /// What a source cost so far this month. `security`, `context`,
+    /// `storage` and `git` are charged by billing once the month is over
+    /// (see `storage`); `deployments` charges its own.
     pub(crate) async fn note_pending(&self, a: NotePendingArgs) -> Result<bool> {
         let now = rfc3339(now_ms());
         self.set_pending(&a.workspace, &a.source, &now[..7], a.cost_micros).await?;
@@ -447,7 +630,8 @@ impl Billing {
     /// it owes, so that a workspace that pays never has its work stopped.
     /// Only with live payments: test-mode payments are not money and lower
     /// nothing. Not for a workspace's own spend limit, which means stop, nor
-    /// for enterprises, which are invoiced.
+    /// for enterprises, which are invoiced. A charge at the limit always
+    /// goes through, whatever the minimum charge.
     pub(crate) async fn autopay(&self) -> Result<()> {
         if !self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live) {
             return Ok(());
@@ -480,8 +664,6 @@ impl Billing {
             if !near || limit.trust == Trust::Internal || limit.account.starts_with("ent_") {
                 continue;
             }
-            // An invoice for what it owes, charged to its card now: never
-            // the cost of what was free to it.
             let today = rfc3339(now_ms())[..10].to_owned();
             match self.invoice_workspace(&candidate.workspace, "threshold", &today).await? {
                 Ok(_) => {}
@@ -494,7 +676,8 @@ impl Billing {
     /// Closes last month for each workspace with a card on file: charges
     /// what it owed when the month ended. Live payments only, once per
     /// workspace and month; a declined card stops work until it is paid.
-    /// Comped workspaces owe nothing, and enterprises are invoiced.
+    /// Comped workspaces owe nothing, and enterprises are invoiced. Only
+    /// here does the minimum charge apply: less carries over.
     pub(crate) async fn close_months(&self) -> Result<()> {
         if !self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live) {
             return Ok(());
@@ -572,9 +755,10 @@ impl Billing {
         Ok(())
     }
 
-    /// Emails a workspace's owners as it passes 50%, 80% and 100% of its
-    /// limit, once each a month, and when its card was declined, so that
-    /// work never stops without warning.
+    /// Emails a workspace's owners as it passes 50, 75, 90 and 100% of its
+    /// plan's included usage, its spend limit and g1t's ceiling, once each a
+    /// month; when its card was declined; and when a spend spike paused it.
+    /// The same alerts show in the app (`entitlements`).
     pub(crate) async fn warn_limits(&self, identity: &worker::Fetcher) -> Result<()> {
         if self.stripe.is_none() {
             return Ok(());
@@ -597,24 +781,27 @@ impl Billing {
             .results::<Candidate>()?;
         #[derive(Deserialize)]
         struct Told {
-            warned_month: Option<String>,
-            warned_level: Option<i64>,
             autopay_failed_at: Option<String>,
             declined_told_at: Option<String>,
         }
+        #[derive(Deserialize)]
+        struct Sent {
+            meter: String,
+            level: Option<i64>,
+        }
         for Candidate { workspace } in candidates {
-            let limit = self.limit_of(&workspace).await?;
             let told = self
                 .db
-                .prepare("SELECT warned_month, warned_level, autopay_failed_at, declined_told_at FROM limits WHERE workspace = ?")
+                .prepare("SELECT autopay_failed_at, declined_told_at FROM limits WHERE workspace = ?")
                 .bind(&[workspace.as_str().into()])?
                 .first::<Told>(None)
                 .await?;
             let billing = format!("https://g1t.sh/{workspace}/-/billing");
 
             // A declined card, once per decline.
-            if let Some(Told { autopay_failed_at: Some(failed), declined_told_at, .. }) = &told {
+            if let Some(Told { autopay_failed_at: Some(failed), declined_told_at }) = &told {
                 if declined_told_at.as_deref().is_none_or(|at| at < failed.as_str()) {
+                    let limit = self.limit_of(&workspace).await?;
                     let sent = notify(
                         identity,
                         &workspace,
@@ -634,41 +821,41 @@ impl Billing {
                 }
             }
 
-            let Some(ceiling) = limit.ceiling_micros.filter(|c| *c > 0) else { continue };
-            let level = warning_level(limit.exposure_micros, ceiling);
-            let already = told
-                .as_ref()
-                .filter(|t| t.warned_month.as_deref() == Some(month))
-                .and_then(|t| t.warned_level)
-                .unwrap_or(0);
-            if level <= already {
+            // 50, 75, 90 and 100%, once each a month and meter: only the
+            // highest new level is emailed.
+            let alerts = self.alerts_for(&workspace).await?;
+            if alerts.is_empty() {
                 continue;
             }
-            let (subject, intro) = match level {
-                100 => (
-                    format!("g1t: {workspace} reached its usage limit"),
-                    limit.message.clone().unwrap_or_else(|| format!("{workspace} reached its usage limit.")),
-                ),
-                _ => (
-                    format!("g1t: {workspace} has used {level}% of its usage limit"),
-                    format!(
-                        "{workspace} has used {} of its {} usage limit this month. At the limit its sandboxes, builds and apps stop until it pays or the month turns. With a card on file, g1t charges it as the limit nears, so work keeps going.",
-                        dollars_plain(limit.exposure_micros),
-                        dollars_plain(ceiling),
-                    ),
-                ),
-            };
-            if notify(identity, &workspace, &subject, &intro, "Open billing", &billing).await {
-                self.db
-                    .prepare(
-                        "INSERT INTO limits (workspace, warned_month, warned_level, updated_at) VALUES (?1, ?2, ?3, ?4)
-                         ON CONFLICT (workspace) DO UPDATE SET warned_month = ?2, warned_level = ?3, updated_at = ?4",
-                    )
-                    .bind(&[workspace.as_str().into(), month.into(), (level as f64).into(), now.as_str().into()])?
-                    .run()
-                    .await?;
+            let sent: Vec<Sent> = self
+                .db
+                .prepare("SELECT meter, MAX(level) AS level FROM alerts_sent WHERE workspace = ? AND month = ? GROUP BY meter")
+                .bind(&[workspace.as_str().into(), month.into()])?
+                .all()
+                .await?
+                .results::<Sent>()?;
+            for alert in alerts {
+                let already = sent.iter().find(|s| s.meter == alert.meter).and_then(|s| s.level).unwrap_or(0);
+                if i64::from(alert.level) <= already {
+                    continue;
+                }
+                let subject = match alert.meter.as_str() {
+                    "included" => format!("g1t: {workspace} has used {}% of its included usage", alert.level),
+                    "spend_limit" => format!("g1t: {workspace} has used {}% of its spend limit", alert.level),
+                    _ => format!("g1t: {workspace} has used {}% of its usage limit", alert.level),
+                };
+                if notify(identity, &workspace, &subject, &alert.message, "Open billing", &billing).await {
+                    self.db
+                        .prepare(
+                            "INSERT OR IGNORE INTO alerts_sent (workspace, month, meter, level, sent_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                        )
+                        .bind(&[workspace.as_str().into(), month.into(), alert.meter.as_str().into(), alert.level.into(), now.as_str().into()])?
+                        .run()
+                        .await?;
+                }
             }
         }
+        self.tell_spikes(identity).await?;
         Ok(())
     }
 
@@ -676,6 +863,9 @@ impl Billing {
         Ok(Outcome::Ok(self.limit_of(&a.workspace).await?))
     }
 
+    /// The owners' spend limit: anywhere up to what is available without
+    /// asking; once, up to twice the highest ceiling (`raise_once`), which
+    /// also raises g1t's ceiling to match.
     pub(crate) async fn set_spend_limit(&self, a: SetSpendLimitArgs) -> Result<Outcome<Limit>> {
         let workspace = a.workspace.to_lowercase();
         if a.actor.role_in(&workspace) != Some(Role::Owner) {
@@ -684,50 +874,66 @@ impl Billing {
                 "Only an owner can set the workspace's spend limit.",
             ));
         }
-        if a.spend_limit_micros.is_some_and(|limit| limit < 0) {
-            return Ok(Outcome::fail(FailureCode::Invalid, "A spend limit cannot be negative."));
+        let before = self.limit_of(&workspace).await?;
+        let mut raising = false;
+        if let (Some(requested), false) = (a.spend_limit_micros, a.use_full_limit) {
+            match (before.available_micros, matches!(before.trust, Trust::Internal | Trust::Reviewed)) {
+                (_, true) | (None, _) => {
+                    if requested < 0 {
+                        return Ok(Outcome::fail(FailureCode::Invalid, "A spend limit cannot be negative."));
+                    }
+                }
+                (Some(available), false) => match self_serve(requested, available, before.raise_once_micros, a.raise_once) {
+                    Ok(uses_raise) => raising = uses_raise,
+                    Err(why) => return Ok(Outcome::fail(FailureCode::Invalid, why)),
+                },
+            }
         }
+        let now = rfc3339(now_ms());
         let limit = if a.use_full_limit { JsValue::NULL } else { a.spend_limit_micros.map_or(JsValue::NULL, |limit| (limit as f64).into()) };
         self.db
             .prepare(
                 "INSERT INTO limits (workspace, spend_limit_micros, spend_limit_full, updated_at) VALUES (?1, ?2, ?3, ?4)
                  ON CONFLICT (workspace) DO UPDATE SET spend_limit_micros = ?2, spend_limit_full = ?3, updated_at = ?4",
             )
-            .bind(&[workspace.as_str().into(), limit, (if a.use_full_limit { 1 } else { 0 }).into(), rfc3339(now_ms()).into()])?
+            .bind(&[workspace.as_str().into(), limit, (if a.use_full_limit { 1 } else { 0 }).into(), now.as_str().into()])?
             .run()
             .await?;
+        if raising {
+            let raised = a.spend_limit_micros.unwrap_or_default();
+            // The ceiling rises with it, once.
+            self.db
+                .prepare(
+                    "UPDATE limits SET granted_ceiling_micros = MAX(COALESCE(granted_ceiling_micros, 0), ?2),
+                       raised_at = ?3, updated_at = ?3 WHERE workspace = ?1 AND raised_at IS NULL",
+                )
+                .bind(&[workspace.as_str().into(), (raised as f64).into(), now.as_str().into()])?
+                .run()
+                .await?;
+            let account = self.account_of(&workspace).await?;
+            self.audit(&account.id, "raise_once", &format!("{workspace} used its one-time raise: {}", dollars_plain(raised)), &a.actor.username)
+                .await?;
+        }
         Ok(Outcome::Ok(self.limit_of(&workspace).await?))
     }
 }
 
-/// Whether `owed` is enough to charge a card: at least the minimum charge
-/// (`MIN_CHARGE_MICROS`). Less carries over to the next invoice.
+/// Whether `owed` is enough to charge a card when a month closes: at least
+/// the minimum charge (`MIN_CHARGE_MICROS`). Less carries over to the next
+/// invoice. Charges at a limit do not ask.
 pub(crate) fn worth_charging(owed: i64, min_charge: i64) -> bool {
     owed > 0 && owed >= min_charge
 }
 
-/// Which warning a workspace has reached: 100, 80, 50 or none (0).
-pub(crate) fn warning_level(exposure: i64, ceiling: i64) -> i64 {
-    if exposure >= ceiling {
-        100
-    } else if exposure * 5 >= ceiling * 4 {
-        80
-    } else if exposure * 2 >= ceiling {
-        50
-    } else {
-        0
-    }
-}
-
 /// Emails the workspace's owners through identity. False if nothing was sent.
-async fn notify(identity: &worker::Fetcher, workspace: &str, subject: &str, intro: &str, action: &str, link: &str) -> bool {
+pub(crate) async fn notify(identity: &worker::Fetcher, workspace: &str, subject: &str, intro: &str, action: &str, link: &str) -> bool {
     let args = g1t_contracts::identity::NotifyOwnersArgs {
         workspace: workspace.to_owned(),
         subject: subject.to_owned(),
         intro: intro.to_owned(),
         action: action.to_owned(),
         link: link.to_owned(),
-        footer: "You get this because you own this workspace on g1t. Usage limits are explained at https://docs.g1t.sh/guides/usage-and-billing/#usage-limits".to_owned(),
+        footer: "You get this because you own this workspace on g1t. Limits and alerts are explained at https://docs.g1t.sh/guides/usage-and-billing/#limits".to_owned(),
     };
     match g1t_kit::call::<_, u32>(identity, "notify_owners", &args).await {
         Ok(sent) => sent > 0,
@@ -769,16 +975,21 @@ mod tests {
     }
 
     #[test]
-    fn warnings_come_at_half_four_fifths_and_the_limit() {
-        assert_eq!(warning_level(0, 300), 0);
-        assert_eq!(warning_level(149, 300), 0);
-        assert_eq!(warning_level(150, 300), 50);
-        assert_eq!(warning_level(240, 300), 80);
-        assert_eq!(warning_level(300, 300), 100);
+    fn alerts_come_at_half_three_quarters_ninety_and_the_limit() {
+        assert_eq!(alert_level(0, 10_000_000), 0);
+        assert_eq!(alert_level(4_999_999, 10_000_000), 0);
+        assert_eq!(alert_level(5_000_000, 10_000_000), 50);
+        assert_eq!(alert_level(7_500_000, 10_000_000), 75);
+        assert_eq!(alert_level(8_999_999, 10_000_000), 75);
+        assert_eq!(alert_level(9_000_000, 10_000_000), 90);
+        assert_eq!(alert_level(10_000_000, 10_000_000), 100);
+        assert_eq!(alert_level(25_000_000, 10_000_000), 100);
+        // Nothing to measure against: no alert.
+        assert_eq!(alert_level(5, 0), 0);
     }
 
     #[test]
-    fn amounts_under_the_minimum_carry_over() {
+    fn amounts_under_the_minimum_carry_over_only_at_the_month_close() {
         let min = 5_000_000;
         assert!(!worth_charging(0, min));
         assert!(!worth_charging(4_990_000, min));
@@ -805,6 +1016,79 @@ mod tests {
         assert_eq!(ceilings().for_paid(5_000_000), 25_000_000);
         assert_eq!(ceilings().for_paid(100_000_000), 200_000_000);
         assert_eq!(ceilings().for_paid(10_000_000_000), 1_000_000_000);
+    }
+
+    #[test]
+    fn a_new_paid_workspace_starts_at_a_hundred_dollars_and_only_goes_up() {
+        let start = 100_000_000;
+        // The first month: the starting ceiling, whatever was paid.
+        assert_eq!(paid_ceiling(&ceilings(), start, true, 900_000_000, None), start);
+        // After it, with little paid: never below the start.
+        assert_eq!(paid_ceiling(&ceilings(), start, false, 20_000_000, None), start);
+        assert_eq!(paid_ceiling(&ceilings(), start, false, 0, None), start);
+        // Payments that cleared raise it: twice what was paid.
+        assert_eq!(paid_ceiling(&ceilings(), start, false, 300_000_000, None), 600_000_000);
+        // Established follows the monthly spend.
+        assert_eq!(paid_ceiling(&ceilings(), start, false, 300_000_000, Some(2_700_000_000)), 2_700_000_000);
+    }
+
+    #[test]
+    fn the_first_billing_cycle_is_the_first_month() {
+        // A plan that started on the 5th, paid through the 5th of next month.
+        assert!(in_first_cycle("2026-10-05T10:00:00Z", Some("2026-11-05T10:00:00Z"), "2026-10-20T00:00:00Z"));
+        // Renewed: the period now ends two months after the start.
+        assert!(!in_first_cycle("2026-10-05T10:00:00Z", Some("2026-12-05T10:00:00Z"), "2026-11-20T00:00:00Z"));
+        // No period known yet: the first 31 days.
+        assert!(in_first_cycle("2026-10-05T10:00:00Z", None, "2026-11-04T00:00:00Z"));
+        assert!(!in_first_cycle("2026-10-05T10:00:00Z", None, "2026-11-10T00:00:00Z"));
+        // Day counting is exact across months and years.
+        assert_eq!(days("1970-01-01"), 0);
+        assert_eq!(days("2026-11-01") - days("2026-10-01"), 31);
+        assert_eq!(days("2028-03-01") - days("2028-02-28"), 2);
+        assert_eq!(days("2027-01-01") - days("2026-12-31"), 1);
+    }
+
+    #[test]
+    fn owners_set_their_limit_up_to_the_highest_ceiling_without_asking() {
+        // First month at $100; the highest ever is $100.
+        let (available, once) = spend_bounds(100_000_000, 100_000_000, 0, false);
+        assert_eq!(available, 100_000_000);
+        assert_eq!(once, Some(200_000_000));
+        assert_eq!(self_serve(80_000_000, available, once, false), Ok(false));
+        assert_eq!(self_serve(100_000_000, available, once, false), Ok(false));
+        // Above it without the raise: refused, saying what to do.
+        assert!(self_serve(150_000_000, available, once, false).unwrap_err().contains("one-time raise"));
+        // With the raise: up to twice the highest ceiling, once.
+        assert_eq!(self_serve(200_000_000, available, once, true), Ok(true));
+        assert!(self_serve(200_000_001, available, once, true).unwrap_err().contains("Raise my limit"));
+        // Once used, it is gone.
+        let (available, once) = spend_bounds(200_000_000, 200_000_000, 0, true);
+        assert_eq!(once, None);
+        assert_eq!(self_serve(200_000_000, available, once, false), Ok(false));
+        assert!(self_serve(300_000_000, available, once, true).unwrap_err().contains("is used"));
+        // A ceiling that came down still leaves the highest one available.
+        let (available, _) = spend_bounds(100_000_000, 400_000_000, 0, true);
+        assert_eq!(available, 400_000_000);
+        assert!(self_serve(-1, available, None, false).is_err());
+    }
+
+    #[test]
+    fn prepaying_raises_what_can_be_used_at_once() {
+        // $500 prepaid this month, $120 used: nothing owed, $380 left.
+        assert_eq!(exposure(120_000_000, 500_000_000, 0), (0, 380_000_000));
+        // Prepaid last month and carried in.
+        assert_eq!(exposure(120_000_000, 0, 500_000_000), (0, 380_000_000));
+        // Used past the prepayment: the rest is owed.
+        assert_eq!(exposure(620_000_000, 500_000_000, 0), (120_000_000, 0));
+        // Owed from before adds to this month's.
+        assert_eq!(exposure(10_000_000, 0, -4_000_000), (14_000_000, 0));
+        // With a $100 ceiling and $500 prepaid, work stops at $600 of use,
+        // not at $100.
+        let ceiling = 100_000_000;
+        assert_eq!(state(exposure(599_000_000, 500_000_000, 0).0, Some(ceiling)), LimitState::Warning);
+        assert_eq!(state(exposure(600_000_000, 500_000_000, 0).0, Some(ceiling)), LimitState::Stopped);
+        // And the owners may set their spend limit that much higher.
+        assert_eq!(spend_bounds(ceiling, ceiling, 500_000_000, true).0, 600_000_000);
     }
 
     #[test]

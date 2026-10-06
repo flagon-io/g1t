@@ -28,6 +28,11 @@ import { host, StatusDot } from "../../components/deploy";
 import { CheckBadge } from "../../components/checks";
 import { Elapsed, formatCost, useLiveRefresh } from "../../components/agents";
 import { ActivityFeed, DeployStrip, Meter, NeedsList, Panel, Quiet, Unavailable, percent } from "../../components/mission";
+import { type ActiveBranch, ActiveBranches } from "../../components/branches";
+import { ProductionChecklist } from "../../components/checklist";
+import { ProductionShot } from "../../components/production-shot";
+import { GithubLinkStrip } from "../../components/github";
+import { githubApp } from "../../lib/github.server";
 import { Avatar, Button, ButtonLink, CopyLine, TimeAgo } from "../../components/ui";
 import { ChangeSize } from "../../components/work";
 import {
@@ -46,32 +51,83 @@ import {
   rankNeeds,
   stuckMinutes,
 } from "../../lib/mission";
+import { drift } from "../../lib/branches";
+import { agentWasAssigned, hasInstructions, productionChecklist } from "../../lib/checklist";
 import { agents, deployments, events as eventLog, projects, repos, work } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
+import { accessTo, refusal, repoFor } from "../../lib/access.server";
 
 const MAX_LANDED = 6;
+/** Branches read for the Active branches list, and shown. */
+const BRANCHES_READ = 10;
+const BRANCHES_SHOWN = 5;
+/** How far back each branch's history, and the default branch's, is read to count ahead and behind. */
+const BRANCH_DEPTH = 40;
+const MAIN_DEPTH = 120;
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  const member = roleIn(viewer, params.owner) != null;
+  // People with a role of their own here see its running parts: deployments,
+  // memory, setup; everyone who can read it sees the rest.
+  const { insider: member, can } = await accessTo(context, params);
   const path = { namespace: params.owner, name: params.repo };
   const ref = { workspace: params.owner, slug: params.repo };
   const now = Date.now();
   // A section whose service fails shows its own empty state; the page stays up.
   const soft = <T,>(promise: Promise<T> | null): Promise<T | null> =>
     promise ? promise.catch((error) => (console.warn("overview:", error), null)) : Promise.resolve(null);
-  const repoP = soft(repos.get(path, viewer));
+  const repoP = soft(repoFor(context, params));
   const eventsP = repoP.then((repo) => (repo?.ok ? soft(eventLog.list({ repoId: repo.value.id, limit: 150 })) : null));
   const minePullsP = repoP.then((repo) =>
     repo?.ok && viewer
       ? soft(work.listActivePulls(viewer)).then((list) => (list ?? []).filter((item) => item.pull.repoId === repo.value.id))
       : null,
   );
-  const [project, settings, list, open, closed, log, counts, deps, runs, queue, issues, memories, recent, mine] = await Promise.all([
+  const openP = soft(work.listPulls(path, viewer, "open"));
+  // Where its code came from on GitHub, for members.
+  const githubP = repoP.then((repo) => (repo?.ok && member ? soft(githubApp.link(repo.value.id)) : null));
+  const listP = soft(member ? deployments.list(ref, viewer) : null);
+  // Active branches: the newest few besides the default, with how far each
+  // has moved. Branches with an open pull request are read first.
+  const branchesP = Promise.all([repoP, soft(repos.branches(path, viewer)), openP, listP]).then(
+    async ([repo, branchList, pulls, deploys]): Promise<{ main: string; total: number; shown: ActiveBranch[] } | null> => {
+      if (!repo?.ok || !branchList?.ok) return null;
+      const main = repo.value.defaultBranch;
+      const pullList = pulls?.ok ? pulls.value : [];
+      const pullOn = new Map(pullList.filter((pull) => pull.branch).map((pull) => [pull.branch as string, pull]));
+      const others = branchList.value.filter((branch) => branch.name !== main);
+      if (others.length === 0) return { main, total: 0, shown: [] };
+      const read = [...others.filter((b) => pullOn.has(b.name)), ...others.filter((b) => !pullOn.has(b.name))].slice(0, BRANCHES_READ);
+      const [mainLog, ...logs] = await Promise.all([
+        soft(repos.log(path, viewer, main, MAIN_DEPTH)),
+        ...read.map((branch) => soft(repos.log(path, viewer, branch.name, BRANCH_DEPTH))),
+      ]);
+      const mainHashes = mainLog?.ok ? mainLog.value.map((c) => c.hash) : [];
+      const previews = deploys?.ok ? deploys.value.live.filter((app) => app.kind === "preview") : [];
+      const shown = read
+        .map((branch, index): ActiveBranch => {
+          const history = logs[index]?.ok ? logs[index].value : [];
+          const head = history[0];
+          const moved = drift(history.map((c) => c.hash), mainHashes, BRANCH_DEPTH);
+          const pull = pullOn.get(branch.name);
+          return {
+            name: branch.name,
+            commit: head ? { hash: head.hash, message: head.message.split("\n")[0], author: head.author.name, at: head.authoredAt } : null,
+            ...moved,
+            pull: pull ? { number: pull.number, title: pull.title, checkStatus: pull.checkStatus, draft: pull.status === "draft" } : null,
+            preview: previews.find((app) => app.branch === branch.name || (pull != null && app.number === pull.number))?.url ?? null,
+          };
+        })
+        .sort((a, b) => Date.parse(b.commit?.at ?? "0") - Date.parse(a.commit?.at ?? "0"))
+        .slice(0, BRANCHES_SHOWN);
+      return { main, total: others.length, shown };
+    },
+  );
+  const [project, settings, list, open, closed, log, counts, deps, runs, queue, issues, memories, recent, mine, domains, root, branches] = await Promise.all([
     soft(projects.get(params.owner, params.repo, viewer)),
     soft(member ? deployments.settings(ref, viewer) : null),
-    soft(member ? deployments.list(ref, viewer) : null),
-    soft(work.listPulls(path, viewer, "open")),
+    listP,
+    openP,
     soft(work.listPulls(path, viewer, "closed")),
     soft(repos.log(path, viewer, null, 1)),
     soft(work.counts(path, viewer)),
@@ -82,6 +138,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     soft(member ? agents.listMemories(viewer, params.owner, path) : null),
     eventsP,
     minePullsP,
+    // For the checklist, which only members see.
+    soft(member ? deployments.domains(ref, viewer) : null),
+    soft(member ? repos.tree(path, viewer, null, "") : null),
+    branchesP,
   ]);
   const ok = <T,>(result: { ok: true; value: T } | { ok: false } | null): T | null => (result?.ok ? result.value : null);
 
@@ -202,8 +262,36 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const knows = [...memoryList.filter((m) => m.pinned), ...memoryList.filter((m) => !m.pinned).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))].slice(0, 5);
   const openIssues = ok(issues);
 
+  // --- Getting to production ----------------------------------------------------
+  const wentLive = (status: string) => status === "ready" || status === "replaced" || status === "down";
+  const liveApps = ok(list)?.live ?? [];
+  const commitNow = ok(log)?.[0] ?? null;
+  const projectValue = ok(project);
+  const checklist = member
+    ? productionChecklist({
+        base,
+        hasCode: commitNow != null || projectValue?.source.kind === "mirror",
+        deploysEnabled: ok(settings)?.enabled ?? false,
+        productionDeployed:
+          liveApps.some((app) => app.kind === "production") ||
+          builds.some((build) => build.kind === "production" && wentLive(build.status)),
+        domains: ok(domains)?.domains.length ?? null,
+        previewOpened:
+          liveApps.some((app) => app.kind === "preview") || builds.some((build) => build.kind === "preview" && wentLive(build.status)),
+        instructions: commitNow == null ? false : root?.ok ? hasInstructions(root.value.entries.map((entry) => entry.name)) : null,
+        agentAssigned: agentWasAssigned({
+          runAgents: runList.map((run) => run.agent),
+          pullAgents: [...openPulls, ...(ok(closed) ?? [])].map((pull) => pull.agent),
+          issues: openIssues ?? [],
+        }),
+      })
+    : null;
+
+  const github = await githubP;
   return {
     member,
+    can,
+    github,
     project: ok(project),
     settings: ok(settings),
     builds: builds.slice(0, 30),
@@ -228,12 +316,28 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     knows: knows as Memory[],
     memoryCount: memoryList.length,
     memoriesLoaded: memories?.ok ?? false,
+    checklist,
+    branches,
   };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
+  const form = await request.formData().catch(() => null);
+  const intent = form?.get("intent");
+  // Syncing from GitHub is pushing; stopping it is an integration; deploying is compute.
+  const refused = await refusal(context, params, intent === "github-sync" ? "push" : intent === "github-stop" ? "manage_integrations" : "run");
+  if (refused) return { error: refused };
+  if (intent === "github-sync" || intent === "github-stop") {
+    const repo = await repos.get({ namespace: params.owner, name: params.repo }, user);
+    if (!repo.ok) return { error: repo.error.message };
+    const done =
+      intent === "github-sync" ? await githubApp.sync(user, repo.value.id) : await githubApp.unlinkRepo(user, repo.value.id);
+    return done.ok
+      ? { notice: intent === "github-sync" ? "Synced with GitHub." : "It is no longer kept in step with GitHub." }
+      : { error: done.error.message };
+  }
   const started = await deployments.redeploy(user, { workspace: params.owner, slug: params.repo }, null);
   return started.ok ? { notice: "Production is building." } : { error: started.error.message };
 }
@@ -293,7 +397,9 @@ function PipelineCard({ card, base, stage }: { card: Card; base: string; stage: 
 function Pipeline({ columns, base }: { columns: Loaded["columns"]; base: string }) {
   return (
     <div className="relative -mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
-      <ol className="grid min-w-176 grid-cols-5 gap-2">
+      {/* Each stage as tall as what is in it: an empty one stays short
+          instead of stretching to the busiest. */}
+      <ol className="grid min-w-176 grid-cols-5 items-start gap-2">
         {PIPELINE.map(({ stage, label }, index) => {
           const cards = columns[stage];
           return (
@@ -345,7 +451,8 @@ function Stat({ label, value, to }: { label: string; value: ReactNode; to?: stri
 }
 
 export default function ProjectOverview({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { member, project, settings, builds, live, commit, open, dependencies, agentsLive, columns, needs, landed, groups, health, knows } = loaderData;
+  const { member, project, settings, builds, live, commit, open, dependencies, agentsLive, columns, needs, landed, groups, health, knows, checklist, branches } =
+    loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const production = live.find((app) => app.kind === "production") ?? null;
   // The project's own domain, once it is active, is where production is visited.
@@ -361,9 +468,19 @@ export default function ProjectOverview({ loaderData, actionData, params }: Rout
 
   return (
     <div className="space-y-8">
+      {loaderData.github && <GithubLinkStrip link={loaderData.github} />}
       {/* What the project is, running, and where its code is. */}
       <section className="overflow-hidden rounded-2xl border border-line bg-surface">
-        <div className="flex flex-wrap items-start justify-between gap-4 p-5 sm:p-6">
+        <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start sm:p-6">
+          {member && (production || settings?.enabled) && (
+            <ProductionShot
+              src={production ? `${base}/production.jpg?v=${production.commit}` : null}
+              href={production ? (productionUrl ?? production.url) : null}
+              label={host(production ? (productionUrl ?? production.url) : (settings?.productionUrl ?? ""))}
+              className="w-full shrink-0 sm:w-60 lg:w-72"
+            />
+          )}
+          <div className="flex min-w-0 grow flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="flex items-center gap-2 text-xs font-medium tracking-wide text-muted uppercase">
               <Rocket size={13} className="text-accent" />
@@ -403,10 +520,11 @@ export default function ProjectOverview({ loaderData, actionData, params }: Rout
               </>
             ) : (
               <>
-                <p className="mt-2 text-lg font-medium">Not deployed</p>
+                <p className="mt-2 text-lg font-medium">Deployments are off</p>
                 <p className="mt-1 max-w-lg text-sm text-muted">
-                  Put {project?.name ?? params.repo} on g1t.page: production from the default branch, and a live preview for
-                  every pull request. It runs only while someone visits.
+                  Nothing builds or runs until you turn them on. Then {project?.name ?? params.repo} goes up on g1t.page:
+                  production from the default branch, and a live preview for every pull request. It runs only while
+                  someone visits.
                 </p>
               </>
             )}
@@ -420,20 +538,21 @@ export default function ProjectOverview({ loaderData, actionData, params }: Rout
                 </ButtonLink>
               )}
               {settings?.enabled ? (
-                <Form method="post">
+                loaderData.can.run && <Form method="post">
                   <Button type="submit" variant="quiet" disabled={busy} title="Build production again from the default branch">
                     <RotateCw size={14} />
                     Redeploy
                   </Button>
                 </Form>
-              ) : (
+              ) : loaderData.can.manage_integrations && (
                 <ButtonLink to={`${base}/settings/deployments`} variant="accent">
                   <Rocket size={14} />
-                  Deploy
+                  Turn on deployments
                 </ButtonLink>
               )}
             </div>
           )}
+          </div>
         </div>
         {actionData && (
           <p className={`border-t border-line px-6 py-2.5 text-sm ${"error" in actionData ? "text-danger" : "text-accent"}`}>
@@ -511,6 +630,8 @@ export default function ProjectOverview({ loaderData, actionData, params }: Rout
         )}
       </section>
 
+      {checklist && <ProductionChecklist base={base} items={checklist} />}
+
       <Panel
         title="Right now"
         icon={<span className={`block size-2 rounded-full ${agentsLive.length > 0 ? "animate-pulse bg-merged" : "bg-line-strong"}`} />}
@@ -583,6 +704,30 @@ export default function ProjectOverview({ loaderData, actionData, params }: Rout
               <NeedsList needs={needs} limit={5} />
             </Panel>
           )}
+
+          <Panel
+            title="Active branches"
+            icon={<GitBranch size={14} />}
+            count={branches?.total || null}
+          >
+            {!branches ? (
+              <Unavailable what="Branches" />
+            ) : branches.shown.length === 0 ? (
+              <Quiet>
+                Only {branches.main} so far. Branches pushed here show with how far each has moved from {branches.main}, and
+                its pull request and preview.
+              </Quiet>
+            ) : (
+              <>
+                <ActiveBranches branches={branches.shown} base={base} main={branches.main} />
+                {branches.total > branches.shown.length && (
+                  <p className="mt-2 px-1 text-xs text-faint">
+                    The {branches.shown.length} most recently changed of {branches.total} branches.
+                  </p>
+                )}
+              </>
+            )}
+          </Panel>
 
           <Panel title="Recent changes" icon={<GitMerge size={14} />} all={{ to: `${base}/pulls?state=closed`, label: "All landed" }}>
             {landed.length === 0 ? (

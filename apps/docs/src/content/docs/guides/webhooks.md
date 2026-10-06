@@ -12,8 +12,12 @@ A webhook belongs to one of two things:
 
 | | Sent the events of | Managed by | Where |
 | --- | --- | --- | --- |
-| A repository's | That repository | Members of its workspace | The project's **Settings → Webhooks** |
+| A repository's | That repository | People with the Admin [role](/guides/access-and-roles/) on it | The project's **Settings → Webhooks** |
 | A workspace's | Every repository in the workspace | Owners | The workspace's **Settings → Webhooks** |
+
+Seeing a repository's webhooks, and their deliveries, needs Admin too: the
+page is not shown to anyone else, since a webhook's address and secret are
+the workspace's own.
 
 ## Add one
 
@@ -62,6 +66,15 @@ With these headers:
 | --- | --- |
 | `git.push` | A branch moved. `data.ref`, `data.after`, `data.default_branch`. |
 | `repo.created`, `repo.forked` | A repository was made, or forked for a pull request. |
+| `repo.updated` | Its description, website, topics, protection or visibility changed. |
+| `repo.visibility_changed` | It was made public or private. |
+| `repo.renamed` | It was given a new name. Its old address redirects. |
+| `repo.transferred` | It moved to another workspace. |
+| `repo.default_branch_changed` | Its default branch changed, or the default branch was renamed. |
+| `branch.renamed` | A branch was renamed. |
+| `repo.collaborator_added`, `repo.collaborator_role_changed`, `repo.collaborator_removed` | Someone was given a role on it, had their role changed, or lost it. `data.username`, `data.role`, `data.previous_role`. See [access and roles](/guides/access-and-roles/). |
+| `repo.archived`, `repo.unarchived` | It was made read-only, or writable again. |
+| `repo.deleted`, `repo.restored`, `repo.purged` | It was deleted, restored within its 30 days, or removed for good. |
 | `issue.opened`, `issue.updated`, `issue.assigned`, `issue.closed`, `issue.reopened` | An issue changed. `data.number`; on close, `data.reason` and `data.resolved_by`. |
 | `comment.created` | A comment or review on an issue or pull request. |
 | `pull.opened`, `pull.ready`, `pull.updated`, `pull.merge_requested`, `pull.merged`, `pull.closed` | A pull request changed. `data.number`, `data.issue`; on merge, `data.commit`. |
@@ -71,6 +84,9 @@ With these headers:
 | `queue.changed` | The merge queue gained, lost or settled an entry. |
 | `session.appended` | An agent's session grew. Busy: choose it only if you need it. |
 | `agent.asked` | An agent asked the agent on another pull request a question, or handed it work, while that one was not at work; g1t wakes it to answer. |
+
+[Managing a repository](/guides/managing-repositories/) says what each of
+the `repo.` and `branch.` changes does.
 
 ## Check the signature
 

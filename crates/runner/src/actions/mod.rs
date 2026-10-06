@@ -215,6 +215,12 @@ impl Job {
         env: &BTreeMap<String, String>,
         timeout: Duration,
     ) -> (bool, BTreeMap<String, String>, BTreeMap<String, String>) {
+        crate::abuse::touch();
+        // Mining is never a workflow's job (abuse.rs).
+        if let Some(miner) = crate::abuse::miner_in(script) {
+            self.log.line(&format!("##[error]g1t does not run cryptocurrency miners ({miner}). This step was not run."));
+            return (false, BTreeMap::new(), BTreeMap::new());
+        }
         let id = format!("{:x}", rand_id());
         let shell = shell.map(str::trim).filter(|s| !s.is_empty());
         let (program, args, extension): (String, Vec<String>, &str) = match shell {

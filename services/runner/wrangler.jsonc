@@ -34,7 +34,9 @@
 		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
 		{ "binding": "PROJECTS", "service": "g1t-projects" },
 		// The context hub: the Context section every agent run starts with.
-		{ "binding": "CONTEXT", "service": "g1t-context" }
+		{ "binding": "CONTEXT", "service": "g1t-context" },
+		// The event bus: abuse.flagged, when a sandbox looks like it is mining.
+		{ "binding": "EVENTS", "service": "g1t-events" }
 	],
 	// A sweep for lifecycle steps whose trigger was missed or whose sandbox
 	// died before reporting.
@@ -48,7 +50,7 @@
 		// provider (under Integrations) or g1t's hosted models, paid from its
 		// credit. While billing takes no real money, hosted models are open
 		// only to these workspaces; once it does, to every workspace.
-		"HOSTED_AGENT_WORKSPACES": "syntaqx, flagon-io",
+		"HOSTED_AGENT_WORKSPACES": "flagon-io",
 		// Which model each kind of work runs on. Nobody assigning an agent
 		// chooses; this is g1t's policy. "modelName" is shown to people in the
 		// session; "model" is sent to the provider.
@@ -63,7 +65,11 @@
 		// Guardrails' network list is enforced by starting sandboxes without
 		// internet and passing their HTTP(S) through this Worker. "off" opens
 		// every sandbox's network again, whatever its guardrails say.
-		"EGRESS": "enforce"
+		"EGRESS": "enforce",
+		// Sandboxes stop themselves when they look like they are mining
+		// (crates/runner abuse.rs). "off" turns the CPU watch off; miners
+		// named in commands are refused either way.
+		"ABUSE_WATCH": "on"
 	},
 	"observability": { "enabled": true }
 }

@@ -10,6 +10,8 @@ const RESERVED: &[&str] = &[
     "search",
     "admin",
     "auth",
+    // g1t.sh/integrations/github/setup: where GitHub returns after an install.
+    "integrations",
     "pulls",
     "issues",
     "oauth",
@@ -22,6 +24,8 @@ const RESERVED: &[&str] = &[
     "pricing",
     "terms",
     "privacy",
+    "policies",
+    "security",
     "help",
     "support",
     "status",
@@ -32,6 +36,10 @@ const RESERVED: &[&str] = &[
     "device",
     "workspaces",
     "u",
+    // g1t.sh/invite/<code>: invite links; and the waitlist.
+    "invite",
+    "invites",
+    "waitlist",
 ];
 
 /// Namespaces follow GitHub's rules: letters, digits and single hyphens,

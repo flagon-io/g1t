@@ -7,7 +7,18 @@
  * says to what, `data` is the type-specific payload.
  */
 
+import type { RepoRole } from "./access";
 import type { Verdict } from "./work";
+
+/** The payload of the `repo.collaborator_*` events. */
+export type RepoCollaboratorData = {
+  repoId: string;
+  namespace: string;
+  name: string;
+  username: string;
+  role: RepoRole | null;
+  previousRole: RepoRole | null;
+};
 export type EventPayloads = {
   "repo.created": { repoId: string; namespace: string; name: string; isPrivate: boolean };
   "repo.forked": { repoId: string; sourceRepoId: string; pullId: string };
@@ -18,14 +29,54 @@ export type EventPayloads = {
    */
   "repo.updated": { repoId: string; namespace: string; name: string; isPrivate: boolean; visibilityChanged: boolean };
   "repo.visibility_changed": { repoId: string; isPrivate: boolean };
-  /** A repository's path changed. */
-  "repo.renamed": { repoId: string; namespace: string; name: string };
-  /** A repository is gone, and everything about it with it. */
-  "repo.deleted": { repoId: string };
+  /**
+   * A repository's name changed within its workspace `namespace`, from
+   * `from` to `to`, keeping its id. A path change like `repo.transferred`:
+   * services move rows kept under its path to its *current* path (see
+   * `repoMove`, `currentMovedPath`).
+   */
+  "repo.renamed": { repoId: string; namespace: string; from: string; to: string };
+  /**
+   * A repository was deleted. It is hidden and git refuses it, but it can
+   * be restored until `purgeAfter`: services stop what runs for it and hide
+   * it, and keep their rows until `repo.purged`.
+   */
+  "repo.deleted": { repoId: string; namespace: string; name: string; isPrivate: boolean; purgeAfter: string };
+  /** A deleted repository is back, as it was. Services start again what they stopped. */
+  "repo.restored": { repoId: string; namespace: string; name: string; isPrivate: boolean };
+  /**
+   * A deleted repository is gone for good, its git data with it. Services
+   * drop every row they keep for it, except a workspace's history (ledgers,
+   * invoices, the audit log).
+   */
+  "repo.purged": { repoId: string; namespace: string; name: string };
+  /**
+   * A repository was archived (read-only: pushes, merges, agents and
+   * workflows refused; issues and pull requests locked; deployments keep
+   * serving), or unarchived.
+   */
+  "repo.archived": { repoId: string; namespace: string; name: string; archived: true };
+  "repo.unarchived": { repoId: string; namespace: string; name: string; archived: false };
+  /** The default branch is now `to`; `renamed` when `from` was renamed to it. */
+  "repo.default_branch_changed": { repoId: string; from: string; to: string; renamed: boolean };
+  /** A branch was renamed. Pull requests from it follow. */
+  "branch.renamed": { repoId: string; from: string; to: string; defaultBranch: boolean };
   /** An account was made, or changed what its profile shows. Ask identity for the profile. */
   "user.updated": { username: string };
   /** A workspace was made, or its name, description or icon changed. */
   "workspace.updated": { workspaceId: string; slug: string };
+  /** Someone, or g1t staff, made an invite. Never the code or the address. */
+  "invite.created": { inviteId: string; inviterId: string | null; workspaceId: string | null; bound: boolean };
+  /** An invite was used: by a new account, or by an account joining a workspace. */
+  "invite.redeemed": {
+    inviteId: string;
+    userId: string;
+    inviterId: string | null;
+    workspaceId: string | null;
+    createdAccount: boolean;
+  };
+  /** Someone asked for access while registration is invite-only. The address is not in the event. */
+  "waitlist.requested": { entryId: string };
   /**
    * One branch moved by a push. `ref` is the full ref, `after` the commit it
    * points to now, and `defaultBranch` whether it is the default branch.
@@ -78,6 +129,10 @@ export type EventPayloads = {
     number: number;
     verdict?: "approve" | "request_changes";
   };
+  /** A person was given a role on one repository directly, had it changed, or lost it. `role` is null once removed. */
+  "repo.collaborator_added": RepoCollaboratorData;
+  "repo.collaborator_removed": RepoCollaboratorData;
+  "repo.collaborator_role_changed": RepoCollaboratorData;
   /** A repository's merge queue gained, lost or settled an entry. */
   "queue.changed": { repoId: string };
   /** `number` is the issue or pull request commented on. */
@@ -99,11 +154,41 @@ export type EventPayloads = {
    */
   "workspace.renamed": { workspaceId: string; from: string; to: string };
   /**
+   * A repository moved from workspace `from` to `to`, keeping its id and
+   * name. Services that store its path or its workspace's slug move those
+   * rows to its *current* path (ask repos `path_by_id`), so a repeated or
+   * late delivery after a second transfer still lands in the right place.
+   */
+  "repo.transferred": { repoId: string; name: string; from: string; to: string };
+  /**
+   * A workspace is gone. Services drop what they keep for it alone; ledgers,
+   * invoices and the audit log stay under its slug, which is never reused.
+   */
+  "workspace.deleted": { workspaceId: string; slug: string };
+  /**
    * A memory was added, changed, reviewed or forgotten. No text: ask the
    * work service for it by id. `repoId` is the project's, or null for the
    * workspace's memory. `status` is `deleted` once forgotten.
    */
   "memory.changed": { memoryId: string; workspace: string; status: "candidate" | "kept" | "dismissed" | "deleted" };
+  /**
+   * A sandbox was stopped because it looked like it was mining: CPU pinned
+   * with little I/O and no progress, or a miner seen by name. For g1t's
+   * staff, in sudo; published with no `repoId` so it never reaches a
+   * repository's timeline or webhooks. `metrics` is what the sandbox
+   * measured (`Verdict` in crates/runner abuse.rs), or null if it could
+   * not say.
+   */
+  "abuse.flagged": {
+    workspace: string;
+    repo: string | null;
+    /** The agent run, when the sandbox had one. */
+    run: string | null;
+    /** What the sandbox was for: agent, checks, queue, actions, deploy... */
+    kind: string;
+    sandbox: string;
+    metrics: Record<string, unknown> | null;
+  };
 };
 
 export type EventType = keyof EventPayloads;

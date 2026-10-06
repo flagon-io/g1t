@@ -1,7 +1,7 @@
 # Demo script
 
 A walk through g1t for the submission video. It runs about eight minutes at
-a normal speaking pace and uses `syntaqx/hello`, a small Rust greeter whose
+a normal speaking pace and uses `flagon-io/hello`, a small Rust greeter whose
 whole history was written by agents working on issues.
 
 Everything shown is live on g1t.sh. Nothing is mocked.
@@ -14,7 +14,7 @@ sections 2 and 8 the third.
 
 - Sign in as `syntaqx`.
 - Have a terminal open in an empty directory, with Claude Code installed.
-- Open `https://g1t.sh/syntaqx/hello` in one tab and `https://g1t.sh/` in
+- Open `https://g1t.sh/flagon-io/hello` in one tab and `https://g1t.sh/` in
   another.
 - Write the three issues for section 3 in a scratch file so they can be
   pasted (titles below). Agents take one to three minutes each: start them,
@@ -34,10 +34,10 @@ On the landing page.
 
 ## 2. It is still git, and your CI comes with you (1 minute)
 
-On `syntaqx/hello`, Code tab.
+On `flagon-io/hello`, Code tab.
 
 - Show the clone box: HTTPS, and the one line that connects an agent.
-- In the terminal: `git clone https://g1t.sh/syntaqx/hello.git`.
+- In the terminal: `git clone https://g1t.sh/flagon-io/hello.git`.
 - Open `.g1t/workflows/ci.yml`. It is a GitHub Actions workflow, unchanged:
   `actions/checkout@v7`, a Rust toolchain action, `actions/cache@v6`, then
   formatting, lints, an "Every flag is documented" step, and tests.
@@ -170,7 +170,7 @@ claude mcp add --transport http g1t https://mcp.g1t.sh
 
 - In Claude Code, `/mcp`, choose g1t. The browser opens on g1t's consent
   page. Approve.
-- Ask: "What issues are open on syntaqx/hello on g1t, and which pull
+- Ask: "What issues are open on flagon-io/hello on g1t, and which pull
   requests overlap? Did the last CI run pass?"
 
 > No token to paste. The same operations are a REST API at api.g1t.sh,
@@ -189,7 +189,7 @@ which pull request resolved it.
 > combinations. g1t is open source, free while it is being built out, and
 > hosted on itself.
 
-Show `https://g1t.sh/syntaqx/g1t`.
+Show `https://g1t.sh/flagon-io/g1t`.
 
 ## If something goes wrong on camera
 

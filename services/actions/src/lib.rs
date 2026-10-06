@@ -23,6 +23,7 @@ mod sync;
 mod trigger;
 mod views;
 
+use g1t_contracts::access::{self, Capability};
 use g1t_contracts::events::Event;
 use g1t_contracts::identity::{SlugArgs, Workspace};
 use g1t_contracts::repos::{GetArgs, GetByIdArgs, Repo, RepoPath};
@@ -142,10 +143,23 @@ impl Actions {
         Ok(found.into_result().ok().filter(|repo| repo.fork_of.is_none()).map(|repo| (repo, actor)))
     }
 
-    /// Refuses anyone but a member of the repository's workspace.
-    fn member(actor: &User, repo: &RepoPath) -> Option<Outcome<()>> {
-        (actor.kind == PrincipalKind::Agent || !actor.is_member(&repo.namespace.to_lowercase()))
-            .then(|| fail(FailureCode::Forbidden, format!("Only members of {} can do that.", repo.namespace)))
+    /// The repository at `path`, when `actor` may do `capability` in it:
+    /// not found when they cannot read it, forbidden when their role falls
+    /// short. Agents never may: people and tokens run and change workflows.
+    async fn may(&self, actor: &User, path: &RepoPath, capability: Capability) -> Result<Outcome<Repo>> {
+        if actor.kind == PrincipalKind::Agent {
+            return Ok(fail(FailureCode::Forbidden, "An agent cannot do that. Ask a person."));
+        }
+        let Some(repo) = self.visible_repo(path, &Some(actor.clone())).await? else {
+            return Ok(fail(FailureCode::NotFound, "There is no such repository."));
+        };
+        if !access::can(Some(actor), &repo, capability) {
+            return Ok(fail(
+                FailureCode::Forbidden,
+                access::needs(capability, &format!("{}/{}", repo.namespace, repo.name)),
+            ));
+        }
+        Ok(Outcome::Ok(repo))
     }
 }
 
@@ -195,6 +209,31 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
     for message in batch.messages()? {
         // A workspace renamed: its rows move to the slug it has now.
         if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), rename::STATEMENTS).await? {
+            message.ack();
+            continue;
+        }
+        // A repository renamed or transferred: its rows follow its new path.
+        if g1t_kit::transfer::on_event(&env, &env.d1("DB")?, message.body(), rename::TRANSFERRED).await? {
+            message.ack();
+            continue;
+        }
+        // A workspace deleted: what it kept for itself goes.
+        if g1t_kit::deleted::on_event(&env.d1("DB")?, message.body(), rename::DELETED).await? {
+            message.ack();
+            continue;
+        }
+        // A repository purged: every row kept for it goes.
+        if g1t_kit::lifecycle::on_purged(&env.d1("DB")?, message.body(), rename::PURGED).await? {
+            message.ack();
+            continue;
+        }
+        // A repository deleted or archived: its runs stop.
+        if let Some(repo_id) = plan::stops_runs(message.body()) {
+            if let Err(error) = service.stop_runs(&repo_id).await {
+                worker::console_error!("actions: event {} failed: {error}", message.body().id);
+                message.retry();
+                continue;
+            }
             message.ack();
             continue;
         }

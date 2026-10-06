@@ -30,6 +30,41 @@ const fn route(
 pub const ROUTES: &[Route] = &[
     route("GET", "/user", Op::Whoami, &[]),
     route("POST", "/workspaces", Op::CreateWorkspace, &[]),
+    route("DELETE", "/workspaces/:workspace", Op::DeleteWorkspace, &[]),
+    route("GET", "/user/emails", Op::ListEmails, &[]),
+    route("POST", "/user/emails", Op::AddEmail, &[]),
+    route("DELETE", "/user/emails/:email", Op::RemoveEmail, &[]),
+    route("PATCH", "/user/email-settings", Op::UpdateEmailSettings, &[]),
+    route("GET", "/user/invites", Op::ListInvites, &[]),
+    route("POST", "/user/invites", Op::CreateInvite, &[]),
+    route("DELETE", "/user/invites/:id", Op::RevokeInvite, &[]),
+    route("GET", "/workspaces/:workspace/invitations", Op::ListWorkspaceInvites, &[]),
+    route("POST", "/workspaces/:workspace/invitations", Op::InviteMember, &[]),
+    route("DELETE", "/workspaces/:workspace/invitations/:id", Op::RevokeWorkspaceInvite, &[]),
+    // Who has access. GitHub's addresses, but for adding someone, which
+    // takes an email address as well as a username.
+    route("GET", "/repos/:owner/:name/collaborators", Op::ListCollaborators, &[]),
+    route("POST", "/repos/:owner/:name/collaborators", Op::AddCollaborator, &[]),
+    route("PATCH", "/repos/:owner/:name/collaborators/:username", Op::UpdateCollaborator, &[]),
+    route("DELETE", "/repos/:owner/:name/collaborators/:username", Op::RemoveCollaborator, &[]),
+    route(
+        "GET",
+        "/repos/:owner/:name/collaborators/:username/permission",
+        Op::GetCollaboratorPermission,
+        &[],
+    ),
+    route("GET", "/repos/:owner/:name/invitations", Op::ListRepoInvitations, &[]),
+    route("DELETE", "/repos/:owner/:name/invitations/:id", Op::RevokeRepoInvitation, &[]),
+    route("GET", "/user/repository_invitations", Op::ListMyRepoInvitations, &[]),
+    route("PATCH", "/user/repository_invitations/:id", Op::AcceptRepoInvitation, &[]),
+    route("DELETE", "/user/repository_invitations/:id", Op::DeclineRepoInvitation, &[]),
+    route("PATCH", "/workspaces/:workspace", Op::SetBasePermission, &[]),
+    route(
+        "GET",
+        "/workspaces/:workspace/outside_collaborators",
+        Op::ListOutsideCollaborators,
+        &[],
+    ),
     route("GET", "/repos", Op::ListRepos, &[("q", "query")]),
     route(
         "GET",
@@ -40,6 +75,31 @@ pub const ROUTES: &[Route] = &[
     route("POST", "/repos", Op::CreateRepo, &[]),
     route("GET", "/repos/:owner/:name", Op::GetRepo, &[]),
     route("PATCH", "/repos/:owner/:name", Op::UpdateRepo, &[]),
+    route("POST", "/repos/:owner/:name/transfer", Op::TransferRepo, &[]),
+    route("DELETE", "/repos/:owner/:name", Op::DeleteRepo, &[]),
+    route(
+        "GET",
+        "/workspaces/:workspace/repos/deleted",
+        Op::ListDeletedRepos,
+        &[],
+    ),
+    route("POST", "/repos/:owner/:name/restore", Op::RestoreRepo, &[]),
+    route("POST", "/repos/:owner/:name/purge", Op::PurgeRepo, &[]),
+    route("POST", "/repos/:owner/:name/rename", Op::RenameRepo, &[]),
+    route("POST", "/repos/:owner/:name/archive", Op::ArchiveRepo, &[]),
+    route("POST", "/repos/:owner/:name/unarchive", Op::UnarchiveRepo, &[]),
+    route(
+        "POST",
+        "/repos/:owner/:name/visibility",
+        Op::SetRepoVisibility,
+        &[],
+    ),
+    route(
+        "POST",
+        "/repos/:owner/:name/branches/:branch/rename",
+        Op::RenameBranch,
+        &[],
+    ),
     route(
         "GET",
         "/repos/:owner/:name/settings",
@@ -523,6 +583,32 @@ impl Route {
     }
 }
 
+/// A path segment with its `%XX` escapes decoded; as given when that is not
+/// UTF-8.
+fn percent_decoded(segment: &str) -> String {
+    let bytes = segment.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let escaped = (bytes[i] == b'%')
+            .then(|| segment.get(i + 1..i + 3))
+            .flatten()
+            .filter(|hex| hex.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            .and_then(|hex| u8::from_str_radix(hex, 16).ok());
+        match escaped {
+            Some(byte) => {
+                out.push(byte);
+                i += 3;
+            }
+            None => {
+                out.push(bytes[i]);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8(out).unwrap_or_else(|_| segment.to_owned())
+}
+
 /// The route for a request, and the operation input it describes.
 ///
 /// The input is the JSON body, overlaid with the query parameters the route
@@ -557,10 +643,14 @@ pub fn resolve(
     if let (Some(owner), Some(name)) = (param("owner"), param("name")) {
         input.insert("repo".to_owned(), Value::String(format!("{owner}/{name}")));
     }
-    for key in ["plan", "id", "workspace", "delivery", "workflow", "job", "setting"] {
+    for key in ["plan", "id", "workspace", "delivery", "workflow", "job", "setting", "username"] {
         if let Some(value) = param(key) {
             input.insert(key.to_owned(), Value::String(value.to_owned()));
         }
+    }
+    // A branch name may hold slashes, sent URL-encoded as one segment.
+    if let Some(branch) = param("branch") {
+        input.insert("branch".to_owned(), Value::String(percent_decoded(branch)));
     }
     // GitHub says some things with the path alone.
     if route.path.ends_with("/enable") || route.path.ends_with("/disable") {
@@ -589,7 +679,7 @@ mod tests {
     fn a_path_resolves_to_its_operation_and_input() {
         let (route, input) = resolve(
             "POST",
-            "/repos/syntaqx/hello/pulls/14/merge",
+            "/repos/flagon-io/hello/pulls/14/merge",
             &[],
             json!({ "keep_issue_open": true, "number": 99, "repo": "someone/else" }),
         )
@@ -598,8 +688,42 @@ mod tests {
         // What the path names wins over the body.
         assert_eq!(
             input,
-            json!({ "keep_issue_open": true, "number": 14, "repo": "syntaqx/hello" })
+            json!({ "keep_issue_open": true, "number": 14, "repo": "flagon-io/hello" })
         );
+    }
+
+    #[test]
+    fn a_branch_with_slashes_is_one_encoded_segment() {
+        let (route, input) = resolve(
+            "POST",
+            "/repos/flagon-io/hello/branches/feature%2Flogin/rename",
+            &[],
+            json!({ "new_name": "feature/sign-in" }),
+        )
+        .unwrap();
+        assert_eq!(route.op, Op::RenameBranch);
+        assert_eq!(
+            input,
+            json!({ "new_name": "feature/sign-in", "branch": "feature/login", "repo": "flagon-io/hello" })
+        );
+        assert_eq!(percent_decoded("100%"), "100%");
+        assert_eq!(percent_decoded("a%2bb%zz"), "a+b%zz");
+    }
+
+    #[test]
+    fn a_collaborator_is_named_by_username() {
+        let (route, input) = resolve(
+            "PATCH",
+            "/repos/flagon-io/hello/collaborators/ada",
+            &[],
+            json!({ "role": "maintain" }),
+        )
+        .unwrap();
+        assert_eq!(route.op, Op::UpdateCollaborator);
+        assert_eq!(input, json!({ "role": "maintain", "username": "ada", "repo": "flagon-io/hello" }));
+        let (route, input) = resolve("DELETE", "/user/repository_invitations/rin_1", &[], Value::Null).unwrap();
+        assert_eq!(route.op, Op::DeclineRepoInvitation);
+        assert_eq!(input, json!({ "id": "rin_1" }));
     }
 
     #[test]

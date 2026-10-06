@@ -38,47 +38,60 @@
 		// recorded with what they cost, and nothing is charged. Set to
 		// "false" when pricing starts.
 		// Off: workspaces are charged as their account's terms say. g1t's own
-		// (syntaqx) is comped in sudo.g1t.sh, not by this switch.
+		// (flagon-io, Flagon, Inc.'s) is comped in sudo.g1t.sh, not by this switch.
 		"FREE_WHILE_BUILDING": "false",
-		// How far a workspace's unpaid usage may go before its work stops
-		// (see src/limits.rs): $3 before any live payment, then twice what
-		// it has paid, between $25 and $1,000. Comped and custom terms are set
-		// per account in sudo.g1t.sh.
+		// The g1t plan (src/features.rs): $20 a month per workspace, never
+		// per person. It includes $10 of usage a month at cost plus 20%, used
+		// first and not rolled over; the other $10 pays for running g1t, the
+		// free forge for everyone, and the people building it. With it: 10 GB
+		// of private storage, and deployments (200 build minutes a month).
+		"PLAN_MONTHLY_CENTS": "2000",
+		"PLAN_INCLUDED_MICROS": "10000000",
+		"PLAN_PRIVATE_STORAGE_BYTES": "10000000000",
+		"DEPLOYMENTS_BUILD_SECONDS": "12000",
+		// Without the plan: 1 GB of private storage free, charged past it at
+		// cost plus the margin. The audit log is kept 90 days on every plan.
+		"FREE_PRIVATE_STORAGE_BYTES": "1000000000",
+		"AUDIT_RETENTION_DAYS": "90",
+		// The trial (src/credits.rs, src/cards.rs): $5 of usage once per new
+		// workspace, granted after a card check (one per card), out of a pool
+		// for everyone ($100) that resets each calendar month (UTC). Either at
+		// 0 turns new trials off. Never for deployments.
+		"TRIAL_WORKSPACE_MICROS": "5000000",
+		"TRIAL_MONTHLY_POOL_MICROS": "100000000",
+		// g1t's open-source pool: checks, workflows and the merge queue on
+		// public repositories, for any workspace with a card check, up to $25
+		// a month in all and $2 a month for any one repository.
+		"OSS_POOL_MICROS": "25000000",
+		"OSS_REPO_MICROS": "2000000",
+		// Ceilings on usage not yet paid for (src/limits.rs): $3 for a free
+		// workspace (it has no on-demand compute), $100 for a paid one's first
+		// month, then twice what it has paid as payments clear, between the
+		// start and $1,000 (Established: its monthly spend, up to $10,000).
 		"LIMIT_NEW_MICROS": "3000000",
+		"LIMIT_PAID_START_MICROS": "100000000",
 		"LIMIT_PAID_MIN_MICROS": "25000000",
 		"LIMIT_PAID_MAX_MICROS": "1000000000",
-		// Trial credit, so people can try g1t without a key or a card: each
-		// new workspace gets this much usage credit ($1), once, granted the
-		// first time it uses something, out of a pool for everyone ($40)
-		// that resets each calendar month (UTC). When a month's pool is
-		// given out, new trials wait for the next month. Either at 0 turns
-		// new trials off. See src/credits.rs.
-		"TRIAL_WORKSPACE_MICROS": "1000000",
-		"TRIAL_MONTHLY_POOL_MICROS": "40000000",
-		// g1t's open-source pool: sandbox time and model cost for work on
-		// public repositories, up to $10 a month in all and $1 a month for
-		// any one repository. Past either, the workspace pays as usual.
-		"OSS_POOL_MICROS": "10000000",
-		"OSS_REPO_MICROS": "1000000",
-		// The Team plan: $20 a month per workspace, never per person, with
-		// $5 of usage credit a month (drawn first; it does not roll over),
-		// 50 GB of private storage and a year of audit log.
-		"TEAM_MONTHLY_CENTS": "2000",
-		"TEAM_INCLUDED_MICROS": "5000000",
-		"TEAM_PRIVATE_STORAGE_BYTES": "50000000000",
-		"TEAM_AUDIT_RETENTION_DAYS": "365",
-		// Without Team: 1 GB of private storage free (charged past it at
-		// cost plus the margin), and 30 days of audit log.
-		"FREE_PRIVATE_STORAGE_BYTES": "1000000000",
-		"AUDIT_RETENTION_DAYS": "30",
-		// No card is charged less than $5, so a payment's fee is never most
-		// of it: smaller amounts carry over to the next invoice.
+		// Caps on agents (src/compute.rs): one run's spend, and what the
+		// agents on one issue may spend in all. Owners and staff can change them.
+		"RUN_CAP_MICROS": "2000000",
+		"ISSUE_CAP_MICROS": "10000000",
+		// A spike: an hour's spend above 5 times the usual hour over the last
+		// week, and at least $5, pauses new compute until an owner confirms.
+		"SPIKE_FACTOR": "5",
+		"SPIKE_FLOOR_MICROS": "5000000",
+		// The most of an overage's real cost a one-click goodwill credit
+		// covers (src/overages.rs); it always gives back the margin too.
+		"OVERAGE_FORGIVE_COST_MICROS": "50000000",
+		// Git operations through g1t (src/storage.rs): 10,000 a month on every
+		// plan; past it the plan pays at cost plus 20%; a free workspace past
+		// 50,000 is slowed down by the repos service, never charged.
+		"GIT_OPERATIONS_INCLUDED": "10000",
+		"GIT_OPERATIONS_FREE_CAP": "50000",
+		// A month's close charges no less than $5, so a payment's fee is never
+		// most of it: smaller amounts carry over. Charges at a limit always go
+		// through.
 		"MIN_CHARGE_MICROS": "5000000",
-		// The Deployments plan's monthly price, in cents. Turning the
-		// feature on starts it; FREE_WHILE_BUILDING does not cover it. It
-		// includes 200 build minutes a month (about $0.25 of it at cost).
-		"DEPLOYMENTS_MONTHLY_CENTS": "500",
-		"DEPLOYMENTS_BUILD_SECONDS": "12000",
 		// Where the keeper reads what g1t pays (src/keeper.rs). Its token,
 		// CLOUDFLARE_USAGE_TOKEN, is a secret: Billing, Account Analytics
 		// and AI Gateway, read only.

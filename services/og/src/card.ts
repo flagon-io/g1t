@@ -31,8 +31,10 @@ function icon(shapes: string, color: string, size: number): Node {
   return img(dataUri(iconSvg(shapes, color)), size, size, { flexShrink: 0 });
 }
 
-const SANS = "Inter";
-const MONO = "JetBrains Mono";
+const SANS = "Hanken Grotesk";
+/** Headlines: a card's title and the brand line. */
+const DISPLAY = "Bricolage Grotesque";
+const MONO = "IBM Plex Mono";
 
 /** Long text is cut before layout, so a huge title costs nothing to lay out. */
 function bound(text: string, max: number): string {
@@ -55,9 +57,9 @@ function titleSize(text: string): number {
 
 // --- Pieces --------------------------------------------------------------
 
-/** The backdrop: dot grid, lavender light and, on most cards, the fleet. */
-function background(withFleet: boolean): Node {
-  return img(dataUri(backdropSvg(WIDTH, HEIGHT, withFleet)), WIDTH, HEIGHT, { position: "absolute", top: 0, left: 0 });
+/** The backdrop: dot grid, lavender light and, on most cards, the pixel 1. */
+function background(withOne: boolean): Node {
+  return img(dataUri(backdropSvg(WIDTH, HEIGHT, withOne)), WIDTH, HEIGHT, { position: "absolute", top: 0, left: 0 });
 }
 
 /** The lavender rule along the bottom edge. */
@@ -235,11 +237,11 @@ function title(text: string, lines = 3): Node {
   const bounded = bound(text, 180);
   const size = titleSize(bounded);
   return clamp(bounded, lines, {
-    fontFamily: SANS,
+    fontFamily: DISPLAY,
     fontWeight: 600,
     fontSize: size,
     lineHeight: 1.12,
-    letterSpacing: size >= 64 ? -2 : -1.4,
+    letterSpacing: size >= 64 ? -1.3 : -0.8,
     color: COLOR.fg,
     width: 940,
   });
@@ -278,10 +280,10 @@ function brandCard(): Node {
         {
           display: "flex",
           marginTop: 56,
-          fontFamily: SANS,
+          fontFamily: DISPLAY,
           fontWeight: 500,
           fontSize: 44,
-          letterSpacing: -0.8,
+          letterSpacing: -0.5,
           color: COLOR.fgSoft,
         },
         "A git forge for teams of agents",

@@ -81,6 +81,8 @@ export type ExploreRepo = {
   language: string | null;
   createdAt: string;
   pushedAt: string | null;
+  /** Whether it is archived: read-only, kept for reference. */
+  archived: boolean;
 };
 
 export type Facet = { name: string; count: number };

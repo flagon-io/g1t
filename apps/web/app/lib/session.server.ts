@@ -27,7 +27,7 @@ function sessionCookie(value: string, maxAge: number): string {
 }
 
 /** Pages a signed-in person can use before they have a workspace. */
-const BEFORE_WORKSPACE = ["/workspaces/new", "/settings", "/verify", "/logout"];
+const BEFORE_WORKSPACE = ["/workspaces/new", "/settings", "/verify", "/logout", "/auth/github", "/auth/github/callback"];
 
 /**
  * Root middleware: resolves the signed-in user once per request.
@@ -50,7 +50,13 @@ export const viewerMiddleware: MiddlewareFunction<Response> = async ({
     request.method === "GET" &&
     viewer?.verified &&
     (viewer.workspaces ?? []).length === 0 &&
+    // Someone a repository is shared with can use it without a workspace.
+    (viewer.grants ?? []).length === 0 &&
     !BEFORE_WORKSPACE.includes(pathname) &&
+    // An invite to a workspace is how someone without one gets one, and an
+    // invitation to a repository is answered before anything else.
+    !pathname.startsWith("/invite/") &&
+    !/^\/[^/]+\/[^/]+\/invitations\/?$/.test(pathname) &&
     !pathname.endsWith(".data")
   ) {
     const next = pathname === "/" ? "" : `?next=${encodeURIComponent(pathname + search)}`;
@@ -100,6 +106,16 @@ export async function endSession(request: Request): Promise<string> {
   const token = sessionToken(request);
   if (token) await identity.signOut(token);
   return sessionCookie("", 0);
+}
+
+/** The session token the request carries, for proof of a recent sign-in. */
+export function sessionTokenOf(request: Request): string | null {
+  return sessionToken(request);
+}
+
+/** The visitor's IP address, as Cloudflare saw it, for rate limits. */
+export function clientOf(request: Request): string | null {
+  return request.headers.get("cf-connecting-ip");
 }
 
 /** Rejects cross-site form posts; call at the top of every action. */

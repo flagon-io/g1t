@@ -4,6 +4,8 @@
 //! arguments of each of its methods. Services and their callers depend on
 //! this crate, never on each other's code.
 
+pub mod access;
+pub mod accounts;
 pub mod actions;
 pub mod agents;
 pub mod audit;
@@ -11,6 +13,7 @@ pub mod billing;
 pub mod capture;
 pub mod credentials;
 pub mod events;
+pub mod github;
 pub mod guardrails;
 pub mod identity;
 pub mod integrations;
@@ -56,6 +59,12 @@ pub struct Membership {
     /// `/avatars/<avatar>`. Absent means the generated letter avatar.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
+    /// What a member gets on each of the workspace's repositories: the
+    /// workspace's base permission. Set when a user is resolved from
+    /// credentials; absent means the default, Write. Owners have Admin
+    /// whatever it says. See [`access`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_permission: Option<access::BasePermission>,
 }
 
 impl Membership {
@@ -66,6 +75,7 @@ impl Membership {
             role: Role::Member,
             name: None,
             avatar: None,
+            base_permission: None,
         }
     }
 }
@@ -109,6 +119,11 @@ pub struct User {
     /// credential, and what it may do. See [`credentials`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acting: Option<Box<credentials::Acting>>,
+    /// The repositories this user has been given a role on directly,
+    /// whether or not they belong to its workspace. Filled in with
+    /// `workspaces`; see [`access`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub grants: Vec<access::RepoGrant>,
 }
 
 impl User {

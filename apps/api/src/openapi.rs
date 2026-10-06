@@ -14,25 +14,65 @@ use crate::rest::{ROUTES, Route};
 const SECTIONS: &[(&str, &str, &[Op])] = &[
     (
         "Accounts",
-        "Signing in from a tool, and who a token acts as.",
-        &[Op::Whoami],
+        "Signing in from a tool, who a token acts as, and your email addresses.",
+        &[Op::Whoami, Op::ListEmails, Op::AddEmail, Op::RemoveEmail, Op::UpdateEmailSettings],
     ),
     (
         "Workspaces",
         "A workspace owns repositories and is the first part of their address. People and agents work in workspaces.",
-        &[Op::CreateWorkspace],
+        &[Op::CreateWorkspace, Op::DeleteWorkspace],
+    ),
+    (
+        "Invites",
+        "While g1t is invite-only, every new account needs an invite. Your invites, and inviting people into a workspace by email.",
+        &[
+            Op::ListInvites,
+            Op::CreateInvite,
+            Op::RevokeInvite,
+            Op::ListWorkspaceInvites,
+            Op::InviteMember,
+            Op::RevokeWorkspaceInvite,
+        ],
     ),
     (
         "Repositories",
-        "A repository, how it handles pull requests, and its timeline.",
+        "A repository, how it handles pull requests, and its timeline: renaming, archiving, moving and deleting it.",
         &[
             Op::ListRepos,
             Op::CreateRepo,
             Op::GetRepo,
             Op::UpdateRepo,
+            Op::RenameRepo,
+            Op::RenameBranch,
+            Op::SetRepoVisibility,
+            Op::ArchiveRepo,
+            Op::UnarchiveRepo,
+            Op::TransferRepo,
+            Op::DeleteRepo,
+            Op::ListDeletedRepos,
+            Op::RestoreRepo,
+            Op::PurgeRepo,
             Op::GetRepoSettings,
             Op::UpdateRepoSettings,
             Op::ListEvents,
+        ],
+    ),
+    (
+        "Access",
+        "Who can do what in a repository: repository roles, people given a role on one repository (outside collaborators when they are not members), invitations, and a workspace's base permission.",
+        &[
+            Op::ListCollaborators,
+            Op::AddCollaborator,
+            Op::UpdateCollaborator,
+            Op::RemoveCollaborator,
+            Op::GetCollaboratorPermission,
+            Op::ListRepoInvitations,
+            Op::RevokeRepoInvitation,
+            Op::ListMyRepoInvitations,
+            Op::AcceptRepoInvitation,
+            Op::DeclineRepoInvitation,
+            Op::SetBasePermission,
+            Op::ListOutsideCollaborators,
         ],
     ),
     (
@@ -161,6 +201,27 @@ fn title(op: Op) -> &'static str {
     match op {
         Op::Whoami => "Get the current user",
         Op::CreateWorkspace => "Create a workspace",
+        Op::DeleteWorkspace => "Delete a workspace",
+        Op::ListEmails => "List your email addresses",
+        Op::AddEmail => "Add an email address",
+        Op::RemoveEmail => "Remove an email address",
+        Op::UpdateEmailSettings => "Change your email settings",
+        Op::ListInvites => "List your invites",
+        Op::CreateInvite => "Create an invite",
+        Op::RevokeInvite => "Revoke an invite",
+        Op::ListWorkspaceInvites => "List a workspace's invites",
+        Op::InviteMember => "Invite someone to a workspace",
+        Op::RevokeWorkspaceInvite => "Revoke a workspace's invite",
+        Op::TransferRepo => "Transfer a repository",
+        Op::RenameRepo => "Rename a repository",
+        Op::RenameBranch => "Rename a branch",
+        Op::ArchiveRepo => "Archive a repository",
+        Op::UnarchiveRepo => "Unarchive a repository",
+        Op::SetRepoVisibility => "Change a repository's visibility",
+        Op::DeleteRepo => "Delete a repository",
+        Op::ListDeletedRepos => "List recently deleted repositories",
+        Op::RestoreRepo => "Restore a deleted repository",
+        Op::PurgeRepo => "Purge a deleted repository",
         Op::ListRepos => "List repositories",
         Op::GetRepo => "Get a repository",
         Op::CreateRepo => "Create a repository",
@@ -228,13 +289,33 @@ fn title(op: Op) -> &'static str {
         Op::ListActionsVariables => "List variables",
         Op::SetActionsVariable => "Set a variable",
         Op::DeleteActionsVariable => "Delete a variable",
+        Op::ListCollaborators => "List who has access",
+        Op::AddCollaborator => "Add a collaborator",
+        Op::UpdateCollaborator => "Change a collaborator's role",
+        Op::RemoveCollaborator => "Remove a collaborator",
+        Op::GetCollaboratorPermission => "Get someone's permission",
+        Op::ListRepoInvitations => "List a repository's invitations",
+        Op::RevokeRepoInvitation => "Revoke a repository invitation",
+        Op::ListMyRepoInvitations => "List your repository invitations",
+        Op::AcceptRepoInvitation => "Accept a repository invitation",
+        Op::DeclineRepoInvitation => "Decline a repository invitation",
+        Op::SetBasePermission => "Set the base permission",
+        Op::ListOutsideCollaborators => "List outside collaborators",
     }
 }
 
-/// Whether an operation can be refused with `402 payment_required`: the
-/// ones that start an agent, when the workspace has no credit.
-fn may_need_payment(op: Op) -> bool {
-    matches!(op, Op::AssignIssue | Op::PlanWork | Op::ApplyPlan)
+/// Why an operation can be refused with `402 payment_required`, if it
+/// can: the ones that start an agent, when the workspace has no credit,
+/// and the ones that make a repository private in a workspace, when a free
+/// workspace's private storage has no room for it.
+fn may_need_payment(op: Op) -> Option<&'static str> {
+    match op {
+        Op::AssignIssue | Op::PlanWork | Op::ApplyPlan => Some("The workspace has no agent credit."),
+        Op::UpdateRepo | Op::SetRepoVisibility | Op::TransferRepo => Some(
+            "A free workspace's private storage has no room for this private repository.",
+        ),
+        _ => None,
+    }
 }
 
 /// What the reference says beyond each operation's own description, keyed
@@ -382,11 +463,8 @@ fn operation(route: &Route) -> Value {
         "401".into(),
         error_response("A token is required, or the one sent is not valid."),
     );
-    if may_need_payment(op) {
-        responses.insert(
-            "402".into(),
-            error_response("The workspace has no agent credit."),
-        );
+    if let Some(reason) = may_need_payment(op) {
+        responses.insert("402".into(), error_response(reason));
     }
     responses.insert("403".into(), error_response("Signed in, but not allowed to do this."));
     if !matches!(op, Op::Whoami | Op::ListRepos | Op::Search) {

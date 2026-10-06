@@ -85,7 +85,10 @@ export function accountName(account: string, names: Map<string, string> = new Ma
 /** Each kind of change, as staff read it. */
 export const AUDIT_ACTIONS: Record<string, string> = {
   terms: "Terms changed",
-  allowances: "Plan and pools changed",
+  allowances: "Plan, pools and caps changed",
+  payment: "Bank transfer recorded",
+  goodwill: "Goodwill credit",
+  request: "Request answered",
   create: "Enterprise created",
   attach: "Workspace added",
   detach: "Workspace removed",

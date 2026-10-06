@@ -1,4 +1,4 @@
-import { AlertOctagon, ArrowRight, CalendarClock, CreditCard, FileText, Gauge } from "lucide-react";
+import { Activity, AlertOctagon, ArrowRight, CalendarClock, CreditCard, FileText, Gauge, HandHelping, TrendingUp } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, redirect } from "react-router";
 
@@ -6,7 +6,8 @@ import type { Route } from "./+types/overview";
 import { KindBreakdown, MonthsChart } from "~/components/charts";
 import { SignalBadge, StaffName, StageBadge } from "~/components/sales";
 import { Avatar, Notice, PageHeader, Section, Stat } from "~/components/ui";
-import { change, marginOf, monthLong } from "~/lib/chart";
+import { change, monthLong } from "~/lib/chart";
+import { givenLabel, givenTotal, moneyApart } from "~/lib/pricing";
 import { usd } from "~/lib/money";
 import { admin } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
@@ -39,8 +40,11 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
   const previous = current ? months[months.indexOf(current) - 1] ?? null : null;
   const charged = current?.chargedMicros ?? overview?.byKind.reduce((sum, row) => sum + row.chargedMicros, 0) ?? 0;
   const cost = current?.costMicros ?? overview?.byKind.reduce((sum, row) => sum + row.costMicros, 0) ?? 0;
-  const margin = marginOf(charged, cost);
-  const growth = previous ? change(previous.chargedMicros, charged) : null;
+  const plans = current?.plansMicros ?? 0;
+  const given = overview?.given ?? [];
+  const givenSum = givenTotal(given);
+  const money = moneyApart({ chargedMicros: charged, plansMicros: plans, costMicros: cost }, givenSum.costMicros);
+  const growth = previous ? change(previous.chargedMicros + (previous.plansMicros ?? 0), money.revenueMicros) : null;
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
@@ -59,20 +63,40 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
         <>
           <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat
-              label="Charged this month"
-              value={usd(charged)}
-              hint={growth == null ? "Nothing last month to compare" : `${growth >= 0 ? "+" : "−"}${Math.abs(growth)}% on last month`}
+              label="Revenue this month"
+              value={usd(money.revenueMicros)}
+              hint={
+                <>
+                  {usd(charged)} usage, {usd(plans)} plans
+                  {growth == null ? "" : ` · ${growth >= 0 ? "+" : "−"}${Math.abs(growth)}% on last month`}
+                </>
+              }
               tone={growth != null && growth > 0 ? "mint" : undefined}
             />
-            <Stat label="Cost to g1t" value={usd(cost)} hint="What the usage cost on Cloudflare and model providers" />
             <Stat
-              label="Margin"
-              value={usd(margin.micros)}
-              hint={margin.percent == null ? "Nothing charged yet" : `${margin.percent}% of what was charged`}
-              tone={margin.micros < 0 ? "danger" : undefined}
+              label="Margin on what was sold"
+              value={usd(money.marginMicros)}
+              hint={
+                money.marginPercent == null
+                  ? "Nothing sold yet"
+                  : `${money.marginPercent}% of revenue, after ${usd(money.soldCostMicros)} of cost`
+              }
+              tone={money.marginMicros < 0 ? "danger" : undefined}
             />
-            <Stat label="Paying workspaces" value={String(overview.payingWorkspaces)} hint="Charged something this month" />
+            <Stat
+              label="Given by g1t"
+              value={usd(givenSum.micros)}
+              hint={`At price; it cost g1t ${usd(givenSum.costMicros)}. Not a loss on sales.`}
+            />
+            <Stat
+              label="Plans"
+              value={String(overview.activePlans ?? 0)}
+              hint={`${usd(overview.planMrrMicros ?? 0)} a month · ${overview.payingWorkspaces} paying this month`}
+            />
           </div>
+          <p className="mt-2 text-xs text-faint">
+            Cost to g1t in all {usd(cost)}; revenue less all of it, given included: {usd(money.netMicros)}.
+          </p>
 
           {overview.pools && (
             <div className="mt-3 grid grid-cols-2 gap-3">
@@ -100,8 +124,80 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
             </Section>
           </div>
 
+          <Section
+            title="Given this month, apart from margin"
+            description="Internal use, trials, the open-source pool, goodwill and what g1t covered: at price, and what it cost."
+            className="mt-6"
+          >
+            {given.length === 0 ? (
+              <p className="text-sm text-muted">Nothing given yet this month.</p>
+            ) : (
+              <div className="-mx-4 -my-4 overflow-x-auto sm:-mx-5 sm:-my-5">
+                <table className="w-full min-w-[26rem] text-sm">
+                  <thead>
+                    <tr className="border-b border-line text-left text-xs text-muted">
+                      <th className="px-4 py-2 font-medium sm:pl-5">Source</th>
+                      <th className="px-4 py-2 text-right font-medium">At price</th>
+                      <th className="px-4 py-2 text-right font-medium sm:pr-5">Cost to g1t</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {given.map((row) => (
+                      <tr key={row.source} className="border-b border-line last:border-0">
+                        <td className="px-4 py-2 sm:pl-5">{givenLabel(row)}</td>
+                        <td className="tabular px-4 py-2 text-right">{usd(row.micros)}</td>
+                        <td className="tabular px-4 py-2 text-right text-muted sm:pr-5">{usd(row.costMicros)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {(overview.internal ?? []).length > 0 && (
+              <ul className="mt-6 space-y-1 border-t border-line pt-3 text-xs">
+                {(overview.internal ?? []).map((row) => (
+                  <li key={row.workspace} className="flex flex-wrap justify-between gap-2">
+                    <span>
+                      <Link to={`/workspaces/${encodeURIComponent(row.workspace)}`} className="font-mono text-fg-soft hover:underline">
+                        {row.workspace}
+                      </Link>{" "}
+                      <span className="text-faint">{row.reason}</span>
+                    </span>
+                    <span className="tabular text-muted">
+                      {usd(row.costMicros)} cost · {row.entries} entries
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+
           <h2 className="mt-10 text-lg font-semibold tracking-tight">Needs attention</h2>
-          <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <AttentionCard
+              to="/requests"
+              icon={<HandHelping size={15} />}
+              label="Requests"
+              value={overview.openRequests ?? 0}
+              hint="Waiting for an answer, within one business day"
+              tone={(overview.openRequests ?? 0) > 0 ? "warn" : undefined}
+            />
+            <AttentionCard
+              to="/overages"
+              icon={<TrendingUp size={15} />}
+              label="Overages"
+              value={overview.overages ?? 0}
+              hint="Well past their typical month"
+              tone={(overview.overages ?? 0) > 0 ? "warn" : undefined}
+            />
+            <AttentionCard
+              to="/velocity"
+              icon={<Activity size={15} />}
+              label="Spikes"
+              value={overview.openSpikes ?? 0}
+              hint="Paused, waiting on an owner"
+              tone={(overview.openSpikes ?? 0) > 0 ? "danger" : undefined}
+            />
             <AttentionCard
               to={reachOutHref({ kind: "at_limit" })}
               icon={<AlertOctagon size={15} />}

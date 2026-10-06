@@ -1,0 +1,250 @@
+import { Mail, ShieldCheck } from "lucide-react";
+import { Form } from "react-router";
+
+import { type AccountEmails, type SecurityEvent, securityEventLabel } from "@g1t/contracts";
+
+import { addressActions, backupChoices } from "../lib/emails";
+import type { EmailActionData } from "../lib/emails.server";
+import { Button, ErrorText, Field, Input, Pill, TimeAgo } from "./ui";
+import { SwitchCard } from "./ui/switch";
+
+/** One small form posting one intent about one address. */
+function AddressButton({ intent, email, label }: { intent: string; email: string; label: string }) {
+  return (
+    <Form method="post">
+      <input type="hidden" name="intent" value={intent} />
+      <input type="hidden" name="email" value={email} />
+      <Button variant="quiet" type="submit">
+        {label}
+      </Button>
+    </Form>
+  );
+}
+
+/** What a waiting change does, for the line that asks for the password. */
+function describe(intent: string): string {
+  switch (intent) {
+    case "add-email":
+      return "adding";
+    case "remove-email":
+      return "removing";
+    case "primary-email":
+      return "making primary";
+    default:
+      return "for";
+  }
+}
+
+/** Asks for the password before a sensitive change goes through. */
+function ConfirmItIsYou({ pending, hasPassword }: { pending: NonNullable<EmailActionData>["reauth"]; hasPassword: boolean }) {
+  if (!pending) return null;
+  return (
+    <div role="alert" className="rounded-xl border border-accent/40 bg-surface p-4">
+      <p className="flex items-center gap-2 text-sm font-medium">
+        <ShieldCheck size={16} className="text-accent" /> Confirm it is you
+      </p>
+      {hasPassword ? (
+        <Form method="post" className="mt-3 space-y-3">
+          <p className="text-sm text-muted">
+            {pending.message}
+            {pending.fields.email ? (
+              <>
+                {" "}
+                ({describe(pending.intent)} <span className="text-fg">{pending.fields.email}</span>)
+              </>
+            ) : null}
+          </p>
+          <input type="hidden" name="intent" value={pending.intent} />
+          {Object.entries(pending.fields).map(([name, value]) => (
+            <input key={name} type="hidden" name={name} value={value} />
+          ))}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="grow">
+              <Field label="Password">
+                <Input name="password" type="password" autoComplete="current-password" required autoFocus />
+              </Field>
+            </div>
+            <Button type="submit">Confirm</Button>
+          </div>
+          <p className="text-xs text-faint">You will not be asked again for 10 minutes.</p>
+        </Form>
+      ) : (
+        <p className="mt-2 text-sm text-muted">
+          Your account signs in with GitHub only. Sign out, sign in with GitHub again, and make this change within 10
+          minutes. Or set a password with Forgot your password on the sign-in page.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** A person's email addresses, in their account settings. */
+export function EmailsSection({
+  data,
+  actionData,
+  hasPassword,
+}: {
+  data: AccountEmails | null;
+  actionData: EmailActionData | undefined;
+  hasPassword: boolean;
+}) {
+  if (!data) return null;
+  const backups = backupChoices(data.emails);
+  const backup = data.emails.find((email) => email.backup);
+  const full = data.emails.length >= data.limit;
+  return (
+    <section id="emails" className="scroll-mt-20">
+      <h2 className="font-medium">Emails</h2>
+      <p className="mt-1 text-sm text-muted">
+        Your primary address gets account mail and password resets. Any confirmed address signs you in and can
+        reset your password, and commits that carry it are shown as yours.
+      </p>
+
+      {actionData?.reauth && (
+        <div className="mt-4">
+          <ConfirmItIsYou pending={actionData.reauth} hasPassword={hasPassword} />
+        </div>
+      )}
+
+      <ul className="mt-4 divide-y divide-line rounded-md border border-line">
+        {data.emails.map((email) => {
+          const can = addressActions(email, data.emails);
+          return (
+            <li key={email.email} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
+              <div className="flex min-w-0 grow items-start gap-3">
+                <Mail size={16} className="mt-0.5 shrink-0 text-faint" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm">{email.email}</p>
+                  <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-faint">
+                    {email.primary && <Pill>Primary</Pill>}
+                    {email.backup && <Pill>Backup</Pill>}
+                    {email.verified ? (
+                      <span>
+                        Confirmed {email.verifiedAt ? <TimeAgo at={email.verifiedAt} /> : null}
+                      </span>
+                    ) : (
+                      <span className="text-warn">Unconfirmed: check your inbox for the link</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+                {can.resend && <AddressButton intent="resend-email" email={email.email} label="Resend link" />}
+                {can.makePrimary && <AddressButton intent="primary-email" email={email.email} label="Make primary" />}
+                {can.remove && <AddressButton intent="remove-email" email={email.email} label="Remove" />}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      <Form method="post" className="mt-4">
+        <input type="hidden" name="intent" value="add-email" />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="grow">
+            <Field label="Add an email address">
+              <Input name="email" type="email" autoComplete="email" placeholder="you@example.com" required disabled={full} />
+            </Field>
+          </div>
+          <Button type="submit" disabled={full}>
+            Add
+          </Button>
+        </div>
+        <p className="mt-1.5 text-xs text-faint">
+          {full ? `You have ${data.limit} addresses, the most an account can have.` : "g1t sends it a link to confirm it."}
+        </p>
+      </Form>
+      <ErrorText>{actionData?.emailError}</ErrorText>
+      {actionData?.emailNotice && (
+        <p role="status" className="mt-2 text-sm text-muted">
+          {actionData.emailNotice}
+        </p>
+      )}
+
+      <div className="mt-8">
+        <h3 className="text-sm font-medium">Backup address</h3>
+        <p className="mt-1 text-sm text-muted">
+          Security notices, such as a new address or a changed password, go to your primary and to this address.
+        </p>
+        <Form method="post" className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <input type="hidden" name="intent" value="backup-email" />
+          <label className="block grow">
+            <span className="sr-only">Backup address</span>
+            <select
+              name="backup"
+              defaultValue={backup?.email ?? ""}
+              disabled={backups.length === 0}
+              className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none transition-colors hover:border-line-strong focus:border-accent-dim disabled:opacity-60"
+            >
+              <option value="">Primary address only</option>
+              {backups.map((email) => (
+                <option key={email.email} value={email.email}>
+                  {email.email}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button variant="quiet" type="submit" disabled={backups.length === 0}>
+            Save
+          </Button>
+        </Form>
+        {backups.length === 0 && (
+          <p className="mt-2 text-xs text-faint">Add and confirm a second address to choose a backup.</p>
+        )}
+      </div>
+
+      <div className="mt-8">
+        <h3 className="text-sm font-medium">Privacy</h3>
+        <Form method="post" className="mt-3 space-y-3">
+          <input type="hidden" name="intent" value="email-privacy" />
+          <SwitchCard name="private" defaultChecked={data.privateEmail} title="Keep my email address private">
+            Merges and other commits g1t makes for you on the web, or an agent makes for you, use{" "}
+            <span className="font-mono text-fg [overflow-wrap:anywhere]">{data.noreply}</span> instead of your primary address.
+          </SwitchCard>
+          <SwitchCard name="block" defaultChecked={data.blockPrivatePushes} title="Block pushes that expose my email">
+            While your address is private, a push is refused if a commit in it has one of your confirmed
+            addresses as its author or committer. Commit with your noreply address instead.
+          </SwitchCard>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-faint">
+              Commits g1t makes for you now carry <span className="font-mono [overflow-wrap:anywhere]">{data.commitEmail}</span>.
+            </p>
+            <Button variant="quiet" type="submit">
+              Save
+            </Button>
+          </div>
+        </Form>
+      </div>
+    </section>
+  );
+}
+
+/** What happened to the account's security, newest first. */
+export function SecurityLogSection({ log }: { log: SecurityEvent[] }) {
+  return (
+    <section id="security-log" className="scroll-mt-20">
+      <h2 className="font-medium">Security log</h2>
+      <p className="mt-1 text-sm text-muted">
+        Changes to your addresses and password, by you or by g1t staff. If you do not recognise one, reset your
+        password.
+      </p>
+      {log.length === 0 ? (
+        <p className="mt-4 text-sm text-faint">Nothing yet.</p>
+      ) : (
+        <ul className="mt-4 divide-y divide-line rounded-md border border-line">
+          {log.map((event, at) => (
+            <li key={`${event.createdAt}:${at}`} className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
+              <p className="min-w-0 grow truncate text-sm">
+                {securityEventLabel(event)}
+                {event.byStaff && <span className="text-muted"> · by g1t staff{event.reason ? `: ${event.reason}` : ""}</span>}
+              </p>
+              <p className="shrink-0 text-xs text-faint">
+                <TimeAgo at={event.createdAt} />
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { readCookie } from "./mission.ts";
-import { chosenWorkspace, rememberWorkspace, workspaceFor } from "./workspace-choice.ts";
+import { chosenWorkspace, forgetWorkspace, rememberWorkspace, workspaceFor } from "./workspace-choice.ts";
 
 const mine = [{ slug: "flagon-io" }, { slug: "syntaqx" }];
 
@@ -35,4 +35,13 @@ test("the cookie reads back what was remembered", () => {
   assert.equal(readCookie("a=1; g1t_ws=flagon-io; b=2", "g1t_ws"), "flagon-io");
   assert.equal(readCookie(null, "g1t_ws"), null);
   assert.equal(readCookie("g1t_ws=%E0%A4%A", "g1t_ws"), null);
+});
+
+test("a deleted workspace you had chosen gives way to another, or to none", () => {
+  // syntaqx deleted: the cookie still names it, and you are in Flagon only.
+  assert.equal(chosenWorkspace([{ slug: "flagon-io" }], "syntaqx")?.slug, "flagon-io");
+  assert.equal(workspaceFor([{ slug: "flagon-io" }], "syntaqx", {})?.slug, "flagon-io");
+  // In no workspace at all: an account still works, with nothing chosen.
+  assert.equal(workspaceFor([], "syntaqx", {}), null);
+  assert.match(forgetWorkspace(true), /^g1t_ws=; Path=\/; Max-Age=0; SameSite=Lax; Secure$/);
 });

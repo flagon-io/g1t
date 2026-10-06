@@ -9,19 +9,24 @@ mod blame;
 mod catch_up;
 mod diff;
 mod git_http;
+mod git_ops;
 mod import;
 mod land;
+mod lifecycle;
 mod listing;
+mod mirror;
 mod refs;
 mod registry;
 mod run_access;
 mod secret_scan;
 mod store;
+mod transfer;
 
 use g1t_contracts::events::{
-    Event, GitPush, NewEvent, Publish, RepoCreated, RepoForked, RepoUpdated, RepoVisibilityChanged,
+    Event, GitPush, NewEvent, Publish, RepoCreated, RepoForked, RepoUpdated, WorkspaceDeleted,
     WorkspaceRenamed,
 };
+use g1t_contracts::access::{self, Capability};
 use g1t_contracts::repos::*;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, User, Viewer, is_valid_repo_name, new_id};
@@ -29,7 +34,10 @@ use g1t_kit::{args, now_ms, reply, rpc_method};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use serde::Serialize;
-use worker::{Context, Env, Fetcher, MessageBatch, Method, Request, Response, Result, event};
+use worker::{
+    Context, Env, Fetcher, MessageBatch, Method, Request, Response, Result, ScheduleContext, ScheduledEvent,
+    event,
+};
 
 use registry::{Registry, can_read, can_write, store_key};
 use store::{ArtifactsStore, GitRepo, GitStore, Scope};
@@ -40,10 +48,10 @@ const MAX_TEXT_BYTES: usize = 512 * 1024;
 /// How far back a pull request may have forked and still be landed.
 const MAX_ANCESTRY: u32 = 1000;
 const MAX_DESCRIPTION_CHARS: usize = 200;
-const SOURCE: &str = "repos";
-const UNVERIFIED: &str = "Confirm your email address first. Check your inbox, or resend the link from the banner on g1t.sh.";
+pub(crate) const SOURCE: &str = "repos";
+pub(crate) const UNVERIFIED: &str = "Confirm your email address first. Check your inbox, or resend the link from the banner on g1t.sh.";
 
-fn not_found<T>() -> Outcome<T> {
+pub(crate) fn not_found<T>() -> Outcome<T> {
     Outcome::fail(FailureCode::NotFound, "Repository not found.")
 }
 
@@ -130,16 +138,22 @@ async fn nearest_ancestor_in<R: GitRepo>(
     Ok(None)
 }
 
-struct Repos<S: GitStore> {
+pub(crate) struct Repos<S: GitStore> {
     registry: Registry,
     store: S,
     events: Fetcher,
     /// Asked during a push which secrets have been allowed.
     security: Option<Fetcher>,
+    /// Asked whether a workspace is on a plan, for its private storage.
+    billing: Option<Fetcher>,
+    /// Told when a repository moves, for the tokens of agents at work on it.
+    identity: Option<Fetcher>,
+    /// What a free workspace's private repositories may hold.
+    free_private_bytes: i64,
 }
 
 impl<S: GitStore> Repos<S> {
-    async fn publish<T: Serialize>(&self, event: NewEvent<T>) -> Result<()> {
+    pub(crate) async fn publish<T: Serialize>(&self, event: NewEvent<T>) -> Result<()> {
         g1t_kit::call(
             &self.events,
             "publish",
@@ -177,7 +191,7 @@ impl<S: GitStore> Repos<S> {
     }
 
     /// Resolves a repo the viewer may read; private repos look missing.
-    async fn readable(&self, path: &RepoPath, viewer: &Viewer) -> Result<Option<Repo>> {
+    pub(crate) async fn readable(&self, path: &RepoPath, viewer: &Viewer) -> Result<Option<Repo>> {
         self.visible(self.registry.by_path(path).await?, viewer)
             .await
     }
@@ -201,14 +215,29 @@ impl<S: GitStore> Repos<S> {
         let Some(repo) = self.readable(&a.path, &viewer).await? else {
             return Ok(not_found());
         };
-        if repo.fork_of.is_some() || !can_write(&repo, &viewer) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only members of the repository's workspace can change its settings.",
-            ));
+        // Its details take Maintain; its protection, Maintain too; who can
+        // see it, Admin (below). See g1t_contracts::access.
+        let protection_changes = a.protected.is_some_and(|protected| protected != repo.protected);
+        let details_change = a.description.is_some() || a.website.is_some() || a.topics.is_some();
+        let mut needed = Vec::new();
+        if details_change || !protection_changes {
+            needed.push(Capability::ManageSettings);
+        }
+        if protection_changes {
+            needed.push(Capability::ManageProtection);
+        }
+        let full_name = format!("{}/{}", repo.namespace, repo.name);
+        if repo.fork_of.is_some() {
+            return Ok(Outcome::fail(FailureCode::Forbidden, access::needs(Capability::ManageSettings, &full_name)));
+        }
+        if let Some(missing) = needed.into_iter().find(|capability| !registry::can(&repo, &viewer, *capability)) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, access::needs(missing, &full_name)));
         }
         if !a.actor.verified {
             return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
+        }
+        if let Some((code, message)) = lifecycle::archived_refusal(&repo) {
+            return Ok(Outcome::fail(code, message));
         }
         let description = match a.description {
             Some(text) => Some(
@@ -220,7 +249,27 @@ impl<S: GitStore> Repos<S> {
             .filter(|text| !text.is_empty()),
             None => repo.description.clone(),
         };
-        let is_private = a.is_private.unwrap_or(repo.is_private);
+        let website = match a.website.as_deref() {
+            Some(text) => match clean_website(text) {
+                Ok(website) => website,
+                Err(reason) => return Ok(Outcome::fail(FailureCode::Invalid, reason)),
+            },
+            None => repo.website.clone(),
+        };
+        // Who can see it is an owner's to change, and a free workspace's
+        // storage may not take it private: see lifecycle.rs.
+        let wants_private = a.is_private.filter(|private| *private != repo.is_private);
+        if wants_private.is_some()
+            && let Err((code, message)) = lifecycle::admin_only(
+                lifecycle::Asker::on(&a.actor, &repo),
+                &repo.namespace,
+                "change the visibility of",
+                Capability::Administer,
+            )
+        {
+            return Ok(Outcome::fail(code, message));
+        }
+        let is_private = repo.is_private;
         let protected = a.protected.unwrap_or(repo.protected);
         let topics = match &a.topics {
             Some(topics) => match clean_topics(topics) {
@@ -230,16 +279,20 @@ impl<S: GitStore> Repos<S> {
             None => repo.topics.clone(),
         };
         self.registry
-            .update(&repo.id, description.as_deref(), is_private, protected, &topics)
+            .update(&repo.id, description.as_deref(), protected, &topics, website.as_deref())
             .await?;
-        let visibility_changed = is_private != repo.is_private;
         let updated = Repo {
             description,
             is_private,
             protected,
             topics,
+            website,
             ..repo
         };
+        if let Some(private) = wants_private {
+            return self.change_visibility(updated, private, &a.actor, a.surface).await;
+        }
+        let visibility_changed = false;
         // Search and anything else that shows the repository hears of it;
         // a change of visibility is announced on its own as well, so that
         // what was public stops being shown at once.
@@ -257,19 +310,6 @@ impl<S: GitStore> Repos<S> {
             },
         })
         .await?;
-        if visibility_changed {
-            self.publish(NewEvent {
-                kind: "repo.visibility_changed",
-                source: SOURCE,
-                repo_id: Some(updated.id.clone()),
-                actor: Some(a.actor.id),
-                data: RepoVisibilityChanged {
-                    repo_id: updated.id.clone(),
-                    is_private,
-                },
-            })
-            .await?;
-        }
         Ok(Outcome::Ok(updated))
     }
 
@@ -329,11 +369,36 @@ impl<S: GitStore> Repos<S> {
             ));
         }
         let path = RepoPath { namespace, name };
-        if self.registry.by_path(&path).await?.is_some() {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                "That workspace already has a repository with that name.",
-            ));
+        match self.registry.by_path_any(&path).await? {
+            Some((_, None)) => {
+                return Ok(Outcome::fail(
+                    FailureCode::Conflict,
+                    "That workspace already has a repository with that name.",
+                ));
+            }
+            Some((_, Some(_))) => {
+                return Ok(Outcome::fail(
+                    FailureCode::Conflict,
+                    format!(
+                        "{}/{} was deleted recently and can still be restored, so its name is taken. Restore it, or delete it permanently from the workspace's Recently deleted list.",
+                        path.namespace, path.name
+                    ),
+                ));
+            }
+            None => {}
+        }
+        // With a credential (a GitHub App installation's token), everything
+        // is copied: every branch and tag. See mirror.rs.
+        let mut credentialed = None;
+        if let (Some(url), Some(token)) = (a.import_url.as_deref(), a.import_token.as_deref()) {
+            let Some(url) = import::clean_url(url) else {
+                return Ok(Outcome::fail(FailureCode::Invalid, "That is not an https repository address."));
+            };
+            let source = mirror::Endpoint::github(&url, token);
+            match mirror::probe(&source).await? {
+                Ok(advertised) => credentialed = Some((source, advertised)),
+                Err(reason) => return Ok(Outcome::fail(FailureCode::Invalid, reason)),
+            }
         }
         // An import is fetched before anything is created, so that an
         // address that does not work leaves nothing behind.
@@ -342,7 +407,7 @@ impl<S: GitStore> Repos<S> {
             .import_url
             .as_deref()
             .map(str::trim)
-            .filter(|url| !url.is_empty())
+            .filter(|url| !url.is_empty() && credentialed.is_none())
         {
             let Some(url) = import::clean_url(url) else {
                 return Ok(Outcome::fail(
@@ -373,11 +438,15 @@ impl<S: GitStore> Repos<S> {
             owner_id: a.owner.id.clone(),
             default_branch: imported
                 .as_ref()
-                .map_or_else(|| "main".to_owned(), |(remote, _)| remote.branch.clone()),
+                .map(|(remote, _)| remote.branch.clone())
+                .or_else(|| credentialed.as_ref().and_then(|(_, advertised)| advertised.default_branch()))
+                .unwrap_or_else(|| "main".to_owned()),
             fork_of: None,
             protected: false,
             created_at: rfc3339(now),
             topics: Vec::new(),
+            website: None,
+            archived_at: None,
         };
         self.registry.claim_store_key(&repo).await?;
         self.store
@@ -388,6 +457,14 @@ impl<S: GitStore> Repos<S> {
             )
             .await?;
         self.registry.insert(&repo).await?;
+        // A repository that was transferred away from this path stops
+        // redirecting here.
+        self.registry
+            .drop_redirect(&RepoPath {
+                namespace: repo.namespace.clone(),
+                name: repo.name.clone(),
+            })
+            .await?;
         let mut pushed = None;
         if let Some((remote, pack)) = imported {
             let access = self
@@ -406,6 +483,32 @@ impl<S: GitStore> Repos<S> {
                 ));
             }
             pushed = Some(remote.head);
+        }
+        if let Some((source, _)) = credentialed {
+            let access = self
+                .store
+                .open(&store_key(&repo))
+                .await?
+                .access(Scope::Write)
+                .await?;
+            let target = mirror::Endpoint::bearer(&access.remote, &access.token);
+            match mirror::copy(&source, &target, mirror::Prune::Yes).await? {
+                Ok(copied) => {
+                    let branch = format!("refs/heads/{}", repo.default_branch);
+                    pushed = copied
+                        .updated
+                        .into_iter()
+                        .find(|(name, _, _)| *name == branch)
+                        .map(|(_, _, new)| new);
+                }
+                Err(reason) => {
+                    self.registry.remove(&repo.id).await?;
+                    return Ok(Outcome::fail(
+                        FailureCode::Invalid,
+                        format!("The repository could not be copied: {reason}"),
+                    ));
+                }
+            }
         }
         self.publish(NewEvent {
             kind: "repo.created",
@@ -705,6 +808,9 @@ impl<S: GitStore> Repos<S> {
         else {
             return Ok(not_found());
         };
+        if let Some((code, message)) = lifecycle::archived_refusal(&source) {
+            return Ok(Outcome::fail(code, message));
+        }
         let now = now_ms();
         let fork = Repo {
             id: new_id("rep", now),
@@ -719,6 +825,8 @@ impl<S: GitStore> Repos<S> {
             protected: false,
             created_at: rfc3339(now),
             topics: Vec::new(),
+            website: None,
+            archived_at: None,
         };
         self.registry.claim_store_key(&fork).await?;
         self.store
@@ -774,6 +882,23 @@ impl<S: GitStore> Repos<S> {
                 if !allowed {
                     return Ok(denied());
                 }
+                // An archived repository, or a pull request's copy of one,
+                // is read-only.
+                if write {
+                    let archived = match &repo.fork_of {
+                        Some(source) => self.registry.by_id(source).await?,
+                        None => Some(repo.clone()),
+                    };
+                    match archived {
+                        Some(source) => {
+                            if let Some((code, message)) = lifecycle::archived_refusal(&source) {
+                                return Ok(Outcome::fail(code, format!("{message}\n")));
+                            }
+                        }
+                        // The repository it was copied from is deleted.
+                        None => return Ok(denied()),
+                    }
+                }
                 repo
             }
             None => {
@@ -793,6 +918,7 @@ impl<S: GitStore> Repos<S> {
                         description: None,
                         is_private: false,
                         import_url: None,
+                        import_token: None,
                     })
                     .await?;
                 match created {
@@ -819,14 +945,17 @@ impl<S: GitStore> Repos<S> {
         let Some(target) = target.filter(|repo| can_read(repo, &actor)) else {
             return Ok(not_found());
         };
-        if !can_write(&target, &actor) {
+        if !registry::can(&target, &actor, Capability::Merge) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
-                "Only members of the repository's workspace can merge a pull request.",
+                access::needs(Capability::Merge, &format!("{}/{}", target.namespace, target.name)),
             ));
         }
         if !a.actor.verified {
             return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
+        }
+        if let Some((code, message)) = lifecycle::archived_refusal(&target) {
+            return Ok(Outcome::fail(code, message));
         }
 
         let branch = &target.default_branch;
@@ -1011,10 +1140,17 @@ impl<S: GitStore> Repos<S> {
         };
         // A workspace that was renamed: git follows a redirect when it
         // first asks for refs, and uses the new address from then on.
-        if self.registry.by_path(&git.path).await?.is_none()
-            && let Some(location) = git_http::renamed(&request.url()?, &env.service("IDENTITY")?).await?
-        {
-            return git_http::moved(&location, request.method() == Method::Get);
+        if self.registry.by_path(&git.path).await?.is_none() {
+            if let Some(location) = git_http::renamed(&request.url()?, &env.service("IDENTITY")?).await? {
+                return git_http::moved(&location, request.method() == Method::Get);
+            }
+            // A repository transferred to another workspace: the same,
+            // to its new path. Fetches and pushes both follow it.
+            if let Some(now) = self.registry.resolve_moved(&git.path).await?
+                && let Some(location) = git_http::transferred(&request.url()?, &now)
+            {
+                return git_http::moved(&location, request.method() == Method::Get);
+            }
         }
         let viewer = git_http::viewer(&request, &env.service("IDENTITY")?).await?;
         // A run credential is checked against its grants, then acts as the
@@ -1040,14 +1176,56 @@ impl<S: GitStore> Repos<S> {
         };
         // A protected default branch takes changes only from a merged pull
         // request, which lands without going through here.
-        let protected = match self.registry.by_path(&git.path).await? {
-            Some(repo) if repo.protected && repo.fork_of.is_none() => Some(repo.default_branch),
+        let here = self.registry.by_path(&git.path).await?;
+        let protected = match &here {
+            Some(repo) if repo.protected && repo.fork_of.is_none() => Some(repo.default_branch.clone()),
             _ => None,
         };
+        // Clones check out the default branch g1t keeps, which can have
+        // changed since the store made the repository.
+        let default_branch = here
+            .as_ref()
+            .filter(|repo| repo.fork_of.is_none())
+            .map(|repo| repo.default_branch.clone());
+        // Each clone, fetch and push is a git operation, which the git store
+        // charges g1t for: counted for billing, and a free workspace far
+        // past its share is slowed down rather than charged. See git_ops.rs.
+        if request.method() == Method::Post && git.endpoint != "info/refs" {
+            let namespace = git.path.namespace.to_lowercase();
+            match git_ops::count(&self.registry.db, &namespace, &rfc3339(now_ms())).await {
+                Ok((month, hour)) => {
+                    let limits = git_ops::Limits::from_env(env);
+                    if git_ops::slow_down(month, hour, limits.free_cap, limits.hourly)
+                        && git_ops::is_free(env.service("BILLING").ok().as_ref(), &namespace).await
+                    {
+                        self.finish_git(audit, 429, Some("Too many git operations this hour.".to_owned())).await;
+                        return git_ops::too_many(&namespace, limits.free_cap, limits.hourly);
+                    }
+                }
+                Err(error) => worker::console_error!("git operation for {namespace} not counted: {error}"),
+            }
+        }
+        // A free workspace is never charged for private storage: once its
+        // private repositories hold the free amount, pushes to them stop.
+        // Checked when a push begins, so git shows the reason.
+        if git.service == GitService::ReceivePack && git.endpoint == "info/refs" {
+            let namespace = git.path.namespace.to_lowercase();
+            let private = self.registry.by_path(&git.path).await?.is_some_and(|repo| repo.is_private);
+            if private {
+                let free = git_ops::free_private_bytes(env);
+                let held = self.registry.private_bytes(&namespace).await.unwrap_or(0);
+                if git_ops::storage_full(held, free)
+                    && git_ops::is_free(env.service("BILLING").ok().as_ref(), &namespace).await
+                {
+                    self.finish_git(audit, 403, Some("Free private storage is full.".to_owned())).await;
+                    return git_ops::storage_full_response(&namespace, held, free);
+                }
+            }
+        }
         // Push protection: a push that adds a secret is refused. See secret_scan.rs.
         let scan = async |body: &[u8]| self.protect(&git.path, viewer.as_ref(), body).await;
         let forwarded =
-            match git_http::forward(request, &git, &access, protected.as_deref(), scan).await? {
+            match git_http::forward(request, &git, &access, protected.as_deref(), default_branch.as_deref(), scan).await? {
                 git_http::Push::Forwarded(forwarded) => forwarded,
                 git_http::Push::Refused(response) => {
                     self.finish_git(audit, 403, Some("The push would change a protected branch.".to_owned())).await;
@@ -1107,14 +1285,21 @@ impl<S: GitStore> Repos<S> {
     }
 }
 
-#[event(fetch)]
-async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response> {
-    let repos = Repos {
+fn service(env: &Env) -> Result<Repos<ArtifactsStore>> {
+    Ok(Repos {
         registry: Registry { db: env.d1("DB")? },
-        store: ArtifactsStore::new(&env)?,
+        store: ArtifactsStore::new(env)?,
         events: env.service("EVENTS")?,
         security: env.service("SECURITY").ok(),
-    };
+        billing: env.service("BILLING").ok(),
+        identity: env.service("IDENTITY").ok(),
+        free_private_bytes: git_ops::free_private_bytes(env),
+    })
+}
+
+#[event(fetch)]
+async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response> {
+    let repos = service(&env)?;
     let Some(method) = rpc_method(&request) else {
         return repos.git_http(request, &env).await;
     };
@@ -1160,6 +1345,30 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
             )
         }
         "create" => reply(&repos.create(args(body)?).await?),
+        // Services only: a GitHub mirror catching up, or pushing out.
+        "mirror" => reply(&repos.mirror(args(body)?).await?),
+        "transfer" => reply(&repos.transfer(args(body)?).await?),
+        // A repository's lifecycle: see lifecycle.rs.
+        "delete" => reply(&repos.delete(args(body)?).await?),
+        "deleted" => reply(&repos.deleted(args(body)?).await?),
+        "restore" => reply(&repos.restore(args(body)?).await?),
+        "purge" => reply(&repos.purge(args(body)?).await?),
+        "purge_due" => reply(&repos.purge_due(args(body)?).await?),
+        "rename" => reply(&repos.rename(args(body)?).await?),
+        "archive" => reply(&repos.archive(args(body)?).await?),
+        "set_visibility" => reply(&repos.set_visibility(args(body)?).await?),
+        "set_default_branch" => reply(&repos.set_default_branch(args(body)?).await?),
+        "rename_branch" => reply(&repos.rename_branch(args(body)?).await?),
+        "resolve_branch" => reply(&repos.resolve_branch(args(body)?).await?),
+        "status_by_id" => reply(&repos.status_by_id(args(body)?).await?),
+        "resolve_path" => {
+            let a: ResolvePathArgs = args(body)?;
+            reply(&repos.registry.resolve_moved(&a.path).await?)
+        }
+        "namespace_count" => {
+            let a: NamespaceCountArgs = args(body)?;
+            reply(&repos.registry.count_in(&a.namespace).await?)
+        }
         "update" => reply(&repos.update(args(body)?).await?),
         "tree" => reply(&repos.tree(args(body)?).await?),
         "blob" => reply(&repos.blob(args(body)?).await?),
@@ -1185,6 +1394,10 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
             reply(&repos.registry.visibility(&a.paths).await?)
         }
         "storage" => reply(&repos.registry.storage().await?),
+        "git_operations" => {
+            let a: GitOperationsArgs = args(body)?;
+            reply(&git_ops::totals(&repos.registry.db, &a.month, a.since.as_deref(), a.namespace.as_deref().map(str::to_lowercase).as_deref()).await?)
+        }
         "all_ids" => {
             let a: AllIdsArgs = args(body)?;
             let limit = a.limit.clamp(1, 500);
@@ -1196,16 +1409,39 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     }
 }
 
-/// Events from the bus. Only a workspace's rename concerns this service:
-/// its repositories move to the workspace's current slug, asked of identity
-/// by id, so a repeated or late delivery lands in the same place. Their git
-/// store keys stay as they were.
+/// The hourly sweep: deleted repositories whose time to be restored has
+/// passed are purged. See lifecycle.rs.
+#[event(scheduled)]
+async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
+    let purged = match service(&env) {
+        Ok(repos) => repos.purge_due(PurgeDueArgs::default()).await,
+        Err(error) => Err(error),
+    };
+    match purged {
+        Ok(0) => {}
+        Ok(count) => worker::console_log!("repos: purged {count} deleted repositories"),
+        Err(error) => worker::console_error!("repos: the purge sweep failed: {error}"),
+    }
+}
+
+/// Events from the bus. A workspace's rename: its repositories move to the
+/// workspace's current slug, asked of identity by id, so a repeated or late
+/// delivery lands in the same place; their git store keys stay as they
+/// were. A workspace's deletion: what it left in Recently deleted is
+/// purged with it.
 #[event(queue)]
 async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()> {
     let registry = Registry { db: env.d1("DB")? };
     let identity = env.service("IDENTITY")?;
     for message in batch.messages()? {
         let event = message.body();
+        if event.kind == "workspace.deleted" {
+            match serde_json::from_value::<WorkspaceDeleted>(event.data.clone()) {
+                Ok(deleted) => service(&env)?.purge_workspace(&deleted.slug.to_lowercase()).await?,
+                Err(_) => worker::console_error!("workspace.deleted {} could not be read", event.id),
+            }
+            continue;
+        }
         if event.kind != "workspace.renamed" {
             continue;
         }

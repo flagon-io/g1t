@@ -10,9 +10,10 @@
   },
   "dependencies": {
     "@astrojs/starlight": "^0.42.5",
+    "@g1t/theme": "*",
+    "@lucide/astro": "^1.52.0",
     "astro": "^7.2.10",
-    "sharp": "^0.35.3",
-    "@g1t/theme": "*"
+    "sharp": "^0.35.3"
   },
   "private": true,
   "license": "MIT"

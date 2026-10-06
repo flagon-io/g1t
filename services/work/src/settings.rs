@@ -148,11 +148,16 @@ impl Work {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        if !a.actor.verified || !a.actor.is_member(&repo.namespace) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only members of the workspace can change a repository's settings.",
-            ));
+        if let Outcome::Fail(failure) = crate::retired::writable(&repo) {
+            return Ok(Outcome::Fail(failure));
+        }
+        if !a.actor.verified {
+            return Ok(Outcome::fail(FailureCode::Forbidden, crate::UNVERIFIED));
+        }
+        if let Outcome::Fail(failure) =
+            crate::allowed(Some(&a.actor), &repo, g1t_contracts::access::Capability::ManageSettings)
+        {
+            return Ok(Outcome::Fail(failure));
         }
         let settings = RepoSettings {
             required_approvals: a.settings.required_approvals.min(MAX_REQUIRED_APPROVALS),

@@ -398,16 +398,27 @@ impl Pack {
     }
 }
 
-/// What a commit says about its place in history.
-#[derive(Debug, PartialEq, Eq)]
+/// What a commit says about its place in history, and whose it is.
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct CommitInfo {
     pub tree: String,
     pub parents: Vec<String>,
+    /// The address on the `author` line, as written.
+    pub author_email: Option<String>,
+    /// The address on the `committer` line, as written.
+    pub committer_email: Option<String>,
+}
+
+/// The address in a signature line's value: `Name <address> 1700000000 +0000`.
+fn signature_email(value: &str) -> Option<String> {
+    let start = value.rfind('<')?;
+    let end = start + value[start..].find('>')?;
+    Some(value[start + 1..end].trim().to_owned())
 }
 
 pub fn parse_commit(data: &[u8]) -> CommitInfo {
     let text = String::from_utf8_lossy(data);
-    let mut info = CommitInfo { tree: String::new(), parents: Vec::new() };
+    let mut info = CommitInfo::default();
     for line in text.lines() {
         if line.is_empty() {
             break;
@@ -416,6 +427,10 @@ pub fn parse_commit(data: &[u8]) -> CommitInfo {
             info.tree = tree.trim().to_owned();
         } else if let Some(parent) = line.strip_prefix("parent ") {
             info.parents.push(parent.trim().to_owned());
+        } else if let Some(author) = line.strip_prefix("author ") {
+            info.author_email = signature_email(author);
+        } else if let Some(committer) = line.strip_prefix("committer ") {
+            info.committer_email = signature_email(committer);
         }
     }
     info
@@ -570,6 +585,17 @@ pub(crate) mod tests {
         let info = parse_commit(commit.as_bytes());
         assert_eq!(info.parents, ["aaaa", "bbbb"]);
         assert_eq!(info.tree.len(), 40);
+        assert_eq!(info.author_email, None);
+        let signed = parse_commit(
+            b"tree t
+author Ada L <Ada@Example.com> 1700000000 +0000
+committer Bot <bot@x.io> 1700000000 +0000
+
+author <no@x.io>
+",
+        );
+        assert_eq!(signed.author_email.as_deref(), Some("Ada@Example.com"));
+        assert_eq!(signed.committer_email.as_deref(), Some("bot@x.io"));
         let pack = build_pack(&[(ObjectKind::Commit, commit.into_bytes())], &[]);
         assert_eq!(Pack::parse(&pack).unwrap().commits().len(), 1);
     }

@@ -3,6 +3,7 @@ import { page } from "../../lib/meta";
 import { BlobView } from "../../components/repo-view";
 import { highlight, highlightLines } from "../../lib/highlight.server";
 import { repos } from "../../lib/services.server";
+import { redirectIfBranchRenamed } from "../../lib/branch-redirect.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -18,6 +19,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     repos.blob(path, viewer, params.ref, file),
     wantsBlame ? repos.blame(path, viewer, params.ref, file) : null,
   ]);
+  // A branch that was renamed: the same file on its new name.
+  if (!found.ok && found.error.code === "not_found") await redirectIfBranchRenamed(request, path, viewer, params.ref);
   const blob = unwrap(found);
   if (blame?.ok && blob.text != null) {
     return {

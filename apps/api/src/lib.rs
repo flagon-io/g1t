@@ -157,15 +157,20 @@ async fn receive_hook(request: &mut Request, services: &Services, id: &str) -> R
         .map(|(name, value)| (name.to_lowercase(), value))
         .collect();
     let body = request.text().await.unwrap_or_default();
-    if body.len() > 1_000_000 {
+    // A push to GitHub with many commits makes a large payload.
+    let limit = if id == "github" { 10_000_000 } else { 1_000_000 };
+    if body.len() > limit {
         return Ok(reply(&json!({ "message": "The body is too large." }))?.with_status(413));
     }
-    let received: g1t_contracts::integrations::Received = g1t_kit::call(
-        &services.integrations,
-        "receive",
-        &json!({ "id": id, "headers": headers, "body": body }),
-    )
-    .await?;
+    // g1t's GitHub App has one webhook for every installation; it is
+    // checked against the app's own secret.
+    let (method, args) = if id == "github" {
+        ("github_receive", json!({ "headers": headers, "body": body }))
+    } else {
+        ("receive", json!({ "id": id, "headers": headers, "body": body }))
+    };
+    let received: g1t_contracts::integrations::Received =
+        g1t_kit::call(&services.integrations, method, &args).await?;
     Ok(reply(&json!({ "message": received.message }))?.with_status(received.status))
 }
 

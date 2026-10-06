@@ -22,9 +22,27 @@
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "EVENTS", "service": "g1t-events" },
 		// Push protection asks which secrets were allowed, and records the rest.
-		{ "binding": "SECURITY", "service": "g1t-security" }
+		{ "binding": "SECURITY", "service": "g1t-security" },
+		// Whether a workspace far past its free git operations is on the
+		// plan (src/git_ops.rs); asked only then.
+		{ "binding": "BILLING", "service": "g1t-billing" }
 	],
-	// A workspace renamed moves its repositories to the new slug.
+	// A free workspace past this many git operations in a month is slowed
+	// to this many an hour, never charged (src/git_ops.rs). Billing's
+	// GIT_OPERATIONS_FREE_CAP says the same on the pricing page.
+	// FREE_PRIVATE_STORAGE_BYTES: a free workspace's private repositories may
+	// hold this much (1 GB); past it, pushes to them stop. Billing reads the
+	// same amount.
+	"vars": {
+		"GIT_OPERATIONS_FREE_CAP": "50000",
+		"GIT_OPERATIONS_FREE_HOURLY": "60",
+		"FREE_PRIVATE_STORAGE_BYTES": "1000000000"
+	},
+	// Every hour, deleted repositories whose 30 days to be restored have
+	// passed are purged, their git data with them (src/lifecycle.rs).
+	"triggers": { "crons": ["23 * * * *"] },
+	// A workspace renamed moves its repositories to the new slug; one
+	// deleted purges the repositories it left in Recently deleted.
 	"queues": {
 		"consumers": [{ "queue": "g1t-events-repos", "max_batch_size": 20, "max_batch_timeout": 1 }]
 	},

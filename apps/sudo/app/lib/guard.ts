@@ -5,14 +5,14 @@
 
 /**
  * The pages ship no JavaScript, so no script may run at all; styles and
- * images come only from sudo itself, fonts from Google Fonts, and forms
- * post only back to sudo.
+ * images and fonts come only from sudo itself, and forms post only back
+ * to sudo.
  */
 export const CONTENT_SECURITY_POLICY = [
   "default-src 'none'",
   "script-src 'none'",
-  "style-src 'self' https://fonts.googleapis.com",
-  "font-src https://fonts.gstatic.com",
+  "style-src 'self'",
+  "font-src 'self'",
   "img-src 'self' data:",
   "form-action 'self'",
   "frame-ancestors 'none'",
@@ -46,7 +46,7 @@ export function secure(response: Response): Response {
 const DENIED_STYLE = `
 :root{color-scheme:dark}
 body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f0f11;color:#ededef;
-font:15px/1.6 Inter,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+font:15px/1.6 'Hanken Grotesk',ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 main{max-width:28rem;padding:2rem 1rem;text-align:center}
 .badge{display:inline-block;border:1px solid #b6a8ff66;color:#b6a8ff;background:#b6a8ff1a;border-radius:999px;
 padding:.1rem .6rem;font:600 12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}

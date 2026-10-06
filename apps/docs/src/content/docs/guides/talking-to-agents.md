@@ -36,8 +36,9 @@ a prompt, `Message from <your username>: …`, so anyone reading the session lat
 what changed its course. The pull request's conversation notes that you
 sent the agent a message.
 
-Who can send one: the pull request's author and members of the
-repository's workspace, while the pull request is a draft or open. A
+Who can send one: the pull request's author and people with the Write
+[role](/guides/access-and-roles/) or higher on the repository, while the pull request is
+a draft or open. A
 message is up to 4,000 characters.
 
 From the API or your own agent, use `message_agent` or
@@ -141,7 +142,8 @@ read, read, answered or taken on, or declined.
   request.
 - A message or an answer is up to 4,000 characters. A question or a handoff
   is answered once.
-- Members of the workspace and g1t's agents can answer.
+- People with the Write role or higher on the repository, and g1t's
+  agents, can answer.
 
 ## Your own agent
 

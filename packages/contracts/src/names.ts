@@ -6,7 +6,11 @@ const REPO_NAME = /^[a-z0-9._-]{1,100}$/;
 /** Routes and reserved words that may not be registered as usernames. */
 const RESERVED = new Set([
   "api", "mcp", "login", "logout", "register", "new", "settings", "search",
-  "admin", "auth", "pulls", "issues", "verify", "forgot", "reset", "device", "workspaces", "u", "oauth", "assets", "avatars", "docs", "explore", "g1t", "about", "pricing",
+  "admin", "auth", "integrations", "pulls", "issues", "verify", "forgot", "reset", "device", "workspaces", "u", "oauth", "assets", "avatars", "docs", "explore", "g1t", "about", "pricing",
+  // Trust pages on g1t.sh, and names kept for them.
+  "policies", "security", "support", "status", "terms", "privacy", "help", "blog",
+  // Invite links, and the waitlist.
+  "invite", "invites", "waitlist",
 ]);
 
 export function isValidNamespace(value: string): boolean {

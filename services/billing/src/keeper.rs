@@ -165,23 +165,42 @@ pub(crate) struct ContainerUsage {
 const SANDBOX_GIB: f64 = 4.0;
 const SANDBOX_DISK_GB: f64 = 8.0;
 const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
+/// The Durable Object behind each container is billed for as long as the
+/// container runs, at 128 MB.
+const SANDBOX_DO_GB: f64 = 0.125;
 
 /// Cloudflare's published Containers rates, in dollars, used for any rate
 /// the bill does not show yet (while usage is inside the included amount).
 const LIST_MEMORY_GIB_SECOND: f64 = 0.000_002_5;
 const LIST_DISK_GB_SECOND: f64 = 0.000_000_07;
 const LIST_VCPU_SECOND: f64 = 0.000_02;
+/// Durable Objects duration: $12.50 per million GB-seconds.
+const LIST_DO_GB_SECOND: f64 = 0.000_012_5;
 
-/// What one second of a sandbox costs, in millionths of a dollar: its
-/// memory and disk for the whole second, and the CPU sandboxes actually
-/// use per second of running, which is billed only while busy.
-pub(crate) fn sandbox_second_micros(usage: ContainerUsage, memory: f64, disk: f64, vcpu: f64) -> Option<f64> {
+/// What one second of a sandbox costs whatever it does, in millionths of a
+/// dollar: its memory and disk, and the Durable Object behind it, for the
+/// whole second. CPU is billed only while busy, on top.
+pub(crate) fn sandbox_base_micros(memory: f64, disk: f64, durable_object: f64) -> f64 {
+    (SANDBOX_GIB * memory + SANDBOX_DISK_GB * disk + SANDBOX_DO_GB * durable_object) * MICROS_PER_DOLLAR as f64
+}
+
+/// What one second of a sandbox costs on average, in millionths of a
+/// dollar: its base, and the CPU sandboxes actually use per second of
+/// running. Runs that report their own CPU are priced on it instead (see
+/// `run_cost`).
+pub(crate) fn sandbox_second_micros(usage: ContainerUsage, memory: f64, disk: f64, vcpu: f64, durable_object: f64) -> Option<f64> {
     let instance_seconds = usage.memory_byte_seconds / (SANDBOX_GIB * GIB);
     if instance_seconds < 3600.0 {
         return None;
     }
     let cpu_share = usage.cpu_seconds / instance_seconds;
-    Some((SANDBOX_GIB * memory + SANDBOX_DISK_GB * disk + cpu_share * vcpu) * MICROS_PER_DOLLAR as f64)
+    Some(sandbox_base_micros(memory, disk, durable_object) + cpu_share * vcpu * MICROS_PER_DOLLAR as f64)
+}
+
+/// What a run that reported its own CPU cost g1t: its base for every
+/// second, and its vCPU-seconds at the vCPU rate.
+pub(crate) fn run_cost(seconds: i64, cpu_seconds: f64, base_per_second: f64, per_vcpu_second: f64) -> f64 {
+    seconds.max(0) as f64 * base_per_second + cpu_seconds.max(0.0) * per_vcpu_second
 }
 
 /// A unit's marginal rate from the bill: the median, over the days that
@@ -361,6 +380,11 @@ impl Billing {
                 free_private_storage_bytes: self.plans.free_storage_bytes,
                 audit_retention_days: self.plans.audit_days,
                 min_charge_micros: self.plans.min_charge_micros,
+                git_operations_included: self.plans.git_included,
+                git_operations_free_cap: self.plans.git_free_cap,
+                plan_private_storage_bytes: self.plans.plan_storage_bytes,
+                paid_start_ceiling_micros: self.plans.paid_start_micros,
+                overage_forgive_cost_micros: self.plans.forgive_cost_micros,
             }),
         })
     }
@@ -474,7 +498,7 @@ impl Billing {
             // Never reported: charged now, from the gateway's figure.
             None => {
                 let charge = charge_for(gateway_micros);
-                let eligible = crate::credits::Eligible { trial: true, repo: Some(run.repo.clone()) };
+                let eligible = crate::credits::eligible_for(Some(g1t_contracts::billing::ComputeKind::Agent), None);
                 let drawn = self.draw(&run.workspace, charge, &settled_at[..7], &eligible).await?;
                 let description = format!(
                     "Work on {}#{}, settled from AI Gateway after the sandbox stopped without reporting{free_note}{}",
@@ -495,7 +519,7 @@ impl Billing {
                 let change = correction(charge_for(reported), charge_for(gateway_micros), -charged.amount_micros);
                 // A charge up is paid for like any other charge.
                 let drawn = if change > 0 {
-                    let eligible = crate::credits::Eligible { trial: true, repo: Some(run.repo.clone()) };
+                    let eligible = crate::credits::eligible_for(Some(g1t_contracts::billing::ComputeKind::Agent), None);
                     self.draw(&run.workspace, change, &settled_at[..7], &eligible).await?
                 } else {
                     crate::credits::Drawn::default()
@@ -572,21 +596,27 @@ impl Billing {
         let memory = billed_rate(&named(&["container memory"]));
         let disk = billed_rate(&named(&["container disk"]));
         let vcpu = billed_rate(&named(&["container vcpu"]));
+        let durable_object = billed_rate(&named(&["durable objects", "duration"]));
         let usage = keeper.container_usage(&since[..10], today).await?;
-        if let Some(per_second) = sandbox_second_micros(
-            usage,
+        let rates = (
             memory.unwrap_or(LIST_MEMORY_GIB_SECOND),
             disk.unwrap_or(LIST_DISK_GB_SECOND),
             vcpu.unwrap_or(LIST_VCPU_SECOND),
-        ) {
+            durable_object.unwrap_or(LIST_DO_GB_SECOND),
+        );
+        // The parts, for runs that report their own CPU.
+        let parts_reason = "Cloudflare's Containers and Durable Objects rates, as billed or published";
+        self.measure("sandbox_base_second", sandbox_base_micros(rates.0, rates.1, rates.3), parts_reason).await?;
+        self.measure("sandbox_cpu_second", rates.2 * MICROS_PER_DOLLAR as f64, parts_reason).await?;
+        if let Some(per_second) = sandbox_second_micros(usage, rates.0, rates.1, rates.2, rates.3) {
             let instance_seconds = usage.memory_byte_seconds / (SANDBOX_GIB * GIB);
-            let billed = [("memory", memory), ("disk", disk), ("vCPU", vcpu)]
+            let billed = [("memory", memory), ("disk", disk), ("vCPU", vcpu), ("Durable Object duration", durable_object)]
                 .iter()
                 .filter(|(_, rate)| rate.is_some())
                 .map(|(name, _)| *name)
                 .collect::<Vec<_>>();
             let reason = format!(
-                "Sandboxes used {:.2} vCPU per second over {:.0} hours of Cloudflare Containers in the last 30 days; {}",
+                "Sandboxes used {:.2} vCPU per second over {:.0} hours of Cloudflare Containers in the last 30 days, with the Durable Object behind each; {}",
                 usage.cpu_seconds / instance_seconds,
                 instance_seconds / 3600.0,
                 if billed.is_empty() {
@@ -686,11 +716,30 @@ mod tests {
     fn a_sandbox_second_is_its_memory_and_disk_and_the_cpu_it_uses() {
         // An hour of sandboxes that kept a fifth of a vCPU busy.
         let usage = ContainerUsage { cpu_seconds: 720.0, memory_byte_seconds: 3600.0 * 4.0 * GIB };
-        let micros = sandbox_second_micros(usage, LIST_MEMORY_GIB_SECOND, LIST_DISK_GB_SECOND, LIST_VCPU_SECOND).unwrap();
-        // 4 x 2.5 + 8 x 0.07 + 0.2 x 20 = 14.56
-        assert!((micros - 14.56).abs() < 1e-9, "{micros}");
+        let micros =
+            sandbox_second_micros(usage, LIST_MEMORY_GIB_SECOND, LIST_DISK_GB_SECOND, LIST_VCPU_SECOND, LIST_DO_GB_SECOND).unwrap();
+        // 4 x 2.5 + 8 x 0.07 + 0.125 x 12.5 + 0.2 x 20 = 16.1225
+        assert!((micros - 16.1225).abs() < 1e-9, "{micros}");
+        // The Durable Object adds about 11% to the second it left out.
+        assert!((sandbox_base_micros(LIST_MEMORY_GIB_SECOND, LIST_DISK_GB_SECOND, LIST_DO_GB_SECOND) - 12.1225).abs() < 1e-9);
         // Too little use to say anything.
-        assert!(sandbox_second_micros(ContainerUsage { cpu_seconds: 1.0, memory_byte_seconds: GIB }, 1.0, 1.0, 1.0).is_none());
+        assert!(sandbox_second_micros(ContainerUsage { cpu_seconds: 1.0, memory_byte_seconds: GIB }, 1.0, 1.0, 1.0, 1.0).is_none());
+    }
+
+    #[test]
+    fn a_run_that_reports_its_cpu_is_priced_on_it() {
+        let base = sandbox_base_micros(LIST_MEMORY_GIB_SECOND, LIST_DISK_GB_SECOND, LIST_DO_GB_SECOND);
+        let vcpu = LIST_VCPU_SECOND * MICROS_PER_DOLLAR as f64;
+        // A 10-minute cargo build that kept its half vCPU busy throughout.
+        let heavy = run_cost(600, 300.0, base, vcpu);
+        assert!((heavy - (600.0 * 12.1225 + 300.0 * 20.0)).abs() < 1e-6);
+        // The same ten minutes, mostly idle, costs less.
+        let light = run_cost(600, 30.0, base, vcpu);
+        assert!(light < heavy);
+        // The average would have under-priced the heavy one.
+        let average = 600.0 * (base + 0.195 * vcpu);
+        assert!(average < heavy && average > light);
+        assert_eq!(run_cost(0, -1.0, base, vcpu), 0.0);
     }
 
     #[test]

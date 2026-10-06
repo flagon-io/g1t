@@ -15,10 +15,24 @@ use crate::repos::RepoPath;
 use crate::{User, Viewer};
 
 /// Every event a webhook can be sent, in the order people are shown them.
-pub const EVENT_TYPES: [&str; 21] = [
+pub const EVENT_TYPES: [&str; 35] = [
     "git.push",
+    "branch.renamed",
     "repo.created",
     "repo.forked",
+    "repo.updated",
+    "repo.visibility_changed",
+    "repo.renamed",
+    "repo.transferred",
+    "repo.default_branch_changed",
+    "repo.archived",
+    "repo.unarchived",
+    "repo.deleted",
+    "repo.restored",
+    "repo.purged",
+    "repo.collaborator_added",
+    "repo.collaborator_removed",
+    "repo.collaborator_role_changed",
     "issue.opened",
     "issue.updated",
     "issue.assigned",
@@ -183,4 +197,26 @@ pub struct RedeliverArgs {
     #[serde(flatten)]
     pub owner: HookOwner,
     pub delivery_id: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EVENT_TYPES;
+
+    /// The TypeScript mirror lists the same events, in the same order.
+    #[test]
+    fn the_typescript_mirror_lists_the_same_events() {
+        let ts = include_str!("../../../packages/contracts/src/webhooks.ts");
+        let list = ts
+            .split_once("export const EVENT_TYPES = [")
+            .and_then(|(_, rest)| rest.split_once("] as const"))
+            .map(|(list, _)| list)
+            .expect("EVENT_TYPES in webhooks.ts");
+        let mirrored: Vec<&str> = list
+            .split(',')
+            .map(|item| item.trim().trim_matches('"'))
+            .filter(|item| !item.is_empty())
+            .collect();
+        assert_eq!(mirrored, EVENT_TYPES);
+    }
 }

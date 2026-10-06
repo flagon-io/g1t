@@ -8,9 +8,10 @@
 import type { Terms } from "@g1t/contracts";
 import { data, redirect } from "react-router";
 
-import { fields, parseAllowances, parseCredit, parseEmail, parseNote, parseSlug, parseTerms, text } from "./forms";
+import { fields, parseAllowances, parseCredit, parseEmail, parseGoodwill, parseNote, parsePayment, parseSlug, parseTerms, text } from "./forms";
+import { FORGIVE_COST_MICROS, goodwillWarning } from "./pricing";
 import type { ActionData } from "./review";
-import { admin, identity } from "./services.server";
+import { admin, identity, priceBook } from "./services.server";
 import type { Staff } from "./staff";
 import type { Enterprise } from "./workspaces";
 
@@ -44,8 +45,8 @@ export async function billingAction(request: Request, staff: Staff, subject: Sub
   }
 
   if (intent === "allowances") {
-    // Team without charge, and the account's share of g1t's pools.
-    const values = fields(form, "team", "oss", "trial", "note");
+    // The plan without its price, the account's share of g1t's pools, and staff's overrides.
+    const values = fields(form, "plan", "oss", "trial", "agents", "runCap", "issueCap", "hold", "note");
     if (subject.kind === "workspace" && subject.billedTo) {
       return failed("allowances", `This workspace is on ${subject.billedTo.name}. Set its plan and pools on the enterprise.`, values);
     }
@@ -120,6 +121,33 @@ export async function billingAction(request: Request, staff: Staff, subject: Sub
     return back("credit");
   }
 
+  if (intent === "payment") {
+    // A bank transfer that reached g1t outside Stripe's page.
+    const values = fields(form, "amount", "reference", "note", "confirmation");
+    if (subject.kind !== "workspace") return failed("top", "Record a payment on the workspace it is for.");
+    const payment = parsePayment(form, subject.slug);
+    if (!payment.ok) return failed("payment", payment.error, { ...values, confirmation: "" });
+    const { amountMicros, reference, note } = payment.value;
+    const result = await admin.recordPayment(subject.slug, amountMicros, reference, note, staff.email);
+    if (!result.ok) return failed("payment", result.error.message, values);
+    return back("payment");
+  }
+
+  if (intent === "goodwill") {
+    // A goodwill credit from the workspace's page: the overage, as billing quotes it now.
+    const values = fields(form, "amount", "reason", "day");
+    if (subject.kind !== "workspace") return failed("top", "Goodwill is given to one workspace.");
+    const quote = await goodwillQuote(subject.slug);
+    const parsed = parseGoodwill(form, (amount) =>
+      // A reason past the one-click credit, a second within 12 months, or past the cap on real cost.
+      quote ? ((w) => w.needsReason || w.overCap)(goodwillWarning(amount, quote.goodwill, quote.lastGoodwillAt, quote.cap)) : amount != null,
+    );
+    if (!parsed.ok) return failed("goodwill", parsed.error, values);
+    const result = await admin.goodwill(subject.slug, parsed.value.amountMicros, parsed.value.reason, staff.email, parsed.value.day);
+    if (!result.ok) return failed("goodwill", result.error.message, values);
+    return back("goodwill");
+  }
+
   if (intent === "billing-link") {
     if (subject.kind !== "workspace") return failed("top", "Billing links are made from a workspace's page.");
     if (!confirmed) return { review: { intent, workspace: subject.slug, fields: {} } } satisfies ActionData;
@@ -159,4 +187,14 @@ export async function billingAction(request: Request, staff: Staff, subject: Sub
   }
 
   return failed("top", "Unknown action.");
+}
+
+/** The workspace's goodwill quote from the Overages queue, if it is in it, and the cap on real cost. */
+export async function goodwillQuote(
+  workspace: string,
+): Promise<{ goodwill: { creditMicros: number; marginMicros: number }; lastGoodwillAt: string | null; cap: number } | null> {
+  const [queue, book] = await Promise.all([admin.overages().catch(() => []), priceBook().catch(() => null)]);
+  const row = queue.find((overage) => overage.workspace === workspace);
+  const cap = book?.free?.overageForgiveCostMicros || FORGIVE_COST_MICROS;
+  return row ? { goodwill: row.goodwill, lastGoodwillAt: row.lastGoodwillAt, cap } : null;
 }

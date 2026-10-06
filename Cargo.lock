@@ -947,6 +947,7 @@ dependencies = [
  "base64 0.22.1",
  "g1t-contracts",
  "g1t-kit",
+ "g1t-secrets",
  "getrandom 0.2.17",
  "hex",
  "pbkdf2 0.12.2",

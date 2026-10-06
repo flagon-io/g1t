@@ -1,13 +1,4 @@
-import {
-  Bot,
-  CircleCheck,
-  CircleDot,
-  CircleSlash,
-  GitMerge,
-  GitPullRequest,
-  GitPullRequestClosed,
-  GitPullRequestDraft,
-} from "lucide-react";
+import { Bot, CircleCheck, CircleSlash } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { Form, Link } from "react-router";
 
@@ -15,9 +6,12 @@ import type { Comment, Issue, Pull, State } from "@g1t/contracts";
 
 import { repoAt } from "../lib/markdown-plugins";
 import { Markdown } from "./markdown";
+import { IssueIcon, PullIcon } from "./work-icons";
 import { MentionTextarea } from "./mention-textarea";
 import { Avatar, Button, TimeAgo } from "./ui";
 import { CheckboxOption } from "./ui/checkbox";
+
+export { IssueIcon, PullIcon };
 
 /** Hues for the labels every repository starts with. */
 const LABEL_HUES: Record<string, number> = {
@@ -84,31 +78,6 @@ export function Assignee({ agent }: { agent: string }) {
       {agent}
     </span>
   );
-}
-
-export function IssueIcon({
-  issue,
-  size = 16,
-}: {
-  issue: Pick<Issue, "state" | "reason">;
-  size?: number;
-}) {
-  if (issue.state === "open") return <CircleDot size={size} className="shrink-0 text-accent" />;
-  if (issue.reason === "not_planned") {
-    return <CircleSlash size={size} className="shrink-0 text-faint" />;
-  }
-  return <CircleCheck size={size} className="shrink-0 text-merged" />;
-}
-
-export function PullIcon({ status, size = 16 }: { status: Pull["status"]; size?: number }) {
-  if (status === "merged") return <GitMerge size={size} className="shrink-0 text-merged" />;
-  if (status === "closed") {
-    return <GitPullRequestClosed size={size} className="shrink-0 text-danger" />;
-  }
-  if (status === "draft") {
-    return <GitPullRequestDraft size={size} className="shrink-0 text-faint" />;
-  }
-  return <GitPullRequest size={size} className="shrink-0 text-accent" />;
 }
 
 const PILL = "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium";

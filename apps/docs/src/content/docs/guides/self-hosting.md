@@ -21,6 +21,7 @@ a private network, not yet for an installation on the open internet.
 | Issues, comments, labels | Works |
 | Site search | Works |
 | Webhooks, integrations | Run, but scheduled retries do not (see below) |
+| Sign in with GitHub, import from GitHub | Off until you register a GitHub App of your own ([below](#sign-in-with-github-and-import-from-github)). Mirrors sync with **Sync now**: GitHub's webhook needs the REST API. |
 | g1t agents, plans, reviews by agents | Off |
 | Context hub search | Off |
 | Deployments on `g1t.page` | Off |
@@ -39,7 +40,7 @@ a private network, not yet for an installation on the open internet.
 1. Get the source:
 
    ```sh
-   git clone https://g1t.sh/syntaqx/g1t.git
+   git clone https://g1t.sh/flagon-io/g1t.git
    cd g1t
    ```
 
@@ -97,6 +98,9 @@ Set these in the environment, or in a `.env` file next to
 | `MAILPIT_PORT` | `8025` | The port of the Mailpit inbox |
 | `MAIL_FROM` | `g1t <noreply@localhost>` | The sender of g1t's email |
 | `MAIL_URL` | `http://mailpit:8025` | The Mailpit server g1t sends mail through |
+| `REGISTRATION_MODE` | `open` | `open`: anyone can make an account. `invite`: every new account needs an [invite](/guides/authentication/#invites), as on g1t.sh. |
+| `INVITES_PER_USER` | `5` | How many invites each person can have out, while `REGISTRATION_MODE` is `invite` |
+| `INVITE_STAFF_WORKSPACES` | (none) | Workspace slugs, comma separated, whose owners can make invites without a limit. Set it to your own workspace before you switch to `invite`, so someone can invite the first people. |
 
 To deliver email to real inboxes, have Mailpit relay it through your SMTP
 server. The settings are in `docker-compose.yml`, under `mailpit`.
@@ -105,6 +109,50 @@ Sign-in cookies are marked `Secure`. Browsers accept them on
 `http://localhost`. On any other address, put g1t behind HTTPS (a reverse
 proxy such as Caddy or nginx with a certificate) and set `PUBLIC_URL` to
 the `https://` address.
+
+## Sign in with GitHub and import from GitHub
+
+g1t.sh's GitHub App works only for g1t.sh. To offer **Continue with
+GitHub** and **Import from GitHub** on your own g1t, register an app of
+your own. Without one, neither button appears.
+
+1. On GitHub, open **Settings → Developer settings → GitHub Apps → New
+   GitHub App** (or the same under an organization's settings).
+2. Fill it in, with `PUBLIC_URL` standing for your g1t's address:
+
+   | Setting | Value |
+   | --- | --- |
+   | Callback URL | `PUBLIC_URL/auth/github/callback` |
+   | Expire user authorization tokens | On |
+   | Request user authorization (OAuth) during installation | Off |
+   | Enable Device Flow | Off |
+   | Setup URL | `PUBLIC_URL/integrations/github/setup` |
+   | Redirect on update | On |
+   | Webhook | Off for now: a self-hosted g1t does not serve the API, where GitHub's deliveries arrive. Mirrors sync with **Sync now**. |
+   | Repository permissions | Contents: Read and write; Metadata: Read; Issues: Read |
+   | Account permissions | Email addresses: Read |
+
+3. Create it, then on its page note the **App ID**, the **Client ID** and
+   the slug (the last part of its public address,
+   `github.com/apps/<slug>`). Generate a **client secret** and a **private
+   key**, which downloads a `.pem` file.
+4. Set these before starting g1t, in the environment or in `.env`:
+
+   | Variable | Value |
+   | --- | --- |
+   | `GITHUB_APP_ID` | The App ID |
+   | `GITHUB_APP_SLUG` | The slug |
+   | `GITHUB_APP_CLIENT_ID` | The Client ID |
+   | `GITHUB_APP_CLIENT_SECRET` | The client secret |
+   | `GITHUB_APP_PRIVATE_KEY` | The `.pem` file's contents, as downloaded. Line breaks may be written as `
+`. |
+   | `GITHUB_APP_WEBHOOK_SECRET` | Only once the API is served: the webhook secret |
+
+5. Restart g1t: `docker compose -f deploy/self-host/docker-compose.yml up -d`.
+
+g1t makes its own key for the GitHub tokens it keeps (`IDENTITY_KEY`, in
+the `g1t-data` volume) on first start. What the app can do, and what comes
+across from GitHub, is in [GitHub](/guides/github/).
 
 ## Where your data lives
 

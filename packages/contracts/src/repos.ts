@@ -24,7 +24,36 @@ export type Repo = {
    * letters, digits and hyphens, at most 20.
    */
   topics: string[];
+  /** Its home page, an http(s) address. */
+  website?: string | null;
+  /**
+   * RFC 3339: when it was archived. While archived it is read-only:
+   * pushes, merges, agents and workflows are refused, and issues and pull
+   * requests are locked. Null when it is not archived.
+   */
+  archivedAt?: string | null;
 };
+
+/** How long a deleted repository can be restored before it is purged. */
+export const RESTORE_DAYS = 30;
+
+/** A deleted repository, as its workspace's Recently deleted list shows it. */
+export type DeletedRepo = {
+  id: string;
+  namespace: string;
+  name: string;
+  description: string | null;
+  isPrivate: boolean;
+  /** RFC 3339. */
+  deletedAt: string;
+  /** The username of who deleted it. */
+  deletedBy: string;
+  /** RFC 3339: when it is purged, unless restored first. */
+  purgeAfter: string;
+};
+
+/** Whether a repository is archived or deleted, for services deciding whether to act on it. */
+export type RepoStatus = { archived: boolean; deleted: boolean };
 
 /** The most topics a repository has, and the longest topic. */
 export const MAX_TOPICS = 20;
@@ -113,8 +142,68 @@ export interface ReposApi {
   update(
     actor: User,
     path: RepoPath,
-    changes: { description?: string; isPrivate?: boolean; protected?: boolean; topics?: string[] },
+    changes: {
+      description?: string;
+      isPrivate?: boolean;
+      protected?: boolean;
+      topics?: string[];
+      /** An empty string clears it. */
+      website?: string;
+    },
   ): Promise<Result<Repo>>;
+  /**
+   * Deletes the repository. Owners only, who type its full name as
+   * `confirm`. It is hidden at once and can be restored for
+   * `RESTORE_DAYS` days, then purged. Publishes `repo.deleted`.
+   */
+  delete(actor: User, path: RepoPath, confirm: string): Promise<Result<DeletedRepo>>;
+  /** A workspace's recently deleted repositories, newest first. Owners only; empty otherwise. */
+  deleted(viewer: Viewer, namespace: string): Promise<DeletedRepo[]>;
+  /** Brings a deleted repository back as it was. Owners only. Publishes `repo.restored`. */
+  restore(actor: User, path: RepoPath): Promise<Result<Repo>>;
+  /**
+   * Removes a deleted repository for good now, its git data with it, and
+   * frees its name. Owners only, who type its full name. Publishes `repo.purged`.
+   */
+  purge(actor: User, path: RepoPath, confirm: string): Promise<Result<boolean>>;
+  /**
+   * Renames the repository in its workspace. Owners only. The old path
+   * redirects until a repository is made there. Publishes `repo.renamed`.
+   */
+  rename(actor: User, path: RepoPath, name: string): Promise<Result<Repo>>;
+  /**
+   * Archives the repository (read-only) or unarchives it. Owners only.
+   * Publishes `repo.archived` or `repo.unarchived`.
+   */
+  archive(actor: User, path: RepoPath, archived: boolean): Promise<Result<Repo>>;
+  /**
+   * Makes the repository public or private. Owners only, who type its full
+   * name as `confirm`. Publishes `repo.updated` and `repo.visibility_changed`.
+   */
+  setVisibility(actor: User, path: RepoPath, isPrivate: boolean, confirm: string): Promise<Result<Repo>>;
+  /** Makes another existing branch the default. Members. */
+  setDefaultBranch(actor: User, path: RepoPath, branch: string): Promise<Result<Repo>>;
+  /**
+   * Renames a branch; pull requests from it follow, and addresses naming the
+   * old one redirect. Members; only owners rename the default branch.
+   */
+  renameBranch(actor: User, path: RepoPath, from: string, to: string): Promise<Result<Repo>>;
+  /** What a branch renamed away from `branch` is called now, or null. */
+  resolveBranch(repoId: string, branch: string): Promise<string | null>;
+  /** Whether a repository is archived or deleted; an unknown id answers as deleted. */
+  statusById(id: string): Promise<RepoStatus>;
+  /**
+   * Moves the repository to the workspace `to`, keeping its name, id and
+   * everything under it. The actor must own both workspaces. The old path
+   * redirects until a repository is made there. Publishes `repo.transferred`.
+   */
+  transfer(actor: User, path: RepoPath, to: string): Promise<Result<Repo>>;
+  /**
+   * Where a repository transferred away from `path` is now; null when
+   * `path` is a repository or never was one that moved. Callers check the
+   * viewer may see it there.
+   */
+  resolvePath(path: RepoPath): Promise<RepoPath | null>;
 
   tree(path: RepoPath, viewer: Viewer, ref: string | null, treePath: string): Promise<Result<TreeView>>;
   blob(path: RepoPath, viewer: Viewer, ref: string, filePath: string): Promise<Result<BlobView>>;

@@ -14,10 +14,19 @@ It shows what g1t has found, and what is being done about each finding:
   lands the upgrade through the usual pull request, checks, review and merge
   queue.
 
-Only members of the workspace can open the Security page, whether the
-project is public or private. The workspace's own page,
-`g1t.sh/<owner>/-/security`, lists every project's open findings, most
-severe first.
+Findings are the workspace's to fix, so the Security page needs a
+[role](/guides/access-and-roles/) on the repository, whether the project
+is public or private:
+
+| | Needs |
+| --- | --- |
+| See findings, **Re-scan now** | Write |
+| **Upkeep agents** on or off | Maintain |
+| **Allow**, **Resolve** or **Reopen** a secret | Admin |
+
+Someone with Read or Triage is told the page needs Write. The workspace's
+own page, `g1t.sh/<owner>/-/security`, lists the open findings of every
+project the member can see them on, most severe first.
 
 ## The overview
 
@@ -116,8 +125,9 @@ purpose: it looks exactly like a real one. Two ways to let it through:
   it and why. Then push again, unchanged: that secret no longer stops a push
   to this project.
 
-Allowing is for members of the workspace. Someone else pushing to a pull
-request's fork sees the same message and asks a member.
+Allowing needs the Admin [role](/guides/access-and-roles/) on the repository. Someone else
+pushing to a pull request's fork sees the same message and asks someone
+who has it.
 
 ### Secrets in history
 

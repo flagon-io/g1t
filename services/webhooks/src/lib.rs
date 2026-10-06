@@ -14,6 +14,7 @@ mod rename;
 use std::time::Duration;
 
 use futures_util::future::{Either, select};
+use g1t_contracts::access::{self, Capability};
 use g1t_contracts::events::Event;
 use g1t_contracts::identity::{AGENT_ID, AGENT_NAME, UsernamesArgs};
 use g1t_contracts::repos::{GetArgs, GetByIdArgs, Repo};
@@ -200,20 +201,37 @@ impl Webhooks {
             .filter(|repo| repo.namespace == owner.workspace && repo.fork_of.is_none()))
     }
 
-    fn may_see(viewer: &Viewer, workspace: &str) -> bool {
-        viewer.as_ref().is_some_and(|viewer| viewer.is_member(workspace))
-    }
-
-    /// Members manage a repository's webhooks; owners, the workspace's. An
-    /// agent's token manages neither.
-    fn may_manage(actor: &User, owner: &HookOwner) -> Option<Outcome<()>> {
-        if actor.kind == PrincipalKind::Agent || !actor.is_member(&owner.workspace) {
-            return Some(fail(FailureCode::Forbidden, format!("Only members of {} can manage its webhooks.", owner.workspace)));
+    /// Whether `viewer` may see (or, `managing`, change) `owner`'s webhooks,
+    /// and the repository when they are a repository's. A repository's
+    /// need the Admin role on it, to see as to change, since they carry
+    /// its events out; the workspace's are its members' to see and its
+    /// owners' to change. An agent's token changes neither.
+    async fn allowed(&self, viewer: &Viewer, owner: &HookOwner, managing: bool) -> Result<Outcome<Option<Repo>>> {
+        let Some(user) = viewer.as_ref() else {
+            return Ok(fail(FailureCode::Forbidden, "Sign in to see webhooks."));
+        };
+        if managing && user.kind == PrincipalKind::Agent {
+            return Ok(fail(FailureCode::Forbidden, "An agent cannot manage webhooks."));
         }
-        if owner.repo.is_none() && actor.role_in(&owner.workspace) != Some(Role::Owner) {
-            return Some(fail(FailureCode::Forbidden, "Only an owner can manage a workspace's own webhooks."));
+        if owner.repo.is_some() {
+            let Some(repo) = self.repository(owner, viewer).await? else {
+                return Ok(fail(FailureCode::NotFound, "There is no such repository in this workspace."));
+            };
+            if !access::can(viewer.as_ref(), &repo, Capability::ManageIntegrations) {
+                return Ok(fail(
+                    FailureCode::Forbidden,
+                    access::needs(Capability::ManageIntegrations, &format!("{}/{}", repo.namespace, repo.name)),
+                ));
+            }
+            return Ok(Outcome::Ok(Some(repo)));
         }
-        None
+        if !user.is_member(&owner.workspace) {
+            return Ok(fail(FailureCode::Forbidden, format!("Only members of {} can see its webhooks.", owner.workspace)));
+        }
+        if managing && user.role_in(&owner.workspace) != Some(Role::Owner) {
+            return Ok(fail(FailureCode::Forbidden, "Only an owner can manage a workspace's own webhooks."));
+        }
+        Ok(Outcome::Ok(None))
     }
 
     fn owner(mut owner: HookOwner) -> HookOwner {
@@ -243,8 +261,8 @@ impl Webhooks {
 
     async fn list(&self, a: ListArgs) -> Result<Outcome<Vec<Hook>>> {
         let owner = Self::owner(a.owner);
-        if !Self::may_see(&a.viewer, &owner.workspace) {
-            return Ok(fail(FailureCode::Forbidden, "Only members can see a workspace's webhooks."));
+        if let Outcome::Fail(refused) = self.allowed(&a.viewer, &owner, false).await? {
+            return Ok(Outcome::Fail(refused));
         }
         let rows = match &owner.repo {
             Some(path) => self
@@ -264,9 +282,10 @@ impl Webhooks {
 
     async fn create(&self, a: CreateArgs) -> Result<Outcome<CreatedHook>> {
         let owner = Self::owner(a.owner);
-        if let Some(Outcome::Fail(refused)) = Self::may_manage(&a.actor, &owner) {
-            return Ok(Outcome::Fail(refused));
-        }
+        let repo = match self.allowed(&Some(a.actor.clone()), &owner, true).await? {
+            Outcome::Ok(repo) => repo,
+            Outcome::Fail(refused) => return Ok(Outcome::Fail(refused)),
+        };
         let Some(sealer) = &self.sealer else {
             return Ok(fail(FailureCode::Conflict, "Webhooks are not set up on this g1t: it has no key to keep secrets with."));
         };
@@ -277,13 +296,6 @@ impl Webhooks {
         let events = match deliver::tidy_events(&a.events) {
             Ok(events) => events,
             Err(problem) => return Ok(fail(FailureCode::Invalid, problem)),
-        };
-        let repo = match &owner.repo {
-            Some(_) => match self.repository(&owner, &Some(a.actor.clone())).await? {
-                Some(repo) => Some(repo),
-                None => return Ok(fail(FailureCode::NotFound, "There is no such repository in this workspace.")),
-            },
-            None => None,
         };
         let given = a.secret.map(|secret| secret.trim().to_owned()).filter(|secret| !secret.is_empty());
         let made = given.is_none();
@@ -324,7 +336,7 @@ impl Webhooks {
 
     async fn update(&self, a: UpdateArgs) -> Result<Outcome<Hook>> {
         let owner = Self::owner(a.owner);
-        if let Some(Outcome::Fail(refused)) = Self::may_manage(&a.actor, &owner) {
+        if let Outcome::Fail(refused) = self.allowed(&Some(a.actor.clone()), &owner, true).await? {
             return Ok(Outcome::Fail(refused));
         }
         let Some(row) = self.hook_of(&owner, &a.id).await? else {
@@ -355,7 +367,7 @@ impl Webhooks {
 
     async fn delete(&self, a: HookArgs) -> Result<Outcome<bool>> {
         let owner = Self::owner(a.owner);
-        if let Some(Outcome::Fail(refused)) = Self::may_manage(&a.actor, &owner) {
+        if let Outcome::Fail(refused) = self.allowed(&Some(a.actor.clone()), &owner, true).await? {
             return Ok(Outcome::Fail(refused));
         }
         let Some(row) = self.hook_of(&owner, &a.id).await? else {
@@ -372,7 +384,7 @@ impl Webhooks {
 
     async fn ping(&self, a: HookArgs) -> Result<Outcome<HookDelivery>> {
         let owner = Self::owner(a.owner);
-        if let Some(Outcome::Fail(refused)) = Self::may_manage(&a.actor, &owner) {
+        if let Outcome::Fail(refused) = self.allowed(&Some(a.actor.clone()), &owner, true).await? {
             return Ok(Outcome::Fail(refused));
         }
         let Some(row) = self.hook_of(&owner, &a.id).await? else {
@@ -384,8 +396,8 @@ impl Webhooks {
 
     async fn deliveries(&self, a: DeliveriesArgs) -> Result<Outcome<Vec<HookDelivery>>> {
         let owner = Self::owner(a.owner);
-        if !Self::may_see(&a.viewer, &owner.workspace) {
-            return Ok(fail(FailureCode::Forbidden, "Only members can see a workspace's webhooks."));
+        if let Outcome::Fail(refused) = self.allowed(&a.viewer, &owner, false).await? {
+            return Ok(Outcome::Fail(refused));
         }
         if self.hook_of(&owner, &a.id).await?.is_none() {
             return Ok(fail(FailureCode::NotFound, "No such webhook."));
@@ -402,7 +414,7 @@ impl Webhooks {
 
     async fn redeliver(&self, a: RedeliverArgs) -> Result<Outcome<HookDelivery>> {
         let owner = Self::owner(a.owner);
-        if let Some(Outcome::Fail(refused)) = Self::may_manage(&a.actor, &owner) {
+        if let Outcome::Fail(refused) = self.allowed(&Some(a.actor.clone()), &owner, true).await? {
             return Ok(Outcome::Fail(refused));
         }
         let Some(original) = self.delivery(&a.delivery_id).await? else {
@@ -564,7 +576,7 @@ impl Webhooks {
         {
             self.remember(id, namespace, name).await?;
         }
-        let Some(repo_id) = event.repo_id.as_deref() else {
+        let Some(repo_id) = event.repo_id.as_deref().or_else(|| event.data["repoId"].as_str()) else {
             return Ok(());
         };
         let mut hooks = self
@@ -586,7 +598,11 @@ impl Webhooks {
         let name = if hooks.is_empty() && workspaces.is_empty() {
             None
         } else {
-            self.repo_name(repo_id, &workspaces).await?
+            // A deleted repository looks missing to repos; its own events
+            // name it.
+            self.repo_name(repo_id, &workspaces)
+                .await?
+                .or_else(|| deliver::named_in(event).map(|(namespace, name)| NameRow { namespace, name }))
         };
         if let Some(name) = &name {
             hooks.extend(
@@ -745,6 +761,26 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
     for message in batch.messages()? {
         // A workspace renamed: its rows move to the slug it has now.
         if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), rename::STATEMENTS).await? {
+            message.ack();
+            continue;
+        }
+        // A repository renamed or transferred: its rows follow its new path,
+        // and then the event is delivered like any other, naming it there.
+        if g1t_kit::transfer::on_event(&env, &env.d1("DB")?, message.body(), rename::TRANSFERRED).await? {
+            service.on_event(message.body()).await?;
+            message.ack();
+            continue;
+        }
+        // A repository purged: its last event is delivered, then its own
+        // webhooks go.
+        if message.body().kind == "repo.purged" {
+            service.on_event(message.body()).await?;
+            g1t_kit::lifecycle::on_purged(&env.d1("DB")?, message.body(), rename::PURGED).await?;
+            message.ack();
+            continue;
+        }
+        // A workspace deleted: what it kept for itself goes.
+        if g1t_kit::deleted::on_event(&env.d1("DB")?, message.body(), rename::DELETED).await? {
             message.ack();
             continue;
         }

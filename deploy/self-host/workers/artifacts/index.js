@@ -6,7 +6,7 @@
 // methods and keeps the repositories in the git store (gitstore/server.mjs):
 // plain bare repositories on disk. Hosted g1t never runs this.
 //
-// Only what g1t calls is implemented: create and get on the namespace;
+// Only what g1t calls is implemented: create, get and delete on the namespace;
 // info, createToken, log, readCommit, readTree, readBlob, readFile and fork
 // on a repository.
 
@@ -138,6 +138,13 @@ export default class Artifacts extends WorkerEntrypoint {
     // Artifacts answers NOT_FOUND here for a repository that does not exist.
     await json(await store(this.env, `/${encodeURIComponent(name)}`));
     return new Repo(this.env, name);
+  }
+
+  async delete(name) {
+    const response = await store(this.env, `/${encodeURIComponent(name)}`, { method: "DELETE" });
+    if (response.status === 404) return false;
+    await json(response);
+    return true;
   }
 
   async fetch() {

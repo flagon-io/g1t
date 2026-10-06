@@ -11,6 +11,7 @@
 //! The label rule is a repository's "when an issue gets this label, give it
 //! to g1t-agent": the issue is queued for an agent, as a plan's issues are.
 
+use g1t_contracts::access::{self, Capability};
 use g1t_contracts::events::CommentCreated;
 use g1t_contracts::repos::{GetByIdArgs, PathByIdArgs, Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
@@ -279,7 +280,8 @@ pub(crate) struct MentionJob {
     /// The comment as written.
     body: String,
     intent: Intent,
-    /// Whether they belong to the repository's workspace.
+    /// Whether they may put agents to work in the repository: the Write
+    /// role or higher (the name is from when that meant a member).
     member: bool,
     default_branch: String,
     /// Set when the comment is on an issue: whether it is still open.
@@ -340,7 +342,7 @@ pub(crate) struct GetAgentRulesArgs {
     viewer: Viewer,
 }
 
-/// `set_agent_rules`: members only. Returns `Outcome<AgentRules>`.
+/// `set_agent_rules`: needs the Maintain role. Returns `Outcome<AgentRules>`.
 #[derive(Debug, Deserialize)]
 pub(crate) struct SetAgentRulesArgs {
     actor: User,
@@ -402,8 +404,8 @@ impl Work {
         {
             return Ok(());
         }
-        let member = actor.verified
-            && (actor.is_member(&repo.namespace) || actor.is_member(&repo.namespace.to_lowercase()));
+        // Whether it may set the agent to work: mentioning spends compute.
+        let member = actor.verified && access::can(Some(actor), repo, Capability::Run);
         self.db
             .prepare(
                 "INSERT OR IGNORE INTO agent_mentions
@@ -453,7 +455,7 @@ impl Work {
             },
         )
         .await?;
-        let Outcome::Ok(repo) = repo else {
+        let Outcome::Ok(repo) = crate::retired::unless_archived(repo) else {
             return Ok(None);
         };
         let path = RepoPath {
@@ -530,7 +532,7 @@ impl Work {
         if row.member == 0 || !made_by_g1t(&pull) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
-                "Only a member can send g1t-agent back to a pull request it made.",
+                "Only someone with the Write role or higher can send g1t-agent back to a pull request it made.",
             ));
         }
         match pull.status {
@@ -558,7 +560,7 @@ impl Work {
             },
         )
         .await?;
-        let (Outcome::Ok(repo), Some(source)) = (repo, pull.fork.clone()) else {
+        let (Outcome::Ok(repo), Some(source)) = (crate::retired::unless_archived(repo), pull.fork.clone()) else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Pull request not found."));
         };
         // A person asking outranks a stop and the limit on revisions.
@@ -706,11 +708,14 @@ impl Work {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        if !a.actor.verified || !a.actor.is_member(&repo.namespace) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only members of the workspace can change how g1t-agent is put to work.",
-            ));
+        if let Outcome::Fail(failure) = crate::retired::writable(&repo) {
+            return Ok(Outcome::Fail(failure));
+        }
+        if !a.actor.verified {
+            return Ok(Outcome::fail(FailureCode::Forbidden, crate::UNVERIFIED));
+        }
+        if let Outcome::Fail(failure) = crate::allowed(Some(&a.actor), &repo, Capability::ManageSettings) {
+            return Ok(Outcome::Fail(failure));
         }
         let label = match normalize_label(a.label.as_deref()) {
             Ok(label) => label,
@@ -742,8 +747,9 @@ impl Work {
     }
 
     /// Queues an issue for g1t-agent when it has just been given the label
-    /// the repository's rule names, by a member. The runner starts queued
-    /// issues as there is room, as it does a plan's.
+    /// the repository's rule names, by someone who may run agents in it.
+    /// The runner starts queued issues as there is room, as it does a
+    /// plan's.
     pub(crate) async fn apply_label_rule(&self, actor: &User, issue: &Issue, before: &[String]) -> Result<()> {
         if issue.state != State::Open || issue.queued || issue.agent.is_some() {
             return Ok(());
@@ -765,9 +771,12 @@ impl Work {
         let Some(path) = path else {
             return Ok(());
         };
+        // Running needs Write, which public alone never gives, so whether
+        // the repository is public does not matter here.
+        let target = access::RepoRef { id: &issue.repo_id, namespace: &path.namespace, private: true };
         if !actor.verified
             || actor.kind == PrincipalKind::Agent
-            || !(actor.is_member(&path.namespace) || actor.is_member(&path.namespace.to_lowercase()))
+            || !access::can(Some(actor), target, Capability::Run)
         {
             return Ok(());
         }

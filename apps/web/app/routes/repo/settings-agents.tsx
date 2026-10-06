@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { AtSign, Tag } from "lucide-react";
-import { Form, data, useNavigation } from "react-router";
+import { Form, useNavigation } from "react-router";
 
 import { AGENT_HANDLE, mentionsClient } from "@g1t/contracts";
 
@@ -9,7 +9,8 @@ import { page } from "../../lib/meta";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { Button, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
 import { work } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
+import { requireCapability, requireInsider } from "../../lib/access.server";
 
 const mentions = mentionsClient(env.WORK);
 
@@ -19,8 +20,8 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  // Members only; to anyone else the page does not exist.
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
+  // Maintain and up; to anyone without a role here the page does not exist.
+  await requireInsider(context, params, "manage_settings");
   const path = { namespace: params.owner, name: params.repo };
   const [rules, labels] = await Promise.all([mentions.getAgentRules(path, viewer), work.listLabels(path, viewer)]);
   return { rules: unwrap(rules), labels: labels.ok ? labels.value : [] };
@@ -29,6 +30,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
+  await requireCapability(context, params, "manage_settings");
   const form = await request.formData();
   const path = { namespace: params.owner, name: params.repo };
   const label = form.get("intent") === "off" ? null : String(form.get("label") ?? "").trim() || null;

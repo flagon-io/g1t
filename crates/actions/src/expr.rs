@@ -1120,7 +1120,7 @@ mod tests {
                 "ref": "refs/heads/main",
                 "ref_name": "main",
                 "event_name": "push",
-                "repository": "syntaqx/g1t",
+                "repository": "flagon-io/g1t",
                 "actor": "dependabot[bot]",
                 "event": {
                     "pull_request": {

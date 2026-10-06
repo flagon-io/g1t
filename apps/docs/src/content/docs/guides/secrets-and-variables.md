@@ -8,16 +8,20 @@ secrets and variables.
 Workflows and deployments both read from it; each row says whether one,
 the other or both do, and which environments it applies to.
 
-| Where | Page | Who changes it |
+| Where | Page | Who sees and changes it |
 | --- | --- | --- |
-| A project | **Settings → Secrets and variables**, `g1t.sh/<workspace>/<project>/settings/secrets` | Members |
+| A project | **Settings → Secrets and variables**, `g1t.sh/<workspace>/<project>/settings/secrets` | People with the Admin [role](/guides/access-and-roles/) on its repository |
 | A workspace | **Settings → Secrets and variables**, `g1t.sh/<workspace>/-/secrets` | Owners |
+
+Seeing the list needs the same as changing it: a project's rows, config
+values included, are for Admins of its repository, and the page is not
+shown to anyone else.
 
 ## A row
 
 | Field | |
 | --- | --- |
-| **Type** | **Secret**: sealed when saved and never shown again, hidden in logs. For passwords, API keys and tokens. **Config**: readable by members. For values that are not sensitive. Config can be changed to a secret; a secret can never become config. |
+| **Type** | **Secret**: sealed when saved and never shown again, hidden in logs. For passwords, API keys and tokens. **Config**: readable by whoever may see the list. For values that are not sensitive. Config can be changed to a secret; a secret can never become config. |
 | **Key** | Letters, digits and underscores, upper-cased: `STRIPE_KEY`. Keys starting with `G1T_` or `GITHUB_` are g1t's own. |
 | **Value** | Up to 48 KB. |
 | **Note** | Optional: where to rotate it, or who to ask. |
@@ -72,11 +76,15 @@ pass through the build's sandbox. A row of a Workers project's own
 Secrets go only to trusted runs:
 
 - pushes, schedules, manual runs and the merge queue;
-- pull requests from members of the workspace and from g1t's agents;
-- every pull request on a private repository.
+- pull requests whose author has the Write [role](/guides/access-and-roles/)
+  or higher on the repository, a member or an
+  [outside collaborator](/guides/access-and-roles/#outside-collaborators);
+- pull requests from g1t's agents.
 
-A pull request from someone outside the workspace runs its workflows, and
-builds its preview, with config only: no secrets, and an empty `G1T_TOKEN`.
+Anyone else's pull request, such as one from a fork or by someone with
+Read or Triage (who may open one on a private repository too), runs its
+workflows, and builds its preview, with config only: no secrets, and an
+empty `G1T_TOKEN`.
 
 ## G1T_TOKEN
 

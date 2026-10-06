@@ -1,4 +1,6 @@
-import { Form, Link, data, useNavigation } from "react-router";
+import { Form, Link, useNavigation } from "react-router";
+
+import type { DetectedKind } from "@g1t/contracts";
 
 import type { Route } from "./+types/settings-deployments";
 import { page } from "../../lib/meta";
@@ -6,7 +8,8 @@ import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { Button, ErrorText, Field, Input } from "../../components/ui";
 import { SwitchCard } from "../../components/ui/switch";
 import { deployments } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
+import { requireCapability, requireInsider } from "../../lib/access.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Deployment settings · ${params.owner}/${params.repo} · g1t` });
@@ -14,7 +17,8 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
+  // Admins; to anyone without a role here the page does not exist.
+  await requireInsider(context, params, "manage_integrations");
   const settings = await deployments.settings({ workspace: params.owner, slug: params.repo }, viewer);
   return { settings: unwrap(settings) };
 }
@@ -22,6 +26,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
+  await requireCapability(context, params, "manage_integrations");
   const form = await request.formData();
   const ref = { workspace: params.owner, slug: params.repo };
   const intent = form.get("intent");
@@ -50,6 +55,40 @@ function Check({ name, on, title, children }: { name: string; on: boolean; title
   );
 }
 
+/** What each kind of project is called, and what running it costs, in a line. */
+const DETECTED: Record<DetectedKind, { label: string; cost: string }> = {
+  static: {
+    label: "Static site",
+    cost: "Serving its files runs no code, so it adds no requests or CPU time. Builds are metered.",
+  },
+  html: {
+    label: "Plain HTML",
+    cost: "Its files are served as they are and run no code, so serving adds no requests or CPU time. Builds are metered.",
+  },
+  workers: {
+    label: "Workers project",
+    cost: "Its code runs on every request: requests and CPU time are metered, and so are builds.",
+  },
+};
+
+/** What g1t found the project to be at its last build, and what that costs. */
+function Detected({ kind }: { kind: DetectedKind | null }) {
+  const found = kind ? DETECTED[kind] : null;
+  return (
+    <section className="mb-6 rounded-xl border border-line bg-surface p-5">
+      <h2 className="text-sm font-medium">What g1t detected</h2>
+      <p className="mt-1 text-sm">
+        {found ? found.label : <span className="text-muted">Detected at the first build</span>}
+      </p>
+      <p className="mt-1 text-xs text-muted">
+        {found
+          ? found.cost
+          : "A static site's files cost nothing to serve; a Workers project's requests and CPU time are metered. Builds are metered either way."}
+      </p>
+    </section>
+  );
+}
+
 export default function DeploymentSettings({ loaderData, actionData, params }: Route.ComponentProps) {
   const { settings } = loaderData;
   const busy = useNavigation().state === "submitting";
@@ -62,13 +101,16 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
         <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
       </div>
 
+      <Detected kind={settings.detected ?? null} />
+
       {!settings.enabled ? (
         <section className="rounded-xl border border-line bg-surface p-5">
           <h2 className="font-medium">Deployments are off</h2>
           <p className="mt-1 text-sm text-muted">
-            Turn them on to build production at{" "}
+            Deployments are opt-in for each project, and nothing builds or runs until you turn them on. Then g1t builds
+            production at{" "}
             <span className="font-mono text-fg">{settings.productionUrl.replace("https://", "")}</span> and a preview for
-            every pull request. The workspace needs the Deployments plan, under Billing.
+            every pull request. The workspace needs the g1t plan, under Billing.
           </p>
           <Form method="post" className="mt-4">
             <Button variant="accent" type="submit" name="intent" value="enable" disabled={busy}>

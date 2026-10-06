@@ -1,0 +1,6 @@
+# Static files served by Workers assets, ahead of the app.
+
+# Fingerprinted by the build: a new file gets a new name, so each can be
+# kept for good. That includes the typefaces.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

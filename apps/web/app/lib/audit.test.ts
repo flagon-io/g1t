@@ -93,11 +93,12 @@ test("the CSV quotes what it must and keeps formulas as text", () => {
 
 test("the log reads back only as far as the plan keeps it", () => {
   const now = Date.parse("2026-10-31T00:00:00.000Z");
-  // 30 days without Team.
+  // 90 days, on every plan.
+  assert.equal(retainedSince(null, 90, now), "2026-08-02T00:00:00.000Z");
   assert.equal(retainedSince(null, 30, now), "2026-10-01T00:00:00.000Z");
   assert.equal(retainedSince("2026-01-01T00:00:00.000Z", 30, now), "2026-10-01T00:00:00.000Z");
   // A later start than the window is kept.
   assert.equal(retainedSince("2026-10-20T00:00:00.000Z", 30, now), "2026-10-20T00:00:00.000Z");
-  // A year on Team.
+  // A longer window, where one is set.
   assert.equal(retainedSince("2026-01-01T00:00:00.000Z", 365, now), "2026-01-01T00:00:00.000Z");
 });

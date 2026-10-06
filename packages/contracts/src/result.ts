@@ -10,7 +10,20 @@ export type FailureCode =
   | "conflict"
   | "invalid"
   /** The workspace has to pay before this can happen. */
-  | "payment_required";
+  | "payment_required"
+  /** Billing's refusals to start compute (`reserve`); each message says what to do. */
+  /** No plan, and no trial or pool that pays for this work: a card check or the g1t plan is needed. */
+  | "not_paid"
+  /** The workspace's one trial is spent. */
+  | "trial_used"
+  /** The spend limit or g1t's ceiling is reached. */
+  | "limit"
+  /** Compute is paused: a spend spike waiting for an owner, or a hold. */
+  | "paused"
+  /** This month's open-source pool, or the repository's share of it, is spent. */
+  | "oss_pool_empty"
+  /** A sensitive change needs a recent sign-in or the password again. */
+  | "reauth_required";
 
 export type Failure = { code: FailureCode; message: string };
 
@@ -31,6 +44,12 @@ const HTTP_STATUS: Record<FailureCode, number> = {
   conflict: 409,
   invalid: 422,
   payment_required: 402,
+  not_paid: 402,
+  trial_used: 402,
+  limit: 402,
+  paused: 409,
+  oss_pool_empty: 402,
+  reauth_required: 403,
 };
 
 export function httpStatus(failure: Failure): number {

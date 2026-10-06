@@ -19,6 +19,15 @@ pub fn now() -> String {
     rfc3339(now_ms())
 }
 
+/// A repository purged (`repo.purged`): every row kept for it, `?1` its
+/// id. Advisories are shared by every repository, so they stay.
+pub const PURGED: &[&str] = &[
+    "DELETE FROM secrets WHERE repo_id = ?1",
+    "DELETE FROM vulnerabilities WHERE repo_id = ?1",
+    "DELETE FROM upgrades WHERE repo_id = ?1",
+    "DELETE FROM repos WHERE repo_id = ?1",
+];
+
 #[derive(Clone, Deserialize)]
 pub struct RepoRow {
     pub repo_id: String,
@@ -189,6 +198,16 @@ impl Store {
             .ok_or_else(|| worker::Error::RustError("the repository was not recorded".into()))
     }
 
+    /// A repository's path changed: transferred or renamed.
+    pub async fn moved(&self, repo_id: &str, namespace: &str, name: &str) -> Result<()> {
+        self.db
+            .prepare("UPDATE repos SET namespace = ?, name = ? WHERE repo_id = ?")
+            .bind(&[namespace.into(), name.into(), repo_id.into()])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
     pub async fn rename_namespace(&self, stale: &[String], current: &str) -> Result<()> {
         for slug in stale {
             self.db
@@ -207,6 +226,27 @@ impl Store {
             .all()
             .await?
             .results::<RepoRow>()
+    }
+
+    /// A repository purged: everything found in it goes. `?1` its id.
+    pub async fn purge(&self, repo_id: &str) -> Result<()> {
+        let mut batch = Vec::with_capacity(PURGED.len());
+        for sql in PURGED {
+            batch.push(self.db.prepare(*sql).bind(&[repo_id.into()])?);
+        }
+        self.db.batch(batch).await?;
+        Ok(())
+    }
+
+    /// Records that a repository's daily dependency read was skipped, and
+    /// why, so the sweep moves on to others until the next day.
+    pub async fn skip_dependencies(&self, repo_id: &str, why: &str) -> Result<()> {
+        self.db
+            .prepare("UPDATE repos SET deps_scanned_at = ?, deps_error = ? WHERE repo_id = ?")
+            .bind(&[now().into(), why.into(), repo_id.into()])?
+            .run()
+            .await?;
+        Ok(())
     }
 
     /// Repositories whose history still has to be scanned, oldest first.

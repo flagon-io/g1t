@@ -741,14 +741,32 @@ impl Search {
                     self.enqueue(vec![Job::Push { repo_id: push.repo_id, before: push.before, after: push.after }]).await?;
                 }
             }
-            "repo.created" | "repo.updated" | "repo.visibility_changed" | "repo.renamed" => {
+            // A transfer changes the repository's path; refreshing reads it
+            // again by id, issues and pull requests with it.
+            // Archiving changes nothing searched, but the details are read again.
+            "repo.created"
+            | "repo.updated"
+            | "repo.visibility_changed"
+            | "repo.renamed"
+            | "repo.transferred"
+            | "repo.archived"
+            | "repo.unarchived" => {
                 if let Ok(repo) = serde_json::from_value::<RepoEvent>(data.clone()) {
                     self.refresh_repo(&repo.repo_id).await?;
                 }
             }
-            "repo.deleted" => {
+            // A deleted repository is forgotten at once (repos hides it, so a
+            // refresh would forget it too), and purged for good later.
+            "repo.deleted" | "repo.purged" => {
                 if let Ok(repo) = serde_json::from_value::<RepoEvent>(data.clone()) {
                     self.purge(&repo.repo_id).await?;
+                }
+            }
+            // A restored one is indexed again, whole: its code, issues and
+            // pull requests.
+            "repo.restored" => {
+                if let Ok(repo) = serde_json::from_value::<RepoEvent>(data.clone()) {
+                    self.enqueue(vec![Job::Repo { repo_id: repo.repo_id }]).await?;
                 }
             }
             "issue.opened" | "issue.updated" | "issue.closed" | "issue.reopened" | "issue.assigned" => {
@@ -770,6 +788,14 @@ impl Search {
                 if let Ok(workspace) = serde_json::from_value::<WorkspaceEvent>(data.clone()) {
                     self.index_workspace(&workspace.slug).await?;
                 }
+            }
+            "workspace.deleted" => {
+                g1t_kit::deleted::on_event(
+                    &self.db,
+                    event,
+                    &["DELETE FROM people WHERE kind = 'workspace' AND slug = ?1"],
+                )
+                .await?;
             }
             "workspace.renamed" => {
                 g1t_kit::rename::on_event(

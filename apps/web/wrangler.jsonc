@@ -30,7 +30,9 @@
 		{ "binding": "PROJECTS", "service": "g1t-projects" },
 		{ "binding": "SECURITY", "service": "g1t-security" },
 		{ "binding": "CONTEXT", "service": "g1t-context" },
-		{ "binding": "SEARCH", "service": "g1t-search" }
+		{ "binding": "SEARCH", "service": "g1t-search" },
+		// Production screenshots for a project's overview (services/og).
+		{ "binding": "SCREENSHOTS", "service": "g1t-og", "entrypoint": "Screenshots" }
 	],
 	"observability": { "enabled": true },
 	"upload_source_maps": true

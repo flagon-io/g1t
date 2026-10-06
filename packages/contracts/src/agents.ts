@@ -77,7 +77,7 @@ export type AgentRun = {
   /** The longest it may take, in minutes, from its guardrails. */
   timeCapMinutes?: number | null;
   /** `budget` or `time` when g1t stopped it for reaching that cap. */
-  halted?: "budget" | "time" | null;
+  halted?: "budget" | "time" | "abuse" | null;
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
@@ -204,9 +204,35 @@ export interface AgentsApi {
   addMemory(actor: User, workspace: string, memory: NewMemory): Promise<Result<Memory>>;
   updateMemory(actor: User, workspace: string, id: string, change: MemoryChange): Promise<Result<Memory>>;
   deleteMemory(actor: User, workspace: string, id: string): Promise<Result<boolean>>;
-  /** For the runner: what to tell an agent starting in `repo`, marked used. */
-  memoryContext(repo: RepoPath, budget?: number): Promise<{ text: string | null; count: number }>;
+  /**
+   * For the runner: what to tell an agent starting in `repo`, marked used.
+   * `requester` is the person the run acts for: one who is not a member of
+   * the workspace (an outside collaborator) is given the project's memory
+   * only, never the workspace's.
+   */
+  memoryContext(repo: RepoPath, budget?: number, requester?: User | null): Promise<{ text: string | null; count: number }>;
+  /** For the runner: agent runs the workspace has queued or running, for its plan's cap. */
+  activeAgents(workspace: string): Promise<number>;
+  /** For the runner: what an issue's agents have spent; `number` may be one of its pull requests. */
+  issueSpend(repo: RepoPath, number: number): Promise<Result<IssueSpend>>;
+  /** For the runner: gives back a lifecycle step it could not start for want of a slot. */
+  waitForSlot(pullId: string, reason: string): Promise<boolean>;
+  /** For the runner: a comment from g1t-agent on an issue or pull request. */
+  agentComment(repo: RepoPath, number: number, body: string): Promise<boolean>;
+  /** For the runner: a run a person asked for, waiting for a slot. */
+  addWait(workspace: string, kind: string, payload: unknown): Promise<Result<boolean>>;
+  waitingWorkspaces(): Promise<string[]>;
+  /** The oldest run waiting in a workspace, taken out of the queue. */
+  takeWait(workspace: string): Promise<AgentWait | null>;
+  /** What a run's model cost, in dollars, with the run's token. */
+  runCost(runId: string, token: string): Promise<number | null>;
 }
+
+/** What an issue's agents have spent so far. Mirrors `IssueSpend` in agents.rs. */
+export type IssueSpend = { issue: number; spentMicros: number };
+
+/** A run waiting for one of its workspace's agent slots. */
+export type AgentWait = { id: string; workspace: string; kind: string; payload: unknown; createdAt: string };
 
 /** The agents and memory methods of the work service. */
 export function agentsClient(service: ServiceBinding): AgentsApi {
@@ -232,6 +258,14 @@ export function agentsClient(service: ServiceBinding): AgentsApi {
       call("add_memory", { actor, workspace, repo: memory.repo ?? null, scope: memory.scope, text: memory.text, kind: memory.kind ?? "fact", pinned: memory.pinned ?? false }),
     updateMemory: (actor, workspace, id, change) => call("update_memory", { actor, workspace, id, ...change }),
     deleteMemory: (actor, workspace, id) => call("delete_memory", { actor, workspace, id }),
-    memoryContext: (repo, budget) => call("memory_context", { repo, budget }),
+    memoryContext: (repo, budget, requester) => call("memory_context", { repo, budget, requester: requester ?? null }),
+    activeAgents: (workspace) => call("active_agents", { workspace }),
+    issueSpend: (repo, number) => call("issue_spend", { repo, number }),
+    waitForSlot: (pullId, reason) => call("wait_for_slot", { pullId, reason }),
+    agentComment: (repo, number, body) => call("agent_comment", { repo, number, body }),
+    addWait: (workspace, kind, payload) => call("add_wait", { workspace, kind, payload }),
+    waitingWorkspaces: () => call("waiting_workspaces", {}),
+    takeWait: (workspace) => call("take_wait", { workspace }),
+    runCost: (runId, token) => call("run_cost", { runId, token }),
   };
 }

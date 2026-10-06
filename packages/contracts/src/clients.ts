@@ -38,13 +38,13 @@ async function rpc<T>(
 export function identityClient(service: ServiceBinding): IdentityApi {
   const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
   return {
-    register: (username, email, password) =>
-      call("register", { username, email, password }),
-    signIn: (username, password) => call("sign_in", { username, password }),
+    register: (username, email, password, inviteCode, client) =>
+      call("register", { username, email, password, invite_code: inviteCode ?? null, client: client ?? null }),
+    signIn: (username, password, client) => call("sign_in", { username, password, client: client ?? null }),
     signOut: (sessionToken) => call("sign_out", { sessionToken }),
     resendVerification: (user) => call("resend_verification", { user }),
     verifyEmail: (token) => call("verify_email", { token }),
-    requestPasswordReset: (email) => call("request_password_reset", { email }),
+    requestPasswordReset: (email, client) => call("request_password_reset", { email, client: client ?? null }),
     resetPassword: (token, password) =>
       call("reset_password", { token, password }),
     deviceStart: (clientName) => call("device_start", { clientName }),
@@ -71,6 +71,8 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     checkWorkspaceRename: (actor, slug, newSlug) =>
       call("check_workspace_rename", { actor, slug, newSlug }),
     resolveSlug: (slug) => call("resolve_slug", { slug }),
+    deleteWorkspace: (actor, slug, confirm) => call("delete_workspace", { actor, slug, confirm }),
+    checkWorkspaceDeletion: (actor, slug) => call("check_workspace_deletion", { actor, slug }),
     setWorkspaceAvatar: (actor, slug, image) => call("set_workspace_avatar", { actor, slug, image }),
     setUserAvatar: (user, image) => call("set_user_avatar", { user, image }),
     listWorkspaceTokens: (slug, viewer) => call("list_workspace_tokens", { slug, viewer }),
@@ -79,6 +81,17 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     removeWorkspaceToken: (actor, slug, id) =>
       call("remove_workspace_token", { actor, slug, id }),
     userForSession: (sessionToken) => call("user_for_session", { sessionToken }),
+    registration: () => call("registration", {}),
+    listInvites: (user) => call("list_invites", { user }),
+    createInvite: (user, options = {}) =>
+      call("create_invite", { user, email: options.email ?? null, workspace: options.workspace ?? null }),
+    revokeInvite: (user, id) => call("revoke_invite", { user, id }),
+    checkInvite: (code, client) => call("check_invite", { code, client: client ?? null }),
+    acceptInvite: (user, code) => call("accept_invite", { user, code }),
+    inviteMember: (actor, slug, email) => call("invite_member", { actor, slug, email }),
+    workspaceInvites: (slug, viewer) => call("workspace_invites", { slug, viewer }),
+    revokeWorkspaceInvite: (actor, slug, id) => call("revoke_workspace_invite", { actor, slug, id }),
+    requestAccess: (email, about, client) => call("request_access", { email, about, client: client ?? null }),
     userForGitCredentials: (username, secret) =>
       call("user_for_git_credentials", { username, secret }),
     userForAccessToken: (token) => call("user_for_access_token", { token }),
@@ -102,6 +115,22 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     createRunCredential: (input) => call("create_run_credential", input),
     bindRunCredentials: (tokenHashes, runId) => call("bind_run_credentials", { tokenHashes, runId }),
     revokeRunCredentials: (target) => call("revoke_run_credentials", target),
+    // Who has access to a repository; see access.ts.
+    repoAccess: (owner, name, viewer) => call("repo_access", { viewer, path: { namespace: owner, name } }),
+    addCollaborator: (actor, owner, name, invitee, role) =>
+      call("add_collaborator", { actor, path: { namespace: owner, name }, invitee, role }),
+    setCollaboratorRole: (actor, owner, name, username, role) =>
+      call("set_collaborator_role", { actor, path: { namespace: owner, name }, username, role }),
+    removeCollaborator: (actor, owner, name, username) =>
+      call("remove_collaborator", { actor, path: { namespace: owner, name }, username }),
+    collaboratorPermission: (viewer, owner, name, username) =>
+      call("collaborator_permission", { viewer, path: { namespace: owner, name }, username }),
+    myRepoInvitations: (user) => call("my_repo_invitations", { user }),
+    respondRepoInvitation: (user, id, accept) => call("respond_repo_invitation", { user, id, accept }),
+    revokeRepoInvitation: (actor, owner, name, id) =>
+      call("revoke_repo_invitation", { actor, path: { namespace: owner, name }, id }),
+    setBasePermission: (actor, slug, base) => call("set_base_permission", { actor, slug, base_permission: base }),
+    outsideCollaborators: (viewer, slug) => call("outside_collaborators", { viewer, slug }),
   };
 }
 
@@ -123,12 +152,74 @@ export function staleSlugs(renamed: { from: string; to: string }, current: strin
   return [...new Set([renamed.from, renamed.to])].filter((slug) => slug !== current);
 }
 
+/**
+ * Where a transferred repository is now, as `namespace/name`, for a
+ * `repo.transferred` handler: asked of repos by id, so transfers delivered
+ * twice or out of order converge. Falls back to the event's destination.
+ */
+export async function currentRepoPath(
+  repos: ServiceBinding,
+  transferred: { repoId: string; name: string; to: string },
+): Promise<string> {
+  const path = await rpc<{ namespace: string; name: string } | null>(repos, "path_by_id", { id: transferred.repoId });
+  return path ? `${path.namespace}/${path.name}` : `${transferred.to}/${transferred.name}`;
+}
+
+/** The paths whose rows move to `current`: the two a transfer names, less `current`. */
+export function stalePaths(transferred: { name: string; from: string; to: string }, current: string): string[] {
+  return [...new Set([transferred.from, transferred.to].map((ns) => `${ns}/${transferred.name}`))].filter(
+    (path) => path !== current,
+  );
+}
+
+/**
+ * A repository's path change, from `repo.transferred` or `repo.renamed`,
+ * read the same way: the two paths (`namespace/name`) the event names, old
+ * then new. Null for any other event.
+ */
+export type RepoMove = { repoId: string; paths: [string, string] };
+
+export function repoMove(event: { type: string; data: unknown }): RepoMove | null {
+  const data = event.data as Record<string, string>;
+  if (event.type === "repo.transferred") {
+    return { repoId: data.repoId!, paths: [`${data.from}/${data.name}`, `${data.to}/${data.name}`] };
+  }
+  if (event.type === "repo.renamed") {
+    return { repoId: data.repoId!, paths: [`${data.namespace}/${data.from}`, `${data.namespace}/${data.to}`] };
+  }
+  return null;
+}
+
+/**
+ * Where a moved repository is now, as `namespace/name`: asked of repos by
+ * id, so moves delivered twice or out of order converge. Falls back to the
+ * event's new path.
+ */
+export async function currentMovedPath(repos: ServiceBinding, move: RepoMove): Promise<string> {
+  const path = await rpc<{ namespace: string; name: string } | null>(repos, "path_by_id", { id: move.repoId });
+  return path ? `${path.namespace}/${path.name}` : move.paths[1];
+}
+
+/** The paths whose rows move to `current`: the two a move names, less `current`. */
+export function staleMovedPaths(move: RepoMove, current: string): string[] {
+  return [...new Set(move.paths)].filter((path) => path !== current);
+}
+
 /** Staff-only identity. Only sudo binds to it; see `IdentityAdminApi`. */
 export function identityAdminClient(service: ServiceBinding): IdentityAdminApi {
   const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
   return {
     workspaces: (query) => call("admin_workspaces", { query: query ?? null }),
     workspace: (slug) => call("admin_workspace", { slug }),
+    waitlist: (query, status) => call("admin_waitlist", { query: query ?? null, status: status ?? null }),
+    decideWaitlist: (id, approve, staff) => call("admin_decide_waitlist", { id, approve, staff }),
+    invites: (query) => call("admin_invites", { query: query ?? null }),
+    revokeInvite: (id, staff) => call("admin_revoke_invite", { id, staff }),
+    mintInvite: (email, staff) => call("admin_mint_invite", { email, staff }),
+    grantInvites: (target, name, amount, note, staff) =>
+      call("admin_grant_invites", { target, name, amount, note, staff }),
+    inviteTree: (username) => call("admin_invite_tree", { username }),
+    workspaceInvites: (slug) => call("admin_workspace_invites", { slug }),
   };
 }
 
@@ -141,6 +232,19 @@ export function reposClient(service: ServiceBinding): ReposApi {
     list: (viewer, options = {}) => call("list", { viewer, ...options }),
     create: (owner, input) => call("create", { owner, ...input }),
     update: (actor, path, changes) => call("update", { actor, path, ...changes }),
+    transfer: (actor, path, to) => call("transfer", { actor, path, to }),
+    delete: (actor, path, confirm) => call("delete", { actor, path, confirm }),
+    deleted: (viewer, namespace) => call("deleted", { viewer, namespace }),
+    restore: (actor, path) => call("restore", { actor, path }),
+    purge: (actor, path, confirm) => call("purge", { actor, path, confirm }),
+    rename: (actor, path, name) => call("rename", { actor, path, name }),
+    archive: (actor, path, archived) => call("archive", { actor, path, archived }),
+    setVisibility: (actor, path, isPrivate, confirm) => call("set_visibility", { actor, path, isPrivate, confirm }),
+    setDefaultBranch: (actor, path, branch) => call("set_default_branch", { actor, path, branch }),
+    renameBranch: (actor, path, from, to) => call("rename_branch", { actor, path, from, to }),
+    resolveBranch: (repoId, branch) => call("resolve_branch", { repoId, branch }),
+    statusById: (id) => call("status_by_id", { id }),
+    resolvePath: (path) => call("resolve_path", { path }),
     tree: (path, viewer, ref, treePath) =>
       call("tree", { path, viewer, ref, treePath }),
     blob: (path, viewer, ref, filePath) =>
@@ -240,8 +344,8 @@ export function billingClient(service: ServiceBinding): BillingApi {
         before: filter.before ?? null,
       }),
     usage: (workspace, viewer, since) => call("usage", { workspace, viewer, since }),
-    checkout: (actor, workspace, amountCents, returnUrl) =>
-      call("checkout", { actor, workspace, amountCents, returnUrl }),
+    checkout: (actor, workspace, amountCents, returnUrl, method = "card") =>
+      call("checkout", { actor, workspace, amountCents, returnUrl, method }),
     confirm: (workspace, viewer, session) => call("confirm", { workspace, viewer, session }),
     canStart: (workspace) => call("can_start", { workspace }),
     trial: (workspace, exempt) => call("trial", { workspace, exempt }),
@@ -261,10 +365,18 @@ export function billingClient(service: ServiceBinding): BillingApi {
     checkLimit: (workspace) => call("check_limit", { workspace }),
     prices: () => call("prices", {}),
     notePending: (workspace, source, costMicros) => call("note_pending", { workspace, source, costMicros }),
-    setSpendLimit: (actor, workspace, spendLimitMicros, useFullLimit = false) =>
-      call("set_spend_limit", { actor, workspace, spendLimitMicros, use_full_limit: useFullLimit }),
+    setSpendLimit: (actor, workspace, spendLimitMicros, useFullLimit = false, raiseOnce = false) =>
+      call("set_spend_limit", { actor, workspace, spendLimitMicros, use_full_limit: useFullLimit, raise_once: raiseOnce }),
     invoices: (workspace, viewer) => call("invoices", { workspace, viewer }),
     entitlements: (workspace) => call("entitlements", { workspace }),
+    reserve: (reservation) => call("reserve", reservation),
+    settle: (reservationId, actualMicros) => call("settle", { reservationId, actualMicros }),
+    cardCheck: (actor, workspace, returnUrl) => call("card_check", { actor, workspace, returnUrl }),
+    confirmCardCheck: (workspace, viewer, session) => call("confirm_card_check", { workspace, viewer, session }),
+    requestLimit: (actor, workspace, request) => call("request_limit", { actor, workspace, ...request }),
+    limitRequests: (workspace, viewer) => call("limit_requests", { workspace, viewer }),
+    confirmSpike: (actor, workspace, keepGoing) => call("confirm_spike", { actor, workspace, keepGoing }),
+    setCaps: (actor, workspace, caps) => call("set_caps", { actor, workspace, ...caps }),
   };
 }
 
@@ -300,6 +412,15 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
     allInvoices: (filter = {}) => call("admin_invoices", { status: filter.status ?? null, month: filter.month ?? null }),
     audit: (filter = {}) =>
       call("admin_audit", { by: filter.by ?? null, action: filter.action ?? null, before: filter.before ?? null }),
+    limitRequests: (status = "open") => call("admin_limit_requests", { status }),
+    decideLimitRequest: (id, decision, amountMicros, note, by) =>
+      call("admin_decide_limit_request", { id, decision, amount_micros: amountMicros, note, by }),
+    overages: () => call("admin_overages", {}),
+    goodwill: (workspace, amountMicros, reason, by, day = null) =>
+      call("admin_goodwill", { workspace, amount_micros: amountMicros, reason, by, day }),
+    velocity: () => call("admin_velocity", {}),
+    recordPayment: (workspace, amountMicros, reference, note, by) =>
+      call("admin_record_payment", { workspace, amount_micros: amountMicros, reference, note, by }),
   };
 }
 

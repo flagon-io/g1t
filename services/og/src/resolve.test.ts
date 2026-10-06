@@ -96,6 +96,11 @@ test("the site's own pages get their own cards, or the brand card", async () => 
   assert.equal((await resolve("/explore", s)).kind, "page");
   assert.equal((await resolve("/login", s)).kind, "brand");
   assert.equal((await resolve("/settings/keys", s)).kind, "brand");
+  const privacy = await resolve("/policies/privacy", s);
+  assert.equal(privacy.kind === "page" && privacy.title, "Privacy Policy");
+  assert.equal((await resolve("/status", s)).kind, "page");
+  assert.equal((await resolve("/security", s)).kind, "page");
+  assert.equal((await resolve("/policies/nothing", s)).kind, "brand");
 });
 
 test("a workspace shows its name and how many projects are public", async () => {

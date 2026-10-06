@@ -135,16 +135,22 @@ pub(crate) fn one_line(text: &str, limit: usize) -> String {
 }
 
 /// A principal that can read any repository of `namespace`, for lookups a
-/// trusted service asks for.
+/// trusted service asks for. What it is given reads and nothing more.
 pub(crate) fn member_of(actor: &User, namespace: &str) -> Viewer {
     let mut viewer = actor.clone();
     let slug = namespace.to_lowercase();
     if !viewer.is_member(&slug) {
-        viewer.workspaces.push(Membership::member(slug));
+        viewer.workspaces.push(Membership {
+            base_permission: Some(g1t_contracts::access::BasePermission::Read),
+            ..Membership::member(slug)
+        });
     }
     Some(viewer)
 }
 
+/// Whether the viewer belongs to the workspace: what a run spent, its model
+/// and its budget are the workspace's business, not every reader's (an
+/// outside collaborator sees the work, not the bill).
 fn is_member(viewer: &Viewer, namespace: &str) -> bool {
     viewer
         .as_ref()
@@ -175,7 +181,7 @@ struct RunSumRow {
 
 impl Work {
     /// The repository at `path`, if `viewer` may see it, and whether they
-    /// are a member of its workspace.
+    /// are a member of its workspace (which shows what runs cost).
     async fn visible_repo(&self, path: &RepoPath, viewer: &Viewer) -> Result<Outcome<(Repo, bool)>> {
         Ok(match self.repo(path, viewer).await? {
             Outcome::Ok(repo) => {
@@ -220,6 +226,13 @@ impl Work {
                 Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
             },
         };
+        // Nothing new starts on an archived or deleted repository.
+        if !self.repo_active(&repo_id).await? {
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                format!("{}/{} is archived or deleted, so nothing new starts on it.", a.repo.namespace, a.repo.name),
+            ));
+        }
         let now = now_ms();
         let id = new_id("arn", now);
         let token = new_token();
@@ -346,15 +359,17 @@ impl Work {
 
     pub(crate) async fn stop_run(&self, a: StopRunArgs) -> Result<Outcome<StoppedRun>> {
         let viewer = Some(a.actor.clone());
-        let (repo, member) = match self.visible_repo(&a.repo, &viewer).await? {
+        let (repo, _) = match self.visible_repo(&a.repo, &viewer).await? {
             Outcome::Ok(found) => found,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        if !member || !a.actor.verified {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only members of the workspace can stop its agents.",
-            ));
+        if !a.actor.verified {
+            return Ok(Outcome::fail(FailureCode::Forbidden, crate::UNVERIFIED));
+        }
+        if let Outcome::Fail(failure) =
+            crate::allowed(Some(&a.actor), &repo, g1t_contracts::access::Capability::Run)
+        {
+            return Ok(Outcome::Fail(failure));
         }
         let Some(run) = self
             .run_row(&a.id)
@@ -423,7 +438,7 @@ impl Work {
     }
 
     /// Runs whose sandbox died without anyone noticing, marked failed.
-    async fn sweep_silent(&self) -> Result<()> {
+    pub(crate) async fn sweep_silent(&self) -> Result<()> {
         let now = now_ms();
         let cutoff = rfc3339(now.saturating_sub(SILENT_HOURS * 3_600_000));
         self.db

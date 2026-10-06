@@ -135,13 +135,14 @@ printed. Pushing to the pull request runs them again.
 - Each pull request for an issue is checked the same way, which makes
   several of them comparable at a glance.
 
-A pull request whose checks have not passed cannot be merged, unless a
-member of the workspace chooses to merge anyway.
+A pull request whose checks have not passed cannot be merged, unless
+someone who can merge chooses to merge anyway.
 
-Checks run in repositories of workspaces that can use g1t's agents: those
-with [their own model provider](/guides/models/), and those with
-[trial credit](/guides/usage-and-billing/#trials) left on g1t's hosted
-models.
+Checks run in g1t's sandboxes, so they need a workspace on the
+[g1t plan](/guides/usage-and-billing/#the-g1t-plan), or one with
+[trial credit](/guides/usage-and-billing/#the-trial) left. On a public
+repository, [g1t's open-source pool](/guides/usage-and-billing/#the-open-source-pool)
+runs them too, after a card check.
 
 ## Review
 
@@ -182,7 +183,8 @@ see what it knew.
 
 ## Merging
 
-A member of the repository's workspace merges a pull request once it is
+Someone with the [Write role](/guides/access-and-roles/) or higher on the
+repository merges a pull request once it is
 marked ready and its checks have passed. Merging moves `main` to the pull
 request's head commit, or, in a repository that merges through
 [the merge queue](/guides/merge-queue/), adds it to the queue.
@@ -234,6 +236,6 @@ g1t is under active development. These are designed but not available yet:
 - **Milestones.**
 - **g1t agents for everyone.** g1t can put its own agents on an issue, each
   in a sandbox. A workspace that connects its own model provider can use
-  them today, and every new workspace gets $1 of trial credit, which pays
-  for g1t's own models and sandboxes, no key needed.
-  See [trials](/guides/usage-and-billing/#trials).
+  them today on the [g1t plan](/guides/usage-and-billing/#the-g1t-plan)
+  or the one-time $5 trial after a card check.
+  See [the trial](/guides/usage-and-billing/#the-trial).

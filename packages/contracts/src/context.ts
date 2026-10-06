@@ -143,7 +143,7 @@ export type ContextStatus = {
   counts: Partial<Record<EntityKind, number>>;
   /** What the search index cost the workspace this month. */
   usage: { month: string; tokens: number; costMicros: number };
-  /** Whether semantic search is available; text search always is. */
+  /** Whether semantic search is available: set up, and on a paid plan or the trial. Text search always is. */
   semantic: boolean;
 };
 
@@ -167,8 +167,14 @@ export interface ContextApi {
   backfill(actor: User, workspace: string): Promise<Result<Backfill>>;
   /** The hub's state for a workspace. Starts its first backfill when it has none. Members only. */
   status(workspace: string, viewer: Viewer): Promise<Result<ContextStatus>>;
-  /** For the runner: the Context section for an agent starting work in a repository, within `budget` characters. */
-  runContext(repoId: string, task: string, budget?: number): Promise<RunContext>;
+  /**
+   * For the runner: the Context section for an agent starting work in a
+   * repository, within `budget` characters. `requester` is the person the
+   * run acts for: it holds only what they may read. One who is not a member
+   * of the workspace gets the project's memory only, never the workspace's,
+   * and only the dependencies whose projects they can read.
+   */
+  runContext(repoId: string, task: string, budget?: number, requester?: Viewer): Promise<RunContext>;
 }
 
 async function rpc<T>(service: ServiceBinding, method: string, args: object): Promise<T> {
@@ -190,7 +196,7 @@ export function contextClient(service: ServiceBinding): ContextApi {
     scorecards: (workspace, viewer) => call("scorecards", { workspace, viewer }),
     backfill: (actor, workspace) => call("backfill", { actor, workspace }),
     status: (workspace, viewer) => call("status", { workspace, viewer }),
-    runContext: (repoId, task, budget) => call("run_context", { repoId, task, budget }),
+    runContext: (repoId, task, budget, requester) => call("run_context", { repoId, task, budget, requester: requester ?? null }),
   };
 }
 

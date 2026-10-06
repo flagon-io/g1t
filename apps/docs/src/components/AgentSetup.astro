@@ -1,0 +1,32 @@
+---
+// How to connect a coding agent to g1t: a tab per agent. Every block on
+// the page switches together, and Starlight remembers the choice
+// (`syncKey`). The snippets live in `src/data/agents.ts`.
+import { Code, TabItem, Tabs } from '@astrojs/starlight/components';
+
+import { AGENTS, AGENTS_WITH_TOKEN } from '../data/agents';
+
+interface Props {
+	/** `token` shows each agent with a bearer token instead of signing in through the browser. */
+	variant?: 'browser' | 'token';
+}
+
+const { variant = 'browser' } = Astro.props;
+const agents = variant === 'token' ? AGENTS_WITH_TOKEN : AGENTS;
+const parts = (text: string) => text.split('`').map((part, index) => ({ part, code: index % 2 === 1 }));
+---
+
+<Tabs syncKey="agent">
+	{
+		agents.map((agent) => (
+			<TabItem label={agent.label}>
+				<Code code={agent.code} lang={agent.lang} title={agent.file ?? undefined} frame={agent.file ? 'code' : 'none'} />
+				{agent.then && (
+					<p>
+						{parts(agent.then).map(({ part, code }) => (code ? <code>{part}</code> : part))}
+					</p>
+				)}
+			</TabItem>
+		))
+	}
+</Tabs>

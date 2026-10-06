@@ -10,7 +10,8 @@ import { LogText, Notes, StatusIcon, duration, shortRef, standingWord, useJobLog
 import { Button, ErrorText, TimeAgo } from "../../components/ui";
 import { listArtifacts } from "../../lib/artifacts.server";
 import { actions } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
+import { accessTo, refusal } from "../../lib/access.server";
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   const run = loaderData?.detail.run;
@@ -21,7 +22,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const detail = unwrap(await actions.run({ namespace: params.owner, name: params.repo }, viewer, params.id));
   const artifacts = await listArtifacts(params.id).catch(() => []);
-  return { detail, artifacts, member: roleIn(viewer, params.owner) != null };
+  // Cancelling and re-running need Write.
+  return { detail, artifacts, member: (await accessTo(context, params)).can.run };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -29,6 +31,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const user = requireUser(context, request);
   const repo = { namespace: params.owner, name: params.repo };
   const intent = String((await request.formData()).get("intent"));
+  const refused = await refusal(context, params, "run");
+  if (refused) return { error: refused };
   const done =
     intent === "cancel"
       ? await actions.cancel(user, repo, params.id)

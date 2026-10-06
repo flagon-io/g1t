@@ -7,10 +7,12 @@ import type { Route } from "./+types/layout";
 import { page } from "../../lib/meta";
 import { type Tab as PageTab, tabsFor } from "../../lib/project-nav";
 import { Pill } from "../../components/ui";
+import { ArchivedBanner } from "../../components/repo-lifecycle";
 import { notFound } from "../../lib/not-found.server";
-import { redirectIfRenamed } from "../../lib/renamed.server";
-import { projects, repos, work } from "../../lib/services.server";
-import { getViewer, roleIn, unwrap } from "../../lib/session.server";
+import { redirectIfRenamed, redirectIfTransferred } from "../../lib/renamed.server";
+import { accessFor, repoFor } from "../../lib/access.server";
+import { projects, work } from "../../lib/services.server";
+import { getViewer, unwrap } from "../../lib/session.server";
 
 export function meta({ loaderData: loaded, params, ...args }: Route.MetaArgs) {
   return page(args, { title: `${loaded?.project?.name ?? params.repo} · ${params.owner} · g1t` });
@@ -20,13 +22,15 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const path = { namespace: params.owner, name: params.repo };
   const [repo, counts, found] = await Promise.all([
-    repos.get(path, viewer),
+    repoFor(context, params),
     work.counts(path, viewer),
     projects.get(params.owner, params.repo, viewer),
   ]);
   if (!repo.ok && !found.ok) {
     // Under a workspace's old name, after a rename: the project is at the new one.
     await redirectIfRenamed(request, params.owner);
+    // A repository transferred to another workspace: it is there now.
+    await redirectIfTransferred(request, params.owner, params.repo, viewer);
     throw notFound("project");
   }
   let project: Project | null = found.ok ? found.value : null;
@@ -35,11 +39,16 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     const own = await projects.byRepo(repo.value.id);
     project = own.find((p) => p.slug === params.repo.toLowerCase()) ?? own[0] ?? null;
   }
+  const value = unwrap(repo);
+  // The viewer's role on the repository and what it lets them do, for the
+  // pages under it and the sidebar.
+  const access = accessFor(viewer, value);
   return {
-    repo: unwrap(repo),
+    repo: value,
     project,
     open: counts.ok ? counts.value : { issues: 0, pulls: 0 },
-    member: roleIn(viewer, params.owner) != null,
+    access,
+    member: access.insider,
   };
 }
 
@@ -66,12 +75,13 @@ function Topics({ topics }: { topics: string[] | undefined }) {
   );
 }
 
-function Header({ project, isPrivate, namespace, name, description, large }: {
+function Header({ project, isPrivate, archived, namespace, name, description, large }: {
   project: Project | null;
   isPrivate: boolean;
   namespace: string;
   name: string;
   description: string | null;
+  archived?: boolean;
   large?: boolean;
 }) {
   const base = `/${namespace}/${name}`;
@@ -92,6 +102,7 @@ function Header({ project, isPrivate, namespace, name, description, large }: {
         </Link>
       </h1>
       <Pill>{isPrivate ? "private" : "public"}</Pill>
+      {archived && <Pill>archived</Pill>}
       {description && <p className="min-w-0 truncate text-sm text-muted">{description}</p>}
     </div>
   );
@@ -138,11 +149,11 @@ function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
 }
 
 export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
-  const { repo, project, member } = loaderData;
+  const { repo, project, member, access } = loaderData;
   const base = `/${repo.namespace}/${repo.name}`;
   const description = project?.description ?? repo.description;
   const { pathname } = useLocation();
-  const tabs = tabsFor(pathname.slice(base.length + 1), member);
+  const tabs = tabsFor(pathname.slice(base.length + 1), member, access.can);
   // Everyone, signed in or not, finds the project's pages in the sidebar;
   // the page shows its name, and the views of the page it is on as tabs.
   return (
@@ -152,6 +163,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
           <Header
             project={project}
             isPrivate={repo.isPrivate}
+            archived={Boolean(repo.archivedAt)}
             namespace={repo.namespace}
             name={repo.name}
             description={description}
@@ -165,6 +177,11 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
         </div>
       </div>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+        {repo.archivedAt && (
+          <div className="mb-6">
+            <ArchivedBanner base={base} owner={access.can.administer} settings={/^settings(\/|$)/.test(pathname.slice(base.length + 1))} />
+          </div>
+        )}
         <Outlet />
       </div>
     </>

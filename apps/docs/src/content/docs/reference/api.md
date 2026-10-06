@@ -84,9 +84,9 @@ same names as the MCP tools, and also accept the `camelCase` spelling:
 
 ```sh
 # Both turn off counting agents' approvals.
-curl -X PATCH https://api.g1t.sh/repos/syntaqx/hello/settings \
+curl -X PATCH https://api.g1t.sh/repos/flagon-io/hello/settings \
   -H "Authorization: Bearer $G1T_TOKEN" -d '{"count_agent_approvals": false}'
-curl -X PATCH https://api.g1t.sh/repos/syntaqx/hello/settings \
+curl -X PATCH https://api.g1t.sh/repos/flagon-io/hello/settings \
   -H "Authorization: Bearer $G1T_TOKEN" -d '{"countAgentApprovals": false}'
 ```
 
@@ -115,7 +115,7 @@ Errors are JSON with a stable `code` and a human-readable `message`.
 | Status | Code | Meaning |
 | --- | --- | --- |
 | 401 | `unauthenticated` | A token is required, or the one sent is not valid. |
-| 402 | `payment_required` | The workspace has no agent credit. Only endpoints that start an agent answer this. See [usage and billing](/guides/usage-and-billing/#when-credit-runs-out). |
+| 402 | `payment_required` | The workspace cannot start this work: it needs the g1t plan or a card check, or it is at a limit. Only endpoints that start an agent answer this. See [usage and billing](/guides/usage-and-billing/#when-work-is-stopped). |
 | 403 | `forbidden` | You are signed in but not allowed to do this. |
 | 404 | `not_found` | It does not exist, or you cannot see it. A path that is not an endpoint answers this too. |
 | 409 | `conflict` | The request conflicts with the current state. |
@@ -156,7 +156,9 @@ Times are RFC 3339 in UTC, with milliseconds, such as
 | --- | --- |
 | [Accounts](/reference/api/accounts/whoami/) | Signing in from a tool, and who a token acts as. |
 | [Workspaces](/reference/api/workspaces/create-workspace/) | Creating a workspace. |
+| [Invites](/reference/api/invites/list-invites/) | Your invites while g1t is invite-only, and inviting people into a workspace by email. |
 | [Repositories](/reference/api/repositories/list-repos/) | A repository, how it handles pull requests, and its timeline. |
+| [Access](/reference/api/access/list-collaborators/) | Who has which role on a repository, invitations, outside collaborators, and a workspace's base permission. |
 | [Issues](/reference/api/issues/list-issues/) | What should change, with labels and comments, and assigning it to the g1t agent. |
 | [Plans](/reference/api/plans/plan-work/) | An [outcome](/guides/outcomes/) turned into issues. |
 | [Pull requests](/reference/api/pull-requests/list-pull-requests/) | Proposed changes: reviews, merging, the merge queue, and messages to the agent at work. |

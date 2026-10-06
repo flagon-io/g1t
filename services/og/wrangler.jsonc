@@ -3,6 +3,8 @@
 	"name": "g1t-og",
 	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
 	"compatibility_date": "2026-09-26",
+	// The browser that takes screenshots (@cloudflare/puppeteer) needs it.
+	"compatibility_flags": ["nodejs_compat"],
 	"main": "./src/index.ts",
 	"workers_dev": false,
 	// The social cards the site and the docs link to from their og:image
@@ -16,6 +18,13 @@
 	// every call is made with no viewer.
 	// Uploaded avatars, read to draw a workspace's icon or a person's picture on its card.
 	"kv_namespaces": [{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }],
+	// Screenshots of each project's production, one per deploy, taken by
+	// Browser Rendering and kept in R2. Reached only through the
+	// `Screenshots` entrypoint: deployments asks for one when production
+	// goes live, and the site reads it for a project's overview.
+	"browser": { "binding": "BROWSER" },
+	// Made by `npx wrangler r2 bucket create g1t-screenshots`.
+	"r2_buckets": [{ "binding": "SCREENSHOTS", "bucket_name": "g1t-screenshots" }],
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "REPOS", "service": "g1t-repos" },

@@ -54,6 +54,8 @@ pub struct Facts<'a> {
     pub redirect: Option<(&'a str, &'a str)>,
     /// When the workspace was last renamed, if ever.
     pub last_renamed_at: Option<&'a str>,
+    /// A deleted workspace had `wanted`; it is never given to another.
+    pub deleted: bool,
     pub now_ms: u64,
 }
 
@@ -79,7 +81,7 @@ pub fn check(facts: &Facts) -> std::result::Result<(), (FailureCode, String)> {
             );
         }
     }
-    if facts.someone_elses_username || facts.another_workspace {
+    if facts.someone_elses_username || facts.another_workspace || facts.deleted {
         return refuse(FailureCode::Conflict, TAKEN);
     }
     if let Some((holder, created_at)) = facts.redirect
@@ -200,6 +202,7 @@ impl Identity {
                 .as_ref()
                 .map(|row| (row.workspace_id.as_str(), row.created_at.as_str())),
             last_renamed_at: last_renamed_at.as_deref(),
+            deleted: self.slug_deleted(&wanted).await?,
             now_ms: now_ms(),
         };
         Ok(match check(&facts) {
@@ -342,6 +345,11 @@ mod tests {
             ..facts("acme", "globex")
         };
         assert_eq!(refused(&taken), FailureCode::Conflict);
+        let deleted = Facts {
+            deleted: true,
+            ..facts("acme", "initech")
+        };
+        assert_eq!(refused(&deleted), FailureCode::Conflict);
     }
 
     #[test]

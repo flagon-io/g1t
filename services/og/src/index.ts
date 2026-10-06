@@ -9,20 +9,29 @@
  * so nothing private ever reaches one (see `resolve.ts`). Cards are kept in
  * the edge cache by their full address; the site adds `v`, which changes
  * when what a card shows does, so an edited title gets a new card.
+ *
+ * Also the `Screenshots` entrypoint, reached only through service
+ * bindings: a screenshot of each project's production, per deploy (see
+ * `capture.ts`).
  */
+import { WorkerEntrypoint } from "cloudflare:workers";
 import { type ServiceBinding, identityClient, projectsClient, reposClient, workClient } from "@g1t/contracts";
 import type { Font } from "satori/standalone";
 import resvgWasm from "@resvg/resvg-wasm/index_bg.wasm";
 import yogaWasm from "satori/yoga.wasm";
 
-import inter400 from "./fonts/inter-400.ttf";
-import inter500 from "./fonts/inter-500.ttf";
-import inter600 from "./fonts/inter-600.ttf";
-import inter700 from "./fonts/inter-700.ttf";
-import mono400 from "./fonts/jetbrains-mono-400.ttf";
-import mono500 from "./fonts/jetbrains-mono-500.ttf";
+import display500 from "./fonts/bricolage-grotesque-500.ttf";
+import display600 from "./fonts/bricolage-grotesque-600.ttf";
+import sans400 from "./fonts/hanken-grotesk-400.ttf";
+import sans500 from "./fonts/hanken-grotesk-500.ttf";
+import sans600 from "./fonts/hanken-grotesk-600.ttf";
+import sans700 from "./fonts/hanken-grotesk-700.ttf";
+import mono400 from "./fonts/ibm-plex-mono-400.ttf";
+import mono500 from "./fonts/ibm-plex-mono-500.ttf";
 import { cardPng } from "./render.ts";
 import { cacheKey } from "./cache.ts";
+import { type Shot, screenshotOf, take } from "./capture.ts";
+import { parseShot } from "./screenshot.ts";
 import { BRAND, type Card, docsCard, resolve } from "./resolve.ts";
 
 interface Env {
@@ -32,15 +41,51 @@ interface Env {
   REPOS: ServiceBinding;
   WORK: ServiceBinding;
   PROJECTS: ServiceBinding;
+  /** Browser Rendering, for production screenshots. */
+  BROWSER: Fetcher;
+  /** Production screenshots, by app hostname. */
+  SCREENSHOTS: R2Bucket;
 }
 
+/**
+ * Production screenshots. `capture` is called by deployments when
+ * production goes live; `image` by the site, for a project's overview, which
+ * decides who may see it.
+ */
+export class Screenshots extends WorkerEntrypoint<Env> {
+  /** Takes the screenshot of `{ host, commit }` in the background. */
+  async capture(input: unknown): Promise<boolean> {
+    const request = parseShot(input);
+    if (!request) return false;
+    this.ctx.waitUntil(take(this.env, request));
+    return true;
+  }
+
+  /**
+   * The screenshot of `{ host, commit }`, taken now if it has not been, or
+   * the last one kept for that app. Its `commit` says which it is.
+   */
+  async image(input: unknown): Promise<Shot | null> {
+    const request = parseShot(input);
+    if (!request) return null;
+    return screenshotOf(this.env, request);
+  }
+}
+
+/*
+ * g1t's typefaces, as on the site (packages/theme), but static: the
+ * renderer takes no variable fonts. Bricolage is cut at the optical size
+ * of the headlines it sets on a card.
+ */
 const FONTS: Font[] = [
-  { name: "Inter", data: inter400, weight: 400, style: "normal" },
-  { name: "Inter", data: inter500, weight: 500, style: "normal" },
-  { name: "Inter", data: inter600, weight: 600, style: "normal" },
-  { name: "Inter", data: inter700, weight: 700, style: "normal" },
-  { name: "JetBrains Mono", data: mono400, weight: 400, style: "normal" },
-  { name: "JetBrains Mono", data: mono500, weight: 500, style: "normal" },
+  { name: "Hanken Grotesk", data: sans400, weight: 400, style: "normal" },
+  { name: "Hanken Grotesk", data: sans500, weight: 500, style: "normal" },
+  { name: "Hanken Grotesk", data: sans600, weight: 600, style: "normal" },
+  { name: "Hanken Grotesk", data: sans700, weight: 700, style: "normal" },
+  { name: "Bricolage Grotesque", data: display500, weight: 500, style: "normal" },
+  { name: "Bricolage Grotesque", data: display600, weight: 600, style: "normal" },
+  { name: "IBM Plex Mono", data: mono400, weight: 400, style: "normal" },
+  { name: "IBM Plex Mono", data: mono500, weight: 500, style: "normal" },
 ];
 
 const ASSETS = { yoga: yogaWasm, resvg: resvgWasm, fonts: FONTS };

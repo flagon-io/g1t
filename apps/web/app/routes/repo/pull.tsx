@@ -27,6 +27,7 @@ import { useEffect } from "react";
 import { Form, Link, redirect, useNavigation, useRevalidator } from "react-router";
 
 import {
+  type Capability,
   type Comparison,
   type Deployment,
   type Job,
@@ -48,6 +49,7 @@ import {
   ButtonLink,
   CopyLine,
   EmptyState,
+  ComputeNote,
   ErrorText,
   Textarea,
   TimeAgo,
@@ -68,8 +70,10 @@ import {
 import { CatchUpProgress, ChecksSection, ConflictsSection, MergeabilityRow, runIdOf } from "../../components/merge-box";
 import { CATCH_UP_TIMEOUT_MS } from "../../lib/catch-up";
 import { notFound } from "../../lib/not-found.server";
+import { computeNoteFor } from "../../lib/compute.server";
 import { actions, deployments, identity, projects, repos, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
+import { accessTo, refusal } from "../../lib/access.server";
 
 const REFRESH_MS = 4000;
 const EMPTY_COMPARISON: Comparison = { base: null, head: "", files: [], truncated: false };
@@ -99,12 +103,15 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const asked = new URL(request.url).searchParams.get("tab");
   const tab: Tab = TABS.find((name) => name === asked) ?? "conversation";
 
+  // Members of the workspace pick reviewers and assignees from its people;
+  // what the viewer may do here goes by their role on the repository.
   const member = (viewer?.workspaces ?? []).some(
     (membership) => membership.slug === params.owner,
   );
+  const { can, insider } = await accessTo(context, params);
   // At once: none of these depends on another.
   const ref = { workspace: params.owner, slug: params.repo };
-  const [found, repo, settings, agentsEnabled, members, deps, deployed] = await Promise.all([
+  const [found, repo, settings, agentsEnabled, members, deps, deployed, computeNote] = await Promise.all([
     work.getPull(path, number, viewer),
     repos.get(path, viewer),
     work.getSettings(path, viewer),
@@ -113,7 +120,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     member ? identity.listMembers(params.owner, viewer) : null,
     // The projects that use this one: what a change here can affect.
     projects.dependencies(params.owner, params.repo, viewer),
-    member ? deployments.list(ref, viewer) : null,
+    insider ? deployments.list(ref, viewer) : null,
+    // Before someone asks g1t-agent for something: whether the plan lets it start.
+    can.run ? computeNoteFor(params.owner, "agent") : null,
   ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be an issue.
@@ -145,13 +154,17 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // An empty comparison if it could not be made.
     comparison: comparison && (comparison.ok ? comparison.value : EMPTY_COMPARISON),
     viewer,
-    // Members of the repository's workspace can merge.
-    canMerge: member,
-    canManage: member || viewer?.id === pull.author.id,
+    // Write and up can merge.
+    canMerge: can.merge,
+    // Triage and up manage anyone's pull request; its author, their own.
+    canManage: can.triage || (viewer != null && viewer.id === pull.author.id),
+    // Telling its agent things, and re-running checks, spend compute: Write and up.
+    canRun: can.run,
     // A catch-up is pushed as the viewer: a fork takes pushes only from
-    // whoever opened it, a branch from any member.
-    canUpdate: pull.fork ? viewer?.id === pull.author.id : member,
+    // whoever opened it, a branch from anyone who can push.
+    canUpdate: pull.fork ? viewer?.id === pull.author.id : can.push,
     agentsEnabled,
+    computeNote,
     members: members?.ok ? members.value.map((person) => person.username) : [],
     requireUpToDate: settings.ok && settings.value.requireUpToDate,
     mergeQueue: settings.ok && settings.value.mergeQueue,
@@ -193,6 +206,16 @@ async function deploymentOf(
   return { preview, build, stacked };
 }
 
+const PULL_NEEDS: Record<string, Capability> = {
+  stack: "run",
+  "agent-review": "run",
+  "rerun-workflow": "run",
+  recheck: "run",
+  message: "run",
+  merge: "merge",
+  unqueue: "merge",
+};
+
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
@@ -200,6 +223,10 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const number = Number(params.number);
   const action = form.get("action");
+  // What each form needs beyond reading; work checks the rest.
+  const needed = typeof action === "string" ? PULL_NEEDS[action] : undefined;
+  const refused = needed ? await refusal(context, params, needed) : null;
+  if (refused) return { error: refused, action: String(action) };
   const verdict = form.get("verdict");
   const line = Number(form.get("line"));
   /** Names ticked in a people picker, plus those typed beside it. */
@@ -451,6 +478,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     viewer,
     canMerge,
     canManage,
+    canRun,
     defaultBranch,
   } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
@@ -656,7 +684,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               <AgentPanel owner={params.owner} repo={params.repo} number={pull.number} stage={lifecycle?.stage ?? null} />
 
               {/* Steering: while its agent works, people can tell it things. */}
-              {canManage &&
+              {canRun &&
                 pull.runtime === "hosted" &&
                 (working || ["working", "revising", "catching_up", "answering"].includes(lifecycle?.stage ?? "")) && (
                   <Form method="post" className="mt-4 rounded-2xl bg-surface p-4 ring-1 ring-merged/30">
@@ -838,7 +866,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       pull={pull}
                       base={base}
                       earlier={earlierChecks}
-                      canRerun={canManage}
+                      canRerun={canRun}
                       canRerunWorkflows={canMerge}
                       error={
                         actionData?.action === "recheck" || actionData?.action === "rerun-workflow"
@@ -1130,6 +1158,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         Request review from g1t agent
                       </Button>
                     </div>
+                    <ComputeNote note={loaderData.computeNote} />
                   </Form>
                 )}
                 <details>

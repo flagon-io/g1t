@@ -11,7 +11,7 @@ import { DiffView } from "../../components/diff-view";
 import { Avatar, TimeAgo } from "../../components/ui";
 import { immutable } from "../../lib/immutable.server";
 import { pullForCommit } from "../../lib/provenance.server";
-import { repos } from "../../lib/services.server";
+import { accounts, repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
 export function headers({ loaderHeaders }: Route.HeadersArgs) {
@@ -61,9 +61,15 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     return { commit, comparison };
   });
   if (!loaded) throw new Response("Commit not found.", { status: 404 });
+  // The account the author address belongs to, if any; not cached, since
+  // an address can be confirmed or removed later.
+  const email = loaded.commit.author.email.toLowerCase();
+  const owners = await accounts.emailOwners([email]).catch(() => ({}) as Record<string, never>);
+  const owner: { username: string; avatar: string | null } | null = owners[email] ?? null;
   return data(
     {
       ...loaded,
+      owner,
       // Streamed: the page shows the commit while this is worked out.
       pull: pullForCommit(path, viewer, loaded.commit.hash),
     },
@@ -121,7 +127,7 @@ function MergedIn({ base, pull }: { base: string; pull: Pull }) {
 }
 
 export default function CommitPage({ loaderData, params }: Route.ComponentProps) {
-  const { commit, pull, comparison } = loaderData;
+  const { commit, pull, comparison, owner } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const { subject, body, coAuthors, trailers } = parseCommitMessage(commit.message);
   return (
@@ -148,8 +154,14 @@ export default function CommitPage({ loaderData, params }: Route.ComponentProps)
         </div>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-line bg-bg/40 px-5 py-3 text-sm">
           <span className="flex items-center gap-2">
-            <Avatar name={commit.author.name} size={20} />
-            <span className="font-medium">{commit.author.name}</span>
+            <Avatar name={owner?.username ?? commit.author.name} image={owner?.avatar} size={20} />
+            {owner ? (
+              <Link to={`/u/${owner.username}`} className="font-medium hover:underline" title={commit.author.name}>
+                {owner.username}
+              </Link>
+            ) : (
+              <span className="font-medium">{commit.author.name}</span>
+            )}
             {coAuthors.length > 0 && (
               <span className="text-muted">
                 and <span className="font-medium text-fg">{coAuthors.join(", ")}</span>

@@ -2,6 +2,8 @@ import { Check, Copy, Sparkles } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
 import { Link, type LinkProps, NavLink, useLocation } from "react-router";
 
+import { isWaitingMessage, linkPaths } from "../../lib/compute";
+
 export function Field({
   label,
   hint,
@@ -98,7 +100,7 @@ export function TabLink({
   );
 }
 
-type Variant = "primary" | "accent" | "quiet";
+type Variant = "primary" | "accent" | "quiet" | "danger";
 
 const BUTTON_BASE =
   "inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors disabled:opacity-50";
@@ -108,6 +110,8 @@ const BUTTON_VARIANTS: Record<Variant, string> = {
   accent: "bg-accent text-bg hover:bg-[#aaf5d6]",
   quiet:
     "border border-line text-fg/80 hover:border-line-strong hover:bg-surface hover:text-fg",
+  // For what cannot be undone: transferring, deleting.
+  danger: "border border-danger/40 text-danger hover:border-danger hover:bg-danger/10",
 };
 
 export function Button({
@@ -135,8 +139,48 @@ export function ButtonLink({
   );
 }
 
+/**
+ * A message with the g1t pages it names as links, such as the billing page
+ * a refusal to start compute points to.
+ */
+export function Linked({ text }: { text: string }) {
+  return (
+    <>
+      {linkPaths(text).map((piece, at) =>
+        piece.href ? (
+          <Link key={at} to={piece.href} className="underline underline-offset-2">
+            {piece.text}
+          </Link>
+        ) : (
+          piece.text
+        ),
+      )}
+    </>
+  );
+}
+
 export function ErrorText({ children }: { children: ReactNode }) {
-  return children ? <p className="text-sm text-danger">{children}</p> : null;
+  if (!children) return null;
+  if (typeof children !== "string") return <p className="text-sm text-danger">{children}</p>;
+  // Waiting for a free agent slot is not an error: it starts by itself.
+  return (
+    <p className={`text-sm ${isWaitingMessage(children) ? "text-muted" : "text-danger"}`}>
+      <Linked text={children} />
+    </p>
+  );
+}
+
+/**
+ * What a workspace's plan says before someone tries to start compute it
+ * would refuse ("Agents need a paid workspace or the free trial"), with
+ * where to fix it.
+ */
+export function ComputeNote({ note }: { note: string | null | undefined }) {
+  return note ? (
+    <p className="text-sm text-muted">
+      <Linked text={note} />
+    </p>
+  ) : null;
 }
 
 /** A small outlined label. */

@@ -22,11 +22,11 @@ const BASE = 'https://api.g1t.sh';
 const METHODS = ['get', 'post', 'put', 'patch', 'delete'];
 
 /** Values for path parameters an example does not give. */
-const DEFAULT_PARAMS = { owner: 'syntaqx', name: 'hello', workspace: 'syntaqx' };
+const DEFAULT_PARAMS = { owner: 'flagon-io', name: 'hello', workspace: 'flagon-io' };
 
 const STATUS = {
 	401: ['unauthenticated', 'A token is required, or the one sent is not valid.'],
-	402: ['payment_required', 'The workspace has no agent credit. See [usage and billing](/guides/usage-and-billing/#when-credit-runs-out).'],
+	402: ['payment_required', 'The workspace cannot start this work: it needs the g1t plan or a card check, or it is at a limit. See [usage and billing](/guides/usage-and-billing/#when-work-is-stopped).'],
 	403: ['forbidden', 'The token is valid but not allowed to do this, such as a member-only change or an agent token outside its repository.'],
 	404: ['not_found', 'It does not exist, or you cannot see it.'],
 	409: ['conflict', 'The request conflicts with the current state.'],

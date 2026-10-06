@@ -4,6 +4,7 @@
 
 use g1t_actions::events::{RunInfo, github_events};
 use g1t_actions::workflow::{self, Trigger, Workflow};
+use g1t_contracts::access::{self, Capability};
 use g1t_contracts::actions::{DispatchArgs, WorkflowRun};
 use g1t_contracts::events::Event;
 use g1t_contracts::identity::{AGENT_ID, AGENT_NAME, UsernamesArgs};
@@ -51,22 +52,31 @@ impl Actions {
         Ok(names.get(id).cloned())
     }
 
-    /// Whether a pull request's author belongs to the workspace, so its
-    /// runs get the secrets and a token. On a private repository only
-    /// members can open one at all.
+    /// Whether a pull request's author could push to the repository, so
+    /// its runs get the secrets and a token. Anyone else's, a reader's
+    /// included (who may open one on a private repository too), runs
+    /// without them.
     async fn insider(&self, author: &User, repo: &Repo, ws: &User) -> Result<bool> {
-        let slug = repo.namespace.to_lowercase();
-        if repo.is_private || author.id == AGENT_ID || author.is_member(&slug) {
+        if author.id == AGENT_ID || access::can(Some(author), repo, Capability::Push) {
             return Ok(true);
         }
-        // Stored authors carry no memberships: ask the workspace.
-        let members: Outcome<Vec<g1t_contracts::identity::Member>> = g1t_kit::call(
+        // Stored authors carry no memberships or grants: ask identity, as
+        // the workspace (which may see anyone's permission).
+        let permission: Outcome<access::PermissionInfo> = g1t_kit::call(
             &self.identity,
-            "list_members",
-            &g1t_contracts::identity::ListMembersArgs { slug, viewer: Some(ws.clone()) },
+            "collaborator_permission",
+            &access::CollaboratorPermissionArgs {
+                viewer: Some(ws.clone()),
+                path: RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() },
+                username: author.username.clone(),
+            },
         )
         .await?;
-        Ok(members.into_result().unwrap_or_default().iter().any(|m| m.username.eq_ignore_ascii_case(&author.username)))
+        Ok(permission
+            .into_result()
+            .ok()
+            .and_then(|info| info.role)
+            .is_some_and(|role| access::allows(role, Capability::Push)))
     }
 
     async fn commits(&self, repo: &Repo, actor: &User, after: &str, before: Option<&str>) -> Result<Vec<Commit>> {
@@ -507,7 +517,8 @@ impl Actions {
                 continue;
             };
             let Ok(workflow) = workflow::parse(&row.source) else { continue };
-            let Some((repo, _ws)) = self.repo_by_id(&row.repo_id).await? else { continue };
+            // Schedules wait while a repository is archived; a deleted one is not found.
+            let Some((repo, _ws)) = self.repo_by_id(&row.repo_id).await?.filter(|(repo, _)| !repo.archived()) else { continue };
             let Some(sha) = self.default_head(&repo).await? else { continue };
             let payload = json!({ "schedule": cron, "repository": payload::repository(&repo), "workflow": row.path });
             let mut subject = Subject {
@@ -547,14 +558,13 @@ impl Actions {
         Ok(())
     }
 
-    /// `dispatch`: a member runs a workflow that has `workflow_dispatch`.
+    /// `dispatch`: someone with the Write role runs a workflow that has
+    /// `workflow_dispatch`.
     pub async fn dispatch(&self, a: DispatchArgs) -> Result<Outcome<WorkflowRun>> {
-        if let Some(refused) = Self::member(&a.actor, &a.repo) {
-            return Ok(check_refusal(refused));
+        let repo = check!(self.may(&a.actor, &a.repo, Capability::Run).await?);
+        if repo.archived() {
+            return Ok(fail(FailureCode::Forbidden, g1t_contracts::repos::archived_message(&repo.namespace, &repo.name)));
         }
-        let Some(repo) = self.visible_repo(&a.repo, &Some(a.actor.clone())).await? else {
-            return Ok(fail(FailureCode::NotFound, "There is no such repository."));
-        };
         let Some(ws) = self.workspace_actor(&repo.namespace).await? else {
             return Ok(fail(FailureCode::NotFound, "There is no such workspace."));
         };
@@ -745,13 +755,6 @@ impl Actions {
             }
         }
         Ok(Outcome::Ok(json!({ "runs": started })))
-    }
-}
-
-fn check_refusal<T>(refused: Outcome<()>) -> Outcome<T> {
-    match refused {
-        Outcome::Fail(failure) => Outcome::Fail(failure),
-        Outcome::Ok(()) => fail(FailureCode::Forbidden, "Not allowed."),
     }
 }
 

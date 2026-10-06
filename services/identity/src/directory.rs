@@ -90,7 +90,7 @@ impl Identity {
         .await;
     }
 
-    async fn announce<T: Serialize>(&self, kind: &'static str, actor: Option<&str>, data: T) {
+    pub(crate) async fn announce<T: Serialize>(&self, kind: &'static str, actor: Option<&str>, data: T) {
         let events = match self.env.service("EVENTS") {
             Ok(events) => events,
             Err(error) => {

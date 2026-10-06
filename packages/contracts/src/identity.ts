@@ -1,3 +1,4 @@
+import type { AccessClient, BasePermission, RepoGrant } from "./access";
 import type { Acting, CreateRunCredentialInput, RunBinding } from "./audit";
 import type { RepoPath } from "./repos";
 import type { Result } from "./result";
@@ -32,6 +33,11 @@ export type User = {
    * on behalf of syntaqx"), with which credential, and what it may do.
    */
   acting?: Acting;
+  /**
+   * The repositories this user has a role on directly, whether or not they
+   * belong to its workspace. Set with `workspaces`; see `access.ts`.
+   */
+  grants?: RepoGrant[];
 };
 
 /** What a member may do: an owner also manages the workspace's members. */
@@ -45,6 +51,8 @@ export type Membership = {
   name?: string;
   /** Its uploaded icon, as `Workspace.avatar`. */
   avatar?: string;
+  /** The workspace's base permission: what members get on every repository. Absent means `write`. */
+  base_permission?: BasePermission;
 };
 
 /** How long an old workspace slug redirects, and stays reserved for it, after a rename. */
@@ -74,9 +82,18 @@ export type Workspace = {
    * `/avatars/<avatar>`. Null means the generated letter avatar.
    */
   avatar: string | null;
+  /** What every member gets on each repository; owners have Admin. */
+  basePermission?: BasePermission;
 };
 
-export type Member = { username: string; role: Role };
+export type Member = {
+  username: string;
+  role: Role;
+  /** Their display name, when they set one. */
+  name?: string | null;
+  /** Their uploaded avatar's hash, served at `/avatars/<avatar>`; null for the generated letter avatar. */
+  avatar?: string | null;
+};
 
 /** An owner of a workspace, as staff see them. */
 export type AdminOwner = { username: string; email: string | null };
@@ -108,6 +125,108 @@ export type AdminWorkspaceDetail = {
 export const ADMIN_WORKSPACES_LIMIT = 500;
 
 /**
+ * Whether anyone may make an account, or only someone with an invite.
+ * Identity's `REGISTRATION_MODE`; unset means `invite`.
+ */
+export type RegistrationMode = "invite" | "open";
+
+/** How many invites a person may have out at once, unless identity's `INVITES_PER_USER` says otherwise. */
+export const INVITES_PER_USER = 5;
+/** How long an invite works, unless identity's `INVITE_TTL_DAYS` says otherwise. */
+export const INVITE_TTL_DAYS = 30;
+
+/** Only a pending invite can be used or revoked. Revoked and expired ones never used give the invite back. */
+export type InviteStatus = "pending" | "redeemed" | "expired" | "revoked";
+
+/** One invite. Mirrors `Invite` in `crates/contracts/src/identity.rs`. */
+export type Invite = {
+  id: string;
+  /** `g1t-k7m2-…`: returned when it is made, and to its maker while pending. */
+  code: string | null;
+  /** The code's first group, such as `g1t-k7m2`. */
+  hint: string;
+  /** Only this address can use it. */
+  email: string | null;
+  /** `account` makes an account; `workspace` joins an existing one to `workspace`. */
+  kind: "account" | "workspace";
+  /** The workspace using it joins. */
+  workspace: string | null;
+  status: InviteStatus;
+  /** Whose allowance it used. */
+  chargedTo: "user" | "workspace" | "none";
+  /** Its maker's username; null when g1t staff made it. */
+  invitedBy: string | null;
+  /** The account that used it. */
+  redeemedBy: string | null;
+  /** RFC 3339. */
+  createdAt: string;
+  /** RFC 3339. */
+  expiresAt: string;
+  redeemedAt: string | null;
+  revokedAt: string | null;
+  /** The staff member who minted it; only in staff views. */
+  staff?: string | null;
+};
+
+/** How many invites someone may have out. `limit` and `remaining` are null for no limit. */
+export type Allowance = { limit: number | null; used: number; remaining: number | null };
+
+export type InvitesOverview = {
+  mode: RegistrationMode;
+  allowance: Allowance;
+  /** Workspaces the person owns that were granted invites to share. */
+  workspaces: { slug: string; allowance: Allowance }[];
+  invites: Invite[];
+};
+
+/** What a valid code is for, before it is used. */
+export type InvitePreview = {
+  kind: "account" | "workspace";
+  /** Null when g1t staff sent it. */
+  invitedBy: { username: string; name: string | null; avatar: string | null } | null;
+  workspace: ProfileWorkspace | null;
+  /** Partly hidden, such as `a•••@example.com`. */
+  email: string | null;
+  expiresAt: string;
+};
+
+export type WaitlistStatus = "waiting" | "invited" | "dismissed";
+
+export type WaitlistEntry = {
+  id: string;
+  email: string;
+  about: string | null;
+  status: WaitlistStatus;
+  inviteId: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  /** When they first asked. */
+  createdAt: string;
+  /** When they last asked. */
+  updatedAt: string;
+};
+
+export type InviteGrant = { amount: number; note: string | null; grantedBy: string; createdAt: string };
+export type InviteTreeNode = { username: string; joinedAt: string; invited: InviteTreeNode[] };
+
+/** Where a person came from and whom they brought. For a workspace, `username` is its slug. */
+export type InviteTree = {
+  username: string;
+  /** Who invited them, then who invited that person, and so on. */
+  invitedBy: string[];
+  /** The staff member who minted their invite, when staff did. */
+  staff: string | null;
+  allowance: Allowance;
+  grants: InviteGrant[];
+  invites: Invite[];
+  /** Whom they invited, three levels down. */
+  invited: InviteTreeNode[];
+};
+
+/** The most rows one staff listing of invites or the waitlist returns. */
+export const ADMIN_INVITES_LIMIT = 500;
+
+/**
  * Staff-only identity, for sudo.g1t.sh. It takes no viewer and checks no
  * membership: only sudo calls it, over its service binding, once Cloudflare
  * Access and its staff list have let someone in. Never call it on behalf of
@@ -118,6 +237,28 @@ export interface IdentityAdminApi {
   workspaces(query?: string): Promise<AdminWorkspace[]>;
   /** One workspace with all its members, or null. */
   workspace(slug: string): Promise<AdminWorkspaceDetail | null>;
+
+  /** The waitlist, oldest first; `query` matches the address or what they said. */
+  waitlist(query?: string | null, status?: WaitlistStatus | null): Promise<WaitlistEntry[]>;
+  /** Approving mints an invite bound to the address and emails it; dismissing only marks it. */
+  decideWaitlist(id: string, approve: boolean, staff: string): Promise<Result<WaitlistEntry>>;
+  /** Invites, newest first; `query` is a code's start, or part of an email, inviter or redeemer. */
+  invites(query?: string | null): Promise<Invite[]>;
+  revokeInvite(id: string, staff: string): Promise<Result<Invite>>;
+  /** An invite that uses nobody's allowance, optionally bound to (and emailed to) `email`. */
+  mintInvite(email: string | null, staff: string): Promise<Result<Invite>>;
+  /** More invites (or fewer, with a negative amount) for a person or a workspace. */
+  grantInvites(
+    target: "user" | "workspace",
+    name: string,
+    amount: number,
+    note: string,
+    staff: string,
+  ): Promise<Result<Allowance>>;
+  /** Where a person came from and whom they brought, or null. */
+  inviteTree(username: string): Promise<InviteTree | null>;
+  /** A workspace's granted invites and the invites made for it, or null. */
+  workspaceInvites(slug: string): Promise<InviteTree | null>;
 }
 
 /** Who is asking. Every read and write in every service takes one. */
@@ -191,11 +332,35 @@ export type OAuthGrant = {
 };
 
 /** Accounts, credentials and sessions. */
-export interface IdentityApi {
-  /** Creates an account and signs it in. */
-  register(username: string, email: string, password: string): Promise<Result<{ user: User; sessionToken: string }>>;
+/** What stands between a workspace and its deletion; nothing when both counts are 0 and `billing` is null. */
+export type WorkspaceDeletion = {
+  repositories: number;
+  projects: number;
+  /** Why billing cannot close it yet, in words for its owner. */
+  billing: string | null;
+};
+
+export interface IdentityApi extends AccessClient {
+  /**
+   * Creates an account and signs it in. While registration is invite-only,
+   * `inviteCode` must be an unused, unexpired invite (and, when it names an
+   * email, that address); it is ignored while registration is open.
+   */
+  register(
+    username: string,
+    email: string,
+    password: string,
+    inviteCode?: string | null,
+    /** Who is asking, such as the visitor's IP address, for rate limits. */
+    client?: string | null,
+  ): Promise<Result<{ user: User; sessionToken: string }>>;
   /** Verifies a username and password for website sign-in. */
-  signIn(username: string, password: string): Promise<Result<{ user: User; sessionToken: string }>>;
+  /**
+   * Verifies a username, or any confirmed address of the account, and its
+   * password. Wrong passwords are counted against the account and `client`
+   * (the visitor's IP address); past a limit nothing is checked for a while.
+   */
+  signIn(username: string, password: string, client?: string | null): Promise<Result<{ user: User; sessionToken: string }>>;
   signOut(sessionToken: string): Promise<void>;
 
   /** Sends the confirmation email again. */
@@ -203,7 +368,11 @@ export interface IdentityApi {
   /** Confirms the address the emailed token was sent to. */
   verifyEmail(token: string): Promise<Result<User>>;
   /** Emails a reset link if the address has an account. Always resolves. */
-  requestPasswordReset(email: string): Promise<boolean>;
+  /**
+   * Any confirmed address of an account works; the link goes to it, and the
+   * primary and backup are told. A few an hour per address and per `client`.
+   */
+  requestPasswordReset(email: string, client?: string | null): Promise<boolean>;
   /** Sets a new password from an emailed token and ends every session. */
   resetPassword(token: string, password: string): Promise<Result<User>>;
 
@@ -258,6 +427,15 @@ export interface IdentityApi {
    */
   resolveSlug(slug: string): Promise<string | null>;
   /**
+   * Owners only, a person only. `confirm` is the slug, typed out. Refused
+   * while the workspace holds repositories or projects, or billing cannot
+   * settle it. Its slug is never given to anyone else; the person whose
+   * username it is may make it again. Publishes `workspace.deleted`.
+   */
+  deleteWorkspace(actor: User, slug: string, confirm: string): Promise<Result<boolean>>;
+  /** What stands in the way of `deleteWorkspace`, changing nothing. */
+  checkWorkspaceDeletion(actor: User, slug: string): Promise<Result<WorkspaceDeletion>>;
+  /**
    * Owners only. `image` is the file in base64: PNG, JPEG, WebP or GIF, at
    * most `MAX_AVATAR_BYTES`, checked by its bytes. Null removes the icon.
    */
@@ -276,6 +454,31 @@ export interface IdentityApi {
   removeWorkspaceToken(actor: User, slug: string, id: string): Promise<Result<boolean>>;
 
   userForSession(sessionToken: string): Promise<Viewer>;
+
+  /** Whether registration is invite-only. */
+  registration(): Promise<RegistrationMode>;
+  /** A person's invites and what they have left. */
+  listInvites(user: User): Promise<InvitesOverview>;
+  /**
+   * A person makes an invite, optionally for one address (emailed to it),
+   * using one of theirs or, with `workspace`, one the workspace was granted.
+   * People only: never an agent or a workspace's token.
+   */
+  createInvite(user: User, options?: { email?: string | null; workspace?: string | null }): Promise<Result<Invite>>;
+  /** Its maker, or an owner of its workspace, revokes a pending invite; the invite comes back. */
+  revokeInvite(user: User, id: string): Promise<Result<Invite>>;
+  /** What a code is for. Unknown, used, revoked and expired codes all get the same answer. */
+  checkInvite(code: string, client?: string | null): Promise<Result<InvitePreview>>;
+  /** A signed-in person uses a workspace invite sent to their address; returns the workspace's slug. */
+  acceptInvite(user: User, code: string): Promise<Result<string>>;
+  /** Owners only. Invites an address into a workspace, always with an invite bound to it. */
+  inviteMember(actor: User, slug: string, email: string): Promise<Result<Invite>>;
+  /** Owners only: the workspace's invites, newest first. */
+  workspaceInvites(slug: string, viewer: Viewer): Promise<Result<Invite[]>>;
+  /** Owners only. */
+  revokeWorkspaceInvite(actor: User, slug: string, id: string): Promise<Result<Invite>>;
+  /** Someone without an invite asks for one. Always the same answer for a valid address. */
+  requestAccess(email: string, about: string, client?: string | null): Promise<Result<boolean>>;
 
   /** Verifies git credentials: the account password or an access token. */
   userForGitCredentials(username: string, secret: string): Promise<Viewer>;

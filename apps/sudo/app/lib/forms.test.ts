@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { parseAllowances, parseCredit, parseEmail, parseSales, parseSalesNote, parseSlugList, parseTerms } from "./forms.ts";
+import {
+  parseAllowances,
+  parseCredit,
+  parseDecision,
+  parseEmail,
+  parseGoodwill,
+  parsePayment,
+  parseSales,
+  parseSalesNote,
+  parseSlugList,
+  parseTerms,
+} from "./forms.ts";
 
 const NOW = new Date("2026-10-04T12:00:00Z");
 
@@ -87,17 +98,84 @@ test("a sales note is required, and not endless", () => {
   assert.equal(parseSalesNote("x".repeat(2001)).ok, false);
 });
 
-test("allowances: Team on or off, and pool shares in dollars or the default", () => {
-  const form = (entries: Record<string, string>) => {
-    const data = new FormData();
-    for (const [name, value] of Object.entries(entries)) data.set(name, value);
-    return data;
-  };
-  assert.deepEqual(parseAllowances(form({})), { ok: true, value: { team: false, ossRepoMicros: null, trialMicros: null } });
-  assert.deepEqual(parseAllowances(form({ team: "on", oss: "5", trial: "2.50" })), {
+
+test("allowances: the plan without its price, pool shares, and staff's overrides", () => {
+  assert.deepEqual(parseAllowances(form({})), {
     ok: true,
-    value: { team: true, ossRepoMicros: 5_000_000, trialMicros: 2_500_000 },
+    value: { plan: false, ossRepoMicros: null, trialMicros: null, maxConcurrentAgents: null, runCapMicros: null, issueCapMicros: null, hold: null },
   });
+  assert.deepEqual(
+    parseAllowances(form({ plan: "on", oss: "5", trial: "2.50", agents: "20", runCap: "25", issueCap: "500", hold: "  Card  disputed;\nwaiting on the bank " })),
+    {
+      ok: true,
+      value: {
+        plan: true,
+        ossRepoMicros: 5_000_000,
+        trialMicros: 2_500_000,
+        maxConcurrentAgents: 20,
+        runCapMicros: 25_000_000,
+        issueCapMicros: 500_000_000,
+        hold: "Card disputed; waiting on the bank",
+      },
+    },
+  );
   assert.equal(parseAllowances(form({ oss: "lots" })).ok, false);
   assert.equal(parseAllowances(form({ trial: "5000" })).ok, false);
+  assert.equal(parseAllowances(form({ agents: "0" })).ok, false);
+  assert.equal(parseAllowances(form({ agents: "101" })).ok, false);
+  assert.equal(parseAllowances(form({ agents: "2.5" })).ok, false);
+  assert.equal(parseAllowances(form({ runCap: "0.05" })).ok, false);
+  assert.equal(parseAllowances(form({ runCap: "1000.01" })).ok, false);
+  assert.equal(parseAllowances(form({ issueCap: "10000.01" })).ok, false);
+  assert.equal(parseAllowances(form({ hold: "x".repeat(201) })).ok, false);
+});
+
+test("a bank transfer: an amount, its reference, a note, and the slug typed out", () => {
+  const ok = { amount: "1,500", reference: " TRX 0042 ", note: "Invoice INV-7, by wire", confirmation: "acme" };
+  assert.deepEqual(parsePayment(form(ok), "acme"), { ok: true, value: { amountMicros: 1_500_000_000, reference: "TRX 0042", note: "Invoice INV-7, by wire" } });
+  assert.equal(parsePayment(form({ ...ok, amount: "0" }), "acme").ok, false);
+  assert.equal(parsePayment(form({ ...ok, amount: "100000.01" }), "acme").ok, false);
+  assert.equal(parsePayment(form({ ...ok, reference: "" }), "acme").ok, false);
+  assert.equal(parsePayment(form({ ...ok, note: "" }), "acme").ok, false);
+  assert.equal(parsePayment(form({ ...ok, confirmation: "Acme" }), "acme").ok, false);
+});
+
+test("a decision: approve as asked or at another amount; decline needs a note", () => {
+  assert.deepEqual(parseDecision(form({ id: "lr_1", decision: "approve" })), {
+    ok: true,
+    value: { id: "lr_1", decision: "approve", amountMicros: null, note: "" },
+  });
+  assert.deepEqual(parseDecision(form({ id: "lr_1", decision: "approve", amount: "750", note: "Half now." })), {
+    ok: true,
+    value: { id: "lr_1", decision: "approve", amountMicros: 750_000_000, note: "Half now." },
+  });
+  assert.equal(parseDecision(form({ id: "lr_1", decision: "approve", amount: "0.50" })).ok, false);
+  assert.equal(parseDecision(form({ id: "lr_1", decision: "approve", amount: "1000000.01" })).ok, false);
+  assert.equal(parseDecision(form({ id: "lr_1", decision: "decline" })).ok, false);
+  assert.deepEqual(parseDecision(form({ id: "lr_1", decision: "decline", note: "After a month of payments.", amount: "5" })), {
+    ok: true,
+    value: { id: "lr_1", decision: "decline", amountMicros: null, note: "After a month of payments." },
+  });
+  assert.equal(parseDecision(form({ id: "../x", decision: "approve" })).ok, false);
+  assert.equal(parseDecision(form({ id: "lr_1", decision: "maybe" })).ok, false);
+});
+
+test("goodwill: no amount is the one-click credit; a reason when one is needed; a day not in the future", () => {
+  const never = () => false;
+  const always = () => true;
+  assert.deepEqual(parseGoodwill(form({}), never, NOW), { ok: true, value: { amountMicros: null, reason: "", day: null } });
+  assert.deepEqual(parseGoodwill(form({ amount: "60", reason: "Looping agent on #12, owner caught it late.", day: "2026-10-03" }), always, NOW), {
+    ok: true,
+    value: { amountMicros: 60_000_000, reason: "Looping agent on #12, owner caught it late.", day: "2026-10-03" },
+  });
+  assert.equal(parseGoodwill(form({ amount: "60", reason: "oops" }), always, NOW).ok, false);
+  assert.equal(parseGoodwill(form({ amount: "0" }), never, NOW).ok, false);
+  assert.equal(parseGoodwill(form({ amount: "10000.01" }), never, NOW).ok, false);
+  assert.equal(parseGoodwill(form({ day: "2026-10-05" }), never, NOW).ok, false);
+  assert.equal(parseGoodwill(form({ day: "2026-02-30" }), never, NOW).ok, false);
+  // The check is given the amount typed, or null for the one-click credit.
+  const seen: (number | null)[] = [];
+  parseGoodwill(form({ amount: "12.50" }), (amount) => (seen.push(amount), false), NOW);
+  parseGoodwill(form({}), (amount) => (seen.push(amount), false), NOW);
+  assert.deepEqual(seen, [12_500_000, null]);
 });

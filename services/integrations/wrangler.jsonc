@@ -22,7 +22,9 @@
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "WORK", "service": "g1t-work" },
-		{ "binding": "RUNNER", "service": "g1t-runner" }
+		{ "binding": "RUNNER", "service": "g1t-runner" },
+		// Where a transferred repository is now, for moving its links.
+		{ "binding": "REPOS", "service": "g1t-repos" }
 	],
 	// Work starting on, and finishing, what an outside system is waiting on.
 	"queues": {
@@ -30,7 +32,14 @@
 	},
 	"vars": {
 		"API_URL": "https://api.g1t.sh",
-		"SITE_URL": "https://g1t.sh"
+		"SITE_URL": "https://g1t.sh",
+		// g1t's GitHub App (src/github.rs), for installations, imports,
+		// mirrors and its webhook at API_URL/hooks/github. Secrets:
+		// GITHUB_APP_PRIVATE_KEY (the downloaded .pem, PKCS#1 or PKCS#8) and
+		// GITHUB_APP_WEBHOOK_SECRET. Leave the slug empty to turn it off.
+		"GITHUB_APP_ID": "5203641",
+		"GITHUB_APP_SLUG": "g1t-sh",
+		"GITHUB_APP_CLIENT_ID": "Iv23liZS94alfjIUn1eW"
 	},
 	// Secret: INTEGRATIONS_KEY, 64 hex characters. Connections' secrets are
 	// sealed with it; without it nothing can be connected.

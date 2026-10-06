@@ -72,7 +72,8 @@ export type CreateRunCredentialInput = {
 
 export type ActorKind = "person" | "agent" | "workspace";
 export type AuditOutcome = "allowed" | "denied";
-export type AuditSurface = "rest" | "mcp" | "git";
+/** Where it came in: the API, MCP, git, or g1t.sh's own pages. */
+export type AuditSurface = "rest" | "mcp" | "git" | "web";
 
 export type AuditEntry = {
   id: string;

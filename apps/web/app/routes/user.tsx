@@ -29,7 +29,7 @@ import { page } from "../lib/meta";
 import { Avatar, Button, ButtonLink, EmptyState, TimeAgo } from "../components/ui";
 import { RadioGroup, RadioOption } from "../components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { IssueIcon, PullIcon } from "../components/work";
+import { IssueIcon, PullIcon } from "../components/work-icons";
 import { notFound } from "../lib/not-found.server";
 import { identity, repos, work } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";

@@ -205,7 +205,7 @@ export function groupActivity(items: ActivityItem[], window = 45 * MINUTE): Acti
 
 // --- Needs you --------------------------------------------------------------
 
-export type NeedKind = "limit" | "deploy" | "stalled" | "conflict" | "review" | "stuck" | "checks" | "ready";
+export type NeedKind = "limit" | "deploy" | "invitation" | "stalled" | "conflict" | "review" | "stuck" | "checks" | "ready";
 
 /** Something waiting on the viewer, with where to act on it. */
 export type Need = {
@@ -223,6 +223,7 @@ export type Need = {
 const NEED_RANK: Record<NeedKind, number> = {
   limit: 0,
   deploy: 1,
+  invitation: 1.5,
   conflict: 2,
   stalled: 3,
   stuck: 4,

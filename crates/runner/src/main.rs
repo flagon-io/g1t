@@ -22,7 +22,11 @@
 //! - `PROMPT`: what the agent is asked to do.
 //! - `COMMIT_MESSAGE`: used if the agent leaves changes uncommitted.
 //! - `ANTHROPIC_API_KEY`: read by the harness itself.
+//!
+//! Every mode runs with the mining watch in `abuse`: a sandbox that looks
+//! like it is mining stops itself and exits with `abuse::EXIT_CODE`.
 
+mod abuse;
 mod actions;
 mod checks;
 mod deploy;
@@ -193,6 +197,11 @@ fn main() {
         std::process::exit(guard::hook_main());
     }
     guard::trust_egress_ca();
+    // Watches for mining for as long as the sandbox runs (abuse.rs). Not in
+    // the hooks the harness runs after every tool call.
+    if std::env::var("MODE").as_deref() != Ok("steer") {
+        abuse::watch();
+    }
     // The same image does the other jobs a sandbox is started for.
     match std::env::var("MODE").as_deref() {
         Ok("actions") => std::process::exit(actions::main()),

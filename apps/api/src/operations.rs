@@ -4,6 +4,11 @@
 //! [`Op`], so the surfaces cannot drift apart: adding a variant without
 //! describing it or running it does not compile.
 
+use g1t_contracts::access::{
+    AddCollaboratorArgs, BasePermission, Capability, CollaboratorPermissionArgs, MyRepoInvitationsArgs,
+    OutsideCollaboratorsArgs, RemoveCollaboratorArgs, RepoAccess, RepoAccessArgs, RepoInvitation, RepoRole,
+    RespondRepoInvitationArgs, RevokeRepoInvitationArgs, SetBasePermissionArgs, SetCollaboratorRoleArgs,
+};
 use g1t_contracts::identity::AgentScope;
 use g1t_contracts::events::{Event, ListArgs as ListEventsArgs};
 use g1t_contracts::identity::CreateWorkspaceArgs;
@@ -60,10 +65,31 @@ impl Services {
 pub enum Op {
     Whoami,
     CreateWorkspace,
+    DeleteWorkspace,
+    ListEmails,
+    AddEmail,
+    RemoveEmail,
+    UpdateEmailSettings,
+    ListInvites,
+    CreateInvite,
+    RevokeInvite,
+    ListWorkspaceInvites,
+    InviteMember,
+    RevokeWorkspaceInvite,
     ListRepos,
     GetRepo,
     CreateRepo,
     UpdateRepo,
+    TransferRepo,
+    RenameRepo,
+    RenameBranch,
+    ArchiveRepo,
+    UnarchiveRepo,
+    SetRepoVisibility,
+    DeleteRepo,
+    ListDeletedRepos,
+    RestoreRepo,
+    PurgeRepo,
     GetRepoSettings,
     UpdateRepoSettings,
     GetMergeQueue,
@@ -127,6 +153,18 @@ pub enum Op {
     ListActionsVariables,
     SetActionsVariable,
     DeleteActionsVariable,
+    ListCollaborators,
+    AddCollaborator,
+    UpdateCollaborator,
+    RemoveCollaborator,
+    GetCollaboratorPermission,
+    ListRepoInvitations,
+    RevokeRepoInvitation,
+    ListMyRepoInvitations,
+    AcceptRepoInvitation,
+    DeclineRepoInvitation,
+    SetBasePermission,
+    ListOutsideCollaborators,
 }
 
 fn failed(code: FailureCode, message: &str) -> Result<Outcome<Value>> {
@@ -230,7 +268,7 @@ fn numbered(more: Value) -> Value {
 }
 
 fn workspace_schema() -> Value {
-    json!({ "type": "string", "description": "The workspace's slug, e.g. \"syntaqx\"." })
+    json!({ "type": "string", "description": "The workspace's slug, e.g. \"flagon-io\"." })
 }
 
 /// An object's keys in `camelCase`, the way the services read them, from
@@ -294,18 +332,52 @@ fn webhook_events() -> Vec<&'static str> {
 fn repo_schema() -> Value {
     json!({
         "type": "string",
-        "description": "Repository as \"owner/name\", e.g. \"syntaqx/hello\".",
+        "description": "Repository as \"owner/name\", e.g. \"flagon-io/hello\".",
+    })
+}
+
+fn username_schema() -> Value {
+    json!({ "type": "string", "description": "The person's username." })
+}
+
+/// A role on a repository, least first.
+fn role_schema() -> Value {
+    json!({
+        "type": "string",
+        "enum": RepoRole::ALL.map(RepoRole::as_str),
+        "description": "read: read and comment. triage: also label, assign and close. write: also push, merge and put agents to work. maintain: also settings and branch protection. admin: everything, including who has access.",
     })
 }
 
 impl Op {
-    pub const ALL: [Op; 69] = [
+    pub const ALL: [Op; 102] = [
         Op::Whoami,
         Op::CreateWorkspace,
+        Op::DeleteWorkspace,
+        Op::ListEmails,
+        Op::AddEmail,
+        Op::RemoveEmail,
+        Op::UpdateEmailSettings,
+        Op::ListInvites,
+        Op::CreateInvite,
+        Op::RevokeInvite,
+        Op::ListWorkspaceInvites,
+        Op::InviteMember,
+        Op::RevokeWorkspaceInvite,
         Op::ListRepos,
         Op::GetRepo,
         Op::CreateRepo,
         Op::UpdateRepo,
+        Op::TransferRepo,
+        Op::RenameRepo,
+        Op::RenameBranch,
+        Op::ArchiveRepo,
+        Op::UnarchiveRepo,
+        Op::SetRepoVisibility,
+        Op::DeleteRepo,
+        Op::ListDeletedRepos,
+        Op::RestoreRepo,
+        Op::PurgeRepo,
         Op::GetRepoSettings,
         Op::UpdateRepoSettings,
         Op::GetMergeQueue,
@@ -369,6 +441,18 @@ impl Op {
         Op::ListActionsVariables,
         Op::SetActionsVariable,
         Op::DeleteActionsVariable,
+        Op::ListCollaborators,
+        Op::AddCollaborator,
+        Op::UpdateCollaborator,
+        Op::RemoveCollaborator,
+        Op::GetCollaboratorPermission,
+        Op::ListRepoInvitations,
+        Op::RevokeRepoInvitation,
+        Op::ListMyRepoInvitations,
+        Op::AcceptRepoInvitation,
+        Op::DeclineRepoInvitation,
+        Op::SetBasePermission,
+        Op::ListOutsideCollaborators,
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -380,10 +464,31 @@ impl Op {
         match self {
             Op::Whoami => "whoami",
             Op::CreateWorkspace => "create_workspace",
+            Op::DeleteWorkspace => "delete_workspace",
+            Op::ListEmails => "list_emails",
+            Op::AddEmail => "add_email",
+            Op::RemoveEmail => "remove_email",
+            Op::UpdateEmailSettings => "update_email_settings",
+            Op::ListInvites => "list_invites",
+            Op::CreateInvite => "create_invite",
+            Op::RevokeInvite => "revoke_invite",
+            Op::ListWorkspaceInvites => "list_workspace_invites",
+            Op::InviteMember => "invite_member",
+            Op::RevokeWorkspaceInvite => "revoke_workspace_invite",
             Op::ListRepos => "list_repos",
             Op::GetRepo => "get_repo",
             Op::CreateRepo => "create_repo",
             Op::UpdateRepo => "update_repo",
+            Op::TransferRepo => "transfer_repo",
+            Op::RenameRepo => "rename_repo",
+            Op::RenameBranch => "rename_branch",
+            Op::ArchiveRepo => "archive_repo",
+            Op::UnarchiveRepo => "unarchive_repo",
+            Op::SetRepoVisibility => "set_repo_visibility",
+            Op::DeleteRepo => "delete_repo",
+            Op::ListDeletedRepos => "list_deleted_repos",
+            Op::RestoreRepo => "restore_repo",
+            Op::PurgeRepo => "purge_repo",
             Op::GetRepoSettings => "get_repo_settings",
             Op::GetMergeQueue => "get_merge_queue",
             Op::MessageAgent => "message_agent",
@@ -447,6 +552,18 @@ impl Op {
             Op::ListActionsVariables => "list_actions_variables",
             Op::SetActionsVariable => "set_actions_variable",
             Op::DeleteActionsVariable => "delete_actions_variable",
+            Op::ListCollaborators => "list_collaborators",
+            Op::AddCollaborator => "add_collaborator",
+            Op::UpdateCollaborator => "update_collaborator",
+            Op::RemoveCollaborator => "remove_collaborator",
+            Op::GetCollaboratorPermission => "get_collaborator_permission",
+            Op::ListRepoInvitations => "list_repo_invitations",
+            Op::RevokeRepoInvitation => "revoke_repo_invitation",
+            Op::ListMyRepoInvitations => "list_my_repo_invitations",
+            Op::AcceptRepoInvitation => "accept_repo_invitation",
+            Op::DeclineRepoInvitation => "decline_repo_invitation",
+            Op::SetBasePermission => "set_base_permission",
+            Op::ListOutsideCollaborators => "list_outside_collaborators",
         }
     }
 
@@ -458,19 +575,80 @@ impl Op {
             Op::CreateWorkspace => {
                 "Create a workspace. A workspace owns repositories and is the first part of their address: g1t.sh/{workspace}/{repo}. The whoami tool lists the ones you already belong to."
             }
+            Op::ListEmails => {
+                "Your email addresses: each one's `email`, whether it is `verified` (confirmed), `primary` or the `backup`, and when it was added and confirmed. Also whether you keep your address private (`private_email`), your `noreply` address, and `commit_email`, the address on commits g1t makes for you. People only: an agent's or a workspace's token cannot read or change addresses."
+            }
+            Op::AddEmail => {
+                "Add an email address to your account. g1t emails it a link to confirm it; until then it cannot be primary and does not sign you in. Adding an address you added before and have not confirmed sends the link again. An address another account has confirmed cannot be added. An account has at most 10. Needs your account `password`; your confirmed addresses are told. People only."
+            }
+            Op::RemoveEmail => {
+                "Remove an email address from your account. Never your primary address (make another primary first) and never your last confirmed one. Needs your account `password`; every confirmed address, the removed one included, is told. People only."
+            }
+            Op::UpdateEmailSettings => {
+                "Change what your addresses do; only the fields given change. `primary` is a confirmed address to make primary: account mail and password resets go there. `backup` is a confirmed address that also gets security notices, or an empty string for the primary only. Changing either needs your account `password`, and every confirmed address is told. `private_email` keeps your address off commits g1t makes for you (merges and changes made on the web, and agents' commits for you), which use your noreply address instead; `block_private_pushes` refuses pushes whose commits carry one of your addresses while it is private. People only."
+            }
+            Op::ListInvites => {
+                "Your invites, newest first, and how many you have left. While g1t is invite-only, every new account needs an invite code. You may have 5 invites out at once: pending and used ones count, and one revoked or expired before it was used comes back. `allowance.limit` is null when you have no limit. `workspaces` lists the workspaces you own that were granted invites to share. A pending invite's `code` is shown to you; `status` is pending, redeemed, expired or revoked."
+            }
+            Op::CreateInvite => {
+                "Make an invite. With `email`, it is sent there and only that address can use it; without, anyone with the code can, once. It works for 30 days. It uses one of your invites, or with `workspace`, one of the invites g1t granted that workspace (its owners only). Returns the invite with its `code`; the link is https://g1t.sh/invite/<code>. People only: an agent's token or a workspace's token cannot make invites."
+            }
+            Op::RevokeInvite => {
+                "Revoke a pending invite you made, or one made for a workspace you own. It stops working at once, and the invite comes back to whoever it was charged to."
+            }
+            Op::ListWorkspaceInvites => {
+                "The invites made for a workspace, newest first, with each pending one's `code`. Owners only."
+            }
+            Op::InviteMember => {
+                "Invite an email address into a workspace. It always makes an invite bound to that address and emails it the link, so the answer never says whether the address has a g1t account. Without one, accepting makes the account and joins the workspace in one step, and uses one of the workspace's granted invites, or else one of yours. With one, it costs nothing, and they join when they accept. To add someone by username at once, use the workspace's People page. Owners only."
+            }
+            Op::RevokeWorkspaceInvite => "Revoke a workspace's pending invite. Owners only.",
+            Op::DeleteWorkspace => {
+                "Delete a workspace. Owners only, signed in as a person, and confirm must be the workspace's slug. It must hold no repositories (move them with transfer_repo first) and no projects, and billing must be able to settle it: no unpaid invoice, no prepaid credit left, and no usage this month still being metered; what it owes is charged to its card at once. Its members, access tokens, webhooks, integrations and workspace secrets are removed; its statements, invoices and audit log are kept. The slug is never given to another workspace; the person whose username it is may create it again."
+            }
             Op::ListRepos => "Repositories you can see, optionally filtered by a search query.",
             Op::GetRepo => "One repository's details.",
             Op::UpdateRepo => {
-                "Change a repository's description, its topics, whether it is private, and whether its default branch is protected. A protected branch refuses pushes and changes only by merging a pull request. Only the fields given are changed. Members of its workspace only."
+                "Change a repository's description, website, topics and default branch, whether its default branch is protected, and whether it is private. Only the fields given are changed. Its description, website and topics, and protecting its default branch, need the Maintain role or higher; making it public or private and changing its default branch need the Admin role, and a free workspace takes a private repository only while its private storage has room. A protected branch refuses pushes and changes only by merging a pull request. A new default branch must already exist; open pull requests then merge into it."
+            }
+            Op::RenameRepo => {
+                "Give a repository a new name in its workspace. Needs the Admin role. Everything stays with it: git data, issues, pull requests, workflow runs, deployments, secrets and webhooks. Its old address keeps working: web pages, git remotes and API calls redirect to the new one until a repository is made at the old address. The new name must be free in the workspace, including names held by recently deleted repositories."
+            }
+            Op::RenameBranch => {
+                "Rename a branch. Needs the Write role or higher; the default branch, which stays the default, needs the Admin role. Open pull requests from the branch follow it, and web addresses that name the old branch redirect until a branch of that name is made again. Git remotes do not follow: fetch, then rename or re-track the branch in your clone. Give a branch with slashes URL-encoded in the path, e.g. feature%2Flogin."
+            }
+            Op::ArchiveRepo => {
+                "Archive a repository: make it read-only. Needs the Admin role. Pushes and merges are refused, issues and pull requests are locked, and agents and workflows do not run. It can still be read, cloned and searched, and its deployments keep serving. unarchive_repo makes it writable again."
+            }
+            Op::UnarchiveRepo => {
+                "Unarchive a repository: make it writable again. Needs the Admin role. Pushes, merges, issues, pull requests, agents and workflows work again; nothing that was refused while it was archived runs by itself."
+            }
+            Op::SetRepoVisibility => {
+                "Make a repository public or private. Needs the Admin role, and confirm must be its full name, owner/name. Making it public shows it, its code, issues and pull requests to everyone and adds it to search for everyone. Making it private hides it from everyone without a role on it; a free workspace takes it only while its private storage has room. Nothing else about it changes."
+            }
+            Op::DeleteRepo => {
+                "Delete a repository. Owners only, and confirm must be its full name, owner/name. It disappears at once: git refuses it, agents and workflows stop, its deployments are taken down, and search drops it. For 30 days an owner can restore it with restore_repo, as it was; then it is purged, its git data with it. Its name stays taken until it is purged. list_deleted_repos shows what can be restored."
+            }
+            Op::ListDeletedRepos => {
+                "A workspace's recently deleted repositories, newest first, each with when it was deleted, by whom, and when it will be purged. Owners only; anyone else gets an empty list."
+            }
+            Op::RestoreRepo => {
+                "Restore a deleted repository at the address it had, as it was when it was deleted: git data, issues, pull requests, settings, secrets and webhooks. Owners only. Its deployments are built again. Agents and workflows do not catch up on what they missed while it was deleted."
+            }
+            Op::PurgeRepo => {
+                "Permanently remove a deleted repository now, instead of waiting for its 30 days to end. Owners only, and confirm must be its full name, owner/name. Its git data, issues, pull requests, deployments and custom domains are removed and cannot be recovered, and its name is free to use again."
+            }
+            Op::TransferRepo => {
+                "Move a repository to another workspace, keeping its name. You must own both workspaces, and the destination must not already have a repository of that name; a free destination takes a private repository only if its private storage has room. Everything moves with it: git data, issues, pull requests, comments, labels, workflow runs, deployments, its project, and its own secrets, variables and webhooks. Its old address keeps working: web pages, git remotes and API calls redirect to the new one until a repository is made at the old address. Usage from now on is charged to the new workspace."
             }
             Op::GetRepoSettings => {
                 "How a repository handles pull requests: the approvals a merge needs, whether failed checks can be overridden, whether a pull request must be up to date, and how g1t's agents are reviewed, revised and merged."
             }
             Op::UpdateRepoSettings => {
-                "Change how a repository handles pull requests. Only the fields given are changed. Members of its workspace only."
+                "Change how a repository handles pull requests. Only the fields given are changed. Needs the Maintain role or higher."
             }
             Op::MessageAgent => {
-                "Send the agent working on a pull request a message: a correction, a hint, a change of plan. It receives it at its next step, and it is recorded in the pull request's session. The pull request's author and members of its workspace only. An agent uses it to ask the agent on another pull request a question (kind: question) or hand it work that belongs there (kind: handoff), giving its own pull request as from_number; the answer comes back to it at its next step."
+                "Send the agent working on a pull request a message: a correction, a hint, a change of plan. It receives it at its next step, and it is recorded in the pull request's session. The pull request's author, and anyone with the Write role or higher. An agent uses it to ask the agent on another pull request a question (kind: question) or hand it work that belongs there (kind: handoff), giving its own pull request as from_number; the answer comes back to it at its next step."
             }
             Op::AnswerMessage => {
                 "Answer a question or a handoff another agent sent you, by the message's id. For a handoff, set decline to say it is not yours to take. The answer reaches the asking agent at its next step."
@@ -507,23 +685,23 @@ impl Op {
             }
             Op::CreateIssue => "Open an issue on a repository.",
             Op::UpdateIssue => {
-                "Change an issue's title, body, labels or the people it is assigned to. Only the fields given are changed; labels and assignees each replace the whole set."
+                "Change an issue's title, body, labels or the people it is assigned to. Only the fields given are changed; labels and assignees each replace the whole set. Its author may change their own issue; anyone else needs the Triage role or higher."
             }
             Op::CloseIssue => {
-                "Close an issue without a pull request. Merging a pull request made for an issue closes it for you."
+                "Close an issue without a pull request. Merging a pull request made for an issue closes it for you. Its author may close their own issue; anyone else needs the Triage role or higher."
             }
-            Op::ReopenIssue => "Reopen a closed issue.",
+            Op::ReopenIssue => "Reopen a closed issue. Its author may reopen their own issue; anyone else needs the Triage role or higher.",
             Op::PlanWork => {
-                "Turn an outcome into a plan. An agent reads the repository and proposes the issues that would get there: what each changes, the checks it must pass, the files it will touch, and which must merge before which. Returns the plan's id at once; the plan takes a minute or two to write, so read it with get_plan until its status is ready. Nothing is opened until apply_plan. Members of the repository's workspace only."
+                "Turn an outcome into a plan. An agent reads the repository and proposes the issues that would get there: what each changes, the checks it must pass, the files it will touch, and which must merge before which. Returns the plan's id at once; the plan takes a minute or two to write, so read it with get_plan until its status is ready. Nothing is opened until apply_plan. Needs the Write role or higher."
             }
             Op::GetPlan => {
                 "A plan: the outcome asked for, its status (planning, ready, failed or applied), and the issues it proposes with their dependencies."
             }
             Op::ApplyPlan => {
-                "Open a plan's issues, each blocked by the ones it depends on. With assign, g1t agents start at once on every issue that depends on nothing, working in parallel, and on the others as what they depend on merges. keep limits it to some of the proposed issues, by their positions counting from 1. A plan is applied once."
+                "Open a plan's issues, each blocked by the ones it depends on. With assign, g1t agents start at once on every issue that depends on nothing, working in parallel, and on the others as what they depend on merges. keep limits it to some of the proposed issues, by their positions counting from 1. A plan is applied once. Needs the Write role or higher."
             }
             Op::AssignIssue => {
-                "Assign an issue to the g1t agent. It opens a pull request for the issue in a sandbox of its own and sees it through: the issue's acceptance checks, a review by a second agent, revision if either finds something, and catching up when main moves. Returns the pull request at once; follow its progress with get_pull_request. There is no model or agent count to choose. To put many agents to work, assign many issues. In preview: only for accounts g1t agents are enabled for."
+                "Assign an issue to the g1t agent. It opens a pull request for the issue in a sandbox of its own and sees it through: the issue's acceptance checks, a review by a second agent, revision if either finds something, and catching up when main moves. Returns the pull request at once; follow its progress with get_pull_request. There is no model or agent count to choose. To put many agents to work, assign many issues. Needs the Write role or higher. In preview: only for accounts g1t agents are enabled for."
             }
             Op::ListLabels => "The labels available on a repository's issues.",
             Op::AddComment => {
@@ -548,12 +726,12 @@ impl Op {
             Op::MarkPullRequestReady => {
                 "Mark a draft pull request ready for review. Push your commits first. The summary becomes its description and should say what changed and why."
             }
-            Op::ClosePullRequest => "Close a pull request without merging it.",
+            Op::ClosePullRequest => "Close a pull request without merging it. Its author may close their own; anyone else needs the Triage role or higher.",
             Op::GetPullRequestChanges => {
                 "What a pull request changes: the files it touches and their line-by-line diff against the commit it started from. Use it to review a pull request or to compare several made for the same issue."
             }
             Op::MergePullRequest => {
-                "Land a pull request on the repository's main branch. Only members of the repository's workspace can merge, and only once it is marked ready and its acceptance checks have passed. Merging resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded. Where the repository has a merge queue, it joins the queue instead of landing at once. If main has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests to be up to date refuses instead, so pull main into its fork or branch, push, and merge again. Check status in the result to see whether it has landed."
+                "Land a pull request on the repository's main branch. Merging needs the Write role or higher, and only once it is marked ready and its acceptance checks have passed. Merging resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded. Where the repository has a merge queue, it joins the queue instead of landing at once. If main has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests to be up to date refuses instead, so pull main into its fork or branch, push, and merge again. Check status in the result to see whether it has landed."
             }
             Op::ListEvents => {
                 "The timeline of a repository: pushes, issues, pull requests, comments and session activity, newest first."
@@ -580,10 +758,10 @@ impl Op {
                 "Replace a workspace's model routes. Each route names a task (default, implement, review, plan or update), a connection_id (null for g1t's hosted models) and a model at that provider. Providers that speak OpenAI's API need a model. Owners only."
             }
             Op::ListWebhooks => {
-                "A repository's webhooks, or with workspace instead of repo, the workspace's own, which are sent the events of all its repositories. Secrets are never returned. Members only."
+                "A repository's webhooks, or with workspace instead of repo, the workspace's own, which are sent the events of all its repositories. Secrets are never returned. A repository's need the Admin role on it; a workspace's, a member."
             }
             Op::CreateWebhook => {
-                "Register an HTTPS address to be sent events as they happen: a signed JSON POST for each, retried for hours if the receiver does not answer with a 2xx. events lists the event types, or leave it out for all. Without a secret, g1t makes one and returns it once. A ping is sent at once. Members, for a repository; owners, for a workspace."
+                "Register an HTTPS address to be sent events as they happen: a signed JSON POST for each, retried for hours if the receiver does not answer with a 2xx. events lists the event types, or leave it out for all. Without a secret, g1t makes one and returns it once. A ping is sent at once. The Admin role, for a repository; owners, for a workspace."
             }
             Op::UpdateWebhook => {
                 "Change a webhook's address, its events, or whether it is active. Only the fields given change."
@@ -607,27 +785,63 @@ impl Op {
                 "A job's log, in order, after `after` (a sequence number from an earlier call). `done` says whether more will come. Lines starting ##[group], ##[endgroup], ##[error] and ##[warning] mark groups and messages."
             }
             Op::DispatchWorkflow => {
-                "Run a workflow that has `on: workflow_dispatch`, on a branch or tag (the default branch if none), with its inputs. Members only."
+                "Run a workflow that has `on: workflow_dispatch`, on a branch or tag (the default branch if none), with its inputs. Needs the Write role or higher."
             }
-            Op::CancelWorkflowRun => "Cancel a run that is still going: its waiting jobs are cancelled and its running ones stopped. Members only.",
+            Op::CancelWorkflowRun => "Cancel a run that is still going: its waiting jobs are cancelled and its running ones stopped. Needs the Write role or higher.",
             Op::RerunWorkflowRun => {
-                "Run a finished workflow run again: every job, or with failed_only the jobs that did not succeed and the jobs that need them. Members only."
+                "Run a finished workflow run again: every job, or with failed_only the jobs that did not succeed and the jobs that need them. Needs the Write role or higher."
             }
-            Op::UpdateWorkflow => "Turn a workflow on or off without changing its file. Members only.",
+            Op::UpdateWorkflow => "Turn a workflow on or off without changing its file. Needs the Maintain role or higher.",
             Op::ListActionsSecrets => {
-                "The secrets of a repository (with the workspace's rows that reach it) or of a workspace: each row's key, the environments it applies to, and whether workflows (`secrets.NAME`), deployments, or both read it. Values are never returned. Members only."
+                "The secrets of a repository (with the workspace's rows that reach it) or of a workspace: each row's key, the environments it applies to, and whether workflows (`secrets.NAME`), deployments, or both read it. Values are never returned. A repository's need the Admin role on it; a workspace's, a member."
             }
             Op::SetActionsSecret => {
-                "Add or change a secret's row. Without `id` or `environments`, the key's row for every environment, as GitHub's API addresses a secret. `available_to` is workflows and/or deployments (both, for a new row); `environments` limits it to some, such as production or preview, so a key can hold a value per environment. A variable's row can become a secret this way; a secret never becomes a variable. A repository's need a member; a workspace's an owner. Workspace tokens, G1T_TOKEN included, cannot change them."
+                "Add or change a secret's row. Without `id` or `environments`, the key's row for every environment, as GitHub's API addresses a secret. `available_to` is workflows and/or deployments (both, for a new row); `environments` limits it to some, such as production or preview, so a key can hold a value per environment. A variable's row can become a secret this way; a secret never becomes a variable. A repository's need the Admin role on it; a workspace's, an owner. Workspace tokens, G1T_TOKEN included, cannot change them."
             }
             Op::DeleteActionsSecret => "Remove a secret: one row by `id`, or every row of the key.",
             Op::ListActionsVariables => {
-                "The variables (Config) of a repository, with the workspace's rows that reach it, or of a workspace, with their values: each row's key, environments and readers (workflows read them as `vars.NAME`). Members only."
+                "The variables (Config) of a repository, with the workspace's rows that reach it, or of a workspace, with their values: each row's key, environments and readers (workflows read them as `vars.NAME`). A repository's need the Admin role on it; a workspace's, a member."
             }
             Op::SetActionsVariable => "Add or change a variable's row, as for secrets.",
             Op::DeleteActionsVariable => "Remove a variable: one row by `id`, or every row of the key.",
             Op::ImportIssue => {
                 "Open an issue from a ticket in Jira or Linear, or from a Sentry issue, by its key or address. The issue is linked to it: agents read the original, and when the work lands the ticket is told. Importing the same ticket again returns the issue already made. With assign, a g1t agent starts on it."
+            }
+            Op::ListCollaborators => {
+                "Who has access to a repository: the workspace's `base_permission`, and `people`, everyone with a role on it other than through it being public. Each person has their effective `role` (read, triage, write, maintain or admin), its `source` (`owner` of the workspace, the workspace's `base` permission, or a `direct` role on this repository), their `direct` role if they have one, and their `workspace_role` (`owner`, `member`, or null for an outside collaborator). Pending `invitations` are listed for those with the Admin role, and empty for anyone else. `viewer_role` is your own role, and `can_manage` whether you may change who has access. Needs the Write role or higher. People only."
+            }
+            Op::AddCollaborator => {
+                "Give someone a role on a repository, by username or email address. A member of its workspace gets the role at once (`result` is `granted`, with the `collaborator`). Anyone else becomes an outside collaborator once they accept an invitation, which is emailed to them and waits 7 days (`result` is `invited`, with the `invitation`); an address with no g1t account is sent an invite that makes the account and accepts in one step. The role is read, triage, write, maintain or admin. Needs the Admin role on the repository, signed in as a person with a confirmed email address; agents' and workspaces' tokens are refused."
+            }
+            Op::UpdateCollaborator => {
+                "Change the role someone was given on a repository directly, or the role of their pending invitation. A role from ownership or the workspace's base permission is not changed here: an owner always has Admin, and a member never has less than the base permission. Needs the Admin role. People only."
+            }
+            Op::RemoveCollaborator => {
+                "Take away the role someone was given on a repository directly. Anyone may remove their own. An outside collaborator then has no access; a member keeps the workspace's base permission (change it with set_base_permission, or remove them from the workspace). Needs the Admin role, unless it is your own. People only."
+            }
+            Op::GetCollaboratorPermission => {
+                "Someone's permission on a repository: their `role` and its `source` (`owner`, `base` or `direct`), or null for both when they have none, and the `capabilities` that role has, from the permission table. Being able to read a public repository does not count as a role. Needs the Write role or higher, or to ask about yourself."
+            }
+            Op::ListRepoInvitations => {
+                "A repository's pending invitations: who each is for (`invitee`, or the `email` it was sent to when they had no account), the `role` it gives, who sent it and when it expires. Needs the Admin role. People only."
+            }
+            Op::RevokeRepoInvitation => {
+                "Withdraw a pending invitation to a repository. Its link stops working at once. Needs the Admin role. People only."
+            }
+            Op::ListMyRepoInvitations => {
+                "The invitations to repositories waiting for you to answer, sent to your username or to one of your confirmed email addresses, newest first. Accept or decline each by its `id`. People only; an agent's or a workspace's token gets an empty list."
+            }
+            Op::AcceptRepoInvitation => {
+                "Accept an invitation to a repository sent to you. You get its role on that repository at once, as an outside collaborator unless you belong to its workspace. Refused when the workspace asks something of everyone with access that your account does not meet, such as two-factor authentication. People only."
+            }
+            Op::DeclineRepoInvitation => {
+                "Decline an invitation to a repository sent to you. Whoever sent it can invite you again. People only."
+            }
+            Op::SetBasePermission => {
+                "Set what every member of a workspace gets on each of its repositories: none, read, write (the default) or admin. Owners always have Admin, and a role given on a repository directly still counts where it is higher. With none, members see only the private repositories they are given a role on. Owners only, signed in as a person."
+            }
+            Op::ListOutsideCollaborators => {
+                "The people with a role on some of a workspace's repositories who are not its members, each with the repositories they can reach and their role on each. Owners only."
             }
         }
     }
@@ -655,6 +869,93 @@ impl Op {
                 }),
                 &[],
             ),
+            Op::ListEmails => object(json!({}), &[]),
+            Op::AddEmail => object(
+                json!({
+                    "email": { "type": "string", "description": "The address to add." },
+                    "password": {
+                        "type": "string",
+                        "description": "Your account password, to confirm it is you. An account that signs in only with GitHub changes its addresses on g1t.sh.",
+                    },
+                }),
+                &["email", "password"],
+            ),
+            Op::RemoveEmail => object(
+                json!({
+                    "email": { "type": "string", "description": "The address to remove." },
+                    "password": {
+                        "type": "string",
+                        "description": "Your account password, to confirm it is you. An account that signs in only with GitHub changes its addresses on g1t.sh.",
+                    },
+                }),
+                &["email", "password"],
+            ),
+            Op::UpdateEmailSettings => object(
+                json!({
+                    "primary": { "type": "string", "description": "A confirmed address to make primary." },
+                    "backup": { "type": "string", "description": "A confirmed address that also gets security notices; an empty string for the primary only." },
+                    "private_email": { "type": "boolean", "description": "Use your noreply address on commits g1t makes for you." },
+                    "block_private_pushes": { "type": "boolean", "description": "Refuse pushes whose commits carry one of your addresses while it is private." },
+                    "password": {
+                        "type": "string",
+                        "description": "Your account password, to confirm it is you. An account that signs in only with GitHub changes its addresses on g1t.sh.",
+                    },
+                }),
+                &[],
+            ),
+            Op::ListInvites => object(json!({}), &[]),
+            Op::CreateInvite => object(
+                json!({
+                    "email": {
+                        "type": "string",
+                        "description": "Only this address can use it, and it is emailed there. Left out, anyone with the code can.",
+                    },
+                    "workspace": {
+                        "type": "string",
+                        "description": "Use one of the invites g1t granted this workspace instead of yours, by slug. Owners only.",
+                    },
+                }),
+                &[],
+            ),
+            Op::RevokeInvite => object(
+                json!({ "id": { "type": "string", "description": "The invite's id, such as inv_01k…" } }),
+                &["id"],
+            ),
+            Op::ListWorkspaceInvites => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
+            Op::InviteMember => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "email": { "type": "string", "description": "The address to invite." },
+                }),
+                &["workspace", "email"],
+            ),
+            Op::RevokeWorkspaceInvite => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "id": { "type": "string", "description": "The invite's id." },
+                }),
+                &["workspace", "id"],
+            ),
+            Op::DeleteWorkspace => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "confirm": {
+                        "type": "string",
+                        "description": "The workspace's slug again, typed out, to confirm.",
+                    },
+                }),
+                &["workspace", "confirm"],
+            ),
+            Op::TransferRepo => object(
+                json!({
+                    "repo": repo_schema(),
+                    "to": {
+                        "type": "string",
+                        "description": "The slug of the workspace to move it to, e.g. \"flagon-io\". You must own it.",
+                    },
+                }),
+                &["repo", "to"],
+            ),
             Op::GetRepo | Op::ListLabels => repo_only(),
             Op::UpdateRepo => object(
                 json!({
@@ -670,9 +971,64 @@ impl Op {
                         "items": { "type": "string" },
                         "description": "Replaces its topics, which search and Explore show: lowercase letters, digits and hyphens, at most 20. An empty list clears them.",
                     },
+                    "website": {
+                        "type": "string",
+                        "description": "Its home page, an http or https address shown beside its description; https:// is added when no scheme is given. An empty string clears it.",
+                    },
+                    "default_branch": {
+                        "type": "string",
+                        "description": "Make this existing branch the default: the one clones check out and pull requests merge into.",
+                    },
                 }),
                 &["repo"],
             ),
+            Op::RenameRepo => object(
+                json!({
+                    "repo": repo_schema(),
+                    "name": {
+                        "type": "string",
+                        "description": "The new name: lowercase letters, digits, dots, hyphens and underscores, at most 100 characters, not starting with a dot or ending in .git.",
+                    },
+                }),
+                &["repo", "name"],
+            ),
+            Op::RenameBranch => object(
+                json!({
+                    "repo": repo_schema(),
+                    "branch": {
+                        "type": "string",
+                        "description": "The branch's name now, e.g. \"feature/login\". URL-encode slashes in the path.",
+                    },
+                    "new_name": { "type": "string", "description": "What to call it." },
+                }),
+                &["repo", "branch", "new_name"],
+            ),
+            Op::ArchiveRepo | Op::UnarchiveRepo | Op::RestoreRepo => repo_only(),
+            Op::SetRepoVisibility => object(
+                json!({
+                    "repo": repo_schema(),
+                    "private": {
+                        "type": "boolean",
+                        "description": "true to make it private, false to make it public.",
+                    },
+                    "confirm": {
+                        "type": "string",
+                        "description": "Its full name, owner/name, typed out, to confirm.",
+                    },
+                }),
+                &["repo", "private", "confirm"],
+            ),
+            Op::DeleteRepo | Op::PurgeRepo => object(
+                json!({
+                    "repo": repo_schema(),
+                    "confirm": {
+                        "type": "string",
+                        "description": "Its full name, owner/name, typed out, to confirm.",
+                    },
+                }),
+                &["repo", "confirm"],
+            ),
+            Op::ListDeletedRepos => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
             Op::GetRepoSettings => object(json!({ "repo": repo_schema() }), &["repo"]),
             Op::GetMergeQueue => object(json!({ "repo": repo_schema() }), &["repo"]),
             Op::MessageAgent => object(
@@ -1203,6 +1559,56 @@ impl Op {
                 }),
                 &["repo", "reference"],
             ),
+            Op::ListCollaborators | Op::ListRepoInvitations => repo_only(),
+            Op::AddCollaborator => object(
+                json!({
+                    "repo": repo_schema(),
+                    "invitee": {
+                        "type": "string",
+                        "description": "A username, or an email address. An address confirmed on an account invites that account; any other address is sent an invite that makes the account.",
+                    },
+                    "role": role_schema(),
+                }),
+                &["repo", "invitee", "role"],
+            ),
+            Op::UpdateCollaborator => object(
+                json!({
+                    "repo": repo_schema(),
+                    "username": username_schema(),
+                    "role": role_schema(),
+                }),
+                &["repo", "username", "role"],
+            ),
+            Op::RemoveCollaborator | Op::GetCollaboratorPermission => object(
+                json!({ "repo": repo_schema(), "username": username_schema() }),
+                &["repo", "username"],
+            ),
+            Op::RevokeRepoInvitation => object(
+                json!({
+                    "repo": repo_schema(),
+                    "id": { "type": "string", "description": "The invitation's id, from list_repo_invitations." },
+                }),
+                &["repo", "id"],
+            ),
+            Op::ListMyRepoInvitations => object(json!({}), &[]),
+            Op::AcceptRepoInvitation | Op::DeclineRepoInvitation => object(
+                json!({
+                    "id": { "type": "string", "description": "The invitation's id, from list_my_repo_invitations." },
+                }),
+                &["id"],
+            ),
+            Op::SetBasePermission => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "base_permission": {
+                        "type": "string",
+                        "enum": g1t_contracts::access::BasePermission::ALL.map(|base| base.as_str()),
+                        "description": "What every member gets on each repository: none, read, write or admin.",
+                    },
+                }),
+                &["workspace", "base_permission"],
+            ),
+            Op::ListOutsideCollaborators => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
         }
     }
 
@@ -1237,6 +1643,18 @@ impl Op {
             self,
             Op::Whoami
                 | Op::CreateWorkspace
+                | Op::DeleteWorkspace
+                | Op::ListEmails
+                | Op::AddEmail
+                | Op::RemoveEmail
+                | Op::UpdateEmailSettings
+                | Op::ListInvites
+                | Op::CreateInvite
+                | Op::RevokeInvite
+                | Op::ListWorkspaceInvites
+                | Op::InviteMember
+                | Op::RevokeWorkspaceInvite
+                | Op::ListDeletedRepos
                 | Op::SearchContext
                 | Op::GetEntity
                 | Op::Search
@@ -1261,12 +1679,34 @@ impl Op {
                 | Op::ListActionsVariables
                 | Op::SetActionsVariable
                 | Op::DeleteActionsVariable
+                | Op::ListMyRepoInvitations
+                | Op::AcceptRepoInvitation
+                | Op::DeclineRepoInvitation
+                | Op::SetBasePermission
+                | Op::ListOutsideCollaborators
+        )
+    }
+
+    /// Whether the operation acts on the repository at exactly the path it
+    /// names, never on one that has moved away from it: moving, renaming,
+    /// deleting, restoring and purging, and changing who can see it.
+    fn names_the_repo_as_it_is(self) -> bool {
+        matches!(
+            self,
+            Op::TransferRepo
+                | Op::RenameRepo
+                | Op::SetRepoVisibility
+                | Op::DeleteRepo
+                | Op::RestoreRepo
+                | Op::PurgeRepo
         )
     }
 
     /// Runs the operation. One that found nothing, or was refused, under a
     /// workspace slug that has since been renamed runs again under the
-    /// workspace's current slug; neither outcome changed anything.
+    /// workspace's current slug, and one naming a repository by a path it
+    /// was transferred away from runs again at its path now; neither
+    /// outcome changed anything.
     pub async fn run(
         self,
         services: &Services,
@@ -1279,6 +1719,17 @@ impl Op {
             && let Some(retargeted) = crate::renamed::retarget(services, input).await?
         {
             return self.run_once(services, viewer, &retargeted).await;
+        }
+        // A repository transferred to another workspace or renamed: the
+        // same, at its path now. Never for the operations that name it as
+        // it is, or name a deleted one, which must not act on whatever has
+        // its old path now.
+        if let Outcome::Fail(failure) = &outcome
+            && matches!(failure.code, FailureCode::NotFound | FailureCode::Forbidden)
+            && !self.names_the_repo_as_it_is()
+            && let Some(moved) = crate::renamed::transferred(services, input).await?
+        {
+            return self.run_once(services, viewer, &moved).await;
         }
         Ok(outcome)
     }
@@ -1376,6 +1827,108 @@ impl Op {
                 )
                 .await
             }
+            // A person's addresses: identity refuses anyone but a person, and
+            // the password is the proof a sensitive change needs.
+            Op::ListEmails => pass(identity, "list_emails", &json!({ "user": actor() })).await,
+            Op::AddEmail | Op::RemoveEmail => {
+                let method = if self == Op::AddEmail { "add_email" } else { "remove_email" };
+                pass(
+                    identity,
+                    method,
+                    &json!({
+                        "user": actor(),
+                        "email": text(input, "email"),
+                        "reauth": { "password": optional_text(input, "password") },
+                    }),
+                )
+                .await
+            }
+            Op::UpdateEmailSettings => {
+                pass(
+                    identity,
+                    "update_email_settings",
+                    &json!({
+                        "user": actor(),
+                        "primary": optional_text(input, "primary"),
+                        "backup": input["backup"].as_str(),
+                        "privateEmail": input["private_email"].as_bool(),
+                        "blockPrivatePushes": input["block_private_pushes"].as_bool(),
+                        "reauth": { "password": optional_text(input, "password") },
+                    }),
+                )
+                .await
+            }
+            Op::ListInvites => {
+                let overview: g1t_contracts::identity::InvitesOverview =
+                    g1t_kit::call(identity, "list_invites", &json!({ "user": actor() })).await?;
+                ok(&overview)
+            }
+            Op::CreateInvite => {
+                pass(
+                    identity,
+                    "create_invite",
+                    &json!({
+                        "user": actor(),
+                        "email": optional_text(input, "email"),
+                        "workspace": optional_text(input, "workspace"),
+                        "surface": services.audit.surface,
+                    }),
+                )
+                .await
+            }
+            Op::RevokeInvite => {
+                pass(identity, "revoke_invite", &json!({ "user": actor(), "id": text(input, "id") })).await
+            }
+            Op::ListWorkspaceInvites => {
+                pass(identity, "workspace_invites", &json!({ "slug": workspace(), "viewer": viewer })).await
+            }
+            Op::InviteMember => {
+                pass(
+                    identity,
+                    "invite_member",
+                    &json!({
+                        "actor": actor(),
+                        "slug": workspace(),
+                        "email": text(input, "email"),
+                        "surface": services.audit.surface,
+                    }),
+                )
+                .await
+            }
+            Op::RevokeWorkspaceInvite => {
+                pass(
+                    identity,
+                    "revoke_workspace_invite",
+                    &json!({ "actor": actor(), "slug": workspace(), "id": text(input, "id") }),
+                )
+                .await
+            }
+            Op::DeleteWorkspace => {
+                pass(
+                    identity,
+                    "delete_workspace",
+                    &json!({
+                        "actor": actor(),
+                        "slug": workspace(),
+                        "confirm": text(input, "confirm"),
+                        "surface": services.audit.surface,
+                    }),
+                )
+                .await
+            }
+            Op::TransferRepo => {
+                pass(
+                    repos,
+                    "transfer",
+                    &json!({
+                        "actor": actor(),
+                        "path": repo,
+                        "to": text(input, "to").to_lowercase(),
+                        "surface": services.audit.surface,
+                    }),
+                )
+                .await
+            }
             Op::ListRepos => {
                 let found: Vec<Repo> = g1t_kit::call(
                     repos,
@@ -1402,7 +1955,7 @@ impl Op {
                 .await
             }
             Op::UpdateRepo => {
-                pass(
+                let updated = pass(
                     repos,
                     "update",
                     &json!({
@@ -1412,6 +1965,120 @@ impl Op {
                         "isPrivate": input["private"].as_bool(),
                         "protected": input["protected"].as_bool(),
                         "topics": strings(input, "topics"),
+                        "website": input["website"].as_str(),
+                        "surface": services.audit.surface,
+                    }),
+                )
+                .await?;
+                // A new default branch, once the rest has been changed.
+                match (&updated, optional_text(input, "default_branch")) {
+                    (Outcome::Ok(_), Some(branch)) => {
+                        pass(
+                            repos,
+                            "set_default_branch",
+                            &json!({
+                                "actor": actor(),
+                                "path": repo,
+                                "branch": branch,
+                                "surface": services.audit.surface,
+                            }),
+                        )
+                        .await
+                    }
+                    _ => Ok(updated),
+                }
+            }
+            Op::RenameRepo => {
+                pass(
+                    repos,
+                    "rename",
+                    &json!({
+                        "actor": actor(),
+                        "path": repo,
+                        "name": text(input, "name"),
+                        "surface": services.audit.surface,
+                    }),
+                )
+                .await
+            }
+            Op::RenameBranch => {
+                pass(
+                    repos,
+                    "rename_branch",
+                    &json!({
+                        "actor": actor(),
+                        "path": repo,
+                        "from": text(input, "branch"),
+                        "to": text(input, "new_name"),
+                        "surface": services.audit.surface,
+                    }),
+                )
+                .await
+            }
+            Op::ArchiveRepo | Op::UnarchiveRepo => {
+                pass(
+                    repos,
+                    "archive",
+                    &json!({
+                        "actor": actor(),
+                        "path": repo,
+                        "archived": self == Op::ArchiveRepo,
+                        "surface": services.audit.surface,
+                    }),
+                )
+                .await
+            }
+            Op::SetRepoVisibility => {
+                let Some(private) = input["private"].as_bool() else {
+                    return failed(
+                        FailureCode::Invalid,
+                        "Say whether to make it private: private is true or false.",
+                    );
+                };
+                pass(
+                    repos,
+                    "set_visibility",
+                    &json!({
+                        "actor": actor(),
+                        "path": repo,
+                        "isPrivate": private,
+                        "confirm": text(input, "confirm"),
+                        "surface": services.audit.surface,
+                    }),
+                )
+                .await
+            }
+            Op::DeleteRepo => {
+                pass(
+                    repos,
+                    "delete",
+                    &json!({
+                        "actor": actor(),
+                        "path": repo,
+                        "confirm": text(input, "confirm"),
+                        "surface": services.audit.surface,
+                    }),
+                )
+                .await
+            }
+            Op::ListDeletedRepos => {
+                let found: Vec<g1t_contracts::repos::DeletedRepo> = g1t_kit::call(
+                    repos,
+                    "deleted",
+                    &json!({ "viewer": viewer, "namespace": workspace() }),
+                )
+                .await?;
+                ok(&found)
+            }
+            Op::RestoreRepo | Op::PurgeRepo => {
+                pass(
+                    repos,
+                    if self == Op::RestoreRepo { "restore" } else { "purge" },
+                    &json!({
+                        "actor": actor(),
+                        "path": repo,
+                        "confirm": optional_text(input, "confirm"),
+                        "surface": services.audit.surface,
                     }),
                 )
                 .await
@@ -1623,6 +2290,7 @@ impl Op {
                         description: optional_text(input, "description"),
                         is_private: input["private"].as_bool() == Some(true),
                         import_url: optional_text(input, "import_url"),
+                        import_token: None,
                     },
                 )
                 .await
@@ -2103,8 +2771,153 @@ impl Op {
                 .await?;
                 ok(&timeline)
             }
+            // Who has access: identity decides, from the repository as the
+            // caller sees it, and refuses every token but a person's for
+            // changes. See g1t_contracts::access.
+            Op::ListCollaborators => {
+                pass(identity, "repo_access", &RepoAccessArgs { viewer: viewer.clone(), path: repo }).await
+            }
+            Op::ListRepoInvitations => {
+                let access: Outcome<RepoAccess> =
+                    call(identity, "repo_access", &RepoAccessArgs { viewer: viewer.clone(), path: repo }).await?;
+                match access {
+                    Outcome::Ok(access) if access.can_manage => ok(&access.invitations),
+                    Outcome::Ok(access) => failed(
+                        FailureCode::Forbidden,
+                        &g1t_contracts::access::needs(Capability::ManageAccess, &access.repo),
+                    ),
+                    Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
+                }
+            }
+            Op::AddCollaborator => {
+                let Some(role) = repo_role(input) else {
+                    return failed(FailureCode::Invalid, ROLE_NEEDED);
+                };
+                pass(
+                    identity,
+                    "add_collaborator",
+                    &AddCollaboratorArgs {
+                        actor: actor(),
+                        path: repo,
+                        invitee: text(input, "invitee").trim().to_owned(),
+                        role,
+                        surface: Some(services.audit.surface),
+                    },
+                )
+                .await
+            }
+            Op::UpdateCollaborator => {
+                let Some(role) = repo_role(input) else {
+                    return failed(FailureCode::Invalid, ROLE_NEEDED);
+                };
+                pass(
+                    identity,
+                    "set_collaborator_role",
+                    &SetCollaboratorRoleArgs {
+                        actor: actor(),
+                        path: repo,
+                        username: text(input, "username"),
+                        role,
+                        surface: Some(services.audit.surface),
+                    },
+                )
+                .await
+            }
+            Op::RemoveCollaborator => {
+                pass(
+                    identity,
+                    "remove_collaborator",
+                    &RemoveCollaboratorArgs {
+                        actor: actor(),
+                        path: repo,
+                        username: text(input, "username"),
+                        surface: Some(services.audit.surface),
+                    },
+                )
+                .await
+            }
+            Op::GetCollaboratorPermission => {
+                pass(
+                    identity,
+                    "collaborator_permission",
+                    &CollaboratorPermissionArgs {
+                        viewer: viewer.clone(),
+                        path: repo,
+                        username: text(input, "username"),
+                    },
+                )
+                .await
+            }
+            Op::RevokeRepoInvitation => {
+                pass(
+                    identity,
+                    "revoke_repo_invitation",
+                    &RevokeRepoInvitationArgs {
+                        actor: actor(),
+                        path: repo,
+                        id: text(input, "id"),
+                        surface: Some(services.audit.surface),
+                    },
+                )
+                .await
+            }
+            Op::ListMyRepoInvitations => {
+                let waiting: Vec<RepoInvitation> =
+                    g1t_kit::call(identity, "my_repo_invitations", &MyRepoInvitationsArgs { user: actor() }).await?;
+                ok(&waiting)
+            }
+            Op::AcceptRepoInvitation | Op::DeclineRepoInvitation => {
+                pass(
+                    identity,
+                    "respond_repo_invitation",
+                    &RespondRepoInvitationArgs {
+                        user: actor(),
+                        id: text(input, "id"),
+                        accept: self == Op::AcceptRepoInvitation,
+                    },
+                )
+                .await
+            }
+            Op::SetBasePermission => {
+                let Some(base) = input["base_permission"].as_str().and_then(BasePermission::parse) else {
+                    return failed(
+                        FailureCode::Invalid,
+                        "Give base_permission: none, read, write or admin.",
+                    );
+                };
+                let set: Outcome<BasePermission> = call(
+                    identity,
+                    "set_base_permission",
+                    &SetBasePermissionArgs {
+                        actor: actor(),
+                        slug: workspace(),
+                        base_permission: base,
+                        surface: Some(services.audit.surface),
+                    },
+                )
+                .await?;
+                match set {
+                    Outcome::Ok(base) => ok(&json!({ "workspace": workspace(), "base_permission": base })),
+                    Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
+                }
+            }
+            Op::ListOutsideCollaborators => {
+                pass(
+                    identity,
+                    "outside_collaborators",
+                    &OutsideCollaboratorsArgs { viewer: viewer.clone(), slug: workspace() },
+                )
+                .await
+            }
         }
     }
+}
+
+const ROLE_NEEDED: &str = "Give a role: read, triage, write, maintain or admin.";
+
+/// The role named by `role`.
+fn repo_role(input: &Value) -> Option<RepoRole> {
+    input["role"].as_str().and_then(RepoRole::parse)
 }
 
 impl Op {
@@ -2157,12 +2970,12 @@ mod tests {
 
     #[test]
     fn a_repository_is_owner_slash_name() {
-        let path = repo_path(&json!({ "repo": "syntaqx/hello" })).unwrap();
+        let path = repo_path(&json!({ "repo": "flagon-io/hello" })).unwrap();
         assert_eq!(
             (path.namespace.as_str(), path.name.as_str()),
-            ("syntaqx", "hello")
+            ("flagon-io", "hello")
         );
-        for bad in ["syntaqx", "a/b/c", "/hello", "syntaqx/", ""] {
+        for bad in ["flagon-io", "a/b/c", "/hello", "flagon-io/", ""] {
             assert!(repo_path(&json!({ "repo": bad })).is_none(), "{bad}");
         }
     }
@@ -2173,5 +2986,62 @@ mod tests {
         assert_eq!(integer(&json!({ "number": "12" }), "number"), Some(12));
         assert_eq!(integer(&json!({ "number": "x" }), "number"), None);
         assert_eq!(integer(&json!({}), "number"), None);
+    }
+
+    const ACCESS: [Op; 12] = [
+        Op::ListCollaborators,
+        Op::AddCollaborator,
+        Op::UpdateCollaborator,
+        Op::RemoveCollaborator,
+        Op::GetCollaboratorPermission,
+        Op::ListRepoInvitations,
+        Op::RevokeRepoInvitation,
+        Op::ListMyRepoInvitations,
+        Op::AcceptRepoInvitation,
+        Op::DeclineRepoInvitation,
+        Op::SetBasePermission,
+        Op::ListOutsideCollaborators,
+    ];
+
+    /// Who has access is for people: no run's scope lists these, and the
+    /// ones that change or reveal access are refused whatever a scope says.
+    #[test]
+    fn agents_never_manage_access() {
+        use g1t_contracts::credentials::{CredentialUse, NEVER, RunCredentialKind, operations_for};
+        for kind in RunCredentialKind::ALL {
+            for usage in [CredentialUse::Runner, CredentialUse::Tools] {
+                let operations = operations_for(kind, usage);
+                for op in ACCESS {
+                    assert!(!operations.contains(&op.name()), "{} in a {kind:?} run", op.name());
+                }
+            }
+        }
+        for op in ACCESS {
+            assert!(NEVER.contains(&op.name()), "{} is not in NEVER", op.name());
+        }
+    }
+
+    #[test]
+    fn roles_and_base_permissions_are_read_as_words() {
+        assert_eq!(repo_role(&json!({ "role": "Maintain" })), Some(RepoRole::Maintain));
+        assert_eq!(repo_role(&json!({ "role": "owner" })), None);
+        assert_eq!(repo_role(&json!({})), None);
+        assert_eq!(Op::AddCollaborator.input()["properties"]["role"]["enum"], json!(["read", "triage", "write", "maintain", "admin"]));
+        assert_eq!(
+            Op::SetBasePermission.input()["properties"]["base_permission"]["enum"],
+            json!(["none", "read", "write", "admin"])
+        );
+    }
+
+    /// The operations about one person's own invitations, and a
+    /// workspace's settings, name no repository.
+    #[test]
+    fn access_operations_name_a_repository_only_when_they_are_about_one() {
+        for op in [Op::ListMyRepoInvitations, Op::AcceptRepoInvitation, Op::DeclineRepoInvitation, Op::SetBasePermission, Op::ListOutsideCollaborators] {
+            assert!(!op.needs_repo(), "{}", op.name());
+        }
+        for op in ACCESS {
+            assert!(op.needs_user(), "{}", op.name());
+        }
     }
 }

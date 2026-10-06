@@ -14,10 +14,12 @@
 	// token on every request before anything is served.
 	"assets": { "binding": "ASSETS", "run_worker_first": true },
 	// Billing's and identity's staff-only methods (admin_*). Nothing else
-	// binds to identity's admin_* methods.
+	// binds to identity's admin_* methods. The event log, read-only, for
+	// `abuse.flagged` (Abuse & fraud).
 	"services": [
 		{ "binding": "BILLING", "service": "g1t-billing" },
-		{ "binding": "IDENTITY", "service": "g1t-identity" }
+		{ "binding": "IDENTITY", "service": "g1t-identity" },
+		{ "binding": "EVENTS", "service": "g1t-events" }
 	],
 	"vars": {
 		// The Zero Trust team domain, such as `g1t.cloudflareaccess.com`.

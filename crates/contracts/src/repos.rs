@@ -30,6 +30,96 @@ pub struct Repo {
     /// letters, digits and hyphens. See [`clean_topics`].
     #[serde(default)]
     pub topics: Vec<String>,
+    /// Its home page, an http(s) address, shown beside its description.
+    /// See [`clean_website`].
+    #[serde(default)]
+    pub website: Option<String>,
+    /// RFC 3339: when it was archived, made read-only. Null when it is not.
+    #[serde(default)]
+    pub archived_at: Option<String>,
+}
+
+impl Repo {
+    pub fn archived(&self) -> bool {
+        self.archived_at.is_some()
+    }
+}
+
+/// How long a deleted repository can be restored before it is purged.
+pub const RESTORE_DAYS: u64 = 30;
+
+/// A deleted repository, as its workspace's Recently deleted list shows
+/// it: restorable until `purge_after`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletedRepo {
+    pub id: String,
+    pub namespace: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_private: bool,
+    /// RFC 3339.
+    pub deleted_at: String,
+    /// The username of who deleted it.
+    pub deleted_by: String,
+    /// RFC 3339: when it is purged, unless restored first.
+    pub purge_after: String,
+}
+
+/// The longest website address a repository keeps.
+pub const MAX_WEBSITE_CHARS: usize = 255;
+
+/// A website as it is kept: an http(s) address, `https://` added when no
+/// scheme is given; empty clears it. Anything else is refused.
+pub fn clean_website(text: &str) -> Result<Option<String>, String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Ok(None);
+    }
+    let url = if text.starts_with("https://") || text.starts_with("http://") {
+        text.to_owned()
+    } else if text.contains("://") {
+        return Err("A website is an http or https address.".into());
+    } else {
+        format!("https://{text}")
+    };
+    let host = url
+        .split("://")
+        .nth(1)
+        .unwrap_or("")
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("");
+    if url.chars().count() > MAX_WEBSITE_CHARS
+        || host.is_empty()
+        || !host.contains('.')
+        || url.chars().any(char::is_whitespace)
+    {
+        return Err("That is not a website address, such as https://example.com.".into());
+    }
+    Ok(Some(url))
+}
+
+/// Whether `name` can be a branch people name: what `git check-ref-format
+/// --branch` accepts, less the names g1t keeps for itself
+/// ([`G1T_BRANCH_PREFIX`]).
+pub fn is_valid_branch_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 200
+        && !name.starts_with('-')
+        && !name.starts_with('/')
+        && !name.ends_with('/')
+        && !name.ends_with('.')
+        && !name.ends_with(".lock")
+        && !name.contains("..")
+        && !name.contains("//")
+        && !name.contains("@{")
+        && name != "@"
+        && !name.starts_with(G1T_BRANCH_PREFIX)
+        && !name.split('/').any(|part| part.starts_with('.'))
+        && name
+            .chars()
+            .all(|c| !c.is_control() && !matches!(c, ' ' | '~' | '^' | ':' | '?' | '*' | '[' | '\\'))
 }
 
 /// The most topics a repository has.
@@ -222,6 +312,46 @@ pub struct CreateArgs {
     /// branch of, such as `https://github.com/owner/repo`.
     #[serde(default)]
     pub import_url: Option<String>,
+    /// With `import_url`: a GitHub installation access token that opens it,
+    /// for a private repository. Every branch and tag is then copied, not
+    /// only the default branch. Set only by the integrations service.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub import_token: Option<String>,
+}
+
+/// `mirror`: makes a repository's branches and tags match another git
+/// host's, or pushes its own out to one. Services only. Returns
+/// `Outcome<Mirrored>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MirrorArgs {
+    pub repo_id: String,
+    /// The other host's https address, such as
+    /// `https://github.com/owner/repo.git`.
+    pub url: String,
+    /// A GitHub installation access token for it. Opaque: any length.
+    pub token: String,
+    pub direction: MirrorDirection,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MirrorDirection {
+    /// The repository on g1t follows the other host: its refs are moved,
+    /// and removed, to match.
+    Pull,
+    /// The other host follows g1t: refs g1t has are pushed there; refs only
+    /// the other host has are left alone.
+    Push,
+}
+
+/// What a `mirror` changed.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Mirrored {
+    /// Full ref names created or moved.
+    pub updated: Vec<String>,
+    pub deleted: Vec<String>,
 }
 
 /// `update`: changes whichever of a repository's details are given.
@@ -241,6 +371,12 @@ pub struct UpdateArgs {
     /// Replaces its topics; an empty list clears them.
     #[serde(default)]
     pub topics: Option<Vec<String>>,
+    /// Its home page; an empty string clears it.
+    #[serde(default)]
+    pub website: Option<String>,
+    /// Where the request came in, for the audit log; g1t.sh when absent.
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
 }
 
 /// `tree`. Returns `Outcome<TreeView>`.
@@ -686,6 +822,31 @@ pub struct RepoVisibility {
     pub is_private: bool,
 }
 
+/// `git_operations`: how many git operations (clones, fetches and pushes
+/// through g1t's git endpoints) each workspace's repositories had in a
+/// month, for billing's git meter. Cloudflare Artifacts charges per
+/// operation from 2026-10-14. Pushes from agents' sandboxes go to the
+/// store directly and are not counted here. Returns
+/// `Vec<WorkspaceGitOperations>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GitOperationsArgs {
+    /// YYYY-MM.
+    pub month: String,
+    /// Count only from this hour on, `YYYY-MM-DDTHH`, such as the day the
+    /// provider starts charging.
+    #[serde(default)]
+    pub since: Option<String>,
+    /// One workspace only; every workspace with any when absent.
+    #[serde(default)]
+    pub namespace: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceGitOperations {
+    pub namespace: String,
+    pub operations: u64,
+}
+
 /// `storage`: what each workspace's private repositories hold, as far as
 /// g1t can measure it, for billing's daily storage meter. Returns
 /// `Vec<WorkspaceStorage>`.
@@ -705,6 +866,218 @@ pub struct WorkspaceStorage {
     pub public_bytes: i64,
 }
 
+/// `transfer`: moves a repository to another workspace, keeping its name,
+/// its id and everything kept under it. The actor must own both
+/// workspaces. The old path keeps working as a redirect (see
+/// `resolve_path`) until a repository is made there. Publishes
+/// `repo.transferred`. Returns `Outcome<Repo>`, the repository at its new
+/// path.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferArgs {
+    pub actor: User,
+    pub path: RepoPath,
+    /// The destination workspace's slug.
+    pub to: String,
+    /// Where the request came in, for the audit log; g1t.sh when absent.
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
+}
+
+/// `resolve_path`: where a repository that was transferred away from
+/// `path` is now, while nothing else is there. Returns `Option<RepoPath>`:
+/// null when `path` is a repository, or never was one that moved. Callers
+/// check the viewer may see the repository at its new path, as for any
+/// other.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ResolvePathArgs {
+    pub path: RepoPath,
+}
+
+/// `namespace_count`: how many repositories (not pull request working
+/// copies) a workspace holds, private or not, for deciding whether it can
+/// be deleted. Returns `u32`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NamespaceCountArgs {
+    pub namespace: String,
+}
+
+/// `delete`: deletes a repository. Owners of its workspace only, who type
+/// its full name (`namespace/name`) as `confirm`. It is hidden at once,
+/// git refuses it, and nothing runs for it; it can be restored for
+/// [`RESTORE_DAYS`] days, then it is purged, its git data with it. Its
+/// name stays taken until then, or until it is purged sooner from the
+/// workspace's Recently deleted list. Publishes `repo.deleted`. Returns
+/// `Outcome<DeletedRepo>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteArgs {
+    pub actor: User,
+    pub path: RepoPath,
+    #[serde(default)]
+    pub confirm: String,
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
+}
+
+/// `deleted`: a workspace's recently deleted repositories, newest first.
+/// Owners only; empty for anyone else. Returns `Vec<DeletedRepo>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeletedArgs {
+    pub viewer: Viewer,
+    pub namespace: String,
+}
+
+/// `restore` and `purge`: a deleted repository, by the path it had.
+/// `restore` brings it back as it was, at that path (`repo.restored`).
+/// `purge` removes it for good now, its git data with it, and frees its
+/// name (`repo.purged`); it takes the full name typed as `confirm`.
+/// Owners only. Return `Outcome<Repo>` and `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletedRepoArgs {
+    pub actor: User,
+    pub path: RepoPath,
+    #[serde(default)]
+    pub confirm: Option<String>,
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
+}
+
+/// `purge_due`: purges deleted repositories whose time has passed, at
+/// most `limit` (25 when absent). The service's own schedule runs it.
+/// Returns `u32`, how many were purged.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct PurgeDueArgs {
+    #[serde(default)]
+    pub limit: Option<u32>,
+}
+
+/// `rename`: gives a repository a new name in its workspace, keeping its
+/// id, its git data and everything kept under it. Owners only. The old
+/// path keeps redirecting, as after a transfer, until a repository is made
+/// there. Publishes `repo.renamed`. Returns `Outcome<Repo>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameArgs {
+    pub actor: User,
+    pub path: RepoPath,
+    pub name: String,
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
+}
+
+/// `archive`: makes a repository read-only (`archived: true`), or writable
+/// again. Owners only. While archived, pushes and merges are refused,
+/// issues and pull requests are locked, and agents and workflows do not
+/// run; deployments keep serving. Publishes `repo.archived` or
+/// `repo.unarchived`. Returns `Outcome<Repo>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveArgs {
+    pub actor: User,
+    pub path: RepoPath,
+    pub archived: bool,
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
+}
+
+/// `set_visibility`: makes a repository public or private. Owners only,
+/// who type its full name as `confirm`. A free workspace takes a private
+/// repository only while its private storage has room. Publishes
+/// `repo.updated` and `repo.visibility_changed`. Returns `Outcome<Repo>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetVisibilityArgs {
+    pub actor: User,
+    pub path: RepoPath,
+    pub is_private: bool,
+    #[serde(default)]
+    pub confirm: String,
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
+}
+
+/// `set_default_branch`: makes another existing branch the one everything
+/// lands on. Members of its workspace. Open pull requests then merge into
+/// it. Publishes `repo.default_branch_changed`. Returns `Outcome<Repo>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetDefaultBranchArgs {
+    pub actor: User,
+    pub path: RepoPath,
+    pub branch: String,
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
+}
+
+/// `rename_branch`: renames a branch. Members of its workspace; only an
+/// owner renames the default branch, which stays the default. Pull
+/// requests from it follow, and web addresses naming the old branch
+/// redirect until a branch of that name is made again. Publishes
+/// `branch.renamed` (and `repo.default_branch_changed` for the default).
+/// Returns `Outcome<Repo>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameBranchArgs {
+    pub actor: User,
+    pub path: RepoPath,
+    pub from: String,
+    pub to: String,
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
+}
+
+/// `resolve_branch`: what a branch renamed away from `branch` is called
+/// now, for web addresses that name the old one; null when `branch` was
+/// never renamed or exists again. Returns `Option<String>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveBranchArgs {
+    pub repo_id: String,
+    pub branch: String,
+}
+
+/// `status_by_id`: whether a repository is archived or deleted, for g1t's
+/// own services deciding whether to act on it. An unknown id answers as
+/// deleted. Returns `RepoStatus`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StatusByIdArgs {
+    pub id: String,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepoStatus {
+    pub archived: bool,
+    pub deleted: bool,
+}
+
+impl RepoStatus {
+    /// Whether work may start on it: neither archived nor deleted.
+    pub fn active(&self) -> bool {
+        !self.archived && !self.deleted
+    }
+}
+
+/// What a person is told when something would change an archived
+/// repository.
+pub fn archived_message(namespace: &str, name: &str) -> String {
+    format!(
+        "{namespace}/{name} is archived, so it is read-only. An owner can unarchive it in its settings."
+    )
+}
+
+/// The path a repository was transferred from, and when, as `transfer`
+/// keeps it so old addresses redirect.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoRedirect {
+    pub from: RepoPath,
+    pub repo_id: String,
+    /// RFC 3339.
+    pub created_at: String,
+}
+
 #[cfg(test)]
 mod topic_tests {
     use super::*;
@@ -716,6 +1089,26 @@ mod topic_tests {
     #[test]
     fn topics_are_tidied() {
         assert_eq!(topics(&["Rust", " web_server ", "rust", ""]).unwrap(), vec!["rust", "web-server"]);
+    }
+
+    #[test]
+    fn websites_are_tidied() {
+        assert_eq!(clean_website(" example.com ").unwrap().as_deref(), Some("https://example.com"));
+        assert_eq!(clean_website("http://a.io/x").unwrap().as_deref(), Some("http://a.io/x"));
+        assert_eq!(clean_website("").unwrap(), None);
+        assert!(clean_website("ftp://a.io").is_err());
+        assert!(clean_website("localhost").is_err());
+        assert!(clean_website("https://a b.io").is_err());
+    }
+
+    #[test]
+    fn branch_names_follow_git() {
+        for good in ["main", "trunk", "release/1.2", "feat-x_y"] {
+            assert!(is_valid_branch_name(good), "{good}");
+        }
+        for bad in ["", "-x", "a..b", "a b", "x.lock", "a/", ".hidden", "a/.b", "g1t-queue", "a~1", "a:b", "@"] {
+            assert!(!is_valid_branch_name(bad), "{bad}");
+        }
     }
 
     #[test]

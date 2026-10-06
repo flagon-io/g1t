@@ -30,17 +30,21 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 
 /** A workspace's own pages, each with its title and what it is for. */
 const PAGES: Record<string, { title: string; about: string }> = {
-  settings: { title: "General", about: "The workspace's name, icon, address and description." },
+  settings: { title: "General", about: "The workspace's name, icon, address and description, and deleting it." },
   people: {
     title: "Members",
-    about: "Members create repositories, push, manage issues and merge pull requests. Owners also manage members, tokens, billing and integrations.",
+    about: "Members create repositories and have the base permission on each one. Owners are Admins on every repository, and also manage members, tokens, billing and integrations.",
+  },
+  repositories: {
+    title: "Repositories",
+    about: "Every repository in the workspace: who can see it, whether it is archived, and the ones deleted recently.",
   },
   tokens: {
     title: "Access tokens",
     about: "Tokens that belong to the workspace, not a person: for CI, integrations and agents that work for the whole team.",
   },
   usage: { title: "Usage", about: "What the workspace's agents cost, run by run, by repository, pull request and model." },
-  billing: { title: "Billing and plans", about: "Paid plans, agent credit, and every charge against it." },
+  billing: { title: "Billing and plans", about: "The g1t plan, the trial, your spend limit and caps, prepaying, and every charge." },
   agents: {
     title: "Agent fleet",
     about: "Every agent at work across the workspace's projects: what each holds, what it is doing now, and what it has cost.",

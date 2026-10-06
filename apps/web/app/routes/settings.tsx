@@ -8,6 +8,12 @@ import { Button, ErrorText, Field, Input, TimeAgo } from "../components/ui";
 import { readAvatarUpload } from "../lib/avatar-upload";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
 import { ProfileSection } from "../components/profile-form";
+import { InvitesSection } from "../components/invites-section";
+import { inviteAction, loadInvites } from "../lib/invites.server";
+import { EmailsSection, SecurityLogSection } from "../components/emails-section";
+import { EMAIL_INTENTS, emailAction, loadEmails } from "../lib/emails.server";
+import { GithubMark } from "../components/github";
+import { githubSignIn } from "../lib/github.server";
 
 export function meta(args: Route.MetaArgs) {
   return page(args, { title: "Settings · g1t" });
@@ -15,13 +21,15 @@ export function meta(args: Route.MetaArgs) {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
-  const [keys, tokens, applications, profile] = await Promise.all([
+  const [keys, tokens, applications, profile, github] = await Promise.all([
     identity.listSshKeys(user),
     identity.listAccessTokens(user),
     identity.listOAuthGrants(user),
     identity.profile(user.username),
+    githubSignIn.account(user).catch(() => null),
   ]);
-  return { user, keys, tokens, applications, profile };
+  const [invites, emails] = await Promise.all([loadInvites(user), loadEmails(user)]);
+  return { user, keys, tokens, applications, profile, github, invites, emails, origin: new URL(request.url).origin };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -30,7 +38,19 @@ export async function action({ request, context }: Route.ActionArgs) {
   const form = await request.formData();
   const id = String(form.get("id") ?? "");
 
+  // Email addresses (lib/emails.server.ts): sensitive changes may first ask
+  // for the password.
+  if ((EMAIL_INTENTS as readonly string[]).includes(String(form.get("intent")))) {
+    return { emailAction: await emailAction(user, form, request) };
+  }
+
   switch (form.get("intent")) {
+    // Invites: making and revoking them (lib/invites.server.ts).
+    case "create-invite":
+    case "revoke-invite": {
+      const done = await inviteAction(user, form);
+      return { inviteCreated: done?.inviteCreated, inviteError: done?.inviteError };
+    }
     // Identity checks every field again, and the website most of all.
     case "profile": {
       const text = (name: string) => String(form.get(name) ?? "");
@@ -75,6 +95,10 @@ export async function action({ request, context }: Route.ActionArgs) {
     case "delete-token":
       await identity.removeAccessToken(user, id);
       return null;
+    case "unlink-github": {
+      const result = await githubSignIn.unlink(user);
+      return result.ok ? null : { githubError: result.error.message };
+    }
     case "sign-out-application":
       await identity.revokeOAuthGrant(user, id);
       return null;
@@ -106,7 +130,7 @@ export default function Settings({
   loaderData,
   actionData,
 }: Route.ComponentProps) {
-  const { user, keys, tokens, applications, profile } = loaderData;
+  const { user, keys, tokens, applications, profile, github, invites, emails, origin } = loaderData;
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
       <header className="mb-8 border-b border-line pb-6">
@@ -132,6 +156,67 @@ export default function Settings({
         profile={profile}
         error={actionData && "profileError" in actionData ? actionData.profileError : undefined}
         saved={Boolean(actionData && "profileSaved" in actionData)}
+      />
+      <EmailsSection
+        data={emails.emails}
+        actionData={actionData && "emailAction" in actionData ? actionData.emailAction : undefined}
+        hasPassword={github?.hasPassword ?? true}
+      />
+      {github?.enabled && (
+        <section id="github" className="scroll-mt-20">
+          <h2 className="font-medium">GitHub</h2>
+          <p className="mt-1 text-sm text-muted">
+            Sign in with your GitHub account, and import or mirror repositories you can reach there.
+          </p>
+          {github.account ? (
+            <div className="mt-4 flex items-center gap-4 rounded-md border border-line px-4 py-3">
+              <GithubMark className="size-5 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm">
+                  Linked to <span className="font-mono">@{github.account.login}</span>
+                </p>
+                <p className="text-xs text-faint">
+                  Since <TimeAgo at={github.account.linkedAt} />
+                  {!github.account.authorized && " · access ended: link it again to import repositories"}
+                </p>
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                {!github.account.authorized && (
+                  <a href="/auth/github?link=1" className="text-sm text-muted hover:text-fg">
+                    Link again
+                  </a>
+                )}
+                <Form method="post">
+                  <input type="hidden" name="intent" value="unlink-github" />
+                  <Button variant="quiet" type="submit" disabled={!github.hasPassword} title={github.hasPassword ? undefined : "GitHub is how you sign in. Set a password first."}>
+                    Unlink
+                  </Button>
+                </Form>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4">
+              <a
+                href="/auth/github?link=1"
+                className="inline-flex items-center gap-2 rounded-md border border-line px-3.5 py-2 text-sm font-medium text-fg/90 hover:border-line-strong hover:bg-surface hover:text-fg"
+              >
+                <GithubMark /> Link GitHub
+              </a>
+            </div>
+          )}
+          {github.account && !github.hasPassword && (
+            <p className="mt-2 text-xs text-faint">
+              GitHub is the only way you sign in, so it cannot be unlinked yet. Sign out and use Forgot your password to set one.
+            </p>
+          )}
+          <ErrorText>{actionData && "githubError" in actionData ? actionData.githubError : undefined}</ErrorText>
+        </section>
+      )}
+      <InvitesSection
+        overview={invites}
+        origin={origin}
+        created={actionData && "inviteCreated" in actionData ? actionData.inviteCreated : undefined}
+        error={actionData && "inviteError" in actionData ? actionData.inviteError : undefined}
       />
       <section id="ssh-keys" className="scroll-mt-20">
         <h2 className="font-medium">SSH keys</h2>
@@ -254,6 +339,7 @@ export default function Settings({
           </ul>
         )}
       </section>
+      <SecurityLogSection log={emails.log} />
       </div>
     </main>
   );

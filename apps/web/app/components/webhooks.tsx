@@ -26,6 +26,7 @@ const GROUPS: { title: string; events: string[] }[] = [
   },
   { title: "Checks, reviews and the queue", events: ["checks.completed", "workflow.completed", "review.completed", "queue.changed"] },
   { title: "Agents", events: ["session.appended", "agent.asked"] },
+  { title: "Access", events: ["repo.collaborator_added", "repo.collaborator_removed", "repo.collaborator_role_changed"] },
 ];
 
 function StatusDot({ status }: { status: string | null }) {

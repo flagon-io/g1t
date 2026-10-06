@@ -1,0 +1,78 @@
+/*
+ * g1t's typefaces, served from each site's own origin: Hanken Grotesk for
+ * text and the interface, Bricolage Grotesque for headlines, IBM Plex Mono
+ * for code. All three are under the SIL Open Font License (fonts/OFL-*.txt).
+ *
+ * The files are the Latin subset. Hanken is variable in weight (400 to
+ * 700); Bricolage is variable in weight (500 to 700) and in optical size
+ * (12 to 96), which the browser sets from the font size; Plex Mono comes as
+ * three weights. Each site's bundler fingerprints the files, so they can
+ * be cached for good.
+ *
+ * Text shows at once in a local fallback (font-display: swap). The
+ * fallbacks are Arial scaled to each face's width and line metrics, so the
+ * swap does not move anything on the page.
+ */
+@font-face {
+	font-family: 'Hanken Grotesk';
+	font-style: normal;
+	font-weight: 400 700;
+	font-display: swap;
+	src: url('./fonts/hanken-grotesk-latin.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Bricolage Grotesque';
+	font-style: normal;
+	font-weight: 500 700;
+	font-display: swap;
+	src: url('./fonts/bricolage-grotesque-latin.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'IBM Plex Mono';
+	font-style: normal;
+	font-weight: 400;
+	font-display: swap;
+	src: url('./fonts/ibm-plex-mono-latin-400.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'IBM Plex Mono';
+	font-style: normal;
+	font-weight: 500;
+	font-display: swap;
+	src: url('./fonts/ibm-plex-mono-latin-500.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'IBM Plex Mono';
+	font-style: normal;
+	font-weight: 600;
+	font-display: swap;
+	src: url('./fonts/ibm-plex-mono-latin-600.woff2') format('woff2');
+}
+
+/*
+ * Measured against Arial: size-adjust is the ratio of the two faces'
+ * average letter widths in English text, and the overrides are the web
+ * font's own ascent and descent over that. Mono needs none: Plex Mono and
+ * the usual system monospace faces have the same advance.
+ */
+@font-face {
+	font-family: 'Hanken Grotesk Fallback';
+	src: local('Arial'), local('ArialMT'), local('Helvetica Neue'), local('Helvetica'), local('Roboto');
+	size-adjust: 101.04%;
+	ascent-override: 98.97%;
+	descent-override: 29.99%;
+	line-gap-override: 0%;
+}
+
+@font-face {
+	font-family: 'Bricolage Grotesque Fallback';
+	src: local('Arial'), local('ArialMT'), local('Helvetica Neue'), local('Helvetica'), local('Roboto');
+	size-adjust: 103.6%;
+	ascent-override: 89.77%;
+	descent-override: 26.06%;
+	line-gap-override: 0%;
+}

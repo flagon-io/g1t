@@ -211,18 +211,24 @@ impl Work {
         }))
     }
 
-    /// Takes a pull request out of the queue, by a member's hand.
+    /// Takes a pull request out of the queue, by the hand of someone who
+    /// may merge.
     pub(crate) async fn remove_from_queue(&self, a: PullActionArgs) -> Result<Outcome<Pull>> {
         let viewer = Some(a.actor.clone());
         let (repo, pull) = match self.pull_at(&a.repo, a.number, &viewer).await? {
             Outcome::Ok(found) => found,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        if !a.actor.verified || !a.actor.is_member(&repo.namespace) {
-            return Ok(Outcome::fail(
-                FailureCode::Forbidden,
-                "Only members of the repository's workspace can change its merge queue.",
-            ));
+        if let Outcome::Fail(failure) = crate::retired::writable(&repo) {
+            return Ok(Outcome::Fail(failure));
+        }
+        if !a.actor.verified {
+            return Ok(Outcome::fail(FailureCode::Forbidden, crate::UNVERIFIED));
+        }
+        if let Outcome::Fail(failure) =
+            crate::allowed(Some(&a.actor), &repo, g1t_contracts::access::Capability::Merge)
+        {
+            return Ok(Outcome::Fail(failure));
         }
         if self.leave(&repo.id, &pull, QueueState::Removed, None).await? {
             let who = (a.actor.id.as_str(), a.actor.username.as_str());
@@ -343,7 +349,7 @@ impl Work {
             },
         )
         .await?;
-        let Outcome::Ok(repo) = repo else {
+        let Outcome::Ok(repo) = crate::retired::unless_archived(repo) else {
             return Ok(Vec::new());
         };
         let base: Option<String> = g1t_kit::call(
@@ -731,7 +737,7 @@ impl Work {
             },
         )
         .await?;
-        let Outcome::Ok(repo) = repo else {
+        let Outcome::Ok(repo) = crate::retired::unless_archived(repo) else {
             return Ok(());
         };
         for row in active {

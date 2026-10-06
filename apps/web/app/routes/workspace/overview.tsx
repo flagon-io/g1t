@@ -1,13 +1,15 @@
 import { ArrowRight, ArrowUpRight, Box, CircleDot, GitBranch, GitPullRequest, KeyRound, Lock, Plus, Rocket } from "lucide-react";
 import { Link } from "react-router";
 
-import type { Project, ProjectDeploys } from "@g1t/contracts";
+import type { Project, ProjectDeploys, User } from "@g1t/contracts";
 
 import type { Route } from "./+types/overview";
 import { host, StatusDot } from "../../components/deploy";
 import { Avatar, ButtonLink, CopyLine, Pill, TimeAgo } from "../../components/ui";
-import { PullIcon } from "../../components/work";
-import { deployments, identity, projects as projectsApi, work } from "../../lib/services.server";
+import { UsageCard } from "../../components/usage-card";
+import { PullIcon } from "../../components/work-icons";
+import { planStatus, type UsageGlance, usageGlance } from "../../lib/billing";
+import { billing, deployments, identity, projects as projectsApi, work } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 
 /** Projects whose open issues and pull requests are counted. */
@@ -16,15 +18,48 @@ const MAX_COUNTED = 30;
 const MAX_LISTED = 8;
 const MAX_PULLS = 8;
 const MAX_FACES = 8;
+/** The trial as published, when the price book cannot be read. */
+const DEFAULT_TRIAL_MICROS = 5_000_000;
+
+/**
+ * The month for the Usage card, for members only: what was spent, what
+ * pays first and what it went on. Fetched here, not with the sidebar, so
+ * only this page pays for it; a billing service that cannot answer leaves
+ * the card out rather than the page.
+ */
+async function usageFor(slug: string, viewer: User | null): Promise<UsageGlance | null> {
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+  const [account, usage, features, entitlements, limit, book] = await Promise.all([
+    billing.account(slug, viewer).catch(() => null),
+    billing.usage(slug, viewer, monthStart).catch(() => null),
+    billing.features(slug, viewer).catch(() => null),
+    billing.entitlements(slug).catch(() => null),
+    billing.limit(slug, viewer).catch(() => null),
+    billing.prices().catch(() => null),
+  ]);
+  if (!account?.ok || !usage?.ok) return null;
+  // Without payments set up (a g1t run without billing), there is no plan to show.
+  if (!account.value.status.enabled && !usage.value.free) return null;
+  const plan = features?.ok ? (features.value.find((state) => state.plan.feature === "plan") ?? null) : null;
+  return usageGlance({
+    usage: usage.value,
+    status: planStatus(plan, entitlements),
+    entitlements,
+    limit: limit?.ok ? limit.value : null,
+    trialMicros: book?.free?.trialWorkspaceMicros ?? DEFAULT_TRIAL_MICROS,
+  });
+}
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const slug = params.owner.toLowerCase();
   const role = roleIn(viewer, slug);
-  const [listed, members, deploys] = await Promise.all([
+  const [listed, members, deploys, usage] = await Promise.all([
     projectsApi.list(slug, viewer),
     role ? identity.listMembers(slug, viewer) : null,
     role ? deployments.overview(slug, viewer) : null,
+    role ? usageFor(slug, viewer) : null,
   ]);
   const projects = listed.ok ? listed.value : [];
 
@@ -56,6 +91,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     deploys: bySlug,
     pulls: pulls.map(({ pull, project }) => ({ pull, slug: project.slug, name: project.name })),
     members: members?.ok ? members.value : null,
+    usage,
   };
 }
 
@@ -128,10 +164,17 @@ function ProjectCard({
               <ArrowUpRight size={11} className="shrink-0" />
             </a>
           ) : (
-            <p className="mt-0.5 truncate text-xs text-faint">{project.description ?? "Not deployed"}</p>
+            <p className="mt-0.5 truncate text-xs text-faint">
+              {project.description ?? (deploys?.enabled ? "Not deployed yet" : "Deployments are off")}
+            </p>
           )}
         </div>
-        {project.private && <Pill>private</Pill>}
+        {(project.private || project.archived) && (
+          <span className="flex shrink-0 gap-1.5">
+            {project.private && <Pill>private</Pill>}
+            {project.archived && <Pill>archived</Pill>}
+          </span>
+        )}
       </div>
 
       {project.description && production && <p className="mt-3 line-clamp-2 text-sm text-muted">{project.description}</p>}
@@ -176,7 +219,7 @@ function ProjectCard({
 }
 
 export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) {
-  const { slug, role, projects, open, deploys, pulls, members } = loaderData;
+  const { slug, role, projects, open, deploys, pulls, members, usage } = loaderData;
   const totals = Object.values(open).reduce(
     (sum, counts) => ({ issues: sum.issues + counts.issues, pulls: sum.pulls + counts.pulls }),
     { issues: 0, pulls: 0 },
@@ -255,6 +298,8 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
       </div>
 
       <aside className="space-y-6">
+        {role && usage && <UsageCard slug={slug} glance={usage} owner={role === "owner"} />}
+
         {members ? (
           <section>
             <div className="flex items-center justify-between">
@@ -287,8 +332,8 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
               Deploy on g1t.page
             </h2>
             <p className="mt-1.5 text-sm text-muted">
-              Production from each project's default branch, and a live preview for every pull request. Apps cost
-              nothing while no one visits.
+              Off until you turn them on for a project, under its Settings. Then production builds from its default
+              branch, with a live preview for every pull request. Apps cost nothing while no one visits.
             </p>
             <Link
               prefetch="intent"

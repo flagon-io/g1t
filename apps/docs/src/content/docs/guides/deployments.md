@@ -3,10 +3,10 @@ title: Deployments
 description: A project's production on every push and a live preview of every branch with a pull request, on g1t.page. Scales to zero, and billed to the workspace.
 ---
 
-Deployments put your [project](/guides/projects/) on the web. Every branch
+Deployments put your [project](/guides/projects/) on the web. They are off
+for every project until you turn them on. Once they are on, every branch
 with a pull request gets its own live preview, linked on the pull request,
-and the default branch goes to
-production on every push. Reviewers, and the agents reviewing for you,
+and the default branch goes to production on every push. Reviewers, and the agents reviewing for you,
 click through the change instead of reading a diff.
 
 Apps run on Cloudflare Workers, on `g1t.page`:
@@ -21,24 +21,33 @@ to it. A pull request from a fork, as g1t's agents make them, is named
 `pr-<number>` in place of the branch. A name too long for an address, or
 one another app already has, is shortened or given a short suffix.
 
-When a workspace is [renamed](/guides/workspaces/#rename-a-workspace), its
-apps move to addresses with the new name, and the old addresses redirect to
-them for 90 days.
+When a workspace is [renamed](/guides/workspaces/#rename-a-workspace), or a
+repository is [transferred](/guides/transferring-repositories/#deployments)
+to another workspace or [renamed](/guides/managing-repositories/), its apps
+are built again under addresses with the new name, and the old addresses
+redirect to them for 90 days.
+
+When the [default branch changes](/guides/managing-repositories/), production
+is built again from the new default branch. An
+[archived](/guides/managing-repositories/) repository's apps keep serving.
 
 An app runs only while it answers a request. One nobody visits runs
 nothing and costs nothing, and the next visit wakes it in milliseconds.
 
-Deployments are a paid feature, turned on per workspace with a monthly
-plan, and then per project. Nothing deploys until you turn it on, and
-one click turns it off again.
+Deployments are part of the [g1t plan](/guides/usage-and-billing/#the-g1t-plan),
+and are opt-in per project. A project with deployments off says
+**Deployments are off** on its overview, with **Turn on deployments** for
+people with the Admin [role](/guides/access-and-roles/) on its repository. Nothing builds or runs until you turn them on, and one click turns
+them off again.
 
 ## Turn on deployments
 
-1. **Turn on the plan for the workspace.** An owner opens
-   **Settings → Billing**, `g1t.sh/<workspace>/-/billing`, and under
-   **Plans** chooses **Turn on Deployments**, then pays on the card page.
-   Back on Billing, the plan says **On** with its renewal date.
-2. **Turn on deployments for a project.** Any member opens the project's
+1. **Start the g1t plan for the workspace**, if it is not on. An owner
+   opens **Settings → Billing**, `g1t.sh/<workspace>/-/billing`, and
+   starts it under **Plans**. Back on Billing, the plan says **On** with
+   its renewal date. The trial does not pay for deployments.
+2. **Turn on deployments for a project.** Someone with the Admin role on
+   its repository opens the project's
    **Settings → Deployments**, `g1t.sh/<workspace>/<project>/settings/deployments`,
    or chooses **Deploy** on its overview,
    and chooses **Turn on deployments**.
@@ -59,6 +68,11 @@ You do not configure anything for the common cases.
 | `wrangler.jsonc`, `wrangler.json` or `wrangler.toml` | Builds it as a **Workers project**: installs dependencies, runs `wrangler deploy --dry-run` to bundle it (which runs the config's own `build` command), and deploys the bundle with the config's static assets, `compatibility_date`, `compatibility_flags` and `vars`. |
 | A `build` script in `package.json` | Installs dependencies, runs `npm run build`, and serves the output as a **static site**. |
 | An `index.html` and nothing to build | Serves it as it is. |
+
+**Settings → Deployments** shows what g1t detected at the project's last
+finished build (**Workers project**, **Static site** or **Plain HTML**),
+and what running it costs. Before the first build it says **Detected at
+the first build**.
 
 Dependencies are installed by the lockfile that is there: `npm ci`,
 `pnpm install --frozen-lockfile`, `yarn install` or `bun install`, and
@@ -137,6 +151,26 @@ Each push to the default branch, which is each merge on a protected
 branch, builds and replaces production. The **Deployments** page shows the
 live address, the commit it runs and when it went up.
 
+### The production screenshot
+
+When production goes live, g1t takes a screenshot of its home page, as a
+1280 by 800 browser window sees it, and shows it on the project's
+[overview](/guides/projects/#the-overview). Choosing it opens the site.
+
+- One screenshot is taken per production deploy. g1t waits up to 12
+  seconds for the page to settle, then takes it as it is.
+- The screenshot is of the app's `g1t.page` address. A custom domain
+  serves the same app, so it looks the same.
+- Until it is ready, or if it could not be taken, the overview shows a
+  plain frame with the address. A failed screenshot is tried again when
+  the overview is next opened, at most every five minutes.
+- Only people who can read the project's repository see it, like the
+  rest of its deployments.
+- Screenshots are not charged.
+
+The [checklist on the overview](/guides/projects/#get-to-production) also
+tracks the first production deploy, a custom domain and a first preview.
+
 ## Custom domains
 
 Production can be served at a domain of your own, such as `example.com` or
@@ -158,8 +192,8 @@ to change.
    **Issuing certificate** to **Active** by itself; **Check now** asks
    again at once.
 
-Custom domains need the workspace's Deployments plan. Only members of the
-workspace can add or remove them.
+Custom domains need the workspace's g1t plan. Adding or removing one
+needs the Admin [role](/guides/access-and-roles/) on the project's repository.
 
 ### A subdomain, such as www
 
@@ -223,9 +257,27 @@ anything, when:
 | You turn off previews or production | All of that kind, at once. |
 | You choose **Turn off deployments** | Every app of the project, at once, and no more builds. |
 | The workspace's plan ends or its payment fails | Every app of the workspace, at the next sweep. |
+| The repository is [deleted](/guides/managing-repositories/) | Every app of its projects, at once. Custom domains stay set up and serve nothing. If you restore the repository, production is built again and its domains serve it; previews come back with their next push. When it is purged, its custom domains are removed. |
 
 A preview that came down comes back with the next push to its pull
 request, or **Redeploy** on the Deployments page.
+
+## Who can do what
+
+What you can do with a project's deployments follows your
+[role](/guides/access-and-roles/) on its repository:
+
+| | Needs |
+| --- | --- |
+| See its deployments, their build logs, previews and domains | Read |
+| **Redeploy**, preview a stack, take an app down | Write |
+| Turn deployments on or off, change their settings | Admin |
+| Add, verify and remove custom domains | Admin |
+
+A public repository's deployments, and their build logs, can be seen by
+anyone, signed in or not, the same as its code. Its settings and domains
+still need Admin. A private repository's deployments are seen only by
+people with a role on it.
 
 ## Settings
 
@@ -253,8 +305,12 @@ available to Deployments, and the workspace's that reach it:
 
 The build gets them as environment variables, with secrets hidden in its
 log. The running app gets them as bindings, `env.KEY`, put in place by g1t
-rather than the build. A preview of a pull request from outside the
-workspace is built and runs with config only, no secrets.
+rather than the build. Secrets reach a preview only when the pull
+request's author has Write or higher on the repository, whether a member
+or an [outside collaborator](/guides/access-and-roles/#outside-collaborators),
+or it is g1t's own agent. A preview of anyone else's pull request, such as
+one from a fork or by someone with Read or Triage, is built and runs with
+variables only, no secrets.
 
 For example, a `STRIPE_KEY` secret with a Production row holding the live
 key and a Preview row holding the test key gives every preview the test
@@ -262,10 +318,9 @@ key.
 
 ## What it costs
 
-Deployments are never free, including while the rest of g1t is.
-
-**The plan:** $5 a month per workspace, charged by card, renewing monthly.
-It includes, each calendar month (UTC):
+Deployments are never free. They come with the
+[g1t plan](/guides/usage-and-billing/#the-g1t-plan), $20 a month per
+workspace, which includes, each calendar month (UTC):
 
 | Included | |
 | --- | --- |
@@ -273,9 +328,10 @@ It includes, each calendar month (UTC):
 | 1 million requests | To all of the workspace's apps. |
 | 3 million CPU milliseconds | Time your code spends computing. Waiting on the network is not counted. |
 | 3 custom domains | Across the workspace's projects, with their certificates. A www/apex pair is two. |
-| 200 build minutes | Every build's time, whether it succeeds or fails. About $0.25 of the plan's price at cost. |
+| 200 build minutes | Every build's time, whether it succeeds or fails. |
 
-**Usage past that** is charged at Cloudflare's price plus 20%:
+**Usage past that** is charged at Cloudflare's price plus 20%, paid from
+the plan's $10 of included usage first:
 
 | | Price |
 | --- | --- |
@@ -291,13 +347,22 @@ past them. Other usage past the allowance is charged once, on the first
 sweep after the month ends, as one line: *Deployments in 2026-10 past the
 plan*.
 
+A static site, or plain HTML, runs no code when it is visited: its files
+are served as they are, so serving it adds no requests or CPU time. Its
+builds are metered. A Workers project's code runs on every request, so its
+requests and CPU time are metered too.
+
 An app that no one visits costs nothing beyond counting toward the 10. That
 is why previews come down when their pull request closes and after their
 idle days.
 
+Deployments used to be a $5 plan of their own. A Deployments subscription
+bought before keeps working until its current period ends, and is not
+renewed.
+
 ### Seeing what you use
 
-- **Billing**, under the Deployments plan, shows this month's apps, build
+- **Billing**, under the plan, shows this month's apps, build
   minutes, requests and CPU time against what the plan includes.
   Requests and CPU time are counted from Cloudflare's analytics
   every 10 minutes.
@@ -311,20 +376,28 @@ idle days.
 - **For a project:** **Turn off deployments** under its **Settings →
   Deployments**. Every app comes down at once. Turning it on again
   rebuilds production.
-- **For the workspace:** an owner chooses **Turn off at the end of the
-  period** under the plan on Billing. Deployments keep working until the
-  date shown; then every app comes down and nothing more is charged.
-  **Keep Deployments** takes it back before then.
+- **For the workspace:** when an owner ends the g1t plan on Billing,
+  deployments keep working until the date shown; then every app comes
+  down and nothing more is charged.
 
 Usage from the month that is under way is still charged once it ends.
 
 ## How it works
 
 1. A pull request opens, or someone pushes. The deployments service hears
-   of it, and checks that the workspace's plan is on.
+   of it, checks that the workspace's plan is on, and reserves what the
+   build may cost (30 minutes of sandbox time) with billing. If billing
+   refuses (no paid plan, the spend limit reached, compute paused), the
+   build does not start: the deployment's status is **Skipped** with the
+   reason and what to do, and **Redeploy** shows the same reason.
 2. It starts a build in a sandbox of its own, the same machines that run
    [GitHub Actions](/guides/actions/) and agents. The sandbox checks out
-   the commit with a read-only token that expires in 30 minutes.
+   the commit with a read-only token that expires in 30 minutes. Its
+   network is restricted to the project's allowed domains, the package
+   registries, GitHub and Cloudflare's API, as
+   [workflow jobs'](/guides/actions/#what-a-job-can-reach) are, and it
+   stops at 30 minutes, or sooner if the workspace's plan caps runs lower.
+   When it stops, what it cost is settled against what was reserved.
 3. The sandbox builds, then lists its files. g1t opens an upload with
    Cloudflare for exactly those files and hands the sandbox a key that can
    upload them and nothing else. Files Cloudflare already has are skipped.
@@ -344,7 +417,10 @@ you sign in to.
 
 | You see | Do |
 | --- | --- |
-| "Deployments is a paid feature, and it is not on" | An owner turns on the plan under Billing. |
+| "Deployments is a paid feature, and it is not on" | An owner starts the g1t plan under Billing. |
+| "Not started" or "Deployments need a paid workspace" | The build was refused before it started. Follow the link in the message: start the plan, or raise the spend limit, on Billing. |
+| "Stopped: unusual CPU use" | The build looked like it was mining. Contact support if it was a real build; see [abuse and mining](/guides/guardrails/#abuse-and-mining). |
+| "403" from a host in the build log | The build's network is restricted. Add the host to the project's allowed domains under **Settings → Guardrails**. |
 | "found nothing to serve" | Add a `build` script, an `index.html`, or a Workers config; or set **Output directory**. |
 | "the output directory `x` does not exist after the build" | The build wrote elsewhere: check its log, then fix **Output directory**. |
 | "`d1_databases` is not provisioned on g1t.page yet" | The app deployed without that binding. See [Workers projects](#workers-projects). |

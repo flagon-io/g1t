@@ -24,6 +24,32 @@
 	"kv_namespaces": [{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }],
 	// Renaming a workspace publishes workspace.renamed, so every service
 	// moves what it keeps under the old slug.
-	"services": [{ "binding": "EVENTS", "service": "g1t-events" }],
+	"services": [
+		{ "binding": "EVENTS", "service": "g1t-events" },
+		// Deleting a workspace asks whether it still holds repositories or
+		// projects, and has billing settle it first (src/deletion.rs).
+		{ "binding": "REPOS", "service": "g1t-repos" },
+		{ "binding": "PROJECTS", "service": "g1t-projects" },
+		{ "binding": "BILLING", "service": "g1t-billing" }
+	],
+	// Signing in with GitHub (src/github.rs), through g1t's GitHub App.
+	// Its client ID is public. Secrets: GITHUB_APP_CLIENT_SECRET, the app's
+	// client secret, and IDENTITY_KEY, 64 hex characters, which seals the
+	// GitHub user tokens kept for each linked account. Without the client ID
+	// and secret, nobody is offered GitHub sign-in.
+	//
+	// Invites (src/invites.rs): g1t.sh is invite-only, so every new account
+	// needs an invite code; "open" lets anyone register. Unset means
+	// invite. Each person may have INVITES_PER_USER invites out, each
+	// working INVITE_TTL_DAYS; owners of INVITE_STAFF_WORKSPACES (g1t's own)
+	// have no limit. IDENTITY_KEY also seals invite codes so their makers
+	// can copy them again.
+	"vars": {
+		"GITHUB_APP_CLIENT_ID": "Iv23liZS94alfjIUn1eW",
+		"REGISTRATION_MODE": "invite",
+		"INVITES_PER_USER": "5",
+		"INVITE_TTL_DAYS": "30",
+		"INVITE_STAFF_WORKSPACES": "flagon-io"
+	},
 	"observability": { "enabled": true }
 }

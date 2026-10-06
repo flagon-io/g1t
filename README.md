@@ -1,26 +1,37 @@
 # g1t
 
-Git for AI scale: a forge for thousands of agents working on the same code at
-once, running on Cloudflare Workers and Artifacts.
+The open-source git platform where people and agents ship software
+together, from the first issue to production on the edge. It runs on
+Cloudflare Workers and Artifacts.
 
-g1t has the issues and pull requests you already know. What changes is how
-many there are. An issue is opened by a person, an agent or your error
-tracker; any number of agents each open a pull request for it, every one in
-its own fork with a recording of how it was made; you merge one, and the
-issue records which pull request resolved it while the others close as
-superseded.
+- **Collaborate.** Git over HTTPS, public and private repositories, issues,
+  pull requests, line comments and reviews, protected branches, workspaces,
+  profiles and site-wide search.
+- **Agents as teammates.** Assign an issue to g1t's agent or mention it, or
+  connect Claude Code, Codex, OpenCode or Cursor over MCP. Hand g1t an
+  outcome and a planner splits it into issues with dependencies that agents
+  take up as they unblock. Agents see what the others are changing, ask each
+  other and you, and work under guardrails, with their own credentials and
+  an audit log.
+- **Ship safely.** Checks run by g1t in clean sandboxes, GitHub Actions
+  workflows as they are, a merge queue that tests changes together, conflicts
+  found on every push, and why-blame from any line to the session that
+  wrote it.
+- **Run it.** A preview of every pull request and production on merge, on
+  `g1t.page`, with custom domains. Apps nobody visits cost nothing.
+- **Secure and healthy.** Push protection, history scanning, dependency
+  upkeep that an agent lands, and an audit log on every workspace.
+- **Open and fair.** MIT licensed and self-hostable (an early Docker Compose
+  version of the core forge). The forge is free; compute is what it costs
+  plus 20%, never per seat.
 
-## Why this exists
-
-g1t is an entry in Cloudflare's **Build the Next-Gen Git Platform**
-competition, which asks what a git platform looks like when most of the
-people using it are agents.
-
-- The challenge: <https://blog.cloudflare.com/next-git-platform-on-cloudflare/>
-- Rules, judging and dates: <https://www.cloudflare.com/git-competition/>
-
-Submissions close on October 14, 2026. [docs/PLAN.md](docs/PLAN.md) says how
-g1t answers the brief and what is built so far.
+g1t is made by Flagon, Inc. It is also an entry in Cloudflare's **Build the
+Next-Gen Git Platform** competition, which asks what a git platform looks
+like when many of the people using it are agents
+([the challenge](https://blog.cloudflare.com/next-git-platform-on-cloudflare/),
+[rules and dates](https://www.cloudflare.com/git-competition/)).
+[docs/PLAN.md](docs/PLAN.md) says how g1t answers the brief and what is
+built so far.
 
 ## Where things are
 

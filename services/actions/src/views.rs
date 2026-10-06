@@ -1,6 +1,7 @@
 //! Reading: workflows, runs, a run's jobs, and a job's log.
 
 use g1t_actions::workflow::{self, Severity};
+use g1t_contracts::access::Capability;
 use g1t_contracts::actions::{
     Annotation, Job, JobLog, LogChunk, LogsArgs, RunArgs, RunDetail, RunsArgs, SetWorkflowEnabledArgs, StepState, Workflow, WorkflowNote,
     WorkflowRun, WorkflowsArgs,
@@ -191,7 +192,7 @@ impl Actions {
     }
 
     pub async fn set_workflow_enabled(&self, a: SetWorkflowEnabledArgs) -> Result<Outcome<Workflow>> {
-        if let Some(Outcome::Fail(refused)) = Self::member(&a.actor, &a.repo) {
+        if let Outcome::Fail(refused) = self.may(&a.actor, &a.repo, Capability::ManageSettings).await? {
             return Ok(Outcome::Fail(refused));
         }
         let wanted = a.workflow.trim_start_matches(".g1t/workflows/");

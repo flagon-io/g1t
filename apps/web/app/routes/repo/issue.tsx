@@ -14,6 +14,7 @@ import {
   Button,
   CopyLine,
   EmptyState,
+  ComputeNote,
   ErrorText,
   Input,
   Textarea,
@@ -35,8 +36,10 @@ import {
   plainText,
 } from "../../components/work";
 import { notFound } from "../../lib/not-found.server";
+import { computeNoteFor } from "../../lib/compute.server";
 import { identity, integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
+import { accessTo, refusal } from "../../lib/access.server";
 
 const REFRESH_MS = 4000;
 
@@ -61,7 +64,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const number = Number(params.number);
   // At once: none of these depends on another.
-  const [found, labels, agentsEnabled, members, links] = await Promise.all([
+  const { can } = await accessTo(context, params);
+  // Putting an agent on it needs Write: Read cannot spend compute.
+  const member = can.run;
+  const [found, labels, agentsEnabled, members, links, computeNote] = await Promise.all([
     work.getIssue(path, number, viewer),
     work.listLabels(path, viewer),
     env.RUNNER.enabled(viewer, path),
@@ -69,6 +75,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     roleIn(viewer, params.owner) ? identity.listMembers(params.owner, viewer) : null,
     // What it is tied to outside g1t. Shown only once the issue is known visible.
     integrations.links(path, number).catch(() => []),
+    // Before a member assigns g1t-agent: whether the workspace's plan lets it start.
+    member ? computeNoteFor(params.owner, "agent") : null,
   ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be a pull request.
@@ -82,13 +90,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     viewer,
     labels: labels.ok ? labels.value : [],
     agentsEnabled,
+    computeNote,
     links,
     members: members?.ok ? members.value.map((member) => member.username) : [],
-    // The author and members of the workspace can change an issue.
-    canManage:
-      viewer != null &&
-      (viewer.id === issue.author.id ||
-        (viewer.workspaces ?? []).some((membership) => membership.slug === params.owner)),
+    // The author can close and reopen their own issue; Triage and up, anyone's.
+    canManage: viewer != null && (viewer.id === issue.author.id || can.triage),
+    can,
   };
 }
 
@@ -98,13 +105,17 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const form = await request.formData();
   const path = { namespace: params.owner, name: params.repo };
   const number = Number(params.number);
+  // What each form needs; closing your own issue is checked by work.
+  const needed = form.get("action") === "run-hosted" ? "run" : form.get("action") === "assign" || form.get("action") === "labels" ? "triage" : null;
+  const refused = needed ? await refusal(context, params, needed) : null;
+  if (refused) return { error: refused, action: String(form.get("action")) };
 
   switch (form.get("action")) {
     case "run-hosted": {
       const result = await env.RUNNER.run(user, path, number, {
         instructions: String(form.get("instructions") ?? ""),
       });
-      return result.ok ? null : { error: result.error.message };
+      return result.ok ? null : { error: result.error.message, action: "run-hosted" };
     }
     case "open-pull": {
       const result = await work.openPull(user, path, {
@@ -213,7 +224,7 @@ function PullRow({ pull, base }: { pull: Pull; base: string }) {
 }
 
 export default function IssuePage({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { issue, pulls, comments, viewer, labels, agentsEnabled, members, canManage } = loaderData;
+  const { issue, pulls, comments, viewer, labels, agentsEnabled, members, canManage, can } = loaderData;
 
   // Follow agents at work without a manual reload.
   const revalidator = useRevalidator();
@@ -351,7 +362,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           </div>
         </div>
         <div className="mt-2">
-          <ErrorText>{actionData?.error}</ErrorText>
+          {!(actionData && "action" in actionData) && <ErrorText>{actionData?.error}</ErrorText>}
         </div>
       </div>
 
@@ -467,7 +478,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
             </p>
           )}
 
-          {open && agentsEnabled && !assigned && !issue.queued && (
+          {open && agentsEnabled && can.run && !assigned && !issue.queued && (
             <Form method="post" className="mt-3 space-y-2">
               <input type="hidden" name="action" value="run-hosted" />
               <div className="*:w-full">
@@ -492,10 +503,14 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                 It opens a pull request and sees it through checks, a review by another
                 agent and fixes. You get it back ready to merge.
               </p>
+              <ComputeNote note={loaderData.computeNote} />
+              {actionData && "action" in actionData && actionData.action === "run-hosted" && (
+                <ErrorText>{actionData.error}</ErrorText>
+              )}
             </Form>
           )}
 
-          {open && !agentsEnabled && canManage && !assigned && !issue.queued && (
+          {open && !agentsEnabled && can.run && !assigned && !issue.queued && (
             // Where g1t's agent would be, and what makes it appear.
             <div className="mt-3 rounded-lg border border-dashed border-line p-3 text-sm">
               <p className="flex items-center gap-1.5 font-medium">
@@ -504,7 +519,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
               </p>
               <p className="mt-1 text-xs text-muted">
                 Connect a model provider and g1t's agent can take this issue: it opens a pull request and sees it
-                through checks, review and fixes. g1t costs nothing while it is being built out.
+                through checks, review and fixes. Agents run on a paid workspace, or on the free trial.
               </p>
               <Link
                 to={`/${params.owner}/-/integrations`}
@@ -515,7 +530,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
             </div>
           )}
 
-          {viewer && canManage && open && (
+          {viewer && can.triage && open && (
             <div className="mt-3 space-y-2">
               {!issue.assignees.includes(viewer.username) && (
                 <Form method="post">
@@ -605,7 +620,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           </section>
         )}
 
-        {canManage && (
+        {can.triage && (
           <details className="group">
             <summary className="cursor-pointer list-none text-sm font-medium">
               Labels <span className="text-xs font-normal text-faint group-open:hidden">Edit</span>

@@ -5,7 +5,7 @@
 
 use g1t_contracts::credentials::{
     Acting, BindRunCredentialsArgs, CreateRunCredentialArgs, Principal, RevokeRunCredentialsArgs,
-    RunBinding, intersect, operations_for,
+    RunBinding, intersect, intersect_grants, operations_for,
 };
 use g1t_contracts::identity::{
     AGENT_ID, AGENT_NAME, AgentScope, CreateAccessTokenArgs, CreatedAccessToken,
@@ -69,6 +69,10 @@ impl Identity {
             kind: PrincipalKind::Agent,
             verified: person.verified,
             workspaces: intersect(&person.workspaces, &scope.repo.namespace),
+            // The person's roles on the workspace's repositories, so an
+            // outside collaborator's agent works where they may, and never
+            // beyond Write (credentials::AGENT_CEILING).
+            grants: intersect_grants(&person.grants, &scope.repo.namespace),
             acting: Some(Box::new(Acting {
                 credential_id: credential_id.to_owned(),
                 agent,

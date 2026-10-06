@@ -137,10 +137,15 @@ site-search button[data-open-modal]:hover {
 	border-top: 0;
 	padding-top: 0.5rem;
 }
+/* Headlines in Bricolage Grotesque, its optical size following the size. */
+.sl-markdown-content :is(h1, h2) {
+	font-family: var(--g1t-font-display);
+	font-optical-sizing: auto;
+}
 .sl-markdown-content h1 {
 	font-size: 2.25rem;
 	font-weight: 650;
-	letter-spacing: -0.03em;
+	letter-spacing: -0.02em;
 	line-height: 1.15;
 	color: var(--g1t-fg);
 }
@@ -151,14 +156,14 @@ site-search button[data-open-modal]:hover {
 .sl-markdown-content h2 {
 	font-size: 1.5rem;
 	font-weight: 600;
-	letter-spacing: -0.02em;
+	letter-spacing: -0.01em;
 	color: var(--g1t-fg);
 }
 .sl-markdown-content h3 {
 	margin-top: 2rem;
 	font-size: 1.1rem;
 	font-weight: 600;
-	letter-spacing: -0.01em;
+	letter-spacing: -0.005em;
 	color: var(--g1t-fg);
 }
 .sl-markdown-content p,
@@ -187,6 +192,13 @@ site-search button[data-open-modal]:hover {
 	width: 100%;
 	border-collapse: collapse;
 	font-size: 0.875rem;
+}
+/* On a phone a wide table scrolls inside itself, not the page. */
+@media (max-width: 50rem) {
+	.sl-markdown-content table {
+		display: block;
+		overflow-x: auto;
+	}
 }
 .sl-markdown-content th {
 	border-bottom: 1px solid var(--g1t-line-strong);

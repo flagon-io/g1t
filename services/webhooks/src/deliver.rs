@@ -51,6 +51,18 @@ pub fn payload(event: &Event, workspace: &str, repo: Option<(&str, &str)>, actor
     }))
 }
 
+/// The repository a repository event names, as `(namespace, name)`, where
+/// it is now: for when repos no longer shows it (it was deleted or purged).
+pub fn named_in(event: &Event) -> Option<(String, String)> {
+    let text = |key: &str| event.data[key].as_str().filter(|value| !value.is_empty()).map(str::to_owned);
+    match event.kind.as_str() {
+        "repo.renamed" => Some((text("namespace")?, text("to")?)),
+        "repo.transferred" => Some((text("to")?, text("name")?)),
+        kind if kind.starts_with("repo.") => Some((text("namespace")?, text("name")?)),
+        _ => None,
+    }
+}
+
 /// What is sent to check a webhook works.
 pub fn ping(hook_id: &str, url: &str, events: &[String], time: &str) -> Value {
     json!({
@@ -163,6 +175,48 @@ mod tests {
         assert!(sent["data"].get("superseded_by").is_some());
         assert_eq!(sent["data"]["inputs"]["dryRun"], true);
         assert!(g1t_kit::wire::camel_case_keys(&sent).is_empty());
+    }
+
+    fn repo_event(kind: &str, data: Value) -> Event {
+        Event {
+            id: "evt_1".to_owned(),
+            kind: kind.to_owned(),
+            source: "repos".to_owned(),
+            time: "2026-10-05T16:00:00Z".to_owned(),
+            repo_id: Some("rep_1".to_owned()),
+            actor: None,
+            data,
+        }
+    }
+
+    #[test]
+    fn repository_events_name_where_it_is_now() {
+        let named = |kind: &str, data: Value| named_in(&repo_event(kind, data));
+        let at = |namespace: &str, name: &str| Some((namespace.to_owned(), name.to_owned()));
+        assert_eq!(named("repo.renamed", json!({ "namespace": "acme", "from": "old", "to": "new" })), at("acme", "new"));
+        assert_eq!(named("repo.transferred", json!({ "name": "web", "from": "a", "to": "b" })), at("b", "web"));
+        assert_eq!(named("repo.purged", json!({ "repoId": "rep_1", "namespace": "acme", "name": "web" })), at("acme", "web"));
+        assert_eq!(named("repo.deleted", json!({ "repoId": "rep_1", "namespace": "", "name": "web" })), None);
+        assert_eq!(named("issue.opened", json!({ "namespace": "acme", "name": "web" })), None);
+    }
+
+    #[test]
+    fn repository_lifecycle_events_can_be_chosen() {
+        for kind in [
+            "repo.updated",
+            "repo.visibility_changed",
+            "repo.renamed",
+            "repo.transferred",
+            "repo.archived",
+            "repo.unarchived",
+            "repo.deleted",
+            "repo.restored",
+            "repo.purged",
+            "repo.default_branch_changed",
+            "branch.renamed",
+        ] {
+            assert_eq!(tidy_events(&[kind.to_owned()]).unwrap(), vec![kind], "{kind}");
+        }
     }
 
     #[test]

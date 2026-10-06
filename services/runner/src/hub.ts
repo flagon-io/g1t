@@ -4,7 +4,7 @@
  * context service. Never holds up a run: on any trouble, nothing.
  */
 
-import { contextClient, reposClient, type RepoPath, type ServiceBinding } from "@g1t/contracts";
+import { contextClient, reposClient, type RepoPath, type ServiceBinding, type User } from "@g1t/contracts";
 
 /** How much of a prompt the hub's section may take, in characters. */
 const BUDGET = 4000;
@@ -13,6 +13,8 @@ export async function hubContext(
   env: { CONTEXT?: ServiceBinding; REPOS: ServiceBinding },
   repo: RepoPath,
   task: string,
+  /** The person the run acts for: the section holds only what they may read. */
+  requester: User,
 ): Promise<string | null> {
   if (!env.CONTEXT) return null;
   try {
@@ -24,7 +26,7 @@ export async function hubContext(
     };
     const found = await reposClient(env.REPOS).get(repo, viewer);
     if (!found.ok) return null;
-    const context = await contextClient(env.CONTEXT).runContext(found.value.id, task.slice(0, 2000), BUDGET);
+    const context = await contextClient(env.CONTEXT).runContext(found.value.id, task.slice(0, 2000), BUDGET, requester);
     return context.text;
   } catch (error) {
     console.log("no context hub section", `${repo.namespace}/${repo.name}`, String(error));

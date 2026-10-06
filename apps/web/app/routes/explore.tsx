@@ -5,7 +5,7 @@ import { Form, Link } from "react-router";
 import type { ExploreRepo } from "@g1t/contracts";
 
 import type { Route } from "./+types/explore";
-import { EmptyState, TimeAgo, notACredential } from "../components/ui";
+import { EmptyState, Pill, TimeAgo, notACredential } from "../components/ui";
 import { page } from "../lib/meta";
 import { search } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";
@@ -57,6 +57,11 @@ function RepoCard({ repo }: { repo: ExploreRepo }) {
           <span className="text-muted">{repo.namespace}/</span>
           <span className="font-medium">{repo.name}</span>
         </span>
+        {repo.archived && (
+          <span className="ml-auto shrink-0">
+            <Pill>archived</Pill>
+          </span>
+        )}
       </span>
       <span className="mt-2 line-clamp-2 grow text-sm text-muted">{repo.description ?? "No description."}</span>
       {repo.topics.length > 0 && (

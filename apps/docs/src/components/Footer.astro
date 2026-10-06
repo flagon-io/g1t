@@ -1,0 +1,56 @@
+---
+// Starlight's footer, then the same row as g1t.sh's: status, help, the
+// policies, and who makes g1t.
+import Default from '@astrojs/starlight/components/Footer.astro';
+
+const year = new Date().getUTCFullYear();
+const links: [string, string][] = [
+	['Status', 'https://g1t.sh/status'],
+	['Support', 'https://g1t.sh/support'],
+	['Policies', 'https://g1t.sh/policies'],
+	['Privacy', 'https://g1t.sh/policies/privacy'],
+	['Security', 'https://g1t.sh/security'],
+];
+---
+
+<Default />
+<nav class="g1t-legal" aria-label="About g1t">
+	<ul>
+		{
+			links.map(([label, href]) => (
+				<li>
+					<a href={href}>{label}</a>
+				</li>
+			))
+		}
+		<li>© {year} <a href="https://www.flagon.io">Flagon, Inc.</a></li>
+	</ul>
+</nav>
+
+<style>
+	.g1t-legal {
+		margin-top: 2.5rem;
+		padding-top: 1.25rem;
+		border-top: 1px solid var(--g1t-line);
+		font-size: var(--sl-text-xs);
+		color: var(--g1t-faint);
+	}
+	.g1t-legal ul {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.375rem 1rem;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	.g1t-legal li {
+		margin: 0;
+	}
+	.g1t-legal a {
+		color: var(--g1t-muted);
+		text-decoration: none;
+	}
+	.g1t-legal a:hover {
+		color: var(--g1t-fg);
+	}
+</style>

@@ -8,7 +8,9 @@ const PAGES: Record<string, { title: string; about: string }> = {
   dependencies: { title: "Dependencies", about: "What the project relies on and what relies on it." },
   agents: { title: "Agents", about: "How g1t's agents pick up work here, and what they read first." },
   guardrails: { title: "Guardrails", about: "What agents may reach, run and spend while they work here." },
-  repository: { title: "Repository", about: "Branches, protection, merging and who can see the code." },
+  repository: { title: "Repository", about: "Its name, details and default branch, who can see it, and archiving, moving or deleting it." },
+  access: { title: "Access", about: "Who can see and change the repository, with which role, and invitations to it." },
+  branches: { title: "Branches and merging", about: "Protection for the default branch, what a pull request needs before it merges, and what agents do." },
   secrets: { title: "Secrets and variables", about: "Values workflows, builds and deployments read at run time." },
   webhooks: { title: "Webhooks", about: "Addresses g1t calls when something happens in the project." },
 };

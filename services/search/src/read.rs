@@ -184,11 +184,11 @@ fn person_hit(row: PersonRow, terms: &[String]) -> Found {
 
 impl Search {
     /// The second visibility check: of these repositories, the ones the
-    /// repos service says this viewer may read now. Corrects the index
-    /// where it was behind.
-    async fn readable(&self, viewer: &Viewer, indexed: &[Indexed]) -> HashSet<String> {
+    /// repos service says this viewer may read now, and of those, the ones
+    /// that are archived. Corrects the index where it was behind.
+    async fn readable(&self, viewer: &Viewer, indexed: &[Indexed]) -> (HashSet<String>, HashSet<String>) {
         if indexed.is_empty() {
-            return HashSet::new();
+            return (HashSet::new(), HashSet::new());
         }
         let ids: Vec<String> = indexed.iter().map(|row| row.repo_id.clone()).collect::<HashSet<_>>().into_iter().collect();
         let readable: Result<Vec<Repo>> =
@@ -197,6 +197,13 @@ impl Search {
             worker::console_error!("search: could not check visibility: {error}");
         }
         let verdict = check(&Reader::of(viewer), indexed, readable.as_deref().ok());
+        let archived: HashSet<String> = readable
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .filter(|repo| repo.archived())
+            .map(|repo| repo.id.clone())
+            .collect();
         if !verdict.corrections.is_empty() {
             let mut statements = Vec::new();
             for correction in &verdict.corrections {
@@ -223,13 +230,13 @@ impl Search {
                 worker::console_error!("search: could not correct visibility: {error}");
             }
         }
-        verdict.keep
+        (verdict.keep, archived)
     }
 
     /// Results the viewer may see, in order.
     async fn admit(&self, viewer: &Viewer, found: Vec<Found>) -> Vec<Hit> {
         let indexed: Vec<Indexed> = found.iter().filter_map(|f| f.repo.clone()).collect();
-        let keep = self.readable(viewer, &indexed).await;
+        let (keep, _) = self.readable(viewer, &indexed).await;
         found
             .into_iter()
             .filter(|f| f.repo.as_ref().is_none_or(|repo| keep.contains(&repo.repo_id)))
@@ -434,11 +441,12 @@ impl Search {
             .map(|row| Indexed { repo_id: row.repo_id.clone(), namespace: row.namespace.clone(), private: row.private != 0 })
             .collect();
         // Explore is for everyone: checked as if signed out, whoever asks.
-        let keep = self.readable(&None, &indexed).await;
+        let (keep, archived) = self.readable(&None, &indexed).await;
         let mut repos: Vec<ExploreRepo> = rows
             .into_iter()
             .filter(|row| keep.contains(&row.repo_id))
             .map(|row| ExploreRepo {
+                archived: archived.contains(&row.repo_id),
                 namespace: row.namespace,
                 name: row.name,
                 description: row.description,

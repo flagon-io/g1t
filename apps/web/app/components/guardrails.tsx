@@ -344,7 +344,9 @@ export function RunCaps({ run, member }: { run: AgentRun; member: boolean }) {
         Guardrails
         {run.halted && (
           <span className="ml-auto rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 text-xs font-normal text-warn">
-            Stopped at its {run.halted === "budget" ? "cost" : "time"} cap
+            {run.halted === "abuse"
+              ? "Stopped: unusual CPU use"
+              : `Stopped at its ${run.halted === "budget" ? "cost" : "time"} cap`}
           </span>
         )}
       </div>

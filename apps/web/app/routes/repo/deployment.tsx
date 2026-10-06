@@ -5,7 +5,8 @@ import type { Route } from "./+types/deployment";
 import { page } from "../../lib/meta";
 import { TimeAgo } from "../../components/ui";
 import { deployments } from "../../lib/services.server";
-import { getViewer, roleIn } from "../../lib/session.server";
+import { getViewer } from "../../lib/session.server";
+import { requireRepo } from "../../lib/access.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Deployment · ${params.owner}/${params.repo} · g1t` });
@@ -13,7 +14,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
+  await requireRepo(context, params, "read");
   const found = await deployments.get({ workspace: params.owner, slug: params.repo }, params.id, viewer);
   if (!found.ok) throw data(null, { status: 404 });
   return { build: found.value };

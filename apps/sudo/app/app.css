@@ -1,9 +1,11 @@
 @import "tailwindcss" source(".");
 @import "@g1t/theme/tokens.css";
+@import "@g1t/theme/fonts.css";
 
 /* Tailwind's names for the shared g1t tokens, as in apps/web. */
 @theme {
   --font-sans: var(--g1t-font-sans);
+  --font-display: var(--g1t-font-display);
   --font-mono: var(--g1t-font-mono);
 
   --color-bg: var(--g1t-bg);
@@ -32,7 +34,6 @@ html {
 
 body {
   @apply bg-bg font-sans text-fg antialiased;
-  font-feature-settings: "cv11", "ss01";
 }
 
 ::selection {
@@ -47,6 +48,12 @@ body {
 
   .grid > * {
     min-width: 0;
+  }
+
+  /* Page titles in the headline face, as on g1t.sh. */
+  :where(h1) {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
   }
 
   :root {

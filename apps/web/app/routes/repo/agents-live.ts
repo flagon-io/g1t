@@ -10,7 +10,8 @@ import { RUN_KINDS, type RunKind, takesMessages } from "@g1t/contracts";
 
 import type { Route } from "./+types/agents-live";
 import { agents, work } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, roleIn } from "../../lib/session.server";
+import { assertSameOrigin, getViewer } from "../../lib/session.server";
+import { accessTo, refusal } from "../../lib/access.server";
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
@@ -26,7 +27,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   });
   if (!found.ok) throw data({ error: found.error.message }, { status: 404 });
   return Response.json(
-    { runs: found.value, member: roleIn(viewer, params.owner) != null },
+    { runs: found.value, member: (await accessTo(context, params)).can.run },
     { headers: { "cache-control": "no-store" } },
   );
 }
@@ -38,6 +39,9 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
+  // Stopping or messaging an agent needs Write: Read cannot spend compute.
+  const refused = await refusal(context, params, "run");
+  if (refused) return { ok: false, error: refused };
   if (intent === "stop") {
     const stopped = await env.RUNNER.stopRun(viewer, path, String(form.get("run") ?? ""));
     return stopped.ok ? { ok: true, notice: "Stopped." } : { ok: false, error: stopped.error.message };

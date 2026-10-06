@@ -118,6 +118,7 @@ impl Progress {
 
     /// Records a step, sending what has gathered if it is time.
     pub fn step(&mut self, text: &str) {
+        crate::abuse::touch();
         let line = one_line(&self.clean(text));
         if line.is_empty() {
             return;

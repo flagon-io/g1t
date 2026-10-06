@@ -43,6 +43,9 @@ pub(crate) const WEBHOOK_URL: &str = "https://api.g1t.sh/stripe/webhook";
 /// The events billing acts on.
 pub(crate) const EVENTS: &[&str] = &[
     "checkout.session.completed",
+    // A prepayment by bank transfer: the page completes when the transfer
+    // is set up, and this comes when the money arrives.
+    "checkout.session.async_payment_succeeded",
     "customer.subscription.updated",
     "customer.subscription.deleted",
     "invoice.paid",
@@ -266,12 +269,13 @@ impl Billing {
     async fn handle(&self, kind: &str, object: &Value) -> Result<String> {
         let text = |key: &str| object[key].as_str().unwrap_or_default().to_owned();
         Ok(match kind {
-            "checkout.session.completed" => self.settle_checkout(&text("id")).await?,
+            "checkout.session.completed" | "checkout.session.async_payment_succeeded" => self.settle_checkout(&text("id")).await?,
             "customer.subscription.updated" | "customer.subscription.deleted" => {
                 self.settle_subscription(&text("id")).await?
             }
             "invoice.paid" => {
                 if let Some(subscription) = object["subscription"].as_str() {
+                    self.plan_paid(subscription, &text("id"), object["amount_paid"].as_i64().unwrap_or(0)).await?;
                     self.settle_subscription(subscription).await?
                 } else if let Some(done) = self.workspace_invoice_paid(&text("id")).await? {
                     done
@@ -317,6 +321,13 @@ impl Billing {
         else {
             return Ok("ignored: already settled or not g1t's".to_owned());
         };
+        // A card check: saved and verified, never charged.
+        if open.feature.as_deref() == Some(crate::cards::CARD_CHECK) {
+            return Ok(match self.settle_card_check(session_id).await? {
+                Ok(done) => done,
+                Err(why) => format!("card check not passed: {why}"),
+            });
+        }
         let Some(stripe) = &self.stripe else { return Ok("ignored: payments off".to_owned()) };
         let session = stripe.session(session_id).await?;
         if session.payment_status != "paid" && open.feature.is_none() {
@@ -338,7 +349,7 @@ impl Billing {
                     &open.workspace,
                     EntryKind::TopUp,
                     cents * 10_000,
-                    "Credit added by card",
+                    "Paid in advance",
                     &session.id,
                     None,
                     None,
@@ -367,6 +378,29 @@ impl Billing {
                 Ok(format!("{} plan started for {}", feature.title(), open.workspace))
             }
         }
+    }
+
+    /// The plan's monthly price, paid: revenue that never goes through the
+    /// ledger, recorded once per invoice for sudo's figures and for trust.
+    async fn plan_paid(&self, subscription_id: &str, invoice_id: &str, amount_cents: i64) -> Result<()> {
+        if amount_cents <= 0 || invoice_id.is_empty() {
+            return Ok(());
+        }
+        self.db
+            .prepare(
+                "INSERT INTO plan_payments (invoice_id, workspace, amount_micros, paid_at)
+                 SELECT ?1, workspace, ?2, ?3 FROM subscriptions WHERE subscription_id = ?4
+                 ON CONFLICT (invoice_id) DO NOTHING",
+            )
+            .bind(&[
+                invoice_id.into(),
+                ((amount_cents * 10_000) as f64).into(),
+                rfc3339(now_ms()).into(),
+                subscription_id.into(),
+            ])?
+            .run()
+            .await?;
+        Ok(())
     }
 
     /// A plan that changed at Stripe: renewed, failed, canceled.

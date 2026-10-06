@@ -176,8 +176,8 @@ pub struct LedgerEntry {
     /// lines apart.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<String>,
-    /// For usage: what the Team plan's monthly credit paid of it. The
-    /// entry's `amount_micros` is what is left to pay.
+    /// For usage: what the g1t plan's monthly included usage paid of it.
+    /// The entry's `amount_micros` is what is left to pay.
     #[serde(default)]
     pub credit_micros: i64,
     /// For usage: what the workspace's trial credit paid of it.
@@ -186,6 +186,10 @@ pub struct LedgerEntry {
     /// For usage: what g1t's open-source pool paid of it.
     #[serde(default)]
     pub oss_micros: i64,
+    /// For usage: what g1t covered itself, such as the part of a free
+    /// workspace's last trial run that went past its trial credit.
+    #[serde(default)]
+    pub given_micros: i64,
 }
 
 fn g1t() -> String {
@@ -200,18 +204,25 @@ pub struct AccountArgs {
     pub viewer: Viewer,
 }
 
-/// `checkout`: starts a card payment for credit. Owners of the workspace
+/// `checkout`: prepays usage: money paid in advance, drawn down by usage
+/// after the plan's included usage, which raises what can be used before
+/// work stops by the same amount at once. $25 at the least. By card, with
+/// 3-D Secure; from $1,000 also by bank transfer. Owners of the workspace
 /// only. Returns `Outcome<Checkout>`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CheckoutArgs {
     pub actor: User,
     pub workspace: String,
-    /// How much credit to buy, in cents.
+    /// How much to prepay, in cents.
     pub amount_cents: u32,
     /// Where the payment page sends the person afterwards. The payment's
     /// id is appended as `session`.
     pub return_url: String,
+    /// `card` (the default) or `bank_transfer` (from $1,000): Stripe gives
+    /// the account details, and the money counts once it arrives.
+    #[serde(default)]
+    pub method: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -335,45 +346,56 @@ pub struct Usage {
     pub added_micros: i64,
 }
 
-/// A paid feature a workspace turns on with a monthly plan, the way
-/// Cloudflare's Workers for Platforms or Vercel's Pro are bought. Never
-/// free: `FREE_WHILE_BUILDING` and the free model allowance do not cover
-/// it.
+/// What a workspace pays a monthly price for. There is one plan, `plan`
+/// ("g1t"): a flat price per workspace, never per person, with included
+/// usage each month, more private storage, and deployments. Never free:
+/// `FREE_WHILE_BUILDING` does not cover it.
+///
+/// `deployments` is not sold on its own any more: it comes with the plan.
+/// A service that asks `has_feature` for it is told whether the workspace
+/// has the plan, and a Deployments subscription bought before the change
+/// keeps working until its period ends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Feature {
-    /// Previews per pull request and production on g1t.page.
+    /// The g1t plan. Older readers called it `team`.
+    #[serde(alias = "team")]
+    Plan,
+    /// Previews per pull request and production on g1t.page: part of the
+    /// plan.
     Deployments,
-    /// The Team plan: a flat price per workspace, never per person, with a
-    /// monthly usage credit, more private storage and a longer audit log.
-    Team,
 }
 
 impl Feature {
-    pub const ALL: [Feature; 2] = [Feature::Team, Feature::Deployments];
+    /// What is sold: the plan alone.
+    pub const ALL: [Feature; 1] = [Feature::Plan];
 
     pub fn as_str(self) -> &'static str {
         match self {
+            Feature::Plan => "plan",
             Feature::Deployments => "deployments",
-            Feature::Team => "team",
         }
     }
 
     pub fn parse(name: &str) -> Option<Feature> {
-        Feature::ALL.into_iter().find(|feature| feature.as_str() == name)
+        match name {
+            "plan" | "team" => Some(Feature::Plan),
+            "deployments" => Some(Feature::Deployments),
+            _ => None,
+        }
     }
 
     pub fn title(self) -> &'static str {
         match self {
+            Feature::Plan => "g1t",
             Feature::Deployments => "Deployments",
-            Feature::Team => "Team",
         }
     }
 }
 
-/// What the Deployments plan includes each month; usage past it is charged
-/// at cost plus the margin. The billing service describes the plan with
-/// these and the deployments service meters against them.
+/// What the g1t plan includes for deployments each month; usage past it is
+/// charged at cost plus the margin. The billing service describes the plan
+/// with these and the deployments service meters against them.
 pub mod deployments_allowance {
     /// Apps deployed at once: production and previews together.
     pub const APPS: u32 = 10;
@@ -384,12 +406,14 @@ pub mod deployments_allowance {
     pub const MICROS_PER_MILLION_REQUESTS: i64 = 300_000;
     pub const MICROS_PER_MILLION_CPU_MS: i64 = 20_000;
     /// What one second of a build's sandbox costs g1t (Cloudflare
-    /// Containers, standard-1: half a vCPU, 4 GiB, 8 GB disk), rounded up.
-    pub const MICROS_PER_BUILD_SECOND: i64 = 21;
-    /// Build time the plan includes each month: 200 minutes, about $0.25 of
-    /// the plan's price at cost. Builds past it are charged by the second
-    /// at cost plus the margin. Billing's `DEPLOYMENTS_BUILD_SECONDS`
-    /// overrides it.
+    /// Containers, standard-1: half a vCPU, 4 GiB, 8 GB disk), rounded up,
+    /// as the price keeper measured it on 2026-10-05 (14.5). Only a
+    /// fallback: billing charges builds at the price book's `build_second`,
+    /// which the keeper keeps current.
+    pub const MICROS_PER_BUILD_SECOND: i64 = 15;
+    /// Build time the plan includes each month: 200 minutes, about $0.17
+    /// at cost. Builds past it are charged by the second at cost plus the
+    /// margin. Billing's `DEPLOYMENTS_BUILD_SECONDS` overrides it.
     pub const BUILD_SECONDS: u32 = 12_000;
     /// Custom domains across the workspace (Cloudflare for SaaS custom
     /// hostnames); each one past these is charged by the month.
@@ -417,6 +441,20 @@ pub struct RecordSandboxArgs {
     pub repo: Option<String>,
     /// Unique to the run.
     pub reference: String,
+    /// What ran: `agent`, `check`, `workflow` or `queue`. Decides whether
+    /// g1t's open-source pool may pay for it (checks, workflows and the
+    /// merge queue on public repositories). Absent: not the pool.
+    #[serde(default)]
+    pub kind: Option<ComputeKind>,
+    /// The vCPU-seconds the sandbox used, when it can tell. With it, the
+    /// run is priced on its own CPU (`sandbox_base_second` per second plus
+    /// `sandbox_cpu_second` per vCPU-second); without it, at the average
+    /// (`sandbox_second`).
+    #[serde(default, alias = "cpu_seconds")]
+    pub cpu_seconds: Option<f64>,
+    /// The reservation the work started under, settled with this cost.
+    #[serde(default, alias = "reservation_id")]
+    pub reservation_id: Option<String>,
 }
 
 /// How much a workspace has earned g1t's trust with money, which sets how
@@ -489,6 +527,25 @@ pub struct Limit {
     /// How the ceiling grows from here, in a sentence.
     #[serde(default)]
     pub growth: Option<String>,
+    /// Money paid in advance and not used yet. It raises what can be used
+    /// before work stops by the same amount, at once.
+    #[serde(default)]
+    pub prepaid_micros: i64,
+    /// The highest ceiling the workspace has ever had. Owners may set their
+    /// spend limit anywhere up to it (plus what is prepaid) without asking.
+    #[serde(default)]
+    pub max_ceiling_micros: Option<i64>,
+    /// The most the owners may raise the limit to themselves, once, with
+    /// `raise_once`: twice the highest ceiling. None once it is used.
+    #[serde(default)]
+    pub raise_once_micros: Option<i64>,
+    /// When the one-time raise was used, RFC 3339.
+    #[serde(default)]
+    pub raised_at: Option<String>,
+    /// True in a paid workspace's first billing cycle, when the ceiling is
+    /// the starting one (`LIMIT_PAID_START_MICROS`).
+    #[serde(default)]
+    pub first_month: bool,
 }
 
 /// `limit`: a workspace's limit, for its members. Returns `Outcome<Limit>`.
@@ -534,6 +591,10 @@ pub struct SetSpendLimitArgs {
     /// Use everything available, with no limit of their own.
     #[serde(default)]
     pub use_full_limit: bool,
+    /// Use the one-time raise: up to twice the highest ceiling the
+    /// workspace has had, without asking. Once per workspace.
+    #[serde(default, alias = "raiseOnce")]
+    pub raise_once: bool,
 }
 
 /// One metered unit: what it costs g1t, and what it is sold at. The price
@@ -611,10 +672,29 @@ pub struct FreeTier {
     pub oss_repo_micros: i64,
     /// Private repository storage before it is charged.
     pub free_private_storage_bytes: i64,
-    /// Days of audit log without Team.
+    /// Days of audit log, the same on every plan.
     pub audit_retention_days: u32,
-    /// The smallest amount a card is charged; less carries over.
+    /// The smallest amount a card is charged when a month closes; less
+    /// carries over. Charges at a limit always go through.
     pub min_charge_micros: i64,
+    /// Git operations (clones, fetches and pushes through g1t) included
+    /// each month, on every plan. Past it, the plan pays at cost plus the
+    /// margin; a free workspace is slowed down, never charged.
+    #[serde(default)]
+    pub git_operations_included: u64,
+    /// Past this many in a month, a free workspace's git operations are
+    /// rate-limited.
+    #[serde(default)]
+    pub git_operations_free_cap: u64,
+    /// Private storage on the plan before it is charged.
+    #[serde(default)]
+    pub plan_private_storage_bytes: i64,
+    /// A new paid workspace's ceiling in its first month.
+    #[serde(default)]
+    pub paid_start_ceiling_micros: i64,
+    /// The most a one-click goodwill credit can cost g1t.
+    #[serde(default)]
+    pub overage_forgive_cost_micros: i64,
 }
 
 /// Who pays: a billing account. Every workspace has one; by default its
@@ -646,10 +726,10 @@ pub struct BillingAccount {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Allowances {
-    /// The Team plan without paying for it, such as for a partner.
-    /// Comped accounts have it anyway.
-    #[serde(default)]
-    pub team: bool,
+    /// The g1t plan without paying for its monthly price, such as for a
+    /// partner. Usage is charged as usual. Comped accounts have it anyway.
+    #[serde(default, alias = "team")]
+    pub plan: bool,
     /// Each of the account's public repositories' monthly cap on g1t's
     /// open-source pool, in place of `OSS_REPO_MICROS`. None: the default.
     #[serde(default)]
@@ -658,11 +738,26 @@ pub struct Allowances {
     /// `TRIAL_WORKSPACE_MICROS`, outside the monthly pool. None: the default.
     #[serde(default)]
     pub trial_micros: Option<i64>,
+    /// Agents at once, in place of the plan's (2 in the first month or on
+    /// the trial, then 10). None: the default.
+    #[serde(default)]
+    pub max_concurrent_agents: Option<u32>,
+    /// One run's spend cap, in place of `RUN_CAP_MICROS` and the owners'
+    /// own. None: theirs, or the default.
+    #[serde(default)]
+    pub run_cap_micros: Option<i64>,
+    /// What the agents on one issue may spend in all, in place of
+    /// `ISSUE_CAP_MICROS` and the owners' own. None: theirs, or the default.
+    #[serde(default)]
+    pub issue_cap_micros: Option<i64>,
+    /// A hold g1t staff put on new compute, with why. None: no hold.
+    #[serde(default)]
+    pub hold: Option<String>,
 }
 
-/// `admin_set_allowances`: the Team plan on or off without charge, and the
-/// account's share of g1t's pools. Recorded with who and why. Returns
-/// `Outcome<BillingAccount>`.
+/// `admin_set_allowances`: the plan on or off without charge, overrides of
+/// the plan's caps, a hold, and the account's share of g1t's pools.
+/// Recorded with who and why. Returns `Outcome<BillingAccount>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AdminSetAllowancesArgs {
     pub id: String,
@@ -671,9 +766,118 @@ pub struct AdminSetAllowancesArgs {
     pub by: String,
 }
 
-/// `entitlements`: what a workspace's plans give it now, for the services
-/// and pages that apply them (the audit log's retention, private storage,
-/// the Team credit). Returns `Entitlements`.
+// --- Entitlements, and compute started under a reservation -----------------
+//
+// Every service that starts compute (sandboxes for agents, checks,
+// workflows and the merge queue; builds; models; semantic search) asks
+// billing first:
+//
+// 1. `entitlements { workspace }` says what the workspace may do at all:
+//    its plan, whether it may start compute, its caps, and whether compute
+//    is paused.
+// 2. `reserve { workspace, repo, public, kind, estimate_micros }` holds the
+//    work's estimated cost against what may pay for it, so that starts at
+//    the same moment cannot overshoot the ceiling together. It answers who
+//    pays first, or refuses with a stable code and a message for the owner.
+// 3. `settle { reservation_id, actual_micros }` releases the hold once the
+//    work is done. The charge itself goes on the ledger the usual way
+//    (`finish_run`, `record_sandbox`, `charge_feature`, `note_pending`).
+//
+// A reservation never settled expires after `RESERVATION_HOURS`.
+
+/// A reservation that is never settled stops holding after this long.
+pub const RESERVATION_HOURS: u64 = 3;
+/// What a ceiling reads as when there is none (g1t's own workspaces): a
+/// billion dollars, which JavaScript holds exactly.
+pub const UNLIMITED_MICROS: i64 = 1_000_000_000_000_000;
+
+/// What a workspace pays g1t on, as far as compute is concerned.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanKind {
+    /// No plan: the forge is free; compute only from a trial or g1t's
+    /// open-source pool, after a card check.
+    Free,
+    /// The g1t plan, paid for (or given by g1t staff without its price).
+    Paid,
+    /// g1t's own workspaces and Flagon's (comped terms): the plan without
+    /// being charged. Usage is still recorded at what it cost.
+    Internal,
+    /// Paid for by an enterprise account, invoiced.
+    Enterprise,
+}
+
+impl PlanKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PlanKind::Free => "free",
+            PlanKind::Paid => "paid",
+            PlanKind::Internal => "internal",
+            PlanKind::Enterprise => "enterprise",
+        }
+    }
+
+    /// Whether usage past what is included may be charged (on demand).
+    pub fn on_demand(self) -> bool {
+        !matches!(self, PlanKind::Free)
+    }
+}
+
+/// What compute is for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeKind {
+    /// An agent's run: its sandbox and its model.
+    Agent,
+    /// Checks on a pull request.
+    Check,
+    /// A workflow job.
+    Workflow,
+    /// The merge queue's checks.
+    Queue,
+    /// A deployment's build.
+    Deploy,
+    /// Semantic search: embeddings in the context hub.
+    Embedding,
+}
+
+impl ComputeKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ComputeKind::Agent => "agent",
+            ComputeKind::Check => "check",
+            ComputeKind::Workflow => "workflow",
+            ComputeKind::Queue => "queue",
+            ComputeKind::Deploy => "deploy",
+            ComputeKind::Embedding => "embedding",
+        }
+    }
+
+    /// Whether g1t's open-source pool may pay for it on a public
+    /// repository: checks, workflows and the merge queue only.
+    pub fn open_source_pool(self) -> bool {
+        matches!(self, ComputeKind::Check | ComputeKind::Workflow | ComputeKind::Queue)
+    }
+}
+
+/// Who pays first for reserved work. What the first source cannot cover
+/// falls to the next, in this order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PaidBy {
+    /// The plan's included usage this month.
+    Credit,
+    /// The workspace's one-time trial credit.
+    Trial,
+    /// g1t's open-source pool.
+    Oss,
+    /// Charged to the workspace, at cost plus the margin.
+    OnDemand,
+}
+
+/// `entitlements`: what a workspace may do now, for the services that
+/// start compute and the pages that show it. Takes `EntitlementsArgs`;
+/// returns `Entitlements`. No viewer: callers decide who sees it.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EntitlementsArgs {
     pub workspace: String,
@@ -683,25 +887,440 @@ pub struct EntitlementsArgs {
 #[serde(rename_all = "camelCase")]
 pub struct Entitlements {
     pub workspace: String,
-    /// Whether the Team plan is on: paid for, comped, or given by g1t.
-    pub team: bool,
-    /// How far back the audit log can be read and exported.
+    pub plan: PlanKind,
+    /// May start sandboxes, models, deployments and semantic search at all:
+    /// paid, internal and enterprise workspaces, or a free one with trial
+    /// credit left. A free workspace may still use the open-source pool
+    /// for checks, workflows and the merge queue on public repositories
+    /// after a card check; `reserve` decides that per start.
+    pub compute: bool,
+    /// The one-time trial credit left; 0 if none was granted or it is used.
+    pub trial_micros_left: i64,
+    /// A card check has been done. The trial and the open-source pool need
+    /// it.
+    pub trial_verified: bool,
+    /// A paid workspace still in its first billing cycle.
+    pub first_month: bool,
+    /// Agents at once: 2 in the first month or on the trial, 10 after;
+    /// staff can override it.
+    pub max_concurrent_agents: u32,
+    /// The longest one run may take: 60 minutes in the first month or on
+    /// the trial; otherwise the guardrails' own caps (`MAX_MINUTES`).
+    pub max_run_minutes: u32,
+    /// One run's spend cap (`RUN_CAP_MICROS`, $2 by default); staff can
+    /// override it.
+    pub run_cap_micros: i64,
+    /// What agents may spend on one issue in all (`ISSUE_CAP_MICROS`, $10
+    /// by default); the owners can set it (`set_caps`), and staff override.
+    pub issue_cap_micros: i64,
+    /// Where on-demand work stops: g1t's ceiling on usage not yet paid
+    /// for. `UNLIMITED_MICROS` for g1t's own workspaces; 0 for a free one,
+    /// which has no on-demand usage.
+    pub ceiling_micros: i64,
+    /// Usage not yet paid for this month, with prepayment taken off.
+    pub exposure_micros: i64,
+    /// Why new compute is paused, for the owner: the limit is reached, a
+    /// spend spike is waiting for an owner to confirm it, or g1t staff put
+    /// a hold on it. None when it is not.
+    pub paused: Option<String>,
+    // What the workspace's plan gives it, for its pages.
+    /// What open reservations hold now.
+    #[serde(default)]
+    pub held_micros: i64,
+    /// Paid in advance and not used yet.
+    #[serde(default)]
+    pub prepaid_micros: i64,
+    /// The plan's included usage each month, and what of it is used.
+    #[serde(default)]
+    pub included_micros: i64,
+    #[serde(default)]
+    pub included_used_micros: i64,
+    /// How far back the audit log can be read and exported: the same on
+    /// every plan.
     pub audit_retention_days: u32,
     /// Private repository storage included before it is charged.
     pub free_private_storage_bytes: i64,
     /// The last daily measure of the workspace's private repositories.
     pub private_storage_bytes: i64,
-    /// The Team credit each month, and what of it is used this month.
-    pub team_credit_micros: i64,
-    pub team_credit_used_micros: i64,
     /// What g1t's open-source pool paid for the workspace this month.
     pub oss_paid_micros: i64,
-    /// Build time the Deployments plan includes each month, and used.
+    /// Build time the plan includes each month, and used.
     pub build_seconds_included: u32,
     pub build_seconds_used: u32,
-    /// The smallest amount a card is charged; less carries over.
+    /// Git operations this month, and how many are included.
+    #[serde(default)]
+    pub git_operations: u64,
+    #[serde(default)]
+    pub git_operations_included: u64,
+    /// The smallest amount a card is charged when a month closes.
     pub min_charge_micros: i64,
+    /// A spend spike waiting for an owner, or decided.
+    #[serde(default)]
+    pub spike: Option<Spike>,
+    /// Where usage stands against what is included and the limits, from 50%.
+    #[serde(default)]
+    pub alerts: Vec<UsageAlert>,
 }
+
+/// One level reached: 50, 75, 90 or 100 percent of something.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageAlert {
+    /// `included` (the plan's included usage), `spend_limit` (the owners'
+    /// own limit) or `ceiling` (g1t's, on usage not yet paid for).
+    pub meter: String,
+    pub level: u32,
+    pub used_micros: i64,
+    pub limit_micros: i64,
+    pub message: String,
+}
+
+/// An hour's spend well above the workspace's usual pace: new compute
+/// waits until an owner says to keep going.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Spike {
+    pub id: String,
+    /// `open` (waiting for an owner), `continued` (an owner said keep
+    /// going) or `stopped` (an owner said stop).
+    pub status: String,
+    /// The hour's spend when it was found, and the usual hour's.
+    pub hour_micros: i64,
+    pub average_micros: i64,
+    pub detected_at: String,
+    #[serde(default)]
+    pub decided_by: Option<String>,
+    #[serde(default)]
+    pub decided_at: Option<String>,
+    /// While continued: until when, unless spend doubles again first.
+    #[serde(default)]
+    pub until: Option<String>,
+}
+
+/// `reserve`: holds an estimate of a start's cost before the work starts.
+/// Returns `Outcome<Reservation>`, or a failure whose code says why not:
+///
+/// - `paused`: a spend spike waiting for an owner, or a hold.
+/// - `limit`: the spend limit or g1t's ceiling would be passed.
+/// - `not_paid`: no plan, and nothing else pays for this kind of work (or
+///   no card check yet).
+/// - `trial_used`: the one-time trial is spent.
+/// - `oss_pool_empty`: the open-source pool, or the repository's share of
+///   it, is spent this month.
+///
+/// The message says exactly what to do, with the page to do it on (such as
+/// `/acme/-/billing`).
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReserveArgs {
+    pub workspace: String,
+    pub repo: RepoPath,
+    /// Whether the repository is public: the open-source pool pays only for
+    /// public repositories' checks, workflows and merge queue.
+    pub public: bool,
+    pub kind: ComputeKind,
+    /// The most the work is expected to cost g1t, before the margin, in
+    /// millionths of a dollar (billing adds the margin, as it does to every
+    /// charge). For an agent, its model's average plus its sandbox for its
+    /// whole time cap.
+    #[serde(alias = "estimate_micros")]
+    pub estimate_micros: i64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Reservation {
+    pub id: String,
+    pub paid_by: PaidBy,
+    /// What is held, at cost; less than the estimate when a free
+    /// workspace's last bit of trial credit is all there is.
+    #[serde(default)]
+    pub held_micros: i64,
+    /// RFC 3339: when the hold lapses if never settled.
+    #[serde(default)]
+    pub expires_at: String,
+}
+
+/// `settle`: releases a reservation's hold with what the work cost. The
+/// charge goes on the ledger the usual way. Safe to repeat. Returns
+/// `Outcome<bool>`: false if it was settled or had lapsed before.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettleArgs {
+    #[serde(alias = "reservation_id")]
+    pub reservation_id: String,
+    /// What the work cost g1t, before the margin.
+    #[serde(alias = "actual_micros")]
+    pub actual_micros: i64,
+}
+
+// --- Card checks, the plan, prepayment -------------------------------------
+
+/// `card_check`: starts Stripe's page to save and verify a card: a setup
+/// with 3-D Secure where the card supports it, which the card's bank sees
+/// as a $0 or $1 authorization that is never charged. The trial and the
+/// open-source pool need it, and it is the card the plan uses. Owners only.
+/// Returns `Outcome<Checkout>`; the page's id comes back to `return_url` as
+/// `session`, for `confirm_card_check`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CardCheckArgs {
+    pub actor: User,
+    pub workspace: String,
+    #[serde(alias = "return_url")]
+    pub return_url: String,
+}
+
+/// `confirm_card_check`: records the check once Stripe says the card was
+/// verified, and grants the trial if the month's pool has room and the card
+/// has not had one before. Safe to repeat. Returns `Outcome<Entitlements>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConfirmCardCheckArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+    pub session: String,
+}
+
+// --- Limits: raising them, and spikes ---------------------------------------
+
+/// A request to g1t: a higher limit, or help with usage that went past
+/// what was meant.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LimitRequest {
+    pub id: String,
+    pub workspace: String,
+    /// `limit` (raise my limit) or `overage` (spent more than meant to).
+    pub kind: String,
+    /// The limit asked for; for an overage, what they think went wrong.
+    pub amount_micros: i64,
+    pub reason: String,
+    pub expected_monthly_micros: i64,
+    /// `open`, `approved` or `declined`.
+    pub status: String,
+    /// What was approved, which may differ from what was asked.
+    #[serde(default)]
+    pub decided_micros: Option<i64>,
+    #[serde(default)]
+    pub decided_by: Option<String>,
+    /// The answer, as the owner sees it.
+    #[serde(default)]
+    pub answer: Option<String>,
+    pub created_by: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub decided_at: Option<String>,
+}
+
+/// `request_limit`: an owner asks g1t for more, or for help with usage past
+/// what they meant. Answered within one business day, in the app and by
+/// email. Owners only. Returns `Outcome<LimitRequest>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestLimitArgs {
+    pub actor: User,
+    pub workspace: String,
+    /// `limit` or `overage`.
+    pub kind: String,
+    #[serde(alias = "amount_micros")]
+    pub amount_micros: i64,
+    pub reason: String,
+    #[serde(default, alias = "expected_monthly_micros")]
+    pub expected_monthly_micros: i64,
+}
+
+/// `limit_requests`: a workspace's requests, newest first. Members only.
+/// Returns `Outcome<Vec<LimitRequest>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LimitRequestsArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+}
+
+/// `confirm_spike`: an owner's answer to a spend spike. Keep going lifts the
+/// pause for 24 hours, or until the hour's spend doubles again; stop keeps
+/// new compute paused until an owner says to keep going. Owners only.
+/// Returns `Outcome<Entitlements>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfirmSpikeArgs {
+    pub actor: User,
+    pub workspace: String,
+    #[serde(alias = "keep_going")]
+    pub keep_going: bool,
+}
+
+/// `set_caps`: the owners' own caps on agents: one run's spend ($0.10 to
+/// $100) and what the agents on one issue may spend in all ($1 to $1,000).
+/// None goes back to the default ($2 and $10). A cap g1t staff set for the
+/// account wins over both. Owners only. Returns `Outcome<Entitlements>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetCapsArgs {
+    pub actor: User,
+    pub workspace: String,
+    #[serde(default, alias = "run_cap_micros")]
+    pub run_cap_micros: Option<i64>,
+    #[serde(default, alias = "issue_cap_micros")]
+    pub issue_cap_micros: Option<i64>,
+}
+
+/// What staff see beside a request: the workspace's history with g1t.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceHistory {
+    pub plan: Option<PlanKind>,
+    /// The last six months, oldest first.
+    pub months: Vec<MonthFigures>,
+    /// Live payments that have cleared, and how many.
+    pub paid_cleared_micros: i64,
+    pub payments: u32,
+    pub disputes: u32,
+    pub declines: u32,
+    /// The first time the workspace appears in billing, RFC 3339.
+    pub first_seen: Option<String>,
+    pub ceiling_micros: Option<i64>,
+    pub max_ceiling_micros: Option<i64>,
+    pub spend_limit_micros: Option<i64>,
+    /// Recent velocity: the last hour, the usual hour over the last week,
+    /// and the last 24 hours, at price.
+    pub last_hour_micros: i64,
+    pub average_hour_micros: i64,
+    pub last_day_micros: i64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LimitRequestReview {
+    pub request: LimitRequest,
+    pub history: WorkspaceHistory,
+}
+
+/// `admin_limit_requests`: requests for staff, oldest open first. Returns
+/// `Vec<LimitRequestReview>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminLimitRequestsArgs {
+    /// `open` (the default), `approved`, `declined` or `all`.
+    #[serde(default)]
+    pub status: Option<String>,
+}
+
+/// `admin_decide_limit_request`: approve (at the amount asked, or
+/// `amount_micros`) or decline. The owner is told in the app and by email.
+/// Recorded with who and why. Returns `Outcome<LimitRequest>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminDecideLimitRequestArgs {
+    pub id: String,
+    /// `approve` or `decline`.
+    pub decision: String,
+    #[serde(default)]
+    pub amount_micros: Option<i64>,
+    /// What the owner is told, beside the decision.
+    #[serde(default)]
+    pub note: String,
+    pub by: String,
+}
+
+/// `admin_record_payment`: money that reached g1t outside the card pages,
+/// such as a bank transfer, entered as a payment (it raises the limit like
+/// one). Recorded with who and the transfer's reference. Returns
+/// `Outcome<LedgerEntry>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminRecordPaymentArgs {
+    pub workspace: String,
+    pub amount_micros: i64,
+    /// The bank's reference for the transfer, or Stripe's payment id.
+    pub reference: String,
+    pub note: String,
+    pub by: String,
+}
+
+// --- Overages and goodwill (sudo) --------------------------------------------
+
+/// What a one-time goodwill credit would come to: g1t's margin on the
+/// overage, always, plus as much of its underlying cost as the cap allows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Goodwill {
+    /// This month's charges above the workspace's typical month.
+    pub overage_micros: i64,
+    /// The part of the overage that is g1t's margin.
+    pub margin_micros: i64,
+    /// The part that is what g1t paid its providers.
+    pub cost_micros: i64,
+    /// The one-click credit: the margin plus the cost up to the cap.
+    pub credit_micros: i64,
+    /// Of the credit, the real cost g1t absorbs.
+    pub absorbed_micros: i64,
+}
+
+/// A workspace whose month went well past its usual, or hit a spike.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Overage {
+    pub workspace: String,
+    pub plan: PlanKind,
+    /// The median of its last three months' charges.
+    pub typical_month_micros: i64,
+    pub this_month_micros: i64,
+    /// What this month cost g1t, and what g1t keeps of it.
+    pub cost_micros: i64,
+    pub margin_micros: i64,
+    /// A spike this month, if there was one.
+    pub spike: Option<Spike>,
+    /// The runs that cost the most this month.
+    pub top_entries: Vec<LedgerEntry>,
+    pub goodwill: Goodwill,
+    /// False when a goodwill credit was given in the last 12 months.
+    pub goodwill_available: bool,
+    pub last_goodwill_at: Option<String>,
+    /// An open overage request from the owner, if there is one.
+    pub request: Option<LimitRequest>,
+}
+
+/// `admin_overages`: the Overages queue. Returns `Vec<Overage>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminOveragesArgs {}
+
+/// `admin_goodwill`: credits a workspace for accidental usage. With no
+/// amount, the one-click credit (`Goodwill::credit_micros`), once per
+/// workspace in 12 months. A larger amount, or a second within 12 months,
+/// needs a typed reason. It shows on the statement as "Credit from g1t:
+/// accidental usage on <date>". Returns `Outcome<LedgerEntry>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminGoodwillArgs {
+    pub workspace: String,
+    #[serde(default)]
+    pub amount_micros: Option<i64>,
+    /// Why, typed by staff; needed past the one-click credit.
+    #[serde(default)]
+    pub reason: String,
+    /// The day the accidental usage happened, `YYYY-MM-DD`; today if absent.
+    #[serde(default)]
+    pub day: Option<String>,
+    pub by: String,
+}
+
+/// One workspace's recent pace, for sudo's velocity view.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Velocity {
+    pub workspace: String,
+    pub plan: PlanKind,
+    pub last_hour_micros: i64,
+    pub average_hour_micros: i64,
+    pub last_day_micros: i64,
+    pub this_month_micros: i64,
+    /// The last hour over the usual hour; 0 with no history.
+    pub ratio: f64,
+    pub spike: Option<Spike>,
+    pub first_seen: Option<String>,
+}
+
+/// `admin_velocity`: workspaces spending in the last day, fastest first.
+/// Returns `Vec<Velocity>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminVelocityArgs {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -950,8 +1569,8 @@ pub struct StatementLine {
     pub charged_micros: i64,
     pub cost_micros: i64,
     /// Of the usage on the line, what was paid for before it was charged:
-    /// by the Team plan's credit, the trial credit or g1t's open-source
-    /// pool. Not in `charged_micros`.
+    /// by the plan's included usage, the trial credit, g1t's open-source
+    /// pool, or g1t itself. Not in `charged_micros`.
     #[serde(default)]
     pub covered_micros: i64,
 }
@@ -977,10 +1596,10 @@ pub struct StatementTotals {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Covered {
-    /// `team_credit`, `trial` or `oss_pool`.
+    /// `included`, `trial`, `oss_pool` or `given`.
     pub source: String,
-    /// "Paid by your Team plan's credit", "Paid by your trial credit",
-    /// "Paid by g1t's open-source pool".
+    /// "Paid by your plan's included usage", "Paid by your trial credit",
+    /// "Paid by g1t's open-source pool", "Covered by g1t".
     pub label: String,
     pub micros: i64,
 }
@@ -1172,6 +1791,53 @@ pub struct Overview {
     /// The capped budgets g1t pays from, this month.
     #[serde(default)]
     pub pools: Option<Pools>,
+    /// This month's revenue: usage charged plus the plan's price paid.
+    #[serde(default)]
+    pub revenue_micros: i64,
+    /// Workspaces on the paid plan now, and what their price comes to a
+    /// month.
+    #[serde(default)]
+    pub active_plans: u32,
+    #[serde(default)]
+    pub plan_mrr_micros: i64,
+    /// What g1t gave this month, by source, apart from its margin.
+    #[serde(default)]
+    pub given: Vec<GivenFigures>,
+    /// g1t's own and Flagon's workspaces this month: what their use cost,
+    /// and why they are not charged.
+    #[serde(default)]
+    pub internal: Vec<InternalUse>,
+    /// Open limit requests, and workspaces in the Overages queue.
+    #[serde(default)]
+    pub open_requests: u32,
+    #[serde(default)]
+    pub overages: u32,
+    /// Spend spikes waiting for an owner.
+    #[serde(default)]
+    pub open_spikes: u32,
+}
+
+/// What g1t gave this month from one source.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GivenFigures {
+    /// `internal`, `trial`, `oss_pool`, `goodwill` or `covered`.
+    pub source: String,
+    pub label: String,
+    /// At price, and what it cost g1t.
+    pub micros: i64,
+    pub cost_micros: i64,
+}
+
+/// One internal workspace's use this month.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InternalUse {
+    pub workspace: String,
+    /// Why it is not charged: its terms' note.
+    pub reason: String,
+    pub cost_micros: i64,
+    pub entries: u32,
 }
 
 /// g1t's capped budgets for free usage, this calendar month (UTC).
@@ -1243,9 +1909,19 @@ pub struct AccountSummary {
 pub struct MonthFigures {
     /// YYYY-MM.
     pub month: String,
+    /// Usage charged, after what paid for it first.
     pub charged_micros: i64,
+    /// What usage cost g1t: only what g1t paid for, never a workspace's own
+    /// model provider.
     pub cost_micros: i64,
     pub paid_micros: i64,
+    /// The plan's monthly price, paid.
+    #[serde(default)]
+    pub plans_micros: i64,
+    /// What g1t gave, at price: internal (comped) use, trials, the
+    /// open-source pool, goodwill credits and what g1t covered. Not margin.
+    #[serde(default)]
+    pub given_micros: i64,
 }
 
 /// One workspace's share of an [`AccountSummary`].
@@ -1416,6 +2092,24 @@ pub struct ConfirmSubscriptionArgs {
     pub session: String,
 }
 
+/// `close_workspace`: settles a workspace that is about to be deleted.
+/// Owners only. Refused while it has an invoice that failed, while it
+/// holds prepaid credit, or while it owes money it cannot be charged for
+/// now; otherwise what it owes is invoiced to its card at once (no
+/// minimum), its plan is cancelled at Stripe straight away, and its
+/// account is marked closed, so the month-end close, autopay and limit
+/// warnings pass it by. Its ledger, invoices and statements stay. With
+/// `dry_run`, only says whether it could, changing nothing. Returns
+/// `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloseWorkspaceArgs {
+    pub actor: User,
+    pub workspace: String,
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
 /// `cancel_subscription` (`resume` false) ends a plan at the end of the
 /// period paid for; with `resume` true, takes that back. Owners only.
 /// Returns `Outcome<FeatureState>`.
@@ -1504,10 +2198,53 @@ mod tests {
             serde_json::json!("deployments")
         );
         assert_eq!(Feature::parse("deployments"), Some(Feature::Deployments));
-        assert_eq!(serde_json::to_value(Feature::Team).unwrap(), serde_json::json!("team"));
-        assert_eq!(Feature::parse("team"), Some(Feature::Team));
+        assert_eq!(serde_json::to_value(Feature::Plan).unwrap(), serde_json::json!("plan"));
+        assert_eq!(Feature::parse("plan"), Some(Feature::Plan));
+        // Older readers named the plan Team.
+        assert_eq!(Feature::parse("team"), Some(Feature::Plan));
+        assert_eq!(serde_json::from_value::<Feature>(serde_json::json!("team")).unwrap(), Feature::Plan);
+        assert_eq!(Feature::ALL, [Feature::Plan]);
         assert!(SubscriptionStatus::Canceling.on());
         assert!(!SubscriptionStatus::PastDue.on());
+    }
+
+    #[test]
+    fn a_reservation_is_asked_for_and_answered_in_camel_case() {
+        let asked: ReserveArgs = serde_json::from_value(serde_json::json!({
+            "workspace": "acme",
+            "repo": { "namespace": "acme", "name": "web" },
+            "public": true,
+            "kind": "check",
+            "estimateMicros": 2_000_000,
+        }))
+        .unwrap();
+        assert_eq!(asked.kind, ComputeKind::Check);
+        assert!(asked.kind.open_source_pool());
+        assert!(!ComputeKind::Agent.open_source_pool());
+        // Rust callers that write snake_case are read too.
+        let snake: ReserveArgs = serde_json::from_value(serde_json::json!({
+            "workspace": "acme",
+            "repo": { "namespace": "acme", "name": "web" },
+            "public": false,
+            "kind": "agent",
+            "estimate_micros": 1,
+        }))
+        .unwrap();
+        assert_eq!(snake.estimate_micros, 1);
+        let answer = Reservation { id: "rsv_1".into(), paid_by: PaidBy::OnDemand, held_micros: 5, expires_at: String::new() };
+        assert_eq!(serde_json::to_value(&answer).unwrap()["paidBy"], "on_demand");
+        assert_eq!(serde_json::to_value(PlanKind::Internal).unwrap(), "internal");
+        assert!(!PlanKind::Free.on_demand() && PlanKind::Enterprise.on_demand());
+    }
+
+    #[test]
+    fn a_refusal_carries_its_own_code() {
+        let refused: crate::Outcome<Reservation> =
+            crate::Outcome::fail(crate::FailureCode::OssPoolEmpty, "The open-source pool is spent.");
+        let json = serde_json::to_value(&refused).unwrap();
+        assert_eq!(json["error"]["code"], "oss_pool_empty");
+        assert_eq!(crate::FailureCode::NotPaid.http_status(), 402);
+        assert_eq!(crate::FailureCode::Paused.http_status(), 409);
     }
 
     #[test]

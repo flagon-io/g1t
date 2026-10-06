@@ -1,16 +1,90 @@
 ---
 title: Accounts and authentication
-description: Accounts, email confirmation, personal access tokens, OAuth, signing in from a tool, and password reset.
+description: Accounts, invites, email addresses, confirming them, personal access tokens, OAuth, signing in from a tool, password reset and your security log.
 ---
 
 ## Creating an account
 
-Register at [g1t.sh/register](https://g1t.sh/register). Usernames are
-lowercase letters, digits and single hyphens, up to 39 characters.
+g1t is invite-only for now: to make an account you need an
+[invite](#invites). Open the link in your invite, or enter its code at
+[g1t.sh/register](https://g1t.sh/register). Without one, ask for access
+on the same page. Usernames are lowercase letters, digits and single
+hyphens, up to 39 characters.
 
 Accounts can only be created in a browser. There is no API for it, by
 design: it keeps passwords out of scripts and agents, and lets g1t protect
 the one place accounts are made.
+
+## Signing in with GitHub
+
+**Continue with GitHub** on the sign-in and sign-up pages signs you in with
+your GitHub account, and makes a g1t account the first time. Link or
+unlink GitHub in [Settings](https://g1t.sh/settings#github). See
+[GitHub](/guides/github/#sign-in-with-github).
+
+Making an account with GitHub needs an invite too: start from your invite
+link, or enter the code when g1t asks for it after GitHub.
+
+## Invites
+
+While g1t is invite-only, every new account needs an invite code, such as
+`g1t-k7m2-q9xd-…`. People already on g1t make them, and g1t sends them to
+people who [asked for access](#asking-for-access). An invite:
+
+- works once, for one new account;
+- works for 30 days;
+- when it was made for an email address, works only with that address;
+- can be revoked by whoever made it until it is used.
+
+An invite link, `g1t.sh/invite/<code>`, shows who sent it and continues to
+sign-up with the code filled in.
+
+### Making invites
+
+1. Open [Settings → Invites](https://g1t.sh/settings#invites).
+2. Optionally enter the email address of the person you are inviting.
+   With one, g1t emails them the invite, and only that address can use it.
+   Without one, anyone with the link can, once.
+3. Select **Create invite**, then copy the link.
+
+Each person can have **5** invites out at a time. Pending and used invites
+count; an invite you revoke, or one that expires before anyone uses it,
+comes back to you. The list under the form shows each invite's state:
+pending, joined (with the username of who joined), expired or revoked. You
+must confirm your email before you can make invites. An agent's token and
+a workspace's token cannot make them.
+
+### Inviting someone into a workspace
+
+An owner can invite an email address straight into a workspace from its
+People page; see [members and roles](/guides/workspaces/#members-and-roles).
+When the address has no g1t account, accepting makes the account and joins
+the workspace in one step, and it uses one invite. Inviting someone who is
+already on g1t costs nothing.
+
+### Need more invites?
+
+Write to [hey@flagon.io](mailto:hey@flagon.io?subject=%5Bg1t%20Invites%5D%20)
+with the subject `[g1t Invites]` and say who you would like to bring. g1t
+can give more invites to you, or to a workspace, whose owners then share
+them. Invites given to a workspace appear under **Settings → Invites** for
+each of its owners, as a choice of whose invites to use.
+
+### Asking for access
+
+Without an invite, [g1t.sh/register](https://g1t.sh/register) asks for your
+email address and, if you like, what you will build. g1t emails you an
+invite as places open. Asking again with the same address updates your
+request; it does not move you down the list.
+
+### Invites through the API
+
+| Route | MCP tool | What it does |
+| --- | --- | --- |
+| [`GET /user/invites`](/reference/api/invites/list-invites/) | `list_invites` | Your invites and how many you have left |
+| [`POST /user/invites`](/reference/api/invites/create-invite/) | `create_invite` | Make an invite, optionally for one `email` |
+| [`DELETE /user/invites/{id}`](/reference/api/invites/revoke-invite/) | `revoke_invite` | Revoke a pending invite |
+| [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/) | `invite_member` | Invite an address into a workspace. Owners only. |
 
 ## Confirming your email
 
@@ -20,6 +94,120 @@ Until you follow it you can sign in and look around, but you cannot create
 repositories, push, or open issues and pull requests. Those requests fail with `403` and a
 message telling you to confirm your address. To get a new link, sign in and
 use the banner at the top of the site.
+
+## Email addresses
+
+An account can have up to 10 email addresses. Manage them in
+[Settings → Emails](https://g1t.sh/settings#emails).
+
+| An address that is | Can |
+| --- | --- |
+| Primary | Get account mail and password reset links. Exactly one, always confirmed once any address is. |
+| Confirmed | Sign you in (type it instead of your username), ask for a password reset, and mark commits that carry it as yours. |
+| Backup | Get security notices as well as the primary. Optional, and a confirmed address other than the primary. |
+| Unconfirmed | Nothing yet. It is not yours until you follow the link g1t sent it. |
+
+A confirmed address belongs to one account. Anyone can add an address they
+have not confirmed; the first account to follow its link keeps it, and the
+address leaves every other account that added it. An address another
+account has confirmed cannot be added.
+
+### Add an address
+
+1. Open [Settings → Emails](https://g1t.sh/settings#emails).
+2. Enter the address under **Add an email address** and select **Add**.
+3. Follow the link g1t sends it. The link works for 24 hours; **Resend
+   link** sends a new one, at most once a minute and 10 times an hour.
+
+If your account had no confirmed address yet, the first one you confirm
+becomes your primary.
+
+### Choose your primary and backup
+
+Select **Make primary** beside a confirmed address. Under **Backup
+address**, choose a confirmed address to get security notices too, or
+**Primary address only**.
+
+### Remove an address
+
+Select **Remove** beside it. You cannot remove your primary address (make
+another one primary first) or your last confirmed address.
+
+### Confirming it is you
+
+Adding or removing an address, and changing your primary or backup, need
+proof that it is you: a sign-in in the last 10 minutes, or your password,
+which g1t asks for on the page. After you enter it, g1t does not ask again
+for 10 minutes. An account that signs in only with GitHub signs out and in
+with GitHub again, or sets a password with
+[Forgot your password](https://g1t.sh/forgot).
+
+Each of these changes is emailed to every confirmed address on the account,
+including an address that was just removed, and written to your
+[security log](#security-log).
+
+### Keeping your address private
+
+**Keep my email address private** is on for every account unless you turn
+it off. While it is on, commits g1t makes for you (merging a pull request
+on the web, catching a branch up, and commits an agent makes for you) carry
+your noreply address instead of your primary:
+
+```
+<8 characters of your account id>+<username>@users.noreply.g1t.sh
+```
+
+The page shows yours. It never receives mail. Turn the setting off to put
+your primary address on those commits instead.
+
+**Block pushes that expose my email** refuses a push that would publish one
+of your addresses while you keep it private. When both settings are on,
+g1t reads the new commits in each push you make, and declines the push if
+any of them has one of your confirmed addresses as its author or committer
+address. git shows why, with the address masked:
+
+```
+remote: push declined: commit 3f9a1c2 would publish s***@gmail.com while your email is private.
+remote: Commit with 6c1d0efg+sam@users.noreply.g1t.sh (git config user.email 6c1d0efg+sam@users.noreply.g1t.sh) and amend,
+remote: or change this in g1t.sh/settings#emails.
+```
+
+To push those commits:
+
+1. Set your noreply address for the repository:
+   `git config user.email <your noreply address>`.
+2. Rewrite the commits with it. For the last commit,
+   `git commit --amend --reset-author --no-edit`; for several,
+   `git rebase <base> --exec "git commit --amend --reset-author --no-edit"`.
+3. Push again.
+
+Only your own addresses are checked: commits by other people in the same
+push go through, and so does your noreply address. A push an agent makes
+for you follows your settings.
+
+### How commits are attributed
+
+g1t shows a commit as yours, with your picture and a link to your profile,
+when its author address is one of your confirmed addresses or your noreply
+address. Commits that g1t made for you before noreply addresses existed
+(`<username>@users.g1t.sh`) count as yours too. An unconfirmed address
+never attributes a commit, so nobody can claim your commits by adding your
+address. Commits whose address matches no account show the name in the
+commit.
+
+### Email addresses through the API
+
+| Route | MCP tool | What it does |
+| --- | --- | --- |
+| [`GET /user/emails`](/reference/api/accounts/list-emails/) | `list_emails` | Your addresses and email settings |
+| [`POST /user/emails`](/reference/api/accounts/add-email/) | `add_email` | Add an address; takes `email` and `password` |
+| [`DELETE /user/emails/{email}`](/reference/api/accounts/remove-email/) | `remove_email` | Remove an address; takes `password` |
+| [`PATCH /user/email-settings`](/reference/api/accounts/update-email-settings/) | `update_email_settings` | Change `primary`, `backup`, `private_email` or `block_private_pushes` |
+
+Through the API, `password` is the proof a sensitive change needs. Without
+it, or with the wrong one, the answer is `403` with the code
+`reauth_required`. Only a person's own token can use these: an agent's
+token and a workspace's token are refused.
 
 ## Workspaces
 
@@ -113,8 +301,37 @@ of your account.
 
 ## Resetting your password
 
-Use [g1t.sh/forgot](https://g1t.sh/forgot). The emailed link works for one
-hour. Setting a new password signs you out everywhere.
+Use [g1t.sh/forgot](https://g1t.sh/forgot) and enter any confirmed
+address of your account. The link goes to that address and works for one
+hour; your primary and backup addresses are told a reset was asked for
+when it went elsewhere. A new account that has not confirmed its address
+yet can use that address, and following the link confirms it.
+
+The page answers the same way whether or not the address has an account.
+g1t sends at most 5 reset links an hour to one address.
+
+Setting a new password signs you out everywhere and emails your primary
+and backup addresses.
+
+## Too many attempts
+
+g1t counts wrong passwords, on the sign-in page, for git over HTTPS and
+when confirming it is you, against the account and against where they come
+from. After 10 wrong passwords for one account in an hour, or 30 from one
+place, g1t stops checking passwords for it for a minute, then twice as long
+after each further wrong password, up to an hour. While it waits, every
+attempt gets the same answer: "Too many attempts". The account's primary
+and backup addresses are told the first time. Signing in with the right
+password, or resetting it, clears the count. Access tokens, SSH keys and
+GitHub sign-in are not affected.
+
+## Security log
+
+[Settings → Security log](https://g1t.sh/settings#security-log) lists what
+happened to your account: addresses added, confirmed, removed or made
+primary, your backup and privacy settings, password changes, and pauses
+after too many wrong passwords. Changes g1t staff made, such as removing an
+address someone else needed, say so and why.
 
 ## What g1t stores
 

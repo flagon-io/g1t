@@ -24,7 +24,7 @@ export type SectionError = { error: string; values?: Record<string, string> } | 
 /** The flash messages a change redirects back with (`?done=`). */
 export const DONE: Record<string, string> = {
   terms: "Terms saved. They apply to charges from now on.",
-  allowances: "Plan and pools saved. They apply to charges from now on.",
+  allowances: "Plan, pools and caps saved. They apply from now on.",
   attach: "Workspace moved onto the enterprise.",
   detach: "Workspace moved off the enterprise. It pays for itself again.",
   credit: "Credit issued.",
@@ -32,6 +32,10 @@ export const DONE: Record<string, string> = {
   "billing-email": "Saved where the enterprise's invoices go.",
   sales: "Sales record saved.",
   note: "Note added.",
+  payment: "Payment recorded. It is on the workspace's statement and counts toward its limit.",
+  approved: "Approved. The owner is told in the app and by email.",
+  declined: "Declined. The owner is told why, in the app and by email.",
+  goodwill: "Goodwill credit given. It is on the statement and in the audit log.",
 };
 
 /** The `?done=` key, if it is one sudo knows. */

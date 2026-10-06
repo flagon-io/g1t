@@ -147,3 +147,86 @@ export function newlyBlocked(seen: readonly string[], host: string): { step: str
 export function timeCapMessage(minutes: number): string {
   return `Stopped: it reached its time cap of ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`;
 }
+
+/**
+ * Where a sandbox tells the runner it stopped itself for mining
+ * (crates/runner abuse.rs). The runner's Durable Object answers it; it
+ * never leaves the machine.
+ */
+export const ABUSE_HOST = "sandbox.g1t.internal";
+/** What a sandbox that stopped itself for mining exits with. */
+export const ABUSE_EXIT_CODE = 86;
+/** What such a run, check, job or build says. */
+export const ABUSE_MESSAGE = "Stopped: unusual CPU use; contact support if this was a real job.";
+
+/**
+ * What workflow jobs and deploy builds may reach on top of the project's
+ * allowed domains and registries: where `actions/checkout`, `uses:`
+ * actions and the `setup-*` actions fetch from, the package registries
+ * builds install from, and (for deploys) Cloudflare's API, which a build
+ * uploads its app to. No mining pool is on it, and no general host.
+ */
+export const BUILD_HOSTS: readonly string[] = [
+  // Actions by `uses:`, and releases the setup actions download.
+  "github.com",
+  "api.github.com",
+  "codeload.github.com",
+  "objects.githubusercontent.com",
+  "raw.githubusercontent.com",
+  "release-assets.githubusercontent.com",
+  "ghcr.io",
+  "pkg-containers.githubusercontent.com",
+  // Toolchains.
+  "nodejs.org",
+  "go.dev",
+  "dl.google.com",
+  "static.rust-lang.org",
+  "sh.rustup.rs",
+  // Package registries, whatever the project turned on for agents.
+  "registry.npmjs.org",
+  "registry.yarnpkg.com",
+  "repo.yarnpkg.com",
+  "pypi.org",
+  "files.pythonhosted.org",
+  "crates.io",
+  "index.crates.io",
+  "static.crates.io",
+  "proxy.golang.org",
+  "sum.golang.org",
+  "rubygems.org",
+  "index.rubygems.org",
+  "repo.packagist.org",
+  "api.nuget.org",
+  "repo.maven.apache.org",
+  "repo1.maven.org",
+  "services.gradle.org",
+  "plugins.gradle.org",
+  "deb.debian.org",
+  "security.debian.org",
+];
+
+/** What a build sandbox may reach on top of its project's list. */
+export function buildHosts(kind: "actions" | "deploy"): string[] {
+  return kind === "deploy" ? [...BUILD_HOSTS, "api.cloudflare.com"] : [...BUILD_HOSTS];
+}
+
+/** The lower of two caps, where null, zero or less means no cap. */
+function lower(a: number | null | undefined, b: number | null | undefined): number | null {
+  const caps = [a, b].filter((cap): cap is number => typeof cap === "number" && Number.isFinite(cap) && cap > 0);
+  return caps.length ? Math.min(...caps) : null;
+}
+
+/** A plan's caps on one run, from its entitlements; null where it sets none. */
+export type PlanLimits = { minutes?: number | null; budgetUsd?: number | null };
+
+/**
+ * A run's guardrails under its workspace's plan: the time and cost caps are
+ * each the lower of the two.
+ */
+export function withPlanLimits(guard: RunGuard, limits: PlanLimits | null | undefined): RunGuard {
+  if (!limits) return guard;
+  return {
+    policy: { ...guard.policy, budgetUsd: lower(guard.policy.budgetUsd, limits.budgetUsd) },
+    minutes: lower(guard.minutes, limits.minutes) ?? guard.minutes,
+  };
+}

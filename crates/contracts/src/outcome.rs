@@ -11,6 +11,22 @@ pub enum FailureCode {
     Invalid,
     /// The workspace has to pay before this can happen.
     PaymentRequired,
+    // Billing's refusals to start compute (`reserve`), each with a message
+    // that says what to do. See `g1t_contracts::billing::ReserveArgs`.
+    /// No plan, and no trial or pool that pays for this kind of work: a
+    /// card check or the g1t plan is needed.
+    NotPaid,
+    /// The workspace's one trial is spent.
+    TrialUsed,
+    /// The workspace reached its spend limit or g1t's ceiling.
+    Limit,
+    /// Compute is paused: a spend spike waiting for an owner, or a hold.
+    Paused,
+    /// This month's open-source pool, or the repository's share, is spent.
+    OssPoolEmpty,
+    /// A sensitive change needs the person to prove it is them again: a
+    /// recent sign-in, or their password. See `identity::Reauth`.
+    ReauthRequired,
 }
 
 impl FailureCode {
@@ -21,7 +37,13 @@ impl FailureCode {
             FailureCode::Unauthenticated => 401,
             FailureCode::Conflict => 409,
             FailureCode::Invalid => 422,
-            FailureCode::PaymentRequired => 402,
+            FailureCode::PaymentRequired
+            | FailureCode::NotPaid
+            | FailureCode::TrialUsed
+            | FailureCode::Limit
+            | FailureCode::OssPoolEmpty => 402,
+            FailureCode::Paused => 409,
+            FailureCode::ReauthRequired => 403,
         }
     }
 }

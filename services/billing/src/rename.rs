@@ -63,8 +63,8 @@ pub(crate) const STATEMENTS: &[&str] = &[
        charged_at = COALESCE(pending_usage.charged_at, excluded.charged_at),
        updated_at = MAX(pending_usage.updated_at, excluded.updated_at)",
     "DELETE FROM pending_usage WHERE workspace = ?2",
-    // Monthly allowances drawn by the workspace (its Team credit, its
-    // build time) add up; a repository's share of the open-source pool
+    // Monthly allowances drawn by the workspace (its plan's included usage,
+    // its build time) add up; a repository's share of the open-source pool
     // follows the repository's new name.
     "INSERT INTO allowance_use (kind, scope, month, used)
      SELECT kind, ?1, month, used FROM allowance_use WHERE scope = ?2
@@ -77,16 +77,32 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "DELETE FROM trial_grants WHERE workspace = ?2",
     "UPDATE OR IGNORE storage_days SET workspace = ?1 WHERE workspace = ?2",
     "DELETE FROM storage_days WHERE workspace = ?2",
+    // Holds, spikes, requests and the plan's payments: many per workspace.
+    "UPDATE reservations SET workspace = ?1 WHERE workspace = ?2",
+    "UPDATE reservations SET repo = ?1 || substr(repo, length(?2) + 1) WHERE substr(repo, 1, length(?2) + 1) = ?2 || '/'",
+    "UPDATE spikes SET workspace = ?1 WHERE workspace = ?2",
+    "UPDATE limit_requests SET workspace = ?1 WHERE workspace = ?2",
+    "UPDATE plan_payments SET workspace = ?1 WHERE workspace = ?2",
+    // One card check per workspace; alerts sent, one per level a month.
+    "UPDATE OR IGNORE card_checks SET workspace = ?1 WHERE workspace = ?2",
+    "DELETE FROM card_checks WHERE workspace = ?2",
+    "UPDATE OR IGNORE alerts_sent SET workspace = ?1 WHERE workspace = ?2",
+    "DELETE FROM alerts_sent WHERE workspace = ?2",
     // Limits, field by field: a ceiling or an owner's spend limit set under
     // either slug is kept (the current slug's if both), a stop for a
     // declined card stays, and the highest warning this month is kept.
     "INSERT INTO limits (workspace, ceiling_micros, spend_limit_micros, spend_limit_full, autopay_failed_at,
-                         autopay_error, warned_month, warned_level, declined_told_at, updated_at)
+                         autopay_error, warned_month, warned_level, declined_told_at, updated_at,
+                         max_ceiling_micros, granted_ceiling_micros, raised_at)
      SELECT ?1, ceiling_micros, spend_limit_micros, spend_limit_full, autopay_failed_at,
-            autopay_error, warned_month, warned_level, declined_told_at, updated_at
+            autopay_error, warned_month, warned_level, declined_told_at, updated_at,
+            max_ceiling_micros, granted_ceiling_micros, raised_at
      FROM limits WHERE workspace = ?2
      ON CONFLICT (workspace) DO UPDATE SET
        ceiling_micros = COALESCE(limits.ceiling_micros, excluded.ceiling_micros),
+       max_ceiling_micros = MAX(COALESCE(limits.max_ceiling_micros, 0), COALESCE(excluded.max_ceiling_micros, 0)),
+       granted_ceiling_micros = MAX(COALESCE(limits.granted_ceiling_micros, 0), COALESCE(excluded.granted_ceiling_micros, 0)),
+       raised_at = COALESCE(limits.raised_at, excluded.raised_at),
        spend_limit_micros = CASE WHEN limits.spend_limit_micros IS NOT NULL OR limits.spend_limit_full = 1
                                  THEN limits.spend_limit_micros ELSE excluded.spend_limit_micros END,
        spend_limit_full = CASE WHEN limits.spend_limit_micros IS NOT NULL OR limits.spend_limit_full = 1
@@ -259,6 +275,7 @@ mod tests {
             "pending_usage", "limits", "subscriptions", "month_closes", "account_members", "sales_records",
             "enterprise_invoice_lines", "billing_accounts", "admin_actions", "enterprise_invoices",
             "allowance_use", "trial_grants", "storage_days",
+            "reservations", "spikes", "limit_requests", "plan_payments", "card_checks", "alerts_sent",
         ] {
             assert!(all.contains(&format!("FROM {table} WHERE workspace = ?2"))
                 || all.contains(&format!("UPDATE {table} SET"))

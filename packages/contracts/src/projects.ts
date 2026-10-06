@@ -27,8 +27,10 @@ export type Project = {
   name: string;
   description: string | null;
   source: ProjectSource;
-  /** Whether only the workspace's members can see it: its repository is private. */
+  /** Whether its repository is private: only people with a role on it can see it. */
   private: boolean;
+  /** Whether its repository is archived: read-only, kept for reference. */
+  archived: boolean;
   /** Whether it is the project its repository's workflows read secrets from. */
   primary: boolean;
   createdBy: string;

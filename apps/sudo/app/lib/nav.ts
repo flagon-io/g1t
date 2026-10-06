@@ -27,8 +27,13 @@ export type NavIcon =
   | "announcements"
   | "staff"
   | "audit"
+  | "requests"
+  | "overages"
+  | "velocity"
+  | "invites"
   // Sections
   | "customers"
+  | "spend"
   | "revenue"
   | "platform"
   | "support"
@@ -78,6 +83,12 @@ export const NAV: NavGroup[] = [
       { label: "Workspaces", to: "/workspaces", icon: "workspaces", about: "Every workspace, who owns it, and how it pays." },
       { label: "Enterprises", to: "/enterprises", icon: "enterprises", about: "Customers paying for several workspaces with one bill." },
       {
+        label: "Invites",
+        to: "/invites",
+        icon: "invites",
+        about: "The waitlist, every invite, more invites for a person or workspace, and who invited whom.",
+      },
+      {
         label: "People",
         to: "/people",
         icon: "people",
@@ -95,6 +106,30 @@ export const NAV: NavGroup[] = [
           ],
           meanwhile: { text: "Search a workspace by an owner's username or email on Workspaces.", to: "/workspaces", link: "Workspaces" },
         },
+      },
+    ],
+  },
+  {
+    title: "Spend",
+    icon: "spend",
+    items: [
+      {
+        label: "Requests",
+        to: "/requests",
+        icon: "requests",
+        about: "Owners asking for a higher limit or help with a month: answered within one business day.",
+      },
+      {
+        label: "Overages",
+        to: "/overages",
+        icon: "overages",
+        about: "Workspaces well past their typical month, what caused it, and goodwill credits.",
+      },
+      {
+        label: "Velocity",
+        to: "/velocity",
+        icon: "velocity",
+        about: "Who is spending fastest right now, against their usual hour, and any spikes.",
       },
     ],
   },
@@ -210,20 +245,7 @@ export const NAV: NavGroup[] = [
         label: "Abuse & fraud",
         to: "/abuse",
         icon: "abuse",
-        about: "Stripe Radar signals, disputes and suspicious sign-ups.",
-        soon: {
-          summary: [
-            "Where trust and safety work happens: Stripe Radar's warnings, disputed payments, and sign-ups that look like abuse (many accounts from one card, throwaway emails, sandboxes used for mining). Limits keep g1t's exposure small, but someone still needs to look.",
-            "Each case ends in an action that is recorded: clear it, lower a workspace's limit, or suspend it, with a note for whoever looks next.",
-          ],
-          plans: [
-            "Disputes with their deadlines, and the evidence to send Stripe",
-            "Radar's early fraud warnings and blocked payments",
-            "Suspicious sign-ups: shared cards, disposable domains, bursts from one network",
-            "Suspend or restore a workspace, with a confirmation and a note",
-          ],
-          meanwhile: { text: "Disputes and declines show up in Reach out.", to: "/reach-out?kind=declined", link: "Declined" },
-        },
+        about: "Sandboxes stopped for looking like mining, and disputes and declines.",
       },
     ],
   },

@@ -14,6 +14,8 @@ export default defineConfig({
 			title: 'g1t docs',
 			description: 'Guides and reference for g1t, the git forge for teams of agents.',
 			components: {
+				Footer: './src/components/Footer.astro',
+				Head: './src/components/Head.astro',
 				Header: './src/components/Header.astro',
 				PageTitle: './src/components/PageTitle.astro',
 				SiteTitle: './src/components/SiteTitle.astro',
@@ -42,30 +44,15 @@ export default defineConfig({
 			},
 			logo: { src: '@g1t/theme/mark.svg', alt: '' },
 			favicon: '/favicon.svg',
-			customCss: ['@g1t/theme/tokens.css', './src/styles/g1t.css'],
-			social: [
-				{ icon: 'seti:git', label: 'Source on g1t', href: 'https://g1t.sh/syntaqx/g1t' },
-			],
+			customCss: ['@g1t/theme/fonts.css', '@g1t/theme/tokens.css', './src/styles/g1t.css'],
 			editLink: {
-				baseUrl: 'https://g1t.sh/syntaqx/g1t/blob/main/apps/docs/',
+				baseUrl: 'https://g1t.sh/flagon-io/g1t/blob/main/apps/docs/',
 			},
 			lastUpdated: true,
 			head: [
 				{ tag: 'link', attrs: { rel: 'icon', href: '/favicon.ico', sizes: '32x32' } },
 				{ tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '192x192', href: '/icon-192.png' } },
 				{ tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' } },
-				{ tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.googleapis.com' } },
-				{
-					tag: 'link',
-					attrs: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: true },
-				},
-				{
-					tag: 'link',
-					attrs: {
-						rel: 'stylesheet',
-						href: 'https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&family=JetBrains+Mono:wght@400;500;600&display=swap',
-					},
-				},
 			],
 			sidebar: [
 				{
@@ -119,7 +106,11 @@ export default defineConfig({
 					label: 'Workspaces',
 					items: [
 						{ label: 'Accounts and sign-in', slug: 'guides/authentication' },
+						{ label: 'GitHub', slug: 'guides/github' },
 						{ label: 'Workspaces and tokens', slug: 'guides/workspaces' },
+						{ label: 'Access and roles', slug: 'guides/access-and-roles' },
+						{ label: 'Managing a repository', slug: 'guides/managing-repositories' },
+						{ label: 'Transferring a repository', slug: 'guides/transferring-repositories' },
 						{ label: 'Audit log', slug: 'guides/audit-log' },
 						{ label: 'Usage and billing', slug: 'guides/usage-and-billing' },
 						{ label: 'Git', slug: 'guides/git' },

@@ -4,6 +4,8 @@ export default [
   index("routes/home.tsx"),
   route("login", "routes/login.tsx"),
   route("register", "routes/register.tsx"),
+  // An invite link: who sent it, then sign-up or joining. `invite` is reserved.
+  route("invite/:code", "routes/invite.tsx"),
   route("logout", "routes/logout.tsx"),
   route("verify", "routes/verify.tsx"),
   route("forgot", "routes/forgot.tsx"),
@@ -11,6 +13,14 @@ export default [
   route("device", "routes/device.tsx"),
   route("oauth/authorize", "routes/oauth-authorize.tsx"),
   route("new", "routes/new.tsx"),
+  // GitHub: signing in with it, and bringing repositories across through
+  // g1t's GitHub App. `auth` and `integrations` are reserved names.
+  route("new/github", "routes/new-github.tsx"),
+  route("auth/github", "routes/auth-github.ts"),
+  route("auth/github/callback", "routes/auth-github-callback.tsx"),
+  route("auth/github/username", "routes/auth-github-username.tsx"),
+  route("integrations/github/install", "routes/github-install.ts"),
+  route("integrations/github/setup", "routes/github-setup.tsx"),
   route("settings", "routes/settings.tsx"),
   // People, apart from workspaces: `u` is a reserved name.
   route("u/:username", "routes/user.tsx"),
@@ -20,6 +30,15 @@ export default [
   // What the command palette shows as someone types.
   route("search.json", "routes/search-json.ts"),
   route("workspaces/new", "routes/workspace/new.tsx"),
+  // Trust pages: reserved names, like the rest above.
+  route("policies", "routes/policies.tsx"),
+  route("policies/:policy", "routes/policy.tsx"),
+  route("security", "routes/security.tsx"),
+  route("support", "routes/support.tsx"),
+  route("status", "routes/status.tsx"),
+  // What /status shows and the footer's dot reads, as JSON.
+  route("status.json", "routes/status-json.ts"),
+  route(".well-known/security.txt", "routes/security-txt.ts"),
   // A workspace's own pages sit under `-`, which no repository can be named.
   route(":owner", "routes/workspace/layout.tsx", [
     index("routes/workspace/overview.tsx"),
@@ -33,6 +52,7 @@ export default [
     route("-/webhooks", "routes/workspace/webhooks.tsx"),
     route("-/secrets", "routes/workspace/secrets.tsx"),
     route("-/settings", "routes/workspace/settings.tsx"),
+    route("-/repositories", "routes/workspace/repositories.tsx"),
     route("-/agents", "routes/workspace/agents.tsx"),
     route("-/memory", "routes/workspace/memory.tsx"),
     route("-/context", "routes/workspace/context.tsx"),
@@ -49,6 +69,10 @@ export default [
   route(":owner/:repo/agents.json", "routes/repo/agents-live.ts"),
   // What a project's agent runs did, from the audit log, for the Agent panel.
   route(":owner/:repo/audit.json", "routes/repo/audit-live.ts"),
+  // An invitation to a repository, answered by someone who cannot see it yet.
+  route(":owner/:repo/invitations", "routes/repo/invitations.tsx"),
+  // A screenshot of a project's production, for its overview.
+  route(":owner/:repo/production.jpg", "routes/repo/production-screenshot.ts"),
   // A project: its overview first, its repository's code under Code. The
   // 1:1 project of a repository has the repository's name, so every
   // repository address below keeps working.
@@ -82,6 +106,8 @@ export default [
     route("plans/:id", "routes/repo/plan.tsx"),
     route("settings", "routes/repo/settings.tsx"),
     route("settings/repository", "routes/repo/settings-repository.tsx"),
+    route("settings/access", "routes/repo/settings-access.tsx"),
+    route("settings/branches", "routes/repo/settings-branches.tsx"),
     route("settings/webhooks", "routes/repo/webhooks.tsx"),
     route("settings/secrets", "routes/repo/secrets.tsx"),
     route("settings/deployments", "routes/repo/settings-deployments.tsx"),

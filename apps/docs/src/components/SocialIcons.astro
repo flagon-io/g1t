@@ -1,18 +1,17 @@
 ---
 // The header's right side: where people go from the docs, then the source.
+import { GitBranch } from '@lucide/astro';
+
+// g1t.sh is invite-only for now. A build with PUBLIC_G1T_REGISTRATION=open
+// (an installation that lets anyone register) says Sign up again.
+const inviteOnly = (import.meta.env.PUBLIC_G1T_REGISTRATION ?? 'invite') !== 'open';
 ---
 
 <nav class="g1t-nav" aria-label="g1t">
 	<a href="https://g1t.sh/">g1t.sh</a>
-	<a href="https://g1t.sh/register" class="g1t-nav-cta">Sign up</a>
-	<a href="https://g1t.sh/syntaqx/g1t" aria-label="Source on g1t" title="Source on g1t" class="g1t-nav-icon">
-		<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<circle cx="6" cy="6" r="3"></circle>
-			<circle cx="6" cy="18" r="3"></circle>
-			<circle cx="18" cy="9" r="3"></circle>
-			<path d="M6 9v6"></path>
-			<path d="M18 12c0 3-3 3-6 3H9"></path>
-		</svg>
+	<a href="https://g1t.sh/register" class="g1t-nav-cta">{inviteOnly ? 'Request access' : 'Sign up'}</a>
+	<a href="https://g1t.sh/flagon-io/g1t" aria-label="Source on g1t" title="Source on g1t" class="g1t-nav-icon">
+		<GitBranch />
 	</a>
 </nav>
 
@@ -48,7 +47,7 @@
 		display: inline-flex;
 		padding: 0.4rem;
 	}
-	.g1t-nav-icon svg {
+	.g1t-nav-icon :global(svg) {
 		width: 1rem;
 		height: 1rem;
 	}

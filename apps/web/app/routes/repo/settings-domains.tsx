@@ -1,6 +1,6 @@
 import { CheckCircle2, Globe, Info, RotateCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Form, Link, data, useNavigation, useRevalidator } from "react-router";
+import { Form, Link, useNavigation, useRevalidator } from "react-router";
 
 import type { Domain, DomainRecord, DomainStatus } from "@g1t/contracts";
 
@@ -21,7 +21,8 @@ import {
 } from "../../components/ui/alert-dialog";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { deployments } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
+import { requireCapability, requireInsider } from "../../lib/access.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Domains · ${params.owner}/${params.repo} · g1t` });
@@ -29,7 +30,8 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
+  // Admins; to anyone without a role here the page does not exist.
+  await requireInsider(context, params, "manage_integrations");
   const ref = { workspace: params.owner, slug: params.repo };
   const [settings, domains] = await Promise.all([deployments.settings(ref, viewer), deployments.domains(ref, viewer)]);
   return { settings: unwrap(settings), ...unwrap(domains) };
@@ -38,6 +40,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
+  await requireCapability(context, params, "manage_integrations");
   const form = await request.formData();
   const ref = { workspace: params.owner, slug: params.repo };
   const intent = form.get("intent");
@@ -183,7 +186,7 @@ export default function DomainSettings({ loaderData, actionData, params }: Route
           description="Most sites answer at both example.com and www.example.com; one serves the app and the other sends visitors to it, path and query kept."
         />
         <p className="mt-4 text-xs text-faint">
-          The Deployments plan includes {included} custom domains across the workspace ({used} in use). Each one past that is
+          The g1t plan includes {included} custom domains across the workspace ({used} in use). Each one past that is
           charged by the month at cost plus the margin.
         </p>
       </Form>

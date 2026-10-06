@@ -7,7 +7,8 @@ import { page } from "../../lib/meta";
 import { Idle, RunCard, splitRuns, useLiveRefresh } from "../../components/agents";
 import { AgentInstructions } from "../../components/agent-instructions";
 import { agents } from "../../lib/services.server";
-import { getViewer, roleIn, unwrap } from "../../lib/session.server";
+import { getViewer, unwrap } from "../../lib/session.server";
+import { accessTo } from "../../lib/access.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Agents at work · ${params.owner}/${params.repo} · g1t` });
@@ -23,7 +24,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   ]);
   return {
     runs: unwrap(runs),
-    member: roleIn(viewer, params.owner) != null,
+    member: (await accessTo(context, params)).can.run,
     instructions: instructions?.ok ? instructions.value : null,
   };
 }

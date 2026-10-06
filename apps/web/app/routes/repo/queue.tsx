@@ -16,8 +16,9 @@ import type { QueueEntry, QueueState } from "@g1t/contracts";
 import type { Route } from "./+types/queue";
 import { page } from "../../lib/meta";
 import { Avatar, ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
-import { repos, work } from "../../lib/services.server";
-import { getViewer, roleIn, unwrap } from "../../lib/session.server";
+import { work } from "../../lib/services.server";
+import { getViewer, unwrap } from "../../lib/session.server";
+import { accessFor, repoFor } from "../../lib/access.server";
 
 const REFRESH_MS = 4000;
 
@@ -28,11 +29,12 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const path = { namespace: params.owner, name: params.repo };
-  const [queue, repo] = await Promise.all([work.queue(path, viewer), repos.get(path, viewer)]);
+  const [queue, repo] = await Promise.all([work.queue(path, viewer), repoFor(context, params)]);
   return {
     queue: unwrap(queue),
     defaultBranch: unwrap(repo).defaultBranch,
-    member: roleIn(viewer, params.owner) != null,
+    // Turning the queue on is a setting: Maintain and up.
+    member: repo.ok && accessFor(viewer, repo.value).can.manage_settings,
   };
 }
 

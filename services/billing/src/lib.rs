@@ -1,14 +1,15 @@
-//! The billing service: what agents cost, charged to the workspace they
-//! worked for.
+//! The billing service: what g1t's compute costs, charged to the workspace
+//! it ran for at what g1t pays plus 20%.
 //!
-//! A workspace buys credit with a card. Before the runner starts an agent
-//! it asks here, and is refused if the workspace has none. When the
-//! agent's sandbox finishes it reports what the model cost, and that plus
-//! g1t's margin comes off the balance. Every change is a ledger entry, and
-//! a balance is always the sum of its ledger.
-//!
-//! Paid features (deployments) are bought separately, as monthly plans;
-//! see `features`. They are never free.
+//! One paid plan, "g1t" (see `features`): $20 a month per workspace, never
+//! per person, with $10 of usage included, deployments, and more private
+//! storage. The forge is free for everyone; compute needs the plan or a
+//! card check (see `compute` and `cards`). Before anything that costs money
+//! starts, the service that starts it reserves its estimate here; when it
+//! is done, what it cost goes on the ledger plus the margin, drawn first
+//! from what the plan includes, a trial or g1t's pools (see `credits`).
+//! Every change is a ledger entry, and a balance is always the sum of its
+//! ledger.
 //!
 //! Without a card processor configured the service says so and charges
 //! nothing, so that g1t still runs where billing has not been set up.
@@ -17,7 +18,12 @@
 //! the methods and their arguments.
 
 mod accounts;
+mod cards;
+mod closing;
+mod compute;
 mod credits;
+mod overages;
+mod requests;
 mod storage;
 mod invoices;
 mod sales;
@@ -41,8 +47,12 @@ use worker::{Context, D1Database, Env, MessageBatch, MessageExt, Request, Respon
 
 use stripe::Stripe;
 
-const MIN_TOP_UP_CENTS: u32 = 500;
-const MAX_TOP_UP_CENTS: u32 = 50_000;
+/// Prepaying: $25 at the least; by card up to $10,000 at a time, and by
+/// bank transfer from $1,000 to $100,000.
+const MIN_TOP_UP_CENTS: u32 = 2_500;
+const MAX_TOP_UP_CENTS: u32 = 1_000_000;
+const MIN_BANK_TRANSFER_CENTS: u32 = 100_000;
+const MAX_BANK_TRANSFER_CENTS: u32 = 10_000_000;
 const LEDGER_PAGE: u32 = 100;
 /// A run's reported cost is believed up to this much. A sandbox cannot
 /// spend more in the time it has, so anything above is a fault.
@@ -90,6 +100,8 @@ struct LedgerRow {
     trial_micros: Option<i64>,
     #[serde(default)]
     oss_micros: Option<i64>,
+    #[serde(default)]
+    given_micros: Option<i64>,
 }
 
 impl From<LedgerRow> for LedgerEntry {
@@ -110,6 +122,7 @@ impl From<LedgerRow> for LedgerEntry {
             credit_micros: row.credit_micros.unwrap_or(0),
             trial_micros: row.trial_micros.unwrap_or(0),
             oss_micros: row.oss_micros.unwrap_or(0),
+            given_micros: row.given_micros.unwrap_or(0),
         }
     }
 }
@@ -156,11 +169,12 @@ struct Billing {
     trials_on: bool,
     /// The plans' and pools' numbers; see `credits`.
     plans: credits::Config,
-    /// The repos service: which repositories are public, and what private
-    /// ones hold. Absent where it is not bound.
+    /// The repos service: which repositories are public, what private ones
+    /// hold, and their git operations. Absent where it is not bound.
     repos: Option<worker::Fetcher>,
-    /// The Deployments plan's monthly price (`DEPLOYMENTS_MONTHLY_CENTS`).
-    deployments_monthly_cents: u32,
+    /// The identity service, which emails owners. Absent where it is not
+    /// bound.
+    identity: Option<worker::Fetcher>,
     /// How far unpaid usage may go; see `limits`.
     ceilings: limits::Ceilings,
     /// `PREPAID_ONLY`: the old rule, that agents need credit first.
@@ -436,12 +450,13 @@ impl Billing {
         }))
     }
 
+    /// `checkout`: prepays usage, by card or (from $1,000) bank transfer.
     async fn checkout(&self, a: CheckoutArgs) -> Result<Outcome<Checkout>> {
         let workspace = a.workspace.to_lowercase();
         if a.actor.role_in(&workspace) != Some(Role::Owner) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
-                "Only an owner can add credit to a workspace.",
+                "Only an owner can prepay for a workspace.",
             ));
         }
         let Some(stripe) = &self.stripe else {
@@ -450,26 +465,29 @@ impl Billing {
                 "Payments are not set up on this g1t yet.",
             ));
         };
-        if !(MIN_TOP_UP_CENTS..=MAX_TOP_UP_CENTS).contains(&a.amount_cents) {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                format!(
-                    "Add between ${} and ${} at a time.",
-                    MIN_TOP_UP_CENTS / 100,
-                    MAX_TOP_UP_CENTS / 100
-                ),
-            ));
+        let bank_transfer = a.method.as_deref() == Some("bank_transfer");
+        if let Err(why) = prepay_amount(a.amount_cents, bank_transfer) {
+            return Ok(Outcome::fail(FailureCode::Invalid, why));
         }
-        let customer = self.row(&workspace).await?.and_then(|row| row.customer_id);
+        // A bank transfer needs a customer for its account details.
+        let customer = if bank_transfer {
+            match self.customer_for(&workspace).await {
+                Ok(customer) => Some(customer),
+                Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, format!("Stripe could not be reached: {error}"))),
+            }
+        } else {
+            self.row(&workspace).await?.and_then(|row| row.customer_id)
+        };
         let session = match stripe
-            .start_checkout(&workspace, a.amount_cents, customer.as_deref(), &a.return_url)
+            .start_checkout(&workspace, a.amount_cents, customer.as_deref(), &a.return_url, bank_transfer)
             .await
         {
             Ok(session) => session,
             // A customer saved under another Stripe account: start afresh.
             Err(error) if customer.is_some() && stripe::is_missing(&error) => {
                 self.forget_customer(&workspace).await?;
-                stripe.start_checkout(&workspace, a.amount_cents, None, &a.return_url).await?
+                let customer = if bank_transfer { Some(self.customer_for(&workspace).await?) } else { None };
+                stripe.start_checkout(&workspace, a.amount_cents, customer.as_deref(), &a.return_url, bank_transfer).await?
             }
             Err(error) => return Err(error),
         };
@@ -537,7 +555,7 @@ impl Billing {
                     &checkout.workspace,
                     EntryKind::TopUp,
                     i64::from(cents) * MICROS_PER_DOLLAR / 100,
-                    "Credit added by card",
+                    "Paid in advance",
                     &session.id,
                     None,
                     None,
@@ -667,13 +685,14 @@ impl Billing {
         if run.own_provider() {
             return Ok(Outcome::Ok(true));
         }
-        // Its cost plus the margin, on the account's terms; then the Team
-        // credit, the trial credit and, for a public repository, g1t's
-        // open-source pool pay what they can (see `credits`).
+        // Its cost plus the margin, on the account's terms; then the plan's
+        // included usage and the trial credit pay what they can, and g1t
+        // covers a free workspace's overrun (see `credits`). Agents are
+        // never the open-source pool's.
         let base = charge_micros(a.cost_usd, self.margin_percent);
         let (charge, terms_note) = self.charged(&run.workspace, base).await?;
         let month = credits::month_of(&rfc3339(now_ms()));
-        let eligible = credits::Eligible { trial: true, repo: Some(run.repo.clone()) };
+        let eligible = credits::eligible_for(Some(ComputeKind::Agent), None);
         let drawn = self.draw(&run.workspace, charge, &month, &eligible).await?;
         let mut description = match run.task.as_str() {
             "plan" => format!("Planning for {}", run.repo),
@@ -702,7 +721,8 @@ impl Billing {
 
 impl Billing {
     /// Records how long a sandbox ran, with its cost and its charge: every
-    /// second, from the first, at the price book's price.
+    /// second, from the first, at the price book's price; on its own CPU
+    /// when it reports it. Settles its reservation, if it names one.
     async fn record_sandbox(&self, a: RecordSandboxArgs) -> Result<Outcome<bool>> {
         if self.stripe.is_none() || a.seconds == 0 {
             return Ok(Outcome::Ok(false));
@@ -723,23 +743,33 @@ impl Billing {
         // From the price book, which follows what Cloudflare bills g1t. A
         // sandbox is the same container as a build, so without a row it is
         // a build second's cost plus the margin.
-        let (cost_per_second, price_per_second) = self.price("sandbox_second").await?.unwrap_or_else(|| {
+        let (cost_per_second, _) = self.price("sandbox_second").await?.unwrap_or_else(|| {
             let cost = deployments_allowance::MICROS_PER_BUILD_SECOND as f64;
             (cost, Price::price_for(cost, self.margin_percent))
         });
-        let (charge, terms_note) = self.charged(&workspace, sandbox_charge(seconds, price_per_second)).await?;
-        let eligible = credits::Eligible { trial: true, repo: a.repo.clone() };
+        // Its own CPU when the sandbox reports it; otherwise the average.
+        let parts = match a.cpu_seconds.filter(|cpu| cpu.is_finite() && *cpu >= 0.0) {
+            Some(cpu) => match (self.price("sandbox_base_second").await?, self.price("sandbox_cpu_second").await?) {
+                (Some((base, _)), Some((vcpu, _))) => Some((keeper::run_cost(seconds, cpu.min(seconds as f64 * 4.0), base, vcpu), cpu)),
+                _ => None,
+            },
+            None => None,
+        };
+        let cost = parts.map_or(seconds as f64 * cost_per_second, |(cost, _)| cost).ceil() as i64;
+        let (charge, terms_note) = self.charged(&workspace, credits::with_margin(cost, self.margin_percent)).await?;
+        let eligible = credits::eligible_for(a.kind, a.repo.as_deref());
         let drawn = self.draw(&workspace, charge, &credits::month_of(&timestamp), &eligible).await?;
         let charge = charge - drawn.total();
-        let description = format!("{}: {} of sandbox time{terms_note}{}", a.description, duration(seconds), drawn.note());
+        let cpu_note = parts.map_or(String::new(), |(_, cpu)| format!(", {cpu:.0} vCPU-seconds"));
+        let description = format!("{}: {} of sandbox time{cpu_note}{terms_note}{}", a.description, duration(seconds), drawn.note());
         self.db
             .batch(vec![
                 self.db
                     .prepare(
                         "INSERT INTO ledger
                            (id, workspace, kind, amount_micros, description, repo, task,
-                            cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros)
-                         VALUES (?, ?, 'usage', ?, ?, ?, 'sandbox', ?, ?, ?, 'g1t', ?, ?, ?)",
+                            cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros)
+                         VALUES (?, ?, 'usage', ?, ?, ?, 'sandbox', ?, ?, ?, 'g1t', ?, ?, ?, ?)",
                     )
                     .bind(&[
                         new_id("led", now).into(),
@@ -747,12 +777,13 @@ impl Billing {
                         (-(charge as f64)).into(),
                         description.as_str().into(),
                         optional(a.repo.as_deref()),
-                        (seconds as f64 * cost_per_second).ceil().into(),
+                        (cost as f64).into(),
                         a.reference.as_str().into(),
                         timestamp.as_str().into(),
                         (drawn.credit as f64).into(),
                         (drawn.trial as f64).into(),
                         (drawn.oss as f64).into(),
+                        (drawn.given as f64).into(),
                     ])?,
                 self.db
                     .prepare(
@@ -767,10 +798,41 @@ impl Billing {
                     ])?,
             ])
             .await?;
+        if let Some(reservation) = &a.reservation_id {
+            self.settle_reservation(SettleArgs { reservation_id: reservation.clone(), actual_micros: cost }).await?;
+        }
         Ok(Outcome::Ok(true))
     }
 }
 
+/// Whether an amount may be prepaid: $25 at the least by card, and from
+/// $1,000 by bank transfer.
+pub(crate) fn prepay_amount(cents: u32, bank_transfer: bool) -> std::result::Result<(), String> {
+    let (min, max) = if bank_transfer { (MIN_BANK_TRANSFER_CENTS, MAX_BANK_TRANSFER_CENTS) } else { (MIN_TOP_UP_CENTS, MAX_TOP_UP_CENTS) };
+    if (min..=max).contains(&cents) {
+        return Ok(());
+    }
+    Err(if bank_transfer {
+        format!("Prepay between ${} and ${} by bank transfer.", min / 100, group(max / 100))
+    } else {
+        format!("Prepay between ${} and ${} by card; from $1,000, a bank transfer works too.", min / 100, group(max / 100))
+    })
+}
+
+/// `10,000` for 10000.
+fn group(n: u32) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+#[cfg(test)]
 /// What `seconds` of sandbox time are charged at `price_per_second`, in
 /// millionths of a dollar: every second, rounded up to the next millionth.
 fn sandbox_charge(seconds: i64, price_per_second: f64) -> i64 {
@@ -833,17 +895,13 @@ impl Billing {
             free: env.var("FREE_WHILE_BUILDING").is_ok_and(|v| v.to_string() == "true"),
             ceilings: limits::Ceilings::from_env(&env),
             prepaid_only: env.var("PREPAID_ONLY").is_ok_and(|v| v.to_string() == "true"),
-            deployments_monthly_cents: env
-                .var("DEPLOYMENTS_MONTHLY_CENTS")
-                .ok()
-                .and_then(|cents| cents.to_string().parse().ok())
-                .unwrap_or(500),
             trials_on: {
                 let plans = credits::Config::from_env(env);
                 plans.trial_workspace_micros > 0 && plans.trial_monthly_pool_micros > 0
             },
             plans: credits::Config::from_env(env),
             repos: env.service("REPOS").ok(),
+            identity: env.service("IDENTITY").ok(),
         })
     }
 }
@@ -883,10 +941,21 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
             worker::console_error!("checking costs against Cloudflare failed: {error}");
         }
     }
-    // Once a day: what each workspace's private repositories hold.
+    // Once a day: what each workspace's private repositories hold, its git
+    // operations, Deployments plans from before the g1t plan set to end,
+    // and old reservations cleared.
     if event.cron() == keeper::DAILY {
         if let Err(error) = billing.measure_storage().await {
             worker::console_error!("measuring storage failed: {error}");
+        }
+        if let Err(error) = billing.measure_git().await {
+            worker::console_error!("measuring git operations failed: {error}");
+        }
+        if let Err(error) = billing.retire_deployments_plans().await {
+            worker::console_error!("ending Deployments plans failed: {error}");
+        }
+        if let Err(error) = billing.sweep_reservations().await {
+            worker::console_error!("clearing reservations failed: {error}");
         }
     }
 }
@@ -898,6 +967,13 @@ async fn queue(batch: MessageBatch<g1t_contracts::events::Event>, env: Env, _ctx
     let billing = Billing::from_env(&env)?;
     let identity = env.service("IDENTITY").ok();
     for message in batch.messages()? {
+        // A repository transferred: its share of the open-source pool this
+        // month follows it. What it was charged stays with the workspace
+        // it was charged to; usage from now on is charged to the new one.
+        if g1t_kit::transfer::on_event(&env, &billing.db, message.body(), closing::TRANSFERRED).await? {
+            message.ack();
+            continue;
+        }
         billing.on_event(identity.as_ref(), message.body()).await?;
         message.ack();
     }
@@ -926,6 +1002,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "subscribe" => reply(&billing.subscribe(args(body)?).await?),
         "confirm_subscription" => reply(&billing.confirm_subscription(args(body)?).await?),
         "cancel_subscription" => reply(&billing.cancel_subscription(args(body)?).await?),
+        "close_workspace" => reply(&billing.close_workspace(args(body)?).await?),
         "has_feature" => reply(&billing.has_feature(args(body)?).await?),
         "charge_feature" => reply(&billing.charge_feature(args(body)?).await?),
         "record_sandbox" => reply(&billing.record_sandbox(args(body)?).await?),
@@ -962,6 +1039,20 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_credit" => reply(&billing.admin_credit(args(body)?).await?),
         "admin_set_allowances" => reply(&billing.admin_set_allowances(args(body)?).await?),
         "entitlements" => reply(&billing.entitlements(args(body)?).await?),
+        "reserve" => reply(&billing.reserve(args(body)?).await?),
+        "settle" => reply(&billing.settle_reservation(args(body)?).await?),
+        "card_check" => reply(&billing.card_check(args(body)?).await?),
+        "confirm_card_check" => reply(&billing.confirm_card_check(args(body)?).await?),
+        "request_limit" => reply(&billing.request_limit(args(body)?).await?),
+        "limit_requests" => reply(&billing.limit_requests(args(body)?).await?),
+        "confirm_spike" => reply(&billing.confirm_spike(args(body)?).await?),
+        "set_caps" => reply(&billing.set_caps(args(body)?).await?),
+        "admin_limit_requests" => reply(&billing.admin_limit_requests(args(body)?).await?),
+        "admin_decide_limit_request" => reply(&billing.admin_decide_limit_request(args(body)?).await?),
+        "admin_overages" => reply(&billing.admin_overages(args(body)?).await?),
+        "admin_goodwill" => reply(&billing.admin_goodwill(args(body)?).await?),
+        "admin_velocity" => reply(&billing.admin_velocity(args(body)?).await?),
+        "admin_record_payment" => reply(&billing.admin_record_payment(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }
@@ -992,6 +1083,17 @@ mod tests {
         assert_eq!(sandbox_charge(1, price), 26);
         assert_eq!(sandbox_charge(60, price), 1_512);
         assert_eq!(sandbox_charge(0, price), 0);
+    }
+
+    #[test]
+    fn prepaying_starts_at_twenty_five_dollars_and_bank_transfers_at_a_thousand() {
+        assert!(prepay_amount(2_500, false).is_ok());
+        assert!(prepay_amount(2_499, false).is_err());
+        assert!(prepay_amount(10_000, false).is_ok());
+        assert!(prepay_amount(1_000_000, false).is_ok());
+        assert_eq!(prepay_amount(1_000_001, false).unwrap_err(), "Prepay between $25 and $10,000 by card; from $1,000, a bank transfer works too.");
+        assert!(prepay_amount(99_999, true).is_err());
+        assert!(prepay_amount(100_000, true).is_ok());
     }
 
     #[test]

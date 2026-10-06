@@ -9,8 +9,9 @@ own, and reports back as it goes. There is nothing to configure: you do not
 say how many agents or which model. Scale comes from assigning many issues,
 each to its own agent, all working at once.
 
-g1t agents are paid for by the workspace they work for; see
-[usage and billing](/guides/usage-and-billing/). Everyone can also
+g1t agents are paid for by the workspace they work for, so they need a
+paid workspace or the free trial; see [who can run agents](#who-can-run-agents)
+and [usage and billing](/guides/usage-and-billing/). Everyone can also
 [bring their own agent](/guides/bring-your-own-agent/), which costs
 nothing on g1t.
 
@@ -160,8 +161,8 @@ it moving again.
 
 ### What a repository can ask for
 
-Under a project's **Settings → Repository**, a member of its workspace sets the
-rules its pull requests follow:
+Under a project's **Settings → Repository**, someone with the Maintain
+[role](/guides/access-and-roles/) or higher sets the rules its pull requests follow:
 
 | Setting | Default | What it does |
 | --- | --- | --- |
@@ -191,12 +192,12 @@ same time can also ask each other questions and hand each other work. See
 ### Merging automatically
 
 A repository can land a g1t agent's pull request by itself once it is
-ready. A member of the workspace turns this on under the repository's
+ready. Someone with the Maintain role or higher turns this on under the repository's
 **Settings → Repository**; it is off to begin with. The merge is recorded as made by
 `g1t`, the issue closes naming the pull request, and nothing short of
 ready is ever merged this way. One that is behind `main` is brought up to
 date as part of the merge. Pull requests from people and from other
-agents always wait for a member.
+agents always wait for a person to merge them.
 
 Every step is recorded: revisions and catch-ups in the pull request's
 **Session**, reviews in its conversation.
@@ -257,17 +258,23 @@ block), in quoted lines (`> @g1t-agent …`), in email addresses
 Matching ignores case. Agents mentioning `@g1t-agent` start nothing, so
 agents cannot set each other to work this way.
 
-**Who can.** Members of the project's workspace. Anyone else who mentions
-it gets a short reply saying only members can, and nothing starts. When
-the workspace cannot run agents (for example, its trial credit is used
-up and it has no model provider of its own), g1t-agent replies with why.
+**Who can.** People with the Write [role](/guides/access-and-roles/) or higher on the
+repository, members or not. Anyone else who mentions it gets a short reply
+saying that putting g1t-agent to work needs the Write role on the
+repository, and nothing starts. When
+the workspace's plan does not let the agent start (a free workspace with no
+trial left, a paused workspace, an issue at its spending cap), g1t-agent
+replies with why and where to fix it. When every agent slot is busy, it
+replies that the run is waiting for a free slot, and starts it when one
+finishes.
 
 Each comment starts one run at most; to ask again, write a new comment.
 
 ## The label rule
 
-Under a project's **Settings → Agents**, a member sets a label, such as
-`agent`. From then on, when a member gives an open issue that label, either
+Under a project's **Settings → Agents**, someone with the Maintain role or
+higher sets a label, such as `agent`. From then on, when someone with the
+Write role or higher gives an open issue that label, either
 when opening it or later, g1t-agent takes it: the issue is queued for an
 agent, the conversation says so, and the agent starts as soon as the
 project has room and nothing the issue depends on is still open, exactly as
@@ -330,15 +337,86 @@ Git, common shell tools, and toolchains for Node.js, Python, Go and Rust, so
 an agent can build and test most projects. If your project needs something
 else, the agent will say in its summary what it could not run.
 
-## Limits in the preview
+## Who can run agents
 
-- g1t's agents, and the sandboxes that run acceptance checks and the merge
-  queue, work in any workspace that has
-  [its own model provider](/guides/models/), and in any workspace with
-  trial credit left on g1t's own models. See
-  [trials](/guides/usage-and-billing/#trials).
+Putting an agent to work (assigning it, mentioning it, asking it for a
+review, planning, sending it back to revise) needs the Write
+[role](/guides/access-and-roles/) or higher on the repository. That
+includes an [outside collaborator](/guides/access-and-roles/#outside-collaborators)
+with Write: their runs are charged to the repository's workspace, as a
+member's are, and count against its plan, caps and agent slots. They see
+what their agents do, but not which model ran or what a run cost; those
+are for members of the workspace. A run for an outside collaborator is
+told the project's memory, never the workspace's.
+
+Agents cost g1t real money, so they run for paid workspaces. A free
+workspace has the whole forge, and two ways to try agents:
+
+- **The trial.** $5 of usage, once per workspace, after a card check.
+- **The open-source pool.** Checks, workflows and the merge queue on public
+  repositories, after the same card check. It does not pay for agents.
+
+This holds whether the agent uses g1t's hosted models or
+[the workspace's own model provider](/guides/models/): the sandbox an agent
+works in is g1t's either way. Before anyone assigns, asks for a review or
+plans, a free workspace's pages say "Agents need a paid workspace or the
+free trial", with a link to its **Billing** page.
+
+Every agent run, of every kind (making a change, revising, reviewing,
+catching up, planning, answering a mention), asks billing before it
+starts. Billing reserves what the run is expected to cost: its model's
+recent average (about $0.10 to make a change or plan, $0.07 to review)
+plus its sandbox for its whole time cap. When the run ends, what it really
+cost is settled against that. If billing refuses, nothing starts, and you
+see why where you started it:
+
+| Where you started it | Where the refusal shows |
+| --- | --- |
+| **Assign to g1t agent**, **Request review**, **Plan it**, catching up | Under the button |
+| A mention or the label rule | A comment from g1t-agent on the issue or pull request |
+| A step g1t takes by itself (a review, a revision, a catch-up) | The pull request's status, which then waits for you |
+
+Each refusal says what to do: start the plan or the trial, raise the spend
+limit, or wait for next month's open-source pool, with the page to do it
+on.
+
+### Caps on a plan
+
+A workspace's plan sets caps on its agents. A new paid workspace in its
+first month, and a workspace on the trial, has tighter ones. The amounts
+are on [usage and billing](/guides/usage-and-billing/#caps).
+
+| Cap | What happens at it |
+| --- | --- |
+| Agents at once | A run over the cap waits for a free slot instead of being refused. An assigned issue goes back in the queue; a review, catch-up, plan or answer someone asked for waits its turn; a step g1t takes by itself is tried again at its next sweep, within five minutes. Each says "Waiting for a free slot". |
+| Time per run | The lower of the project's [guardrails](/guides/guardrails/) time cap for that kind of run and the plan's. |
+| Cost per run | The lower of the guardrails' cost cap and the plan's. The agent is stopped when it reaches it, as with any cost cap. |
+| Cost per issue | What every agent run on an issue and its pull requests has cost in all. Past it, g1t-agent does not start on that issue again and says so on it; an owner can raise the cap on the **Billing** page. |
+
+When the workspace's compute is paused (a spend spike waiting for an owner,
+or a hold by g1t), nothing new starts, and the refusal gives the reason.
+
+### When billing cannot be reached
+
+g1t's own billing service could be briefly unreachable. Then:
+
+- A paid workspace's runs go ahead, and the miss is logged. A billing blip
+  never stops a paying customer's work.
+- A free workspace's runs do not start: they would be paid for by nobody.
+  Try again in a minute.
+
+g1t decides which a workspace is from its plan, or from the last plan it
+saw for it in the past day.
+
+### Other limits
+
 - A run has two hours. After that its credentials expire and it can no
   longer push or report.
+- Agents do not run on an [archived](/guides/managing-repositories/#archive-a-repository)
+  or deleted repository: nothing new starts, whether from an assignment,
+  a mention or the label rule, and a run under way cannot push or merge.
+  What was refused does not start by itself when the repository is
+  unarchived or restored; assign the work again.
 
 ## Credentials
 
@@ -357,10 +435,11 @@ What it may do is the intersection of two things:
 - **The run's scope.** The credential is bound to the run, its repository,
   and what that kind of run needs. It expires no later than the run's
   timeout.
-- **What you may do now.** It works only in the repository's workspace, and
-  only while you are still a member of it. If you leave the workspace, every
-  agent working on your behalf there stops being able to do anything. Your
-  role does not carry over: an owner's agent is only ever a member.
+- **What you may do now.** It works only in the repository's workspace,
+  with your [role](/guides/access-and-roles/) on the repository as it is now, and never
+  more than Write: an owner's agent has Write, not Admin. If you leave the
+  workspace or lose your role, every agent working on your behalf there
+  loses it too. It can never change who has access.
 
 A sandbox holds two credentials. One is for g1t's runner, which clones,
 pushes the result and records the session; downstream it acts as you, so
@@ -382,7 +461,10 @@ git at all.
 Nothing an agent's credential holds can reach another repository, or a
 workspace's settings, members, access tokens, billing, integrations,
 webhooks, secrets and variables, or workflows' controls. It cannot merge a
-pull request or put more agents to work. A call that would is refused, and
+pull request or put more agents to work. It cannot change its repository's
+details or default branch, rename it or its branches, make it public or
+private, archive, transfer, delete, restore or purge it; see
+[managing a repository](/guides/managing-repositories/). A call that would is refused, and
 the refusal is recorded with the rule that refused it:
 
 | Rule | Refused because |
@@ -391,7 +473,7 @@ the refusal is recorded with the rule that refused it:
 | `scope:operation` | The run's kind does not include this operation. |
 | `scope:repository` | It names a repository other than the run's. |
 | `scope:pull` | The runner tried to change a pull request other than its own. |
-| `on-behalf-of:membership` | The person the agent works for is no longer a member of the workspace. |
+| `on-behalf-of:membership` | The person the agent works for is no longer a member of the workspace, and has no role on its repositories. |
 | `git:read`, `git:push`, `git:ref` | The run has no grant to clone that repository, push to it, or move that branch or tag. |
 | `git:not-a-run` | An agent's tools credential was used with git. |
 

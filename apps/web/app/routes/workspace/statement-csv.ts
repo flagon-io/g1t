@@ -25,9 +25,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       "model",
       "by",
       "amount (USD)",
-      "paid by Team credit (USD)",
+      "paid by included usage (USD)",
       "paid by trial credit (USD)",
       "paid by open-source pool (USD)",
+      "covered by g1t (USD)",
     ],
   ];
   for (const kind of kinds) {
@@ -68,6 +69,7 @@ function row(kind: string, entry: LedgerEntry): string[] {
     ((entry.creditMicros ?? 0) / MICROS_PER_DOLLAR).toFixed(6),
     ((entry.trialMicros ?? 0) / MICROS_PER_DOLLAR).toFixed(6),
     ((entry.ossMicros ?? 0) / MICROS_PER_DOLLAR).toFixed(6),
+    ((entry.givenMicros ?? 0) / MICROS_PER_DOLLAR).toFixed(6),
   ];
 }
 

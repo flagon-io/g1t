@@ -13,8 +13,9 @@ allow, and the outcome page shows each one until it lands.
 Planning and g1t agents work in any workspace with
 [its own model provider](/guides/models/), and in those g1t's hosted models
 are open to. The agents' runs are charged to the workspace; see
-[usage and billing](/guides/usage-and-billing/). Only members of the
-repository's workspace can plan work for it or see its plans.
+[usage and billing](/guides/usage-and-billing/). Planning work for a
+repository needs the Write [role](/guides/access-and-roles/) or higher on it; anyone who can
+read it can see its plans.
 
 ## Write a brief
 
@@ -128,7 +129,8 @@ agents opened for work they found outside their own task.
 
 ## From the API or an agent
 
-The same flow is three operations. They are members only.
+The same flow is three operations. `plan_work` and `apply_plan` need the
+Write role or higher; `get_plan` needs Read.
 
 | Tool | Route | |
 | --- | --- | --- |

@@ -3,7 +3,9 @@ title: Quickstart
 description: From nothing to an agent landing a change on your repository, in five minutes.
 ---
 
-import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import Aside from '../../components/Aside.astro';
+import AgentSetup from '../../components/AgentSetup.astro';
 
 g1t hosts your repositories the way any forge does, tracks work as
 **issues**, and puts agents on them: each opens a **pull request**, which is
@@ -19,7 +21,9 @@ and approve it. It never sees your password.
 
 1. **Create an account and a workspace**
 
-   [Sign up](https://g1t.sh/register) and confirm your email. Then create a
+   [Sign up](https://g1t.sh/register) with your invite (g1t is invite-only
+   for now; see [invites](/guides/authentication/#invites)) and confirm your
+   email. Then create a
    **workspace**: it owns repositories and is the first part of their
    address, `g1t.sh/<workspace>/<repo>`. See [workspaces](/guides/workspaces/).
 
@@ -57,18 +61,20 @@ and approve it. It never sees your password.
    Add **acceptance checks**, commands that must pass, to hold the work to
    them.
 
-5. **Use your trial credit, or connect a model**
+5. **Start the plan, or check a card for the trial**
 
-   g1t's agents, and the runners your workflows use, need a model to work
-   with. Every new workspace gets **$1 of trial credit** for g1t's own
-   models and sandboxes, no key needed: enough for a good handful of
-   issues. Mission control shows what is left. See
-   [trials](/guides/usage-and-billing/#trials).
+   g1t's agents, and the sandboxes your checks and workflows run in, are
+   compute, and compute needs the
+   [g1t plan](/guides/usage-and-billing/#the-g1t-plan) ($20 a month per
+   workspace, with $10 of usage included) or a card check. A card check is
+   never charged, and gives the workspace a one-time **$5 trial**. An owner
+   does either on **Settings → Billing**. See
+   [no card, no compute](/guides/usage-and-billing/#no-card-no-compute).
 
-   For more, or to choose models, connect your Anthropic or OpenAI key, or
-   any compatible endpoint, in your workspace's **Settings →
-   Integrations**. Your provider bills you for the model; g1t itself costs
-   nothing while it is being built out. See [model providers](/guides/models/).
+   To choose models, connect your own model provider's key, or any
+   compatible endpoint, in your workspace's **Settings → Integrations**.
+   Your provider bills you for the model; g1t charges the sandbox time.
+   See [model providers](/guides/models/).
 
 6. **Put an agent on it**
 
@@ -79,13 +85,11 @@ and approve it. It never sees your password.
    workflows, a review by a second agent, revisions until both pass.
    </TabItem>
    <TabItem label="Your own agent">
-   Connect Claude Code (or any MCP client) to g1t:
+   Connect your coding agent (or any MCP client) to g1t:
 
-   ```sh
-   claude mcp add --transport http g1t https://mcp.g1t.sh
-   ```
+   <AgentSetup />
 
-   Run `/mcp`, choose **g1t** and approve in your browser. Then ask:
+   Approve in your browser when it asks. Then ask:
 
    > Work on issue 1 of `<workspace>/my-project` on g1t. Open a pull request
    > for it and record your session as you go.

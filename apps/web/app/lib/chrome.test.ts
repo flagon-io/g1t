@@ -30,6 +30,14 @@ test("a visitor gets the marketing frame on the front, pricing and sign-in pages
   }
 });
 
+test("a visitor reads the policies, security, support and status in the marketing frame", () => {
+  for (const path of ["/policies", "/policies/terms", "/policies/privacy/", "/security", "/support", "/status"]) {
+    assert.equal(usesAppShell(path, false), false, path);
+  }
+  // A workspace's own security page is still the app's.
+  assert.equal(usesAppShell("/acme/-/security", false), true);
+});
+
 test("a visitor's sidebar offers Explore and Search", () => {
   assert.deepEqual(VISITOR_LINKS.map((link) => link.to), ["/explore", "/search"]);
 });
@@ -37,8 +45,13 @@ test("a visitor's sidebar offers Explore and Search", () => {
 test("a project's menu hides member-only pages from everyone else", () => {
   const visitor = projectPages(false);
   assert.deepEqual(visitor.slice(0, 5), ["code", "issues", "pulls", "agents", "actions"]);
-  for (const page of ["deployments", "security", "settings"] as const) {
+  for (const page of ["security", "settings"] as const) {
     assert.ok(!visitor.includes(page), page);
     assert.ok(projectPages(true).includes(page), page);
   }
+  // Security needs push once the role is known: Read and Triage do not see it.
+  assert.ok(!projectPages(true, { push: false }).includes("security"));
+  assert.ok(projectPages(true, { push: true }).includes("security"));
+  // Anyone who can read a repository sees its deployments.
+  assert.ok(visitor.includes("deployments") && projectPages(true).includes("deployments"));
 });

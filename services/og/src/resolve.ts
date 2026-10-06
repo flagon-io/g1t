@@ -114,6 +114,69 @@ const PAGES: Record<string, Card> = {
     title: "Search all of g1t",
     description: "Repositories, code, issues, pull requests and people, in one search.",
   },
+  policies: {
+    kind: "page",
+    address: "g1t.sh/policies",
+    eyebrow: "Policies",
+    title: "The rules we both play by",
+    description: "Terms of Service, Privacy Policy, Acceptable Use, refunds and subprocessors, in plain language.",
+  },
+  "policies/terms": {
+    kind: "page",
+    address: "g1t.sh/policies/terms",
+    eyebrow: "Policies",
+    title: "Terms of Service",
+    description: "The agreement between you and Flagon, Inc. when you use g1t.",
+  },
+  "policies/privacy": {
+    kind: "page",
+    address: "g1t.sh/policies/privacy",
+    eyebrow: "Policies",
+    title: "Privacy Policy",
+    description: "What g1t collects, why, where it goes, and how to see, export or delete it.",
+  },
+  "policies/acceptable-use": {
+    kind: "page",
+    address: "g1t.sh/policies/acceptable-use",
+    eyebrow: "Policies",
+    title: "Acceptable Use Policy",
+    description: "What g1t may not be used for, and what happens when it is.",
+  },
+  "policies/refunds": {
+    kind: "page",
+    address: "g1t.sh/policies/refunds",
+    eyebrow: "Policies",
+    title: "Refunds and Cancellation",
+    description: "Ending the plan, accidental overages, goodwill credits and refunds.",
+  },
+  "policies/subprocessors": {
+    kind: "page",
+    address: "g1t.sh/policies/subprocessors",
+    eyebrow: "Policies",
+    title: "Subprocessors",
+    description: "The companies that process data for g1t, and what each receives.",
+  },
+  security: {
+    kind: "page",
+    address: "g1t.sh/security",
+    eyebrow: "Security",
+    title: "How g1t keeps your code and accounts safe",
+    description: "Per-run credentials, the audit log, guardrails, isolated sandboxes, and how to report a vulnerability.",
+  },
+  support: {
+    kind: "page",
+    address: "g1t.sh/support",
+    eyebrow: "Support",
+    title: "Get help with g1t",
+    description: "The documentation, the status page, and who to write to.",
+  },
+  status: {
+    kind: "page",
+    address: "g1t.sh/status",
+    eyebrow: "Status",
+    title: "g1t status",
+    description: "Whether each part of g1t is working right now.",
+  },
   register: {
     kind: "page",
     address: "g1t.sh/register",
@@ -138,6 +201,10 @@ const RESERVED = new Set([
   "pricing",
   "search",
   "workspaces",
+  "policies",
+  "security",
+  "support",
+  "status",
   "brand",
   "avatars",
   "llms.txt",
@@ -196,7 +263,12 @@ async function lookUp(parts: string[], sources: Sources): Promise<Card | null> {
       avatar: profile.avatar,
     };
   }
-  if (RESERVED.has(owner.toLowerCase())) return parts.length === 1 ? (PAGES[owner.toLowerCase()] ?? null) : null;
+  if (RESERVED.has(owner.toLowerCase())) {
+    if (parts.length === 1) return PAGES[owner.toLowerCase()] ?? null;
+    // Each policy has a card of its own.
+    if (parts.length === 2) return PAGES[`${owner.toLowerCase()}/${parts[1].toLowerCase()}`] ?? null;
+    return null;
+  }
   if (!NAME.test(owner)) return null;
 
   // A workspace, or one of its own pages under `-`.

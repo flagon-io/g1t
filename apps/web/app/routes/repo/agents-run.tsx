@@ -11,6 +11,7 @@ import { WhatItDid } from "../../components/audit";
 import { runAudit } from "../../lib/audit.server";
 import { agents } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
+import { accessTo } from "../../lib/access.server";
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   const kind = loaderData ? RUN_KIND_LABEL[loaderData.run.kind] : "Run";
@@ -22,7 +23,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const run = await agents.getRun(viewer, { namespace: params.owner, name: params.repo }, params.id);
   // What it did with its credentials, from the audit log: members only.
   const did = await runAudit(viewer, params.owner, [params.id]);
-  return { run: unwrap(run), member: roleIn(viewer, params.owner) != null, did };
+  // Stopping and messaging need Write; the audit log is the workspace's.
+  return { run: unwrap(run), runner: (await accessTo(context, params)).can.run, member: roleIn(viewer, params.owner) != null, did };
 }
 
 function clock(at: string): string {
@@ -30,7 +32,7 @@ function clock(at: string): string {
 }
 
 export default function AgentRunPage({ loaderData, params }: Route.ComponentProps) {
-  const { run, member, did } = loaderData;
+  const { run, runner, member, did } = loaderData;
   const active = isActiveRun(run.status);
   useLiveRefresh(active);
   const base = `/${params.owner}/${params.repo}`;
@@ -43,9 +45,9 @@ export default function AgentRunPage({ loaderData, params }: Route.ComponentProp
         At work
       </Link>
       <ul className="mt-4">
-        <RunCard run={run} member={member} />
+        <RunCard run={run} member={runner} />
       </ul>
-      <RunCaps run={run} member={member} />
+      <RunCaps run={run} member={runner} />
       <section className="mt-8">
         <div className="flex items-baseline justify-between">
           <h3 className="text-sm font-medium">Steps</h3>
