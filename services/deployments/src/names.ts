@@ -4,7 +4,9 @@
  * `<project>-git-<branch>-<workspace>.g1t.page`. The first label is also
  * the app's script name in the dispatch namespace, so the dispatcher needs
  * nothing but the hostname to find it. The service makes sure no two apps
- * get the same name; this only spells them.
+ * get the same name; this only spells them. A workspace ending in a domain
+ * ending is written without that hyphen (`hostWorkspace`); an app under the
+ * older spelling is moved to the new one, and its old name redirects.
  */
 
 import { DEPLOYMENTS_DOMAIN } from "@g1t/contracts";
@@ -21,6 +23,27 @@ export function clean(text: string): string {
     .replace(/^-|-$/g, "");
 }
 
+/**
+ * Domain endings a workspace's name often finishes with, as a company's
+ * domain does (`acme-com`, `flagon-io`). In a hostname they lose their
+ * hyphen: `app-acme-com.g1t.page` reads to browsers as a look-alike of
+ * acme.com, and Chrome warns the people most likely to open it, those who
+ * visit acme.com, that the page "looks fake".
+ */
+const DOMAIN_ENDINGS = new Set([
+  "com", "net", "org", "io", "co", "dev", "app", "ai", "sh", "xyz", "tech", "cloud", "so", "gg", "me",
+  "us", "uk", "de", "ca", "eu", "fr", "nl", "au", "in", "jp", "site", "page", "tools", "studio", "inc",
+]);
+
+/** The workspace as a hostname writes it: `flagon-io` as `flagonio`, `acme-co-uk` as `acmecouk`. */
+export function hostWorkspace(workspace: string): string {
+  const parts = clean(workspace).split("-");
+  let at = parts.length;
+  while (at > 1 && DOMAIN_ENDINGS.has(parts[at - 1])) at--;
+  if (at === parts.length) return parts.join("-");
+  return `${parts.slice(0, at - 1).concat(parts.slice(at - 1).join("")).join("-")}`;
+}
+
 /** A short, stable fingerprint of `text`. */
 export async function fingerprint(text: string, bytes = 3): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -33,7 +56,7 @@ export async function fingerprint(text: string, bytes = 3): Promise<string> {
  * fingerprint of the whole keeps it unique.
  */
 export async function label(workspace: string, project: string, branch: string | null): Promise<string> {
-  const w = clean(workspace);
+  const w = hostWorkspace(workspace);
   const p = clean(project);
   const b = branch == null ? null : clean(branch);
   const full = b == null ? `${p}-${w}` : `${p}-git-${b}-${w}`;

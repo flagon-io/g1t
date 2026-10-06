@@ -21,6 +21,13 @@ to it. A pull request from a fork, as g1t's agents make them, is named
 `pr-<number>` in place of the branch. A name too long for an address, or
 one another app already has, is shortened or given a short suffix.
 
+A workspace whose name ends like a domain is written without that last
+hyphen: `flagon-io` gives `https://web-flagonio.g1t.page`, not
+`web-flagon-io.g1t.page`. Browsers read `flagon-io` in an address as a
+copy of `flagon.io`, and warn people who visit flagon.io that the page
+looks fake. Apps made before this moved to the new address on their own;
+the old one redirects to it.
+
 When a workspace is [renamed](/guides/workspaces/#rename-a-workspace), or a
 repository is [transferred](/guides/transferring-repositories/#deployments)
 to another workspace or [renamed](/guides/managing-repositories/), its apps

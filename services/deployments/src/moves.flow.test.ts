@@ -229,8 +229,8 @@ test("a transfer rebuilds every app under the new workspace, paused ones too", a
   assert.deepEqual(rows("SELECT workspace FROM settings"), [{ workspace: "flagon-io" }]);
   const queued = rows("SELECT script, kind, commit_sha FROM deployments WHERE status = 'queued' ORDER BY script");
   assert.deepEqual(queued, [
-    { script: "lab-api-flagon-io", kind: "production", commit_sha: "8e500b1" },
-    { script: "lab-api-git-v2-flagon-io", kind: "preview", commit_sha: "pr1head" },
+    { script: "lab-api-flagonio", kind: "production", commit_sha: "8e500b1" },
+    { script: "lab-api-git-v2-flagonio", kind: "preview", commit_sha: "pr1head" },
   ]);
   assert.equal(w.state.builds.length, 2);
   assert.ok(w.state.builds.every((b) => b.workspace === "flagon-io"));
@@ -253,7 +253,7 @@ test("a rebuild that could not be queued is not acked, and the next delivery que
   assert.equal(await deliver(transferred, 2), true);
   assert.deepEqual(
     rows("SELECT script FROM deployments WHERE status = 'queued' ORDER BY script").map((r) => r.script),
-    ["lab-api-flagon-io", "lab-api-git-v2-flagon-io"],
+    ["lab-api-flagonio", "lab-api-git-v2-flagonio"],
   );
 });
 
@@ -269,7 +269,7 @@ test("the sweep picks up a move whose deliveries ran out, keyed on the new works
   assert.equal(rows("SELECT id FROM deployments WHERE status = 'queued'").length, 2);
   // syntaqx is over its limit, flagon-io is not: nothing of the project's is
   // paused for syntaqx's sake, and nothing new was paused at all.
-  assert.ok(!w.state.cloudflare.some((call) => call.startsWith("PUT") && /scripts\/lab-api-flagon-io/.test(call)));
+  assert.ok(!w.state.cloudflare.some((call) => call.startsWith("PUT") && /scripts\/lab-api-flagonio/.test(call)));
 });
 
 test("a move waits, without refused deployments, while the new workspace is over its limit", async () => {
@@ -283,7 +283,7 @@ test("a move waits, without refused deployments, while the new workspace is over
 
 test("once the new app is live, the old address redirects to it, paused or not", async () => {
   await deliver(transferred);
-  const build = w.state.builds.find((b) => rows("SELECT script FROM deployments WHERE id = ?", b.deployId)[0].script === "lab-api-flagon-io")!;
+  const build = w.state.builds.find((b) => rows("SELECT script FROM deployments WHERE id = ?", b.deployId)[0].script === "lab-api-flagonio")!;
   const finish = await worker.fetch(
     new Request(`https://deployments/jobs/${build.deployId}/finish`, {
       method: "POST",
@@ -295,13 +295,13 @@ test("once the new app is live, the old address redirects to it, paused or not",
   assert.deepEqual(await finish.json(), { ok: true, value: true });
   assert.deepEqual(
     rows("SELECT script, workspace FROM apps WHERE kind = 'production'"),
-    [{ script: "lab-api-flagon-io", workspace: "flagon-io" }],
+    [{ script: "lab-api-flagonio", workspace: "flagon-io" }],
   );
   const [redirect] = rows("SELECT script, target, workspace FROM redirects");
-  assert.deepEqual({ ...redirect }, { script: "lab-api-syntaqx", target: "lab-api-flagon-io.g1t.page", workspace: "flagon-io" });
+  assert.deepEqual({ ...redirect }, { script: "lab-api-syntaqx", target: "lab-api-flagonio.g1t.page", workspace: "flagon-io" });
   // The dispatcher's entry, followed before the old (paused) script runs.
   const entry = w.state.kv.get("lab-api-syntaqx.g1t.page")!;
-  assert.deepEqual(JSON.parse(entry.value), { script: "lab-api-syntaqx", redirect: "lab-api-flagon-io.g1t.page" });
+  assert.deepEqual(JSON.parse(entry.value), { script: "lab-api-syntaqx", redirect: "lab-api-flagonio.g1t.page" });
   assert.ok(entry.expiration! > Date.now() / 1000 + 89 * 24 * 3600);
   // And the old script itself is the redirect too.
   assert.ok(w.state.cloudflare.some((call) => call === "PUT /client/v4/accounts/acct/workers/dispatch/namespaces/g1t-deployments/scripts/lab-api-syntaqx"));
