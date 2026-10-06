@@ -33,6 +33,21 @@ struct SubscriptionRow {
     period_end: Option<String>,
     started_by: String,
     started_at: String,
+    updated_at: String,
+}
+
+/// How long a plan's row is believed after it was last written, once its
+/// period is over, before the processor is asked again.
+const REFRESH_MS: u64 = 60 * 60 * 1000;
+
+/// Whether to ask the processor about a plan again: its period is over (or
+/// unknown) and it is not canceled, and it was not written in the last hour.
+/// Without the hour a plan the processor still shows as ended would be
+/// asked about on every page.
+fn needs_refresh(status: &str, period_end: Option<&str>, updated_at: &str, now_ms: u64) -> bool {
+    let now = rfc3339(now_ms);
+    let over = period_end.is_none_or(|end| end <= now.as_str()) && status != "canceled";
+    over && updated_at <= rfc3339(now_ms.saturating_sub(REFRESH_MS)).as_str()
 }
 
 #[derive(Deserialize)]
@@ -177,7 +192,7 @@ impl Billing {
     async fn subscription_row(&self, workspace: &str, feature: Feature) -> Result<Option<SubscriptionRow>> {
         self.db
             .prepare(
-                "SELECT feature, subscription_id, status, period_end, started_by, started_at
+                "SELECT feature, subscription_id, status, period_end, started_by, started_at, updated_at
                  FROM subscriptions WHERE workspace = ? AND feature = ?",
             )
             .bind(&[workspace.into(), feature.as_str().into()])?
@@ -220,13 +235,12 @@ impl Billing {
     }
 
     /// A workspace's plan for a feature, asking the processor again once
-    /// the period it last knew of is over.
+    /// the period it last knew of is over, at most once an hour.
     async fn current(&self, workspace: &str, feature: Feature) -> Result<Option<SubscriptionRow>> {
         let Some(row) = self.subscription_row(workspace, feature).await? else {
             return Ok(None);
         };
-        let stale = row.period_end.as_deref().is_none_or(|end| end <= rfc3339(now_ms()).as_str())
-            && row.status != "canceled";
+        let stale = needs_refresh(&row.status, row.period_end.as_deref(), &row.updated_at, now_ms());
         if let (true, Some(stripe)) = (stale, &self.stripe) {
             match stripe.subscription(&row.subscription_id).await {
                 Ok(subscription) => self.record(workspace, feature, &subscription, &row.started_by).await?,
@@ -613,6 +627,24 @@ pub(crate) fn thousands(n: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_ended_plan_is_asked_about_at_most_once_an_hour() {
+        let now = 1_791_000_000_000;
+        let at = |ago_ms: u64| rfc3339(now - ago_ms);
+        let ended = at(24 * 60 * 60 * 1000);
+        // Ended, and last written a day ago: ask.
+        assert!(needs_refresh("active", Some(&ended), &ended, now));
+        // Ended, but written ten minutes ago: believe the row.
+        assert!(!needs_refresh("active", Some(&ended), &at(10 * 60 * 1000), now));
+        // An hour on, ask again.
+        assert!(needs_refresh("active", Some(&ended), &at(REFRESH_MS), now));
+        // No period known is the same as ended.
+        assert!(needs_refresh("past_due", None, &ended, now));
+        // A period still running, or a canceled plan, is never asked about.
+        assert!(!needs_refresh("active", Some(&rfc3339(now + 1000)), &ended, now));
+        assert!(!needs_refresh("canceled", Some(&ended), &ended, now));
+    }
 
     #[test]
     fn the_plan_text_quotes_a_build_minute_as_the_table_does() {

@@ -27,8 +27,9 @@
 //! stop. Runs already under way finish. g1t's own workspaces are watched
 //! but never paused.
 
+use futures_util::future::{try_join, try_join4, try_join5};
 use g1t_contracts::billing::{
-    ComputeKind, ConfirmSpikeArgs, SetCapsArgs, Entitlements, EntitlementsArgs, LimitState, PaidBy, PlanKind, Reservation,
+    BillingAccount, ComputeKind, ConfirmSpikeArgs, SetCapsArgs, Entitlements, EntitlementsArgs, LimitState, PaidBy, PlanKind, Reservation,
     ReserveArgs, SettleArgs, Spike, UNLIMITED_MICROS, UsageAlert, RESERVATION_HOURS,
 };
 use g1t_contracts::time::rfc3339;
@@ -278,67 +279,80 @@ impl Billing {
     /// The alerts a workspace has reached this month: its plan's included
     /// usage, its spend limit and g1t's ceiling, from 50%.
     pub(crate) async fn alerts_for(&self, workspace: &str) -> Result<Vec<UsageAlert>> {
-        let limit = self.limit_of(workspace).await?;
-        self.alerts_from(workspace, &limit).await
-    }
-
-    /// The same, from a limit already worked out.
-    async fn alerts_from(&self, workspace: &str, limit: &g1t_contracts::billing::Limit) -> Result<Vec<UsageAlert>> {
+        let account = self.account_of(workspace).await?;
+        let plan = self.plan_kind_for(workspace, &account).await?;
+        let has_plan = plan != PlanKind::Free;
         let month = credits::month_of(&rfc3339(now_ms()));
-        let mut alerts = vec![];
-        if self.has_plan(workspace).await? && limit.trust != g1t_contracts::billing::Trust::Internal {
-            let used = self.allowance_used("plan_credit", workspace, &month).await?;
-            let included = self.plans.plan_included_micros;
-            let level = alert_level(used, included);
-            if level > 0 {
-                alerts.push(UsageAlert {
-                    meter: "included".into(),
-                    level,
-                    used_micros: used,
-                    limit_micros: included,
-                    message: if level >= 100 {
-                        format!("{workspace} has used all {} of this month's included usage. Usage from here is charged at cost plus 20%, up to your spend limit.", dollars(included))
-                    } else {
-                        format!("{workspace} has used {} of this month's {} included usage ({level}%). Past it, usage is charged at cost plus 20%, up to your spend limit.", dollars(used), dollars(included))
-                    },
-                });
-            }
-        }
-        if let Some(spend_limit) = limit.spend_limit_micros {
-            let level = alert_level(limit.spent_micros, spend_limit);
-            if level > 0 {
-                alerts.push(UsageAlert {
-                    meter: "spend_limit".into(),
-                    level,
-                    used_micros: limit.spent_micros,
-                    limit_micros: spend_limit,
-                    message: format!(
-                        "{workspace} has spent {} of its {} monthly spend limit ({level}%). At the limit, new sandboxes, builds and agents stop until the month turns or an owner raises it.",
-                        dollars(limit.spent_micros),
-                        dollars(spend_limit)
-                    ),
-                });
-            }
-        }
-        if let Some(ceiling) = limit.ceiling_micros.filter(|_| limit.trust != g1t_contracts::billing::Trust::New) {
-            let level = alert_level(limit.exposure_micros, ceiling);
-            if level > 0 {
-                alerts.push(UsageAlert {
-                    meter: "ceiling".into(),
-                    level,
-                    used_micros: limit.exposure_micros,
-                    limit_micros: ceiling,
-                    message: format!(
-                        "{workspace} has {} of usage not yet paid for, of the {} g1t allows ({level}%). With a card on file g1t charges it as the limit nears; prepaying raises it at once.",
-                        dollars(limit.exposure_micros),
-                        dollars(ceiling)
-                    ),
-                });
-            }
-        }
-        Ok(alerts)
+        let (limit, used) = try_join(self.limit_with(workspace, &account, plan), async {
+            if has_plan { self.allowance_used("plan_credit", workspace, &month).await } else { Ok(0) }
+        })
+        .await?;
+        Ok(alerts_from(workspace, &limit, has_plan, used, self.plans.plan_included_micros))
     }
+}
 
+/// The alerts reached, from a limit already worked out, whether the
+/// workspace has the plan, and what of its included usage it has used.
+fn alerts_from(
+    workspace: &str,
+    limit: &g1t_contracts::billing::Limit,
+    has_plan: bool,
+    used: i64,
+    included: i64,
+) -> Vec<UsageAlert> {
+    let mut alerts = vec![];
+    if has_plan && limit.trust != g1t_contracts::billing::Trust::Internal {
+        let level = alert_level(used, included);
+        if level > 0 {
+            alerts.push(UsageAlert {
+                meter: "included".into(),
+                level,
+                used_micros: used,
+                limit_micros: included,
+                message: if level >= 100 {
+                    format!("{workspace} has used all {} of this month's included usage. Usage from here is charged at cost plus 20%, up to your spend limit.", dollars(included))
+                } else {
+                    format!("{workspace} has used {} of this month's {} included usage ({level}%). Past it, usage is charged at cost plus 20%, up to your spend limit.", dollars(used), dollars(included))
+                },
+            });
+        }
+    }
+    if let Some(spend_limit) = limit.spend_limit_micros {
+        let level = alert_level(limit.spent_micros, spend_limit);
+        if level > 0 {
+            alerts.push(UsageAlert {
+                meter: "spend_limit".into(),
+                level,
+                used_micros: limit.spent_micros,
+                limit_micros: spend_limit,
+                message: format!(
+                    "{workspace} has spent {} of its {} monthly spend limit ({level}%). At the limit, new sandboxes, builds and agents stop until the month turns or an owner raises it.",
+                    dollars(limit.spent_micros),
+                    dollars(spend_limit)
+                ),
+            });
+        }
+    }
+    if let Some(ceiling) = limit.ceiling_micros.filter(|_| limit.trust != g1t_contracts::billing::Trust::New) {
+        let level = alert_level(limit.exposure_micros, ceiling);
+        if level > 0 {
+            alerts.push(UsageAlert {
+                meter: "ceiling".into(),
+                level,
+                used_micros: limit.exposure_micros,
+                limit_micros: ceiling,
+                message: format!(
+                    "{workspace} has {} of usage not yet paid for, of the {} g1t allows ({level}%). With a card on file g1t charges it as the limit nears; prepaying raises it at once.",
+                    dollars(limit.exposure_micros),
+                    dollars(ceiling)
+                ),
+            });
+        }
+    }
+    alerts
+}
+
+impl Billing {
     /// Whether a card check was done for the workspace.
     pub(crate) async fn card_checked(&self, workspace: &str) -> Result<bool> {
         Ok(self
@@ -380,15 +394,15 @@ impl Billing {
     async fn pause_reason(
         &self,
         workspace: &str,
+        account: &BillingAccount,
         plan: PlanKind,
         limit: Option<&g1t_contracts::billing::Limit>,
     ) -> Result<(Option<String>, Option<Spike>, Option<FailureCode>)> {
-        let account = self.account_of(workspace).await?;
         if let Some(hold) = account.allowances.hold.as_deref().filter(|h| !h.trim().is_empty()) {
             return Ok((Some(format!("g1t staff put a hold on new compute ({}).", hold.trim())), None, Some(FailureCode::Paused)));
         }
         // A comped account past its monthly budget (`budget`).
-        if let Some(why) = self.comped_stop(&account).await? {
+        if let Some(why) = self.comped_stop(account).await? {
             return Ok((Some(why), None, Some(FailureCode::Paused)));
         }
         let spike = self.spike_pause(workspace, plan).await?;
@@ -428,32 +442,55 @@ impl Billing {
     /// `entitlements`: what the workspace may do now.
     pub(crate) async fn entitlements(&self, a: EntitlementsArgs) -> Result<Entitlements> {
         let workspace = a.workspace.to_lowercase();
-        let plan = self.plan_kind(&workspace).await?;
         let account = self.account_of(&workspace).await?;
-        let limit = self.limit_of(&workspace).await?;
+        let plan = self.plan_kind_for(&workspace, &account).await?;
+        let has_plan = plan != PlanKind::Free;
         let now = rfc3339(now_ms());
         let month = credits::month_of(&now);
-        let verified = matches!(plan, PlanKind::Internal | PlanKind::Enterprise) || self.card_checked(&workspace).await?;
-        // A card checked while the month's pool was empty: granted once it
-        // has room.
-        let grant = match self.grant_of(&workspace).await? {
-            Some(grant) => Some(grant),
-            None if verified && plan == PlanKind::Free && self.trial_allowed(&workspace).await? => self.ensure_grant(&workspace).await?,
-            None => None,
+        // Every signed-in page asks for this, so what does not need another
+        // answer is read at once: the limit (and the pause, from it), the
+        // trial, and the month's counts.
+        let standing = async {
+            let limit = self.limit_with(&workspace, &account, plan).await?;
+            let pause = self.pause_reason(&workspace, &account, plan, Some(&limit)).await?;
+            Ok::<_, worker::Error>((limit, pause))
         };
+        let trial = async {
+            let (checked, grant) = try_join(
+                async {
+                    if matches!(plan, PlanKind::Internal | PlanKind::Enterprise) { Ok(true) } else { self.card_checked(&workspace).await }
+                },
+                self.grant_of(&workspace),
+            )
+            .await?;
+            // A card checked while the month's pool was empty: granted once
+            // it has room.
+            let grant = match grant {
+                Some(grant) => Some(grant),
+                None if checked && plan == PlanKind::Free && self.trial_allowed(&workspace).await? => self.ensure_grant(&workspace).await?,
+                None => None,
+            };
+            Ok::<_, worker::Error>((checked, grant))
+        };
+        let counts = try_join5(
+            self.owner_caps(&workspace),
+            self.private_storage(&workspace),
+            self.oss_paid(&workspace, &month),
+            self.held(&account.workspaces),
+            async { if has_plan { self.allowance_used("plan_credit", &workspace, &month).await } else { Ok(0) } },
+        );
+        let more = try_join(self.allowance_used("build_seconds", &workspace, &month), self.git_operations_this_month(&workspace));
+        let ((limit, (paused, spike, _)), (verified, grant), (owners, stored, oss, held, included_used), (build_seconds, git_operations)) =
+            try_join4(standing, trial, counts, more).await?;
         let trial_left = grant.as_ref().map_or(0, |g| left(g.granted_micros, g.used_micros));
         let first_month = limit.first_month;
         let (max_agents, max_minutes) = caps(plan, first_month, trial_left > 0, account.allowances.max_concurrent_agents);
-        let (paused, spike, _) = self.pause_reason(&workspace, plan, Some(&limit)).await?;
         let ceiling = match plan {
             PlanKind::Free => 0,
             PlanKind::Internal => UNLIMITED_MICROS,
             _ => limit.ceiling_micros.unwrap_or(UNLIMITED_MICROS),
         };
-        let has_plan = plan != PlanKind::Free;
-        let owners = self.owner_caps(&workspace).await?;
-        let stored = self.private_storage(&workspace).await?;
-        let oss = self.oss_paid(&workspace, &month).await?;
+        let alerts = alerts_from(&workspace, &limit, has_plan, included_used, self.plans.plan_included_micros);
         Ok(Entitlements {
             plan,
             compute: has_plan || trial_left > 0,
@@ -467,20 +504,20 @@ impl Billing {
             ceiling_micros: ceiling,
             exposure_micros: limit.exposure_micros,
             paused,
-            held_micros: self.held(&account.workspaces).await?,
+            held_micros: held,
             prepaid_micros: limit.prepaid_micros,
             included_micros: if has_plan { self.plans.plan_included_micros } else { 0 },
-            included_used_micros: if has_plan { self.allowance_used("plan_credit", &workspace, &month).await? } else { 0 },
+            included_used_micros: included_used,
             audit_retention_days: self.plans.audit_days,
             free_private_storage_bytes: self.plans.free_storage_bytes,
             private_storage_bytes: stored,
             oss_paid_micros: oss,
-            build_seconds_used: self.allowance_used("build_seconds", &workspace, &month).await?.max(0) as u32,
-            git_operations: self.git_operations_this_month(&workspace).await?,
+            build_seconds_used: build_seconds.max(0) as u32,
+            git_operations,
             git_operations_included: self.plans.git_included,
             min_charge_micros: self.plans.min_charge_micros,
             spike,
-            alerts: self.alerts_from(&workspace, &limit).await?,
+            alerts,
             workspace,
         })
     }
@@ -495,8 +532,8 @@ impl Billing {
         if self.stripe.is_none() {
             return Ok(Outcome::Ok(Reservation { id: new_id("rsv", now), paid_by: PaidBy::OnDemand, held_micros: 0, expires_at }));
         }
-        let plan = self.plan_kind(&workspace).await?;
         let account = self.account_of(&workspace).await?;
+        let plan = self.plan_kind_for(&workspace, &account).await?;
         // g1t's own caps (`budget`), in their own words: a comped account's
         // monthly budget, and the daily breaker.
         if let Some(why) = self.comped_stop(&account).await? {
@@ -505,8 +542,8 @@ impl Billing {
         if let Some(why) = self.breaker_refuses(plan, &account, a.kind, a.hosted_model).await? {
             return Ok(Outcome::fail(FailureCode::Paused, why));
         }
-        let limit = if plan == PlanKind::Internal { None } else { Some(self.limit_of(&workspace).await?) };
-        let (paused, _, code) = self.pause_reason(&workspace, plan, limit.as_ref()).await?;
+        let limit = if plan == PlanKind::Internal { None } else { Some(self.limit_with(&workspace, &account, plan).await?) };
+        let (paused, _, code) = self.pause_reason(&workspace, &account, plan, limit.as_ref()).await?;
         if let (Some(why), Some(code)) = (paused, code) {
             return Ok(refusal(code, &workspace, a.kind, &why));
         }
@@ -831,6 +868,50 @@ pub(crate) fn paid_by_text(paid_by: PaidBy) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn limit(trust: g1t_contracts::billing::Trust, spent: i64, spend_limit: Option<i64>, exposure: i64, ceiling: Option<i64>) -> g1t_contracts::billing::Limit {
+        g1t_contracts::billing::Limit {
+            workspace: "acme".into(),
+            account: "acc_acme".into(),
+            account_name: "acme".into(),
+            trust,
+            exposure_micros: exposure,
+            ceiling_micros: ceiling,
+            trust_ceiling_micros: ceiling,
+            spend_limit_micros: spend_limit,
+            state: LimitState::Ok,
+            message: None,
+            spent_micros: spent,
+            default_spend_limit: false,
+            available_micros: None,
+            growth: None,
+            prepaid_micros: 0,
+            max_ceiling_micros: None,
+            raise_once_micros: None,
+            raised_at: None,
+            first_month: false,
+        }
+    }
+
+    #[test]
+    fn alerts_come_from_the_answers_already_read() {
+        use g1t_contracts::billing::Trust;
+        let meters = |alerts: Vec<UsageAlert>| alerts.into_iter().map(|a| (a.meter, a.level)).collect::<Vec<_>>();
+        // On the plan: included usage at 90%, the spend limit at 50%, the ceiling at 75%.
+        let paid = limit(Trust::Paid, 100_000_000, Some(200_000_000), 75_000_000, Some(100_000_000));
+        assert_eq!(
+            meters(alerts_from("acme", &paid, true, 9_000_000, 10_000_000)),
+            vec![("included".to_owned(), 90), ("spend_limit".to_owned(), 50), ("ceiling".to_owned(), 75)]
+        );
+        // Without the plan, what was used of the included usage is not an alert.
+        assert_eq!(meters(alerts_from("acme", &paid, false, 9_000_000, 10_000_000)).len(), 2);
+        // g1t's own workspaces have no included usage to warn of, and a new
+        // workspace's ceiling is not one either.
+        let internal = limit(Trust::Internal, 0, None, 0, None);
+        assert!(alerts_from("acme", &internal, true, 10_000_000, 10_000_000).is_empty());
+        let new = limit(Trust::New, 0, None, 3_000_000, Some(3_000_000));
+        assert!(alerts_from("acme", &new, false, 0, 10_000_000).is_empty());
+    }
 
     fn paid(credit: i64, on_demand: i64) -> Room {
         Room { credit, trial: 0, oss: 0, on_demand: Some(on_demand) }

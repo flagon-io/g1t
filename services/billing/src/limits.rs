@@ -37,8 +37,9 @@
 //! Usage counts at what it cost g1t or what it is charged, whichever is
 //! more. Test-mode payments are not money, so they do not raise trust.
 
+use futures_util::future::{try_join, try_join5, try_join_all};
 use g1t_contracts::billing::{
-    CheckLimitArgs, Limit, LimitArgs, LimitState, NotePendingArgs, PlanKind, SetSpendLimitArgs, TermsKind, Trust,
+    BillingAccount, CheckLimitArgs, Limit, LimitArgs, LimitState, NotePendingArgs, PlanKind, SetSpendLimitArgs, TermsKind, Trust,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, Role};
@@ -245,16 +246,14 @@ impl Billing {
     pub(crate) async fn limit_of(&self, workspace: &str) -> Result<Limit> {
         let workspace = workspace.to_lowercase();
         let account = self.account_of(&workspace).await?;
-        let row = self
-            .db
-            .prepare(
-                "SELECT spend_limit_micros, spend_limit_full, autopay_failed_at, autopay_error,
-                        max_ceiling_micros, granted_ceiling_micros, raised_at
-                 FROM limits WHERE workspace = ?",
-            )
-            .bind(&[workspace.as_str().into()])?
-            .first::<LimitRow>(None)
-            .await?;
+        let plan = self.plan_kind_for(&workspace, &account).await?;
+        self.limit_with(&workspace, &account, plan).await
+    }
+
+    /// The workspace's limit, from the account and plan already read for
+    /// it, so a caller that has them does not read them again.
+    pub(crate) async fn limit_with(&self, workspace: &str, account: &BillingAccount, plan: PlanKind) -> Result<Limit> {
+        let workspace = workspace.to_lowercase();
         let now = rfc3339(now_ms());
         let month_start = format!("{}-01", &now[..7]);
         let marks = vec!["?"; account.workspaces.len().max(1)].join(", ");
@@ -263,6 +262,17 @@ impl Billing {
         } else {
             account.workspaces.iter().map(|w| JsValue::from(w.as_str())).collect()
         };
+        let row = async {
+            self.db
+                .prepare(
+                    "SELECT spend_limit_micros, spend_limit_full, autopay_failed_at, autopay_error,
+                            max_ceiling_micros, granted_ceiling_micros, raised_at
+                     FROM limits WHERE workspace = ?",
+                )
+                .bind(&[workspace.as_str().into()])?
+                .first::<LimitRow>(None)
+                .await
+        };
         let mut with_month = members.clone();
         with_month.push(month_start.as_str().into());
         // Each usage entry at its cost to g1t or its charge, whichever is
@@ -270,39 +280,41 @@ impl Billing {
         // What the plan's included usage, the trial, the open-source pool
         // or g1t itself paid for is not unpaid: those are budgets already
         // paid for.
-        let month = self
-            .db
-            .prepare(format!(
-                "SELECT
-                   SUM(CASE WHEN kind = 'usage' THEN
-                         CASE WHEN COALESCE(billed_to, 'g1t') = 'g1t'
-                              THEN MAX(COALESCE(cost_micros, 0) - COALESCE(credit_micros, 0)
-                                         - COALESCE(trial_micros, 0) - COALESCE(oss_micros, 0)
-                                         - COALESCE(given_micros, 0),
-                                       -amount_micros)
-                              ELSE -amount_micros END
-                       END) AS used,
-                   SUM(CASE WHEN kind = 'top_up' THEN amount_micros END) AS paid
-                 FROM ledger WHERE workspace IN ({marks}) AND created_at >= ?"
-            ))
-            .bind(&with_month)?
-            .first::<Month>(None)
-            .await?;
-        let (used, paid_month) = month.map_or((0, 0), |m| (m.used.unwrap_or(0), m.paid.unwrap_or(0)));
+        let month = async {
+            self.db
+                .prepare(format!(
+                    "SELECT
+                       SUM(CASE WHEN kind = 'usage' THEN
+                             CASE WHEN COALESCE(billed_to, 'g1t') = 'g1t'
+                                  THEN MAX(COALESCE(cost_micros, 0) - COALESCE(credit_micros, 0)
+                                             - COALESCE(trial_micros, 0) - COALESCE(oss_micros, 0)
+                                             - COALESCE(given_micros, 0),
+                                           -amount_micros)
+                                  ELSE -amount_micros END
+                           END) AS used,
+                       SUM(CASE WHEN kind = 'top_up' THEN amount_micros END) AS paid
+                     FROM ledger WHERE workspace IN ({marks}) AND created_at >= ?"
+                ))
+                .bind(&with_month)?
+                .first::<Month>(None)
+                .await
+        };
         // And what is metered but not charged until the month closes.
         let mut pending_args = members.clone();
         pending_args.push(month_start[..7].into());
-        let pending = self
-            .db
-            .prepare(format!(
-                "SELECT SUM(charge_micros) AS paid FROM pending_usage WHERE workspace IN ({marks}) AND month = ?"
-            ))
-            .bind(&pending_args)?
-            .first::<Paid>(None)
-            .await?
-            .and_then(|row| row.paid)
-            .unwrap_or(0);
-        let used = used + pending;
+        let pending = async {
+            Ok::<i64, worker::Error>(
+                self.db
+                    .prepare(format!(
+                        "SELECT SUM(charge_micros) AS paid FROM pending_usage WHERE workspace IN ({marks}) AND month = ?"
+                    ))
+                    .bind(&pending_args)?
+                    .first::<Paid>(None)
+                    .await?
+                    .and_then(|row| row.paid)
+                    .unwrap_or(0),
+            )
+        };
         // Test-mode payments are not money: they pay nothing off.
         let live = self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live);
         // The balance the month started with: owed from before (so a new
@@ -311,40 +323,59 @@ impl Billing {
         // do not.
         let mut before = members.clone();
         before.push(month_start.as_str().into());
-        let balance_before = self
-            .db
-            .prepare(format!(
-                "SELECT SUM(CASE WHEN kind = 'usage' THEN amount_micros
-                                 WHEN kind = 'top_up' AND ({live} = 1 OR reference LIKE 'crd%') THEN amount_micros
-                                 ELSE 0 END) AS paid
-                 FROM ledger WHERE workspace IN ({marks}) AND created_at < ?",
-                live = u8::from(live)
-            ))
-            .bind(&before)?
-            .first::<Paid>(None)
-            .await?
-            .and_then(|row| row.paid)
-            .unwrap_or(0);
+        let balance_before = async {
+            Ok::<i64, worker::Error>(
+                self.db
+                    .prepare(format!(
+                        "SELECT SUM(CASE WHEN kind = 'usage' THEN amount_micros
+                                         WHEN kind = 'top_up' AND ({live} = 1 OR reference LIKE 'crd%') THEN amount_micros
+                                         ELSE 0 END) AS paid
+                         FROM ledger WHERE workspace IN ({marks}) AND created_at < ?",
+                        live = u8::from(live)
+                    ))
+                    .bind(&before)?
+                    .first::<Paid>(None)
+                    .await?
+                    .and_then(|row| row.paid)
+                    .unwrap_or(0),
+            )
+        };
+        // The trust ceiling, from what has been paid and how steadily. The
+        // first month is asked for beside it, since neither needs the other.
+        let trust = async {
+            Ok::<_, worker::Error>(match account.terms.kind {
+                TermsKind::Comped => (Trust::Internal, None, false),
+                _ if account.terms.ceiling_micros.is_some() => (Trust::Reviewed, account.terms.ceiling_micros, false),
+                _ => {
+                    let standing = async {
+                        let paid = self.live_paid(&members).await?;
+                        let established = if paid > 0 { self.established(&members).await? } else { None };
+                        Ok::<_, worker::Error>((paid, established))
+                    };
+                    let first = async {
+                        if plan == PlanKind::Paid { self.first_month(&workspace).await } else { Ok(false) }
+                    };
+                    let ((paid, established), first_month) = try_join(standing, first).await?;
+                    if plan == PlanKind::Free {
+                        // Nothing on demand: only what a free workspace can owe.
+                        (Trust::New, Some(self.ceilings.new), false)
+                    } else {
+                        let ceiling = paid_ceiling(&self.ceilings, self.plans.paid_start_micros, first_month, paid, established);
+                        (if established.is_some() { Trust::Established } else { Trust::Paid }, Some(ceiling), first_month)
+                    }
+                }
+            })
+        };
+        // This month's charges, and last month's, for the spend limit.
+        let charged = self.charged_months(&members, &month_start);
+        // None of these reads needs another's answer, so they go to D1 at
+        // once: the limit is on every signed-in page.
+        let ((row, month, pending, balance_before, (spent, last_month)), (trust, trust_ceiling, first_month)) =
+            try_join(try_join5(row, month, pending, balance_before, charged), trust).await?;
+        let (used, paid_month) = month.map_or((0, 0), |m| (m.used.unwrap_or(0), m.paid.unwrap_or(0)));
+        let used = used + pending;
         let (exposure, prepaid) = exposure(used, if live { paid_month } else { 0 }, balance_before);
 
-        let plan = self.plan_kind(&workspace).await?;
-        let mut first_month = false;
-        let (trust, trust_ceiling) = match account.terms.kind {
-            TermsKind::Comped => (Trust::Internal, None),
-            _ if account.terms.ceiling_micros.is_some() => (Trust::Reviewed, account.terms.ceiling_micros),
-            _ => {
-                let paid = self.live_paid(&members).await?;
-                let established = if paid > 0 { self.established(&members).await? } else { None };
-                if plan == PlanKind::Free {
-                    // Nothing on demand: only what a free workspace can owe.
-                    (Trust::New, Some(self.ceilings.new))
-                } else {
-                    first_month = plan == PlanKind::Paid && self.first_month(&workspace).await?;
-                    let ceiling = paid_ceiling(&self.ceilings, self.plans.paid_start_micros, first_month, paid, established);
-                    (if established.is_some() { Trust::Established } else { Trust::Paid }, Some(ceiling))
-                }
-            }
-        };
         // A ceiling g1t granted is a floor under the trust ceiling.
         let granted = row.as_ref().and_then(|row| row.granted_ceiling_micros);
         let ceiling = trust_ceiling.map(|c| c.max(granted.unwrap_or(0)));
@@ -364,8 +395,6 @@ impl Billing {
                 .run()
                 .await?;
         }
-        // This month's charges, and last month's, for the spend limit.
-        let (spent, last_month) = self.charged_months(&members, &month_start).await?;
         let spent = spent + pending;
         let raised_at = row.as_ref().and_then(|row| row.raised_at.clone());
         let self_serve = matches!(trust, Trust::New | Trust::Paid | Trust::Established) && plan != PlanKind::Free;
@@ -451,8 +480,8 @@ impl Billing {
         };
         Ok(Limit {
             workspace,
-            account: account.id,
-            account_name: account.name,
+            account: account.id.clone(),
+            account_name: account.name.clone(),
             spent_micros: spent,
             default_spend_limit,
             available_micros: available,
@@ -547,45 +576,49 @@ impl Billing {
         struct Count {
             n: Option<i64>,
         }
-        let troubled = self
-            .db
-            .prepare(format!(
-                "SELECT (SELECT COUNT(*) FROM ledger WHERE workspace IN ({marks}) AND disputed = 1)
-                      + (SELECT COUNT(*) FROM limits WHERE workspace IN ({marks}) AND autopay_failed_at >= '{since}') AS n",
-                since = rfc3339(now_ms() - 90 * 24 * 60 * 60 * 1000)
-            ))
-            .bind(&[members, members].concat())?
-            .first::<Count>(None)
-            .await?
-            .and_then(|c| c.n)
-            .unwrap_or(0);
-        if troubled > 0 {
-            return Ok(None);
+        let troubled = async {
+            Ok::<i64, worker::Error>(
+                self.db
+                    .prepare(format!(
+                        "SELECT (SELECT COUNT(*) FROM ledger WHERE workspace IN ({marks}) AND disputed = 1)
+                              + (SELECT COUNT(*) FROM limits WHERE workspace IN ({marks}) AND autopay_failed_at >= '{since}') AS n",
+                        since = rfc3339(now_ms() - 90 * 24 * 60 * 60 * 1000)
+                    ))
+                    .bind(&[members, members].concat())?
+                    .first::<Count>(None)
+                    .await?
+                    .and_then(|c| c.n)
+                    .unwrap_or(0),
+            )
+        };
+        #[derive(Deserialize)]
+        struct Month {
+            charged: Option<i64>,
+            unpaid: Option<i64>,
         }
-        let mut charged = vec![];
-        for month in &months {
-            #[derive(Deserialize)]
-            struct Month {
-                charged: Option<i64>,
-                unpaid: Option<i64>,
-            }
+        let read_month = |month: &String| {
             let next = {
                 let year: i32 = month[..4].parse().unwrap_or(1970);
                 let number: u32 = month[5..7].parse().unwrap_or(1);
                 if number == 12 { format!("{}-01", year + 1) } else { format!("{year}-{:02}", number + 1) }
             };
-            let row = self
-                .db
-                .prepare(format!(
-                    "SELECT
-                       (SELECT -SUM(amount_micros) FROM ledger WHERE kind = 'usage' AND workspace IN ({marks})
-                          AND created_at >= '{month}-01' AND created_at < '{next}-01') AS charged,
-                       (SELECT COUNT(*) FROM workspace_invoices WHERE workspace IN ({marks}) AND reason = 'month'
-                          AND period = '{month}' AND status <> 'paid') AS unpaid"
-                ))
-                .bind(&[members, members].concat())?
-                .first::<Month>(None)
-                .await?;
+            let sql = format!(
+                "SELECT
+                   (SELECT -SUM(amount_micros) FROM ledger WHERE kind = 'usage' AND workspace IN ({marks})
+                      AND created_at >= '{month}-01' AND created_at < '{next}-01') AS charged,
+                   (SELECT COUNT(*) FROM workspace_invoices WHERE workspace IN ({marks}) AND reason = 'month'
+                      AND period = '{month}' AND status <> 'paid') AS unpaid"
+            );
+            async move { self.db.prepare(sql).bind(&[members, members].concat())?.first::<Month>(None).await }
+        };
+        // The check for trouble and the three months are read at once; the
+        // answer is the one reading them in turn and stopping early gives.
+        let (troubled, rows) = try_join(troubled, try_join_all(months.iter().map(read_month))).await?;
+        if troubled > 0 {
+            return Ok(None);
+        }
+        let mut charged = vec![];
+        for row in rows {
             let Some(row) = row else { return Ok(None) };
             if row.unpaid.unwrap_or(0) > 0 {
                 return Ok(None);

@@ -27,7 +27,7 @@
 //! is one D1 batch, which runs as a transaction, so two charges at once
 //! never take more than a budget holds.
 
-use g1t_contracts::billing::{ComputeKind, Feature, PlanKind, Pools, TermsKind, Trial, TrialArgs};
+use g1t_contracts::billing::{BillingAccount, ComputeKind, Feature, PlanKind, Pools, TermsKind, Trial, TrialArgs};
 use g1t_contracts::time::rfc3339;
 use g1t_kit::now_ms;
 use serde::Deserialize;
@@ -261,6 +261,11 @@ impl Billing {
     /// does not charge has nothing to gate.
     pub(crate) async fn plan_kind(&self, workspace: &str) -> Result<PlanKind> {
         let account = self.account_of(workspace).await?;
+        self.plan_kind_for(workspace, &account).await
+    }
+
+    /// The plan, from the account already read for the workspace.
+    pub(crate) async fn plan_kind_for(&self, workspace: &str, account: &BillingAccount) -> Result<PlanKind> {
         if account.terms.kind == TermsKind::Comped {
             return Ok(PlanKind::Internal);
         }
@@ -270,7 +275,13 @@ impl Billing {
         if self.stripe.is_none() || account.allowances.plan {
             return Ok(PlanKind::Paid);
         }
-        if self.plan_on(workspace, Feature::Plan).await? || self.plan_on(workspace, Feature::Deployments).await? {
+        // Both subscriptions are asked for at once; either one is the plan.
+        let (plan, deployments) = futures_util::future::try_join(
+            self.plan_on(workspace, Feature::Plan),
+            self.plan_on(workspace, Feature::Deployments),
+        )
+        .await?;
+        if plan || deployments {
             return Ok(PlanKind::Paid);
         }
         Ok(PlanKind::Free)

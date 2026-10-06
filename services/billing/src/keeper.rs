@@ -363,24 +363,27 @@ fn ms(timestamp: &str) -> u64 {
 
 impl Billing {
     pub(crate) async fn prices(&self) -> Result<PriceBook> {
-        let prices = self
-            .db
-            .prepare("SELECT * FROM prices ORDER BY rowid")
-            .all()
-            .await?
-            .results::<PriceRow>()?;
-        let changes = self
-            .db
-            .prepare("SELECT * FROM price_changes ORDER BY created_at DESC LIMIT 20")
-            .all()
-            .await?
-            .results::<ChangeRow>()?;
-        let mut plans = Vec::new();
-        for feature in g1t_contracts::billing::Feature::ALL.iter() {
-            plans.push(self.plan(*feature).await?);
-        }
-        // Changes still to come first, so a rise is seen before it is charged.
-        let coming = self.coming_changes().await?;
+        // Three reads at once; the plans are priced from the rows already
+        // read, not one query per meter (status.g1t.sh times this call).
+        let (prices, changes, coming) = futures_util::future::join3(
+            async { self.db.prepare("SELECT * FROM prices ORDER BY rowid").all().await?.results::<PriceRow>() },
+            async {
+                self.db
+                    .prepare("SELECT * FROM price_changes ORDER BY created_at DESC LIMIT 20")
+                    .all()
+                    .await?
+                    .results::<ChangeRow>()
+            },
+            // Changes still to come first, so a rise is seen before it is charged.
+            self.coming_changes(),
+        )
+        .await;
+        let (prices, changes, coming) = (prices?, changes?, coming?);
+        let book: std::collections::BTreeMap<&str, f64> = prices
+            .iter()
+            .map(|row| (row.meter.as_str(), Price::price_for(row.cost_micros, row.markup_percent)))
+            .collect();
+        let plans: Vec<_> = g1t_contracts::billing::Feature::ALL.iter().map(|_| self.plan_at(&book)).collect();
         Ok(PriceBook {
             prices: prices
                 .into_iter()

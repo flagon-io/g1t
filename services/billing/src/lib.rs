@@ -48,6 +48,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use worker::wasm_bindgen::JsValue;
 use worker::{Context, D1Database, Env, MessageBatch, MessageExt, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
+use futures_util::future::{try_join, try_join5};
 
 use stripe::Stripe;
 
@@ -420,20 +421,34 @@ impl Billing {
             runs: Option<u32>,
             added: Option<i64>,
         }
-        let totals = self
-            .db
-            .prepare(
-                "SELECT
-                   -SUM(CASE WHEN kind = 'usage' THEN amount_micros END) AS spent,
-                   SUM(CASE WHEN kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' THEN cost_micros END) AS cost,
-                   SUM(CASE WHEN kind = 'usage' AND billed_to = 'workspace' THEN cost_micros END) AS provider,
-                   SUM(CASE WHEN kind = 'usage' THEN 1 ELSE 0 END) AS runs,
-                   SUM(CASE WHEN kind = 'top_up' THEN amount_micros END) AS added
-                 FROM ledger WHERE workspace = ?1 AND created_at >= ?2",
-            )
-            .bind(&[workspace.as_str().into(), a.since.as_str().into()])?
-            .first::<Totals>(None)
-            .await?;
+        let totals = async {
+            self.db
+                .prepare(
+                    "SELECT
+                       -SUM(CASE WHEN kind = 'usage' THEN amount_micros END) AS spent,
+                       SUM(CASE WHEN kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' THEN cost_micros END) AS cost,
+                       SUM(CASE WHEN kind = 'usage' AND billed_to = 'workspace' THEN cost_micros END) AS provider,
+                       SUM(CASE WHEN kind = 'usage' THEN 1 ELSE 0 END) AS runs,
+                       SUM(CASE WHEN kind = 'top_up' THEN amount_micros END) AS added
+                     FROM ledger WHERE workspace = ?1 AND created_at >= ?2",
+                )
+                .bind(&[workspace.as_str().into(), a.since.as_str().into()])?
+                .first::<Totals>(None)
+                .await
+        };
+        // The totals and the five slices read the same rows independently,
+        // so they go to D1 at once: one round trip of waiting, not six.
+        let (totals, (by_day, by_task, by_repo, by_pull, by_model)) = try_join(
+            totals,
+            try_join5(
+                query(slices("substr(created_at, 1, 10) || '/' || COALESCE(task, 'other')", 400)),
+                query(slices("task", 20)),
+                query(slices("repo", 20)),
+                query(slices("repo || '#' || number", 10)),
+                query(slices("model", 10)),
+            ),
+        )
+        .await?;
         let totals = totals.unwrap_or(Totals {
             spent: None,
             cost: None,
@@ -449,11 +464,11 @@ impl Billing {
             free: self.free,
             runs: totals.runs.unwrap_or_default(),
             added_micros: totals.added.unwrap_or_default(),
-            by_day: query(slices("substr(created_at, 1, 10) || '/' || COALESCE(task, 'other')", 400)).await?,
-            by_task: query(slices("task", 20)).await?,
-            by_repo: query(slices("repo", 20)).await?,
-            by_pull: query(slices("repo || '#' || number", 10)).await?,
-            by_model: query(slices("model", 10)).await?,
+            by_day,
+            by_task,
+            by_repo,
+            by_pull,
+            by_model,
             since: a.since,
         }))
     }

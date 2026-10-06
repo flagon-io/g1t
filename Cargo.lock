@@ -909,6 +909,7 @@ dependencies = [
 name = "g1t-billing"
 version = "0.1.0"
 dependencies = [
+ "futures-util",
  "g1t-contracts",
  "g1t-kit",
  "getrandom 0.2.17",

@@ -30,7 +30,6 @@ use std::collections::HashMap;
 
 use g1t_contracts::repos::{GitService, WorkspaceGitOperations};
 use serde::Deserialize;
-use worker::wasm_bindgen::JsValue;
 use worker::{D1Database, Env, Fetcher, Response, Result};
 
 /// What a request to g1t's git endpoints asks the store.
@@ -197,6 +196,24 @@ pub async fn refresh(db: &D1Database, namespace: &str) -> Result<()> {
     Ok(())
 }
 
+/// The hours of `month` (`YYYY-MM`) from `since` on, as the range
+/// `[from, until)` of hour keys; `None` for a month that is not one.
+/// A range on `hour` is what the table's key can find; `substr` is not.
+pub fn month_hours(month: &str, since: Option<&str>) -> Option<(String, String)> {
+    let year: u32 = month.get(..4)?.parse().ok()?;
+    let number: u32 = month.get(5..7)?.parse().ok()?;
+    if month.len() != 7 || &month[4..5] != "-" || !(1..=12).contains(&number) {
+        return None;
+    }
+    let until = if number == 12 { format!("{}-01-01", year + 1) } else { format!("{year}-{:02}-01", number + 1) };
+    let start = format!("{month}-01");
+    let from = match since {
+        Some(since) if since > start.as_str() => since.to_owned(),
+        _ => start,
+    };
+    Some((from, until))
+}
+
 /// Each workspace's operations in `month`, from `since` (an hour) on.
 pub async fn totals(db: &D1Database, month: &str, since: Option<&str>, namespace: Option<&str>) -> Result<Vec<WorkspaceGitOperations>> {
     #[derive(Deserialize)]
@@ -204,13 +221,26 @@ pub async fn totals(db: &D1Database, month: &str, since: Option<&str>, namespace
         namespace: String,
         operations: Option<f64>,
     }
-    Ok(db
-        .prepare(
-            "SELECT namespace, SUM(operations) AS operations FROM git_operations
-             WHERE substr(hour, 1, 7) = ?1 AND hour >= COALESCE(?2, '') AND (?3 IS NULL OR namespace = ?3)
-             GROUP BY namespace",
-        )
-        .bind(&[month.into(), since.map_or(JsValue::NULL, JsValue::from), namespace.map_or(JsValue::NULL, JsValue::from)])?
+    let Some((from, until)) = month_hours(month, since) else { return Ok(vec![]) };
+    // One workspace's is read by the table's key, namespace first; every
+    // workspace's (billing's daily measure) reads the month's hours.
+    let statement = match namespace {
+        Some(namespace) => db
+            .prepare(
+                "SELECT namespace, SUM(operations) AS operations FROM git_operations
+                 WHERE namespace = ?1 AND hour >= ?2 AND hour < ?3
+                 GROUP BY namespace",
+            )
+            .bind(&[namespace.into(), from.as_str().into(), until.as_str().into()])?,
+        None => db
+            .prepare(
+                "SELECT namespace, SUM(operations) AS operations FROM git_operations
+                 WHERE hour >= ?1 AND hour < ?2
+                 GROUP BY namespace",
+            )
+            .bind(&[from.as_str().into(), until.as_str().into()])?,
+    };
+    Ok(statement
         .all()
         .await?
         .results::<Row>()?
@@ -295,6 +325,26 @@ mod tests {
     #[test]
     fn operations_are_counted_by_the_hour() {
         assert_eq!(hour_key("2026-10-14T09:59:59.000Z"), "2026-10-14T09");
+    }
+
+    #[test]
+    fn a_months_hours_are_a_range_on_the_key() {
+        let range = |month: &str, since: Option<&str>| month_hours(month, since);
+        assert_eq!(range("2026-10", None), Some(("2026-10-01".to_owned(), "2026-11-01".to_owned())));
+        assert_eq!(range("2026-12", None), Some(("2026-12-01".to_owned(), "2027-01-01".to_owned())));
+        // `since` narrows the start, never widens it past the month.
+        assert_eq!(range("2026-10", Some("2026-10-14T00")).map(|r| r.0), Some("2026-10-14T00".to_owned()));
+        assert_eq!(range("2026-10", Some("2026-09-30T23")).map(|r| r.0), Some("2026-10-01".to_owned()));
+        assert_eq!(range("2026-10", Some("")).map(|r| r.0), Some("2026-10-01".to_owned()));
+        // Every hour of the month is in it, and none of the next or last,
+        // as `substr(hour, 1, 7) = month` had it.
+        let (from, until) = range("2026-10", None).unwrap();
+        let inside = |hour: &str| hour >= from.as_str() && hour < until.as_str();
+        assert!(inside("2026-10-01T00") && inside("2026-10-31T23"));
+        assert!(!inside("2026-09-30T23") && !inside("2026-11-01T00"));
+        assert_eq!(range("2026-13", None), None);
+        assert_eq!(range("2026-1", None), None);
+        assert_eq!(range("", None), None);
     }
 
     fn pkt(payload: &str) -> Vec<u8> {
