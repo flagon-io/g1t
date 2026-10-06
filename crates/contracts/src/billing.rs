@@ -270,6 +270,10 @@ pub struct StartRunArgs {
     /// Gateway: settling charges the run what the gateway priced them at.
     #[serde(default)]
     pub session: Option<String>,
+    /// `small` or `large`: the tier g1t routed the run to, when g1t pays
+    /// for its model. None on the workspace's own provider.
+    #[serde(default)]
+    pub tier: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

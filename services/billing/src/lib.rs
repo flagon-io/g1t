@@ -639,8 +639,8 @@ impl Billing {
         let token = hex::encode(bytes);
         self.db
             .prepare(
-                "INSERT INTO runs (id, workspace, repo, number, task, model, token_hash, created_at, billed_to, session_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO runs (id, workspace, repo, number, task, model, token_hash, created_at, billed_to, session_id, tier)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 run_id.as_str().into(),
@@ -653,6 +653,11 @@ impl Billing {
                 rfc3339(now).into(),
                 if a.billed_to == "workspace" { "workspace" } else { "g1t" }.into(),
                 optional(a.session.as_deref().filter(|_| a.billed_to != "workspace")),
+                optional(
+                    a.tier
+                        .as_deref()
+                        .filter(|tier| a.billed_to != "workspace" && matches!(*tier, "small" | "large")),
+                ),
             ])?
             .run()
             .await?;

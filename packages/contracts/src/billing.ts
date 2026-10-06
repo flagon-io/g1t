@@ -938,6 +938,8 @@ export interface BillingApi {
     billedTo?: "g1t" | "workspace";
     /** The model session's id, so the run can be settled at AI Gateway's price. */
     session?: string | null;
+    /** `small` or `large`: the tier g1t routed the run to, on its hosted models. */
+    tier?: "small" | "large" | null;
   }): Promise<Result<RunTicket | null>>;
 }
 

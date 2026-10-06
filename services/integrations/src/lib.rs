@@ -137,6 +137,8 @@ struct SessionRow {
     number: u32,
     task: String,
     model: Option<String>,
+    #[serde(default)]
+    tier: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1227,8 +1229,8 @@ impl Integrations {
                     .bind(&[rfc3339(now).into()])?,
                 self.db
                     .prepare(
-                        "INSERT INTO model_sessions (token_hash, workspace, connection_id, repo, number, task, expires_at, model)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        "INSERT INTO model_sessions (token_hash, workspace, connection_id, repo, number, task, expires_at, model, tier)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     )
                     .bind(&[
                         crypto::sha256_hex(&token).into(),
@@ -1239,6 +1241,12 @@ impl Integrations {
                         a.task.as_str().into(),
                         rfc3339(now + MODEL_SESSION_SECONDS * 1000).into(),
                         optional(model.as_deref()),
+                        // The tier is g1t's routing; it means nothing on the workspace's own provider.
+                        optional(
+                            a.tier
+                                .as_deref()
+                                .filter(|tier| connection.is_none() && matches!(*tier, "small" | "large")),
+                        ),
                     ])?,
             ])
             .await?;
@@ -1273,6 +1281,7 @@ impl Integrations {
             number: session.number,
             task: session.task,
             session: session_id(&session.token_hash),
+            tier: session.tier,
             base_url: None,
             api_key: None,
             auth_header: None,

@@ -434,19 +434,40 @@ removes the rule.
 ## Which model runs
 
 You do not pick one. You assign the work to `g1t-agent`, the way you would
-assign an issue to a colleague, and g1t routes it. The kind of work decides:
+assign an issue to a colleague, and g1t routes it. On g1t's hosted models,
+each piece of work goes to the least costly of two tiers that can do it:
 
-| Work | Model today |
+| Tier | Model today |
 | --- | --- |
-| Making a change for an issue, and revising it | Claude Sonnet 5.5 |
-| Reviewing a pull request | Claude Sonnet 5.5 |
-| Catching up with `main` and resolving conflicts | Claude Sonnet 5.5 |
-| Planning an outcome | Claude Sonnet 5.5 |
+| Small | Claude Haiku 4.5 |
+| Large | Claude Sonnet 5.5 |
+
+The work decides the tier:
+
+| Work | Tier |
+| --- | --- |
+| Making a change for an issue, revising it, and answering a mention | Large |
+| Reviewing a pull request that changes at most 10 files and 200 lines, touches no sensitive path, and is not for an issue labelled `security` | Small |
+| Reviewing any other pull request, or one whose changed files g1t does not know yet | Large |
+| Catching up with `main` and resolving conflicts | Small |
+| Planning an outcome | Small |
+| Any of these again, after the last attempt at the same work failed or stopped at a guardrail cap | Large |
+
+Sensitive paths are the ones that run, configure or guard things: CI
+workflows, `.g1t/` and `.github/`, `CODEOWNERS`, secrets such as `.env`
+and `.pem` files, and infrastructure such as Dockerfiles, Terraform and
+`wrangler.*` files. They are the same paths that lower a change's
+[confidence](#how-sure-the-agent-is).
+
+The agent's own small background steps run on the small tier.
 
 Every session opens with a note naming the model that ran, and an agent's
 review says which model wrote it, so what you got is always on the record.
-When a better model for a kind of work appears, g1t changes the route and
-nothing you have set up needs to change.
+When a better model for a tier appears, g1t changes the route and nothing
+you have set up needs to change.
+
+A workspace that routes its work to [its own provider](/guides/models/)
+is not routed by tier: its work runs on the model its route names.
 
 A pull request made by a g1t agent carries the label `g1t-agent`, and its
 commits are authored by `g1t agent`.
@@ -459,14 +480,14 @@ g1t agents send model requests to g1t's model proxy at
 Requests for g1t's hosted models go on through
 [Cloudflare AI Gateway](https://developers.cloudflare.com/ai-gateway/),
 which holds g1t's key. Each of those requests is tagged with the kind of
-work, the repository and the pull request, so spend can be read per pull
-request. Requests for a workspace's own provider go to that provider.
+work, the tier, the repository and the pull request, so spend can be read
+per tier and per pull request. Requests for a workspace's own provider go to that provider.
 
 If you run your own copy of g1t, these settings control it:
 
 | Setting | Where | What it does |
 | --- | --- | --- |
-| `AGENT_ROUTES` | Runner | The model for each kind of work: `implement`, `review`, `update` and `plan`. |
+| `AGENT_ROUTING` | Runner | JSON. `tiers`: the model behind `small` and `large`, each `{ "modelName", "model" }`. `tasks`: the tier of `implement`, `review`, `update` and `plan`, or `change` to decide by the change. `smallChange`: the most `files` and `lines` a `change` review runs on the small tier with. `largeLabels`: issue labels that keep a review on the large tier. Anything left out takes the defaults above. |
 | `MODELS_URL` | Runner | Where sandboxes send model requests: the model proxy. |
 | `AI_GATEWAY_ID` | Model proxy | The gateway hosted requests go through. Empty sends them to the provider directly. |
 | `AI_GATEWAY_TOKEN` | Model proxy | Secret. Authenticates to the gateway. |

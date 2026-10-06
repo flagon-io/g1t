@@ -75,10 +75,15 @@
 		// credit. While billing takes no real money, hosted models are open
 		// only to these workspaces; once it does, to every workspace.
 		"HOSTED_AGENT_WORKSPACES": "flagon-io",
-		// Which model each kind of work runs on. Nobody assigning an agent
-		// chooses; this is g1t's policy. "modelName" is shown to people in the
-		// session; "model" is sent to the provider.
-		"AGENT_ROUTES": "{\"implement\":{\"modelName\":\"Claude Sonnet 5.5\",\"model\":\"claude-sonnet-5-5\"},\"review\":{\"modelName\":\"Claude Sonnet 5.5\",\"model\":\"claude-sonnet-5-5\"},\"update\":{\"modelName\":\"Claude Sonnet 5.5\",\"model\":\"claude-sonnet-5-5\"},\"plan\":{\"modelName\":\"Claude Sonnet 5.5\",\"model\":\"claude-sonnet-5-5\"}}",
+		// How g1t routes the work it pays the model for. Nobody assigning an
+		// agent chooses; this is g1t's policy (AgentRouting in src/model-env.ts).
+		// "tiers": the model behind each tier; "modelName" is shown to people in
+		// the session, "model" is sent to the provider. "tasks": the tier of each
+		// kind of work; "change" reviews a change of at most "smallChange" that
+		// touches nothing sensitive, for an issue without one of "largeLabels",
+		// on the small tier, and anything else on the large. A retry after a
+		// failed attempt always runs on the large tier.
+		"AGENT_ROUTING": "{\"tiers\":{\"small\":{\"modelName\":\"Claude Haiku 4.5\",\"model\":\"claude-haiku-4-5-20251001\"},\"large\":{\"modelName\":\"Claude Sonnet 5.5\",\"model\":\"claude-sonnet-5-5\"}},\"tasks\":{\"implement\":\"large\",\"review\":\"change\",\"update\":\"small\",\"plan\":\"small\"},\"smallChange\":{\"files\":10,\"lines\":200},\"largeLabels\":[\"security\"]}",
 		// Where sandboxes send model requests, with a token for their run.
 		// The proxy holds the keys: g1t's gateway's, or the workspace's own.
 		"MODELS_URL": "https://models.g1t.sh",

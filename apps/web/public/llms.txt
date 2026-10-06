@@ -225,6 +225,10 @@ free slot" and the work starts by itself when one finishes.
   revisions (`max_revisions`, 2 by default) only a required check still
   failing holds it for a person. There is no model or
   agent count to choose: to put more agents to work, assign more issues.
+  On g1t's hosted models, g1t routes each piece of work to a small or a
+  large tier: planning, catching up and reviews of small changes that
+  touch no sensitive path run small; making changes, other reviews, and
+  any retry after a failed attempt run large.
 - **Put an agent on something in one step:** `POST {repo}/issues/delegate`
   with `title` and `body` (what to do, in plain words, and what done
   means if you know it). It opens the issue and assigns g1t-agent at once; it needs the

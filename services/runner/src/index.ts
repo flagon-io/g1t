@@ -60,7 +60,18 @@ import {
   instanceNamed,
 } from "@g1t/contracts";
 
-import { type AgentRoutes, type AgentTask, canReachModel, modelEnv } from "./model-env";
+import {
+  type AgentTask,
+  type RouteSignals,
+  type Tier,
+  canReachModel,
+  changeSize,
+  chooseTier,
+  lastAttemptFailed,
+  modelEnv,
+  parseRouting,
+  tierVars,
+} from "./model-env";
 import { hubContext } from "./hub";
 import { hostedOpen } from "./hosted";
 import { delegateInput, noModelMessage, notStarted, queued, started } from "./delegate";
@@ -137,11 +148,14 @@ export interface RunnerEnv {
    */
   HOSTED_AGENT_WORKSPACES: string;
   /**
-   * Which model each kind of work runs on, as JSON:
-   * `{ implement, review, update }`, each `{ modelName, model }`.
-   * `modelName` is what people see; `model` is sent to the provider.
+   * How g1t routes the work it pays the model for, as JSON (`AgentRouting`
+   * in model-env.ts): `tiers`, the model behind `small` and `large`, each
+   * `{ modelName, model }`; `tasks`, the tier of each kind of work, or
+   * `change` to decide a review by its change; `smallChange`, the largest
+   * change reviewed on the small tier; `largeLabels`, issue labels that
+   * keep a review large. Anything left out takes the default.
    */
-  AGENT_ROUTES: string;
+  AGENT_ROUTING?: string;
   /**
    * A Cloudflare AI Gateway id. When set, model traffic goes through that
    * gateway, which is where logging, spend limits, caching and fallback
@@ -166,6 +180,12 @@ export interface RunnerEnv {
    */
   ABUSE_WATCH?: string;
 }
+
+/**
+ * What routing knows about one piece of work, and how to ask whether it is
+ * a retry (asked only when the answer matters).
+ */
+type RouteInput = RouteSignals & { retried?: () => Promise<boolean> };
 
 /** A run that takes longer than this has its token expire under it. */
 const TOKEN_TTL_SECONDS = 2 * 60 * 60;
@@ -1308,13 +1328,23 @@ export default class RunnerService
    * What a sandbox needs to reach the model routed for `task`, having
    * opened the run the repository's workspace will be charged for. Refused
    * when that workspace has no credit.
+   *
+   * On g1t's hosted models the work goes to the cheapest tier that can do
+   * it (`chooseTier`), by what `route` says about it. Whether this is a
+   * retry is asked only when it would change the answer: when the work
+   * would otherwise go to the small tier.
    */
   private async modelEnv(
     task: AgentTask,
     repo: RepoPath,
     pull: number,
+    route: RouteInput = {},
   ): Promise<Result<Record<string, string>>> {
-    const routes: AgentRoutes = JSON.parse(this.env.AGENT_ROUTES);
+    const routing = parseRouting(this.env.AGENT_ROUTING);
+    let tier: Tier = chooseTier(task, route, routing);
+    if (tier === "small" && route.retried && (await route.retried().catch(() => false))) {
+      tier = chooseTier(task, { ...route, retry: true }, routing);
+    }
     const tags = { repo: `${repo.namespace}/${repo.name}`, pull };
     // Where the run's model requests go, by the workspace's routes: g1t's
     // hosted models, or one of its own providers.
@@ -1326,13 +1356,17 @@ export default class RunnerService
         number: pull,
         task,
         hostedOpen: (await this.modelAccess(repo.namespace)).hosted,
+        tier,
       });
       if (!opened.ok) return opened;
       session = opened.value;
     }
     const own = session?.billedTo === "workspace";
-    const model = session?.model ?? routes[task].model;
-    const modelName = session?.model ?? routes[task].modelName;
+    // A workspace's own provider is not routed by tier: it runs the model
+    // its route names, or for an Anthropic provider, the large tier's.
+    const routed = routing.tiers[own ? "large" : tier];
+    const model = session?.model ?? routed.model;
+    const modelName = session?.model ?? routed.modelName;
     const ticket = await billingClient(this.env.BILLING).startRun({
       workspace: repo.namespace,
       repo,
@@ -1341,10 +1375,14 @@ export default class RunnerService
       model: own ? `${modelName} (${session?.providerName ?? "own provider"})` : modelName,
       billedTo: own ? "workspace" : "g1t",
       session: own ? null : (session?.id ?? null),
+      tier: own ? null : tier,
     });
     if (!ticket.ok) return ticket;
     const vars: Record<string, string> = session
       ? {
+          // On g1t's models, the tier's model, and the small tier's for the
+          // harness's own small tasks.
+          ...(own ? {} : tierVars(routing, tier)),
           ANTHROPIC_MODEL: model,
           AGENT_MODEL_NAME: own ? `${modelName}, through ${session.providerName}` : modelName,
           ANTHROPIC_BASE_URL: `${this.env.MODELS_URL!.replace(/\/+$/, "")}/anthropic`,
@@ -1354,7 +1392,7 @@ export default class RunnerService
           // the harness's small tasks too.
           ...(session.model ? { ANTHROPIC_SMALL_FAST_MODEL: session.model } : {}),
         }
-      : modelEnv(this.env, routes, task, tags);
+      : modelEnv(this.env, routing, task, tier, tags);
     if (ticket.value) {
       // How the sandbox says what the run cost. Kept from the agent.
       vars.BILLING_RUN = ticket.value.runId;
@@ -1490,10 +1528,30 @@ export default class RunnerService
     task: AgentTask,
     repo: RepoPath,
     pull: number,
+    route: RouteInput = {},
   ): Promise<Record<string, string>> {
-    const vars = await this.modelEnv(task, repo, pull);
+    const vars = await this.modelEnv(task, repo, pull, route);
     if (!vars.ok) throw new Error(vars.error.message);
     return vars.value;
+  }
+
+  /**
+   * Whether the latest run of the same work failed, so that this one is a
+   * retry: the same kind of run on the same pull request, or for a plan,
+   * the latest plan with the same brief. Read as the one the run is for;
+   * unknown counts as not.
+   */
+  private async failedBefore(
+    viewer: User,
+    repo: RepoPath,
+    kind: "review" | "update" | "plan",
+    number: number | null,
+    title?: string,
+  ): Promise<boolean> {
+    const runs = await agentsClient(this.env.WORK)
+      .listRuns(viewer, { repo, kind, ...(number != null ? { number } : {}), limit: 1 })
+      .catch(() => null);
+    return runs?.ok ? lastAttemptFailed(runs.value, title) : false;
   }
 
   /** Whether sandboxes have a way to reach a model at all. */
@@ -2432,7 +2490,9 @@ export default class RunnerService
           repo,
           actor,
         ),
-        ...(await this.modelEnvOrThrow("update", repo, number)),
+        ...(await this.modelEnvOrThrow("update", repo, number, {
+          retried: () => this.failedBefore(actor, repo, "update", number),
+        })),
       },
     });
   }
@@ -2486,7 +2546,11 @@ export default class RunnerService
         `It is for issue #${job.issue.number}: ${job.issue.title}\n\n${job.issue.body}`,
       await this.peopleSaid(job.author, repo, number),
     ];
-    const model = await this.modelEnv("review", repo, number);
+    const model = await this.modelEnv("review", repo, number, {
+      change: job.files?.length ? changeSize(job.files, job.sensitive ?? []) : null,
+      labels: job.issue?.labels ?? [],
+      retried: () => this.failedBefore(job.author, repo, "review", number),
+    });
     if (!model.ok) {
       await workClient(this.env.WORK).failReview(job.runId, job.token, model.error.message);
       return model;
@@ -2546,7 +2610,9 @@ export default class RunnerService
     const started = await work.startPlan(actor, repo, brief);
     if (!started.ok) return started;
     const job = started.value;
-    const model = await this.modelEnv("plan", repo, 0);
+    const model = await this.modelEnv("plan", repo, 0, {
+      retried: () => this.failedBefore(actor, repo, "plan", null, job.brief),
+    });
     if (!model.ok) {
       await work.failPlan(job.planId, job.token, model.error.message);
       return model;

@@ -660,6 +660,17 @@ export type ReviewJob = {
   issue: Issue | null;
   /** Who opened the pull request, and so can read its source. */
   author: User;
+  /**
+   * The files it changes, as of its latest push: how large the change is,
+   * which decides the model that reviews it.
+   */
+  files: ChangedFile[];
+  /**
+   * What among them runs, configures or guards things (CI workflows,
+   * secrets, infrastructure), once each. Any sends the review to the
+   * larger model.
+   */
+  sensitive: string[];
 };
 
 export type OpenIssueInput = {

@@ -39,6 +39,22 @@ test("g1t's runs go through its gateway, tagged, without the sandbox's token", (
   });
 });
 
+test("a run's tier is tagged at the gateway, so spend can be read per tier", () => {
+  const upstream: ModelUpstream = { ...run, route: "g1t", tier: "small" };
+  const { headers } = upstreamRequest(upstream, hosted, "/v1/messages", incoming());
+  const metadata = JSON.parse(headers.get("cf-aig-metadata") ?? "{}");
+  assert.deepEqual(metadata, {
+    task: "implement",
+    tier: "small",
+    repo: "acme/web",
+    pull: 7,
+    session: "ms_abc",
+  });
+  // The gateway keeps five entries; the session, which billing settles
+  // by, must be one of them.
+  assert.ok(Object.keys(metadata).length <= 5);
+});
+
 test("a workspace's own Anthropic key goes to Anthropic, and only there", () => {
   const upstream: ModelUpstream = { ...run, route: "anthropic", baseUrl: "https://api.anthropic.com", apiKey: "sk-ant-theirs", authHeader: "x-api-key" };
   const { url, headers } = upstreamRequest(upstream, hosted, "/v1/messages", incoming());

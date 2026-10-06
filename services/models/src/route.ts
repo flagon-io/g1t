@@ -52,12 +52,15 @@ export function upstreamRequest(
       return { url: `https://api.anthropic.com${path}`, headers };
     }
     // The gateway logs these with every request, so spend and failures can
-    // be read per kind of work, workspace, repository and pull request.
+    // be read per kind of work, tier, repository and pull request. It keeps
+    // five entries and drops the rest, so the tier takes the workspace's
+    // place: the repository names the workspace too. A run from before
+    // routing by tier has no tier, and keeps the workspace.
     headers.set(
       "cf-aig-metadata",
       JSON.stringify({
         task: upstream.task,
-        workspace: upstream.workspace,
+        ...(upstream.tier ? { tier: upstream.tier } : { workspace: upstream.workspace }),
         repo: upstream.repo,
         pull: upstream.number,
         // What billing finds the run's requests by, to charge what they cost.

@@ -384,6 +384,9 @@ pub struct ModelUpstream {
     /// The session's id; see `ModelSession::id`.
     #[serde(default)]
     pub session: String,
+    /// For `g1t`: the tier the run was routed to, `small` or `large`.
+    #[serde(default)]
+    pub tier: Option<String>,
     /// For `endpoint`: where to send requests.
     pub base_url: Option<String>,
     /// For `anthropic` and `endpoint`: the workspace's key.
@@ -558,6 +561,11 @@ pub struct OpenModelSessionArgs {
     /// decides that; this service only follows the routes.
     #[serde(default = "yes")]
     pub hosted_open: bool,
+    /// `small` or `large`: the tier the runner routed the run to on g1t's
+    /// hosted models, tagged on its requests at the gateway. Kept only
+    /// when the run goes to g1t's models.
+    #[serde(default)]
+    pub tier: Option<String>,
 }
 
 /// `routes`: a workspace's model routes, one per kind of work that has its

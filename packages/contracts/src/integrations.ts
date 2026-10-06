@@ -142,6 +142,8 @@ export type ModelUpstream = {
   task: string;
   /** The session's id; see `ModelSession.id`. */
   session: string;
+  /** For `g1t`: the tier the run was routed to. */
+  tier?: "small" | "large" | null;
   baseUrl: string | null;
   apiKey: string | null;
   authHeader: string | null;
@@ -183,6 +185,8 @@ export interface IntegrationsApi {
     number: number;
     task: string;
     hostedOpen: boolean;
+    /** The tier the run is routed to on g1t's hosted models, for the gateway's logs. */
+    tier?: "small" | "large" | null;
   }): Promise<Result<ModelSession>>;
   routes(workspace: string, viewer: Viewer): Promise<Result<ModelRoute[]>>;
   setRoutes(actor: User, workspace: string, routes: ModelRoute[]): Promise<Result<ModelRoute[]>>;

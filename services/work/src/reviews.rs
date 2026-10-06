@@ -248,6 +248,12 @@ impl Work {
             namespace: repo.namespace,
             name: repo.name,
         };
+        let mut sensitive: Vec<String> = Vec::new();
+        for kind in pull.files.iter().filter_map(|file| crate::confidence::sensitive(&file.path)) {
+            if !sensitive.iter().any(|seen| seen == kind) {
+                sensitive.push(kind.to_owned());
+            }
+        }
         Ok(Outcome::Ok(ReviewJob {
             run_id,
             token,
@@ -260,6 +266,8 @@ impl Work {
             description: pull.body.unwrap_or_default(),
             issue,
             author: pull.author,
+            files: pull.files,
+            sensitive,
         }))
     }
 

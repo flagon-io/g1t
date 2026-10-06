@@ -76,7 +76,9 @@ Under **Which model does which work**, each kind of work has a choice:
 
 Each can go to g1t's models, or to any of your providers on any of its
 models. An Anthropic provider also offers **g1t's choice of Claude**,
-which runs g1t's pick for that kind of work on your key. For example: make
+which runs g1t's large-tier model, Claude Sonnet 5.5 today, on your key.
+Routing between tiers by the size of the work is only for g1t's hosted
+models; see [which model runs](/guides/g1t-agents/#which-model-runs). For example: make
 changes on Claude through your Anthropic key, review on GPT through your
 OpenAI key, and catch up on a small model through OpenRouter.
 

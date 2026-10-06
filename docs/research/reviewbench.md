@@ -125,11 +125,14 @@ Claude Code enforces `--max-budget-usd`.
   computes them (`overlaps`).
 - Previous reviews of the same PR, beyond comments via `peopleSaid`.
 
-**Model.** The production route for `review` is **Claude Sonnet 5.5**
-(`claude-sonnet-5-5`, `AGENT_ROUTES` in `services/runner/wrangler.jsonc`).
+**Model.** The production route for `review` was **Claude Sonnet 5.5**
+(`claude-sonnet-5-5`) when this was measured. Reviews are now routed by
+tier (`AGENT_ROUTING` in `services/runner/wrangler.jsonc`): small changes
+that touch no sensitive path go to the small tier (Claude Haiku 4.5), the
+rest stay on Sonnet 5.5.
 A workspace can route reviews to its own provider through the model proxy
 (`openModelSession`). No effort level is set, so it uses the Claude Code
-default. The model-env test uses Opus 5.5 for review as a fixture only.
+default. 
 
 **Outputs and post-processing** (`reviews.rs`, `report_review`):
 
@@ -318,7 +321,7 @@ category.
    high-severity comment counts for more than three nits.
 6. **Model and effort.** Run the same sample on Sonnet 5.5 at
    `medium`/`high` effort and on Opus 5.5. The review route can change in
-   `AGENT_ROUTES` without a code change. Opus 5.5 is about 1.4x the cost
+   `AGENT_ROUTING` without a code change. Opus 5.5 is about 1.4x the cost
    per review at our token profile.
 7. **Product-side follow-ups** (not benchmark-visible):
    - allow file-level comments on unchanged files when the change breaks

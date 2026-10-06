@@ -1621,6 +1621,15 @@ pub struct ReviewJob {
     pub issue: Option<Issue>,
     /// Who opened the pull request, and so can read its source.
     pub author: User,
+    /// The files it changes, as of its latest push: how large the change
+    /// is, which decides the model that reviews it.
+    #[serde(default)]
+    pub files: Vec<ChangedFile>,
+    /// What among them runs, configures or guards things (CI workflows,
+    /// secrets, infrastructure), once each. Any sends the review to the
+    /// larger model.
+    #[serde(default)]
+    pub sensitive: Vec<String>,
 }
 
 /// A comment on one line, as a reviewing agent reports it.
