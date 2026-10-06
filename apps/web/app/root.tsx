@@ -63,9 +63,6 @@ import { useSignUpCopy } from "./lib/registration";
 
 
 export const links: Route.LinksFunction = () => [
-  // The stylesheet first, ahead of the fonts and module preloads, so a slow
-  // connection paints sooner (docs/research/css-shipping.md).
-  { rel: "stylesheet", href: appCss },
   { rel: "icon", href: "/favicon.ico", sizes: "32x32" },
   { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
   { rel: "icon", type: "image/png", sizes: "192x192", href: "/icon-192.png" },
@@ -470,6 +467,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#0f0f11" />
+        {/* The stylesheet before everything React Router preloads, so a slow
+            connection paints sooner (docs/research/css-shipping.md). */}
+        <link rel="stylesheet" href={appCss} />
         <Meta />
         <Links />
       </head>
