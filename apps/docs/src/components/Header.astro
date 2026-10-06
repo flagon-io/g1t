@@ -26,9 +26,13 @@ const current = tabFor(Astro.locals.starlightRoute.id);
 		flex-direction: column;
 		height: 100%;
 	}
+	/* The same bar as the app's: 4rem, and a line under it. */
 	.g1t-header-top {
-		height: 3.5rem;
+		box-sizing: border-box;
+		height: 4rem;
+		flex-shrink: 0;
 		padding: 0 var(--sl-nav-pad-x);
+		border-bottom: 1px solid var(--g1t-line);
 	}
 	/* On phones the menu button sits at the top row's end: leave it room. */
 	@media (max-width: 49.99rem) {

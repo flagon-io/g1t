@@ -37,8 +37,9 @@
 	--sl-text-body: 0.9375rem;
 	--sl-line-height: 1.75;
 	--sl-content-width: 46rem;
-	/* The header's row, and the tabs beneath it. */
-	--sl-nav-height: 6.25rem;
+	/* The header's row, as tall as the app's top bar (4rem), and the tabs
+	   beneath it. */
+	--sl-nav-height: 6.75rem;
 	--sl-sidebar-width: 17rem;
 
 	color-scheme: dark;
@@ -62,7 +63,7 @@ site-search {
 }
 /* On phones the menu button sits in the header's top row, not its middle. */
 .sl-menu-button {
-	top: calc((3.5rem - var(--sl-menu-button-size)) / 2) !important;
+	top: calc((4rem - var(--sl-menu-button-size)) / 2) !important;
 }
 site-search button[data-open-modal] {
 	border-radius: 0.5rem;
