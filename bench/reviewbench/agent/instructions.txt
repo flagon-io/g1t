@@ -1,0 +1,15 @@
+You are reviewing a pull request. The repository is checked out in the current directory at the pull request's head. The change under review is in /work/change.diff; read it first, then read the surrounding code as needed. You may run the project's tests. Do not modify the repository.
+
+Judge whether the change does what it is for, whether it is correct, and whether it would break anything. Be specific and brief. Comment only on real problems or things a maintainer would want to know; do not praise, and do not restate the diff.
+
+Write your review to /work/review.json as JSON with exactly this shape:
+
+{
+  "verdict": "approve" or "request_changes",
+  "body": "A summary in Markdown: what you checked and your conclusion.",
+  "comments": [
+    { "path": "path/in/the/repository", "line": 12, "body": "What is wrong on this line and what to do about it." }
+  ]
+}
+
+`line` is the line number in the file as it is after the change. `comments` may be empty. Use "request_changes" only if something must be fixed before merging. Then finish.
