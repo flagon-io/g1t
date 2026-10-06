@@ -138,10 +138,12 @@ async function shellFor(
   // something (lib/cache.server.ts).
   const kept = <T,>(what: string, load: () => Promise<T>) =>
     workspace ? shortCache(`shell:${what}:${user.id}:${workspace.slug}`, SHELL_TTL_MS, load) : Promise.resolve(null);
-  const [listed, counts, account, usage, limit, entitlements, shared] = await Promise.all([
+  const [listed, counts, status, usage, limit, entitlements, shared] = await Promise.all([
     kept("projects", () => projects.list(workspace!.slug, user)),
     path ? countsFor(context, params) : Promise.resolve(null),
-    kept("account", () => billing.account(workspace!.slug, user)),
+    // Whether billing is on, without reading the account: that asks the
+    // card processor about the workspace's cards, too slow for every page.
+    kept("status", () => billing.status()).catch(() => null),
     kept(`usage:${monthStart}`, () => billing.usage(workspace!.slug, user, monthStart)),
     kept("limit", () => billing.limit(workspace!.slug, user)).catch(() => null),
     kept("entitlements", () => billing.entitlements(workspace!.slug)).catch(() => null),
@@ -170,7 +172,7 @@ async function shellFor(
         : null,
     // Where the workspace stands against its usage limit, once billing is on.
     limit:
-      account?.ok && account.value.status.enabled && limit?.ok
+      status?.enabled && limit?.ok
         ? {
             exposureMicros: limit.value.exposureMicros,
             ceilingMicros: limit.value.ceilingMicros,
@@ -178,7 +180,7 @@ async function shellFor(
             comped: limit.value.trust === "internal",
           }
         : null,
-    free: account?.ok ? Boolean(account.value.status.free) : false,
+    free: Boolean(status?.free),
     // A spend spike or a hold pauses new compute: the shell says so on every page.
     compute:
       workspace && entitlements && (entitlements.paused || entitlements.spike?.status === "open")
