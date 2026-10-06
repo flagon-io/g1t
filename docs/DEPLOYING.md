@@ -188,6 +188,14 @@ Both are pushed to one repository of Cloudflare's registry,
 image uploads only its own layer (about 5 MB): the base's layers are
 already there.
 
+Both are built as Wrangler builds images (`--platform linux/amd64
+--provenance=false --sbom=false`): one manifest, not an OCI index with a
+BuildKit attestation beside it. A push is tried up to three times and counts
+only when Docker reports the digest; the first push of the base once failed
+with `blob unknown to registry` and went through when run again (see
+`docs/CLOUDFLARE_FEEDBACK.md`, C3). `build-base` and `image` exit non-zero
+when a push fails, and `base.json` is written only after the push.
+
 **The base** is recorded in `services/runner/base.json`: its reference, its
 digest, a hash of its folder (`inputs`), when it was built, its size and
 each toolchain's version. `node scripts/deploy.mjs build-base` builds it,
@@ -306,6 +314,19 @@ Where the time went, and what changed:
   `preserve_order` from `api` and `actions`, `digest` features from
   `secrets`), so each worker-build afterwards compiled its own variant
   again.
+- **The runner's images**, measured on the same machine on 2026-10-06
+  (Docker Desktop, 8 vCPUs; its disk was busy with other containers, so
+  the cold figures are slow and noisy):
+
+  | | Before (one image) | Now |
+  | --- | --- | --- |
+  | Size, unpacked / compressed (what a machine pulls) | 3.08 GB / 819 MB | 2.68 GB / 686 MB |
+  | A change to the runner | Docker rebuilds the image's Rust stage and pushes the image (1198 s in the first deploy after a prune) | binary 46–53 s (6 s unchanged), image 7 s, push one 5 MB layer (1.4 s to a local registry) |
+  | The base from nothing | 431 s (whole image, cold) | 758 s cold, rarely: weekly or when its folder changes |
+  | The base after `docker builder prune` | as from nothing | 68 s, its layers pulled from the registry it was pushed to |
+  | The runner binary, cold (builder container) | | 99 s |
+  | A Rust CI job's build (events, search, repos; 4 vCPUs) | | 51 s cold, 13 s with the Cargo target restored (107 MB zstd entry) |
+
 - **Only what changed** is the largest saving: a change to one service
   deploys one service.
 
@@ -373,7 +394,7 @@ pull requests from forks (`Guardrails::workflow_hosts`, the runner's
 `jobHosts`). Under flagon-io/g1t's **Settings → Guardrails**
 (Maintain role or higher), **Workflow-only domains**:
 
-```
+```text
 api.cloudflare.com | deploy.yml | production
 registry.cloudflare.com | deploy.yml, runner-base.yml | production
 ```

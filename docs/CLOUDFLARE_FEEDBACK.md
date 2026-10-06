@@ -346,6 +346,14 @@ for it and sleep at night at a few thousand workspaces".
   so a runner change pushes about 5 MB (`scripts/deploy/image.mjs`).
 - **Ask.** Document `--cache-to type=registry` support on `registry.cloudflare.com`, or a hosted build
   cache.
+- **Also hit (2026-10-06).** The first push of the 2.7 GB base to `registry.cloudflare.com` failed after
+  several layers with `error from registry: blob unknown to registry`, from `docker push` and from
+  `wrangler containers push` alike. The same push, run again an hour later, found every layer there and
+  finished in 17 s. The image was an OCI index carrying a BuildKit provenance attestation (an
+  `unknown/unknown` manifest), the default for `docker buildx build --load`; Wrangler's own builds pass
+  `--provenance=false`. We now build as Wrangler does (one manifest, no provenance or SBOM) and push up
+  to three times, failing loudly when no digest comes back. Ask: say whether manifests may reference
+  just-uploaded blobs at once, and whether indexes with attestation manifests are supported.
 
 ## Tooling and account
 

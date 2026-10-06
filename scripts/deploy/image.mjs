@@ -137,7 +137,8 @@ export async function registryCredentials({ push = false } = {}) {
   if (creds && creds.until > Date.now() && (!push || creds.push)) return creds;
   const args = ["containers", "registries", "credentials", REGISTRY, "--pull", "--json", "--expiration-minutes", "60"];
   if (push) args.push("--push");
-  const got = await wrangler(args, { cwd: ROOT });
+  // In a unit's folder, not the root, whose .env may hold a token for something else.
+  const got = await wrangler(args, { cwd: join(ROOT, "services/runner") });
   if (got.code !== 0) throw new Error(`could not get registry credentials:\n${lastLines(got.out)}`);
   const { username, password } = jsonFrom(got.out);
   creds = { username, password, push, until: Date.now() + 50 * 60 * 1000 };
@@ -195,7 +196,7 @@ export async function imageSize(ref) {
  */
 export async function buildBase(unit, { tag, previous, onLine, account = ACCOUNT_ID, noCache = false }) {
   const ref = `${repositoryOf(unit, account)}:${tag}`;
-  const args = ["buildx", "build", "--platform", "linux/amd64", "--progress", "plain", "--load", "--build-arg", "BUILDKIT_INLINE_CACHE=1", "-t", ref];
+  const args = ["buildx", "build", ...PLAIN_IMAGE, "--progress", "plain", "--load", "--build-arg", "BUILDKIT_INLINE_CACHE=1", "-t", ref];
   if (previous && !noCache) args.push("--cache-from", `type=registry,ref=${previous}`);
   if (noCache) args.push("--no-cache");
   args.push(join(ROOT, unit.image.base.context));
@@ -222,11 +223,36 @@ export async function baseVersions(ref) {
 }
 
 /** Pushes `ref`; returns its digest in the registry. */
-export async function pushImage(ref, { onLine } = {}) {
-  const pushed = await exec("docker", ["push", ref], { onLine });
-  if (pushed.code !== 0) throw new Error(`docker push ${ref} failed:\n${lastLines(pushed.out)}`);
-  return /digest: (sha256:[0-9a-f]{64})/.exec(pushed.out)?.[1] ?? null;
+export async function pushImage(ref, { onLine = () => {}, attempts = 3, run = exec } = {}) {
+  let last = "";
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const pushed = await run("docker", ["push", ref], { onLine });
+    last = pushed.out;
+    const digest = pushedDigest(pushed);
+    if (digest) return digest;
+    // Cloudflare's registry can answer "blob unknown" for a layer it has
+    // just taken; pushing again finds the layers there and finishes.
+    if (attempt < attempts) onLine(`docker push ${ref} did not finish (attempt ${attempt} of ${attempts}); trying again`);
+  }
+  throw new Error(`docker push ${ref} failed:\n${lastLines(last)}`);
 }
+
+/**
+ * The digest a `docker push` ended with, or null if it did not end with
+ * one, whatever its exit code: an error from the registry is a failure
+ * even when Docker exits 0.
+ */
+export function pushedDigest({ code, out }) {
+  if (code !== 0 || /error from registry|blob unknown|unknown blob|denied|unauthorized/i.test(out)) return null;
+  return /digest: (sha256:[0-9a-f]{64})/.exec(out)?.[1] ?? null;
+}
+
+/**
+ * Build flags for an image Cloudflare Containers takes as Wrangler builds
+ * it: one manifest for linux/amd64, with no provenance or SBOM attestation,
+ * which would make it an index with an `unknown/unknown` manifest.
+ */
+export const PLAIN_IMAGE = ["--platform", "linux/amd64", "--provenance=false", "--sbom=false"];
 
 /**
  * Builds the runner's image: the base and the binary, from a build
@@ -235,7 +261,7 @@ export async function pushImage(ref, { onLine } = {}) {
 export async function buildRunnerImage(unit, { ref, base, binaryDir, onLine }) {
   const built = await exec(
     "docker",
-    ["build", "--platform", "linux/amd64", "--progress", "plain", "--build-arg", `BASE=${base}`, "-f", join(ROOT, unit.image.dockerfile), "-t", ref, binaryDir],
+    ["buildx", "build", ...PLAIN_IMAGE, "--progress", "plain", "--load", "--build-arg", `BASE=${base}`, "-f", join(ROOT, unit.image.dockerfile), "-t", ref, binaryDir],
     { onLine },
   );
   if (built.code !== 0) throw new Error(`docker build of the runner's image failed:\n${lastLines(built.out, 30)}`);

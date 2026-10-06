@@ -14,6 +14,8 @@ import {
   baseTag,
   contentHash,
   lockFor,
+  pushImage,
+  pushedDigest,
   readBaseLock,
   registryHas,
   removeDeployConfig,
@@ -213,6 +215,17 @@ test("the registry is asked for an image's manifest, without Docker", async () =
     `Basic ${Buffer.from("v1:secret").toString("base64")}`,
   ]);
   await assert.rejects(registryHas("not-a-reference", { fetchImpl, credentials }));
+});
+
+test("a push counts only when it ends with a digest, and is tried again", async () => {
+  const digest = "sha256:" + "a".repeat(64);
+  assert.equal(pushedDigest({ code: 0, out: `base: digest: ${digest} size: 856` }), digest);
+  assert.equal(pushedDigest({ code: 0, out: "error from registry: blob unknown to registry" }), null);
+  assert.equal(pushedDigest({ code: 1, out: `digest: ${digest}` }), null);
+  assert.equal(pushedDigest({ code: 0, out: "Pushed" }), null);
+  const answers = [{ code: 1, out: "error from registry: blob unknown to registry" }, { code: 0, out: `x: digest: ${digest} size: 1` }];
+  assert.equal(await pushImage("r/x:y", { run: async () => answers.shift() }), digest);
+  await assert.rejects(pushImage("r/x:y", { attempts: 2, run: async () => ({ code: 0, out: "blob unknown" }) }), /docker push r\/x:y failed/);
 });
 
 test("a static Linux binary is told from a dynamic one", () => {
