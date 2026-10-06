@@ -695,6 +695,100 @@ fn names_head(git: &GitRequest, body: Option<&[u8]>) -> bool {
     }
 }
 
+/// Whether a request is a protocol v2 `fetch` still negotiating: it sends
+/// `have` lines and no `done`, so the answer may be acknowledgments only.
+fn negotiating(body: &[u8]) -> bool {
+    let Some(packets) = packets(body) else { return false };
+    let lines: Vec<&[u8]> = packets
+        .iter()
+        .filter_map(|packet| match packet {
+            Packet::Data(data) => Some(data.strip_suffix(b"\n").unwrap_or(data)),
+            Packet::Special(_) => None,
+        })
+        .collect();
+    lines.contains(&b"command=fetch".as_slice())
+        && lines.iter().any(|line| line.starts_with(b"have "))
+        && !lines.contains(&b"done".as_slice())
+}
+
+/// What to do with the start of a store's answer to a negotiating fetch.
+#[derive(Debug, PartialEq, Eq)]
+enum Acknowledged {
+    /// Not enough of it yet to tell.
+    NeedMore,
+    /// Send it on as it is.
+    Whole,
+    /// Acknowledgments without `ready`, followed by more sections: the
+    /// store's answer to keep is these first bytes, ended by a flush.
+    CutAt(usize),
+}
+
+/// How much of the answer to keep. The git store answers a fetch whose
+/// `have`s it does not know with `acknowledgments`, `NAK`, then a pack
+/// anyway; git refuses that ("expected no other sections to be sent after
+/// no 'ready'"), since a server that is not ready must end the response
+/// there and let the client negotiate again. Lines may be `sideband-all`
+/// framed (band 1, `\x01`).
+fn acknowledged(head: &[u8]) -> Acknowledged {
+    let mut position = 0;
+    let mut first = true;
+    loop {
+        let Some(header) = head.get(position..position + 4) else { return Acknowledged::NeedMore };
+        let Some(length) = std::str::from_utf8(header).ok().and_then(|hex| usize::from_str_radix(hex, 16).ok()) else {
+            return Acknowledged::Whole;
+        };
+        if length < 4 {
+            // The acknowledgments section's end: a delimiter means more
+            // sections follow, which only `ready` allows.
+            return match (first, header) {
+                (false, b"0001") => Acknowledged::CutAt(position),
+                _ => Acknowledged::Whole,
+            };
+        }
+        let Some(payload) = head.get(position + 4..position + length) else { return Acknowledged::NeedMore };
+        let line = payload.strip_prefix(b"\x01").unwrap_or(payload);
+        let line = line.strip_suffix(b"\n").unwrap_or(line);
+        if first && line != b"acknowledgments" {
+            return Acknowledged::Whole;
+        }
+        if line == b"ready" {
+            return Acknowledged::Whole;
+        }
+        first = false;
+        position += length;
+    }
+}
+
+/// The answer to a negotiating fetch, with the sections the store sent
+/// after acknowledgments without `ready` left off (see [`acknowledged`]).
+/// Reads only the start of the answer; the rest streams through.
+async fn without_early_pack(mut response: Response) -> Result<Response> {
+    const LOOK: usize = 64 * 1024;
+    let headers = response.headers().clone();
+    headers.delete("content-length")?;
+    let mut stream = response.stream()?;
+    let mut head = Vec::new();
+    loop {
+        match acknowledged(&head) {
+            Acknowledged::CutAt(at) => {
+                head.truncate(at);
+                // A flush ends the acknowledgments; a response-end packet
+                // ends the stateless answer, as upload-pack's does.
+                head.extend_from_slice(b"00000002");
+                return Ok(Response::from_bytes(head)?.with_headers(headers));
+            }
+            Acknowledged::Whole => break,
+            Acknowledged::NeedMore if head.len() >= LOOK => break,
+            Acknowledged::NeedMore => match stream.next().await {
+                Some(chunk) => head.extend_from_slice(&chunk?),
+                None => break,
+            },
+        }
+    }
+    let rest = futures_util::stream::once(async move { Ok::<Vec<u8>, worker::Error>(head) }).chain(stream);
+    Ok(Response::from_stream(rest)?.with_headers(headers))
+}
+
 /// Sends the request on to the git store and returns its response as is,
 /// unless it is a push that would change the `protected` branch, one the
 /// store could not hold (`limits`, pack_limits.rs), or one that `scan`
@@ -796,6 +890,12 @@ pub async fn forward(
         let body = response.bytes().await?;
         let body = with_head(&body, branch).unwrap_or(body);
         response = Response::from_bytes(body)?.with_headers(headers);
+    }
+    if git.endpoint == "git-upload-pack"
+        && response.status_code() == 200
+        && body.as_deref().is_some_and(negotiating)
+    {
+        response = without_early_pack(response).await?;
     }
     Ok(Push::Forwarded(Forwarded {
         response,
@@ -948,7 +1048,7 @@ async fn push(
 
 #[cfg(test)]
 mod tests {
-    use super::{Pushed, RepoPath, Url, ZERO_ID, framed, pack_bytes, pushed_branches, refusal, server_timing, transferred, with_head, with_namespace};
+    use super::{Acknowledged, Pushed, RepoPath, Url, ZERO_ID, acknowledged, framed, negotiating, pack_bytes, pushed_branches, refusal, server_timing, transferred, with_head, with_namespace};
 
     #[test]
     fn server_timing_names_each_step_and_the_total() {
@@ -1072,6 +1172,70 @@ mod tests {
 
     fn pkt(payload: &str) -> Vec<u8> {
         format!("{:04x}{payload}", payload.len() + 4).into_bytes()
+    }
+
+    fn joined(parts: &[&[u8]]) -> Vec<u8> {
+        parts.concat()
+    }
+
+    #[test]
+    fn a_fetch_with_haves_and_no_done_is_negotiating() {
+        let request = |lines: &[&str]| {
+            let mut body = joined(&[&pkt("command=fetch\n"), &pkt("object-format=sha1\n"), b"0001"]);
+            for line in lines {
+                body.extend(pkt(&format!("{line}\n")));
+            }
+            body.extend(b"0000");
+            body
+        };
+        let want = "want 8407eba58b925619274d012258c2b474a5dbf012";
+        let have = "have 55cd670a89a80df4fa9d9f0244c44fbd2ed1db8b";
+        assert!(negotiating(&request(&["deepen 1", want, have])));
+        assert!(!negotiating(&request(&[want, have, "done"])));
+        assert!(!negotiating(&request(&[want, "done"])));
+        let ls_refs = joined(&[&pkt("command=ls-refs\n"), b"0001", &pkt("have nothing\n"), b"0000"]);
+        assert!(!negotiating(&ls_refs));
+    }
+
+    #[test]
+    fn acknowledgments_without_ready_end_the_answer() {
+        // What the store sent a shallow fetch whose only `have` it did not
+        // know, sideband-all framed: a NAK, then a pack anyway.
+        let answer = joined(&[
+            &pkt("\x01acknowledgments\n"),
+            &pkt("\x01NAK\n"),
+            b"0001",
+            &pkt("\x01shallow-info\n"),
+            &pkt("\x01shallow 8407eba58b925619274d012258c2b474a5dbf012\n"),
+            b"0001",
+            &pkt("\x01packfile\n"),
+        ]);
+        let cut = joined(&[&pkt("\x01acknowledgments\n"), &pkt("\x01NAK\n")]).len();
+        assert_eq!(acknowledged(&answer), Acknowledged::CutAt(cut));
+        // Not yet at the section's end.
+        assert_eq!(acknowledged(&answer[..cut - 2]), Acknowledged::NeedMore);
+        assert_eq!(acknowledged(&answer[..cut]), Acknowledged::NeedMore);
+        // Without sideband framing too.
+        let plain = joined(&[&pkt("acknowledgments\n"), &pkt("ACK abc\n"), b"0001", &pkt("packfile\n")]);
+        assert!(matches!(acknowledged(&plain), Acknowledged::CutAt(_)));
+    }
+
+    #[test]
+    fn a_ready_store_or_a_plain_pack_streams_through() {
+        let ready = joined(&[
+            &pkt("\x01acknowledgments\n"),
+            &pkt("\x01ACK bab14ff1b6d9c4918100098009747d776759a967\n"),
+            &pkt("\x01ready\n"),
+            b"0001",
+            &pkt("\x01packfile\n"),
+        ]);
+        assert_eq!(acknowledged(&ready), Acknowledged::Whole);
+        // Acknowledgments only, ended by a flush: already right.
+        let only = joined(&[&pkt("acknowledgments\n"), &pkt("NAK\n"), b"0000"]);
+        assert_eq!(acknowledged(&only), Acknowledged::Whole);
+        let pack = joined(&[&pkt("\x01packfile\n"), b"0000"]);
+        assert_eq!(acknowledged(&pack), Acknowledged::Whole);
+        assert_eq!(acknowledged(b"00"), Acknowledged::NeedMore);
     }
 
     #[test]
