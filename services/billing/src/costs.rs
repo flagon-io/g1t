@@ -380,10 +380,31 @@ pub(crate) fn raw_usage_row(row: &Value) -> Option<(String, String, String, f64)
         .then(|| (day[..10].to_owned(), workspace.to_lowercase(), slug(meter), count))
 }
 
-/// A price meter's units from raw counts and `billable_units` weights:
-/// what g1t charges for, from what was counted.
-pub(crate) fn billable(raw: &[(String, f64)], weights: &BTreeMap<String, f64>) -> f64 {
-    raw.iter().map(|(meter, count)| count * weights.get(meter).copied().unwrap_or(0.0)).sum()
+/// The repos service's operation mapping, as `artifacts_usage` returns it
+/// beside the rows: for each raw meter (slugged), how many operations it
+/// is to Cloudflare (`cost_operations`) and to the customer
+/// (`billable_operations`). Repos owns this mapping
+/// (`set_operation_mapping`); billing only reads it.
+pub(crate) fn operation_mapping(body: &Value) -> BTreeMap<String, (f64, f64)> {
+    body["mapping"]
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|r| {
+                    let meter = r["meter"].as_str()?;
+                    Some((slug(meter), (r["cost_operations"].as_f64().unwrap_or(0.0), r["billable_operations"].as_f64().unwrap_or(0.0))))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Raw counts weighted by one column of the mapping: what Cloudflare
+/// should count (`cost`), or what customers are charged for.
+pub(crate) fn weighted(raw: &[(String, f64)], mapping: &BTreeMap<String, (f64, f64)>, cost: bool) -> f64 {
+    raw.iter()
+        .map(|(meter, count)| count * mapping.get(meter).map_or(0.0, |(c, b)| if cost { *c } else { *b }))
+        .sum()
 }
 
 impl Billing {
@@ -507,62 +528,54 @@ impl Billing {
             .collect())
     }
 
-    /// g1t's own counts for the days: raw Artifacts meters from the repos
-    /// service's `artifacts_usage` when it answers, and git operations,
-    /// from those raw meters and `billable_units` weights when both exist,
-    /// else from its `git_operations`.
+    /// g1t's own counts for the days, all from the repos service, which
+    /// owns the mapping from raw meters to operations (`operation_mapping`):
+    ///
+    /// - `git_operations`: what customers are charged for, as repos counts
+    ///   it (`git_operations`, already through its mapping).
+    /// - `cost_operations`: what g1t expects Cloudflare to bill, from the
+    ///   raw meters (`artifacts_usage`) and the mapping's cost column.
+    /// - `artifacts_<meter>`: each raw meter.
     pub(crate) async fn count_own(&self, since: &str, until: &str) -> Result<()> {
         let Some(repos) = &self.repos else { return Ok(()) };
         let days = days_between(since, until);
         let fetched_at = rfc3339(now_ms());
         let mut rows: Vec<(String, String, String, f64)> = Vec::new();
 
-        // Raw meters, while the repos service may not have them yet.
-        let raw: Vec<(String, String, String, f64)> =
-            match g1t_kit::call::<_, Value>(repos, "artifacts_usage", &json!({ "from": since, "to": until })).await {
-                Ok(Value::Array(list)) => list.iter().filter_map(raw_usage_row).collect(),
-                Ok(other) => other["rows"].as_array().map(|l| l.iter().filter_map(raw_usage_row).collect()).unwrap_or_default(),
-                Err(_) => Vec::new(),
-            };
-        #[derive(Deserialize)]
-        struct Weight {
-            raw_meter: String,
-            weight: f64,
-        }
-        let weights: BTreeMap<String, f64> = self
-            .db
-            .prepare("SELECT raw_meter, weight FROM billable_units WHERE price_meter = 'git_operations'")
-            .all()
-            .await?
-            .results::<Weight>()?
-            .into_iter()
-            .map(|w| (slug(&w.raw_meter), w.weight))
-            .collect();
-        for (day, workspace, meter, count) in &raw {
-            rows.push((day.clone(), format!("artifacts_{meter}"), workspace.clone(), *count));
-        }
-        if !raw.is_empty() && !weights.is_empty() {
+        // Raw meters and repos' mapping; skipped while repos does not answer.
+        if let Ok(body) = g1t_kit::call::<_, Value>(repos, "artifacts_usage", &json!({ "from": since, "to": until })).await {
+            let mapping = operation_mapping(&body);
             let mut by: BTreeMap<(String, String), Vec<(String, f64)>> = BTreeMap::new();
-            for (day, workspace, meter, count) in &raw {
-                by.entry((day.clone(), workspace.clone())).or_default().push((meter.clone(), *count));
+            for (day, workspace, meter, count) in body["rows"].as_array().map(|l| l.iter().filter_map(raw_usage_row).collect::<Vec<_>>()).unwrap_or_default() {
+                by.entry((day, workspace)).or_default().push((meter, count));
             }
             for ((day, workspace), counts) in by {
-                rows.push((day, "git_operations".to_owned(), workspace, billable(&counts, &weights)));
+                // Several stores (namespaces) can give the same meter.
+                let mut merged: BTreeMap<String, f64> = BTreeMap::new();
+                for (meter, count) in &counts {
+                    *merged.entry(meter.clone()).or_default() += count;
+                }
+                for (meter, count) in &merged {
+                    rows.push((day.clone(), format!("artifacts_{meter}"), workspace.clone(), *count));
+                }
+                if !mapping.is_empty() {
+                    rows.push((day, "cost_operations".to_owned(), workspace, weighted(&counts, &mapping, true)));
+                }
             }
-        } else {
-            let mut cumulative = Vec::with_capacity(days.len());
-            for day in &days {
-                let list: Vec<WorkspaceGitOperations> = g1t_kit::call(
-                    repos,
-                    "git_operations",
-                    &GitOperationsArgs { month: day[..7].to_owned(), since: Some(format!("{day}T00")), namespace: None },
-                )
-                .await?;
-                cumulative.push(list.into_iter().map(|w| (w.namespace.to_lowercase(), w.operations)).collect::<BTreeMap<_, _>>());
-            }
-            for (day, workspace, count) in daily_from_cumulative(&days, &cumulative) {
-                rows.push((day, "git_operations".to_owned(), workspace, count as f64));
-            }
+        }
+        // What customers are charged for, as repos counts it through its mapping.
+        let mut cumulative = Vec::with_capacity(days.len());
+        for day in &days {
+            let list: Vec<WorkspaceGitOperations> = g1t_kit::call(
+                repos,
+                "git_operations",
+                &GitOperationsArgs { month: day[..7].to_owned(), since: Some(format!("{day}T00")), namespace: None },
+            )
+            .await?;
+            cumulative.push(list.into_iter().map(|w| (w.namespace.to_lowercase(), w.operations)).collect::<BTreeMap<_, _>>());
+        }
+        for (day, workspace, count) in daily_from_cumulative(&days, &cumulative) {
+            rows.push((day, "git_operations".to_owned(), workspace, count as f64));
         }
 
         // Each day's counts replace what was there.
@@ -757,18 +770,34 @@ mod tests {
     }
 
     #[test]
-    fn raw_meters_become_billable_units_by_their_weights() {
-        let row = raw_usage_row(&json!({ "day": "2026-10-15", "namespace": "Acme", "meter": "upload_pack", "count": 12 })).unwrap();
-        assert_eq!(row, ("2026-10-15".into(), "acme".into(), "upload_pack".into(), 12.0));
+    fn raw_meters_are_weighted_by_the_repos_mapping() {
+        // As repos' artifacts_usage answers: rows, and its operation_mapping.
+        let body = json!({
+            "rows": [
+                { "day": "2026-10-15", "store": "g1t", "workspace": "Acme", "meter": "git.fetch", "count": 12, "bytes_in": 0, "bytes_out": 0 },
+                { "day": "2026-10-15", "store": "g1t", "workspace": "acme", "meter": "git.receive_pack", "count": 3, "bytes_in": 0, "bytes_out": 0 },
+                { "day": "2026-10-15", "store": "g1t", "workspace": "acme", "meter": "binding.read_blob", "count": 400, "bytes_in": 0, "bytes_out": 0 }
+            ],
+            "mapping": [
+                { "meter": "git.fetch", "cost_operations": 1, "billable_operations": 1 },
+                { "meter": "git.receive_pack", "cost_operations": 1, "billable_operations": 1 },
+                { "meter": "binding.read_blob", "cost_operations": 0, "billable_operations": 0 }
+            ],
+            "truncated": false
+        });
+        let row = raw_usage_row(&body["rows"][0]).unwrap();
+        assert_eq!(row, ("2026-10-15".into(), "acme".into(), "git_fetch".into(), 12.0));
         assert!(raw_usage_row(&json!({ "day": "2026-10-15", "count": 1 })).is_none());
-        let weights: BTreeMap<String, f64> = [("upload_pack".to_string(), 1.0), ("receive_pack".to_string(), 1.0), ("binding_read".to_string(), 0.0)].into();
-        let raw = vec![("upload_pack".to_string(), 12.0), ("receive_pack".to_string(), 3.0), ("binding_read".to_string(), 400.0), ("ls_refs".to_string(), 9.0)];
-        assert_eq!(billable(&raw, &weights), 15.0);
-        // Cloudflare turns out to count binding reads: one row changes, and
-        // so does what is counted from then on.
-        let mut weights = weights;
-        weights.insert("binding_read".into(), 1.0);
-        assert_eq!(billable(&raw, &weights), 415.0);
+        let mut mapping = operation_mapping(&body);
+        let raw: Vec<(String, f64)> = body["rows"].as_array().unwrap().iter().filter_map(raw_usage_row).map(|r| (r.2, r.3)).collect();
+        assert_eq!(weighted(&raw, &mapping, true), 15.0);
+        assert_eq!(weighted(&raw, &mapping, false), 15.0);
+        // Cloudflare turns out to bill binding reads: repos changes one row
+        // (set_operation_mapping), and the bill g1t expects follows.
+        mapping.insert("binding_read_blob".into(), (1.0, 0.0));
+        assert_eq!(weighted(&raw, &mapping, true), 415.0);
+        assert_eq!(weighted(&raw, &mapping, false), 15.0);
+        assert!(operation_mapping(&json!({})).is_empty());
     }
 
     #[test]

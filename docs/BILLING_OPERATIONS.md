@@ -22,7 +22,8 @@ to what g1t sells is data you change from sudo, without a deploy.
 | The ledger | Every charge: its cost at the price book's cost, what it was charged at price, what paid for it. | read, never written |
 | `pending_usage` | Month-end meters (git, storage, scans, embeddings, the cache) as they stand. | snapshotted daily into `pending_days` |
 | `plan_payments` | The plan's $20. | read |
-| repos `git_operations` (and `artifacts_usage` once it ships) | g1t's own counts per workspace. | `own_counts` (`git_operations`, `artifacts_<raw meter>`) |
+| repos `git_operations` | Operations customers are charged for, per workspace, counted by repos through its `operation_mapping`. | `own_counts` meter `git_operations` |
+| repos `artifacts_usage` | Every raw meter of the git store (`git.fetch`, `git.receive_pack`, `binding.*`, …) per day and workspace, with repos' `operation_mapping`. | `own_counts` meters `artifacts_<raw meter>`, and `cost_operations` (raw counts × the mapping's `cost_operations`: what g1t expects Cloudflare to bill) |
 
 A meter's slug is Cloudflare's name lower-cased with words joined by `_`
 and the "(First … included)" note dropped: `Workers for Platforms CPU ms
@@ -124,7 +125,7 @@ remainder).
 
 | Kind | When | What to do |
 | --- | --- | --- |
-| Count | g1t's count and Cloudflare's differ by more than the mapping's `drift_percent` (10%) | Find out what Cloudflare counts. If it counts more (binding reads, `ls-refs`), either change the weights in `billable_units` so customers are charged for what Cloudflare counts, or leave the count and let the per-unit cost rise (below). |
+| Count | g1t's count and Cloudflare's differ by more than the mapping's `drift_percent` (10%) | Find out what Cloudflare counts: compare its events with `own_counts` `artifacts_*` and `cost_operations`. If it counts more (binding reads, `ls-refs`), either change repos' `operation_mapping` so customers are charged for what Cloudflare counts, or leave it and let the per-unit cost rise (below). |
 | Cost | Cloudflare charged more than `drift_percent` away from the price book's cost of the same usage, with at least `min_daily_cost` | A price is stale: check the proposals. |
 | Leak | Cost of at least `min_daily_cost` and nothing charged for it (never for `platform`), or a meter in `unmapped` | Map the meter (below), or decide it is overhead (`platform`). |
 
@@ -167,11 +168,21 @@ product), g1t's product, and optionally:
 - **Drift threshold**.
 
 It applies from the next run; **Read the bill now** applies it at once.
-Every change is in the audit log (`cost_mapping`). For a raw meter's
-weight in billable units (`billable_units`, e.g. `git_operations` ←
-`upload_pack` 1, `receive_pack` 1, `binding_read` 0), use
-`npx wrangler d1 execute g1t-billing --remote --command "INSERT …"` until
-sudo has a form; a weight applies to counts from then on.
+Every change is in the audit log (`cost_mapping`).
+
+## Which raw meters are operations
+
+There is one mapping, and the repos service owns it: `operation_mapping`
+in g1t-repos' database, one row per raw meter with `cost_operations` (how
+many operations Cloudflare bills for it) and `billable_operations` (how
+many the customer is charged for). Change it with repos'
+`set_operation_mapping` RPC (services only), or
+`npx wrangler d1 execute g1t-repos --remote` until sudo has a form. A
+change applies to counts from then on, never to what was counted.
+Billing keeps no mapping of its own: it reads repos' `git_operations`
+(already mapped) for what customers are charged, and `artifacts_usage`
+(raw counts with the mapping) for `cost_operations`. Migration 0023 drops
+the `billable_units` table 0022 made for this, which was never written.
 
 ## Alerts runbook
 
@@ -189,10 +200,11 @@ overall and leak alerts.
 
 ## Tables (migration `0022_costs_and_margin.sql`)
 
-`cost_lines`, `cost_map`, `revenue_map`, `billable_units`, `own_counts`,
+`cost_lines`, `cost_map`, `revenue_map`, `own_counts`,
 `pending_days`, `margin_days`, `workspace_costs`, `cost_drift`,
 `margin_alerts`, `price_versions` (seeded with every current price as
 version 1), `price_proposals`, `price_notices`, `cost_settings` (the
 guardrails, seeded), the `actions_cache` price, and `ledger.price_version`.
 Every create is `IF NOT EXISTS` and every seed `INSERT OR IGNORE`; the one
-`ALTER` is applied once by D1's migration tracking.
+`ALTER` is applied once by D1's migration tracking. Migration
+`0023_one_operation_mapping.sql` drops `billable_units` (see above).

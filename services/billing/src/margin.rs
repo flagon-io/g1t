@@ -819,7 +819,7 @@ impl Billing {
                 let title = costs::bucket_title(bucket);
                 let detail = match drift.kind {
                     DriftKind::Count => format!(
-                        "{title}: g1t counted {}, Cloudflare {} over the last {DRIFT_DAYS} days ({:+.1}%). Customers are charged for what g1t counts; check what Cloudflare counts as a unit (billable_units, cost_map).",
+                        "{title}: g1t counted {}, Cloudflare {} over the last {DRIFT_DAYS} days ({:+.1}%). Customers are charged for what g1t counts; check what Cloudflare counts as a unit and change the repos service's operation_mapping (set_operation_mapping).",
                         crate::features::thousands(drift.ours.max(0.0).round() as u64),
                         crate::features::thousands(drift.cloudflare.max(0.0).round() as u64),
                         drift.delta_percent.unwrap_or(0.0)
