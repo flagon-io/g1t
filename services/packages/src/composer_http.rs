@@ -18,6 +18,7 @@ use std::collections::{HashMap, HashSet};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use g1t_contracts::User;
+use g1t_contracts::audit::AuditActor;
 use g1t_contracts::events::PackageEvent;
 use g1t_contracts::new_id;
 use g1t_contracts::repos::{
@@ -403,7 +404,9 @@ impl Packages {
             }
         };
 
-        let caller = Caller { actor: None };
+        // Versions follow git, so g1t records them: what made them is the
+        // push, already in the log as `git.push`.
+        let caller = Caller { actor: Some(AuditActor::system()) };
         let wanted = wanted_versions(&refs, &repo.default_branch);
         let stored = self.db.versions(&package.id, 1000).await?;
         let mut manifests: HashMap<String, Option<Value>> = HashMap::new();
@@ -445,6 +448,7 @@ impl Packages {
             if current.is_none() {
                 let event = PackageEvent { version: Some(version.version.clone()), digest: Some(commit.clone()), ..self.event_of(&package) };
                 self.announce("package.published", &package, event, &caller).await;
+                self.audit(&caller, "package.publish", &package, Some(&format!("{name}@{}", version.version)), None).await;
             }
         }
         let kept: HashSet<&str> = wanted.iter().map(|(v, ..)| v.version.as_str()).collect();
@@ -452,6 +456,7 @@ impl Packages {
             self.db.delete_version(&row.id).await?;
             let event = PackageEvent { version: Some(row.version.clone()), digest: Some(row.digest.clone()), ..self.event_of(&package) };
             self.announce("package.version_deleted", &package, event, &caller).await;
+            self.audit(&caller, "package.delete_version", &package, Some(&format!("{}@{}", package.name, row.version)), None).await;
             changed = true;
         }
         if let Some(commit) = &default {
@@ -503,7 +508,9 @@ impl Packages {
     async fn drop_composer(&self, package: &PackageRow) -> Result<()> {
         self.db.delete_package(&package.id).await?;
         self.db.measure(&package.workspace).await?;
-        self.announce("package.deleted", package, self.event_of(package), &Caller { actor: None }).await;
+        let caller = Caller { actor: Some(AuditActor::system()) };
+        self.announce("package.deleted", package, self.event_of(package), &caller).await;
+        self.audit(&caller, "package.delete", package, Some(&package.name), None).await;
         Ok(())
     }
 

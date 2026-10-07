@@ -511,11 +511,7 @@ impl<S: GitStore> Repos<S> {
                 Ok(remote) => remote,
                 Err(reason) => return Ok(Outcome::fail(FailureCode::Invalid, reason)),
             };
-            let pack = match import::fetch(&url, &remote.head).await? {
-                Ok(pack) => pack,
-                Err(reason) => return Ok(Outcome::fail(FailureCode::Invalid, reason)),
-            };
-            imported = Some((remote, pack));
+            imported = Some((remote, url));
         }
         let now = now_ms();
         let repo = Repo {
@@ -560,25 +556,30 @@ impl<S: GitStore> Repos<S> {
                 name: repo.name.clone(),
             })
             .await?;
-        let mut pushed = None;
-        if let Some((remote, pack)) = imported {
+        // Every branch and tag the import made, announced as pushes.
+        let mut pushed: Vec<(String, String)> = Vec::new();
+        // A public repository, read with no credential: every branch and
+        // tag is copied too, the default branch the one its HEAD names.
+        if let Some((_, url)) = imported {
             let access = self
                 .store
                 .open(&store_key(&repo))
                 .await?
                 .access(Scope::Write)
                 .await?;
-            let stored =
-                land::push_pack(&access, &repo.default_branch, None, &remote.head, pack).await?;
+            let target = mirror::Endpoint::bearer(&access.remote, &access.token);
+            let copied = mirror::copy(&mirror::Endpoint::anonymous(&url), &target, mirror::Prune::Yes).await?;
             self.refs_moved(&repo.id).await;
-            if let Err(reason) = stored {
-                self.registry.remove(&repo.id).await?;
-                return Ok(Outcome::fail(
-                    FailureCode::Invalid,
-                    format!("The repository could not be stored: {reason}"),
-                ));
+            match copied {
+                Ok(copied) => pushed = mirror::import_pushes(&copied.updated, &repo.default_branch),
+                Err(reason) => {
+                    self.registry.remove(&repo.id).await?;
+                    return Ok(Outcome::fail(
+                        FailureCode::Invalid,
+                        format!("The repository could not be stored: {reason}"),
+                    ));
+                }
             }
-            pushed = Some(remote.head);
         }
         if let Some((source, _)) = credentialed {
             let access = self
@@ -591,14 +592,7 @@ impl<S: GitStore> Repos<S> {
             let copied = mirror::copy(&source, &target, mirror::Prune::Yes).await?;
             self.refs_moved(&repo.id).await;
             match copied {
-                Ok(copied) => {
-                    let branch = format!("refs/heads/{}", repo.default_branch);
-                    pushed = copied
-                        .updated
-                        .into_iter()
-                        .find(|(name, _, _)| *name == branch)
-                        .map(|(_, _, new)| new);
-                }
+                Ok(copied) => pushed = mirror::import_pushes(&copied.updated, &repo.default_branch),
                 Err(reason) => {
                     self.registry.remove(&repo.id).await?;
                     return Ok(Outcome::fail(
@@ -621,15 +615,8 @@ impl<S: GitStore> Repos<S> {
             },
         })
         .await?;
-        if let Some(head) = pushed {
-            self.publish_push(
-                &repo,
-                &format!("refs/heads/{}", repo.default_branch),
-                None,
-                &head,
-                None,
-            )
-                .await?;
+        for (git_ref, head) in &pushed {
+            self.publish_push(&repo, git_ref, None, head, None).await?;
         }
         Ok(Outcome::Ok(repo))
     }

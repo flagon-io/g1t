@@ -51,6 +51,15 @@ impl Endpoint {
         }
     }
 
+    /// A public repository anywhere, read with no credential: importing
+    /// one copies every branch and tag, as with a credential.
+    pub fn anonymous(url: &str) -> Self {
+        Endpoint {
+            url: url.trim_end_matches('/').to_owned(),
+            authorization: String::new(),
+        }
+    }
+
     /// A GitHub repository, with an installation access token. GitHub takes
     /// one as the password of the user `x-access-token`. The token is used
     /// as given: its length and shape are GitHub's to change.
@@ -259,7 +268,9 @@ fn request(method: Method, url: &str, endpoint: &Endpoint, body: Option<(&str, V
     }
     let headers = Headers::new();
     headers.set("user-agent", USER_AGENT)?;
-    headers.set("authorization", &endpoint.authorization)?;
+    if !endpoint.authorization.is_empty() {
+        headers.set("authorization", &endpoint.authorization)?;
+    }
     let mut init = RequestInit::new();
     if let Some((service, body)) = body {
         headers.set("content-type", &format!("application/x-{service}-request"))?;
@@ -371,6 +382,29 @@ pub async fn copy(source: &Endpoint, target: &Endpoint, prune: Prune) -> Result<
     Ok(Ok(copied))
 }
 
+/// The pushes an import announces, one for each ref it made: the default
+/// branch first (what follows a repository, such as its Composer package,
+/// starts from it), then the other branches, then the tags.
+pub fn import_pushes(updated: &[(String, Option<String>, String)], default_branch: &str) -> Vec<(String, String)> {
+    let default = format!("refs/heads/{default_branch}");
+    let rank = |name: &str| {
+        if name == default {
+            0
+        } else if name.starts_with("refs/heads/") {
+            1
+        } else {
+            2
+        }
+    };
+    let mut pushes: Vec<(String, String)> = updated
+        .iter()
+        .filter(|(name, _, new)| (name.starts_with("refs/heads/") || name.starts_with("refs/tags/")) && new != ZERO_ID)
+        .map(|(name, _, new)| (name.clone(), new.clone()))
+        .collect();
+    pushes.sort_by(|a, b| rank(&a.0).cmp(&rank(&b.0)).then_with(|| a.0.cmp(&b.0)));
+    pushes
+}
+
 impl<S: GitStore> Repos<S> {
     /// `mirror`: a mirror catching up with the host it mirrors, or a
     /// repository pushing its refs out to one. Each branch moved on g1t is
@@ -470,6 +504,42 @@ mod tests {
         assert_eq!(advertised(&[("refs/tags/v1", A)]).default_branch(), None);
         let empty = [pkt_line(&format!("{ZERO_ID} capabilities^{{}}\0report-status\n")), b"0000".to_vec()].concat();
         assert!(parse_advertisement(&empty).refs.is_empty());
+    }
+
+    #[test]
+    fn a_public_import_copies_every_branch_and_tag_annotated_ones_whole() {
+        // An empty repository being filled from a public source: every
+        // branch and tag is made, an annotated tag as its tag object (so it
+        // stays annotated), and the source's pull request refs and peeled
+        // lines are left out.
+        let bytes = [
+            pkt_line("# service=git-upload-pack\n"),
+            b"0000".to_vec(),
+            pkt_line(&format!("{A} HEAD\0multi_ack symref=HEAD:refs/heads/master\n")),
+            pkt_line(&format!("{A} refs/heads/master\n")),
+            pkt_line(&format!("{B} refs/heads/next\n")),
+            pkt_line(&format!("{C} refs/pull/7/head\n")),
+            pkt_line(&format!("{C} refs/tags/1.0.0\n")),
+            pkt_line(&format!("{A} refs/tags/1.0.0^{{}}\n")),
+            pkt_line(&format!("{B} refs/tags/2.0.0\n")),
+            b"0000".to_vec(),
+        ]
+        .concat();
+        let source = parse_advertisement(&bytes);
+        assert_eq!(source.default_branch().as_deref(), Some("master"), "HEAD stays the default branch");
+        let commands = plan(&source, &Advertised::default(), Prune::Yes);
+        let names: Vec<(&str, &str)> = commands.iter().map(|(name, _, new)| (name.as_str(), new.as_str())).collect();
+        assert_eq!(
+            names,
+            [("refs/heads/master", A), ("refs/heads/next", B), ("refs/tags/1.0.0", C), ("refs/tags/2.0.0", B)]
+        );
+        let pushes = import_pushes(&commands, "master");
+        let order: Vec<&str> = pushes.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(order, ["refs/heads/master", "refs/heads/next", "refs/tags/1.0.0", "refs/tags/2.0.0"]);
+        let pushes = import_pushes(&commands, "next");
+        assert_eq!(pushes[0].0, "refs/heads/next", "the default branch is announced first");
+        assert_eq!(Endpoint::anonymous("https://github.com/php-fig/log.git/").url, "https://github.com/php-fig/log.git");
+        assert!(Endpoint::anonymous("https://x").authorization.is_empty(), "no credential is sent");
     }
 
     #[test]

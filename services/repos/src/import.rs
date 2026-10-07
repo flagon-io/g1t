@@ -1,19 +1,15 @@
 //! Importing a repository from another git host.
 //!
-//! g1t fetches the default branch the way a git client would, over smart
-//! HTTP, and pushes the pack it receives into a new repository unchanged.
-//! Only public repositories reachable over https can be imported, and only
-//! their default branch.
+//! This finds a public repository over smart HTTP and its default branch, so
+//! an address that does not work is refused before anything is made; the
+//! copy itself, every branch and tag, is mirror.rs's (`Endpoint::anonymous`).
+//! Only public repositories reachable over https are imported this way.
 
-use futures_util::StreamExt;
 use worker::js_sys::Uint8Array;
 use worker::{Fetch, Headers, Method, Request, RequestInit, Result, Url};
 
-use crate::land::{read_pkt_lines, unpack_sideband};
+use crate::land::read_pkt_lines;
 
-/// The largest pack that is imported. A Worker holds the pack in memory
-/// twice while relaying it.
-const MAX_PACK_BYTES: usize = 40 * 1024 * 1024;
 const HEADS: &str = "refs/heads/";
 /// Some hosts only speak the smart protocol to something that says it is git.
 const USER_AGENT: &str = "git/2.45.0 (g1t import)";
@@ -122,34 +118,6 @@ pub async fn discover(url: &str) -> Result<std::result::Result<Remote, String>> 
     }
     let bytes = response.bytes().await?;
     Ok(parse_remote(&bytes).ok_or_else(|| "That repository is empty.".to_owned()))
-}
-
-/// Fetches a pack holding everything reachable from `head`.
-pub async fn fetch(url: &str, head: &str) -> Result<std::result::Result<Vec<u8>, String>> {
-    let mut body = format!("{:04x}want {head} side-band-64k\n", head.len() + 24).into_bytes();
-    body.extend_from_slice(b"00000009done\n");
-    let request = request(Method::Post, &format!("{url}/git-upload-pack"), Some(body))?;
-    let mut response = Fetch::Request(request).send().await?;
-    if response.status_code() != 200 {
-        return Ok(Err(
-            "The other host refused to send the repository.".to_owned()
-        ));
-    }
-    // Read in pieces, so a repository that is too large is noticed before
-    // it has all been held in memory.
-    let mut received = Vec::new();
-    let mut stream = response.stream()?;
-    while let Some(chunk) = stream.next().await {
-        received.extend_from_slice(&chunk?);
-        if received.len() > MAX_PACK_BYTES {
-            return Ok(Err(format!(
-                "That repository is larger than {} MB, the most that can be imported. Push it with git instead.",
-                MAX_PACK_BYTES / 1024 / 1024
-            )));
-        }
-    }
-    Ok(unpack_sideband(&received)
-        .map_err(|_| "The other host did not send a usable pack.".to_owned()))
 }
 
 #[cfg(test)]

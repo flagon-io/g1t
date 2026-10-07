@@ -132,7 +132,8 @@ Someone without the role does not see the tab.
 2. Choose where its code comes from:
    - **Start empty**: a new repository on g1t.
    - **Import code**: copy a public repository from GitHub or any git host
-     into a new one on g1t.
+     into a new one on g1t, with every branch and tag (up to 40 MB of
+     history).
    - **Import from GitHub**: import, mirror or move repositories you can
      reach on GitHub, private ones too, with every branch and tag and,
      if you like, their issues. See [GitHub](/guides/github/).
