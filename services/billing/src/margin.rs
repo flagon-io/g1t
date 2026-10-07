@@ -125,7 +125,10 @@ pub(crate) struct WorkspaceDay {
     pub workspace: String,
     pub bucket: String,
     pub cost: i64,
+    /// What the workspace paid in cash.
     pub revenue: i64,
+    /// What its usage was priced at, whoever paid for it.
+    pub value: i64,
 }
 
 fn micros(dollars: f64) -> i64 {
@@ -201,6 +204,7 @@ pub(crate) fn fold(
     let mut value_by: BTreeMap<(String, String), Vec<(String, f64)>> = BTreeMap::new();
     let mut cost_by: BTreeMap<(String, String), Vec<(String, f64)>> = BTreeMap::new();
     let mut revenue: BTreeMap<(String, String, String), i64> = BTreeMap::new();
+    let mut valued: BTreeMap<(String, String, String), i64> = BTreeMap::new();
     let mut active: BTreeMap<String, Vec<(String, f64)>> = BTreeMap::new();
     for u in usage {
         let bucket = bucket_of(&u.key);
@@ -211,7 +215,8 @@ pub(crate) fn fold(
         row.cash_micros += u.cash;
         value_by.entry(key.clone()).or_default().push((u.workspace.clone(), u.value as f64));
         cost_by.entry(key).or_default().push((u.workspace.clone(), u.cost as f64));
-        *revenue.entry((u.day.clone(), u.workspace.clone(), bucket)).or_default() += u.cash;
+        *revenue.entry((u.day.clone(), u.workspace.clone(), bucket.clone())).or_default() += u.cash;
+        *valued.entry((u.day.clone(), u.workspace.clone(), bucket)).or_default() += u.value;
         active.entry(u.day.clone()).or_default().push((u.workspace.clone(), u.value.max(u.cost) as f64));
     }
     // Each bucket's cost shared out: by Cloudflare's own count per
@@ -238,6 +243,7 @@ pub(crate) fn fold(
         .map(|(day, workspace, bucket)| WorkspaceDay {
             cost: shares.get(&(day.clone(), workspace.clone(), bucket.clone())).copied().unwrap_or(0),
             revenue: revenue.get(&(day.clone(), workspace.clone(), bucket.clone())).copied().unwrap_or(0),
+            value: valued.get(&(day.clone(), workspace.clone(), bucket.clone())).copied().unwrap_or(0),
             day,
             workspace,
             bucket,
@@ -399,6 +405,20 @@ pub(crate) fn attribute(total: i64, weights: &[(String, f64)]) -> Vec<(String, i
 /// Workspaces that cost g1t more than `factor` times what they paid, with
 /// at least `floor_micros` of cost: each (workspace, cost, revenue), the
 /// biggest gap first.
+/// What the overall alert says: the money as money, and a percentage only
+/// while there is enough coming in for one to mean something (a few cents
+/// against dollars of cost reads as -8000%).
+pub(crate) fn overall_detail(took: i64, spent: i64, days: usize, floor: f64, worst: f64) -> String {
+    if took < 1_000_000 * days as i64 {
+        return format!(
+            "All of g1t, comped workspaces left out: took in {} against {} of Cloudflare's bill over {days} days.",
+            dollars(took),
+            dollars(spent)
+        );
+    }
+    format!("All of g1t, comped workspaces left out: money in against Cloudflare's bill under {floor:.0}% for {days} days running, as low as {worst:.1}%.")
+}
+
 pub(crate) fn anomalies(rows: &[(String, i64, i64)], factor: f64, floor_micros: i64) -> Vec<(String, i64, i64)> {
     let mut out: Vec<(String, i64, i64)> = rows
         .iter()
@@ -770,13 +790,14 @@ impl Billing {
             for w in chunk {
                 statements.push(
                     self.db
-                        .prepare("INSERT OR REPLACE INTO workspace_costs (day, workspace, bucket, cost_micros, revenue_micros) VALUES (?, ?, ?, ?, ?)")
+                        .prepare("INSERT OR REPLACE INTO workspace_costs (day, workspace, bucket, cost_micros, revenue_micros, value_micros) VALUES (?, ?, ?, ?, ?, ?)")
                         .bind(&[
                             w.day.as_str().into(),
                             w.workspace.as_str().into(),
                             w.bucket.as_str().into(),
                             (w.cost as f64).into(),
                             (w.revenue as f64).into(),
+                            (w.value as f64).into(),
                         ])?,
                 );
             }
@@ -967,14 +988,18 @@ impl Billing {
                 ));
             }
         }
+        // Comped workspaces' share is a budget g1t chose to spend, watched
+        // on its own (budget.rs): not part of whether what is sold pays.
+        for (day, cost) in self.comped_costs(&since, until).await? {
+            if let Some(overall) = all.get_mut(&day) {
+                overall.1 = (overall.1 - cost).max(0);
+            }
+        }
         let series: Vec<(String, i64, i64)> = all.into_iter().map(|(day, (revenue, cost))| (day, revenue, cost)).collect();
         if let Some((from, worst)) = breach(&series, floor, n, settings.min_daily_cost_micros) {
-            conditions.push((
-                "overall".into(),
-                "g1t".into(),
-                format!("All of g1t: money in against Cloudflare's bill under {floor:.0}% for {n} days running, as low as {worst:.1}%."),
-                from,
-            ));
+            let tail = &series[series.len().saturating_sub(n)..];
+            let (took, spent) = tail.iter().fold((0i64, 0i64), |(r, c), (_, revenue, cost)| (r + revenue, c + cost));
+            conditions.push(("overall".into(), "g1t".into(), overall_detail(took, spent, n, floor, worst), from));
         }
         for (d, detail) in drift {
             let kind = if d.kind == DriftKind::Leak { "leak" } else { "drift" };
@@ -985,7 +1010,11 @@ impl Billing {
             conditions.push((
                 "workspace".into(),
                 workspace.clone(),
-                format!("{workspace} cost g1t {} on Cloudflare over {ANOMALY_DAYS} days and paid {}.", dollars(cost), dollars(revenue)),
+                format!(
+                    "{workspace} cost g1t {} on Cloudflare over {ANOMALY_DAYS} days, and its usage was priced at {}: its prices are below cost.",
+                    dollars(cost),
+                    dollars(revenue)
+                ),
                 day_before(until, ANOMALY_DAYS - 1),
             ));
         }
@@ -1027,7 +1056,10 @@ impl Billing {
                         .run()
                         .await?;
                     kept.insert(id.clone());
-                    to_email.push(detail.clone());
+                    // A workspace's is for Reach out, not the inbox.
+                    if kind != "workspace" {
+                        to_email.push(detail.clone());
+                    }
                     kept.insert(format!("email:{id}"));
                 }
             }
@@ -1061,6 +1093,29 @@ impl Billing {
     }
 
     /// Workspaces costing g1t more than they pay over 30 days, not g1t's own.
+    /// Each day's cost shared out to comped workspaces.
+    async fn comped_costs(&self, since: &str, until: &str) -> Result<Vec<(String, i64)>> {
+        #[derive(Deserialize)]
+        struct Row {
+            day: String,
+            cost: Option<i64>,
+        }
+        Ok(self
+            .db
+            .prepare(format!(
+                "SELECT day, SUM(cost_micros) AS cost FROM workspace_costs
+                 WHERE day >= ?1 AND day <= ?2 AND workspace IN ({}) GROUP BY day",
+                crate::sales::INTERNAL_SQL
+            ))
+            .bind(&[since.into(), until.into()])?
+            .all()
+            .await?
+            .results::<Row>()?
+            .into_iter()
+            .map(|r| (r.day, r.cost.unwrap_or(0)))
+            .collect())
+    }
+
     async fn workspace_anomalies(&self, until: &str, settings: &CostSettings) -> Result<Vec<(String, i64, i64)>> {
         #[derive(Deserialize)]
         struct Row {
@@ -1071,7 +1126,10 @@ impl Billing {
         let rows = self
             .db
             .prepare(format!(
-                "SELECT workspace, SUM(cost_micros) AS cost, SUM(revenue_micros) AS revenue FROM workspace_costs
+                // Against what its usage was priced at, not the cash it
+                // paid: a trial or a gift paying for usage is not a price
+                // below cost.
+                "SELECT workspace, SUM(cost_micros) AS cost, SUM(value_micros) AS revenue FROM workspace_costs
                  WHERE day >= ?1 AND day <= ?2 AND workspace NOT IN ({}) GROUP BY workspace",
                 crate::sales::INTERNAL_SQL
             ))
@@ -1409,6 +1467,15 @@ impl Billing {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_overall_alert_says_dollars_while_little_comes_in() {
+        let small = overall_detail(90_000, 7_500_000, 3, 10.0, -8239.7);
+        assert!(small.contains("took in $0.09 against $7.50"), "{small}");
+        assert!(!small.contains('%'), "{small}");
+        let real = overall_detail(30_000_000, 40_000_000, 3, 10.0, -33.3);
+        assert!(real.contains("as low as -33.3%"), "{real}");
+    }
 
     fn rule(product: &str, meter: &str, bucket: &str, own: Option<&str>) -> Rule {
         Rule { product: product.into(), meter: meter.into(), bucket: bucket.into(), price_meter: None, own_meter: own.map(Into::into), drift_percent: 10.0 }

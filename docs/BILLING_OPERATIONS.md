@@ -191,10 +191,10 @@ the `billable_units` table 0022 made for this, which was never written.
 | Alert | Raised when | First steps |
 | --- | --- | --- |
 | Margin under the floor | A product's value against cost under `margin_floor_percent` (10%) for `alert_days` (3) days running, each with at least `min_daily_cost` | Open the product on Costs & margin. Cost up? Check proposals (approve a rise; it waits out the notice). Value down? A mapping or `revenue_map` may have moved. |
-| All of g1t under the floor | The same for money in against every cost | Look at which products moved; check `platform` (it has no revenue of its own and grows with traffic). |
+| All of g1t under the floor | The same for money in against every cost, comped workspaces' share left out (their spend is a budget, watched in budget.rs). While less than $1 a day comes in, it says the dollars, not a percentage | Look at which products moved; check `platform` (it has no revenue of its own and grows with traffic). Before launch, with little paid usage, expect it. |
 | Leak | Drift of kind leak | Map the meter, or decide it is overhead. |
 | Drift | Count drift | See Drift above. Cloudflare's definitions change in beta: ask them in writing ([ARTIFACTS.md](ARTIFACTS.md), §7). |
-| Costs more than it pays | A workspace's shared cost over 30 days above its revenue × `anomaly_factor`, at least `anomaly_floor`; not g1t's own | Shown on Reach out as "Costs more than it pays". Abuse (Abuse & fraud page) or a gap in pricing. Not emailed. |
+| Costs more than it pays | A workspace's shared cost over 30 days above what its usage was priced at (`value_micros`, whoever paid: card, trial, gift or included usage) × `anomaly_factor`, at least `anomaly_floor`; not comped workspaces | Shown on Reach out as "Costs more than it pays": its usage is priced below what it costs. Abuse (Abuse & fraud page) or a gap in pricing. Not emailed. A trial or gift paying for usage does not raise it. |
 
 Alerts close on their own when the condition clears. Open ones are
 emailed again weekly. The red bar on every sudo page shows margin,
