@@ -17,6 +17,7 @@ import { parse as parseYaml } from "yaml";
 import { NEEDS, repoRef } from "./access";
 import { effectiveDescription, ownDescription } from "./description";
 import { type KindFacts, type RootFiles, MANIFESTS, deploysSetting, detectKind, goFilesToRead, resolveKind } from "./kind";
+import { ACTIVE, decayed, raised } from "./activity";
 import { MAX_PINS, MAX_RECENT, MAX_VISITS, placePin, recentAfterPins, reorderPins } from "./pins";
 import { renameStatements } from "./rename";
 import { moveStatements, slugOf, strandedQuery } from "./transfer";
@@ -96,6 +97,11 @@ type Row = {
   detected_commit?: string | null;
   linked_package?: string | null;
   deployments_on?: number | null;
+  /** When its repository was last pushed to (migrations/0009_activity.sql). */
+  pushed_at?: string | null;
+  /** How active it is lately, as of `active_at` (src/activity.ts). */
+  activity?: number | null;
+  active_at?: string | null;
 };
 
 /** How a package its repository publishes is named in why a project is a library. */
@@ -158,6 +164,8 @@ function toProject(row: Row): Project {
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    pushedAt: row.pushed_at ?? null,
+    activity: decayed(row.activity ?? 0, row.active_at ?? null, now()),
   };
 }
 
@@ -849,7 +857,30 @@ class Projects {
     }
   }
 
+  /** Something happened to a repository's code or work: its projects are that much more active. */
+  private async active(repoId: string, at: string, pushed: boolean): Promise<void> {
+    const rows = await this.db
+      .prepare("SELECT id, activity, active_at FROM projects WHERE repo_id = ?")
+      .bind(repoId)
+      .all<{ id: string; activity: number | null; active_at: string | null }>();
+    if (rows.results.length === 0) return;
+    await this.db.batch(
+      rows.results.map((row) => {
+        const next = raised(row.activity ?? 0, row.active_at, at);
+        return pushed
+          ? this.db
+              .prepare("UPDATE projects SET activity = ?, active_at = ?, pushed_at = MAX(COALESCE(pushed_at, ''), ?) WHERE id = ?")
+              .bind(next.score, next.at, at, row.id)
+          : this.db.prepare("UPDATE projects SET activity = ?, active_at = ? WHERE id = ?").bind(next.score, next.at, row.id);
+      }),
+    );
+  }
+
   async onEvent(event: G1tEvent): Promise<void> {
+    if (ACTIVE.has(event.type)) {
+      const repoId = event.repoId ?? ("repoId" in event.data ? (event.data as { repoId?: string }).repoId : undefined);
+      if (repoId) await this.active(repoId, event.time, event.type === "git.push");
+    }
     if (event.type === "workspace.renamed") {
       const current = await currentWorkspaceSlug(this.env.IDENTITY, event.data);
       const statements = renameStatements(staleSlugs(event.data, current), current);
