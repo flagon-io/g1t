@@ -1,11 +1,11 @@
-import { Form, Link, useNavigation } from "react-router";
+import { Form, Link } from "react-router";
 
 import type { DetectedKind } from "@g1t/contracts";
 
 import type { Route } from "./+types/settings-deployments";
 import { page } from "../../lib/meta";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
-import { Button, ErrorText, Field, Input } from "../../components/ui";
+import { ErrorText, Field, Input, SubmitButton } from "../../components/ui";
 import { SwitchCard } from "../../components/ui/switch";
 import { deployments, projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
@@ -96,7 +96,6 @@ function Detected({ kind }: { kind: DetectedKind | null }) {
 
 export default function DeploymentSettings({ loaderData, actionData, params }: Route.ComponentProps) {
   const { settings, notDeploying } = loaderData;
-  const busy = useNavigation().state === "submitting";
   const base = `/${params.owner}/${params.repo}`;
   return (
     <div className="max-w-4xl">
@@ -128,9 +127,9 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
             </p>
           ) : (
             <Form method="post" className="mt-4">
-              <Button variant="accent" type="submit" name="intent" value="enable" disabled={busy}>
+              <SubmitButton variant="accent" name="intent" value="enable" pending="Turning on…">
                 Turn on deployments
-              </Button>
+              </SubmitButton>
             </Form>
           )}
         </section>
@@ -163,9 +162,9 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
               </Link>{" "}
               available to Deployments: each row for Production or Preview, or for all environments.
             </p>
-            <Button type="submit" disabled={busy}>
+            <SubmitButton name="intent" value="save" pending="Saving…">
               Save
-            </Button>
+            </SubmitButton>
           </Form>
 
           <section className="mt-10 rounded-xl border border-danger/30 p-5">
@@ -175,9 +174,9 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
               running or costing anything. The workspace's plan stays on; turn it off under Billing.
             </p>
             <Form method="post" className="mt-3">
-              <Button variant="quiet" type="submit" name="intent" value="disable" disabled={busy}>
+              <SubmitButton variant="quiet" name="intent" value="disable" pending="Turning off…">
                 Turn off deployments
-              </Button>
+              </SubmitButton>
             </Form>
           </section>
         </>

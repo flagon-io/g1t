@@ -7,12 +7,12 @@
  */
 import { Lock, Pencil, Plus, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Form, Link, useLocation, useNavigation } from "react-router";
+import { Form, Link, useLocation } from "react-router";
 
 import type { Setting } from "@g1t/contracts";
 
 import type { SecretsAction, SecretsData } from "../lib/secrets.server";
-import { Button, ButtonLink, EmptyState, ErrorText, TimeAgo } from "./ui";
+import { ButtonLink, EmptyState, ErrorText, SubmitButton, TimeAgo } from "./ui";
 import { CheckboxOption } from "./ui/checkbox";
 import { RadioCard, RadioGroup, RadioOption } from "./ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "./ui/select";
@@ -150,14 +150,14 @@ export function SecretsPanel({
       </div>
 
       {manage && (adding || row) && (
-        <Drawer row={row} scope={scope} projects={data.projects} error={action?.error} />
+        // Keyed to the row, so going from one row's edit to another's starts from that row.
+        <Drawer key={row?.id ?? "add"} row={row} scope={scope} projects={data.projects} error={action?.error} />
       )}
     </div>
   );
 }
 
 function Row({ row, inherited, manage }: { row: Setting; inherited: boolean; manage: boolean }) {
-  const busy = useNavigation().state === "submitting";
   const secret = row.kind === "secret";
   return (
     <li className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 border-t border-line px-4 py-3 text-sm first:border-t-0 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_6rem_6rem_auto]">
@@ -200,14 +200,14 @@ function Row({ row, inherited, manage }: { row: Setting; inherited: boolean; man
                   <input type="hidden" name="intent" value="delete" />
                   <input type="hidden" name="id" value={row.id} />
                   <input type="hidden" name="name" value={row.name} />
-                  <button
-                    type="submit"
-                    disabled={busy}
+                  <SubmitButton
+                    icon
+                    match={{ intent: "delete", id: row.id }}
                     aria-label={`Remove ${row.name}`}
-                    className="rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-danger"
+                    className="rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-danger disabled:opacity-50"
                   >
                     <Trash2 size={14} />
-                  </button>
+                  </SubmitButton>
                 </Form>
               </>
             )}
@@ -229,7 +229,6 @@ function Drawer({
   projects: string[];
   error: string | undefined;
 }) {
-  const busy = useNavigation().state === "submitting";
   const editing = !!row;
   const [type, setType] = useState<"secret" | "config">(row?.kind === "variable" ? "config" : "secret");
   const [some, setSome] = useState(!!row && row.environments.length > 0);
@@ -403,9 +402,9 @@ function Drawer({
         </div>
         <div className="flex items-center justify-between gap-4 border-t border-line px-6 py-4">
           <p className="text-xs text-faint">{editing ? "" : "Paste .env contents into Key to add many."}</p>
-          <Button type="submit" disabled={busy}>
+          <SubmitButton match={{ intent: "save" }} pending="Saving…">
             Save
-          </Button>
+          </SubmitButton>
         </div>
       </Form>
     </div>

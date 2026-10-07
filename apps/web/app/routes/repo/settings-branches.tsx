@@ -1,5 +1,5 @@
 import { ChevronRight, ShieldCheck } from "lucide-react";
-import { Form, Link, useNavigation } from "react-router";
+import { Form, Link } from "react-router";
 
 import type { Route } from "./+types/settings-branches";
 import { page } from "../../lib/meta";
@@ -7,7 +7,7 @@ import { AddCiPrompt } from "../../components/add-ci";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { RequiredChecksPicker } from "../../components/required-checks";
 import { SettingChoice as Choice, SettingsSection as Section, SettingToggle as Toggle } from "../../components/settings-section";
-import { Button, ErrorText, TimeAgo } from "../../components/ui";
+import { ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { actions, repos, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { requireCapability, requireInsider } from "../../lib/access.server";
@@ -72,7 +72,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 export default function BranchSettings({ loaderData, actionData }: Route.ComponentProps) {
   const { repo, settings, seen, noChecks, canPush } = loaderData;
-  const saving = useNavigation().state === "submitting";
   const branch = repo.defaultBranch;
   const base = `/${repo.namespace}/${repo.name}`;
   const archived = Boolean(repo.archivedAt);
@@ -190,9 +189,9 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
           </Section>
 
           <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-4 border-t border-line bg-bg/90 px-4 py-4 backdrop-blur">
-            <Button type="submit" disabled={saving || archived}>
-              {saving ? "Saving…" : "Save settings"}
-            </Button>
+            <SubmitButton pending="Saving…" disabled={archived}>
+              Save settings
+            </SubmitButton>
             {actionData?.saved && <span className="text-sm text-muted">Saved.</span>}
             <ErrorText>{actionData?.error}</ErrorText>
             {settings.updatedBy && settings.updatedAt && !actionData && (

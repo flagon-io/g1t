@@ -4,12 +4,12 @@
  */
 import { ChevronRight, Pause, Play, RotateCw, Send, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { Form, Link, useNavigation } from "react-router";
+import { Form, Link } from "react-router";
 
 import { EVENT_TYPES, type Hook, type HookDelivery } from "@g1t/contracts";
 
 import type { WebhooksAction, WebhooksData } from "../lib/webhooks.server";
-import { Button, CopyLine, EmptyState, ErrorText, Field, Input, TimeAgo } from "./ui";
+import { CopyLine, EmptyState, ErrorText, Field, Input, SubmitButton, TimeAgo } from "./ui";
 import { CheckboxOption } from "./ui/checkbox";
 import { RadioGroup, RadioOption } from "./ui/radio-group";
 
@@ -51,7 +51,6 @@ function pretty(text: string | null): string {
 }
 
 function DeliveryRow({ delivery, manage }: { delivery: HookDelivery; manage: boolean }) {
-  const busy = useNavigation().state === "submitting";
   return (
     <details className="group border-t border-line first:border-t-0">
       <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-2.5 text-sm hover:bg-raised/40">
@@ -90,10 +89,14 @@ function DeliveryRow({ delivery, manage }: { delivery: HookDelivery; manage: boo
             <Form method="post" className="mt-3">
               <input type="hidden" name="intent" value="redeliver" />
               <input type="hidden" name="delivery" value={delivery.id} />
-              <Button type="submit" variant="quiet" disabled={busy}>
+              <SubmitButton
+                variant="quiet"
+                match={{ intent: "redeliver", delivery: delivery.id }}
+                pending="Redelivering…"
+              >
                 <RotateCw size={14} />
                 Redeliver
-              </Button>
+              </SubmitButton>
             </Form>
           )}
         </div>
@@ -103,7 +106,6 @@ function DeliveryRow({ delivery, manage }: { delivery: HookDelivery; manage: boo
 }
 
 function HookRow({ hook, open, deliveries, manage }: { hook: Hook; open: boolean; deliveries: HookDelivery[]; manage: boolean }) {
-  const busy = useNavigation().state === "submitting";
   return (
     <li className="border-t border-line first:border-t-0">
       <div className="flex items-center gap-3 px-4 py-3">
@@ -132,14 +134,14 @@ function HookRow({ hook, open, deliveries, manage }: { hook: Hook; open: boolean
         {manage && (
           <Form method="post" className="flex shrink-0 gap-1">
             <input type="hidden" name="id" value={hook.id} />
-            <IconButton intent="ping" label="Send a ping" disabled={busy}>
+            <IconButton intent="ping" id={hook.id} label="Send a ping">
               <Send size={14} />
             </IconButton>
             <input type="hidden" name="active" value={hook.active ? "false" : "true"} />
-            <IconButton intent="toggle" label={hook.active ? "Pause" : "Resume"} disabled={busy}>
+            <IconButton intent="toggle" id={hook.id} label={hook.active ? "Pause" : "Resume"}>
               {hook.active ? <Pause size={14} /> : <Play size={14} />}
             </IconButton>
-            <IconButton intent="delete" label="Delete" disabled={busy}>
+            <IconButton intent="delete" id={hook.id} label="Delete">
               <Trash2 size={14} />
             </IconButton>
           </Form>
@@ -158,24 +160,24 @@ function HookRow({ hook, open, deliveries, manage }: { hook: Hook; open: boolean
   );
 }
 
-function IconButton({ intent, label, disabled, children }: { intent: string; label: string; disabled: boolean; children: React.ReactNode }) {
+/** One webhook's action, as an icon: a spinner in its place while that action goes. */
+function IconButton({ intent, id, label, children }: { intent: string; id: string; label: string; children: React.ReactNode }) {
   return (
-    <button
-      type="submit"
+    <SubmitButton
+      icon
       name="intent"
       value={intent}
+      match={{ id }}
       title={label}
       aria-label={label}
-      disabled={disabled}
       className="rounded-md p-2 text-muted transition-colors hover:bg-raised hover:text-fg disabled:opacity-50"
     >
       {children}
-    </button>
+    </SubmitButton>
   );
 }
 
 function AddWebhook() {
-  const busy = useNavigation().state === "submitting";
   const [which, setWhich] = useState<"all" | "some">("all");
   return (
     <Form method="post" className="space-y-4 rounded-xl border border-line bg-surface p-5">
@@ -223,9 +225,9 @@ function AddWebhook() {
       <Field label="Secret" hint="Optional. Deliveries are signed with it. Leave it empty and g1t makes one, shown once.">
         <Input name="secret" type="password" autoComplete="off" />
       </Field>
-      <Button type="submit" disabled={busy}>
-        {busy ? "Adding…" : "Add webhook"}
-      </Button>
+      <SubmitButton match={{ intent: "create" }} pending="Adding…">
+        Add webhook
+      </SubmitButton>
     </Form>
   );
 }
@@ -291,7 +293,8 @@ export function WebhooksPanel({
         </ul>
       )}
 
-      {manage && <AddWebhook />}
+      {/* Keyed to the webhook just added, so the form starts empty for the next. */}
+      {manage && <AddWebhook key={created?.hook.id ?? "new"} />}
       <p className="text-xs text-faint">
         Each delivery is an HTTPS POST of JSON with <code>X-G1t-Event</code>, <code>X-G1t-Delivery</code> and{" "}
         <code>X-G1t-Signature-256</code>. One that is not answered with a 2xx is tried again after 1 minute, 5 minutes,

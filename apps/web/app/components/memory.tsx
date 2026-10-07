@@ -9,7 +9,7 @@ import { Link, useFetcher } from "react-router";
 
 import { MEMORY_KINDS, type Memory, type MemoryKind, type MemoryScope, type Result, type User as Actor } from "@g1t/contracts";
 
-import { TimeAgo } from "./ui";
+import { SubmitButton, TimeAgo } from "./ui";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -127,13 +127,9 @@ function EditMemory({ memory, action }: { memory: Memory; action: string }) {
           <textarea name="text" required rows={4} maxLength={1000} defaultValue={memory.text} className={TEXTAREA} />
           <div className="flex items-center justify-between gap-3">
             <KindSelect value={memory.kind} />
-            <button
-              type="submit"
-              disabled={fetcher.state !== "idle"}
-              className="rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-white disabled:opacity-50"
-            >
+            <SubmitButton fetcher={fetcher} pending="Saving…">
               Save
-            </button>
+            </SubmitButton>
           </div>
           {fetcher.data?.error && <p className="text-sm text-danger">{fetcher.data.error}</p>}
         </fetcher.Form>
@@ -176,7 +172,8 @@ function MemoryItem({ memory, action, editable }: { memory: Memory; action: stri
             aria-label={pinned ? "Unpin" : "Pin"}
             title={pinned ? "Unpin" : "Pin: given to every agent first"}
             onClick={() => fetcher.submit({ intent: "update", id: memory.id, pinned: String(!pinned) }, { method: "post", action })}
-            className="rounded p-1 text-faint transition-colors hover:bg-raised hover:text-fg"
+            disabled={fetcher.state !== "idle"}
+            className="rounded p-1 text-faint transition-colors hover:bg-raised hover:text-fg disabled:opacity-50"
           >
             {pinned ? <PinOff size={13} /> : <Pin size={13} />}
           </button>
@@ -252,13 +249,9 @@ export function AddMemory({ scope, action, placeholder }: { scope: MemoryScope; 
           Pin it
         </label>
         <span className="grow" />
-        <button
-          type="submit"
-          disabled={fetcher.state !== "idle"}
-          className="rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-white disabled:opacity-50"
-        >
-          {fetcher.state !== "idle" ? "Adding…" : "Add"}
-        </button>
+        <SubmitButton fetcher={fetcher} pending="Adding…">
+          Add
+        </SubmitButton>
       </div>
       {fetcher.data?.error && <p className="mt-2 text-sm text-danger">{fetcher.data.error}</p>}
       <p className="mt-2 text-xs text-faint">

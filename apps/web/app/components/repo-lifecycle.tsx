@@ -1,8 +1,8 @@
 import { Archive } from "lucide-react";
-import { type ReactNode, useId, useState } from "react";
-import { Form, Link, useNavigation } from "react-router";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { Form, Link } from "react-router";
 
-import { Button, ErrorText } from "./ui";
+import { ErrorText, SubmitButton, usePending } from "./ui";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -56,12 +56,17 @@ export function ConfirmDialog({
 }) {
   const [open, setOpen] = useState(Boolean(error));
   const [typed, setTyped] = useState("");
-  const navigation = useNavigation();
   const id = useId();
-  const posting =
-    navigation.state !== "idle" &&
-    navigation.formData?.get("intent") === intent &&
-    Object.entries(fields ?? {}).every(([k, v]) => navigation.formData?.get(k) === v);
+  const posting = usePending({ intent, ...fields });
+  // Done without an error, it closes: the page behind it now shows the change.
+  const wasPosting = useRef(false);
+  useEffect(() => {
+    if (wasPosting.current && !posting && !error) {
+      setOpen(false);
+      setTyped("");
+    }
+    wasPosting.current = posting;
+  }, [posting, error]);
   const ready = confirm == null || confirmsName(typed, confirm);
   return (
     <>
@@ -104,9 +109,9 @@ export function ConfirmDialog({
             <ErrorText>{error}</ErrorText>
             <AlertDialogFooter>
               <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-              <Button type="submit" variant={danger ? "danger" : "primary"} disabled={!ready || posting}>
-                {posting ? busy : submit}
-              </Button>
+              <SubmitButton variant={danger ? "danger" : "primary"} disabled={!ready} match={{ intent, ...fields }} pending={busy}>
+                {submit}
+              </SubmitButton>
             </AlertDialogFooter>
           </Form>
         </AlertDialogContent>

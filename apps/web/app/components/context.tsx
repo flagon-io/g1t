@@ -44,7 +44,7 @@ import {
   type User as Actor,
 } from "@g1t/contracts";
 
-import { TimeAgo } from "./ui";
+import { SubmitButton, TimeAgo } from "./ui";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
@@ -157,9 +157,9 @@ function EditAndKeep({ memory, action }: { memory: Memory; action: string }) {
           <textarea name="text" required rows={4} maxLength={1000} defaultValue={memory.text} className={TEXTAREA} />
           <div className="flex items-center justify-between gap-3">
             <KindSelect value={memory.kind} />
-            <button type="submit" disabled={fetcher.state !== "idle"} className="rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-white disabled:opacity-50">
+            <SubmitButton fetcher={fetcher} pending="Keeping…">
               Keep
-            </button>
+            </SubmitButton>
           </div>
           {fetcher.data?.error && <p className="text-sm text-danger">{fetcher.data.error}</p>}
         </fetcher.Form>
@@ -497,15 +497,15 @@ function Rule({ rule, project, action }: { rule: RuleResult; project: string; ac
           <input type="hidden" name="intent" value="fix" />
           <input type="hidden" name="project" value={project} />
           <input type="hidden" name="rule" value={rule.rule} />
-          <button
-            type="submit"
-            disabled={fetcher.state !== "idle"}
+          <SubmitButton
+            fetcher={fetcher}
+            pending="Opening…"
             title={`Opens “${rule.fix.title}” and puts an agent on it`}
             className="inline-flex shrink-0 items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-muted hover:border-accent-dim hover:text-fg disabled:opacity-50"
           >
             <Bot size={12} />
-            {fetcher.state !== "idle" ? "Opening…" : "Fix with an agent"}
-          </button>
+            Fix with an agent
+          </SubmitButton>
         </fetcher.Form>
       )}
     </li>
