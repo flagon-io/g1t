@@ -269,9 +269,10 @@ export function Landing() {
         <div aria-hidden="true" className="h-16 bg-gradient-to-b from-transparent to-bg" />
       </section>
 
-      {/* Facts, each one true today. */}
-      <section className="mx-auto max-w-6xl px-4">
-        <dl className="grid gap-px overflow-hidden rounded-2xl bg-line ring-1 ring-line sm:grid-cols-2 lg:grid-cols-4">
+      {/* Facts, each one true today. Above the hero's fade, with a border of
+          its own: a ring is a shadow, and the fade drew over its top edge. */}
+      <section className="relative z-10 mx-auto max-w-6xl px-4">
+        <dl className="grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
           {FACTS.map(([figure, about]) => (
             <div key={figure} className="bg-bg px-6 py-6">
               <dt className="font-mono text-2xl font-medium tracking-tight text-fg">{figure}</dt>

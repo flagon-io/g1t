@@ -526,27 +526,30 @@ function WeekChart({ week }: { week: Week }) {
           <span className="size-2 rounded-sm bg-info" /> People
         </span>
       </div>
-      <table className="sr-only">
-        <caption>Changes landed each day</caption>
-        <thead>
-          <tr>
-            <th>Day</th>
-            <th>Agents, on their own</th>
-            <th>Agents, merged by a person</th>
-            <th>People</th>
-          </tr>
-        </thead>
-        <tbody>
-          {week.days.map((day) => (
-            <tr key={day.key}>
-              <td>{day.key}</td>
-              <td>{day.agents}</td>
-              <td>{day.assisted}</td>
-              <td>{day.people}</td>
+      {/* A table does not shrink to sr-only's 1px; its wrapper does. */}
+      <div className="sr-only">
+        <table>
+          <caption>Changes landed each day</caption>
+          <thead>
+            <tr>
+              <th>Day</th>
+              <th>Agents, on their own</th>
+              <th>Agents, merged by a person</th>
+              <th>People</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {week.days.map((day) => (
+              <tr key={day.key}>
+                <td>{day.key}</td>
+                <td>{day.agents}</td>
+                <td>{day.assisted}</td>
+                <td>{day.people}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

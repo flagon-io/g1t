@@ -4,7 +4,7 @@ import { Link, data } from "react-router";
 import { MICROS_PER_DOLLAR, type UsageSlice } from "@g1t/contracts";
 
 import type { Route } from "./+types/usage";
-import { foldTasks, usageTask } from "../../lib/billing";
+import { foldTasks, planStatus, usageTask } from "../../lib/billing";
 import { page } from "../../lib/meta";
 import { ButtonLink } from "../../components/ui";
 import { billing } from "../../lib/services.server";
@@ -38,11 +38,16 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const asked = new URL(request.url).searchParams.get("period");
   const period: Period = asked && asked in PERIODS ? (asked as Period) : "month";
   const since = start(period);
-  const [usage, account] = await Promise.all([
+  const [usage, account, features, entitlements] = await Promise.all([
     billing.usage(params.owner, viewer, since.toISOString()),
     billing.account(params.owner, viewer),
+    billing.features(params.owner, viewer).catch(() => null),
+    billing.entitlements(params.owner).catch(() => null),
   ]);
-  return { period, since: since.toISOString(), usage: unwrap(usage), account: unwrap(account) };
+  const plan = features?.ok ? (features.value.find((state) => state.plan.feature === "plan") ?? null) : null;
+  // A comped workspace is charged nothing, so it has no credit to run down.
+  const comped = planStatus(plan, entitlements).kind === "comped";
+  return { period, since: since.toISOString(), usage: unwrap(usage), account: unwrap(account), comped };
 }
 
 function dollars(micros: number, digits = 2): string {
@@ -180,7 +185,7 @@ function Breakdown({
 }
 
 export default function UsagePage({ loaderData, params }: Route.ComponentProps) {
-  const { period, since, usage, account } = loaderData;
+  const { period, since, usage, account, comped } = loaderData;
   const byTask = foldTasks(usage.byTask);
   const base = `/${params.owner}`;
   const days = Math.max(1, Math.ceil((Date.now() - new Date(since).getTime()) / 86_400_000));
@@ -232,26 +237,35 @@ export default function UsagePage({ loaderData, params }: Route.ComponentProps) 
           value={usage.runs ? dollars(total / usage.runs, 3) : "—"}
           note="Making a change, reviewing, revising…"
         />
-        <div className="rounded-2xl bg-surface p-5 ring-1 ring-line">
-          <p className="flex items-center justify-between text-sm text-muted">
-            Credit left
-            {!usage.free && (
-              <Link to={`${base}/-/billing`} className="text-xs text-accent hover:underline">
-                Add credit
-              </Link>
-            )}
-          </p>
-          <p className={`mt-2 text-3xl font-semibold tracking-tight tabular-nums ${account.balanceMicros <= 0 ? "text-warn" : ""}`}>
-            {dollars(account.balanceMicros)}
-          </p>
-          <p className="mt-1 text-xs text-faint">
-            {usage.free
-              ? "Not drawn down while g1t is free."
-              : runway == null
-                ? "Nothing spent in this period."
-                : `About ${runway} ${runway === 1 ? "day" : "days"} at this rate.`}
-          </p>
-        </div>
+        {comped ? (
+          // Nothing is charged to a comped workspace: no credit to run down.
+          <div className="rounded-2xl bg-surface p-5 ring-1 ring-line">
+            <p className="text-sm text-muted">Credit</p>
+            <p className="mt-2 text-3xl font-semibold tracking-tight text-accent">Comped</p>
+            <p className="mt-1 text-xs text-faint">Recorded at what it costs; nothing is charged to this workspace.</p>
+          </div>
+        ) : (
+          <div className="rounded-2xl bg-surface p-5 ring-1 ring-line">
+            <p className="flex items-center justify-between text-sm text-muted">
+              Credit left
+              {!usage.free && (
+                <Link to={`${base}/-/billing`} className="text-xs text-accent hover:underline">
+                  Add credit
+                </Link>
+              )}
+            </p>
+            <p className={`mt-2 text-3xl font-semibold tracking-tight tabular-nums ${account.balanceMicros <= 0 ? "text-warn" : ""}`}>
+              {dollars(account.balanceMicros)}
+            </p>
+            <p className="mt-1 text-xs text-faint">
+              {usage.free
+                ? "Not drawn down while g1t is free."
+                : runway == null
+                  ? "Nothing spent in this period."
+                  : `About ${runway} ${runway === 1 ? "day" : "days"} at this rate.`}
+            </p>
+          </div>
+        )}
       </div>
 
       <section className="rounded-2xl bg-surface p-5 ring-1 ring-line">

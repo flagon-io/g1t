@@ -34,8 +34,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   ]);
   // Set not to deploy, in General settings: turning them on waits for that to change.
   const notDeploying = project?.ok ? project.value.deploys === "no" : false;
-  // Someone outside the workspace does not see its plans; the page works without.
-  const plan = features.ok ? (features.value.find((state) => state.plan.feature === "deployments") ?? null) : null;
+  // Deployments come with the g1t plan. Someone outside the workspace does
+  // not see its plans; the page works without, and the deployments service
+  // refuses a deploy the plan does not cover.
+  const plan = features.ok
+    ? (features.value.find((state) => state.plan.feature === "plan" || state.plan.feature === "deployments") ?? null)
+    : null;
   return { can: access.can, settings: unwrap(settings), ...unwrap(list), plan, computeNote, notDeploying };
 }
 
@@ -106,7 +110,7 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
         {!actionData && <ComputeNote note={loaderData.computeNote} />}
       </div>
 
-      {!plan?.on ? (
+      {plan != null && !plan.on && !plan.included && live.length === 0 ? (
         <PlanNeeded plan={plan} owner={params.owner} />
       ) : !settings.enabled ? (
         <section className="mt-2 rounded-xl border border-accent/30 bg-accent/5 p-6">
