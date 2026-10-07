@@ -2,6 +2,7 @@ import { createRequestHandler } from "react-router";
 
 import { finishResponse, withRequestPerf } from "../app/lib/perf.server";
 import { goImport } from "../app/lib/go-get";
+import { repositoryOfPage, stillPublic } from "../app/lib/public-cache";
 import { servicePath } from "../app/lib/registry-paths";
 
 const requestHandler = createRequestHandler(
@@ -65,7 +66,7 @@ export default {
     // Every page and data request says where its time went (Server-Timing)
     // and keeps the reader's D1 bookmarks (app/lib/perf.server.ts).
     const render = () => withRequestPerf(request, async () => finishResponse(request, await requestHandler(request)));
-    if (anonymousPage(request, pathname)) return servePublic(request, ctx, render);
+    if (anonymousPage(request, pathname)) return servePublic(env, request, ctx, render);
     return render();
   },
 } satisfies ExportedHandler<Env>;
@@ -74,7 +75,9 @@ export default {
  * Public pages as someone signed out sees them: the same for every such
  * visitor, so kept in this data centre's cache. Reserved first segments
  * (settings, sign-in, invitations and the like) and workspace pages (`-`)
- * are never kept; docs/PERFORMANCE.md lists the rules.
+ * are never kept; docs/PERFORMANCE.md lists the rules. A repository's kept
+ * page is served only while repos says the repository is still public: one
+ * made private or deleted is never served from any data centre's copy.
  */
 const PUBLIC_TOP = /^\/(?:|_root\.data|pricing|explore|security|support|policies(?:\/[a-z-]+)?)(?:\.data)?$/;
 const PUBLIC_PROJECT =
@@ -89,10 +92,16 @@ function anonymousPage(request: Request, pathname: string): boolean {
   return PUBLIC_TOP.test(pathname) || PUBLIC_PROJECT.test(pathname);
 }
 
-async function servePublic(request: Request, ctx: ExecutionContext, render: () => Promise<Response>): Promise<Response> {
+async function servePublic(env: Env, request: Request, ctx: ExecutionContext, render: () => Promise<Response>): Promise<Response> {
   const cache = (caches as unknown as { default: Cache }).default;
   const key = new Request(request.url, { method: "GET" });
-  const cached = await cache.match(key);
+  const repository = PUBLIC_PROJECT.test(new URL(request.url).pathname) ? repositoryOfPage(new URL(request.url).pathname) : null;
+  // Asked alongside the cache, so a hit waits for one indexed read at most.
+  const [cached, visible] = await Promise.all([cache.match(key), repository ? isStillPublic(env, repository) : Promise.resolve(true)]);
+  if (cached && !visible) {
+    ctx.waitUntil(cache.delete(key).then(() => undefined, () => undefined));
+    return render();
+  }
   const keptAt = Number(cached?.headers.get("x-g1t-kept-at") ?? 0);
   const age = Math.round((Date.now() - keptAt) / 1000);
   const refresh = async () => {
@@ -120,6 +129,20 @@ async function servePublic(request: Request, ctx: ExecutionContext, render: () =
     return answer;
   }
   return refresh();
+}
+
+/** Whether the repository is there and public; anything else, including no answer, is no. */
+async function isStillPublic(env: Env, repository: string): Promise<boolean> {
+  try {
+    const answer = await env.REPOS.fetch("https://service/rpc/visibility", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ paths: [repository] }),
+    });
+    return answer.ok && stillPublic(await answer.json(), repository);
+  } catch {
+    return false;
+  }
 }
 
 /**
