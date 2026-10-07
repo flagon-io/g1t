@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { GitPullRequest, MessageSquare, Plus, Sparkles, X } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { Form, Link, useRouteLoaderData } from "react-router";
 
 import type { Route } from "./+types/issues";
@@ -95,6 +96,11 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
   // An archived repository's issues are locked: no new ones.
   const layout = useRouteLoaderData("routes/repo/layout") as { repo?: { archivedAt?: string | null } } | undefined;
   const archived = Boolean(layout?.repo?.archivedAt);
+  // Handed over: the ticks are cleared. Refused: they stay, to try again.
+  const form = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (actionData && !actionData.error) form.current?.reset();
+  }, [actionData]);
   return (
     <div>
       <StateTabs
@@ -130,7 +136,7 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
           );
         })}
       </div>
-      <Form method="post" className="mt-4">
+      <Form ref={form} method="post" className="mt-4">
         {assignable && (
           <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-accent/30 bg-accent/5 px-4 py-2.5">
             <Sparkles size={15} className="shrink-0 text-accent" />

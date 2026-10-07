@@ -1039,7 +1039,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         {catchUp && "error" in catchUp && <ErrorText>{catchUp.error}</ErrorText>}
                       </StatusRow>
                     ) : (
-                      pull.headCommit && (
+                      (pull.headCommit || (catchUp && "error" in catchUp)) && (
                         <StatusRow
                           icon={<CircleCheck size={16} className="text-accent" />}
                           title={
@@ -1056,6 +1056,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                             </>
                           )}
                           {agentCatchUp && "g1t merged it in and pushed the result. Its checks run again on the new commit."}
+                          {/* A catch-up refused or failed after the pull request stopped being behind. */}
+                          {catchUp && "error" in catchUp && <ErrorText>{catchUp.error}</ErrorText>}
                         </StatusRow>
                       )
                     )}

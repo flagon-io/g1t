@@ -154,7 +154,8 @@ granted invites, or else one of yours (see
 To change someone's role, pick another beside their name. To take it away,
 choose **Remove**. Removing takes away only the role given on this
 repository: an owner's Admin and a member's base permission stay. Anyone
-can remove their own role from a repository.
+can remove their own role from a repository. Each change is confirmed
+under the list; one that is refused says why on that person's row.
 
 ## Outside collaborators
 
