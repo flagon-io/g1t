@@ -9,7 +9,7 @@
 # What runs: the site and every core service in one workerd (g1t), git
 # repositories as bare repos on a volume (gitstore), the API in a second
 # workerd beside it, packages' files, backups and the clone pack cache in
-# MinIO, and Mailpit for mail.
+# RustFS (S3-compatible storage), and Mailpit for mail.
 # Agents, deployments, context search and billing are off. See
 # docs/SELF_HOSTING.md.
 name: g1t
@@ -51,10 +51,10 @@ services:
       INVITES_PER_USER: ${INVITES_PER_USER:-}
       # Where summaries of new access requests go; empty sends none.
       WAITLIST_NOTIFY_EMAIL: ${WAITLIST_NOTIFY_EMAIL:-}
-      # Packages' files (container images and the rest), in MinIO below or
+      # Packages' files (container images and the rest), in RustFS below or
       # any S3-compatible store. S3_PUBLIC_ENDPOINT, when clients can reach
       # the store, sends large downloads there directly.
-      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://rustfs:9000}
       S3_BUCKET: ${S3_BUCKET:-g1t-packages}
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-g1t}
@@ -64,7 +64,7 @@ services:
       # the same store (docs/SELF_HOSTING.md, "Backups").
       BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-g1t-backups}
       # Packs kept for fresh clones, so the next clone of the same commit
-      # does not rebuild one; minio-setup expires them after 7 days.
+      # does not rebuild one; storage-setup expires them after 7 days.
       PACK_S3_BUCKET: ${PACK_S3_BUCKET:-g1t-git-packs}
     volumes:
       - g1t-data:/data
@@ -74,7 +74,7 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
-      minio-setup:
+      storage-setup:
         condition: service_completed_successfully
     restart: unless-stopped
 
@@ -110,50 +110,48 @@ services:
     # Not published: only the g1t container reaches it.
     restart: unless-stopped
 
-  # Packages' files, backups and clone packs. Not published: only the g1t
-  # container reaches it, unless you publish 9000 and set
-  # S3_PUBLIC_ENDPOINT. MinIO no longer publishes images of its own;
-  # MINIO_IMAGE is a community build of the same server, with `mc` in it.
-  # Any S3-compatible store works in its place (S3_ENDPOINT).
-  minio:
-    image: ${MINIO_IMAGE:-pgsty/minio:latest}
-    command: ["server", "/data"]
+  # Packages' files, backups and clone packs, in RustFS (S3-compatible).
+  # Not published: only the g1t container reaches it, unless you publish
+  # 9000 and set S3_PUBLIC_ENDPOINT. Any S3-compatible store works in its
+  # place (S3_ENDPOINT).
+  rustfs:
+    image: ${RUSTFS_IMAGE:-rustfs/rustfs:1.0.1}
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-g1t}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-g1t-packages-secret}
-      # What the health check's `mc ready local` asks.
-      MC_HOST_local: http://localhost:9000
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY_ID:-g1t}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_ACCESS_KEY:-g1t-packages-secret}
+      RUSTFS_CONSOLE_ENABLE: "false"
     volumes:
-      - g1t-packages:/data
+      - g1t-objects:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:9000/health/ready"]
       interval: 5s
       retries: 20
     restart: unless-stopped
 
   # Makes the buckets once, then exits: packages' files, backups, and
-  # clone packs with a rule that deletes packs 7 days old. (MinIO itself
-  # removes uploads left unfinished after 24 hours.)
-  minio-setup:
-    image: ${MINIO_IMAGE:-pgsty/minio:latest}
+  # clone packs, with a lifecycle rule on the packs' bucket that deletes
+  # packs 7 days old and uploads left unfinished after a day.
+  storage-setup:
+    image: ${AWS_CLI_IMAGE:-amazon/aws-cli:2.37.10}
     depends_on:
-      minio:
+      rustfs:
         condition: service_healthy
     entrypoint:
       - sh
       - -c
       - >-
         set -e;
-        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD";
-        mc mb --ignore-existing "local/$$S3_BUCKET";
-        mc mb --ignore-existing "local/$$BACKUP_S3_BUCKET";
-        mc mb --ignore-existing "local/$$PACK_S3_BUCKET";
-        if ! mc ilm rule ls "local/$$PACK_S3_BUCKET" >/dev/null 2>&1; then
-          mc ilm rule add --prefix packs/ --expire-days 7 "local/$$PACK_S3_BUCKET";
-        fi
+        for bucket in "$$S3_BUCKET" "$$BACKUP_S3_BUCKET" "$$PACK_S3_BUCKET"; do
+          aws s3api head-bucket --bucket "$$bucket" >/dev/null 2>&1 || aws s3api create-bucket --bucket "$$bucket" >/dev/null;
+        done;
+        aws s3api put-bucket-lifecycle-configuration --bucket "$$PACK_S3_BUCKET" --lifecycle-configuration
+        '{"Rules":[{"ID":"expire-packs","Status":"Enabled","Filter":{"Prefix":"packs/"},"Expiration":{"Days":7}},{"ID":"abort-unfinished-uploads","Status":"Enabled","Filter":{"Prefix":""},"AbortIncompleteMultipartUpload":{"DaysAfterInitiation":1}}]}';
+        echo "buckets ready"
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-g1t}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-g1t-packages-secret}
+      AWS_ENDPOINT_URL: http://rustfs:9000
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-g1t}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-g1t-packages-secret}
+      AWS_DEFAULT_REGION: ${S3_REGION:-us-east-1}
       S3_BUCKET: ${S3_BUCKET:-g1t-packages}
       BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-g1t-backups}
       PACK_S3_BUCKET: ${PACK_S3_BUCKET:-g1t-git-packs}
@@ -173,7 +171,7 @@ services:
 
 volumes:
   g1t-data:
-  g1t-packages:
+  g1t-objects:
   g1t-status:
   g1t-git:
   g1t-secrets:

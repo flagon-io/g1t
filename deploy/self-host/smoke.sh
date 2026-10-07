@@ -2,7 +2,8 @@
 # End-to-end check of a self-hosted g1t: sign up, confirm the email, make a
 # workspace and a repository, push and clone over HTTP, open an issue, and
 # read the code back through the site. Then the API on its own port (REST,
-# OAuth metadata and MCP, with an access token), pull requests from a branch
+# OAuth metadata and MCP, with an access token), an npm package published to
+# the installation's registry and installed back, pull requests from a branch
 # and from a fork merged onto main, the merge queue taking a pull request
 # and giving it back, and every cron handler the scheduler runs.
 #
@@ -21,9 +22,10 @@
 # (In Git Bash on Windows, start the command with `env MSYS_NO_PATHCONV=1`
 # so /data is not rewritten into a Windows path.)
 # PACK_CACHE=off skips the check that a second clone is served from the
-# clone pack cache.
+# clone pack cache. PACKAGES=off skips publishing an npm package to the
+# installation's registry and installing it back.
 #
-# Needs curl, git and node (to read JSON).
+# Needs curl, git and node (to read JSON), and npm for the package.
 set -euo pipefail
 
 G1T_URL="${G1T_URL:-http://localhost:8787}"
@@ -35,6 +37,8 @@ SCHEDULER_ONCE="${SCHEDULER_ONCE:-}"
 # off: this installation keeps no clone packs (no PACK_STORE), so a second
 # clone is not checked for a kept one.
 PACK_CACHE="${PACK_CACHE:-on}"
+# off: skip publishing and installing an npm package (which needs npm).
+PACKAGES="${PACKAGES:-on}"
 RUN="$(date +%s)"
 USER_NAME="smoke${RUN}"
 EMAIL="${USER_NAME}@example.com"
@@ -208,6 +212,24 @@ code="$(curl -sS -o "$WORK/api" -w '%{http_code}' -X POST -H "Authorization: Bea
   -H "accept: application/json, text/event-stream" --data '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' "$MCP_URL")"
 [ "$code" = 200 ] && grep -q '"tools"' "$WORK/api" || fail "MCP tools/list: $code $(head -c 300 "$WORK/api")"
 echo "MCP lists its tools at $MCP_URL"
+
+if [ "$PACKAGES" != off ]; then
+  step "publish an npm package and install it"
+  # The tarball is kept in the packages store (S3), and read back from it.
+  npmrc="@$WORKSPACE:registry=$G1T_URL/-/npm/
+//${G1T_URL#*://}/-/npm/:_authToken=$TOKEN"
+  mkdir -p "$WORK/pkg" "$WORK/app"
+  printf '%s\n' "$npmrc" > "$WORK/pkg/.npmrc"
+  printf '%s\n' "$npmrc" > "$WORK/app/.npmrc"
+  printf '{"name":"@%s/%s","version":"1.0.0","repository":"%s/%s/%s","main":"index.js"}\n' \
+    "$WORKSPACE" "$REPO" "$G1T_URL" "$WORKSPACE" "$REPO" > "$WORK/pkg/package.json"
+  printf 'module.exports = "published by smoke.sh %s";\n' "$RUN" > "$WORK/pkg/index.js"
+  (cd "$WORK/pkg" && npm publish --silent) || fail "npm publish"
+  (cd "$WORK/app" && npm init -y >/dev/null && npm install --silent --no-audit --no-fund "@$WORKSPACE/$REPO@1.0.0") || fail "npm install"
+  got="$(cd "$WORK/app" && node -p "require('@$WORKSPACE/$REPO')")"
+  [ "$got" = "published by smoke.sh $RUN" ] || fail "the installed package says: $got"
+  echo "installed @$WORKSPACE/$REPO@1.0.0"
+fi
 
 step "a pull request from a branch, merged"
 git -C "$WORK/clone" config credential.helper ""

@@ -11,15 +11,17 @@
 //   cd services/repos && node ../../scripts/build-rust-worker.mjs
 //   node dev/clone-check.mjs
 //
-// With `--s3`, packs are kept in MinIO instead of local R2, as a
-// self-hosted installation keeps them (PACK_STORE=s3): it starts MinIO in
-// Docker, makes the `g1t-git-packs` bucket with the same expiry rule the
-// compose file gives it, and checks that what was kept is there, whole,
-// with no upload left unfinished.
+// With `--s3`, packs are kept in RustFS instead of local R2, as a
+// self-hosted installation keeps them (PACK_STORE=s3): it starts RustFS in
+// Docker, makes the `g1t-git-packs` bucket with the same lifecycle rule the
+// compose file gives it (with the AWS CLI, as the compose file does), and
+// checks that what was kept is there, whole, with no upload left
+// unfinished.
 //
 //   node dev/clone-check.mjs --s3
 //
-// GITSTORE_PORT, REPOS_PORT and MINIO_PORT move it off 8799, 8791 and 9010.
+// GITSTORE_PORT, REPOS_PORT and S3_PORT move it off 8799, 8791 and 9010.
+// RUSTFS_IMAGE and AWS_CLI_IMAGE choose other images.
 //
 // Needs node, git (with git-http-backend) and the repository's npm
 // packages; with `--s3`, Docker too.
@@ -56,15 +58,24 @@ writeFileSync(
 );
 const KEY = "acme--rocket";
 const children = [];
-// --s3: packs in MinIO (see the top).
+// --s3: packs in RustFS (see the top). The images are the compose file's.
 const S3 = process.argv.includes("--s3");
-const MINIO = "g1t-clone-check-minio";
-const MINIO_PORT = process.env.MINIO_PORT ?? "9010";
-const MINIO_USER = "g1t";
-const MINIO_PASSWORD = "g1t-clone-check-secret";
+const STORAGE = "g1t-clone-check-rustfs";
+const S3_PORT = process.env.S3_PORT ?? "9010";
+const S3_USER = "g1t";
+const S3_PASSWORD = "g1t-clone-check-secret";
+const RUSTFS_IMAGE = process.env.RUSTFS_IMAGE ?? "rustfs/rustfs:1.0.1";
+const AWS_CLI_IMAGE = process.env.AWS_CLI_IMAGE ?? "amazon/aws-cli:2.37.10";
 const PACKS_BUCKET = "g1t-git-packs";
-/** `mc` inside the MinIO container, against itself. */
-const mc = (args, options = {}) => run("docker", ["exec", MINIO, "mc", ...args], options);
+/** The AWS CLI's `s3api`, in a container on the store's network, against it. */
+const s3api = (args, options = {}) =>
+  run("docker", [
+    "run", "--rm", "--network", `container:${STORAGE}`,
+    "-e", `AWS_ACCESS_KEY_ID=${S3_USER}`, "-e", `AWS_SECRET_ACCESS_KEY=${S3_PASSWORD}`, "-e", "AWS_DEFAULT_REGION=us-east-1",
+    AWS_CLI_IMAGE, "--endpoint-url", "http://localhost:9000", "--output", "json", "s3api", ...args,
+  ], options);
+/** The same, its answer parsed. */
+const s3json = (args) => JSON.parse(s3api(args).stdout.trim() || "{}");
 // Wrangler from the repository's packages, run with node: no shell to quote for.
 const WRANGLER = join(dirname(createRequire(join(service, "package.json")).resolve("wrangler/package.json")), "bin/wrangler.js");
 
@@ -163,26 +174,33 @@ try {
   });
   sql("INSERT INTO repos (id, namespace, name, is_private, owner_id, default_branch, refs_version) VALUES ('rep_rocket', 'acme', 'rocket', 0, 'usr_dev', 'main', 1)");
 
-  // MinIO, with the bucket and expiry rule deploy/self-host/docker-compose.yml makes.
+  // RustFS, with the bucket and lifecycle rule deploy/self-host/docker-compose.yml makes.
   const s3Vars = [];
   if (S3) {
-    run("docker", ["rm", "-f", MINIO], { allowFail: true });
+    run("docker", ["rm", "-f", STORAGE], { allowFail: true });
     run("docker", [
-      "run", "-d", "--rm", "--name", MINIO, "-p", `${MINIO_PORT}:9000`,
-      "-e", `MINIO_ROOT_USER=${MINIO_USER}`, "-e", `MINIO_ROOT_PASSWORD=${MINIO_PASSWORD}`,
-      process.env.MINIO_IMAGE ?? "pgsty/minio:latest", "server", "/data",
+      "run", "-d", "--rm", "--name", STORAGE, "-p", `${S3_PORT}:9000`,
+      "-e", `RUSTFS_ACCESS_KEY=${S3_USER}`, "-e", `RUSTFS_SECRET_KEY=${S3_PASSWORD}`, "-e", "RUSTFS_CONSOLE_ENABLE=false",
+      RUSTFS_IMAGE,
     ]);
-    await waitFor(`http://localhost:${MINIO_PORT}/minio/health/ready`, "MinIO");
-    mc(["alias", "set", "local", "http://localhost:9000", MINIO_USER, MINIO_PASSWORD]);
-    mc(["mb", "--ignore-existing", `local/${PACKS_BUCKET}`]);
-    mc(["ilm", "rule", "add", "--prefix", "packs/", "--expire-days", "7", `local/${PACKS_BUCKET}`]);
+    await waitFor(`http://localhost:${S3_PORT}/health/ready`, "RustFS");
+    s3api(["create-bucket", "--bucket", PACKS_BUCKET]);
+    s3api([
+      "put-bucket-lifecycle-configuration", "--bucket", PACKS_BUCKET, "--lifecycle-configuration",
+      JSON.stringify({
+        Rules: [
+          { ID: "expire-packs", Status: "Enabled", Filter: { Prefix: "packs/" }, Expiration: { Days: 7 } },
+          { ID: "abort-unfinished-uploads", Status: "Enabled", Filter: { Prefix: "" }, AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 } },
+        ],
+      }),
+    ]);
     for (const [name, value] of Object.entries({
       PACK_STORE: "s3",
       PACK_S3_BUCKET: PACKS_BUCKET,
-      S3_ENDPOINT: `http://localhost:${MINIO_PORT}`,
+      S3_ENDPOINT: `http://localhost:${S3_PORT}`,
       S3_REGION: "us-east-1",
-      S3_ACCESS_KEY_ID: MINIO_USER,
-      S3_SECRET_ACCESS_KEY: MINIO_PASSWORD,
+      S3_ACCESS_KEY_ID: S3_USER,
+      S3_SECRET_ACCESS_KEY: S3_PASSWORD,
     })) {
       s3Vars.push("--var", `${name}:${value}`);
     }
@@ -209,15 +227,20 @@ try {
   if (S3) {
     // Fills finish after git has its answer: give the last one a moment.
     await new Promise((resolve) => setTimeout(resolve, 3000));
-    const listed = mc(["ls", "--recursive", "--json", `local/${PACKS_BUCKET}/packs/`]).stdout.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
-    const sizes = listed.map((entry) => entry.size);
+    const listed = s3json(["list-objects-v2", "--bucket", PACKS_BUCKET, "--prefix", "packs/"]).Contents ?? [];
+    const sizes = listed.map((entry) => entry.Size);
     // Nine clones: four kinds twice, each kept once, and one more after the refs moved.
-    check("the packs are in MinIO, one per distinct clone", listed.length === 5, `${listed.length}: ${sizes.join(", ")}`);
+    check("the packs are in RustFS, one per distinct clone", listed.length === 5, `${listed.length}: ${sizes.join(", ")}`);
     check("the full clone's pack went up in parts", sizes.some((size) => size > 5 * 1024 * 1024), `largest ${Math.max(...sizes)}`);
-    const incomplete = mc(["ls", "--recursive", "--incomplete", `local/${PACKS_BUCKET}`]).stdout.trim();
-    check("no upload is left unfinished", incomplete === "", incomplete);
-    const rules = mc(["ilm", "rule", "ls", "--json", `local/${PACKS_BUCKET}`]).stdout;
-    check("the bucket expires packs after 7 days", /"Days":\s*7/.test(rules) && rules.includes("packs/"));
+    // A multipart object's ETag ends in -<number of parts>.
+    check("the large pack is one multipart object", listed.some((entry) => /-\d+"?$/.test(entry.ETag ?? "")), listed.map((entry) => entry.ETag).join(", "));
+    const short = listed.filter((entry) => s3json(["head-object", "--bucket", PACKS_BUCKET, "--key", entry.Key]).ContentLength !== entry.Size);
+    check("every pack reads back whole", short.length === 0, short.map((entry) => entry.Key).join(", "));
+    const incomplete = s3json(["list-multipart-uploads", "--bucket", PACKS_BUCKET]).Uploads ?? [];
+    check("no upload is left unfinished", incomplete.length === 0, incomplete.map((upload) => upload.Key).join(", "));
+    const rules = s3json(["get-bucket-lifecycle-configuration", "--bucket", PACKS_BUCKET]).Rules ?? [];
+    check("the bucket expires packs after 7 days", rules.some((rule) => rule.Expiration?.Days === 7 && rule.Filter?.Prefix === "packs/"), JSON.stringify(rules));
+    check("the bucket aborts uploads unfinished after a day", rules.some((rule) => rule.AbortIncompleteMultipartUpload?.DaysAfterInitiation === 1));
   }
 } catch (error) {
   console.error(error);
@@ -227,7 +250,7 @@ try {
     if (process.platform === "win32") spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"], { stdio: "ignore" });
     else child.kill();
   }
-  if (S3) run("docker", ["rm", "-f", MINIO], { allowFail: true });
+  if (S3) run("docker", ["rm", "-f", STORAGE], { allowFail: true });
   try {
     rmSync(work, { recursive: true, force: true });
   } catch {}
