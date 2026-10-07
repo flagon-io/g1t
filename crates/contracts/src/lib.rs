@@ -17,6 +17,7 @@ pub mod events;
 pub mod github;
 pub mod guardrails;
 pub mod identity;
+pub mod inbox;
 pub mod integrations;
 mod ids;
 mod names;

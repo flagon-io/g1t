@@ -10,6 +10,7 @@ mod checks;
 mod compute;
 mod confidence;
 mod guardrails;
+mod inbox;
 mod lifecycle;
 mod memory;
 mod mentions;
@@ -2134,6 +2135,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "remove_from_queue" => reply(&work.remove_from_queue(args(body)?).await?),
         "message_agent" => reply(&work.message_agent(args(body)?).await?),
         "locate_pull" => reply(&work.locate_pull(args(body)?).await?),
+        "inbox_subject" => reply(&work.inbox_subject(args(body)?).await?),
         "answer_message" => reply(&work.answer_message(args(body)?).await?),
         "take_messages" => reply(&work.take_messages(args(body)?).await?),
         "wake_for_messages" => reply(&work.wake_for_messages(args(body)?).await?),

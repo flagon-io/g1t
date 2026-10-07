@@ -41,7 +41,15 @@
 	},
 	// Each workspace's audit log keeps as many days as billing says (7 free,
 	// 90 on the plan, or what staff set), asked for over this binding.
-	"services": [{ "binding": "BILLING", "service": "g1t-billing" }],
+	// The inbox (src/inbox.rs) reads what each event names from work, where
+	// its repository is from repos, and who acted from identity; listing
+	// asks repos which repositories the person can still read.
+	"services": [
+		{ "binding": "BILLING", "service": "g1t-billing" },
+		{ "binding": "WORK", "service": "g1t-work" },
+		{ "binding": "REPOS", "service": "g1t-repos" },
+		{ "binding": "IDENTITY", "service": "g1t-identity" }
+	],
 	// Once a day, audit entries older than AUDIT_MAX_DAYS are removed for
 	// everyone (keep it at least billing's AUDIT_MAX_DAYS), then each
 	// workspace's older than its own days. Only workspaces with entries

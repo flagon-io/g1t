@@ -5,10 +5,15 @@
 //! them to the log and passes each batch on to every subscriber's own
 //! queue, so a slow or failing subscriber holds up nobody else.
 //!
+//! It keeps two more things beside the log: the audit log (audit.rs) and
+//! each person's inbox (inbox.rs), written as events arrive.
+//!
 //! Other services reach it over `POST /rpc/<method>`; see
-//! `g1t_contracts::events` for the methods and their arguments.
+//! `g1t_contracts::events`, `audit` and `inbox` for the methods and their
+//! arguments.
 
 mod audit;
+mod inbox;
 
 use g1t_contracts::events::{Event, ListArgs, PublishArgs};
 use g1t_contracts::new_id;
@@ -132,8 +137,8 @@ impl Events {
         Ok(rows.into_iter().map(Event::from).collect())
     }
 
-    /// Writes a batch from the bus to the log, then hands it to every
-    /// subscriber.
+    /// Writes a batch from the bus to the log, hands it to every
+    /// subscriber, then tells the people it concerns (inbox.rs).
     async fn deliver(&self, events: &[Event]) -> Result<()> {
         let mut statements = Vec::with_capacity(events.len());
         for event in events {
@@ -168,6 +173,18 @@ impl Events {
             };
             send(&js::binding(&self.env, &name)?, events).await?;
         }
+        inbox::follow(&self.db, events).await?;
+        let (work, repos, identity) = (
+            self.env.service("WORK")?,
+            self.env.service("REPOS")?,
+            self.env.service("IDENTITY")?,
+        );
+        let sources = inbox::Sources {
+            work: &work,
+            repos: &repos,
+            identity: &identity,
+        };
+        inbox::deliver(&self.db, &sources, events).await;
         Ok(())
     }
 }
@@ -187,6 +204,12 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "list" => reply(&events.list(args(body)?).await?),
         "audit_record" => reply(&audit::record(&events.db, args(body)?).await?),
         "audit_list" => reply(&audit::list(&events.db, args(body)?).await?),
+        "inbox_list" => {
+            let repos = events.env.service("REPOS")?;
+            reply(&inbox::list(&events.db, &repos, args(body)?).await?)
+        }
+        "inbox_counts" => reply(&inbox::counts(&events.db, args(body)?).await?),
+        "inbox_mark" => reply(&inbox::mark(&events.db, args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }
@@ -227,6 +250,11 @@ async fn scheduled(_event: worker::ScheduledEvent, env: Env, _ctx: worker::Sched
     let min_days = days("AUDIT_MIN_DAYS", audit::DEFAULT_MIN_DAYS).min(max_days);
     let Ok(db) = env.d1("DB") else { return };
     let now = now_ms();
+    match inbox::purge(&db, now).await {
+        Ok(removed) if removed > 0 => worker::console_log!("removed {removed} old inbox items"),
+        Ok(_) => {}
+        Err(error) => worker::console_error!("could not remove old inbox items: {error}"),
+    }
     match audit::purge(&db, &audit::keep_from(now, max_days), 20).await {
         Ok(removed) if removed > 0 => {
             worker::console_log!("removed {removed} audit entries older than {max_days} days")
