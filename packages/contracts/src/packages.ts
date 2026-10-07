@@ -62,6 +62,10 @@ export type PackageVersion = {
   published_at: string;
   /** npm: why the version should no longer be used, when it is deprecated. */
   deprecated?: string | null;
+  /** NuGet: whether a symbol package (`.snupkg`) was pushed for it. */
+  symbols?: boolean;
+  /** NuGet: its own downloads, where they are counted by version. */
+  downloads?: number | null;
 };
 
 export type PackageTag = { tag: string; digest: string; updated_at: string };

@@ -140,6 +140,12 @@ pub struct PackageVersion {
     /// npm: why the version should no longer be used, when it is deprecated.
     #[serde(default)]
     pub deprecated: Option<String>,
+    /// NuGet: whether a symbol package (`.snupkg`) was pushed for it.
+    #[serde(default)]
+    pub symbols: bool,
+    /// NuGet: its own downloads, where they are counted by version.
+    #[serde(default)]
+    pub downloads: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

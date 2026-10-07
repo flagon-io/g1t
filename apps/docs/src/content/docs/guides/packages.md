@@ -17,8 +17,8 @@ read from the workspace's repositories: there is nothing to upload.
 | npm | `https://g1t.sh/-/npm/`, for the scope `@<workspace>` | [npm](/guides/npm/) |
 | Cargo | `sparse+https://g1t.sh/-/cargo/<workspace>/index/`, a registry per workspace | [Cargo](/guides/cargo/) |
 | Maven | `https://g1t.sh/-/maven/<workspace>/`, a repository per workspace, for Maven and Gradle | [Maven](/guides/maven/) |
-| NuGet | `https://g1t.sh/-/nuget/<workspace>/v3/index.json`, a feed per workspace | [NuGet](/guides/nuget/) |
-| RubyGems | `https://g1t.sh/-/rubygems/<workspace>/`, a registry per workspace, for `gem push` and Bundler | [RubyGems](/guides/rubygems/) |
+| NuGet | `https://g1t.sh/-/nuget/<workspace>/v3/index.json`, a feed per workspace, with a symbol server | [NuGet](/guides/nuget/) |
+| RubyGems | `https://g1t.sh/-/rubygems/<workspace>/`, a registry per workspace, for `gem push`, `gem install` and Bundler | [RubyGems](/guides/rubygems/) |
 | Composer | `https://g1t.sh/-/composer/<workspace>/`, from the workspace's repositories | [Composer](/guides/composer/) |
 | Go | `g1t.sh/<workspace>/<repo>`, straight from git | [Go modules](/guides/go/) |
 
@@ -101,8 +101,8 @@ storage past those amounts is charged instead. See
 
 Publishing a version, deleting a version and deleting a package are
 [audit log](/guides/audit-log/) entries (so are deprecating an npm version,
-yanking or unyanking a crate version, unlisting or listing a NuGet version
-and yanking a gem version), and the events
+yanking or unyanking a crate version, unlisting or listing a NuGet version,
+pushing a NuGet version's symbols and yanking a gem version), and the events
 `package.published`, `package.version_deleted`, `package.deleted` and
 `package.visibility_changed`, which [webhooks](/guides/webhooks/) can be
 sent: a linked package's go to its repository's webhooks and its

@@ -230,10 +230,20 @@ function VersionRow({
               Deprecated
             </Badge>
           )}
+          {version.symbols && (
+            <Badge tone="neutral" title="A symbol package (.snupkg) was pushed: debuggers load its PDBs from the feed's symbol server.">
+              Symbols
+            </Badge>
+          )}
         </div>
         {version.deprecated && <p className="text-xs text-muted">{version.deprecated}</p>}
         <p className="flex flex-wrap gap-x-3 text-xs text-faint tabular-nums">
           <span>{formatBytes(version.size)}</span>
+          {version.downloads != null && (
+            <span>
+              {version.downloads.toLocaleString("en-US")} {version.downloads === 1 ? "download" : "downloads"}
+            </span>
+          )}
           {version.platforms.length > 0 && <span>{version.platforms.join(", ")}</span>}
           {attached.length > 0 && (
             <span title={attached.map((a) => a.artifact_type ?? a.media_type ?? "artifact").join(", ")}>
