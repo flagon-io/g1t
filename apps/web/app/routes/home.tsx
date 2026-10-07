@@ -499,7 +499,20 @@ export async function loader({ context, request }: Route.LoaderArgs) {
   const merged: Merged[] = (perRepo ?? []).flatMap(({ repo, closed }) =>
     (closed ?? []).flatMap((pull) =>
       pull.status === "merged" && pull.mergedAt
-        ? [{ repo: pathOf(repo), number: pull.number, title: pull.title, agent: pull.agent, mergedBy: pull.mergedBy, mergedAt: pull.mergedAt, files: pull.files }]
+        ? [
+            {
+              repo: pathOf(repo),
+              number: pull.number,
+              title: pull.title,
+              agent: pull.agent,
+              // Who wrote it, not who merged it: a person's change that g1t
+              // auto-merged is still theirs.
+              authoredByAgent: pull.author.kind === "agent" || isAgent(pull.author.username),
+              mergedBy: pull.mergedBy,
+              mergedAt: pull.mergedAt,
+              files: pull.files,
+            },
+          ]
         : [],
     ),
   );
@@ -582,7 +595,14 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       name: profile?.name?.trim() || username,
       greeting: greetingFor(hourIn(now, tz)),
       date: dateLine(now, tz),
-      summary: summaryLine({ total: week.total, byAgents: week.byAgents, live: liveRuns.length, needs: needRows.length }),
+      summary: summaryLine({
+        total: week.total,
+        byAgents: week.byAgents,
+        agentChanges: week.agentChanges,
+        people: week.people,
+        live: liveRuns.length,
+        needs: needRows.length,
+      }),
       workspace: slug,
       repos: repoList.filter((repo) => inWorkspace(repo)).map(pathOf),
       canRunAgents: models_ == null || models_.hosted || models_.own != null,

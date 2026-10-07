@@ -439,12 +439,14 @@ function AccountMenu({ user }: { user: User }) {
 }
 
 /**
- * A workspace's settings pages, which the sidebar drills into: what it
- * pays, its repositories, tokens and record. Who belongs (Members, Teams)
- * and what it builds and runs with (secrets, integrations, webhooks,
- * guardrails) sit in the main list, for every member to see.
+ * A workspace's settings pages, which the sidebar drills into: how it is
+ * set up and connected (guardrails, secrets, runners, integrations,
+ * webhooks), what it pays, its repositories, tokens and record. The main
+ * list keeps the places work happens and who belongs; every member can
+ * still open these.
  */
-const SETTINGS_PAGE = /^\/([^/]+)\/-\/(settings|repositories|tokens|billing|audit)(\/|$)/;
+const SETTINGS_PAGE =
+  /^\/([^/]+)\/-\/(settings|repositories|tokens|guardrails|secrets|runners|integrations|webhooks|billing|audit)(\/|$)/;
 /** A project's settings pages, which the project's menu drills into. */
 const REPO_SETTINGS_PAGE = /^\/([^/]+)\/([^/-][^/]*)\/settings(\/|$)/;
 
@@ -635,20 +637,6 @@ function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
         <>
           <Rule />
           <div className="space-y-px">
-            {/* Who belongs, for every member to see; owners invite and manage there. */}
-            <SidebarLink to={`/${ws.slug}/-/people`} icon={<Users size={15} />}>
-              Members
-            </SidebarLink>
-            {roadmapIn("Workspace")
-              .filter((item) => item.key === "teams")
-              .map((item) => (
-                <SidebarSoonLink key={item.key} to={`/${ws.slug}/-/soon/${item.key}`} icon={WORKSPACE_ICONS[item.key]} about={item.summary}>
-                  {item.title}
-                </SidebarSoonLink>
-              ))}
-          </div>
-          <Rule />
-          <div className="space-y-px">
             <SidebarLink to={`/${ws.slug}/-/agents`} icon={<Bot size={15} />}>
               Agent fleet
             </SidebarLink>
@@ -661,23 +649,8 @@ function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
             <SidebarLink to={`/${ws.slug}/-/security`} icon={<ShieldCheck size={15} />}>
               Security
             </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/guardrails`} icon={<Gauge size={15} />}>
-              Guardrails
-            </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/secrets`} icon={<Lock size={15} />}>
-              Secrets and variables
-            </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/runners`} icon={<ServerCog size={15} />}>
-              Runners
-            </SidebarLink>
             <SidebarLink to={`/${ws.slug}/-/packages`} icon={<Package size={15} />}>
               Packages
-            </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/integrations`} icon={<Plug size={15} />}>
-              Integrations
-            </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/webhooks`} icon={<Webhook size={15} />}>
-              Webhooks
             </SidebarLink>
             {roadmapIn("Workspace").filter((item) => item.key !== "teams").map((item) => (
               <SidebarSoonLink
@@ -693,13 +666,24 @@ function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
 
           <Rule />
           <div className="space-y-px">
+            {/* Who belongs, for every member to see; owners invite and manage there. */}
+            <SidebarLink to={`/${ws.slug}/-/people`} icon={<Users size={15} />}>
+              Members
+            </SidebarLink>
+            {roadmapIn("Workspace")
+              .filter((item) => item.key === "teams")
+              .map((item) => (
+                <SidebarSoonLink key={item.key} to={`/${ws.slug}/-/soon/${item.key}`} icon={WORKSPACE_ICONS[item.key]} about={item.summary}>
+                  {item.title}
+                </SidebarSoonLink>
+              ))}
             <SidebarLink to={`/${ws.slug}/-/usage`} icon={<BarChart3 size={15} />}>
               Usage
             </SidebarLink>
             <SidebarLink to="/support" icon={<LifeBuoy size={15} />}>
               Support
             </SidebarLink>
-            {/* Who belongs, what it pays and its record: a list of their own. */}
+            {/* How it is set up and connected, what it pays and its record: a list of their own. */}
             <SidebarLink
               to={ws.role === "owner" ? `/${ws.slug}/-/settings` : `/${ws.slug}/-/repositories`}
               icon={<Settings size={15} />}
@@ -732,6 +716,25 @@ function SettingsMenu({ slug, owner }: { slug: string; owner: boolean }) {
           Access tokens
         </SidebarLink>
       </div>
+      <SidebarGroup title="Agents and runs" className="mt-3">
+        <SidebarLink to={`/${slug}/-/guardrails`} icon={<Gauge size={15} />}>
+          Guardrails
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/secrets`} icon={<Lock size={15} />}>
+          Secrets and variables
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/runners`} icon={<ServerCog size={15} />}>
+          Runners
+        </SidebarLink>
+      </SidebarGroup>
+      <SidebarGroup title="Connections" className="mt-3">
+        <SidebarLink to={`/${slug}/-/integrations`} icon={<Plug size={15} />}>
+          Integrations
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/webhooks`} icon={<Webhook size={15} />}>
+          Webhooks
+        </SidebarLink>
+      </SidebarGroup>
       <Rule />
       <div className="space-y-px">
         <SidebarLink to={`/${slug}/-/billing`} icon={<CreditCard size={15} />}>
@@ -1141,13 +1144,13 @@ function Sidebar({
   return (
     <div className="flex h-full flex-col">
       {/* The same height and rule as the top bar, so the two read as one line. */}
-      <div className="flex h-16 shrink-0 items-center gap-1 border-b border-line pr-2 pl-2.5">
+      <div className="flex h-14 shrink-0 items-center gap-1 border-b border-line pr-2 pl-2.5">
         {user ? (
           <>
             {/* The 1 alone beside the workspace: a square hover the height of the
                 switcher, the mark as tall as the workspace avatar. */}
             <Link to="/" aria-label="g1t home" className="flex size-9 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-raised">
-              <Mark tight className="h-5 w-auto" />
+              <Mark tight className="h-4 w-auto" />
             </Link>
             <span className="shrink-0 text-line-strong" aria-hidden="true">
               /
@@ -1520,7 +1523,7 @@ export function AppShell({
       )}
 
       <div className="flex min-h-screen min-w-0 flex-col lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-line bg-bg/85 px-4 backdrop-blur sm:px-6">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-bg/85 px-4 backdrop-blur sm:px-6">
           <button
             type="button"
             aria-label="Open menu"

@@ -160,11 +160,12 @@ test("test files are recognised by the names test runners use", () => {
   assert.ok(!isTestFile("src/contest.ts"));
 });
 
-const merged = (daysAgo: number, mergedBy: string | null, number = 1): Merged => ({
+const merged = (daysAgo: number, mergedBy: string | null, number = 1, authoredByAgent = true): Merged => ({
   repo,
   number,
   title: `Change ${number}`,
   agent: "g1t",
+  authoredByAgent,
   mergedBy,
   mergedAt: new Date(NOW - daysAgo * DAY).toISOString(),
   files: [],
@@ -177,9 +178,20 @@ test("a change landed without a person when g1t merged it", () => {
   assert.ok(!landedByAgents({ mergedBy: "syntaqx" }));
 });
 
-test("the week is seven days, each split by who landed it, with the week before", () => {
+test("the week is seven days, each split by who did the work, with the week before", () => {
   const week = weekOf(
-    [merged(0, "g1t"), merged(0, "syntaqx"), merged(1, "g1t"), merged(6, "g1t"), merged(8, "g1t"), merged(10, "alex"), merged(20, "g1t")],
+    [
+      merged(0, "g1t"),
+      merged(0, "syntaqx"),
+      // A person's own change, merged by them and auto-merged by g1t: both theirs.
+      merged(0, "syntaqx", 2, false),
+      merged(1, "g1t", 3, false),
+      merged(1, "g1t"),
+      merged(6, "g1t"),
+      merged(8, "g1t"),
+      merged(10, "alex"),
+      merged(20, "g1t"),
+    ],
     NOW,
     "UTC",
   );
@@ -187,11 +199,13 @@ test("the week is seven days, each split by who landed it, with the week before"
   assert.equal(week.days[6].key, "2026-10-05");
   assert.equal(week.days[6].label, "Mon");
   assert.deepEqual(
-    week.days.map((d) => [d.agents, d.people]),
-    [[1, 0], [0, 0], [0, 0], [0, 0], [0, 0], [1, 0], [1, 1]],
+    week.days.map((d) => [d.agents, d.assisted, d.people]),
+    [[1, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [1, 0, 1], [1, 1, 1]],
   );
-  assert.equal(week.total, 4);
+  assert.equal(week.total, 6);
   assert.equal(week.byAgents, 3);
+  assert.equal(week.agentChanges, 4);
+  assert.equal(week.people, 2);
   assert.equal(week.previous, 2);
   // Not knowing the week before is not the same as nothing in it.
   assert.equal(weekOf([merged(0, "g1t")], NOW, "UTC", false).previous, null);
@@ -203,7 +217,7 @@ test("days follow the viewer's time zone", () => {
   assert.equal(dayKey(late, "America/Los_Angeles"), "2026-10-04");
   assert.equal(dayKey(late, "UTC"), "2026-10-05");
   assert.equal(dayKey(late, "Not/AZone"), "2026-10-05");
-  const week = weekOf([{ mergedAt: new Date(late).toISOString(), mergedBy: "g1t" }], NOW, "America/Los_Angeles");
+  const week = weekOf([{ mergedAt: new Date(late).toISOString(), mergedBy: "g1t", authoredByAgent: true }], NOW, "America/Los_Angeles");
   assert.equal(week.days.find((d) => d.key === "2026-10-04")?.agents, 1);
 });
 
@@ -315,9 +329,25 @@ test("tabs and sorting come from the address", () => {
 });
 
 test("the summary says the week honestly", () => {
-  assert.equal(summaryLine({ total: 47, byAgents: 39, live: 2, needs: 8 }), "Agents landed 39 of 47 changes this week without you.");
-  assert.equal(summaryLine({ total: 3, byAgents: 3, live: 0, needs: 0 }), "Agents landed all 3 changes this week without you.");
-  assert.equal(summaryLine({ total: 2, byAgents: 0, live: 0, needs: 0 }), "2 changes landed this week, each merged by a person.");
-  assert.equal(summaryLine({ total: 0, byAgents: 0, live: 1, needs: 0 }), "1 agent is at work. Nothing has landed this week yet.");
-  assert.match(summaryLine({ total: 0, byAgents: 0, live: 0, needs: 0 }), /Assign an issue/);
+  const none = { total: 0, byAgents: 0, agentChanges: 0, people: 0, live: 0, needs: 0 };
+  assert.equal(
+    summaryLine({ ...none, total: 47, byAgents: 39, agentChanges: 47 }),
+    "Agents landed 39 of their 47 changes this week without you.",
+  );
+  assert.equal(
+    summaryLine({ ...none, total: 3, byAgents: 3, agentChanges: 3 }),
+    "Agents landed all 3 changes of theirs this week without you.",
+  );
+  assert.equal(
+    summaryLine({ ...none, total: 2, agentChanges: 2 }),
+    "Agents made 2 changes this week, each merged by a person.",
+  );
+  // People's own work is counted as theirs, never as agents' that needed help.
+  assert.equal(
+    summaryLine({ ...none, total: 7, byAgents: 4, agentChanges: 5, people: 2 }),
+    "Agents landed 4 of their 5 changes this week without you, and people landed 2 changes of their own.",
+  );
+  assert.equal(summaryLine({ ...none, total: 3, people: 3 }), "People landed 3 changes this week; none were agents'.");
+  assert.equal(summaryLine({ ...none, live: 1 }), "1 agent is at work. Nothing has landed this week yet.");
+  assert.match(summaryLine(none), /Assign an issue/);
 });

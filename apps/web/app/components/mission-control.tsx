@@ -425,7 +425,7 @@ function Stat({ label, value, hint, dot, title }: { label: string; value: string
 
 /** Seven days of landed changes, each split into what agents landed alone and what a person merged. */
 function WeekChart({ week }: { week: Week }) {
-  const max = Math.max(1, ...week.days.map((d) => d.agents + d.people));
+  const max = Math.max(1, ...week.days.map((d) => d.agents + d.assisted + d.people));
   const height = 112;
   const delta = change(week.total, week.previous);
   return (
@@ -450,16 +450,21 @@ function WeekChart({ week }: { week: Week }) {
       </div>
       {week.total === 0 ? (
         <p className="mt-4 rounded-lg border border-dashed border-line px-4 py-6 text-center text-sm leading-6 text-muted">
-          Nothing landed in the last 7 days. Each change that does shows here, by day, split by whether a person had to merge it.
+          Nothing landed in the last 7 days. Each change that does shows here, by day: agents' changes that landed on their own, agents' that a person merged, and people's own.
         </p>
       ) : (
         <div className="relative mt-5" style={{ height: height + 20 }}>
           <div className="absolute inset-x-0 border-t border-line" style={{ top: height }} />
           <div className="absolute inset-x-0 top-0 flex items-end justify-between gap-1" style={{ height }}>
             {week.days.map((day, index) => {
-              const total = day.agents + day.people;
-              const agentsH = Math.round((day.agents / max) * (height - 4));
-              const peopleH = Math.round((day.people / max) * (height - 4));
+              const total = day.agents + day.assisted + day.people;
+              const bar = (n: number) => Math.max(3, Math.round((n / max) * (height - 4)));
+              // Top to bottom: agents alone, agents with a person, people.
+              const segments = [
+                { n: day.agents, tone: "bg-merged" },
+                { n: day.assisted, tone: "bg-warn" },
+                { n: day.people, tone: "bg-info" },
+              ].filter((segment) => segment.n > 0);
               const today = index === week.days.length - 1;
               return (
                 <div key={day.key} className="group relative flex h-full flex-1 flex-col items-center justify-end">
@@ -474,19 +479,21 @@ function WeekChart({ week }: { week: Week }) {
                     </span>
                   )}
                   <div className="flex w-full max-w-6 flex-col items-stretch gap-[2px]">
-                    {day.people > 0 && <span className="block rounded-t bg-warn" style={{ height: Math.max(3, peopleH) }} />}
-                    {day.agents > 0 && (
-                      <span className={cn("block bg-merged", day.people > 0 ? "" : "rounded-t")} style={{ height: Math.max(3, agentsH) }} />
-                    )}
+                    {segments.map((segment, at) => (
+                      <span key={segment.tone} className={cn("block", segment.tone, at === 0 && "rounded-t")} style={{ height: bar(segment.n) }} />
+                    ))}
                     {total === 0 && <span className="block h-[2px] rounded-full bg-line-strong" />}
                   </div>
                   <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 rounded-md border border-line-strong bg-raised px-2.5 py-1.5 text-xs whitespace-nowrap shadow-lg shadow-black/40 group-hover:block">
                     <p className="font-medium text-fg">{day.label}</p>
                     <p className="mt-0.5 flex items-center gap-1.5 text-muted">
-                      <span className="size-1.5 rounded-full bg-merged" /> {day.agents} by agents
+                      <span className="size-1.5 rounded-full bg-merged" /> {day.agents} by agents on their own
                     </p>
                     <p className="flex items-center gap-1.5 text-muted">
-                      <span className="size-1.5 rounded-full bg-warn" /> {day.people} needed a person
+                      <span className="size-1.5 rounded-full bg-warn" /> {day.assisted} by agents, merged by a person
+                    </p>
+                    <p className="flex items-center gap-1.5 text-muted">
+                      <span className="size-1.5 rounded-full bg-info" /> {day.people} by people
                     </p>
                   </div>
                 </div>
@@ -510,10 +517,13 @@ function WeekChart({ week }: { week: Week }) {
       )}
       <div className={cn("mt-3 flex-wrap gap-x-4 gap-y-1 text-xs text-muted", week.total === 0 ? "hidden" : "flex")}>
         <span className="inline-flex items-center gap-1.5">
-          <span className="size-2 rounded-sm bg-merged" /> Landed by agents
+          <span className="size-2 rounded-sm bg-merged" /> Agents, on their own
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="size-2 rounded-sm bg-warn" /> Needed a person
+          <span className="size-2 rounded-sm bg-warn" /> Agents, merged by a person
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-2 rounded-sm bg-info" /> People
         </span>
       </div>
       <table className="sr-only">
@@ -521,8 +531,9 @@ function WeekChart({ week }: { week: Week }) {
         <thead>
           <tr>
             <th>Day</th>
-            <th>Landed by agents</th>
-            <th>Needed a person</th>
+            <th>Agents, on their own</th>
+            <th>Agents, merged by a person</th>
+            <th>People</th>
           </tr>
         </thead>
         <tbody>
@@ -530,6 +541,7 @@ function WeekChart({ week }: { week: Week }) {
             <tr key={day.key}>
               <td>{day.key}</td>
               <td>{day.agents}</td>
+              <td>{day.assisted}</td>
               <td>{day.people}</td>
             </tr>
           ))}
@@ -781,7 +793,8 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
 
   const rows = tab === "needs" ? sortRows(needs, sort) : tab === "waiting" ? sortRows(waiting, sort) : sortRows(landed, sort);
   const shown = all ? rows : rows.slice(0, ROWS);
-  const share = week.total > 0 ? week.byAgents / week.total : null;
+  // Of the agents' own changes only: people's work is not theirs to land.
+  const share = week.agentChanges > 0 ? week.byAgents / week.agentChanges : null;
   const delta = change(week.total, week.previous);
   const feed = everyActivity ? groups : groups.slice(0, 8);
 
@@ -903,8 +916,8 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
           label="Landed without you"
           dot="bg-merged"
           value={share == null ? "—" : `${Math.round(share * 100)}%`}
-          hint={share == null ? "nothing landed yet" : `${week.byAgents} of ${week.total}`}
-          title="Merged by g1t, by auto-merge or the merge queue, with no person pressing merge."
+          hint={share == null ? "no agent changes yet" : `${week.byAgents} of ${week.agentChanges} agent changes`}
+          title="Of the changes agents wrote, those g1t merged by auto-merge or the merge queue, with no person pressing merge. People's own changes are not counted."
         />
         <div className="col-span-2 lg:col-span-1">
           <Stat

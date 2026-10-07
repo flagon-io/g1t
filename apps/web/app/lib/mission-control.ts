@@ -429,6 +429,8 @@ export type Merged = {
   number: number;
   title: string;
   agent: string;
+  /** Whether an agent wrote it (its author is g1t or another agent), not a person. */
+  authoredByAgent: boolean;
   mergedBy: string | null;
   mergedAt: string;
   files: ChangedFile[];
@@ -451,24 +453,39 @@ export function dayKey(at: number, timeZone: string | null): string {
   }
 }
 
-export type WeekDay = { key: string; label: string; agents: number; people: number };
+/**
+ * One day's changes by who did the work: `agents`, written by an agent and
+ * landed without a person; `assisted`, written by an agent and merged by a
+ * person; `people`, written by a person, however it landed.
+ */
+export type WeekDay = { key: string; label: string; agents: number; assisted: number; people: number };
 
 export type Week = {
   days: WeekDay[];
-  /** Changes landed in the last seven days, and how many without a person. */
+  /** Changes landed in the last seven days. */
   total: number;
+  /** Of those, agents' changes that landed without a person. */
   byAgents: number;
+  /** Agents' changes, with a person or without. */
+  agentChanges: number;
+  /** People's own changes. */
+  people: number;
   /** The seven days before, or null when the lists read do not reach back that far. */
   previous: number | null;
 };
 
 /**
- * The last seven days in the viewer's zone, oldest first, each split into
- * what agents landed alone and what a person merged, and the week before
- * as one number. `complete` says whether what was read reaches back two
- * weeks; when it does not, the week before is not guessed.
+ * The last seven days in the viewer's zone, oldest first, each split by who
+ * did the work (see `WeekDay`), and the week before as one number.
+ * `complete` says whether what was read reaches back two weeks; when it
+ * does not, the week before is not guessed.
  */
-export function weekOf(changes: Pick<Merged, "mergedAt" | "mergedBy">[], now: number, timeZone: string | null, complete = true): Week {
+export function weekOf(
+  changes: Pick<Merged, "mergedAt" | "mergedBy" | "authoredByAgent">[],
+  now: number,
+  timeZone: string | null,
+  complete = true,
+): Week {
   const days: WeekDay[] = [];
   const index = new Map<string, number>();
   for (let back = 6; back >= 0; back -= 1) {
@@ -482,7 +499,7 @@ export function weekOf(changes: Pick<Merged, "mergedAt" | "mergedBy">[], now: nu
     } catch {
       label = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" }).format(at);
     }
-    days.push({ key, label, agents: 0, people: 0 });
+    days.push({ key, label, agents: 0, assisted: 0, people: 0 });
   }
   const oldest = days[0]?.key ?? "";
   const twoWeeks = dayKey(now - 13 * DAY, timeZone);
@@ -493,15 +510,18 @@ export function weekOf(changes: Pick<Merged, "mergedAt" | "mergedBy">[], now: nu
     const key = dayKey(at, timeZone);
     const slot = index.get(key);
     if (slot != null) {
-      if (landedByAgents(change)) days[slot].agents += 1;
-      else days[slot].people += 1;
+      if (!change.authoredByAgent) days[slot].people += 1;
+      else if (landedByAgents(change)) days[slot].agents += 1;
+      else days[slot].assisted += 1;
     } else if (key < oldest && key >= twoWeeks) {
       previous += 1;
     }
   }
-  const byAgents = days.reduce((sum, day) => sum + day.agents, 0);
-  const total = byAgents + days.reduce((sum, day) => sum + day.people, 0);
-  return { days, total, byAgents, previous: complete ? previous : null };
+  const sum = (pick: (day: WeekDay) => number) => days.reduce((total, day) => total + pick(day), 0);
+  const byAgents = sum((day) => day.agents);
+  const agentChanges = byAgents + sum((day) => day.assisted);
+  const people = sum((day) => day.people);
+  return { days, total: agentChanges + people, byAgents, agentChanges, people, previous: complete ? previous : null };
 }
 
 /** The change from one number to another, as a share; null from nothing. */
@@ -553,7 +573,7 @@ export function landedToday(changes: Merged[], now: number, timeZone: string | n
       title: change.title,
       by: who(change.mergedBy ?? "g1t"),
       agent: change.agent,
-      byAgents: landedByAgents(change),
+      byAgents: change.authoredByAgent && landedByAgents(change),
       at: Date.parse(change.mergedAt),
       to: `/${change.repo.namespace}/${change.repo.name}/pull/${change.number}`,
       facts: pullFacts({ checkStatus: "passed", files: change.files }).filter((fact) => fact.label !== "Required checks"),
@@ -582,17 +602,26 @@ export function sortRows<T extends { at: number }>(rows: T[], sort: Sort): T[] {
 
 // --- The summary ------------------------------------------------------------
 
-/** The sentence under the greeting: the week, honestly, in one line. */
-export function summaryLine(input: { total: number; byAgents: number; live: number; needs: number }): string {
-  const { total, byAgents, live, needs } = input;
+/**
+ * The sentence under the greeting: the week, honestly, in one line. What
+ * agents landed alone is counted against the agents' own changes, never
+ * against what people wrote.
+ */
+export function summaryLine(input: {
+  total: number;
+  byAgents: number;
+  agentChanges: number;
+  people: number;
+  live: number;
+  needs: number;
+}): string {
+  const { total, byAgents, agentChanges, people, live, needs } = input;
   if (total > 0) {
-    const landed =
-      byAgents === total
-        ? `Agents landed all ${plural(total, "change")} this week without you.`
-        : byAgents === 0
-          ? `${plural(total, "change")} landed this week, each merged by a person.`
-          : `Agents landed ${byAgents} of ${plural(total, "change")} this week without you.`;
-    return landed;
+    const theirs = people > 0 ? `, and people landed ${plural(people, "change")} of their own` : "";
+    if (agentChanges === 0) return `People landed ${plural(people, "change")} this week; none were agents'.`;
+    if (byAgents === agentChanges) return `Agents landed all ${plural(agentChanges, "change")} of theirs this week without you${theirs}.`;
+    if (byAgents === 0) return `Agents made ${plural(agentChanges, "change")} this week, each merged by a person${theirs}.`;
+    return `Agents landed ${byAgents} of their ${plural(agentChanges, "change")} this week without you${theirs}.`;
   }
   if (live > 0) return `${plural(live, "agent is", "agents are")} at work. Nothing has landed this week yet.`;
   if (needs > 0) return "Nothing has landed this week. What is waiting on you is below.";
