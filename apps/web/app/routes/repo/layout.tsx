@@ -183,7 +183,8 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
             archived={Boolean(repo.archivedAt)}
             namespace={repo.namespace}
             name={repo.name}
-            description={description}
+            // The files' own About says it there, as the one place.
+            description={/^(code|tree)(\/|$)/.test(pathname.slice(base.length + 1)) ? null : description}
           />
           <Topics topics={repo.topics} />
           {tabs && (

@@ -1223,8 +1223,8 @@ const SECTIONS: Record<string, string> = {
   domains: "Domains",
   guardrails: "Guardrails",
   audit: "Audit log",
-  tree: "Code",
-  blob: "Code",
+  tree: "Files",
+  blob: "Files",
 };
 
 /** Where the page is, as a trail of links: workspace / repository / section. */
