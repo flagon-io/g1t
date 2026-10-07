@@ -64,6 +64,7 @@ export default defineConfig({
 					items: [
 						{ label: 'Quickstart', slug: 'quickstart' },
 						{ label: 'How g1t works', slug: 'concepts/overview' },
+						{ label: 'Your inbox', slug: 'guides/inbox' },
 						{ label: 'Search and Explore', slug: 'guides/search' },
 						{ label: 'Status and incidents', slug: 'guides/status' },
 					],

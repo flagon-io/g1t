@@ -1012,6 +1012,21 @@ snoozed; ranked so what an agent is blocked on comes first; email digests
 and push. It is the delivery layer chat needs too (who is told what, read
 state, push), so building it first makes channels cheap.
 
+*Built:* the events service keeps it (`services/events/src/inbox.rs`,
+migration `0005_inbox` on the `g1t-events` database), writing items as
+events arrive from the bus; work's `inbox_subject` says what each event
+names. Who is told: `agent.asked` (the pull request's owner and its issue's
+people, as needs you), failed `checks.completed` and `workflow.completed`
+(error), `review.completed`, `pull.ready` for g1t's changes and
+`pull.merged` (success), and `comment.created` (mentions, then the owner).
+Never the actor, never g1t. On the site: a bell in the top bar opening a
+sheet with tabs (All, Needs you, Errors, Success, Info), Done, Save, Snooze
+and Mark all read; `/inbox` with Saved and Done; a Needs you card on
+mission control. Ask AI sits beside the bell, disabled. Still to come:
+review requests and an agent stalling on a person (`stage = needs_you`),
+which publish no event yet; deploy results, which deployments does not
+publish; email digests and push; the REST and MCP surface.
+
 **Channels** (working name): workspace channels, direct messages and
 threads, live.
 
