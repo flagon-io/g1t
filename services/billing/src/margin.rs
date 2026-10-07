@@ -1129,8 +1129,12 @@ impl Billing {
                 // Against what its usage was priced at, not the cash it
                 // paid: a trial or a gift paying for usage is not a price
                 // below cost.
+                // Days from before value_micros was kept have none: only days
+                // since the first one that does are compared.
                 "SELECT workspace, SUM(cost_micros) AS cost, SUM(value_micros) AS revenue FROM workspace_costs
-                 WHERE day >= ?1 AND day <= ?2 AND workspace NOT IN ({}) GROUP BY workspace",
+                 WHERE day >= ?1 AND day <= ?2 AND workspace NOT IN ({})
+                   AND day >= (SELECT MIN(day) FROM workspace_costs WHERE value_micros > 0)
+                 GROUP BY workspace",
                 crate::sales::INTERNAL_SQL
             ))
             .bind(&[day_before(until, ANOMALY_DAYS - 1).into(), until.into()])?
