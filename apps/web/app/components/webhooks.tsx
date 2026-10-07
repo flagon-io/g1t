@@ -2,7 +2,7 @@
  * A repository's or a workspace's webhooks: the addresses events are sent
  * to, adding one, and every delivery with what was sent and what came back.
  */
-import { ChevronRight, Pause, Play, RotateCw, Send, Trash2, Webhook } from "lucide-react";
+import { ChevronRight, Pause, Play, RotateCw, Send, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Form, Link, useNavigation } from "react-router";
 
@@ -275,10 +275,7 @@ export function WebhooksPanel({
 
       {data.hooks.length === 0 ? (
         <EmptyState title="No webhooks yet">
-          <span className="inline-flex items-center gap-1.5">
-            <Webhook size={14} />
-            Add one and {scope} sends its events to your address as they happen, signed, and retried until it answers.
-          </span>
+          Add one and {scope} sends its events to your address as they happen, signed, and retried until it answers.
         </EmptyState>
       ) : (
         <ul className="overflow-hidden rounded-xl border border-line bg-surface">
