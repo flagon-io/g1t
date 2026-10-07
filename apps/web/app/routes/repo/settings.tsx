@@ -27,7 +27,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     // Whether Deployments are on: needs Admin, so unknown (null) below it.
     deployments.settings({ workspace: params.owner, slug: params.repo }, viewer).catch(() => null),
   ]);
-  return { project: unwrap(project), deploymentsOn: deploys?.ok ? deploys.value.enabled : null };
+  const found = unwrap(project);
+  // Who made it is kept as an id; name it only when it was the viewer.
+  return { project: found, deploymentsOn: deploys?.ok ? deploys.value.enabled : null, mine: viewer?.id === found.createdBy };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -46,7 +48,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function ProjectSettings({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { project, deploymentsOn } = loaderData;
+  const { project, deploymentsOn, mine } = loaderData;
   const [deploys, setDeploys] = useState<DeploysSetting>(project.deploys);
   // Not deploying while Deployments are on is refused: they are turned off first.
   const blocked = deploys === "no" && project.deploys !== "no" && deploymentsOn === true;
@@ -182,7 +184,8 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
           </Button>
           {actionData && "saved" in actionData && <span className="text-sm text-accent">Saved.</span>}
           <span className="ml-auto text-xs text-faint">
-            Created by {project.createdBy} <TimeAgo at={project.createdAt} />
+            Created {mine && "by you "}
+            <TimeAgo at={project.createdAt} />
           </span>
         </div>
         <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
