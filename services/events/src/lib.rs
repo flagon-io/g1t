@@ -6,7 +6,8 @@
 //! queue, so a slow or failing subscriber holds up nobody else.
 //!
 //! It keeps two more things beside the log: the audit log (audit.rs) and
-//! each person's inbox (inbox.rs), written as events arrive.
+//! each person's inbox (inbox.rs), written as events arrive, with who
+//! follows what (subscriptions.rs).
 //!
 //! Other services reach it over `POST /rpc/<method>`; see
 //! `g1t_contracts::events`, `audit` and `inbox` for the methods and their
@@ -14,6 +15,7 @@
 
 mod audit;
 mod inbox;
+mod subscriptions;
 
 use g1t_contracts::events::{Event, ListArgs, PublishArgs};
 use g1t_contracts::new_id;
@@ -210,6 +212,23 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         }
         "inbox_counts" => reply(&inbox::counts(&events.db, args(body)?).await?),
         "inbox_mark" => reply(&inbox::mark(&events.db, args(body)?).await?),
+        "inbox_thread" => {
+            let (repos, work) = (events.env.service("REPOS")?, events.env.service("WORK")?);
+            reply(&inbox::thread(&events.db, &repos, &work, args(body)?).await?)
+        }
+        "inbox_subscription" => {
+            let work = events.env.service("WORK")?;
+            reply(&subscriptions::subscription(&events.db, &work, args(body)?).await?)
+        }
+        "inbox_subscribe" => {
+            let work = events.env.service("WORK")?;
+            reply(&subscriptions::subscribe(&events.db, &work, args(body)?).await?)
+        }
+        "inbox_watching" => reply(&subscriptions::watching(&events.db, args(body)?).await?),
+        "inbox_watch" => reply(&subscriptions::watch(&events.db, args(body)?).await?),
+        "inbox_watched" => reply(&subscriptions::watched(&events.db, args(body)?).await?),
+        "inbox_settings" => reply(&subscriptions::settings(&events.db, args(body)?).await?),
+        "inbox_update_settings" => reply(&subscriptions::update_settings(&events.db, args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }

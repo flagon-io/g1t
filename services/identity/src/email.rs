@@ -367,6 +367,48 @@ pub async fn send_repo_invite(
     .await
 }
 
+/// Why a person is emailed about an inbox item, as the end of a sentence.
+fn notified_because(reason: g1t_contracts::inbox::Reason) -> &'static str {
+    use g1t_contracts::inbox::Reason;
+    match reason {
+        Reason::Agent => "an agent is waiting on you",
+        Reason::ReviewRequested => "you were asked to review",
+        Reason::Assign => "you were assigned",
+        Reason::Mention => "you were mentioned",
+        Reason::CiActivity => "it is about your work",
+        Reason::SecurityAlert => "you look after this repository's security",
+        Reason::StateChange => "you are subscribed to it",
+        Reason::Author => "you opened it",
+        Reason::Comment => "you commented on it",
+        Reason::Manual => "you subscribed to it",
+        Reason::Subscribed => "you watch this repository",
+    }
+}
+
+/// An item from the inbox, by email: what happened, what it happened to,
+/// and a link to it.
+pub fn notification_letter(a: &g1t_contracts::inbox::NotifyByEmailArgs, site: &str) -> Letter {
+    let path = if a.path.starts_with('/') { a.path.clone() } else { format!("/{}", a.path) };
+    Letter {
+        paragraphs: [a.subject.trim(), a.intro.trim()]
+            .into_iter()
+            .filter(|line| !line.is_empty())
+            .map(str::to_owned)
+            .collect(),
+        quotes: a.quote.iter().cloned().collect(),
+        action: Some(("Open on g1t".to_owned(), format!("{site}{path}"))),
+        footer: format!(
+            "You are getting this because {}. Choose what you are emailed for at {site}/settings/notifications.",
+            notified_because(a.reason)
+        ),
+    }
+}
+
+pub async fn send_notification(env: &Env, to: &str, a: &g1t_contracts::inbox::NotifyByEmailArgs) -> Result<()> {
+    let letter = notification_letter(a, &site(env));
+    send(env, to, &a.subject, &letter).await
+}
+
 /// The subject and first line of a repository invitation.
 pub fn repo_invite_wording(from: &str, repo: &str, role: &str, new_account: bool) -> (String, String) {
     let subject = format!("{from} invited you to {repo} on g1t");
@@ -415,6 +457,24 @@ mod tests {
             "&lt;a href=&quot;x&quot;&gt;Tom &amp; Jerry&#39;s&lt;/a&gt;"
         );
         assert_eq!(escape("https://g1t.sh/verify?token=ab12"), "https://g1t.sh/verify?token=ab12");
+    }
+
+    #[test]
+    fn an_inbox_item_says_what_happened_and_why_it_was_sent() {
+        let a = g1t_contracts::inbox::NotifyByEmailArgs {
+            username: "ana".into(),
+            repo_id: "rep_1".into(),
+            subject: "bo asked you to review acme/rocket#7".into(),
+            intro: "Add the inbox".into(),
+            quote: None,
+            path: "/acme/rocket/pull/7".into(),
+            reason: g1t_contracts::inbox::Reason::ReviewRequested,
+        };
+        let letter = notification_letter(&a, SITE);
+        assert_eq!(letter.paragraphs, vec!["bo asked you to review acme/rocket#7", "Add the inbox"]);
+        assert_eq!(letter.action.unwrap().1, "https://g1t.sh/acme/rocket/pull/7");
+        assert!(letter.footer.starts_with("You are getting this because you were asked to review."));
+        assert!(letter.footer.ends_with("https://g1t.sh/settings/notifications."));
     }
 
     #[test]

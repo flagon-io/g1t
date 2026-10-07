@@ -539,6 +539,50 @@ impl Identity {
         .await
     }
 
+    /// `notify_by_email`: an inbox item, emailed to the person it is for,
+    /// only at a confirmed address and only while they can still read the
+    /// repository it is about. Returns whether it was sent.
+    async fn notify_by_email(&self, a: g1t_contracts::inbox::NotifyByEmailArgs) -> Result<bool> {
+        #[derive(Deserialize)]
+        struct Address {
+            email: Option<String>,
+        }
+        let user = self
+            .find_user(
+                "SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE username = ?",
+                &a.username.to_lowercase(),
+            )
+            .await?;
+        let Some(user) = user.filter(|user| user.verified) else {
+            return Ok(false);
+        };
+        let readable: Vec<g1t_contracts::repos::Repo> = g1t_kit::call(
+            &self.env.service("REPOS")?,
+            "readable",
+            &g1t_contracts::repos::ReadableArgs {
+                ids: vec![a.repo_id.clone()],
+                viewer: Some(user.clone()),
+            },
+        )
+        .await?;
+        if readable.is_empty() {
+            return Ok(false);
+        }
+        let address = self
+            .db
+            .prepare("SELECT email FROM users WHERE id = ?")
+            .bind(&[user.id.as_str().into()])?
+            .first::<Address>(None)
+            .await?
+            .and_then(|row| row.email)
+            .filter(|email| !email.trim().is_empty());
+        let Some(address) = address else {
+            return Ok(false);
+        };
+        email::send_notification(&self.env, &address, &a).await?;
+        Ok(true)
+    }
+
     async fn usernames(&self, a: UsernamesArgs) -> Result<std::collections::HashMap<String, String>> {
         #[derive(serde::Deserialize)]
         struct Named {
@@ -761,6 +805,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "user_for_ssh_key" => reply(&identity.user_for_ssh_key(args(body)?).await?),
         "user_by_username" => reply(&identity.user_by_username(args(body)?).await?),
         "usernames" => reply(&identity.usernames(args(body)?).await?),
+        "notify_by_email" => reply(&identity.notify_by_email(args(body)?).await?),
         "profile" => reply(&identity.profile(args(body)?).await?),
         "update_profile" => {
             let outcome = identity.update_profile(args(body)?).await?;
