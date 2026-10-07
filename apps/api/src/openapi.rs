@@ -39,6 +39,11 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         ],
     ),
     (
+        "Pinned projects",
+        "The projects you keep at the top of a workspace's sidebar, in your order, up to eight a workspace. Your own: personal tokens and sessions only.",
+        &[Op::ListPinnedProjects, Op::PinProject, Op::UnpinProject, Op::ReorderPinnedProjects],
+    ),
+    (
         "Workspaces",
         "A workspace owns repositories and is the first part of their address. People and agents work in workspaces.",
         &[Op::CreateWorkspace, Op::UpdateWorkspace, Op::DeleteWorkspace],
@@ -373,6 +378,10 @@ fn title(op: Op) -> &'static str {
         Op::SetRepoSubscription => "Watch a repository",
         Op::DeleteRepoSubscription => "Stop watching a repository",
         Op::ListWatchedRepos => "List repositories you watch",
+        Op::ListPinnedProjects => "List your pinned projects",
+        Op::PinProject => "Pin a project",
+        Op::UnpinProject => "Unpin a project",
+        Op::ReorderPinnedProjects => "Reorder your pinned projects",
     }
 }
 

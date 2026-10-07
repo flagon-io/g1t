@@ -44,6 +44,8 @@ pub struct Services {
     pub search: Fetcher,
     /// Secret and dependency alerts.
     pub security: Fetcher,
+    /// Projects: a person's pinned ones.
+    pub projects: Fetcher,
     /// Where the request came in, for its audit entries.
     pub audit: crate::audit::AuditContext,
     /// Set for a request made with an agent's token: all it may do.
@@ -67,6 +69,7 @@ impl Services {
             context: env.service("CONTEXT")?,
             search: env.service("SEARCH")?,
             security: env.service("SECURITY")?,
+            projects: env.service("PROJECTS")?,
             scope: None,
             audit: crate::audit::AuditContext::default(),
             addresses: crate::addresses::Addresses::from_env(env),
@@ -207,6 +210,10 @@ pub enum Op {
     SetRepoSubscription,
     DeleteRepoSubscription,
     ListWatchedRepos,
+    ListPinnedProjects,
+    PinProject,
+    UnpinProject,
+    ReorderPinnedProjects,
 }
 
 fn failed(code: FailureCode, message: &str) -> Result<Outcome<Value>> {
@@ -454,7 +461,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 131] = [
+    pub const ALL: [Op; 135] = [
         Op::Whoami,
         Op::CreateWorkspace,
         Op::DeleteWorkspace,
@@ -586,6 +593,10 @@ impl Op {
         Op::SetRepoSubscription,
         Op::DeleteRepoSubscription,
         Op::ListWatchedRepos,
+        Op::ListPinnedProjects,
+        Op::PinProject,
+        Op::UnpinProject,
+        Op::ReorderPinnedProjects,
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -726,6 +737,10 @@ impl Op {
             Op::SetRepoSubscription => "set_repo_subscription",
             Op::DeleteRepoSubscription => "delete_repo_subscription",
             Op::ListWatchedRepos => "list_watched_repos",
+            Op::ListPinnedProjects => "list_pinned_projects",
+            Op::PinProject => "pin_project",
+            Op::UnpinProject => "unpin_project",
+            Op::ReorderPinnedProjects => "reorder_pinned_projects",
         }
     }
 
@@ -1089,6 +1104,18 @@ impl Op {
             }
             Op::ListWatchedRepos => {
                 "The repositories you watch other than the default way: all activity, custom or ignored, each with its `level` and `events`."
+            }
+            Op::ListPinnedProjects => {
+                "Your pinned projects in a workspace, in your order (`position` 0 first): the ones its sidebar keeps at the top for you. Projects you can no longer see are left out. Your own: a personal access token or a session."
+            }
+            Op::PinProject => {
+                "Pin a project you can see, at `position` (0 first) or at the end; pinning one already pinned moves it. At most 8 a workspace: unpin one first when you have 8. Returns your pins, in order."
+            }
+            Op::UnpinProject => {
+                "Unpin a project. Unpinning one that is not pinned changes nothing. Returns your pins, in order."
+            }
+            Op::ReorderPinnedProjects => {
+                "Put your pins in a workspace in a new order: `projects` names every pinned project's slug, once, in the order you want them. Returns your pins, in order."
             }
         }
     }
@@ -2080,6 +2107,33 @@ impl Op {
                 &["repo"],
             ),
             Op::ListWatchedRepos => object(json!({}), &[]),
+            Op::ListPinnedProjects => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
+            Op::PinProject => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "project": { "type": "string", "description": "The project's slug, as in g1t.sh/{workspace}/{project}." },
+                    "position": { "type": "integer", "description": "Where it goes, 0 first. Left out: at the end." },
+                }),
+                &["workspace", "project"],
+            ),
+            Op::UnpinProject => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "project": { "type": "string", "description": "The project's slug, as in g1t.sh/{workspace}/{project}." },
+                }),
+                &["workspace", "project"],
+            ),
+            Op::ReorderPinnedProjects => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "projects": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Every pinned project's slug, once, in the order you want them.",
+                    },
+                }),
+                &["workspace", "projects"],
+            ),
         }
     }
 
@@ -2177,11 +2231,16 @@ impl Op {
                 | Op::SetThreadSubscription
                 | Op::DeleteThreadSubscription
                 | Op::ListWatchedRepos
+                | Op::ListPinnedProjects
+                | Op::PinProject
+                | Op::UnpinProject
+                | Op::ReorderPinnedProjects
         )
     }
 
-    /// Whether the operation is about the caller's own inbox: notifications,
-    /// subscriptions and watching. Nobody else's business, so not audited.
+    /// Whether the operation is about the caller's own inbox (notifications,
+    /// subscriptions and watching) or their pins. Nobody else's business,
+    /// so not audited.
     pub(crate) fn personal(self) -> bool {
         matches!(
             self,
@@ -2199,6 +2258,10 @@ impl Op {
                 | Op::SetRepoSubscription
                 | Op::DeleteRepoSubscription
                 | Op::ListWatchedRepos
+                | Op::ListPinnedProjects
+                | Op::PinProject
+                | Op::UnpinProject
+                | Op::ReorderPinnedProjects
         )
     }
 
@@ -3617,6 +3680,10 @@ impl Op {
             | Op::SetRepoSubscription
             | Op::DeleteRepoSubscription
             | Op::ListWatchedRepos => crate::notifications::run(self, services, viewer, input).await,
+            // A person's pinned projects: the projects service keeps them.
+            Op::ListPinnedProjects | Op::PinProject | Op::UnpinProject | Op::ReorderPinnedProjects => {
+                crate::pins::run(self, services, viewer, input).await
+            }
             Op::ReopenSecurityAlert => {
                 let changed: Outcome<AlertChange> = call(
                     &services.security,

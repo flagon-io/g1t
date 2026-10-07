@@ -268,6 +268,7 @@ pub const READ_OPERATIONS: &[&str] = &[
     "get_thread_subscription",
     "get_repo_subscription",
     "list_watched_repos",
+    "list_pinned_projects",
 ];
 
 /// What no agent's token may ever do, whatever its scope says: workspaces,
@@ -349,6 +350,11 @@ pub const NEVER: &[&str] = &[
     "set_repo_subscription",
     "delete_repo_subscription",
     "list_watched_repos",
+    // Pins are a person's own, as the inbox is.
+    "list_pinned_projects",
+    "pin_project",
+    "unpin_project",
+    "reorder_pinned_projects",
 ];
 
 /// Reading what an agent needs to know about its repository.

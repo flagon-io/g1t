@@ -46,8 +46,8 @@ export const SCOPES = [
   { scope: "workflows:write", description: "Run, cancel, rerun and turn workflows on or off" },
   { scope: "memory:read", description: "Recall memory and search the workspace's context" },
   { scope: "memory:write", description: "Save memory for the next agent" },
-  { scope: "account:read", description: "Read your email addresses, invites and invitations" },
-  { scope: "account:write", description: "Change your email addresses, make invites and answer invitations" },
+  { scope: "account:read", description: "Read your email addresses, invites, invitations and pinned projects" },
+  { scope: "account:write", description: "Change your email addresses, make invites, answer invitations and pin projects" },
   { scope: "notifications:read", description: "See your inbox, its threads, and what you subscribe to and watch" },
   { scope: "notifications:write", description: "Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories" },
   { scope: "workspace:read", description: "Read workspace invites, integrations and model routes" },
@@ -175,6 +175,11 @@ export const OPERATION_SCOPES = [
   ["list_my_repo_invitations", "account:read"],
   ["accept_repo_invitation", "account:write"],
   ["decline_repo_invitation", "account:write"],
+  // Your pinned projects: a preference of your account.
+  ["list_pinned_projects", "account:read"],
+  ["pin_project", "account:write"],
+  ["unpin_project", "account:write"],
+  ["reorder_pinned_projects", "account:write"],
   // Your inbox: notifications, subscriptions and watching.
   ["list_notifications", "notifications:read"],
   ["get_notification_thread", "notifications:read"],

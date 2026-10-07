@@ -288,8 +288,8 @@ impl Scope {
             Scope::WorkflowsWrite => "Run, cancel, rerun and turn workflows on or off",
             Scope::MemoryRead => "Recall memory and search the workspace's context",
             Scope::MemoryWrite => "Save memory for the next agent",
-            Scope::AccountRead => "Read your email addresses, invites and invitations",
-            Scope::AccountWrite => "Change your email addresses, make invites and answer invitations",
+            Scope::AccountRead => "Read your email addresses, invites, invitations and pinned projects",
+            Scope::AccountWrite => "Change your email addresses, make invites, answer invitations and pin projects",
             Scope::NotificationsRead => "See your inbox, its threads, and what you subscribe to and watch",
             Scope::NotificationsWrite => "Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories",
             Scope::WorkspaceRead => "Read workspace invites, integrations and model routes",
@@ -475,6 +475,11 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("list_my_repo_invitations", Scope::AccountRead),
     ("accept_repo_invitation", Scope::AccountWrite),
     ("decline_repo_invitation", Scope::AccountWrite),
+    // Your pinned projects: a preference of your account.
+    ("list_pinned_projects", Scope::AccountRead),
+    ("pin_project", Scope::AccountWrite),
+    ("unpin_project", Scope::AccountWrite),
+    ("reorder_pinned_projects", Scope::AccountWrite),
     // Your inbox: notifications, subscriptions and watching.
     ("list_notifications", Scope::NotificationsRead),
     ("get_notification_thread", Scope::NotificationsRead),

@@ -43,7 +43,13 @@
 			],
 			"token": {
 				"token_id": "tok_01kkntd3p2v8x6ym5r0c1q7a9e",
-				"scopes": ["repo:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write"]
+				"scopes": [
+					"repo:read",
+					"issues:read",
+					"issues:write",
+					"pull_requests:read",
+					"pull_requests:write"
+				]
 			}
 		},
 		"notes": "`token` is what the access token you called with may do: its `scopes` (left out for full access) and `legacy` when it was made before tokens had scopes. A token reaches every workspace and repository whoever it acts as can; its scopes say what it may do there. See [Scopes](/guides/authentication/#scopes). `kind` is `user`, `workspace` for a [workspace access token](/guides/workspaces/#workspace-access-tokens), or `agent` for the token a g1t agent works with. For a workspace token, `username` is the workspace's slug and `workspaces` holds only that workspace. Each workspace carries its `base_permission`: what a member gets on each of its repositories (owners have Admin). Roles given on single repositories are in `grants`, each with `repo_id`, `workspace` and `role`; it is left out when there are none. See [Access and roles](/guides/access-and-roles/)."
@@ -4977,5 +4983,202 @@
 				"updated_at": "2026-10-05T14:30:00.000Z"
 			}
 		]
+	},
+	"list_pinned_projects": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"response": [
+			{
+				"position": 0,
+				"id": "prj_01kkp3m8w2f6t9qh4c7d1r5n0x",
+				"workspace": "flagon-io",
+				"slug": "g1t",
+				"name": "g1t",
+				"description": null,
+				"private": false,
+				"archived": false,
+				"kind": "app",
+				"url": "https://g1t.sh/flagon-io/g1t",
+				"pushed_at": "2026-10-07T10:00:00.000Z",
+				"updated_at": "2026-10-01T09:12:00.000Z"
+			},
+			{
+				"position": 1,
+				"id": "prj_01kkq0c4d9h2w7rn5f8t3k6p2z",
+				"workspace": "flagon-io",
+				"slug": "lab-api",
+				"name": "lab-api",
+				"description": null,
+				"private": true,
+				"archived": false,
+				"kind": "app",
+				"url": "https://g1t.sh/flagon-io/lab-api",
+				"pushed_at": "2026-10-06T18:40:00.000Z",
+				"updated_at": "2026-10-01T09:12:00.000Z"
+			},
+			{
+				"position": 2,
+				"id": "prj_01kkp3n2a7e5v8sk3b6g9j4m1y",
+				"workspace": "flagon-io",
+				"slug": "hello",
+				"name": "hello",
+				"description": "Greets people from the command line.",
+				"private": false,
+				"archived": false,
+				"kind": "library",
+				"url": "https://g1t.sh/flagon-io/hello",
+				"pushed_at": null,
+				"updated_at": "2026-10-01T09:12:00.000Z"
+			}
+		],
+		"notes": "In your order: `position` 0 first. The sidebar shows these, then the projects you opened last. `pushed_at` is null until the project's repository is pushed to."
+	},
+	"pin_project": {
+		"params": {
+			"workspace": "flagon-io",
+			"project": "hello"
+		},
+		"request": {
+			"position": 0
+		},
+		"response": [
+			{
+				"position": 0,
+				"id": "prj_01kkp3n2a7e5v8sk3b6g9j4m1y",
+				"workspace": "flagon-io",
+				"slug": "hello",
+				"name": "hello",
+				"description": "Greets people from the command line.",
+				"private": false,
+				"archived": false,
+				"kind": "library",
+				"url": "https://g1t.sh/flagon-io/hello",
+				"pushed_at": null,
+				"updated_at": "2026-10-01T09:12:00.000Z"
+			},
+			{
+				"position": 1,
+				"id": "prj_01kkp3m8w2f6t9qh4c7d1r5n0x",
+				"workspace": "flagon-io",
+				"slug": "g1t",
+				"name": "g1t",
+				"description": null,
+				"private": false,
+				"archived": false,
+				"kind": "app",
+				"url": "https://g1t.sh/flagon-io/g1t",
+				"pushed_at": "2026-10-07T10:00:00.000Z",
+				"updated_at": "2026-10-01T09:12:00.000Z"
+			},
+			{
+				"position": 2,
+				"id": "prj_01kkq0c4d9h2w7rn5f8t3k6p2z",
+				"workspace": "flagon-io",
+				"slug": "lab-api",
+				"name": "lab-api",
+				"description": null,
+				"private": true,
+				"archived": false,
+				"kind": "app",
+				"url": "https://g1t.sh/flagon-io/lab-api",
+				"pushed_at": "2026-10-06T18:40:00.000Z",
+				"updated_at": "2026-10-01T09:12:00.000Z"
+			}
+		],
+		"notes": "A ninth pin in a workspace is refused with `409 conflict`: unpin one first."
+	},
+	"unpin_project": {
+		"params": {
+			"workspace": "flagon-io",
+			"project": "lab-api"
+		},
+		"response": [
+			{
+				"position": 0,
+				"id": "prj_01kkp3m8w2f6t9qh4c7d1r5n0x",
+				"workspace": "flagon-io",
+				"slug": "g1t",
+				"name": "g1t",
+				"description": null,
+				"private": false,
+				"archived": false,
+				"kind": "app",
+				"url": "https://g1t.sh/flagon-io/g1t",
+				"pushed_at": "2026-10-07T10:00:00.000Z",
+				"updated_at": "2026-10-01T09:12:00.000Z"
+			},
+			{
+				"position": 1,
+				"id": "prj_01kkp3n2a7e5v8sk3b6g9j4m1y",
+				"workspace": "flagon-io",
+				"slug": "hello",
+				"name": "hello",
+				"description": "Greets people from the command line.",
+				"private": false,
+				"archived": false,
+				"kind": "library",
+				"url": "https://g1t.sh/flagon-io/hello",
+				"pushed_at": null,
+				"updated_at": "2026-10-01T09:12:00.000Z"
+			}
+		]
+	},
+	"reorder_pinned_projects": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"request": {
+			"projects": [
+				"lab-api",
+				"g1t",
+				"hello"
+			]
+		},
+		"response": [
+			{
+				"position": 0,
+				"id": "prj_01kkq0c4d9h2w7rn5f8t3k6p2z",
+				"workspace": "flagon-io",
+				"slug": "lab-api",
+				"name": "lab-api",
+				"description": null,
+				"private": true,
+				"archived": false,
+				"kind": "app",
+				"url": "https://g1t.sh/flagon-io/lab-api",
+				"pushed_at": "2026-10-06T18:40:00.000Z",
+				"updated_at": "2026-10-01T09:12:00.000Z"
+			},
+			{
+				"position": 1,
+				"id": "prj_01kkp3m8w2f6t9qh4c7d1r5n0x",
+				"workspace": "flagon-io",
+				"slug": "g1t",
+				"name": "g1t",
+				"description": null,
+				"private": false,
+				"archived": false,
+				"kind": "app",
+				"url": "https://g1t.sh/flagon-io/g1t",
+				"pushed_at": "2026-10-07T10:00:00.000Z",
+				"updated_at": "2026-10-01T09:12:00.000Z"
+			},
+			{
+				"position": 2,
+				"id": "prj_01kkp3n2a7e5v8sk3b6g9j4m1y",
+				"workspace": "flagon-io",
+				"slug": "hello",
+				"name": "hello",
+				"description": "Greets people from the command line.",
+				"private": false,
+				"archived": false,
+				"kind": "library",
+				"url": "https://g1t.sh/flagon-io/hello",
+				"pushed_at": null,
+				"updated_at": "2026-10-01T09:12:00.000Z"
+			}
+		],
+		"notes": "Name every pinned project once; anything else is refused with `422 invalid`."
 	}
 }

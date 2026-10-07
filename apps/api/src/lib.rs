@@ -12,6 +12,7 @@ mod mcp;
 mod notifications;
 mod oauth;
 mod openapi;
+mod pins;
 mod operations;
 mod renamed;
 #[cfg(test)]

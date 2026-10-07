@@ -79,6 +79,11 @@ pub const ROUTES: &[Route] = &[
     route("PUT", "/repos/:owner/:name/issues/:number/subscription", Op::SetThreadSubscription, &[]),
     route("DELETE", "/repos/:owner/:name/issues/:number/subscription", Op::DeleteThreadSubscription, &[]),
     route("GET", "/user/subscriptions", Op::ListWatchedRepos, &[]),
+    // Your pinned projects in a workspace, in your order.
+    route("GET", "/user/pinned_projects/:workspace", Op::ListPinnedProjects, &[]),
+    route("PUT", "/user/pinned_projects/:workspace", Op::ReorderPinnedProjects, &[]),
+    route("PUT", "/user/pinned_projects/:workspace/:project", Op::PinProject, &[]),
+    route("DELETE", "/user/pinned_projects/:workspace/:project", Op::UnpinProject, &[]),
     route("PATCH", "/user/repository_invitations/:id", Op::AcceptRepoInvitation, &[]),
     route("DELETE", "/user/repository_invitations/:id", Op::DeclineRepoInvitation, &[]),
     route("PATCH", "/workspaces/:workspace", Op::UpdateWorkspace, &[]),

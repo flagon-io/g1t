@@ -351,8 +351,8 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 | `workflows:write` | Run, cancel, rerun and turn workflows on or off |
 | `memory:read` | Recall memory and search the workspace's context |
 | `memory:write` | Save memory for the next agent |
-| `account:read` | Read your email addresses, invites and invitations |
-| `account:write` | Change your email addresses, make invites and answer invitations |
+| `account:read` | Read your email addresses, invites, invitations and pinned projects |
+| `account:write` | Change your email addresses, make invites, answer invitations and pin projects |
 | `notifications:read` | See your [inbox](/guides/inbox/), its threads, and what you subscribe to and watch |
 | `notifications:write` | Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories |
 | `workspace:read` | Read workspace invites, integrations and model routes |

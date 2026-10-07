@@ -53,6 +53,16 @@
       ]
     },
     {
+      "name": "Pinned projects",
+      "description": "The projects you keep at the top of a workspace's sidebar, in your order, up to eight a workspace. Your own: personal tokens and sessions only.",
+      "x-tools": [
+        "list_pinned_projects",
+        "pin_project",
+        "unpin_project",
+        "reorder_pinned_projects"
+      ]
+    },
+    {
       "name": "Workspaces",
       "description": "A workspace owns repositories and is the first part of their address. People and agents work in workspaces.",
       "x-tools": [
@@ -6217,6 +6227,602 @@
               }
             }
           }
+        }
+      }
+    },
+    "/user/pinned_projects/{workspace}": {
+      "get": {
+        "operationId": "list_pinned_projects",
+        "tags": [
+          "Pinned projects"
+        ],
+        "summary": "List your pinned projects",
+        "description": "Your pinned projects in a workspace, in your order (`position` 0 first): the ones its sidebar keeps at the top for you. Projects you can no longer see are left out. Your own: a personal access token or a session.\n\nIn your order: `position` 0 first. The sidebar shows these, then the projects you opened last. `pushed_at` is null until the project's repository is pushed to.",
+        "x-operation": "list_pinned_projects",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "list_pinned_projects",
+        "x-scope": "account:read",
+        "security": [
+          {
+            "token": [
+              "account:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "position": 0,
+                    "id": "prj_01kkp3m8w2f6t9qh4c7d1r5n0x",
+                    "workspace": "flagon-io",
+                    "slug": "g1t",
+                    "name": "g1t",
+                    "description": null,
+                    "private": false,
+                    "archived": false,
+                    "kind": "app",
+                    "url": "https://g1t.sh/flagon-io/g1t",
+                    "pushed_at": "2026-10-07T10:00:00.000Z",
+                    "updated_at": "2026-10-01T09:12:00.000Z"
+                  },
+                  {
+                    "position": 1,
+                    "id": "prj_01kkq0c4d9h2w7rn5f8t3k6p2z",
+                    "workspace": "flagon-io",
+                    "slug": "lab-api",
+                    "name": "lab-api",
+                    "description": null,
+                    "private": true,
+                    "archived": false,
+                    "kind": "app",
+                    "url": "https://g1t.sh/flagon-io/lab-api",
+                    "pushed_at": "2026-10-06T18:40:00.000Z",
+                    "updated_at": "2026-10-01T09:12:00.000Z"
+                  },
+                  {
+                    "position": 2,
+                    "id": "prj_01kkp3n2a7e5v8sk3b6g9j4m1y",
+                    "workspace": "flagon-io",
+                    "slug": "hello",
+                    "name": "hello",
+                    "description": "Greets people from the command line.",
+                    "private": false,
+                    "archived": false,
+                    "kind": "library",
+                    "url": "https://g1t.sh/flagon-io/hello",
+                    "pushed_at": null,
+                    "updated_at": "2026-10-01T09:12:00.000Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      },
+      "put": {
+        "operationId": "reorder_pinned_projects",
+        "tags": [
+          "Pinned projects"
+        ],
+        "summary": "Reorder your pinned projects",
+        "description": "Put your pins in a workspace in a new order: `projects` names every pinned project's slug, once, in the order you want them. Returns your pins, in order.\n\nName every pinned project once; anything else is refused with `422 invalid`.",
+        "x-operation": "reorder_pinned_projects",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "reorder_pinned_projects",
+        "x-scope": "account:write",
+        "security": [
+          {
+            "token": [
+              "account:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "position": 0,
+                    "id": "prj_01kkq0c4d9h2w7rn5f8t3k6p2z",
+                    "workspace": "flagon-io",
+                    "slug": "lab-api",
+                    "name": "lab-api",
+                    "description": null,
+                    "private": true,
+                    "archived": false,
+                    "kind": "app",
+                    "url": "https://g1t.sh/flagon-io/lab-api",
+                    "pushed_at": "2026-10-06T18:40:00.000Z",
+                    "updated_at": "2026-10-01T09:12:00.000Z"
+                  },
+                  {
+                    "position": 1,
+                    "id": "prj_01kkp3m8w2f6t9qh4c7d1r5n0x",
+                    "workspace": "flagon-io",
+                    "slug": "g1t",
+                    "name": "g1t",
+                    "description": null,
+                    "private": false,
+                    "archived": false,
+                    "kind": "app",
+                    "url": "https://g1t.sh/flagon-io/g1t",
+                    "pushed_at": "2026-10-07T10:00:00.000Z",
+                    "updated_at": "2026-10-01T09:12:00.000Z"
+                  },
+                  {
+                    "position": 2,
+                    "id": "prj_01kkp3n2a7e5v8sk3b6g9j4m1y",
+                    "workspace": "flagon-io",
+                    "slug": "hello",
+                    "name": "hello",
+                    "description": "Greets people from the command line.",
+                    "private": false,
+                    "archived": false,
+                    "kind": "library",
+                    "url": "https://g1t.sh/flagon-io/hello",
+                    "pushed_at": null,
+                    "updated_at": "2026-10-01T09:12:00.000Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "projects": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Every pinned project's slug, once, in the order you want them."
+                  }
+                },
+                "required": [
+                  "projects"
+                ]
+              },
+              "example": {
+                "projects": [
+                  "lab-api",
+                  "g1t",
+                  "hello"
+                ]
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/user/pinned_projects/{workspace}/{project}": {
+      "put": {
+        "operationId": "pin_project",
+        "tags": [
+          "Pinned projects"
+        ],
+        "summary": "Pin a project",
+        "description": "Pin a project you can see, at `position` (0 first) or at the end; pinning one already pinned moves it. At most 8 a workspace: unpin one first when you have 8. Returns your pins, in order.\n\nA ninth pin in a workspace is refused with `409 conflict`: unpin one first.",
+        "x-operation": "pin_project",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "pin_project",
+        "x-scope": "account:write",
+        "security": [
+          {
+            "token": [
+              "account:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The project's slug, as in g1t.sh/{workspace}/{project}."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "position": 0,
+                    "id": "prj_01kkp3n2a7e5v8sk3b6g9j4m1y",
+                    "workspace": "flagon-io",
+                    "slug": "hello",
+                    "name": "hello",
+                    "description": "Greets people from the command line.",
+                    "private": false,
+                    "archived": false,
+                    "kind": "library",
+                    "url": "https://g1t.sh/flagon-io/hello",
+                    "pushed_at": null,
+                    "updated_at": "2026-10-01T09:12:00.000Z"
+                  },
+                  {
+                    "position": 1,
+                    "id": "prj_01kkp3m8w2f6t9qh4c7d1r5n0x",
+                    "workspace": "flagon-io",
+                    "slug": "g1t",
+                    "name": "g1t",
+                    "description": null,
+                    "private": false,
+                    "archived": false,
+                    "kind": "app",
+                    "url": "https://g1t.sh/flagon-io/g1t",
+                    "pushed_at": "2026-10-07T10:00:00.000Z",
+                    "updated_at": "2026-10-01T09:12:00.000Z"
+                  },
+                  {
+                    "position": 2,
+                    "id": "prj_01kkq0c4d9h2w7rn5f8t3k6p2z",
+                    "workspace": "flagon-io",
+                    "slug": "lab-api",
+                    "name": "lab-api",
+                    "description": null,
+                    "private": true,
+                    "archived": false,
+                    "kind": "app",
+                    "url": "https://g1t.sh/flagon-io/lab-api",
+                    "pushed_at": "2026-10-06T18:40:00.000Z",
+                    "updated_at": "2026-10-01T09:12:00.000Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "position": {
+                    "type": "integer",
+                    "description": "Where it goes, 0 first. Left out: at the end."
+                  }
+                }
+              },
+              "example": {
+                "position": 0
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "project": "hello"
+        }
+      },
+      "delete": {
+        "operationId": "unpin_project",
+        "tags": [
+          "Pinned projects"
+        ],
+        "summary": "Unpin a project",
+        "description": "Unpin a project. Unpinning one that is not pinned changes nothing. Returns your pins, in order.",
+        "x-operation": "unpin_project",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "unpin_project",
+        "x-scope": "account:write",
+        "security": [
+          {
+            "token": [
+              "account:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The project's slug, as in g1t.sh/{workspace}/{project}."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "position": 0,
+                    "id": "prj_01kkp3m8w2f6t9qh4c7d1r5n0x",
+                    "workspace": "flagon-io",
+                    "slug": "g1t",
+                    "name": "g1t",
+                    "description": null,
+                    "private": false,
+                    "archived": false,
+                    "kind": "app",
+                    "url": "https://g1t.sh/flagon-io/g1t",
+                    "pushed_at": "2026-10-07T10:00:00.000Z",
+                    "updated_at": "2026-10-01T09:12:00.000Z"
+                  },
+                  {
+                    "position": 1,
+                    "id": "prj_01kkp3n2a7e5v8sk3b6g9j4m1y",
+                    "workspace": "flagon-io",
+                    "slug": "hello",
+                    "name": "hello",
+                    "description": "Greets people from the command line.",
+                    "private": false,
+                    "archived": false,
+                    "kind": "library",
+                    "url": "https://g1t.sh/flagon-io/hello",
+                    "pushed_at": null,
+                    "updated_at": "2026-10-01T09:12:00.000Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "project": "lab-api"
         }
       }
     },
