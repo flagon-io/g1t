@@ -452,6 +452,9 @@ class Deployments {
     const project = found.value;
     const before = await this.toSettings(project, await this.settingsRow(project.id));
     const next = { ...before, ...a.changes };
+    if (next.enabled && !before.enabled && project.deploys === "no") {
+      return fail("conflict", "This project is set not to deploy. Change that in its General settings first.");
+    }
     if (next.enabled && !before.enabled) {
       // Turning it on starts paid work: only with the workspace's plan.
       const plan = await billingClient(this.env.BILLING).hasFeature(project.workspace, "deployments");
@@ -482,6 +485,10 @@ class Deployments {
         now(),
       )
       .run();
+    // Projects keeps whether it deploys, so a project with Deployments on is an app.
+    if (next.enabled !== before.enabled) {
+      await this.projects.deploymentsChanged(project.id, next.enabled).catch((error) => console.warn("projects:", error));
+    }
     // What was turned off comes down now; nothing keeps running unasked.
     if (!next.enabled) await this.takeDownWhere(project.id, null);
     else {
@@ -493,6 +500,11 @@ class Deployments {
       await this.deployProduction(project, null, a.actor.username);
     }
     return ok(await this.toSettings(project, await this.settingsRow(project.id)));
+  }
+
+  /** For projects: whether Deployments are on for a project. Reads only this service's own table. */
+  async isEnabled(a: { projectId: string }): Promise<boolean> {
+    return !!(await this.settingsRow(a.projectId))?.enabled;
   }
 
   async list(a: { project: ProjectRef; viewer: Viewer }): Promise<Result<{ deployments: Deployment[]; live: LiveApp[] }>> {
@@ -2156,6 +2168,8 @@ async function rpc(service: Deployments, method: string, args: any, ctx: Executi
   switch (method) {
     case "settings":
       return service.settings(args);
+    case "is_enabled":
+      return service.isEnabled(args);
     case "update_settings":
       return service.updateSettings(args);
     case "list":

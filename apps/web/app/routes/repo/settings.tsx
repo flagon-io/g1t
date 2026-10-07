@@ -1,11 +1,16 @@
-import { Box, Code2, GitBranch } from "lucide-react";
+import { Box, Code2, GitBranch, Rocket } from "lucide-react";
+import { useState } from "react";
 import { Form, Link, useNavigation } from "react-router";
+
+import type { DeploysSetting } from "@g1t/contracts";
 
 import type { Route } from "./+types/settings";
 import { page } from "../../lib/meta";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { Button, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
-import { projects } from "../../lib/services.server";
+import { RadioGroup, RadioOption } from "../../components/ui/radio-group";
+import { DEPLOYS_CHOICES } from "../../lib/project-kind";
+import { deployments, projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { requireCapability, requireInsider } from "../../lib/access.server";
 
@@ -17,7 +22,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   // Maintain and up; to anyone without a role here the page does not exist.
   await requireInsider(context, params, "manage_settings");
-  return { project: unwrap(await projects.get(params.owner, params.repo, viewer)) };
+  const [project, deploys] = await Promise.all([
+    projects.get(params.owner, params.repo, viewer),
+    // Whether Deployments are on: needs Admin, so unknown (null) below it.
+    deployments.settings({ workspace: params.owner, slug: params.repo }, viewer).catch(() => null),
+  ]);
+  return { project: unwrap(project), deploymentsOn: deploys?.ok ? deploys.value.enabled : null };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -30,12 +40,16 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     // Blank, or the reset, and it follows the repository's description again.
     description: form.get("inherit") === "description" ? null : String(form.get("description") ?? ""),
     rootDir: String(form.get("rootDir") ?? ""),
+    deploys: (form.get("deploys") as DeploysSetting | null) ?? undefined,
   });
   return saved.ok ? { saved: true as const } : { error: saved.error.message };
 }
 
 export default function ProjectSettings({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { project } = loaderData;
+  const { project, deploymentsOn } = loaderData;
+  const [deploys, setDeploys] = useState<DeploysSetting>(project.deploys);
+  // Not deploying while Deployments are on is refused: they are turned off first.
+  const blocked = deploys === "no" && project.deploys !== "no" && deploymentsOn === true;
   const saving = useNavigation().state === "submitting";
   const base = `/${params.owner}/${params.repo}`;
   const source = project.source.kind === "hosted" ? project.source : null;
@@ -117,8 +131,53 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
           </Field>
         </section>
 
+        <section className="space-y-4" id="deploys">
+          <h2 className="flex items-center gap-2 text-sm font-medium">
+            <Rocket size={15} className="text-accent" />
+            Deployments for this project
+          </h2>
+          <RadioGroup
+            name="deploys"
+            value={deploys}
+            onValueChange={(value) => setDeploys(value as DeploysSetting)}
+            aria-label="Deployments for this project"
+            className="gap-3"
+          >
+            {DEPLOYS_CHOICES.map((choice) => (
+              <RadioOption
+                key={choice.value}
+                value={choice.value}
+                label={choice.label}
+                description={
+                  choice.value === "auto" ? (
+                    <>
+                      {project.detected.kind === "library" ? "Detected: a library, so it doesn't deploy." : "Detected: an app, so it deploys."}{" "}
+                      {project.detected.reason.detail}
+                    </>
+                  ) : (
+                    choice.hint
+                  )
+                }
+              />
+            ))}
+          </RadioGroup>
+          {blocked && (
+            <p className="rounded-lg border border-warn/40 bg-warn/5 px-3.5 py-2.5 text-sm text-fg-soft">
+              Deployments are on for {project.name}. Turn them off in{" "}
+              <Link to={`${base}/settings/deployments`} className="text-fg underline underline-offset-4">
+                Deployments settings
+              </Link>{" "}
+              first, then choose Doesn't deploy here.
+            </p>
+          )}
+          <p className="text-xs text-faint">
+            A project that doesn't deploy shows its packages and releases on its overview instead of production. Its
+            Deployments page stays in the sidebar.
+          </p>
+        </section>
+
         <div className="flex items-center gap-3">
-          <Button type="submit" disabled={saving}>
+          <Button type="submit" disabled={saving || blocked}>
             Save
           </Button>
           {actionData && "saved" in actionData && <span className="text-sm text-accent">Saved.</span>}

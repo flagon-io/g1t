@@ -32,7 +32,7 @@ requests. The sidebar lists them too.
 
 | Page | Address | |
 | --- | --- | --- |
-| **Overview** | `g1t.sh/<workspace>/<project>` | Production with a screenshot, the steps left to get to production, what is in progress, active branches, live previews, recent builds, and the source. See [the overview](#the-overview). |
+| **Overview** | `g1t.sh/<workspace>/<project>` | Production with a screenshot, or for a library its packages; the steps left to get to production or to a first release; what is in progress, active branches, live previews, recent builds, and the source. See [the overview](#the-overview). |
 | **Code** | `…/code` | The repository's files, commits and branches. |
 | **Issues**, **Pull requests**, **Merge queue**, **Plan** | `…/issues` and so on | As they always were. |
 | **Actions** | `…/actions` | [GitHub Actions workflows](/guides/actions/). |
@@ -50,8 +50,9 @@ else sees what the project shares publicly.
 
 | Part | What it shows |
 | --- | --- |
-| **Production** | A screenshot of the live site, which opens it; its address, the commit it runs and when it went up; **Visit** and **Redeploy**. See [the production screenshot](/guides/deployments/#the-production-screenshot). |
-| **Get to production** | The checklist below, until every step is done or you dismiss it. |
+| **Production** | For an app: a screenshot of the live site, which opens it; its address, the commit it runs and when it went up; **Visit** and **Redeploy**. See [the production screenshot](/guides/deployments/#the-production-screenshot). |
+| **Packages** | For a [library or a tool](#apps-and-libraries), in place of Production: the packages its repository publishes, each with its latest version and how to install it, or how to publish a first one. |
+| **Get to production**, or **Ship a release** for a library | The checklists below, until every step is done or you dismiss it. |
 | **Right now** | Agents at work, and open pull requests moving from working to landed. |
 | **Needs you** | What is waiting on a person: a failed production build, a pull request to merge or review, a stuck run. |
 | **Active branches** | Branches other than the default, newest first. See [active branches](#active-branches). |
@@ -76,6 +77,63 @@ itself, and each links to where you do it:
 The card goes away when every step is done. To hide it sooner, choose
 **×** on it. That hides it for this project in this browser only.
 
+### Ship a release
+
+A [library or a tool](#apps-and-libraries) does not deploy, so its card
+counts the steps to a first release instead:
+
+| Step | Done when | Links to |
+| --- | --- | --- |
+| Connect a source or push code | As above. | **Code**. |
+| Add checks on pull requests | The repository has a workflow in `.g1t/workflows`. Its runs are every pull request's checks. | **Actions**, which offers to add a starter workflow. |
+| Tag a release or publish a package | A package its repository publishes has a version. For [Composer](/guides/composer/) and [Go](/guides/go/), pushing a tag such as `v1.0.0` is the release. | The package's page, or the guide for its registry. |
+| Set up repository instructions | As above. | The **Agents** page. |
+| Assign a first issue to g1t | As above. | A new issue. |
+
+## Apps and libraries
+
+Every project is either an **app**, which deploys, or a **library or a
+tool**, which is published and installed. An app's overview shows
+production and the steps to get there; a library's shows its packages
+and the steps to a first release, and never offers to turn on
+deployments. Its **Deployments** page stays in the sidebar either way.
+
+g1t works it out for itself, in this order:
+
+1. If [Deployments](/guides/deployments/) are on for the project, it is an app.
+2. If its repository publishes a package other than a container image,
+   such as a [Composer](/guides/composer/) or [npm](/guides/npm/)
+   package, it is a library.
+3. If the files at the root of its default branch (or of its root
+   directory) say it is a library, it is one:
+
+   | File | A library when |
+   | --- | --- |
+   | `composer.json` | Its `type` is anything but `project`, such as `library`; or it has no `type`, has `autoload`, and has no `public/index.php`. |
+   | `Cargo.toml` | It builds a library (`[lib]` or `src/lib.rs`) and no binary (`[[bin]]` or `src/main.rs`). |
+   | `go.mod` | No `.go` file at the root is `package main`. |
+   | `pyproject.toml` | It has a build backend and depends on no app framework, such as Django, Flask or FastAPI. |
+   | `package.json` | It has `main`, `exports`, `module`, `files` or `bin`, no `start` or `dev` script, and no app framework such as Next.js, Astro, Nuxt, Remix or SvelteKit. |
+
+   The language's own manifest is read before `package.json`, which many
+   projects carry only for tooling. A Workers config (`wrangler.jsonc`,
+   `wrangler.json` or `wrangler.toml`) or an `index.html` at the root
+   makes it an app.
+4. Anything else is an app.
+
+The files are read again on every push to the default branch.
+
+To decide for yourself, open **Settings**, then **General**, and under
+**Deployments for this project** choose:
+
+- **Detect automatically**: the rules above. It shows what was detected
+  and why.
+- **Deploys**: an app, whatever its files say.
+- **Doesn't deploy**: a library or a tool. Its overview offers no
+  deploying. If Deployments are on for it, turn them off first under
+  **Settings**, then **Deployments**; g1t does not turn them off for you.
+  While it is set this way, Deployments cannot be turned on.
+
 ### Active branches
 
 Up to five branches other than the default, the most recently changed
@@ -95,7 +153,7 @@ A project's **Settings** has a tab for each part:
 
 | Tab | What it holds |
 | --- | --- |
-| **General** | The project's name and description, its source, and its **root directory**. A project shows its repository's description, and follows it as it changes, until you give the project one of its own; **Use the repository's description** goes back. |
+| **General** | The project's name and description, its source, its **root directory**, and whether it deploys (see [apps and libraries](#apps-and-libraries)). A project shows its repository's description, and follows it as it changes, until you give the project one of its own; **Use the repository's description** goes back. |
 | **Deployments** | Production, previews, build command, output directory and idle days. See [Deployments](/guides/deployments/#settings). |
 | **Domains** | Custom domains for production. See [custom domains](/guides/deployments/#custom-domains). |
 | **Dependencies** | The projects this one uses, and the ones that use it. See [Dependencies](#dependencies). |

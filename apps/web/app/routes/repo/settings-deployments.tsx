@@ -7,7 +7,7 @@ import { page } from "../../lib/meta";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { Button, ErrorText, Field, Input } from "../../components/ui";
 import { SwitchCard } from "../../components/ui/switch";
-import { deployments } from "../../lib/services.server";
+import { deployments, projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { requireCapability, requireInsider } from "../../lib/access.server";
 
@@ -19,8 +19,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   // Admins; to anyone without a role here the page does not exist.
   await requireInsider(context, params, "manage_integrations");
-  const settings = await deployments.settings({ workspace: params.owner, slug: params.repo }, viewer);
-  return { settings: unwrap(settings) };
+  const [settings, project] = await Promise.all([
+    deployments.settings({ workspace: params.owner, slug: params.repo }, viewer),
+    projects.get(params.owner, params.repo, viewer).catch(() => null),
+  ]);
+  // Set not to deploy in General settings: turning them on is refused until that changes.
+  const notDeploying = project?.ok ? project.value.deploys === "no" : false;
+  return { settings: unwrap(settings), notDeploying };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -90,7 +95,7 @@ function Detected({ kind }: { kind: DetectedKind | null }) {
 }
 
 export default function DeploymentSettings({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { settings } = loaderData;
+  const { settings, notDeploying } = loaderData;
   const busy = useNavigation().state === "submitting";
   const base = `/${params.owner}/${params.repo}`;
   return (
@@ -112,11 +117,22 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
             <span className="font-mono text-fg">{settings.productionUrl.replace("https://", "")}</span> and a preview for
             every pull request. The workspace needs the g1t plan, under Billing.
           </p>
-          <Form method="post" className="mt-4">
-            <Button variant="accent" type="submit" name="intent" value="enable" disabled={busy}>
-              Turn on deployments
-            </Button>
-          </Form>
+          {notDeploying ? (
+            <p className="mt-4 text-sm text-muted">
+              This project is set as one that doesn't deploy, a library or a tool. To deploy it, choose Deploys or Detect
+              automatically under{" "}
+              <Link to={`${base}/settings#deploys`} className="text-fg underline underline-offset-4">
+                General
+              </Link>{" "}
+              first.
+            </p>
+          ) : (
+            <Form method="post" className="mt-4">
+              <Button variant="accent" type="submit" name="intent" value="enable" disabled={busy}>
+                Turn on deployments
+              </Button>
+            </Form>
+          )}
         </section>
       ) : (
         <>

@@ -10,7 +10,7 @@ import type { Route } from "./+types/deployments";
 import { page } from "../../lib/meta";
 import { Button, ButtonLink, ComputeNote, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
 import { computeNoteFor } from "../../lib/compute.server";
-import { billing, deployments } from "../../lib/services.server";
+import { billing, deployments, projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { refusal, requireRepo } from "../../lib/access.server";
 import { whyNot } from "../../lib/access";
@@ -24,16 +24,19 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // Anyone who can read the repository: a public one's to anyone, a private one's to people with a role.
   const { access } = await requireRepo(context, params, "read");
   const ref = { workspace: params.owner, slug: params.repo };
-  const [settings, list, features, computeNote] = await Promise.all([
+  const [settings, list, features, computeNote, project] = await Promise.all([
     deployments.settings(ref, viewer),
     deployments.list(ref, viewer),
     billing.features(params.owner, viewer),
     // Builds are compute: said before a deploy is refused for it.
     computeNoteFor(params.owner, "deploy"),
+    projects.get(params.owner, params.repo, viewer).catch(() => null),
   ]);
+  // Set not to deploy, in General settings: turning them on waits for that to change.
+  const notDeploying = project?.ok ? project.value.deploys === "no" : false;
   // Someone outside the workspace does not see its plans; the page works without.
   const plan = features.ok ? (features.value.find((state) => state.plan.feature === "deployments") ?? null) : null;
-  return { can: access.can, settings: unwrap(settings), ...unwrap(list), plan, computeNote };
+  return { can: access.can, settings: unwrap(settings), ...unwrap(list), plan, computeNote, notDeploying };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -114,12 +117,23 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
             gets its own preview. Workers projects (a <code className="font-mono text-fg">wrangler.jsonc</code>) and
             static sites deploy without configuration.
           </p>
-          <Form method="post" className="mt-4">
-            <Button variant="accent" type="submit" name="intent" value="enable" disabled={busy || !can.manage_integrations} title={whyNot(can, "manage_integrations")}>
-              <Rocket size={14} />
-              Turn on deployments
-            </Button>
-          </Form>
+          {loaderData.notDeploying ? (
+            <p className="mt-4 max-w-2xl text-sm text-muted">
+              This project is set as one that doesn't deploy, a library or a tool. To deploy it, choose Deploys or Detect
+              automatically in{" "}
+              <Link to={`/${params.owner}/${params.repo}/settings#deploys`} className="text-fg underline underline-offset-4">
+                its settings
+              </Link>{" "}
+              first.
+            </p>
+          ) : (
+            <Form method="post" className="mt-4">
+              <Button variant="accent" type="submit" name="intent" value="enable" disabled={busy || !can.manage_integrations} title={whyNot(can, "manage_integrations")}>
+                <Rocket size={14} />
+                Turn on deployments
+              </Button>
+            </Form>
+          )}
         </section>
       ) : (
         <>

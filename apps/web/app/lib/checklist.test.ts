@@ -10,6 +10,7 @@ import {
   isDismissed,
   productionChecklist,
   progress,
+  releaseChecklist,
 } from "./checklist.ts";
 
 const fresh: ChecklistFacts = {
@@ -95,4 +96,27 @@ test("dismissing is remembered per project, and storage that throws is ignored",
   };
   assert.equal(isDismissed(() => blocked, "/acme/web"), false);
   assert.equal(dismiss(() => blocked, "/acme/web"), false);
+});
+
+test("a library's checklist ships a release instead of deploying", () => {
+  const facts = {
+    base: "/flagon-io/php-log",
+    hasCode: true,
+    instructions: false,
+    agentAssigned: false,
+    hasWorkflow: false,
+    released: true,
+    releaseTo: "/flagon-io/-/packages/composer/psr/log",
+  };
+  const items = releaseChecklist(facts);
+  assert.deepEqual(
+    items.map((item) => item.key),
+    ["code", "checks", "release", "instructions", "agent"],
+  );
+  assert.deepEqual(progress(items), { done: 2, total: 5, complete: false });
+  assert.equal(items.find((item) => item.key === "checks")?.to, "/flagon-io/php-log/actions");
+  assert.equal(items.find((item) => item.key === "release")?.to, "/flagon-io/-/packages/composer/psr/log");
+  assert.ok(items.every((item) => !/deploy|production|domain|preview/i.test(item.title)));
+  // An unknown workflow list counts as not done.
+  assert.equal(releaseChecklist({ ...facts, hasWorkflow: null }).find((item) => item.key === "checks")?.done, false);
 });

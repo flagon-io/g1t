@@ -16,6 +16,7 @@ import { parse as parseYaml } from "yaml";
 
 import { NEEDS, repoRef } from "./access";
 import { effectiveDescription, ownDescription } from "./description";
+import { type KindFacts, type RootFiles, MANIFESTS, deploysSetting, detectKind, goFilesToRead, resolveKind } from "./kind";
 import { renameStatements } from "./rename";
 import { moveStatements, slugOf, strandedQuery } from "./transfer";
 
@@ -31,15 +32,19 @@ import {
   newId,
   ok,
   openD1,
+  packagesClient,
   permission,
   repoMove,
   reposClient,
   staleMovedPaths,
   type Dependencies,
   type DependencyLink,
+  type DeploysSetting,
+  type Ecosystem,
   type G1tEvent,
   type NewProject,
   type Project,
+  type ProjectEcosystem,
   type ProjectGraph,
   type Repo,
   type Result,
@@ -52,6 +57,8 @@ type Env = {
   DB: D1Database;
   REPOS: ServiceBinding;
   IDENTITY: ServiceBinding;
+  PACKAGES: ServiceBinding;
+  DEPLOYMENTS: ServiceBinding;
 };
 
 type Row = {
@@ -78,7 +85,28 @@ type Row = {
   repo_deleted_at: string | null;
   /** When its repository was archived; null while it is not. */
   repo_archived_at?: string | null;
+  /** auto, yes or no: whether it deploys (migrations/0007_deploys.sql). */
+  deploys?: string | null;
+  detected_kind?: string | null;
+  detected_detail?: string | null;
+  detected_ecosystem?: string | null;
+  /** The default branch's commit its files were read at; null until they have been. */
+  detected_commit?: string | null;
+  linked_package?: string | null;
+  deployments_on?: number | null;
 };
+
+/** How a package its repository publishes is named in why a project is a library. */
+const ECOSYSTEM_NAME: Record<Ecosystem, string> = {
+  container: "container image",
+  npm: "npm package",
+  composer: "Composer package",
+  cargo: "crate",
+  go: "Go module",
+};
+
+/** How many projects one listing reads the files of, in the background, before it has. */
+const DETECT_PER_LIST = 10;
 
 const now = () => new Date().toISOString();
 
@@ -92,6 +120,17 @@ type NodeRow = { id: string; slug: string; workspace: string; alias: string | nu
 
 function toProject(row: Row): Project {
   const { description, inherited } = effectiveDescription(row);
+  const deploys = deploysSetting(row.deploys);
+  const facts: Omit<KindFacts, "deploys"> = {
+    deploymentsOn: row.deployments_on == null ? null : !!row.deployments_on,
+    linkedPackage: row.linked_package ?? null,
+    detected:
+      row.detected_commit == null
+        ? null
+        : { kind: row.detected_kind === "app" || row.detected_kind === "library" ? row.detected_kind : null, detail: row.detected_detail ?? "" },
+  };
+  const { kind, reason } = resolveKind({ deploys, ...facts });
+  const auto = resolveKind({ deploys: "auto", ...facts });
   return {
     id: row.id,
     workspace: row.workspace,
@@ -109,6 +148,11 @@ function toProject(row: Row): Project {
     private: !!row.repo_private,
     archived: !!row.repo_archived_at,
     primary: !!row.is_primary,
+    deploys,
+    kind,
+    kindReason: reason,
+    detected: auto,
+    ecosystem: (row.detected_ecosystem as ProjectEcosystem | null) ?? null,
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -120,7 +164,11 @@ function isMember(viewer: Viewer, workspace: string): boolean {
 }
 
 class Projects {
-  constructor(private readonly env: Env) {}
+  /** `defer` runs work after the answer is sent: the request's waitUntil. */
+  constructor(
+    private readonly env: Env,
+    private readonly defer: (work: Promise<unknown>) => void = () => {},
+  ) {}
 
   private get db() {
     return this.env.DB;
@@ -233,6 +281,10 @@ class Projects {
       .prepare("SELECT * FROM projects WHERE workspace = ? AND repo_deleted_at IS NULL ORDER BY name COLLATE NOCASE")
       .bind(workspace)
       .all<Row>();
+    // Projects whose files have not been read yet are read after this answer,
+    // a few at a time; until then they show as apps, as before.
+    const unread = rows.results.filter((row) => row.detected_commit == null).slice(0, DETECT_PER_LIST);
+    if (unread.length) this.defer(Promise.all(unread.map((row) => this.detect(row).catch((error) => console.warn("detect", row.slug, error)))));
     return ok(rows.results.filter((row) => this.visible(row, a.viewer)).map(toProject));
   }
 
@@ -244,6 +296,11 @@ class Projects {
       .bind(workspace, a.slug.toLowerCase())
       .first<Row>();
     if (!row || !this.visible(row, a.viewer)) return fail("not_found", "There is no such project.");
+    if (row.detected_commit == null) {
+      // Once per project: what its files say, read now so its first page is right.
+      const read = await this.detect(row).catch((error) => (console.warn("detect", row.slug, error), null));
+      if (read) return ok(toProject(read));
+    }
     return ok(toProject(row));
   }
 
@@ -342,7 +399,7 @@ class Projects {
     actor: User;
     workspace: string;
     slug: string;
-    changes: { name?: string; description?: string | null; rootDir?: string };
+    changes: { name?: string; description?: string | null; rootDir?: string; deploys?: DeploysSetting };
   }): Promise<Result<Project>> {
     const workspace = a.workspace.toLowerCase();
     const row = await this.db
@@ -357,11 +414,122 @@ class Projects {
     const description = ownDescription(row.description, a.changes.description);
     const rootDir = a.changes.rootDir === undefined ? row.root_dir : a.changes.rootDir.trim().replace(/^\/+|\/+$/g, "");
     if (rootDir.split("/").some((part) => part === "..")) return fail("invalid", "The root directory is inside the repository.");
+    const deploys = a.changes.deploys === undefined ? deploysSetting(row.deploys) : deploysSetting(a.changes.deploys);
+    // Not deploying while Deployments run would leave apps up that no page
+    // offers: a person turns them off first, in Deployments settings.
+    const deploying = deploys === "no" && deploysSetting(row.deploys) !== "no" ? (row.deployments_on ?? (await this.deploymentsOn(row.id))) : false;
+    if (deploying) {
+      return fail("conflict", "Deployments are on for this project. Turn them off in its Deployments settings first.");
+    }
     await this.db
-      .prepare("UPDATE projects SET name = ?, description = ?, root_dir = ?, updated_at = ? WHERE id = ?")
-      .bind(name.slice(0, 100), description, rootDir, now(), row.id)
+      .prepare("UPDATE projects SET name = ?, description = ?, root_dir = ?, deploys = ?, updated_at = ? WHERE id = ?")
+      .bind(name.slice(0, 100), description, rootDir, deploys, now(), row.id)
       .run();
-    return ok(toProject((await this.db.prepare("SELECT * FROM projects WHERE id = ?").bind(row.id).first<Row>())!));
+    let saved = (await this.db.prepare("SELECT * FROM projects WHERE id = ?").bind(row.id).first<Row>())!;
+    // Another root has other files: read them again.
+    if (rootDir !== row.root_dir) saved = (await this.detect({ ...saved, detected_commit: null }).catch(() => null)) ?? saved;
+    return ok(toProject(saved));
+  }
+
+  async deploymentsChanged(a: { projectId: string; enabled: boolean }): Promise<void> {
+    await this.db.prepare("UPDATE projects SET deployments_on = ? WHERE id = ?").bind(a.enabled ? 1 : 0, a.projectId).run();
+  }
+
+  // ---- App or library --------------------------------------------------
+
+  /**
+   * Reads what decides whether the project is a library: the manifests at
+   * its root at `commit` (the default branch's head when null), a package
+   * its repository publishes, and, the first time, whether Deployments are
+   * on. Files are read again only for a commit they were not read at.
+   * `packages` reads only the packages. Returns the row as it is now.
+   */
+  private async detect(row: Row, commit: string | null = null, only?: "packages"): Promise<Row> {
+    const actor = await this.workspaceActor(row.workspace);
+    if (!actor) return row;
+    const repo = { namespace: row.repo_namespace, name: row.repo_name };
+    const sets: string[] = [];
+    const values: unknown[] = [];
+    const set = (column: string, value: unknown) => {
+      sets.push(`${column} = ?`);
+      values.push(value);
+    };
+    const filesRead = only === "packages" || (commit != null && commit === row.detected_commit);
+    const [files, linked, deploying] = await Promise.all([
+      filesRead ? null : this.readRoot(repo, actor, commit, row.root_dir),
+      this.linkedPackage(row, actor),
+      row.deployments_on == null && only !== "packages" ? this.deploymentsOn(row.id) : null,
+    ]);
+    if (files) {
+      const found = files.commit ? detectKind(files.root) : null;
+      set("detected_kind", found?.kind ?? null);
+      set("detected_detail", found?.detail ?? null);
+      set("detected_ecosystem", found?.ecosystem ?? null);
+      set("detected_commit", files.commit);
+    }
+    if (linked !== undefined) set("linked_package", linked);
+    if (deploying != null) set("deployments_on", deploying ? 1 : 0);
+    if (sets.length === 0) return row;
+    await this.db
+      .prepare(`UPDATE projects SET ${sets.join(", ")} WHERE id = ?`)
+      .bind(...values, row.id)
+      .run();
+    return (await this.db.prepare("SELECT * FROM projects WHERE id = ?").bind(row.id).first<Row>()) ?? row;
+  }
+
+  /** The project's root at a commit: its names, and the few files detection reads. Commit '' when it has none. */
+  private async readRoot(
+    repo: { namespace: string; name: string },
+    actor: User,
+    commit: string | null,
+    rootDir: string,
+  ): Promise<{ commit: string; root: RootFiles } | null> {
+    const client = reposClient(this.env.REPOS);
+    const empty = { commit: "", root: { entries: [], text: {} } };
+    const tree = await client.tree(repo, actor, commit, rootDir);
+    if (!tree.ok) return null;
+    const head = commit ?? tree.value.head?.hash ?? "";
+    if (!head) return empty;
+    const entries = tree.value.entries.map((entry) => (entry.kind === "tree" ? `${entry.name}/` : entry.name));
+    const at = (name: string) => (rootDir ? `${rootDir}/${name}` : name);
+    const names = [...MANIFESTS.filter((name) => entries.includes(name)), ...(entries.includes("go.mod") ? goFilesToRead(entries) : [])];
+    const below = (dir: string) => client.tree(repo, actor, head, at(dir)).catch(() => null);
+    const [texts, src, pub] = await Promise.all([
+      Promise.all(
+        names.map(async (name) => {
+          const blob = await client.blob(repo, actor, head, at(name)).catch(() => null);
+          return [name, blob?.ok ? (blob.value.text ?? "") : ""] as const;
+        }),
+      ),
+      entries.includes("Cargo.toml") && entries.includes("src/") ? below("src") : null,
+      entries.includes("composer.json") && entries.includes("public/") ? below("public") : null,
+    ]);
+    const list = (view: Awaited<ReturnType<typeof below>>) => (view?.ok ? view.value.entries.map((entry) => entry.name) : undefined);
+    return { commit: head, root: { entries, text: Object.fromEntries(texts), src: list(src), public: list(pub) } };
+  }
+
+  /** A package other than a container image that the repository publishes, named; undefined when packages could not say. */
+  private async linkedPackage(row: Row, actor: User): Promise<string | null | undefined> {
+    const listed = await packagesClient(this.env.PACKAGES)
+      .list(row.workspace, actor, { repoId: row.repo_id })
+      .catch(() => null);
+    if (!listed?.ok) return undefined;
+    // An image is how an app ships too; it says nothing about being a library.
+    const pkg = listed.value.find((p) => p.ecosystem !== "container");
+    if (!pkg) return null;
+    return `${ECOSYSTEM_NAME[pkg.ecosystem]} ${pkg.ecosystem === "npm" ? `@${pkg.workspace}/${pkg.name}` : pkg.name}`;
+  }
+
+  /** Whether Deployments are on for the project, asked of deployments once; after that it tells this service. */
+  private async deploymentsOn(projectId: string): Promise<boolean | null> {
+    const answer = await this.env.DEPLOYMENTS.fetch("https://deployments/rpc/is_enabled", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId }),
+    }).catch(() => null);
+    if (!answer?.ok) return null;
+    const value = (await answer.json().catch(() => null)) as unknown;
+    return typeof value === "boolean" ? value : null;
   }
 
   // ---- Dependencies ------------------------------------------------------
@@ -637,6 +805,17 @@ class Projects {
         .prepare("UPDATE projects SET default_branch = ? WHERE repo_id = ?")
         .bind(repo?.defaultBranch ?? event.data.to, event.data.repoId)
         .run();
+      // Another branch has other files: they are read again from its head.
+      const rows = await this.db.prepare("SELECT * FROM projects WHERE repo_id = ?").bind(event.data.repoId).all<Row>();
+      for (const row of rows.results) await this.detect({ ...row, detected_commit: null });
+      return;
+    }
+    if (
+      (event.type === "package.published" || event.type === "package.deleted" || event.type === "package.version_deleted") &&
+      event.data.repoId
+    ) {
+      const rows = await this.db.prepare("SELECT * FROM projects WHERE repo_id = ?").bind(event.data.repoId).all<Row>();
+      for (const row of rows.results) await this.detect(row, null, "packages");
       return;
     }
     if (event.type === "workspace.deleting") {
@@ -677,7 +856,10 @@ class Projects {
     }
     if (event.type === "git.push" && event.data.defaultBranch) {
       const rows = await this.db.prepare("SELECT * FROM projects WHERE repo_id = ?").bind(event.data.repoId).all<Row>();
-      for (const row of rows.results) await this.syncFile(row, event.data.after);
+      for (const row of rows.results) {
+        await this.syncFile(row, event.data.after);
+        await this.detect(row, event.data.after);
+      }
       return;
     }
     if (event.type !== "repo.created") return;
@@ -703,6 +885,9 @@ async function answer(service: Projects, method: string, args: any): Promise<Res
       return Response.json(await service.create(args));
     case "update":
       return Response.json(await service.update(args));
+    case "deployments_changed":
+      await service.deploymentsChanged(args);
+      return Response.json(null);
     case "dependencies":
       return Response.json(await service.dependencies(args));
     case "add_dependency":
@@ -719,12 +904,12 @@ async function answer(service: Projects, method: string, args: any): Promise<Res
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const match = new URL(request.url).pathname.match(/^\/rpc\/([a-z_]+)$/);
     if (request.method !== "POST" || !match) return new Response("Not found\n", { status: 404 });
     // A replica near the caller when it asks for one (@g1t/contracts d1.ts).
     const opened = openD1(env.DB, request);
-    const service = new Projects(Object.create(env, { DB: { value: opened.db } }) as Env);
+    const service = new Projects(Object.create(env, { DB: { value: opened.db } }) as Env, (work) => ctx.waitUntil(work));
     const args = (await request.json().catch(() => ({}))) as any;
     return opened.finish(await answer(service, match[1], args));
   },

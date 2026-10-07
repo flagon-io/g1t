@@ -36,11 +36,41 @@ export type Project = {
   archived: boolean;
   /** Whether it is the project its repository's workflows read secrets from. */
   primary: boolean;
+  /** Whether it deploys, as set in its settings: `auto` decides from the project itself. */
+  deploys: DeploysSetting;
+  /** What it is, from `deploys`, or for `auto` from its deployments, packages and files. */
+  kind: ProjectKind;
+  /** Why it is that kind. */
+  kindReason: KindReason;
+  /** What `auto` decides, whatever the setting is, to show beside it. */
+  detected: { kind: ProjectKind; reason: KindReason };
+  /** The ecosystem its files say it publishes to, for how to publish; null when none says. */
+  ecosystem: ProjectEcosystem | null;
   createdBy: string;
   /** RFC 3339. */
   createdAt: string;
   updatedAt: string;
 };
+
+/** Whether a project deploys: decided from the project, or set by a person. */
+export type DeploysSetting = "auto" | "yes" | "no";
+
+/**
+ * An app deploys and gets production, previews and domains; a library (or
+ * a tool) is published and installed, so its pages offer releases and
+ * packages instead.
+ */
+export type ProjectKind = "app" | "library";
+
+/**
+ * What decided the kind: the setting, Deployments being on, a package its
+ * repository publishes, its files, or nothing (an app, by default).
+ * `detail` says it in a sentence.
+ */
+export type KindReason = { by: "set" | "deployments" | "packages" | "files" | "default"; detail: string };
+
+/** Where a library's files say it is published. */
+export type ProjectEcosystem = "composer" | "npm" | "cargo" | "go" | "python";
 
 export type NewProject = {
   name: string;
@@ -83,8 +113,10 @@ export interface ProjectsApi {
     actor: User,
     workspace: string,
     slug: string,
-    changes: { name?: string; description?: string | null; rootDir?: string },
+    changes: { name?: string; description?: string | null; rootDir?: string; deploys?: DeploysSetting },
   ): Promise<Result<Project>>;
+  /** For deployments: Deployments were turned on or off for the project. */
+  deploymentsChanged(projectId: string, enabled: boolean): Promise<void>;
   /** What a project uses and what uses it. Whoever may see the project. */
   dependencies(workspace: string, slug: string, viewer: Viewer): Promise<Result<Dependencies>>;
   /**

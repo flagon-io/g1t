@@ -14,6 +14,7 @@ import {
   Loader2,
   Lock,
   Network,
+  Package as PackageGlyph,
   Pin,
   Rocket,
   RotateCw,
@@ -21,7 +22,17 @@ import {
 import { type ReactNode, Suspense } from "react";
 import { Await, Form, Link, useNavigation } from "react-router";
 
-import { type AgentRun, type G1tEvent, type Memory, type Pull, RUN_KIND_LABEL, isActiveRun, workOwner } from "@g1t/contracts";
+import {
+  type AgentRun,
+  type G1tEvent,
+  type Memory,
+  type PackageSummary,
+  type Project,
+  type Pull,
+  RUN_KIND_LABEL,
+  isActiveRun,
+  workOwner,
+} from "@g1t/contracts";
 
 import type { Route } from "./+types/overview";
 import { host, StatusDot } from "../../components/deploy";
@@ -30,6 +41,7 @@ import { Elapsed, formatCost, useLiveRefresh } from "../../components/agents";
 import { ActivityFeed, DeployStrip, Meter, NeedsList, Panel, Quiet, Unavailable, percent } from "../../components/mission";
 import { type ActiveBranch, ActiveBranches } from "../../components/branches";
 import { ProductionChecklist } from "../../components/checklist";
+import { PackageIcon } from "../../components/package-icon";
 import { Skeleton, SkeletonRows } from "../../components/ui/skeleton";
 import { ProductionShot } from "../../components/production-shot";
 import { GithubLinkStrip } from "../../components/github";
@@ -53,8 +65,10 @@ import {
   stuckMinutes,
 } from "../../lib/mission";
 import { drift } from "../../lib/branches";
-import { agentWasAssigned, hasInstructions, productionChecklist } from "../../lib/checklist";
-import { agents, deployments, events as eventLog, projects, repos, work } from "../../lib/services.server";
+import { agentWasAssigned, hasInstructions, productionChecklist, releaseChecklist } from "../../lib/checklist";
+import { ECOSYSTEM_LABEL, installCommands } from "../../lib/packages";
+import { PUBLISH_GUIDES, hasRelease, libraryPackages, packageName, packagePath, publishGuide } from "../../lib/project-kind";
+import { actions, agents, deployments, events as eventLog, packages, projects, repos, work } from "../../lib/services.server";
 import { madeByG1t } from "../../lib/opened-by";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 import { accessTo, countsFor, refusal, repoFor } from "../../lib/access.server";
@@ -67,6 +81,8 @@ const BRANCHES_SHOWN = 5;
 /** How far back each branch's history, and the default branch's, is read to count ahead and behind. */
 const BRANCH_DEPTH = 40;
 const MAIN_DEPTH = 120;
+/** A library's packages shown on its overview; the rest are a link away. */
+const PACKAGES_SHOWN = 3;
 
 /**
  * The overview streams: the layout's header and tabs (one repository
@@ -96,6 +112,14 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   const forMembers = <T,>(start: () => Promise<T>): Promise<T | null> =>
     memberP.then((member) => (member ? soft(start()) : null));
   const repoP = soft(repoFor(context, params));
+  const projectP = soft(projects.get(params.owner, params.repo, viewer));
+  // A library shows its packages where an app shows production, and its
+  // checklist counts a workflow and a release instead of deploys.
+  const libraryRepoP = Promise.all([projectP, repoP]).then(([project, repo]) =>
+    project?.ok && project.value.kind === "library" && repo?.ok ? repo.value : null,
+  );
+  const packagesP = libraryRepoP.then((repo) => (repo ? soft(packages.list(params.owner, viewer, { repoId: repo.id })) : null));
+  const workflowsP = libraryRepoP.then((repo) => (repo ? forMembers(() => actions.workflows(path, viewer)) : null));
   const eventsP = repoP.then((repo) => (repo?.ok ? soft(eventLog.list({ repoId: repo.value.id, limit: 150 })) : null));
   const minePullsP = repoP.then((repo) =>
     repo?.ok && viewer
@@ -148,9 +172,9 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   );
   // Active branches read several logs each: streamed, so the rest shows first.
   const branches = branchesP.catch(() => null);
-  const [{ insider: member, can }, project, settings, list, open, closed, log, counts, deps, runs, queue, issues, memories, recent, mine, domains, root] = await Promise.all([
+  const [{ insider: member, can }, project, settings, list, open, closed, log, counts, deps, runs, queue, issues, memories, recent, mine, domains, root, packageList, workflows] = await Promise.all([
     accessP,
-    soft(projects.get(params.owner, params.repo, viewer)),
+    projectP,
     forMembers(() => deployments.settings(ref, viewer)),
     listP,
     openP,
@@ -167,6 +191,8 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     // For the checklist, which only members see.
     forMembers(() => deployments.domains(ref, viewer)),
     forMembers(() => repos.tree(path, viewer, null, "")),
+    packagesP,
+    workflowsP,
   ]);
   const ok = <T,>(result: { ok: true; value: T } | { ok: false } | null): T | null => (result?.ok ? result.value : null);
 
@@ -294,10 +320,31 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   const liveApps = ok(list)?.live ?? [];
   const commitNow = ok(log)?.[0] ?? null;
   const projectValue = ok(project);
-  const checklist = member
-    ? productionChecklist({
-        base,
-        hasCode: commitNow != null || projectValue?.source.kind === "mirror",
+  const isLibrary = projectValue?.kind === "library";
+  const published = libraryPackages(ok(packageList) ?? []);
+  const firstSteps = {
+    base,
+    hasCode: commitNow != null || projectValue?.source.kind === "mirror",
+    instructions: commitNow == null ? false : root?.ok ? hasInstructions(root.value.entries.map((entry) => entry.name)) : null,
+    agentAssigned: agentWasAssigned({
+      runAgents: runList.map((run) => run.agent),
+      pullAgents: [...openPulls, ...(ok(closed) ?? [])].map((pull) => pull.agent),
+      issues: openIssues ?? [],
+    }),
+  };
+  const checklist = !member
+    ? null
+    : isLibrary
+      ? releaseChecklist({
+          ...firstSteps,
+          hasWorkflow: workflows?.ok ? workflows.value.length > 0 : null,
+          released: hasRelease(published),
+          releaseTo: published[0]
+            ? packagePath(published[0])
+            : (publishGuide(projectValue?.ecosystem ?? null)?.guide ?? "https://docs.g1t.sh/guides/packages/"),
+        })
+      : productionChecklist({
+        ...firstSteps,
         deploysEnabled: ok(settings)?.enabled ?? false,
         productionDeployed:
           liveApps.some((app) => app.kind === "production") ||
@@ -305,14 +352,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
         domains: ok(domains)?.domains.length ?? null,
         previewOpened:
           liveApps.some((app) => app.kind === "preview") || builds.some((build) => build.kind === "preview" && wentLive(build.status)),
-        instructions: commitNow == null ? false : root?.ok ? hasInstructions(root.value.entries.map((entry) => entry.name)) : null,
-        agentAssigned: agentWasAssigned({
-          runAgents: runList.map((run) => run.agent),
-          pullAgents: [...openPulls, ...(ok(closed) ?? [])].map((pull) => pull.agent),
-          issues: openIssues ?? [],
-        }),
-      })
-    : null;
+      });
 
   const github = await githubP;
   return {
@@ -344,6 +384,9 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     memoryCount: memoryList.length,
     memoriesLoaded: memories?.ok ?? false,
     checklist,
+    library: isLibrary
+      ? { packages: published.slice(0, PACKAGES_SHOWN), total: published.length, loaded: packageList?.ok ?? false }
+      : null,
     branches,
   };
 }
@@ -461,6 +504,108 @@ function Pipeline({ columns, base }: { columns: Loaded["columns"]; base: string 
   );
 }
 
+/**
+ * Where an app's overview shows production, a library's shows what it
+ * publishes: each package with its latest version and how to install it,
+ * or, before there is one, how to publish a first version.
+ */
+function LibraryHead({
+  library,
+  project,
+  base,
+  canChange,
+  workspace,
+}: {
+  library: { packages: PackageSummary[]; total: number; loaded: boolean };
+  project: Project | null;
+  base: string;
+  canChange: boolean;
+  workspace: string;
+}) {
+  const guide = publishGuide(project?.ecosystem ?? null);
+  const name = project?.name ?? base.split("/").pop();
+  return (
+    <div className="p-5 sm:p-6">
+      <p className="flex items-center gap-2 text-xs font-medium tracking-wide text-muted uppercase">
+        <PackageGlyph size={13} className="text-accent" />
+        Packages
+      </p>
+      {library.packages.length > 0 ? (
+        <>
+          <ul className="mt-3 space-y-4">
+            {library.packages.map((pkg) => {
+              const commands = installCommands(pkg, pkg.latest, "you");
+              return (
+                <li key={pkg.id} className="flex flex-col gap-2.5 lg:flex-row lg:items-start lg:gap-5">
+                  <Link to={packagePath(pkg)} className="group flex min-w-0 items-center gap-3 lg:w-72 lg:shrink-0">
+                    <PackageIcon ecosystem={pkg.ecosystem} size={32} />
+                    <span className="min-w-0">
+                      <span className="block truncate font-mono text-[0.9375rem] font-medium group-hover:text-accent">{packageName(pkg)}</span>
+                      <span className="block text-xs text-muted">
+                        {ECOSYSTEM_LABEL[pkg.ecosystem]} · {pkg.latest ?? "no versions yet"}
+                        {pkg.versions > 1 && ` · ${pkg.versions} versions`}
+                      </span>
+                    </span>
+                  </Link>
+                  <div className="min-w-0 grow space-y-1.5">
+                    {/* The workspace's registry first, or the tool installs a package of the same name from elsewhere. */}
+                    {commands.registry && <CopyLine prompt text={commands.registry} />}
+                    <CopyLine prompt text={commands.install} />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          {library.total > library.packages.length && (
+            <Link to={`/${workspace}/-/packages`} className="mt-3 inline-block text-xs text-muted hover:text-fg">
+              All {library.total} packages
+            </Link>
+          )}
+        </>
+      ) : (
+        <>
+          <p className="mt-2 text-lg font-medium">{library.loaded ? "Not published yet" : "Packages could not be loaded just now"}</p>
+          {guide ? (
+            <>
+              <p className="mt-1 max-w-lg text-sm text-muted">
+                Publish a first version of {name} to the workspace's {guide.label} registry, for others to install
+                {guide.start ? ":" : "."}
+              </p>
+              {guide.start && (
+                <div className="mt-3 max-w-lg">
+                  <CopyLine prompt text={guide.start} />
+                </div>
+              )}
+              <a href={guide.guide} className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline">
+                Publishing to {guide.label} <ArrowUpRight size={13} />
+              </a>
+            </>
+          ) : (
+            <>
+              <p className="mt-1 max-w-lg text-sm text-muted">Publish a first version of {name} to one of the workspace's registries:</p>
+              <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                {PUBLISH_GUIDES.map((one) => (
+                  <a key={one.label} href={one.guide} className="inline-flex items-center gap-1 text-accent hover:underline">
+                    {one.label} <ArrowUpRight size={13} />
+                  </a>
+                ))}
+              </p>
+            </>
+          )}
+        </>
+      )}
+      {canChange && (
+        <p className="mt-4 text-xs text-faint">
+          Deploys?{" "}
+          <Link to={`${base}/settings#deploys`} className="underline-offset-4 hover:text-fg hover:underline">
+            Change it in Settings.
+          </Link>
+        </p>
+      )}
+    </div>
+  );
+}
+
 function Stat({ label, value, to }: { label: string; value: ReactNode; to?: string }) {
   const body = (
     <>
@@ -532,7 +677,7 @@ function Overview({
   actionData: Route.ComponentProps["actionData"];
   params: Route.ComponentProps["params"];
 }) {
-  const { member, project, settings, builds, live, commit, open, dependencies, agentsLive, columns, needs, landed, groups, health, knows, checklist, branches } =
+  const { member, project, settings, builds, live, commit, open, dependencies, agentsLive, columns, needs, landed, groups, health, knows, checklist, branches, library } =
     loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const production = live.find((app) => app.kind === "production") ?? null;
@@ -552,89 +697,93 @@ function Overview({
       {loaderData.github && <GithubLinkStrip link={loaderData.github} />}
       {/* What the project is, running, and where its code is. */}
       <section className="overflow-hidden rounded-2xl border border-line bg-surface">
-        <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start sm:p-6">
-          {member && (production || settings?.enabled) && (
-            <ProductionShot
-              src={production ? `${base}/production.jpg?v=${shotVersion(production)}` : null}
-              href={production ? (productionUrl ?? production.url) : null}
-              label={host(production ? (productionUrl ?? production.url) : (settings?.productionUrl ?? ""))}
-              className="w-full shrink-0 sm:w-60 lg:w-72"
-            />
-          )}
-          <div className="flex min-w-0 grow flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="flex items-center gap-2 text-xs font-medium tracking-wide text-muted uppercase">
-              <Rocket size={13} className="text-accent" />
-              Production
-            </p>
-            {production ? (
-              <>
-                <a
-                  href={productionUrl ?? production.url}
-                  className="mt-2 flex items-center gap-1.5 truncate font-mono text-lg font-medium hover:text-accent"
-                >
-                  {host(productionUrl ?? production.url)}
-                  <ArrowUpRight size={16} className="shrink-0 text-faint" />
-                </a>
-                <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-                  {latestProduction && <StatusDot status={latestProduction.status} label={latestProduction.status === "ready" ? "Live" : undefined} />}
-                  <span className="inline-flex items-center gap-1 font-mono">
-                    <GitCommitHorizontal size={13} className="text-faint" />
-                    {production.commit.slice(0, 7)}
-                  </span>
-                  <span>
-                    deployed <TimeAgo at={production.deployedAt} />
-                  </span>
-                  {settings?.primaryDomain && <span className="text-faint">also at {host(production.url)}</span>}
-                </p>
-              </>
-            ) : settings?.enabled ? (
-              <>
-                <p className="mt-2 font-mono text-lg text-muted">{host(settings.productionUrl)}</p>
-                <p className="mt-1.5 text-xs text-muted">
-                  {latestProduction ? (
-                    <StatusDot status={latestProduction.status} label={latestProduction.status === "failed" ? "The last build failed" : undefined} />
-                  ) : (
-                    "Not deployed yet. Push to the default branch, or deploy it now."
-                  )}
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="mt-2 text-lg font-medium">Deployments are off</p>
-                <p className="mt-1 max-w-lg text-sm text-muted">
-                  Nothing builds or runs until you turn them on. Then {project?.name ?? params.repo} goes up on g1t.page:
-                  production from the default branch, and a live preview for every pull request. It runs only while
-                  someone visits.
-                </p>
-              </>
+        {library ? (
+          <LibraryHead library={library} project={project} base={base} canChange={loaderData.can.manage_settings} workspace={params.owner} />
+        ) : (
+          <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start sm:p-6">
+            {member && (production || settings?.enabled) && (
+              <ProductionShot
+                src={production ? `${base}/production.jpg?v=${shotVersion(production)}` : null}
+                href={production ? (productionUrl ?? production.url) : null}
+                label={host(production ? (productionUrl ?? production.url) : (settings?.productionUrl ?? ""))}
+                className="w-full shrink-0 sm:w-60 lg:w-72"
+              />
             )}
-          </div>
-          {member && (
-            <div className="flex shrink-0 items-center gap-2">
-              {production && (
-                <ButtonLink to={productionUrl ?? production.url} variant="accent" reloadDocument>
-                  Visit
-                  <ArrowUpRight size={14} />
-                </ButtonLink>
-              )}
-              {settings?.enabled ? (
-                loaderData.can.run && <Form method="post">
-                  <Button type="submit" variant="quiet" disabled={busy} title="Build production again from the default branch">
-                    <RotateCw size={14} />
-                    Redeploy
-                  </Button>
-                </Form>
-              ) : loaderData.can.manage_integrations && (
-                <ButtonLink to={`${base}/settings/deployments`} variant="accent">
-                  <Rocket size={14} />
-                  Turn on deployments
-                </ButtonLink>
+            <div className="flex min-w-0 grow flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 text-xs font-medium tracking-wide text-muted uppercase">
+                <Rocket size={13} className="text-accent" />
+                Production
+              </p>
+              {production ? (
+                <>
+                  <a
+                    href={productionUrl ?? production.url}
+                    className="mt-2 flex items-center gap-1.5 truncate font-mono text-lg font-medium hover:text-accent"
+                  >
+                    {host(productionUrl ?? production.url)}
+                    <ArrowUpRight size={16} className="shrink-0 text-faint" />
+                  </a>
+                  <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                    {latestProduction && <StatusDot status={latestProduction.status} label={latestProduction.status === "ready" ? "Live" : undefined} />}
+                    <span className="inline-flex items-center gap-1 font-mono">
+                      <GitCommitHorizontal size={13} className="text-faint" />
+                      {production.commit.slice(0, 7)}
+                    </span>
+                    <span>
+                      deployed <TimeAgo at={production.deployedAt} />
+                    </span>
+                    {settings?.primaryDomain && <span className="text-faint">also at {host(production.url)}</span>}
+                  </p>
+                </>
+              ) : settings?.enabled ? (
+                <>
+                  <p className="mt-2 font-mono text-lg text-muted">{host(settings.productionUrl)}</p>
+                  <p className="mt-1.5 text-xs text-muted">
+                    {latestProduction ? (
+                      <StatusDot status={latestProduction.status} label={latestProduction.status === "failed" ? "The last build failed" : undefined} />
+                    ) : (
+                      "Not deployed yet. Push to the default branch, or deploy it now."
+                    )}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-2 text-lg font-medium">Deployments are off</p>
+                  <p className="mt-1 max-w-lg text-sm text-muted">
+                    Nothing builds or runs until you turn them on. Then {project?.name ?? params.repo} goes up on g1t.page:
+                    production from the default branch, and a live preview for every pull request. It runs only while
+                    someone visits.
+                  </p>
+                </>
               )}
             </div>
-          )}
+            {member && (
+              <div className="flex shrink-0 items-center gap-2">
+                {production && (
+                  <ButtonLink to={productionUrl ?? production.url} variant="accent" reloadDocument>
+                    Visit
+                    <ArrowUpRight size={14} />
+                  </ButtonLink>
+                )}
+                {settings?.enabled ? (
+                  loaderData.can.run && <Form method="post">
+                    <Button type="submit" variant="quiet" disabled={busy} title="Build production again from the default branch">
+                      <RotateCw size={14} />
+                      Redeploy
+                    </Button>
+                  </Form>
+                ) : loaderData.can.manage_integrations && (
+                  <ButtonLink to={`${base}/settings/deployments`} variant="accent">
+                    <Rocket size={14} />
+                    Turn on deployments
+                  </ButtonLink>
+                )}
+              </div>
+            )}
+            </div>
           </div>
-        </div>
+        )}
         {actionData && (
           <p className={`border-t border-line px-6 py-2.5 text-sm ${"error" in actionData ? "text-danger" : "text-accent"}`}>
             {"error" in actionData ? actionData.error : actionData.notice}
@@ -683,10 +832,10 @@ function Overview({
             }
           />
           <Stat
-            label={member && settings?.enabled ? "Last deploy" : "Open"}
-            to={member && settings?.enabled ? `${base}/deployments` : `${base}/pulls`}
+            label={member && settings?.enabled && !library ? "Last deploy" : "Open"}
+            to={member && settings?.enabled && !library ? `${base}/deployments` : `${base}/pulls`}
             value={
-              member && settings?.enabled ? (
+              member && settings?.enabled && !library ? (
                 latestProduction ? (
                   <span className="inline-flex items-center gap-2">
                     <StatusDot status={latestProduction.status} />
@@ -711,7 +860,7 @@ function Overview({
         )}
       </section>
 
-      {checklist && <ProductionChecklist base={base} items={checklist} />}
+      {checklist && <ProductionChecklist base={base} items={checklist} title={library ? "Ship a release" : undefined} />}
 
       <Panel
         title="Right now"
@@ -976,7 +1125,7 @@ function Overview({
                     : "No checks have run recently."}
                 </p>
               </div>
-              {member && (
+              {member && (!library || builds.length > 0) && (
                 <div>
                   <div className="flex items-baseline justify-between">
                     <span className="text-muted">Deploys</span>

@@ -17,7 +17,12 @@
 	],
 	"services": [
 		{ "binding": "REPOS", "service": "g1t-repos" },
-		{ "binding": "IDENTITY", "service": "g1t-identity" }
+		{ "binding": "IDENTITY", "service": "g1t-identity" },
+		// Whether a project is a library: the packages its repository
+		// publishes, and whether Deployments are on (asked once; after that
+		// deployments says when it changes).
+		{ "binding": "PACKAGES", "service": "g1t-packages" },
+		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" }
 	],
 	// A repository created is given its own project.
 	"queues": {

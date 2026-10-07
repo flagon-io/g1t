@@ -1,8 +1,8 @@
 /**
- * The steps that take a project to production, each worked out from what
- * the project has done, with where to do the ones it has not. Shown on the
- * project's overview to its members until they are all done or it is
- * dismissed.
+ * The steps that take a project to production, or for a library to its
+ * first release, each worked out from what the project has done, with
+ * where to do the ones it has not. Shown on the project's overview to its
+ * members until they are all done or it is dismissed.
  */
 
 export type ChecklistFacts = {
@@ -25,7 +25,7 @@ export type ChecklistFacts = {
 };
 
 export type ChecklistItem = {
-  key: "code" | "deploy" | "domain" | "preview" | "instructions" | "agent";
+  key: "code" | "deploy" | "domain" | "preview" | "checks" | "release" | "instructions" | "agent";
   title: string;
   detail: string;
   done: boolean;
@@ -86,6 +86,46 @@ export function productionChecklist(facts: ChecklistFacts): ChecklistItem[] {
       to: `${base}/issues/new`,
       action: "New issue",
     },
+  ];
+}
+
+export type ReleaseFacts = Pick<ChecklistFacts, "base" | "hasCode" | "instructions" | "agentAssigned"> & {
+  /** It has a workflow, whose runs are its pull requests' checks; null when unknown. */
+  hasWorkflow: boolean | null;
+  /** A package its repository publishes has a version. */
+  released: boolean;
+  /** Where publishing a first version is explained: its package's page or its registry's guide. */
+  releaseTo: string;
+};
+
+/**
+ * The steps for a library or a tool, which ships as releases rather than
+ * deploying: the same first and last steps as production, with checks and
+ * a first version in between.
+ */
+export function releaseChecklist(facts: ReleaseFacts): ChecklistItem[] {
+  const shared = productionChecklist({ ...facts, deploysEnabled: false, productionDeployed: false, domains: null, previewOpened: false });
+  const step = (key: ChecklistItem["key"]) => shared.find((item) => item.key === key)!;
+  return [
+    step("code"),
+    {
+      key: "checks",
+      title: "Add checks on pull requests",
+      detail: "A workflow that builds and tests it. Its runs are every pull request's checks.",
+      done: facts.hasWorkflow === true,
+      to: `${facts.base}/actions`,
+      action: "Add CI",
+    },
+    {
+      key: "release",
+      title: "Tag a release or publish a package",
+      detail: "Publish a first version to the workspace's registry for others to install.",
+      done: facts.released,
+      to: facts.releaseTo,
+      action: "How",
+    },
+    step("instructions"),
+    step("agent"),
   ];
 }
 

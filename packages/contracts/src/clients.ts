@@ -622,6 +622,7 @@ export function projectsClient(service: ServiceBinding): ProjectsApi {
     byRepo: (repoId) => call("by_repo", { repoId }),
     create: (actor, workspace, input) => call("create", { actor, workspace, input }),
     update: (actor, workspace, slug, changes) => call("update", { actor, workspace, slug, changes }),
+    deploymentsChanged: (projectId, enabled) => call("deployments_changed", { projectId, enabled }),
     dependencies: (workspace, slug, viewer) => call("dependencies", { workspace, slug, viewer }),
     addDependency: (actor, workspace, slug, on, as) => call("add_dependency", { actor, workspace, slug, on, as }),
     removeDependency: (actor, workspace, slug, on) => call("remove_dependency", { actor, workspace, slug, on }),

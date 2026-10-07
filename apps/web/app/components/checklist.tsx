@@ -13,11 +13,20 @@ const subscribe = (listener: () => void) => {
 };
 
 /**
- * The steps to production for one project, as `3/6`, until they are all
- * done or someone dismisses it. Dismissing is per project and remembered by
- * this browser.
+ * The steps to production, or to a library's first release, for one
+ * project, as `3/6`, until they are all done or someone dismisses it.
+ * Dismissing is per project and remembered by this browser.
  */
-export function ProductionChecklist({ base, items }: { base: string; items: ChecklistItem[] }) {
+export function ProductionChecklist({
+  base,
+  items,
+  title = "Get to production",
+}: {
+  base: string;
+  items: ChecklistItem[];
+  /** "Ship a release" for a library. */
+  title?: string;
+}) {
   const hidden = useSyncExternalStore(
     subscribe,
     useCallback(() => isDismissed(storage, base), [base]),
@@ -31,7 +40,7 @@ export function ProductionChecklist({ base, items }: { base: string; items: Chec
     <section aria-labelledby="checklist-title" className="rounded-2xl border border-line bg-surface">
       <div className="flex items-center gap-3 px-5 pt-4 pb-3 sm:px-6">
         <h2 id="checklist-title" className="text-sm font-semibold">
-          Get to production
+          {title}
         </h2>
         <span className="rounded-full bg-raised px-2 py-px text-xs font-medium tabular-nums text-muted">
           {done}/{total}

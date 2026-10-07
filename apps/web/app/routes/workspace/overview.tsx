@@ -1,7 +1,7 @@
 import { ArrowRight, ArrowUpRight, Box, CircleDot, GitBranch, GitPullRequest, KeyRound, Lock, Plus, Rocket } from "lucide-react";
 import { Link } from "react-router";
 
-import type { Project, ProjectDeploys, User } from "@g1t/contracts";
+import type { PackageSummary, Project, ProjectDeploys, User } from "@g1t/contracts";
 
 import type { Route } from "./+types/overview";
 import { host, StatusDot } from "../../components/deploy";
@@ -10,7 +10,8 @@ import { UsageCard } from "../../components/usage-card";
 import { PullIcon } from "../../components/work-icons";
 import { planStatus, type UsageGlance, usageGlance } from "../../lib/billing";
 import { openedBy } from "../../lib/opened-by";
-import { billing, deployments, identity, projects as projectsApi, work } from "../../lib/services.server";
+import { libraryPackages, packageLine, packagePath } from "../../lib/project-kind";
+import { billing, deployments, identity, packages, projects as projectsApi, work } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 
 /** Projects whose open issues and pull requests are counted. */
@@ -56,11 +57,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const slug = params.owner.toLowerCase();
   const role = roleIn(viewer, slug);
-  const [listed, members, deploys, usage] = await Promise.all([
+  const [listed, members, deploys, usage, published] = await Promise.all([
     projectsApi.list(slug, viewer),
     role ? identity.listMembers(slug, viewer) : null,
     role ? deployments.overview(slug, viewer) : null,
     role ? usageFor(slug, viewer) : null,
+    // One listing for every card: a library's card shows its package where an app's shows production.
+    packages.list(slug, viewer).catch(() => null),
   ]);
   const projects = listed.ok ? listed.value : [];
 
@@ -84,12 +87,24 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const bySlug: Record<string, ProjectDeploys> = {};
   for (const entry of deploys?.ok ? deploys.value : []) bySlug[entry.slug] = entry;
 
+  const byRepo = new Map<string, PackageSummary[]>();
+  for (const pkg of published?.ok ? published.value : []) {
+    if (pkg.repo) byRepo.set(pkg.repo.id, [...(byRepo.get(pkg.repo.id) ?? []), pkg]);
+  }
+  const packageOf: Record<string, PackageSummary> = {};
+  for (const project of projects) {
+    if (project.kind !== "library" || project.source.kind !== "hosted") continue;
+    const first = libraryPackages(byRepo.get(project.source.repoId) ?? [])[0];
+    if (first) packageOf[project.id] = first;
+  }
+
   return {
     slug,
     role,
     projects,
     open,
     deploys: bySlug,
+    packageOf,
     pulls: pulls.map(({ pull, project }) => ({ pull, slug: project.slug, name: project.name })),
     members: members?.ok ? members.value : null,
     usage,
@@ -135,13 +150,17 @@ function ProjectCard({
   project,
   open,
   deploys,
+  pkg,
   member,
 }: {
   project: Project;
   open: { issues: number; pulls: number } | undefined;
   deploys: ProjectDeploys | undefined;
+  /** For a library, the package it publishes. */
+  pkg: PackageSummary | undefined;
   member: boolean;
 }) {
+  const library = project.kind === "library";
   const base = `/${project.workspace}/${project.slug}`;
   const production = deploys?.production ?? null;
   const latest = deploys?.latest ?? null;
@@ -164,9 +183,16 @@ function ProjectCard({
               {host(production.url)}
               <ArrowUpRight size={11} className="shrink-0" />
             </a>
+          ) : library && pkg ? (
+            <Link
+              to={packagePath(pkg)}
+              className="relative z-10 mt-0.5 block truncate font-mono text-xs text-muted hover:text-accent"
+            >
+              {packageLine(pkg)}
+            </Link>
           ) : (
             <p className="mt-0.5 truncate text-xs text-faint">
-              {project.description ?? (deploys?.enabled ? "Not deployed yet" : "Deployments are off")}
+              {project.description ?? (library ? "Not published yet" : deploys?.enabled ? "Not deployed yet" : "Deployments are off")}
             </p>
           )}
         </div>
@@ -178,7 +204,7 @@ function ProjectCard({
         )}
       </div>
 
-      {project.description && production && <p className="mt-3 line-clamp-2 text-sm text-muted">{project.description}</p>}
+      {project.description && (production || (library && pkg)) && <p className="mt-3 line-clamp-2 text-sm text-muted">{project.description}</p>}
 
       <div className="mt-auto pt-5">
         {member && latest && (
@@ -257,6 +283,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
                     project={project}
                     open={open[project.id]}
                     deploys={deploys[project.slug]}
+                    pkg={loaderData.packageOf[project.id]}
                     member={role != null}
                   />
                 ))}

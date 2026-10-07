@@ -63,6 +63,13 @@ them off again.
 Production starts building at once from the default branch. Every pull
 request opened or pushed to from then on gets a preview.
 
+A project g1t takes for a library or a tool, such as a Composer package,
+does not offer to deploy on its overview; it shows its packages instead.
+Its **Deployments** page still turns them on, and doing so makes it an
+app. A project set to **Doesn't deploy** cannot have deployments turned
+on until the setting changes. See
+[apps and libraries](/guides/projects/#apps-and-libraries).
+
 While payments on g1t are in test mode, no real card is charged: use the
 test card `4242 4242 4242 4242` with any future date and any code.
 
