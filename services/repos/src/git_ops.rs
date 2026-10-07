@@ -163,8 +163,17 @@ impl Standing {
 /// How long counts read from the database are gone by. Every write of the
 /// meters reads them again (meters.rs), so a busy workspace's are seconds old.
 const STANDING_TTL_MS: u64 = 10 * 60 * 1000;
-/// How long billing's answer about a workspace's plan is kept.
+/// How long billing's answer about a workspace's plan is kept: a paid
+/// plan for minutes, a free one (which slows the workspace down) for
+/// seconds, so a workspace that just added a plan is not held back for
+/// minutes by an answer from before it did.
 const PLAN_TTL_MS: u64 = 5 * 60 * 1000;
+const FREE_PLAN_TTL_MS: u64 = 30 * 1000;
+
+/// Whether a plan answer read at `at` (`free` or not) still goes at `now`.
+fn plan_kept(free: bool, at: u64, now: u64) -> bool {
+    now.saturating_sub(at) < if free { FREE_PLAN_TTL_MS } else { PLAN_TTL_MS }
+}
 
 thread_local! {
     static STANDING: RefCell<HashMap<String, Standing>> = RefCell::new(HashMap::new());
@@ -277,7 +286,7 @@ pub async fn is_free(billing: Option<&Fetcher>, namespace: &str) -> bool {
 pub async fn is_free_kept(billing: Option<&Fetcher>, namespace: &str) -> bool {
     let now = g1t_kit::now_ms();
     let kept = FREE.with(|free| {
-        free.borrow().get(namespace).filter(|(_, at)| now.saturating_sub(*at) < PLAN_TTL_MS).map(|(free, _)| *free)
+        free.borrow().get(namespace).filter(|(free, at)| plan_kept(*free, *at, now)).map(|(free, _)| *free)
     });
     if let Some(free) = kept {
         return free;
@@ -330,6 +339,14 @@ pub fn too_many(namespace: &str, free_cap: u64, hourly: u64) -> Result<Response>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_free_plan_is_asked_again_within_a_minute_a_paid_one_kept_longer() {
+        assert!(plan_kept(true, 1_000, 1_000 + FREE_PLAN_TTL_MS - 1));
+        assert!(!plan_kept(true, 1_000, 1_000 + FREE_PLAN_TTL_MS));
+        assert!(plan_kept(false, 1_000, 1_000 + FREE_PLAN_TTL_MS));
+        assert!(!plan_kept(false, 1_000, 1_000 + PLAN_TTL_MS));
+    }
 
     #[test]
     fn operations_are_counted_by_the_hour() {

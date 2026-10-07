@@ -429,7 +429,20 @@ export type Admission =
   | { ok: false; code: GateRefusalCode; message: string; entitlements: ComputeEntitlements | null };
 
 const ENTITLEMENTS_SECONDS = 30;
+/**
+ * An answer that holds compute back (paused, or a free workspace without
+ * compute) is kept only a few seconds: the owner who just resumed it or
+ * added a plan presses Run next, and must not be refused by a copy from
+ * before they did.
+ */
+const HOLDING_BACK_SECONDS = 3;
 const PRICE_SECONDS = 10 * 60;
+
+/** How long the gate keeps an entitlements answer, in seconds. */
+export function entitlementsKeptSeconds(ent: ComputeEntitlements): number {
+  const holdsBack = Boolean(ent.paused) || (ent.plan === "free" && !ent.compute);
+  return holdsBack ? HOLDING_BACK_SECONDS : ENTITLEMENTS_SECONDS;
+}
 
 export class ComputeGate {
   private ents = new Map<string, { value: ComputeEntitlements; until: number }>();
@@ -472,7 +485,7 @@ export class ComputeGate {
     try {
       const ent = readEntitlements(await this.call<unknown>("entitlements", { workspace: slug }));
       if (!ent) throw new Error("entitlements did not say the workspace's plan");
-      this.ents.set(slug, { value: ent, until: Date.now() + ENTITLEMENTS_SECONDS * 1000 });
+      this.ents.set(slug, { value: ent, until: Date.now() + entitlementsKeptSeconds(ent) * 1000 });
       await this.memory.put(slug, ent.plan);
       return ent;
     } catch (error) {

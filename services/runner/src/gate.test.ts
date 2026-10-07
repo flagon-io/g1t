@@ -12,6 +12,7 @@ import {
   agentEstimateMicros,
   alwaysPasses,
   embeddingEstimateMicros,
+  entitlementsKeptSeconds,
   isWaiting,
   issueCapReached,
   localRefusal,
@@ -131,6 +132,14 @@ test("a paused workspace starts nothing, and billing is not asked to reserve", a
   assert.equal(!admitted.ok && admitted.code, "paused");
   assert.match(!admitted.ok ? admitted.message : "", /A spend spike is waiting for an owner/);
   assert.equal(asked.some((call) => call.method === "reserve"), false);
+});
+
+test("an answer that holds compute back is kept seconds, one that lets it through half a minute", () => {
+  assert.equal(entitlementsKeptSeconds(ent()), 30);
+  assert.equal(entitlementsKeptSeconds(ent({ paused: "A spend spike is waiting for an owner." })), 3);
+  assert.equal(entitlementsKeptSeconds(ent({ plan: "free", compute: false })), 3);
+  // A free workspace with compute (its trial) runs, so it is kept as long.
+  assert.equal(entitlementsKeptSeconds(ent({ plan: "free", compute: true })), 30);
 });
 
 test("internal and enterprise plans pass even when billing refuses", async () => {
