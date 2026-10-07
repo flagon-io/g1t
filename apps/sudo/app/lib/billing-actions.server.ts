@@ -12,6 +12,7 @@ import { fields, parseAllowances, parseCredit, parseEmail, parseGoodwill, parseN
 import { FORGIVE_COST_MICROS, goodwillWarning } from "./pricing";
 import type { ActionData } from "./review";
 import { admin, identity, priceBook } from "./services.server";
+import { settle } from "./settle";
 import type { Staff } from "./staff";
 import type { Enterprise } from "./workspaces";
 
@@ -131,8 +132,9 @@ export async function billingAction(request: Request, staff: Staff, subject: Sub
     if (values.confirmation !== subject.slug) {
       return failed("reset", `Type the workspace's slug, ${subject.slug}, exactly, to reset it.`, { ...values, confirmation: "" });
     }
-    const result = await admin.resetBilling(subject.slug, values.confirmation, note.value, staff.email);
-    if (!result.ok) return failed("reset", result.error.message, values);
+    const result = await settle(admin.resetBilling(subject.slug, values.confirmation, note.value, staff.email));
+    if (!result.ok) return failed("reset", `Billing did not answer: ${result.error}`, values);
+    if (!result.value.ok) return failed("reset", result.value.error.message, values);
     return back("reset");
   }
 

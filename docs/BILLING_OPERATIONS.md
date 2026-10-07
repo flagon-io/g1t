@@ -356,7 +356,7 @@ returns a workspace used for testing to how a new customer starts. It
 deletes the workspace's rows from every billing table: ledger and balance,
 plan and plan payments, limits and limit requests, trial grant, invoices,
 holds, card checks, alerts sent, price notices, month-end snapshots and
-closes, storage and sandbox meters, token usage, spikes, sales records and
+closes, storage meters, token usage, spikes, sales records and
 notes, `workspace_costs`, its workspace margin alert and its own billing
 account. It keeps `own_counts` (what Cloudflare's bill is compared with)
 and the audit log, which records the reset with the note and the number of

@@ -41,7 +41,6 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "DELETE FROM month_closes WHERE workspace = ?1",
     "DELETE FROM storage_days WHERE workspace = ?1",
     "DELETE FROM package_storage_days WHERE workspace = ?1",
-    "DELETE FROM sandbox_months WHERE workspace = ?1",
     "DELETE FROM token_usage WHERE workspace = ?1",
     "DELETE FROM spikes WHERE workspace = ?1",
     "DELETE FROM closed_workspaces WHERE workspace = ?1",
@@ -124,12 +123,49 @@ mod tests {
             "ledger", "runs", "checkouts", "workspace_invoices", "workspace_invoice_lines", "sales_notes", "accounts",
             "pending_usage", "pending_days", "limits", "subscriptions", "month_closes", "sales_records",
             "billing_accounts", "allowance_use", "trial_grants", "storage_days", "package_storage_days",
-            "sandbox_months", "token_usage", "reservations", "spikes", "limit_requests", "plan_payments",
+            "token_usage", "reservations", "spikes", "limit_requests", "plan_payments",
             "card_checks", "alerts_sent", "price_notices", "closed_workspaces", "workspace_costs",
             "margin_alerts", "budget_alerts",
         ] {
             assert!(!kept.contains(&table));
             assert!(all.contains(&format!("DELETE FROM {table} WHERE")), "{table}");
+        }
+    }
+
+    /// The tables the migrations leave: every one made, less those dropped.
+    fn live_tables() -> std::collections::BTreeSet<String> {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+        let mut files: Vec<_> = std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().path()).collect();
+        files.sort();
+        let mut live = std::collections::BTreeSet::new();
+        for file in files {
+            let sql = std::fs::read_to_string(file).unwrap();
+            for line in sql.lines().map(str::trim) {
+                let words: Vec<&str> = line.split(|c: char| c.is_whitespace() || c == '(' || c == ';').filter(|w| !w.is_empty()).collect();
+                let name = |at: usize| words.get(at).map(|w| w.to_string());
+                match words.as_slice() {
+                    ["CREATE", "TABLE", "IF", "NOT", "EXISTS", ..] => live.extend(name(5)),
+                    ["CREATE", "TABLE", ..] => live.extend(name(2)),
+                    ["DROP", "TABLE", "IF", "EXISTS", ..] => {
+                        name(4).map(|n| live.remove(&n));
+                    }
+                    ["DROP", "TABLE", ..] => {
+                        name(2).map(|n| live.remove(&n));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        live
+    }
+
+    #[test]
+    fn every_table_wiped_is_one_the_migrations_leave() {
+        let live = live_tables();
+        assert!(live.contains("ledger") && !live.contains("sandbox_months"), "{live:?}");
+        for sql in STATEMENTS {
+            let table = sql.split_whitespace().nth(2).unwrap();
+            assert!(live.contains(table), "{table} is not a table after the migrations");
         }
     }
 
