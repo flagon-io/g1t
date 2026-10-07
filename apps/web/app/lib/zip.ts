@@ -32,10 +32,12 @@ export async function zip(files: { path: string; data: Uint8Array }[]): Promise<
   const parts: Uint8Array[] = [];
   const central: Uint8Array[] = [];
   let offset = 0;
-  for (const file of files) {
+  // Every file deflated at once: the streams interleave rather than queue.
+  const deflatedAll = await Promise.all(files.map((file) => (file.data.length > 0 ? deflate(file.data) : file.data)));
+  for (const [index, file] of files.entries()) {
     const name = encoder.encode(file.path);
     const crc = crc32(file.data);
-    const deflated = file.data.length > 0 ? await deflate(file.data) : file.data;
+    const deflated = deflatedAll[index]!;
     const [method, body] = deflated.length < file.data.length ? [8, deflated] : [0, file.data];
     const header = (central: boolean) => {
       const out = new Uint8Array((central ? 46 : 30) + name.length);
