@@ -17,6 +17,7 @@ mod db;
 mod digest;
 mod limits;
 mod manifest;
+mod marshal;
 mod maven;
 mod maven_http;
 mod names;
@@ -62,13 +63,15 @@ const VERSIONS_SHOWN: u32 = 200;
 const SWEEP_BATCH: u32 = 200;
 
 thread_local! {
-    /// Pulls counted since the last write, by package: written at most
-    /// every few seconds, so a busy image costs one write, not one a pull.
-    /// What an isolate holds when it goes away is lost: the count is
-    /// approximate.
-    static DOWNLOADS: RefCell<(HashMap<String, u64>, u64)> = RefCell::new((HashMap::new(), 0));
+    /// Pulls counted since the last write, by package (and by version,
+    /// where it is counted too): written at most every few seconds, so a
+    /// busy image costs one write, not one a pull. What an isolate holds
+    /// when it goes away is lost: the count is approximate.
+    static DOWNLOADS: RefCell<(HashMap<DownloadKey, u64>, u64)> = RefCell::new((HashMap::new(), 0));
 }
 const DOWNLOADS_FLUSH_MS: u64 = 10_000;
+/// A package's id, and a version's when the download counts for it too.
+type DownloadKey = (String, Option<String>);
 
 thread_local! {
     /// What billing allows each workspace, as asked last, and when.
@@ -285,9 +288,18 @@ impl Packages {
     }
 
     fn count_download(&self, package_id: &str, ctx: &Context) {
+        self.count_downloads(package_id, None, ctx);
+    }
+
+    /// A download of one version, counted for it and its package.
+    fn count_version_download(&self, package_id: &str, version_id: &str, ctx: &Context) {
+        self.count_downloads(package_id, Some(version_id), ctx);
+    }
+
+    fn count_downloads(&self, package_id: &str, version_id: Option<&str>, ctx: &Context) {
         let due = DOWNLOADS.with(|counts| {
             let mut counts = counts.borrow_mut();
-            *counts.0.entry(package_id.to_owned()).or_default() += 1;
+            *counts.0.entry((package_id.to_owned(), version_id.map(str::to_owned))).or_default() += 1;
             let now = now_ms();
             if now.saturating_sub(counts.1) < DOWNLOADS_FLUSH_MS {
                 return None;
@@ -456,6 +468,8 @@ impl Packages {
                     } else {
                         version.deprecated
                     },
+                    symbols: meta["symbols"] == true,
+                    downloads: (row.package.ecosystem == "nuget").then_some(version.downloads),
                 }
             })
             .collect();

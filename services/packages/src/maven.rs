@@ -114,6 +114,11 @@ pub enum MavenPath {
     ArtifactMetadata { group: String, artifact: String, checksum: Option<Checksum> },
     /// `com/acme/web/1.0-SNAPSHOT/maven-metadata.xml`: a SNAPSHOT's builds.
     VersionMetadata { group: String, artifact: String, version: String, checksum: Option<Checksum> },
+    /// `acme/maven-metadata.xml`: a one-part group's plugins, by prefix.
+    /// A deeper group's (`com/acme/plugins/maven-metadata.xml`) reads as an
+    /// artifact's, and is answered with the plugins of the group the whole
+    /// path names when there is no such artifact.
+    GroupMetadata { group: String, checksum: Option<Checksum> },
     /// `com/acme/web/1.0.0/web-1.0.0.jar`: one of a version's files.
     File { group: String, artifact: String, version: String, file: String, checksum: Option<Checksum> },
 }
@@ -138,6 +143,9 @@ pub fn route(path: &str) -> Option<(String, MavenPath)> {
                 let (artifact, version) = (parts[n - 3].to_owned(), parts[n - 2].to_owned());
                 return Some((workspace, MavenPath::VersionMetadata { group, artifact, version, checksum }));
             }
+        if n == 2 && valid_group_part(parts[0]) {
+            return Some((workspace, MavenPath::GroupMetadata { group: parts[0].to_owned(), checksum }));
+        }
         if n < 3 || !valid_artifact(parts[n - 2]) {
             return None;
         }
@@ -405,6 +413,8 @@ pub struct Pom {
     pub description: Option<String>,
     /// `<scm><url>`, else `<url>`: where its source is.
     pub source: Option<String>,
+    /// `jar` when it names none; `maven-plugin` for a plugin.
+    pub packaging: String,
 }
 
 /// Reads a POM, with the groupId and version a `<parent>` gives it.
@@ -423,7 +433,87 @@ pub fn read_pom(bytes: &[u8]) -> Result<Pom, String> {
         name: project.child_text("name"),
         description: project.child_text("description"),
         source: project.child("scm").and_then(|scm| scm.child_text("url")).or_else(|| project.child_text("url")),
+        packaging: project.child_text("packaging").unwrap_or_else(|| "jar".to_owned()),
     })
+}
+
+/// The prefix Maven gives a plugin that names none: its artifactId without
+/// `maven` and `plugin` (`acme-maven-plugin` and `maven-acme-plugin` are
+/// `acme`), as `mvn acme:<goal>` calls it.
+pub fn default_prefix(artifact: &str) -> String {
+    if artifact == "maven-plugin-plugin" {
+        return "plugin".to_owned();
+    }
+    let strip = |text: &str, word: &str| -> String {
+        // `-?word-?`, as Maven's regular expression removes it.
+        let mut out = text.to_owned();
+        while let Some(at) = out.find(word) {
+            let start = if at > 0 && out.as_bytes()[at - 1] == b'-' { at - 1 } else { at };
+            let mut end = at + word.len();
+            if out.as_bytes().get(end) == Some(&b'-') {
+                end += 1;
+            }
+            out.replace_range(start..end, "");
+        }
+        out
+    };
+    strip(&strip(artifact, "maven"), "plugin")
+}
+
+/// The plugin descriptor's prefix and name, from the
+/// `META-INF/maven/plugin.xml` that `maven-plugin-plugin` puts in the jar.
+pub fn plugin_descriptor(text: &str) -> Option<(Option<String>, Option<String>)> {
+    let plugin = xml::parse(text).ok()?;
+    (plugin.name == "plugin").then(|| (plugin.child_text("goalPrefix"), plugin.child_text("name")))
+}
+
+/// One plugin as a group's `maven-metadata.xml` lists it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Plugin {
+    pub prefix: String,
+    pub artifact: String,
+    pub name: String,
+}
+
+/// The `<plugins>` of a group's `maven-metadata.xml`, by prefix, which is
+/// how Maven finds `mvn <prefix>:<goal>` among the groups it is told of.
+pub fn plugins_block(plugins: &[Plugin]) -> String {
+    let mut sorted: Vec<&Plugin> = plugins.iter().collect();
+    sorted.sort_by(|a, b| (&a.prefix, &a.artifact).cmp(&(&b.prefix, &b.artifact)));
+    let mut xml = String::from("  <plugins>
+");
+    for plugin in sorted {
+        xml.push_str(&format!(
+            "    <plugin>
+      <name>{}</name>
+      <prefix>{}</prefix>
+      <artifactId>{}</artifactId>
+    </plugin>
+",
+            xml::escape(&plugin.name),
+            xml::escape(&plugin.prefix),
+            xml::escape(&plugin.artifact)
+        ));
+    }
+    xml.push_str("  </plugins>
+");
+    xml
+}
+
+/// A group's `maven-metadata.xml`: its plugins alone, or added to an
+/// artifact's metadata when the path is both.
+pub fn group_metadata(artifact_xml: Option<String>, plugins: &[Plugin]) -> String {
+    let block = plugins_block(plugins);
+    match artifact_xml {
+        Some(xml) => match xml.rfind("</metadata>") {
+            Some(at) => format!("{}{block}{}", &xml[..at], &xml[at..]),
+            None => xml,
+        },
+        None => format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<metadata>
+{block}</metadata>
+"),
+    }
 }
 
 #[cfg(test)]
@@ -474,6 +564,10 @@ mod tests {
         assert_eq!(route("/-/maven/acme/com/../web/1.0.0/web-1.0.0.jar"), None);
         assert_eq!(route("/-/maven/acme/com/acme/web/1.0.0/"), None);
         assert_eq!(route("/-/maven/acme/maven-metadata.xml"), None);
+        assert_eq!(
+            route("/-/maven/acme/acme/maven-metadata.xml.sha1"),
+            Some(("acme".into(), MavenPath::GroupMetadata { group: "acme".into(), checksum: Some(Checksum::Sha1) }))
+        );
         assert_eq!(route("/-/maven/"), None);
     }
 
@@ -574,8 +668,47 @@ mod tests {
         assert_eq!((pom.group.as_str(), pom.artifact.as_str(), pom.version.as_str()), ("com.acme", "web", "1.0.0"));
         assert_eq!(pom.description.as_deref(), Some("The web client"));
         assert_eq!(pom.source.as_deref(), Some("https://g1t.sh/acme/web"));
+        assert_eq!(pom.packaging, "jar");
+        let plugin = read_pom(b"<project><groupId>com.acme</groupId><artifactId>acme-maven-plugin</artifactId><version>1</version><packaging>maven-plugin</packaging></project>").unwrap();
+        assert_eq!(plugin.packaging, "maven-plugin");
         assert!(read_pom(b"<project><artifactId>x</artifactId></project>").is_err(), "no groupId");
         assert!(read_pom(b"not xml").is_err());
+    }
+
+    #[test]
+    fn plugins_are_listed_by_prefix() {
+        assert_eq!(default_prefix("acme-maven-plugin"), "acme");
+        assert_eq!(default_prefix("maven-acme-plugin"), "acme");
+        assert_eq!(default_prefix("hello-plugin"), "hello");
+        assert_eq!(default_prefix("maven-plugin-plugin"), "plugin");
+        assert_eq!(default_prefix("tools"), "tools");
+        assert_eq!(
+            plugin_descriptor("<plugin><name>Acme</name><groupId>com.acme</groupId><goalPrefix>acme</goalPrefix><mojos/></plugin>"),
+            Some((Some("acme".to_owned()), Some("Acme".to_owned())))
+        );
+        assert_eq!(plugin_descriptor("<project/>"), None);
+        let plugins = [
+            Plugin { prefix: "zed".into(), artifact: "zed-maven-plugin".into(), name: "Zed".into() },
+            Plugin { prefix: "acme".into(), artifact: "acme-maven-plugin".into(), name: "Acme & co".into() },
+        ];
+        let doc = xml::parse(&group_metadata(None, &plugins)).unwrap();
+        let listed: Vec<(String, String, String)> = doc
+            .child("plugins")
+            .unwrap()
+            .children_named("plugin")
+            .map(|p| (p.child_text("prefix").unwrap(), p.child_text("artifactId").unwrap(), p.child_text("name").unwrap()))
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                ("acme".to_owned(), "acme-maven-plugin".to_owned(), "Acme & co".to_owned()),
+                ("zed".to_owned(), "zed-maven-plugin".to_owned(), "Zed".to_owned())
+            ]
+        );
+        // A path that is an artifact and a group says both.
+        let both = group_metadata(Some(artifact_metadata("com", "acme", &["1.0".into()], "2026-10-06T00:00:00Z")), &plugins[..1]);
+        let doc = xml::parse(&both).unwrap();
+        assert!(doc.child("versioning").is_some() && doc.child("plugins").is_some());
     }
 
     #[test]

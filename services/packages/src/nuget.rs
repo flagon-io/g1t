@@ -1,8 +1,9 @@
 //! What the NuGet feed needs that does not touch the network: package ids
 //! and NuGet's normalized versions, the feed's paths, the `.nuspec` read
-//! from a `.nupkg` (a zip), the multipart body `dotnet nuget push` sends,
-//! and the service index, registration and search documents of the v3
-//! protocol.
+//! from a `.nupkg` (a zip), the portable PDBs read from a `.snupkg` and
+//! the keys the symbol server finds them by, the multipart body `dotnet
+//! nuget push` sends, and the service index, registration and search
+//! documents of the v3 protocol.
 //!
 //! A version keeps what the documents need from its `.nuspec` as its
 //! metadata, made once when it is pushed. Unlisting (`dotnet nuget
@@ -121,6 +122,19 @@ pub fn compare(a: &str, b: &str) -> Ordering {
 pub enum Content {
     Nupkg,
     Nuspec,
+    /// The symbol package, when one was pushed.
+    Snupkg,
+}
+
+impl Content {
+    /// The name the version keeps the file by.
+    pub fn file(self) -> &'static str {
+        match self {
+            Content::Nupkg => "nupkg",
+            Content::Nuspec => "nuspec",
+            Content::Snupkg => "snupkg",
+        }
+    }
 }
 
 /// One of the feed's endpoints, under `/-/nuget/<workspace>/`.
@@ -142,6 +156,11 @@ pub enum NugetRoute {
     Push,
     /// `api/v2/package/<id>/<version>`: `DELETE` unlists, `POST` lists again.
     Listing { id: String, version: String },
+    /// `api/v2/symbolpackage`: `dotnet nuget push` of a `.snupkg`.
+    SymbolPush,
+    /// `symbols/<file>.pdb/<key>/<file>.pdb`: a PDB from the symbol server,
+    /// by the key a debugger asks with; both lowercased.
+    Symbol { file: String, key: String },
 }
 
 /// The workspace and endpoint a path is. Ids are checked; versions are
@@ -163,6 +182,8 @@ pub fn route(path: &str) -> Option<(String, NugetRoute)> {
             let lower = format!("{}.{}", name.to_ascii_lowercase(), version.to_ascii_lowercase());
             let file = if file.eq_ignore_ascii_case(&format!("{lower}.nupkg")) {
                 Content::Nupkg
+            } else if file.eq_ignore_ascii_case(&format!("{lower}.snupkg")) {
+                Content::Snupkg
             } else if file.eq_ignore_ascii_case(&format!("{name}.nuspec")) {
                 Content::Nuspec
             } else {
@@ -174,9 +195,114 @@ pub fn route(path: &str) -> Option<(String, NugetRoute)> {
         ["v3", "registration", name, leaf] => NugetRoute::Leaf { id: id(name)?, version: leaf.strip_suffix(".json")?.to_owned() },
         ["api", "v2", "package"] => NugetRoute::Push,
         ["api", "v2", "package", name, version] => NugetRoute::Listing { id: id(name)?, version: (*version).to_owned() },
+        ["api", "v2", "symbolpackage"] => NugetRoute::SymbolPush,
+        ["symbols", file, key, again] if file.eq_ignore_ascii_case(again) && valid_pdb_name(file) && valid_key(key) => {
+            NugetRoute::Symbol { file: file.to_ascii_lowercase(), key: key.to_ascii_lowercase() }
+        }
         _ => return None,
     };
     Some((workspace, route))
+}
+
+/// A PDB's file name, as a symbol server path holds it: no folders.
+fn valid_pdb_name(file: &str) -> bool {
+    file.len() <= 255
+        && file.to_ascii_lowercase().ends_with(".pdb")
+        && file.len() > 4
+        && file.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_' | b'+'))
+}
+
+/// A symbol server key: hex, as `<guid><age>` is.
+fn valid_key(key: &str) -> bool {
+    (1..=64).contains(&key.len()) && key.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// The 20-byte id of a portable PDB (`#Pdb` stream's first bytes: a GUID
+/// and a stamp), which the assembly built with it names too. `None` for a
+/// file that is not a portable PDB (a Windows PDB, say).
+pub fn pdb_id(bytes: &[u8]) -> Option<[u8; 20]> {
+    let u16_at = |at: usize| Some(u16::from_le_bytes(bytes.get(at..at + 2)?.try_into().ok()?));
+    let u32_at = |at: usize| Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?));
+    // ECMA-335 II.24.2.1: the metadata root, its version string, then
+    // each stream's offset, size and name, padded to four bytes.
+    if u32_at(0)? != 0x424A_5342 {
+        return None;
+    }
+    let length = u32_at(12)? as usize;
+    let mut at = 16usize.checked_add(length)?;
+    let streams = u16_at(at + 2)?;
+    at += 4;
+    for _ in 0..streams {
+        let (offset, size) = (u32_at(at)? as usize, u32_at(at + 4)? as usize);
+        let name_start = at + 8;
+        let name_len = bytes.get(name_start..)?.iter().take(32).position(|b| *b == 0)?;
+        let name = &bytes[name_start..name_start + name_len];
+        at = name_start + (name_len + 1).div_ceil(4) * 4;
+        if name == b"#Pdb" && size >= 20 {
+            return bytes.get(offset..offset + 20)?.try_into().ok();
+        }
+    }
+    None
+}
+
+/// The key a symbol server finds a portable PDB by: its GUID as .NET
+/// writes it (`Guid.ToString("N")`: the first three fields byte-swapped)
+/// and `ffffffff` for its age, lowercased.
+pub fn symbol_key(id: &[u8; 20]) -> String {
+    let mut guid = Vec::with_capacity(16);
+    guid.extend(id[..4].iter().rev());
+    guid.extend(id[4..6].iter().rev());
+    guid.extend(id[6..8].iter().rev());
+    guid.extend(&id[8..16]);
+    format!("{}ffffffff", hex::encode(guid))
+}
+
+/// The name a version keeps a PDB by: `pdb:<file>:<key>`, lowercased, as
+/// the symbol server looks it up.
+pub fn symbol_file(file: &str, key: &str) -> String {
+    format!("pdb:{}:{}", file.to_ascii_lowercase(), key.to_ascii_lowercase())
+}
+
+/// One PDB from a symbol package: its file name and key, and its bytes.
+#[derive(Debug)]
+pub struct Pdb {
+    pub file: String,
+    pub key: String,
+    pub bytes: Vec<u8>,
+}
+
+/// What a `.snupkg` holds: its `.nuspec`, which names the package and
+/// version it is for, and its portable PDBs.
+#[derive(Debug)]
+pub struct Symbols {
+    pub nuspec: Nuspec,
+    pub pdbs: Vec<Pdb>,
+}
+
+/// The largest PDB read from a symbol package.
+const MAX_PDB_BYTES: usize = 64 * 1024 * 1024;
+
+/// Reads a `.snupkg`: a zip with a `.nuspec` of the `SymbolsPackage`
+/// type, and one or more portable PDBs.
+pub fn read_symbols(snupkg: &[u8]) -> Result<Symbols, String> {
+    let package = read_package(snupkg)?;
+    if !package.nuspec.package_types.iter().any(|t| t.eq_ignore_ascii_case("SymbolsPackage")) {
+        return Err("The .nuspec does not say it is a symbol package (<packageType name=\"SymbolsPackage\" />). Build it with SymbolPackageFormat snupkg.".to_owned());
+    }
+    let entries = archive::zip_entries(snupkg)?;
+    let mut pdbs = Vec::new();
+    for entry in entries.iter().filter(|e| e.name.to_ascii_lowercase().ends_with(".pdb")) {
+        let file = entry.name.rsplit(['/', '\\']).next().unwrap_or(&entry.name).to_owned();
+        let bytes = archive::zip_read(snupkg, entry, MAX_PDB_BYTES)?;
+        let Some(id) = pdb_id(&bytes) else {
+            return Err(format!("{} is not a portable PDB. Build with DebugType portable (the default).", entry.name));
+        };
+        pdbs.push(Pdb { file, key: symbol_key(&id), bytes });
+    }
+    if pdbs.is_empty() {
+        return Err("The symbol package holds no .pdb files.".to_owned());
+    }
+    Ok(Symbols { nuspec: package.nuspec, pdbs })
 }
 
 /// The `.nupkg` file in a `multipart/form-data` body, as `dotnet nuget
@@ -228,6 +354,8 @@ pub struct Nuspec {
     pub readme: Option<String>,
     pub require_license_acceptance: bool,
     pub groups: Vec<Group>,
+    /// `<packageTypes>`: `SymbolsPackage` for a `.snupkg`.
+    pub package_types: Vec<String>,
 }
 
 /// A dependency's `version` as a range: `1.0` (at least 1.0) is
@@ -277,6 +405,10 @@ pub fn read_nuspec(text: &str) -> Result<Nuspec, String> {
         readme: metadata.child_text("readme"),
         require_license_acceptance: metadata.child_text("requireLicenseAcceptance").is_some_and(|v| v.eq_ignore_ascii_case("true")),
         groups,
+        package_types: metadata
+            .child("packageTypes")
+            .map(|types| types.children_named("packageType").filter_map(|t| t.attribute("name")).map(str::to_owned).collect())
+            .unwrap_or_default(),
     })
 }
 
@@ -353,6 +485,7 @@ pub fn service_index(base: &str) -> Value {
             resource(query.clone(), "SearchQueryService/3.0.0-beta"),
             resource(query, "SearchQueryService/3.5.0"),
             resource(format!("{base}/api/v2/package"), "PackagePublish/2.0.0"),
+            resource(format!("{base}/api/v2/symbolpackage"), "SymbolPackagePublish/4.9.0"),
         ],
     })
 }
@@ -429,6 +562,7 @@ pub fn leaf(base: &str, id: &str, listed: &Listed<'_>) -> Value {
             "listed": listed.listed,
             "published": listed.published,
             "packageContent": at.content,
+            "downloads": listed.downloads,
         },
         "packageContent": at.content,
         "registration": at.registration,
@@ -536,6 +670,18 @@ mod tests {
         assert_eq!(route("/-/nuget/acme/api/v2/package/"), at(NugetRoute::Push));
         assert_eq!(route("/-/nuget/acme/api/v2/package/Acme.Web/1.0.0"), at(NugetRoute::Listing { id: "Acme.Web".into(), version: "1.0.0".into() }));
         assert_eq!(route("/-/nuget/acme/v3/flatcontainer/a..b/index.json"), None);
+        assert_eq!(
+            route("/-/nuget/acme/v3/flatcontainer/acme.web/1.0.0/acme.web.1.0.0.snupkg"),
+            at(NugetRoute::Content { id: "acme.web".into(), version: "1.0.0".into(), file: Content::Snupkg })
+        );
+        assert_eq!(route("/-/nuget/acme/api/v2/symbolpackage"), at(NugetRoute::SymbolPush));
+        assert_eq!(
+            route("/-/nuget/acme/symbols/Acme.Web.pdb/0A1B2C3D4E5F60718293A4B5C6D7E8F9ffffffff/acme.web.pdb"),
+            at(NugetRoute::Symbol { file: "acme.web.pdb".into(), key: "0a1b2c3d4e5f60718293a4b5c6d7e8f9ffffffff".into() })
+        );
+        assert_eq!(route("/-/nuget/acme/symbols/a.pdb/xyz/a.pdb"), None, "not hex");
+        assert_eq!(route("/-/nuget/acme/symbols/a.pdb/00/b.pdb"), None, "two names");
+        assert_eq!(route("/-/nuget/acme/symbols/a.dll/00/a.dll"), None, "only PDBs");
         assert_eq!(route("/-/nuget/acme"), None);
         assert_eq!(route("/-/nuget/acme/v2"), None);
     }
@@ -599,7 +745,7 @@ mod tests {
     fn the_documents_are_nugets_shape() {
         let index = service_index("https://g1t.sh/-/nuget/acme");
         let kinds: Vec<&str> = index["resources"].as_array().unwrap().iter().map(|r| r["@type"].as_str().unwrap()).collect();
-        for kind in ["PackageBaseAddress/3.0.0", "RegistrationsBaseUrl", "SearchQueryService", "PackagePublish/2.0.0"] {
+        for kind in ["PackageBaseAddress/3.0.0", "RegistrationsBaseUrl", "SearchQueryService", "PackagePublish/2.0.0", "SymbolPackagePublish/4.9.0"] {
             assert!(kinds.contains(&kind), "{kind}");
         }
         let spec = read_nuspec(NUSPEC).unwrap();
@@ -620,11 +766,66 @@ mod tests {
         assert_eq!(entry["dependencyGroups"][0]["targetFramework"], "net8.0");
         assert_eq!(entry["dependencyGroups"][0]["dependencies"][1]["range"], "[1.0.0, 2.0.0)");
         assert_eq!(page["items"][0]["catalogEntry"]["listed"], false);
+        assert_eq!(page["items"][0]["catalogEntry"]["downloads"], 3, "each version's own");
         let found = search_result(base, "Acme.Web", &versions).unwrap();
         assert_eq!(found["version"], "1.2.0");
         assert_eq!(found["versions"].as_array().unwrap().len(), 1, "unlisted versions are not searched");
         assert_eq!(found["totalDownloads"], 4);
         assert_eq!(found["authors"], json!(["Ada", "Bo"]));
         assert!(search_result(base, "Acme.Web", &versions[..1]).is_none());
+    }
+
+    /// A portable PDB's start: the metadata root, a version string, and
+    /// two streams, `#Pdb` holding the id.
+    fn portable_pdb(id: &[u8; 20]) -> Vec<u8> {
+        let version = b"PDB v1.0\0\0\0\0";
+        let mut pdb = Vec::new();
+        pdb.extend_from_slice(&0x424A_5342u32.to_le_bytes());
+        pdb.extend_from_slice(&[1, 0, 1, 0, 0, 0, 0, 0]);
+        pdb.extend_from_slice(&(version.len() as u32).to_le_bytes());
+        pdb.extend_from_slice(version);
+        pdb.extend_from_slice(&[0, 0, 2, 0]);
+        // Each stream: offset, size, and its name padded to four bytes.
+        pdb.extend_from_slice(&84u32.to_le_bytes());
+        pdb.extend_from_slice(&16u32.to_le_bytes());
+        pdb.extend_from_slice(b"#GUID\0\0\0");
+        pdb.extend_from_slice(&64u32.to_le_bytes());
+        pdb.extend_from_slice(&20u32.to_le_bytes());
+        pdb.extend_from_slice(b"#Pdb\0\0\0\0");
+        assert_eq!(pdb.len(), 64);
+        pdb.extend_from_slice(id);
+        pdb.extend_from_slice(&[0; 16]);
+        pdb
+    }
+
+    #[test]
+    fn a_portable_pdb_is_found_by_its_guid() {
+        // The GUID 3d2c1b0a-5f4e-7160-8293-a4b5c6d7e8f9, as .NET lays it
+        // out in bytes, and a stamp.
+        let mut id = [0u8; 20];
+        id[..16].copy_from_slice(&[0x0a, 0x1b, 0x2c, 0x3d, 0x4e, 0x5f, 0x60, 0x71, 0x82, 0x93, 0xa4, 0xb5, 0xc6, 0xd7, 0xe8, 0xf9]);
+        id[16..].copy_from_slice(&[1, 2, 3, 4]);
+        let pdb = portable_pdb(&id);
+        assert_eq!(pdb_id(&pdb), Some(id));
+        assert_eq!(symbol_key(&id), "3d2c1b0a5f4e71608293a4b5c6d7e8f9ffffffff");
+        assert_eq!(pdb_id(b"Microsoft C/C++ MSF 7.00\r\n"), None, "a Windows PDB");
+        assert_eq!(symbol_file("Acme.Web.pdb", "ABC"), "pdb:acme.web.pdb:abc");
+
+        let nuspec = r#"<package><metadata><id>Acme.Web</id><version>1.0.0</version><packageTypes><packageType name="SymbolsPackage" /></packageTypes></metadata></package>"#;
+        let snupkg = crate::composer::zip(&[
+            ("Acme.Web.nuspec".to_owned(), nuspec.as_bytes().to_vec()),
+            ("lib/net8.0/Acme.Web.pdb".to_owned(), pdb.clone()),
+        ]);
+        let symbols = read_symbols(&snupkg).unwrap();
+        assert_eq!(symbols.nuspec.id, "Acme.Web");
+        assert_eq!(symbols.pdbs.len(), 1);
+        assert_eq!((symbols.pdbs[0].file.as_str(), symbols.pdbs[0].key.as_str()), ("Acme.Web.pdb", symbol_key(&id).as_str()));
+        let plain = crate::composer::zip(&[("Acme.Web.nuspec".to_owned(), NUSPEC.as_bytes().to_vec()), ("lib/a.pdb".to_owned(), pdb)]);
+        assert!(read_symbols(&plain).is_err(), "not a symbol package");
+        let windows = crate::composer::zip(&[
+            ("Acme.Web.nuspec".to_owned(), nuspec.as_bytes().to_vec()),
+            ("lib/a.pdb".to_owned(), b"Microsoft C/C++ MSF 7.00\r\n".to_vec()),
+        ]);
+        assert!(read_symbols(&windows).unwrap_err().contains("portable"));
     }
 }

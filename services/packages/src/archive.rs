@@ -87,6 +87,15 @@ pub fn zip_read(bytes: &[u8], entry: &ZipEntry, limit: usize) -> Result<Vec<u8>,
     Ok(data)
 }
 
+/// `data`, gzipped: what RubyGems' full index files are.
+pub fn gzip(data: &[u8]) -> Vec<u8> {
+    let mut out = vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 3];
+    out.extend_from_slice(&miniz_oxide::deflate::compress_to_vec(data, 6));
+    out.extend_from_slice(&crc32(data).to_le_bytes());
+    out.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    out
+}
+
 /// The bytes of a gzip file, inflated, up to `limit`.
 pub fn gunzip(bytes: &[u8], limit: usize) -> Result<Vec<u8>, String> {
     let bad = || "The file is not gzipped.".to_owned();
@@ -200,6 +209,7 @@ mod tests {
         assert_eq!(files[1].1, b"data");
         assert_eq!(gunzip(files[0].1, 1024).unwrap(), b"--- !ruby/object:Gem::Specification\nname: hello\n");
         assert!(gunzip(b"plain text, not gzip at all", 1024).is_err());
+        assert_eq!(gunzip(&super::gzip(b"specs"), 1024).unwrap(), b"specs");
         assert!(tar_files(&gem[..1538]).is_err(), "cut short");
     }
 }

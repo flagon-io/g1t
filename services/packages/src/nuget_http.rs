@@ -7,7 +7,13 @@
 //! A `.nupkg` is stored once, by its SHA-256, with its `.nuspec` beside it;
 //! the flat container, registration and search documents are made from the
 //! versions on each read. `dotnet nuget delete` unlists a version, as
-//! nuget.org does: it is still downloaded by those who name it.
+//! nuget.org does: it is still downloaded by those who name it. Each
+//! `.nupkg` download counts for its version as well as its package.
+//!
+//! A symbol package (`.snupkg`, pushed to `api/v2/symbolpackage` after its
+//! `.nupkg`) is kept beside the version, and each portable PDB in it by
+//! the key debuggers ask the symbol server (`symbols/`) with, as the
+//! Simple Symbol Query Protocol names it: `<file>/<guid>ffffffff/<file>`.
 
 use g1t_contracts::User;
 use g1t_contracts::audit::AuditActor;
@@ -130,6 +136,8 @@ impl Packages {
             NugetRoute::Push if method == Method::Put => self.nuget_push(&mut request, workspace, viewer).await,
             NugetRoute::Listing { id, version } if method == Method::Delete => self.nuget_listing(workspace, &id, &version, false, viewer).await,
             NugetRoute::Listing { id, version } if method == Method::Post => self.nuget_listing(workspace, &id, &version, true, viewer).await,
+            NugetRoute::SymbolPush if method == Method::Put => self.nuget_symbol_push(&mut request, workspace, viewer).await,
+            NugetRoute::Symbol { file, key } if read => self.nuget_symbol(workspace, &file, &key, viewer, head).await,
             _ => error(405, "Not a method this address takes."),
         }
     }
@@ -202,11 +210,7 @@ impl Packages {
         let Some(row) = versions.iter().find(|v| v.version.to_ascii_lowercase() == wanted) else {
             return self.nuget_absent(workspace, viewer).await;
         };
-        let name = match file {
-            Content::Nupkg => "nupkg",
-            Content::Nuspec => "nuspec",
-        };
-        let Some(kept) = self.db.file(&row.id, name).await? else {
+        let Some(kept) = self.db.file(&row.id, file.file()).await? else {
             return self.nuget_absent(workspace, viewer).await;
         };
         let Some(digest) = Digest::parse(&kept.digest) else {
@@ -216,7 +220,7 @@ impl Packages {
             return self.nuget_absent(workspace, viewer).await;
         };
         let headers = Headers::new();
-        headers.set("content-type", if file == Content::Nupkg { "application/octet-stream" } else { "application/xml" })?;
+        headers.set("content-type", if file == Content::Nuspec { "application/xml" } else { "application/octet-stream" })?;
         headers.set("content-length", &blob.size.to_string())?;
         headers.set("cache-control", "max-age=31536000")?;
         if head {
@@ -226,7 +230,7 @@ impl Packages {
             return self.nuget_absent(workspace, viewer).await;
         };
         if file == Content::Nupkg {
-            self.count_download(&package.id, ctx);
+            self.count_version_download(&package.id, &row.id, ctx);
         }
         Ok(Response::from_body(got.body)?.with_headers(headers))
     }
@@ -241,7 +245,7 @@ impl Packages {
         let listed: Vec<Listed<'_>> = versions
             .iter()
             .zip(&metadata)
-            .map(|(row, metadata)| Listed { version: &row.version, metadata, published: &row.published_at, listed: !row.is_yanked(), downloads: 0 })
+            .map(|(row, metadata)| Listed { version: &row.version, metadata, published: &row.published_at, listed: !row.is_yanked(), downloads: row.downloads })
             .collect();
         match version {
             None => json_response(&nuget::registration(base, &package.name, &listed), head),
@@ -287,7 +291,7 @@ impl Packages {
             let mut listed: Vec<Listed<'_>> = rows
                 .iter()
                 .zip(&metadata)
-                .map(|(row, metadata)| Listed { version: &row.version, metadata, published: &row.published_at, listed: !row.is_yanked(), downloads: 0 })
+                .map(|(row, metadata)| Listed { version: &row.version, metadata, published: &row.published_at, listed: !row.is_yanked(), downloads: row.downloads })
                 .collect();
             listed.sort_by(|a, b| nuget::compare(a.version, b.version));
             if let Some(mut result) = nuget::search_result(base, &package.name, &listed) {
@@ -468,6 +472,118 @@ impl Packages {
         self.announce("package.published", &package, event, &caller).await;
         self.audit(&caller, "package.publish", &package, Some(&format!("{workspace}/{}@{version}", package.name)), None).await;
         error(201, format!("{} {version} was pushed.", package.name))
+    }
+
+    /// `dotnet nuget push` of a `.snupkg`, which it sends after the
+    /// `.nupkg` beside it: the symbols of a version already pushed, kept
+    /// with it, and each portable PDB in it kept by its symbol server key.
+    async fn nuget_symbol_push(&self, request: &mut Request, workspace: &str, viewer: Option<&User>) -> Result<Response> {
+        let declared = request.headers().get("content-length")?.and_then(|n| n.parse::<u64>().ok());
+        let too_large = || {
+            let mb = self.max_request / 1_000_000;
+            error(413, format!("A push may be at most {mb} MB. See {DOCS}#size"))
+        };
+        if declared.is_some_and(|n| n > self.max_request) {
+            return too_large();
+        }
+        let content_type = request.headers().get("content-type")?;
+        let body = request.bytes().await?;
+        if body.len() as u64 > self.max_request {
+            return too_large();
+        }
+        if viewer.is_none() {
+            return error(401, format!("Push with a g1t access token as the API key: dotnet nuget push <file> --api-key <token>. Make one at {TOKENS}."));
+        }
+        let snupkg = match nuget::pushed_file(content_type.as_deref(), &body) {
+            Ok(file) => file,
+            Err(message) => return error(400, message),
+        };
+        let symbols = match nuget::read_symbols(snupkg) {
+            Ok(symbols) => symbols,
+            Err(message) => return error(400, message),
+        };
+        let spec = &symbols.nuspec;
+        let Some(version) = nuget::normalize(&spec.version) else {
+            return error(400, format!("{} is not a version NuGet reads.", spec.version));
+        };
+        let push_first = || error(404, format!("Push {} {version} before its symbols: dotnet nuget push pushes the .snupkg beside a .nupkg after it.", spec.id));
+        let Some(package) = self.nuget_package(workspace, &spec.id).await? else {
+            return push_first();
+        };
+        if let Some(refusal) = self.nuget_check(viewer, &package, Action::Push).await? {
+            return Ok(refusal);
+        }
+        let versions = self.db.versions(&package.id, MAX_VERSIONS).await?;
+        let Some(row) = versions.iter().find(|v| v.version.eq_ignore_ascii_case(&version)) else {
+            return push_first();
+        };
+        let snupkg = snupkg.to_vec();
+        let digest = Digest::of(&snupkg);
+        if let Some(kept) = self.db.file(&row.id, Content::Snupkg.file()).await? {
+            if kept.digest == digest.to_string() {
+                return error(201, format!("The symbols of {} {} were pushed.", package.name, row.version));
+            }
+            return error(409, format!("{} {} already has symbols, and a version's symbols are pushed once. Bump the version.", package.name, row.version));
+        }
+        let mut files = vec![(Content::Snupkg.file().to_owned(), digest.clone(), snupkg)];
+        for pdb in symbols.pdbs {
+            let name = nuget::symbol_file(&pdb.file, &pdb.key);
+            if files.iter().all(|(kept, _, _)| *kept != name) {
+                files.push((name, Digest::of(&pdb.bytes), pdb.bytes));
+            }
+        }
+        let sizes: Vec<(String, u64)> = files.iter().map(|(_, d, bytes)| (d.to_string(), bytes.len() as u64)).collect();
+        if let Some(refusal) = self.storage_refusal(&package, &sizes).await? {
+            return error(403, refusal);
+        }
+        let now = now_ms();
+        for (name, digest, bytes) in files {
+            let size = bytes.len() as u64;
+            let stored = match self.db.blob(&digest).await? {
+                Some(blob) => self.store.head(&blob.object_key).await?.is_some(),
+                None => false,
+            };
+            if !stored {
+                self.store.put(&digest.object_key(), bytes).await?;
+            }
+            self.db.keep_blob(&package.id, &digest, size, Some("application/octet-stream"), &digest.object_key(), now).await?;
+            let file = NewFile { name, digest: digest.to_string(), size, media_type: Some("application/octet-stream".to_owned()) };
+            self.db.put_file(&package.id, &row.id, &file, now).await?;
+        }
+        let mut metadata = row.meta();
+        if metadata.is_object() {
+            metadata["symbols"] = json!(true);
+            self.db.set_version(&row.id, &row.digest, &metadata.to_string()).await?;
+        }
+        self.db.measure(&package.workspace).await?;
+        let caller = Caller { actor: viewer.map(AuditActor::of) };
+        self.audit(&caller, "package.publish_symbols", &package, Some(&format!("{workspace}/{}@{}", package.name, row.version)), None).await;
+        error(201, format!("The symbols of {} {} were pushed.", package.name, row.version))
+    }
+
+    /// The symbol server: a PDB by its file name and key, from a package
+    /// of the workspace the viewer may read.
+    async fn nuget_symbol(&self, workspace: &str, file: &str, key: &str, viewer: Option<&User>, head: bool) -> Result<Response> {
+        for found in self.db.files_named(workspace, NUGET, &nuget::symbol_file(file, key), 10).await? {
+            let Some(package) = self.db.package_by_id(&found.package_id).await?.filter(|p| !p.hidden()) else {
+                continue;
+            };
+            if !access::decide(viewer, &TargetOf::package(&package).view(), Action::Pull).allowed {
+                continue;
+            }
+            let Some(digest) = Digest::parse(&found.digest) else { continue };
+            let Some(blob) = self.db.package_blob(&package.id, &digest).await? else { continue };
+            let headers = Headers::new();
+            headers.set("content-type", "application/octet-stream")?;
+            headers.set("content-length", &blob.size.to_string())?;
+            headers.set("cache-control", "max-age=31536000")?;
+            if head {
+                return Ok(Response::from_body(ResponseBody::Empty)?.with_headers(headers));
+            }
+            let Some(got) = self.store.get(&blob.object_key, None).await? else { continue };
+            return Ok(Response::from_body(got.body)?.with_headers(headers));
+        }
+        self.nuget_absent(workspace, viewer).await
     }
 
     /// `dotnet nuget delete` unlists a version; a `POST` lists it again.

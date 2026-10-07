@@ -82,7 +82,49 @@ workspace's Write base permission. See
 [who can see and publish a package](/guides/packages/#who-can-see-and-publish-a-package).
 
 The package's page on g1t.sh shows the README the package names
-(`PackageReadmeFile`) and the description of its highest stable version.
+(`PackageReadmeFile`) and the description of its highest stable version,
+and each version's downloads: every `.nupkg` restored counts for its
+version, and the registration (`downloads` in each catalog entry) and
+search (each version's `downloads`, and the package's `totalDownloads`)
+say them too. Counts are approximate.
+
+## Symbols
+
+Push a symbol package beside the package, and debuggers can step into
+its code: the feed has a symbol server that serves each PDB by the key
+the debugger asks for. Build a `.snupkg` with the package:
+
+```xml
+<PropertyGroup>
+  <IncludeSymbols>true</IncludeSymbols>
+  <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+</PropertyGroup>
+```
+
+`dotnet pack` then writes `Acme.Http.0.3.1.snupkg` beside the `.nupkg`,
+and `dotnet nuget push` of the `.nupkg` pushes it after the package, to
+the feed's `SymbolPackagePublish` resource, with the same API key. A
+symbol package is for a version already pushed; its PDBs must be portable
+PDBs (`DebugType` `portable`, the default). A version's symbols are pushed
+once. Its page marks the versions that have them, and the `.snupkg` is in
+the flat container beside the `.nupkg`.
+
+The symbol server is at:
+
+```text
+https://g1t.sh/-/nuget/<workspace>/symbols/
+```
+
+Add that address as a symbol server in your debugger (in Visual Studio,
+**Tools > Options > Debugging > Symbols**). It answers the Simple Symbol
+Query Protocol, `symbols/<file>.pdb/<key>/<file>.pdb`, for the
+packages the credentials' owner may see; debuggers that send no
+credentials to a symbol server load the symbols of public packages.
+`dotnet-symbol` sends a token with `--authenticated-server-path`:
+
+```sh
+dotnet-symbol --authenticated-server-path <token> https://g1t.sh/-/nuget/acme/symbols/   -o symbols bin/Debug/net8.0/Acme.Http.dll
+```
 
 ## Restore
 
@@ -177,7 +219,7 @@ for [container images](/guides/containers/#storage-and-pull-limits). A
 | --- | --- |
 | `401` | No credentials or API key, or a wrong or expired token. Check the source's username and password, or the `--api-key`. |
 | `403` | Signed in, but your role or your token's scopes do not allow it, or the workspace is out of free package storage. The response says which. |
-| `404` | No such package or version, or a private one you cannot see. |
-| `409` | That version is already pushed. Bump `Version`. |
-| `400` | The push was refused: not a `.nupkg`, no `.nuspec` in it, or an id or version NuGet would not take. The response says which. |
+| `404` | No such package or version, or a private one you cannot see. For a symbol package: its version is not pushed yet. |
+| `409` | That version is already pushed, or already has symbols. Bump `Version`. |
+| `400` | The push was refused: not a `.nupkg`, no `.nuspec` in it, an id or version NuGet would not take, or a symbol package that is not one or holds a PDB that is not portable. The response says which. |
 | `413` | The `.nupkg` is over 100 MB. |

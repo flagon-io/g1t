@@ -188,6 +188,9 @@ pub struct VersionRow {
     /// Cargo: 1 when the version is yanked.
     #[serde(default)]
     pub yanked: u32,
+    /// Its own downloads, counted for NuGet's.
+    #[serde(default)]
+    pub downloads: u64,
 }
 
 impl VersionRow {
@@ -249,6 +252,14 @@ pub struct FileRow {
     pub media_type: Option<String>,
 }
 
+/// A file found by its name, and the package that keeps it.
+#[derive(Clone, Debug, Deserialize)]
+pub struct NamedFile {
+    pub package_id: String,
+    pub digest: String,
+    pub size: u64,
+}
+
 /// A file's other checksums, in hex, beside its SHA-256 digest.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct Checksums {
@@ -293,7 +304,7 @@ const PACKAGE_COLUMNS: &str =
     "id, workspace, ecosystem, name, repo_id, repo_name, visibility, description, created_by, created_at, updated_at, downloads, workspace_deleted_at";
 /// Workspaces that are deleted, waiting to be purged or restored.
 const DELETED_WORKSPACES: &str = "SELECT workspace FROM packages WHERE workspace_deleted_at IS NOT NULL";
-const VERSION_COLUMNS: &str = "id, package_id, version, digest, size, metadata, subject, published_by, published_at, deprecated, yanked";
+const VERSION_COLUMNS: &str = "id, package_id, version, digest, size, metadata, subject, published_by, published_at, deprecated, yanked, downloads";
 
 pub struct Db {
     pub db: D1Database,
@@ -457,13 +468,17 @@ impl Db {
         Ok(())
     }
 
-    pub async fn add_downloads(&self, counts: &[(String, u64)]) -> Result<()> {
+    /// Adds downloads to packages, and to the versions named with them.
+    pub async fn add_downloads(&self, counts: &[((String, Option<String>), u64)]) -> Result<()> {
         if counts.is_empty() {
             return Ok(());
         }
         let mut batch = Vec::with_capacity(counts.len());
-        for (id, count) in counts {
+        for ((id, version), count) in counts {
             batch.push(self.prepare("UPDATE packages SET downloads = downloads + ? WHERE id = ?", &[num(*count), text(id)])?);
+            if let Some(version) = version {
+                batch.push(self.prepare("UPDATE versions SET downloads = downloads + ? WHERE id = ?", &[num(*count), text(version)])?);
+            }
         }
         self.db.batch(batch).await?;
         Ok(())
@@ -1186,6 +1201,45 @@ impl Db {
                 "SELECT {PACKAGE_COLUMNS} FROM packages WHERE workspace = ? AND ecosystem = ? AND workspace_deleted_at IS NULL ORDER BY name LIMIT {limit}"
             ),
             &[text(workspace), text(ecosystem)],
+        )?
+        .all()
+        .await?
+        .results()
+    }
+
+    pub async fn package_by_id(&self, package_id: &str) -> Result<Option<PackageRow>> {
+        self.prepare(&format!("SELECT {PACKAGE_COLUMNS} FROM packages WHERE id = ?"), &[text(package_id)])?
+            .first(None)
+            .await
+    }
+
+    /// The files a workspace's packages of an ecosystem keep under `name`,
+    /// newest first: how the NuGet symbol server finds a PDB.
+    pub async fn files_named(&self, workspace: &str, ecosystem: &str, name: &str, limit: u32) -> Result<Vec<NamedFile>> {
+        self.prepare(
+            &format!(
+                "SELECT v.package_id, f.digest, f.size FROM version_files f
+                 JOIN versions v ON v.id = f.version_id JOIN packages p ON p.id = v.package_id
+                 WHERE f.name = ? AND p.workspace = ? AND p.ecosystem = ? AND p.workspace_deleted_at IS NULL
+                 ORDER BY v.published_at DESC LIMIT {limit}"
+            ),
+            &[text(name), text(workspace), text(ecosystem)],
+        )?
+        .all()
+        .await?
+        .results()
+    }
+
+    /// A workspace's Maven artifacts of one groupId (`com.acme:*`), by
+    /// name: those named from `com.acme:` up to `com.acme;`, the
+    /// character after `:`.
+    pub async fn maven_group(&self, workspace: &str, group: &str, limit: u32) -> Result<Vec<PackageRow>> {
+        self.prepare(
+            &format!(
+                "SELECT {PACKAGE_COLUMNS} FROM packages WHERE workspace = ? AND ecosystem = 'maven' AND name >= ? AND name < ?
+                 AND workspace_deleted_at IS NULL ORDER BY name LIMIT {limit}"
+            ),
+            &[text(workspace), text(&format!("{group}:")), text(&format!("{group};"))],
         )?
         .all()
         .await?
