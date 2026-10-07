@@ -437,6 +437,12 @@ pub(crate) fn drifts(bucket: &str, days: &[ProductDay], threshold: f64, counted:
             out.push(Drift { bucket: bucket.into(), kind: DriftKind::Cost, ours: own_cost, cloudflare: cf_cost, delta_percent: delta });
         }
     }
+    // The ledger has model cost and the gateway priced none of it: a token
+    // that cannot see AI Gateway reads as no rows, never an error, so this
+    // is not agreement. Said, rather than left as no row at all.
+    if NOT_CLOUDFLARE.contains(&bucket) && cf_cost <= 0.0 && own_cost >= min_cost_micros as f64 && own_cost > 0.0 {
+        out.push(Drift { bucket: bucket.into(), kind: DriftKind::Cost, ours: own_cost, cloudflare: 0.0, delta_percent: None });
+    }
     if !overhead && cf_cost >= min_cost_micros as f64 && value <= 0.0 {
         out.push(Drift { bucket: bucket.into(), kind: DriftKind::Leak, ours: value, cloudflare: cf_cost, delta_percent: None });
     }
@@ -473,6 +479,12 @@ fn caveat_notes(c: &costs::GatewayCaveats) -> Vec<String> {
 
 /// The models drift's detail: the gateway's total against the ledger's.
 pub(crate) fn models_detail(drift: &Drift, caveats: &costs::GatewayCaveats) -> String {
+    if drift.cloudflare <= 0.0 {
+        return format!(
+            "Models: the ledger's model cost is {} over the last {DRIFT_DAYS} days and AI Gateway priced nothing, so the two were not compared. Either the gateway's analytics cannot be seen (Cloudflare answers a token without AI Gateway: Read with no rows, not an error; billing reads them with CLOUDFLARE_USAGE_TOKEN, then CLOUDFLARE_BILLING_TOKEN), or model calls went around the gateway.",
+            dollars(drift.ours as i64)
+        );
+    }
     let lower = drift.ours < drift.cloudflare;
     let mut detail = format!(
         "Models: AI Gateway priced g1t's own provider traffic at {} over the last {DRIFT_DAYS} days; the ledger's model cost for the same days is {} ({:+.1}%). {}",
@@ -2046,9 +2058,17 @@ mod tests {
         // Gateway traffic with nothing on the ledger at all: cost drift and a leak.
         let none = drifts("models", &[day("models", 2_000_000, 0, 0, 0.0, 0.0)], 10.0, false, 100_000);
         assert_eq!(none.iter().map(|d| d.kind).collect::<Vec<_>>(), vec![DriftKind::Cost, DriftKind::Leak]);
-        // Within the threshold, or before the gateway was ever read: nothing.
+        // Within the threshold: nothing.
         assert!(drifts("models", &[day("models", 1_050_000, 1_000_000, 1_200_000, 0.0, 0.0)], 10.0, false, 100_000).is_empty());
-        assert!(drifts("models", &[day("models", 0, 1_000_000, 1_200_000, 0.0, 0.0)], 10.0, false, 100_000).is_empty());
+        // The gateway priced nothing against a ledger that has model cost:
+        // not agreement (a token that cannot see AI Gateway reads as no
+        // rows), so it is said. Under the minimum, or no model cost: nothing.
+        let silent = drifts("models", &[day("models", 0, 1_000_000, 1_200_000, 0.0, 0.0)], 10.0, false, 100_000);
+        assert_eq!(silent, vec![Drift { bucket: "models".into(), kind: DriftKind::Cost, ours: 1_000_000.0, cloudflare: 0.0, delta_percent: None }]);
+        let said = models_detail(&silent[0], &costs::GatewayCaveats::default());
+        assert!(said.contains("$1.00") && said.contains("priced nothing") && said.contains("AI Gateway: Read"), "{said}");
+        assert!(drifts("models", &[day("models", 0, 50_000, 60_000, 0.0, 0.0)], 10.0, false, 100_000).is_empty());
+        assert!(drifts("models", &[day("models", 0, 0, 0, 0.0, 0.0)], 10.0, false, 100_000).is_empty());
         // The detail says which way and why it may be off.
         let caveats = costs::GatewayCaveats { cache_read_tokens: 3_000_000.0, unpriced: vec!["anthropic_claude_new_1".into()], ..Default::default() };
         let detail = models_detail(&short[0], &caveats);

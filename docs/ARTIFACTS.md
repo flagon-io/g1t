@@ -439,8 +439,13 @@ A global API key works in place of the token: `CLOUDFLARE_API_KEY` with `CLOUDFL
   read `cache.edge_hit` against `cache.miss` after a day; if the Cache API never hits from a
   Worker reached only by service bindings, put objects in KV instead. Still to do: caller
   attribution in the meters.
-- 476 client errors on 2026-10-06 are unexplained; the fetch fix below accounts for some (every
-  failed negotiation was one).
+- Client errors (576 on 2026-10-06, 985 on 2026-10-07) are all `read rejected`: a binding
+  `readFile` for a path that is not a file at that ref (missing, or a directory). Tested on
+  2026-10-07: four anonymous views of a missing file on a public repository made four, a real
+  file none. Nearly all came from crawlers (ClaudeBot, GPTBot) on public `blob/<sha>/…` pages
+  and pull requests' working copies, hour after hour with no git at all. The site answers 404
+  correctly; each is one store read, and a miss is not cached. They are not operations.
+  `--hours DAY` lists them by message and repository.
 
 **2026-10-07: where the gap came from.** Cloudflare counted 581 operations (pull 535, push 39,
 create 3, fork 4) against g1t's 458 (`git.fetch` 417, `git.receive_pack` 33, ...). The suspicion

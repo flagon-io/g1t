@@ -115,15 +115,19 @@ impl Keeper {
         &self.gateway
     }
 
-    /// A GraphQL query with the bill's token, and on failure with the
-    /// keeper's (AI Gateway Read), when that is a different token.
-    pub(crate) async fn graphql_either(&self, body: Value) -> Result<Value> {
-        match self.graphql(body.clone()).await {
+    /// A GraphQL query over AI Gateway's analytics: with the keeper's token
+    /// (AI Gateway Read) first, and on failure with the bill's. Not the
+    /// other way round: Cloudflare answers a token that cannot see AI
+    /// Gateway with no rows, not an error, so the bill's token would read
+    /// as a gateway that priced nothing.
+    pub(crate) async fn gateway_graphql(&self, body: Value) -> Result<Value> {
+        let Some(token) = &self.token else {
+            return self.graphql(body).await;
+        };
+        match send_with(token, Method::Post, "https://api.cloudflare.com/client/v4/graphql", Some(body.clone())).await {
             Ok(answer) => Ok(answer),
-            Err(error) => match &self.token {
-                Some(token) if Some(token) != self.billing_token.as_ref() => {
-                    send_with(token, Method::Post, "https://api.cloudflare.com/client/v4/graphql", Some(body)).await
-                }
+            Err(error) => match &self.billing_token {
+                Some(billing) if billing != token => self.graphql(body).await,
                 _ => Err(error),
             },
         }

@@ -581,7 +581,7 @@ impl Billing {
         // the total the ledger's model cost is checked against (`margin`).
         if !keeper.gateway().is_empty() {
             match keeper
-                .graphql_either(gateway_variables(keeper.account(), keeper.gateway(), &since, &until))
+                .gateway_graphql(gateway_variables(keeper.account(), keeper.gateway(), &since, &until))
                 .await
                 .map_err(|e| e.to_string())
                 .and_then(|body| lines_from_gateway(&body))
