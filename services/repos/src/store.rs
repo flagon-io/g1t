@@ -20,6 +20,7 @@ use worker::js_sys::{Reflect, Uint8Array};
 use worker::wasm_bindgen::{JsCast, JsValue};
 use worker::{Env, Result};
 
+use crate::fallback;
 use crate::meters::{self, Outcome};
 use crate::resilience::{self, Admit, Busy, Failure};
 use crate::shards;
@@ -143,6 +144,17 @@ pub trait GitStore {
     fn default_namespace(&self) -> String {
         shards::DEFAULT_NAMESPACE.to_owned()
     }
+    /// Whether the repository at `key` is served from the fallback store
+    /// now (fallback.rs): answers kept from the usual store may name refs
+    /// it does not have, so none are used.
+    fn on_fallback(&self, _key: &str) -> bool {
+        false
+    }
+    /// Whether `namespace` takes writes now: not while it is served from a
+    /// read-only fallback.
+    fn writable(&self, _namespace: &str) -> bool {
+        true
+    }
 }
 
 /// One open repository.
@@ -183,6 +195,19 @@ pub fn locate(key: &str) -> (String, String) {
     (namespace, name.to_owned())
 }
 
+thread_local! {
+    /// Where the fallback store's remotes start, when one is configured.
+    static FALLBACK_BASE: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// Whose breaker and health git requests to `remote` count toward: its
+/// namespace's, or `<namespace>@fallback` for the fallback store's.
+pub fn health_namespace(remote: &str) -> String {
+    let (namespace, _) = locate(&key_from_remote(remote).unwrap_or_default());
+    let on_fallback = FALLBACK_BASE.with(|base| base.borrow().as_deref().is_some_and(|base| remote.starts_with(base)));
+    if on_fallback { format!("{namespace}@fallback") } else { namespace }
+}
+
 /// The store key a git remote is for, from its last two path segments.
 pub fn key_from_remote(remote: &str) -> Option<String> {
     let path = remote.trim_end_matches('/');
@@ -206,7 +231,33 @@ fn remote_from(prefix: &str, name: &str) -> String {
 
 struct Namespace {
     name: String,
-    binding: JsValue,
+    /// Its binding, for every call: Artifacts, or the fallback store.
+    target: Target,
+}
+
+/// What a call on the store goes to: an Artifacts binding or one of its
+/// repository handles, or the fallback store (fallback.rs) for a
+/// namespace, or for one repository in it.
+#[derive(Clone)]
+enum Target {
+    Js(JsValue),
+    Fallback {
+        settings: Rc<fallback::Settings>,
+        namespace: String,
+        repo: Option<String>,
+    },
+}
+
+impl Target {
+    fn is_fallback(&self) -> bool {
+        matches!(self, Target::Fallback { .. })
+    }
+
+    /// Whose breaker and health a call counts toward: the fallback store's
+    /// own, so an Artifacts outage never holds it back.
+    fn health_name(&self, namespace: &str) -> String {
+        if self.is_fallback() { format!("{namespace}@fallback") } else { namespace.to_owned() }
+    }
 }
 
 pub struct ArtifactsStore {
@@ -218,10 +269,27 @@ pub struct ArtifactsStore {
 impl ArtifactsStore {
     pub fn new(env: &Env, shared: Option<Rc<crate::shared::Shared>>) -> Result<Self> {
         let config = env.var("ARTIFACTS_NAMESPACES").ok().map(|value| value.to_string());
+        let text = |name: &str| env.var(name).ok().map(|value| value.to_string());
+        let secret = env.secret("GIT_FALLBACK_SECRET").ok().map(|value| value.to_string());
+        let fallback = fallback::Settings::from_vars(
+            text("GIT_FALLBACK_URL").as_deref(),
+            secret.as_deref(),
+            text("GIT_FALLBACK_NAMESPACES").as_deref(),
+            text("GIT_FALLBACK_WRITES").as_deref(),
+        )
+        .map(Rc::new);
+        FALLBACK_BASE.with(|base| *base.borrow_mut() = fallback.as_ref().map(|settings| format!("{}/git/", settings.url)));
         let mut namespaces = Vec::new();
         for (binding, name) in shards::bindings(config.as_deref()) {
+            // Served from the fallback store, by configuration.
+            if let Some(settings) = fallback.as_ref().filter(|settings| settings.serves(&name)) {
+                worker::console_log!("git store {name}: served from the fallback store");
+                let target = Target::Fallback { settings: settings.clone(), namespace: name.clone(), repo: None };
+                namespaces.push(Namespace { name, target });
+                continue;
+            }
             match js::binding(env, &binding) {
-                Ok(value) => namespaces.push(Namespace { name, binding: value }),
+                Ok(value) => namespaces.push(Namespace { name, target: Target::Js(value) }),
                 // The default binding is required; the others are optional.
                 Err(error) if binding == shards::DEFAULT_BINDING => return Err(error),
                 Err(_) => worker::console_error!("ARTIFACTS_NAMESPACES names {binding}, which is not bound"),
@@ -246,13 +314,33 @@ impl ArtifactsStore {
         Ok(Self { namespaces: Rc::new(namespaces), shared })
     }
 
-    fn binding(&self, namespace: &str) -> Result<&JsValue> {
+    fn binding(&self, namespace: &str) -> Result<&Target> {
         self.namespaces
             .iter()
             .find(|candidate| candidate.name == namespace)
-            .map(|found| &found.binding)
+            .map(|found| &found.target)
             .ok_or_else(|| worker::Error::RustError(format!("git store namespace {namespace} is not bound")))
     }
+
+    /// The fallback store's settings, when `namespace` is served from it.
+    fn fallback_of(&self, namespace: &str) -> Option<&fallback::Settings> {
+        match self.binding(namespace).ok()? {
+            Target::Fallback { settings, .. } => Some(settings),
+            Target::Js(_) => None,
+        }
+    }
+
+    /// The name credentials for `key` are kept under: those of the
+    /// fallback store never stand in for Artifacts' own, nor the reverse.
+    fn cred_key(&self, key: &str) -> String {
+        let (namespace, _) = locate(key);
+        cred_key(key, self.fallback_of(&namespace).is_some())
+    }
+}
+
+/// See [`ArtifactsStore::cred_key`].
+fn cred_key(key: &str, on_fallback: bool) -> String {
+    if on_fallback { format!("fallback:{key}") } else { key.to_owned() }
 }
 
 /// A failed call on the binding.
@@ -299,12 +387,26 @@ const BUSY_RETRY_AFTER: u64 = 5;
 async fn invoke(
     namespace: &str,
     key: &str,
-    target: &JsValue,
+    target: &Target,
     method: &str,
     args: &[JsValue],
     retry: bool,
 ) -> std::result::Result<JsValue, StoreError> {
     let meter = meter_of(method);
+    let health = target.health_name(namespace);
+    let namespace = health.as_str();
+    // A read-only fallback refuses writes before asking (fallback.rs).
+    if let Target::Fallback { settings, repo, .. } = target
+        && !settings.writes
+    {
+        let values: Vec<serde_json::Value> = args.iter().map(|arg| js::from_js(arg).unwrap_or(serde_json::Value::Null)).collect();
+        if fallback::writes(repo.as_deref(), method, &values) {
+            return Err(StoreError {
+                thrown: Thrown { code: Some("READ_ONLY".to_owned()), message: format!("{method} refused: the git store is read-only") },
+                busy: Some(Busy::read_only()),
+            });
+        }
+    }
     let mut attempt = 0;
     loop {
         let now = g1t_kit::now_ms();
@@ -313,11 +415,15 @@ async fn invoke(
             meters::record_health(namespace, Outcome::Rejected, 0);
             return Err(StoreError {
                 thrown: Thrown { code: None, message: format!("{method} not asked: the git store has been failing") },
-                busy: Some(Busy { rate_limited: false, retry_after: resilience::seconds(ms).max(BUSY_RETRY_AFTER) }),
+                busy: Some(Busy { rate_limited: false, retry_after: resilience::seconds(ms).max(BUSY_RETRY_AFTER), read_only: false }),
             });
         }
-        meters::record(&meter, key, 0, 0);
-        let called = js::call(target, method, args).await;
+        // Calls on Artifacts are metered; the fallback store costs nothing
+        // per call.
+        if !target.is_fallback() {
+            meters::record(&meter, key, 0, 0);
+        }
+        let called = dispatch(target, method, args).await;
         let ms = g1t_kit::now_ms().saturating_sub(now);
         match called {
             Ok(value) => {
@@ -345,10 +451,45 @@ async fn invoke(
                 worker::console_error!("git store {namespace}: {method} for {key} failed: {thrown}");
                 return Err(StoreError {
                     thrown,
-                    busy: Some(Busy { rate_limited: failure == Failure::RateLimited, retry_after: BUSY_RETRY_AFTER }),
+                    busy: Some(Busy { rate_limited: failure == Failure::RateLimited, retry_after: BUSY_RETRY_AFTER, read_only: false }),
                 });
             }
         }
+    }
+}
+
+/// Makes one call: on the binding, or as a request to the fallback store.
+async fn dispatch(target: &Target, method: &str, args: &[JsValue]) -> std::result::Result<JsValue, Thrown> {
+    let (settings, namespace, repo) = match target {
+        Target::Js(value) => return js::call(value, method, args).await,
+        Target::Fallback { settings, namespace, repo } => (settings, namespace, repo),
+    };
+    let values: Vec<serde_json::Value> = args.iter().map(|arg| js::from_js(arg).unwrap_or(serde_json::Value::Null)).collect();
+    let route = fallback::route(namespace, repo.as_deref(), method, &values)
+        .map_err(|refused| Thrown { code: Some(refused.code.to_owned()), message: refused.message })?;
+    let unreachable = |error: worker::Error| Thrown { code: None, message: format!("the fallback store could not be reached: {error}") };
+    let headers = worker::Headers::new();
+    headers.set("x-gitstore-secret", &settings.secret).map_err(unreachable)?;
+    let mut init = worker::RequestInit::new();
+    init.with_method(match route.method {
+        "POST" => worker::Method::Post,
+        "DELETE" => worker::Method::Delete,
+        _ => worker::Method::Get,
+    });
+    if let Some(body) = &route.body {
+        headers.set("content-type", "application/json").map_err(unreachable)?;
+        init.with_body(Some(JsValue::from_str(&body.to_string())));
+    }
+    init.with_headers(headers);
+    let request = worker::Request::new_with_init(&format!("{}{}", settings.url, route.path), &init).map_err(unreachable)?;
+    let mut response = worker::Fetch::Request(request).send().await.map_err(unreachable)?;
+    let status = response.status_code();
+    let body = response.bytes().await.map_err(unreachable)?;
+    match fallback::answer(&route, status, body) {
+        fallback::Answer::Json(value) => js::to_js(&value).map_err(|error| Thrown { code: None, message: error.to_string() }),
+        fallback::Answer::Bytes(bytes) => Ok(Uint8Array::from(bytes.as_slice()).into()),
+        fallback::Answer::Null => Ok(JsValue::NULL),
+        fallback::Answer::Error { code, message } => Err(Thrown { code, message }),
     }
 }
 
@@ -447,31 +588,43 @@ impl GitStore for ArtifactsStore {
     type Repo = ArtifactsRepo;
 
     async fn kept_access(&self, key: &str, scope: Scope) -> Option<(GitAccess, Kept)> {
-        kept(self.shared.as_deref(), key, scope, Use::Internal).await
+        kept(self.shared.as_deref(), &self.cred_key(key), scope, Use::Internal).await
     }
 
     async fn mint_access(&self, key: &str, scope: Scope) -> Result<GitAccess> {
         let repo = self.open(key).await?;
         let access = repo.mint(scope, Use::Internal).await?;
-        keep(self.shared.as_deref(), key, scope, Use::Internal, &access).await;
+        keep(self.shared.as_deref(), &self.cred_key(key), scope, Use::Internal, &access).await;
         Ok(access)
     }
 
     async fn handout(&self, key: &str, scope: Scope) -> Result<GitAccess> {
-        if let Some((access, _)) = kept(self.shared.as_deref(), key, scope, Use::Handout).await {
+        let cred_key = self.cred_key(key);
+        if let Some((access, _)) = kept(self.shared.as_deref(), &cred_key, scope, Use::Handout).await {
             return Ok(access);
         }
         let access = self.open(key).await?.mint(scope, Use::Handout).await?;
-        keep(self.shared.as_deref(), key, scope, Use::Handout, &access).await;
+        keep(self.shared.as_deref(), &cred_key, scope, Use::Handout, &access).await;
         Ok(access)
     }
 
     async fn forget_access(&self, key: &str) {
-        CREDENTIALS.with(|kept| kept.borrow_mut().forget(key));
+        // Both stores' credentials: whichever serves the key now.
+        let names = [cred_key(key, false), cred_key(key, true)];
+        CREDENTIALS.with(|kept| {
+            let mut kept = kept.borrow_mut();
+            for name in &names {
+                kept.forget(name);
+            }
+        });
         if let Some(shared) = &self.shared {
-            let keys: Vec<String> = [Scope::Read, Scope::Write]
-                .into_iter()
-                .flat_map(|scope| [Use::Internal, Use::Handout].map(|using| shared_key(key, scope, using)))
+            let keys: Vec<String> = names
+                .iter()
+                .flat_map(|name| {
+                    [Scope::Read, Scope::Write]
+                        .into_iter()
+                        .flat_map(move |scope| [Use::Internal, Use::Handout].map(|using| shared_key(name, scope, using)))
+                })
                 .collect();
             futures_util::future::join_all(keys.iter().map(|shared_key| shared.delete(shared_key))).await;
         }
@@ -491,8 +644,11 @@ impl GitStore for ArtifactsStore {
     }
 
     async fn delete(&self, key: &str) -> Result<()> {
-        self.forget_access(key).await;
         let (namespace, name) = locate(key);
+        // Nothing is forgotten while the store refuses to delete.
+        if self.writable(&namespace) {
+            self.forget_access(key).await;
+        }
         match invoke(&namespace, key, self.binding(&namespace)?, "delete", &[name.as_str().into()], true).await {
             // Gone already: an earlier purge got this far.
             Err(failed) if !failed.is("NOT_FOUND") => Err(failed.into()),
@@ -502,9 +658,11 @@ impl GitStore for ArtifactsStore {
 
     async fn open(&self, key: &str) -> Result<ArtifactsRepo> {
         let (namespace, name) = locate(key);
+        let binding = self.binding(&namespace)?.clone();
         Ok(ArtifactsRepo {
             handle: RefCell::new(None),
-            binding: self.binding(&namespace)?.clone(),
+            cred_key: cred_key(key, binding.is_fallback()),
+            binding,
             key: key.to_owned(),
             name,
             namespace,
@@ -520,19 +678,30 @@ impl GitStore for ArtifactsStore {
     fn default_namespace(&self) -> String {
         DEFAULT_NS.with(|ns| ns.borrow().clone())
     }
+
+    fn on_fallback(&self, key: &str) -> bool {
+        let (namespace, _) = locate(key);
+        self.fallback_of(&namespace).is_some()
+    }
+
+    fn writable(&self, namespace: &str) -> bool {
+        self.fallback_of(namespace).is_none_or(|settings| settings.writes)
+    }
 }
 
-/// A handle to one Artifacts repository. It is an RPC stub, so it is
-/// released when dropped.
+/// A handle to one repository in the store. On Artifacts it is an RPC
+/// stub, so it is released when dropped.
 pub struct ArtifactsRepo {
     /// The store's handle, asked for (`get`) on the first call that needs
     /// the store: an answer from a cache, or a fetch over git with a kept
     /// credential, never costs a `get`.
-    handle: RefCell<Option<JsValue>>,
+    handle: RefCell<Option<Target>>,
     /// The namespace's binding, for that `get`.
-    binding: JsValue,
+    binding: Target,
     /// The repository's store key, which scopes its cached objects.
     key: String,
+    /// What its credentials are kept under (`ArtifactsStore::cred_key`).
+    cred_key: String,
     /// Its name in its namespace.
     name: String,
     namespace: String,
@@ -696,20 +865,34 @@ impl ArtifactsRepo {
     }
 
     /// The store's handle, asked for the first time it is needed.
-    async fn handle(&self) -> std::result::Result<JsValue, StoreError> {
+    async fn handle(&self) -> std::result::Result<Target, StoreError> {
         if let Some(handle) = self.handle.borrow().as_ref() {
             return Ok(handle.clone());
         }
-        let handle = invoke(&self.namespace, &self.key, &self.binding, "get", &[self.name.as_str().into()], true).await?;
+        let found = invoke(&self.namespace, &self.key, &self.binding, "get", &[self.name.as_str().into()], true).await?;
+        let handle = match &self.binding {
+            Target::Js(_) => Target::Js(found),
+            // The fallback store said the repository is there.
+            Target::Fallback { settings, namespace, .. } => Target::Fallback {
+                settings: settings.clone(),
+                namespace: namespace.clone(),
+                repo: Some(self.name.clone()),
+            },
+        };
         *self.handle.borrow_mut() = Some(handle.clone());
         Ok(handle)
     }
 
     /// A new credential from the store. Its remote is worked out from the
     /// key once this isolate knows where the namespace's remotes start;
-    /// until then the store is asked (`info()`) alongside the token.
+    /// until then the store is asked (`info()`) alongside the token. The
+    /// fallback store's remotes are known from its address.
     pub async fn mint(&self, scope: Scope, using: Use) -> Result<GitAccess> {
         let args = [scope.as_str().into(), using.ttl_seconds().into()];
+        if let Target::Fallback { settings, .. } = &self.binding {
+            let token: RawToken = js::from_js(&self.call("createToken", &args, true).await?)?;
+            return Ok(GitAccess { remote: settings.remote(&self.namespace, &self.name), token: token.plaintext });
+        }
         let prefix = REMOTE_PREFIX.with(|prefixes| prefixes.borrow().get(&self.namespace).cloned());
         if let Some(prefix) = prefix {
             let token: RawToken = js::from_js(&self.call("createToken", &args, true).await?)?;
@@ -733,7 +916,7 @@ impl Drop for ArtifactsRepo {
     fn drop(&mut self) {
         let symbol = js::get(&worker::js_sys::global(), "Symbol");
         let dispose = js::get(&symbol, "dispose");
-        let Some(handle) = self.handle.borrow_mut().take() else { return };
+        let Some(Target::Js(handle)) = self.handle.borrow_mut().take() else { return };
         if let Ok(function) = Reflect::get(&handle, &dispose).and_then(|value| value.dyn_into::<worker::js_sys::Function>()) {
             let _ = function.call0(&handle);
         }
@@ -770,10 +953,14 @@ struct RawToken {
     plaintext: String,
 }
 
-/// The bytes of a `Blob`, or `None` for null.
+/// The bytes of a `Blob` (or of the bytes the fallback store sent), or
+/// `None` for null.
 async fn blob_bytes(blob: JsValue) -> Result<Option<Vec<u8>>> {
     if blob.is_null() || blob.is_undefined() {
         return Ok(None);
+    }
+    if let Some(bytes) = blob.dyn_ref::<Uint8Array>() {
+        return Ok(Some(bytes.to_vec()));
     }
     let buffer = js::call(&blob, "arrayBuffer", &[]).await?;
     Ok(Some(Uint8Array::new(&buffer).to_vec()))
@@ -782,11 +969,11 @@ async fn blob_bytes(blob: JsValue) -> Result<Option<Vec<u8>>> {
 impl GitRepo for ArtifactsRepo {
     /// One made a while ago, here or in another isolate, else a new one.
     async fn access(&self, scope: Scope) -> Result<GitAccess> {
-        if let Some((access, _)) = kept(self.shared.as_deref(), &self.key, scope, Use::Internal).await {
+        if let Some((access, _)) = kept(self.shared.as_deref(), &self.cred_key, scope, Use::Internal).await {
             return Ok(access);
         }
         let access = self.mint(scope, Use::Internal).await?;
-        keep(self.shared.as_deref(), &self.key, scope, Use::Internal, &access).await;
+        keep(self.shared.as_deref(), &self.cred_key, scope, Use::Internal, &access).await;
         Ok(access)
     }
 
@@ -936,7 +1123,9 @@ impl GitRepo for ArtifactsRepo {
     }
 
     fn at_refs_version(&mut self, version: Option<u64>) {
-        self.refs_version = version;
+        // The fallback store holds what the last backup held, which may be
+        // behind what was kept under the version: nothing is kept for it.
+        self.refs_version = if self.binding.is_fallback() { None } else { version };
     }
 }
 
@@ -1055,6 +1244,27 @@ mod tests {
         );
         assert_eq!(locate("g1t-us-1/acme--rocket"), ("g1t-us-1".to_owned(), "acme--rocket".to_owned()));
         assert_eq!(locate("acme--rocket"), ("g1t".to_owned(), "acme--rocket".to_owned()));
+    }
+
+    #[test]
+    fn the_fallback_stores_credentials_and_remotes_are_its_own() {
+        assert_eq!(cred_key("acme--rocket", false), "acme--rocket");
+        assert_eq!(cred_key("g1t-us-1/acme--rocket", true), "fallback:g1t-us-1/acme--rocket");
+        // A credential Artifacts made is never handed out for the fallback
+        // store, nor the reverse.
+        assert_ne!(
+            shared_key(&cred_key("acme--rocket", true), Scope::Write, Use::Internal),
+            shared_key(&cred_key("acme--rocket", false), Scope::Write, Use::Internal)
+        );
+        // Its remotes name their keys as Artifacts' do.
+        let settings = fallback::Settings::from_vars(Some("https://gitstore.example"), Some("0123456789abcdef"), Some("*"), None).unwrap();
+        assert_eq!(key_from_remote(&settings.remote("g1t", "acme--rocket")).as_deref(), Some("acme--rocket"));
+        assert_eq!(key_from_remote(&settings.remote("g1t-us-1", "pulls--pul_1")).as_deref(), Some("g1t-us-1/pulls--pul_1"));
+        // Git requests to it count toward its own health, not Artifacts'.
+        FALLBACK_BASE.with(|base| *base.borrow_mut() = Some(format!("{}/git/", settings.url)));
+        assert_eq!(health_namespace(&settings.remote("g1t-us-1", "acme--rocket")), "g1t-us-1@fallback");
+        assert_eq!(health_namespace("https://a.artifacts.cloudflare.net/git/g1t-us-1/acme--rocket.git"), "g1t-us-1");
+        FALLBACK_BASE.with(|base| *base.borrow_mut() = None);
     }
 
     #[test]

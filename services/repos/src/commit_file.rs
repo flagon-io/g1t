@@ -55,6 +55,11 @@ impl<S: GitStore> Repos<S> {
         if let Some((code, message)) = crate::lifecycle::archived_refusal(&repo) {
             return Ok(Outcome::fail(code, message));
         }
+        // Moving between namespaces: wait for it (moves.rs).
+        let repo = match self.unpaused(repo).await? {
+            Ok(repo) => repo,
+            Err((code, message)) => return Ok(Outcome::fail(code, message)),
+        };
         if !is_valid_branch_name(&a.branch) || a.branch == repo.default_branch {
             return Ok(Outcome::fail(FailureCode::Invalid, format!("{} cannot be the new branch's name.", a.branch)));
         }

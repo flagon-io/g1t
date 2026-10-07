@@ -279,6 +279,10 @@ impl<S: GitStore> Repos<S> {
     /// Keeps a working copy's head in its repository, then removes its git
     /// data. A failure before the removal leaves everything as it was.
     async fn retire(&self, fork: &Repo) -> Result<()> {
+        // Being copied to another namespace (moves.rs): the next sweep.
+        if let Some(reason) = crate::registry::paused(&fork.id, now_ms()) {
+            return Err(worker::Error::RustError(format!("paused: {reason}")));
+        }
         let key = store_key(fork);
         let parent = match &fork.fork_of {
             Some(id) => self.registry.by_id(id).await?,

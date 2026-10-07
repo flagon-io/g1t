@@ -824,7 +824,8 @@ pub async fn forward(
     let query = request.url()?.query().map(|query| format!("?{query}")).unwrap_or_default();
     let url = format!("{}/{}{query}", access.remote, git.endpoint);
     let method = request.method();
-    let (namespace, _) = crate::store::locate(&crate::store::key_from_remote(&access.remote).unwrap_or_default());
+    // Its own health and breaker: the fallback store's apart from Artifacts'.
+    let namespace = crate::store::health_namespace(&access.remote);
 
     if method == Method::Post && git.endpoint == "git-receive-pack" {
         return push(request, &url, headers, protected, limits, scan, &namespace).await;
@@ -870,7 +871,7 @@ pub async fn forward(
                 attempt += 1;
             }
             (_, Some(failure)) => {
-                let busy = Busy { rate_limited: failure == Failure::RateLimited, retry_after: 5 };
+                let busy = Busy { rate_limited: failure == Failure::RateLimited, retry_after: 5, read_only: false };
                 return Ok(Push::Forwarded(Forwarded {
                     response: busy_response(busy)?,
                     pushed: Vec::new(),
@@ -1029,12 +1030,12 @@ async fn push(
         (Ok(response), None) => response,
         (Ok(response), Some(Failure::RateLimited)) => {
             drop(response);
-            busy_response(Busy { rate_limited: true, retry_after: 5 })?
+            busy_response(Busy { rate_limited: true, retry_after: 5, read_only: false })?
         }
         (Ok(response), Some(_)) => response,
         (Err(error), _) => {
             worker::console_error!("a push did not reach the store: {error}");
-            busy_response(Busy { rate_limited: false, retry_after: 5 })?
+            busy_response(Busy { rate_limited: false, retry_after: 5, read_only: false })?
         }
     };
     Ok(Push::Forwarded(Forwarded {

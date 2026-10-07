@@ -601,6 +601,12 @@ pub async fn spec<S: GitStore>(
         return Ok(refused("The repository was deleted."));
     };
     let key = store_key(&repo);
+    // Served from the fallback store (fallback.rs), which holds what the
+    // backups hold: backing that up would only record an older state.
+    if store.on_fallback(&key) {
+        settle_failure(db, &row, "The git store is on its fallback; backups wait until it is back.").await?;
+        return Ok(refused("The git store is on its fallback; backups wait until it is back."));
+    }
     let access = store.handout(&key, Scope::Read).await?;
     // Asked before: the same bundle, so parts already sent still fit.
     if let (Some(kind), Some(_)) = (row.upload_kind.as_deref(), row.upload_id.as_deref()) {

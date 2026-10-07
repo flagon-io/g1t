@@ -259,9 +259,112 @@ pub async fn fast_forward(
     Ok(reported(&report, &reference, true))
 }
 
+/// The commands at the start of a receive-pack request for many refs:
+/// `(name, old, new)`, `new` the zero id to delete.
+fn commands_block(commands: &[crate::mirror::Command]) -> Vec<u8> {
+    let deletes = commands.iter().any(|(_, _, new)| new == ZERO_ID);
+    let capabilities = if deletes { "report-status delete-refs" } else { "report-status" };
+    let mut body = Vec::new();
+    for (index, (name, old, new)) in commands.iter().enumerate() {
+        let old = old.as_deref().unwrap_or(ZERO_ID);
+        let line = if index == 0 { format!("{old} {new} {name}\0 {capabilities}\n") } else { format!("{old} {new} {name}\n") };
+        body.extend(pkt_line(&line));
+    }
+    body.extend_from_slice(FLUSH);
+    body
+}
+
+/// Makes `target`'s refs match `commands`, fetching from `source` the
+/// objects `wants` names that `haves` (commits the target holds) do not
+/// reach. The pack streams from one into the other, never held whole, so
+/// a whole repository can be copied this way (moves.rs). `Err` in the
+/// inner result says which refs the target refused, and why.
+pub(crate) async fn copy_refs(
+    source: &GitAccess,
+    target: &GitAccess,
+    commands: &[crate::mirror::Command],
+    wants: &[String],
+    haves: &[String],
+) -> Result<std::result::Result<(), String>> {
+    if commands.is_empty() {
+        return Ok(Ok(()));
+    }
+    let head = commands_block(commands);
+    let sends_pack = commands.iter().any(|(_, _, new)| new != ZERO_ID);
+    let report = if wants.is_empty() {
+        // Every object is there already: only refs move.
+        let mut body = head;
+        if sends_pack {
+            body.extend_from_slice(EMPTY_PACK);
+        }
+        post(target, "git-receive-pack", body).await?
+    } else {
+        let request = crate::mirror::upload_request(wants, haves);
+        let sent = request.len() as u64;
+        let mut fetched = send(source, "git-upload-pack", Uint8Array::from(request.as_slice()).into(), sent).await?;
+        let failure: Rc<RefCell<Option<String>>> = Rc::default();
+        let demux = Rc::new(RefCell::new(Sideband::default()));
+        let pack = {
+            let failure = failure.clone();
+            let demux = demux.clone();
+            fetched.stream()?.map(move |chunk| {
+                let chunk = chunk?;
+                demux.borrow_mut().feed(&chunk).map_err(|why| {
+                    *failure.borrow_mut() = Some(why.clone());
+                    Error::RustError(why)
+                })
+            })
+        };
+        let end = {
+            let failure = failure.clone();
+            let demux = demux.clone();
+            futures_util::stream::once(async move {
+                demux.borrow().finish().map(|()| Vec::new()).map_err(|why| {
+                    *failure.borrow_mut() = Some(why.clone());
+                    Error::RustError(why)
+                })
+            })
+        };
+        let body = futures_util::stream::once(async move { Ok::<Vec<u8>, Error>(head) })
+            .chain(pack)
+            .chain(end)
+            .filter(|chunk| futures_util::future::ready(!matches!(chunk, Ok(bytes) if bytes.is_empty())));
+        let pushed = send(target, "git-receive-pack", crate::git_http::stream_body(body)?, 0).await;
+        if let Some(why) = failure.borrow_mut().take() {
+            return Err(Error::RustError(why));
+        }
+        let report = pushed?.bytes().await?;
+        let moved = demux.borrow().pack_bytes;
+        if let (Some(from), Some(to)) = (crate::store::key_from_remote(&source.remote), crate::store::key_from_remote(&target.remote)) {
+            meters::record_bytes("internal.git.fetch", &from, 0, moved);
+            meters::record_bytes("internal.git.receive_pack", &to, moved, 0);
+        }
+        report
+    };
+    let problems = crate::mirror::refused(&report, commands);
+    Ok(if problems.is_empty() { Ok(()) } else { Err(problems.join("; ")) })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn many_refs_are_moved_by_one_block_of_commands() {
+        let a = "c71546fcd893ef8b0f57388b65e620d759705dda".to_owned();
+        let b = "4807077b296e6edbf410d55e72749d3e1170c291".to_owned();
+        let block = String::from_utf8(commands_block(&[
+            ("refs/heads/main".to_owned(), None, a.clone()),
+            ("refs/tags/v1".to_owned(), Some(a.clone()), b.clone()),
+        ]))
+        .unwrap();
+        // Capabilities ride on the first command only.
+        assert!(block.contains(&format!("{ZERO_ID} {a} refs/heads/main\0 report-status\n")));
+        assert!(block.contains(&format!("{a} {b} refs/tags/v1\n")));
+        assert!(block.ends_with("0000"));
+        let deleting = String::from_utf8(commands_block(&[("refs/heads/old".to_owned(), Some(a), ZERO_ID.to_owned())])).unwrap();
+        assert!(deleting.contains("delete-refs"));
+    }
 
     #[test]
     fn one_ref_is_moved_by_one_command() {

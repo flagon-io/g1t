@@ -75,6 +75,13 @@ export const RENAME_COOLDOWN_HOURS = 24;
 export const MAX_AVATAR_BYTES = 1024 * 1024;
 
 /**
+ * Where a workspace keeps its repositories' git data: anywhere g1t stores
+ * it (the default), or in the EU only. It applies to repositories made
+ * after it is set.
+ */
+export type DataResidency = "anywhere" | "eu";
+
+/**
  * A workspace: the owner of repositories, and the first segment of their
  * URLs. A person's own space and a team's are the same thing.
  */
@@ -511,6 +518,13 @@ export interface IdentityApi extends AccessClient {
   createWorkspace(user: User, slug: string, name: string): Promise<Result<Workspace>>;
   /** Public details of a workspace, or null. */
   getWorkspace(slug: string): Promise<Workspace | null>;
+  /** Where a workspace keeps its repositories' git data; null when there is no such workspace. */
+  workspaceResidency(slug: string): Promise<DataResidency | null>;
+  /**
+   * Owners only. Applies to repositories made from then on. Offer `eu`
+   * only when the repos service's `storageOptions()` says it is available.
+   */
+  setWorkspaceResidency(actor: User, slug: string, residency: DataResidency): Promise<Result<DataResidency>>;
   /** Members only. */
   listMembers(slug: string, viewer: Viewer): Promise<Result<Member[]>>;
   /** Owners only. */

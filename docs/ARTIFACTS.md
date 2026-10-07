@@ -1,6 +1,8 @@
 # Cloudflare Artifacts: due diligence for g1t at launch scale
 
 Status: research document, 2026-10-06; R1–R5, R9, R10, R13 and R7 groundwork were built the same day (section 9).
+R7 (sharding, moves, EU residency) and R12 (the fallback store) were built 2026-10-07, off until their
+infrastructure exists ("What you must create", section 9).
 Scope: everything g1t stores in Cloudflare Artifacts (open beta since 2026-10-01; billing from 2026-10-14),
 measured against what Cloudflare documents, and what we must build so that a few thousand workspaces
 can run on it.
@@ -23,13 +25,14 @@ missing outright. Five things are not yet safe at a few thousand workspaces.
 3. **One namespace carries everything.** All repositories and forks live in the `g1t` namespace. The
    control-plane limit is **2,000 requests per 10 seconds per namespace** (200 per second). If binding
    calls count against it, page views, token mints and mergeability checks together exceed it at launch
-   peaks.
+   peaks. Sharding is now built (R7, section 9); the extra namespaces are not made yet.
 4. **Hard limits are not enforced in front of Artifacts.** 1 GB per repository, 32 MB per file, and a
    128 MB Worker isolate that buffers each push body twice. Large pushes and imports fail late, without a
    message git can show.
 5. **No backup, no exit drill.** Cloudflare replicates data, but there is no SLA, no documented export
    besides git itself, and the self-host git store is not a production fallback yet. Nightly bundles
-   to R2 and a restore drill are now built (R11, section 9); the fallback store is not (R12).
+   to R2 and a restore drill are now built (R11, section 9), and so is the fallback path (R12): a
+   restore into the git store and a switch by configuration. The host it runs on is not made yet.
 
 None of these blocks an invite-only launch. Items 1 and 2 must be answered before billing starts on
 2026-10-14, and the fork cleanup must ship before agent pull requests reach thousands a day.
@@ -353,7 +356,10 @@ Code in `services/repos` unless named; one migration,
 `migrations/0011_artifacts_meters_forks_health.sql` (new columns on `repos`, new tables
 `artifacts_meters`, `operation_mapping`, `store_health`; additive, no backfill). R11 added
 `migrations/0013_backups.sql` (a new table, `repo_backups`, and one `operation_mapping` row;
-additive).
+additive). R7 added `migrations/0014_namespace_moves.sql` (two columns on `repos`,
+`writes_paused_until` and `writes_paused_for`; new tables `repo_moves` and `repo_move_copies`;
+additive) and, in identity, `services/identity/migrations/0026_workspace_residency.sql` (one column,
+`workspaces.data_residency`; additive). R12 needs no migration.
 
 | # | Status | What |
 | --- | --- | --- |
@@ -365,10 +371,11 @@ additive).
 | R5 | Built | `resilience.rs` sorts errors into rate limited, transient (`INTERNAL_ERROR`, `UPSTREAM_UNAVAILABLE`, `*_IN_PROGRESS`, no code, HTTP 5xx) and permanent. Binding reads, `get`, `info`, `createToken`, `create` and `delete` try up to 3 times with exponential backoff and jitter (80 ms base, 400 ms for rate limits, 2 s cap); `fork` and every receive-pack never retry. Git reads (`info/refs`, upload-pack) retry on 429 and 5xx. Per isolate, each namespace has a breaker that opens after 5 transient failures in a row, for 10 s, then lets one probe through. Busy answers reach git as 429 (rate limited) or 503, with `Retry-After: 5`; the site's read RPCs (`tree`, `blob`, `log`, `branches`, `blame`, `compare`) answer an `Outcome` failure saying the git storage is busy; other RPCs answer 503 with the same words. Health is counted by the minute (`store_health`) and served by the `store_health { minutes }` RPC; status.g1t.sh lists **Git storage** through a new `REPOS` service binding (down: 25% or more of at least 5 calls failed, or the breaker refused calls; degraded: rate limited, or a mean call over 1.5 s). |
 | R9 | Built | `log(branch)`, `branches()` and `read_file(ref, path)` are kept in the colo cache under the repository's `refs_version` (5 minutes at most, and only while `refs_cache::usable`), and by commit hash for good; a log by branch also fills the by-hash entry; `readCommit` (parents) is kept for good. Read RPCs open repositories through `read_git`, which sets the version. |
 | R10 | Built in repos; work unchanged | `divergence` works out the target's side once per target head per isolate (`coalesce.rs`: the head under the refs version, then the history by hash, kept 60 s), and what the target changed between two trees once per pair (10 minutes). `readCommit` and logs by hash come from the cache. Work's fan-out (`after_push`, up to 100 pull requests) is unchanged: its 100 `divergence` calls now cost one walk of the target instead of 100. |
-| R7 | Groundwork | `shards.rs`: bindings named in `ARTIFACTS_NAMESPACES` (JSON, binding → namespace; `ARTIFACTS` → `g1t` always there), a repository's namespace kept in its `store` column as `<namespace>/<key>` (no prefix means the `ARTIFACTS` namespace, so every existing key reads the same), new repositories placed by `ARTIFACTS_NEW_REPOS` (comma-separated, spread by an FNV hash of the repository id; names not bound are skipped), forks always in their repository's namespace, `ARTIFACTS_EU_NAMESPACE` reserved for EU residency (no workspace setting yet). Works with only `ARTIFACTS` bound, as today. |
+| R7 | Built; the namespaces are yours to make | `shards.rs`: bindings named in `ARTIFACTS_NAMESPACES` (JSON, binding → namespace; `ARTIFACTS` → `g1t` always there), a repository's namespace kept in its `store` column as `<namespace>/<key>` (no prefix means the `ARTIFACTS` namespace, so every existing key reads the same), forks always in their repository's namespace. **Placing** (`Placement::choose`, loads from `namespaces.rs`): among `ARTIFACTS_NEW_REPOS`, the healthy namespaces (bound, taking writes, not failing, under `ARTIFACTS_NAMESPACE_LIMITS`' `max_repos`, busiest minute under 70% of the 12,000-a-minute limit) within 100 repositories or 5% of the emptiest, spread by an FNV hash of the id; loads are read (one D1 query each for the registry and `store_health`, kept a minute) only when there is more than one to choose from. **Moving** (`moves.rs`): `move_repository` or `scripts/ops/artifacts-namespaces.mjs move` queues one; the hourly sweep pauses writes, copies every ref of the repository and its working copies over git (one streamed upload-pack into one receive-pack each), switches every `store` key in one batch, and deletes the old copies after 7 days. **EU residency**: identity's `workspaces.data_residency`, set by an owner in the workspace's settings (shown only once `storage_options` says an EU namespace takes repositories), read by the repos service at creation only while `ARTIFACTS_EU_NAMESPACE` is set; an EU workspace's repository goes to that namespace or is not made. **Health and limits**: `namespaces` RPC and `scripts/ops/artifacts-namespaces.mjs`. Nothing changes until bindings and variables name new namespaces. See "R7: sharding, moves and EU residency" below. |
 | R8 | Built | `crates/runner/src/clone.rs`: every sandbox clones at `--depth=1` (a full g1t clone took 5.4 s, depth 1 took 3.8 s). Work that merges (catch-up, the merge queue, merge checks, a review's diff) deepens 50, 500, then 5000 commits until the two sides share one, and fetches everything only as the last resort (`share_history`). `G1T_CLONE_DEPTH` (0 or `full` for everything) and `G1T_CLONE_FILTER=blob:none` change it per runner. |
 | R6 | Built; the bucket must exist before it deploys | `pack_cache.rs`: an upload-pack POST with wants and no `have` or `shallow` lines (a fresh clone, the sandboxes' `deepen 1` ones included), uncompressed and at most 1 MiB, is keyed `packs/<repo id>/<refs_version>/<sha256>` over the request normalized: protocol v2 capabilities without `agent=`/`session-id=` and its arguments, each sorted and deduplicated; v0/v1 wants sorted, the first want's capabilities split off, sorted and without `agent=`, then `deepen`/`filter` lines, a flush and `done`. Only while `refs_cache::usable` (the version known, and no push credential out of g1t's hands), so never across a refs change. Looked up after authorization, alongside the free-workspace limits and the kept refs answer; a hit streams from the bucket (`Server-Timing` `pack;desc=hit`). A miss streams the store's 200 to git through a tee that copies it to a fill in `ctx.wait_until` (at most 5 MiB queued between them, 2 fills per isolate, one per key): under 5 MiB it is one `put` once it all arrived; larger, 5 MiB multipart parts completed only after the last part and a check that it is one whole side-band pack (well-formed pkt-lines, `PACK` on channel 1, no `ERR` or channel 3, a closing flush). Over 200 MB, a queue that falls behind, git going away or the store's stream failing lets the fill go and aborts the upload; nothing partial can be read. Meters `pack_cache.hit` (with the bytes served) and `pack_cache.miss` (counted with `record`, bytes added at the end), neither an operation by default; a hit records no `git.fetch`. Storage is behind the `PackStore` port with an R2 adapter (`GIT_PACKS`, bucket `g1t-git-packs`, lifecycle: packs deleted after 7 days, unfinished uploads after 1); without the binding (self-hosted) nothing is kept. |
 | R11 | Built; not yet deployed | Nightly `git bundle` backups to the `g1t-backups` R2 bucket, and a restore drill. Migration `0013_backups.sql` (`repo_backups`, and an `operation_mapping` row). See "R11: backups and the restore drill" below. |
+| R12 | Built; the host is yours to make | `scripts/ops/restore-to-gitstore.mjs` rebuilds every repository from its bundle chain into the git store (`deploy/self-host/gitstore`, now with namespaced keys, `<root>/<namespace>/<name>.git`, and `GITSTORE_READ_ONLY=1`), on the host or over its API, and later lists and reconciles what the fallback took. `fallback.rs`: with `GIT_FALLBACK_URL`, `GIT_FALLBACK_SECRET` and `GIT_FALLBACK_NAMESPACES` set, a namespace's `GitStore` calls go to the git store's API instead of the Artifacts binding (same metering, retries and breaker, its own health as `<namespace>@fallback`), read-only unless `GIT_FALLBACK_WRITES=allow`: writes are refused before they are asked, and say so in words; kept ref listings and packs are not used, nor backups cut. status.g1t.sh shows Git storage degraded meanwhile. See "R12: the fallback store and the outage runbook" below. |
 
 ### R1: reading `scripts/ops/artifacts-usage.mjs`
 
@@ -471,37 +478,144 @@ git refuses that ("expected no other sections to be sent after no 'ready'"). g1t
 an answer after the acknowledgments with a flush, and the client negotiates again. Report it to
 Cloudflare.
 
-### R7: making more namespaces (yours to run, when needed)
+### R7: sharding, moves and EU residency
+
+Every piece is built and off. Production behaves exactly as before until the namespaces below are
+made, bound and named: with only `ARTIFACTS` bound and `ARTIFACTS_NEW_REPOS` empty, new repositories
+go to `g1t`, nothing extra is read from D1 when one is made, and identity is never asked about
+residency.
+
+| Variable (`services/repos/wrangler.jsonc`) | What it does |
+| --- | --- |
+| `ARTIFACTS_NAMESPACES` | JSON, binding to namespace. `ARTIFACTS` is always there (`g1t` unless named). A name without a binding is logged and left out. |
+| `ARTIFACTS_NEW_REPOS` | Comma-separated namespaces new repositories go to. Empty: `g1t`. A name that is not bound is passed over. |
+| `ARTIFACTS_EU_NAMESPACE` | The namespace EU workspaces' new repositories go to. Unset: residency is never read, and the setting is never offered. |
+| `ARTIFACTS_NAMESPACE_LIMITS` | Optional JSON, `{"g1t": {"max_repos": 50000}}`. A namespace at its limit takes no new repositories while another can. |
+
+**Placing a new repository** (`shards.rs` `Placement::choose`, loads from `namespaces.rs`). For a
+workspace that keeps its data anywhere: among the namespaces in `ARTIFACTS_NEW_REPOS`, the healthy
+ones (bound, taking writes, not failing, under `max_repos`, their busiest minute in the last hour
+under 70% of the 12,000-a-minute control-plane limit), and of those the ones within 100 repositories
+or 5% of the emptiest, spread by the id's FNV hash. If none is healthy, the usable ones the same way
+(never a read-only one); if none is usable, `g1t`. Failing means this isolate's breaker is open, or a
+quarter of at least 5 calls in the last 5 minutes failed (`store_health`). Loads cost two D1 queries
+(the registry grouped by namespace, `store_health` for the last hour), kept a minute per isolate, and
+are read only when more than one namespace could take the repository. A pull request's working copy
+always goes where its repository is. For an EU workspace: `ARTIFACTS_EU_NAMESPACE` if it is bound and
+takes writes; otherwise the repository is not made, and the person is told why (409, "This workspace
+keeps its data in the EU, and EU storage cannot take new repositories right now."). It is never placed
+elsewhere.
+
+**EU residency, as a workspace sees it.** Identity keeps `workspaces.data_residency` (NULL for
+anywhere, `eu`), changed by an owner with `set_workspace_residency` and read with
+`workspace_residency`; a change is audited as `workspace.residency_changed`. The workspace's
+**Settings** page shows **Data residency** only when the repos service's `storage_options` says
+`euAvailable` (an EU namespace is bound and takes writes), or when the workspace already chose the EU.
+It applies to repositories made after it is saved, by any path that creates one (the site, the API,
+push to create, imports). Existing repositories stay where they are until moved. A transfer keeps a
+repository's store key, so a repository transferred into an EU workspace stays where it was: move it.
+The guide is `apps/docs/src/content/docs/guides/workspaces.md`, "Data residency". Not in the public
+API or MCP yet.
+
+**Moving a repository** (`moves.rs`, migration 0014). It keeps its id, path, rows and history; only
+`store` changes.
 
 ```sh
-# A US shard, unrestricted like today's g1t, and an EU one.
-curl -X POST "https://api.cloudflare.com/client/v4/accounts/1e6f2cffa3f445920836e8ebe446bb58/artifacts/namespaces" \
-  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
-  --data '{"namespace":"g1t-us-1"}'
-curl -X POST "https://api.cloudflare.com/client/v4/accounts/1e6f2cffa3f445920836e8ebe446bb58/artifacts/namespaces" \
-  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
-  --data '{"namespace":"g1t-eu","jurisdiction":"eu"}'
+node scripts/ops/artifacts-namespaces.mjs move acme/rocket g1t-us-1   # queues it (one INSERT)
+node scripts/ops/artifacts-namespaces.mjs moves                       # queued, moving, moved, failed, cleaned, diverged
 ```
 
-Then in `services/repos/wrangler.jsonc`:
+Services can queue one with the `move_repository { repo_id, namespace, requested_by? }` RPC, which
+checks it first, and list them with `repository_moves { limit? }`. The hourly sweep (`23 * * * *`)
+runs one queued move per hour:
 
-```jsonc
-"artifacts": [
-  { "binding": "ARTIFACTS", "namespace": "g1t" },
-  { "binding": "ARTIFACTS_1", "namespace": "g1t-us-1" },
-  { "binding": "ARTIFACTS_EU", "namespace": "g1t-eu" }
-],
-"vars": {
-  "ARTIFACTS_NAMESPACES": "{\"ARTIFACTS\":\"g1t\",\"ARTIFACTS_1\":\"g1t-us-1\",\"ARTIFACTS_EU\":\"g1t-eu\"}",
-  "ARTIFACTS_NEW_REPOS": "g1t,g1t-us-1",   // new repositories spread over both
-  "ARTIFACTS_EU_NAMESPACE": "g1t-eu"       // used once a workspace can choose the EU
-}
+1. Writes to the repository and every working copy of its pull requests are paused
+   (`writes_paused_until`, 20 minutes at most, so a move that dies releases them on its own). A push
+   waits up to 20 seconds, polling every 2, and then is told: "acme/rocket is paused for maintenance
+   (moving to g1t-us-1); changes to it wait a few minutes. Try again shortly." Merges, catch-ups,
+   commits from the web, branch changes, mirror catch-ups, new pull request working copies and push
+   credentials for sandboxes wait the same way. Removing a working copy waits for the next sweep.
+2. Push credentials already handed out reach the store directly, so the move waits for
+   `refs_open_until` to pass (up to 7 minutes in the run; longer goes back in the queue), then 5
+   seconds for pushes in flight.
+3. Each one is made in the new namespace under the same name, and every ref is copied with one
+   upload-pack from the old copy streamed into one receive-pack to the new (`land.rs` `copy_refs`),
+   never held in memory. Until both list the same refs and the old one did not move during the copy,
+   only what changed is copied again, three rounds at most. Removed working copies have nothing to
+   copy: their rows follow.
+4. One D1 batch points every row at its new key, moves its `refs_version` (so no kept ref listing,
+   pack or versioned read is used again), lifts the pause, and records each copy's refs in
+   `repo_move_copies`.
+5. After 7 days the sweep deletes each old copy whose refs still say what was copied. One that
+   changed (a push that slipped past the pause and landed in the old copy) is kept, and the move is
+   marked `diverged` with the keys; push its refs to the new copy by hand. While an old copy is kept,
+   its name stays taken, so no new repository adopts it.
+
+A move that fails before step 4 deletes what it made in the new namespace, lifts the pause, and is
+tried again in the next sweep, three times in all. The copy is metered like landing
+(`internal.git.fetch` and `internal.git.receive_pack`, billable 1 each to the repository's workspace
+by default), plus `binding.create`. A copy is bounded by the cron's wall time (15 minutes), which
+streams well past the 1 GB repository limit. Not verified against Artifacts yet: run the first move on
+a test repository and compare `git ls-remote` of both copies.
+
+**Health and limits.** `namespaces` (RPC) answers each bound namespace's repositories, working copies
+and stored bytes from the registry; its busiest minute in the last hour against 12,000 a minute;
+calls, errors and rate limits in the last hour; whether it is failing, on the fallback, writable,
+default, EU, and takes new repositories; and its `max_repos`.
+
+```sh
+node scripts/ops/artifacts-namespaces.mjs               # a table, and a line for anything to act on (exit 1 then)
+node scripts/ops/artifacts-namespaces.mjs --cloudflare  # also Cloudflare's event counts and each namespace's jurisdiction
+node scripts/ops/artifacts-namespaces.mjs --json
 ```
 
-Existing repositories stay where they are (`store` without a prefix). Deploy the binding before
-naming its namespace in `ARTIFACTS_NEW_REPOS`; a name that is not bound is skipped, never used.
-Moving an existing repository between namespaces is not built (a clone and push, then a `store`
-update).
+It reads `services/repos/wrangler.jsonc` for what is configured, so it says what the next deploy
+will do: a namespace named but not bound or not made, an EU namespace made without the EU
+jurisdiction, one past 70% of the limit or at its `max_repos`, one rate limited, one served from the
+fallback.
+
+#### What you must create (R7)
+
+None of this is needed until one namespace is not enough, or an EU customer asks.
+
+1. Make the namespaces, with a token that can edit Artifacts. A namespace's jurisdiction is fixed when
+   it is made, and is not part of the binding (Wrangler's schema has only `binding`, `namespace` and
+   `remote`):
+
+   ```sh
+   # A US shard, unrestricted like today's g1t, and an EU one.
+   curl -X POST "https://api.cloudflare.com/client/v4/accounts/1e6f2cffa3f445920836e8ebe446bb58/artifacts/namespaces" \
+     -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+     --data '{"namespace":"g1t-us-1"}'
+   curl -X POST "https://api.cloudflare.com/client/v4/accounts/1e6f2cffa3f445920836e8ebe446bb58/artifacts/namespaces" \
+     -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+     --data '{"namespace":"g1t-eu","jurisdiction":"eu"}'
+   node scripts/ops/artifacts-namespaces.mjs --cloudflare   # both listed, g1t-eu with jurisdiction eu
+   ```
+
+2. Bind them, and deploy `g1t-repos` (migrations 0014 and identity's 0026 go first, as the deploy tool
+   always does). Nothing is placed in them yet:
+
+   ```jsonc
+   "artifacts": [
+     { "binding": "ARTIFACTS", "namespace": "g1t" },
+     { "binding": "ARTIFACTS_1", "namespace": "g1t-us-1" },
+     { "binding": "ARTIFACTS_EU", "namespace": "g1t-eu" }
+   ],
+   "vars": {
+     "ARTIFACTS_NAMESPACES": "{\"ARTIFACTS\":\"g1t\",\"ARTIFACTS_1\":\"g1t-us-1\",\"ARTIFACTS_EU\":\"g1t-eu\"}",
+     "ARTIFACTS_NEW_REPOS": ""
+   }
+   ```
+
+3. Name them, and deploy again: `"ARTIFACTS_NEW_REPOS": "g1t,g1t-us-1"` spreads new repositories over
+   both (the emptier first), and `"ARTIFACTS_EU_NAMESPACE": "g1t-eu"` puts **Data residency** in every
+   workspace's settings. Optionally `"ARTIFACTS_NAMESPACE_LIMITS": "{\"g1t\":{\"max_repos\":50000}}"`.
+4. Move a test repository there and back (`move`, then `moves` after the next :23), and compare both
+   copies with `git ls-remote`.
+
+More shards later are the same steps (`g1t-us-2`, `ARTIFACTS_2`). Deploy a binding before naming its
+namespace anywhere; a name that is not bound is passed over, never used.
 
 ### R11: backups and the restore drill
 
@@ -609,8 +723,9 @@ difference is the backup's. Run it after the first night, then monthly, and afte
    them).
 5. Turn protection back on, and run the drill again: every ref now matches the live repository.
 
-When the repository is gone from the store itself (its key answers not found), there is no
-operator call yet to make an empty repository under an existing row's key; that is part of R12.
+When the repository is gone from the store itself (its key answers not found), there is still no
+operator call to make an empty repository under an existing row's key in Artifacts. Until there is,
+the fallback store can serve it from its backup (R12).
 
 To deploy: make the bucket (`npx wrangler r2 bucket create g1t-backups`, a setup step of `repos`
 in `deploy/stack.jsonc`), then migration 0013, then `g1t-repos` (the `BACKUPS` binding and the
@@ -624,7 +739,204 @@ ref (issues, pull requests and the rest live in D1, which has its own Time Trave
 clones the whole repository, so a night reads each changed repository in full from the store;
 incremental bundles save storage, not reads.
 
+### R12: the fallback store and the outage runbook
+
+A cold fallback, not a hot standby: when Artifacts is down for a namespace, g1t can serve that
+namespace's repositories from the self-hosted git store (`deploy/self-host/gitstore`), rebuilt from the
+nightly backups (R11). Reads work from the last backup; writes wait, unless you choose otherwise. It is
+switched by configuration, per namespace, in seconds and without a build.
+
+| | Kept restored nightly (recommended) | Restored when needed |
+| --- | --- | --- |
+| Data served | As of the last backup: at most about a day old | The same |
+| Time to switch | Minutes: a last restore pass, then one secret | Download plus restore: about an hour per 100 GB of bundles, 4 at a time |
+| Cost | The host, always on | The host only while it is needed, if you make it then |
+
+**The pieces.**
+
+- `scripts/ops/restore-to-gitstore.mjs restore` rebuilds each repository from its chain as the restore
+  drill does (each bundle checked against its size and SHA-256, `git bundle verify`, fetched in order,
+  refs set to the last entry's, `git fsck --connectivity-only`) into `<root>/<namespace>/<name>.git`,
+  configured as the git store configures its own, with a `g1t.json` that records what it was restored
+  from. A second run skips repositories already restored from the same last backup, so a nightly run
+  only does what changed. `--into <root>` writes on the host; `--gitstore <url>` (with `GITSTORE_SECRET`)
+  goes through the store's API and git, for a store that is not read-only. `--bundles <dir>` reads a
+  local copy of the bucket; `--offline` takes the repositories from the manifests in it, so the host
+  needs no database access (a repository moved between namespaces since its last backup is restored
+  under its old namespace until the next backup records the new one).
+- The git store (`deploy/self-host/gitstore/server.mjs`) now takes namespaced keys
+  (`g1t-us-1/acme--rocket`, served at `/git/g1t-us-1/acme--rocket.git`, the shape Artifacts gives
+  remotes) beside plain ones, and `GITSTORE_READ_ONLY=1` refuses pushes, write tokens, and making,
+  forking or deleting repositories.
+- `services/repos/src/fallback.rs` and `store.rs`: for each namespace in `GIT_FALLBACK_NAMESPACES`
+  (`*` for all), the `GitStore` sends every call it would make on the Artifacts binding (`create`,
+  `get`, `delete`, `info`, `createToken`, `log`, `readCommit`, `readTree`, `readBlob`, `readFile`,
+  `fork`) to the store's API at `GIT_FALLBACK_URL` with `GIT_FALLBACK_SECRET`, and git's smart HTTP to
+  its remotes. Calls keep their retries and breaker, counted as `<namespace>@fallback` in
+  `store_health`, never as Artifacts' own health, and are not metered as binding calls (git requests
+  still are). Credentials are kept apart from Artifacts' (`fallback:<key>`). Answers kept under a refs
+  version (ref listings, packs, logs and files by branch) are neither used nor kept, since the
+  fallback may be behind them; objects named by their hash are.
+- Read-only, the default (`GIT_FALLBACK_WRITES` unset or `refuse`): a write is refused before it is
+  asked. Git hears 503 with `Retry-After: 300` and "g1t's git storage is read-only while it
+  recovers: clones, fetches and pages work, and pushes, merges and new repositories wait until it is
+  back."; the site's reads work, and its writes fail with the same words. New repositories are placed
+  in a namespace that still takes writes, if `ARTIFACTS_NEW_REPOS` has one. Backups are not cut from a
+  switched namespace (they would record an older state). status.g1t.sh shows **Git storage**
+  degraded: "Served from the backup store: reads work, pushes and merges wait".
+
+**What does not work while switched.** Working copies of open pull requests are not backed up, so
+their changes and branches do not read; working copies already removed read from their repository's
+`refs/pull/<id>/head` as usual. Anything pushed after the last backup is not there until Artifacts is
+back. Agent runs that only read work (their sandboxes clone from the fallback through handed-out
+credentials); runs that push wait. Mirror catch-ups wait; pushes out to mirrors work.
+
+#### The host
+
+| Need | Why | What |
+| --- | --- | --- |
+| Outside Cloudflare | It is the exit if Artifacts, or the account, is the problem | A VM with a provider of your choice |
+| Persistent disk | Repositories and a copy of the bucket live there; Containers' disk is ephemeral and at most 20 GB | Block storage or a local SSD that survives reboots |
+| Disk size | Restored repositories about equal the newest full bundles; the bucket's copy holds up to two chains | 2.5 times the bucket's size; today 100 GB is ample, at 3,000 workspaces (about 250 GB stored, section 5) 1 TB |
+| Near the repos Worker | Every read crosses to it; `g1t-repos` runs near D1 in WNAM | US West, for example Oregon. The EU namespace's fallback on a second, EU host, so EU data stays in the EU |
+| HTTPS on a public name | Workers reach it with `fetch` | Caddy in front of port 8080, a name such as `fallback-git.g1t.sh` |
+| Software | | Docker (the git store's image), or Node 24 and git; `rclone` |
+| CPU and memory | `git upload-pack` for clones, restores 4 at a time | 4 vCPU, 8 GB |
+
+**What it costs**, at list prices for such a host (check before buying): a 4 vCPU, 8 GB VM is about
+$15 to $50 a month depending on the provider; block storage $0.04 to $0.10 per GB-month, so $4 to $10
+a month for 100 GB today and $40 to $100 for 1 TB at launch scale. Reading the bucket costs nothing in
+egress (R2 charges none) and a few cents a month in R2 operations for a nightly `rclone sync`. In all,
+about $20 to $60 a month now and $60 to $150 at 3,000 workspaces, per host; the EU host only once there
+is an EU namespace.
+
+#### What you must create (R12)
+
+1. The host above, with a DNS name and TLS.
+2. An R2 API token that can only read `g1t-backups` (Cloudflare dashboard, R2, Manage API tokens:
+   Object Read, that bucket), for `rclone` on the host:
+
+   ```ini
+   # ~/.config/rclone/rclone.conf on the host
+   [r2]
+   type = s3
+   provider = Cloudflare
+   access_key_id = <the token's access key id>
+   secret_access_key = <its secret>
+   endpoint = https://1e6f2cffa3f445920836e8ebe446bb58.r2.cloudflarestorage.com
+   ```
+
+3. The git store and its secret, read-only from the start:
+
+   ```sh
+   git clone https://g1t.sh/flagon-io/g1t.git /opt/g1t   # node, git and rclone installed
+   openssl rand -hex 32 > /srv/gitstore.secret
+   GITSTORE_ROOT=/srv/gitstore GITSTORE_PORT=8080 GITSTORE_URL=https://fallback-git.g1t.sh \
+     GITSTORE_SECRET="$(cat /srv/gitstore.secret)" GITSTORE_READ_ONLY=1 \
+     node /opt/g1t/deploy/self-host/gitstore/server.mjs     # as a systemd unit, or the image in deploy/self-host/gitstore
+   # Caddyfile: fallback-git.g1t.sh { reverse_proxy 127.0.0.1:8080 }
+   ```
+
+4. The first restore, then every night after the backups (02:53 UTC) have run, say at 07:00 UTC:
+
+   ```sh
+   rclone sync r2:g1t-backups /srv/backups
+   node /opt/g1t/scripts/ops/restore-to-gitstore.mjs restore --into /srv/gitstore --bundles /srv/backups --offline --jobs 4
+   ```
+
+5. Tell `g1t-repos` where it is, ahead of time. These change nothing until a namespace is named:
+
+   ```sh
+   cd services/repos
+   echo https://fallback-git.g1t.sh | npx wrangler secret put GIT_FALLBACK_URL
+   npx wrangler secret put GIT_FALLBACK_SECRET            # paste /srv/gitstore.secret
+   ```
+
+6. Drill it once a quarter on a namespace that holds only test repositories (make `g1t-drill` as in
+   R7, bind it, move a test repository there), with the runbook below.
+
+#### Runbook: an Artifacts outage
+
+**Detect.**
+
+1. status.g1t.sh shows **Git storage** down, or `node scripts/ops/artifacts-namespaces.mjs` shows a
+   namespace failing (errors, `rejected` calls from an open breaker). `npx wrangler tail g1t-repos`
+   shows `git store <namespace>: ... failed`.
+2. Check Cloudflare's status page and the Artifacts metrics (`serverError`, `rateLimited`).
+3. Switch when it has lasted 15 minutes with no sign of ending, or at once if Cloudflare says it will
+   be long. A short blip needs nothing: retries and the breaker already answer git with 503 and
+   `Retry-After`.
+
+**Switch.**
+
+1. On the host: `curl -s https://fallback-git.g1t.sh/healthz` answers `ok read-only`. If the nightly
+   restore did not run today, run step 4 of the setup; a run over a restored store only does what
+   changed.
+2. Switch the failing namespace (or `*`). A secret takes effect in seconds, with no build:
+
+   ```sh
+   cd services/repos
+   echo g1t | npx wrangler secret put GIT_FALLBACK_NAMESPACES
+   ```
+
+3. Check: `git ls-remote https://g1t.sh/flagon-io/hello.git` answers; a repository page loads;
+   status.g1t.sh shows Git storage degraded; `artifacts-namespaces.mjs` lists `@fallback` calls.
+4. Open an incident on status.g1t.sh: reads work from last night's backup; pushes, merges and new
+   repositories wait.
+
+**Serve reads.** Nothing more to do. Watch the host's disk and load; `upload-pack` is the work.
+
+**Take writes, only if the outage will be long.** Everything pushed then must be sent back
+afterwards, and anything pushed to Artifacts after the last backup will conflict with it.
+
+```sh
+# On the host: restart the git store without GITSTORE_READ_ONLY. Then:
+echo allow | npx wrangler secret put GIT_FALLBACK_WRITES
+```
+
+**Switch back**, once Artifacts answers again (`artifacts-namespaces.mjs` shows no errors from it;
+the namespace's own calls are none while switched, so check Cloudflare's status and the metrics):
+
+1. If writes were taken: stop them first (`echo refuse | npx wrangler secret put GIT_FALLBACK_WRITES`,
+   and restart the git store with `GITSTORE_READ_ONLY=1`), then list and send back what came in, while
+   the namespace is still switched, so nothing else writes to Artifacts meanwhile:
+
+   ```sh
+   node scripts/ops/restore-to-gitstore.mjs changed --into /srv/gitstore
+   CLOUDFLARE_API_TOKEN=<Artifacts edit, D1 edit> node scripts/ops/restore-to-gitstore.mjs reconcile --into /srv/gitstore
+   ```
+
+   A ref Artifacts still has as it was backed up takes the fallback's value (leased on that value, so
+   nothing newer is overwritten). One that moved on both sides keeps Artifacts' value, and the
+   fallback's goes beside it as `refs/fallback/<rest of the name>` (exit 3 says some did): tell the
+   repository's owners to merge it. Each reconciled repository's `refs_version` is moved. To push,
+   `reconcile` mints a write token with Cloudflare's REST API
+   (`POST /accounts/<id>/artifacts/namespaces/<ns>/repos/<name>/tokens`, taken to mirror the binding's
+   `createToken`); that endpoint is not verified yet, so run `reconcile` on one repository in the
+   drill before relying on it.
+2. Switch back: `npx wrangler secret delete GIT_FALLBACK_NAMESPACES` (and `GIT_FALLBACK_WRITES`).
+3. Check as in "Switch", step 3: Git storage is no longer degraded once the fallback's calls age out
+   of the five-minute window.
+4. Backups resume the next night. Close the incident.
+
+Tested by `npm run test:ops` (`scripts/ops/restore-to-gitstore.test.mjs`): bundles cut as the runner
+cuts them are restored into a store's root, served read-only by the git store itself (a namespaced
+remote, a read token, a clone; write tokens and new repositories refused), pushed to, listed by
+`changed`, reconciled into a live copy, and reconciled again after the live copy moved too; and a
+restore through the store's API. `cargo test` covers the routing, answers, read-only refusals and
+kept credentials (`fallback.rs`, `store.rs`, `resilience.rs`). Not yet run against production: the
+switch itself, which wants the host.
+
 ### Deploy order and what to watch
+
+R7 and R12 (2026-10-07): migrations `repos/0014` and `identity/0026` first (the registry reads
+`writes_paused_until`, and `claim_store_key` reads `repo_move_copies`, so the new repos code must not
+run before 0014); then `g1t-repos`, `g1t-identity`, `g1t-web` and `g1t-status`. No new bindings or
+variables: with today's configuration nothing is placed, moved, offered or switched. Watch that
+repository creation still answers as fast (it reads nothing new), and that `repository_moves` stays
+empty.
+
+For 2026-10-06's work:
 
 1. Migration 0011 (the deploy tool applies migrations first). `forks_of` reads `retired_at`, so
    the new code must not run before it.

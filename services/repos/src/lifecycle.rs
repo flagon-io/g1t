@@ -1273,7 +1273,8 @@ impl<S: GitStore> Repos<S> {
         if let Some(refusal) = archived_refusal(&repo) {
             return Ok(Err(refusal));
         }
-        Ok(Ok(repo))
+        // Moving between namespaces: wait for it (moves.rs).
+        self.unpaused(repo).await
     }
 
     /// `set_default_branch`: see `g1t_contracts::repos::SetDefaultBranchArgs`.

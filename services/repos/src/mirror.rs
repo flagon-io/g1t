@@ -416,6 +416,15 @@ impl<S: GitStore> Repos<S> {
         let Some(url) = import::clean_url(&a.url) else {
             return Ok(Outcome::fail(FailureCode::Invalid, "That is not an https repository address."));
         };
+        // Catching up writes: it waits for a move between namespaces (moves.rs).
+        let repo = if a.direction == MirrorDirection::Pull {
+            match self.unpaused(repo).await? {
+                Ok(repo) => repo,
+                Err((code, message)) => return Ok(Outcome::fail(code, message)),
+            }
+        } else {
+            repo
+        };
         let scope = match a.direction {
             MirrorDirection::Pull => Scope::Write,
             MirrorDirection::Push => Scope::Read,

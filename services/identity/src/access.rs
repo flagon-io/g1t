@@ -1059,6 +1059,71 @@ impl Identity {
         Ok(Outcome::Ok(a.base_permission))
     }
 
+    /// `workspace_residency`: where a workspace keeps its repositories'
+    /// git data, for the repos service as it places a new one, and for its
+    /// settings page. Null when there is no such workspace.
+    pub async fn workspace_residency(&self, a: g1t_contracts::identity::SlugArgs) -> Result<Option<g1t_contracts::identity::DataResidency>> {
+        #[derive(Deserialize)]
+        struct Row {
+            #[serde(default)]
+            data_residency: Option<String>,
+        }
+        let row = self
+            .db
+            .prepare("SELECT data_residency FROM workspaces WHERE slug = ? AND deleted_at IS NULL")
+            .bind(&[a.slug.trim().to_lowercase().into()])?
+            .first::<Row>(None)
+            .await?;
+        Ok(row.map(|row| {
+            row.data_residency
+                .as_deref()
+                .and_then(g1t_contracts::identity::DataResidency::parse)
+                .unwrap_or_default()
+        }))
+    }
+
+    /// `set_workspace_residency`: owners only. Applies to repositories
+    /// made from then on; those it has stay where they are. Whether the EU
+    /// can be chosen is the repos service's to say (`storage_options`);
+    /// the site offers it only then, and the repos service refuses to
+    /// place an EU workspace's repository anywhere else.
+    pub async fn set_workspace_residency(
+        &self,
+        a: g1t_contracts::identity::SetResidencyArgs,
+    ) -> Result<Outcome<g1t_contracts::identity::DataResidency>> {
+        let slug = a.slug.trim().to_lowercase();
+        if !crate::security::is_person(&a.actor) || a.actor.role_in(&slug) != Some(Role::Owner) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can change where a workspace keeps its data."));
+        }
+        if !a.actor.verified {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Confirm your email address before changing where the workspace keeps its data."));
+        }
+        let Some(previous) = self.workspace_residency(g1t_contracts::identity::SlugArgs { slug: slug.clone() }).await? else {
+            return Ok(Outcome::fail(FailureCode::NotFound, "Workspace not found."));
+        };
+        if previous == a.residency {
+            return Ok(Outcome::Ok(previous));
+        }
+        let stored = match a.residency {
+            g1t_contracts::identity::DataResidency::Anywhere => JsValue::NULL,
+            other => other.as_str().into(),
+        };
+        self.db
+            .prepare("UPDATE workspaces SET data_residency = ? WHERE slug = ? AND deleted_at IS NULL")
+            .bind(&[stored, slug.as_str().into()])?
+            .run()
+            .await?;
+        self.audit_workspace(
+            &a.actor,
+            "workspace.residency_changed",
+            &slug,
+            Surface::Web,
+            format!("Changed where new repositories keep their data from {} to {}", previous.as_str(), a.residency.as_str()),
+        )
+        .await;
+        Ok(Outcome::Ok(a.residency))
+    }
+
     pub async fn outside_collaborators(&self, a: OutsideCollaboratorsArgs) -> Result<Outcome<Vec<OutsideCollaborator>>> {
         let slug = a.slug.trim().to_lowercase();
         if !a.viewer.as_ref().is_some_and(|viewer| viewer.role_in(&slug) == Some(Role::Owner)) {

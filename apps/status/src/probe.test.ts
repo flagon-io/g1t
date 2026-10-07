@@ -61,6 +61,9 @@ test("git storage is judged by how its calls went, and quiet is up", async () =>
   // Rate limited: degraded, not down.
   const limited = judgeStorage(report(row(100, 2, 2, 0, 10_000)));
   assert.deepEqual([limited.ok, limited.degraded], [true, "Rate limited 2 times in 5 minutes"]);
+  // Served from the fallback store: degraded, whatever its own calls did.
+  const onFallback = judgeStorage(report({ ...row(20, 0, 0, 0, 200), store: "g1t@fallback" }));
+  assert.deepEqual([onFallback.ok, onFallback.degraded], [true, "Served from the backup store: reads work, pushes and merges wait"]);
   const viaCheck = await runCheck({ kind: "storage" }, { fetch: answer(200), billing: null, storage: async () => report(row(1, 0, 0, 0, 5)) });
   assert.deepEqual(viaCheck, { ok: true, ms: 5 });
   assert.equal(await runCheck({ kind: "storage" }, { fetch: answer(200), billing: null }), null);

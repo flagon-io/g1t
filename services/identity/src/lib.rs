@@ -791,6 +791,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "respond_repo_invitation" => reply(&identity.respond_repo_invitation(args(body)?).await?),
         "revoke_repo_invitation" => reply(&identity.revoke_repo_invitation(args(body)?).await?),
         "set_base_permission" => reply(&identity.set_base_permission(args(body)?).await?),
+        // Where a workspace keeps its repositories' git data (EU residency).
+        "workspace_residency" => reply(&identity.workspace_residency(args(body)?).await?),
+        "set_workspace_residency" => reply(&identity.set_workspace_residency(args(body)?).await?),
         "outside_collaborators" => reply(&identity.outside_collaborators(args(body)?).await?),
         "forget_repo_access" => reply(&identity.forget_repo_access(args(body)?).await?),
         // Staff only: sudo.g1t.sh, over its service binding. See admin.rs.

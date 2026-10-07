@@ -403,6 +403,12 @@ impl<S: GitStore> Repos<S> {
         if let Some((code, message)) = crate::lifecycle::archived_refusal(&target) {
             return Ok(Outcome::fail(code, message));
         }
+        // Moving between namespaces: wait for it (moves.rs). Both are read
+        // again once it is done, for their new keys.
+        let (source, target) = match (self.unpaused(source).await?, self.unpaused(target).await?) {
+            (Ok(source), Ok(target)) => (source, target),
+            (Err((code, message)), _) | (_, Err((code, message))) => return Ok(Outcome::fail(code, message)),
+        };
         let from_fork = source.id != target.id;
         let base_branch = target.default_branch.clone();
         let branch = a.branch.clone().unwrap_or_else(|| base_branch.clone());

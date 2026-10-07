@@ -114,6 +114,12 @@ export type CreateRepoInput = {
   importUrl?: string;
 };
 
+/**
+ * Where repositories may be kept. `euAvailable`: an EU namespace takes new
+ * repositories, so a workspace may keep its data in the EU.
+ */
+export type StorageOptions = { euAvailable: boolean };
+
 /** Repositories: metadata, contents and git access. */
 export interface ReposApi {
   get(path: RepoPath, viewer: Viewer): Promise<Result<Repo>>;
@@ -197,6 +203,8 @@ export interface ReposApi {
   resolveBranch(repoId: string, branch: string): Promise<string | null>;
   /** Whether a repository is archived or deleted; an unknown id answers as deleted. */
   statusById(id: string): Promise<RepoStatus>;
+  /** What a workspace may choose about where its repositories are kept. */
+  storageOptions(): Promise<StorageOptions>;
   /**
    * Moves the repository to the workspace `to`, keeping its name, id and
    * everything under it. The actor must own both workspaces. The old path
