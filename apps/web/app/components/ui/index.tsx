@@ -1,8 +1,9 @@
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, LoaderCircle } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
-import { Link, type LinkProps, NavLink, useLocation } from "react-router";
+import { Link, type LinkProps, NavLink, useLocation, useNavigation } from "react-router";
 
 import { isWaitingMessage, linkPaths } from "../../lib/compute";
+import { type Submission, isPending } from "../../lib/pending";
 import { Mark } from "../logo";
 
 export function Field({
@@ -121,6 +122,70 @@ export function Button({
 }: ComponentProps<"button"> & { variant?: Variant }) {
   return (
     <button {...props} className={`${BUTTON_BASE} ${BUTTON_VARIANTS[variant]}`} />
+  );
+}
+
+/**
+ * Whether the submission `fields` names is still working (lib/pending.ts):
+ * the page's own navigation, or `fetcher`'s when the form is a fetcher's.
+ */
+export function usePending(fields?: Record<string, string | null | undefined>, fetcher?: Submission): boolean {
+  const navigation = useNavigation();
+  return isPending(fetcher ?? navigation, fields);
+}
+
+/**
+ * A form's submit button that says it is working: turned off, with a
+ * spinner and `pending` ("Saving…") in place of its words, from the moment
+ * it is pressed until the page has loaded what it changed. Its own
+ * `name`/`value` say which submission is its; `match` names it otherwise,
+ * such as the form's hidden `intent`. `fetcher` when the form is a
+ * fetcher's. `className` replaces the button look, for icon buttons, and
+ * `icon` says the spinner takes the place of everything inside it. Words
+ * with a leading icon should pass `pending`, so the spinner replaces both.
+ */
+export function SubmitButton({
+  variant = "primary",
+  pending,
+  match,
+  fetcher,
+  busy,
+  icon,
+  disabled,
+  className,
+  children,
+  ...props
+}: Omit<ComponentProps<"button">, "type"> & {
+  variant?: Variant;
+  /** The words while it works, such as "Saving…"; its own words when absent. */
+  pending?: ReactNode;
+  match?: Record<string, string | null | undefined>;
+  fetcher?: Submission;
+  /** Working for a reason this button cannot see by itself. */
+  busy?: boolean;
+  /** An icon button: while it works, the spinner is all it shows. */
+  icon?: boolean;
+}) {
+  const own =
+    typeof props.name === "string" && props.value != null ? { [props.name]: String(props.value) } : undefined;
+  const working = usePending({ ...own, ...match }, fetcher) || Boolean(busy);
+  return (
+    <button
+      {...props}
+      type="submit"
+      disabled={disabled || working}
+      aria-busy={working || undefined}
+      className={className ?? `${BUTTON_BASE} ${BUTTON_VARIANTS[variant]}`}
+    >
+      {working ? (
+        <>
+          <LoaderCircle size={14} aria-hidden="true" className="shrink-0 animate-spin" />
+          {icon ? null : (pending ?? children)}
+        </>
+      ) : (
+        children
+      )}
+    </button>
   );
 }
 
