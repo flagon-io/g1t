@@ -428,7 +428,7 @@ impl Billing {
         #[derive(serde::Deserialize)]
         struct Totals {
             spent: Option<i64>,
-            covered: Option<i64>,
+            g1t_cost: Option<i64>,
             cost: Option<i64>,
             provider: Option<i64>,
             runs: Option<u32>,
@@ -439,7 +439,7 @@ impl Billing {
                 .prepare(
                     "SELECT
                        -SUM(CASE WHEN kind = 'usage' THEN amount_micros END) AS spent,
-                       SUM(CASE WHEN kind = 'usage' THEN credit_micros + trial_micros + oss_micros + given_micros END) AS covered,
+                       SUM(CASE WHEN kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' THEN cost_micros END) AS g1t_cost,
                        SUM(CASE WHEN kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' THEN cost_micros END) AS cost,
                        SUM(CASE WHEN kind = 'usage' AND billed_to = 'workspace' THEN cost_micros END) AS provider,
                        SUM(CASE WHEN kind = 'usage' THEN 1 ELSE 0 END) AS runs,
@@ -465,7 +465,7 @@ impl Billing {
         .await?;
         let totals = totals.unwrap_or(Totals {
             spent: None,
-            covered: None,
+            g1t_cost: None,
             cost: None,
             provider: None,
             runs: None,
@@ -473,7 +473,11 @@ impl Billing {
         });
         Ok(Outcome::Ok(Usage {
             spent_micros: totals.spent.unwrap_or_default(),
-            covered_micros: totals.covered.unwrap_or_default(),
+            // At price, what g1t's usage came to, less what was charged: the
+            // part the included usage, the trial, a pool, or a free period paid.
+            covered_micros: (crate::credits::with_margin(totals.g1t_cost.unwrap_or_default(), self.margin_percent)
+                - totals.spent.unwrap_or_default())
+            .max(0),
             cost_micros: totals.cost.unwrap_or_default(),
             provider_micros: totals.provider.unwrap_or_default(),
             used_micros: totals.cost.unwrap_or_default() + totals.provider.unwrap_or_default(),

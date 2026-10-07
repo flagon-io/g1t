@@ -324,9 +324,9 @@ pub struct Usage {
     pub since: String,
     /// Charged, including g1t's margin.
     pub spent_micros: i64,
-    /// What paid for usage before it was charged, at price: the plan's
-    /// included usage, the trial, the open-source pool and what g1t
-    /// covered. Usage at price is `spent_micros` plus this.
+    /// What g1t's usage came to at price, less what was charged: the plan's
+    /// included usage, the trial, a pool or a free period paid it. Usage at
+    /// price is `spent_micros` plus this.
     #[serde(default)]
     pub covered_micros: i64,
     /// What g1t's model provider charged, before the margin.

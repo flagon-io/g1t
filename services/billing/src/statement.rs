@@ -269,6 +269,8 @@ impl Billing {
                 "SELECT {METER_SQL} AS meter, COUNT(*) AS count, SUM(cost_micros) AS cost
                  FROM ledger WHERE workspace = ?1 AND kind = 'usage' AND created_at >= ?2 AND created_at < ?3
                    AND COALESCE(reference, '') NOT LIKE 'deployments/%'
+                   -- Runs on the workspace's own model provider are its provider's to bill, never g1t's.
+                   AND COALESCE(billed_to, 'g1t') = 'g1t'
                  GROUP BY 1"
             ))
             .bind(&[workspace.as_str().into(), from.as_str().into(), until.as_str().into()])?

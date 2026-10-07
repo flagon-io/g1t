@@ -1014,7 +1014,7 @@ export type Usage = {
   since: string;
   /** Charged, including g1t's margin. */
   spentMicros: number;
-  /** What paid for usage before it was charged, at price: the plan's included usage, the trial, the open-source pool, what g1t covered. Usage at price is `spentMicros` plus this. */
+  /** What g1t's usage came to at price, less what was charged: the plan's included usage, the trial, a pool or a free period paid it. Usage at price is `spentMicros` plus this. */
   coveredMicros?: number;
   /** What g1t's model provider charged, before the margin. */
   costMicros: number;
