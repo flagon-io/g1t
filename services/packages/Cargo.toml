@@ -3,7 +3,7 @@ name = "g1t-packages"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
-description = "Package registries beside the code: container images over OCI Distribution, then npm, Composer, Cargo and Go."
+description = "Package registries beside the code: container images over OCI Distribution, npm, Composer, Cargo, Go, Maven, NuGet and RubyGems."
 
 [lib]
 crate-type = ["cdylib"]
@@ -20,6 +20,7 @@ hex = "0.4"
 hmac = "0.12"
 sha2 = { version = "0.10", features = ["compress"] }
 sha1 = "0.10"
+md5 = "0.8"
 miniz_oxide = "0.9"
 
 # wasm-opt at -O1: about the same gzipped size as -O in a tenth of the

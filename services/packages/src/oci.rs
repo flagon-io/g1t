@@ -975,10 +975,11 @@ impl Packages {
             ..self.event_of(package)
         };
         self.announce("package.version_deleted", package, event, caller).await;
-        // npm and Cargo name a version by its number; an image by its digest.
+        // An image (and a Composer version, by its commit) is named by its
+        // digest; every other package by its version.
         let path = if package.ecosystem == "npm" {
             format!("@{}/{}@{}", package.workspace, package.name, version.version)
-        } else if package.ecosystem == "cargo" {
+        } else if !matches!(package.ecosystem.as_str(), "container" | "composer") {
             format!("{}/{}@{}", package.workspace, package.name, version.version)
         } else {
             format!("{}/{}@{}", package.workspace, package.name, version.digest)

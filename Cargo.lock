@@ -1013,6 +1013,7 @@ dependencies = [
  "g1t-kit",
  "hex",
  "hmac 0.12.1",
+ "md5",
  "miniz_oxide",
  "serde",
  "serde_json",

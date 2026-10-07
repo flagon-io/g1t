@@ -283,7 +283,7 @@ pub fn ignored(patterns: &[String], path: &str) -> bool {
 }
 
 /// CRC-32, as zip records each file's.
-fn crc32(bytes: &[u8]) -> u32 {
+pub(crate) fn crc32(bytes: &[u8]) -> u32 {
     let mut table = [0u32; 256];
     for (i, entry) in table.iter_mut().enumerate() {
         let mut c = i as u32;

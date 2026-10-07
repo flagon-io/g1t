@@ -21,7 +21,8 @@ it; this says how it works.
 - **Content-addressed.** Every file is stored once by its SHA-256 (`blobs/sha256/<hex>`). A
   version is a list of files by digest. Pushing a layer two images share stores it once.
 - **The registry speaks each tool's own protocol**, unchanged. `docker`, `npm`, `composer`,
-  `cargo` and `go` work with only a login and an address.
+  `cargo`, `go`, `mvn` and Gradle, `dotnet` and `gem` and Bundler work with only a login and an
+  address.
 - **Same access as the code.** A package can be linked to a repository and then has its
   visibility and roles. Unlinked, it is the workspace's: members by the base permission.
 - **Same front door.** Everything is on `g1t.sh`. `apps/web/workers/app.ts` hands registry paths
@@ -31,13 +32,14 @@ it; this says how it works.
 
 | Table | What it holds |
 | --- | --- |
-| `packages` | `id`, `workspace`, `ecosystem` (`container`, `npm`, `composer`, `cargo`, `go`, ...), `name` (normalized per ecosystem), `repo_id` (linked repository, or null), `visibility` (`public`, `private`; linked packages follow their repository), `description`, `readme_digest`, `created_by`, `created_at`, `updated_at`, `downloads` |
+| `packages` | `id`, `workspace`, `ecosystem` (`container`, `npm`, `composer`, `cargo`, `go`, `maven`, `nuget`, `rubygems`), `name` (normalized per ecosystem), `repo_id` (linked repository, or null), `visibility` (`public`, `private`; linked packages follow their repository), `description`, `readme_digest`, `created_by`, `created_at`, `updated_at`, `downloads` |
 | `versions` | `id`, `package_id`, `version` (tag, semver or digest), `digest` (the manifest's or the archive's), `size` (sum of its files), `metadata` (JSON the ecosystem needs: npm's packument entry, a crate's index line, composer.json), `published_by`, `published_at`, `yanked`, `deprecated` |
 | `version_files` | `version_id`, `name`, `digest`, `size`, `media_type` |
 | `blobs` | `digest`, `size`, `media_type`, `created_at` |
 | `workspace_blobs` | `workspace`, `digest`, `public` (any public package uses it): what a workspace stores, counted once each, for billing |
 | `uploads` | `id`, `workspace`, `package`, `multipart_id`, `parts` (JSON), `offset`, `hash_state`, `expires_at`: uploads in progress |
 | `tags` | `package_id`, `tag`, `version_id`: container tags and npm dist-tags |
+| `checksums` | `digest`, `md5`, `sha1`, `sha512`: a file's other checksums, worked out on upload (Maven asks for them) |
 
 Deleting a version removes its rows; a daily sweep deletes blobs no version references, after a
 day's grace (a push in flight may reference a blob before its manifest lands).
@@ -119,9 +121,65 @@ All under `g1t.sh`. A name always starts with the workspace.
 - A module proxy at `https://g1t.sh/-/go/` (`@v/list`, `.info`, `.mod`, `.zip`) built from tags,
   for faster and repeatable private installs (later phase).
 
+### Maven
+
+- Per workspace: `https://g1t.sh/-/maven/<workspace>/`, the standard layout
+  (`com/acme/web/1.0.0/web-1.0.0.jar`). A package is an artifact, named
+  `groupId:artifactId`; a version holds every file uploaded into its
+  directory, by file name (`version_files`), added one `PUT` at a time.
+- `mvn deploy` and Gradle's `publish`: Basic auth (any username, a token as
+  the password) or `Bearer`. A release's files are written once (`409` for
+  other content, the same content again is accepted); a SNAPSHOT's builds
+  arrive as timestamped files beside each other.
+- Checksums: each file's MD5, SHA-1 and SHA-512 are worked out on upload
+  and kept by digest (`checksums`); `.md5`, `.sha1`, `.sha256`, `.sha512`
+  are answered from them, and uploaded ones are checked, not kept.
+- `maven-metadata.xml` is made on every read: per artifact (versions in
+  Maven's order, `latest`, `release`) and per SNAPSHOT version (the newest
+  build of each classifier and extension). Uploaded ones are accepted and
+  let go, a plugin group's included.
+- The POM is the version's record: its coordinates must
+  match its path, its description becomes the package's for the highest
+  release, and on a new artifact its `<scm><url>` may link the repository.
+- The artifact's own `maven-metadata.xml`, uploaded last by Maven and Gradle,
+  publishes (event, audit entry) each version or SNAPSHOT build whose POM
+  arrived since, marked in its metadata so it is published once.
+
+### NuGet
+
+- Per workspace: `https://g1t.sh/-/nuget/<workspace>/v3/index.json` naming
+  `PackageBaseAddress/3.0.0` (flat container), `RegistrationsBaseUrl`
+  (one inlined page), `SearchQueryService` and `PackagePublish/2.0.0`.
+- `dotnet nuget push`: a `PUT` of a multipart body with the `.nupkg`,
+  `X-NuGet-ApiKey` a g1t token. The `.nuspec` (read from the zip) gives the
+  id, version (normalized as NuGet does), description, dependency groups and
+  README; the `.nupkg` and `.nuspec` are the version's files.
+- Ids are one whatever their case; a version is pushed once (`409`).
+- `DELETE api/v2/package/<id>/<version>` unlists (the `yanked` column), as
+  nuget.org does; `POST` lists again. Unlisted versions stay in the flat
+  container and registration (`listed: false`), not in search.
+- Restores use Basic auth from `nuget.config`, after a `401`.
+
+### RubyGems
+
+- Per workspace: `https://g1t.sh/-/rubygems/<workspace>/`. `gem push`
+  (`POST /api/v1/gems`, the token as the whole `Authorization` header),
+  `gem yank` (`DELETE /api/v1/gems/yank`), downloads at
+  `/gems/<name>-<version>[-<platform>].gem`.
+- The compact index Bundler reads: `versions`, `info/<gem>`, `names`, made
+  on every read, each with the quoted MD5 of its body as its `ETag` (Bundler
+  checks it, and `versions` names each info file's MD5). Yanked versions
+  leave the index; their files stay.
+- The gem's `metadata.gz` (YAML, in the `.gem` tar) gives the name,
+  version, platform and runtime dependencies. A version is keyed as the
+  index writes it (`1.0.0`, `1.0.0-x86_64-linux`) and pushed once.
+- Bundler authenticates with Basic auth from `bundle config`. The full
+  index (`specs.4.8.gz`, Marshal) is not served, so `gem install --source`
+  is not supported.
+
 ### Later
 
-Maven (`/-/maven/<workspace>/`), NuGet (v3), RubyGems; PyPI.
+PyPI.
 
 ## Billing
 
@@ -162,4 +220,5 @@ Webhooks deliver them (`package` and `registry_package` shapes); workflows can r
 2. **npm.**
 3. **Composer and Go** (both from the repositories themselves).
 4. **Cargo.**
-5. **Mirrors** (Packagist, npm), **Maven, NuGet, RubyGems.**
+5. **Maven, NuGet, RubyGems.**
+6. **Mirrors** (Packagist, npm).
