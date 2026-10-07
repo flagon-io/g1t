@@ -20,6 +20,8 @@
     "wrangler": "^4.146.0"
   },
   "overrides": {
-    "fflate": "^0.7.5"
+    "basic-ftp": "^6.2.1",
+    "fflate": "^0.7.5",
+    "postcss-selector-parser": "^7.1.6"
   }
 }
