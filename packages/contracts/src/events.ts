@@ -105,7 +105,8 @@ export type EventPayloads = {
    * One branch moved by a push. `ref` is the full ref, `after` the commit it
    * points to now, and `defaultBranch` whether it is the default branch.
    */
-  "git.push": { repoId: string; ref: string; after: string; defaultBranch: boolean };
+  /** `before` is where the ref pointed before; absent for a new branch or tag. */
+  "git.push": { repoId: string; ref: string; before?: string; after: string; defaultBranch: boolean };
   /**
    * `author` is who opened it: g1t, for one its agent filed while at work,
    * with `requestedBy` the person it was working for. Every issue and pull

@@ -20,6 +20,7 @@ import {
   sortRows,
   stallReason,
   summaryLine,
+  pushedCommits,
   waitingRows,
   weekOf,
   whyFor,
@@ -169,6 +170,14 @@ const merged = (daysAgo: number, mergedBy: string | null, number = 1, authoredBy
   mergedBy,
   mergedAt: new Date(NOW - daysAgo * DAY).toISOString(),
   files: [],
+});
+
+test("a push to the default branch counts a person's own commits, not merges or agents'", () => {
+  const c = (hash: string, author: string, parents = 1) => ({ hash, author: { name: author }, parents: Array(parents).fill("p") });
+  const history = [c("e", "Chase"), c("d", "g1t"), c("m", "g1t", 2), c("b", "Chase"), c("a", "Chase")];
+  assert.deepEqual(pushedCommits(history, "a").map((x) => x.hash), ["e", "b"]);
+  // Where it pointed before was not read: everything read counts.
+  assert.deepEqual(pushedCommits(history, "zz").map((x) => x.hash), ["e", "b", "a"]);
 });
 
 test("a change landed without a person when g1t merged it", () => {

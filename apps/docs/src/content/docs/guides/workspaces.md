@@ -313,18 +313,20 @@ Mission control, `g1t.sh` when you are signed in, is your home page. It
 shows where you are needed in the workspace you have chosen in the
 sidebar, what its agents are doing, and what landed without you.
 
-Under the greeting, one line sums up the week, such as *Agents landed 39
-of 47 changes this week without you*. A change landed without you when
-g1t merged it, by auto-merge or from the [merge queue](/guides/merge-queue/),
-with no person pressing merge. **Review N that need you** jumps to the
+Under the greeting, one line sums up the week, such as *Agents landed 37
+of their 39 changes this week without you, and people landed 8 changes of
+their own*. An agent's change landed without you when g1t merged it, by
+auto-merge or from the [merge queue](/guides/merge-queue/), with no person
+pressing merge. People's changes are their merged pull requests and the
+commits they pushed straight to the default branch. **Review N that need you** jumps to the
 list, and **New issue** opens a new issue in the project you pick.
 
 | Across the top | What it counts |
 | --- | --- |
 | **Projects** | The workspace's projects, and how many were added this month. |
 | **Agents** | Agent runs going now, and the hours agents worked in the last 7 days. |
-| **Changes this week** | Pull requests merged in the last 7 days, and the change from the 7 days before. The change is left out when g1t cannot read far enough back to count it. |
-| **Landed without you** | The share of those changes that g1t merged with no person pressing merge. |
+| **Changes this week** | Pull requests merged in the last 7 days, and commits people pushed straight to the default branch, with the change from the 7 days before. The change is left out when g1t cannot read far enough back to count it. |
+| **Landed without you** | The share of agents' changes that g1t merged with no person pressing merge. People's own changes are not counted in it. |
 | **Need you** | What is waiting on you, and how many of those block work. |
 
 The list has three tabs. Each row opens to say more; the first is open.
@@ -356,7 +358,8 @@ leaving the page you can approve the change, merge it or re-run its failed
 jobs. **By impact** puts the most urgent first; **Newest** sorts by time.
 
 On the right, **This week** charts the changes landed each day, split
-into those agents landed alone and those a person merged, with what
+by who did the work: agents on their own, agents with a person merging,
+and people (their pull requests and direct pushes, merges left out), with what
 agents and sandboxes cost over the same days. **Activity** lists what
 moved across the workspace, agents marked apart from people. The page
 refreshes itself while agents are at work.

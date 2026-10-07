@@ -424,6 +424,21 @@ export const needPathKey = pathKey;
 // --- Landed -----------------------------------------------------------------
 
 /** A merged pull request, as the week counts it. */
+/**
+ * The commits a push to the default branch brought, from the history at its
+ * `after` (newest first) back to its `before`: people's own, not merges (a
+ * pull request landing) and not agents'. A push whose `before` is not in
+ * what was read gives what was read.
+ */
+export function pushedCommits<C extends { hash: string; parents: string[]; author: { name: string } }>(
+  history: C[],
+  before: string | undefined,
+): C[] {
+  const end = before ? history.findIndex((commit) => commit.hash === before) : -1;
+  const brought = end === -1 ? history : history.slice(0, end);
+  return brought.filter((commit) => commit.parents.length <= 1 && !isAgent(commit.author.name));
+}
+
 export type Merged = {
   repo: RepoPath;
   number: number;

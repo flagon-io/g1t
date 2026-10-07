@@ -4,10 +4,12 @@ import { type ShouldRevalidateFunctionArgs, data, redirect } from "react-router"
 
 import {
   type Confidence,
+  type G1tEvent,
   type Lifecycle,
   type Pull,
   type Repo,
   type RepoPath,
+  type Viewer,
   REPO_ROLE_LABELS,
   isActiveRun,
   workOwner,
@@ -34,6 +36,7 @@ import {
 import {
   type Fact,
   type Merged,
+  pushedCommits,
   type NeedRow,
   type QuickAction,
   RUN_LABEL,
@@ -136,6 +139,33 @@ export async function action({ request, context }: Route.ActionArgs) {
   return data<DelegateResult>({ error: null, notStarted: refused });
 }
 
+/** Pushes to the default branch read for the week, per project, and commits read back from each. */
+const PUSHES_READ = 40;
+const PUSH_DEPTH = 60;
+
+/**
+ * The commits people pushed straight to a project's default branch in the
+ * last two weeks, each with when its push landed. Merges and agents'
+ * commits are left out: pull requests count those.
+ */
+async function directCommits(repo: Repo, viewer: Viewer): Promise<{ hash: string; at: string }[]> {
+  const since = Date.now() - 14 * TIME.DAY;
+  const pushes = (await eventLog.list({ repoId: repo.id, types: ["git.push"], limit: PUSHES_READ })).filter(
+    (event): event is G1tEvent<"git.push"> => event.type === "git.push" && event.data.defaultBranch && Date.parse(event.time) >= since,
+  );
+  const path = { namespace: repo.namespace, name: repo.name };
+  const read = await Promise.all(
+    pushes.map(async (push) => {
+      const history = await reposApi.log(path, viewer, push.data.after, PUSH_DEPTH).catch(() => null);
+      return history?.ok ? pushedCommits(history.value, push.data.before).map((commit) => ({ hash: commit.hash, at: push.time })) : [];
+    }),
+  );
+  // A commit pushed twice (after a force push, say) counts once, at its first landing.
+  const seen = new Map<string, string>();
+  for (const commit of read.flat().reverse()) if (!seen.has(commit.hash)) seen.set(commit.hash, commit.at);
+  return [...seen].map(([hash, at]) => ({ hash, at }));
+}
+
 export async function loader({ context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   if (!viewer) {
@@ -177,15 +207,18 @@ export async function loader({ context, request }: Route.LoaderArgs) {
     const chosen = (repos ?? [])
       .filter((repo) => slug != null && repo.namespace.toLowerCase() === slug.toLowerCase())
       .slice(0, MAX_PROJECTS);
-    const [batch, logs] = await Promise.all([
+    const [batch, logs, pushes] = await Promise.all([
       work.pullsForRepos(chosen.map((repo) => repo.id), viewer, PULL_PAGE).catch(() => []),
       Promise.all(chosen.map((repo) => eventLog.list({ repoId: repo.id, limit: EVENTS_PER_PROJECT }).catch(() => null))),
+      // People's pushes straight to the default branch, which no pull
+      // request counts: the commits each brought, for the week.
+      Promise.all(chosen.map((repo) => directCommits(repo, viewer).catch(() => []))),
     ]);
     const byId = new Map(batch.map((entry) => [entry.repoId, entry]));
     return Promise.all(
       chosen.map(async (repo, index) => {
         const found = byId.get(repo.id);
-        if (found) return { repo, pulls: found.open.slice(0, 60), closed: found.closed, events: logs[index] };
+        if (found) return { repo, pulls: found.open.slice(0, 60), closed: found.closed, events: logs[index], direct: pushes[index] ?? [] };
         // A fork, which the batch leaves out: asked on its own.
         const path = { namespace: repo.namespace, name: repo.name };
         const [pulls, closed] = await Promise.all([
@@ -197,6 +230,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
           pulls: pulls?.ok ? pulls.value.slice(0, 60) : null,
           closed: closed?.ok ? closed.value : null,
           events: logs[index],
+          direct: pushes[index] ?? [],
         };
       }),
     );
@@ -519,7 +553,12 @@ export async function loader({ context, request }: Route.LoaderArgs) {
   );
   const twoWeeksAgo = now - 14 * TIME.DAY;
   const complete = perRepo != null && perRepo.every(({ closed }) => closed != null && reachesBack(closed, twoWeeksAgo, PULL_PAGE));
-  const week = weekOf(merged, now, tz, complete);
+  // A person's commits pushed straight to the default branch are their own
+  // changes too, on the day they landed.
+  const direct = (perRepo ?? []).flatMap(({ direct }) =>
+    direct.map((commit) => ({ mergedAt: commit.at, mergedBy: null, authoredByAgent: false })),
+  );
+  const week = weekOf([...merged, ...direct], now, tz, complete);
   const landed = landedToday(merged, now, tz);
 
   // --- Activity -------------------------------------------------------------
