@@ -13,12 +13,16 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const viewer = getViewer(context);
-  const tree = await repos.tree(path, viewer, params.ref, params["*"] ?? "");
+  const [tree, branches] = await Promise.all([
+    repos.tree(path, viewer, params.ref, params["*"] ?? ""),
+    // For the branch menu; the page still shows without it.
+    repos.branches(path, viewer).catch(() => null),
+  ]);
   // A branch that was renamed: the same folder on its new name.
   if (!tree.ok && tree.error.code === "not_found") await redirectIfBranchRenamed(request, path, viewer, params.ref);
-  return unwrap(tree);
+  return { tree: unwrap(tree), branches: branches?.ok ? branches.value : null };
 }
 
 export default function Tree({ loaderData }: Route.ComponentProps) {
-  return <TreeView tree={loaderData} />;
+  return <TreeView tree={loaderData.tree} branches={loaderData.branches} />;
 }

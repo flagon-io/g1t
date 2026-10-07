@@ -1,7 +1,7 @@
-import { BookOpen, File, Folder, FolderGit2 } from "lucide-react";
-import { Link } from "react-router";
+import { BookOpen, Check, ChevronDown, Code2, File, Folder, FolderGit2, GitBranch, History, Search, SquareTerminal } from "lucide-react";
+import { Form, Link } from "react-router";
 
-import type { Blame, BlobView as Blob, Commit, TreeView as Tree } from "@g1t/contracts";
+import type { Blame, BlobView as Blob, Branch, Commit, TreeView as Tree } from "@g1t/contracts";
 
 import { BlameView } from "./blame-view";
 import { CodeLines } from "./code-lines";
@@ -9,7 +9,9 @@ import { CodeLines } from "./code-lines";
 import { AgentSetup } from "./agent-setup";
 import { CloneBox } from "./clone-box";
 import { Markdown } from "./markdown";
-import { Avatar, CopyLine, TimeAgo } from "./ui";
+import { Avatar, CopyLine, TimeAgo, notACredential } from "./ui";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 function encodePath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
@@ -29,7 +31,7 @@ function Breadcrumbs({
   const segments = path.split("/").filter(Boolean);
   if (segments.length === 0) return null;
   return (
-    <p className="mb-4 font-mono text-sm text-muted">
+    <p className="font-mono text-sm text-muted">
       <Link to={`${base}/tree/${gitRef}`} className="text-accent hover:underline">
         {repo}
       </Link>
@@ -56,25 +58,134 @@ function Breadcrumbs({
   );
 }
 
-/** The bar above a file listing describing the latest commit. */
-function CommitBar({ commit, gitRef }: { commit: Commit; gitRef: string }) {
+/** The bar above a file listing: the latest commit, and the way to the history. */
+function CommitBar({ commit, base }: { commit: Commit; base: string }) {
   return (
     <div className="flex items-center gap-3 border-b border-line bg-surface px-4 py-2.5 text-sm">
       <Avatar name={commit.author.name} />
       <span className="shrink-0 font-medium">{commit.author.name}</span>
-      <span className="truncate text-muted">{commit.message.split("\n")[0]}</span>
-      <span className="ml-auto flex shrink-0 items-center gap-3 text-xs text-faint">
-        <span className="rounded-full border border-line px-2 py-0.5 font-mono text-accent">
-          {gitRef}
-        </span>
-        <span className="font-mono">{commit.hash.slice(0, 7)}</span>
+      <Link to={`${base}/commit/${commit.hash}`} className="truncate text-muted hover:text-fg hover:underline">
+        {commit.message.split("\n")[0]}
+      </Link>
+      <span className="ml-auto flex shrink-0 items-center gap-4 text-xs text-faint">
+        <Link to={`${base}/commit/${commit.hash}`} className="font-mono hover:text-fg">
+          {commit.hash.slice(0, 7)}
+        </Link>
         <TimeAgo at={commit.authoredAt} />
+        <Link to={`${base}/commits`} className="inline-flex items-center gap-1.5 font-medium text-muted hover:text-fg">
+          <History size={14} />
+          History
+        </Link>
       </span>
     </div>
   );
 }
 
-export function TreeView({ tree }: { tree: Tree }) {
+const BAR_BUTTON =
+  "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-line bg-surface px-3 text-sm transition-colors hover:border-line-strong hover:bg-raised data-[state=open]:border-line-strong";
+
+/** Which branch is shown, and the others to switch to, at the same path. */
+function BranchMenu({ base, gitRef, path, branches }: { base: string; gitRef: string; path: string; branches: Branch[] }) {
+  const rest = path ? `/${encodePath(path)}` : "";
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger className={`${BAR_BUTTON} max-w-56 font-medium`}>
+        <GitBranch size={14} className="text-faint" />
+        <span className="truncate font-mono text-[0.8125rem]">{gitRef}</span>
+        <ChevronDown size={13} className="text-faint" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-80 w-64 overflow-y-auto">
+        <DropdownMenuLabel>Switch branches</DropdownMenuLabel>
+        {branches.map((branch) => (
+          <DropdownMenuItem key={branch.name} asChild>
+            <Link to={`${base}/tree/${encodePath(branch.name)}${rest}`}>
+              <Check className={branch.name === gitRef ? "" : "invisible"} />
+              <span className="truncate font-mono text-[0.8125rem]">{branch.name}</span>
+            </Link>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** Searches this repository's code on the search page, where it can be widened to all of g1t. */
+function SearchCode({ repo }: { repo: string }) {
+  return (
+    <Form action="/search" role="search" className="relative ml-auto w-full min-w-40 grow sm:w-64 sm:grow-0">
+      <Search size={14} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-faint" />
+      <input
+        name="q"
+        {...notACredential()}
+        placeholder="Search code"
+        aria-label={`Search ${repo}`}
+        className="h-8 w-full rounded-md border border-line bg-surface pr-3 pl-8 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim"
+      />
+      <input type="hidden" name="repo" value={repo} />
+      <input type="hidden" name="type" value="code" />
+    </Form>
+  );
+}
+
+/** The one button for getting the code: clone over HTTPS or SSH, or hand it to an agent. */
+function CodeButton({ path }: { path: string }) {
+  return (
+    <Popover>
+      <PopoverTrigger className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 text-sm font-medium text-bg transition-colors hover:bg-accent/90">
+        <Code2 size={15} />
+        Code
+        <ChevronDown size={13} />
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-96 p-4">
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-medium">
+          <SquareTerminal size={15} className="text-faint" />
+          Clone
+        </h2>
+        <CloneBox path={path} />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** Above the files: the branch and, at the root, how many there are, search and Code; below it, where you are. */
+function CodeBar({
+  base,
+  repo,
+  gitRef,
+  path,
+  branches,
+}: {
+  base: string;
+  repo: { namespace: string; name: string };
+  gitRef: string;
+  path: string;
+  branches: Branch[] | null;
+}) {
+  const full = `${repo.namespace}/${repo.name}`;
+  const list = branches && branches.length > 0 ? branches : [{ name: gitRef, hash: "" }];
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+      <BranchMenu base={base} gitRef={gitRef} path={path} branches={list} />
+      {path ? (
+        <Breadcrumbs base={base} repo={repo.name} gitRef={gitRef} path={path} />
+      ) : (
+        <>
+          {branches && (
+            <span className="inline-flex items-center gap-1.5 text-sm text-muted">
+              <GitBranch size={14} className="text-faint" />
+              <span className="font-medium text-fg">{branches.length}</span>
+              {branches.length === 1 ? "branch" : "branches"}
+            </span>
+          )}
+          <SearchCode repo={full} />
+          <CodeButton path={full} />
+        </>
+      )}
+    </div>
+  );
+}
+
+export function TreeView({ tree, branches = null }: { tree: Tree; branches?: Branch[] | null }) {
   const { repo, ref, path, head, entries, readme } = tree;
   const base = `/${repo.namespace}/${repo.name}`;
   const prefix = path ? `${encodePath(path)}/` : "";
@@ -104,11 +215,11 @@ export function TreeView({ tree }: { tree: Tree }) {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_18rem]">
+    <div className={path ? "" : "grid gap-8 lg:grid-cols-[1fr_17rem]"}>
       <div className="min-w-0">
-        <Breadcrumbs base={base} repo={repo.name} gitRef={ref} path={path} />
+        <CodeBar base={base} repo={repo} gitRef={ref} path={path} branches={branches} />
         <div className="overflow-hidden rounded-xl border border-line">
-          <CommitBar commit={head} gitRef={ref} />
+          <CommitBar commit={head} base={base} />
           <ul className="divide-y divide-line text-sm">
             {entries.map((entry) => {
               const isTree = entry.kind === "tree";
@@ -132,7 +243,7 @@ export function TreeView({ tree }: { tree: Tree }) {
         </div>
 
         {readme?.text != null && (
-          <section className="mt-6 overflow-hidden rounded-xl border border-line">
+          <section id="readme" className="mt-6 scroll-mt-20 overflow-hidden rounded-xl border border-line">
             <h2 className="flex items-center gap-2 border-b border-line bg-surface px-4 py-2.5 text-sm font-medium">
               <BookOpen size={15} className="text-faint" />
               {readme.name}
@@ -154,22 +265,34 @@ export function TreeView({ tree }: { tree: Tree }) {
       </div>
 
       {!path && (
-        <aside className="space-y-6">
-          <section>
-            <h2 className="text-sm font-medium">Clone</h2>
-            <div className="mt-2">
-              <CloneBox path={`${repo.namespace}/${repo.name}`} />
-            </div>
-          </section>
-          <section>
-            <h2 className="text-sm font-medium">About</h2>
-            <p className="mt-2 text-sm text-muted">
-              {repo.description ?? "No description."}
-            </p>
-            <p className="mt-3 text-xs text-faint">
-              Created <TimeAgo at={repo.createdAt} />
-            </p>
-          </section>
+        <aside>
+          <h2 className="text-base font-semibold">About</h2>
+          <p className="mt-2.5 text-sm text-fg-soft">{repo.description ?? "No description."}</p>
+          <ul className="mt-4 space-y-2.5 text-sm text-muted">
+            {readme && (
+              <li>
+                <a href="#readme" className="inline-flex items-center gap-2 hover:text-fg">
+                  <BookOpen size={15} className="text-faint" />
+                  Readme
+                </a>
+              </li>
+            )}
+            <li>
+              <Link to={`${base}/commits`} className="inline-flex items-center gap-2 hover:text-fg">
+                <History size={15} className="text-faint" />
+                Commits
+              </Link>
+            </li>
+            {branches && (
+              <li className="flex items-center gap-2">
+                <GitBranch size={15} className="text-faint" />
+                {branches.length} {branches.length === 1 ? "branch" : "branches"}
+              </li>
+            )}
+          </ul>
+          <p className="mt-4 text-xs text-faint">
+            Created <TimeAgo at={repo.createdAt} />
+          </p>
         </aside>
       )}
     </div>
