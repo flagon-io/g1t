@@ -18,7 +18,7 @@ const MAX_ITEMS: usize = 5;
 const MAX_ITEM_CHARS: usize = 160;
 
 /// What the agent is asked, after its task.
-pub const ASK: &str = "Also end your final message with how sure you are that your change is right and complete, as JSON inside <g1t-confidence></g1t-confidence> tags: {\"confidence\": \"high\" | \"medium\" | \"low\", \"uncertain_about\": [\"a few words for each thing you could not verify or had to guess\"]}. Say high only if you ran the checks and tests and they passed and nothing was guessed. The block is taken out of your summary.";
+pub const ASK: &str = "Also end your final message with how sure you are that your change is right and complete, as JSON inside <g1t-confidence></g1t-confidence> tags: {\"confidence\": \"high\" | \"medium\" | \"low\", \"uncertain_about\": [\"a few words for each thing you could not verify or had to guess\"]}. Say high only if you ran the project's tests (and any other check you can run here) and they passed and nothing was guessed. The repository's CI workflows run as checks on the pull request after you push, and count on their own, so not having run them is not something to be unsure about. The block is taken out of your summary.";
 
 /// The prompt with the question added.
 pub fn ask(prompt: &str) -> String {
