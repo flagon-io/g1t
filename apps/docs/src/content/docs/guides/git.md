@@ -71,6 +71,15 @@ the page hints at whether it exists; a missing file, commit or issue in a
 project you can see keeps that project's sidebar. A profile that does not
 exist says **No one on g1t goes by that name**, since profiles are public.
 
+## Download a ZIP
+
+On a repository's **Files** page, **Code** → **Download ZIP** downloads the
+branch shown as one zip, its files in a folder named `<repo>-<branch>`. It
+works for anyone who can see the repository, and for any branch, tag or
+commit at `g1t.sh/<workspace>/<repo>/archive/<ref>.zip`. A ZIP holds the
+files, not the history; clone for that. A repository with more than 10,000
+files or over 24 MB is too large to download this way, so clone it instead.
+
 ## Browsing without an account
 
 Public projects, Explore, Search and profiles are open to everyone, in the

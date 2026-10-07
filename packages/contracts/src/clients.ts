@@ -285,6 +285,8 @@ export function reposClient(service: ServiceBinding): ReposApi {
     gitAccess: (path, viewer, service) =>
       call("git_access", { path, viewer, service }),
     branches: (path, viewer) => call("branches", { path, viewer }),
+    listFiles: (repoId, ref, limit) => call("list_files", { repoId, ref, skipDirs: [], limit }),
+    rawBlobs: (repoId, hashes, maxBytes) => call("raw_blobs", { repoId, hashes, maxBytes }),
     commitFile: (repo, actor, file) => call("commit_file", { repo, actor, ...file }),
     land: (sourceId, actor, branch) => call("land", { sourceId, actor, branch }),
     compare: (repoId, viewer, base, head) => call("compare", { repoId, viewer, base, head }),

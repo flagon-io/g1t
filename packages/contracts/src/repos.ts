@@ -235,6 +235,15 @@ export interface ReposApi {
   branches(path: RepoPath, viewer: Viewer): Promise<Result<Branch[]>>;
 
   /**
+   * Every file at `ref` (the default branch when null), at most `limit`
+   * (10,000 at most). No viewer: check access first.
+   */
+  listFiles(repoId: string, ref: string | null, limit: number): Promise<FileList>;
+
+  /** Blobs' bytes as standard base64, at most 100; `data` is null for one missing or over `maxBytes`. No viewer. */
+  rawBlobs(repoId: string, hashes: string[], maxBytes: number): Promise<RawBlob[]>;
+
+  /**
    * Writes one file on a new branch made from the default branch's head, as
    * one commit by `actor`, for a change g1t proposes on their behalf (a
    * starter workflow). Refused unless they may push, when the branch exists,
@@ -281,6 +290,12 @@ export type Blame = {
 
 /** A branch and the commit it points to. */
 export type Branch = { name: string; hash: string };
+
+/** Files at a commit, and whether there were more than were listed. */
+export type FileList = { commit: string | null; files: { path: string; hash: string | null }[]; truncated: boolean };
+
+/** One blob's bytes, standard base64; null when missing or too large. */
+export type RawBlob = { hash: string; size: number; data: string | null };
 
 /**
  * What came of bringing a pull request up to date with the default branch

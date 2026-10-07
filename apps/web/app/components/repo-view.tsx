@@ -1,4 +1,4 @@
-import { BookOpen, Check, ChevronDown, Code2, File, Folder, FolderGit2, GitBranch, History, Search, SquareTerminal } from "lucide-react";
+import { BookOpen, Check, ChevronDown, Code2, File, FileArchive, Folder, FolderGit2, GitBranch, History, Search, SquareTerminal } from "lucide-react";
 import { Form, Link } from "react-router";
 
 import type { Blame, BlobView as Blob, Branch, Commit, TreeView as Tree } from "@g1t/contracts";
@@ -128,8 +128,8 @@ function SearchCode({ repo }: { repo: string }) {
   );
 }
 
-/** The one button for getting the code: clone over HTTPS or SSH, or hand it to an agent. */
-function CodeButton({ path }: { path: string }) {
+/** The one button for getting the code: clone over HTTPS or SSH, hand it to an agent, or download it. */
+function CodeButton({ path, gitRef }: { path: string; gitRef: string }) {
   return (
     <Popover>
       <PopoverTrigger className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 text-sm font-medium text-bg transition-colors hover:bg-accent/90">
@@ -137,12 +137,25 @@ function CodeButton({ path }: { path: string }) {
         Code
         <ChevronDown size={13} />
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-96 p-4">
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-medium">
-          <SquareTerminal size={15} className="text-faint" />
-          Clone
-        </h2>
-        <CloneBox path={path} />
+      <PopoverContent align="end" className="w-96 p-0">
+        <div className="p-4">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-medium">
+            <SquareTerminal size={15} className="text-faint" />
+            Clone
+          </h2>
+          <CloneBox path={path} />
+        </div>
+        <div className="border-t border-line p-1.5">
+          {/* A plain link: the browser downloads it, not the router. */}
+          <a
+            href={`/${path}/archive/${encodePath(gitRef)}.zip`}
+            download
+            className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-fg/90 transition-colors hover:bg-line hover:text-fg"
+          >
+            <FileArchive size={15} className="text-faint" />
+            Download ZIP
+          </a>
+        </div>
       </PopoverContent>
     </Popover>
   );
@@ -179,7 +192,7 @@ function CodeBar({
             </span>
           )}
           <SearchCode repo={full} />
-          <CodeButton path={full} />
+          <CodeButton path={full} gitRef={gitRef} />
         </>
       )}
     </div>
