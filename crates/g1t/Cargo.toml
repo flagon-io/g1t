@@ -4,5 +4,13 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "The g1t command line: g1t push sends a local image to g1t.sh in chunks, so a layer can be any size."
 
 [dependencies]
+base64 = "0.22"
+flate2 = "1"
+hex = "0.4"
+serde_json = { workspace = true }
+sha2 = "0.10"
+tar = { version = "0.4", default-features = false }
+ureq = { version = "2", default-features = false, features = ["tls"] }

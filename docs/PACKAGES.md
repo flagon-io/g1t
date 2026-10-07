@@ -77,8 +77,10 @@ All under `g1t.sh`. A name always starts with the workspace.
   Uploads are written to R2 as multipart parts, so a layer may be any size if it arrives in
   chunks under the limit. `docker push` sends a layer in one request, so on Cloudflare a layer
   over the limit is refused with a message naming the limit and the way around it: `g1t push`
-  (the CLI), which asks for signed part URLs and uploads straight to R2 at any size, and is what
-  g1t Actions and the runner use. Self-hosted, there is no such limit.
+  (the CLI, `crates/g1t`), which reads the image with `docker save` (OCI layout or classic,
+  gzipping uncompressed layers and writing a matching manifest) and sends every blob as OCI
+  chunks of 90 MiB (at most 95 MiB), resuming from the upload's `Range` after a `429`/`5xx`.
+  Self-hosted, there is no such limit.
 
 ### npm
 
