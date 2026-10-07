@@ -186,6 +186,15 @@ Billing keeps no mapping of its own: it reads repos' `git_operations`
 (raw counts with the mapping) for `cost_operations`. Migration 0023 drops
 the `billable_units` table 0022 made for this, which was never written.
 
+**Charged at price** (a product's value) is what each day's usage was paid:
+charged to a card or credit, or drawn from the plan's included usage, a
+trial, a pool or a gift. Usage nothing paid for, as in a free period, is
+valued at price (cost plus the margin), since it was given away at its price
+rather than sold for nothing; so are g1t's own workspaces. Runs on a
+workspace's own model provider have no cost to g1t. Every daily run
+reconciles the whole 31-day window from what is already kept, so a change in
+how a day is valued reaches every day sudo shows.
+
 ## Alerts runbook
 
 | Alert | Raised when | First steps |

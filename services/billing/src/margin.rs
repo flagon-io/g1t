@@ -405,6 +405,18 @@ pub(crate) fn attribute(total: i64, weights: &[(String, f64)]) -> Vec<(String, i
 /// Workspaces that cost g1t more than `factor` times what they paid, with
 /// at least `floor_micros` of cost: each (workspace, cost, revenue), the
 /// biggest gap first.
+/// What a day's usage was worth at price. g1t's own workspaces are valued
+/// at price. So is usage nothing paid for, neither charged nor drawn from
+/// the plan, a trial, a pool or a gift (a free period): it was given away at
+/// its price, not sold for nothing. Anything paid keeps what it was paid, so
+/// a discount still shows as one.
+pub(crate) fn usage_value(internal: bool, cost: i64, paid: i64, margin_percent: u32) -> i64 {
+    if internal || (paid == 0 && cost > 0) {
+        return crate::credits::with_margin(cost, margin_percent);
+    }
+    paid
+}
+
 /// What the overall alert says: the money as money, and a percentage only
 /// while there is enough coming in for one to mean something (a few cents
 /// against dollars of cost reads as -8000%).
@@ -597,7 +609,12 @@ impl Billing {
             run.problems.push(format!("g1t's own counts could not be read: {error}"));
         }
         self.snapshot_pending(&until).await?;
-        run.days = self.reconcile_range(&since, &until).await?;
+        // Reconciled over the whole window sudo shows, not only the days the
+        // bill was read for: it reads only what is already kept, so a change
+        // in how a day is valued reaches every day shown at the next run.
+        let window = day_before(&until, costs::BACKFILL_DAYS - 1);
+        let reconcile_from = if window < since { window } else { since.clone() };
+        run.days = self.reconcile_range(&reconcile_from, &until).await?;
         let drift = self.find_drift(&until).await?;
         run.proposals = self.measure_units(&until).await?;
         self.apply_due_versions().await?;
@@ -668,7 +685,8 @@ impl Billing {
                 // to g1t. g1t's own workspaces are valued at price.
                 let cost = if r.own_provider == 1 { 0 } else { r.cost.unwrap_or(0) };
                 let cash = r.cash.unwrap_or(0);
-                let value = if r.internal == 1 { crate::credits::with_margin(cost, self.margin_percent) } else { cash + r.drawn.unwrap_or(0) };
+                let paid = cash + r.drawn.unwrap_or(0);
+                let value = usage_value(r.internal == 1, cost, paid, self.margin_percent);
                 UsageRow { day: r.day, workspace: r.workspace, key: r.key, value, cash, cost }
             })
             .collect();
@@ -1471,6 +1489,19 @@ impl Billing {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn usage_nothing_paid_for_is_valued_at_price_and_paid_usage_at_what_was_paid() {
+        // A free period: charged nothing, drawn from nothing.
+        assert_eq!(usage_value(false, 1_000_000, 0, 20), 1_200_000);
+        // Charged, or drawn from a trial: what was paid.
+        assert_eq!(usage_value(false, 1_000_000, 1_200_000, 20), 1_200_000);
+        assert_eq!(usage_value(false, 1_000_000, 900_000, 20), 900_000);
+        // g1t's own: at price.
+        assert_eq!(usage_value(true, 1_000_000, 0, 20), 1_200_000);
+        // No cost, nothing paid: nothing.
+        assert_eq!(usage_value(false, 0, 0, 20), 0);
+    }
 
     #[test]
     fn the_overall_alert_says_dollars_while_little_comes_in() {
