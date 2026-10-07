@@ -75,9 +75,10 @@ import { CatchUpProgress, ChecksSection, ConflictsSection, MergeabilityRow, runI
 import { CATCH_UP_TIMEOUT_MS } from "../../lib/catch-up";
 import { notFound } from "../../lib/not-found.server";
 import { computeNoteFor } from "../../lib/compute.server";
-import { actions, deployments, identity, projects, repos, work } from "../../lib/services.server";
+import { actions, deployments, identity, inbox, projects, repos, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
-import { accessTo, refusal } from "../../lib/access.server";
+import { accessTo, refusal, repoFor } from "../../lib/access.server";
+import { SubscriptionBox } from "../../components/notifications";
 import { REFRESH_MS, useRefreshWhile } from "../../lib/refresh";
 
 const EMPTY_COMPARISON: Comparison = { base: null, head: "", files: [], truncated: false };
@@ -123,7 +124,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const deps = projects.dependencies(params.owner, params.repo, viewer);
   // Awaited below, unless the pull request is missing first.
   deps.catch(() => null);
-  const [{ can }, found, repo, settings, agentsEnabled, members, computeNote, session, deployed] = await Promise.all([
+  const [{ can }, found, repo, settings, agentsEnabled, members, computeNote, session, deployed, subscription] = await Promise.all([
     access,
     pullFound,
     repos.get(path, viewer),
@@ -136,6 +137,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     tab === "session" ? work.readSession(path, number, viewer) : null,
     // Its preview, for people with a role here: beside the rest, not after.
     access.then(({ insider }) => (insider ? deployments.list(ref, viewer).catch(() => null) : null)),
+    // Whether the viewer hears of it, for the sidebar's Notifications.
+    viewer
+      ? repoFor(context, params).then((found) =>
+          found.ok ? inbox.subscription(viewer, { repoId: found.value.id, number }).catch(() => null) : null,
+        )
+      : null,
   ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be an issue.
@@ -197,6 +204,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     canUpdate: pull.fork ? viewer?.id === workOwner(pull).id : can.push,
     agentsEnabled,
     computeNote,
+    subscription,
     members: members?.ok ? members.value.map((person) => person.username) : [],
     requireUpToDate: settings.ok && settings.value.requireUpToDate,
     mergeQueue: settings.ok && settings.value.mergeQueue,
@@ -1343,6 +1351,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               {pull.headCommit?.slice(0, 12) ?? "no commits pushed yet"}
             </p>
           </section>
+          {loaderData.viewer && (
+            <SubscriptionBox action={`${base}/notifications`} number={pull.number} kind="pull" subscription={loaderData.subscription} />
+          )}
         </aside>
       </div>
     </div>

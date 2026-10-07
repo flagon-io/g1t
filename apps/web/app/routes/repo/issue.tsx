@@ -37,9 +37,10 @@ import {
 import { notFound } from "../../lib/not-found.server";
 import { openedBy } from "../../lib/opened-by";
 import { computeNoteFor } from "../../lib/compute.server";
-import { identity, integrations, work } from "../../lib/services.server";
+import { identity, inbox, integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
-import { accessTo, refusal } from "../../lib/access.server";
+import { accessTo, refusal, repoFor } from "../../lib/access.server";
+import { SubscriptionBox } from "../../components/notifications";
 import { useRefreshWhile } from "../../lib/refresh";
 
 
@@ -66,7 +67,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // At once: only the plan's note waits for the viewer's role. Putting an
   // agent on it needs Write: Read cannot spend compute.
   const access = accessTo(context, params);
-  const [{ can }, found, labels, agentsEnabled, members, links, computeNote] = await Promise.all([
+  const [{ can }, found, labels, agentsEnabled, members, links, computeNote, subscription] = await Promise.all([
     access,
     work.getIssue(path, number, viewer),
     work.listLabels(path, viewer),
@@ -77,6 +78,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     integrations.links(path, number).catch(() => []),
     // Before a member assigns g1t: whether the workspace's plan lets it start.
     access.then(({ can }) => (can.run ? computeNoteFor(params.owner, "agent") : null)),
+    // Whether the viewer hears of it, for the sidebar's Notifications.
+    viewer
+      ? repoFor(context, params).then((repo) =>
+          repo.ok ? inbox.subscription(viewer, { repoId: repo.value.id, number }).catch(() => null) : null,
+        )
+      : null,
   ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be a pull request.
@@ -92,6 +99,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     agentsEnabled,
     computeNote,
     links,
+    subscription,
     members: members?.ok ? members.value.map((member) => member.username) : [],
     // The author can close and reopen their own issue, and whoever g1t's
     // agent filed one for, that one; Triage and up, anyone's.
@@ -638,6 +646,9 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           </details>
         )}
 
+        {viewer && (
+          <SubscriptionBox action={`${base}/notifications`} number={issue.number} kind="issue" subscription={loaderData.subscription} />
+        )}
       </aside>
     </div>
   );

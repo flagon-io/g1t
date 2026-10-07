@@ -1,4 +1,5 @@
 import { Box, Lock } from "lucide-react";
+import type { ReactNode } from "react";
 import { Link, NavLink, Outlet, type ShouldRevalidateFunctionArgs, data, useLocation, useRouteLoaderData } from "react-router";
 
 import type { Project } from "@g1t/contracts";
@@ -8,13 +9,14 @@ import { Topics } from "../../components/topics";
 import { page } from "../../lib/meta";
 import { type Tab as PageTab, tabsFor } from "../../lib/project-nav";
 import { Pill } from "../../components/ui";
+import { WatchMenu } from "../../components/notifications";
 import { ArchivedBanner } from "../../components/repo-lifecycle";
 import { WelcomeBanner } from "../../components/welcome";
 import { clearWelcome, welcomes } from "../../lib/invites";
 import { notFound } from "../../lib/not-found.server";
 import { redirectIfRenamed, redirectIfTransferred } from "../../lib/renamed.server";
 import { accessFor, countsFor, repoFor } from "../../lib/access.server";
-import { projects } from "../../lib/services.server";
+import { inbox, projects } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
 export function meta({ loaderData: loaded, params, ...args }: Route.MetaArgs) {
@@ -24,10 +26,15 @@ export function meta({ loaderData: loaded, params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const path = { namespace: params.owner, name: params.repo };
-  const [repo, counts, found] = await Promise.all([
+  const [repo, counts, found, watching] = await Promise.all([
     repoFor(context, params),
     countsFor(context, params),
     projects.get(params.owner, params.repo, viewer),
+    // How the person watches it, for the header's Watch menu, as soon as
+    // the repository is known.
+    viewer
+      ? repoFor(context, params).then((found) => (found.ok ? inbox.watching(viewer.username, found.value.id).catch(() => null) : null))
+      : null,
   ]);
   if (!repo.ok && !found.ok) {
     // Under a workspace's old name, after a rename: the project is at the new one.
@@ -56,6 +63,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     open: counts.ok ? counts.value : { issues: 0, pulls: 0 },
     access,
     member: access.insider,
+    watching,
   }, { headers });
 }
 
@@ -75,7 +83,7 @@ export function useProject() {
 }
 
 /** A repository's topics, each a way into Explore. */
-function Header({ project, isPrivate, archived, namespace, name, description, large }: {
+function Header({ project, isPrivate, archived, namespace, name, description, large, actions }: {
   project: Project | null;
   isPrivate: boolean;
   namespace: string;
@@ -83,6 +91,8 @@ function Header({ project, isPrivate, archived, namespace, name, description, la
   description: string | null;
   archived?: boolean;
   large?: boolean;
+  /** At the end of the row: the Watch menu. */
+  actions?: ReactNode;
 }) {
   const base = `/${namespace}/${name}`;
   return (
@@ -103,7 +113,9 @@ function Header({ project, isPrivate, archived, namespace, name, description, la
       </h1>
       <Pill>{isPrivate ? "private" : "public"}</Pill>
       {archived && <Pill>archived</Pill>}
-      {description && <p className="min-w-0 truncate text-sm text-muted">{description}</p>}
+      {/* On a phone, on its own line under the name and the Watch menu. */}
+      {description && <p className="order-last min-w-0 basis-full truncate text-sm text-muted sm:order-none sm:basis-0 sm:flex-1">{description}</p>}
+      {actions && <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>}
     </div>
   );
 }
@@ -149,7 +161,7 @@ function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
 }
 
 export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
-  const { repo, project, member, access, welcome } = loaderData;
+  const { repo, project, member, access, welcome, watching } = loaderData;
   const base = `/${repo.namespace}/${repo.name}`;
   // The project's own description, else the repository's as it is now.
   const description = (project && !project.descriptionInherited ? project.description : null) ?? repo.description;
@@ -171,6 +183,11 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
             name={repo.name}
             // The files' own About says it there, as the one place.
             description={filesPage ? null : description}
+            actions={
+              watching ? (
+                <WatchMenu action={`${base}/notifications`} level={watching.level} events={watching.events} />
+              ) : null
+            }
           />
           {/* On the files' pages, About shows them. */}
           {!filesPage && <Topics topics={repo.topics} />}

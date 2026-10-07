@@ -27,6 +27,7 @@ export default [
     index("routes/settings/index.tsx"),
     route("profile", "routes/settings/profile.tsx"),
     route("emails", "routes/settings/emails.tsx"),
+    route("notifications", "routes/settings/notifications.tsx"),
     route("invites", "routes/settings/invites.tsx"),
     route("keys", "routes/settings/keys.tsx"),
     route("tokens", "routes/settings/tokens.tsx"),
@@ -93,6 +94,8 @@ export default [
   route(":owner/:repo/audit.json", "routes/repo/audit-live.ts"),
   // An invitation to a repository, answered by someone who cannot see it yet.
   route(":owner/:repo/invitations", "routes/repo/invitations.tsx"),
+  // Subscribing to its issues and pull requests, and watching it.
+  route(":owner/:repo/notifications", "routes/repo/notifications.ts"),
   // A starter CI workflow, opened as a pull request (components/add-ci.tsx).
   route(":owner/:repo/add-ci", "routes/repo/add-ci.ts"),
   // A screenshot of a project's production, for its overview.

@@ -6,6 +6,7 @@
 export type AccountSettingsPage =
   | "profile"
   | "emails"
+  | "notifications"
   | "invites"
   | "keys"
   | "tokens"
@@ -20,6 +21,10 @@ export const ACCOUNT_SETTINGS: Record<AccountSettingsPage, { title: string; abou
     title: "Emails",
     about:
       "Your primary address gets account mail and password resets. Any confirmed address signs you in and can reset your password, and commits that carry it are shown as yours.",
+  },
+  notifications: {
+    title: "Notifications",
+    about: "What you are also emailed for, and how you watch repositories. Everything comes to your inbox either way.",
   },
   invites: { title: "Invites", about: "Bring people to g1t, and see which invites were used." },
   keys: { title: "SSH keys", about: "Keys that let git on your computers reach g1t as you." },

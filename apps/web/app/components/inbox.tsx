@@ -13,7 +13,7 @@ import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { cn } from "../lib/cn";
 import { isPending } from "../lib/pending";
-import { INBOX_TABS, type InboxTab, SEVERITY_LABEL, SNOOZES, bellCount, emptyFor, isUnread, tabCount, whenShort } from "../lib/inbox";
+import { INBOX_TABS, type InboxTab, REASON_LABEL, SEVERITY_LABEL, SNOOZES, bellCount, emptyFor, isUnread, tabCount, updatesLabel, whenShort } from "../lib/inbox";
 import type { InboxPanelData } from "../routes/inbox-json";
 
 /** Where every inbox form posts (routes/inbox.tsx). */
@@ -69,7 +69,7 @@ export function InboxCard({ item, onOpen }: { item: InboxItem; onOpen?: () => vo
   const unread = isUnread(item);
   const leaving = isPending(fetcher, { id: item.id }) && ["done", "snooze", "undone"].includes(String(fetcher.formData?.get("intent")));
   const [now, setNow] = useState(() => Date.now());
-  useEffect(() => setNow(Date.now()), [item.createdAt]);
+  useEffect(() => setNow(Date.now()), [item.updatedAt]);
   if (leaving) return null;
 
   const submit = (intent: string, extra?: Record<string, string>) =>
@@ -96,11 +96,19 @@ export function InboxCard({ item, onOpen }: { item: InboxItem; onOpen?: () => vo
           {item.title}
         </Link>
         {item.body && <p className="mt-0.5 truncate text-xs text-muted">{item.body}</p>}
-        <div className="mt-2 flex items-center gap-2 text-xs text-faint">
-          <time dateTime={item.createdAt} suppressHydrationWarning>
-            {whenShort(item.createdAt, now)}
+        <div className="mt-2 flex min-w-0 items-center gap-2 text-xs text-faint">
+          <time dateTime={item.updatedAt} suppressHydrationWarning className="shrink-0 whitespace-nowrap">
+            {whenShort(item.updatedAt, now)}
           </time>
-          <Badge tone={TONE[item.severity]}>{SEVERITY_LABEL[item.severity]}</Badge>
+          <Badge tone={TONE[item.severity]} className="shrink-0">{SEVERITY_LABEL[item.severity]}</Badge>
+          {/* Why they were told, and how much has happened, said quietly. */}
+          <span className="truncate">{REASON_LABEL[item.reason] ?? item.reason}</span>
+          {updatesLabel(item.count) && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="shrink-0 tabular-nums">{updatesLabel(item.count)}</span>
+            </>
+          )}
           {item.saved && (
             <span className="inline-flex items-center gap-1 text-faint">
               <Bookmark size={12} aria-hidden="true" />

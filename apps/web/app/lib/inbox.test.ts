@@ -3,7 +3,28 @@ import { test } from "node:test";
 
 import type { InboxItem } from "@g1t/contracts";
 
-import { bellCount, emptyFor, inboxTab, inboxView, markFromForm, needsYou, severityOf, snoozeUntil, tabCount, whenShort } from "./inbox.ts";
+import {
+  EMAIL_REASONS,
+  REASON_FILTERS,
+  REASON_LABEL,
+  bellCount,
+  emailReasonsFromForm,
+  emptyFor,
+  inboxReason,
+  inboxTab,
+  inboxView,
+  markFromForm,
+  needsYou,
+  severityOf,
+  snoozeUntil,
+  subscriptionFromForm,
+  subscriptionLine,
+  tabCount,
+  updatesLabel,
+  watchFromForm,
+  watchLabel,
+  whenShort,
+} from "./inbox.ts";
 
 const NOW = Date.parse("2026-10-07T12:00:00.000Z");
 
@@ -69,7 +90,7 @@ test("forms ask for one mark on one item, or read for every item", () => {
 test("what needs you puts a waiting agent before a failure, and leaves out the rest", () => {
   const item = (id: string, severity: InboxItem["severity"], createdAt: string, readAt: string | null = null): InboxItem => ({
     id,
-    reason: "x",
+    reason: "agent",
     severity,
     title: id,
     body: "",
@@ -80,6 +101,9 @@ test("what needs you puts a waiting agent before a failure, and leaves out the r
     url: "/acme/rocket/pull/1",
     actor: null,
     createdAt,
+    updatedAt: createdAt,
+    event: null,
+    count: 1,
     readAt,
     doneAt: null,
     saved: false,
@@ -106,4 +130,71 @@ test("every tab says something when it is empty", () => {
   assert.equal(emptyFor("all").title, "You're all caught up");
   assert.equal(emptyFor("needs").title, "Nothing needs you");
   assert.equal(emptyFor("all", "saved").title, "Nothing saved");
+});
+
+test("every reason has words, a filter and an email choice", () => {
+  const reasons = Object.keys(REASON_LABEL);
+  assert.equal(reasons.length, 11);
+  assert.deepEqual(REASON_FILTERS.slice(1).map((entry) => entry.reason), reasons);
+  assert.equal(REASON_FILTERS[0].label, "Any reason");
+  assert.equal(REASON_FILTERS.find((entry) => entry.reason === "review_requested")?.label, "Review requested");
+  // Every reason someone can be told for can be emailed, but a security
+  // alert, which nothing sends yet.
+  assert.deepEqual(
+    EMAIL_REASONS.map((entry) => entry.reason).sort(),
+    reasons.filter((reason) => reason !== "security_alert").sort(),
+  );
+  assert.equal(inboxReason("mention"), "mention");
+  assert.equal(inboxReason("gossip"), null);
+  assert.equal(inboxReason(null), null);
+});
+
+test("a thread says how much happened on it once more than one thing has", () => {
+  assert.equal(updatesLabel(1), "");
+  assert.equal(updatesLabel(null), "");
+  assert.equal(updatesLabel(4), "4 updates");
+});
+
+test("watching is read from the menu, and a custom watch of nothing is the default", () => {
+  const form = (fields: [string, string][]) => {
+    const data = new FormData();
+    for (const [name, value] of fields) data.append(name, value);
+    return data;
+  };
+  assert.deepEqual(watchFromForm(form([["level", "all"]])), { level: "all", events: [] });
+  assert.deepEqual(watchFromForm(form([["level", "custom"], ["event", "deployments"], ["event", "pulls"], ["event", "releases"]])), {
+    level: "custom",
+    events: ["pulls", "deployments"],
+  });
+  assert.deepEqual(watchFromForm(form([["level", "custom"]])), { level: "participating", events: [] });
+  assert.equal(watchFromForm(form([["level", "loud"]])), null);
+  assert.equal(watchLabel("all"), "Watching");
+  assert.equal(watchLabel("ignore"), "Ignoring");
+  assert.equal(watchLabel("participating"), "Watch");
+});
+
+test("the subscribe button says whether, and why", () => {
+  const sub = (changes: object) => ({ subscribed: true, ignored: false, reason: null, repo: null, number: 7, updatedAt: null, ...changes });
+  assert.equal(subscriptionLine(sub({ reason: "assign" }), "issue"), "You're subscribed because you were assigned.");
+  assert.equal(subscriptionLine(sub({ reason: "author" }), "pull"), "You're subscribed because you opened this pull request, or asked g1t for it.");
+  assert.match(subscriptionLine(sub({ subscribed: false }), "issue"), /still hear if you're mentioned/);
+  assert.match(subscriptionLine(sub({ subscribed: false, ignored: true }), "issue"), /ignore this issue/);
+  assert.match(subscriptionLine(null, "issue"), /^Subscribe/);
+  const intent = (value: string) => {
+    const data = new FormData();
+    data.set("intent", value);
+    return subscriptionFromForm(data);
+  };
+  assert.deepEqual(intent("subscribe"), { subscribed: true, ignored: false });
+  assert.deepEqual(intent("unsubscribe"), { subscribed: false, ignored: false });
+  assert.deepEqual(intent("ignore"), { subscribed: false, ignored: true });
+  assert.deepEqual(intent("default"), { subscribed: null, ignored: false });
+  assert.equal(intent("explode"), null);
+});
+
+test("email reasons are read from the settings form in rank order", () => {
+  const data = new FormData();
+  for (const value of ["mention", "nope", "agent", "mention"]) data.append("email", value);
+  assert.deepEqual(emailReasonsFromForm(data), ["agent", "mention"]);
+  assert.deepEqual(emailReasonsFromForm(new FormData()), []);
 });

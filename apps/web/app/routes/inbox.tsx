@@ -8,8 +8,9 @@ import { Link, data, useNavigate } from "react-router";
 
 import type { Route } from "./+types/inbox";
 import { InboxCard, InboxEmpty, InboxTabs, MarkAllRead } from "../components/inbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { cn } from "../lib/cn";
-import { inboxTab, inboxView, markFromForm, severityOf, tabCount } from "../lib/inbox";
+import { REASON_FILTERS, inboxReason, inboxTab, inboxView, markFromForm, severityOf, tabCount } from "../lib/inbox";
 import { page } from "../lib/meta";
 import { inbox } from "../lib/services.server";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
@@ -25,12 +26,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const tab = inboxTab(url.searchParams.get("tab"));
   const view = inboxView(url.searchParams.get("view"));
+  const reason = inboxReason(url.searchParams.get("reason"));
   const before = url.searchParams.get("before");
   const [list, counts] = await Promise.all([
-    inbox.list(user, { view, severity: severityOf(tab), before, limit: PAGE_ITEMS }).catch(() => null),
+    inbox.list(user, { view, severity: severityOf(tab), reason, before, limit: PAGE_ITEMS }).catch(() => null),
     inbox.counts(user.username).catch(() => null),
   ]);
-  return { tab, view, before, items: list?.items ?? null, next: list?.next ?? null, counts };
+  return { tab, view, reason, before, items: list?.items ?? null, next: list?.next ?? null, counts };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -53,11 +55,11 @@ const VIEWS = [
 ] as const;
 
 export default function InboxPage({ loaderData }: Route.ComponentProps) {
-  const { tab, view, before, items, next, counts } = loaderData;
+  const { tab, view, reason, before, items, next, counts } = loaderData;
   const navigate = useNavigate();
   const address = (changes: Record<string, string | null>) => {
     const params = new URLSearchParams();
-    const merged = { tab: tab === "all" ? null : tab, view: view === "inbox" ? null : view, ...changes };
+    const merged = { tab: tab === "all" ? null : tab, view: view === "inbox" ? null : view, reason, ...changes };
     for (const [name, value] of Object.entries(merged)) if (value) params.set(name, value);
     const query = params.toString();
     return query ? `/inbox?${query}` : "/inbox";
@@ -68,7 +70,7 @@ export default function InboxPage({ loaderData }: Route.ComponentProps) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
-          <p className="mt-1 text-sm text-muted">What needs you, and what you follow. What an agent is waiting on comes first.</p>
+          <p className="mt-1 text-sm text-muted">What needs you, and what you follow. What is waiting on you comes first.</p>
         </div>
         {view === "inbox" && <MarkAllRead tab={tab} disabled={tabCount(counts, tab) === 0} />}
       </div>
@@ -90,8 +92,23 @@ export default function InboxPage({ loaderData }: Route.ComponentProps) {
         ))}
       </nav>
 
-      <div className="mt-4">
-        <InboxTabs tab={tab} counts={view === "inbox" ? counts : null} onChange={(next) => navigate(address({ tab: next === "all" ? null : next, before: null }))} />
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="min-w-0 grow">
+          <InboxTabs tab={tab} counts={view === "inbox" ? counts : null} onChange={(next) => navigate(address({ tab: next === "all" ? null : next, before: null }))} />
+        </div>
+        {/* Why you were told: a review asked of you, a mention, what you watch. */}
+        <Select value={reason ?? "any"} onValueChange={(value) => navigate(address({ reason: value === "any" ? null : value, before: null }))}>
+          <SelectTrigger size="sm" aria-label="Reason" className="sm:w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent align="end">
+            {REASON_FILTERS.map((entry) => (
+              <SelectItem key={entry.reason ?? "any"} value={entry.reason ?? "any"}>
+                {entry.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="mt-4">
