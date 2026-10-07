@@ -28,6 +28,7 @@ export const DONE: Record<string, string> = {
   attach: "Workspace moved onto the enterprise.",
   detach: "Workspace moved off the enterprise. It pays for itself again.",
   credit: "Credit issued.",
+  reset: "Billing reset. The workspace starts again as a new customer; run the costs analysis to redo the margin figures.",
   created: "Enterprise created.",
   "billing-email": "Saved where the enterprise's invoices go.",
   sales: "Sales record saved.",

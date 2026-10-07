@@ -346,6 +346,25 @@ shows a red **Spend cap** bar.
 - **Change a default**: edit the variable in `services/billing/wrangler.jsonc`
   and deploy g1t-billing.
 
+## Resetting a test workspace
+
+sudo → the workspace → **Reset billing (testing)** (`admin_reset_billing`)
+returns a workspace used for testing to how a new customer starts. It
+deletes the workspace's rows from every billing table: ledger and balance,
+plan and plan payments, limits and limit requests, trial grant, invoices,
+holds, card checks, alerts sent, price notices, month-end snapshots and
+closes, storage and sandbox meters, token usage, spikes, sales records and
+notes, `workspace_costs`, its workspace margin alert and its own billing
+account. It keeps `own_counts` (what Cloudflare's bill is compared with)
+and the audit log, which records the reset with the note and the number of
+rows. The workspace, its members and its repositories are identity's and
+repos' and stay.
+
+Billing refuses it while `STRIPE_SECRET_KEY` is a live key, for comped
+workspaces, and for a workspace an enterprise pays for. Afterwards press
+**Run the analysis now** on Costs & margin so the margin figures drop the
+workspace's past usage.
+
 ## Stripe
 
 Billing keeps what it needs from Stripe so reads never wait on it, and

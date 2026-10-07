@@ -524,6 +524,8 @@ export interface BillingAdminApi {
   createEnterprise(name: string, workspaces: string[], by: string): Promise<Result<PayingAccount>>;
   attach(workspace: string, account: string | null, by: string): Promise<Result<PayingAccount>>;
   credit(workspace: string, amountMicros: number, note: string, by: string): Promise<Result<LedgerEntry>>;
+  /** A test workspace's billing wiped, to start again as a new customer. Only on Stripe's test key; never comped or enterprise. Logged. */
+  resetBilling(workspace: string, confirm: string, note: string, by: string): Promise<Result<BillingReset>>;
   /** The workspace's Stripe billing page, to send to the customer. Logged. */
   billingLink(workspace: string, by: string): Promise<Result<BillingLink>>;
   /** Where billing stands with Stripe; with `setup`, registers the webhook first. */
@@ -1145,6 +1147,9 @@ export type PriceVersion = {
   createdBy: string;
   appliedAt: string | null;
 };
+
+/** What `resetBilling` removed. */
+export type BillingReset = { workspace: string; rows: number };
 
 export type WorkspaceCost = { workspace: string; costMicros: number; revenueMicros: number; givenMicros?: number; internal: boolean };
 

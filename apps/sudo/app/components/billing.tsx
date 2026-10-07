@@ -3,7 +3,7 @@
  * confirmations, terms, plan, pools and caps, credit, bank transfers, the
  * Stripe billing link, the ledger and the audit log. Plain forms; sudo ships no JavaScript.
  */
-import { CreditCard, Gift, Landmark, ScrollText, UserRound } from "lucide-react";
+import { CreditCard, Gift, Landmark, RotateCcw, ScrollText, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -508,6 +508,48 @@ export function CreditForm({ workspaces, pathname, error }: { workspaces: string
           </div>
         </form>
       )}
+    </Section>
+  );
+}
+
+// --- Reset (testing) -----------------------------------------------------------
+
+/**
+ * Wipes a test workspace's billing so it starts again as a new customer.
+ * Only while billing runs on Stripe's test key; billing refuses comped and
+ * enterprise workspaces. The workspace, its members and repositories stay.
+ */
+export function ResetBillingForm({ workspace, pathname, error }: { workspace: string; pathname: string; error: SectionError }) {
+  const values = error?.values;
+  return (
+    <Section
+      id="reset"
+      title="Reset billing (testing)"
+      description="Wipes this workspace's billing: its ledger and balance, plan, limits, trial, invoices, holds, signals and cost rows. The workspace, its members and its repositories stay. Only while billing is on Stripe's test key."
+    >
+      <form method="post" action={`${pathname}#reset`} className="space-y-4">
+        <input type="hidden" name="intent" value="reset" />
+        {error && <Notice tone="error">{error.error}</Notice>}
+        <Field label="Why" hint="Required. Kept in the audit log.">
+          <Textarea name="note" rows={2} required maxLength={500} placeholder="e.g. Test workspace, starting the customer walk-through again" defaultValue={values?.note ?? ""} />
+        </Field>
+        <Field
+          label="Confirm"
+          hint={
+            <>
+              Type the workspace's slug (<span className="font-mono text-muted">{workspace}</span>) to wipe its billing. It cannot be undone.
+            </>
+          }
+        >
+          <Input name="confirmation" required placeholder={workspace} className="font-mono" />
+        </Field>
+        <div className="flex justify-end">
+          <Button type="submit" variant="danger">
+            <RotateCcw size={14} />
+            Reset billing
+          </Button>
+        </div>
+      </form>
     </Section>
   );
 }

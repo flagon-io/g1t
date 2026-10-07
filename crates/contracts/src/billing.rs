@@ -2154,6 +2154,26 @@ pub struct AdminCreditArgs {
     pub by: String,
 }
 
+/// `admin_reset_billing`: a test workspace's billing wiped, so it starts
+/// again as a new customer. Only while billing runs on Stripe's test key;
+/// never a comped workspace or one an enterprise pays for. `confirm` is the
+/// workspace's slug typed out. Returns `Outcome<BillingReset>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminResetBillingArgs {
+    pub workspace: String,
+    pub confirm: String,
+    pub note: String,
+    pub by: String,
+}
+
+/// What a reset removed.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BillingReset {
+    pub workspace: String,
+    pub rows: u32,
+}
+
 /// One change made in sudo.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

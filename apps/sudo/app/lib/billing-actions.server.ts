@@ -121,6 +121,21 @@ export async function billingAction(request: Request, staff: Staff, subject: Sub
     return back("credit");
   }
 
+  if (intent === "reset") {
+    // A test workspace's billing wiped. Billing refuses it on a live Stripe
+    // key, for comped workspaces and for an enterprise's.
+    const values = fields(form, "note", "confirmation");
+    if (subject.kind !== "workspace") return failed("top", "Reset a workspace, not an enterprise.");
+    const note = parseNote(values.note);
+    if (!note.ok) return failed("reset", note.error, values);
+    if (values.confirmation !== subject.slug) {
+      return failed("reset", `Type the workspace's slug, ${subject.slug}, exactly, to reset it.`, { ...values, confirmation: "" });
+    }
+    const result = await admin.resetBilling(subject.slug, values.confirmation, note.value, staff.email);
+    if (!result.ok) return failed("reset", result.error.message, values);
+    return back("reset");
+  }
+
   if (intent === "payment") {
     // A bank transfer that reached g1t outside Stripe's page.
     const values = fields(form, "amount", "reference", "note", "confirmation");

@@ -97,6 +97,7 @@ export const AUDIT_ACTIONS: Record<string, string> = {
   attach: "Workspace added",
   detach: "Workspace removed",
   credit: "Credit issued",
+  reset: "Billing reset (testing)",
   billing_link: "Billing link made",
   billing_email: "Invoice email set",
   invoice: "Invoice sent",

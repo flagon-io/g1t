@@ -14,6 +14,7 @@ import {
   LedgerSection,
   Owners,
   PaymentForm,
+  ResetBillingForm,
   ReviewPanel,
   TermsForm,
 } from "~/components/billing";
@@ -355,6 +356,7 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
           )}
           <PaymentForm workspace={slug} pathname={pathname} error={error("payment")} />
           <CreditForm workspaces={[slug]} pathname={pathname} error={error("credit")} />
+          {!billedTo && terms.kind !== "comped" && <ResetBillingForm workspace={slug} pathname={pathname} error={error("reset")} />}
           <div id="audit" className="scroll-mt-20">
             <AuditSection
               audit={audit}
