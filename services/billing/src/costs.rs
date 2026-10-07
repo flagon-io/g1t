@@ -238,6 +238,120 @@ pub(crate) fn lines_from_artifacts(body: &Value) -> std::result::Result<Vec<Cost
     ))
 }
 
+/// Where a cost line came from: AI Gateway's analytics, what it priced
+/// g1t's own provider traffic at.
+pub(crate) const SOURCE_GATEWAY: &str = "ai_gateway";
+/// The product of AI Gateway's lines. Not `ai_gateway`, which is what a
+/// billable-usage line from Cloudflare for AI Gateway itself would slug to.
+pub(crate) const GATEWAY_PRODUCT: &str = "ai_gateway_requests";
+/// Meter suffixes of a model's token lines (no cost; for the drift).
+pub(crate) const GATEWAY_TOKENS: &str = "__tokens";
+pub(crate) const GATEWAY_CACHE_READ: &str = "__cache_read_tokens";
+pub(crate) const GATEWAY_CACHE_WRITE: &str = "__cache_write_tokens";
+/// The meter prefix of requests Cloudflare billed itself (unified billing),
+/// which are on Cloudflare's bill as well as here.
+pub(crate) const GATEWAY_WHOLESALE: &str = "wholesale__";
+
+/// What AI Gateway priced each day's requests at, per provider and model,
+/// for g1t's gateway only: GraphQL `aiGatewayRequestsAdaptiveGroups`, with
+/// `sum.cost` (dollars), the tokens it priced and whether Cloudflare billed
+/// the request itself (`wholesale`). Field names checked against the
+/// schema (`AccountAiGatewayRequestsAdaptiveGroupsSum` and `…Dimensions`).
+pub(crate) const GATEWAY_QUERY: &str = "query ($account: String!, $gateway: String!, $since: Date!, $until: Date!) {
+  viewer { accounts(filter: { accountTag: $account }) {
+    aiGatewayRequestsAdaptiveGroups(limit: 10000, filter: { date_geq: $since, date_leq: $until, gateway: $gateway }) {
+      count
+      sum { cost tokensIn tokensOut cacheReadTokens cacheWriteTokens }
+      dimensions { date provider model wholesale }
+    }
+  } }
+}";
+
+pub(crate) fn gateway_variables(account: &str, gateway: &str, since: &str, until: &str) -> Value {
+    json!({ "query": GATEWAY_QUERY, "variables": { "account": account, "gateway": gateway, "since": since, "until": until } })
+}
+
+/// AI Gateway's analytics as lines: per day and model, the requests at
+/// what the gateway priced them (meter `<provider>_<model>`), and their
+/// tokens, cache reads and cache writes at no cost (`…__tokens`, …).
+/// Errors when GraphQL does.
+pub(crate) fn lines_from_gateway(body: &Value) -> std::result::Result<Vec<CostLine>, String> {
+    if let Some(errors) = body["errors"].as_array().filter(|e| !e.is_empty()) {
+        return Err(format!("AI Gateway analytics failed: {}", Value::Array(errors.clone())));
+    }
+    let groups = body["data"]["viewer"]["accounts"][0]["aiGatewayRequestsAdaptiveGroups"].as_array().cloned().unwrap_or_default();
+    let mut lines = Vec::new();
+    for g in &groups {
+        let d = &g["dimensions"];
+        let Some(day) = d["date"].as_str().filter(|day| day.len() >= 10) else { continue };
+        let provider = d["provider"].as_str().unwrap_or("unknown");
+        let model = d["model"].as_str().unwrap_or("unknown");
+        let wholesale = d["wholesale"].as_u64().unwrap_or(0) == 1;
+        let name = format!("{}{}", if wholesale { GATEWAY_WHOLESALE } else { "" }, slug(&format!("{provider} {model}")));
+        let sum = |key: &str| g["sum"][key].as_f64().unwrap_or(0.0);
+        let line = |meter: String, unit: &str, quantity: f64, cost_usd: f64| CostLine {
+            day: day[..10].to_owned(),
+            source: SOURCE_GATEWAY,
+            product: GATEWAY_PRODUCT.to_owned(),
+            meter,
+            unit: unit.to_owned(),
+            quantity,
+            cost_usd,
+            raw_name: format!("AI Gateway / {provider} / {model}{}", if wholesale { " (billed by Cloudflare)" } else { "" }),
+        };
+        lines.push(line(name.clone(), "requests", g["count"].as_f64().unwrap_or(0.0), sum("cost").max(0.0)));
+        lines.push(line(format!("{name}{GATEWAY_TOKENS}"), "tokens", sum("tokensIn") + sum("tokensOut"), 0.0));
+        for (suffix, key) in [(GATEWAY_CACHE_READ, "cacheReadTokens"), (GATEWAY_CACHE_WRITE, "cacheWriteTokens")] {
+            if sum(key) > 0.0 {
+                lines.push(line(format!("{name}{suffix}"), "tokens", sum(key), 0.0));
+            }
+        }
+    }
+    Ok(aggregate(lines))
+}
+
+/// What the gateway's lines over a window say about whether its cost can
+/// be taken as what the providers bill g1t.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct GatewayCaveats {
+    /// Models the gateway put no price on although they used tokens.
+    pub unpriced: Vec<String>,
+    pub cache_read_tokens: f64,
+    pub cache_write_tokens: f64,
+    /// What Cloudflare billed itself (unified billing), in dollars: on its
+    /// bill too, so not a cost paid to a provider.
+    pub wholesale_usd: f64,
+    /// Runs settled with the gateway's figure short (see `keeper::settled_cost`).
+    pub short_runs: u32,
+}
+
+/// The caveats in AI Gateway's lines (any days, any order).
+pub(crate) fn gateway_caveats(lines: &[(String, f64, f64)]) -> GatewayCaveats {
+    let mut out = GatewayCaveats::default();
+    let mut cost: BTreeMap<&str, f64> = BTreeMap::new();
+    let mut tokens: BTreeMap<&str, f64> = BTreeMap::new();
+    for (meter, quantity, cost_usd) in lines {
+        if let Some(model) = meter.strip_suffix(GATEWAY_TOKENS) {
+            *tokens.entry(model).or_default() += quantity;
+        } else if meter.ends_with(GATEWAY_CACHE_READ) {
+            out.cache_read_tokens += quantity;
+        } else if meter.ends_with(GATEWAY_CACHE_WRITE) {
+            out.cache_write_tokens += quantity;
+        } else {
+            *cost.entry(meter.as_str()).or_default() += cost_usd;
+            if meter.starts_with(GATEWAY_WHOLESALE) {
+                out.wholesale_usd += cost_usd;
+            }
+        }
+    }
+    for (model, used) in tokens {
+        if used > 0.0 && cost.get(model).copied().unwrap_or(0.0) <= 0.0 {
+            out.unpriced.push(model.to_owned());
+        }
+    }
+    out
+}
+
 /// The workspace a repository in the store belongs to: keys are
 /// `<workspace>--<repo>`; a pull request's working copy (`pulls--<id>`) is
 /// its repository's workspace's, from `owners` (repos' `pull_owners`), else
@@ -463,6 +577,28 @@ impl Billing {
             },
             Err(error) => problems.push(format!("Artifacts events could not be read: {error}")),
         }
+        // What AI Gateway priced g1t's own provider traffic at, each day:
+        // the total the ledger's model cost is checked against (`margin`).
+        if !keeper.gateway().is_empty() {
+            match keeper
+                .graphql_either(gateway_variables(keeper.account(), keeper.gateway(), &since, &until))
+                .await
+                .map_err(|e| e.to_string())
+                .and_then(|body| lines_from_gateway(&body))
+            {
+                Ok(lines) => {
+                    // A day's models are read whole: one that is gone from a
+                    // re-read day must not keep its old line.
+                    self.db
+                        .prepare("DELETE FROM cost_lines WHERE source = ?1 AND day >= ?2 AND day <= ?3")
+                        .bind(&[SOURCE_GATEWAY.into(), since.as_str().into(), until.as_str().into()])?
+                        .run()
+                        .await?;
+                    written += self.upsert_lines(&lines, &fetched_at).await?;
+                }
+                Err(error) => problems.push(format!("AI Gateway's analytics could not be read: {error}")),
+            }
+        }
         Ok(Some((since, until, written)))
     }
 
@@ -644,6 +780,70 @@ impl Billing {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// AI Gateway's analytics in the shape of the schema
+    /// (`aiGatewayRequestsAdaptiveGroups`: `count`, `sum`, `dimensions`).
+    fn gateway_fixture() -> Value {
+        let group = |day: &str, provider: &str, model: &str, wholesale: u8, count: u64, cost: f64, tokens: (f64, f64, f64, f64)| {
+            json!({
+                "count": count,
+                "sum": { "cost": cost, "tokensIn": tokens.0, "tokensOut": tokens.1, "cacheReadTokens": tokens.2, "cacheWriteTokens": tokens.3 },
+                "dimensions": { "date": day, "provider": provider, "model": model, "wholesale": wholesale }
+            })
+        };
+        json!({ "data": { "viewer": { "accounts": [{ "aiGatewayRequestsAdaptiveGroups": [
+            group("2026-10-05", "anthropic", "claude-sonnet-5-5", 0, 120, 4.25, (900_000.0, 40_000.0, 3_000_000.0, 200_000.0)),
+            group("2026-10-05", "anthropic", "claude-haiku-4-5-20251001", 0, 300, 0.40, (400_000.0, 20_000.0, 0.0, 0.0)),
+            group("2026-10-06", "anthropic", "claude-new-1", 0, 12, 0.0, (80_000.0, 4_000.0, 0.0, 0.0)),
+            group("2026-10-06", "openai", "gpt-x", 1, 5, 0.10, (1_000.0, 100.0, 0.0, 0.0)),
+        ] }] } }, "errors": null })
+    }
+
+    #[test]
+    fn the_gateway_query_names_the_fields_its_schema_has() {
+        // As checked against Cloudflare's GraphQL schema (introspection of
+        // AccountAiGatewayRequestsAdaptiveGroups{,Sum,Dimensions,Filter}).
+        for field in ["aiGatewayRequestsAdaptiveGroups", "date_geq", "date_leq", "gateway: $gateway", "count", "cost", "tokensIn", "tokensOut", "cacheReadTokens", "cacheWriteTokens", "date", "provider", "model", "wholesale"] {
+            assert!(GATEWAY_QUERY.contains(field), "{field}");
+        }
+        let body = gateway_variables("acct", "g1t", "2026-10-01", "2026-10-07");
+        assert_eq!(body["variables"]["gateway"], "g1t");
+    }
+
+    #[test]
+    fn what_the_gateway_priced_is_kept_per_day_and_model_with_its_tokens() {
+        let lines = lines_from_gateway(&gateway_fixture()).unwrap();
+        let get = |day: &str, meter: &str| lines.iter().find(|l| l.day == day && l.meter == meter).unwrap_or_else(|| panic!("{day} {meter}"));
+        let sonnet = get("2026-10-05", "anthropic_claude_sonnet_5_5");
+        assert_eq!((sonnet.source, sonnet.product.as_str(), sonnet.quantity, sonnet.cost_usd), (SOURCE_GATEWAY, GATEWAY_PRODUCT, 120.0, 4.25));
+        assert_eq!(get("2026-10-05", "anthropic_claude_sonnet_5_5__tokens").quantity, 940_000.0);
+        assert_eq!(get("2026-10-05", "anthropic_claude_sonnet_5_5__cache_read_tokens").quantity, 3_000_000.0);
+        assert_eq!(get("2026-10-05", "anthropic_claude_sonnet_5_5__cache_write_tokens").cost_usd, 0.0);
+        assert_eq!(get("2026-10-06", "wholesale__openai_gpt_x").cost_usd, 0.10);
+        // Only the request lines carry cost: the day's total is the gateway's.
+        let day5: f64 = lines.iter().filter(|l| l.day == "2026-10-05").map(|l| l.cost_usd).sum();
+        assert!((day5 - 4.65).abs() < 1e-9);
+        // Errors are a problem for the run, not lines.
+        assert!(lines_from_gateway(&json!({ "errors": [{ "message": "not authorized for that account" }] })).is_err());
+    }
+
+    #[test]
+    fn the_gateway_lines_say_when_its_cost_cannot_be_the_providers() {
+        let rows: Vec<(String, f64, f64)> =
+            lines_from_gateway(&gateway_fixture()).unwrap().into_iter().map(|l| (l.meter, l.quantity, l.cost_usd)).collect();
+        let caveats = gateway_caveats(&rows);
+        assert_eq!(caveats.unpriced, vec!["anthropic_claude_new_1".to_owned()]);
+        assert_eq!((caveats.cache_read_tokens, caveats.cache_write_tokens), (3_000_000.0, 200_000.0));
+        assert!((caveats.wholesale_usd - 0.10).abs() < 1e-9);
+        // A model priced on one day and not another is priced.
+        let mixed = vec![
+            ("m".to_owned(), 3.0, 0.5),
+            ("m__tokens".to_owned(), 10.0, 0.0),
+            ("m".to_owned(), 3.0, 0.0),
+            ("m__tokens".to_owned(), 10.0, 0.0),
+        ];
+        assert!(gateway_caveats(&mixed).unpriced.is_empty());
+    }
 
     /// Billable usage as Cloudflare answered g1t on 2026-10-06 (two days,
     /// trimmed), plus rows past the included amounts, which cost money.

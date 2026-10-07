@@ -597,7 +597,7 @@ impl Billing {
         // and only the account's terms change it. The plan's included usage
         // pays what it can; the trial and the open-source pool never pay for
         // deployments.
-        let charge = self.terms_of(&workspace).await?.apply(crate::charge_micros(cost, self.margin_percent));
+        let (charge, discount) = self.terms_of(&workspace).await?.discounted(crate::charge_micros(cost, self.margin_percent));
         let drawn = self.draw(&workspace, charge, &month, &crate::credits::Eligible::default()).await?;
         description.push_str(&drawn.note());
         self.post_usage(crate::storage::UsageLine {
@@ -612,6 +612,7 @@ impl Billing {
             drawn,
         })
         .await?;
+        self.record_discount(&a.reference, discount).await?;
         self.count_spend(&workspace, cost_micros, charge - drawn.total(), &drawn).await;
         Ok(Outcome::Ok(true))
     }

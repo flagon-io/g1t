@@ -21,6 +21,7 @@ to what g1t sells is data you change from sudo, without a deploy.
 | --- | --- | --- |
 | Billable usage, `GET /accounts/{account}/billable-usage?from=&to=` | One row per service per day in FOCUS columns: `ServiceFamilyName`, `ServiceName`, `ChargePeriodStart`, `PricingQuantity`, `ContractedCost` / `BilledCost` / `ListCost`. Every product g1t uses appears once it is used: Workers, Workers for Platforms, D1, KV, R2, Queues, Containers, Durable Objects, Artifacts, Browser Rendering, Workers AI, Vectorize, Cloudflare for SaaS, Email. Inside an included amount the cost is 0. | `cost_lines`, source `billable_usage` |
 | GraphQL `artifactsEventsAdaptiveGroups` | Artifacts' own count by `date`, `eventType` and `repositoryName`. Operations are `create`, `fork`, `push`, `pull`, `delete`; errors (`rateLimited`, `serverError`, …) are kept but not counted. | `cost_lines`, source `artifacts_events`; per workspace (from the store key `<workspace>--<repo>`; a pull request's working copy, `pulls--<id>`, is its repository's workspace's, from repos' `pull_owners`) in `own_counts` as `cloudflare_git` |
+| GraphQL `aiGatewayRequestsAdaptiveGroups`, filtered to `AI_GATEWAY_ID` | What AI Gateway priced g1t's own provider traffic at, by `date`, `provider`, `model` and `wholesale`: `count`, `sum.cost` (dollars), `sum.tokensIn`/`tokensOut`/`cacheReadTokens`/`cacheWriteTokens`. Field names checked against Cloudflare's schema (introspection of `AccountAiGatewayRequestsAdaptiveGroups{Sum,Dimensions,Filter_InputObject}`). An adaptive (sampled) dataset: an estimate, close at g1t's volumes. Only g1t's hosted models go through this gateway: a workspace's own provider is called at its own address, never here. | `cost_lines`, source `ai_gateway`, product `ai_gateway_requests`: per day and model a line `<provider>_<model>` (requests, at the gateway's cost), and at no cost `…__tokens`, `…__cache_read_tokens`, `…__cache_write_tokens`; Cloudflare-billed (unified billing) requests are prefixed `wholesale__`. Mapped to `models` (migration 0036). A re-read day replaces all its gateway lines. |
 | The ledger | Every charge: its cost at the price book's cost, what it was charged at price, what paid for it. | read, never written |
 | `pending_usage` | Month-end meters (git, storage, scans, embeddings, the cache) as they stand. | snapshotted daily into `pending_days` |
 | `plan_payments` | The plan's $20. | read |
@@ -39,7 +40,7 @@ and the "(First … included)" note dropped: `Workers for Platforms CPU ms
 | Secret on g1t-billing | Permissions | Used for |
 | --- | --- | --- |
 | `CLOUDFLARE_BILLING_TOKEN` (optional) | Account: **Billing Read**, Account: **Account Analytics Read**, for the g1t account only | Reading the bill, the Artifacts events and the subscriptions |
-| `CLOUDFLARE_USAGE_TOKEN` (exists) | Billing Read, Account Analytics Read, AI Gateway Read | The keeper; also the bill when `CLOUDFLARE_BILLING_TOKEN` is not set |
+| `CLOUDFLARE_USAGE_TOKEN` (exists) | Billing Read, Account Analytics Read, AI Gateway Read | The keeper (settling runs from the gateway's logs); also the bill when `CLOUDFLARE_BILLING_TOKEN` is not set. AI Gateway's analytics are read with the bill's token first and, if that is refused, with this one |
 
 With neither, the daily run reconciles only what g1t counted itself, and
 the page says the bill cannot be read. Nothing fails. To set the scoped one:
@@ -60,7 +61,7 @@ The daily cron (`17 4 * * *`, `keeper::DAILY`) runs, in order:
 1. The keeper's measurements (sandbox seconds, app requests and CPU), each
    a proposal now, not a direct change.
 2. `costs_daily`:
-   1. Read the bill and the Artifacts events. The first run reads the last
+   1. Read the bill, the Artifacts events and AI Gateway's analytics. The first run reads the last
       31 days (GraphQL keeps 31); later runs the last 4, since Cloudflare
       restates recent days, or back to the last day read after a gap.
       Lines are upserted on `(day, source, product, meter)`, so a re-read
@@ -97,7 +98,7 @@ prefix, `*` last. A line no row claims goes to `unmapped`.
 | `embeddings` | Workers AI, Vectorize | `context` |
 | `security` | (Workers CPU, under `platform`) | `security` |
 | `domains` | Cloudflare for SaaS | `domains` |
-| `models` | not Cloudflare: AI Gateway's settled cost on the ledger | every other task (agent runs) |
+| `models` | not Cloudflare: AI Gateway's settled cost on the ledger; AI Gateway's own daily total (`ai_gateway_requests`) beside it, to check it | every other task (agent runs) |
 | `platform` | Workers, D1, KV, Queues, Email, Browser Rendering, other Durable Objects | the plan's price |
 
 For each day and bucket:
@@ -106,7 +107,9 @@ For each day and bucket:
   included allowances, so a month inside them costs $0 here as on
   Cloudflare's Billable usage page. `models` uses the ledger's cost of the
   tokens instead; that is paid to the model providers and is not on
-  Cloudflare's bill.
+  Cloudflare's bill. Its "Cloudflare" column is what AI Gateway priced the
+  same traffic at, which drift compares with the ledger (below); it is
+  never added to the cost.
 - **Own cost** = Σ the ledger's `cost_micros` for the bucket's keys (the
   price book's cost when charged), plus month-end deltas. A workspace's own
   model provider is no cost to g1t.
@@ -121,13 +124,20 @@ For each day and bucket:
     (`ledger.given_micros`), and all of a workspace's cost on a day it had
     nothing priced (free allowances);
   - **trial** and **open-source pool**: what `trial_micros` and
-    `oss_micros` paid.
+    `oss_micros` paid;
+  - **discount**: what a discount on an account's custom terms took below
+    cost plus the margin (`ledger.discount_micros`, see
+    [Margin floor](#margin-floor)). The usage is valued at its price, so a
+    discounted sale never reads as margin lost.
 
   Otherwise a workspace's day is split by those shares of its value at
   price, and the same shares of each of its buckets' cost are given, its
   part of running g1t included. The Team plan's included usage is sold:
   the plan's price paid for it. Stored on `margin_days` (`given_micros`
-  and `given_<why>_micros`) and `workspace_costs` (`given_micros`).
+  and `given_<why>_micros`, `given_discount_micros` from migration 0036)
+  and `workspace_costs` (`given_micros`). Sudo's Bill & pricing page lists
+  comped, free use, trial and pool by name; the discount part is in the
+  total until the page names it (`givenDiscountMicros`).
 - **Month-end meters**: a day's figure is that day's `pending_days`
   snapshot less the day before's, within a month. Their month-end ledger
   entries are left out, so nothing is counted twice.
@@ -168,6 +178,8 @@ remainder).
 | --- | --- | --- |
 | Count | g1t's count and Cloudflare's differ by more than the mapping's `drift_percent` (10%) | Find out what Cloudflare counts: compare its events with `own_counts` `artifacts_*` and `cost_operations`. If it counts more (binding reads, `ls-refs`), either change repos' `operation_mapping` so customers are charged for what Cloudflare counts, or leave it and let the per-unit cost rise (below). |
 | Cost | Cloudflare charged more than `drift_percent` away from the price book's cost of the same usage, with at least `min_daily_cost` | A price is stale: check the proposals. |
+| Cost, on `models` | What AI Gateway priced g1t's own provider traffic at over the 7 days, against the ledger's model cost for the same days (billed to g1t: comped, free and trial use included, a workspace's own provider not), more than the `ai_gateway_requests` mapping's `drift_percent` (10%) apart, with at least `min_daily_cost`. Compared once the gateway has been read; then a ledger with none of it is drift too | The gateway higher: model calls g1t paid for and charged no one: runs not settled yet (they catch up within the hour), runs with no session, a run started without a billing ticket, or something else on g1t's gateway. The ledger higher: runs that reached a provider without the gateway. The detail adds why the gateway's own figure may be off: prompt-cache read and write tokens (the gateway prices them at its rates for cache tokens, which can lag the provider's; check against the provider's invoice), requests Cloudflare billed itself (unified billing: on Cloudflare's bill, not a provider's), and models with no price. Days are UTC by when a request ran (gateway) and when a charge was entered (ledger), so a run across midnight shifts a little between days; the 7-day sum absorbs it. |
+| Unpriced | Over the 7 days, a model in AI Gateway's analytics with tokens and $0 cost, or runs settled with `runs.gateway_note` (the gateway could not price all of a run) | The gateway has no price for a model g1t runs: add it in the gateway (custom cost) or route away from it. Until then those runs are charged no less than the sandbox reported (Claude Code's own price table), never $0 silently. |
 | Leak | Cost of at least `min_daily_cost` and nothing charged for it (never for `platform`), or a meter in `unmapped` | Map the meter (below), or decide it is overhead (`platform`). |
 
 ## Prices: versions, proposals, notice
@@ -248,6 +260,62 @@ Alerts close on their own when the condition clears. Open ones are
 emailed again weekly. The red bar on every sudo page shows margin,
 overall and leak alerts.
 
+## Model costs
+
+Every model call g1t pays for is an agent run's (the `claude` CLI in the
+sandbox, `crates/runner`); the only other model is Workers AI's embeddings,
+which are on Cloudflare's bill (`embeddings`). How each reaches the ledger:
+
+| Call | Who pays | Run and session | Ledger cost | Settled to the gateway |
+| --- | --- | --- | --- | --- |
+| Agent run through the model proxy (`services/models`) on g1t's hosted models | g1t | `runs` row; session `ms_…` in `cf-aig-metadata` | On finish, the sandbox's figure (Claude Code's `total_cost_usd`, at its own price table, cache tokens included) | Yes, every 15 minutes |
+| Agent run straight to the gateway (no `MODELS_URL`) | g1t | `runs` row; session `rs_…` in `cf-aig-metadata` (`services/runner` `gatewaySession`) | As above | Yes |
+| Agent run with no gateway (`AI_GATEWAY_ID` empty, self-hosting) | g1t's key | `runs` row, no session | The sandbox's figure | No: nothing to settle against |
+| Agent run on a workspace's own provider | The workspace | `runs` row, `billed_to = 'workspace'`, no session | None (no cost to g1t) | No; never on g1t's gateway |
+| A sandbox that died before reporting | g1t | as its route | Charged from the gateway when settled | Yes |
+| Embeddings (indexing) | g1t | none (Workers AI) | Month-end `context` meter | No: Cloudflare's bill, `embeddings` bucket |
+| Embeddings (queries, search and agent context) | g1t | none | None: not charged, by design | No: in Cloudflare's `embeddings` line, shared out |
+
+**Settling.** A run's charge is corrected to what AI Gateway priced its
+session's requests at (`settled_cost` in `keeper.rs`). The gateway's
+figure is trusted in full: it is not held to the $100 cap on a sandbox's
+own report. It is never taken below what the sandbox reported when it
+cannot be the whole cost: a request with tokens and no cost (a model the
+gateway has no price for) or more logs than are read (2,000). Such a run
+keeps `runs.gateway_note`, its correction says why, and it raises the
+**Unpriced** drift. g1t keeps no token rates of its own: the first figure
+is Claude Code's, the final one the gateway's.
+
+**The daily total.** AI Gateway's analytics for the day (above) against
+the ledger's model cost is the check that nothing slips past: a model call
+with no run, or a run never settled, shows as **Cost** drift on `models`.
+The gateway's per-request `cost` is its estimate from its own price list:
+it can be off for prompt-cache tokens, for requests Cloudflare bills
+itself, and for models it has no price for. The drift's detail says when
+any of those were in the window; the provider's invoice is the last word.
+
+### Margin floor
+
+A sold charge is cost × (1 + `MARGIN_PERCENT`), rounded up (`margin_on`;
+`charge_micros` for a sandbox's own report). Terms change it only as
+follows (`Terms::discounted`, `Billing::charged`):
+
+- **Standard**: charged in full.
+- **Comped**, `FREE_WHILE_BUILDING`, the plan's included usage, the trial,
+  the open-source pool, and overruns g1t covers: given, and counted by why
+  (above).
+- **Custom, with a discount**: the discount comes off, and what it took
+  below cost plus the margin is written on the entry as
+  `ledger.discount_micros` and counted as given (**discount**), so the sale
+  is valued at its price and charged plus given is never under cost plus the
+  margin. On a settlement correction it moves with the charge (less than
+  nothing when the charge comes down).
+- **Goodwill credits** (overages) are separate, given by staff on purpose:
+  their margin part first, the cost only up to the cap, each audited.
+
+Every usage path goes through this: `finish_run`, settling, sandbox time,
+features and builds (`charge_feature`), and the month-end meters.
+
 ## Token usage
 
 The model proxy (`services/models`) reads Anthropic's `usage` from every
@@ -276,6 +344,9 @@ guardrails, seeded), the `actions_cache` price, and `ledger.price_version`.
 Every create is `IF NOT EXISTS` and every seed `INSERT OR IGNORE`; the one
 `ALTER` is applied once by D1's migration tracking. Migration
 `0023_one_operation_mapping.sql` drops `billable_units` (see above).
+Migration `0036_model_costs_in_full.sql` adds `ledger.discount_micros`,
+`margin_days.given_discount_micros`, `runs.gateway_note` and the
+`ai_gateway_requests` → `models` mapping.
 
 ## Spend caps
 

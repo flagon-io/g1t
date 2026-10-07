@@ -123,8 +123,22 @@ export type ModelRouting = {
   AI_GATEWAY_TOKEN?: string;
 };
 
-/** What a run is for, attached to each of its requests at the gateway. */
-export type RunTags = { repo: string; pull: number };
+/**
+ * What a run is for, attached to each of its requests at the gateway.
+ * `session` is the run's id there: billing finds the run's requests by it
+ * and settles the run to what the gateway priced them at.
+ */
+export type RunTags = { repo: string; pull: number; session?: string };
+
+/**
+ * A session id for a run that goes straight to the gateway (no model
+ * proxy): `rs_` and 24 hex characters, which billing's log filter needs
+ * no escaping for.
+ */
+export function gatewaySession(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  return `rs_${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+}
 
 /** Whether there is a way to reach a model at all. */
 export function canReachModel(env: ModelRouting): boolean {
@@ -160,7 +174,8 @@ export function modelEnv(
 
   vars.ANTHROPIC_BASE_URL = `https://gateway.ai.cloudflare.com/v1/${env.CLOUDFLARE_ACCOUNT_ID}/${env.AI_GATEWAY_ID}/anthropic`;
   // The gateway logs these with every request, so spend and failures can
-  // be read per kind of work, tier, repository and pull request.
+  // be read per kind of work, tier, repository and pull request; and by
+  // the run's session, which billing settles the run's charge by.
   const headers = [`cf-aig-metadata: ${JSON.stringify({ task, tier, ...tags })}`];
   if (env.AI_GATEWAY_TOKEN) {
     vars.AI_GATEWAY_TOKEN = env.AI_GATEWAY_TOKEN;

@@ -1532,6 +1532,20 @@ impl Terms {
             TermsKind::Standard => charge_micros,
         }
     }
+
+    /// What a charge at cost plus the margin becomes under these terms, and
+    /// how much of it g1t gives away by a discount: a sold charge is never
+    /// below its cost plus the margin unless the difference is counted as
+    /// given (`ledger.discount_micros`), never lost. Comped terms give it
+    /// all, and are counted as comped elsewhere, so their given part is 0
+    /// here.
+    pub fn discounted(&self, charge_micros: i64) -> (i64, i64) {
+        let charged = self.apply(charge_micros);
+        match self.kind {
+            TermsKind::Custom => (charged, (charge_micros - charged).max(0)),
+            TermsKind::Comped | TermsKind::Standard => (charged, 0),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2453,6 +2467,10 @@ pub struct OverallMargin {
     pub given_trial_micros: i64,
     #[serde(default)]
     pub given_pool_micros: i64,
+    /// What discounts on an account's terms took below cost plus the
+    /// margin: given, so a discounted sale is not margin lost.
+    #[serde(default)]
+    pub given_discount_micros: i64,
     /// `cost_micros` by who g1t pays: Cloudflare's bill (billed amounts,
     /// after the included allowances), and model providers (the ledger's
     /// cost of the tokens, which Cloudflare's bill does not show).
@@ -2474,7 +2492,10 @@ pub struct CostDrift {
     pub bucket: String,
     pub title: String,
     /// `count` (units g1t counted against Cloudflare's), `cost` (the bill
-    /// against the price book's cost of the same usage), or `leak`.
+    /// against the price book's cost of the same usage; for models, what AI
+    /// Gateway priced g1t's provider traffic at against the ledger's model
+    /// cost), `unpriced` (model usage AI Gateway put no price on, so its
+    /// cost is not the providers'), or `leak`.
     pub kind: String,
     pub ours: f64,
     pub cloudflare: f64,
