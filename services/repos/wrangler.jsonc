@@ -30,6 +30,14 @@
 	// hex characters). Without the binding or the secret each isolate keeps
 	// only its own. Made by `npx wrangler kv namespace create g1t-repos-git-cache`:
 	"kv_namespaces": [{ "binding": "GIT_CACHE", "id": "be765052d0124c2a935b3db4dff99f1f" }],
+	// Packs for fresh clones (wants and no haves), kept under the
+	// repository's refs version so the next clone of the same commit skips
+	// the git store (src/pack_cache.rs). Without the binding nothing is
+	// kept. Made with a lifecycle rule that deletes packs after 7 days and
+	// unfinished uploads after 1:
+	//   npx wrangler r2 bucket create g1t-git-packs
+	//   npx wrangler r2 bucket lifecycle add g1t-git-packs expire-packs packs/ --expire-days 7 --abort-multipart-days 1
+	"r2_buckets": [{ "binding": "GIT_PACKS", "bucket_name": "g1t-git-packs" }],
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "EVENTS", "service": "g1t-events" },
