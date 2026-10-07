@@ -2,7 +2,8 @@
 // on its own with `wrangler dev` (see packages.jsonc beside it).
 //
 // - Identity knows one person, `dev`, an owner of the workspace `acme`,
-//   whose token is DEV_TOKEN, and one outsider, `bo` (OUTSIDER_TOKEN).
+//   whose token is DEV_TOKEN, a member, `mo` (MEMBER_TOKEN), and one
+//   outsider, `bo` (OUTSIDER_TOKEN).
 // - Repos knows two repositories of acme: `web` (private) and `site`
 //   (public).
 // - Events takes every event and audit entry and logs them.
@@ -23,6 +24,16 @@ function user(env, secret) {
       verified: true,
       workspaces: [{ slug: "acme", role: "owner" }],
       token: { token_id: "tok_dev" },
+    };
+  }
+  if (secret === env.MEMBER_TOKEN) {
+    return {
+      id: "usr_mo",
+      username: "mo",
+      kind: "user",
+      verified: true,
+      workspaces: [{ slug: "acme", role: "member" }],
+      token: { token_id: "tok_mo" },
     };
   }
   if (secret === env.OUTSIDER_TOKEN) {

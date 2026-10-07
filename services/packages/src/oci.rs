@@ -57,7 +57,7 @@ fn empty(status: u16, headers: &[(&str, String)]) -> Result<Response> {
 }
 
 /// Who the request comes from, as its headers say.
-enum Credentials {
+pub(crate) enum Credentials {
     None,
     /// One of this registry's tokens.
     Token(Claims),
@@ -74,7 +74,7 @@ impl Credentials {
 }
 
 /// `scheme://host`, as the client reached the registry.
-fn origin(url: &Url) -> String {
+pub(crate) fn origin(url: &Url) -> String {
     let host = url.host_str().unwrap_or("g1t.sh");
     match url.port() {
         Some(port) => format!("{}://{host}:{port}", url.scheme()),
@@ -109,7 +109,7 @@ fn query(url: &Url, key: &str) -> Option<String> {
 }
 
 /// The audit actor a version's `published_by` names.
-fn published_by(caller: &Caller) -> Option<String> {
+pub(crate) fn published_by(caller: &Caller) -> Option<String> {
     caller.actor.as_ref().map(|actor| actor.on_behalf_of.clone().unwrap_or_else(|| actor.actor.clone()))
 }
 
@@ -146,7 +146,7 @@ impl Packages {
         let method = request.method();
         let credentials = self.credentials(&request).await?;
         if limits::counts(&method, &route)
-            && let Some(refused) = self.limited(&request, &credentials).await?
+            && let Some(refused) = self.limited(&request, &credentials, "`docker login g1t.sh`").await?
         {
             return Ok(refused);
         }
@@ -268,7 +268,8 @@ impl Packages {
 
     /// The 429 for a client past its limit, if it is. A limit that is not
     /// configured (self-hosted) or cannot be asked lets the request through.
-    async fn limited(&self, request: &Request, credentials: &Credentials) -> Result<Option<Response>> {
+    /// `sign_in` is how a client of this registry signs in, for the message.
+    pub(crate) async fn limited(&self, request: &Request, credentials: &Credentials, sign_in: &str) -> Result<Option<Response>> {
         let subject = match credentials {
             Credentials::Token(claims) => claims.actor.as_ref().map(|actor| actor.actor_id.clone()),
             Credentials::Viewer(Some(user)) => Some(user.id.clone()),
@@ -285,8 +286,8 @@ impl Packages {
                     429,
                     "TOOMANYREQUESTS",
                     match limit {
-                        limits::Limit::Anonymous => "Too many requests from this address. Wait a minute, or sign in with `docker login g1t.sh` for a higher limit.",
-                        limits::Limit::Signed => "Too many requests. Wait a minute and try again.",
+                        limits::Limit::Anonymous => format!("Too many requests from this address. Wait a minute, or sign in with {sign_in} for a higher limit."),
+                        limits::Limit::Signed => "Too many requests. Wait a minute and try again.".to_owned(),
                     },
                 )?;
                 response.headers_mut().set("retry-after", &limits::RETRY_AFTER_SECONDS.to_string())?;
@@ -300,7 +301,7 @@ impl Packages {
         }
     }
 
-    async fn credentials(&self, request: &Request) -> Result<Credentials> {
+    pub(crate) async fn credentials(&self, request: &Request) -> Result<Credentials> {
         let Some(header) = request.headers().get("authorization")? else {
             return Ok(Credentials::None);
         };
@@ -974,8 +975,13 @@ impl Packages {
             ..self.event_of(package)
         };
         self.announce("package.version_deleted", package, event, caller).await;
-        self.audit(caller, "package.delete_version", package, Some(&format!("{}/{}@{}", package.workspace, package.name, version.digest)), None)
-            .await;
+        // npm names a version by its number; an image by its digest.
+        let path = if package.ecosystem == "npm" {
+            format!("@{}/{}@{}", package.workspace, package.name, version.version)
+        } else {
+            format!("{}/{}@{}", package.workspace, package.name, version.digest)
+        };
+        self.audit(caller, "package.delete_version", package, Some(&path), None).await;
         Ok(())
     }
 

@@ -7,11 +7,13 @@
 const GIT_PATH = /\/(info\/refs|git-upload-pack|git-receive-pack)$/;
 /** The container registry: OCI Distribution's `/v2/`, and its token endpoint at `/v2/token`. */
 const REGISTRY_PATH = /^\/v2(?:\/|$)/;
+/** The npm registry: `/-/npm/`, which `.npmrc` names for a workspace's scope. */
+const NPM_PATH = /^\/-\/npm(?:\/|$)/;
 
 export type ServicePath = "git" | "packages" | null;
 
 export function servicePath(pathname: string): ServicePath {
-  if (REGISTRY_PATH.test(pathname)) return "packages";
+  if (REGISTRY_PATH.test(pathname) || NPM_PATH.test(pathname)) return "packages";
   if (GIT_PATH.test(pathname)) return "git";
   return null;
 }

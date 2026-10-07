@@ -84,6 +84,9 @@ pub struct VersionRow {
     pub subject: Option<String>,
     pub published_by: Option<String>,
     pub published_at: String,
+    /// npm's deprecation message, when the version is deprecated.
+    #[serde(default)]
+    pub deprecated: Option<String>,
 }
 
 impl VersionRow {
@@ -155,7 +158,7 @@ const PACKAGE_COLUMNS: &str =
     "id, workspace, ecosystem, name, repo_id, repo_name, visibility, description, created_by, created_at, updated_at, downloads, workspace_deleted_at";
 /// Workspaces that are deleted, waiting to be purged or restored.
 const DELETED_WORKSPACES: &str = "SELECT workspace FROM packages WHERE workspace_deleted_at IS NOT NULL";
-const VERSION_COLUMNS: &str = "id, package_id, version, digest, size, metadata, subject, published_by, published_at";
+const VERSION_COLUMNS: &str = "id, package_id, version, digest, size, metadata, subject, published_by, published_at, deprecated";
 
 pub struct Db {
     pub db: D1Database,
@@ -581,6 +584,65 @@ impl Db {
         .results()
     }
 
+    /// Points `tag` at a version, made or moved.
+    pub async fn set_tag(&self, package_id: &str, tag: &str, version_id: &str, now_ms: u64) -> Result<()> {
+        self.prepare(
+            "INSERT INTO tags (package_id, tag, version_id, updated_at) VALUES (?, ?, ?, ?)
+             ON CONFLICT (package_id, tag) DO UPDATE SET version_id = excluded.version_id, updated_at = excluded.updated_at",
+            &[text(package_id), text(tag), text(version_id), text(&rfc3339(now_ms))],
+        )?
+        .run()
+        .await?;
+        Ok(())
+    }
+
+    /// A version by its version string alone.
+    pub async fn version_named(&self, package_id: &str, version: &str) -> Result<Option<VersionRow>> {
+        self.prepare(
+            &format!("SELECT {VERSION_COLUMNS} FROM versions WHERE package_id = ? AND version = ?"),
+            &[text(package_id), text(version)],
+        )?
+        .first(None)
+        .await
+    }
+
+    pub async fn set_deprecated(&self, version_id: &str, message: Option<&str>) -> Result<()> {
+        self.prepare("UPDATE versions SET deprecated = ? WHERE id = ?", &[opt(message), text(version_id)])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    /// The README shown for the package, kept as a blob, and its description.
+    pub async fn set_readme(&self, package_id: &str, digest: Option<&str>, description: Option<&str>, now_ms: u64) -> Result<()> {
+        self.prepare(
+            "UPDATE packages SET readme_digest = ?, description = ?, updated_at = ? WHERE id = ?",
+            &[opt(digest), opt(description), text(&rfc3339(now_ms)), text(package_id)],
+        )?
+        .run()
+        .await?;
+        Ok(())
+    }
+
+    pub async fn readme_digest(&self, package_id: &str) -> Result<Option<String>> {
+        #[derive(Deserialize)]
+        struct Readme {
+            readme_digest: Option<String>,
+        }
+        let row: Option<Readme> = self
+            .prepare("SELECT readme_digest FROM packages WHERE id = ?", &[text(package_id)])?
+            .first(None)
+            .await?;
+        Ok(row.and_then(|r| r.readme_digest))
+    }
+
+    pub async fn touch_package(&self, package_id: &str, now_ms: u64) -> Result<()> {
+        self.prepare("UPDATE packages SET updated_at = ? WHERE id = ?", &[text(&rfc3339(now_ms)), text(package_id)])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
     pub async fn delete_tag(&self, package_id: &str, tag: &str) -> Result<()> {
         self.prepare("DELETE FROM tags WHERE package_id = ? AND tag = ?", &[text(package_id), text(tag)])?
             .run()
@@ -709,6 +771,7 @@ impl Db {
             &format!(
                 "SELECT digest, size, media_type, object_key FROM blobs b
                  WHERE touched_at < ? AND NOT EXISTS (SELECT 1 FROM version_files vf WHERE vf.digest = b.digest)
+                   AND NOT EXISTS (SELECT 1 FROM packages p WHERE p.readme_digest = b.digest)
                  ORDER BY touched_at LIMIT {limit}"
             ),
             &[text(&rfc3339(now_ms.saturating_sub(DAY_MS)))],

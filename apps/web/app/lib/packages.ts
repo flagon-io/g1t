@@ -41,7 +41,11 @@ export function registryHost(address: string): string {
  * How to log in and install `pkg` at `version` (a tag or version) with its
  * tool. `you` stands in the username a login takes.
  */
-export function installCommands(pkg: Pick<PackageSummary, "ecosystem" | "address" | "name" | "workspace">, version: string | null, you: string): { login: string; install: string } {
+export function installCommands(
+  pkg: Pick<PackageSummary, "ecosystem" | "address" | "name" | "workspace">,
+  version: string | null,
+  you: string,
+): { login: string; install: string; registry?: string } {
   const host = registryHost(pkg.address);
   switch (pkg.ecosystem) {
     case "container":
@@ -50,8 +54,11 @@ export function installCommands(pkg: Pick<PackageSummary, "ecosystem" | "address
         install: `docker pull ${pkg.address}${version ? `:${version}` : ""}`,
       };
     case "npm":
+      // The scope's registry (in .npmrc, needed for any install), then the
+      // token a private package also needs.
       return {
-        login: `npm config set @${pkg.workspace}:registry https://${host}/-/npm/`,
+        registry: `npm config set @${pkg.workspace}:registry=https://${host}/-/npm/`,
+        login: `npm config set //${host}/-/npm/:_authToken=YOUR_TOKEN`,
         install: `npm install @${pkg.workspace}/${pkg.name}${version ? `@${version}` : ""}`,
       };
     case "composer":

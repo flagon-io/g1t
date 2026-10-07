@@ -17,6 +17,24 @@ test("the container registry's paths go to the packages service", () => {
   }
 });
 
+test("the npm registry's paths go to the packages service", () => {
+  for (const path of [
+    "/-/npm",
+    "/-/npm/",
+    "/-/npm/@acme%2fweb",
+    "/-/npm/@acme/web/-/web-1.0.0.tgz",
+    "/-/npm/-/package/@acme%2fweb/dist-tags/next",
+    "/-/npm/-/whoami",
+    // A package named like a git endpoint is still npm's.
+    "/-/npm/@acme/info/refs",
+  ]) {
+    assert.equal(servicePath(path), "packages", path);
+  }
+  for (const path of ["/-/npmx", "/acme/-/npm", "/acme/-/packages"]) {
+    assert.equal(servicePath(path), null, path);
+  }
+});
+
 test("git goes to repos, and everything else is the site's", () => {
   assert.equal(servicePath("/acme/web.git/info/refs"), "git");
   assert.equal(servicePath("/acme/web/git-receive-pack"), "git");

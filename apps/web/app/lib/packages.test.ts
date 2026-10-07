@@ -15,6 +15,16 @@ test("digests shorten for lists", () => {
   assert.equal(shortDigest("sha256:3f2a9c1b7d0e55aa"), "3f2a9c1b7d0e");
 });
 
+test("an npm package is installed after .npmrc names its scope's registry, and a token for private ones", () => {
+  const pkg = { ecosystem: "npm" as const, address: "g1t.sh/-/npm/@acme/ui", name: "ui", workspace: "acme" };
+  assert.deepEqual(installCommands(pkg, "1.2.0", "ada"), {
+    registry: "npm config set @acme:registry=https://g1t.sh/-/npm/",
+    login: "npm config set //g1t.sh/-/npm/:_authToken=YOUR_TOKEN",
+    install: "npm install @acme/ui@1.2.0",
+  });
+  assert.equal(installCommands(pkg, null, "ada").install, "npm install @acme/ui");
+});
+
 test("a container image is pulled by its address and tag", () => {
   const pkg = { ecosystem: "container" as const, address: "g1t.sh/acme/web", name: "web", workspace: "acme" };
   assert.deepEqual(installCommands(pkg, "latest", "ada"), {

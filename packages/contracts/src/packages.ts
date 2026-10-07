@@ -60,6 +60,8 @@ export type PackageVersion = {
   tags: string[];
   published_by: string | null;
   published_at: string;
+  /** npm: why the version should no longer be used, when it is deprecated. */
+  deprecated?: string | null;
 };
 
 export type PackageTag = { tag: string; digest: string; updated_at: string };
@@ -73,6 +75,8 @@ export type PackageDetail = {
   versions: PackageVersion[];
   tags: PackageTag[];
   permissions: PackagePermissions;
+  /** The package's README, as markdown: npm's, from its latest version. */
+  readme?: string | null;
 };
 
 /** What a workspace's packages hold, for billing: each file once, public when any public package uses it. */

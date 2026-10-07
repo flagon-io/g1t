@@ -128,6 +128,9 @@ pub struct PackageVersion {
     /// The username that published it.
     pub published_by: Option<String>,
     pub published_at: String,
+    /// npm: why the version should no longer be used, when it is deprecated.
+    #[serde(default)]
+    pub deprecated: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -155,6 +158,9 @@ pub struct PackageDetail {
     pub versions: Vec<PackageVersion>,
     pub tags: Vec<PackageTag>,
     pub permissions: PackagePermissions,
+    /// The package's README, as markdown: npm's, from its latest version.
+    #[serde(default)]
+    pub readme: Option<String>,
 }
 
 /// `list_packages`: the packages in a workspace the viewer may pull, newest

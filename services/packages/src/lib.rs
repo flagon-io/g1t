@@ -13,6 +13,8 @@ mod digest;
 mod limits;
 mod manifest;
 mod names;
+mod npm;
+mod npm_http;
 mod oci;
 mod quota;
 mod range;
@@ -341,7 +343,10 @@ impl Packages {
             workspace: p.workspace.clone(),
             ecosystem: Ecosystem::parse(&p.ecosystem).unwrap_or(Ecosystem::Container),
             name: p.name.clone(),
-            address: format!("{}/{}/{}", self.host, p.workspace, p.name),
+            address: match p.ecosystem.as_str() {
+                "npm" => format!("{}/-/npm/@{}/{}", self.host, p.workspace, p.name),
+                _ => format!("{}/{}/{}", self.host, p.workspace, p.name),
+            },
             visibility: Visibility::parse(&p.visibility),
             repo: p.repo_id.as_ref().map(|id| LinkedRepo {
                 id: id.clone(),
@@ -421,10 +426,20 @@ impl Packages {
                     subject: version.subject,
                     published_by: version.published_by,
                     published_at: version.published_at,
+                    deprecated: version.deprecated,
                 }
             })
             .collect();
+        // The README its page shows: npm's, from the latest version.
+        let readme = match self.db.readme_digest(&row.package.id).await?.and_then(|d| digest::Digest::parse(&d)) {
+            Some(digest) => match self.db.blob(&digest).await? {
+                Some(blob) => self.store.read(&blob.object_key).await?.map(|b| String::from_utf8_lossy(&b).into_owned()),
+                None => None,
+            },
+            None => None,
+        };
         Ok(Outcome::Ok(PackageDetail {
+            readme,
             package: self.summary(&row),
             versions,
             tags: tags
@@ -619,6 +634,9 @@ impl Packages {
 async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response> {
     let packages = Packages::from_env(&env)?;
     let Some(method) = rpc_method(&request) else {
+        if request.path().starts_with("/-/npm/") || request.path() == "/-/npm" {
+            return packages.npm(request, &ctx).await;
+        }
         return packages.registry(request, &ctx).await;
     };
     let body: serde_json::Value = request.json().await?;

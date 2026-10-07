@@ -33,7 +33,8 @@ export default {
     // Its answer goes back to the git client as it is: a repository under a
     // renamed workspace's old name answers with a 301, which git follows and
     // must see, so the redirect is never followed here.
-    // The container registry (`docker login g1t.sh`) is the packages
+    // The container registry (`docker login g1t.sh`) and the npm registry
+    // (`g1t.sh/-/npm/`) are the packages
     // service's, handed over the same way.
     const service = servicePath(pathname);
     if (service === "git") {

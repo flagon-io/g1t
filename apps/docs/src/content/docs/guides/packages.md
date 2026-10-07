@@ -4,13 +4,15 @@ description: Publish and install packages beside your code, with the same people
 ---
 
 A workspace can publish packages to g1t and install them from it, beside
-the code they are built from. Container images come first; npm, Composer,
-Cargo and Go follow. Each registry speaks its tool's own protocol, so
-`docker` works with nothing but a login and an address.
+the code they are built from: container images and npm packages, with
+Composer, Cargo and Go to follow. Each registry speaks its tool's own
+protocol, so `docker` and `npm` work with nothing but a login and an
+address.
 
 | Registry | Address | Guide |
 | --- | --- | --- |
 | Container images | `g1t.sh/<workspace>/<name>` | [Container images](/guides/containers/) |
+| npm | `https://g1t.sh/-/npm/`, for the scope `@<workspace>` | [npm](/guides/npm/) |
 
 ## Names
 
@@ -22,10 +24,12 @@ such as `g1t.sh/acme/web/worker`.
 
 A package is linked to a repository, or belongs to its workspace.
 
-- **Linked.** The first push of a package whose name starts with a
+- **Linked.** The first push of an image whose name starts with a
   repository's name (`acme/web`, `acme/web/worker` for the repository
-  `acme/web`) links it to that repository. It then has the repository's
-  visibility and [roles](/guides/access-and-roles/):
+  `acme/web`) links it to that repository; so does the first publish of
+  an npm package whose `package.json` `repository` is a g1t.sh repository
+  of the workspace, or which is named like one (`@acme/web`). It then has
+  the repository's visibility and [roles](/guides/access-and-roles/):
 
   | | Needs |
   | --- | --- |

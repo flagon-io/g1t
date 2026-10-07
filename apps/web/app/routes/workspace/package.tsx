@@ -1,9 +1,10 @@
-import { Box, Lock, Package, Trash2 } from "lucide-react";
+import { BookOpen, Box, Lock, Package, Trash2 } from "lucide-react";
 import { Form, Link, data, redirect, useNavigation } from "react-router";
 
 import { ECOSYSTEMS, type Ecosystem, type PackageVersion } from "@g1t/contracts";
 
 import type { Route } from "./+types/package";
+import { Markdown } from "../../components/markdown";
 import { ConfirmDialog } from "../../components/repo-lifecycle";
 import { Button, CopyLine, ErrorText, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
@@ -72,6 +73,7 @@ export default function PackagePage({ loaderData, actionData }: Route.ComponentP
   const outcome = actionData as Outcome | undefined;
   const latest = tags.find((tag) => tag.tag === "latest")?.tag ?? tags[0]?.tag ?? null;
   const commands = installCommands(pkg, latest, username);
+  const npm = pkg.ecosystem === "npm";
   // Signatures and attestations hang off the images they describe.
   const images = versions.filter((version) => !version.subject);
   const attached = (digest: string) => versions.filter((version) => version.subject === digest);
@@ -96,7 +98,8 @@ export default function PackagePage({ loaderData, actionData }: Route.ComponentP
           )}
           <span>{formatBytes(pkg.size)}</span>
           <span>
-            {pkg.downloads.toLocaleString("en-US")} {pkg.downloads === 1 ? "pull" : "pulls"}
+            {pkg.downloads.toLocaleString("en-US")}{" "}
+            {npm ? (pkg.downloads === 1 ? "download" : "downloads") : pkg.downloads === 1 ? "pull" : "pulls"}
           </span>
           <span>
             Updated <TimeAgo at={pkg.updated_at} />
@@ -109,10 +112,35 @@ export default function PackagePage({ loaderData, actionData }: Route.ComponentP
       {outcome?.message && <p className="text-sm text-accent">{outcome.message}</p>}
 
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold">Pull it</h2>
+        <h2 className="text-sm font-semibold">{npm ? "Install it" : "Pull it"}</h2>
+        {commands.registry && <CopyLine prompt text={commands.registry} />}
         {pkg.visibility === "private" && <CopyLine prompt text={commands.login} />}
         <CopyLine prompt text={commands.install} />
+        {npm && pkg.visibility === "private" && (
+          <p className="text-xs text-faint">
+            Put an{" "}
+            <Link to="/settings/tokens" className="text-muted hover:text-fg">
+              access token
+            </Link>{" "}
+            with <code className="font-mono">packages:read</code> in place of YOUR_TOKEN.
+          </p>
+        )}
       </section>
+
+      {detail.readme && (
+        <section className="overflow-hidden rounded-xl border border-line">
+          <h2 className="flex items-center gap-2 border-b border-line bg-surface px-4 py-2.5 text-sm font-medium">
+            <BookOpen size={15} className="text-faint" />
+            README
+          </h2>
+          <div className="p-6">
+            <Markdown
+              source={detail.readme}
+              repo={pkg.repo ? { namespace: pkg.repo.namespace, name: pkg.repo.name } : undefined}
+            />
+          </div>
+        </section>
+      )}
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold">
@@ -123,7 +151,7 @@ export default function PackagePage({ loaderData, actionData }: Route.ComponentP
         ) : (
           <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
             {images.map((version) => (
-              <VersionRow key={version.id} version={version} attached={attached(version.digest)} canDelete={permissions.delete} />
+              <VersionRow key={version.id} version={version} attached={attached(version.digest)} canDelete={permissions.delete} npm={npm} />
             ))}
           </ul>
         )}
@@ -134,12 +162,29 @@ export default function PackagePage({ loaderData, actionData }: Route.ComponentP
   );
 }
 
-function VersionRow({ version, attached, canDelete }: { version: PackageVersion; attached: PackageVersion[]; canDelete: boolean }) {
+function VersionRow({
+  version,
+  attached,
+  canDelete,
+  npm,
+}: {
+  version: PackageVersion;
+  attached: PackageVersion[];
+  canDelete: boolean;
+  npm: boolean;
+}) {
   return (
     <li className="flex flex-wrap items-start gap-x-4 gap-y-2 px-4 py-3">
       <div className="min-w-0 grow space-y-1">
         <div className="flex flex-wrap items-center gap-1.5">
-          {version.tags.length > 0 ? (
+          {npm && <span className="font-mono text-sm font-medium">{version.version}</span>}
+          {npm ? (
+            version.tags.map((tag) => (
+              <Badge key={tag} tone={tag === "latest" ? "accent" : "neutral"} className="font-mono">
+                {tag}
+              </Badge>
+            ))
+          ) : version.tags.length > 0 ? (
             version.tags.map((tag) => (
               <Badge key={tag} tone={tag === "latest" ? "accent" : "neutral"} className="font-mono">
                 {tag}
@@ -148,10 +193,18 @@ function VersionRow({ version, attached, canDelete }: { version: PackageVersion;
           ) : (
             <span className="text-xs text-faint">Untagged</span>
           )}
-          <code className="font-mono text-xs text-muted" title={version.digest}>
-            {shortDigest(version.digest)}
-          </code>
+          {!npm && (
+            <code className="font-mono text-xs text-muted" title={version.digest}>
+              {shortDigest(version.digest)}
+            </code>
+          )}
+          {version.deprecated && (
+            <Badge tone="neutral" title={version.deprecated}>
+              Deprecated
+            </Badge>
+          )}
         </div>
+        {version.deprecated && <p className="text-xs text-muted">{version.deprecated}</p>}
         <p className="flex flex-wrap gap-x-3 text-xs text-faint tabular-nums">
           <span>{formatBytes(version.size)}</span>
           {version.platforms.length > 0 && <span>{version.platforms.join(", ")}</span>}
@@ -169,9 +222,13 @@ function VersionRow({ version, attached, canDelete }: { version: PackageVersion;
       {canDelete && (
         <ConfirmDialog
           intent="delete-version"
-          fields={{ version: version.digest }}
-          title={`Delete ${version.tags[0] ?? shortDigest(version.digest)}?`}
-          description="Anyone pulling it by this tag or digest gets an error from then on."
+          fields={{ version: npm ? version.version : version.digest }}
+          title={`Delete ${npm ? version.version : (version.tags[0] ?? shortDigest(version.digest))}?`}
+          description={
+            npm
+              ? "Anyone installing this version gets an error from then on."
+              : "Anyone pulling it by this tag or digest gets an error from then on."
+          }
           submit="Delete version"
           busy="Deleting…"
           trigger={(open) => (

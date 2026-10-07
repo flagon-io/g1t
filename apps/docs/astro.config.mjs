@@ -75,6 +75,7 @@ export default defineConfig({
 						{ label: 'Deployments', slug: 'guides/deployments' },
 						{ label: 'Packages', slug: 'guides/packages' },
 						{ label: 'Container images', slug: 'guides/containers' },
+						{ label: 'npm', slug: 'guides/npm' },
 						{ label: 'Secrets and variables', slug: 'guides/secrets-and-variables' },
 						{ label: 'Security', slug: 'guides/security' },
 					],
