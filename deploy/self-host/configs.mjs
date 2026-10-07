@@ -10,7 +10,8 @@
 //   which keeps repositories in the git store (gitstore/server.mjs);
 // - EMAIL (Email Sending) becomes a service binding to workers/mail;
 // - the packages service keeps files in S3-compatible storage (MinIO)
-//   instead of R2;
+//   instead of R2, and the repos service its nightly backups (a bucket of
+//   their own, BACKUP_S3_BUCKET);
 // - services that are off in this phase (agents, the context hub, the
 //   g1t.page dispatcher, model proxy) are bound to workers/off instead, and
 //   events stop queueing work for them;
@@ -19,7 +20,7 @@
 // Usage: node configs.mjs [outDir]
 // Environment: PUBLIC_URL, GITSTORE_URL, GITSTORE_SECRET, MAIL_URL,
 // ACTIONS_KEY, INTEGRATIONS_KEY, WEBHOOKS_KEY, IDENTITY_KEY,
-// PACKAGES_TOKEN_SECRET, S3_ENDPOINT, S3_BUCKET, S3_REGION,
+// PACKAGES_TOKEN_SECRET, S3_ENDPOINT, S3_BUCKET, BACKUP_S3_BUCKET, S3_REGION,
 // S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_PUBLIC_ENDPOINT, and optionally
 // your own GitHub App: GITHUB_APP_ID, GITHUB_APP_SLUG, GITHUB_APP_CLIENT_ID,
 // GITHUB_APP_CLIENT_SECRET, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_WEBHOOK_SECRET.
@@ -215,6 +216,18 @@ function selfHosted(service) {
     });
     delete config.vars.R2_ACCOUNT_ID;
     delete config.vars.R2_BUCKET;
+  }
+  // Nightly backups' bundles go to a bucket of their own on the same
+  // S3-compatible store, instead of the BACKUPS R2 bucket.
+  if (hosted.name === "g1t-repos") {
+    Object.assign(config.vars, {
+      BACKUP_STORE: "s3",
+      BACKUP_S3_BUCKET: process.env.BACKUP_S3_BUCKET ?? "g1t-backups",
+      S3_ENDPOINT: process.env.S3_ENDPOINT ?? "http://minio:9000",
+      S3_REGION: process.env.S3_REGION ?? "us-east-1",
+      S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID ?? "",
+      S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY ?? "",
+    });
   }
   // Nothing to deploy to: deployments are off (no Cloudflare API token).
   if (hosted.name === "g1t-deployments") delete config.vars.CUSTOM_HOSTNAMES_ZONE_ID;
