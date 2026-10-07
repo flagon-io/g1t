@@ -122,8 +122,15 @@ publishing {
 `credentials(PasswordCredentials::class)` reads `acmeUsername` and
 `acmePassword` from `gradle.properties` or from the environment as
 `ORG_GRADLE_PROJECT_acmeUsername` and `ORG_GRADLE_PROJECT_acmePassword`.
-Gradle's Gradle Module Metadata (`.module`) is uploaded and served beside
-the POM.
+
+Gradle uploads the jar, the POM, the sources and javadoc jars if you build
+them, and its Gradle Module Metadata (`.module`), each with its `.md5`,
+`.sha1`, `.sha256` and `.sha512`. The `.module` file is served beside the
+POM, so a Gradle build that depends on the artifact reads its variants
+(API and runtime dependencies, capabilities) from it, and Maven reads the
+POM. Gradle's `HEAD` requests, which it makes to check files it has
+cached (with `--refresh-dependencies`, or for a SNAPSHOT), are answered
+with each file's size and type.
 
 ## Which repository an artifact belongs to
 
@@ -182,6 +189,44 @@ mvn dependency:get -Dartifact=com.acme:http-client:0.3.1 \
   -DremoteRepositories=acme::default::https://g1t.sh/-/maven/acme/
 ```
 
+## Maven plugins
+
+A plugin is deployed like any other artifact, with `<packaging>maven-plugin</packaging>`.
+g1t lists the plugins of each group in the group's own
+`maven-metadata.xml` (`com/acme/maven-metadata.xml` for the group
+`com.acme`), with the prefix each is called by: the `goalPrefix` from the
+descriptor `maven-plugin-plugin` puts in its jar, else the one Maven
+works out from its artifactId (`hello-maven-plugin` is `hello`).
+
+To call a plugin by its prefix, as `mvn hello:greet`, name its group in
+`~/.m2/settings.xml` and the repository as a plugin repository:
+
+```xml
+<settings>
+  <pluginGroups>
+    <pluginGroup>com.acme</pluginGroup>
+  </pluginGroups>
+  <profiles>
+    <profile>
+      <id>acme</id>
+      <pluginRepositories>
+        <pluginRepository>
+          <id>acme</id>
+          <url>https://g1t.sh/-/maven/acme/</url>
+        </pluginRepository>
+      </pluginRepositories>
+    </profile>
+  </profiles>
+  <activeProfiles>
+    <activeProfile>acme</activeProfile>
+  </activeProfiles>
+</settings>
+```
+
+The group's metadata lists only the plugins the credentials' owner may
+see. A plugin's full coordinates (`mvn com.acme:hello-maven-plugin:1.0.0:greet`)
+work without the plugin group.
+
 ## SNAPSHOTs
 
 A version ending in `-SNAPSHOT` takes a new build each time it is
@@ -202,8 +247,9 @@ builds stay, by their full names.
   uploaded are checked against it, and a mismatch is refused with `400`.
 - **`maven-metadata.xml` is made by g1t** from the versions there, so it
   always lists every version, with the highest as `latest` and the highest
-  that is not a SNAPSHOT as `release`. The one a build uploads is accepted
-  and not kept.
+  that is not a SNAPSHOT as `release`, and a group's lists its
+  [plugins](#maven-plugins). The one a build uploads is accepted and not
+  kept.
 - **The deploy's last step publishes it.** Maven and Gradle upload the
   artifact's `maven-metadata.xml` after its files. Then each version (or
   SNAPSHOT build) whose POM arrived in the deploy is published: it is an

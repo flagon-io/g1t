@@ -25,6 +25,7 @@ use serde_json::{Value, json};
 use worker::{Context, Headers, Method, Request, Response, ResponseBody, Result};
 
 use crate::access::{self, Action};
+use crate::archive;
 use crate::db::{Checksums, NewFile, NewVersion, PackageRow, VersionRow};
 use crate::digest::Digest;
 use crate::maven::{self, Checksum, MavenPath};
@@ -38,6 +39,11 @@ const MAVEN: &str = "maven";
 const MAX_VERSIONS: u32 = 5000;
 /// The longest POM read for its description and source.
 const MAX_POM_BYTES: usize = 1024 * 1024;
+/// The most artifacts of a group read for its plugins.
+const MAX_GROUP: u32 = 500;
+/// Where a plugin's jar keeps its descriptor, and the most read of it.
+const PLUGIN_DESCRIPTOR: &str = "META-INF/maven/plugin.xml";
+const MAX_DESCRIPTOR_BYTES: usize = 4 * 1024 * 1024;
 const DOCS: &str = "https://docs.g1t.sh/guides/maven/";
 const TOKENS: &str = "https://g1t.sh/settings/tokens";
 
@@ -106,6 +112,9 @@ impl Packages {
             (MavenPath::ArtifactMetadata { group, artifact, checksum }, Method::Get | Method::Head) => {
                 self.maven_metadata(workspace, &group, &artifact, None, checksum, viewer, head).await
             }
+            (MavenPath::GroupMetadata { group, checksum }, Method::Get | Method::Head) => {
+                self.maven_group_metadata(workspace, &group, None, checksum, viewer, head).await
+            }
             (MavenPath::VersionMetadata { group, artifact, version, checksum }, Method::Get | Method::Head) => {
                 self.maven_metadata(workspace, &group, &artifact, Some(&version), checksum, viewer, head).await
             }
@@ -120,7 +129,7 @@ impl Packages {
                 let name = maven::package_name(&group, &artifact);
                 self.maven_checksum(&mut request, workspace, &name, &version, &file, checksum, viewer).await
             }
-            (path @ (MavenPath::ArtifactMetadata { .. } | MavenPath::VersionMetadata { .. }), Method::Put) => {
+            (path @ (MavenPath::ArtifactMetadata { .. } | MavenPath::VersionMetadata { .. } | MavenPath::GroupMetadata { .. }), Method::Put) => {
                 self.maven_metadata_upload(&mut request, workspace, &path, viewer).await
             }
             _ => error(405, "Not a method this address takes. Versions are deleted on the package's page."),
@@ -172,7 +181,13 @@ impl Packages {
         viewer: Option<&User>,
         head: bool,
     ) -> Result<Response> {
-        let Some(package) = self.maven_package(workspace, &maven::package_name(group, artifact)).await? else {
+        let found = self.maven_package(workspace, &maven::package_name(group, artifact)).await?;
+        // `com/acme/plugins/maven-metadata.xml` is also the group
+        // `com.acme.plugins`'s, which lists its plugins.
+        let Some(package) = found else {
+            if snapshot.is_none() {
+                return self.maven_group_metadata(workspace, &format!("{group}.{artifact}"), None, checksum, viewer, head).await;
+            }
             return self.maven_absent(workspace, viewer).await;
         };
         if let Some(refusal) = self.maven_check(viewer, &package, Action::Pull).await? {
@@ -184,7 +199,8 @@ impl Packages {
                 if versions.is_empty() {
                     return self.maven_absent(workspace, viewer).await;
                 }
-                maven::artifact_metadata(group, artifact, &versions, &package.updated_at)
+                let xml = maven::artifact_metadata(group, artifact, &versions, &package.updated_at);
+                return self.maven_group_metadata(workspace, &format!("{group}.{artifact}"), Some(xml), checksum, viewer, head).await;
             }
             Some(version) => {
                 let Some(row) = self.db.version_named(&package.id, version).await? else {
@@ -196,6 +212,49 @@ impl Packages {
                 };
                 xml
             }
+        };
+        match checksum {
+            Some(checksum) => serve(checksum.of(xml.as_bytes()).into_bytes(), "text/plain", head, "no-cache"),
+            None => serve(xml.into_bytes(), "application/xml", head, "no-cache"),
+        }
+    }
+
+    /// A group's `maven-metadata.xml`: the plugins among its artifacts the
+    /// viewer may see, by prefix, so `mvn <prefix>:<goal>` finds them when
+    /// the group is one of its `<pluginGroups>`. `artifact` is the
+    /// metadata of an artifact at the same path, which it is added to.
+    async fn maven_group_metadata(
+        &self,
+        workspace: &str,
+        group: &str,
+        artifact: Option<String>,
+        checksum: Option<Checksum>,
+        viewer: Option<&User>,
+        head: bool,
+    ) -> Result<Response> {
+        let mut plugins = Vec::new();
+        for package in self.db.maven_group(workspace, group, MAX_GROUP).await? {
+            if !access::decide(viewer, &TargetOf::package(&package).view(), Action::Pull).allowed {
+                continue;
+            }
+            let artifact_id = package.name.rsplit(':').next().unwrap_or("").to_owned();
+            // The highest version that is a plugin says its prefix and name.
+            let mut versions = self.db.versions(&package.id, MAX_VERSIONS).await?;
+            versions.sort_by(|a, b| maven::compare(&b.version, &a.version));
+            let Some(meta) = versions.iter().map(VersionRow::meta).find(|m| m["packaging"] == "maven-plugin" || m["plugin"].is_object()) else {
+                continue;
+            };
+            let text = |value: &Value| value.as_str().map(str::trim).filter(|t| !t.is_empty()).map(str::to_owned);
+            plugins.push(maven::Plugin {
+                prefix: text(&meta["plugin"]["prefix"]).unwrap_or_else(|| maven::default_prefix(&artifact_id)),
+                name: text(&meta["name"]).or_else(|| text(&meta["plugin"]["name"])).unwrap_or_else(|| artifact_id.clone()),
+                artifact: artifact_id,
+            });
+        }
+        let xml = match (artifact, plugins.is_empty()) {
+            (artifact, false) => maven::group_metadata(artifact, &plugins),
+            (Some(xml), true) => xml,
+            (None, true) => return self.maven_absent(workspace, viewer).await,
         };
         match checksum {
             Some(checksum) => serve(checksum.of(xml.as_bytes()).into_bytes(), "text/plain", head, "no-cache"),
@@ -360,6 +419,17 @@ impl Packages {
             None
         };
 
+        // The main jar of a Maven plugin holds its descriptor.
+        let plugin = if parsed.classifier.is_none() && parsed.extension == "jar" {
+            archive::zip_entries(&bytes)
+                .ok()
+                .and_then(|entries| entries.into_iter().find(|e| e.name == PLUGIN_DESCRIPTOR))
+                .and_then(|entry| archive::zip_read(&bytes, &entry, MAX_DESCRIPTOR_BYTES).ok())
+                .and_then(|xml| maven::plugin_descriptor(&String::from_utf8_lossy(&xml)))
+        } else {
+            None
+        };
+
         let name = maven::package_name(group, artifact);
         let found = self.db.package(workspace, MAVEN, &name).await?;
         if found.as_ref().is_some_and(PackageRow::hidden) || (found.is_none() && self.db.workspace_hidden(workspace).await?) {
@@ -445,6 +515,14 @@ impl Packages {
 
         if let Some(pom) = pom {
             self.maven_pom(&package, &row, &digest, &pom, viewer).await?;
+        } else if let Some((prefix, title)) = plugin {
+            // A plugin's jar names the prefix it is called by.
+            let mut metadata = self.db.version_named(&package.id, version).await?.map(|v| v.meta()).unwrap_or_default();
+            if !metadata.is_object() {
+                metadata = json!({});
+            }
+            metadata["plugin"] = json!({ "prefix": prefix, "name": title });
+            self.db.set_version(&row.id, &row.digest, &metadata.to_string()).await?;
         }
         created()
     }
@@ -463,6 +541,7 @@ impl Packages {
         metadata["name"] = json!(pom.name);
         metadata["description"] = json!(pom.description);
         metadata["source"] = json!(pom.source);
+        metadata["packaging"] = json!(pom.packaging);
         self.db.set_version(&row.id, &digest.to_string(), &metadata.to_string()).await?;
         let versions = self.db.versions(&package.id, MAX_VERSIONS).await?;
         let releases: Vec<&str> = versions.iter().map(|v| v.version.as_str()).filter(|v| !maven::is_snapshot(v)).collect();
@@ -579,8 +658,12 @@ impl Packages {
         if let Err(refused) = self.maven_body(request).await? {
             return Ok(refused);
         }
-        let (MavenPath::ArtifactMetadata { group, artifact, .. } | MavenPath::VersionMetadata { group, artifact, .. } | MavenPath::File { group, artifact, .. }) = path;
-        let found = self.maven_package(workspace, &maven::package_name(group, artifact)).await?;
+        let found = match path {
+            MavenPath::ArtifactMetadata { group, artifact, .. } | MavenPath::VersionMetadata { group, artifact, .. } | MavenPath::File { group, artifact, .. } => {
+                self.maven_package(workspace, &maven::package_name(group, artifact)).await?
+            }
+            MavenPath::GroupMetadata { .. } => None,
+        };
         let target = match &found {
             Some(package) => TargetOf::package(package),
             // A plugin group's metadata names no artifact of its own.

@@ -1192,6 +1192,22 @@ impl Db {
         .results()
     }
 
+    /// A workspace's Maven artifacts of one groupId (`com.acme:*`), by
+    /// name: those named from `com.acme:` up to `com.acme;`, the
+    /// character after `:`.
+    pub async fn maven_group(&self, workspace: &str, group: &str, limit: u32) -> Result<Vec<PackageRow>> {
+        self.prepare(
+            &format!(
+                "SELECT {PACKAGE_COLUMNS} FROM packages WHERE workspace = ? AND ecosystem = 'maven' AND name >= ? AND name < ?
+                 AND workspace_deleted_at IS NULL ORDER BY name LIMIT {limit}"
+            ),
+            &[text(workspace), text(&format!("{group}:")), text(&format!("{group};"))],
+        )?
+        .all()
+        .await?
+        .results()
+    }
+
     pub async fn forget_blob(&self, digest: &str) -> Result<()> {
         let d = [text(digest)];
         self.db
