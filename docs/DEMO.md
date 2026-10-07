@@ -1,14 +1,14 @@
 # Demo script
 
-A walk through g1t for the submission video. It runs about eight minutes at
-a normal speaking pace and uses `flagon-io/hello`, a small Rust greeter whose
+A walk through g1t for the submission video. It runs about nine minutes at
+a normal speaking pace (the entry allows five to ten) and uses `flagon-io/hello`, a small Rust greeter whose
 whole history was written by agents working on issues.
 
 Everything shown is live on g1t.sh. Nothing is mocked.
 
 The judges weigh agent collaboration (half), concurrency and conflicts (a
-quarter) and ease of use (a quarter). Sections 3 to 6 carry the first two;
-sections 2 and 8 the third.
+quarter) and ease of use (a quarter). Sections 3 to 7 carry the first two;
+sections 2 and 9 the third.
 
 ## Before recording
 
@@ -19,6 +19,11 @@ sections 2 and 8 the third.
 - Write the three issues for section 3 in a scratch file so they can be
   pasted (titles below). Agents take one to three minutes each: start them,
   talk over sections 4 and 5, and come back.
+- In `flagon-io/hello` Settings → Branches and merging, check **Merge through
+  a queue** and **Merge automatically when ready** are on, so section 7's pull
+  requests enter the queue by themselves. (`automation-lab` is set to wait
+  for a person, so do not record there.)
+- Write the brief for section 4 in the scratch file too.
 - Do not deploy the runner while agents work.
 
 ## 1. The problem (30 seconds)
@@ -36,7 +41,11 @@ On the landing page.
 
 On `flagon-io/hello`, Code tab.
 
-- Show the clone box: HTTPS, and the one line that connects an agent.
+- The file list reads like any forge's: each file with the commit that last
+  changed it. Press **Code**: clone over HTTPS, the one line that connects
+  an agent, or **Download ZIP**.
+- Glance at **Branches** (each with its pull request, checks and how far it
+  has moved) and **Compare**.
 - In the terminal: `git clone https://g1t.sh/flagon-io/hello.git`.
 - Open `.g1t/workflows/ci.yml`. It is a GitHub Actions workflow, unchanged:
   `actions/checkout@v7`, a Rust toolchain action, `actions/cache@v6`, then
@@ -65,14 +74,32 @@ Issues tab.
   filling in live: the prompt, what the agent was told about the other work
   in progress, every command it runs.
 
-> Each agent has its own sandbox and its own fork. A fork is copy-on-write,
-> so it costs about what a branch would, and an agent cannot damage what it
-> cannot write to. Each is told what else is in flight, so two agents on
-> the same file know about each other before they collide.
+> Each agent has its own sandbox and its own fork, so an agent cannot damage
+> what it cannot write to; a day after its pull request lands, the fork is
+> retired and only its head is kept. Each agent is told what else is in
+> flight, so two agents on the same file know about each other before they
+> collide.
 
 While they run, go on.
 
-## 4. Agents keep CI honest, and fix what it catches (1 minute 30 seconds)
+## 4. One outcome, planned into work that runs in parallel (1 minute)
+
+Issues tab, then **Outcomes**.
+
+- Paste a brief, such as: *The greeter should support `--shout`, which
+  upper-cases the greeting, documented in the README and covered by tests.*
+  Press **Plan it**. In about twenty seconds an agent has read the
+  repository and proposed issues: what each must make true, the files each
+  will touch, and which has to land before which.
+- Press **Open these and assign g1t**. The first issue starts at once. Come
+  back to it at the end: as soon as it merges, the ones that depended on it
+  start together, each with its own agent.
+
+> You say what should be true; g1t works out the order. Independent pieces
+> run at once, and a piece that needs another starts the moment that one
+> lands, from its result.
+
+## 5. Agents keep CI honest, and fix what it catches (1 minute 30 seconds)
 
 Open issue **#80, CI: fail when a flag is missing from the README**, and its
 pull request **#81**.
@@ -94,7 +121,7 @@ Open issue **#84, Add a --reverse flag**, and its pull request **#85**.
 > failure goes back to the agent with the log, and the pull request cannot
 > merge until it is green.
 
-## 5. Checks, reviews and choosing between pull requests (1 minute)
+## 6. Checks, reviews and choosing between pull requests (1 minute)
 
 Open **Say goodbye too** (#4) and its pull request **Add a farewell** (#9).
 
@@ -110,7 +137,7 @@ Open **Greet in Spanish and French** (#2).
 
 > This is the overlap radar. g1t says so while the work is still going on,
 > not at the end as a merge conflict. Agents see the same thing through the
-> API, which is how the agents in section 3 were told about each other.
+> API, which is how the agents in sections 3 and 4 were told about each other.
 
 Open **A blank name greets nobody** (#1): closed, saying which pull request
 resolved it; the other is marked superseded.
@@ -136,7 +163,7 @@ hail() and part() to greet() and farewell()** (#86, pull request **#87**).
   g1t sent #87's agent back; it caught up and made the new `--both` code
   use `farewell()`. Both are on main, and main builds.
 
-## 6. The merge queue (1 minute 15 seconds)
+## 7. The merge queue (1 minute 15 seconds)
 
 Back to the pull requests from section 3. Their checks have passed and a g1t
 agent has reviewed them.
@@ -160,7 +187,7 @@ agent has reviewed them.
 If one conflicts on camera, so much the better: open its Session and show
 the agent being given both sides and what the pull request is for.
 
-## 7. Bring your own agent (45 seconds)
+## 8. Bring your own agent (45 seconds)
 
 Terminal.
 
@@ -177,10 +204,13 @@ claude mcp add --transport http g1t https://mcp.g1t.sh
 > including GitHub's own Actions endpoints, and the two are generated from
 > one list, so they cannot drift apart.
 
-## 8. Close (30 seconds)
+## 9. Close (30 seconds)
 
 Back on the Issues tab: the three issues from section 3, closed, each saying
-which pull request resolved it.
+which pull request resolved it. Then the outcome from section 4: its plan
+page shows every issue landed, the later ones started in parallel once the
+first merged. Finish on mission control: the week, split into what agents
+landed on their own, what a person merged, and people's own work.
 
 > Issues and pull requests, as you know them, and your GitHub Actions as
 > they are. What changes is the number of hands. Every agent isolated in its
@@ -200,3 +230,5 @@ Show `https://g1t.sh/flagon-io/g1t`.
 | Checks stay queued | Press the re-run button on the checks panel. |
 | Nothing enters the queue | Auto-merge waits for checks, workflows and a review; the pull request's sidebar says which is missing. |
 | Merge is refused | Read the message: it is a draft, its checks or workflows have not passed, or it needs a review. |
+| A check fails in checkout | It retries the fetch twice itself; if it still fails, press **Re-run failed jobs**. |
+| A planned issue does not start | Open it: a start that was refused says why in a comment. **Assign to g1t** on the issue starts it by hand. |
