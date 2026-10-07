@@ -723,6 +723,10 @@ const OBJECT_MAX_AGE: &str = "public, max-age=31536000, immutable";
 /// longer than this, which bounds how stale one can be should a change
 /// ever fail to move it.
 const VERSIONED_MAX_AGE: &str = "public, max-age=300";
+/// How long a path found not to be a file at a ref is remembered. Short:
+/// a miss by commit hash is true for good, but one for a commit not yet in
+/// the store would not be.
+const ABSENT_MAX_AGE: &str = "public, max-age=600";
 
 /// Whether a ref is a full commit hash (SHA-1 or SHA-256), whose history
 /// can be kept for good.
@@ -753,6 +757,13 @@ pub fn file_key(git_ref: &str, path: &str, version: Option<u64>) -> Option<Cache
         return Some(CacheKey::Forever(format!("file/{git_ref}/{path}")));
     }
     version.map(|version| CacheKey::Versioned(format!("vfile/{version}/{}/{path}", g1t_secrets::sha256_hex(git_ref))))
+}
+
+/// Where `read_file` notes that its key is not a file (see `known_absent`).
+fn absent_path(key: &CacheKey) -> String {
+    match key {
+        CacheKey::Forever(path) | CacheKey::Versioned(path) => format!("absent/{path}"),
+    }
 }
 
 /// The cache key for the branch list.
@@ -840,6 +851,18 @@ impl ArtifactsRepo {
         };
         let _ = response.headers_mut().set("cache-control", max_age);
         let _ = worker::Cache::default().put(self.cache_url(path), response).await;
+    }
+
+    /// Whether `read_file`'s key was found not to be a file a little while
+    /// ago. Metered only when it was (`cache.absent_hit`): the lookup runs
+    /// beside the key's own, which already counts the miss.
+    async fn known_absent(&self, key: &CacheKey) -> bool {
+        let url = self.cache_url(&absent_path(key));
+        let found = matches!(worker::Cache::default().get(url, false).await, Ok(Some(_)));
+        if found {
+            meters::record("cache.absent_hit", &self.key, 0, 0);
+        }
+        found
     }
 
     /// Keeps an object for next time. A failure only costs a later read.
@@ -1093,15 +1116,29 @@ impl GitRepo for ArtifactsRepo {
 
     async fn read_file(&self, git_ref: &str, path: &str) -> Result<Option<Vec<u8>>> {
         let key = file_key(git_ref, path, self.refs_version);
-        if let Some(key) = &key
-            && let Some(bytes) = self.get_key(key).await
-        {
-            return Ok(Some(bytes));
+        // A path that is not a file is remembered too, briefly: the store
+        // answers each such read as a rejected read (crawlers asking for
+        // old or missing paths make most of them). Never for the fallback
+        // store, which can be behind.
+        let remember_absent = !self.binding.is_fallback();
+        if let Some(key) = &key {
+            let (found, absent) = futures_util::future::join(self.get_key(key), async {
+                remember_absent && self.known_absent(key).await
+            })
+            .await;
+            if let Some(bytes) = found {
+                return Ok(Some(bytes));
+            }
+            if absent {
+                return Ok(None);
+            }
         }
         let args = js::to_js(&serde_json::json!({ "ref": git_ref, "path": path }))?;
         let bytes = blob_bytes(self.call("readFile", &[args], true).await?).await?;
         if let Some(bytes) = &bytes {
             meters::record_bytes("binding.read_file", &self.key, 0, bytes.len() as u64);
+        } else if remember_absent && let Some(key) = &key {
+            self.keep_at(&absent_path(key), vec![1], ABSENT_MAX_AGE).await;
         }
         if let (Some(key), Some(bytes)) = (&key, bytes.as_ref().filter(|bytes| bytes.len() <= MAX_CACHED_BLOB)) {
             self.put_key(key, bytes.clone()).await;
@@ -1313,6 +1350,12 @@ mod tests {
         assert_eq!(file_key("main", "src/main.rs", None), None);
         assert_ne!(file_key("main", "a", Some(1)), file_key("main", "b", Some(1)));
         assert_ne!(file_key("main", "a", Some(1)), file_key("main", "a", Some(2)));
+        // A path noted as not a file sits beside the file's own key, and a
+        // push (a new refs version) leaves the old note behind.
+        let at = |version| absent_path(&file_key("main", "a", Some(version)).unwrap());
+        assert!(at(1).starts_with("absent/vfile/1/"));
+        assert_ne!(at(1), at(2));
+        assert_eq!(absent_path(&file_key(&hash, "a", None).unwrap()), format!("absent/file/{hash}/{}", g1t_secrets::sha256_hex("a")));
     }
 
     #[test]

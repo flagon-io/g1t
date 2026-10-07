@@ -444,7 +444,10 @@ A global API key works in place of the token: `CLOUDFLARE_API_KEY` with `CLOUDFL
   2026-10-07: four anonymous views of a missing file on a public repository made four, a real
   file none. Nearly all came from crawlers (ClaudeBot, GPTBot) on public `blob/<sha>/…` pages
   and pull requests' working copies, hour after hour with no git at all. The site answers 404
-  correctly; each is one store read, and a miss is not cached. They are not operations.
+  correctly. Each was one store read; since 2026-10-07 a path found not to be a file is
+  remembered for 10 minutes beside its cache key (`store.rs` `known_absent`, metered as
+  `cache.absent_hit`; never for the fallback store), so a crawler repeating it reads nothing.
+  They are not operations.
   `--hours DAY` lists them by message and repository.
 
 **2026-10-07: where the gap came from.** Cloudflare counted 581 operations (pull 535, push 39,
