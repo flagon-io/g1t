@@ -1,5 +1,5 @@
 import { Plus } from "lucide-react";
-import { Outlet, data, useLocation } from "react-router";
+import { NavLink, Outlet, data, redirect, useLocation, useNavigation } from "react-router";
 
 import type { Route } from "./+types/layout";
 import { page } from "../../lib/meta";
@@ -9,6 +9,9 @@ import { clearWelcome, welcomes } from "../../lib/invites";
 import { notFound } from "../../lib/not-found.server";
 import { redirectIfRenamed } from "../../lib/renamed.server";
 import { rememberWorkspace } from "../../lib/workspace-choice";
+import { type WorkspaceTab, type WorkspaceTabKey, workspaceRedirect, workspaceTab, workspaceTabs } from "../../lib/workspace-nav";
+import { workspaceProjects } from "../../lib/workspace-projects.server";
+import { WorkspaceTabSkeleton } from "../../components/workspace-skeletons";
 import { identity } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 
@@ -17,29 +20,45 @@ export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
 }
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
-  const workspace = await identity.getWorkspace(params.owner);
+  const url = new URL(request.url);
+  // `?tab=projects` and the like, from habit: that tab's own address.
+  const moved = url.search ? workspaceRedirect(url.pathname, url.search) : null;
+  if (moved) throw redirect(moved);
+  const viewer = getViewer(context);
+  // Under the tabs, the count of projects beside Projects: the same
+  // listing the sidebar and the Projects page read, asked at once.
+  const tabbed = workspaceTab(url.pathname, params.owner) != null;
+  const [workspace, listed] = await Promise.all([
+    identity.getWorkspace(params.owner),
+    tabbed ? workspaceProjects(params.owner, viewer).catch(() => null) : null,
+  ]);
   if (!workspace) {
     // A workspace's old name, after a rename: its pages are at the new one.
     await redirectIfRenamed(request, params.owner);
     throw notFound("workspace");
   }
-  const role = roleIn(getViewer(context), workspace.slug);
+  const role = roleIn(viewer, workspace.slug);
+  const projectCount = listed?.ok ? listed.value.length : null;
   // Opening one of your workspaces makes it the one you are in.
-  if (!role) return { workspace, role, welcome: false };
+  if (!role) return { workspace, role, welcome: false, projectCount };
   const secure = new URL(request.url).protocol === "https:";
   const headers = new Headers({ "Set-Cookie": rememberWorkspace(workspace.slug, secure) });
   // Just joined with an invite: welcomed once (routes/invite.tsx).
   const welcome = welcomes(request.headers.get("cookie"), workspace.slug);
   if (welcome) headers.append("Set-Cookie", clearWelcome(secure));
-  return data({ workspace, role, welcome }, { headers });
+  return data({ workspace, role, welcome, projectCount }, { headers });
 }
 
 /** A workspace's own pages, each with its title and what it is for. */
 const PAGES: Record<string, { title: string; about: string }> = {
   settings: { title: "General", about: "The workspace's name, icon, address and description, and deleting it." },
   people: {
-    title: "Members",
+    title: "People",
     about: "Members create repositories and have the base permission on each one. Owners are Admins on every repository, and also manage members, tokens, billing and integrations.",
+  },
+  projects: {
+    title: "Projects",
+    about: "Everything the workspace builds and runs. Search, filter and sort them, and pin the ones you use most to keep them in your sidebar.",
   },
   repositories: {
     title: "Repositories",
@@ -97,12 +116,54 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
 };
 
+/**
+ * The workspace's tabs, as a project's are: a row under its header that
+ * scrolls sideways on a phone, without a scrollbar. Soon tabs say so with
+ * a dot.
+ */
+function WorkspaceTabs({ tabs, current }: { tabs: WorkspaceTab[]; current: WorkspaceTabKey | null }) {
+  return (
+    <nav aria-label="Workspace" className="relative -mb-px flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {tabs.map((tab) => (
+        <NavLink
+          key={tab.key}
+          to={tab.to}
+          end={tab.key === "overview"}
+          prefetch="intent"
+          aria-current={current === tab.key ? "page" : undefined}
+          className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 pt-1 pb-2.5 text-sm transition-colors ${
+            current === tab.key
+              ? "border-accent font-medium text-fg"
+              : tab.soon
+                ? "border-transparent text-faint hover:text-muted"
+                : "border-transparent text-muted hover:text-fg"
+          }`}
+        >
+          {tab.label}
+          {tab.count != null && (
+            <span className="rounded-full bg-raised px-1.5 py-px text-xs tabular-nums text-muted">{tab.count}</span>
+          )}
+          {tab.soon && (
+            <>
+              <span aria-hidden="true" className="size-1.5 rounded-full bg-accent/70" />
+              <span className="sr-only">(soon)</span>
+            </>
+          )}
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
+
 export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
-  const { workspace, role, welcome } = loaderData;
-  // The sidebar finds the workspace's pages, for everyone, so its pages
+  const { workspace, role, welcome, projectCount } = loaderData;
+  const { pathname } = useLocation();
+  const going = useNavigation().location;
+  const tab = workspaceTab(pathname, workspace.slug);
+  // The sidebar finds the workspace's other pages, for everyone, so they
   // need a title, not the workspace's whole header again.
-  const parts = (useLocation().pathname.split("/-/")[1] ?? "").split("/").filter(Boolean);
-  const page = PAGES[parts[0] ?? ""];
+  const parts = (pathname.split("/-/")[1] ?? "").split("/").filter(Boolean);
+  const page = tab ? undefined : PAGES[parts[0] ?? ""];
   // A page within one (a single package) has its own heading.
   if (page && parts.length > 1) {
     return (
@@ -122,11 +183,19 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
       </div>
     );
   }
+  const tabs = workspaceTabs(workspace.slug, {
+    member: role != null,
+    owner: role === "owner",
+    projects: projectCount,
+    people: role ? workspace.memberCount : null,
+  });
+  // On the way to another of its tabs: that tab's shape until it arrives.
+  const next = going && going.pathname !== pathname ? workspaceTab(going.pathname, workspace.slug) : null;
   return (
     <>
-      {/* The workspace's own header band. */}
+      {/* The workspace's own header band, with its tabs along the bottom. */}
       <div className="border-b border-line bg-surface/60">
-        <div className="mx-auto max-w-6xl px-4 pt-8 pb-8">
+        <div className="mx-auto max-w-6xl px-4 pt-8">
           {welcome && (
             <div className="mb-6">
               <WelcomeBanner title={`You're in ${workspace.name}`}>
@@ -155,10 +224,15 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
           {workspace.description && (
             <p className="mt-4 max-w-2xl text-sm text-muted">{workspace.description}</p>
           )}
+          <div className="mt-6">
+            <WorkspaceTabs tabs={tabs} current={next ?? tab} />
+          </div>
         </div>
       </div>
       <div className="mx-auto max-w-6xl px-4 py-8">
-        <Outlet />
+        {/* What a tab is for, said once above it. */}
+        {tab && tab !== "overview" && !next && PAGES[tab] && <p className="mb-6 max-w-3xl text-sm text-muted">{PAGES[tab].about}</p>}
+        {next ? <WorkspaceTabSkeleton tab={next} /> : <Outlet />}
       </div>
     </>
   );

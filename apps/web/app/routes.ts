@@ -62,7 +62,16 @@ export default [
   // A workspace's own pages sit under `-`, which no repository can be named.
   route(":owner", "routes/workspace/layout.tsx", [
     index("routes/workspace/overview.tsx"),
+    // Its tabs: Overview (above), Projects, Packages, Teams, People, Insights.
+    route("-/projects", "routes/workspace/projects.tsx"),
     route("-/people", "routes/workspace/people.tsx"),
+    route("-/teams", "routes/workspace/tab-soon.tsx", { id: "routes/workspace/teams" }),
+    route("-/insights", "routes/workspace/tab-soon.tsx", { id: "routes/workspace/insights" }),
+    // Pinning its projects, for the person signed in.
+    route("-/pins", "routes/workspace/pins.ts"),
+    // Pages that moved: Members is People, and the overview is the workspace.
+    route("-/members", "routes/workspace/moved.ts", { id: "routes/workspace/moved-members" }),
+    route("-/overview", "routes/workspace/moved.ts", { id: "routes/workspace/moved-overview" }),
     route("-/tokens", "routes/workspace/tokens.tsx"),
     route("-/usage", "routes/workspace/usage.tsx"),
     route("-/billing", "routes/workspace/billing.tsx"),

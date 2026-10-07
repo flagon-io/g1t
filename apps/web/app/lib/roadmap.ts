@@ -66,6 +66,19 @@ export const ROADMAP: RoadmapItem[] = [
     today: { label: "Outcomes", path: "plans" },
   },
   {
+    key: "insights",
+    title: "Insights",
+    section: "Workspace",
+    summary: "How the whole workspace delivers: lead time, reviews, what agents do and what it costs, across every project.",
+    why: "Each project will have its own numbers. The workspace's put them side by side, so you can see which projects ship steadily, where work waits, and where the money goes.",
+    plans: [
+      "Delivery metrics for every project, side by side",
+      "Where work waits: review, the merge queue, checks",
+      "Agents' share of merged changes, and how often it lands first time",
+      "Cost by project, by kind of work and per merged change",
+    ],
+  },
+  {
     key: "milestones",
     title: "Milestones",
     section: "Issues",

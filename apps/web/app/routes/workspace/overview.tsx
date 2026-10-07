@@ -1,4 +1,4 @@
-import { ArrowRight, ArrowUpRight, Box, CircleDot, GitBranch, GitPullRequest, KeyRound, Lock, Plus, Rocket } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Box, CircleDot, GitBranch, GitPullRequest, KeyRound, Lock, Pin, Plus, Rocket } from "lucide-react";
 import { Link } from "react-router";
 
 import type { PackageSummary, Project, ProjectDeploys, User } from "@g1t/contracts";
@@ -12,11 +12,16 @@ import { planStatus, type UsageGlance, usageGlance } from "../../lib/billing";
 import { openedBy } from "../../lib/opened-by";
 import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { libraryPackages, packageLine, packagePath } from "../../lib/project-kind";
+import { PinButton } from "../../components/pin-button";
+import { sortProjects } from "../../lib/project-list";
 import { billing, deployments, identity, packages, projects as projectsApi, work } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
+import { workspaceProjects } from "../../lib/workspace-projects.server";
 
-/** Projects whose open issues and pull requests are counted. */
+/** Projects whose open issues and pull requests are counted: the most active. */
 const MAX_COUNTED = 30;
+/** Projects shown under Recently active, after the pins. */
+const MAX_ACTIVE = 6;
 /** Projects whose pull requests are listed under "In progress". */
 const MAX_LISTED = 8;
 const MAX_PULLS = 8;
@@ -58,19 +63,33 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const slug = params.owner.toLowerCase();
   const role = roleIn(viewer, slug);
-  const [listed, members, deploys, usage, published] = await Promise.all([
-    projectsApi.list(slug, viewer),
+  const [listed, members, deploys, usage, published, shortcuts] = await Promise.all([
+    // The listing the sidebar and the Projects tab share.
+    workspaceProjects(slug, viewer),
     role ? identity.listMembers(slug, viewer) : null,
     role ? deployments.overview(slug, viewer) : null,
     role ? usageFor(slug, viewer) : null,
     // One listing for every card: a library's card shows its package where an app's shows production.
     packages.list(slug, viewer).catch(() => null),
+    // The viewer's pins lead the page, as they lead the sidebar.
+    role ? projectsApi.shortcuts(slug, viewer).catch(() => null) : null,
   ]);
   const projects = listed.ok ? listed.value : [];
+  const pinnedIds = new Set((shortcuts?.pinned ?? []).map((project) => project.id));
+  const byId = new Map(projects.map((project) => [project.id, project]));
+  const pinned = (shortcuts?.pinned ?? []).map((pin) => byId.get(pin.id)).filter((project): project is Project => project != null);
+  // However many there are: the most active first, archived ones last.
+  const byActivity = sortProjects(
+    projects.map((project) => ({ ...project, pushedAt: project.pushedAt ?? null, activity: project.activity ?? 0, deploying: false })),
+    "active",
+  )
+    .sort((a, b) => Number(a.archived) - Number(b.archived))
+    .map((listedProject) => byId.get(listedProject.id)!);
+  const active = byActivity.filter((project) => !pinnedIds.has(project.id)).slice(0, MAX_ACTIVE);
 
   const pathOf = (project: Project) =>
     project.source.kind === "hosted" ? project.source.repo : { namespace: project.workspace, name: project.slug };
-  const counted = projects.slice(0, MAX_COUNTED);
+  const counted = [...new Map([...pinned, ...active, ...byActivity].map((project) => [project.id, project])).values()].slice(0, Math.max(MAX_COUNTED, pinned.length + active.length));
   const counts = await Promise.all(counted.map((project) => work.counts(pathOf(project), viewer)));
   const open: Record<string, { issues: number; pulls: number }> = {};
   counted.forEach((project, i) => {
@@ -93,7 +112,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     if (pkg.repo) byRepo.set(pkg.repo.id, [...(byRepo.get(pkg.repo.id) ?? []), pkg]);
   }
   const packageOf: Record<string, PackageSummary> = {};
-  for (const project of projects) {
+  for (const project of [...pinned, ...active]) {
     if (project.kind !== "library" || project.source.kind !== "hosted") continue;
     const first = libraryPackages(byRepo.get(project.source.repoId) ?? [])[0];
     if (first) packageOf[project.id] = first;
@@ -102,7 +121,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   return {
     slug,
     role,
-    projects,
+    total: projects.length,
+    pinned,
+    active,
     open,
     deploys: bySlug,
     packageOf,
@@ -154,6 +175,7 @@ function ProjectCard({
   deploys,
   pkg,
   member,
+  pinned,
 }: {
   project: Project;
   open: { issues: number; pulls: number } | undefined;
@@ -161,6 +183,8 @@ function ProjectCard({
   /** For a library, the package it publishes. */
   pkg: PackageSummary | undefined;
   member: boolean;
+  /** Whether the viewer pinned it; null when they cannot pin. */
+  pinned: boolean | null;
 }) {
   const library = project.kind === "library";
   const base = `/${project.workspace}/${project.slug}`;
@@ -203,6 +227,9 @@ function ProjectCard({
             {project.private && <Pill>private</Pill>}
             {project.archived && <Pill>archived</Pill>}
           </span>
+        )}
+        {pinned != null && (
+          <PinButton workspace={project.workspace} slug={project.slug} name={project.name} pinned={pinned} compact className="-mt-1.5 -mr-2" />
         )}
       </div>
 
@@ -248,7 +275,18 @@ function ProjectCard({
 }
 
 export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) {
-  const { slug, role, projects, open, deploys, pulls, members, usage } = loaderData;
+  const { slug, role, total, pinned, active, open, deploys, pulls, members, usage } = loaderData;
+  const card = (project: Project, isPinned: boolean) => (
+    <ProjectCard
+      key={project.id}
+      project={project}
+      open={open[project.id]}
+      deploys={deploys[project.slug]}
+      pkg={loaderData.packageOf[project.id]}
+      member={role != null}
+      pinned={role ? isPinned : null}
+    />
+  );
   const totals = Object.values(open).reduce(
     (sum, counts) => ({ issues: sum.issues + counts.issues, pulls: sum.pulls + counts.pulls }),
     { issues: 0, pulls: 0 },
@@ -257,40 +295,63 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
   return (
     <div className="grid gap-10 lg:grid-cols-[1fr_18rem]">
       <div className="min-w-0 space-y-10">
-        {projects.length === 0 && role ? (
+        {total === 0 && role ? (
           <GetStarted slug={slug} />
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Stat value={projects.length} label={projects.length === 1 ? "Project" : "Projects"} />
+              <Stat value={total} label={total === 1 ? "Project" : "Projects"} />
               <Stat value={liveApps} label="In production" />
               <Stat value={totals.issues} label="Open issues" />
               <Stat value={totals.pulls} label="Pull requests in progress" />
             </div>
 
-            <section>
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-medium text-muted">Projects</h2>
-                {role && (
-                  <Link to={`/new?workspace=${slug}`} className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
-                    <Plus size={13} />
-                    New project
-                  </Link>
+            {role && (
+              <section aria-labelledby="pinned">
+                <h2 id="pinned" className="text-sm font-medium text-muted">
+                  Pinned
+                </h2>
+                {pinned.length > 0 ? (
+                  <ul className="mt-3 grid gap-4 sm:grid-cols-2">{pinned.map((project) => card(project, true))}</ul>
+                ) : (
+                  <p className="mt-3 flex items-center gap-2 rounded-xl border border-dashed border-line px-4 py-3 text-sm text-muted">
+                    <Pin size={14} className="shrink-0 text-faint" />
+                    Pin the projects you use most, from their page or from Projects, to keep them here and in your sidebar.
+                  </p>
                 )}
-              </div>
-              <ul className="mt-3 grid gap-4 sm:grid-cols-2">
-                {projects.map((project) => (
-                  <ProjectCard
-                    key={project.id}
-                    project={project}
-                    open={open[project.id]}
-                    deploys={deploys[project.slug]}
-                    pkg={loaderData.packageOf[project.id]}
-                    member={role != null}
-                  />
-                ))}
-              </ul>
-            </section>
+              </section>
+            )}
+
+            {active.length > 0 && (
+              <section aria-labelledby="active">
+                <div className="flex items-center justify-between">
+                  <h2 id="active" className="text-sm font-medium text-muted">
+                    {role ? "Recently active" : "Projects"}
+                  </h2>
+                  {role && (
+                    <Link to={`/new?workspace=${slug}`} className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
+                      <Plus size={13} />
+                      New project
+                    </Link>
+                  )}
+                </div>
+                <ul className="mt-3 grid gap-4 sm:grid-cols-2">{active.map((project) => card(project, false))}</ul>
+              </section>
+            )}
+
+            <Link
+              to={`/${slug}/-/projects`}
+              prefetch="intent"
+              className="flex items-center justify-between rounded-xl border border-line bg-surface px-4 py-3 text-sm transition-colors hover:border-line-strong"
+            >
+              <span>
+                All projects <span className="tabular-nums text-muted">({total})</span>
+              </span>
+              <span className="flex items-center gap-1 text-xs text-muted">
+                Search, filter and sort
+                <ArrowRight size={13} />
+              </span>
+            </Link>
 
             {pulls.length > 0 && (
               <section>

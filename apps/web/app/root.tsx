@@ -58,6 +58,7 @@ import { billing, inbox, projects } from "./lib/services.server";
 import { countsFor, readableRepos } from "./lib/access.server";
 import { shortCache } from "./lib/cache.server";
 import { getViewer, viewerMiddleware } from "./lib/session.server";
+import { shortcutOf, workspaceProjects } from "./lib/workspace-projects.server";
 import { registrationMode } from "./lib/registration.server";
 import { addresses } from "./lib/addresses.server";
 import { useSignUpCopy } from "./lib/registration";
@@ -140,8 +141,10 @@ async function shellFor(
   // something (lib/cache.server.ts).
   const kept = <T,>(what: string, load: () => Promise<T>) =>
     workspace ? shortCache(`shell:${what}:${user.id}:${workspace.slug}`, SHELL_TTL_MS, load) : Promise.resolve(null);
-  const [listed, counts, status, usage, limit, entitlements, shared, unread] = await Promise.all([
-    kept("projects", () => projects.list(workspace!.slug, user)),
+  const [listed, counts, status, usage, limit, entitlements, shared, unread, shortcuts] = await Promise.all([
+    // Every project, for the palette and the count; the sidebar lists only
+    // the person's pinned and recent ones (lib/pins.ts).
+    workspace ? workspaceProjects(workspace.slug, user) : Promise.resolve(null),
     path ? countsFor(context, params) : Promise.resolve(null),
     // Whether billing is on, without reading the account: that asks the
     // card processor about the workspace's cards, too slow for every page.
@@ -152,18 +155,15 @@ async function shellFor(
     sharedRepos(user),
     // The bell's count: one query, never kept, so marking an item shows at once.
     inbox.counts(user.username).catch(() => null),
+    // Never kept: opening a project moves it up Recent.
+    workspace ? projects.shortcuts(workspace.slug, user).catch(() => null) : Promise.resolve(null),
   ]);
   return {
     workspace,
     // Projects are what the sidebar lists: what the workspace builds and runs.
-    repos: listed?.ok
-      ? listed.value.map((project) => ({
-          namespace: project.workspace,
-          name: project.slug,
-          title: project.name,
-          isPrivate: project.private,
-        }))
-      : [],
+    repos: listed?.ok ? listed.value.map(shortcutOf) : [],
+    pinned: (shortcuts?.pinned ?? []).map(shortcutOf),
+    recent: (shortcuts?.recent ?? []).map(shortcutOf),
     repo:
       path && counts?.ok
         ? {

@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Bell, BookMarked, BookOpen, Bot, Box, Brain, Check, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, KanbanSquare, KeyRound, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Sparkles, Ticket, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Activity, BarChart3, Bell, BookMarked, BookOpen, Bot, Box, Brain, Check, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, KanbanSquare, KeyRound, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Sparkles, Ticket, Users, UsersRound, Webhook, X } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Form, Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -27,6 +27,7 @@ import { GithubMark } from "./github";
 import { withNext } from "../lib/next";
 import { useSignUpCopy } from "../lib/registration";
 import { STATUS_URL, statusTitle } from "../lib/status";
+import { type ShortcutProject, movedPin, recentWith } from "../lib/pins";
 import type { AccountMenuData } from "../routes/settings-menu-json";
 
 /**
@@ -37,8 +38,12 @@ import type { AccountMenuData } from "../routes/settings-menu-json";
 export type ShellData = {
   /** The workspace the sidebar is about: the one being looked at, or their first. */
   workspace: Membership | null;
-  /** Its projects, by name: `name` is the slug in their address. */
-  repos: { namespace: string; name: string; title?: string; isPrivate: boolean }[];
+  /** All its projects, by name, for the palette: `name` is the slug in their address. */
+  repos: ShortcutProject[];
+  /** The person's pinned projects in it, in their order (lib/pins.ts). */
+  pinned?: ShortcutProject[];
+  /** What they opened there last, latest first, leaving out the pinned. */
+  recent?: ShortcutProject[];
   /** Repositories shared with them in workspaces they do not belong to. */
   shared?: { namespace: string; name: string; isPrivate: boolean }[];
   /** The project being looked at, if any, whoever owns it. */
@@ -250,6 +255,24 @@ function WorkspaceSwitcher({ user, shell }: { user: User; shell: ShellData }) {
         <ChevronsUpDown size={14} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
+        {workspace && (
+          <>
+            {/* The workspace's own page: its projects, packages and people. */}
+            <DropdownMenuItem asChild>
+              <Link to={`/${workspace.slug}`}>
+                <LayoutGrid />
+                Workspace overview
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to={`/${workspace.slug}/-/projects`}>
+                <Box />
+                All projects
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
         {(user.workspaces ?? []).map((membership) => (
           <DropdownMenuItem asChild key={membership.slug}>
@@ -550,18 +573,115 @@ function Rule() {
   return <div role="separator" className="mx-2 my-2.5 h-px bg-line" />;
 }
 
+/** A quiet heading inside a group: Pinned, Recent. */
+function SidebarSubhead({ children }: { children: ReactNode }) {
+  return <h3 className="px-2 pt-1.5 pb-0.5 text-[0.6875rem] font-medium tracking-wide text-faint">{children}</h3>;
+}
+
+/**
+ * The workspace's projects as the sidebar keeps them, however many there
+ * are: the person's pins in their order, what they opened last, and the
+ * way to all of them. Pins move by dragging, or with Alt and the arrow
+ * keys; the projects service keeps the order.
+ */
+function SidebarProjects({ slug, shell }: { slug: string; shell: ShellData }) {
+  const reorder = useFetcher({ key: `pins:${slug}` });
+  const saved = shell.pinned ?? [];
+  // While a new order is on its way, it shows as made.
+  const asked = reorder.formData?.get("intent") === "reorder" ? reorder.formData.getAll("slug").map(String) : null;
+  const pinned = asked
+    ? asked.map((name) => saved.find((project) => project.name === name)).filter((project): project is ShortcutProject => project != null)
+    : saved;
+  const active = shell.repo ? { namespace: shell.repo.namespace, name: shell.repo.name, isPrivate: false } : null;
+  const recent = recentWith(shell.recent ?? [], pinned, active, slug);
+  const [dragging, setDragging] = useState<number | null>(null);
+  const move = (from: number, by: number) => {
+    const next = movedPin(pinned, from, by);
+    if (!next) return;
+    const form = new FormData();
+    form.set("intent", "reorder");
+    for (const project of next) form.append("slug", project.name);
+    reorder.submit(form, { method: "post", action: `/${slug}/-/pins` });
+  };
+  const row = (project: ShortcutProject) => (
+    <SidebarLink to={`/${project.namespace}/${project.name}`} icon={project.isPrivate ? <Lock size={15} /> : <Box size={15} />} drill="hover">
+      {project.title ?? project.name}
+    </SidebarLink>
+  );
+  return (
+    <SidebarGroup
+      title="Projects"
+      action={
+        <Link to={`/new?workspace=${slug}`} aria-label="New project" className="rounded p-0.5 text-faint hover:bg-raised hover:text-fg">
+          <Plus size={13} />
+        </Link>
+      }
+    >
+      <SidebarSubhead>Pinned</SidebarSubhead>
+      {pinned.length === 0 ? (
+        <p className="px-2 pb-1 text-xs text-faint">Pin projects to keep them here.</p>
+      ) : (
+        <ul aria-label="Pinned projects" className="space-y-px">
+          {pinned.map((project, index) => (
+            <li
+              key={project.name}
+              draggable={pinned.length > 1}
+              onDragStart={(event) => {
+                setDragging(index);
+                event.dataTransfer.effectAllowed = "move";
+              }}
+              onDragOver={(event) => {
+                if (dragging != null) event.preventDefault();
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                if (dragging != null && dragging !== index) move(dragging, index - dragging);
+                setDragging(null);
+              }}
+              onDragEnd={() => setDragging(null)}
+              onKeyDown={(event) => {
+                if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+                event.preventDefault();
+                move(index, event.key === "ArrowUp" ? -1 : 1);
+              }}
+              title={pinned.length > 1 ? "Drag, or Alt and an arrow key, to reorder" : undefined}
+              className={`group/pin relative ${dragging === index ? "opacity-50" : ""}`}
+            >
+              {row(project)}
+              {pinned.length > 1 && (
+                <GripVertical
+                  size={12}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute top-1/2 -left-1.5 -translate-y-1/2 text-faint opacity-0 transition-opacity group-hover/pin:opacity-100"
+                />
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {recent.length > 0 && (
+        <>
+          <SidebarSubhead>Recent</SidebarSubhead>
+          {recent.map((project) => (
+            <div key={`${project.namespace}/${project.name}`}>{row(project)}</div>
+          ))}
+        </>
+      )}
+      <div className="pt-1">
+        <SidebarLink to={`/${slug}/-/projects`} icon={<LayoutGrid size={15} />} count={shell.repos.length}>
+          All projects
+        </SidebarLink>
+      </div>
+    </SidebarGroup>
+  );
+}
+
 /**
  * The main list: where you go, the projects, what the workspace builds and
  * runs with across them, then its usage, support and settings.
  */
 function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
   const ws = shell.workspace;
-  const active = shell.repo;
-  // The repository being looked at is listed even when it is someone else's.
-  const listed =
-    active && !shell.repos.some((repo) => repo.namespace === active.namespace && repo.name === active.name)
-      ? [{ namespace: active.namespace, name: active.name, isPrivate: false }, ...shell.repos]
-      : shell.repos;
   // A visitor browses: no workspace, no projects of their own.
   if (!user) {
     return (
@@ -578,48 +698,23 @@ function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
   }
   return (
     <nav aria-label="g1t" className={PANEL}>
+      {/* Everything here is the workspace the switcher names: its home first.
+          The workspace's own page is the switcher's; Explore, all of g1t,
+          is in the top bar. */}
       <div className="mt-3 space-y-px">
         <SidebarLink to="/" end icon={<House size={15} />}>
           Mission control
         </SidebarLink>
-        {ws && (
-          <SidebarLink to={`/${ws.slug}`} end icon={<LayoutGrid size={15} />}>
-            Overview
-          </SidebarLink>
-        )}
-        <SidebarLink to="/explore" icon={<Compass size={15} />}>
-          Explore
-        </SidebarLink>
       </div>
 
       <Rule />
-      <SidebarGroup
-        title="Projects"
-        action={
-          ws && (
-            <Link
-              to={`/new?workspace=${ws.slug}`}
-              aria-label="New project"
-              className="rounded p-0.5 text-faint hover:bg-raised hover:text-fg"
-            >
-              <Plus size={13} />
-            </Link>
-          )
-        }
-      >
-        {listed.length === 0 && <p className="px-2 py-1 text-xs text-faint">None yet.</p>}
-        {listed.map((repo) => (
-          <SidebarLink
-            key={`${repo.namespace}/${repo.name}`}
-            to={`/${repo.namespace}/${repo.name}`}
-            icon={repo.isPrivate ? <Lock size={15} /> : <Box size={15} />}
-            drill="hover"
-          >
-            {repo.namespace !== ws?.slug && <span className="font-mono text-faint">{repo.namespace}/</span>}
-            {"title" in repo && repo.title ? repo.title : repo.name}
-          </SidebarLink>
-        ))}
-      </SidebarGroup>
+      {ws ? (
+        <SidebarProjects slug={ws.slug} shell={shell} />
+      ) : (
+        <SidebarGroup title="Projects">
+          <p className="px-2 py-1 text-xs text-faint">None yet.</p>
+        </SidebarGroup>
+      )}
       {(shell.shared ?? []).length > 0 && (
         <SidebarGroup title="Shared with you" className="mt-3">
           {(shell.shared ?? []).map((repo) => (
@@ -639,7 +734,7 @@ function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
       {ws && (
         <>
           <Rule />
-          <div className="space-y-px">
+          <SidebarGroup title="Workspace">
             <SidebarLink to={`/${ws.slug}/-/agents`} icon={<Bot size={15} />}>
               Agent fleet
             </SidebarLink>
@@ -655,7 +750,7 @@ function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
             <SidebarLink to={`/${ws.slug}/-/packages`} icon={<Package size={15} />}>
               Packages
             </SidebarLink>
-            {roadmapIn("Workspace").filter((item) => item.key !== "teams").map((item) => (
+            {roadmapIn("Workspace").filter((item) => item.key !== "teams" && item.key !== "insights").map((item) => (
               <SidebarSoonLink
                 key={item.key}
                 to={`/${ws.slug}/-/soon/${item.key}`}
@@ -665,18 +760,18 @@ function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
                 {item.title === "Board" ? "Boards" : item.title}
               </SidebarSoonLink>
             ))}
-          </div>
+          </SidebarGroup>
 
           <Rule />
           <div className="space-y-px">
             {/* Who belongs, for every member to see; owners invite and manage there. */}
             <SidebarLink to={`/${ws.slug}/-/people`} icon={<Users size={15} />}>
-              Members
+              People
             </SidebarLink>
             {roadmapIn("Workspace")
               .filter((item) => item.key === "teams")
               .map((item) => (
-                <SidebarSoonLink key={item.key} to={`/${ws.slug}/-/soon/${item.key}`} icon={WORKSPACE_ICONS[item.key]} about={item.summary}>
+                <SidebarSoonLink key={item.key} to={`/${ws.slug}/-/teams`} icon={WORKSPACE_ICONS[item.key]} about={item.summary}>
                   {item.title}
                 </SidebarSoonLink>
               ))}
@@ -1131,7 +1226,7 @@ function Sidebar({
     const back = !user
       ? { to: "/explore", label: "Explore" }
       : home
-        ? { to: `/${home.slug}`, label: "All projects" }
+        ? { to: `/${home.slug}/-/projects`, label: "All projects" }
         : { to: "/", label: "Mission control" };
     trail.push({
       key,
@@ -1219,7 +1314,9 @@ const SECTIONS: Record<string, string> = {
   code: "Files",
   secrets: "Secrets and variables",
   settings: "Settings",
-  people: "Members",
+  people: "People",
+  projects: "Projects",
+  teams: "Teams",
   tokens: "Access tokens",
   usage: "Usage",
   billing: "Billing and plans",
@@ -1386,6 +1483,8 @@ function commandsFor(user: User | null, shell: ShellData, here: string, signUpLa
   for (const membership of user.workspaces ?? []) {
     commands.push(
       { label: displayName(membership), hint: `Workspace · ${membership.slug}`, to: `/${membership.slug}`, icon: <Avatar name={membership.slug} image={membership.avatar} size={15} square /> },
+      { label: "All projects", hint: membership.slug, to: `/${membership.slug}/-/projects`, icon: <LayoutGrid size={15} /> },
+      { label: "People", hint: membership.slug, to: `/${membership.slug}/-/people`, icon: <Users size={15} /> },
       { label: "Usage", hint: membership.slug, to: `/${membership.slug}/-/usage`, icon: <BarChart3 size={15} /> },
       { label: "Billing and plans", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/billing`, icon: <CreditCard size={15} /> },
       { label: "Access tokens", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/tokens`, icon: <KeyRound size={15} /> },
@@ -1566,6 +1665,18 @@ export function AppShell({
             </kbd>
           </Form>
           <div className="ml-auto flex items-center gap-1.5 md:ml-0">
+            {/* All of g1t's public projects: not any one workspace's, so here, not in the sidebar. */}
+            <NavLink
+              to="/explore"
+              prefetch="intent"
+              aria-label="Explore"
+              className={({ isActive }) =>
+                `flex h-9 items-center gap-1.5 rounded-md px-2 text-sm transition-colors hover:bg-raised hover:text-fg sm:px-2.5 ${isActive ? "text-fg" : "text-muted"}`
+              }
+            >
+              <Compass size={16} className="sm:hidden" />
+              <span className="hidden sm:inline">Explore</span>
+            </NavLink>
             <a
               href="https://docs.g1t.sh/"
               className="hidden rounded-md px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-raised hover:text-fg sm:block"

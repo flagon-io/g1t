@@ -1,3 +1,4 @@
+import { waitUntil } from "cloudflare:workers";
 import { Box, Lock } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, NavLink, Outlet, type ShouldRevalidateFunctionArgs, data, useLocation, useRouteLoaderData } from "react-router";
@@ -10,6 +11,7 @@ import { page } from "../../lib/meta";
 import { type Tab as PageTab, tabsFor } from "../../lib/project-nav";
 import { Pill } from "../../components/ui";
 import { WatchMenu } from "../../components/notifications";
+import { PinButton } from "../../components/pin-button";
 import { ArchivedBanner } from "../../components/repo-lifecycle";
 import { WelcomeBanner } from "../../components/welcome";
 import { clearWelcome, welcomes } from "../../lib/invites";
@@ -17,7 +19,7 @@ import { notFound } from "../../lib/not-found.server";
 import { redirectIfRenamed, redirectIfTransferred } from "../../lib/renamed.server";
 import { accessFor, countsFor, repoFor } from "../../lib/access.server";
 import { inbox, projects } from "../../lib/services.server";
-import { getViewer, unwrap } from "../../lib/session.server";
+import { getViewer, roleIn, unwrap } from "../../lib/session.server";
 
 export function meta({ loaderData: loaded, params, ...args }: Route.MetaArgs) {
   return page(args, { title: `${loaded?.project?.name ?? params.repo} · ${params.owner} · g1t` });
@@ -26,7 +28,9 @@ export function meta({ loaderData: loaded, params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const path = { namespace: params.owner, name: params.repo };
-  const [repo, counts, found, watching] = await Promise.all([
+  // Members pin the workspace's projects, and what they open is their Recent.
+  const member = viewer ? roleIn(viewer, params.owner) != null : false;
+  const [repo, counts, found, watching, shortcuts] = await Promise.all([
     repoFor(context, params),
     countsFor(context, params),
     projects.get(params.owner, params.repo, viewer),
@@ -35,6 +39,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     viewer
       ? repoFor(context, params).then((found) => (found.ok ? inbox.watching(viewer.username, found.value.id).catch(() => null) : null))
       : null,
+    // Whether they pinned it, for the header's Pin button.
+    member ? projects.shortcuts(params.owner, viewer).catch(() => null) : null,
   ]);
   if (!repo.ok && !found.ok) {
     // Under a workspace's old name, after a rename: the project is at the new one.
@@ -49,6 +55,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     const own = await projects.byRepo(repo.value.id);
     project = own.find((p) => p.slug === params.repo.toLowerCase()) ?? own[0] ?? null;
   }
+  // Opened just now: it leads their Recent, recorded after the page is sent.
+  if (member && project) waitUntil(projects.visited(viewer!, project.id).catch(() => undefined));
   const value = unwrap(repo);
   // The viewer's role on the repository and what it lets them do, for the
   // pages under it and the sidebar.
@@ -64,6 +72,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     access,
     member: access.insider,
     watching,
+    // Null when they cannot pin it: not one of their workspaces.
+    pinned: member && project ? (shortcuts?.pinned ?? []).some((pinned) => pinned.id === project.id) : null,
   }, { headers });
 }
 
@@ -161,7 +171,7 @@ function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
 }
 
 export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
-  const { repo, project, member, access, welcome, watching } = loaderData;
+  const { repo, project, member, access, welcome, watching, pinned } = loaderData;
   const base = `/${repo.namespace}/${repo.name}`;
   // The project's own description, else the repository's as it is now.
   const description = (project && !project.descriptionInherited ? project.description : null) ?? repo.description;
@@ -184,8 +194,13 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
             // The files' own About says it there, as the one place.
             description={filesPage ? null : description}
             actions={
-              watching ? (
-                <WatchMenu action={`${base}/notifications`} level={watching.level} events={watching.events} />
+              watching || (project && pinned != null) ? (
+                <>
+                  {project && pinned != null && (
+                    <PinButton workspace={project.workspace} slug={project.slug} name={project.name} pinned={pinned} />
+                  )}
+                  {watching && <WatchMenu action={`${base}/notifications`} level={watching.level} events={watching.events} />}
+                </>
               ) : null
             }
           />

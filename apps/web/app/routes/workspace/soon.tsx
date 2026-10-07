@@ -1,10 +1,11 @@
-import { data } from "react-router";
+import { data, redirect } from "react-router";
 
 import type { Route } from "./+types/soon";
 import { page } from "../../lib/meta";
 import { roadmapItem } from "../../lib/roadmap";
 import { projects } from "../../lib/services.server";
 import { getViewer } from "../../lib/session.server";
+import { workspaceRedirect } from "../../lib/workspace-nav";
 import { SoonView } from "../repo/soon";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -16,7 +17,10 @@ export function meta({ params, ...args }: Route.MetaArgs) {
   });
 }
 
-export async function loader({ params, context }: Route.LoaderArgs) {
+export async function loader({ params, context, request }: Route.LoaderArgs) {
+  // Teams and Insights are tabs of the workspace's page now.
+  const moved = workspaceRedirect(new URL(request.url).pathname);
+  if (moved) throw redirect(moved, 301);
   const item = roadmapItem(params.feature);
   // Only what spans projects lives under the workspace.
   if (!item || item.section !== "Workspace") throw data(null, { status: 404 });
