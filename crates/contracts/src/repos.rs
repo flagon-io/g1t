@@ -576,6 +576,10 @@ pub struct LastCommitsArgs {
     pub git_ref: Option<String>,
     #[serde(default)]
     pub tree_path: String,
+    /// Answer within this many milliseconds with what was found, not kept;
+    /// absent, the walk runs to the end and is kept.
+    #[serde(default)]
+    pub budget_ms: Option<u64>,
 }
 
 /// An entry of a directory and the commit that last changed it.
