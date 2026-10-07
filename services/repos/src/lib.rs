@@ -60,6 +60,8 @@ const MAX_TEXT_BYTES: usize = 512 * 1024;
 const MAX_ANCESTRY: u32 = 1000;
 /// The most tags a repository's Tags page reads and lists.
 const MAX_TAGS_READ: usize = 100;
+/// How long a last-commits walk may take before it answers with what it has.
+const LAST_COMMITS_BUDGET_MS: u64 = 2_500;
 
 /// One path segment, percent-encoded for a cache key.
 fn urlencoding_segment(segment: &str) -> String {
@@ -770,8 +772,15 @@ impl<S: GitStore> Repos<S> {
                 return Ok(Outcome::Ok(found));
             }
         }
-        let (entries, complete) = last_commits::last_commits(&git, &head.hash, &a.tree_path).await?;
+        // A page waits on this: past the budget, what was found so far, not kept.
+        let started = worker::Date::now().as_millis();
+        let out_of_time = move || worker::Date::now().as_millis().saturating_sub(started) > LAST_COMMITS_BUDGET_MS;
+        let (entries, complete) = last_commits::last_commits(&git, &head.hash, &a.tree_path, &out_of_time).await?;
+        let stopped = out_of_time();
         let found = g1t_contracts::repos::LastCommits { entries, complete };
+        if stopped && !found.complete {
+            return Ok(Outcome::Ok(found));
+        }
         if let Ok(mut response) = worker::Response::from_json(&found) {
             let _ = response.headers_mut().set("cache-control", "max-age=604800");
             let _ = cache.put(key.as_str(), response).await;

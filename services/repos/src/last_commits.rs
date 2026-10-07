@@ -88,8 +88,14 @@ impl<'a, R: GitRepo> Trees<'a, R> {
 }
 
 /// The last commit of each entry of `path` at `git_ref`, and whether every
-/// entry was given one.
-pub async fn last_commits<R: GitRepo>(repo: &R, git_ref: &str, path: &str) -> Result<(Vec<LastCommit>, bool)> {
+/// entry was given one. `out_of_time` is asked between batches; once it
+/// says so the walk stops with what it has, incomplete.
+pub async fn last_commits<R: GitRepo>(
+    repo: &R,
+    git_ref: &str,
+    path: &str,
+    out_of_time: &dyn Fn() -> bool,
+) -> Result<(Vec<LastCommit>, bool)> {
     let history = repo.log(git_ref, MAX_COMMITS).await?;
     let Some(head) = history.first() else {
         return Ok((Vec::new(), true));
@@ -105,6 +111,9 @@ pub async fn last_commits<R: GitRepo>(repo: &R, git_ref: &str, path: &str) -> Re
             break;
         }
         if index % READ_AHEAD == 0 {
+            if index > 0 && out_of_time() {
+                break;
+            }
             let ahead = history.iter().skip(index + 1).take(READ_AHEAD).map(|commit| commit.tree_hash.clone()).collect();
             trees.prefetch_dirs(ahead, path).await?;
         }
@@ -219,7 +228,7 @@ mod tests {
 
     #[test]
     fn each_root_entry_gets_the_newest_commit_that_changed_it() {
-        let (found, complete) = run(last_commits(&repo(), "main", "")).unwrap();
+        let (found, complete) = run(last_commits(&repo(), "main", "", &|| false)).unwrap();
         assert!(complete);
         let found = by_name(found);
         assert_eq!(found["README.md"], "c3");
@@ -228,7 +237,7 @@ mod tests {
 
     #[test]
     fn a_subdirectory_is_walked_by_its_own_tree() {
-        let (found, complete) = run(last_commits(&repo(), "main", "src")).unwrap();
+        let (found, complete) = run(last_commits(&repo(), "main", "src", &|| false)).unwrap();
         assert!(complete);
         assert_eq!(by_name(found)["a.rs"], "c2");
     }
@@ -238,7 +247,7 @@ mod tests {
         let mut fake = repo();
         fake.trees.insert("root2".into(), vec![entry("README.md", "r1", EntryKind::Blob), entry("src", "src1", EntryKind::Tree)]);
         fake.trees.insert("root3".into(), vec![entry("README.md", "r2", EntryKind::Blob), entry("src", "src1", EntryKind::Tree)]);
-        let (found, complete) = run(last_commits(&fake, "main", "")).unwrap();
+        let (found, complete) = run(last_commits(&fake, "main", "", &|| false)).unwrap();
         assert!(complete);
         assert_eq!(by_name(found)["src"], "c1");
     }
@@ -250,7 +259,7 @@ mod tests {
         fake.history[2].parents = vec!["c0".into()];
         fake.trees.insert("root2".into(), vec![entry("README.md", "r1", EntryKind::Blob), entry("src", "src1", EntryKind::Tree)]);
         fake.trees.insert("root3".into(), vec![entry("README.md", "r2", EntryKind::Blob), entry("src", "src1", EntryKind::Tree)]);
-        let (found, complete) = run(last_commits(&fake, "main", "")).unwrap();
+        let (found, complete) = run(last_commits(&fake, "main", "", &|| false)).unwrap();
         assert!(!complete);
         let found = by_name(found);
         assert_eq!(found["README.md"], "c3");
