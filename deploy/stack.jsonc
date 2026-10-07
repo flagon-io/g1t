@@ -232,7 +232,7 @@
 			"worker": "g1t-api",
 			"stage": "edge",
 			"secrets": [],
-			"self_host": "none"
+			"self_host": "separate"
 		},
 		"models": {
 			"path": "services/models",

@@ -64,6 +64,25 @@ while read -r config; do args+=(-c "$config"); done < workers.txt
 # (schedules.json, from configs.mjs) once a minute through Wrangler's local
 # API, which answers only here, on localhost.
 node "$HERE/scheduler.mjs" schedules.json http://127.0.0.1:8787 &
+
+# The API (REST, MCP, OAuth) on a port of its own, in a second workerd. Its
+# service bindings find the Workers below through Wrangler's dev registry,
+# so it waits until they are up. It holds no data; its own KV (Actions
+# artifacts, which need the runner) is kept apart from the site's. It
+# listens on 8789 in the container; API_PORT is the port people use, which
+# API_URL is derived from (configs.mjs).
+(
+  for _ in $(seq 1 120); do
+    node -e "fetch('http://127.0.0.1:8787/').then(() => process.exit(0), () => process.exit(1))" && break
+    sleep 2
+  done
+  echo "The API is starting on $(node -p "require('./api.json').api") (MCP: $(node -p "require('./api.json').mcp"))"
+  exec "$WRANGLER" dev -c g1t-api.json \
+    --ip 0.0.0.0 --port 8789 \
+    --persist-to "$DATA/api-state" \
+    --show-interactive-dev-session=false
+) &
+
 echo "g1t is starting on ${PUBLIC_URL:-http://localhost:8787}"
 exec "$WRANGLER" dev "${args[@]}" \
   --ip 0.0.0.0 --port 8787 \

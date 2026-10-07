@@ -12,6 +12,11 @@
 // this runs inside the g1t container, beside it (start.sh).
 //
 // Usage: node scheduler.mjs <schedules.json> [base URL, default http://127.0.0.1:8787]
+//        node scheduler.mjs --once <schedules.json> [base URL]
+//
+// --once runs every service's every cron now, says how each went, and exits
+// non-zero if any failed. A handler still running from the minute before is
+// not started again, and one is given up on after ten minutes.
 
 import { readFileSync } from "node:fs";
 
@@ -67,25 +72,56 @@ export function due(schedules, date) {
   return schedules.flatMap(({ worker, crons }) => crons.filter((cron) => matches(cron, date)).map((cron) => ({ worker, cron })));
 }
 
-async function run(base, { worker, cron }) {
+/** Handlers still running, by worker and cron: a slow one is not started again on top of itself. */
+const running = new Set();
+
+/** Runs one handler through Wrangler's local API; whether it ran and said ok. */
+export async function run(base, { worker, cron }, { fetch: send = fetch, timeoutMs = 10 * 60_000 } = {}) {
+  const key = `${worker} ${cron}`;
+  if (running.has(key)) {
+    console.error(`scheduler: ${worker} (${cron}) is still running from the last time; skipped`);
+    return false;
+  }
+  running.add(key);
   try {
-    const answer = await fetch(`${base}/cdn-cgi/local/explorer/api/local/scheduled?worker=${encodeURIComponent(worker)}`, {
+    const answer = await send(`${base}/cdn-cgi/local/explorer/api/local/scheduled?worker=${encodeURIComponent(worker)}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ cron }),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const body = await answer.json().catch(() => ({}));
     if (!answer.ok || !body.success || body.result?.outcome !== "ok") {
       console.error(`scheduler: ${worker} (${cron}): ${answer.status} ${JSON.stringify(body.errors ?? body.result ?? body)}`);
+      return false;
     }
+    return true;
   } catch (error) {
     console.error(`scheduler: ${worker} (${cron}) could not be run: ${error.message}`);
+    return false;
+  } finally {
+    running.delete(key);
   }
 }
 
 if (process.argv[1]?.replaceAll("\\", "/").endsWith("deploy/self-host/scheduler.mjs")) {
-  const schedules = JSON.parse(readFileSync(process.argv[2], "utf8"));
-  const base = (process.argv[3] ?? "http://127.0.0.1:8787").replace(/\/$/, "");
+  const once = process.argv.includes("--once");
+  const [file, given] = process.argv.slice(2).filter((arg) => arg !== "--once");
+  const schedules = JSON.parse(readFileSync(file, "utf8"));
+  const base = (given ?? "http://127.0.0.1:8787").replace(/\/$/, "");
+  if (once) {
+    // Every cron of every service, now, one after another: a check that
+    // each handler runs (smoke.sh), not a schedule.
+    let failed = 0;
+    for (const { worker, crons } of schedules) {
+      for (const cron of crons) {
+        const ok = await run(base, { worker, cron });
+        console.log(`${ok ? "ok  " : "FAIL"} ${worker} (${cron})`);
+        if (!ok) failed++;
+      }
+    }
+    process.exit(failed ? 1 : 0);
+  }
   console.log(`scheduler: ${schedules.map((s) => `${s.worker} ${s.crons.join(", ")}`).join("; ")}`);
   const tick = () => {
     const now = new Date();

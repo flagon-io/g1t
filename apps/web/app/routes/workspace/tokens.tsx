@@ -4,6 +4,7 @@ import { presetScopes } from "@g1t/contracts";
 
 import type { Route } from "./+types/tokens";
 import { page } from "../../lib/meta";
+import { useAddresses } from "../../lib/addresses";
 import {
   Button,
   CopyLine,
@@ -65,6 +66,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 export default function WorkspaceTokens({ loaderData, actionData }: Route.ComponentProps) {
   const { slug, role, tokens } = loaderData;
   const created = actionData?.token;
+  const { site, api } = useAddresses();
+  // With git, the token is the password in the clone address, after the scheme.
+  const [scheme, rest] = site.split("://");
   return (
     <div className="grid gap-10 lg:grid-cols-[1fr_20rem]">
       <div className="min-w-0">
@@ -185,14 +189,14 @@ export default function WorkspaceTokens({ loaderData, actionData }: Route.Compon
           <div className="mt-2">
             <CopyLine
               prompt
-              text={`git clone https://${slug}:$G1T_TOKEN@g1t.sh/${slug}/<repo>.git`}
+              text={`git clone ${scheme}://${slug}:$G1T_TOKEN@${rest}/${slug}/<repo>.git`}
             />
           </div>
           <p className="mt-4 text-muted">With the API and the MCP server:</p>
           <div className="mt-2">
             <CopyLine
               prompt
-              text={'curl -H "Authorization: Bearer $G1T_TOKEN" https://api.g1t.sh/user'}
+              text={`curl -H "Authorization: Bearer $G1T_TOKEN" ${api}/user`}
             />
           </div>
         </section>

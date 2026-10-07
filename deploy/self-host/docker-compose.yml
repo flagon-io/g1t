@@ -3,10 +3,12 @@
 #   docker compose -f deploy/self-host/docker-compose.yml up --build
 #
 # Then open http://localhost:8787. Mail (the confirmation link at sign-up)
-# lands in Mailpit at http://localhost:8025.
+# lands in Mailpit at http://localhost:8025. The API is at
+# http://localhost:8789 and the MCP server at http://localhost:8789/mcp.
 #
 # What runs: the site and every core service in one workerd (g1t), git
-# repositories as bare repos on a volume (gitstore), packages' files in
+# repositories as bare repos on a volume (gitstore), the API in a second
+# workerd beside it, packages' files, backups and the clone pack cache in
 # MinIO, and Mailpit for mail.
 # Agents, deployments, context search and billing are off. See
 # docs/SELF_HOSTING.md.
@@ -19,9 +21,16 @@ services:
       dockerfile: deploy/self-host/Dockerfile
     ports:
       - "${G1T_PORT:-8787}:8787"
+      - "${API_PORT:-8789}:8789"
     environment:
-      # Where people reach this installation. Links in mail point here.
+      # Where people reach this installation. Links in mail, clone URLs and
+      # the site's meta tags point here.
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8787}
+      # Where the API (REST, OAuth) is reached, and its OAuth issuer; empty
+      # means PUBLIC_URL's host on API_PORT. MCP_URL, empty, is API_URL/mcp.
+      API_URL: ${API_URL:-}
+      MCP_URL: ${MCP_URL:-}
+      API_PORT: ${API_PORT:-8789}
       GITSTORE_URL: http://gitstore:8080
       GITSTORE_SECRET_FILE: /secrets/gitstore
       MAIL_URL: ${MAIL_URL:-http://mailpit:8025}
@@ -54,6 +63,9 @@ services:
       # Nightly backups' bundles and manifests, in a bucket of their own on
       # the same store (docs/SELF_HOSTING.md, "Backups").
       BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-g1t-backups}
+      # Packs kept for fresh clones, so the next clone of the same commit
+      # does not rebuild one; minio-setup expires them after 7 days.
+      PACK_S3_BUCKET: ${PACK_S3_BUCKET:-g1t-git-packs}
     volumes:
       - g1t-data:/data
       - g1t-secrets:/secrets:ro
@@ -98,14 +110,19 @@ services:
     # Not published: only the g1t container reaches it.
     restart: unless-stopped
 
-  # Packages' files. Not published: only the g1t container reaches it,
-  # unless you publish 9000 and set S3_PUBLIC_ENDPOINT.
+  # Packages' files, backups and clone packs. Not published: only the g1t
+  # container reaches it, unless you publish 9000 and set
+  # S3_PUBLIC_ENDPOINT. MinIO no longer publishes images of its own;
+  # MINIO_IMAGE is a community build of the same server, with `mc` in it.
+  # Any S3-compatible store works in its place (S3_ENDPOINT).
   minio:
-    image: minio/minio:latest
+    image: ${MINIO_IMAGE:-pgsty/minio:latest}
     command: ["server", "/data"]
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-g1t}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-g1t-packages-secret}
+      # What the health check's `mc ready local` asks.
+      MC_HOST_local: http://localhost:9000
     volumes:
       - g1t-packages:/data
     healthcheck:
@@ -114,21 +131,32 @@ services:
       retries: 20
     restart: unless-stopped
 
-  # Makes the buckets once, then exits: packages' files, and backups.
+  # Makes the buckets once, then exits: packages' files, backups, and
+  # clone packs with a rule that deletes packs 7 days old. (MinIO itself
+  # removes uploads left unfinished after 24 hours.)
   minio-setup:
-    image: minio/mc:latest
+    image: ${MINIO_IMAGE:-pgsty/minio:latest}
     depends_on:
       minio:
         condition: service_healthy
     entrypoint:
       - sh
       - -c
-      - mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" && mc mb --ignore-existing "local/$$S3_BUCKET" && mc mb --ignore-existing "local/$$BACKUP_S3_BUCKET"
+      - >-
+        set -e;
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD";
+        mc mb --ignore-existing "local/$$S3_BUCKET";
+        mc mb --ignore-existing "local/$$BACKUP_S3_BUCKET";
+        mc mb --ignore-existing "local/$$PACK_S3_BUCKET";
+        if ! mc ilm rule ls "local/$$PACK_S3_BUCKET" >/dev/null 2>&1; then
+          mc ilm rule add --prefix packs/ --expire-days 7 "local/$$PACK_S3_BUCKET";
+        fi
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-g1t}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-g1t-packages-secret}
       S3_BUCKET: ${S3_BUCKET:-g1t-packages}
       BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-g1t-backups}
+      PACK_S3_BUCKET: ${PACK_S3_BUCKET:-g1t-git-packs}
 
   mailpit:
     image: axllent/mailpit:latest

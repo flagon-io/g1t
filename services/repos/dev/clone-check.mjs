@@ -11,7 +11,18 @@
 //   cd services/repos && node ../../scripts/build-rust-worker.mjs
 //   node dev/clone-check.mjs
 //
-// Needs node, git (with git-http-backend) and the repository's npm packages.
+// With `--s3`, packs are kept in MinIO instead of local R2, as a
+// self-hosted installation keeps them (PACK_STORE=s3): it starts MinIO in
+// Docker, makes the `g1t-git-packs` bucket with the same expiry rule the
+// compose file gives it, and checks that what was kept is there, whole,
+// with no upload left unfinished.
+//
+//   node dev/clone-check.mjs --s3
+//
+// GITSTORE_PORT, REPOS_PORT and MINIO_PORT move it off 8799, 8791 and 9010.
+//
+// Needs node, git (with git-http-backend) and the repository's npm
+// packages; with `--s3`, Docker too.
 
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -27,10 +38,33 @@ const root = resolve(service, "../..");
 const work = mkdtempSync(join(tmpdir(), "g1t-clone-check-"));
 const persist = join(work, "state");
 const SECRET = "dev-gitstore-secret-0123";
-const STORE = "http://localhost:8799";
-const REPOS = "http://localhost:8791";
+// The ports, if something on this machine already has the defaults.
+const STORE_PORT = process.env.GITSTORE_PORT ?? "8799";
+const REPOS_PORT = process.env.REPOS_PORT ?? "8791";
+const STORE = `http://localhost:${STORE_PORT}`;
+const REPOS = `http://localhost:${REPOS_PORT}`;
+// dev/artifacts.jsonc, pointed at this run's git store.
+const ARTIFACTS_CONFIG = join(work, "artifacts.json");
+writeFileSync(
+  ARTIFACTS_CONFIG,
+  JSON.stringify({
+    name: "g1t-artifacts",
+    main: join(root, "deploy/self-host/workers/artifacts/index.js"),
+    compatibility_date: "2026-09-26",
+    vars: { GITSTORE_URL: STORE, GITSTORE_SECRET: SECRET },
+  }),
+);
 const KEY = "acme--rocket";
 const children = [];
+// --s3: packs in MinIO (see the top).
+const S3 = process.argv.includes("--s3");
+const MINIO = "g1t-clone-check-minio";
+const MINIO_PORT = process.env.MINIO_PORT ?? "9010";
+const MINIO_USER = "g1t";
+const MINIO_PASSWORD = "g1t-clone-check-secret";
+const PACKS_BUCKET = "g1t-git-packs";
+/** `mc` inside the MinIO container, against itself. */
+const mc = (args, options = {}) => run("docker", ["exec", MINIO, "mc", ...args], options);
 // Wrangler from the repository's packages, run with node: no shell to quote for.
 const WRANGLER = join(dirname(createRequire(join(service, "package.json")).resolve("wrangler/package.json")), "bin/wrangler.js");
 
@@ -99,7 +133,7 @@ function twice(label, args, depth) {
 try {
   // The git store, with a repository of a few commits.
   start("node", [join(root, "deploy/self-host/gitstore/server.mjs")], {
-    env: { ...process.env, GITSTORE_ROOT: join(work, "git"), GITSTORE_SECRET: SECRET, GITSTORE_PORT: "8799", GITSTORE_URL: STORE },
+    env: { ...process.env, GITSTORE_ROOT: join(work, "git"), GITSTORE_SECRET: SECRET, GITSTORE_PORT: STORE_PORT, GITSTORE_URL: STORE },
     stdio: "inherit",
   });
   await waitFor(`${STORE}/healthz`, "the git store");
@@ -128,9 +162,34 @@ try {
     env: { ...process.env, CI: "1" },
   });
   sql("INSERT INTO repos (id, namespace, name, is_private, owner_id, default_branch, refs_version) VALUES ('rep_rocket', 'acme', 'rocket', 0, 'usr_dev', 'main', 1)");
+
+  // MinIO, with the bucket and expiry rule deploy/self-host/docker-compose.yml makes.
+  const s3Vars = [];
+  if (S3) {
+    run("docker", ["rm", "-f", MINIO], { allowFail: true });
+    run("docker", [
+      "run", "-d", "--rm", "--name", MINIO, "-p", `${MINIO_PORT}:9000`,
+      "-e", `MINIO_ROOT_USER=${MINIO_USER}`, "-e", `MINIO_ROOT_PASSWORD=${MINIO_PASSWORD}`,
+      process.env.MINIO_IMAGE ?? "pgsty/minio:latest", "server", "/data",
+    ]);
+    await waitFor(`http://localhost:${MINIO_PORT}/minio/health/ready`, "MinIO");
+    mc(["alias", "set", "local", "http://localhost:9000", MINIO_USER, MINIO_PASSWORD]);
+    mc(["mb", "--ignore-existing", `local/${PACKS_BUCKET}`]);
+    mc(["ilm", "rule", "add", "--prefix", "packs/", "--expire-days", "7", `local/${PACKS_BUCKET}`]);
+    for (const [name, value] of Object.entries({
+      PACK_STORE: "s3",
+      PACK_S3_BUCKET: PACKS_BUCKET,
+      S3_ENDPOINT: `http://localhost:${MINIO_PORT}`,
+      S3_REGION: "us-east-1",
+      S3_ACCESS_KEY_ID: MINIO_USER,
+      S3_SECRET_ACCESS_KEY: MINIO_PASSWORD,
+    })) {
+      s3Vars.push("--var", `${name}:${value}`);
+    }
+  }
   start(
     "node",
-    [WRANGLER, "dev", "-c", "dev/repos.jsonc", "-c", "dev/artifacts.jsonc", "-c", "dev/stubs.jsonc", "--local", "--persist-to", persist, "--port", "8791"],
+    [WRANGLER, "dev", "-c", "dev/repos.jsonc", "-c", ARTIFACTS_CONFIG, "-c", "dev/stubs.jsonc", "--local", "--persist-to", persist, "--port", REPOS_PORT, ...s3Vars],
     { cwd: service, env: { ...process.env, CI: "1" }, stdio: ["ignore", "inherit", "inherit"] },
   );
   await waitFor(`${REPOS}/acme/rocket.git/info/refs?service=git-upload-pack`, "wrangler dev");
@@ -146,6 +205,20 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 6000));
   const after = clone("after-refs", ["--depth=1"]);
   check("after the refs version moves, a clone misses", after.pack.includes("miss"), after.pack.join(","));
+
+  if (S3) {
+    // Fills finish after git has its answer: give the last one a moment.
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    const listed = mc(["ls", "--recursive", "--json", `local/${PACKS_BUCKET}/packs/`]).stdout.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const sizes = listed.map((entry) => entry.size);
+    // Nine clones: four kinds twice, each kept once, and one more after the refs moved.
+    check("the packs are in MinIO, one per distinct clone", listed.length === 5, `${listed.length}: ${sizes.join(", ")}`);
+    check("the full clone's pack went up in parts", sizes.some((size) => size > 5 * 1024 * 1024), `largest ${Math.max(...sizes)}`);
+    const incomplete = mc(["ls", "--recursive", "--incomplete", `local/${PACKS_BUCKET}`]).stdout.trim();
+    check("no upload is left unfinished", incomplete === "", incomplete);
+    const rules = mc(["ilm", "rule", "ls", "--json", `local/${PACKS_BUCKET}`]).stdout;
+    check("the bucket expires packs after 7 days", /"Days":\s*7/.test(rules) && rules.includes("packs/"));
+  }
 } catch (error) {
   console.error(error);
   checks.push({ what: "ran", ok: false });
@@ -154,6 +227,7 @@ try {
     if (process.platform === "win32") spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"], { stdio: "ignore" });
     else child.kill();
   }
+  if (S3) run("docker", ["rm", "-f", MINIO], { allowFail: true });
   try {
     rmSync(work, { recursive: true, force: true });
   } catch {}

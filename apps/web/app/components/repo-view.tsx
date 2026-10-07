@@ -8,6 +8,7 @@ import { BlameView } from "./blame-view";
 import { CodeLines } from "./code-lines";
 
 import { AgentSetup } from "./agent-setup";
+import { useAddresses } from "../lib/addresses";
 import { CloneBox } from "./clone-box";
 import { Markdown } from "./markdown";
 import { Topics } from "./topics";
@@ -287,7 +288,7 @@ export function TreeView({
   const { repo, ref, path, head, entries, readme } = tree;
   const base = `/${repo.namespace}/${repo.name}`;
   const prefix = path ? `${encodePath(path)}/` : "";
-  const cloneUrl = `https://g1t.sh${base}.git`;
+  const cloneUrl = `${useAddresses().site}${base}.git`;
 
   if (!head) {
     return (

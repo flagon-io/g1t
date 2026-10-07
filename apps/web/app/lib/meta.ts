@@ -2,7 +2,8 @@
  * Every page's <title> and the tags a link preview reads: its description,
  * Open Graph and Twitter's card. The image is the page's own card from the
  * og service (services/og), which draws it as an anonymous visitor would
- * see the page, so a private page's card never names anything.
+ * see the page, so a private page's card never names anything. A g1t without
+ * the og service (`OG_URL` set empty) leaves the image tags out.
  *
  * React Router renders only the deepest route's `meta`, so each route
  * returns `page(args, …)` rather than a bare title.
@@ -10,6 +11,13 @@
 import type { MetaDescriptor } from "react-router";
 import { ogVersion } from "@g1t/contracts/og";
 
+import type { Addresses } from "./addresses";
+
+/**
+ * g1t.sh's site and card service, the same as HOSTED_ADDRESSES in
+ * ./addresses (kept here so this module has no imports to run in tests).
+ * Pages use the addresses in the root loader's data when it has them.
+ */
 export const SITE = "https://g1t.sh";
 export const OG = "https://og.g1t.sh";
 
@@ -85,8 +93,8 @@ export function excerpt(markdown: string | null | undefined, max = 160): string 
  * and every site that has fetched the old card; then, when the page has one,
  * a fingerprint of what the card shows.
  */
-export function cardUrl(pathname: string, version?: unknown): string {
-  const url = new URL("/image", OG);
+export function cardUrl(pathname: string, version?: unknown, og: string = OG): string {
+  const url = new URL("/image", og);
   url.searchParams.set("path", pathname);
   url.searchParams.set("v", ogVersion(version === undefined ? undefined : fingerprint(version)));
   return url.toString();
@@ -122,24 +130,35 @@ export function page(args: PageArgs, meta: PageMeta): MetaDescriptor[] {
   const pathname = args.location.pathname.replace(/\/+$/, "") || "/";
   // The title a preview shows needs no "· g1t": the site name is beside it.
   const shareTitle = meta.title.replace(/ · g1t$/, "");
-  const image = cardUrl(pathname, version);
+  const addresses = loaded<{ addresses?: Pick<Addresses, "site" | "og"> }>(args, "root")?.addresses;
+  const site = addresses?.site ?? SITE;
+  const og = addresses ? addresses.og : OG;
+  const image = og ? cardUrl(pathname, version, og) : null;
   return [
     { title: meta.title },
     { name: "description", content: description },
     { property: "og:site_name", content: "g1t" },
     { property: "og:type", content: meta.type ?? "website" },
-    { property: "og:url", content: `${SITE}${pathname === "/" ? "/" : pathname}` },
+    { property: "og:url", content: `${site}${pathname === "/" ? "/" : pathname}` },
     { property: "og:title", content: shareTitle },
     { property: "og:description", content: description },
-    { property: "og:image", content: image },
-    { property: "og:image:type", content: "image/png" },
-    { property: "og:image:width", content: "1200" },
-    { property: "og:image:height", content: "630" },
-    { property: "og:image:alt", content: shareTitle },
-    { name: "twitter:card", content: "summary_large_image" },
+    ...(image
+      ? [
+          { property: "og:image", content: image },
+          { property: "og:image:type", content: "image/png" },
+          { property: "og:image:width", content: "1200" },
+          { property: "og:image:height", content: "630" },
+          { property: "og:image:alt", content: shareTitle },
+        ]
+      : []),
+    { name: "twitter:card", content: image ? "summary_large_image" : "summary" },
     { name: "twitter:title", content: shareTitle },
     { name: "twitter:description", content: description },
-    { name: "twitter:image", content: image },
-    { name: "twitter:image:alt", content: shareTitle },
+    ...(image
+      ? [
+          { name: "twitter:image", content: image },
+          { name: "twitter:image:alt", content: shareTitle },
+        ]
+      : []),
   ];
 }

@@ -12,6 +12,7 @@ import {
 
 import type { Route } from "./+types/settings";
 import { page } from "../../lib/meta";
+import { useAddresses } from "../../lib/addresses";
 import { AvatarField } from "../../components/avatar-field";
 import { DangerAction, DangerZone } from "../../components/danger-zone";
 import { Button, ErrorText, Field, Input } from "../../components/ui";
@@ -296,6 +297,7 @@ function AddressSection({ workspace, error }: { workspace: Workspace; error?: st
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState("");
   const checker = useFetcher<typeof loader>();
+  const { site } = useAddresses();
   const navigation = useNavigation();
   const renaming = navigation.state !== "idle" && navigation.formData?.get("intent") === "rename";
 
@@ -407,7 +409,7 @@ function AddressSection({ workspace, error }: { workspace: Workspace; error?: st
                 <li>
                   Update your git remotes, for example{" "}
                   <code className="font-mono text-xs break-all text-fg">
-                    git remote set-url origin https://g1t.sh/{wanted}/&lt;repo&gt;.git
+                    git remote set-url origin {site}/{wanted}/&lt;repo&gt;.git
                   </code>
                   , and any URLs written into code, API clients and MCP clients.
                 </li>

@@ -8,6 +8,7 @@ import { page } from "../lib/meta";
 import { Button, ErrorText } from "../components/ui";
 import { ScopeChecklist } from "../components/token-scopes";
 import { identity } from "../lib/services.server";
+import { addresses } from "../lib/addresses.server";
 import { consentedScopes, requestedScopes } from "../lib/token-scopes";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
 
@@ -109,8 +110,9 @@ export async function action({ request, context }: Route.ActionArgs) {
     codeChallenge: checked.codeChallenge,
     scopes,
   });
+  // `iss` is the API's origin, the issuer its metadata names (RFC 9207).
   throw redirect(
-    callback(checked.redirectUri, { code, state: checked.state, iss: "https://api.g1t.sh" }),
+    callback(checked.redirectUri, { code, state: checked.state, iss: addresses().api }),
   );
 }
 

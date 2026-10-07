@@ -20,7 +20,8 @@ COPY services services
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     for service in identity repos work events search billing security actions webhooks integrations packages; do \
       (cd services/$service && worker-build --release) || exit 1; \
-    done
+    done \
+ && (cd apps/api && worker-build --release)
 
 # ── The site, built by React Router; the TypeScript services' packages ──
 FROM node:24-bookworm-slim AS node
@@ -39,6 +40,7 @@ RUN apt-get update \
 WORKDIR /app
 COPY --from=node --chown=node:node /app /app
 COPY --from=rust /src/services /tmp/rust-services
+COPY --from=rust --chown=node:node /src/apps/api/build apps/api/build
 RUN for service in identity repos work events search billing security actions webhooks integrations packages; do \
       cp -r /tmp/rust-services/$service/build services/$service/build; \
     done \
@@ -49,6 +51,6 @@ ENV WRANGLER_SEND_METRICS=false \
     GITSTORE_URL=http://gitstore:8080 \
     G1T_DATA=/data
 VOLUME /data
-EXPOSE 8787
+EXPOSE 8787 8789
 USER node
 CMD ["bash", "deploy/self-host/start.sh"]

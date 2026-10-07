@@ -5,6 +5,8 @@
  * a repository past the caps is cloned instead.
  */
 import type { Route } from "./+types/archive";
+import { cloneUrl } from "../../lib/addresses";
+import { addresses } from "../../lib/addresses.server";
 import { repos } from "../../lib/services.server";
 import { getViewer } from "../../lib/session.server";
 import { zip } from "../../lib/zip";
@@ -30,7 +32,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   if (!repo?.ok) return refused(404, "There is no such repository, or you cannot see it.");
   const listed = await repos.listFiles(repo.value.id, ref, MAX_FILES + 1).catch(() => null);
   if (!listed?.commit) return refused(404, `There is no branch, tag or commit named ${ref}.`);
-  const clone = `git clone https://g1t.sh/${repo.value.namespace}/${repo.value.name}.git`;
+  const clone = `git clone ${cloneUrl(addresses(), `${repo.value.namespace}/${repo.value.name}`)}`;
   if (listed.truncated || listed.files.length > MAX_FILES) {
     return refused(413, `It has more than ${MAX_FILES.toLocaleString("en-US")} files, too many for a download. Clone it instead: ${clone}`);
   }

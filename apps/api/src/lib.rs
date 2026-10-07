@@ -4,6 +4,7 @@
 //! operations (see [`operations::Op`]), which call the services that own
 //! the data. This Worker holds none.
 
+mod addresses;
 mod alerts;
 mod audit;
 mod blobs;
@@ -33,8 +34,6 @@ use serde_json::{Value, json};
 use worker::{Context, Env, Method, Request, Response, Result, event};
 
 use operations::Services;
-
-const API: &str = "https://api.g1t.sh";
 
 fn method_name(method: Method) -> &'static str {
     match method {
@@ -110,22 +109,23 @@ async fn authenticate(
     // Tells an MCP client where to sign in again.
     response.headers_mut().set(
         "www-authenticate",
-        &format!("{}, error=\"invalid_token\"", oauth::MCP_CHALLENGE),
+        &format!("{}, error=\"invalid_token\"", services.addresses.mcp_challenge()),
     )?;
     Ok(Err(response))
 }
 
 /// Where everything is, for someone or something exploring the API.
-fn index() -> Value {
-    let repo = format!("{API}/repos/{{owner}}/{{name}}");
+fn index(addresses: &addresses::Addresses) -> Value {
+    let api = &addresses.api;
+    let repo = format!("{api}/repos/{{owner}}/{{name}}");
     json!({
         "documentation_url": "https://docs.g1t.sh/reference/api/",
-        "openapi_url": format!("{API}/openapi.json"),
-        "mcp_url": "https://mcp.g1t.sh",
-        "current_user_url": format!("{API}/user"),
-        "workspaces_url": format!("{API}/workspaces"),
-        "repositories_url": format!("{API}/repos{{?q}}"),
-        "search_url": format!("{API}/search{{?q,type,page,per_page}}"),
+        "openapi_url": format!("{api}/openapi.json"),
+        "mcp_url": addresses.mcp,
+        "current_user_url": format!("{api}/user"),
+        "workspaces_url": format!("{api}/workspaces"),
+        "repositories_url": format!("{api}/repos{{?q}}"),
+        "search_url": format!("{api}/search{{?q,type,page,per_page}}"),
         "repository_url": repo,
         "repository_events_url": format!("{repo}/events{{?before}}"),
         "labels_url": format!("{repo}/labels"),
@@ -137,14 +137,14 @@ fn index() -> Value {
         "pull_changes_url": format!("{repo}/pulls/{{number}}/changes"),
         "pull_reviews_url": format!("{repo}/pulls/{{number}}/reviews"),
         "pull_session_url": format!("{repo}/pulls/{{number}}/session{{?after}}"),
-        "device_code_url": format!("{API}/device/code"),
-        "device_token_url": format!("{API}/device/token"),
-        "oauth_metadata_url": format!("{API}/.well-known/oauth-authorization-server"),
-        "git_url": "https://g1t.sh/{owner}/{name}.git",
-        "integrations_url": format!("{API}/workspaces/{{workspace}}/integrations"),
+        "device_code_url": format!("{api}/device/code"),
+        "device_token_url": format!("{api}/device/token"),
+        "oauth_metadata_url": format!("{api}/.well-known/oauth-authorization-server"),
+        "git_url": format!("{}/{{owner}}/{{name}}.git", addresses.site),
+        "integrations_url": format!("{api}/workspaces/{{workspace}}/integrations"),
         "context_url": format!("{repo}/context{{?reference}}"),
         "import_issue_url": format!("{repo}/issues/import"),
-        "hooks_url": format!("{API}/hooks/{{integration}}"),
+        "hooks_url": format!("{api}/hooks/{{integration}}"),
     })
 }
 
@@ -212,8 +212,8 @@ async fn device_code(request: &mut Request, services: &Services) -> Result<Respo
     reply(&json!({
         "device_code": started.device_code,
         "user_code": started.user_code,
-        "verification_uri": "https://g1t.sh/device",
-        "verification_uri_complete": format!("https://g1t.sh/device?code={}", started.user_code),
+        "verification_uri": format!("{}/device", services.addresses.site),
+        "verification_uri_complete": format!("{}/device?code={}", services.addresses.site, started.user_code),
         "expires_in": started.expires_in,
         "interval": started.interval,
     }))
@@ -474,8 +474,10 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         Some(rest) if rest.is_empty() || rest.starts_with('/') => rest.to_owned(),
         _ => url.path().to_owned(),
     };
-    let on_mcp = url.host_str().is_some_and(|host| host.starts_with("mcp."));
     let mut services = Services::new(env)?;
+    // MCP is a host of its own hosted, and may be a path on this one
+    // self-hosted (addresses.rs).
+    let on_mcp = services.addresses.mcp_path(&url).is_some();
 
     // Stripe reporting to billing. Signed with the secret of the endpoint
     // billing registered; the body goes through exactly as received, since
@@ -581,7 +583,7 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     }
 
     match (method, path.trim_end_matches('/')) {
-        ("GET", "") => return reply(&index()),
+        ("GET", "") => return reply(&index(&services.addresses)),
         ("GET", "/openapi.json") => return Response::from_json(&openapi::document()),
         // A run's artifacts: listed, or one downloaded.
         ("GET", path) if path.starts_with("/repos/") && path.contains("/actions/runs/") && path.contains("/artifacts") => {

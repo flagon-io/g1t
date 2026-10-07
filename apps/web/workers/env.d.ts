@@ -36,6 +36,14 @@ declare global {
       AVATARS: KVNamespace;
       /** The self-hosted runner's releases (scripts/runner-release.mjs). Absent when self-hosted. */
       DOWNLOADS?: R2Bucket;
+      /** The site's own origin. Unset on g1t.sh, which is https://g1t.sh (app/lib/addresses.server.ts). */
+      SITE_URL?: string;
+      /** The REST API's origin, which is also the OAuth issuer. Unset on g1t.sh. */
+      API_URL?: string;
+      /** The MCP server's URL, as agents are told to add it. Unset on g1t.sh. */
+      MCP_URL?: string;
+      /** The social-card image service; an empty string for none. Unset on g1t.sh. */
+      OG_URL?: string;
     }
   }
   interface Env extends Cloudflare.Env {}

@@ -14,11 +14,7 @@ use worker::{Request, Response, Result, Url};
 
 use crate::operations::Services;
 
-const ISSUER: &str = "https://api.g1t.sh";
-const MCP_RESOURCE: &str = "https://mcp.g1t.sh";
-/// What an MCP client is told when it must sign in first (RFC 9728).
-pub const MCP_CHALLENGE: &str =
-    "Bearer resource_metadata=\"https://mcp.g1t.sh/.well-known/oauth-protected-resource\"";
+use crate::addresses::Addresses;
 
 const CLIENT_PREFIX: &str = "g1c_";
 const MAX_NAME_CHARS: usize = 80;
@@ -109,12 +105,14 @@ async fn fields(request: &mut Request) -> Map<String, Value> {
         .collect()
 }
 
-fn server_metadata() -> Value {
+/// The issuer is the API (API_URL); people approve on the site (SITE_URL).
+fn server_metadata(addresses: &Addresses) -> Value {
+    let issuer = &addresses.api;
     json!({
-        "issuer": ISSUER,
-        "authorization_endpoint": "https://g1t.sh/oauth/authorize",
-        "token_endpoint": format!("{ISSUER}/oauth/token"),
-        "registration_endpoint": format!("{ISSUER}/oauth/register"),
+        "issuer": issuer,
+        "authorization_endpoint": format!("{}/oauth/authorize", addresses.site),
+        "token_endpoint": format!("{issuer}/oauth/token"),
+        "registration_endpoint": format!("{issuer}/oauth/register"),
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code", "refresh_token"],
         "code_challenge_methods_supported": ["S256"],
@@ -238,13 +236,13 @@ pub async fn handle(
 ) -> Result<Option<Response>> {
     let response = match (method, path) {
         ("GET", "/.well-known/oauth-authorization-server") => {
-            crate::reply(&server_metadata())?
+            crate::reply(&server_metadata(&services.addresses))?
         }
         // Asked for with or without the MCP server's path appended.
         ("GET", path) if path.starts_with("/.well-known/oauth-protected-resource") => {
             crate::reply(&json!({
-                "resource": MCP_RESOURCE,
-                "authorization_servers": [ISSUER],
+                "resource": services.addresses.mcp,
+                "authorization_servers": [services.addresses.api],
                 "bearer_methods_supported": ["header"],
                 "resource_documentation": "https://docs.g1t.sh/guides/bring-your-own-agent/",
                 "scopes_supported": g1t_contracts::scopes::Scope::ALL.map(|scope| scope.as_str()),

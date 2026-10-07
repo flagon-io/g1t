@@ -4,7 +4,8 @@
 //! is a clone: a new checkout, or a sandbox's shallow `deepen 1` clone of
 //! a pull request's head. The git store builds the same pack for it every
 //! time, which takes seconds and is an operation. The answer is kept in a
-//! bucket ([`PackStore`], R2's `GIT_PACKS` on Cloudflare) under the
+//! bucket ([`PackStore`]: R2's `GIT_PACKS` on Cloudflare, or any
+//! S3-compatible store, as [`STORAGE`] says) under the
 //! repository's id, the version of its refs (`refs_version`, see
 //! registry.rs and refs_cache.rs) and a hash of the request with what does
 //! not change the answer taken out ([`normalize`]): the client's `agent`,
@@ -22,8 +23,8 @@
 //!
 //! Only ever served after the request was authorized, like any answer from
 //! the store: a private repository's packs are read only by whoever may
-//! read it. Without the bucket binding (self-hosted, or before it exists)
-//! nothing is kept and every clone goes to the store, as before.
+//! read it. Without a bucket (no `GIT_PACKS` binding, and PACK_STORE not
+//! `s3`) nothing is kept and every clone goes to the store, as before.
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashSet, VecDeque};
@@ -33,7 +34,8 @@ use std::task::{Context, Poll, Waker};
 
 use futures_util::{Stream, StreamExt};
 use g1t_contracts::repos::GitService;
-use worker::{Bucket, Env, Headers, Response, ResponseBody, Result, UploadedPart};
+use g1t_blobstore::{BlobStore, Config, Part, Store};
+use worker::{Env, Headers, Response, ResponseBody, Result};
 
 use crate::git_http::GitRequest;
 
@@ -68,8 +70,8 @@ const MAX_QUEUED_BYTES: usize = 5 * 1024 * 1024;
 const MAX_FILLS: usize = 2;
 pub const CONTENT_TYPE: &str = "application/x-git-upload-pack-result";
 
-/// Where packs are kept: the R2 bucket on Cloudflare. A small port, so a
-/// self-hosted installation can put another store behind it.
+/// Where packs are kept. A small port over what a fill and a hit need; its
+/// adapter, [`Packs`], puts any [`BlobStore`] behind it.
 #[allow(async_fn_in_trait)]
 pub trait PackStore {
     /// The object's size and body, if it is there.
@@ -84,55 +86,69 @@ pub trait PackStore {
     async fn abort(&self, key: &str, upload: &str) -> Result<()>;
 }
 
-/// The R2 adapter: the `GIT_PACKS` bucket binding.
-pub struct R2Packs {
-    bucket: Bucket,
+/// Where packs are kept, by the names of the service's bindings and
+/// variables: the `GIT_PACKS` R2 bucket on Cloudflare or, when PACK_STORE
+/// is `s3`, the bucket PACK_S3_BUCKET names on the installation's
+/// S3-compatible store (`g1t-git-packs` on MinIO in the self-host compose
+/// file). On either an object exists only once it is whole: a `put` makes
+/// it in one write, and a multipart upload is nothing anyone can read
+/// until it is completed.
+pub const STORAGE: Config = Config {
+    kind: "PACK_STORE",
+    binding: "GIT_PACKS",
+    r2_signer: None,
+    s3_bucket: "PACK_S3_BUCKET",
+    s3_public_endpoint: None,
+};
+
+/// The adapter: packs as objects in a [`BlobStore`].
+pub struct Packs<B: BlobStore = Store> {
+    store: B,
 }
 
-impl R2Packs {
-    /// `None` without the binding: nothing is kept.
-    pub fn from_env(env: &Env) -> Option<R2Packs> {
-        env.bucket("GIT_PACKS").ok().map(|bucket| R2Packs { bucket })
+impl Packs<Store> {
+    /// `None` when this installation keeps no packs: no `GIT_PACKS`
+    /// binding, and PACK_STORE is not `s3`. Every clone then goes to the
+    /// git store.
+    pub fn from_env(env: &Env) -> Option<Packs<Store>> {
+        match Store::from_env(env, &STORAGE) {
+            Ok(store) => Some(Packs { store }),
+            Err(error) => {
+                // No R2 binding is the cache turned off; an S3 store asked
+                // for and not configured is worth saying.
+                if g1t_blobstore::var(env, STORAGE.kind) == "s3" {
+                    log!("pack cache is off: {error}");
+                }
+                None
+            }
+        }
     }
 }
 
-impl PackStore for R2Packs {
+impl<B: BlobStore> PackStore for Packs<B> {
     async fn get(&self, key: &str) -> Result<Option<(u64, ResponseBody)>> {
-        let Some(object) = self.bucket.get(key).execute().await? else {
-            return Ok(None);
-        };
-        let size = object.size();
-        let Some(body) = object.body() else {
-            return Ok(None);
-        };
-        Ok(Some((size, body.response_body()?)))
+        Ok(self.store.get(key, None).await?.map(|got| (got.size, got.body)))
     }
 
     async fn put(&self, key: &str, bytes: Vec<u8>) -> Result<()> {
-        self.bucket.put(key, bytes).execute().await?;
-        Ok(())
+        self.store.put(key, bytes).await
     }
 
     async fn begin(&self, key: &str) -> Result<String> {
-        let upload = self.bucket.create_multipart_upload(key).execute().await?;
-        Ok(upload.upload_id().await)
+        self.store.create_multipart(key).await
     }
 
     async fn part(&self, key: &str, upload: &str, number: u16, bytes: Vec<u8>) -> Result<String> {
-        let upload = self.bucket.resume_multipart_upload(key, upload)?;
-        Ok(upload.upload_part(number, bytes).await?.etag())
+        Ok(self.store.upload_part(key, upload, number, bytes).await?.etag)
     }
 
     async fn complete(&self, key: &str, upload: &str, parts: Vec<(u16, String)>) -> Result<()> {
-        let upload = self.bucket.resume_multipart_upload(key, upload)?;
-        upload
-            .complete(parts.into_iter().map(|(number, etag)| UploadedPart::new(number, etag)))
-            .await?;
-        Ok(())
+        let parts: Vec<Part> = parts.into_iter().map(|(number, etag)| Part { number, etag }).collect();
+        self.store.complete_multipart(key, upload, &parts).await
     }
 
     async fn abort(&self, key: &str, upload: &str) -> Result<()> {
-        self.bucket.resume_multipart_upload(key, upload)?.abort().await
+        self.store.abort_multipart(key, upload).await
     }
 }
 
@@ -966,7 +982,7 @@ mod tests {
 
     /// Streams `body` through a tee in `chunk`-sized pieces, as git would
     /// read it, stopping after `read` chunks if given; then runs the fill.
-    fn run(store: &Memory, body: &[u8], chunk: usize, read: Option<usize>, error_at: Option<usize>) -> (Vec<u8>, Filled, u64) {
+    fn run<S: PackStore>(store: &S, body: &[u8], chunk: usize, read: Option<usize>, error_at: Option<usize>) -> (Vec<u8>, Filled, u64) {
         let mut chunks: Vec<Result<Vec<u8>>> = body.chunks(chunk).map(|c| Ok(c.to_vec())).collect();
         if let Some(at) = error_at {
             chunks.truncate(at);
@@ -1053,6 +1069,103 @@ mod tests {
         let (_, filled, _) = run(&store, &error, 4096, None, None);
         assert_eq!(filled, Filled::NotAPack);
         assert!(store.objects.borrow().is_empty());
+    }
+
+    /// A blob store as S3 and R2 behave: an object can be read only once
+    /// it was put whole or its multipart upload was completed.
+    #[derive(Default)]
+    struct Blobs {
+        objects: RefCell<HashMap<String, Vec<u8>>>,
+        uploads: RefCell<HashMap<String, (String, Vec<(u16, Vec<u8>)>)>>,
+        /// Whether, at each part, the key could already be read.
+        readable_mid_upload: Cell<bool>,
+    }
+
+    impl BlobStore for Blobs {
+        async fn put(&self, key: &str, bytes: Vec<u8>) -> Result<()> {
+            self.objects.borrow_mut().insert(key.to_owned(), bytes);
+            Ok(())
+        }
+        async fn get(&self, key: &str, _range: Option<g1t_blobstore::Wanted>) -> Result<Option<g1t_blobstore::Got>> {
+            Ok(self.objects.borrow().get(key).map(|bytes| g1t_blobstore::Got {
+                size: bytes.len() as u64,
+                body: ResponseBody::Body(bytes.clone()),
+            }))
+        }
+        async fn head(&self, key: &str) -> Result<Option<u64>> {
+            Ok(self.objects.borrow().get(key).map(|bytes| bytes.len() as u64))
+        }
+        async fn delete(&self, key: &str) -> Result<()> {
+            self.objects.borrow_mut().remove(key);
+            Ok(())
+        }
+        async fn create_multipart(&self, key: &str) -> Result<String> {
+            let id = format!("upload-{}", self.uploads.borrow().len());
+            self.uploads.borrow_mut().insert(id.clone(), (key.to_owned(), Vec::new()));
+            Ok(id)
+        }
+        async fn upload_part(&self, key: &str, upload_id: &str, number: u16, bytes: Vec<u8>) -> Result<Part> {
+            if self.objects.borrow().contains_key(key) {
+                self.readable_mid_upload.set(true);
+            }
+            let mut uploads = self.uploads.borrow_mut();
+            let (_, parts) = uploads.get_mut(upload_id).unwrap();
+            parts.push((number, bytes));
+            Ok(Part { number, etag: format!("\"etag-{number}\"") })
+        }
+        async fn complete_multipart(&self, key: &str, upload_id: &str, parts: &[Part]) -> Result<()> {
+            let (for_key, uploaded) = self.uploads.borrow_mut().remove(upload_id).unwrap();
+            assert_eq!(for_key, key);
+            let numbers: Vec<u16> = parts.iter().map(|part| part.number).collect();
+            assert_eq!(numbers, uploaded.iter().map(|(number, _)| *number).collect::<Vec<_>>());
+            assert!(parts.iter().all(|part| part.etag == format!("\"etag-{}\"", part.number)));
+            let whole: Vec<u8> = uploaded.into_iter().flat_map(|(_, bytes)| bytes).collect();
+            self.objects.borrow_mut().insert(key.to_owned(), whole);
+            Ok(())
+        }
+        async fn abort_multipart(&self, _key: &str, upload_id: &str) -> Result<()> {
+            self.uploads.borrow_mut().remove(upload_id);
+            Ok(())
+        }
+        fn presign_get(&self, _key: &str, _expires: u32, _now_ms: u64) -> Option<String> {
+            None
+        }
+    }
+
+    #[test]
+    fn the_blob_store_adapter_keeps_only_whole_packs() {
+        // A large pack through the adapter: parts, then one object.
+        let packs = Packs { store: Blobs::default() };
+        let body = answer(&vec![3u8; 2 * PART_BYTES + 777]);
+        let (got, filled, _) = run(&packs, &body, 64 * 1024 + 1, None, None);
+        assert_eq!(got, body);
+        assert_eq!(filled, Filled::Kept { bytes: body.len() as u64 });
+        assert!(!packs.store.readable_mid_upload.get(), "nothing to read until the upload is completed");
+        assert!(packs.store.uploads.borrow().is_empty());
+        let (size, kept) = block_on(packs.get("packs/r/1/k")).unwrap().unwrap();
+        assert_eq!(size, body.len() as u64);
+        assert!(matches!(kept, ResponseBody::Body(bytes) if bytes == body));
+        // Cut short: the upload is aborted and the key stays empty.
+        let packs = Packs { store: Blobs::default() };
+        let (_, filled, _) = run(&packs, &body, 64 * 1024, Some(100), None);
+        assert_eq!(filled, Filled::Abandoned);
+        assert!(packs.store.objects.borrow().is_empty());
+        assert!(packs.store.uploads.borrow().is_empty());
+        assert!(block_on(packs.get("packs/r/1/k")).unwrap().is_none());
+        // A small one is one put.
+        let packs = Packs { store: Blobs::default() };
+        let small = answer(&[1u8; 3000]);
+        let (_, filled, _) = run(&packs, &small, 512, None, None);
+        assert_eq!(filled, Filled::Kept { bytes: small.len() as u64 });
+        assert_eq!(packs.store.objects.borrow().get("packs/r/1/k"), Some(&small));
+    }
+
+    #[test]
+    fn the_store_is_chosen_like_backups() {
+        assert_eq!(STORAGE.kind, "PACK_STORE");
+        assert_eq!(STORAGE.binding, "GIT_PACKS");
+        assert_eq!(STORAGE.s3_bucket, "PACK_S3_BUCKET");
+        assert_ne!(STORAGE.s3_bucket, crate::backups::STORAGE.s3_bucket, "packs and backups never share a bucket");
     }
 
     #[test]

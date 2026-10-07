@@ -3,6 +3,7 @@ import { Form, redirect } from "react-router";
 
 import type { Route } from "./+types/pull-new";
 import { page } from "../../lib/meta";
+import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { Combobox } from "../../components/ui/combobox";
 import {
   Button,
@@ -69,7 +70,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 export default function NewPull({ loaderData, actionData, params }: Route.ComponentProps) {
   const { defaultBranch, branches, selected, issue } = loaderData;
-  const remote = `https://g1t.sh/${params.owner}/${params.repo}.git`;
+  const remote = cloneUrl(useAddresses(), `${params.owner}/${params.repo}`);
 
   if (branches.length === 0) {
     return (

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { due, fieldValues, matches } from "../../deploy/self-host/scheduler.mjs";
+import { due, fieldValues, matches, run } from "../../deploy/self-host/scheduler.mjs";
 
 const at = (iso) => new Date(iso);
 
@@ -38,4 +38,26 @@ test("what is due is each matching cron of each service", () => {
     { worker: "g1t-packages", cron: "37 * * * *" },
     { worker: "g1t-webhooks", cron: "* * * * *" },
   ]);
+});
+
+test("a run asks Wrangler for the handler, and a slow one is not doubled", async () => {
+  const asked = [];
+  let finish;
+  const slow = (url, init) => {
+    asked.push({ url, body: JSON.parse(init.body) });
+    return new Promise((resolve) => {
+      finish = () => resolve(new Response(JSON.stringify({ success: true, result: { outcome: "ok" } })));
+    });
+  };
+  const job = { worker: "g1t-webhooks", cron: "* * * * *" };
+  const first = run("http://127.0.0.1:8787", job, { fetch: slow });
+  // The minute after, it is still running: skipped, not started again.
+  assert.equal(await run("http://127.0.0.1:8787", job, { fetch: slow }), false);
+  finish();
+  assert.equal(await first, true);
+  assert.deepEqual(asked, [
+    { url: "http://127.0.0.1:8787/cdn-cgi/local/explorer/api/local/scheduled?worker=g1t-webhooks", body: { cron: "* * * * *" } },
+  ]);
+  const failing = async () => new Response(JSON.stringify({ success: true, result: { outcome: "exception" } }));
+  assert.equal(await run("http://127.0.0.1:8787", job, { fetch: failing }), false);
 });

@@ -72,6 +72,7 @@ import { madeByG1t } from "../../lib/opened-by";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 import { accessTo, countsFor, refusal, repoFor } from "../../lib/access.server";
 import { shotVersion } from "./production-screenshot";
+import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { readBranches } from "../../lib/branches.server";
 
 const MAX_LANDED = 6;
@@ -664,6 +665,7 @@ function Overview({
   const previews = live.filter((app) => app.kind === "preview");
   const latestProduction = builds.find((build) => build.kind === "production") ?? null;
   const busy = useNavigation().state === "submitting";
+  const addresses = useAddresses();
   const source = project?.source.kind === "hosted" ? project.source : null;
   const moving = agentsLive.length > 0 || columns.working.length + columns.checking.length > 0;
   useLiveRefresh(moving);
@@ -1207,7 +1209,7 @@ function Overview({
             <section className="rounded-xl border border-line bg-surface p-5">
               <h2 className="text-sm font-semibold">Clone</h2>
               <div className="mt-3">
-                <CopyLine text={`git clone https://g1t.sh/${source.repo.namespace}/${source.repo.name}.git`} />
+                <CopyLine text={`git clone ${cloneUrl(addresses, `${source.repo.namespace}/${source.repo.name}`)}`} />
               </div>
             </section>
           )}

@@ -59,6 +59,7 @@ import { countsFor, readableRepos } from "./lib/access.server";
 import { shortCache } from "./lib/cache.server";
 import { getViewer, viewerMiddleware } from "./lib/session.server";
 import { registrationMode } from "./lib/registration.server";
+import { addresses } from "./lib/addresses.server";
 import { useSignUpCopy } from "./lib/registration";
 
 
@@ -83,7 +84,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
     user ? shellFor(user, params, chosen, context) : visitorShell(params, context),
     user ? Promise.resolve(null) : registrationMode(),
   ]);
-  return { user, shell, inviteOnly: mode !== "open" };
+  // Where this g1t lives, for clone lines, agent setup and link previews.
+  return { user, shell, inviteOnly: mode !== "open", addresses: addresses() };
 }
 
 /**

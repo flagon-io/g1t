@@ -7,6 +7,7 @@ import {
   AGENT_STORAGE_KEY,
   DEFAULT_AGENT,
   MCP_URL,
+  agentsFor,
   cursorInstallLink,
   getAgentChoice,
   parseAgent,
@@ -87,4 +88,15 @@ test("every snippet points at the MCP server", () => {
   assert.equal(JSON.parse(AGENTS.opencode.code).mcp.g1t.type, "remote");
   const config = new URL(cursorInstallLink()).searchParams.get("config");
   assert.deepEqual(JSON.parse(atob(config ?? "")), { url: MCP_URL });
+});
+
+test("the snippets can point at another MCP server", () => {
+  const mcp = "http://localhost:8790/mcp";
+  const agents = agentsFor(mcp);
+  for (const id of AGENT_IDS) {
+    assert.ok(agents[id].code.includes(mcp), id);
+    assert.ok(!agents[id].code.includes(MCP_URL), id);
+  }
+  const config = new URL(cursorInstallLink(mcp)).searchParams.get("config");
+  assert.deepEqual(JSON.parse(atob(config ?? "")), { url: mcp });
 });

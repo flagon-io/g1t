@@ -24,6 +24,7 @@ import { Form, Link } from "react-router";
 
 import type { CheckResult, CheckRun, CommitStatus, Job, Mergeable, PullBranchUpdate, Pull, RequiredCheck } from "@g1t/contracts";
 
+import { useAddresses } from "../lib/addresses";
 import { catchUpPhase, catchUpRun, catchUpTitle, catchUpWhy } from "../lib/catch-up";
 import { duration } from "./actions";
 import { Elapsed, useRuns } from "./agents";
@@ -564,8 +565,15 @@ export function ChecksSection({
 // --- Mergeability ---------------------------------------------------------
 
 /** How to resolve the conflicts by hand, step by step, for a branch or a fork. */
-export function commandLineSteps(pull: Pull, owner: string, repo: string, defaultBranch: string, files: string[]): string[] {
-  const upstream = `https://g1t.sh/${owner}/${repo}.git`;
+export function commandLineSteps(
+  pull: Pull,
+  owner: string,
+  repo: string,
+  defaultBranch: string,
+  files: string[],
+  site = "https://g1t.sh",
+): string[] {
+  const upstream = `${site}/${owner}/${repo}.git`;
   const add = files.length > 0 && files.length <= 6 ? `git add ${files.join(" ")}` : "git add -A";
   if (pull.branch) {
     return [
@@ -578,7 +586,7 @@ export function commandLineSteps(pull: Pull, owner: string, repo: string, defaul
   }
   const fork = pull.fork!;
   return [
-    `git clone https://g1t.sh/${fork.namespace}/${fork.name}.git && cd ${fork.name}`,
+    `git clone ${site}/${fork.namespace}/${fork.name}.git && cd ${fork.name}`,
     `git pull --no-rebase ${upstream} ${defaultBranch}`,
     `${add} && git commit --no-edit`,
     `git push`,
@@ -613,7 +621,8 @@ export function ConflictsSection({
   resolving: boolean;
   error?: string | null;
 }) {
-  const steps = commandLineSteps(pull, owner, repo, defaultBranch, conflicts);
+  const { site } = useAddresses();
+  const steps = commandLineSteps(pull, owner, repo, defaultBranch, conflicts, site);
   return (
     <div className="bg-danger/5">
       <div className="flex gap-3 px-4 py-3">

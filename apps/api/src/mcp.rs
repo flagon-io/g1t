@@ -5,7 +5,6 @@ use g1t_contracts::{Outcome, Viewer};
 use serde_json::{Value, json};
 use worker::{Method, Request, Response, Result};
 
-use crate::oauth::MCP_CHALLENGE;
 use crate::operations::{Op, Services};
 use crate::tools::{Gate, TOOLS, Tool};
 
@@ -114,7 +113,7 @@ async fn answer(services: &Services, viewer: &Viewer, request: &Value) -> Result
 
 /// What someone sees when they open the server's address in a browser:
 /// what this is, how to connect, and what it offers.
-fn card() -> Value {
+fn card(addresses: &crate::addresses::Addresses) -> Value {
     let tools: Vec<Value> = TOOLS
         .iter()
         .map(|tool| {
@@ -136,13 +135,13 @@ fn card() -> Value {
     json!({
         "name": "g1t",
         "description": "The g1t MCP server: issues, pull requests and sessions for agents.",
-        "endpoint": "https://mcp.g1t.sh",
+        "endpoint": addresses.mcp,
         "transport": "streamable-http",
         "protocol_versions": SUPPORTED_VERSIONS,
-        "connect": "claude mcp add --transport http g1t https://mcp.g1t.sh",
+        "connect": format!("claude mcp add --transport http g1t {}", addresses.mcp),
         "authorization": {
             "required": true,
-            "oauth_protected_resource": "https://mcp.g1t.sh/.well-known/oauth-protected-resource",
+            "oauth_protected_resource": addresses.protected_resource(),
             "alternative": "Authorization: Bearer <g1t access token>",
         },
         "documentation_url": "https://docs.g1t.sh/guides/bring-your-own-agent/",
@@ -164,7 +163,7 @@ pub async fn handle(
             .get("accept")?
             .is_some_and(|accept| accept.contains("text/event-stream"));
         if request.method() == Method::Get && !wants_stream {
-            return Response::from_json(&card());
+            return Response::from_json(&card(&services.addresses));
         }
         let mut response = Response::empty()?.with_status(405);
         response.headers_mut().set("allow", "GET, POST")?;
@@ -181,7 +180,7 @@ pub async fn handle(
         .with_status(401);
         response
             .headers_mut()
-            .set("www-authenticate", MCP_CHALLENGE)?;
+            .set("www-authenticate", &services.addresses.mcp_challenge())?;
         return Ok(response);
     }
     let Ok(body) = request.json::<Value>().await else {

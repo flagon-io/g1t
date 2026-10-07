@@ -39,6 +39,24 @@ test("pages under a project describe the project, and their card follows its det
   assert.match(meta.get("og:image") ?? "", new RegExp(`\\?path=%2Facme%2Fweb%2Fcommits&v=${OG_RENDER_VERSION}\\.[0-9a-z]+$`));
 });
 
+test("a page's address and card come from the root loader's addresses", () => {
+  const root = { id: "root", loaderData: { addresses: { site: "http://localhost:8787", og: "http://localhost:8799" } } };
+  const meta = tags(page({ location: { pathname: "/pricing" }, matches: [root] }, { title: "Pricing · g1t" }));
+  assert.equal(meta.get("og:url"), "http://localhost:8787/pricing");
+  assert.equal(meta.get("og:image"), `http://localhost:8799/image?path=%2Fpricing&v=${OG_RENDER_VERSION}`);
+  assert.equal(meta.get("twitter:image"), meta.get("og:image"));
+});
+
+test("without a card service, a page has no image tags", () => {
+  const root = { id: "root", loaderData: { addresses: { site: "http://localhost:8787", og: null } } };
+  const meta = tags(page({ location: { pathname: "/" }, matches: [root] }, { title: "g1t" }));
+  assert.equal(meta.get("og:url"), "http://localhost:8787/");
+  for (const name of ["og:image", "og:image:type", "og:image:width", "og:image:height", "og:image:alt", "twitter:image", "twitter:image:alt"]) {
+    assert.equal(meta.has(name), false, name);
+  }
+  assert.equal(meta.get("twitter:card"), "summary");
+});
+
 test("with nothing particular to say, a page says what g1t is", () => {
   const meta = tags(page({ location: { pathname: "/login" }, matches: [] }, { title: "Sign in · g1t" }));
   assert.equal(meta.get("description"), DESCRIPTION);
