@@ -32,8 +32,17 @@ export async function zip(files: { path: string; data: Uint8Array }[]): Promise<
   const parts: Uint8Array[] = [];
   const central: Uint8Array[] = [];
   let offset = 0;
-  // Every file deflated at once: the streams interleave rather than queue.
-  const deflatedAll = await Promise.all(files.map((file) => (file.data.length > 0 ? deflate(file.data) : file.data)));
+  // Sixteen files deflating at a time: quicker than one by one, without
+  // every file's stream held at once.
+  const deflatedAll: Uint8Array[] = new Array(files.length);
+  let next = 0;
+  const worker = async () => {
+    for (let index = next++; index < files.length; index = next++) {
+      const data = files[index]!.data;
+      deflatedAll[index] = data.length > 0 ? await deflate(data) : data;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(16, files.length) }, worker));
   for (const [index, file] of files.entries()) {
     const name = encoder.encode(file.path);
     const crc = crc32(file.data);
