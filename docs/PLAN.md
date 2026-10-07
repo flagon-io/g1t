@@ -11,9 +11,9 @@ the "Build the Next-Gen Git Platform on Cloudflare" competition.
 
 ## The point
 
-**GitHub is where people keep code. g1t is where a team of agents ships it.**
+**g1t is where a team of agents ships code, with the people they work for.**
 
-Hosting git is table stakes, and g1t does it the way GitHub does: issues,
+Hosting git is table stakes, and g1t does it the familiar way: issues,
 branches, pull requests, review, protected branches, people working by hand.
 None of that is the selling point. The selling point is the layer above it,
 which no forge has: **you hand g1t an outcome, and a fleet of agents converges
@@ -25,7 +25,7 @@ Three things only g1t does, and every feature should serve one of them:
 1. **Outcomes, not pull requests.** The unit people work in is "make onboarding
    work offline", not branch #4012. A brief becomes a plan of issues with
    dependencies; agents take them as they unblock; people steer the outcome
-   and see it converge. GitHub, Origin and Entire all stop at the pull request.
+   and see it converge, rather than stopping at the pull request.
 2. **Agents that work as a team.** Agents know what the others are doing, file
    what they find instead of widening their change, ask and answer each other
    through the forge, and defer to people. Many agents on one codebase without
@@ -33,22 +33,6 @@ Three things only g1t does, and every feature should serve one of them:
 3. **`main` that only ever moves forward.** Every change lands through checks
    in the combination it will live in (the merge queue), failures go back to the
    agent that wrote them, and any line can answer "why is this here?"
-
-### Against the others
-
-| | GitHub | Cursor Origin | Entire | g1t |
-| --- | --- | --- | --- | --- |
-| Core idea | Code hosting with Copilot bolted on | A forge for Cursor's cloud agents | Store every agent session with the code | Agents converge an outcome onto `main` |
-| Unit of work | Pull request | Pull request, stacked | Commit plus session | Outcome → plan → issues → pull requests |
-| Agent context | In the Copilot app | In Cursor | In the repo, per commit | Per commit, plus why-blame on any line and what agents told each other |
-| Many agents at once | Compare outputs by hand | Agents can review agents | Not the focus | Plan with dependencies, overlap awareness, coordination tools, queue |
-| Landing | Merge queue (paid) | Stacks | Not the focus | Speculative queue testing combinations; failures return to their agent |
-| Which agents | Copilot, some others | Cursor's | Any (CLI) | Hosted agents plus any MCP client |
-
-Entire's insight, that the session belongs with the code, is one g1t shares
-and already ships (sessions, why-blame). Origin's, that agents should live in
-the forge, too. Neither coordinates a team of agents towards an outcome; that
-is the gap g1t is built for.
 
 ## Product model
 
