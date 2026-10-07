@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { formatBytes, installCommands, shortDigest } from "./packages.ts";
+import { arrange, formatBytes, installCommands, shortCount, shortDigest } from "./packages.ts";
 
 test("sizes read as registries show them", () => {
   assert.equal(formatBytes(0), "0 B");
@@ -41,4 +41,23 @@ test("a container image is pulled by its address and tag", () => {
     install: "docker pull g1t.sh/acme/web:latest",
   });
   assert.equal(installCommands(pkg, null, "ada").install, "docker pull g1t.sh/acme/web");
+});
+
+test("packages are listed by the visibility and order asked for", () => {
+  const list = [
+    { name: "web", visibility: "private" as const, updated_at: "2026-10-01T00:00:00Z", downloads: 5 },
+    { name: "api", visibility: "public" as const, updated_at: "2026-10-03T00:00:00Z", downloads: 9 },
+    { name: "cli", visibility: "public" as const, updated_at: "2026-10-02T00:00:00Z", downloads: 9 },
+  ];
+  assert.deepEqual(arrange(list, "all", "updated").map((p) => p.name), ["api", "cli", "web"]);
+  assert.deepEqual(arrange(list, "all", "downloads").map((p) => p.name), ["api", "cli", "web"]);
+  assert.deepEqual(arrange(list, "all", "name").map((p) => p.name), ["api", "cli", "web"]);
+  assert.deepEqual(arrange(list, "private", "updated").map((p) => p.name), ["web"]);
+  assert.deepEqual(arrange(list, "public", "name").map((p) => p.name), ["api", "cli"]);
+});
+
+test("download counts read short", () => {
+  assert.equal(shortCount(940), "940");
+  assert.equal(shortCount(16_100), "16.1k");
+  assert.equal(shortCount(2_000_000), "2M");
 });

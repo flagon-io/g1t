@@ -1,10 +1,11 @@
-import { BookOpen, Box, Lock, Package, Trash2 } from "lucide-react";
+import { BookOpen, Box, Trash2 } from "lucide-react";
 import { Form, Link, data, redirect, useNavigation } from "react-router";
 
 import { ECOSYSTEMS, type Ecosystem, type PackageVersion } from "@g1t/contracts";
 
 import type { Route } from "./+types/package";
 import { Markdown } from "../../components/markdown";
+import { PackageIcon } from "../../components/package-icon";
 import { ConfirmDialog } from "../../components/repo-lifecycle";
 import { Button, CopyLine, ErrorText, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
@@ -88,7 +89,7 @@ export default function PackagePage({ loaderData, actionData }: Route.ComponentP
           Packages
         </Link>
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-faint">{pkg.visibility === "private" ? <Lock size={18} /> : <Package size={18} />}</span>
+          <PackageIcon ecosystem={pkg.ecosystem} size={32} />
           <h1 className="text-2xl font-semibold tracking-tight">{pkg.name}</h1>
           <Badge>{ECOSYSTEM_LABEL[pkg.ecosystem]}</Badge>
           <Badge>{pkg.visibility === "private" ? "Private" : "Public"}</Badge>
