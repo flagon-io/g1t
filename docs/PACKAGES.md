@@ -8,6 +8,27 @@ agents without a second account anywhere.
 This is the design every phase builds to. Each ecosystem's own guide (apps/docs) says how to use
 it; this says how it works.
 
+## Status
+
+What is built, as of 2026-10-07. Each protocol section below marks the same. "Checked" says what was run
+on that day against `wrangler dev` (`services/packages/dev/`) with the tool itself, beyond unit tests.
+
+| Registry | Built | Not built |
+| --- | --- | --- |
+| Containers | Pull, push (chunked, multipart, monolithic, cross-repository mount), deletes, referrers, token exchange, anonymous pull limits; `g1t push` for layers over the request limit. | |
+| npm | Scoped publish and install, abbreviated packuments, dist-tags, deprecate, unpublish (72 hours, or Admin), `whoami`. | Proxying unscoped packages and other scopes from the public registry. |
+| Composer | Packages from the workspace's repositories: tags and branches as versions, dist zips made and kept by commit, backfill. | A Packagist mirror. |
+| Cargo | Sparse index, `config.json` with `auth-required`, publish, yank and unyank, search; owners are not kept (`cargo owner` answers why). Checked with `cargo`, including a workflow-like publish and build with only environment variables. | |
+| Go | `go get` from git: `?go-get=1` answers with `go-import`. | The module proxy at `/-/go/`. |
+| Maven | Standard layout, releases and SNAPSHOTs, checksums (MD5, SHA-1, SHA-256, SHA-512), generated `maven-metadata.xml` per artifact, SNAPSHOT and plugin group (`mvn <prefix>:<goal>`), Gradle Module Metadata. Checked with `mvn deploy`, `mvn <prefix>:<goal>`, and Gradle `publish` and resolution (releases, SNAPSHOTs, `--refresh-dependencies`). | |
+| NuGet | v3 feed: push, flat container, registration, search, unlist and relist, symbol packages (`.snupkg`) and a symbol server, per-version download counts. Checked with `dotnet nuget push`, `dotnet restore` and `dotnet-symbol`. | |
+| RubyGems | `gem push`, `gem yank`, the compact index (Bundler), the full index (`specs.4.8.gz`, `latest_`, `prerelease_`, `quick/Marshal.4.8`). Checked with `gem push`, `gem install --source`, `gem search` and `gem specification --remote`. | |
+| PyPI | | Everything. |
+
+Across registries: events, webhooks, the audit log, the billing meter and free limits, the
+Packages pages and a project's packages are built. Workflows triggered by `registry_package`,
+packages in site-wide search, and packages in the activity feed are not.
+
 ## Principles
 
 - **One service.** `services/packages` (Rust Worker) owns every registry: its own D1 database
@@ -62,6 +83,8 @@ All under `g1t.sh`. A name always starts with the workspace.
 
 ### Containers (OCI Distribution 1.1)
 
+Built.
+
 - Image names: `g1t.sh/<workspace>/<name>[:tag]`, `<name>` may contain `/`. Usually the
   repository's name, and then linked to it.
 - `GET /v2/` answers 401 with `WWW-Authenticate: Bearer realm="https://g1t.sh/v2/token",
@@ -86,15 +109,19 @@ All under `g1t.sh`. A name always starts with the workspace.
 
 ### npm
 
+Built, except the proxy of unscoped packages.
+
 - Registry `https://g1t.sh/-/npm/`; scope = workspace: `@<workspace>/<name>`.
   `.npmrc`: `@acme:registry=https://g1t.sh/-/npm/` and `//g1t.sh/-/npm/:_authToken=<token>`.
 - `GET /@scope/name` (packument, abbreviated with `Accept: application/vnd.npm.install-v1+json`),
   `GET` tarballs, `PUT /@scope/name` (publish: JSON with the tarball attached), dist-tags,
   deprecate, unpublish (within 72 hours or with Admin), `GET /-/whoami`.
 - Unscoped and other scopes: optionally proxied from the public registry and kept, so one
-  `.npmrc` line serves everything (later phase).
+  `.npmrc` line serves everything (later phase; not built).
 
 ### Composer
+
+Built, except the Packagist mirror.
 
 - Per workspace: `https://g1t.sh/-/composer/<workspace>/` with `packages.json` naming
   `metadata-url` `/p2/%package%.json` and `available-packages`.
@@ -104,24 +131,36 @@ All under `g1t.sh`. A name always starts with the workspace.
   kept by commit. Pushing a tag publishes; nothing to upload.
 - Auth: `composer config --auth http-basic.g1t.sh <you> <token>` (`auth.json`).
 - A mirror of the public Packagist (metadata and dists kept, so installs survive its outages) is
-  a later phase.
+  a later phase (not built).
 
 ### Cargo
 
-- Sparse registry per workspace: `sparse+https://g1t.sh/-/cargo/<workspace>/`. `config.json`
+Built.
+
+- Sparse registry per workspace: `sparse+https://g1t.sh/-/cargo/<workspace>/index/`. `config.json`
   (`dl`, `api`, `auth-required` for private), index files at the standard prefix paths, crate
-  downloads, `PUT /api/v1/crates/new` (publish), yank and unyank, owners.
-- Auth: a g1t token through `cargo login --registry g1t`.
+  downloads, `PUT /api/v1/crates/new` (publish), yank and unyank, search. Owners are not kept:
+  who publishes is decided by the repository's or workspace's roles, and `cargo owner` answers
+  with an error saying so.
+- Auth: a g1t token, given to the registry's credential provider (`cargo:token`), named in
+  `.cargo/config.toml` as `[registries.<workspace>]`: `cargo login --registry <workspace>`, or
+  in workflows `CARGO_REGISTRIES_<WORKSPACE>_TOKEN` (with `CARGO_REGISTRIES_<WORKSPACE>_INDEX`
+  and `CARGO_REGISTRIES_<WORKSPACE>_CREDENTIAL_PROVIDER=cargo:token` when no config names the
+  registry). Without a provider Cargo refuses a registry with private crates.
 
 ### Go
+
+Built from git; the module proxy is not built.
 
 - `go get g1t.sh/<workspace>/<repo>` works from git: repository pages answer `?go-get=1` with the
   `go-import` meta tag. Private modules need `GOPRIVATE=g1t.sh/<workspace>` and a token in
   `.netrc` (as for git).
 - A module proxy at `https://g1t.sh/-/go/` (`@v/list`, `.info`, `.mod`, `.zip`) built from tags,
-  for faster and repeatable private installs (later phase).
+  for faster and repeatable private installs (later phase; not built).
 
 ### Maven
+
+Built, for Maven and Gradle.
 
 - Per workspace: `https://g1t.sh/-/maven/<workspace>/`, the standard layout
   (`com/acme/web/1.0.0/web-1.0.0.jar`). A package is an artifact, named
@@ -135,9 +174,17 @@ All under `g1t.sh`. A name always starts with the workspace.
   and kept by digest (`checksums`); `.md5`, `.sha1`, `.sha256`, `.sha512`
   are answered from them, and uploaded ones are checked, not kept.
 - `maven-metadata.xml` is made on every read: per artifact (versions in
-  Maven's order, `latest`, `release`) and per SNAPSHOT version (the newest
-  build of each classifier and extension). Uploaded ones are accepted and
-  let go, a plugin group's included.
+  Maven's order, `latest`, `release`), per SNAPSHOT version (the newest
+  build of each classifier and extension), and per group (`<plugins>`: each
+  `maven-plugin` artifact's prefix, artifactId and name, which is how
+  `mvn <prefix>:<goal>` finds a plugin in its `<pluginGroups>`). The prefix
+  is the `goalPrefix` of the jar's `META-INF/maven/plugin.xml`, read when
+  the jar arrives, else Maven's from the artifactId. A path that is both an
+  artifact's and a group's answers both. Uploaded ones are accepted and let
+  go, a plugin group's included.
+- Gradle: its `.module` files are kept and served like any other file, and
+  its `HEAD` requests and SHA-256 and SHA-512 checksum uploads are
+  answered as Maven's are.
 - The POM is the version's record: its coordinates must
   match its path, its description becomes the package's for the highest
   release, and on a new artifact its `<scm><url>` may link the repository.
@@ -147,9 +194,12 @@ All under `g1t.sh`. A name always starts with the workspace.
 
 ### NuGet
 
+Built.
+
 - Per workspace: `https://g1t.sh/-/nuget/<workspace>/v3/index.json` naming
   `PackageBaseAddress/3.0.0` (flat container), `RegistrationsBaseUrl`
-  (one inlined page), `SearchQueryService` and `PackagePublish/2.0.0`.
+  (one inlined page), `SearchQueryService`, `PackagePublish/2.0.0` and
+  `SymbolPackagePublish/4.9.0`.
 - `dotnet nuget push`: a `PUT` of a multipart body with the `.nupkg`,
   `X-NuGet-ApiKey` a g1t token. The `.nuspec` (read from the zip) gives the
   id, version (normalized as NuGet does), description, dependency groups and
@@ -159,8 +209,20 @@ All under `g1t.sh`. A name always starts with the workspace.
   nuget.org does; `POST` lists again. Unlisted versions stay in the flat
   container and registration (`listed: false`), not in search.
 - Restores use Basic auth from `nuget.config`, after a `401`.
+- Downloads: each `.nupkg` download counts for its version (`versions.downloads`) and its
+  package; the registration's catalog entries and search's versions name them.
+- Symbols: `dotnet nuget push` sends the `.snupkg` beside a `.nupkg` to
+  `api/v2/symbolpackage` after it. It must be for a version already pushed, say
+  `SymbolsPackage` as its package type, and hold portable PDBs. The `.snupkg` is the version's
+  file `snupkg` (also in the flat container), and each PDB its file `pdb:<file>:<key>`, the key
+  being the PDB id's GUID (as `Guid.ToString("N")`) and `ffffffff`. The symbol server,
+  `symbols/<file>.pdb/<key>/<file>.pdb` (the Simple Symbol Query Protocol), finds it by that
+  name across the workspace's packages the viewer may read (`version_files_name` index). A
+  version's symbols are pushed once (`409`). The package page marks versions with symbols.
 
 ### RubyGems
+
+Built.
 
 - Per workspace: `https://g1t.sh/-/rubygems/<workspace>/`. `gem push`
   (`POST /api/v1/gems`, the token as the whole `Authorization` header),
@@ -173,13 +235,20 @@ All under `g1t.sh`. A name always starts with the workspace.
 - The gem's `metadata.gz` (YAML, in the `.gem` tar) gives the name,
   version, platform and runtime dependencies. A version is keyed as the
   index writes it (`1.0.0`, `1.0.0-x86_64-linux`) and pushed once.
-- Bundler authenticates with Basic auth from `bundle config`. The full
-  index (`specs.4.8.gz`, Marshal) is not served, so `gem install --source`
-  is not supported.
+- The full index `gem install --source` and `gem search` read:
+  `specs.4.8.gz` (released versions), `latest_specs.4.8.gz` (the highest of
+  each gem and platform) and `prerelease_specs.4.8.gz`, each a gzipped
+  Ruby Marshal 4.8 array of `[name, Gem::Version, platform]`, and
+  `quick/Marshal.4.8/<name>-<version>[-<platform>].gemspec.rz`, the
+  deflated Marshal of a `Gem::Specification` as its `_dump` writes it. All
+  are made on each read from what each version keeps (`src/marshal.rs` is
+  the writer), and read by RubyGems' `SafeMarshal`.
+- Bundler authenticates with Basic auth from `bundle config`; `gem` with
+  credentials in the source's address.
 
 ### Later
 
-PyPI.
+PyPI (not built).
 
 ## Billing
 
@@ -222,3 +291,5 @@ Webhooks deliver them (`package` and `registry_package` shapes); workflows can r
 4. **Cargo.**
 5. **Maven, NuGet, RubyGems.**
 6. **Mirrors** (Packagist, npm).
+
+Phases 1 to 5 are built (see [Status](#status)); 6 is not.
