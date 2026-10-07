@@ -118,8 +118,11 @@ the first billing cycle), with a meter for the month's included usage and
 **This month's usage**: what each kind of usage has come to so far, in
 dollars and in what was used (*Agents & sandboxes*, *Builds*, *Requests &
 CPU*, *Custom domains*, *Git operations & storage*, *Search & security
-scans*). App traffic, custom domains, storage and git operations are
-counted through the month and charged when it closes. **Manage on Stripe** opens the card, invoices and
+scans*). Its **Total at price** is before the included usage, the trial or
+a pool paid their part, so it can be more than what was charged; the
+workspace's **Usage** page shows what was charged as **Spent**, and how much
+of the total those paid. App traffic, custom domains, storage and git
+operations are counted through the month and charged when it closes. **Manage on Stripe** opens the card, invoices and
 billing details. **End at the end of the period** ends the plan then, with
 nothing more charged after; **Keep the plan** takes that back until then.
 If a renewal payment fails, the card says **Payment failed**, with

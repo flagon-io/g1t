@@ -346,7 +346,9 @@ function MonthUsage({
         ))}
       </ul>
       <div className="mt-1 flex items-baseline justify-between gap-4 border-t border-line pt-2.5 text-sm">
-        <span className="font-medium">Total</span>
+        {/* At price, before the plan's included usage, the trial and the pools paid
+            their part: Usage shows what was charged. */}
+        <span className="font-medium">Total at price</span>
         <span className="font-medium tabular-nums">{dollars(total)}</span>
       </div>
       <p className="mt-2 text-xs text-faint">
@@ -354,7 +356,7 @@ function MonthUsage({
           ? "What this workspace's usage would cost. g1t covers it."
           : on
             ? `Drawn from the included usage first, then charged up to your spend limit. Projects, previews and repositories are never charged, and the first ${freeStorage} of private storage and ${freeGit} git operations a month are free. App traffic, custom domains, storage and git operations are counted through the month and charged when it closes.`
-            : `The forge is free: ${freeStorage} of private storage and ${freeGit} git operations a month. Agents run from the trial or the open-source pool.`}
+            : `The forge is free: ${freeStorage} of private storage and ${freeGit} git operations a month. Agents run from the trial or the open-source pool, which pay part of this total: Usage shows what was charged.`}
       </p>
     </div>
   );

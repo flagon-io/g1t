@@ -228,9 +228,11 @@ export default function UsagePage({ loaderData, params }: Route.ComponentProps) 
             label="Spent"
             value={dollars(usage.spentMicros)}
             note={
-              usage.providerMicros > 0
-                ? `Plus about ${dollars(usage.providerMicros)} billed by your own model provider`
-                : `${dollars(usage.costMicros)} of it the model provider's`
+              (usage.coveredMicros ?? 0) > 0
+                ? `Of ${dollars(usage.spentMicros + (usage.coveredMicros ?? 0))} at price: ${dollars(usage.coveredMicros ?? 0)} of it was paid by the included usage, the trial or a pool`
+                : usage.providerMicros > 0
+                  ? `Plus about ${dollars(usage.providerMicros)} billed by your own model provider`
+                  : `${dollars(usage.costMicros)} of it the model provider's`
             }
           />
         )}
