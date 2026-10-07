@@ -264,7 +264,7 @@ function ProfileTabs({
     </Link>
   );
   return (
-    <nav aria-label="Profile" className="flex gap-1 overflow-x-auto border-b border-line">
+    <nav aria-label="Profile" className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {item("overview", "Overview", <LayoutGrid size={15} />)}
       {item("pulls", "Pull requests", <GitPullRequest size={15} />, counts.pulls)}
       {item("issues", "Issues", <CircleDot size={15} />, counts.issues)}

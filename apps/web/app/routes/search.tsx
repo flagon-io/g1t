@@ -166,7 +166,7 @@ export default function Search({ loaderData }: Route.ComponentProps) {
       )}
 
       {q && (
-        <nav aria-label="Kinds of results" className="mt-6 flex gap-1 overflow-x-auto border-b border-line">
+        <nav aria-label="Kinds of results" className="mt-6 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {SEARCH_TYPES.map((each) => (
             <Link
               key={each}

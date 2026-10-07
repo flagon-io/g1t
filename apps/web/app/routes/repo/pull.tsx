@@ -677,7 +677,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
           </p>
         )}
 
-        <nav className="mt-6 flex items-end gap-1 overflow-x-auto border-b border-line">
+        <nav className="mt-6 flex items-end gap-1 overflow-x-auto overflow-y-hidden border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <TabLink to={here} active={tab === "conversation"}>
             <MessageSquare size={15} />
             Conversation
