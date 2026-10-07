@@ -111,6 +111,9 @@ const ECOSYSTEM_NAME: Record<Ecosystem, string> = {
   composer: "Composer package",
   cargo: "crate",
   go: "Go module",
+  maven: "Maven package",
+  nuget: "NuGet package",
+  rubygems: "gem",
 };
 
 /** How many projects one listing reads the files of, in the background, before it has. */
