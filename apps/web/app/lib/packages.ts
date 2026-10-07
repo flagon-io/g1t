@@ -11,6 +11,9 @@ export const ECOSYSTEM_LABEL: Record<Ecosystem, string> = {
   composer: "Composer",
   cargo: "Cargo",
   go: "Go",
+  maven: "Maven",
+  nuget: "NuGet",
+  rubygems: "RubyGems",
 };
 
 /**
@@ -51,6 +54,27 @@ export const REGISTRIES: { ecosystem: Ecosystem; blurb: string; start: string; g
     blurb: "Go modules fetched from the repositories themselves with go get, private ones with a token.",
     start: "go get g1t.sh/<workspace>/<repo>",
     guide: "/guides/go/",
+    ready: true,
+  },
+  {
+    ecosystem: "maven",
+    blurb: "Java and Kotlin libraries in a Maven repository of the workspace's own, deployed with Maven or Gradle, SNAPSHOTs included.",
+    start: "mvn deploy",
+    guide: "/guides/maven/",
+    ready: true,
+  },
+  {
+    ecosystem: "nuget",
+    blurb: ".NET packages in a NuGet feed of the workspace's own, pushed with dotnet nuget push and restored with dotnet.",
+    start: "dotnet nuget push <package>.nupkg --source <workspace>",
+    guide: "/guides/nuget/",
+    ready: true,
+  },
+  {
+    ecosystem: "rubygems",
+    blurb: "Ruby gems in a registry of the workspace's own, pushed with gem push and installed with Bundler.",
+    start: "gem push <gem>.gem --host https://g1t.sh/-/rubygems/<workspace>",
+    guide: "/guides/rubygems/",
     ready: true,
   },
 ];
@@ -156,5 +180,30 @@ export function installCommands(
         login: `go env -w GOPRIVATE=${host}/${pkg.workspace}`,
         install: `go get ${pkg.address}${version ? `@${version}` : ""}`,
       };
+    case "maven": {
+      // Maven takes the repository with the artifact; its credentials are a
+      // <server> of the same id in ~/.m2/settings.xml, written here only
+      // when there is no settings.xml yet.
+      const repository = `https://${host}/-/maven/${pkg.workspace}/`;
+      return {
+        login: `mkdir -p ~/.m2 && [ ! -e ~/.m2/settings.xml ] && printf '<settings><servers><server><id>${pkg.workspace}</id><username>${you}</username><password>YOUR_TOKEN</password></server></servers></settings>\\n' > ~/.m2/settings.xml`,
+        install: `mvn dependency:get -Dartifact=${pkg.name}${version ? `:${version}` : ":LATEST"} -DremoteRepositories=${pkg.workspace}::default::${repository}`,
+      };
+    }
+    case "nuget":
+      // The workspace's feed as a named source (needed for any install),
+      // then the credentials a private package also needs.
+      return {
+        registry: `dotnet nuget add source https://${host}/-/nuget/${pkg.workspace}/v3/index.json --name ${pkg.workspace}`,
+        login: `dotnet nuget update source ${pkg.workspace} --username ${you} --password YOUR_TOKEN --store-password-in-clear-text`,
+        install: `dotnet add package ${pkg.name}${version ? ` --version ${version}` : ""} --source https://${host}/-/nuget/${pkg.workspace}/v3/index.json`,
+      };
+    case "rubygems": {
+      const source = `https://${host}/-/rubygems/${pkg.workspace}/`;
+      return {
+        login: `bundle config set --global ${source} ${you}:YOUR_TOKEN`,
+        install: `bundle add ${pkg.name}${version ? ` --version ${version}` : ""} --source ${source}`,
+      };
+    }
   }
 }

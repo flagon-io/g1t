@@ -45,6 +45,35 @@ test("a crate is added after .cargo/config.toml names its workspace's registry, 
   assert.equal(installCommands(pkg, null, "ada").install, "cargo add http-client --registry acme");
 });
 
+test("a Maven artifact is fetched from its workspace's repository, with a settings.xml server for private ones", () => {
+  const pkg = { ecosystem: "maven" as const, address: "g1t.sh/-/maven/acme/com.acme:web", name: "com.acme:web", workspace: "acme" };
+  assert.deepEqual(installCommands(pkg, "1.2.0", "ada"), {
+    login:
+      "mkdir -p ~/.m2 && [ ! -e ~/.m2/settings.xml ] && printf '<settings><servers><server><id>acme</id><username>ada</username><password>YOUR_TOKEN</password></server></servers></settings>\\n' > ~/.m2/settings.xml",
+    install: "mvn dependency:get -Dartifact=com.acme:web:1.2.0 -DremoteRepositories=acme::default::https://g1t.sh/-/maven/acme/",
+  });
+  assert.match(installCommands(pkg, null, "ada").install, /-Dartifact=com\.acme:web:LATEST /);
+});
+
+test("a NuGet package is added from its workspace's feed, named as a source with credentials for private ones", () => {
+  const pkg = { ecosystem: "nuget" as const, address: "g1t.sh/-/nuget/acme/Acme.Web", name: "Acme.Web", workspace: "acme" };
+  assert.deepEqual(installCommands(pkg, "1.0.0", "ada"), {
+    registry: "dotnet nuget add source https://g1t.sh/-/nuget/acme/v3/index.json --name acme",
+    login: "dotnet nuget update source acme --username ada --password YOUR_TOKEN --store-password-in-clear-text",
+    install: "dotnet add package Acme.Web --version 1.0.0 --source https://g1t.sh/-/nuget/acme/v3/index.json",
+  });
+  assert.equal(installCommands(pkg, null, "ada").install, "dotnet add package Acme.Web --source https://g1t.sh/-/nuget/acme/v3/index.json");
+});
+
+test("a gem is added with Bundler from its workspace's registry, with credentials for private ones", () => {
+  const pkg = { ecosystem: "rubygems" as const, address: "g1t.sh/-/rubygems/acme/hello", name: "hello", workspace: "acme" };
+  assert.deepEqual(installCommands(pkg, "0.1.0", "ada"), {
+    login: "bundle config set --global https://g1t.sh/-/rubygems/acme/ ada:YOUR_TOKEN",
+    install: "bundle add hello --version 0.1.0 --source https://g1t.sh/-/rubygems/acme/",
+  });
+  assert.equal(installCommands(pkg, null, "ada").install, "bundle add hello --source https://g1t.sh/-/rubygems/acme/");
+});
+
 test("a container image is pulled by its address and tag", () => {
   const pkg = { ecosystem: "container" as const, address: "g1t.sh/acme/web", name: "web", workspace: "acme" };
   assert.deepEqual(installCommands(pkg, "latest", "ada"), {

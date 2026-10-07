@@ -7,7 +7,16 @@
 import type { DeploysSetting, Ecosystem, PackageSummary, ProjectEcosystem } from "@g1t/contracts";
 
 /** As lib/packages.ts names each registry; repeated so this module stands alone in tests. */
-const REGISTRY: Record<Ecosystem, string> = { container: "Container", npm: "npm", composer: "Composer", cargo: "Cargo", go: "Go" };
+const REGISTRY: Record<Ecosystem, string> = {
+  container: "Container",
+  npm: "npm",
+  composer: "Composer",
+  cargo: "Cargo",
+  go: "Go",
+  maven: "Maven",
+  nuget: "NuGet",
+  rubygems: "RubyGems",
+};
 
 const DOCS = "https://docs.g1t.sh";
 
