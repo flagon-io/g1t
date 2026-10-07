@@ -5,7 +5,7 @@
  * `agents.json` resource route, so every place behaves the same.
  */
 import { Bot, CircleSlash, Clock, Coins, Gauge, Loader2, MessageSquare, OctagonX, Square, TriangleAlert } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher } from "react-router";
 import { useRefreshWhile } from "../lib/refresh";
 
@@ -23,7 +23,7 @@ import {
 
 import { RunAudit } from "./audit";
 import { STAGE_LABEL, StageDots } from "./lifecycle";
-import { Avatar, TimeAgo } from "./ui";
+import { Avatar, SubmitButton, TimeAgo } from "./ui";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -157,6 +157,11 @@ export function StopRun({ run, compact }: { run: AgentRun; compact?: boolean }) 
 export function MessageRun({ run }: { run: AgentRun }) {
   const fetcher = useFetcher<ActionResult>();
   const [open, setOpen] = useState(false);
+  const form = useRef<HTMLFormElement>(null);
+  // Sent: the box empties, and the notice below says where it went.
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.ok) form.current?.reset();
+  }, [fetcher.state, fetcher.data]);
   const live = takesMessages(run.kind) && isActiveRun(run.status);
   if (run.number == null) return null;
   return (
@@ -174,7 +179,7 @@ export function MessageRun({ run }: { run: AgentRun }) {
               : "This run does not read messages while it works. Your message waits on the pull request and is given to the agent's next run there."}
           </DialogDescription>
         </DialogHeader>
-        <fetcher.Form method="post" action={actionUrl(run)} className="space-y-3">
+        <fetcher.Form ref={form} method="post" action={actionUrl(run)} className="space-y-3">
           <input type="hidden" name="intent" value="message" />
           <input type="hidden" name="number" value={run.number} />
           <textarea
@@ -189,13 +194,13 @@ export function MessageRun({ run }: { run: AgentRun }) {
           {fetcher.data?.error && <p className="text-sm text-danger">{fetcher.data.error}</p>}
           {fetcher.data?.ok && fetcher.data.notice && <p className="text-sm text-accent">{fetcher.data.notice}</p>}
           <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={fetcher.state !== "idle"}
+            <SubmitButton
+              fetcher={fetcher}
+              pending="Sending…"
               className="inline-flex items-center gap-2 rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-white disabled:opacity-50"
             >
-              {fetcher.state !== "idle" ? "Sending…" : "Send"}
-            </button>
+              Send
+            </SubmitButton>
           </div>
         </fetcher.Form>
       </DialogContent>

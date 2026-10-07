@@ -3,7 +3,7 @@ import { Form, Link, redirect } from "react-router";
 import type { Route } from "./+types/reset";
 import { page } from "../lib/meta";
 import { AuthCard } from "../components/auth-card";
-import { Button, ErrorText, Field, Input } from "../components/ui";
+import { ErrorText, Field, Input, SubmitButton } from "../components/ui";
 import { identity } from "../lib/services.server";
 import { assertSameOrigin } from "../lib/session.server";
 
@@ -51,7 +51,7 @@ export default function Reset({ loaderData, actionData }: Route.ComponentProps) 
         </Field>
         <ErrorText>{actionData?.error}</ErrorText>
         <div className="pt-2 *:w-full">
-          <Button type="submit">Set password</Button>
+          <SubmitButton pending="Saving…">Set password</SubmitButton>
         </div>
       </Form>
     </AuthCard>

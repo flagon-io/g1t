@@ -1,9 +1,10 @@
-import { data, useNavigation } from "react-router";
+import { data } from "react-router";
 
 import { RUN_KINDS } from "@g1t/contracts";
 
 import type { Route } from "./+types/guardrails";
 import { GuardrailsForm } from "../../components/guardrails";
+import { usePending } from "../../components/ui";
 import { settingsFromForm } from "../../lib/guardrails";
 import { page } from "../../lib/meta";
 import { guardrails } from "../../lib/services.server";
@@ -37,7 +38,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function WorkspaceGuardrails({ loaderData, actionData }: Route.ComponentProps) {
-  const saving = useNavigation().state === "submitting";
+  // Until the saved settings are back on the page, not just until the post is answered.
+  const saving = usePending();
   return (
     <GuardrailsForm
       view={loaderData.view}

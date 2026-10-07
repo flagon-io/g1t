@@ -1,6 +1,6 @@
 import { ArrowUpRight, Users } from "lucide-react";
 import { useState } from "react";
-import { Form, Link, data, useNavigation, useSearchParams } from "react-router";
+import { Form, Link, data, useSearchParams } from "react-router";
 
 import {
   BASE_PERMISSIONS,
@@ -12,7 +12,7 @@ import {
 
 import type { Route } from "./+types/people";
 import { page } from "../../lib/meta";
-import { Avatar, Button, CopyLine, ErrorText, Field, Input, Pill, TimeAgo } from "../../components/ui";
+import { Avatar, CopyLine, ErrorText, Field, Input, Pill, SubmitButton, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
@@ -115,9 +115,9 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
                   <Form method="post">
                     <input type="hidden" name="action" value="remove" />
                     <input type="hidden" name="member" value={member.username} />
-                    <Button variant="quiet" type="submit">
+                    <SubmitButton variant="quiet" match={{ action: "remove", member: member.username }} pending="Removing…">
                       Remove
-                    </Button>
+                    </SubmitButton>
                   </Form>
                 )}
               </span>
@@ -126,7 +126,13 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
         ))}
       </ul>
       {owner && (
-        <Form method="post" className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-start">
+        // Empty again once the person is on the list; kept as typed when it failed.
+        <Form
+          method="post"
+          key={`${members.length}:${pending.length}`}
+          className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-start"
+        >
+          <input type="hidden" name="action" value="add" />
           <div className="grow">
             <Field
               label="Add a member"
@@ -136,7 +142,9 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
             </Field>
           </div>
           <div className="sm:pt-[1.625rem]">
-            <Button type="submit">Add</Button>
+            <SubmitButton match={{ action: "add" }} pending="Adding…">
+              Add
+            </SubmitButton>
           </div>
         </Form>
       )}
@@ -174,9 +182,9 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
                   <Form method="post">
                     <input type="hidden" name="action" value="revoke-invite" />
                     <input type="hidden" name="id" value={invite.id} />
-                    <Button variant="quiet" type="submit">
+                    <SubmitButton variant="quiet" match={{ action: "revoke-invite", id: invite.id }} pending="Revoking…">
                       Revoke
-                    </Button>
+                    </SubmitButton>
                   </Form>
                 </div>
                 <p className="text-xs text-faint">
@@ -190,6 +198,8 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
       )}
 
       <BasePermissionSection
+        // Starts from the saved choice whenever it changes.
+        key={base}
         base={base}
         owner={owner}
         slug={params.owner}
@@ -245,7 +255,6 @@ function BasePermissionSection({
   saved: boolean;
 }) {
   const [chosen, setChosen] = useState<BasePermission>(base);
-  const saving = useNavigation().formData?.get("action") === "base-permission";
   return (
     <section id="base-permission" className="mt-10 scroll-mt-20 border-t border-line pt-8">
       <h2 className="font-medium">Base permission</h2>
@@ -269,9 +278,9 @@ function BasePermissionSection({
                 ))}
               </SelectContent>
             </Select>
-            <Button type="submit" variant="quiet" disabled={saving || chosen === base}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
+            <SubmitButton variant="quiet" match={{ action: "base-permission" }} pending="Saving…" disabled={chosen === base}>
+              Save
+            </SubmitButton>
             {saved && chosen === base && <span className="text-sm text-muted">Saved.</span>}
           </div>
           <p className="mt-3 text-sm text-muted">{BASE_MEANS[chosen]}</p>
@@ -327,9 +336,9 @@ function OutsideCollaborators({
                 <Form method="post">
                   <input type="hidden" name="action" value="convert" />
                   <input type="hidden" name="member" value={person.username} />
-                  <Button variant="quiet" type="submit">
+                  <SubmitButton variant="quiet" match={{ action: "convert", member: person.username }} pending="Converting…">
                     Convert to member
-                  </Button>
+                  </SubmitButton>
                 </Form>
               </div>
               <ul className="mt-2 flex flex-wrap gap-1.5 pl-10">

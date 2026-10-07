@@ -6,7 +6,7 @@ import { withNext } from "../lib/next";
 import { useSignUpCopy } from "../lib/registration";
 import { missingKind, notFoundCopy } from "../lib/not-found";
 import { Pixel404 } from "./logo";
-import { ButtonLink } from "./ui";
+import { ButtonLink, SubmitButton } from "./ui";
 
 /**
  * The page for anything someone cannot see. It reads only the kind of thing
@@ -74,9 +74,12 @@ export function NotFound({ data }: { data?: unknown }) {
           className="mt-3 text-xs text-faint"
         >
           Signed in as <span className="font-mono text-muted">@{copy.signedInAs}</span> ·{" "}
-          <button type="submit" className="text-muted underline-offset-4 hover:text-fg hover:underline">
+          <SubmitButton
+            pending="Signing out…"
+            className="inline-flex items-center gap-1 text-muted underline-offset-4 hover:text-fg hover:underline disabled:opacity-50"
+          >
             Switch account
-          </button>
+          </SubmitButton>
         </Form>
       )}
     </main>

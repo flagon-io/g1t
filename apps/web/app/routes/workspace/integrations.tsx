@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { env } from "cloudflare:workers";
 import type { ReactNode } from "react";
-import { Form, Link, useNavigation } from "react-router";
+import { Form, Link } from "react-router";
 
 import {
   type Connection,
@@ -26,7 +26,7 @@ import type { Route } from "./+types/integrations";
 import { page } from "../../lib/meta";
 import { trialClosed } from "../../lib/trial";
 import { MODEL_CATALOG, ModelCatalog, ModelProviderFields, ProviderMark, ProviderTiles, Routing } from "../../components/model-providers";
-import { Avatar, Button, CopyLine, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
+import { Avatar, CopyLine, ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Combobox } from "../../components/ui/combobox";
 import { billing, integrations, repos } from "../../lib/services.server";
@@ -135,7 +135,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       signingSecret: text(form, "signingSecret"),
       secret: text(form, "secret"),
     });
-    return { error: updated.ok ? null : updated.error.message };
+    return updated.ok ? { updated: id } : { error: updated.error.message };
   }
   const provider = String(form.get("provider") ?? "");
   if (!isProvider(provider)) return { error: "Choose what to connect." };
@@ -183,11 +183,11 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
   const { slug, role, connections, deliveries, repos: repoNames, adding, free, marginPercent, hostedOpen, hostedPreview, trial, routes } =
     loaderData;
   const owner = role === "owner";
-  const busy = useNavigation().state === "submitting";
   const modelConnections = connections.filter((connection) => connection.kind === "models");
   const justConnected = actionData && "connected" in actionData ? actionData.connected : null;
   const tested = (actionData && "tested" in actionData ? actionData.tested : null) ?? null;
   const error = (actionData && "error" in actionData ? actionData.error : null) ?? null;
+  const updated = (actionData && "updated" in actionData ? actionData.updated : null) ?? null;
 
   return (
     <div>
@@ -212,7 +212,7 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
             </p>
           </div>
         )}
-        <Connections list={modelConnections} owner={owner} busy={busy} tested={tested} deliveries={deliveries} />
+        <Connections list={modelConnections} owner={owner} tested={tested} updated={updated} deliveries={deliveries} />
         {modelConnections.length === 0 && hostedOpen && (
           <p className="flex items-center gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-sm text-muted">
             <CheckCircle2 size={15} className="shrink-0 text-merged" />
@@ -227,12 +227,13 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
         )}
         {modelConnections.length > 0 && (
         <Routing
+          // Started again from what is saved whenever that changes, such as a provider disconnected.
+          key={JSON.stringify([routes, modelConnections.map((c) => c.id)])}
           connections={modelConnections}
           routes={routes}
           hostedOpen={hostedOpen}
           marginPercent={marginPercent}
           owner={owner}
-          busy={busy}
           saved={actionData != null && "routed" in actionData}
         />
         )}
@@ -250,7 +251,6 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
             provider={adding}
             slug={slug}
             repos={repoNames}
-            busy={busy}
             error={actionData && "provider" in actionData ? error : null}
           />
         )}
@@ -261,8 +261,8 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
         <Connections
           list={connections.filter((c) => c.kind === "alerts")}
           owner={owner}
-          busy={busy}
           tested={tested}
+          updated={updated}
           deliveries={deliveries}
         />
         {owner && <Choices kind="alerts" slug={slug} adding={adding} />}
@@ -271,7 +271,6 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
             provider={adding}
             slug={slug}
             repos={repoNames}
-            busy={busy}
             error={actionData && "provider" in actionData ? error : null}
           />
         )}
@@ -282,8 +281,8 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
         <Connections
           list={connections.filter((c) => c.kind === "tracker")}
           owner={owner}
-          busy={busy}
           tested={tested}
+          updated={updated}
           deliveries={deliveries}
         />
         {owner && <Choices kind="tracker" slug={slug} adding={adding} />}
@@ -292,7 +291,6 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
             provider={adding}
             slug={slug}
             repos={repoNames}
-            busy={busy}
             error={actionData && "provider" in actionData ? error : null}
           />
         )}
@@ -320,14 +318,15 @@ function Section({ kind, first, children }: { kind: ProviderKind; first?: boolea
 function Connections({
   list,
   owner,
-  busy,
   tested,
+  updated,
   deliveries,
 }: {
   list: Connection[];
   owner: boolean;
-  busy: boolean;
   tested: { id: string; ok: boolean; message: string } | null;
+  /** The connection whose secret was just saved. */
+  updated: string | null;
   deliveries: Record<string, Delivery[]>;
 }) {
   if (list.length === 0) return null;
@@ -338,8 +337,8 @@ function Connections({
           <ConnectionRow
             connection={connection}
             owner={owner}
-            busy={busy}
             tested={tested}
+            updated={updated === connection.id}
             deliveries={deliveries[connection.id] ?? []}
           />
         </li>
@@ -361,14 +360,14 @@ function host(url: string | undefined): string | undefined {
 function ConnectionRow({
   connection,
   owner,
-  busy,
   tested,
+  updated,
   deliveries,
 }: {
   connection: Connection;
   owner: boolean;
-  busy: boolean;
   tested: { id: string; ok: boolean; message: string } | null;
+  updated: boolean;
   deliveries: Delivery[];
 }) {
   const { config } = connection;
@@ -401,12 +400,12 @@ function ConnectionRow({
         {owner && (
           <Form method="post" className="flex shrink-0 gap-2">
             <input type="hidden" name="id" value={connection.id} />
-            <Button variant="quiet" type="submit" name="intent" value="test" disabled={busy}>
+            <SubmitButton variant="quiet" name="intent" value="test" match={{ id: connection.id }} pending="Testing…">
               Test
-            </Button>
-            <Button variant="quiet" type="submit" name="intent" value="disconnect" disabled={busy} aria-label="Disconnect">
+            </SubmitButton>
+            <SubmitButton variant="quiet" name="intent" value="disconnect" match={{ id: connection.id }} pending="Disconnecting…" aria-label="Disconnect">
               <X size={14} />
-            </Button>
+            </SubmitButton>
           </Form>
         )}
       </div>
@@ -434,9 +433,10 @@ function ConnectionRow({
               <Input name="signingSecret" type="password" placeholder="Paste to replace" />
             </Field>
           </div>
-          <Button type="submit" variant="quiet" disabled={busy}>
+          <SubmitButton variant="quiet" match={{ intent: "update", id: connection.id }} pending="Saving…">
             Save
-          </Button>
+          </SubmitButton>
+          {updated && <span className="pb-2 text-sm text-muted">Saved.</span>}
         </Form>
       )}
       {deliveries.length > 0 && (
@@ -526,13 +526,11 @@ function AddForm({
   provider,
   slug,
   repos,
-  busy,
   error,
 }: {
   provider: Provider;
   slug: string;
   repos: string[];
-  busy: boolean;
   error: string | null;
 }) {
   const fields: Partial<Record<Provider, ReactNode>> = {
@@ -609,9 +607,9 @@ function AddForm({
         {fields[provider] ?? <ModelProviderFields provider={provider} />}
         <ErrorText>{error}</ErrorText>
         <div>
-          <Button type="submit" disabled={busy}>
-            {busy ? "Connecting…" : "Connect"}
-          </Button>
+          <SubmitButton match={{ provider }} pending="Connecting…">
+            Connect
+          </SubmitButton>
         </div>
       </Form>
     </section>

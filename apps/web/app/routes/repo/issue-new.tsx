@@ -1,12 +1,12 @@
 import { env } from "cloudflare:workers";
 import { Download, Sparkles } from "lucide-react";
-import { Form, Link, redirect, useNavigation, useSearchParams } from "react-router";
+import { Form, Link, redirect, useSearchParams } from "react-router";
 
 import { PROVIDERS } from "@g1t/contracts";
 
 import type { Route } from "./+types/issue-new";
 import { page } from "../../lib/meta";
-import { Button, ErrorText, Field, Input, Textarea } from "../../components/ui";
+import { ErrorText, Field, Input, SubmitButton, Textarea } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Label } from "../../components/work";
 import { integrations, work } from "../../lib/services.server";
@@ -78,7 +78,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function NewIssue({ loaderData, actionData }: Route.ComponentProps) {
-  const busy = useNavigation().state === "submitting";
   // "Put an agent on …" in the palette arrives with ?agent=1.
   const [params] = useSearchParams();
   const refused = actionData && "notStarted" in actionData ? actionData.notStarted : null;
@@ -101,9 +100,9 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
               <Input name="reference" required placeholder="TECH-1234" aria-label="Ticket key or address" />
             </div>
             <CheckboxOption name="assign" label="Put an agent on it" className="items-center" labelClassName="text-muted" />
-            <Button type="submit" variant="quiet" disabled={busy}>
+            <SubmitButton variant="quiet" match={{ intent: "import" }} pending="Importing…">
               Import
-            </Button>
+            </SubmitButton>
           </div>
           {actionData && "importError" in actionData && (
             <div className="mt-2">
@@ -180,7 +179,9 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
           </div>
         )}
         <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
-        <Button type="submit">Open issue</Button>
+        <SubmitButton name="intent" value="open" pending="Opening…">
+          Open issue
+        </SubmitButton>
       </Form>
     </div>
   );

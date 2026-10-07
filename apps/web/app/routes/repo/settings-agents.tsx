@@ -1,13 +1,13 @@
 import { env } from "cloudflare:workers";
 import { AtSign, Tag } from "lucide-react";
-import { Form, useNavigation } from "react-router";
+import { Form } from "react-router";
 
 import { AGENT_HANDLE, mentionsClient } from "@g1t/contracts";
 
 import type { Route } from "./+types/settings-agents";
 import { page } from "../../lib/meta";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
-import { Button, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
+import { ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
 import { work } from "../../lib/services.server";
 import { instrumented } from "../../lib/perf.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
@@ -47,7 +47,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 export default function AgentSettings({ loaderData, actionData, params }: Route.ComponentProps) {
   const { rules, labels } = loaderData;
-  const busy = useNavigation().state === "submitting";
   const base = `/${params.owner}/${params.repo}`;
   return (
     <div className="max-w-4xl">
@@ -70,7 +69,8 @@ export default function AgentSettings({ loaderData, actionData, params }: Route.
         </div>
         <Form method="post" className="space-y-3 rounded-xl border border-line bg-surface p-4">
           <Field label="Label" hint="An issue that already has it is not affected; adding it again is.">
-            <Input name="label" list="known-labels" defaultValue={rules.label ?? ""} placeholder="agent" maxLength={40} />
+            {/* Keyed to the saved rule, so turning it off empties the box. */}
+            <Input key={rules.label ?? ""} name="label" list="known-labels" defaultValue={rules.label ?? ""} placeholder="agent" maxLength={40} />
           </Field>
           <datalist id="known-labels">
             {labels.map((label) => (
@@ -78,13 +78,13 @@ export default function AgentSettings({ loaderData, actionData, params }: Route.
             ))}
           </datalist>
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" name="intent" value="save" disabled={busy}>
+            <SubmitButton name="intent" value="save" pending="Saving…">
               Save
-            </Button>
+            </SubmitButton>
             {rules.label && (
-              <Button type="submit" variant="quiet" name="intent" value="off" disabled={busy}>
+              <SubmitButton variant="quiet" name="intent" value="off" pending="Turning off…">
                 Turn off
-              </Button>
+              </SubmitButton>
             )}
             {rules.updatedBy && rules.updatedAt && (
               <span className="text-xs text-faint">

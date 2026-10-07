@@ -3,7 +3,7 @@ import { Form, Link } from "react-router";
 import type { Route } from "./+types/forgot";
 import { page } from "../lib/meta";
 import { AuthCard } from "../components/auth-card";
-import { Button, Field, Input } from "../components/ui";
+import { Field, Input, SubmitButton } from "../components/ui";
 import { identity } from "../lib/services.server";
 import { assertSameOrigin, clientOf } from "../lib/session.server";
 
@@ -40,7 +40,7 @@ export default function Forgot({ actionData }: Route.ComponentProps) {
             <Input name="email" type="email" autoComplete="email" required autoFocus />
           </Field>
           <div className="pt-2 *:w-full">
-            <Button type="submit">Send reset link</Button>
+            <SubmitButton pending="Sending…">Send reset link</SubmitButton>
           </div>
         </Form>
       )}

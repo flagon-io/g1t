@@ -20,7 +20,7 @@ import {
   RotateCw,
 } from "lucide-react";
 import { type ReactNode, Suspense } from "react";
-import { Await, Form, Link, useNavigation } from "react-router";
+import { Await, Form, Link } from "react-router";
 
 import {
   type AgentRun,
@@ -46,7 +46,7 @@ import { Skeleton, SkeletonRows } from "../../components/ui/skeleton";
 import { ProductionShot } from "../../components/production-shot";
 import { GithubLinkStrip } from "../../components/github";
 import { githubApp } from "../../lib/github.server";
-import { Avatar, Button, ButtonLink, CopyLine, TimeAgo } from "../../components/ui";
+import { Avatar, ButtonLink, CopyLine, SubmitButton, TimeAgo } from "../../components/ui";
 import { ChangeSize } from "../../components/work";
 import {
   type ActivityItem,
@@ -664,7 +664,6 @@ function Overview({
   const productionUrl = production ? (settings?.primaryDomain ? `https://${settings.primaryDomain}` : production.url) : null;
   const previews = live.filter((app) => app.kind === "preview");
   const latestProduction = builds.find((build) => build.kind === "production") ?? null;
-  const busy = useNavigation().state === "submitting";
   const addresses = useAddresses();
   const source = project?.source.kind === "hosted" ? project.source : null;
   const moving = agentsLive.length > 0 || columns.working.length + columns.checking.length > 0;
@@ -748,10 +747,16 @@ function Overview({
                 )}
                 {settings?.enabled ? (
                   loaderData.can.run && <Form method="post">
-                    <Button type="submit" variant="quiet" disabled={busy} title="Build production again from the default branch">
+                    <SubmitButton
+                      variant="quiet"
+                      name="intent"
+                      value="redeploy"
+                      pending="Redeploying…"
+                      title="Build production again from the default branch"
+                    >
                       <RotateCw size={14} />
                       Redeploy
-                    </Button>
+                    </SubmitButton>
                   </Form>
                 ) : loaderData.can.manage_integrations && (
                   <ButtonLink to={`${base}/settings/deployments`} variant="accent">

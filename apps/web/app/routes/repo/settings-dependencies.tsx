@@ -1,12 +1,12 @@
 import { ArrowDownLeft, ArrowUpRight, FileCode2, Network, Trash2 } from "lucide-react";
-import { Form, Link, useNavigation } from "react-router";
+import { Form, Link } from "react-router";
 
 import type { DependencyLink } from "@g1t/contracts";
 
 import type { Route } from "./+types/settings-dependencies";
 import { page } from "../../lib/meta";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
-import { Avatar, Button, EmptyState, ErrorText, Field, Input } from "../../components/ui";
+import { Avatar, EmptyState, ErrorText, Field, Input, SubmitButton } from "../../components/ui";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
@@ -41,7 +41,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   return added.ok ? { notice: `Depends on ${on}.` } : { error: added.error.message };
 }
 
-function Row({ link, base, removable, busy }: { link: DependencyLink; base: string; removable: boolean; busy: boolean }) {
+function Row({ link, base, removable }: { link: DependencyLink; base: string; removable: boolean }) {
   return (
     <li className="flex items-center gap-3 px-4 py-3 text-sm">
       <Link to={`/${base.split("/")[1]}/${link.slug}`} className="font-medium hover:underline">
@@ -62,14 +62,14 @@ function Row({ link, base, removable, busy }: { link: DependencyLink; base: stri
         <Form method="post" className="ml-auto">
           <input type="hidden" name="intent" value="remove" />
           <input type="hidden" name="on" value={link.slug} />
-          <button
-            type="submit"
-            disabled={busy}
+          <SubmitButton
+            icon
+            match={{ intent: "remove", on: link.slug }}
             aria-label={`Stop depending on ${link.name}`}
-            className="rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-danger"
+            className="rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-danger disabled:opacity-50"
           >
             <Trash2 size={14} />
-          </button>
+          </SubmitButton>
         </Form>
       )}
     </li>
@@ -78,7 +78,6 @@ function Row({ link, base, removable, busy }: { link: DependencyLink; base: stri
 
 export default function DependencySettings({ loaderData, actionData, params }: Route.ComponentProps) {
   const { dependencies, projects: all } = loaderData;
-  const busy = useNavigation().state === "submitting";
   const base = `/${params.owner}/${params.repo}`;
   const taken = new Set([params.repo.toLowerCase(), ...dependencies.dependsOn.map((d) => d.slug)]);
   const choices = all.filter((project) => !taken.has(project.slug));
@@ -116,13 +115,18 @@ export default function DependencySettings({ loaderData, actionData, params }: R
           ) : (
             <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
               {dependencies.dependsOn.map((link) => (
-                <Row key={link.slug} link={link} base={base} removable busy={busy} />
+                <Row key={link.slug} link={link} base={base} removable />
               ))}
             </ul>
           )}
         </div>
         {choices.length > 0 && (
-          <Form method="post" className="mt-4 grid items-end gap-3 rounded-xl border border-line bg-surface p-4 sm:grid-cols-[1fr_1fr_auto]">
+          // Keyed to what it depends on, so once one is added the form starts over on what is left.
+          <Form
+            key={dependencies.dependsOn.map((link) => link.slug).join(" ")}
+            method="post"
+            className="mt-4 grid items-end gap-3 rounded-xl border border-line bg-surface p-4 sm:grid-cols-[1fr_1fr_auto]"
+          >
             <input type="hidden" name="intent" value="add" />
             <Field label="Project">
               <Select name="on" required defaultValue={choices[0].slug}>
@@ -146,9 +150,9 @@ export default function DependencySettings({ loaderData, actionData, params }: R
             <Field label="Its address as">
               <Input name="as" placeholder="API_URL" className="font-mono" />
             </Field>
-            <Button type="submit" disabled={busy}>
+            <SubmitButton match={{ intent: "add" }} pending="Adding…">
               Add dependency
-            </Button>
+            </SubmitButton>
           </Form>
         )}
       </section>
@@ -164,7 +168,7 @@ export default function DependencySettings({ loaderData, actionData, params }: R
           ) : (
             <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
               {dependencies.usedBy.map((link) => (
-                <Row key={link.slug} link={link} base={base} removable={false} busy={busy} />
+                <Row key={link.slug} link={link} base={base} removable={false} />
               ))}
             </ul>
           )}

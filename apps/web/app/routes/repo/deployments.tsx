@@ -1,6 +1,6 @@
 import { ExternalLink, Globe, Rocket, RotateCw, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
-import { Form, Link, useNavigation } from "react-router";
+import { Form, Link } from "react-router";
 
 import type { Deployment, FeatureState } from "@g1t/contracts";
 
@@ -8,7 +8,7 @@ import { host, StatusDot } from "../../components/deploy";
 
 import type { Route } from "./+types/deployments";
 import { page } from "../../lib/meta";
-import { Button, ButtonLink, ComputeNote, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
+import { ButtonLink, ComputeNote, EmptyState, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { computeNoteFor } from "../../lib/compute.server";
 import { billing, deployments, projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
@@ -72,7 +72,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 export default function RepoDeployments({ loaderData, actionData, params }: Route.ComponentProps) {
   const { settings, deployments: builds, live, plan, can } = loaderData;
-  const busy = useNavigation().state === "submitting";
   const base = `/${params.owner}/${params.repo}`;
   const production = live.find((app) => app.kind === "production");
   const previews = live.filter((app) => app.kind === "preview");
@@ -132,10 +131,17 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
             </p>
           ) : (
             <Form method="post" className="mt-4">
-              <Button variant="accent" type="submit" name="intent" value="enable" disabled={busy || !can.manage_integrations} title={whyNot(can, "manage_integrations")}>
+              <SubmitButton
+                variant="accent"
+                name="intent"
+                value="enable"
+                pending="Turning on…"
+                disabled={!can.manage_integrations}
+                title={whyNot(can, "manage_integrations")}
+              >
                 <Rocket size={14} />
                 Turn on deployments
-              </Button>
+              </SubmitButton>
             </Form>
           )}
         </section>
@@ -148,7 +154,7 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
               app={production}
               off={!settings.production}
               actions={
-                can.run ? <AppActions branch={null} up={!!production} busy={busy} /> : null
+                can.run ? <AppActions branch={null} up={!!production} /> : null
               }
             />
             <div className="rounded-xl border border-line bg-surface p-5">
@@ -176,7 +182,7 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
                         {host(app.url)}
                       </a>
                       <span className="ml-auto shrink-0">
-                        {can.run && <AppActions branch={app.branch} up busy={busy} compact />}
+                        {can.run && <AppActions branch={app.branch} up compact />}
                       </span>
                     </li>
                   ))}
@@ -283,19 +289,38 @@ function LiveCard({
   );
 }
 
-function AppActions({ branch, up, busy, compact }: { branch: string | null; up: boolean; busy: boolean; compact?: boolean }) {
+function AppActions({ branch, up, compact }: { branch: string | null; up: boolean; compact?: boolean }) {
+  // Which app's buttons say they are working: production has no branch.
+  const app = branch ?? "production";
   return (
     <Form method="post" className="flex items-center gap-2">
       {branch != null && <input type="hidden" name="branch" value={branch} />}
-      <Button variant="quiet" type="submit" name="intent" value="redeploy" disabled={busy} title="Build again from the current head">
+      <input type="hidden" name="app" value={app} />
+      <SubmitButton
+        variant="quiet"
+        name="intent"
+        value="redeploy"
+        match={{ app }}
+        icon={compact}
+        pending="Redeploying…"
+        title="Build again from the current head"
+      >
         <RotateCw size={13} />
         {!compact && "Redeploy"}
-      </Button>
+      </SubmitButton>
       {up && (
-        <Button variant="quiet" type="submit" name="intent" value="take-down" disabled={busy} title="Take it down now">
+        <SubmitButton
+          variant="quiet"
+          name="intent"
+          value="take-down"
+          match={{ app }}
+          icon={compact}
+          pending="Taking down…"
+          title="Take it down now"
+        >
           <Trash2 size={13} />
           {!compact && "Take down"}
-        </Button>
+        </SubmitButton>
       )}
     </Form>
   );

@@ -64,7 +64,9 @@ export default function ProfileSettings({ loaderData, actionData }: Route.Compon
           />
         </div>
       </section>
+      {/* Keyed on what was saved, so the fields show identity's copy once it answers. */}
       <ProfileSection
+        key={JSON.stringify(profile)}
         username={user.username}
         profile={profile}
         error={actionData && "profileError" in actionData ? actionData.profileError : undefined}

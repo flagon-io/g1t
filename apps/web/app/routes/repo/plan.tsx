@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import type { G1tEvent } from "@g1t/contracts";
 import { ArrowRight, CircleCheck, FileCode2, Sparkles } from "lucide-react";
-import { Form, Link, data, useNavigation } from "react-router";
+import { Form, Link, data } from "react-router";
 
 import type { Route } from "./+types/plan";
 import { refusal, requireRepo } from "../../lib/access.server";
@@ -10,7 +10,7 @@ import { page } from "../../lib/meta";
 import { Markdown } from "../../components/markdown";
 import { Activity, Exchanges } from "../../components/activity";
 import { Outcome } from "../../components/outcome";
-import { Button, ErrorText, TimeAgo } from "../../components/ui";
+import { ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
 import { Checkbox } from "../../components/ui/checkbox";
 import { Label } from "../../components/work";
 import { billing, events, identity, work } from "../../lib/services.server";
@@ -91,7 +91,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 export default function PlanPage({ loaderData, actionData, params }: Route.ComponentProps) {
   const { plan, costMicros, activity } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
-  const applying = useNavigation().state === "submitting";
+  // Either way of applying it, so the other button waits too.
+  const applying = usePending();
 
   // The agent is still writing it.
   const planning = plan.status === "planning";
@@ -262,13 +263,13 @@ export default function PlanPage({ loaderData, actionData, params }: Route.Compo
 
           {plan.status === "ready" && (
             <div className="mt-6 flex flex-wrap items-center gap-3">
-              <Button variant="accent" type="submit" name="action" value="assign" disabled={applying || !loaderData.can.run} title={whyNot(loaderData.can, "run")}>
+              <SubmitButton variant="accent" name="action" value="assign" pending="Opening issues…" disabled={applying || !loaderData.can.run} title={whyNot(loaderData.can, "run")}>
                 <Sparkles size={15} />
-                {applying ? "Opening issues…" : "Open these and assign g1t"}
-              </Button>
-              <Button variant="quiet" type="submit" name="action" value="open" disabled={applying || !loaderData.can.run} title={whyNot(loaderData.can, "run")}>
+                Open these and assign g1t
+              </SubmitButton>
+              <SubmitButton variant="quiet" name="action" value="open" pending="Opening issues…" disabled={applying || !loaderData.can.run} title={whyNot(loaderData.can, "run")}>
                 Only open the issues
-              </Button>
+              </SubmitButton>
               <span className="text-xs text-muted">
                 Untick any you do not want. Agents work on the independent ones at once
                 and the rest follow as what they depend on merges.

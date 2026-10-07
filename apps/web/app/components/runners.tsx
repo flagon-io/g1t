@@ -1,11 +1,11 @@
 import { Bot, Boxes, Cpu, Plus, ServerCog, ShieldAlert, Trash2 } from "lucide-react";
-import { useState } from "react";
-import { Form, Link, useNavigation } from "react-router";
+import { useEffect, useState } from "react";
+import { Form, Link } from "react-router";
 
 import { type RegistrationToken, RUNNER_DOWNLOADS, RUNNER_FILES, RUNNER_IMAGE, type Runner, type RunnerGroup } from "@g1t/contracts";
 
 import type { RunnersAction, RunnersData } from "../lib/runners.server";
-import { Button, CopyLine, EmptyState, ErrorText, Field, Input, Pill, TimeAgo } from "./ui";
+import { Button, CopyLine, EmptyState, ErrorText, Field, Input, Pill, SubmitButton, TimeAgo } from "./ui";
 import { Switch } from "./ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 
@@ -34,7 +34,6 @@ function Section({ icon, title, about, children }: { icon: React.ReactNode; titl
 
 function RunnerRow({ runner, manage, base }: { runner: Runner; manage: boolean; base: (repo: string) => string }) {
   const status = STATUS[runner.status];
-  const busy = useNavigation().state === "submitting";
   return (
     <li className="flex flex-wrap items-start gap-x-4 gap-y-2 px-4 py-3">
       <span className={`mt-1.5 size-2 shrink-0 rounded-full ${status.dot}`} aria-hidden />
@@ -84,14 +83,14 @@ function RunnerRow({ runner, manage, base }: { runner: Runner; manage: boolean; 
           <input type="hidden" name="intent" value="remove" />
           <input type="hidden" name="id" value={runner.id} />
           <input type="hidden" name="name" value={runner.name} />
-          <button
-            type="submit"
-            disabled={busy}
+          <SubmitButton
+            icon
+            match={{ intent: "remove", id: runner.id }}
             aria-label={`Remove ${runner.name}`}
-            className="rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-danger"
+            className="rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-danger disabled:opacity-50"
           >
             <Trash2 size={15} />
-          </button>
+          </SubmitButton>
         </Form>
       )}
     </li>
@@ -146,7 +145,6 @@ export function installSteps(platform: Platform, token: RegistrationToken | null
 function NewRunner({ token, groups, repoScoped }: { token: RegistrationToken | null; groups: RunnerGroup[]; repoScoped: boolean }) {
   const [platform, setPlatform] = useState<Platform>("linux");
   const [arch, setArch] = useState<"x64" | "arm64">("x64");
-  const busy = useNavigation().state === "submitting";
   return (
     <div className="space-y-4 rounded-xl border border-line bg-surface p-4">
       {!token ? (
@@ -163,10 +161,10 @@ function NewRunner({ token, groups, repoScoped }: { token: RegistrationToken | n
               </select>
             </Field>
           )}
-          <Button type="submit" disabled={busy}>
+          <SubmitButton match={{ intent: "token" }} pending="Making a token…">
             <Plus size={15} />
             New runner
-          </Button>
+          </SubmitButton>
           <p className="basis-full text-xs text-faint">Makes a registration token that lasts an hour and registers any number of runners. It is shown once.</p>
         </Form>
       ) : (
@@ -239,8 +237,22 @@ function TimeAgoFuture({ at }: { at: string }) {
   );
 }
 
-function Groups({ groups, repositories, manage }: { groups: RunnerGroup[]; repositories: string[]; manage: boolean }) {
+function Groups({
+  groups,
+  repositories,
+  manage,
+  action,
+}: {
+  groups: RunnerGroup[];
+  repositories: string[];
+  manage: boolean;
+  action: RunnersAction | undefined;
+}) {
   const [editing, setEditing] = useState<string | null>(null);
+  // A group saved closes its form: the list above now shows it as saved.
+  useEffect(() => {
+    if (action?.notice) setEditing(null);
+  }, [action]);
   return (
     <div className="space-y-3">
       <ul className="divide-y divide-line rounded-xl border border-line bg-surface">
@@ -262,9 +274,9 @@ function Groups({ groups, repositories, manage }: { groups: RunnerGroup[]; repos
                     <Form method="post" onSubmit={(event) => { if (!confirm(`Delete ${group.name}? Its runners join the default group.`)) event.preventDefault(); }}>
                       <input type="hidden" name="intent" value="delete-group" />
                       <input type="hidden" name="id" value={group.id} />
-                      <Button type="submit" variant="quiet">
+                      <SubmitButton variant="quiet" match={{ intent: "delete-group", id: group.id }} pending="Deleting…">
                         Delete
-                      </Button>
+                      </SubmitButton>
                     </Form>
                   )}
                 </span>
@@ -286,7 +298,6 @@ function Groups({ groups, repositories, manage }: { groups: RunnerGroup[]; repos
 
 function GroupForm({ group, repositories }: { group: RunnerGroup | null; repositories: string[] }) {
   const [reach, setReach] = useState(group && group.repositories.length > 0 ? "some" : "all");
-  const busy = useNavigation().state === "submitting";
   return (
     <Form method="post" className="mt-3 space-y-3 rounded-lg border border-line bg-bg p-3">
       <input type="hidden" name="intent" value="group" />
@@ -315,22 +326,22 @@ function GroupForm({ group, repositories }: { group: RunnerGroup | null; reposit
           </div>
         )}
       </fieldset>
-      <Button type="submit" disabled={busy}>
+      <SubmitButton match={{ intent: "group", id: group?.id }} pending="Saving…">
         Save group
-      </Button>
+      </SubmitButton>
     </Form>
   );
 }
 
 function Settings({ data, manage, scope }: { data: RunnersData; manage: boolean; scope: "workspace" | "project" }) {
   const settings = data.settings;
-  const busy = useNavigation().state === "submitting";
   const [agents, setAgents] = useState(settings?.agentsOnSelfHosted ?? false);
   const [forks, setForks] = useState(settings?.forkPullRequests ?? false);
   if (!settings) return null;
+  // The intent comes from the button pressed: a hidden one before it would
+  // win the form's first "intent", and Follow the workspace would only save.
   return (
     <Form method="post" className="space-y-4">
-      <input type="hidden" name="intent" value="settings" />
       {scope === "project" && settings.inherited && (
         <p className="text-sm text-muted">These are the workspace&apos;s settings. Saving here gives this project its own.</p>
       )}
@@ -369,13 +380,13 @@ function Settings({ data, manage, scope }: { data: RunnersData; manage: boolean;
       </p>
       {manage && (
         <div className="flex flex-wrap gap-3">
-          <Button type="submit" disabled={busy}>
+          <SubmitButton name="intent" value="settings" pending="Saving…">
             Save
-          </Button>
+          </SubmitButton>
           {scope === "project" && !settings.inherited && (
-            <Button type="submit" name="intent" value="inherit" variant="quiet" disabled={busy}>
+            <SubmitButton name="intent" value="inherit" variant="quiet" pending="Following…">
               Follow the workspace
-            </Button>
+            </SubmitButton>
           )}
         </div>
       )}
@@ -444,7 +455,7 @@ export function RunnersPanel({
           title="Groups"
           about="Which repositories may use which runners. A runner joins the default group, every repository, unless its token names another."
         >
-          <Groups groups={data.groups} repositories={data.repositories} manage={manage} />
+          <Groups groups={data.groups} repositories={data.repositories} manage={manage} action={action} />
         </Section>
       )}
       <Section
@@ -452,7 +463,13 @@ export function RunnersPanel({
         title="Where work runs"
         about={scope === "workspace" ? "For every project in the workspace, unless a project says otherwise." : "For this project."}
       >
-        <Settings data={data} manage={manage} scope={scope} />
+        {/* Keyed to what is saved, so following the workspace again shows its settings, not the switches as they were. */}
+        <Settings
+          key={data.settings ? `${data.settings.inherited}:${data.settings.agentsOnSelfHosted}:${data.settings.forkPullRequests}:${data.settings.agentLabels.join(",")}` : "none"}
+          data={data}
+          manage={manage}
+          scope={scope}
+        />
       </Section>
     </div>
   );

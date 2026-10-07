@@ -1,10 +1,10 @@
 import { Check } from "lucide-react";
 import { useState } from "react";
-import { Form, Link, useNavigation } from "react-router";
+import { Form, Link } from "react-router";
 
 import { PROFILE_LIMITS, type Profile } from "@g1t/contracts";
 
-import { Button } from "./ui";
+import { SubmitButton, usePending } from "./ui";
 import { Field, FieldDescription, FieldError, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
@@ -24,8 +24,7 @@ export function ProfileSection({
   error?: string;
   saved: boolean;
 }) {
-  const navigation = useNavigation();
-  const busy = navigation.state === "submitting" && navigation.formData?.get("intent") === "profile";
+  const busy = usePending({ intent: "profile" });
   const [bio, setBio] = useState(profile?.bio ?? "");
   return (
     <section id="profile" className="scroll-mt-20">
@@ -99,9 +98,9 @@ export function ProfileSection({
           <FieldDescription>An https:// address.</FieldDescription>
         </Field>
         <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
-          <Button type="submit" disabled={busy}>
-            {busy ? "Saving…" : "Save profile"}
-          </Button>
+          <SubmitButton pending="Saving…" match={{ intent: "profile" }}>
+            Save profile
+          </SubmitButton>
           {saved && !busy && !error && (
             <span className="inline-flex items-center gap-1.5 text-sm text-muted">
               <Check size={14} className="text-accent" />

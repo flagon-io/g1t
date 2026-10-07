@@ -1,4 +1,4 @@
-import { Link, useNavigation } from "react-router";
+import { Link } from "react-router";
 
 import { RUN_KINDS } from "@g1t/contracts";
 
@@ -40,7 +40,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function RepoGuardrails({ loaderData, actionData, params }: Route.ComponentProps) {
-  const saving = useNavigation().state === "submitting";
   const base = `/${params.owner}/${params.repo}`;
   return (
     <>
@@ -57,7 +56,6 @@ export default function RepoGuardrails({ loaderData, actionData, params }: Route
         view={loaderData.view}
         level="project"
         editable
-        saving={saving}
         saved={actionData?.saved ?? false}
         error={actionData?.error}
       />

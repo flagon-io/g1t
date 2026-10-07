@@ -1,10 +1,10 @@
 import { Box, Download, GitBranch, Globe, Lock, Sparkles } from "lucide-react";
 import { useState } from "react";
-import { Form, redirect, useNavigate, useNavigation } from "react-router";
+import { Form, redirect, useNavigate } from "react-router";
 
 import type { Route } from "./+types/new";
 import { page } from "../lib/meta";
-import { Avatar, Button, ErrorText } from "../components/ui";
+import { Avatar, ErrorText, SubmitButton } from "../components/ui";
 import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from "../components/ui/field";
 import { Input, InputAddon, InputGroup } from "../components/ui/input";
 import { RadioCard, RadioGroup } from "../components/ui/radio-group";
@@ -93,7 +93,6 @@ export default function NewProject({ loaderData, actionData }: Route.ComponentPr
   const sources = loaderData.github ? SOURCES.map((option) => (option.id === "mirror" ? GITHUB_SOURCE : option)) : SOURCES;
   const [workspace, setWorkspace] = useState(loaderData.selected);
   const [name, setName] = useState("");
-  const busy = useNavigation().state === "submitting";
   return (
     <main className="mx-auto max-w-2xl px-4 py-12">
       <span className="flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent ring-1 ring-accent/30">
@@ -212,9 +211,9 @@ export default function NewProject({ loaderData, actionData }: Route.ComponentPr
         </FieldSet>
 
         <ErrorText>{actionData?.error}</ErrorText>
-        <Button type="submit" variant="accent" disabled={busy}>
+        <SubmitButton variant="accent" pending={source === "import" ? "Importing…" : "Creating…"}>
           Create project
-        </Button>
+        </SubmitButton>
       </Form>
     </main>
   );

@@ -30,5 +30,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     email: primary,
     invites_left: invites?.allowance.limit != null ? (invites.allowance.remaining ?? 0) : null,
   };
-  return Response.json(data, { headers: { "cache-control": "private, max-age=60" } });
+  // Not kept by the browser: the menu asks again after a name, address or
+  // invite changes, and a kept copy would show the old one for a minute.
+  return Response.json(data, { headers: { "cache-control": "private, no-store" } });
 }

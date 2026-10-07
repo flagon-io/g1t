@@ -184,14 +184,21 @@ function StatementLineRow({
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [done, setDone] = useState(false);
-  const fetcher = useFetcher<LedgerEntry[]>();
+  const fetcher = useFetcher<LedgerEntry[] | { error: string }>();
   const [seen, setSeen] = useState<LedgerEntry[] | undefined>(undefined);
+  const failed = fetcher.data && !Array.isArray(fetcher.data) ? fetcher.data.error : null;
 
-  // Each page that arrives is added once.
-  if (fetcher.data && fetcher.data !== seen) {
-    setSeen(fetcher.data);
-    setEntries((before) => [...before, ...fetcher.data!]);
-    if (fetcher.data.length < 50) setDone(true);
+  // Each page that arrives is added once. A page can come again: the page
+  // reloads what fetchers loaded after every change made on it, so an entry
+  // already listed is not listed twice.
+  if (Array.isArray(fetcher.data) && fetcher.data !== seen) {
+    const page = fetcher.data;
+    setSeen(page);
+    setEntries((before) => {
+      const listed = new Set(before.map((entry) => entry.id));
+      return [...before, ...page.filter((entry) => !listed.has(entry.id))];
+    });
+    if (page.length < 50) setDone(true);
   }
 
   const load = (before: string | null) => {
@@ -253,6 +260,7 @@ function StatementLineRow({
               </li>
             ))}
           </ul>
+          {failed && fetcher.state === "idle" && <p className="py-2 pl-11 text-xs text-danger">{failed}</p>}
           {fetcher.state === "loading" && (
             <div aria-busy="true" className="pl-8">
               <SkeletonRows rows={3} rowClassName="h-12" />

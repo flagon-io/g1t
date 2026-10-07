@@ -1,10 +1,10 @@
 import { Box, CircleAlert, MailOpen } from "lucide-react";
-import { Form, data, redirect, useNavigation } from "react-router";
+import { Form, data, redirect } from "react-router";
 
 import { REPO_ROLE_LABELS, REPO_ROLE_SUMMARIES } from "@g1t/contracts";
 
 import type { Route } from "./+types/invitations";
-import { Avatar, Button, ButtonLink, ErrorText } from "../../components/ui";
+import { Avatar, ButtonLink, ErrorText, SubmitButton, usePending } from "../../components/ui";
 import { page } from "../../lib/meta";
 import { identity } from "../../lib/services.server";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
@@ -34,9 +34,12 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   const form = await request.formData();
   const accept = form.get("intent") === "accept";
   const invitation = await invitationTo(user, params.owner, params.repo);
-  if (!invitation) return data({ error: "This invitation is no longer open." }, { status: 404 });
+  // Refusals are said with a 200, so the page loads again and shows the
+  // invitation as it now stands beside the reason: after a 4xx answer
+  // React Router keeps the page's data as it was.
+  if (!invitation) return { error: "This invitation is no longer open." };
   const answered = await identity.respondRepoInvitation(user, invitation.id, accept);
-  if (!answered.ok) return data({ error: answered.error.message }, { status: 422 });
+  if (!answered.ok) return { error: answered.error.message };
   // The role is theirs from the next request on: straight to the repository.
   throw redirect(accept ? `/${invitation.repo}` : "/");
 }
@@ -45,8 +48,8 @@ const LONG_DATE = new Intl.DateTimeFormat("en-US", { month: "long", day: "numeri
 
 export default function RepoInvitation({ loaderData, actionData, params }: Route.ComponentProps) {
   const { invitation, viewer } = loaderData;
-  const navigation = useNavigation();
-  const answering = navigation.state !== "idle" ? navigation.formData?.get("intent") : null;
+  // Either answer: the other button waits for it.
+  const answering = usePending();
   const full = `${params.owner}/${params.repo}`;
   if (!invitation) {
     return (
@@ -117,12 +120,12 @@ export default function RepoInvitation({ loaderData, actionData, params }: Route
         </p>
         <ErrorText>{actionData?.error}</ErrorText>
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Button type="submit" name="intent" value="accept" disabled={answering != null}>
-            {answering === "accept" ? "Accepting…" : "Accept invitation"}
-          </Button>
-          <Button type="submit" name="intent" value="decline" variant="quiet" disabled={answering != null}>
-            {answering === "decline" ? "Declining…" : "Decline"}
-          </Button>
+          <SubmitButton name="intent" value="accept" disabled={answering} pending="Accepting…">
+            Accept invitation
+          </SubmitButton>
+          <SubmitButton name="intent" value="decline" variant="quiet" disabled={answering} pending="Declining…">
+            Decline
+          </SubmitButton>
         </div>
       </Form>
     </div>

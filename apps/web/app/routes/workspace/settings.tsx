@@ -16,7 +16,7 @@ import { page } from "../../lib/meta";
 import { useAddresses } from "../../lib/addresses";
 import { AvatarField } from "../../components/avatar-field";
 import { DangerAction, DangerZone } from "../../components/danger-zone";
-import { Button, ErrorText, Field, Input } from "../../components/ui";
+import { Button, ErrorText, Field, Input, SubmitButton } from "../../components/ui";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -151,6 +151,7 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
       <section>
         <h2 className="font-medium">Workspace details</h2>
         <Form method="post" className="mt-5 space-y-4">
+          <input type="hidden" name="intent" value="details" />
           <Field
             label="Display name"
             hint="How people see the workspace: in the sidebar, at the top of its page and in link previews. Up to 80 characters; spaces and capitals are fine."
@@ -161,17 +162,23 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
             <Input name="description" maxLength={160} defaultValue={workspace.description ?? ""} />
           </Field>
           <ErrorText>{actionData && "error" in actionData ? actionData.error : undefined}</ErrorText>
-          <Button type="submit">Save</Button>
+          <SubmitButton match={{ intent: "details" }} pending="Saving…">
+            Save
+          </SubmitButton>
         </Form>
       </section>
 
       <AddressSection
+        // A new address starts it again, so the dialog is closed on the renamed page.
+        key={workspace.slug}
         workspace={workspace}
         error={actionData && "renameError" in actionData ? actionData.renameError : undefined}
       />
 
       {(loaderData.euAvailable || loaderData.residency === "eu") && (
         <ResidencySection
+          // Starts from the saved choice whenever it changes.
+          key={loaderData.residency}
           residency={loaderData.residency}
           euAvailable={loaderData.euAvailable}
           saved={Boolean(actionData && "saved" in actionData && actionData.saved === "residency")}

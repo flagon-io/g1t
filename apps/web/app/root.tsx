@@ -37,7 +37,7 @@ import appCss from "./app.css?url";
 import displayFont from "@g1t/theme/fonts/bricolage-grotesque-latin.woff2?url";
 import sansFont from "@g1t/theme/fonts/hanken-grotesk-latin.woff2?url";
 import { Logo } from "./components/logo";
-import { Avatar, ButtonLink, notACredential } from "./components/ui";
+import { Avatar, ButtonLink, SubmitButton, notACredential } from "./components/ui";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -429,7 +429,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // Undefined when the root loader itself failed.
   const root = useRouteLoaderData<typeof loader>("root");
   const user = root?.user;
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
+  // /verify lands here with ?sent=1 once it has sent the link again.
+  const sentAgain = new URLSearchParams(search).get("sent") === "1";
   // Drawn around the error page too: a 404 keeps the sidebar out of a
   // project or workspace the viewer cannot see.
   const error = useRouteError();
@@ -449,13 +451,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
       action="/verify"
       className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-warn/30 bg-warn/10 px-4 py-2 text-sm"
     >
-      <span>
-        Confirm your email address to create repositories and push. We
-        sent you a link.
+      <span role="status">
+        {sentAgain
+          ? "We sent the link again. It can take a minute to arrive."
+          : "Confirm your email address to create repositories and push. We sent you a link."}
       </span>
-      <button type="submit" className="font-medium underline underline-offset-4">
-        Send it again
-      </button>
+      <SubmitButton
+        name="intent"
+        value="resend-verification"
+        pending="Sending…"
+        className="inline-flex items-center gap-1.5 font-medium underline underline-offset-4 disabled:opacity-50"
+      >
+        {sentAgain ? "Send another" : "Send it again"}
+      </SubmitButton>
     </Form>
   );
   const banner =

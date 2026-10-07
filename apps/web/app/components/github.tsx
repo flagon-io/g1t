@@ -2,7 +2,7 @@ import type { GithubRepoLink } from "@g1t/contracts";
 import { Form } from "react-router";
 import { siGithub } from "simple-icons";
 
-import { TimeAgo } from "./ui";
+import { SubmitButton, TimeAgo } from "./ui";
 
 /** GitHub's mark (from Simple Icons), for the buttons that go there. */
 export function GithubMark({ className = "size-4" }: { className?: string }) {
@@ -70,12 +70,22 @@ export function GithubLinkStrip({ link }: { link: GithubRepoLink }) {
       )}
       {syncing && (
         <Form method="post" className="ml-auto flex items-center gap-3">
-          <button type="submit" name="intent" value="github-sync" className="text-xs text-muted hover:text-fg">
+          <SubmitButton
+            name="intent"
+            value="github-sync"
+            pending="Syncing…"
+            className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg disabled:opacity-50"
+          >
             Sync now
-          </button>
-          <button type="submit" name="intent" value="github-stop" className="text-xs text-faint hover:text-danger">
+          </SubmitButton>
+          <SubmitButton
+            name="intent"
+            value="github-stop"
+            pending="Stopping…"
+            className="inline-flex items-center gap-1 text-xs text-faint hover:text-danger disabled:opacity-50"
+          >
             Stop {link.mode === "mirror" ? "mirroring" : "pushing"}
-          </button>
+          </SubmitButton>
         </Form>
       )}
       {link.lastError && <p className="w-full text-xs text-warn">{link.lastError}</p>}

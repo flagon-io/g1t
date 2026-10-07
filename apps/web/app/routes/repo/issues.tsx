@@ -1,10 +1,10 @@
 import { env } from "cloudflare:workers";
 import { GitPullRequest, MessageSquare, Plus, Sparkles, X } from "lucide-react";
-import { Form, Link, useNavigation, useRouteLoaderData } from "react-router";
+import { Form, Link, useRouteLoaderData } from "react-router";
 
 import type { Route } from "./+types/issues";
 import { page } from "../../lib/meta";
-import { Button, ButtonLink, ComputeNote, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
+import { ButtonLink, ComputeNote, EmptyState, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { Checkbox } from "../../components/ui/checkbox";
 import {
   Assignee,
@@ -91,7 +91,7 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
   const base = `${repo}/issues`;
   const stateQuery = state === "closed" ? "state=closed" : "";
   const assignable = agentsEnabled && state === "open" && issues.length > 0;
-  const assigning = useNavigation().state === "submitting";
+
   // An archived repository's issues are locked: no new ones.
   const layout = useRouteLoaderData("routes/repo/layout") as { repo?: { archivedAt?: string | null } } | undefined;
   const archived = Boolean(layout?.repo?.archivedAt);
@@ -138,9 +138,9 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
               Tick the issues to hand over. g1t takes each one in a run of its own,
               and they all work at once.
             </p>
-            <Button variant="accent" type="submit" disabled={assigning}>
-              {assigning ? "Starting sandboxes…" : "Assign to g1t"}
-            </Button>
+            <SubmitButton variant="accent" pending="Starting sandboxes…">
+              Assign to g1t
+            </SubmitButton>
             {loaderData.computeNote && (
               <div className="basis-full">
                 <ComputeNote note={loaderData.computeNote} />

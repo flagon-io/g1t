@@ -5,7 +5,7 @@ import { decodeOAuthClient, isRegisteredRedirect } from "@g1t/contracts";
 
 import type { Route } from "./+types/oauth-authorize";
 import { page } from "../lib/meta";
-import { Button, ErrorText } from "../components/ui";
+import { ErrorText, SubmitButton, usePending } from "../components/ui";
 import { ScopeChecklist } from "../components/token-scopes";
 import { identity } from "../lib/services.server";
 import { addresses } from "../lib/addresses.server";
@@ -118,6 +118,8 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 export default function Authorize({ loaderData, actionData }: Route.ComponentProps) {
   const { user, request, requested, query } = loaderData;
+  // Either answer turns both buttons off until it is in.
+  const deciding = usePending();
 
   if (!request.ok) {
     return (
@@ -170,12 +172,12 @@ export default function Authorize({ loaderData, actionData }: Route.ComponentPro
           </p>
           <ErrorText>{actionData?.error}</ErrorText>
           <div className="mt-4 flex gap-2">
-            <Button variant="accent" type="submit" name="decision" value="approve">
+            <SubmitButton variant="accent" name="decision" value="approve" pending="Approving…" disabled={deciding}>
               Approve
-            </Button>
-            <Button variant="quiet" type="submit" name="decision" value="deny">
+            </SubmitButton>
+            <SubmitButton variant="quiet" name="decision" value="deny" pending="Denying…" disabled={deciding}>
               Deny
-            </Button>
+            </SubmitButton>
           </div>
         </div>
       </Form>

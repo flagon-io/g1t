@@ -6,12 +6,12 @@ import type { Route } from "./+types/tokens";
 import { page } from "../../lib/meta";
 import { useAddresses } from "../../lib/addresses";
 import {
-  Button,
   CopyLine,
   EmptyState,
   ErrorText,
   Field,
   Input,
+  SubmitButton,
   TimeAgo,
 } from "../../components/ui";
 import { AccessSummary, ExpiryField, ScopeChecklist } from "../../components/token-scopes";
@@ -135,9 +135,9 @@ export default function WorkspaceTokens({ loaderData, actionData }: Route.Compon
                     <Form method="post">
                       <input type="hidden" name="action" value="delete" />
                       <input type="hidden" name="id" value={token.id} />
-                      <Button variant="quiet" type="submit">
+                      <SubmitButton variant="quiet" match={{ action: "delete", id: token.id }} pending="Deleting…">
                         Delete
-                      </Button>
+                      </SubmitButton>
                     </Form>
                   )}
                 </li>
@@ -147,7 +147,9 @@ export default function WorkspaceTokens({ loaderData, actionData }: Route.Compon
         </div>
 
         {role === "owner" ? (
-          <Form method="post" className="mt-6 space-y-5 rounded-xl border border-line p-4 sm:p-5">
+          // Empty again once the token is made; kept as filled in when it failed.
+          <Form method="post" key={created?.info.id ?? ""} className="mt-6 space-y-5 rounded-xl border border-line p-4 sm:p-5">
+            <input type="hidden" name="action" value="create" />
             <h2 className="font-medium">New token</h2>
             <div className="grid gap-4 sm:grid-cols-[1fr_11rem]">
               <Field label="Name" hint="Name it after what will use it.">
@@ -156,7 +158,9 @@ export default function WorkspaceTokens({ loaderData, actionData }: Route.Compon
               <ExpiryField />
             </div>
             <ScopeChecklist initial={presetScopes("ci")} />
-            <Button type="submit">Create token</Button>
+            <SubmitButton match={{ action: "create" }} pending="Creating…">
+              Create token
+            </SubmitButton>
           </Form>
         ) : (
           <p className="mt-4 text-sm text-muted">

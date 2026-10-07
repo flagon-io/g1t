@@ -229,15 +229,17 @@ impl Packages {
         })
     }
 
-    /// What billing allows the workspace, kept for five minutes. `None`
-    /// when billing cannot be asked: the push is then let through.
-    async fn allowance(&self, workspace: &str) -> Option<quota::Allowance> {
+    /// What billing allows the workspace, kept for five minutes unless
+    /// `fresh`, and whether it is the kept answer. `None` when billing
+    /// cannot be asked: the push is then let through.
+    async fn allowance(&self, workspace: &str, fresh: bool) -> Option<(quota::Allowance, bool)> {
         let now = now_ms();
         let kept = ALLOWANCES.with(|kept| kept.borrow().get(workspace).copied());
         if let Some((allowance, at)) = kept
+            && !fresh
             && now.saturating_sub(at) < ALLOWANCE_TTL_MS
         {
-            return Some(allowance);
+            return Some((allowance, true));
         }
         let billing = self.env.service("BILLING").ok()?;
         let asked: Result<quota::Allowance> = g1t_kit::call(
@@ -249,7 +251,7 @@ impl Packages {
         match asked {
             Ok(allowance) => {
                 ALLOWANCES.with(|kept| kept.borrow_mut().insert(workspace.to_owned(), (allowance, now)));
-                Some(allowance)
+                Some((allowance, false))
             }
             Err(error) => {
                 worker::console_error!("packages: billing could not be asked about {workspace}, letting the push through: {error}");
@@ -276,15 +278,23 @@ impl Packages {
         if adding == 0 {
             return Ok(None);
         }
-        let Some(allowance) = self.allowance(&package.workspace).await else {
+        let Some((allowance, kept)) = self.allowance(&package.workspace, false).await else {
             return Ok(None);
         };
         let (public_bytes, private_bytes) = self.db.storage(&package.workspace).await?;
         let public = package.public();
         let used = if public { public_bytes } else { private_bytes };
-        Ok(quota::decide(&allowance, public, used, adding)
-            .err()
-            .map(|refusal| quota::message(&package.workspace, &refusal)))
+        let mut refused = quota::decide(&allowance, public, used, adding).err();
+        // A refusal from the kept answer is checked with billing again: the
+        // workspace may have just added a plan, and must not wait minutes
+        // for the push to go through.
+        if refused.is_some() && kept {
+            refused = match self.allowance(&package.workspace, true).await {
+                Some((allowance, _)) => quota::decide(&allowance, public, used, adding).err(),
+                None => None,
+            };
+        }
+        Ok(refused.map(|refusal| quota::message(&package.workspace, &refusal)))
     }
 
     fn count_download(&self, package_id: &str, ctx: &Context) {

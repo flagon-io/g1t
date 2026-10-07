@@ -3,7 +3,7 @@ import { Form } from "react-router";
 
 import type { Route } from "./+types/device";
 import { page } from "../lib/meta";
-import { Button, ErrorText, Field, Input } from "../components/ui";
+import { Button, ErrorText, Field, Input, SubmitButton, usePending } from "../components/ui";
 import { identity } from "../lib/services.server";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
 
@@ -39,6 +39,8 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 export default function Device({ loaderData, actionData }: Route.ComponentProps) {
   const { user, code, pending } = loaderData;
+  // Either answer turns both buttons off until it is in.
+  const deciding = usePending();
 
   if (actionData && "done" in actionData) {
     const approved = actionData.done === "approved";
@@ -86,13 +88,13 @@ export default function Device({ loaderData, actionData }: Route.ComponentProps)
           <Form method="post" className="mt-6 flex gap-3">
             <input type="hidden" name="code" value={pending.userCode} />
             <div className="grow *:w-full">
-              <Button variant="accent" type="submit" name="decision" value="approve">
+              <SubmitButton variant="accent" name="decision" value="approve" pending="Approving…" disabled={deciding}>
                 Approve
-              </Button>
+              </SubmitButton>
             </div>
-            <Button variant="quiet" type="submit" name="decision" value="deny">
+            <SubmitButton variant="quiet" name="decision" value="deny" pending="Denying…" disabled={deciding}>
               Deny
-            </Button>
+            </SubmitButton>
           </Form>
         </>
       ) : (

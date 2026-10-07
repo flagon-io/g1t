@@ -6,7 +6,7 @@ import { page } from "../../lib/meta";
 import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { Combobox } from "../../components/ui/combobox";
 import {
-  Button,
+  SubmitButton,
   CopyLine,
   EmptyState,
   ErrorText,
@@ -120,7 +120,7 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
         <Input name="issue" type="number" min={1} defaultValue={issue} placeholder="12" />
       </Field>
       <ErrorText>{actionData?.error}</ErrorText>
-      <Button type="submit">Open pull request</Button>
+      <SubmitButton pending="Opening…">Open pull request</SubmitButton>
     </Form>
   );
 }

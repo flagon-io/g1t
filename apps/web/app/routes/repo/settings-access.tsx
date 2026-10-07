@@ -1,6 +1,6 @@
 import { Mail, UserPlus } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Form, Link, useFetcher, useNavigation } from "react-router";
+import { Form, Link, useFetcher } from "react-router";
 
 import {
   BASE_PERMISSION_LABELS,
@@ -16,7 +16,7 @@ import type { Route } from "./+types/settings-access";
 import { RoleSelect, RolesTable } from "../../components/access";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { SettingsSection as Section } from "../../components/settings-section";
-import { Avatar, Button, ErrorText, Field, Input } from "../../components/ui";
+import { Avatar, Button, ErrorText, Field, Input, SubmitButton } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import {
   AlertDialog,
@@ -214,8 +214,6 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
 function AddForm({ result }: { result: Outcome | undefined }) {
   const [role, setRole] = useState<RepoRole>("write");
   const [key, setKey] = useState(0);
-  const navigation = useNavigation();
-  const adding = navigation.state !== "idle" && navigation.formData?.get("intent") === "add";
   // Cleared once someone was added, ready for the next.
   useEffect(() => {
     if (result?.ok) setKey((k) => k + 1);
@@ -231,10 +229,10 @@ function AddForm({ result }: { result: Outcome | undefined }) {
           <span className="mb-1.5 block text-sm font-medium text-muted">Role</span>
           <RoleSelect name="role" label="Role" value={role} onValueChange={(value) => setRole(value as RepoRole)} />
         </div>
-        <Button type="submit" disabled={adding}>
+        <SubmitButton match={{ intent: "add" }} pending="Adding…">
           <UserPlus size={15} />
-          {adding ? "Adding…" : "Add"}
-        </Button>
+          Add
+        </SubmitButton>
       </div>
       <p className="text-xs text-faint">{REPO_ROLE_LABELS[role]}: {roleLine(role)}</p>
       {result &&
@@ -356,9 +354,9 @@ function RemoveButton({ person, full, outside }: { person: Collaborator; full: s
           {fetcher.data && !fetcher.data.ok && <ErrorText>{fetcher.data.error}</ErrorText>}
           <AlertDialogFooter>
             <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-            <Button type="submit" variant="danger" disabled={fetcher.state !== "idle"}>
-              {fetcher.state !== "idle" ? "Removing…" : "Remove"}
-            </Button>
+            <SubmitButton variant="danger" fetcher={fetcher} pending="Removing…">
+              Remove
+            </SubmitButton>
           </AlertDialogFooter>
         </fetcher.Form>
       </AlertDialogContent>
@@ -396,9 +394,9 @@ function InvitationRow({ invitation }: { invitation: RepoInvitation }) {
       <fetcher.Form method="post" className="shrink-0">
         <input type="hidden" name="intent" value="revoke" />
         <input type="hidden" name="id" value={invitation.id} />
-        <Button type="submit" variant="quiet" disabled={fetcher.state !== "idle"}>
-          {fetcher.state !== "idle" ? "Revoking…" : "Revoke"}
-        </Button>
+        <SubmitButton variant="quiet" fetcher={fetcher} pending="Revoking…">
+          Revoke
+        </SubmitButton>
       </fetcher.Form>
     </li>
   );

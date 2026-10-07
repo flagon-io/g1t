@@ -1,13 +1,13 @@
 import { Box, Code2, GitBranch, Rocket } from "lucide-react";
 import { useState } from "react";
-import { Form, Link, useNavigation } from "react-router";
+import { Form, Link } from "react-router";
 
 import type { DeploysSetting } from "@g1t/contracts";
 
 import type { Route } from "./+types/settings";
 import { page } from "../../lib/meta";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
-import { Button, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
+import { ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
 import { RadioGroup, RadioOption } from "../../components/ui/radio-group";
 import { DEPLOYS_CHOICES } from "../../lib/project-kind";
 import { deployments, identity, projects } from "../../lib/services.server";
@@ -58,13 +58,15 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
   const [deploys, setDeploys] = useState<DeploysSetting>(project.deploys);
   // Not deploying while Deployments are on is refused: they are turned off first.
   const blocked = deploys === "no" && project.deploys !== "no" && deploymentsOn === true;
-  const saving = useNavigation().state === "submitting";
   const base = `/${params.owner}/${params.repo}`;
   const source = project.source.kind === "hosted" ? project.source : null;
   return (
     <div className="max-w-4xl">
       <RepoSettingsHeading base={base} />
       <Form method="post" className="space-y-8">
+        {/* Enter in a field saves: the form's first submit button is the one
+            Enter presses, and otherwise it would be the description reset. */}
+        <button type="submit" name="intent" value="save" tabIndex={-1} aria-hidden="true" className="absolute size-0 overflow-hidden opacity-0" />
         <section className="space-y-4">
           <h2 className="flex items-center gap-2 text-sm font-medium">
             <Box size={15} className="text-accent" />
@@ -92,15 +94,14 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
                 />
               </Field>
               {!project.descriptionInherited && (
-                <button
-                  type="submit"
+                <SubmitButton
                   name="inherit"
                   value="description"
-                  disabled={saving}
-                  className="mt-1.5 text-xs text-muted hover:text-fg disabled:opacity-50"
+                  pending="Resetting…"
+                  className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-muted hover:text-fg disabled:opacity-50"
                 >
                   Use the repository's description
-                </button>
+                </SubmitButton>
               )}
             </div>
           </div>
@@ -185,9 +186,9 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
         </section>
 
         <div className="flex items-center gap-3">
-          <Button type="submit" disabled={saving || blocked}>
+          <SubmitButton name="intent" value="save" pending="Saving…" disabled={blocked}>
             Save
-          </Button>
+          </SubmitButton>
           {actionData && "saved" in actionData && <span className="text-sm text-accent">Saved.</span>}
           <span className="ml-auto text-xs text-faint">
             Created{" "}

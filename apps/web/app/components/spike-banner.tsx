@@ -4,7 +4,7 @@ import { Form } from "react-router";
 import type { Entitlements } from "@g1t/contracts";
 
 import { dollars } from "../lib/billing";
-import { Button } from "./ui";
+import { SubmitButton } from "./ui";
 
 /**
  * Compute paused by a spend spike, with the owners' choice: keep going for
@@ -44,14 +44,14 @@ export function SpikeBanner({
       {spike && owner ? (
         <Form method="post" action={`/${slug}/-/billing`} className={compact ? "flex gap-2" : "mt-4 flex flex-wrap gap-2"}>
           <input type="hidden" name="intent" value="spike" />
-          <Button variant="accent" type="submit" name="decision" value="keep">
+          <SubmitButton variant="accent" name="decision" value="keep" match={{ intent: "spike" }} pending="Starting…">
             <Play size={14} />
             Keep going
-          </Button>
-          <Button variant="quiet" type="submit" name="decision" value="stop">
+          </SubmitButton>
+          <SubmitButton variant="quiet" name="decision" value="stop" match={{ intent: "spike" }} pending="Stopping…">
             <OctagonX size={14} />
             Stop
-          </Button>
+          </SubmitButton>
         </Form>
       ) : spike ? (
         <p className={compact ? "text-xs text-muted" : "mt-3 text-sm text-muted"}>An owner chooses Keep going or Stop on Billing.</p>

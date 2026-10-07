@@ -8,7 +8,7 @@ import { repoAt } from "../lib/markdown-plugins";
 import { Markdown } from "./markdown";
 import { IssueIcon, PullIcon } from "./work-icons";
 import { MentionTextarea } from "./mention-textarea";
-import { Avatar, Button, TimeAgo } from "./ui";
+import { Avatar, SubmitButton, TimeAgo } from "./ui";
 import { CheckboxOption } from "./ui/checkbox";
 
 export { IssueIcon, PullIcon };
@@ -412,17 +412,26 @@ export function CommentForm({
           }
         />
         <div className="flex flex-wrap gap-2">
-          <Button type="submit">Comment</Button>
+          {/* A plain comment's verdict is none the action knows, so each button tells its own post apart. */}
+          <SubmitButton name="verdict" value="comment" match={{ action: "comment" }} pending="Commenting…">
+            Comment
+          </SubmitButton>
           {review?.canJudge && (
             <>
-              <Button variant="quiet" type="submit" name="verdict" value="approve">
+              <SubmitButton variant="quiet" name="verdict" value="approve" match={{ action: "comment" }} pending="Approving…">
                 <CircleCheck size={14} className="text-accent" />
                 Approve
-              </Button>
-              <Button variant="quiet" type="submit" name="verdict" value="request_changes">
+              </SubmitButton>
+              <SubmitButton
+                variant="quiet"
+                name="verdict"
+                value="request_changes"
+                match={{ action: "comment" }}
+                pending="Requesting changes…"
+              >
                 <CircleSlash size={14} className="text-danger" />
                 Request changes
-              </Button>
+              </SubmitButton>
             </>
           )}
         </div>

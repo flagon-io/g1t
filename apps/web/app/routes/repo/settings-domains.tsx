@@ -1,13 +1,13 @@
-import { CheckCircle2, Globe, Info, RotateCw, Trash2 } from "lucide-react";
+import { CheckCircle2, Globe, Info, LoaderCircle, RotateCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Form, Link, useNavigation } from "react-router";
+import { Form, Link } from "react-router";
 
 import type { Domain, DomainRecord, DomainStatus } from "@g1t/contracts";
 
 import type { Route } from "./+types/settings-domains";
 import { page } from "../../lib/meta";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
-import { Button, CopyLine, EmptyState, ErrorText, Field, Input } from "../../components/ui";
+import { Button, CopyLine, EmptyState, ErrorText, Field, Input, SubmitButton, usePending } from "../../components/ui";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -97,7 +97,6 @@ function twinOf(input: string): string | null {
 
 export default function DomainSettings({ loaderData, actionData, params }: Route.ComponentProps) {
   const { settings, domains, target, available, notice, monthlyMicros, used } = loaderData;
-  const busy = useNavigation().state === "submitting";
   const base = `/${params.owner}/${params.repo}`;
   const [hostname, setHostname] = useState("");
   const twin = twinOf(hostname);
@@ -171,9 +170,9 @@ export default function DomainSettings({ loaderData, actionData, params }: Route
             </Field>
           </div>
           <div className="sm:mb-6">
-            <Button type="submit" variant="accent" disabled={busy || !hostname.trim()}>
+            <SubmitButton variant="accent" match={{ intent: "add" }} pending="Adding…" disabled={!hostname.trim()}>
               Add domain
-            </Button>
+            </SubmitButton>
           </div>
         </div>
         <CheckboxOption
@@ -199,7 +198,6 @@ export default function DomainSettings({ loaderData, actionData, params }: Route
               key={domain.id}
               domain={domain}
               redirects={domains.filter((d) => d.redirectTo === domain.hostname)}
-              busy={busy}
             />
           ))
         )}
@@ -208,20 +206,20 @@ export default function DomainSettings({ loaderData, actionData, params }: Route
   );
 }
 
-function DomainCard({ domain, redirects, busy }: { domain: Domain; redirects: Domain[]; busy: boolean }) {
+function DomainCard({ domain, redirects }: { domain: Domain; redirects: Domain[] }) {
   return (
     <section className="overflow-hidden rounded-xl border border-line bg-surface">
-      <DomainRow domain={domain} busy={busy} />
+      <DomainRow domain={domain} />
       {redirects.map((other) => (
         <div key={other.id} className="border-t border-line">
-          <DomainRow domain={other} busy={busy} />
+          <DomainRow domain={other} />
         </div>
       ))}
     </section>
   );
 }
 
-function DomainRow({ domain, busy }: { domain: Domain; busy: boolean }) {
+function DomainRow({ domain }: { domain: Domain }) {
   const active = domain.status === "active";
   return (
     <div className="p-5">
@@ -240,13 +238,18 @@ function DomainRow({ domain, busy }: { domain: Domain; busy: boolean }) {
             <Form method="post">
               <input type="hidden" name="intent" value="refresh" />
               <input type="hidden" name="id" value={domain.id} />
-              <Button type="submit" variant="quiet" disabled={busy} title="Ask Cloudflare to check the records again now">
+              <SubmitButton
+                variant="quiet"
+                match={{ intent: "refresh", id: domain.id }}
+                pending="Checking…"
+                title="Ask Cloudflare to check the records again now"
+              >
                 <RotateCw size={14} />
                 Check now
-              </Button>
+              </SubmitButton>
             </Form>
           )}
-          <RemoveDomain domain={domain} busy={busy} />
+          <RemoveDomain domain={domain} />
         </span>
       </div>
       {domain.error && !active && <p className="mt-2 text-sm text-muted">{domain.error}</p>}
@@ -307,13 +310,15 @@ function RecordRow({ record }: { record: DomainRecord }) {
   );
 }
 
-function RemoveDomain({ domain, busy }: { domain: Domain; busy: boolean }) {
+function RemoveDomain({ domain }: { domain: Domain }) {
+  // The dialog closes as it posts, so the row's own button says it is going.
+  const removing = usePending({ intent: "remove", id: domain.id });
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button type="button" variant="quiet" disabled={busy} aria-label={`Remove ${domain.hostname}`}>
-          <Trash2 size={14} />
-          Remove
+        <Button type="button" variant="quiet" disabled={removing} aria-label={`Remove ${domain.hostname}`}>
+          {removing ? <LoaderCircle size={14} className="animate-spin" aria-hidden="true" /> : <Trash2 size={14} />}
+          {removing ? "Removing…" : "Remove"}
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>

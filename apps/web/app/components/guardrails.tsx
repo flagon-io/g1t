@@ -18,7 +18,7 @@ import {
 
 import { formatCap, tri, workflowDomainLine } from "../lib/guardrails";
 import { formatCost } from "./agents";
-import { Button, ErrorText, Input, TimeAgo } from "./ui";
+import { ErrorText, Input, SubmitButton, TimeAgo } from "./ui";
 import { CheckboxOption } from "./ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Textarea } from "./ui/textarea";
@@ -97,7 +97,8 @@ export function GuardrailsForm({
   view: GuardrailsView;
   level: "workspace" | "project";
   editable: boolean;
-  saving: boolean;
+  /** Working for a reason the Save button cannot see; it follows its own submission by itself. */
+  saving?: boolean;
   saved: boolean;
   error: string | null | undefined;
 }) {
@@ -111,7 +112,8 @@ export function GuardrailsForm({
   const inheritedDeny = level === "project" ? view.inherited.deny : [];
   const inheritedWorkflowDomains = level === "project" ? (view.inherited.workflowDomains ?? []) : [];
   return (
-    <Form method="post" className="max-w-4xl space-y-8">
+    // Keyed to the last change, so after a save the fields show what was kept, as it was tidied.
+    <Form key={own.updatedAt ?? "unset"} method="post" className="max-w-4xl space-y-8">
       <fieldset disabled={!editable} className="min-w-0 space-y-8">
         <Section
           title="Network"
@@ -310,9 +312,9 @@ export function GuardrailsForm({
 
       {editable ? (
         <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-4 border-t border-line bg-bg/90 px-4 py-4 backdrop-blur">
-          <Button type="submit" disabled={saving}>
-            {saving ? "Saving…" : "Save guardrails"}
-          </Button>
+          <SubmitButton pending="Saving…" busy={saving}>
+            Save guardrails
+          </SubmitButton>
           {saved && <span className="text-sm text-muted">Saved. Runs that start from now on get these.</span>}
           <ErrorText>{error}</ErrorText>
           {own.updatedBy && own.updatedAt && !saved && !error && (

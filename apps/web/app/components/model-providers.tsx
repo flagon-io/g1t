@@ -9,7 +9,7 @@ import { Form, Link } from "react-router";
 
 import { type Connection, MODEL_TASKS, type ModelRoute, type ModelTask, type Provider, PROVIDERS } from "@g1t/contracts";
 
-import { Button, Field, Input } from "./ui";
+import { Field, Input, SubmitButton } from "./ui";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "./ui/select";
 
 type Group = "labs" | "platforms" | "any";
@@ -361,7 +361,6 @@ export function Routing({
   hostedOpen,
   marginPercent,
   owner,
-  busy,
   saved,
 }: {
   connections: Connection[];
@@ -369,7 +368,6 @@ export function Routing({
   hostedOpen: boolean;
   marginPercent: number;
   owner: boolean;
-  busy: boolean;
   saved: boolean;
 }) {
   const fallback: Choice = hostedOpen || connections.length === 0 ? { target: "g1t", model: "" } : { target: connections[0].id, model: "" };
@@ -477,9 +475,9 @@ export function Routing({
       </ul>
       {owner && (
         <div className="flex items-center gap-3 border-t border-line px-4 py-3">
-          <Button type="submit" variant="quiet" disabled={busy}>
+          <SubmitButton variant="quiet" match={{ intent: "routes" }} pending="Saving…">
             Save routing
-          </Button>
+          </SubmitButton>
           {saved && <span className="text-sm text-accent">Saved. The next runs use it.</span>}
         </div>
       )}

@@ -11,7 +11,7 @@ import { SettingsSection as Section } from "../../components/settings-section";
 import type { Route } from "./+types/settings-repository";
 import { page } from "../../lib/meta";
 import { confirmsName, tidyName } from "../../lib/repo-lifecycle";
-import { Button, ErrorText, Field, Input } from "../../components/ui";
+import { Button, ErrorText, Field, Input, SubmitButton } from "../../components/ui";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import {
   AlertDialog,
@@ -157,7 +157,8 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
         </Section>
 
         <Section title="Details" about="What the repository is, for its page, search and Explore.">
-          <Form method="post">
+          {/* Keyed to what is saved, so the fields show the topics as the service tidied them. */}
+          <Form method="post" key={`${repo.description ?? ""}|${repo.website ?? ""}|${(repo.topics ?? []).join(",")}`}>
             <fieldset disabled={archived} className="min-w-0 space-y-3 disabled:cursor-not-allowed disabled:opacity-60">
               <input type="hidden" name="intent" value="details" />
               <Field label="Description">
@@ -173,9 +174,9 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
                 <Input name="topics" maxLength={800} defaultValue={(repo.topics ?? []).join(", ")} placeholder="cli, rust" />
               </Field>
               <div className="flex flex-wrap items-center gap-4 pt-1">
-                <Button type="submit" disabled={posting("details")}>
-                  {posting("details") ? "Saving…" : "Save"}
-                </Button>
+                <SubmitButton match={{ intent: "details" }} pending="Saving…">
+                  Save
+                </SubmitButton>
                 <Status intent="details" data={actionData} />
               </div>
             </fieldset>
@@ -187,7 +188,9 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
           about="The branch everything lands on, and renaming branches."
         >
           <DefaultBranchForm repo={repo} branches={branches} archived={archived || !owner} busy={posting("default-branch")} result={actionData} />
+          {/* Keyed to the branches, so after a rename it starts over on the branches there are now. */}
           <RenameBranchForm
+            key={branches.join(" ")}
             repo={repo}
             branches={branches}
             owner={owner}

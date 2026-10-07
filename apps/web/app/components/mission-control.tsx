@@ -33,7 +33,7 @@ import type { ShellData } from "./shell";
 import { useLiveRefresh } from "./agents";
 import { Unavailable } from "./mission";
 import { TokenUsagePanel } from "./token-usage";
-import { Avatar, TimeAgo } from "./ui";
+import { Avatar, SubmitButton, TimeAgo } from "./ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import type { Loaded } from "../routes/home";
 
@@ -117,22 +117,23 @@ function Facts({ facts }: { facts: Fact[] }) {
   );
 }
 
-/** A form that acts on a pull request from here, saying so before the page catches up. */
+/**
+ * A form that acts on a pull request from here: working until the action
+ * has answered and the page has reloaded what it changed, then done, or
+ * the error beside it.
+ */
 function QuickForm({ quick, variant = "quiet" }: { quick: QuickAction; variant?: "quiet" | "accent" }) {
   const fetcher = useFetcher<{ error?: string } | null>();
   const [sent, setSent] = useState(false);
-  const busy = fetcher.state !== "idle";
-  // Shown as done the moment it is sent, and undone if it fails: the page
-  // reloads behind it, which takes longer than the action.
-  const done = sent && (busy || !fetcher.data?.error);
+  const done = sent && fetcher.state === "idle" && !fetcher.data?.error;
   return (
     <fetcher.Form method="post" action={quick.to} onSubmit={() => setSent(true)} className="contents">
       {Object.entries(quick.fields).map(([name, value]) => (
         <input key={name} type="hidden" name={name} value={value} />
       ))}
-      <button
-        type="submit"
-        disabled={busy || done}
+      <SubmitButton
+        fetcher={fetcher}
+        disabled={done}
         className={cn(
           "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-default",
           variant === "accent"
@@ -143,7 +144,7 @@ function QuickForm({ quick, variant = "quiet" }: { quick: QuickAction; variant?:
       >
         {done ? <Check size={14} /> : null}
         {done ? quick.done : quick.label}
-      </button>
+      </SubmitButton>
       {fetcher.data?.error && <span className="basis-full text-xs text-danger">{fetcher.data.error}</span>}
     </fetcher.Form>
   );
