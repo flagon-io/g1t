@@ -110,11 +110,22 @@ For each day and bucket:
   what the plan's included usage, a trial, the open-source pool or g1t paid.
   g1t's own (comped) workspaces are valued at cost plus the margin.
 - **Cash** = what workspaces paid: `-amount_micros`, and the plan's price.
+- **Given away** = the part of the cost that went on usage g1t paid for
+  itself on purpose: all of a comped workspace's, all of a free period's,
+  and what the trial and the open-source pool paid. Each workspace's day
+  is split by the share of its value at price that was given (value less
+  cash less the plan's included usage, which the plan's price paid for),
+  and that share of each of its buckets' cost is given, its part of
+  running g1t included. Stored as `given_micros` on `margin_days` and
+  `workspace_costs`.
 - **Month-end meters**: a day's figure is that day's `pending_days`
   snapshot less the day before's, within a month. Their month-end ledger
   entries are left out, so nothing is counted twice.
-- **Product margin** = (value − cost) / value. **Overall margin** =
-  (Σ cash − Σ cost) / Σ cash.
+- **Product margin** = (value − cost) / value. **Margin on what was
+  sold**, sudo's headline and the overall alert = (Σ cash − (Σ cost − Σ
+  given)) / Σ cash. The margin with what was given, (Σ cash − Σ cost) / Σ
+  cash, shows under it. What was given is a budget, watched under g1t's own
+  spend, not a price below cost.
 - **Quantities**: where a mapping names an `own_meter`, Cloudflare's
   billed quantity of those lines (or, without one, Artifacts' operation
   events) against g1t's own count.
@@ -204,7 +215,7 @@ how a day is valued reaches every day sudo shows.
 | Alert | Raised when | First steps |
 | --- | --- | --- |
 | Margin under the floor | A product's value against cost under `margin_floor_percent` (10%) for `alert_days` (3) days running, each with at least `min_daily_cost` | Open the product on Costs & margin. Cost up? Check proposals (approve a rise; it waits out the notice). Value down? A mapping or `revenue_map` may have moved. |
-| All of g1t under the floor | The same for money in against every cost, comped workspaces' share left out (their spend is a budget, watched in budget.rs). While less than $1 a day comes in, it says the dollars, not a percentage | Look at which products moved; check `platform` (it has no revenue of its own and grows with traffic). Before launch, with little paid usage, expect it. |
+| All of g1t under the floor | The same for money in against the cost of what was sold: every cost less what was given away (comped workspaces, free periods, the trial, the pools), which is a budget watched in budget.rs. While less than $1 a day comes in, it says the dollars, not a percentage | Look at which products moved; check `platform` (it has no revenue of its own and grows with traffic). Before launch, with little paid usage, expect it. |
 | Leak | Drift of kind leak | Map the meter, or decide it is overhead. |
 | Drift | Count drift | See Drift above. Cloudflare's definitions change in beta: ask them in writing ([ARTIFACTS.md](ARTIFACTS.md), §7). |
 | Costs more than it pays | A workspace's shared cost over 30 days above what its usage was priced at (`value_micros`, whoever paid: card, trial, gift or included usage) × `anomaly_factor`, at least `anomaly_floor`; not comped workspaces | Shown on Reach out as "Costs more than it pays": its usage is priced below what it costs. Abuse (Abuse & fraud page) or a gap in pricing. Not emailed. A trial or gift paying for usage does not raise it. |

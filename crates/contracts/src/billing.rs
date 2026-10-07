@@ -2386,7 +2386,8 @@ pub struct ProductMargin {
     pub overhead: bool,
 }
 
-/// All of g1t over the range: money in against every cost.
+/// All of g1t over the range: money in against every cost, and against
+/// the cost of what was sold (every cost less what g1t gave away).
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OverallMargin {
@@ -2396,6 +2397,15 @@ pub struct OverallMargin {
     pub cost_micros: i64,
     pub margin_micros: i64,
     pub margin_percent: Option<f64>,
+    /// Of `cost_micros`, what went on usage g1t gave away on purpose:
+    /// comped workspaces, free periods, the trial and the open-source pool.
+    #[serde(default)]
+    pub given_micros: i64,
+    /// Money in against `cost_micros - given_micros`.
+    #[serde(default)]
+    pub sold_margin_micros: i64,
+    #[serde(default)]
+    pub sold_margin_percent: Option<f64>,
 }
 
 /// A count, cost or leak that does not add up.
@@ -2481,6 +2491,9 @@ pub struct WorkspaceCost {
     pub workspace: String,
     pub cost_micros: i64,
     pub revenue_micros: i64,
+    /// Of `cost_micros`, what g1t gave away.
+    #[serde(default)]
+    pub given_micros: i64,
     /// One of g1t's own (comped) workspaces.
     pub internal: bool,
 }

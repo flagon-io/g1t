@@ -76,6 +76,9 @@ pub(crate) struct ProductDay {
     /// says they are the same units.
     pub cf_quantity: f64,
     pub own_quantity: f64,
+    /// Of `cost()`, what went on usage g1t gave away (the workspaces'
+    /// `WorkspaceDay::given`, added up).
+    pub given_micros: i64,
 }
 
 impl ProductDay {
@@ -116,6 +119,10 @@ pub(crate) struct UsageRow {
     pub value: i64,
     pub cash: i64,
     pub cost: i64,
+    /// Of `value`, what g1t gave away: all of it for g1t's own (comped)
+    /// workspaces and in a free period, else what the trial and the pools
+    /// paid. The Team plan's credit was paid for, so it is not given.
+    pub given: i64,
 }
 
 /// One workspace's share of a product's cost on one day.
@@ -129,6 +136,9 @@ pub(crate) struct WorkspaceDay {
     pub revenue: i64,
     /// What its usage was priced at, whoever paid for it.
     pub value: i64,
+    /// Of `cost`, the part g1t gave away: the cost times the share of the
+    /// workspace's usage that day that g1t paid for (see `UsageRow::given`).
+    pub given: i64,
 }
 
 fn micros(dollars: f64) -> i64 {
@@ -206,7 +216,11 @@ pub(crate) fn fold(
     let mut revenue: BTreeMap<(String, String, String), i64> = BTreeMap::new();
     let mut valued: BTreeMap<(String, String, String), i64> = BTreeMap::new();
     let mut active: BTreeMap<String, Vec<(String, f64)>> = BTreeMap::new();
+    let mut gave: BTreeMap<(String, String), (i64, i64)> = BTreeMap::new();
     for u in usage {
+        let g = gave.entry((u.day.clone(), u.workspace.clone())).or_default();
+        g.0 += u.given;
+        g.1 += u.value;
         let bucket = bucket_of(&u.key);
         let key = (u.day.clone(), bucket.clone());
         let row = days.entry(key.clone()).or_insert_with(|| entry(&key.0, &key.1));
@@ -238,17 +252,32 @@ pub(crate) fn fold(
         }
     }
     let keys: BTreeSet<(String, String, String)> = shares.keys().chain(revenue.keys()).cloned().collect();
-    let workspaces = keys
+    let workspaces: Vec<WorkspaceDay> = keys
         .into_iter()
-        .map(|(day, workspace, bucket)| WorkspaceDay {
-            cost: shares.get(&(day.clone(), workspace.clone(), bucket.clone())).copied().unwrap_or(0),
-            revenue: revenue.get(&(day.clone(), workspace.clone(), bucket.clone())).copied().unwrap_or(0),
-            value: valued.get(&(day.clone(), workspace.clone(), bucket.clone())).copied().unwrap_or(0),
-            day,
-            workspace,
-            bucket,
+        .map(|(day, workspace, bucket)| {
+            let cost = shares.get(&(day.clone(), workspace.clone(), bucket.clone())).copied().unwrap_or(0);
+            // The day's share given away applies to every bucket, so a
+            // comped workspace's part of running g1t is given too.
+            let given = match gave.get(&(day.clone(), workspace.clone())) {
+                Some(&(given, value)) if value > 0 => (cost as i128 * given.clamp(0, value) as i128 / value as i128) as i64,
+                _ => 0,
+            };
+            WorkspaceDay {
+                cost,
+                revenue: revenue.get(&(day.clone(), workspace.clone(), bucket.clone())).copied().unwrap_or(0),
+                value: valued.get(&(day.clone(), workspace.clone(), bucket.clone())).copied().unwrap_or(0),
+                given,
+                day,
+                workspace,
+                bucket,
+            }
         })
         .collect();
+    for w in &workspaces {
+        if let Some(row) = days.get_mut(&(w.day.clone(), w.bucket.clone())) {
+            row.given_micros += w.given;
+        }
+    }
     (days.into_values().collect(), workspaces)
 }
 
@@ -269,7 +298,7 @@ pub(crate) fn pending_deltas(snapshots: &[(String, String, String, i64, i64)]) -
         };
         let (cost, charge) = ((cost - before_cost).max(0), (charge - before_charge).max(0));
         if cost > 0 || charge > 0 {
-            out.push(UsageRow { day: day.clone(), workspace: workspace.clone(), key: source.clone(), value: charge, cash: charge, cost });
+            out.push(UsageRow { day: day.clone(), workspace: workspace.clone(), key: source.clone(), value: charge, cash: charge, cost, given: 0 });
         }
         previous = Some(snap);
     }
@@ -566,6 +595,8 @@ struct MarginRow {
     cash_micros: i64,
     cf_quantity: f64,
     own_quantity: f64,
+    #[serde(default)]
+    given_micros: Option<i64>,
 }
 
 impl From<MarginRow> for ProductDay {
@@ -579,6 +610,7 @@ impl From<MarginRow> for ProductDay {
             cash_micros: r.cash_micros,
             cf_quantity: r.cf_quantity,
             own_quantity: r.own_quantity,
+            given_micros: r.given_micros.unwrap_or(0),
         }
     }
 }
@@ -655,6 +687,7 @@ impl Billing {
             own_provider: i64,
             cash: Option<i64>,
             drawn: Option<i64>,
+            credit: Option<i64>,
             cost: Option<i64>,
         }
         let charged_here = crate::storage::CHARGED_HERE.iter().map(|s| format!("'{s}'")).collect::<Vec<_>>().join(", ");
@@ -668,6 +701,7 @@ impl Billing {
                         CASE WHEN billed_to = 'workspace' THEN 1 ELSE 0 END AS own_provider,
                         -SUM(amount_micros) AS cash,
                         SUM(COALESCE(credit_micros, 0) + COALESCE(trial_micros, 0) + COALESCE(oss_micros, 0) + COALESCE(given_micros, 0)) AS drawn,
+                        SUM(COALESCE(credit_micros, 0)) AS credit,
                         SUM(COALESCE(cost_micros, 0)) AS cost
                  FROM ledger
                  WHERE kind = 'usage' AND created_at >= ?1 AND created_at <= ?2 AND COALESCE(task, '') NOT IN ({charged_here})
@@ -678,6 +712,7 @@ impl Billing {
             .all()
             .await?
             .results::<Row>()?;
+        let mut internal = BTreeSet::new();
         let mut out: Vec<UsageRow> = rows
             .into_iter()
             .map(|r| {
@@ -687,7 +722,11 @@ impl Billing {
                 let cash = r.cash.unwrap_or(0);
                 let paid = cash + r.drawn.unwrap_or(0);
                 let value = usage_value(r.internal == 1, cost, paid, self.margin_percent);
-                UsageRow { day: r.day, workspace: r.workspace, key: r.key, value, cash, cost }
+                let given = if r.internal == 1 { value } else { (value - cash - r.credit.unwrap_or(0)).max(0) };
+                if r.internal == 1 {
+                    internal.insert(r.workspace.clone());
+                }
+                UsageRow { day: r.day, workspace: r.workspace, key: r.key, value, cash, cost, given }
             })
             .collect();
         // Month-end sources, from their daily snapshots.
@@ -710,7 +749,12 @@ impl Billing {
             .filter(|s| crate::storage::CHARGED_HERE.contains(&s.source.as_str()) || s.source == "domains")
             .map(|s| (s.day, s.workspace, s.source, s.cost_micros, s.charge_micros))
             .collect::<Vec<_>>();
-        out.extend(pending_deltas(&snaps).into_iter().filter(|u| u.day.as_str() >= since));
+        out.extend(pending_deltas(&snaps).into_iter().filter(|u| u.day.as_str() >= since).map(|mut u| {
+            if internal.contains(&u.workspace) {
+                u.given = u.value;
+            }
+            u
+        }));
         // The plan's price, spread over the 30 days it pays for, so a month's
         // payment does not read as one very good day and 29 bad ones.
         #[derive(Deserialize)]
@@ -732,7 +776,7 @@ impl Billing {
         for p in plans {
             for (day, micros) in spread(&p.day, p.micros.unwrap_or(0), PLAN_DAYS) {
                 if day.as_str() >= since && day.as_str() <= until {
-                    out.push(UsageRow { day, workspace: p.workspace.clone(), key: "plan".into(), value: micros, cash: micros, cost: 0 });
+                    out.push(UsageRow { day, workspace: p.workspace.clone(), key: "plan".into(), value: micros, cash: micros, cost: 0, given: 0 });
                 }
             }
         }
@@ -785,8 +829,8 @@ impl Billing {
                 statements.push(
                     self.db
                         .prepare(
-                            "INSERT OR REPLACE INTO margin_days (day, bucket, cf_cost_micros, own_cost_micros, value_micros, cash_micros, cf_quantity, own_quantity, computed_at)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            "INSERT OR REPLACE INTO margin_days (day, bucket, cf_cost_micros, own_cost_micros, value_micros, cash_micros, cf_quantity, own_quantity, given_micros, computed_at)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         )
                         .bind(&[
                             d.day.as_str().into(),
@@ -797,6 +841,7 @@ impl Billing {
                             (d.cash_micros as f64).into(),
                             d.cf_quantity.into(),
                             d.own_quantity.into(),
+                            (d.given_micros as f64).into(),
                             now.as_str().into(),
                         ])?,
                 );
@@ -808,7 +853,7 @@ impl Billing {
             for w in chunk {
                 statements.push(
                     self.db
-                        .prepare("INSERT OR REPLACE INTO workspace_costs (day, workspace, bucket, cost_micros, revenue_micros, value_micros) VALUES (?, ?, ?, ?, ?, ?)")
+                        .prepare("INSERT OR REPLACE INTO workspace_costs (day, workspace, bucket, cost_micros, revenue_micros, value_micros, given_micros) VALUES (?, ?, ?, ?, ?, ?, ?)")
                         .bind(&[
                             w.day.as_str().into(),
                             w.workspace.as_str().into(),
@@ -816,6 +861,7 @@ impl Billing {
                             (w.cost as f64).into(),
                             (w.revenue as f64).into(),
                             (w.value as f64).into(),
+                            (w.given as f64).into(),
                         ])?,
                 );
             }
@@ -988,8 +1034,11 @@ impl Billing {
         let mut all: BTreeMap<String, (i64, i64)> = BTreeMap::new();
         for d in &days {
             let overall = all.entry(d.day.clone()).or_default();
+            // What g1t gave away (comped workspaces, free periods, the
+            // trial and the pools) is a budget it chose to spend, watched on
+            // its own (budget.rs): not part of whether what is sold pays.
             overall.0 += d.cash_micros;
-            overall.1 += d.cost();
+            overall.1 += (d.cost() - d.given_micros).max(0);
             if !OVERHEAD.contains(&d.bucket.as_str()) && d.bucket != UNMAPPED {
                 by.entry(d.bucket.clone()).or_default().push((d.day.clone(), d.value_micros, d.cost()));
             }
@@ -1004,13 +1053,6 @@ impl Billing {
                     format!("{}: margin under {floor:.0}% for {n} days running, as low as {worst:.1}%.", costs::bucket_title(bucket)),
                     from,
                 ));
-            }
-        }
-        // Comped workspaces' share is a budget g1t chose to spend, watched
-        // on its own (budget.rs): not part of whether what is sold pays.
-        for (day, cost) in self.comped_costs(&since, until).await? {
-            if let Some(overall) = all.get_mut(&day) {
-                overall.1 = (overall.1 - cost).max(0);
             }
         }
         let series: Vec<(String, i64, i64)> = all.into_iter().map(|(day, (revenue, cost))| (day, revenue, cost)).collect();
@@ -1112,28 +1154,6 @@ impl Billing {
 
     /// Workspaces costing g1t more than they pay over 30 days, not g1t's own.
     /// Each day's cost shared out to comped workspaces.
-    async fn comped_costs(&self, since: &str, until: &str) -> Result<Vec<(String, i64)>> {
-        #[derive(Deserialize)]
-        struct Row {
-            day: String,
-            cost: Option<i64>,
-        }
-        Ok(self
-            .db
-            .prepare(format!(
-                "SELECT day, SUM(cost_micros) AS cost FROM workspace_costs
-                 WHERE day >= ?1 AND day <= ?2 AND workspace IN ({}) GROUP BY day",
-                crate::sales::INTERNAL_SQL
-            ))
-            .bind(&[since.into(), until.into()])?
-            .all()
-            .await?
-            .results::<Row>()?
-            .into_iter()
-            .map(|r| (r.day, r.cost.unwrap_or(0)))
-            .collect())
-    }
-
     async fn workspace_anomalies(&self, until: &str, settings: &CostSettings) -> Result<Vec<(String, i64, i64)>> {
         #[derive(Deserialize)]
         struct Row {
@@ -1314,6 +1334,7 @@ impl Billing {
             p.value_micros += d.value_micros;
             p.cost_micros += d.cost();
             overall.cost_micros += d.cost();
+            overall.given_micros += d.given_micros;
             if d.bucket == "platform" {
                 overall.plans_micros += d.cash_micros;
             } else {
@@ -1327,6 +1348,9 @@ impl Billing {
         let revenue = overall.usage_micros + overall.plans_micros;
         overall.margin_micros = revenue - overall.cost_micros;
         overall.margin_percent = margin_percent(revenue, overall.cost_micros);
+        let sold = (overall.cost_micros - overall.given_micros).max(0);
+        overall.sold_margin_micros = revenue - sold;
+        overall.sold_margin_percent = margin_percent(revenue, sold);
         let mut products: Vec<ProductMargin> = products.into_values().collect();
         products.sort_by_key(|p| std::cmp::Reverse(p.cost_micros.max(p.value_micros)));
 
@@ -1364,12 +1388,13 @@ impl Billing {
             workspace: String,
             cost: Option<i64>,
             revenue: Option<i64>,
+            given: Option<i64>,
             internal: i64,
         }
         let top_workspaces = self
             .db
             .prepare(format!(
-                "SELECT workspace, SUM(cost_micros) AS cost, SUM(revenue_micros) AS revenue,
+                "SELECT workspace, SUM(cost_micros) AS cost, SUM(revenue_micros) AS revenue, SUM(given_micros) AS given,
                         CASE WHEN workspace IN ({}) THEN 1 ELSE 0 END AS internal
                  FROM workspace_costs WHERE day >= ?1 AND day <= ?2 GROUP BY workspace ORDER BY cost DESC LIMIT 15",
                 crate::sales::INTERNAL_SQL
@@ -1379,7 +1404,7 @@ impl Billing {
             .await?
             .results::<Top>()?
             .into_iter()
-            .map(|t| WorkspaceCost { workspace: t.workspace, cost_micros: t.cost.unwrap_or(0), revenue_micros: t.revenue.unwrap_or(0), internal: t.internal == 1 })
+            .map(|t| WorkspaceCost { workspace: t.workspace, cost_micros: t.cost.unwrap_or(0), revenue_micros: t.revenue.unwrap_or(0), given_micros: t.given.unwrap_or(0), internal: t.internal == 1 })
             .collect();
 
         #[derive(Deserialize)]
@@ -1534,7 +1559,7 @@ mod tests {
     }
 
     fn usage(day: &str, workspace: &str, key: &str, value: i64, cash: i64, cost: i64) -> UsageRow {
-        UsageRow { day: day.into(), workspace: workspace.into(), key: key.into(), value, cash, cost }
+        UsageRow { day: day.into(), workspace: workspace.into(), key: key.into(), value, cash, cost, given: 0 }
     }
 
     #[test]
@@ -1626,7 +1651,7 @@ mod tests {
     }
 
     fn day(bucket: &str, cf: i64, own: i64, value: i64, cfq: f64, ownq: f64) -> ProductDay {
-        ProductDay { day: "2026-10-15".into(), bucket: bucket.into(), cf_cost_micros: cf, own_cost_micros: own, value_micros: value, cash_micros: value, cf_quantity: cfq, own_quantity: ownq }
+        ProductDay { day: "2026-10-15".into(), bucket: bucket.into(), cf_cost_micros: cf, own_cost_micros: own, value_micros: value, cash_micros: value, cf_quantity: cfq, own_quantity: ownq, given_micros: 0 }
     }
 
     #[test]
@@ -1678,6 +1703,23 @@ mod tests {
         assert_eq!(attribute(10, &[w("a", 3.0), w("b", 1.0), w("a", 0.0)]), vec![("a".into(), 8), ("b".into(), 2)]);
         assert!(attribute(10, &[w("a", 0.0)]).is_empty());
         assert!(attribute(0, &[w("a", 1.0)]).is_empty());
+    }
+
+    #[test]
+    fn what_g1t_gives_away_is_kept_apart_from_what_it_sells() {
+        let map = BTreeMap::new();
+        // A comped workspace (all of it given), one in its trial (half paid
+        // by the trial) and one paying in cash, all on models.
+        let mut comped = usage("2026-10-15", "flagon", "agent", 1_200_000, 0, 1_000_000);
+        comped.given = comped.value;
+        let mut trial = usage("2026-10-15", "acme", "agent", 1_200_000, 600_000, 1_000_000);
+        trial.given = 600_000;
+        let paying = usage("2026-10-15", "beta", "agent", 1_200_000, 1_200_000, 1_000_000);
+        let (days, workspaces) = fold(&[], &map, &[], &[], &[comped, trial, paying]);
+        let models = days.iter().find(|d| d.bucket == "models").unwrap();
+        assert_eq!((models.cost(), models.given_micros), (3_000_000, 1_500_000));
+        let given = |w: &str| workspaces.iter().find(|x| x.workspace == w).unwrap().given;
+        assert_eq!((given("flagon"), given("acme"), given("beta")), (1_000_000, 500_000, 0));
     }
 
     #[test]

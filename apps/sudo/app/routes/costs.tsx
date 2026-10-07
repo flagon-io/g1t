@@ -143,6 +143,12 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
   // Margin under the floor at the top; drift and leaks are in their own table, workspaces on Reach out.
   const banner = report.alerts.filter((a) => a.kind === "overall" || a.kind === "margin");
   const elsewhere = report.alerts.length - banner.length;
+  // What g1t gave away on purpose (comped workspaces, free periods, the
+  // trial, the pools) is a budget, watched under g1t's own spend; the
+  // margin is measured on what was sold. Older reports lack the fields.
+  const given = report.overall.givenMicros ?? 0;
+  const soldMicros = report.overall.soldMarginMicros ?? report.overall.marginMicros;
+  const soldPercent = report.overall.soldMarginPercent !== undefined ? report.overall.soldMarginPercent : report.overall.marginPercent;
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
       <PageHeader
@@ -199,12 +205,16 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
           value={usd(report.overall.usageMicros + report.overall.plansMicros)}
           hint={`${usd(report.overall.usageMicros)} usage, ${usd(report.overall.plansMicros)} plans`}
         />
-        <Stat label="Cloudflare cost" value={usd(report.overall.costMicros)} hint={`${report.since} to ${report.until}`} />
         <Stat
-          label="Margin"
-          value={percentLabel(report.overall.marginPercent)}
-          hint={usd(report.overall.marginMicros)}
-          tone={marginTone(report.overall.marginPercent, floor)}
+          label="Cost"
+          value={usd(report.overall.costMicros)}
+          hint={given > 0 ? `${usd(given)} of it given away` : `${report.since} to ${report.until}`}
+        />
+        <Stat
+          label="Margin on what was sold"
+          value={percentLabel(soldPercent)}
+          hint={given > 0 ? `${usd(soldMicros)}; ${percentLabel(report.overall.marginPercent)} with what was given` : usd(soldMicros)}
+          tone={marginTone(soldPercent, floor)}
         />
         <Stat
           label="Proposals waiting"
@@ -401,6 +411,7 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
                 <tr className="border-b border-line text-left text-xs text-muted">
                   <th className="px-4 py-2 font-medium sm:px-5">Workspace</th>
                   <th className="px-4 py-2 text-right font-medium">Cost to g1t</th>
+                  <th className="px-4 py-2 text-right font-medium">Given away</th>
                   <th className="px-4 py-2 text-right font-medium">Paid</th>
                   <th className="px-4 py-2 text-right font-medium sm:pr-5">Net</th>
                 </tr>
@@ -417,6 +428,7 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
                         {w.internal && <span className="ml-2 text-xs text-faint">g1t's own</span>}
                       </td>
                       <td className="tabular px-4 py-2.5 text-right">{usd(w.costMicros)}</td>
+                      <td className="tabular px-4 py-2.5 text-right text-fg-soft">{usd(w.givenMicros ?? 0)}</td>
                       <td className="tabular px-4 py-2.5 text-right">{usd(w.revenueMicros)}</td>
                       <td className={`tabular px-4 py-2.5 text-right sm:pr-5 ${net < 0 && !w.internal ? "text-danger" : "text-fg-soft"}`}>{usd(net)}</td>
                     </tr>

@@ -1056,7 +1056,18 @@ export type ProductMargin = {
 };
 
 /** All of g1t: money in (usage and the plan) against every cost. */
-export type OverallMargin = { usageMicros: number; plansMicros: number; costMicros: number; marginMicros: number; marginPercent: number | null };
+export type OverallMargin = {
+  usageMicros: number;
+  plansMicros: number;
+  costMicros: number;
+  marginMicros: number;
+  marginPercent: number | null;
+  /** Of costMicros, what went on usage g1t gave away on purpose: comped workspaces, free periods, the trial and the open-source pool. */
+  givenMicros?: number;
+  /** Money in against costMicros - givenMicros. */
+  soldMarginMicros?: number;
+  soldMarginPercent?: number | null;
+};
 
 /** A count, cost or leak that does not add up. */
 export type CostDrift = {
@@ -1117,7 +1128,7 @@ export type PriceVersion = {
   appliedAt: string | null;
 };
 
-export type WorkspaceCost = { workspace: string; costMicros: number; revenueMicros: number; internal: boolean };
+export type WorkspaceCost = { workspace: string; costMicros: number; revenueMicros: number; givenMicros?: number; internal: boolean };
 
 export type CostLineSummary = {
   product: string;
