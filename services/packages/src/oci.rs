@@ -975,9 +975,11 @@ impl Packages {
             ..self.event_of(package)
         };
         self.announce("package.version_deleted", package, event, caller).await;
-        // npm names a version by its number; an image by its digest.
+        // npm and Cargo name a version by its number; an image by its digest.
         let path = if package.ecosystem == "npm" {
             format!("@{}/{}@{}", package.workspace, package.name, version.version)
+        } else if package.ecosystem == "cargo" {
+            format!("{}/{}@{}", package.workspace, package.name, version.version)
         } else {
             format!("{}/{}@{}", package.workspace, package.name, version.digest)
         };

@@ -121,7 +121,16 @@ export default function PackagePage({ loaderData, actionData }: Route.ComponentP
         {commands.registry && <CopyLine prompt text={commands.registry} />}
         {pkg.visibility === "private" && <CopyLine prompt text={commands.login} />}
         <CopyLine prompt text={commands.install} />
-        {commands.registry && pkg.visibility === "private" && (
+        {commands.registry && pkg.visibility === "private" && pkg.ecosystem === "cargo" && (
+          <p className="text-xs text-faint">
+            <code className="font-mono">cargo login</code> asks for an{" "}
+            <Link to="/settings/tokens" className="text-muted hover:text-fg">
+              access token
+            </Link>{" "}
+            with <code className="font-mono">packages:read</code>.
+          </p>
+        )}
+        {commands.registry && pkg.visibility === "private" && pkg.ecosystem !== "cargo" && (
           <p className="text-xs text-faint">
             Put an{" "}
             <Link to="/settings/tokens" className="text-muted hover:text-fg">

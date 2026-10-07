@@ -76,6 +76,7 @@ export default defineConfig({
 						{ label: 'Packages', slug: 'guides/packages' },
 						{ label: 'Container images', slug: 'guides/containers' },
 						{ label: 'npm', slug: 'guides/npm' },
+						{ label: 'Cargo', slug: 'guides/cargo' },
 						{ label: 'Composer', slug: 'guides/composer' },
 						{ label: 'Go modules', slug: 'guides/go' },
 						{ label: 'Secrets and variables', slug: 'guides/secrets-and-variables' },

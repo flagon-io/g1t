@@ -8,6 +8,8 @@
 //! `BlobStore` port (store/), metadata in D1 (db.rs).
 
 mod access;
+mod cargo;
+mod cargo_http;
 mod composer;
 mod composer_http;
 mod db;
@@ -348,6 +350,7 @@ impl Packages {
             address: match p.ecosystem.as_str() {
                 "npm" => format!("{}/-/npm/@{}/{}", self.host, p.workspace, p.name),
                 "composer" => format!("{}/-/composer/{}/{}", self.host, p.workspace, p.name),
+                "cargo" => format!("{}/-/cargo/{}/{}", self.host, p.workspace, p.name),
                 _ => format!("{}/{}/{}", self.host, p.workspace, p.name),
             },
             visibility: Visibility::parse(&p.visibility),
@@ -358,7 +361,7 @@ impl Packages {
             }),
             description: p.description.clone(),
             versions: row.version_count,
-            latest: row.latest_tag.clone().or_else(|| row.latest_version.as_deref().and_then(db::newest_version)),
+            latest: db::latest_shown(row),
             size: row.bytes,
             downloads: p.downloads,
             created_at: p.created_at.clone(),
@@ -377,6 +380,7 @@ impl Packages {
             version_count: 0,
             bytes: 0,
             latest_tag: None,
+            latest_tag_version: None,
             latest_version: None,
         }))
     }
@@ -429,7 +433,13 @@ impl Packages {
                     subject: version.subject,
                     published_by: version.published_by,
                     published_at: version.published_at,
-                    deprecated: version.deprecated,
+                    // A yanked crate version reads as deprecated: still
+                    // there for lockfiles, no longer picked for new ones.
+                    deprecated: if version.yanked != 0 {
+                        Some("Yanked: Cargo no longer picks this version for new lockfiles.".to_owned())
+                    } else {
+                        version.deprecated
+                    },
                 }
             })
             .collect();
@@ -668,6 +678,9 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         }
         if request.path().starts_with("/-/composer/") {
             return packages.composer(request, &ctx).await;
+        }
+        if request.path().starts_with("/-/cargo/") {
+            return packages.cargo(request, &ctx).await;
         }
         return packages.registry(request, &ctx).await;
     };

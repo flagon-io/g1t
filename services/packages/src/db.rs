@@ -62,6 +62,10 @@ pub struct ListedRow {
     pub version_count: u32,
     pub bytes: u64,
     pub latest_tag: Option<String>,
+    /// The version `latest_tag` points to: what an npm listing shows,
+    /// since its tags name versions rather than being what is installed.
+    #[serde(default)]
+    pub latest_tag_version: Option<String>,
     /// Every version, newest published first, one per line: the summary
     /// picks the highest of them (see `newest_version`).
     pub latest_version: Option<String>,
@@ -91,9 +95,55 @@ pub fn newest_version(versions: &str) -> Option<String> {
         .or_else(|| list.first().map(|v| (*v).to_owned()))
 }
 
+/// What a listing shows as a package's latest. An image's tag is what is
+/// pulled, so it is shown as is; npm's dist-tags (`latest`) name versions,
+/// so the version the tag points to is shown, as for every other registry.
+/// Without a tag, the highest version (see `newest_version`).
+pub fn latest_shown(row: &ListedRow) -> Option<String> {
+    let tagged = if row.package.ecosystem == "container" { &row.latest_tag } else { &row.latest_tag_version };
+    tagged.clone().or_else(|| row.latest_version.as_deref().and_then(newest_version))
+}
+
 #[cfg(test)]
 mod newest_tests {
-    use super::newest_version;
+    use super::{ListedRow, PackageRow, latest_shown, newest_version};
+
+    fn listed(ecosystem: &str, tag: Option<&str>, tag_version: Option<&str>, versions: &str) -> ListedRow {
+        ListedRow {
+            package: PackageRow {
+                id: "pkg_1".into(),
+                workspace: "acme".into(),
+                ecosystem: ecosystem.into(),
+                name: "web".into(),
+                repo_id: None,
+                repo_name: None,
+                visibility: "private".into(),
+                description: None,
+                created_by: "usr_1".into(),
+                created_at: "2026-10-06T00:00:00.000Z".into(),
+                updated_at: "2026-10-06T00:00:00.000Z".into(),
+                downloads: 0,
+                workspace_deleted_at: None,
+            },
+            version_count: 2,
+            bytes: 0,
+            latest_tag: tag.map(str::to_owned),
+            latest_tag_version: tag_version.map(str::to_owned),
+            latest_version: Some(versions.to_owned()),
+        }
+    }
+
+    #[test]
+    fn npm_shows_the_version_its_tag_points_to_and_an_image_its_tag() {
+        let npm = listed("npm", Some("latest"), Some("1.2.0"), "2.0.0-beta.1\n1.2.0\n1.0.0");
+        assert_eq!(latest_shown(&npm).as_deref(), Some("1.2.0"), "the version, not the word latest");
+        let image = listed("container", Some("latest"), Some("sha256:abc"), "sha256:abc");
+        assert_eq!(latest_shown(&image).as_deref(), Some("latest"), "an image is pulled by its tag");
+        let cargo = listed("cargo", None, None, "0.9.0\n1.1.0\n1.0.0");
+        assert_eq!(latest_shown(&cargo).as_deref(), Some("1.1.0"), "no tags: the highest version");
+        let untagged = listed("container", None, None, "sha256:abc");
+        assert_eq!(latest_shown(&untagged).as_deref(), Some("sha256:abc"));
+    }
 
     #[test]
     fn the_latest_is_the_highest_stable_version_not_the_last_published() {
@@ -135,6 +185,15 @@ pub struct VersionRow {
     /// npm's deprecation message, when the version is deprecated.
     #[serde(default)]
     pub deprecated: Option<String>,
+    /// Cargo: 1 when the version is yanked.
+    #[serde(default)]
+    pub yanked: u32,
+}
+
+impl VersionRow {
+    pub fn is_yanked(&self) -> bool {
+        self.yanked != 0
+    }
 }
 
 impl VersionRow {
@@ -206,7 +265,7 @@ const PACKAGE_COLUMNS: &str =
     "id, workspace, ecosystem, name, repo_id, repo_name, visibility, description, created_by, created_at, updated_at, downloads, workspace_deleted_at";
 /// Workspaces that are deleted, waiting to be purged or restored.
 const DELETED_WORKSPACES: &str = "SELECT workspace FROM packages WHERE workspace_deleted_at IS NOT NULL";
-const VERSION_COLUMNS: &str = "id, package_id, version, digest, size, metadata, subject, published_by, published_at, deprecated";
+const VERSION_COLUMNS: &str = "id, package_id, version, digest, size, metadata, subject, published_by, published_at, deprecated, yanked";
 
 pub struct Db {
     pub db: D1Database,
@@ -224,6 +283,49 @@ impl Db {
         )?
         .first(None)
         .await
+    }
+
+    /// A package by its name in any case: Cargo's names are one name
+    /// whatever their case (`Inflector` is `inflector`).
+    pub async fn package_any_case(&self, workspace: &str, ecosystem: &str, name: &str) -> Result<Option<PackageRow>> {
+        self.prepare(
+            &format!("SELECT {PACKAGE_COLUMNS} FROM packages WHERE workspace = ? AND ecosystem = ? AND name = ? COLLATE NOCASE LIMIT 1"),
+            &[text(workspace), text(ecosystem), text(name)],
+        )?
+        .first(None)
+        .await
+    }
+
+    /// The package a new crate's name would clash with: one named the same
+    /// apart from case and `-` against `_`, as crates.io decides.
+    pub async fn package_folded(&self, workspace: &str, ecosystem: &str, folded: &str) -> Result<Option<PackageRow>> {
+        self.prepare(
+            &format!(
+                "SELECT {PACKAGE_COLUMNS} FROM packages WHERE workspace = ? AND ecosystem = ? AND replace(lower(name), '_', '-') = ? LIMIT 1"
+            ),
+            &[text(workspace), text(ecosystem), text(folded)],
+        )?
+        .first(None)
+        .await
+    }
+
+    /// Whether the workspace has a private package of the ecosystem.
+    pub async fn has_private(&self, workspace: &str, ecosystem: &str) -> Result<bool> {
+        let row: Option<serde_json::Value> = self
+            .prepare(
+                "SELECT 1 AS private FROM packages WHERE workspace = ? AND ecosystem = ? AND visibility = 'private' AND workspace_deleted_at IS NULL LIMIT 1",
+                &[text(workspace), text(ecosystem)],
+            )?
+            .first(None)
+            .await?;
+        Ok(row.is_some())
+    }
+
+    pub async fn set_yanked(&self, version_id: &str, yanked: bool) -> Result<()> {
+        self.prepare("UPDATE versions SET yanked = ? WHERE id = ?", &[num(u64::from(yanked)), text(version_id)])?
+            .run()
+            .await?;
+        Ok(())
     }
 
     /// Makes a package unless one of the name is already there (a push
@@ -282,7 +384,10 @@ impl Db {
                (SELECT COALESCE(SUM(b.size), 0) FROM blobs b WHERE b.digest IN \
                   (SELECT vf.digest FROM version_files vf JOIN versions v ON v.id = vf.version_id WHERE v.package_id = p.id)) AS bytes, \
                (SELECT t.tag FROM tags t WHERE t.package_id = p.id ORDER BY t.tag = 'latest' DESC, t.updated_at DESC LIMIT 1) AS latest_tag, \
-               (SELECT GROUP_CONCAT(version, char(10)) FROM                   (SELECT v.version FROM versions v WHERE v.package_id = p.id ORDER BY v.published_at DESC)) AS latest_version \
+               (SELECT v.version FROM tags t JOIN versions v ON v.id = t.version_id WHERE t.package_id = p.id \
+                  ORDER BY t.tag = 'latest' DESC, t.updated_at DESC LIMIT 1) AS latest_tag_version, \
+               (SELECT GROUP_CONCAT(version, char(10)) FROM \
+                  (SELECT v.version FROM versions v WHERE v.package_id = p.id AND v.yanked = 0 ORDER BY v.published_at DESC)) AS latest_version \
              FROM packages p WHERE p.workspace = ? AND p.workspace_deleted_at IS NULL",
             PACKAGE_COLUMNS.split(", ").map(|c| format!("p.{c}")).collect::<Vec<_>>().join(", ")
         );

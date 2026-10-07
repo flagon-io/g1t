@@ -11,11 +11,13 @@ const REGISTRY_PATH = /^\/v2(?:\/|$)/;
 const NPM_PATH = /^\/-\/npm(?:\/|$)/;
 /** The Composer registries: `/-/composer/<workspace>/`, one per workspace. */
 const COMPOSER_PATH = /^\/-\/composer\//;
+/** The Cargo registries: `/-/cargo/<workspace>/`, a sparse index and its web API, one per workspace. */
+const CARGO_PATH = /^\/-\/cargo\//;
 
 export type ServicePath = "git" | "packages" | null;
 
 export function servicePath(pathname: string): ServicePath {
-  if (REGISTRY_PATH.test(pathname) || NPM_PATH.test(pathname) || COMPOSER_PATH.test(pathname)) return "packages";
+  if (REGISTRY_PATH.test(pathname) || NPM_PATH.test(pathname) || COMPOSER_PATH.test(pathname) || CARGO_PATH.test(pathname)) return "packages";
   if (GIT_PATH.test(pathname)) return "git";
   return null;
 }

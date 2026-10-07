@@ -40,18 +40,18 @@ export const REGISTRIES: { ecosystem: Ecosystem; blurb: string; start: string; g
     ready: true,
   },
   {
+    ecosystem: "cargo",
+    blurb: "Rust crates in a sparse registry of the workspace's own, published with cargo publish and added with cargo add.",
+    start: "cargo publish --registry <workspace>",
+    guide: "/guides/cargo/",
+    ready: true,
+  },
+  {
     ecosystem: "go",
     blurb: "Go modules fetched from the repositories themselves with go get, private ones with a token.",
     start: "go get g1t.sh/<workspace>/<repo>",
     guide: "/guides/go/",
     ready: true,
-  },
-  {
-    ecosystem: "cargo",
-    blurb: "Rust crates in a registry of the workspace's own, published with cargo publish.",
-    start: "cargo publish --registry <workspace>",
-    guide: "/guides/packages/",
-    ready: false,
   },
 ];
 
@@ -143,9 +143,13 @@ export function installCommands(
         install: `composer require ${pkg.name}${version ? `:${version}` : ""}`,
       };
     case "cargo":
+      // The workspace's registry (in .cargo/config.toml, needed for any
+      // install), then the token a private crate also needs, which cargo
+      // login asks for.
       return {
+        registry: `mkdir -p .cargo && printf '[registries.${pkg.workspace}]\\nindex = "sparse+https://${host}/-/cargo/${pkg.workspace}/index/"\\ncredential-provider = "cargo:token"\\n' >> .cargo/config.toml`,
         login: `cargo login --registry ${pkg.workspace}`,
-        install: `cargo add ${pkg.name} --registry ${pkg.workspace}${version ? ` --vers ${version}` : ""}`,
+        install: `cargo add ${pkg.name}${version ? `@${version}` : ""} --registry ${pkg.workspace}`,
       };
     case "go":
       return {

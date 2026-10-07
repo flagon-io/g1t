@@ -34,6 +34,17 @@ test("a Composer package is required after its workspace's repository is added, 
   });
 });
 
+test("a crate is added after .cargo/config.toml names its workspace's registry, with cargo login for private ones", () => {
+  const pkg = { ecosystem: "cargo" as const, address: "g1t.sh/-/cargo/acme/http-client", name: "http-client", workspace: "acme" };
+  assert.deepEqual(installCommands(pkg, "0.3.1", "ada"), {
+    registry:
+      "mkdir -p .cargo && printf '[registries.acme]\\nindex = \"sparse+https://g1t.sh/-/cargo/acme/index/\"\\ncredential-provider = \"cargo:token\"\\n' >> .cargo/config.toml",
+    login: "cargo login --registry acme",
+    install: "cargo add http-client@0.3.1 --registry acme",
+  });
+  assert.equal(installCommands(pkg, null, "ada").install, "cargo add http-client --registry acme");
+});
+
 test("a container image is pulled by its address and tag", () => {
   const pkg = { ecosystem: "container" as const, address: "g1t.sh/acme/web", name: "web", workspace: "acme" };
   assert.deepEqual(installCommands(pkg, "latest", "ada"), {

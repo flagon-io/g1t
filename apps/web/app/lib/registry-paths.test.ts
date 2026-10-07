@@ -47,6 +47,23 @@ test("the Composer registries go to the packages service", () => {
   assert.equal(servicePath("/-/composer"), null);
 });
 
+test("the Cargo registries go to the packages service", () => {
+  for (const path of [
+    "/-/cargo/acme/index/config.json",
+    "/-/cargo/acme/index/se/rd/serde",
+    "/-/cargo/acme/index/3/a/abc",
+    "/-/cargo/acme/api/v1/crates/new",
+    "/-/cargo/acme/api/v1/crates/serde/1.0.0/download",
+    "/-/cargo/acme/api/v1/crates/serde/1.0.0/yank",
+    // A crate named like a git endpoint is still Cargo's.
+    "/-/cargo/acme/index/in/fo/info/refs",
+  ]) {
+    assert.equal(servicePath(path), "packages", path);
+  }
+  assert.equal(servicePath("/-/cargo"), null);
+  assert.equal(servicePath("/acme/-/cargo/x"), null);
+});
+
 test("git goes to repos, and everything else is the site's", () => {
   assert.equal(servicePath("/acme/web.git/info/refs"), "git");
   assert.equal(servicePath("/acme/web/git-receive-pack"), "git");
