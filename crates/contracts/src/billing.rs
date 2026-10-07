@@ -2172,6 +2172,10 @@ pub struct AdminResetBillingArgs {
 pub struct BillingReset {
     pub workspace: String,
     pub rows: u32,
+    /// Whether the costs analysis ran again after it, so the margin
+    /// figures no longer hold the workspace's past usage.
+    #[serde(default)]
+    pub refreshed: bool,
 }
 
 /// One change made in sudo.

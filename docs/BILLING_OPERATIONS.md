@@ -364,9 +364,10 @@ rows. The workspace, its members and its repositories are identity's and
 repos' and stay.
 
 Billing refuses it while `STRIPE_SECRET_KEY` is a live key, for comped
-workspaces, and for a workspace an enterprise pays for. Afterwards press
-**Run the analysis now** on Costs & margin so the margin figures drop the
-workspace's past usage.
+workspaces, and for a workspace an enterprise pays for. It then runs the
+costs analysis again (as **Run the analysis now** does), so the margin
+figures drop the workspace's past usage at once; if that run does not
+finish, the page says so and the button does it.
 
 ## Stripe
 

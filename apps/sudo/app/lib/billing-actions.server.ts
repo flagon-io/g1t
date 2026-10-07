@@ -135,7 +135,7 @@ export async function billingAction(request: Request, staff: Staff, subject: Sub
     const result = await settle(admin.resetBilling(subject.slug, values.confirmation, note.value, staff.email));
     if (!result.ok) return failed("reset", `Billing did not answer: ${result.error}`, values);
     if (!result.value.ok) return failed("reset", result.value.error.message, values);
-    return back("reset");
+    return back(result.value.value.refreshed === false ? "reset-stale" : "reset");
   }
 
   if (intent === "payment") {

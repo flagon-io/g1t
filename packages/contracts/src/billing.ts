@@ -1149,7 +1149,7 @@ export type PriceVersion = {
 };
 
 /** What `resetBilling` removed. */
-export type BillingReset = { workspace: string; rows: number };
+export type BillingReset = { workspace: string; rows: number; refreshed?: boolean };
 
 export type WorkspaceCost = { workspace: string; costMicros: number; revenueMicros: number; givenMicros?: number; internal: boolean };
 

@@ -56,7 +56,7 @@ pub(crate) const STATEMENTS: &[&str] = &[
 ];
 
 impl Billing {
-    pub(crate) async fn admin_reset_billing(&self, a: AdminResetBillingArgs) -> Result<Outcome<BillingReset>> {
+    pub(crate) async fn admin_reset_billing(&self, env: &worker::Env, a: AdminResetBillingArgs) -> Result<Outcome<BillingReset>> {
         let workspace = a.workspace.trim().to_lowercase();
         if workspace.is_empty() || a.by.trim().is_empty() {
             return Ok(Outcome::fail(FailureCode::Invalid, "A reset needs a workspace and who did it."));
@@ -105,7 +105,17 @@ impl Billing {
             rows += result.meta()?.and_then(|m| m.changes).unwrap_or(0);
         }
         self.audit(&account, "reset", &format!("billing of {workspace} reset ({rows} rows): {}", a.note.trim()), &a.by).await?;
-        Ok(Outcome::Ok(BillingReset { workspace, rows: rows as u32 }))
+        // The margin figures still hold the workspace's past usage: redo
+        // them now (the day's analysis: the bill, 31 days, the alerts), so
+        // the pages show the reset at once.
+        let refreshed = match self.costs_daily(env, &crate::keeper::Keeper::from_env(env)).await {
+            Ok(run) => run.problems.is_empty(),
+            Err(error) => {
+                worker::console_error!("costs after a reset of {workspace}: {error}");
+                false
+            }
+        };
+        Ok(Outcome::Ok(BillingReset { workspace, rows: rows as u32, refreshed }))
     }
 }
 

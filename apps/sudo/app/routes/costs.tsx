@@ -199,7 +199,9 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
   const included = o.includedMicros ?? 0;
   const usageIn = o.usageMicros + included;
   const usageMargin = o.usageMarginMicros ?? usageIn - usageCost;
-  const usagePercent = o.usageMarginPercent !== undefined ? o.usageMarginPercent : null;
+  // Under a cent sold, a percentage says nothing (a few micros against none).
+  const soldSomething = usageIn >= 10_000;
+  const usagePercent = soldSomething && o.usageMarginPercent !== undefined ? o.usageMarginPercent : null;
   const running = o.runningCostMicros ?? 0;
   const unmapped = o.unmappedCostMicros ?? 0;
   // Cloudflare's subscriptions are not on the usage bill: the estimate, over the range.
@@ -266,7 +268,7 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
         <Stat
           label="Margin on usage sold"
           value={percentLabel(usagePercent)}
-          hint={`${usd(usageIn, { cents: true })} paid for usage that cost ${usd(usageCost, { cents: true })}`}
+          hint={soldSomething ? `${usd(usageIn, { cents: true })} paid for usage that cost ${usd(usageCost, { cents: true })}` : "No usage sold in this range"}
           tone={marginTone(usagePercent, floor)}
         />
         <Stat

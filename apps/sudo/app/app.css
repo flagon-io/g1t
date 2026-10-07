@@ -105,3 +105,32 @@ body {
     animation: none;
   }
 }
+
+/*
+ * Every other submit button says it is working the same way: a clicked
+ * button keeps focus while the page waits for the answer, so it dims
+ * and shows a spinner. The page that comes back is
+ * fresh (every action redirects), and says what happened. Nothing may
+ * stop pointer events here: focus comes on mouse-down, before the click.
+ */
+form button[type="submit"]:not(.run-button):focus:not(:focus-visible) {
+  opacity: 0.75;
+}
+form button[type="submit"]:not(.run-button):focus:not(:focus-visible)::before {
+  content: "";
+  flex: none;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 9999px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: run-spin 0.8s linear infinite;
+}
+form button[type="submit"]:not(.run-button):focus:not(:focus-visible) > svg {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  form button[type="submit"]:focus:not(:focus-visible)::before {
+    animation: none;
+  }
+}
