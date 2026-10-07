@@ -11,6 +11,7 @@ import type { AuditEntry } from "@g1t/contracts";
 
 import { actionLabel, actorLabel, ruleLabel, targetLabel } from "../lib/audit";
 import { Avatar, TimeAgo } from "./ui";
+import { Loading, SkeletonRows } from "./ui/skeleton";
 
 function clock(at: string): string {
   return new Date(at).toISOString().slice(11, 19);
@@ -168,11 +169,18 @@ export function RunAudit({ owner, repo, runIds, live }: { owner: string; repo: s
     return () => clearInterval(timer);
   }, [live, load, url]);
   const entries = fetcher.data?.entries;
-  if (!entries || entries.length === 0) return null;
+  if (runIds.length === 0) return null;
+  // There from the start, so the panel does not grow when the log arrives.
   return (
     <details className="mt-3 group">
       <summary className="cursor-pointer text-xs text-muted hover:text-fg">What it did</summary>
-      <WhatItDid entries={entries} compact />
+      {entries ? (
+        <WhatItDid entries={entries} compact />
+      ) : (
+        <Loading className="mt-3 overflow-hidden rounded-xl border border-line bg-surface">
+          <SkeletonRows rows={3} rowClassName="h-9 px-4" />
+        </Loading>
+      )}
       <Link to={`/${owner}/-/audit?project=${encodeURIComponent(repo)}&kind=agent`} className="mt-2 inline-block text-xs text-muted hover:text-fg">
         Open the audit log
       </Link>

@@ -46,7 +46,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./components/ui/dropdown-menu";
-import { AppShell, Progress, type ShellData } from "./components/shell";
+import { AppShell, Progress, type ShellData, useLeaving } from "./components/shell";
 import { SiteFooter } from "./components/footer";
 import { SpikeBanner } from "./components/spike-banner";
 import { readCookie } from "./lib/mission";
@@ -469,6 +469,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </SubmitButton>
     </Form>
   );
+  const leaving = useLeaving();
   const banner =
     paused || verify ? (
       <>
@@ -498,7 +499,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <Progress />
             <Header user={user} />
             {banner}
-            <div className="grow">{children}</div>
+            <div {...leaving} className={`grow ${leaving.className}`}>
+              {children}
+            </div>
             <SiteFooter user={user} />
           </>
         )}

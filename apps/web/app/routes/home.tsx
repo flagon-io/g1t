@@ -59,7 +59,7 @@ import {
 import { type NotStarted, chosenRepo, delegateForm, issuePath, notStarted } from "../lib/delegate";
 import { needsYou } from "../lib/inbox";
 import { Landing } from "../components/landing";
-import { Skeleton, SkeletonRows } from "../components/ui/skeleton";
+import { Skeleton, SkeletonCard, SkeletonLine, SkeletonRows, SkeletonStat } from "../components/ui/skeleton";
 import {
   agents,
   billing,
@@ -699,21 +699,31 @@ const MissionControl = lazy(() => import("../components/mission-control"));
 function MissionControlSkeleton() {
   return (
     <main aria-busy="true" className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 sm:py-10">
-      <header>
-        <Skeleton className="h-8 w-72 sm:h-9" />
-        <Skeleton className="mt-2.5 h-3.5 w-96 max-w-full" />
+      <span role="status" className="sr-only">
+        Loading…
+      </span>
+      <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+        <div className="min-w-0 grow">
+          <SkeletonLine className="w-72 max-w-full text-[1.75rem] leading-tight sm:text-[2rem]" barClassName="h-8" />
+          <SkeletonLine className="mt-1.5 w-96 max-w-full text-sm" barClassName="h-3.5" />
+        </div>
+        <Skeleton className="h-9 w-56 rounded-md" />
       </header>
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line lg:grid-cols-5">
         {Array.from({ length: 5 }, (_, index) => (
-          <div key={index} className="bg-surface p-4">
-            <Skeleton className="h-3 w-16" />
-            <Skeleton className="mt-3 h-6 w-10" />
-            <Skeleton className="mt-2 h-3 w-24" />
-          </div>
+          <SkeletonStat key={index} className={index === 4 ? "col-span-2 lg:col-span-1" : undefined} />
         ))}
       </div>
-      <div className="rounded-xl border border-line bg-surface">
-        <SkeletonRows rows={5} rowClassName="h-14" />
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem] xl:grid-cols-[minmax(0,1fr)_23rem]">
+        <div className="self-start overflow-hidden rounded-xl border border-line bg-surface">
+          <div className="flex h-12 items-center gap-4 border-b border-line px-5">
+            <Skeleton className="h-3.5 w-20" />
+            <Skeleton className="h-3.5 w-28" />
+            <Skeleton className="h-3.5 w-24" />
+          </div>
+          <SkeletonRows rows={5} rowClassName="h-16 px-5" />
+        </div>
+        <SkeletonCard lines={4} className="h-72 p-5" />
       </div>
     </main>
   );

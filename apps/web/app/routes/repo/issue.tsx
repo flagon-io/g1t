@@ -37,7 +37,7 @@ import {
 import { notFound } from "../../lib/not-found.server";
 import { openedBy } from "../../lib/opened-by";
 import { computeNoteFor } from "../../lib/compute.server";
-import { identity, inbox, integrations, work } from "../../lib/services.server";
+import { agents, identity, inbox, integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 import { accessTo, refusal, repoFor } from "../../lib/access.server";
 import { SubscriptionBox } from "../../components/notifications";
@@ -67,7 +67,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // At once: only the plan's note waits for the viewer's role. Putting an
   // agent on it needs Write: Read cannot spend compute.
   const access = accessTo(context, params);
-  const [{ can }, found, labels, agentsEnabled, members, links, computeNote, subscription] = await Promise.all([
+  const [{ can }, found, labels, agentsEnabled, members, links, computeNote, subscription, active] = await Promise.all([
     access,
     work.getIssue(path, number, viewer),
     work.listLabels(path, viewer),
@@ -84,6 +84,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
           repo.ok ? inbox.subscription(viewer, { repoId: repo.value.id, number }).catch(() => null) : null,
         )
       : null,
+    // The project's agents at work, for the line under the pull request
+    // one is on for this issue: with the page, not after it.
+    agents.listRuns(viewer, { repo: path, active: true, limit: 50 }).catch(() => null),
   ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be a pull request.
@@ -100,6 +103,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     computeNote,
     links,
     subscription,
+    // As the project's agents.json has them; left out, the line fetches them.
+    activeRuns: active?.ok ? { runs: active.value, member: can.run } : undefined,
     members: members?.ok ? members.value.map((member) => member.username) : [],
     // The author can close and reopen their own issue, and whoever g1t's
     // agent filed one for, that one; Triage and up, anyone's.
@@ -428,7 +433,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                         : "Seeing it through checks and review"}{" "}
                       · #{assigned.number}
                     </span>
-                    <AgentStepLine owner={params.owner} repo={params.repo} number={assigned.number} />
+                    <AgentStepLine owner={params.owner} repo={params.repo} number={assigned.number} runs={loaderData.activeRuns} />
                   </span>
                   <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-accent" />
                 </Link>

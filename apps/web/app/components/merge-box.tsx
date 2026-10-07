@@ -27,9 +27,10 @@ import type { CheckResult, CheckRun, CommitStatus, Job, Mergeable, PullBranchUpd
 import { useAddresses } from "../lib/addresses";
 import { catchUpPhase, catchUpRun, catchUpTitle, catchUpWhy } from "../lib/catch-up";
 import { duration } from "./actions";
-import { Elapsed, useRuns } from "./agents";
+import { Elapsed, type Live, useRuns } from "./agents";
 import { Button, CopyLine, ErrorText, SubmitButton, TimeAgo } from "./ui";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { SkeletonLine } from "./ui/skeleton";
 
 // --- Output ---------------------------------------------------------------
 
@@ -210,12 +211,15 @@ function CheckLine({
   name,
   detail,
   time,
+  timing = false,
   to,
 }: {
   standing: Standing;
   name: React.ReactNode;
   detail?: React.ReactNode;
   time?: string;
+  /** Its jobs and their times are still being read. */
+  timing?: boolean;
   to?: string;
 }) {
   return (
@@ -225,7 +229,8 @@ function CheckLine({
         {name}
         {detail && <span className="text-muted"> — {detail}</span>}
       </span>
-      {time && <span className="shrink-0 font-mono text-xs text-faint">{time}</span>}
+      {time && <span className="shrink-0 animate-fade-in font-mono text-xs text-faint">{time}</span>}
+      {timing && <SkeletonLine className="w-10 shrink-0 text-xs" />}
       {to && (
         <Link to={to} className="shrink-0 text-xs text-muted hover:text-fg hover:underline">
           Details
@@ -313,6 +318,7 @@ export function ChecksSection({
   canRerunWorkflows,
   settingsUrl,
   error,
+  loading = false,
 }: {
   /** Set when the merge queue took it out, or for a run from before checks were workflows. */
   run: CheckRun | null;
@@ -328,6 +334,8 @@ export function ChecksSection({
   /** Where the required checks are chosen, for those who may. */
   settingsUrl?: string | null;
   error?: string | null;
+  /** The workflow runs' jobs are still being read: their rows wait, busy. */
+  loading?: boolean;
 }) {
   if (!run && statuses.length === 0 && required.length === 0) return null;
 
@@ -379,7 +387,7 @@ export function ChecksSection({
   const failedRuns = statuses.filter((status) => statusStanding(status) === "failed" && runIdOf(status));
 
   return (
-    <div>
+    <div aria-busy={loading || undefined}>
       <div className="flex items-start gap-3 px-4 py-3">
         <span className="mt-0.5 shrink-0">
           {standing === "failed" || queueFailed ? (
@@ -466,6 +474,7 @@ export function ChecksSection({
                     standing={statusStanding(status)}
                     name={status.context}
                     detail={status.description ?? undefined}
+                    timing={loading && id != null}
                     to={runPath}
                   />
                 );
@@ -775,6 +784,7 @@ export function CatchUpProgress({
   update,
   startedAt,
   retrying,
+  runs: initial,
 }: {
   owner: string;
   repo: string;
@@ -786,9 +796,11 @@ export function CatchUpProgress({
   startedAt: number;
   /** Whether a retry is on its way. */
   retrying: boolean;
+  /** The pull request's latest runs, from the page's loader. */
+  runs?: Live | null;
 }) {
   // The page revalidates while this is working, which reloads the runs too.
-  const data = useRuns(owner, repo, { number: String(number), limit: "5" });
+  const data = useRuns(owner, repo, { number: String(number), limit: "5" }, initial);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 5000);

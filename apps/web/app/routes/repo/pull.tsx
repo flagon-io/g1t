@@ -59,6 +59,7 @@ import {
   usePending,
 } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
+import { Loading, SkeletonLine } from "../../components/ui/skeleton";
 import { WorkflowStatuses } from "../../components/actions";
 import { AddCiPrompt } from "../../components/add-ci";
 import {
@@ -75,7 +76,7 @@ import { CatchUpProgress, ChecksSection, ConflictsSection, MergeabilityRow, runI
 import { CATCH_UP_TIMEOUT_MS } from "../../lib/catch-up";
 import { notFound } from "../../lib/not-found.server";
 import { computeNoteFor } from "../../lib/compute.server";
-import { actions, deployments, identity, inbox, projects, repos, work } from "../../lib/services.server";
+import { actions, agents, deployments, identity, inbox, projects, repos, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 import { accessTo, refusal, repoFor } from "../../lib/access.server";
 import { SubscriptionBox } from "../../components/notifications";
@@ -124,7 +125,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const deps = projects.dependencies(params.owner, params.repo, viewer);
   // Awaited below, unless the pull request is missing first.
   deps.catch(() => null);
-  const [{ can }, found, repo, settings, agentsEnabled, members, computeNote, session, deployed, subscription] = await Promise.all([
+  const [{ can }, found, repo, settings, agentsEnabled, members, computeNote, session, deployed, subscription, runs] = await Promise.all([
     access,
     pullFound,
     repos.get(path, viewer),
@@ -143,6 +144,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
           found.ok ? inbox.subscription(viewer, { repoId: found.value.id, number }).catch(() => null) : null,
         )
       : null,
+    // Its agent's latest runs, for the Agent panel: with the page, not after it.
+    agents.listRuns(viewer, { repo: path, number, limit: 5 }).catch(() => null),
   ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be an issue.
@@ -205,6 +208,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     agentsEnabled,
     computeNote,
     subscription,
+    // As the project's agents.json has them; left out, the panel fetches them.
+    agentRuns: runs?.ok ? { runs: runs.value, member: can.run } : undefined,
     members: members?.ok ? members.value.map((person) => person.username) : [],
     requireUpToDate: settings.ok && settings.value.requireUpToDate,
     mergeQueue: settings.ok && settings.value.mergeQueue,
@@ -537,6 +542,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     canIgnoreChecks,
     canUpdate,
     agentsEnabled,
+    agentRuns,
     members,
     tab,
     session,
@@ -551,7 +557,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   const here = `${base}/pull/${pull.number}`;
   // g1t, on a pull request it made: the person who asked for it is a line below.
   const opener = openedBy(pull);
-  const checksSection = (jobs: Record<string, Job[]>) => (
+  const checksSection = (jobs: Record<string, Job[]>, loading = false) => (
     <ChecksSection
       run={checks}
       required={requiredChecks}
@@ -563,6 +569,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
       canRerunWorkflows={canMerge}
       settingsUrl={canProtect ? `${base}/settings/branches` : null}
       error={actionData?.action === "rerun-failed" || actionData?.action === "rerun-workflow" ? actionData.error : null}
+      loading={loading}
     />
   );
   const addresses = useAddresses();
@@ -772,6 +779,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                 number={pull.number}
                 stage={lifecycle?.stage ?? null}
                 confidence={pull.confidence ?? null}
+                runs={agentRuns}
               />
 
               {/* Steering: while its agent works, people can tell it things. */}
@@ -940,7 +948,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
 
                 <CommentList comments={comments} review={review} base={base} />
 
-                {(preview || build) && <DeploymentCard preview={preview} build={build} stacked={stacked} base={base} />}
+                {(preview || build) && <DeploymentCard preview={preview} build={build} stacked={stacked} stacking={affects.length > 0} base={base} />}
 
                 {pull.status === "draft" && (
                   <StatusBox>
@@ -963,8 +971,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                 {pull.status === "open" && (
                   <StatusBox>
                     {/* Checks by status at once; job by job when the runs are read. */}
-                    <Suspense fallback={checksSection({})}>
-                      <Await resolve={workflowJobs}>{checksSection}</Await>
+                    <Suspense fallback={checksSection({}, true)}>
+                      <Await resolve={workflowJobs}>{(jobs) => checksSection(jobs)}</Await>
                     </Suspense>
                     {noChecks && <AddCiPrompt owner={params.owner} repo={params.repo} canAdd={canAddCi} compact />}
                     <StatusRow
@@ -1012,6 +1020,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         update={agentCatchUp.update}
                         startedAt={agentCatchUp.startedAt}
                         retrying={catchUpPending}
+                        runs={agentRuns}
                       />
                     ) : conflicting ? (
                       <ConflictsSection
@@ -1365,11 +1374,14 @@ function DeploymentCard({
   preview,
   build,
   stacked,
+  stacking,
   base,
 }: {
   preview: LiveApp | null;
   build: Deployment | null;
   stacked: Promise<Stacked[]>;
+  /** Projects use this one, so previews built against it may be on their way. */
+  stacking: boolean;
   base: string;
 }) {
   const building = build?.status === "queued" || build?.status === "building";
@@ -1426,11 +1438,20 @@ function DeploymentCard({
         </p>
       )}
       {/* Read after the page: the card's own part shows at once. */}
-      <Suspense fallback={null}>
+      <Suspense
+        fallback={
+          stacking && (
+            <Loading className="border-t border-line px-4 py-2.5 text-xs">
+              <SkeletonLine className="w-40" />
+              <SkeletonLine className="mt-1.5 w-64 max-w-full" />
+            </Loading>
+          )
+        }
+      >
         <Await resolve={stacked}>
           {(stacked) =>
             stacked.length > 0 && (
-              <div className="border-t border-line px-4 py-2.5">
+              <div className="animate-fade-in border-t border-line px-4 py-2.5">
                 <p className="text-xs text-muted">Built against this change:</p>
                 <ul className="mt-1.5 space-y-1">
                   {stacked.map((entry) => (

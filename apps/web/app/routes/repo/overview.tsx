@@ -42,7 +42,7 @@ import { ActivityFeed, DeployStrip, Meter, NeedsList, Panel, Quiet, Unavailable,
 import { type ActiveBranch, ActiveBranches } from "../../components/branches";
 import { ProductionChecklist } from "../../components/checklist";
 import { PackageIcon } from "../../components/package-icon";
-import { Skeleton, SkeletonRows } from "../../components/ui/skeleton";
+import { Loading, Skeleton, SkeletonRows } from "../../components/ui/skeleton";
 import { ProductionShot } from "../../components/production-shot";
 import { GithubLinkStrip } from "../../components/github";
 import { githubApp } from "../../lib/github.server";
@@ -605,7 +605,12 @@ export default function ProjectOverview({ loaderData, actionData, params }: Rout
   return (
     <Suspense fallback={<OverviewSkeleton />}>
       <Await resolve={loaderData.overview} errorElement={<OverviewFailed />}>
-        {(overview) => <Overview loaderData={overview} actionData={actionData} params={params} />}
+        {(overview) => (
+          // Faded in over its outline, not switched for it.
+          <div className="animate-fade-in">
+            <Overview loaderData={overview} actionData={actionData} params={params} />
+          </div>
+        )}
       </Await>
     </Suspense>
   );
@@ -614,19 +619,35 @@ export default function ProjectOverview({ loaderData, actionData, params }: Rout
 /** The overview's sections as they will sit, while they stream in. */
 function OverviewSkeleton() {
   return (
-    <div className="space-y-8" aria-busy="true" aria-label="Loading the overview">
-      <section className="rounded-2xl border border-line bg-surface p-5 sm:p-6">
-        <Skeleton className="h-3 w-24" />
-        <Skeleton className="mt-3 h-5 w-64 max-w-full" />
-        <Skeleton className="mt-3 h-3 w-48 max-w-full" />
-      </section>
-      <section className="rounded-2xl border border-line bg-surface p-2">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-          {Array.from({ length: 5 }, (_, index) => (
-            <Skeleton key={index} className="h-24 rounded-xl" />
+    <Loading className="space-y-8" aria-label="Loading the overview">
+      {/* Production: its screenshot beside where it is live, then the facts under them. */}
+      <section aria-hidden="true" className="overflow-hidden rounded-2xl border border-line bg-surface">
+        <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start sm:p-6">
+          <Skeleton className="aspect-[16/10] w-full shrink-0 rounded-lg sm:w-72" />
+          <div className="min-w-0 grow">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="mt-3 h-5 w-72 max-w-full" />
+            <Skeleton className="mt-3 h-3 w-48 max-w-full" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-px border-t border-line bg-line sm:grid-cols-4">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className="bg-surface px-5 py-4">
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="mt-2.5 h-4 w-28" />
+            </div>
           ))}
         </div>
       </section>
+      {/* Right now: the work, column by column. */}
+      <div aria-hidden="true" className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {Array.from({ length: 5 }, (_, index) => (
+          <div key={index} className="rounded-xl border border-line bg-surface p-3">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="mt-3 h-14 rounded-lg" />
+          </div>
+        ))}
+      </div>
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-2xl border border-line bg-surface">
           <SkeletonRows rows={4} />
@@ -635,7 +656,7 @@ function OverviewSkeleton() {
           <SkeletonRows rows={4} />
         </section>
       </div>
-    </div>
+    </Loading>
   );
 }
 
