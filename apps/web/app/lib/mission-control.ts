@@ -183,7 +183,13 @@ export function checksFact(
 
 /** Test files, by the names test runners look for. */
 export function isTestFile(path: string): boolean {
-  return /(^|\/)(__tests__|tests?|spec)\//i.test(path) || /[._-](test|spec)\.[a-z0-9]+$/i.test(path) || /_test\.(go|rs|py)$/i.test(path);
+  return (
+    /(^|\/)(__tests__|tests?|spec)\//i.test(path) ||
+    /[._-](test|spec)\.[a-z0-9]+$/i.test(path) ||
+    /_test\.(go|rs|py)$/i.test(path) ||
+    // A file named for what it is: test.js, tests.py, spec.rb.
+    /(^|\/)(tests?|specs?)\.[a-z0-9]+$/i.test(path)
+  );
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;

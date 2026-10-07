@@ -123,6 +123,8 @@ pub(crate) fn is_test(path: &str) -> bool {
     lower.split('/').any(|dir| matches!(dir, "test" | "tests" | "__tests__" | "spec" | "specs" | "testdata"))
         || [".test.", ".spec.", "_test.", "-test.", "_spec."].iter().any(|mark| file.contains(mark))
         || file.starts_with("test_")
+        // A file named for what it is: test.js, tests.py, spec.rb.
+        || matches!(file.split('.').next(), Some("test" | "tests" | "spec" | "specs")) && file.contains('.')
 }
 
 /// Files that change nothing that runs: prose and pictures.
@@ -967,7 +969,7 @@ mod tests {
 
     #[test]
     fn tests_prose_and_sensitive_paths_are_told_apart() {
-        for path in ["src/__tests__/a.ts", "tests/test_api.py", "pkg/api_test.go", "src/a.spec.tsx", "crates/x/tests/it.rs"] {
+        for path in ["src/__tests__/a.ts", "tests/test_api.py", "pkg/api_test.go", "src/a.spec.tsx", "crates/x/tests/it.rs", "test.js", "lib/spec.rb"] {
             assert!(is_test(path), "{path}");
         }
         for path in ["src/testing.ts", "src/contest.rs", "attest/a.rs"] {

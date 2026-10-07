@@ -159,6 +159,8 @@ test("test files are recognised by the names test runners use", () => {
   assert.ok(isTestFile("pkg/store_test.go"));
   assert.ok(!isTestFile("src/testing-utils.ts"));
   assert.ok(!isTestFile("src/contest.ts"));
+  assert.ok(isTestFile("test.js"));
+  assert.ok(isTestFile("lib/spec.rb"));
 });
 
 const merged = (daysAgo: number, mergedBy: string | null, number = 1, authoredByAgent = true): Merged => ({
