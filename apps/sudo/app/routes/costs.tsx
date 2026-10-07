@@ -28,7 +28,7 @@ import { requireStaff } from "~/lib/staff";
 export const meta: Route.MetaFunction = () => [{ title: "Costs & margin · sudo" }, { name: "robots", content: "noindex, nofollow" }];
 
 const DONE: Record<string, string> = {
-  run: "Read Cloudflare's bill and reconciled. The figures below are fresh.",
+  run: "Ran the analysis: read Cloudflare's bill, reconciled the last 31 days and checked the alerts. The figures below are fresh.",
   approved: "Approved. A fall applies now; a rise after the notice period, and owners on the plan are emailed.",
   rejected: "Rejected, with the note kept for whoever measures it next.",
   settings: "Guardrails saved. They apply from the next run.",
@@ -152,7 +152,7 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
           <form method="post">
             <input type="hidden" name="intent" value="run" />
             <Button variant="quiet" type="submit">
-              Read the bill now
+              Run the analysis now
             </Button>
           </form>
         }
@@ -434,7 +434,7 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
         description="Every meter Cloudflare billed or counted in the range, as it named it, and which of g1t's products it is a cost of. Not mapped means no one decided what pays for it."
       >
         {report.lines.length === 0 ? (
-          <EmptyState title="No lines yet">The bill is read once a day at 04:17 UTC, or now with “Read the bill now”.</EmptyState>
+          <EmptyState title="No lines yet">The bill is read once a day at 04:17 UTC, or now with “Run the analysis now”.</EmptyState>
         ) : (
           <div className="-mx-4 overflow-x-auto sm:-mx-5">
             <table className="w-full min-w-[48rem] text-sm">

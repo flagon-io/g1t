@@ -47,7 +47,7 @@ the page says the bill cannot be read. Nothing fails. To set the scoped one:
 2. Permissions: Account · Billing · Read; Account · Account Analytics · Read.
 3. Account resources: Include · the g1t account. No zone permissions.
 4. `cd services/billing && npx wrangler secret put CLOUDFLARE_BILLING_TOKEN`.
-5. In sudo, Costs & margin → **Read the bill now**.
+5. In sudo, Costs & margin → **Run the analysis now**.
 
 Alerts are emailed through the `EMAIL` binding (Cloudflare Email Sending)
 to `COSTS_ALERT_EMAIL` (`hey@flagon.io`). An empty value sends none.
@@ -66,7 +66,8 @@ The daily cron (`17 4 * * *`, `keeper::DAILY`) runs, in order:
       replaces, never adds.
    2. g1t's own counts for the same days (replaced per day).
    3. Snapshot `pending_usage` into `pending_days`.
-   4. Reconcile those days into `margin_days` and `workspace_costs`
+   4. Reconcile the last 31 days (further back after a gap) into
+      `margin_days` and `workspace_costs`
       (replaced per day).
    5. Drift over the last 7 days into `cost_drift`.
    6. Unit costs over the last 30 days, proposed to the price book.
@@ -74,7 +75,10 @@ The daily cron (`17 4 * * *`, `keeper::DAILY`) runs, in order:
    8. Open, update and close margin alerts; email new ones.
    9. Email owners on the plan about rises to come.
 
-**Read the bill now** in sudo (`admin_run_costs`) runs step 2 at once.
+**Run the analysis now** at the top of sudo's Costs & margin page
+(`admin_run_costs`) runs all of step 2 at once, alerts included, with no
+need to wait for 04:17 UTC. Running it twice is safe: every step replaces
+what it wrote.
 
 ## Reconciliation math
 
@@ -169,7 +173,7 @@ product), g1t's product, and optionally:
   Cloudflare's as it took (proposals as above).
 - **Drift threshold**.
 
-It applies from the next run; **Read the bill now** applies it at once.
+It applies from the next run; **Run the analysis now** applies it at once.
 Every change is in the audit log (`cost_mapping`).
 
 ## Which raw meters are operations
