@@ -151,8 +151,25 @@ It signs in with the first of:
 
 `g1t --version` prints its version, and `g1t help` its options.
 
-Release binaries of the g1t command line are coming. Until then, build it
-from the g1t source with [Rust](https://www.rust-lang.org/tools/install):
+### Getting g1t
+
+One file for each platform, from `https://g1t.sh/downloads/cli/latest/`:
+
+```sh
+# Linux (x64; use g1t-linux-arm64 on ARM)
+curl -fsSLo g1t https://g1t.sh/downloads/cli/latest/g1t-linux-x64 && chmod +x g1t
+# macOS (Apple silicon; use g1t-macos-x64 on Intel)
+curl -fsSLo g1t https://g1t.sh/downloads/cli/latest/g1t-macos-arm64 && chmod +x g1t
+```
+
+```powershell
+# Windows
+Invoke-WebRequest https://g1t.sh/downloads/cli/latest/g1t-windows-x64.exe -OutFile g1t.exe
+```
+
+Check a download against `https://g1t.sh/downloads/cli/latest/SHA256SUMS`.
+To build it from source instead, with
+[Rust](https://www.rust-lang.org/tools/install):
 
 ```sh
 git clone https://g1t.sh/flagon-io/g1t

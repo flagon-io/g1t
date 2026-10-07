@@ -3,12 +3,14 @@ import { env } from "cloudflare:workers";
 import type { Route } from "./+types/downloads-runner";
 
 /**
- * The self-hosted runner's releases: `g1t.sh/downloads/runner/<version>/<file>`,
- * served from the g1t-downloads R2 bucket that scripts/runner-release.mjs
- * publishes to. `latest/<file>` is the newest release's, as its signed
- * `latest.json` names it; `latest.json` and `latest.json.sig` themselves
- * are what runners check before updating.
+ * Releases: `g1t.sh/downloads/<tool>/<version>/<file>`, served from the
+ * g1t-downloads R2 bucket. `runner` is the self-hosted runner
+ * (scripts/runner-release.mjs), `cli` the g1t CLI (scripts/cli-release.mjs).
+ * `latest/<file>` is the newest release's, as its `latest.json` names it;
+ * the runner's `latest.json` and `latest.json.sig` are what runners check
+ * before updating.
  */
+const TOOLS = new Set(["runner", "cli"]);
 const TYPES: Record<string, string> = {
   json: "application/json",
   sig: "text/plain; charset=utf-8",
@@ -21,15 +23,18 @@ async function object(key: string): Promise<R2ObjectBody | null> {
 }
 
 export async function loader({ params }: Route.LoaderArgs) {
+  const tool = params.tool ?? "";
   const path = (params["*"] ?? "").replace(/^\/+/, "");
-  if (!path || path.includes("..") || !/^[A-Za-z0-9._/-]+$/.test(path)) throw new Response("Not found\n", { status: 404 });
-  let key = `runner/${path}`;
+  if (!TOOLS.has(tool) || !path || path.includes("..") || !/^[A-Za-z0-9._/-]+$/.test(path)) {
+    throw new Response("Not found\n", { status: 404 });
+  }
+  let key = `${tool}/${path}`;
   // `latest/<file>`: the file of the newest release.
   if (path.startsWith("latest/")) {
-    const manifest = await object("runner/latest.json");
+    const manifest = await object(`${tool}/latest.json`);
     if (!manifest) throw new Response("No release yet\n", { status: 404 });
     const { version } = (await manifest.json()) as { version: string };
-    key = `runner/${version}/${path.slice("latest/".length)}`;
+    key = `${tool}/${version}/${path.slice("latest/".length)}`;
   }
   const found = await object(key);
   if (!found) throw new Response("Not found\n", { status: 404 });

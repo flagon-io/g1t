@@ -53,8 +53,8 @@ export default [
   route("status", "routes/status.tsx"),
   route("status.json", "routes/status-json.ts"),
   route(".well-known/security.txt", "routes/security-txt.ts"),
-  // The self-hosted runner's releases, from R2.
-  route("downloads/runner/*", "routes/downloads-runner.ts"),
+  // Releases of the self-hosted runner and the g1t CLI, from R2.
+  route("downloads/:tool/*", "routes/downloads-runner.ts"),
   // A workspace's own pages sit under `-`, which no repository can be named.
   route(":owner", "routes/workspace/layout.tsx", [
     index("routes/workspace/overview.tsx"),
