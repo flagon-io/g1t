@@ -20,6 +20,7 @@ mod lifecycle;
 mod listing;
 mod meters;
 mod mirror;
+mod pack_cache;
 mod pack_limits;
 mod refs;
 mod refs_cache;
@@ -194,6 +195,8 @@ pub(crate) struct Repos<S: GitStore> {
     placement: shards::Placement,
     /// What isolates share: answers that list refs (refs_cache.rs).
     shared: Option<Rc<shared::Shared>>,
+    /// Packs for fresh clones (pack_cache.rs); `None` without the bucket.
+    packs: Option<Rc<pack_cache::R2Packs>>,
 }
 
 impl<S: GitStore> Repos<S> {
@@ -1513,16 +1516,33 @@ impl<S: GitStore> Repos<S> {
             .map(|(kind, version)| {
                 refs_cache::Key::new(&repo.id, version, default_branch.as_deref(), protocol, &kind)
             });
+        // A fresh clone's pack may have been kept too: see pack_cache.rs.
+        // Under the same refs version, so never across a change to them.
+        let pack_key = self
+            .packs
+            .as_ref()
+            .and_then(|_| {
+                let encoding = request.headers().get("content-encoding").ok().flatten();
+                pack_cache::cacheable(git, get, protocol, encoding.as_deref(), body.as_deref())
+            })
+            .zip(refs_cache::usable(registry::refs_state(&repo.id), now_ms()))
+            .map(|(normalized, version)| pack_cache::Key::new(&repo.id, version, &normalized));
         // A kept answer and the free workspace limits, with a kept
         // credential looked up alongside. A kept answer goes back without
         // waiting for the credential, which it does not need.
-        let ((answer, limited), kept_access) = {
+        let ((answer, pack, limited), kept_access) = {
             let shared = self.shared.as_deref();
-            let answer_and_limits = std::pin::pin!(futures_util::future::join(
+            let answer_and_limits = std::pin::pin!(futures_util::future::join3(
                 async {
                     match &kept_key {
                         Some(kept_key) => refs_cache::get(shared, kept_key).await,
                         None => None,
+                    }
+                },
+                async {
+                    match (&pack_key, self.packs.as_deref()) {
+                        (Some(pack_key), Some(packs)) => pack_cache::get(packs, pack_key).await,
+                        _ => None,
                     }
                 },
                 self.git_limits(call, git, &repo, env),
@@ -1530,7 +1550,7 @@ impl<S: GitStore> Repos<S> {
             let kept_access = std::pin::pin!(self.store.kept_access(&key, scope));
             match futures_util::future::select(answer_and_limits, kept_access).await {
                 futures_util::future::Either::Left((first, kept_access)) => {
-                    let answered = first.0.is_some() || matches!(first.1, Ok(Some(_)) | Err(_));
+                    let answered = first.0.is_some() || first.1.is_some() || matches!(first.2, Ok(Some(_)) | Err(_));
                     (first, if answered { None } else { kept_access.await })
                 }
                 futures_util::future::Either::Right((kept_access, first)) => (first.await, kept_access),
@@ -1541,6 +1561,18 @@ impl<S: GitStore> Repos<S> {
             after.ended(status, Some(message.to_owned()));
             after.spawn(env, ctx);
             return Ok(response);
+        }
+        if let Some(kept) = pack {
+            timing.note("pack", "hit");
+            // Never reached the store: never an operation.
+            let sent = body.as_ref().map_or(0, |body| body.len() as u64);
+            meters::record(pack_cache::HIT, &key, sent, kept.size);
+            after.ended(200, None);
+            after.spawn(env, ctx);
+            return kept.response();
+        }
+        if pack_key.is_some() {
+            timing.note("pack", "miss");
         }
         if let (Some((entry, found)), Some(kept_key)) = (answer, &kept_key) {
             timing.note("refs", found.as_str());
@@ -1677,6 +1709,25 @@ impl<S: GitStore> Repos<S> {
                 }
             }
             response = Response::from_bytes(body)?.with_headers(headers).with_status(status);
+        } else if let (Some(pack_key), Some(packs), true) = (&pack_key, &self.packs, forwarded.from_store) {
+            // A fresh clone the bucket did not have: counted, and its pack
+            // kept as it streams to git, when it is a whole one.
+            meters::record(pack_cache::MISS, &key, forwarded.sent, 0);
+            if status == 200 {
+                let store_key = key.clone();
+                let measured = Box::new(move |bytes: u64| meters::record_bytes(pack_cache::MISS, &store_key, 0, bytes));
+                let (teed, filling) = pack_cache::tee(response, packs.clone(), pack_key, measured)?;
+                response = teed;
+                if let Some(filling) = filling {
+                    let pack_key = pack_key.clone();
+                    ctx.wait_until(async move {
+                        let filled = filling.await;
+                        if !matches!(filled, pack_cache::Filled::Kept { .. } | pack_cache::Filled::Abandoned) {
+                            worker::console_warn!("pack {} not kept: {filled:?}", pack_key.as_str());
+                        }
+                    });
+                }
+            }
         }
         after.ended(status, None);
         if status == 200 && (forwarded.pack_bytes > 0 || !forwarded.pushed.is_empty()) {
@@ -1879,6 +1930,7 @@ fn service(env: &Env) -> Result<Repos<ArtifactsStore>> {
         registry: Registry { db: env.d1("DB")? },
         store: ArtifactsStore::new(env, shared.clone())?,
         shared,
+        packs: pack_cache::R2Packs::from_env(env).map(Rc::new),
         events: env.service("EVENTS")?,
         security: env.service("SECURITY").ok(),
         billing: env.service("BILLING").ok(),

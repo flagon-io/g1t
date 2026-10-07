@@ -77,7 +77,10 @@
 			"d1": { "database": "g1t-repos", "migrations": "migrations" },
 			"stage": "core",
 			"secrets": ["REPOS_KEY"],
-			"setup": ["The Artifacts namespace `g1t` (the ARTIFACTS binding)"],
+			"setup": [
+				"The Artifacts namespace `g1t` (the ARTIFACTS binding)",
+				"The R2 bucket `g1t-git-packs` (GIT_PACKS) with its lifecycle rule: `npx wrangler r2 bucket create g1t-git-packs`, then `npx wrangler r2 bucket lifecycle add g1t-git-packs expire-packs packs/ --expire-days 7 --abort-multipart-days 1`"
+			],
 			"self_host": "run"
 		},
 		"work": {

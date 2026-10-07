@@ -223,6 +223,7 @@ Two entries say how a step went rather than how long it took:
 | Entry | Values |
 | --- | --- |
 | `refs;desc=` | `hit-colo` or `hit-shared` when the ref listing came from g1t's cache, `miss` when the git store was asked |
+| `pack;desc=` | Only for a fresh clone: `hit` when its pack came from g1t's cache, `miss` when the git store built it |
 | `cred;desc=` | `isolate` or `shared` for a store credential made a moment ago, `mint` for a new one |
 
 The ref listing git asks for first on every clone and fetch is kept for up
@@ -230,6 +231,13 @@ to a minute, and only the same question about the same refs gets the same
 answer: a push, a merge or any other change to a repository's branches and
 tags makes the next fetch ask the git store again. A change can take up to
 5 seconds to reach every fetch.
+
+A fresh clone, one that has no objects yet (shallow clones such as
+`git clone --depth=1` included), has its pack kept too, for up to 7 days
+or until the repository's branches or tags next change. The next clone that
+asks for the same commits in the same way gets the same pack without the
+git store building it again. A fetch into a repository you already have,
+and any pack over 200 MB, always goes to the git store.
 
 Include the header when you report a slow clone, fetch or push.
 

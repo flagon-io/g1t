@@ -493,9 +493,15 @@ dispatch namespaces; each unit's `setup` and `secrets` say the rest.
 - Queues: `npx wrangler queues create <queue>` for each queue in the
   manifest: `g1t-events`, `g1t-events-<service>` for every subscriber,
   `g1t-search-jobs`, `g1t-context-jobs`.
-- R2: `npx wrangler r2 bucket create g1t-screenshots` and
+- R2: `npx wrangler r2 bucket create g1t-screenshots`,
   `npx wrangler r2 bucket create g1t-actions-cache` (with its 30-day
-  lifecycle rule, above).
+  lifecycle rule, above), and `npx wrangler r2 bucket create g1t-git-packs`,
+  the clone pack cache (`services/repos/src/pack_cache.rs`), with a rule
+  deleting packs 7 days after they were written and unfinished uploads
+  after a day:
+  `npx wrangler r2 bucket lifecycle add g1t-git-packs expire-packs packs/ --expire-days 7 --abort-multipart-days 1`.
+  A Worker bound to a bucket that does not exist fails to deploy, so make
+  it before the first deploy of `g1t-repos` that binds it.
 - The runner's base image: `node scripts/deploy.mjs build-base`.
 - Vectorize, dispatch namespace, DNS, Access, Email Sending, Artifacts: each
   unit's `setup`.

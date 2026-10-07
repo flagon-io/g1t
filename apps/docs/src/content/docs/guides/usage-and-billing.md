@@ -327,7 +327,9 @@ Cloudflare charges g1t **$0.15 per 1,000 git operations** from 2026-10-14.
 An operation is one clone or fetch (a request that fetches objects) or one
 push, and making, forking or deleting a repository: what Cloudflare bills
 g1t for. Listing refs, and anything g1t answers from its own cache, is
-never an operation. g1t meters every request it makes to the store, and
+never an operation: a repeat clone of the same commit is served from
+g1t's [pack cache](/guides/git/#where-a-slow-requests-time-went) and is not
+counted. g1t meters every request it makes to the store, and
 what counts follows what Cloudflare confirms it bills; this page changes
 with it.
 

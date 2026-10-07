@@ -102,7 +102,7 @@ checks this table names every unit.
 | `apps/docs` | Static | — | Not run (docs.g1t.sh serves them) |
 | `apps/status` | TS Worker | Email Sending, cron; bound only to billing | Runs in a process of its own (`status.sh`), so it stays up when the site does not |
 | `services/identity` | Rust | Email Sending, KV `AVATARS` | Runs unchanged; `EMAIL` goes to the mail shim |
-| `services/repos` | Rust | **Artifacts**, Cache API, optional KV `GIT_CACHE` with `REPOS_KEY` | Runs unchanged; `ARTIFACTS` goes to the git store. Without `GIT_CACHE` and `REPOS_KEY`, credentials and ref listings are kept per isolate only |
+| `services/repos` | Rust | **Artifacts**, Cache API, optional KV `GIT_CACHE` with `REPOS_KEY`, optional R2 `GIT_PACKS` | Runs unchanged; `ARTIFACTS` goes to the git store. Without `GIT_CACHE` and `REPOS_KEY`, credentials and ref listings are kept per isolate only. `GIT_PACKS` (the clone pack cache, behind the `PackStore` port in `src/pack_cache.rs`) is not given, so every clone goes to the git store; an S3 adapter like packages' would turn it on |
 | `services/work` | Rust | Queue consumer | Runs unchanged |
 | `services/events` | Rust | Queues (producer and fan-out) | Runs unchanged; the off services' queues are not produced to |
 | `services/projects` | TS | Queue consumer | Runs unchanged |
