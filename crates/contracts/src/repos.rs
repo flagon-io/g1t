@@ -808,6 +808,67 @@ pub struct ReadBlobsArgs {
 /// The most blobs one `read_blobs` call reads.
 pub const MAX_READ_BLOBS: usize = 100;
 
+/// `refs`: a repository's branches and tags with the commit each points to
+/// (annotated tags peeled), for services that follow them, such as the
+/// packages service's Composer registry. No viewer: g1t's own services
+/// only. Returns `Option<RepoRefs>`, null for a fork or an unknown id.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefsArgs {
+    pub repo_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitRefEntry {
+    /// The full ref: `refs/heads/main`, `refs/tags/v1.0.0`.
+    pub name: String,
+    pub commit: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RepoRefs {
+    pub repo: Repo,
+    pub refs: Vec<GitRefEntry>,
+}
+
+/// `raw_file`: one file's bytes at a ref or commit, base64, for g1t's own
+/// services (no viewer). Returns `Option<RawFile>`: null when the file is
+/// missing or larger than `max_bytes`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RawFileArgs {
+    pub repo_id: String,
+    #[serde(rename = "ref")]
+    pub git_ref: String,
+    pub path: String,
+    pub max_bytes: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RawFile {
+    pub size: u64,
+    /// Standard base64.
+    pub data: String,
+}
+
+/// `raw_blobs`: blobs' bytes, base64, in the order asked, at most
+/// [`MAX_READ_BLOBS`]; `data` is null for one missing or larger than
+/// `max_bytes`. For g1t's own services. Returns `Vec<RawBlob>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RawBlobsArgs {
+    pub repo_id: String,
+    pub hashes: Vec<String>,
+    pub max_bytes: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RawBlob {
+    pub hash: String,
+    pub size: u64,
+    pub data: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BlobText {
     pub hash: String,

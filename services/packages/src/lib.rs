@@ -8,6 +8,8 @@
 //! `BlobStore` port (store/), metadata in D1 (db.rs).
 
 mod access;
+mod composer;
+mod composer_http;
 mod db;
 mod digest;
 mod limits;
@@ -345,6 +347,7 @@ impl Packages {
             name: p.name.clone(),
             address: match p.ecosystem.as_str() {
                 "npm" => format!("{}/-/npm/@{}/{}", self.host, p.workspace, p.name),
+                "composer" => format!("{}/-/composer/{}/{}", self.host, p.workspace, p.name),
                 _ => format!("{}/{}/{}", self.host, p.workspace, p.name),
             },
             visibility: Visibility::parse(&p.visibility),
@@ -565,6 +568,32 @@ impl Packages {
     /// Follows what happens elsewhere: workspaces renamed and deleted,
     /// repositories that change visibility, are renamed, move or go.
     async fn on_event(&self, env: &Env, event: &Event) -> Result<()> {
+        // Composer packages are read from repositories: again when one is
+        // pushed to (its default branch may have gained a composer.json),
+        // restored, renamed or moved; gone when it is deleted. A failure is
+        // logged, not retried with the batch: the next push reads it again.
+        let repo_id = event.repo_id.clone().or_else(|| event.data["repoId"].as_str().map(str::to_owned));
+        if let Some(repo_id) = repo_id.as_deref() {
+            let synced = match event.kind.as_str() {
+                "git.push" => {
+                    let known = self.db.package_for_repo(repo_id, "composer").await?.is_some();
+                    if known || event.data["defaultBranch"].as_bool() == Some(true) {
+                        Some(self.sync_composer(repo_id).await.map(|_| ()))
+                    } else {
+                        None
+                    }
+                }
+                "repo.deleted" => Some(self.composer_repo_gone(repo_id).await),
+                "repo.restored" | "repo.renamed" | "repo.transferred" => Some(self.sync_composer(repo_id).await.map(|_| ())),
+                _ => None,
+            };
+            if let Some(Err(error)) = synced {
+                worker::console_error!("packages: composer {} for {repo_id}: {error}", event.kind);
+            }
+            if event.kind == "git.push" || event.kind == "repo.deleted" || event.kind == "repo.restored" {
+                return Ok(());
+            }
+        }
         let db = &self.db.db;
         let protected = g1t_contracts::identity::protected_names(Some(&store::var(env, "PROTECTED_WORKSPACES")));
         match workspace_mark(event, &protected, &g1t_contracts::time::rfc3339(now_ms())) {
@@ -637,6 +666,9 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         if request.path().starts_with("/-/npm/") || request.path() == "/-/npm" {
             return packages.npm(request, &ctx).await;
         }
+        if request.path().starts_with("/-/composer/") {
+            return packages.composer(request, &ctx).await;
+        }
         return packages.registry(request, &ctx).await;
     };
     let body: serde_json::Value = request.json().await?;
@@ -648,6 +680,11 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "set_package" => reply(&packages.set_package(args(body)?).await?),
         // For billing: what a workspace's packages hold.
         "storage_all" => reply(&packages.db.storage_all().await?),
+        // Read a repository's Composer package again now, as a push would.
+        "sync_composer" => {
+            let a: SyncComposerArgs = args(body)?;
+            reply(&packages.sync_composer(&a.repo_id).await?)
+        }
         "storage" => {
             let a: StorageArgs = args(body)?;
             let (public_bytes, private_bytes) = packages.db.storage(&a.workspace.to_lowercase()).await?;
@@ -672,6 +709,12 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
         Ok((0, 0)) => {}
         Ok((uploads, blobs)) => worker::console_log!("packages: let go of {uploads} uploads and {blobs} blobs"),
         Err(error) => worker::console_error!("packages: the sweep failed: {error}"),
+    }
+    // Repositories that had a composer.json before the registry did.
+    match packages.composer_backfill().await {
+        Ok(0) => {}
+        Ok(found) => worker::console_log!("packages: found {found} Composer packages"),
+        Err(error) => worker::console_error!("packages: the Composer backfill failed: {error}"),
     }
 }
 

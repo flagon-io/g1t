@@ -25,6 +25,15 @@ test("an npm package is installed after .npmrc names its scope's registry, and a
   assert.equal(installCommands(pkg, null, "ada").install, "npm install @acme/ui");
 });
 
+test("a Composer package is required after its workspace's repository is added, with credentials for private ones", () => {
+  const pkg = { ecosystem: "composer" as const, address: "g1t.sh/-/composer/acme/acme/lib", name: "acme/lib", workspace: "acme" };
+  assert.deepEqual(installCommands(pkg, "v1.1.0", "ada"), {
+    registry: "composer config repositories.acme composer https://g1t.sh/-/composer/acme/",
+    login: "composer config --global --auth http-basic.g1t.sh ada YOUR_TOKEN",
+    install: "composer require acme/lib:v1.1.0",
+  });
+});
+
 test("a container image is pulled by its address and tag", () => {
   const pkg = { ecosystem: "container" as const, address: "g1t.sh/acme/web", name: "web", workspace: "acme" };
   assert.deepEqual(installCommands(pkg, "latest", "ada"), {

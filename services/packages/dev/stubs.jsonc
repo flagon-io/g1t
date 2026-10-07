@@ -3,5 +3,6 @@
 	"name": "g1t-packages-stubs",
 	"main": "stubs.js",
 	"compatibility_date": "2026-09-26",
+	"compatibility_flags": ["nodejs_compat"],
 	"vars": { "DEV_TOKEN": "g1t_devtoken", "MEMBER_TOKEN": "g1t_member", "OUTSIDER_TOKEN": "g1t_outsider", "FREE_PRIVATE_BYTES": "50000000" }
 }

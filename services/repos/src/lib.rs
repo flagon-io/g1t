@@ -382,6 +382,53 @@ impl<S: GitStore> Repos<S> {
         listing::list(&git, a.base.as_deref(), &a.head, &a.skip_dirs, a.limit).await
     }
 
+    /// Branches and tags with their commits, for g1t's own services.
+    async fn refs_of(&self, a: RefsArgs) -> Result<Option<RepoRefs>> {
+        let Some(repo) = self.registry.by_id(&a.repo_id).await?.filter(|repo| repo.fork_of.is_none()) else {
+            return Ok(None);
+        };
+        let git = self.store.open(&store_key(&repo)).await?;
+        let access = git.access(Scope::Read).await?;
+        let refs = refs::heads_and_tags(refs::all(&access).await?)
+            .into_iter()
+            .map(|(name, commit)| GitRefEntry { name, commit })
+            .collect();
+        Ok(Some(RepoRefs { repo, refs }))
+    }
+
+    async fn raw_file(&self, a: RawFileArgs) -> Result<Option<RawFile>> {
+        use base64::Engine;
+        let Some(git) = self.stored(&a.repo_id).await? else {
+            return Ok(None);
+        };
+        Ok(git
+            .read_file(&a.git_ref, &a.path)
+            .await?
+            .filter(|bytes| bytes.len() <= a.max_bytes as usize)
+            .map(|bytes| RawFile { size: bytes.len() as u64, data: base64::engine::general_purpose::STANDARD.encode(bytes) }))
+    }
+
+    async fn raw_blobs(&self, a: RawBlobsArgs) -> Result<Vec<RawBlob>> {
+        use base64::Engine;
+        let Some(git) = self.stored(&a.repo_id).await? else {
+            return Ok(Vec::new());
+        };
+        let hashes: Vec<&String> = a.hashes.iter().take(MAX_READ_BLOBS).collect();
+        let mut out = Vec::with_capacity(hashes.len());
+        // A few at a time, as listing::read does: each is a round trip.
+        for group in hashes.chunks(8) {
+            let read = futures_util::future::try_join_all(group.iter().map(|hash| git.read_blob(hash))).await?;
+            for (hash, bytes) in group.iter().zip(read) {
+                let size = bytes.as_ref().map_or(0, |bytes| bytes.len() as u64);
+                let data = bytes
+                    .filter(|bytes| bytes.len() <= a.max_bytes as usize)
+                    .map(|bytes| base64::engine::general_purpose::STANDARD.encode(bytes));
+                out.push(RawBlob { hash: (*hash).clone(), size, data });
+            }
+        }
+        Ok(out)
+    }
+
     async fn read_blobs(&self, a: ReadBlobsArgs) -> Result<Vec<BlobText>> {
         let Some(git) = self.stored(&a.repo_id).await? else {
             return Ok(Vec::new());
@@ -1900,6 +1947,10 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "list_files" => reply(&repos.list_files(args(body)?).await?),
         "changed_files" => reply(&repos.changed_files(args(body)?).await?),
         "read_blobs" => reply(&repos.read_blobs(args(body)?).await?),
+        // Services only: what the Composer registry builds packages from.
+        "refs" => reply(&repos.refs_of(args(body)?).await?),
+        "raw_file" => reply(&repos.raw_file(args(body)?).await?),
+        "raw_blobs" => reply(&repos.raw_blobs(args(body)?).await?),
         "visibility" => {
             let a: g1t_contracts::repos::VisibilityArgs = args(body)?;
             reply(&repos.registry.visibility(&a.paths).await?)

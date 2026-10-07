@@ -109,7 +109,9 @@ export type PackagesApi = {
   storage(workspace: string): Promise<PackageStorage>;
   /** For billing: every workspace with packages, from one query. */
   storageAll(): Promise<WorkspacePackageStorage[]>;
+  /** Read a repository's Composer package again now, as a push would. Whether it is one. */
+  syncComposer(repoId: string): Promise<boolean>;
 };
 
 /** The RPC method behind each call, as the Rust service names them. */
-export const PACKAGES_METHODS = ["list_packages", "get_package", "delete_version", "delete_package", "set_package", "storage", "storage_all"] as const;
+export const PACKAGES_METHODS = ["list_packages", "get_package", "delete_version", "delete_package", "set_package", "storage", "storage_all", "sync_composer"] as const;

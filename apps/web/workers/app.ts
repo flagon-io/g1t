@@ -1,6 +1,7 @@
 import { createRequestHandler } from "react-router";
 
 import { finishResponse, withRequestPerf } from "../app/lib/perf.server";
+import { goImport } from "../app/lib/go-get";
 import { servicePath } from "../app/lib/registry-paths";
 
 const requestHandler = createRequestHandler(
@@ -36,6 +37,14 @@ export default {
     // The container registry (`docker login g1t.sh`) and the npm registry
     // (`g1t.sh/-/npm/`) are the packages
     // service's, handed over the same way.
+    // `go get g1t.sh/<workspace>/<repo>`: where its code is, from the
+    // address alone, so it costs nothing and caches.
+    const go = request.method === "GET" ? goImport(new URL(request.url)) : null;
+    if (go) {
+      return new Response(go, {
+        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" },
+      });
+    }
     const service = servicePath(pathname);
     if (service === "git") {
       return proxyGit(env, request);

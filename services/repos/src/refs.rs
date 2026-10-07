@@ -35,6 +35,25 @@ fn parse_advertisement(bytes: &[u8]) -> Vec<Branch> {
         .collect()
 }
 
+/// Branches and tags from every ref, an annotated tag's commit taken from
+/// its peeled line (`refs/tags/v1^{}`) when the advertisement has one.
+pub fn heads_and_tags(all: Vec<(String, String)>) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for (name, hash) in all {
+        if let Some(tag) = name.strip_suffix("^{}") {
+            match out.iter_mut().find(|(seen, _)| seen == tag) {
+                Some(entry) => entry.1 = hash,
+                None => out.push((tag.to_owned(), hash)),
+            }
+            continue;
+        }
+        if name.starts_with(HEADS) || name.starts_with("refs/tags/") {
+            out.push((name, hash));
+        }
+    }
+    out
+}
+
 pub async fn branches(access: &GitAccess) -> Result<Vec<Branch>> {
     Ok(parse_advertisement(&advertisement(access).await?))
 }
@@ -97,6 +116,25 @@ mod tests {
         let all = parse_refs(&advertisement);
         assert_eq!(all.len(), 3);
         assert_eq!(all[2], ("refs/tags/v1.0.0".to_owned(), shout.to_owned()));
+    }
+
+    #[test]
+    fn annotated_tags_are_peeled_and_other_refs_left_out() {
+        let all = vec![
+            ("refs/heads/main".to_owned(), "a".to_owned()),
+            ("refs/pull/1/head".to_owned(), "b".to_owned()),
+            ("refs/tags/v1".to_owned(), "tagobject".to_owned()),
+            ("refs/tags/v1^{}".to_owned(), "c".to_owned()),
+            ("refs/tags/v2".to_owned(), "d".to_owned()),
+        ];
+        assert_eq!(
+            super::heads_and_tags(all),
+            vec![
+                ("refs/heads/main".to_owned(), "a".to_owned()),
+                ("refs/tags/v1".to_owned(), "c".to_owned()),
+                ("refs/tags/v2".to_owned(), "d".to_owned()),
+            ]
+        );
     }
 
     #[test]

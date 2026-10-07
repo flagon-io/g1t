@@ -22,7 +22,8 @@ export async function redirectIfBranchRenamed(
   try {
     const repo = await repos.get(path, viewer);
     if (!repo.ok) return;
-    const now = await repos.resolveBranch(repo.value.id, ref);
+    // `HEAD` is the default branch, as git means it (Go's go-source links use it).
+    const now = ref === "HEAD" ? repo.value.defaultBranch : await repos.resolveBranch(repo.value.id, ref);
     if (!now || now === ref) return;
     const url = new URL(request.url);
     to = renamedBranchPath(url.pathname, url.search, now);
@@ -30,5 +31,6 @@ export async function redirectIfBranchRenamed(
     // A lookup that fails leaves the page a 404, never a 500.
     return;
   }
-  if (to) throw redirect(to, 301);
+  // A rename is for good; what HEAD names can change.
+  if (to) throw redirect(to, ref === "HEAD" ? 302 : 301);
 }

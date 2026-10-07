@@ -1013,6 +1013,7 @@ dependencies = [
  "g1t-kit",
  "hex",
  "hmac 0.12.1",
+ "miniz_oxide",
  "serde",
  "serde_json",
  "sha1 0.10.7",
@@ -1024,6 +1025,7 @@ dependencies = [
 name = "g1t-repos"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "futures-util",
  "g1t-contracts",
  "g1t-kit",

@@ -610,6 +610,7 @@ export function packagesClient(service: ServiceBinding): PackagesApi {
       }),
     storage: (workspace) => call("storage", { workspace }),
     storageAll: () => call("storage_all", {}),
+    syncComposer: (repoId) => call("sync_composer", { repo_id: repoId }),
   };
 }
 

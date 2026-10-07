@@ -35,6 +35,18 @@ test("the npm registry's paths go to the packages service", () => {
   }
 });
 
+test("the Composer registries go to the packages service", () => {
+  for (const path of [
+    "/-/composer/acme/packages.json",
+    "/-/composer/acme/p2/acme/lib.json",
+    "/-/composer/acme/p2/acme/lib~dev.json",
+    `/-/composer/acme/dist/acme/lib/${"a".repeat(40)}.zip`,
+  ]) {
+    assert.equal(servicePath(path), "packages", path);
+  }
+  assert.equal(servicePath("/-/composer"), null);
+});
+
 test("git goes to repos, and everything else is the site's", () => {
   assert.equal(servicePath("/acme/web.git/info/refs"), "git");
   assert.equal(servicePath("/acme/web/git-receive-pack"), "git");

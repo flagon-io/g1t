@@ -62,8 +62,11 @@ export function installCommands(
         install: `npm install @${pkg.workspace}/${pkg.name}${version ? `@${version}` : ""}`,
       };
     case "composer":
+      // The workspace's repository (in composer.json, needed for any
+      // install), then the credentials a private package also needs.
       return {
-        login: `composer config repositories.${pkg.workspace} composer https://${host}/-/composer/${pkg.workspace}/`,
+        registry: `composer config repositories.${pkg.workspace} composer https://${host}/-/composer/${pkg.workspace}/`,
+        login: `composer config --global --auth http-basic.${host} ${you} YOUR_TOKEN`,
         install: `composer require ${pkg.name}${version ? `:${version}` : ""}`,
       };
     case "cargo":

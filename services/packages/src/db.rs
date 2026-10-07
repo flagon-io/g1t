@@ -584,6 +584,117 @@ impl Db {
         .results()
     }
 
+    /// The package of an ecosystem built from a repository (Composer's).
+    pub async fn package_for_repo(&self, repo_id: &str, ecosystem: &str) -> Result<Option<PackageRow>> {
+        self.prepare(
+            &format!("SELECT {PACKAGE_COLUMNS} FROM packages WHERE repo_id = ? AND ecosystem = ? LIMIT 1"),
+            &[text(repo_id), text(ecosystem)],
+        )?
+        .first(None)
+        .await
+    }
+
+    pub async fn rename_package(&self, package_id: &str, name: &str, now_ms: u64) -> Result<()> {
+        self.prepare(
+            "UPDATE packages SET name = ?, updated_at = ? WHERE id = ?",
+            &[text(name), text(&rfc3339(now_ms)), text(package_id)],
+        )?
+        .run()
+        .await?;
+        Ok(())
+    }
+
+    /// Records a version, in place of one of the same version string
+    /// (a tag or branch that moved): its files and tags go with the old one.
+    pub async fn replace_version(&self, version: &NewVersion, now_ms: u64) -> Result<()> {
+        let now = rfc3339(now_ms);
+        let old = [text(&version.package_id), text(&version.version)];
+        let old_ids = "SELECT id FROM versions WHERE package_id = ? AND version = ?";
+        let mut batch = vec![
+            self.prepare(&format!("DELETE FROM tags WHERE version_id IN ({old_ids})"), &old)?,
+            self.prepare(&format!("DELETE FROM version_files WHERE version_id IN ({old_ids})"), &old)?,
+            self.prepare("DELETE FROM versions WHERE package_id = ? AND version = ?", &old)?,
+            self.prepare(
+                "INSERT INTO versions (id, package_id, version, digest, size, metadata, subject, published_by, published_at)
+                 VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)",
+                &[
+                    text(&version.id),
+                    text(&version.package_id),
+                    text(&version.version),
+                    text(&version.digest),
+                    num(version.size),
+                    text(&version.metadata),
+                    opt(version.published_by.as_deref()),
+                    text(&now),
+                ],
+            )?,
+        ];
+        for file in &version.files {
+            batch.push(self.prepare(
+                "INSERT OR IGNORE INTO version_files (version_id, name, digest, size, media_type) VALUES (?, ?, ?, ?, ?)",
+                &[text(&version.id), text(&file.name), text(&file.digest), num(file.size), opt(file.media_type.as_deref())],
+            )?);
+        }
+        batch.push(self.prepare("UPDATE packages SET updated_at = ? WHERE id = ?", &[text(&now), text(&version.package_id)])?);
+        self.db.batch(batch).await?;
+        Ok(())
+    }
+
+    /// The zip already made of a commit of the package, if one was.
+    pub async fn dist_for_commit(&self, package_id: &str, commit: &str) -> Result<Option<BlobRow>> {
+        self.prepare(
+            "SELECT b.digest, b.size, b.media_type, b.object_key FROM versions v
+             JOIN version_files vf ON vf.version_id = v.id AND vf.name = 'dist'
+             JOIN blobs b ON b.digest = vf.digest
+             WHERE v.package_id = ? AND v.digest = ? LIMIT 1",
+            &[text(package_id), text(commit)],
+        )?
+        .first(None)
+        .await
+    }
+
+    /// Records the zip of a commit as a file of every version at it.
+    pub async fn add_dist(&self, package_id: &str, commit: &str, digest: &Digest, size: u64) -> Result<()> {
+        let at = [text(package_id), text(commit)];
+        self.db
+            .batch(vec![
+                self.prepare(
+                    "INSERT OR IGNORE INTO version_files (version_id, name, digest, size, media_type)
+                     SELECT id, 'dist', ?, ?, 'application/zip' FROM versions WHERE package_id = ? AND digest = ?",
+                    &[text(digest.as_str()), num(size), text(package_id), text(commit)],
+                )?,
+                self.prepare("UPDATE versions SET size = ? WHERE package_id = ? AND digest = ?", &[num(size), at[0].clone(), at[1].clone()])?,
+            ])
+            .await?;
+        Ok(())
+    }
+
+    /// Where the Composer backfill is: the last repository done, and
+    /// whether it went through them all.
+    pub async fn backfill(&self) -> Result<(Option<String>, bool)> {
+        #[derive(Deserialize)]
+        struct Row {
+            after: Option<String>,
+            finished_at: Option<String>,
+        }
+        let row: Option<Row> = self
+            .prepare("SELECT after, finished_at FROM composer_backfill WHERE key = 'repos'", &[])?
+            .first(None)
+            .await?;
+        Ok(row.map_or((None, false), |row| (row.after, row.finished_at.is_some())))
+    }
+
+    pub async fn set_backfill(&self, after: Option<&str>, finished: bool, now_ms: u64) -> Result<()> {
+        self.prepare(
+            "INSERT INTO composer_backfill (key, after, finished_at) VALUES ('repos', ?, ?)
+             ON CONFLICT (key) DO UPDATE SET after = excluded.after, finished_at = excluded.finished_at",
+            &[opt(after), if finished { text(&rfc3339(now_ms)) } else { JsValue::NULL }],
+        )?
+        .run()
+        .await?;
+        Ok(())
+    }
+
     /// Points `tag` at a version, made or moved.
     pub async fn set_tag(&self, package_id: &str, tag: &str, version_id: &str, now_ms: u64) -> Result<()> {
         self.prepare(

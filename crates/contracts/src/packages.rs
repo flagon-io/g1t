@@ -243,6 +243,14 @@ pub struct StorageArgs {
     pub workspace: String,
 }
 
+/// `sync_composer`: read a repository's Composer package again now, as a
+/// push would: made, updated or deleted from its branches, tags and
+/// `composer.json`. Returns `bool`: whether it is a package.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SyncComposerArgs {
+    pub repo_id: String,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PackageStorage {
     pub public_bytes: u64,
@@ -281,7 +289,7 @@ mod tests {
         for ecosystem in Ecosystem::ALL {
             assert!(ts.contains(&format!("\"{}\"", ecosystem.as_str())), "{}", ecosystem.as_str());
         }
-        for method in ["list_packages", "get_package", "delete_version", "delete_package", "set_package", "storage", "storage_all"] {
+        for method in ["list_packages", "get_package", "delete_version", "delete_package", "set_package", "storage", "storage_all", "sync_composer"] {
             assert!(ts.contains(&format!("\"{method}\"")), "{method}");
         }
     }

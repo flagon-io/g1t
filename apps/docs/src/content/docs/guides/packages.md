@@ -4,15 +4,18 @@ description: Publish and install packages beside your code, with the same people
 ---
 
 A workspace can publish packages to g1t and install them from it, beside
-the code they are built from: container images and npm packages, with
-Composer, Cargo and Go to follow. Each registry speaks its tool's own
-protocol, so `docker` and `npm` work with nothing but a login and an
-address.
+the code they are built from: container images, npm packages, Composer
+packages and Go modules, with Cargo to follow. Each registry speaks its
+tool's own protocol, so `docker`, `npm`, `composer` and `go` work with
+nothing but a login and an address. Composer packages and Go modules are
+read from the workspace's repositories: there is nothing to upload.
 
 | Registry | Address | Guide |
 | --- | --- | --- |
 | Container images | `g1t.sh/<workspace>/<name>` | [Container images](/guides/containers/) |
 | npm | `https://g1t.sh/-/npm/`, for the scope `@<workspace>` | [npm](/guides/npm/) |
+| Composer | `https://g1t.sh/-/composer/<workspace>/`, from the workspace's repositories | [Composer](/guides/composer/) |
+| Go | `g1t.sh/<workspace>/<repo>`, straight from git | [Go modules](/guides/go/) |
 
 ## Names
 

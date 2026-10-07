@@ -73,7 +73,11 @@ export default function PackagePage({ loaderData, actionData }: Route.ComponentP
   const outcome = actionData as Outcome | undefined;
   const latest = tags.find((tag) => tag.tag === "latest")?.tag ?? tags[0]?.tag ?? null;
   const commands = installCommands(pkg, latest, username);
-  const npm = pkg.ecosystem === "npm";
+  // npm and Composer versions are numbers; images are digests and tags.
+  const npm = pkg.ecosystem !== "container";
+  // Composer's versions are the repository's tags and branches: they
+  // change in git, not here.
+  const fromGit = pkg.ecosystem === "composer";
   // Signatures and attestations hang off the images they describe.
   const images = versions.filter((version) => !version.subject);
   const attached = (digest: string) => versions.filter((version) => version.subject === digest);
@@ -116,7 +120,7 @@ export default function PackagePage({ loaderData, actionData }: Route.ComponentP
         {commands.registry && <CopyLine prompt text={commands.registry} />}
         {pkg.visibility === "private" && <CopyLine prompt text={commands.login} />}
         <CopyLine prompt text={commands.install} />
-        {npm && pkg.visibility === "private" && (
+        {commands.registry && pkg.visibility === "private" && (
           <p className="text-xs text-faint">
             Put an{" "}
             <Link to="/settings/tokens" className="text-muted hover:text-fg">
@@ -146,12 +150,24 @@ export default function PackagePage({ loaderData, actionData }: Route.ComponentP
         <h2 className="text-sm font-semibold">
           Versions <span className="font-normal text-faint">{images.length}</span>
         </h2>
+        {fromGit && (
+          <p className="text-xs text-faint">
+            Each tag of {pkg.repo ? `${pkg.repo.namespace}/${pkg.repo.name}` : "its repository"} that reads as a version, and each
+            branch as <code className="font-mono">dev-</code>, from its composer.json. Push a tag to publish one; delete it to take it away.
+          </p>
+        )}
         {images.length === 0 ? (
           <p className="text-sm text-muted">No versions are left.</p>
         ) : (
           <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
             {images.map((version) => (
-              <VersionRow key={version.id} version={version} attached={attached(version.digest)} canDelete={permissions.delete} npm={npm} />
+              <VersionRow
+                key={version.id}
+                version={version}
+                attached={attached(version.digest)}
+                canDelete={permissions.delete && !fromGit}
+                npm={npm}
+              />
             ))}
           </ul>
         )}
