@@ -637,7 +637,7 @@ impl ArtifactsRepo {
     async fn cached_at(&self, path: &str, forever: bool) -> Option<Vec<u8>> {
         let url = self.cache_url(path);
         if forever && let Some(bytes) = MEMORY.with(|memory| memory.borrow().get(&url)) {
-            meters::record_bytes("cache.memory_hit", &self.key, 0, bytes.len() as u64);
+            meters::record("cache.memory_hit", &self.key, 0, bytes.len() as u64);
             return Some(bytes);
         }
         let found = match worker::Cache::default().get(url.clone(), false).await {
@@ -646,7 +646,7 @@ impl ArtifactsRepo {
         };
         match &found {
             Some(bytes) => {
-                meters::record_bytes("cache.edge_hit", &self.key, 0, bytes.len() as u64);
+                meters::record("cache.edge_hit", &self.key, 0, bytes.len() as u64);
                 if forever {
                     MEMORY.with(|memory| memory.borrow_mut().put(url, bytes));
                 }
