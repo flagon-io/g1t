@@ -51,7 +51,7 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   packages: {
     title: "Packages",
-    about: "What the workspace publishes and installs, beside its code: container images, npm, Composer and Go, with the same members, roles and tokens.",
+    about: "What the workspace publishes and installs, beside its code: container images, npm, Composer, Go, Cargo, Maven, NuGet and RubyGems, with the same members, roles and tokens.",
   },
   usage: { title: "Usage", about: "What the workspace's agents cost, run by run, by repository, pull request and model." },
   billing: { title: "Billing and plans", about: "The g1t plan, the trial, your spend limit and caps, prepaying, and every charge." },
