@@ -156,7 +156,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
   const { pathname } = useLocation();
   const tabs = tabsFor(pathname.slice(base.length + 1), member, access.can);
   // The files' own About says what it is and its topics, as the one place.
-  const filesPage = /^(code|tree)(\/|$)/.test(pathname.slice(base.length + 1));
+  const filesPage = /^(code|tree|blob|commits?|branches|tags)(\/|$)/.test(pathname.slice(base.length + 1));
   // Everyone, signed in or not, finds the project's pages in the sidebar;
   // the page shows its name, and the views of the page it is on as tabs.
   return (

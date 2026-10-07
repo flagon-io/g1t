@@ -21,4 +21,6 @@ test("a branch with no shared commit in reach says how much it read", () => {
   assert.deepEqual(drift(["b3", "b2", "b1"], ["m2", "m1"], 3), { ahead: 3, behind: 0, aheadMore: true, behindMore: true });
   assert.equal(count(3, true), "3+");
   assert.equal(count(3, false), "3");
+  // Behind by an unknown number: not "0+", which reads as up to date.
+  assert.equal(count(0, true), "?");
 });

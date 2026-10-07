@@ -21,7 +21,8 @@ export function drift(branch: string[], main: string[], limit: number): Drift {
   return { ahead, behind, aheadMore: false, behindMore: false };
 }
 
-/** `12`, or `50+` when the count ran past what was read. */
+/** `12`, `50+` when the count ran past what was read, or `?` when nothing was counted before it did. */
 export function count(value: number, more: boolean): string {
+  if (more && value === 0) return "?";
   return more ? `${value}+` : String(value);
 }
