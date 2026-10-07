@@ -68,6 +68,7 @@ import {
   canReachModel,
   changeSize,
   chooseTier,
+  gatewaySession,
   lastAttemptFailed,
   modelEnv,
   parseRouting,
@@ -1393,6 +1394,10 @@ export default class RunnerService
       session = opened.value;
     }
     const own = session?.billedTo === "workspace";
+    // Straight to the gateway, without the proxy: the run still gets a
+    // session there, so billing settles it to what the gateway priced it
+    // at instead of leaving the sandbox's own figure.
+    const direct = !session && this.env.AI_GATEWAY_ID ? gatewaySession() : undefined;
     // A workspace's own provider is not routed by tier: it runs the model
     // its route names, or for an Anthropic provider, the large tier's.
     const routed = routing.tiers[own ? "large" : tier];
@@ -1405,7 +1410,7 @@ export default class RunnerService
       task,
       model: own ? `${modelName} (${session?.providerName ?? "own provider"})` : modelName,
       billedTo: own ? "workspace" : "g1t",
-      session: own ? null : (session?.id ?? null),
+      session: own ? null : (session?.id ?? direct ?? null),
       tier: own ? null : tier,
     });
     if (!ticket.ok) return ticket;
@@ -1423,7 +1428,7 @@ export default class RunnerService
           // the harness's small tasks too.
           ...(session.model ? { ANTHROPIC_SMALL_FAST_MODEL: session.model } : {}),
         }
-      : modelEnv(this.env, routing, task, tier, tags);
+      : modelEnv(this.env, routing, task, tier, direct ? { ...tags, session: direct } : tags);
     if (ticket.value) {
       // How the sandbox says what the run cost. Kept from the agent.
       vars.BILLING_RUN = ticket.value.runId;

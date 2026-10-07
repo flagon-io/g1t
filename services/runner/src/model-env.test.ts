@@ -9,6 +9,7 @@ import {
   canReachModel,
   changeSize,
   chooseTier,
+  gatewaySession,
   lastAttemptFailed,
   modelEnv,
   parseRouting,
@@ -125,6 +126,17 @@ test("with a gateway, requests go through it and say what they are for", () => {
   assert.deepEqual(customHeaders(vars), {
     "cf-aig-metadata": '{"task":"review","tier":"large","repo":"acme/site","pull":12}',
   });
+});
+
+test("a run straight to the gateway carries its session, so billing can settle it", () => {
+  const session = gatewaySession();
+  assert.match(session, /^rs_[0-9a-f]{24}$/);
+  assert.notEqual(gatewaySession(), session);
+  const vars = modelEnv({ ...direct, AI_GATEWAY_ID: "g1t" }, routes, "implement", "small", { ...tags, session });
+  const metadata = JSON.parse(customHeaders(vars)["cf-aig-metadata"]);
+  assert.equal(metadata.session, session);
+  // The gateway keeps at most five metadata entries.
+  assert.ok(Object.keys(metadata).length <= 5);
 });
 
 test("an authenticated gateway is sent its token", () => {
