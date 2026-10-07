@@ -67,9 +67,11 @@ thread_local! {
     /// where it is counted too): written at most every few seconds, so a
     /// busy image costs one write, not one a pull. What an isolate holds
     /// when it goes away is lost: the count is approximate.
-    static DOWNLOADS: RefCell<(HashMap<(String, Option<String>), u64>, u64)> = RefCell::new((HashMap::new(), 0));
+    static DOWNLOADS: RefCell<(HashMap<DownloadKey, u64>, u64)> = RefCell::new((HashMap::new(), 0));
 }
 const DOWNLOADS_FLUSH_MS: u64 = 10_000;
+/// A package's id, and a version's when the download counts for it too.
+type DownloadKey = (String, Option<String>);
 
 thread_local! {
     /// What billing allows each workspace, as asked last, and when.
