@@ -323,6 +323,7 @@ On the form, scopes are a checklist grouped by area:
 | Workflows | `workflows:read`, `workflows:write` |
 | Memory & search | `memory:read`, `memory:write` |
 | Account | `account:read`, `account:write` |
+| Notifications | `notifications:read`, `notifications:write` |
 | Workspace | `workspace:read`, `access:read`, `webhooks:read`, `secrets:read` |
 | Runners | `runners:read` |
 | Dangerous | `repo:admin`, `packages:delete`, `workspace:admin`, `access:admin`, `webhooks:admin`, `secrets:admin`, `runners:admin` |
@@ -352,6 +353,8 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 | `memory:write` | Save memory for the next agent |
 | `account:read` | Read your email addresses, invites and invitations |
 | `account:write` | Change your email addresses, make invites and answer invitations |
+| `notifications:read` | See your [inbox](/guides/inbox/), its threads, and what you subscribe to and watch |
+| `notifications:write` | Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories |
 | `workspace:read` | Read workspace invites, integrations and model routes |
 | `workspace:admin` | Create and delete workspaces, invite members, connect integrations |
 | `access:read` | See who has access to repositories |
@@ -398,7 +401,7 @@ any box.
 | Preset | Scopes |
 | --- | --- |
 | Read only | Every `read` scope. Changes nothing. |
-| Agent | Every `read` scope except `runners:read`, and `code:write`, `issues:write`, `pull_requests:write`, `agents:run` and `memory:write`. Reads everything, works on issues and pull requests, pushes code and puts g1t to work. No admin scope. |
+| Agent | Every `read` scope except `runners:read`, and `code:write`, `issues:write`, `pull_requests:write`, `agents:run`, `memory:write` and `notifications:write`. Reads everything, works on issues and pull requests, pushes code, puts g1t to work, and answers your inbox. No admin scope. |
 | CI | `repo:read`, `code:read`, `code:write`, `packages:read`, `packages:write`, `workflows:read` and `workflows:write`. Clones and pushes code, pushes and pulls packages, and runs workflows. |
 | Full access | Everything you can do, including deleting repositories and changing who has access. Marked **Dangerous**. |
 
@@ -474,7 +477,8 @@ everything you can.
 
 An application that asks for no scopes in particular gets the
 [Agent preset](#presets): every `read` scope except `runners:read`, and `code:write`,
-`issues:write`, `pull_requests:write`, `agents:run` and `memory:write`.
+`issues:write`, `pull_requests:write`, `agents:run`, `memory:write` and
+`notifications:write`.
 It never gets an admin scope unless it asks for one and you leave it
 ticked.
 

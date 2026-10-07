@@ -267,7 +267,7 @@ free slot" and the work starts by itself when one finishes.
 Every one of these is also on the MCP server. Its tools are resources,
 each with an `action`: `search`, `repository`, `issue`, `pull_request`,
 `agent`, `plan`, `memory`, `workflow`, `secret`, `webhook`, `access`,
-`workspace` and `account`. Call `tools/call` with the tool's name and
+`workspace`, `notifications` and `account`. Call `tools/call` with the tool's name and
 `arguments` holding `action` and its inputs, such as
 `{"name": "issue", "arguments": {"action": "get", "repo": "acme/web", "number": 12}}`.
 The flow above is: `issue` `get`, `memory` `recall`, `pull_request`
@@ -276,8 +276,12 @@ The flow above is: `issue` `get`, `memory` `recall`, `pull_request`
 `statuses` and `required_checks` on `pull_request` `get`, and
 `repository` `check_names` for the names a branch can require. `agent` `delegate` and `agent` `assign` hand work
 to g1t's agent; `plan` `create`, `get` and `apply` plan an outcome;
-`memory` `remember` saves a fact. `search` runs `code` and `account` runs
-`whoami` when `action` is left out. A call missing a required field says
+`memory` `remember` saves a fact. `notifications` reads and answers the
+inbox of the person a token acts for: `list` (unread threads, each with a
+`reason` such as `agent` or `review_requested`), `done`, `subscribe`,
+`watch` and more; g1t's own token cannot use it. `search` runs `code`,
+`notifications` runs `list` and `account` runs `whoami` when `action` is
+left out. A call missing a required field says
 which, such as "issue.get needs number.". The earlier one-tool-per-operation
 names (`get_issue`, `create_pull_request`, …) still answer for now but are
 no longer listed. Every tool and action, with its required fields and
@@ -292,7 +296,7 @@ as `repo`, written `owner/name`.
 
 Every access token and OAuth sign-in has scopes, `resource:level`:
 `repo`, `code`, `issues`, `pull_requests`, `workflows`, `memory`,
-`account`, `access`, `webhooks`, `secrets`, `runners` (read, write or admin
+`account`, `notifications`, `access`, `webhooks`, `secrets`, `runners` (read, write or admin
 as each has them), `agents:run`, `workspace:read` and `workspace:admin`. A higher
 level includes the lower. A token may expire. It reaches every workspace
 and repository its owner can (a workspace's token, that workspace only);
@@ -301,7 +305,8 @@ A token sees only the MCP tools and actions its scopes allow. A missing scope an
 `{"error": {"code": "forbidden", "message": "This access token needs the issues:write scope to use create_issue.", "needed_scope": "issues:write"}}`.
 Pushing needs `code:write`; cloning a private repository `code:read`. For
 an agent, use the Agent preset (every read scope but `runners:read`, plus `code:write`,
-`issues:write`, `pull_requests:write`, `agents:run`, `memory:write`).
+`issues:write`, `pull_requests:write`, `agents:run`, `memory:write`,
+`notifications:write`).
 OAuth clients may send `scope`;
 the person can untick any; asking for none gives the Agent preset. Tokens
 from device sign-in (above) have full access. Guide:

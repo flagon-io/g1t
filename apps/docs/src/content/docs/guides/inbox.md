@@ -1,50 +1,196 @@
 ---
 title: Your inbox
-description: What needs you, and what you follow, as it happens. An agent waiting on you comes first; failures, merges, mentions and comments follow. Mark items read or done, save them, or snooze them.
+description: What needs you, and what you follow, as it happens. One thread per issue, pull request, workflow or deployment, with why you were told. Choose what you hear of with subscriptions, watching and email settings.
 ---
 
 Your **inbox** tells you when something needs you, or when something
-happens to work you answer for: an agent is waiting on you, checks failed
-on your pull request, g1t finished a change you asked for, someone mentioned
-you. You are never told about what you did yourself.
+happens to work you answer for or follow: an agent is waiting on you,
+someone asked you to review a pull request, checks failed on your pull
+request, a deployment failed, someone mentioned you. You are never told
+about what you did yourself.
 
 Open it from the bell in the top bar. The number on the bell is what is
-unread. It is amber while an agent is waiting on you, red while a failure is
-unread, and green otherwise.
+unread. It is amber while something is waiting on you, red while a failure
+is unread, and green otherwise.
+
+## Threads
+
+Your inbox holds one **thread** for each thing you were told about:
+
+- an issue
+- a pull request
+- a workflow on one branch
+- a deployment: a project's production, or one pull request's preview
+
+When something new happens on a thread, it comes back to the top of your
+inbox, unread, even if you had marked it done. It is not added a second
+time. A thread that is snoozed stays snoozed until its time.
+
+Each card shows the latest activity's title, why you were told (see
+[reasons](#reasons)), and, when more than one thing has happened, how many,
+such as **3 updates**. g1t keeps the last 10 activities of each thread.
+
+While a thread is unread it keeps the most urgent of what happened since
+you last read it. A failure followed by a comment still shows as a failure
+until you read it.
+
+## Reasons
+
+Every thread says why you were told of its latest activity. When you are
+told of one thing for more than one reason, the first that applies in this
+table is shown.
+
+| Reason | Shown as | Why you were told |
+| --- | --- | --- |
+| `agent` | agent waiting | An agent is waiting on you: it asked a question, or it stopped until a person steps in. |
+| `review_requested` | review requested | Someone asked you to review a pull request, or you are one of its reviewers. |
+| `assign` | assigned | You were assigned, or you are an assignee. |
+| `mention` | mentioned | Someone mentioned you with `@username`, or you were mentioned on it before. |
+| `ci_activity` | CI activity | A check, workflow or deployment on your work finished badly, or recovered. |
+| `security_alert` | security alert | A security alert on a repository you look after. g1t does not send these to the inbox yet. |
+| `state_change` | state changed | It was closed, reopened or merged. |
+| `author` | your work | You opened it, or you asked g1t for it. |
+| `comment` | commented | You commented on it. |
+| `manual` | subscribed | You subscribed to it yourself. |
+| `subscribed` | watching | You watch its repository. |
 
 ## What lands there
 
 Each item comes from something that happened on g1t. Who is told depends on
 what it was:
 
-| What happened | Who is told | Shown as |
-| --- | --- | --- |
-| Another agent asked a question of the agent on a pull request, or handed it work | The person the pull request belongs to, and the issue's author and assignees | Needs you |
-| Checks failed, or could not run, on a pull request | The person the pull request belongs to | Error |
-| A workflow failed on a pull request | The person the pull request belongs to | Error |
-| A workflow failed on a branch | Whoever pushed the commit it ran on | Error |
-| g1t finished a change and marked it ready for review | The person who asked g1t for it | Success |
-| g1t reviewed a pull request | The person the pull request belongs to | Success when approved, Info when it asks for changes |
-| A pull request was merged | The person the pull request belongs to | Success |
-| Someone mentioned you with `@username` in a comment | You | Info |
-| Someone commented on an issue or pull request you opened | You | Info, or Success for an approval |
+| What happened | Who is told | Reason | Shown as |
+| --- | --- | --- | --- |
+| An agent asked a question of the agent on a pull request, or handed it work | The person the pull request belongs to, and its issue's author and assignees | `agent` | Needs you |
+| g1t stopped on a pull request until a person steps in | The same people | `agent` | Needs you |
+| Someone asked for reviews on a pull request, or opened one with reviewers | The reviewers asked | `review_requested` | Needs you |
+| Someone assigned people to an issue or pull request, or opened one with assignees | The people newly assigned | `assign` | Info |
+| Checks failed, or could not run, on a pull request | The person the pull request belongs to | `ci_activity` | Error |
+| A workflow failed on a pull request | The person the pull request belongs to | `ci_activity` | Error |
+| A workflow failed on a branch | Whoever pushed the commit it ran on | `ci_activity` | Error |
+| A preview of a pull request failed to deploy | The person the pull request belongs to, and people watching deployments | `ci_activity`, or `subscribed` for watchers | Error |
+| Production failed to deploy | Whoever pushed or started it, and people watching deployments | `ci_activity`, or `subscribed` for watchers | Error |
+| A deployment went live | People watching deployments; after a failure, also whoever was told of the failure | `ci_activity`, or `subscribed` for watchers | Success |
+| g1t finished a change and marked it ready for review | The person who asked g1t for it | `author` | Success |
+| g1t reviewed a pull request | The person the pull request belongs to | `author` | Success when approved, Info when it asks for changes |
+| A pull request was merged | Everyone subscribed to it, and people watching pull requests | `state_change`, or `subscribed` for watchers | Success |
+| An issue or pull request was closed, or an issue was reopened | Everyone subscribed to it, and people watching its kind | `state_change`, or `subscribed` for watchers | Info |
+| Someone mentioned you with `@username` in a comment | You | `mention` | Info |
+| Someone commented on an issue or pull request | Everyone subscribed to it, and people watching its kind | Why each is subscribed, or `subscribed` for watchers | Info, or Success for an approval |
+| An issue or pull request was opened | People watching its kind | `subscribed` | Info |
 
 "The person a pull request belongs to" is its author, or, for a change g1t
-made, the person who asked for it. g1t itself is never told. A mention in
-code or in a quoted line does not count.
+made, the person who asked for it. An approval or a request for changes
+always reaches that person. g1t itself is never told. A mention in code or
+in a quoted line does not count.
+
+Some threads close themselves once they no longer need you:
+
+- When an agent was waiting on you, the thread moves to Done as soon as the
+  agent picks back up: it resumes, its pull request changes, a merge is
+  asked for, or the pull request is merged or closed.
+- When a review request to you is removed, that thread moves to Done.
+
+New activity brings either back, as with any thread.
 
 You only see items about repositories you can read. If you lose access to a
 repository, its items leave your inbox the next time you open it.
+
+## Subscriptions
+
+You are **subscribed** to an issue or pull request, and hear of what
+happens on it, without doing anything when you:
+
+- opened it, or asked g1t for it
+- are assigned to it
+- are one of its reviewers
+- commented on it
+- were mentioned in it
+
+You can also subscribe to any issue or pull request yourself, or
+unsubscribe from one.
+
+| You are | You hear of |
+| --- | --- |
+| Subscribed | Everything in [What lands there](#what-lands-there) that goes to everyone subscribed: comments, closes, reopens and merges. |
+| Unsubscribed | Only what is asked of you or is about your own work: an agent waiting on you, a review request, an assignment, a mention, and failed checks, workflows and deployments. Commenting on it, or being mentioned in it, subscribes you again. |
+| Ignoring it | Nothing on it at all, not even a mention. Only you can undo this. |
+
+To subscribe to an issue or pull request, or unsubscribe:
+
+1. Open the issue or pull request.
+2. In the sidebar, under **Notifications**, select **Subscribe** or
+   **Unsubscribe**.
+
+The line under the button says where you stand, such as "You're subscribed
+because you were assigned.", "You're not subscribed. You'll still hear if
+you're mentioned or asked to review." or "You ignore this thread."
+
+To ignore an issue or pull request, use the API:
+`PUT /repos/{owner}/{name}/issues/{number}/subscription` with
+`"ignored": true`, or the `notifications` tool's `subscribe` action with
+`ignored`. See [from the API and agents](#from-the-api-and-agents). While
+you ignore one, its button reads **Stop ignoring**, which puts you back to
+the default: subscribed only while you take part.
+
+## Watching a repository
+
+How you **watch** a repository decides what you hear of on it beyond what
+you take part in.
+
+| Level | You hear of |
+| --- | --- |
+| **Participating and @mentions** | Only what you take part in or are mentioned in. The default. |
+| **All activity** | Also every issue and pull request opened, commented on, closed, reopened or merged, and every deployment. |
+| **Ignore** | Nothing on the repository at all, not even a mention or a review request. |
+| **Custom** | What you take part in, and the kinds you choose: **Issues**, **Pull requests**, **Deployments** and **Security alerts**. g1t does not send security alerts to the inbox yet. |
+
+To change how you watch a repository:
+
+1. Open the repository.
+2. In the header, open the **Watch** menu.
+3. Select a level. For **Custom**, tick the kinds you want. Unticking
+   every kind puts you back on **Participating and @mentions**.
+
+A repository you create is watched the way you choose in
+[your settings](#settings): **All activity** unless you change it.
+
+## Email
+
+You can also be emailed when you are told of something. By default, g1t
+emails you for three reasons: **agent waiting**, **review requested** and
+**mentioned**. Each time you are told of something for a reason you chose,
+g1t sends one email with what happened and a link to it.
+
+An email is sent only when:
+
+- your account's email address is confirmed, and
+- you can still read the repository it is about.
+
+The foot of each email says why you got it, and links to
+[g1t.sh/settings/notifications](https://g1t.sh/settings/notifications).
+
+## Settings
+
+**Settings → Notifications**, at
+[g1t.sh/settings/notifications](https://g1t.sh/settings/notifications),
+holds your choices:
+
+| Setting | What it does | Default |
+| --- | --- | --- |
+| **Email** | One checkbox per reason: you are also emailed when you are told of something for it. | agent waiting, review requested, mentioned |
+| **Repositories you create** | How you watch a new repository you create: **Participating and @mentions** or **All activity**. | All activity |
+| **Watched repositories** | Every repository you watch other than the default way, with how. | |
 
 ## Tabs
 
 | Tab | Shows |
 | --- | --- |
-| **All** | Everything, with what an agent is waiting on first |
-| **Needs you** | What an agent is waiting on you for |
-| **Errors** | Failed checks and workflows |
-| **Success** | Merges, approvals and finished agent work |
-| **Info** | Mentions and comments |
+| **All** | Everything, with what is waiting on you first |
+| **Needs you** | What is waiting on you: an agent, or a review asked of you |
+| **Errors** | Failed checks, workflows and deployments |
+| **Success** | Merges, approvals, finished agent work, and deployments that went live |
+| **Info** | Mentions, comments, assignments, and what you watch |
 
 The count beside each tab is what is unread under it.
 
@@ -58,7 +204,7 @@ The count beside each tab is what is unread under it.
 
 | Action | What it does |
 | --- | --- |
-| **Done** (✓) | Moves the item out of the inbox and into Done |
+| **Done** (✓) | Moves the thread out of the inbox and into Done, until something new happens on it |
 | **Mark as read** / **Mark as unread** | Changes whether it counts as unread |
 | **Save** | Keeps it under Saved, even after it is done |
 | **Snooze until** | Hides it for 3 hours, until tomorrow, or for a week, then brings it back |
@@ -68,18 +214,59 @@ The count beside each tab is what is unread under it.
 ## The full inbox
 
 **Open inbox**, at the foot of the panel, goes to
-[g1t.sh/inbox](https://g1t.sh/inbox). It has the same tabs, every item a page
-at a time, and two more views:
+[g1t.sh/inbox](https://g1t.sh/inbox). It has the same tabs, every thread a
+page at a time, and two more views:
 
 | View | Shows |
 | --- | --- |
-| **Saved** | Items you saved, done or not |
-| **Done** | Items you marked done. Select ↶ on one to move it back |
+| **Saved** | Threads you saved, done or not |
+| **Done** | Threads you marked done. Select ↶ on one to move it back |
 
-Mission control shows a **Needs you** card with the newest unread items an
-agent is waiting on, then failures. It is hidden when there are none.
+Beside the tabs, the **Reason** filter shows only threads told for one
+reason: select **Any reason** or one of the [reasons](#reasons). It is kept
+in the address as `?reason=`, such as
+[g1t.sh/inbox?reason=review_requested](https://g1t.sh/inbox?reason=review_requested),
+so you can bookmark it.
+
+Mission control shows a **Needs you** card with the newest unread threads
+waiting on you, then failures. It is hidden when there are none.
+
+## From the API and agents
+
+Everything here is also in the REST API and the MCP server, for a personal
+access token or an OAuth sign-in. A workspace's token cannot use it, and
+neither can g1t's own agents: they act as `g1t`, which has no inbox.
+Reading needs the `notifications:read` scope, and changing anything
+`notifications:write`; the Agent [preset](/guides/authentication/#presets)
+has both.
+
+| Route | MCP action | What it does |
+| --- | --- | --- |
+| [`GET /notifications`](/reference/api/notifications/list-notifications/) | `list` | Your unread threads, latest first. Filter by `reason`, `severity`, `participating`, `since` and `before`; `all` adds read ones; `view` lists `saved` or `done`. |
+| [`PUT /notifications`](/reference/api/notifications/mark-notifications-read/) | `mark_all_read` | Mark everything read up to `last_read_at`. |
+| [`GET /notifications/threads/{id}`](/reference/api/notifications/get-notification-thread/) | `get` | One thread, its last 10 activities, and your subscription. |
+| [`PATCH /notifications/threads/{id}`](/reference/api/notifications/mark-thread-read/) | `mark_read` | Mark a thread read, or unread. |
+| [`DELETE /notifications/threads/{id}`](/reference/api/notifications/mark-thread-done/) | `done` | Mark a thread done. |
+| [`PUT /notifications/threads/{id}/saved`](/reference/api/notifications/save-thread/) | `save` | Save a thread; `DELETE` unsaves it. |
+| [`PUT /notifications/threads/{id}/snooze`](/reference/api/notifications/snooze-thread/) | `snooze` | Snooze a thread until `until`; `DELETE` brings it back. |
+| [`PUT /repos/{owner}/{name}/issues/{number}/subscription`](/reference/api/notifications/set-issue-subscription/) | `subscribe` | Subscribe to an issue or pull request, unsubscribe, or ignore it. `GET` reads it and `DELETE` unsubscribes. The same works at `/notifications/threads/{id}/subscription`. |
+| [`PUT /repos/{owner}/{name}/subscription`](/reference/api/notifications/set-repo-subscription/) | `watch` | Watch a repository at a `level`. `GET` reads it and `DELETE` goes back to the default. |
+| [`GET /user/subscriptions`](/reference/api/notifications/list-watched-repos/) | `watched` | The repositories you watch other than the default way. |
+
+`GET /repos/{owner}/{name}/notifications` and
+`PUT /repos/{owner}/{name}/notifications` list and mark one repository's
+threads. Every action of the `notifications` tool is in
+[MCP tools](/reference/mcp/#notifications).
+
+For example, to list the reviews waiting on you:
+
+```sh
+curl "https://api.g1t.sh/notifications?reason=review_requested" \
+  -H "Authorization: Bearer $G1T_TOKEN"
+```
 
 ## How long items are kept
 
-Items you mark done are removed after 30 days. Any item is removed after 180
-days. Saved items are kept until you unsave them.
+Threads you mark done are removed 30 days after you mark them. Any other
+thread is removed once nothing has happened on it for 180 days. Saved
+threads are kept until you unsave them.

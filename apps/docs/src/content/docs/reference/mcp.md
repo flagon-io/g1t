@@ -3,10 +3,10 @@ title: MCP tools
 description: The g1t MCP server's resource tools, each action they take with its required inputs and scope, and how to call them.
 ---
 
-The MCP server at `https://mcp.g1t.sh` exposes 13 tools, one per kind of
+The MCP server at `https://mcp.g1t.sh` exposes 14 tools, one per kind of
 thing on g1t: `search`, `repository`, `issue`, `pull_request`, `agent`,
-`plan`, `memory`, `workflow`, `secret`, `webhook`, `access`, `workspace`
-and `account`. Each tool takes an `action` that says what to do. Every
+`plan`, `memory`, `workflow`, `secret`, `webhook`, `access`, `workspace`,
+`notifications` and `account`. Each tool takes an `action` that says what to do. Every
 action is the same operation as a route of the [REST API](/reference/api/),
 with the same inputs, permissions and results, so the two always agree.
 
@@ -51,8 +51,9 @@ Call a tool with `tools/call`, its name, and `arguments` that hold the
 }
 ```
 
-- `action` is required, except on two tools that have a default:
-  `search` runs `code`, and `account` runs `whoami`, when it is left out.
+- `action` is required, except on three tools that have a default:
+  `search` runs `code`, `notifications` runs `list`, and `account` runs
+  `whoami`, when it is left out.
 - The input schema that `tools/list` returns is one flat object: `action`,
   then every field any of the tool's actions takes. The `action` field's
   description lists each action with the fields it needs, such as
@@ -450,6 +451,32 @@ connect [integrations](/guides/integrations/) and model providers. See
 | [`get_model_routes`](/reference/api/integrations/get-model-routes/) | Which provider and model each kind of work goes to. Members only. | `workspace` | `workspace:read` |
 | [`set_model_routes`](/reference/api/integrations/set-model-routes/) | Replace them: each route has `task`, `connection_id` (null for g1t's models) and `model`. Owners only. | `workspace`, `routes` | `workspace:admin` |
 
+## `notifications`
+
+Your [inbox](/guides/inbox/): one thread per issue, pull request, workflow
+on a branch or deployment, with why you were told (`reason`), and what you
+subscribe to and watch. `list` is the default action. It is your own: a
+personal access token or an OAuth sign-in can use it, a workspace's token
+cannot. Name an issue or pull request by a thread's `id`, or by `repo` and
+`number`.
+
+| Action | What it does | Required | Scope |
+| --- | --- | --- | --- |
+| [`list`](/reference/api/notifications/list-notifications/) | Your unread threads, latest first. With `all`, read ones too; `view` `saved` or `done` lists those instead. Filter by `reason`, `severity`, `participating`, `since`, `before` or `repo`. | None | `notifications:read` |
+| [`get`](/reference/api/notifications/get-notification-thread/) | One thread, its last 10 activities, and your subscription to it. | `id` | `notifications:read` |
+| [`mark_read`](/reference/api/notifications/mark-thread-read/) | Mark a thread read, or with `read` false, unread. | `id` | `notifications:write` |
+| [`mark_all_read`](/reference/api/notifications/mark-notifications-read/) | Mark every thread read, or one repository's with `repo`. Threads with activity after `last_read_at` (now, when left out) stay unread. | None | `notifications:write` |
+| [`done`](/reference/api/notifications/mark-thread-done/) | Move a thread to Done; new activity brings it back. With `done` false, move it back now. | `id` | `notifications:write` |
+| [`save`](/reference/api/notifications/save-thread/) | Save a thread so it is kept, or with `saved` false, unsave it. | `id` | `notifications:write` |
+| [`snooze`](/reference/api/notifications/snooze-thread/) | Hide a thread until `until` (RFC 3339). Leave `until` out to bring it back now. | `id` | `notifications:write` |
+| [`subscription`](/reference/api/notifications/get-thread-subscription/) | Whether you are subscribed to an issue or pull request, or ignore it, and why. | `id`, or `repo` and `number` | `notifications:read` |
+| [`subscribe`](/reference/api/notifications/set-thread-subscription/) | Subscribe (`subscribed`, true unless you say), unsubscribe (`subscribed` false), or ignore it (`ignored` true). | `id`, or `repo` and `number` | `notifications:write` |
+| [`unsubscribe`](/reference/api/notifications/delete-thread-subscription/) | Unsubscribe until you comment or are mentioned. What is asked of you directly still reaches you. | `id`, or `repo` and `number` | `notifications:write` |
+| [`watching`](/reference/api/notifications/get-repo-subscription/) | How you watch a repository: `participating`, `all`, `ignore` or `custom`, with `events`. | `repo` | `notifications:read` |
+| [`watch`](/reference/api/notifications/set-repo-subscription/) | Watch a repository at a `level`, with `events` (`issues`, `pulls`, `deployments`, `security`) for `custom`. | `repo` | `notifications:write` |
+| [`unwatch`](/reference/api/notifications/delete-repo-subscription/) | Go back to the default: only what you take part in or are mentioned in. | `repo` | `notifications:write` |
+| [`watched`](/reference/api/notifications/list-watched-repos/) | The repositories you watch other than the default way. | None | `notifications:read` |
+
 ## `account`
 
 Who the token acts as and its workspaces, your email addresses, your
@@ -489,8 +516,8 @@ actions it may use depends on the kind of run.
 | Plan | The same reading actions, and `issue` `create` and `search` `ticket`. |
 | Catch up | The reading actions only. |
 
-No agent's token can use the `workspace`, `access`, `secret` or `webhook`
-tools, the controls of `workflow`, or `pull_request` `merge`, `agent`
+No agent's token can use the `workspace`, `access`, `secret`, `webhook` or
+`notifications` tools (g1t acts as `g1t`, which has no inbox), the controls of `workflow`, or `pull_request` `merge`, `agent`
 `assign` and `delegate`, `plan` `create` and `apply`, `issue` `import`, or
 any `repository` action that creates, changes, renames, archives,
 transfers, deletes, restores or purges a repository, or dismisses or

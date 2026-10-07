@@ -1012,20 +1012,44 @@ snoozed; ranked so what an agent is blocked on comes first; email digests
 and push. It is the delivery layer chat needs too (who is told what, read
 state, push), so building it first makes channels cheap.
 
-*Built:* the events service keeps it (`services/events/src/inbox.rs`,
-migration `0005_inbox` on the `g1t-events` database), writing items as
-events arrive from the bus; work's `inbox_subject` says what each event
-names. Who is told: `agent.asked` (the pull request's owner and its issue's
-people, as needs you), failed `checks.completed` and `workflow.completed`
-(error), `review.completed`, `pull.ready` for g1t's changes and
-`pull.merged` (success), and `comment.created` (mentions, then the owner).
-Never the actor, never g1t. On the site: a bell in the top bar opening a
-sheet with tabs (All, Needs you, Errors, Success, Info), Done, Save, Snooze
-and Mark all read; `/inbox` with Saved and Done; a Needs you card on
-mission control. Ask AI sits beside the bell, disabled. Still to come:
-review requests and an agent stalling on a person (`stage = needs_you`),
-which publish no event yet; deploy results, which deployments does not
-publish; email digests and push; the REST and MCP surface.
+*Built:* the events service keeps it (`services/events/src/inbox.rs` and
+`subscriptions.rs`, migrations `0005_inbox` and `0006_inbox_threads` on the
+`g1t-events` database), writing items as events arrive from the bus; work's
+`inbox_subject` says what each event names. Each person has one **thread**
+per issue, pull request, workflow on a branch or deployment: new activity
+brings it back unread with a count and its last 10 activities, and while it
+is unread its most urgent severity is kept. Each item has a **reason**
+(`agent`, `review_requested`, `assign`, `mention`, `ci_activity`,
+`security_alert`, `state_change`, `author`, `comment`, `manual`,
+`subscribed`). Who is told: `agent.asked` and `pull.stalled` (needs you,
+closed again by `pull.resumed` and the like), `pull.review_requested`
+(needs you, closed by `pull.review_request_removed`),
+`issue.assigned`/`pull.assigned`, failed checks and workflows,
+`deployment.failed` and a recovering `deployment.succeeded`, g1t's reviews
+and finished changes, closes, reopens and merges to everyone subscribed,
+and comments to the people mentioned and everyone subscribed. Never the
+actor, never g1t. **Subscriptions**: authors, assignees and reviewers are
+subscribed without a row; commenting or being mentioned subscribes; anyone
+can subscribe, unsubscribe (still told of what is asked of them) or ignore.
+**Watching** a repository: participating (the default), all, ignore, or
+custom (issues, pulls, deployments, security); whoever creates a repository
+watches it at their default, all activity unless they change it.
+**Settings**: which reasons are also emailed (agent, review_requested and
+mention by default) and the default watch for new repositories; email goes
+through identity's `notify_by_email`, to a confirmed address only while the
+person can still read the repository. **REST and MCP**: 14 operations under
+`/notifications`, `/repos/:owner/:name/subscription` and
+`/user/subscriptions` (scopes `notifications:read` and
+`notifications:write`, in the Agent preset), and the `notifications` MCP
+tool; never usable by g1t's own tokens. On the site: a bell in the top bar
+opening a sheet with tabs (All, Needs you, Errors, Success, Info), Done,
+Save, Snooze and Mark all read; `/inbox` with Saved, Done and a reason
+filter; reasons and update counts on each card; a Notifications box on
+issue and pull request pages; a Watch menu in the repository header;
+Settings → Notifications; a Needs you card on mission control. Ask AI sits
+beside the bell, disabled. Still to come: security alerts (the security
+service publishes no event yet), email digests and push, Ask AI, and
+channels.
 
 **Channels** (working name): workspace channels, direct messages and
 threads, live.

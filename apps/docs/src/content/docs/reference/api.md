@@ -176,6 +176,7 @@ everything up to a limit; the few that grow without bound take a cursor:
 | [List repository events](/reference/api/repositories/list-events/) | 50 | `before`: the id of the last event you have |
 | [List workflow runs](/reference/api/actions/list-workflow-runs/) | `per_page`, at most 100 and 50 if not given | None |
 | [List webhook deliveries](/reference/api/webhooks/list-webhook-deliveries/) | 50 | None |
+| [List notifications](/reference/api/notifications/list-notifications/) | `per_page`, at most 100 and 30 if not given | `cursor`: the `next` of the page before |
 | [Read a session](/reference/api/sessions/read-session/) | None | `after`: the last `seq` you have |
 | [Get a job's log](/reference/api/actions/get-job-logs/) | 500 chunks | `after`: the last `seq` you have |
 
@@ -195,6 +196,7 @@ Times are RFC 3339 in UTC, with milliseconds, such as
 | --- | --- |
 | [Accounts](/reference/api/accounts/whoami/) | Signing in from a tool, and who a token acts as. |
 | [Workspaces](/reference/api/workspaces/create-workspace/) | Creating a workspace. |
+| [Notifications](/reference/api/notifications/list-notifications/) | Your inbox: its threads, why you were told of each, marking them read, done, saved or snoozed, and what you subscribe to and watch. See [your inbox](/guides/inbox/). |
 | [Invites](/reference/api/invites/list-invites/) | Your invites while g1t is invite-only, and inviting people into a workspace by email. |
 | [Repositories](/reference/api/repositories/list-repos/) | A repository, how it handles pull requests, and its timeline. |
 | [Access](/reference/api/access/list-collaborators/) | Who has which role on a repository, invitations, outside collaborators, and a workspace's base permission. |
