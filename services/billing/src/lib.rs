@@ -382,8 +382,20 @@ impl Billing {
             micros: Option<i64>,
             runs: Option<u32>,
         }
-        // While nothing is charged, what was used is what there is to show.
-        let measure = if self.free { "COALESCE(cost_micros, 0)" } else { "-amount_micros" };
+        // While nothing is charged (g1t is free, or the workspace is
+        // comped), what was used is what there is to show.
+        #[derive(serde::Deserialize)]
+        struct Comped {
+            n: i64,
+        }
+        let comped = self
+            .db
+            .prepare("SELECT COUNT(*) AS n FROM billing_accounts WHERE kind = 'workspace' AND terms_kind = 'comped' AND substr(id, 4) = ?1")
+            .bind(&[workspace.as_str().into()])?
+            .first::<Comped>(None)
+            .await?
+            .is_some_and(|row| row.n > 0);
+        let measure = if self.free || comped { "COALESCE(cost_micros, 0)" } else { "-amount_micros" };
         let slices = |key: &str, limit: u32| {
             format!(
                 "SELECT {key} AS key, SUM({measure}) AS micros, COUNT(*) AS runs FROM ledger
