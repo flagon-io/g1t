@@ -1,4 +1,4 @@
-import { ArrowDownWideNarrow, ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, Plus, Sparkles } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, ListTree, Plus, Sparkles } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Link, useFetcher, useRouteLoaderData, useSearchParams } from "react-router";
 
@@ -28,6 +28,7 @@ import {
 } from "../lib/mission-control";
 import { cn } from "../lib/cn";
 import { AgentComposer, type ComposerResult } from "./agent-composer";
+import { AskComposer } from "./ask-composer";
 import { AgentSetup } from "./agent-setup";
 import { InboxNeedsCard } from "./inbox";
 import type { ShellData } from "./shell";
@@ -867,19 +868,39 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
             <span className="text-fg-soft">{date}</span> · {loaded.summary}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {newIssue}
-          {needs.length > 0 && (
-            <Link
-              to={`${link({ tab: "needs", all: null })}#work`}
-              preventScrollReset
-              className="inline-flex items-center gap-1.5 rounded-md bg-merged px-3.5 py-2 text-sm font-semibold text-bg transition-colors hover:bg-[#c9bfff]"
-            >
-              Review {needs.length} that need{needs.length === 1 ? "s" : ""} you <ArrowRight size={14} />
-            </Link>
-          )}
-        </div>
       </header>
+
+      {/* Asking g1t is not on yet; the actions under it do the work today. */}
+      <AskComposer>
+        {newIssue}
+        {repos.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-md border border-line-strong px-3 py-2 text-sm font-medium text-fg/90 transition-colors hover:bg-raised hover:text-fg">
+              <ListTree size={14} /> Plan work
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
+              <DropdownMenuLabel>Plan in which project?</DropdownMenuLabel>
+              {repos.map((repo) => (
+                <DropdownMenuItem key={repo.name} asChild>
+                  <Link to={`/${repo.namespace}/${repo.name}/plans`}>
+                    <Avatar name={repo.name} size={18} square />
+                    {repo.name}
+                  </Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {needs.length > 0 && (
+          <Link
+            to={`${link({ tab: "needs", all: null })}#work`}
+            preventScrollReset
+            className="inline-flex items-center gap-1.5 rounded-md bg-merged px-3.5 py-2 text-sm font-semibold text-bg transition-colors hover:bg-[#c9bfff]"
+          >
+            Review {needs.length} that need{needs.length === 1 ? "s" : ""} you <ArrowRight size={14} />
+          </Link>
+        )}
+      </AskComposer>
 
       {starting && <GetStarted steps={steps} />}
 
