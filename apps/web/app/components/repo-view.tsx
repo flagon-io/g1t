@@ -15,6 +15,7 @@ import { Topics } from "./topics";
 import { Avatar, CopyLine, TimeAgo, notACredential } from "./ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { SkeletonLine } from "./ui/skeleton";
 
 function encodePath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
@@ -238,7 +239,8 @@ function FileRows({
 }) {
   const byName = new Map((last?.entries ?? []).map((entry) => [entry.name, entry.commit]));
   return (
-    <ul className="divide-y divide-line text-sm">
+    // Busy while each entry's last commit is on its way; its cells keep their size.
+    <ul aria-busy={last === undefined || undefined} className="divide-y divide-line text-sm">
       {entries.map((entry) => {
         const isTree = entry.kind === "tree";
         const Icon = isTree ? Folder : entry.kind === "gitlink" ? FolderGit2 : File;
@@ -256,17 +258,17 @@ function FileRows({
               {commit ? (
                 <Link
                   to={`${base}/commit/${commit.hash}`}
-                  className="block truncate text-muted hover:text-fg hover:underline"
+                  className="block animate-fade-in truncate text-muted hover:text-fg hover:underline"
                   title={commit.message.split("\n")[0]}
                 >
                   {commit.message.split("\n")[0]}
                 </Link>
               ) : last === undefined ? (
-                <span aria-hidden="true" className="block h-3 w-40 max-w-full animate-pulse rounded bg-raised" />
+                <SkeletonLine width="10rem" barClassName="max-w-full" />
               ) : null}
             </span>
             <span className="text-right text-xs whitespace-nowrap text-faint">
-              {commit ? <TimeAgo at={commit.authoredAt} /> : last === undefined ? <span aria-hidden="true" className="inline-block h-3 w-12 animate-pulse rounded bg-raised" /> : null}
+              {commit ? <span className="animate-fade-in"><TimeAgo at={commit.authoredAt} /></span> : last === undefined ? <SkeletonLine className="justify-end" barClassName="w-12" /> : null}
             </span>
           </li>
         );

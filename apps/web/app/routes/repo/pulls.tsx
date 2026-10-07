@@ -8,7 +8,8 @@ import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
 import { CheckBadge } from "../../components/checks";
 import { ChangeSize, PullIcon, StateTabs } from "../../components/work";
 import { AgentBadge, useActiveRuns } from "../../components/agents";
-import { work } from "../../lib/services.server";
+import { accessTo } from "../../lib/access.server";
+import { agents, work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -17,19 +18,28 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
+  const viewer = getViewer(context);
   const state =
     new URL(request.url).searchParams.get("state") === "closed" ? "closed" : "open";
+  // Which an agent is working on, beside the list, so its badges come with it.
+  const [pulls, active, { can }] = await Promise.all([
+    work.listPulls(path, viewer, state),
+    agents.listRuns(viewer, { repo: path, active: true, limit: 100 }).catch(() => null),
+    accessTo(context, params),
+  ]);
   return {
-    pulls: unwrap(await work.listPulls(path, getViewer(context), state)),
+    pulls: unwrap(pulls),
     state,
+    // As the project's agents.json has them; left out, the list fetches them.
+    active: active?.ok ? { runs: active.value, member: can.run } : undefined,
   } as const;
 }
 
 export default function Pulls({ loaderData, params }: Route.ComponentProps) {
-  const { pulls, state } = loaderData;
+  const { pulls, state, active } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   // Which pull requests an agent is working on this minute, and at what.
-  const working = useActiveRuns(params.owner, params.repo);
+  const working = useActiveRuns(params.owner, params.repo, active);
   return (
     <div>
       <StateTabs

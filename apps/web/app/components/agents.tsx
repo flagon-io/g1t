@@ -304,21 +304,39 @@ export function splitRuns(runs: AgentRun[]): { live: AgentRun[]; done: AgentRun[
   };
 }
 
-type Live = { runs: AgentRun[]; member: boolean };
+export type Live = { runs: AgentRun[]; member: boolean };
 
 /**
  * The runs of a project, fetched from its `agents.json`, every few seconds
- * while any is running. For pages whose own loader does not have them.
+ * while any is running. A page whose loader read them passes them as
+ * `initial`, so they come with the page instead of appearing after it;
+ * without, they are fetched once it is up.
  */
-export function useRuns(owner: string, repo: string, query: Record<string, string>): Live | null {
+export function useRuns(
+  owner: string,
+  repo: string,
+  query: Record<string, string>,
+  initial?: Live | null,
+): Live | null {
   const fetcher = useFetcher<Live>();
   const search = new URLSearchParams(query).toString();
   const url = `/${owner}/${repo}/agents.json?${search}`;
   const { load } = fetcher;
+  const loaded = initial !== undefined;
   useEffect(() => {
-    load(url);
-  }, [load, url]);
-  const live = fetcher.data?.runs.some((run) => isActiveRun(run.status)) ?? false;
+    if (!loaded) load(url);
+  }, [load, url, loaded]);
+  // The newer of the page's runs and the last poll: the page revalidating
+  // replaces an older poll, and a poll the runs the page came with.
+  const [newest, setNewest] = useState<Live | null>(initial ?? null);
+  useEffect(() => {
+    if (loaded) setNewest(initial ?? null);
+  }, [loaded, initial]);
+  useEffect(() => {
+    if (fetcher.data) setNewest(fetcher.data);
+  }, [fetcher.data]);
+  const data = loaded ? newest : (fetcher.data ?? null);
+  const live = data?.runs.some((run) => isActiveRun(run.status)) ?? false;
   useEffect(() => {
     if (!live) return;
     const timer = setInterval(() => {
@@ -326,7 +344,7 @@ export function useRuns(owner: string, repo: string, query: Record<string, strin
     }, LIVE_MS);
     return () => clearInterval(timer);
   }, [live, load, url]);
-  return fetcher.data ?? null;
+  return data;
 }
 
 /** "Agent confidence: Low — tests not added, 3 revisions", and what the agent said it was unsure of. */
@@ -361,6 +379,7 @@ export function AgentPanel({
   number,
   stage,
   confidence,
+  runs: initial,
 }: {
   owner: string;
   repo: string;
@@ -368,8 +387,10 @@ export function AgentPanel({
   stage?: Stage | null;
   /** How sure g1t is of the change, once the agent has finished it. */
   confidence?: Confidence | null;
+  /** Its latest five runs, from the page's loader, so the panel comes with the page. */
+  runs?: Live | null;
 }) {
-  const data = useRuns(owner, repo, { number: String(number), limit: "5" });
+  const data = useRuns(owner, repo, { number: String(number), limit: "5" }, initial);
   const runs = data?.runs ?? [];
   const member = data?.member ?? false;
   const current = runs.find((run) => isActiveRun(run.status)) ?? runs[0];
@@ -464,8 +485,8 @@ export function AgentBadge({ run }: { run: AgentRun | undefined }) {
 }
 
 /** The active run on each pull request of a project, by number. */
-export function useActiveRuns(owner: string, repo: string): Map<number, AgentRun> {
-  const data = useRuns(owner, repo, { active: "1", limit: "100" });
+export function useActiveRuns(owner: string, repo: string, initial?: Live | null): Map<number, AgentRun> {
+  const data = useRuns(owner, repo, { active: "1", limit: "100" }, initial);
   return useMemo(() => {
     const byNumber = new Map<number, AgentRun>();
     for (const run of data?.runs ?? []) {
@@ -490,9 +511,20 @@ export function Idle({ children }: { children: ReactNode }) {
  * What the agent on a pull request is doing this minute, as one line, for
  * an issue's sidebar: which agent picked the issue up, and where it is.
  */
-export function AgentStepLine({ owner, repo, number }: { owner: string; repo: string; number: number }) {
-  const data = useRuns(owner, repo, { number: String(number), active: "1", limit: "1" });
-  const run = data?.runs[0];
+export function AgentStepLine({
+  owner,
+  repo,
+  number,
+  runs: initial,
+}: {
+  owner: string;
+  repo: string;
+  number: number;
+  /** The project's active runs, from the page's loader, so the line comes with the page. */
+  runs?: Live | null;
+}) {
+  const data = useRuns(owner, repo, { number: String(number), active: "1", limit: "1" }, initial);
+  const run = data?.runs.find((run) => run.number === number && isActiveRun(run.status));
   if (!run?.step) return null;
   return (
     <span className="mt-0.5 block truncate font-mono text-[0.6875rem] text-faint" title={shownStep(run.step)}>

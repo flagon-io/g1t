@@ -1440,6 +1440,22 @@ function visitorCommands(shell: ShellData, here: string, signUpLabel: string): C
 }
 
 /**
+ * The page while the next one loads: after a moment it dims, under the
+ * bar below, so it is plainly on its way out rather than frozen, and the
+ * next page fades up from there. Sending a form does not dim it: the
+ * form's button says it is working. Spread on the element holding the page.
+ */
+export function useLeaving() {
+  const navigation = useNavigation();
+  const method = navigation.formMethod?.toUpperCase();
+  const leaving = navigation.state === "loading" && (method == null || method === "GET");
+  return {
+    "aria-busy": leaving || undefined,
+    className: `transition-opacity motion-reduce:transition-none ${leaving ? "opacity-60 delay-200 duration-300" : "duration-150"}`,
+  };
+}
+
+/**
  * A bar across the top of the page while the next one loads, as GitHub
  * has: it appears at once, creeps towards the end while waiting, then fills
  * and fades when the page arrives.
@@ -1520,6 +1536,7 @@ export function AppShell({
     else setTimeout(load, 1500);
   }, [user]);
   usePaletteShortcut(() => setPalette((open) => !open));
+  const leaving = useLeaving();
 
   return (
     <div className="min-h-screen">
@@ -1630,7 +1647,9 @@ export function AppShell({
           </div>
         </header>
         {banner}
-        <main className="min-w-0 grow">{children}</main>
+        <main {...leaving} className={`min-w-0 grow ${leaving.className}`}>
+          {children}
+        </main>
       </div>
       <CommandPalette
         open={palette}
