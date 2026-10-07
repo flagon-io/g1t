@@ -270,7 +270,8 @@ and a repository made in it at an old address ends that address's redirect.
 | Owner | Everything a member can, and manage members, the base permission, the workspace's access tokens, its details, and billing: the plan, card checks, prepayment and limits. Admin on every repository, and the only ones who can transfer and delete them; see [access and roles](/guides/access-and-roles/). |
 
 Whoever creates a workspace is its owner. An owner adds people on the
-workspace's **Members** (in the sidebar), `g1t.sh/<workspace>/-/people`:
+workspace's **People**, `g1t.sh/<workspace>/-/people` (a tab of the
+workspace's page, and in the sidebar):
 
 - **By username**: someone already on g1t joins at once, as a member.
 - **By email address**: g1t emails an invite that only that address can
@@ -294,22 +295,67 @@ Pending invites are listed under the members, with a link to copy and
 To give someone a role on one repository without making them a member,
 add them as an [outside collaborator](/guides/access-and-roles/#outside-collaborators).
 
-## The workspace's pages
+## The workspace's page
 
-A workspace's page, `g1t.sh/<workspace>`, shows its repositories and the
-pull requests in progress across them. Each person sees the repositories
-they can read: a member whose base permission is None, an
-[outside collaborator](/guides/access-and-roles/#outside-collaborators)
+A workspace's own page, `g1t.sh/<workspace>`, has its icon, name, address
+and description at the top, and tabs under them:
+
+| Tab | Address | Who | |
+| --- | --- | --- | --- |
+| **Overview** | `g1t.sh/<workspace>` | Everyone | Your [pinned projects](#pinned-and-recent-projects), then the most active ones, the pull requests in progress across them, and **All projects**. Members also see a **Usage** card with this month's spend, and who belongs. |
+| **Projects** | `/-/projects` | Everyone | Every project you can see, with their count. See [the Projects tab](#the-projects-tab). |
+| [**Packages**](/guides/packages/) | `/-/packages` | Everyone | What the workspace publishes. |
+| **Teams** | `/-/teams` | Members | Coming soon: groups of members given roles together. |
+| **People** | `/-/people` | Members | Who belongs, with their count. Owners add and remove people here. |
+| **Insights** | `/-/insights` | Members | Coming soon: how the whole workspace delivers. |
+| **Settings** | `/-/settings` | Owners | How the workspace is set up and connected (below). |
+
+Each person sees the projects they can read: a member whose base permission
+is None, an [outside collaborator](/guides/access-and-roles/#outside-collaborators)
 or a visitor sees the public ones and those shared with them, without the
-workspace's members, deployments or settings. Its members also see a
-**Usage** card there with this month's spend.
+workspace's people, deployments or settings.
 
-The sidebar is one list, in groups: **Mission control**, the workspace's
-**Overview** and **Explore**; its projects; the places work happens across
-them (**Agent fleet**, **Context**, **Memory**, **Security** and
-[**Packages**](/guides/packages/)); then who belongs (**Members**, and
-**Teams** soon), **Usage**, what g1t's runs have cost (see
-[usage and billing](/guides/usage-and-billing/)), **Support** and
+Older addresses still work: `/-/members` opens People, and
+`g1t.sh/<workspace>?tab=projects` (or `repositories`, `packages`,
+`people`) opens that tab.
+
+### The Projects tab
+
+The Projects tab is made for workspaces with hundreds of projects:
+
+- **Find a project** matches every word you type in a project's name, its
+  address or its description. Press <kbd>/</kbd> anywhere on the page to
+  start typing.
+- **Filters**: public or private; apps or libraries; the language its
+  manifests say it is written in; only projects with
+  [Deployments](/guides/deployments/) on; and archived projects, which are
+  left out unless you ask for them. Each choice shows how many projects it
+  holds.
+- **Sort** by recently updated (its settings or its last push, whichever is
+  later), recently pushed, most active, or name. Most active counts each
+  push, issue or pull request opened or closed, review, comment and
+  deployment, and what happened a week ago counts half as much.
+- **List** or **grid**, 30 projects to a page.
+- The arrow keys (or <kbd>j</kbd> and <kbd>k</kbd>) move between projects,
+  and <kbd>Enter</kbd> opens one.
+
+Everything you choose is in the address, so a filtered list can be
+bookmarked or shared.
+
+## The sidebar
+
+The sidebar is always about one workspace: the one the switcher at its top
+names. Choose the workspace's name to open its page, or the arrows beside
+it to switch, or for **Workspace overview** and **All projects**.
+[Explore](https://g1t.sh/explore), public projects from all of g1t, is in
+the top bar, beside **Docs**.
+
+In order, it lists **Mission control**; the workspace's
+[projects](#pinned-and-recent-projects); under **Workspace**, the places work
+happens across them (**Agent fleet**, **Context**, **Memory**, **Security**
+and [**Packages**](/guides/packages/), with **Boards** and **Roadmap**
+soon); then **People** (and **Teams** soon), **Usage**, what g1t's runs have
+cost (see [usage and billing](/guides/usage-and-billing/)), **Support** and
 **Settings**. An item with an arrow opens a list of its own in the sidebar:
 **Settings** slides over to how the workspace is set up and connected, and
 the row at the top, **‹ Settings**, slides back:
@@ -327,7 +373,7 @@ the row at the top, **‹ Settings**, slides back:
 | **Billing and plans** | Members | [The g1t plan](/guides/usage-and-billing/#the-g1t-plan), [limits](/guides/usage-and-billing/#limits) and the statement. Owners start the plan, check a card, prepay and set limits. |
 | **Audit log** | Members | [Every action agents, people and tokens took](/guides/audit-log/). |
 
-**Members** is in the main list, for every member to see; owners add and
+**People** is in the main list, for every member to see; owners add and
 remove people there, set the
 [base permission](/guides/access-and-roles/#the-base-permission), and see
 the **Outside collaborators** tab.
@@ -339,6 +385,27 @@ project's own list, with **‹ All projects** at the top to go back. Its
 **Branches and merging**, **Secrets and variables** and **Webhooks**, each
 for the roles that can use it. A link straight to any of these pages opens
 the sidebar already there.
+
+### Pinned and recent projects
+
+However many projects a workspace has, its sidebar lists a few:
+
+- **Pinned**: the projects you pinned, in your order, up to eight a
+  workspace. Pin one with **Pin** on its page, or the pin on its row of the
+  Projects tab or its card on the Overview. Drag a pinned project to move
+  it, or hold <kbd>Alt</kbd> and press the up or down arrow.
+- **Recent**: the projects you opened last that you have not pinned, up to
+  five.
+- **All projects**, with how many there are, opens the Projects tab.
+
+Pins and recent projects are yours: nobody else sees them, and each
+workspace has its own. ⌘K finds any project in the workspace, pinned or not.
+From the API, use
+[`GET /user/pinned_projects/{workspace}`](/reference/api/pinned-projects/list-pinned-projects/)
+and the other [pinned projects](/reference/api/pinned-projects/list-pinned-projects/)
+operations, or the `workspace` tool's `list_pinned_projects`,
+`pin_project`, `unpin_project` and `reorder_pinned_projects` actions
+over MCP.
 
 ## Mission control
 
