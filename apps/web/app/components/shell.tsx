@@ -1,10 +1,11 @@
-import { Activity, BarChart3, BookMarked, BookOpen, Bot, Box, Brain, Check, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, KanbanSquare, KeyRound, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Sparkles, Ticket, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Activity, BarChart3, Bell, BookMarked, BookOpen, Bot, Box, Brain, Check, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, KanbanSquare, KeyRound, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Sparkles, Ticket, Users, UsersRound, Webhook, X } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Form, Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
-import type { Abilities, Membership, Spike, User } from "@g1t/contracts";
+import type { Abilities, InboxCounts, Membership, Spike, User } from "@g1t/contracts";
 
 import { CommandPalette, type PaletteCommand, usePaletteShortcut } from "./command-palette";
+import { AskAi, InboxBell } from "./inbox";
 import { StatusDot, useSiteStatus } from "./footer";
 import { Logo, Mark } from "./logo";
 import { Avatar, notACredential } from "./ui";
@@ -62,6 +63,8 @@ export type ShellData = {
   monthUsageMicros: number | null;
   /** Whether new compute is paused (a spend spike or a hold), and whether the viewer can answer it. */
   compute?: { paused: string | null; spike: Spike | null; owner: boolean } | null;
+  /** What is unread in their inbox, for the bell. Absent for a visitor. */
+  inbox?: InboxCounts | null;
 };
 
 function SidebarLink({
@@ -1085,7 +1088,7 @@ function Sidebar({
   const active = shell.repo;
   // In a repository, or on the way into one, its own list.
   const repoPath = /^\/([^/]+)\/([^/-][^/]*)(\/|$)/.exec(target);
-  const reserved = new Set(["settings", "explore", "search", "new", "u", "pricing", "avatars", "workspaces", "login", "logout", "register", "verify", "forgot", "reset", "device", "oauth", "policies", "security", "support", "status", "invite", ".well-known"]);
+  const reserved = new Set(["settings", "explore", "search", "new", "u", "pricing", "avatars", "workspaces", "login", "logout", "register", "verify", "forgot", "reset", "device", "oauth", "policies", "security", "support", "status", "invite", "inbox", ".well-known"]);
   // An invitation to a repository is answered before its menu means anything.
   const inRepo =
     repoPath != null &&
@@ -1248,7 +1251,7 @@ function Breadcrumbs({ pathname, missing, repo }: { pathname: string; missing?: 
     return <span className="text-sm font-medium">Not found</span>;
   }
   const parts = pathname.split("/").filter(Boolean);
-  const reserved = ["settings", "explore", "new", "search", "workspaces", "policies", "security", "support", "status", "invite"];
+  const reserved = ["settings", "explore", "new", "search", "workspaces", "policies", "security", "support", "status", "invite", "inbox"];
   if (parts.length === 0) return <span className="text-sm font-medium">Mission control</span>;
   // Your settings: Settings / Emails.
   if (parts[0] === "settings") {
@@ -1285,6 +1288,7 @@ function Breadcrumbs({ pathname, missing, repo }: { pathname: string; missing?: 
       support: "Support",
       status: "Status",
       invite: "Invite",
+      inbox: "Inbox",
     };
     return <span className="text-sm font-medium">{words[parts[0]!]}</span>;
   }
@@ -1346,6 +1350,7 @@ function commandsFor(user: User | null, shell: ShellData, here: string, signUpLa
       : []),
     { label: "Explore repositories", to: "/explore", icon: <Compass size={15} /> },
     { label: "Search g1t", hint: "Repositories, code, issues, people", to: "/search", icon: <Search size={15} /> },
+    { label: "Inbox", hint: "What needs you", to: "/inbox", icon: <Bell size={15} /> },
     { label: "New project", to: "/new", icon: <Plus size={15} /> },
     { label: "New workspace", to: "/workspaces/new", icon: <Plus size={15} /> },
     { label: "Your settings", to: FIRST_SETTINGS_PAGE, icon: <Settings size={15} /> },
@@ -1567,6 +1572,12 @@ export function AppShell({
             >
               Docs
             </a>
+            {user && (
+              <>
+                <AskAi />
+                <InboxBell counts={shell.inbox ?? null} />
+              </>
+            )}
             {!user ? (
               // The sidebar has these too, but on a phone it is folded away.
               <Link

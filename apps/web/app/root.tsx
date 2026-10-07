@@ -54,7 +54,7 @@ import { WORKSPACE_COOKIE, workspaceFor } from "./lib/workspace-choice";
 import { NotFound } from "./components/not-found";
 import { usesAppShell } from "./lib/chrome";
 import { CommandPalette, type PaletteCommand, usePaletteShortcut } from "./components/command-palette";
-import { billing, projects } from "./lib/services.server";
+import { billing, inbox, projects } from "./lib/services.server";
 import { countsFor, readableRepos } from "./lib/access.server";
 import { shortCache } from "./lib/cache.server";
 import { getViewer, viewerMiddleware } from "./lib/session.server";
@@ -140,7 +140,7 @@ async function shellFor(
   // something (lib/cache.server.ts).
   const kept = <T,>(what: string, load: () => Promise<T>) =>
     workspace ? shortCache(`shell:${what}:${user.id}:${workspace.slug}`, SHELL_TTL_MS, load) : Promise.resolve(null);
-  const [listed, counts, status, usage, limit, entitlements, shared] = await Promise.all([
+  const [listed, counts, status, usage, limit, entitlements, shared, unread] = await Promise.all([
     kept("projects", () => projects.list(workspace!.slug, user)),
     path ? countsFor(context, params) : Promise.resolve(null),
     // Whether billing is on, without reading the account: that asks the
@@ -150,6 +150,8 @@ async function shellFor(
     kept("limit", () => billing.limit(workspace!.slug, user)).catch(() => null),
     kept("entitlements", () => billing.entitlements(workspace!.slug)).catch(() => null),
     sharedRepos(user),
+    // The bell's count: one query, never kept, so marking an item shows at once.
+    inbox.counts(user.username).catch(() => null),
   ]);
   return {
     workspace,
@@ -189,6 +191,7 @@ async function shellFor(
         ? { paused: entitlements.paused, spike: entitlements.spike ?? null, owner: workspace.role === "owner" }
         : null,
     shared,
+    inbox: unread,
     // While g1t is free every charge is zero, so usage is shown at cost.
     monthUsageMicros: usage?.ok ? (usage.value.free ? usage.value.usedMicros : usage.value.spentMicros) : null,
   };

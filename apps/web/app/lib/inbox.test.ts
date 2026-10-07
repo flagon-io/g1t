@@ -1,0 +1,109 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import type { InboxItem } from "@g1t/contracts";
+
+import { bellCount, emptyFor, inboxTab, inboxView, markFromForm, needsYou, severityOf, snoozeUntil, tabCount, whenShort } from "./inbox.ts";
+
+const NOW = Date.parse("2026-10-07T12:00:00.000Z");
+
+test("tabs read from the address, and each shows one severity", () => {
+  assert.equal(inboxTab("needs"), "needs");
+  assert.equal(inboxTab("nonsense"), "all");
+  assert.equal(inboxTab(null), "all");
+  assert.equal(severityOf("needs"), "warning");
+  assert.equal(severityOf("all"), null);
+  assert.equal(inboxView("done"), "done");
+  assert.equal(inboxView("archive"), "inbox");
+});
+
+test("counts are what is unread under each tab", () => {
+  const counts = { unread: 15, error: 3, warning: 0, success: 8, info: 4 };
+  assert.equal(tabCount(counts, "all"), 15);
+  assert.equal(tabCount(counts, "error"), 3);
+  assert.equal(tabCount(counts, "needs"), 0);
+  assert.equal(tabCount(null, "all"), 0);
+});
+
+test("the bell shows a number up to 99", () => {
+  assert.equal(bellCount(0), "");
+  assert.equal(bellCount(null), "");
+  assert.equal(bellCount(7), "7");
+  assert.equal(bellCount(140), "99+");
+});
+
+test("times are said in a few characters", () => {
+  assert.equal(whenShort("2026-10-07T11:59:30.000Z", NOW), "just now");
+  assert.equal(whenShort("2026-10-07T11:45:00.000Z", NOW), "15m ago");
+  assert.equal(whenShort("2026-10-07T09:00:00.000Z", NOW), "3h ago");
+  assert.equal(whenShort("2026-10-06T09:00:00.000Z", NOW), "Yesterday");
+  assert.equal(whenShort("2026-10-03T12:00:00.000Z", NOW), "4d ago");
+  assert.equal(whenShort("2026-09-20T12:00:00.000Z", NOW), "Sep 20");
+});
+
+test("a snooze is for later, by one of a few choices", () => {
+  assert.equal(snoozeUntil("3h", NOW), "2026-10-07T15:00:00.000Z");
+  assert.equal(snoozeUntil("week", NOW), "2026-10-14T12:00:00.000Z");
+  assert.equal(snoozeUntil("forever", NOW), null);
+});
+
+test("forms ask for one mark on one item, or read for every item", () => {
+  const form = (fields: Record<string, string>) => {
+    const data = new FormData();
+    for (const [name, value] of Object.entries(fields)) data.set(name, value);
+    return data;
+  };
+  assert.deepEqual(markFromForm(form({ intent: "done", id: "ntf_1" }), NOW), { mark: "done", ids: ["ntf_1"] });
+  assert.deepEqual(markFromForm(form({ intent: "snooze", id: "ntf_1", for: "tomorrow" }), NOW), {
+    mark: "snooze",
+    ids: ["ntf_1"],
+    until: "2026-10-08T12:00:00.000Z",
+  });
+  assert.deepEqual(markFromForm(form({ intent: "read_all", tab: "error" }), NOW), { mark: "read", all: true, severity: "error" });
+  assert.deepEqual(markFromForm(form({ intent: "read_all" }), NOW), { mark: "read", all: true, severity: null });
+  assert.equal(markFromForm(form({ intent: "snooze", id: "ntf_1", for: "never" }), NOW), null);
+  assert.equal(markFromForm(form({ intent: "delete", id: "ntf_1" }), NOW), null);
+  assert.equal(markFromForm(form({ intent: "done" }), NOW), null);
+});
+
+test("what needs you puts a waiting agent before a failure, and leaves out the rest", () => {
+  const item = (id: string, severity: InboxItem["severity"], createdAt: string, readAt: string | null = null): InboxItem => ({
+    id,
+    reason: "x",
+    severity,
+    title: id,
+    body: "",
+    repo: "acme/rocket",
+    workspace: "acme",
+    subject: "pull",
+    number: 1,
+    url: "/acme/rocket/pull/1",
+    actor: null,
+    createdAt,
+    readAt,
+    doneAt: null,
+    saved: false,
+    snoozedUntil: null,
+  });
+  const needs = needsYou(
+    [
+      item("failed-new", "error", "2026-10-07T11:00:00.000Z"),
+      item("waiting-old", "warning", "2026-10-06T11:00:00.000Z"),
+      item("waiting-new", "warning", "2026-10-07T10:00:00.000Z"),
+      item("merged", "success", "2026-10-07T11:30:00.000Z"),
+      item("failed-read", "error", "2026-10-07T11:40:00.000Z", "2026-10-07T11:50:00.000Z"),
+    ],
+    2,
+  );
+  assert.deepEqual(
+    needs.items.map((entry) => entry.id),
+    ["waiting-new", "waiting-old"],
+  );
+  assert.equal(needs.total, 3);
+});
+
+test("every tab says something when it is empty", () => {
+  assert.equal(emptyFor("all").title, "You're all caught up");
+  assert.equal(emptyFor("needs").title, "Nothing needs you");
+  assert.equal(emptyFor("all", "saved").title, "Nothing saved");
+});

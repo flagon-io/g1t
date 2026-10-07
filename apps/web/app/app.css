@@ -40,6 +40,35 @@
   --animate-fade-out: fade-out 0.12s ease-in forwards;
   --animate-dialog-in: dialog-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   --animate-dialog-out: dialog-out 0.12s ease-in forwards;
+  /* Sheets (components/ui/sheet.tsx) slide in from their edge. */
+  --animate-sheet-in-right: sheet-in-right 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-sheet-out-right: sheet-out-right 0.16s ease-in forwards;
+  --animate-sheet-in-left: sheet-in-left 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-sheet-out-left: sheet-out-left 0.16s ease-in forwards;
+}
+
+@keyframes sheet-in-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes sheet-out-right {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes sheet-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes sheet-out-left {
+  to {
+    transform: translateX(-100%);
+  }
 }
 
 @keyframes pop-in {

@@ -16,6 +16,8 @@ const RESERVED = new Set([
   "invite", "invites", "waitlist",
   // The container registry, at g1t.sh/v2/.
   "v2",
+  // g1t.sh/inbox, and the name it might also go by.
+  "inbox", "notifications",
 ]);
 
 /** Whether `value`, whatever its case, is a name nobody can register: a route, or g1t's own. */

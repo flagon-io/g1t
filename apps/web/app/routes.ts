@@ -41,6 +41,9 @@ export default [
   route("explore", "routes/explore.tsx", { id: "explore" }),
   route("pricing", "routes/pricing.tsx"),
   route("search", "routes/search.tsx"),
+  // Each person's inbox, and what its panel in the top bar fetches.
+  route("inbox", "routes/inbox.tsx"),
+  route("inbox.json", "routes/inbox-json.ts"),
   // What the command palette shows as someone types.
   route("search.json", "routes/search-json.ts"),
   route("workspaces/new", "routes/workspace/new.tsx"),

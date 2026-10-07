@@ -45,6 +45,9 @@ const RESERVED: &[&str] = &[
     "waitlist",
     // g1t.sh/v2/: the container registry; `-` paths hold the others.
     "v2",
+    // g1t.sh/inbox, and the name it might also go by.
+    "inbox",
+    "notifications",
 ];
 
 /// Whether `value`, whatever its case, is a name nobody can register or

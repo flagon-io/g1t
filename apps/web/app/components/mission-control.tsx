@@ -29,6 +29,7 @@ import {
 import { cn } from "../lib/cn";
 import { AgentComposer, type ComposerResult } from "./agent-composer";
 import { AgentSetup } from "./agent-setup";
+import { InboxNeedsCard } from "./inbox";
 import type { ShellData } from "./shell";
 import { useLiveRefresh } from "./agents";
 import { Unavailable } from "./mission";
@@ -1090,6 +1091,7 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
         </section>
 
         <aside className="min-w-0 space-y-6">
+          <InboxNeedsCard items={loaderData.inboxNeeds.items} total={loaderData.inboxNeeds.total} />
           <section className="rounded-xl border border-line bg-surface p-5">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-semibold tracking-tight">This week</h2>

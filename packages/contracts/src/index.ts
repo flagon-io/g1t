@@ -13,6 +13,7 @@ export * from "./events";
 export * from "./github";
 export * from "./guardrails";
 export * from "./identity";
+export * from "./inbox";
 export * from "./instances";
 export * from "./ids";
 export * from "./integrations";

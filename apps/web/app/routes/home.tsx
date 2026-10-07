@@ -57,6 +57,7 @@ import {
   withConfidence,
 } from "../lib/mission-control";
 import { type NotStarted, chosenRepo, delegateForm, issuePath, notStarted } from "../lib/delegate";
+import { needsYou } from "../lib/inbox";
 import { Landing } from "../components/landing";
 import { Skeleton, SkeletonRows } from "../components/ui/skeleton";
 import {
@@ -65,6 +66,7 @@ import {
   deployments,
   events as eventLog,
   identity,
+  inbox,
   projects as projectsApi,
   repos as reposApi,
   work,
@@ -80,6 +82,9 @@ const MAX_PROJECTS = 10;
 const EVENTS_PER_PROJECT = 80;
 /** How many pull requests work lists at once (`LIST_PAGE` in services/work). */
 const PULL_PAGE = 100;
+/** Unread inbox items read for the Needs you card, and how many it shows. */
+const INBOX_READ = 50;
+const INBOX_SHOWN = 4;
 
 export function meta(args: Route.MetaArgs) {
   return page(args, {
@@ -100,11 +105,14 @@ export function headers({ loaderHeaders }: Route.HeadersArgs) {
 
 /**
  * Switching tabs, the sort or the activity list changes only the address:
- * everything is already loaded. A refresh, a form, or anything else loads
- * again as usual.
+ * everything is already loaded. Marking an inbox item read or done changes
+ * nothing else here: the card steps out by itself, and the bell's count
+ * comes with the shell (root.tsx). A refresh, a form, or anything else
+ * loads again as usual.
  */
-export function shouldRevalidate({ currentUrl, nextUrl, formMethod, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
+export function shouldRevalidate({ currentUrl, nextUrl, formMethod, formAction, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
   if (!formMethod && currentUrl.pathname === nextUrl.pathname && currentUrl.search !== nextUrl.search) return false;
+  if (formAction === "/inbox") return false;
   return defaultShouldRevalidate;
 }
 
@@ -236,7 +244,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
     );
   });
 
-  const [repos, perRepo, active, models, profile, runs, overview, usage, projectList, memories, invitations, tokens, myTokens] = await Promise.all([
+  const [repos, perRepo, active, models, profile, runs, overview, usage, projectList, memories, invitations, tokens, myTokens, unread] = await Promise.all([
     reposP,
     soft("projects", perRepoP),
     soft("pulls", work.listActivePulls(viewer)),
@@ -252,6 +260,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
     // Model tokens over the last six weeks: the workspace's, and yours.
     slug ? soft("tokens", billing.tokenUsage(slug, viewer)) : null,
     slug ? soft("my_tokens", billing.tokenUsage(slug, viewer, { person: username })) : null,
+    // What in their inbox is unread: an agent waiting on them, or a failure, goes on the Needs you card.
+    soft("inbox", inbox.list(viewer, { unread: true, limit: INBOX_READ })),
   ]);
 
   const repoList = repos ?? [];
@@ -664,6 +674,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       tokens: { workspace: okOr(tokens), mine: okOr(myTokens) },
       groups,
       titles: shownTitles,
+      inboxNeeds: needsYou(unread?.items ?? [], INBOX_SHOWN),
       // A run that is going makes the page worth refreshing on its own.
       changing:
         liveRuns.length > 0 ||

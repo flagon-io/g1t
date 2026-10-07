@@ -13,6 +13,7 @@ import {
   eventsClient,
   guardrailsClient,
   identityClient,
+  inboxClient,
   integrationsClient,
   reposClient,
   searchClient,
@@ -49,6 +50,8 @@ export const repos = reposClient(REPOS);
 export const work = workClient(WORK);
 export const billing = billingClient(BILLING);
 export const events = eventsClient(EVENTS);
+/** Each person's inbox, which the events service keeps. */
+export const inbox = inboxClient(EVENTS);
 export const integrations = integrationsClient(INTEGRATIONS);
 export const webhooks = webhooksClient(WEBHOOKS);
 export const actions = actionsClient(ACTIONS);
