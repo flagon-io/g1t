@@ -1,6 +1,7 @@
 import type { Route } from "./+types/code";
 import { TreeView } from "../../components/repo-view";
 import { page } from "../../lib/meta";
+import { lastCommitsFor } from "../../lib/last-commits.server";
 import { repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
@@ -17,10 +18,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     repos.branches(path, viewer).catch(() => null),
   ]);
   // Each entry's last commit walks history: streamed in after the list.
-  const lastCommits = repos
-    .lastCommits(path, viewer, null, "")
-    .then((found) => (found.ok ? found.value : null))
-    .catch(() => null);
+  const lastCommits = lastCommitsFor(path, viewer, null, "");
   return { tree: unwrap(tree), branches: branches?.ok ? branches.value : null, lastCommits };
 }
 

@@ -2,6 +2,7 @@ import type { Route } from "./+types/tree";
 import { page } from "../../lib/meta";
 import { TreeView } from "../../components/repo-view";
 import { redirectIfBranchRenamed } from "../../lib/branch-redirect.server";
+import { lastCommitsFor } from "../../lib/last-commits.server";
 import { repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
@@ -21,10 +22,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // A branch that was renamed: the same folder on its new name.
   if (!tree.ok && tree.error.code === "not_found") await redirectIfBranchRenamed(request, path, viewer, params.ref);
   // Each entry's last commit walks history: streamed in after the list.
-  const lastCommits = repos
-    .lastCommits(path, viewer, params.ref, params["*"] ?? "")
-    .then((found) => (found.ok ? found.value : null))
-    .catch(() => null);
+  const lastCommits = lastCommitsFor(path, viewer, params.ref, params["*"] ?? "");
   return { tree: unwrap(tree), branches: branches?.ok ? branches.value : null, lastCommits };
 }
 

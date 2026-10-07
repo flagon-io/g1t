@@ -16,6 +16,9 @@ use crate::store::GitRepo;
 
 /// How far back the history is walked.
 pub const MAX_COMMITS: u32 = 300;
+/// Commits whose trees are read together, ahead of the walk: each read is a
+/// round trip to the store, so reading them one by one is what is slow.
+const READ_AHEAD: usize = 24;
 
 /// Reads trees, remembering those already read: commits share most of them.
 struct Trees<'a, R: GitRepo> {
@@ -24,6 +27,34 @@ struct Trees<'a, R: GitRepo> {
 }
 
 impl<'a, R: GitRepo> Trees<'a, R> {
+    /// Reads the trees not read yet, all at once.
+    async fn prefetch(&mut self, hashes: impl IntoIterator<Item = String>) -> Result<()> {
+        let mut wanted: Vec<String> = hashes.into_iter().filter(|hash| !self.read.contains_key(hash)).collect();
+        wanted.sort();
+        wanted.dedup();
+        let found = futures_util::future::join_all(wanted.iter().map(|hash| self.repo.read_tree(hash))).await;
+        for (hash, tree) in wanted.into_iter().zip(found) {
+            self.read.insert(hash, tree?);
+        }
+        Ok(())
+    }
+
+    /// Reads, level by level and each level at once, the trees on the way
+    /// to `path` in each of `roots`, and the directory itself.
+    async fn prefetch_dirs(&mut self, roots: Vec<String>, path: &str) -> Result<()> {
+        let mut level = roots;
+        for segment in path.split('/').filter(|segment| !segment.is_empty()) {
+            self.prefetch(level.clone()).await?;
+            level = level
+                .iter()
+                .filter_map(|hash| {
+                    self.read.get(hash)?.as_ref()?.iter().find(|entry| entry.name == segment && entry.kind == EntryKind::Tree).map(|entry| entry.hash.clone())
+                })
+                .collect();
+        }
+        self.prefetch(level).await
+    }
+
     async fn get(&mut self, hash: &str) -> Result<Option<Vec<TreeEntry>>> {
         if let Some(found) = self.read.get(hash) {
             return Ok(found.clone());
@@ -72,6 +103,10 @@ pub async fn last_commits<R: GitRepo>(repo: &R, git_ref: &str, path: &str) -> Re
     for (index, commit) in history.iter().enumerate() {
         if open.is_empty() {
             break;
+        }
+        if index % READ_AHEAD == 0 {
+            let ahead = history.iter().skip(index + 1).take(READ_AHEAD).map(|commit| commit.tree_hash.clone()).collect();
+            trees.prefetch_dirs(ahead, path).await?;
         }
         let Some(parent) = history.get(index + 1) else {
             // The oldest commit read. If it is the first commit there is,
