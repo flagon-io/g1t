@@ -5,6 +5,7 @@
 //! `g1t_contracts::repos` for the methods and their arguments. Any other
 //! request is treated as git's smart HTTP protocol.
 
+mod backups;
 mod blame;
 mod catch_up;
 mod coalesce;
@@ -1961,6 +1962,42 @@ fn flush_later(env: &Env, ctx: &Context) {
     }
 }
 
+/// `/backups/<job id>/parts/<number>`: the job and the part's number.
+fn backup_part_path(path: &str) -> Option<(String, u16)> {
+    let rest = path.strip_prefix("/backups/")?;
+    let (job, number) = rest.split_once("/parts/")?;
+    let number = number.parse::<u16>().ok()?;
+    (!job.is_empty() && !job.contains('/')).then(|| (job.to_owned(), number))
+}
+
+fn backups_off<T>() -> Outcome<T> {
+    Outcome::fail(FailureCode::Conflict, "Backups are off on this installation: it has no storage for them.")
+}
+
+/// One part of a backup's bundle, with the job's token in its header.
+async fn backup_part(request: &mut Request, env: &Env, repos: &Repos<ArtifactsStore>, job_id: String, number: u16) -> Result<Response> {
+    let Some(blobs) = backups::storage(env) else {
+        return reply(&backups_off::<()>());
+    };
+    let token = request.headers().get(g1t_contracts::backups::TOKEN_HEADER)?.unwrap_or_default();
+    let bytes = request.bytes().await?;
+    let job = g1t_contracts::backups::BackupJobArgs { job_id, token };
+    reply(&backups::part(&repos.registry.db, &blobs, &job, number, bytes).await?)
+}
+
+#[cfg(test)]
+mod backup_path_tests {
+    use super::backup_part_path;
+
+    #[test]
+    fn a_part_is_named_by_its_job_and_number() {
+        assert_eq!(backup_part_path("/backups/bkp_1/parts/3"), Some(("bkp_1".to_owned(), 3)));
+        assert_eq!(backup_part_path("/backups/bkp_1/parts/x"), None);
+        assert_eq!(backup_part_path("/backups//parts/1"), None);
+        assert_eq!(backup_part_path("/acme/rocket.git/info/refs"), None);
+    }
+}
+
 /// Read methods whose answer is an `Outcome`: when the git store is busy,
 /// the site is told so in words instead of failing the page.
 const OUTCOME_READS: [&str; 6] = ["tree", "blob", "log", "branches", "blame", "compare"];
@@ -1968,6 +2005,15 @@ const OUTCOME_READS: [&str; 6] = ["tree", "blob", "log", "branches", "blame", "c
 #[event(fetch)]
 async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response> {
     let mut repos = service(&env)?;
+    // A part of a backup's bundle, as the API passes it on from the
+    // sandbox: bytes, not JSON (backups.rs).
+    if request.method() == Method::Put
+        && let Some((job_id, number)) = backup_part_path(&request.path())
+    {
+        let answered = backup_part(&mut request, &env, &repos, job_id, number).await;
+        flush_later(&env, &ctx);
+        return answered;
+    }
     let Some(method) = rpc_method(&request) else {
         let answered = repos.git_http(request, &env, &ctx).await;
         flush_later(&env, &ctx);
@@ -2099,6 +2145,29 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
             meters::set_mapping(&repos.registry.db, &row, &rfc3339(now_ms())).await?;
             reply(&meters::read_mapping(&repos.registry.db).await?)
         }
+        // Backups (backups.rs): the runner's sweep claims queued ones, and
+        // each sandbox, through the API, asks for its job and says how it went.
+        "claim_backups" => {
+            let a: g1t_contracts::backups::ClaimBackupsArgs = args(body)?;
+            let blobs = backups::storage(&env);
+            reply(&backups::claim(&repos.registry.db, blobs.as_ref(), &a, now_ms()).await?)
+        }
+        "backup_spec" => match backups::storage(&env) {
+            Some(blobs) => {
+                let a: g1t_contracts::backups::BackupJobArgs = args(body)?;
+                let every = backups::Settings::from_env(&env).full_every;
+                reply(&backups::spec(&repos.registry, &blobs, &repos.store, &a, every, now_ms()).await?)
+            }
+            None => reply(&backups_off::<bool>()),
+        },
+        "backup_complete" => match backups::storage(&env) {
+            Some(blobs) => reply(&backups::complete(&repos.registry, &blobs, &args(body)?, now_ms()).await?),
+            None => reply(&backups_off::<bool>()),
+        },
+        "backup_fail" => match backups::storage(&env) {
+            Some(blobs) => reply(&backups::fail(&repos.registry.db, &blobs, &args(body)?).await?),
+            None => reply(&backups_off::<bool>()),
+        },
         // How the git store has been answering, for the status page.
         "store_health" => {
             let a: meters::HealthArgs = args(body)?;
@@ -2126,10 +2195,14 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
     served.finish(answered)
 }
 
+/// The nightly cron in wrangler.jsonc: tonight's backups are queued.
+const BACKUP_CRON: &str = "53 2 * * *";
+
 /// The hourly sweep: deleted repositories whose time to be restored has
-/// passed are purged. See lifecycle.rs.
+/// passed are purged. See lifecycle.rs. And, at [`BACKUP_CRON`], the
+/// repositories whose refs moved are queued for a backup (backups.rs).
 #[event(scheduled)]
-async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
+async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     let repos = match service(&env) {
         Ok(repos) => repos,
         Err(error) => {
@@ -2137,6 +2210,14 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
             return;
         }
     };
+    if event.cron() == BACKUP_CRON {
+        let Some(blobs) = backups::storage(&env) else { return };
+        match backups::nightly(&repos.registry.db, &blobs, backups::Settings::from_env(&env), now_ms()).await {
+            Ok(night) => worker::console_log!("repos: queued {} backups, removed {} of purged repositories", night.queued, night.pruned),
+            Err(error) => worker::console_error!("repos: backups could not be queued: {error}"),
+        }
+        return;
+    }
     match repos.purge_due(PurgeDueArgs::default()).await {
         Ok(0) => {}
         Ok(count) => worker::console_log!("repos: purged {count} deleted repositories"),

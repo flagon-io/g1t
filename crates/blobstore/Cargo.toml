@@ -1,0 +1,15 @@
+[package]
+name = "g1t-blobstore"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Object storage behind one port: R2 on Cloudflare, any S3-compatible store (MinIO) when self-hosted."
+
+[dependencies]
+g1t-contracts.workspace = true
+g1t-kit.workspace = true
+serde.workspace = true
+worker.workspace = true
+hex = "0.4"
+hmac = "0.12"
+sha2 = { version = "0.10", features = ["compress"] }

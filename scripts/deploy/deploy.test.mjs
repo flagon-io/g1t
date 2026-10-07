@@ -98,7 +98,7 @@ test("Rust workers build with the shared script and the same wasm-opt level", ()
 
 test("shared crates and packages are read from workspace metadata", () => {
   assert.deepEqual(unit("events").dependsOn, ["crates/contracts", "crates/kit"]);
-  assert.deepEqual(unit("repos").dependsOn, ["crates/contracts", "crates/kit", "crates/scan", "crates/secrets"]);
+  assert.deepEqual(unit("repos").dependsOn, ["crates/blobstore", "crates/contracts", "crates/kit", "crates/scan", "crates/secrets"]);
   assert.ok(unit("actions").dependsOn.includes("crates/actions"));
   assert.ok(!unit("events").dependsOn.includes("crates/scan"));
   assert.deepEqual(unit("web").dependsOn, ["packages/contracts", "packages/theme"]);

@@ -11,6 +11,7 @@ crate-type = ["cdylib"]
 [dependencies]
 g1t-contracts.workspace = true
 g1t-kit.workspace = true
+g1t-blobstore.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 worker.workspace = true

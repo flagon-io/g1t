@@ -79,7 +79,8 @@
 			"secrets": ["REPOS_KEY"],
 			"setup": [
 				"The Artifacts namespace `g1t` (the ARTIFACTS binding)",
-				"The R2 bucket `g1t-git-packs` (GIT_PACKS) with its lifecycle rule: `npx wrangler r2 bucket create g1t-git-packs`, then `npx wrangler r2 bucket lifecycle add g1t-git-packs expire-packs packs/ --expire-days 7 --abort-multipart-days 1`"
+				"The R2 bucket `g1t-git-packs` (GIT_PACKS) with its lifecycle rule: `npx wrangler r2 bucket create g1t-git-packs`, then `npx wrangler r2 bucket lifecycle add g1t-git-packs expire-packs packs/ --expire-days 7 --abort-multipart-days 1`",
+				"The R2 bucket for nightly backups: npx wrangler r2 bucket create g1t-backups"
 			],
 			"self_host": "run"
 		},

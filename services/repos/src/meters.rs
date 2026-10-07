@@ -168,6 +168,11 @@ impl Mapping {
         let rows = DEFAULT_OPERATIONS
             .iter()
             .map(|meter| MappingRow { meter: (*meter).to_owned(), cost_operations: 1.0, billable_operations: 1.0, ..MappingRow::default() })
+            .chain(COST_ONLY_OPERATIONS.iter().map(|meter| MappingRow {
+                meter: (*meter).to_owned(),
+                cost_operations: 1.0,
+                ..MappingRow::default()
+            }))
             .collect::<Vec<_>>();
         Mapping::from_rows(&rows)
     }
@@ -193,6 +198,10 @@ pub const DEFAULT_OPERATIONS: [&str; 7] = [
     "binding.fork",
     "binding.delete",
 ];
+
+/// Meters that are an operation on g1t's own bill and on no workspace's:
+/// a nightly backup's clone (backups.rs, migrations/0013).
+pub const COST_ONLY_OPERATIONS: [&str; 1] = [crate::backups::FETCH_METER];
 
 /// How long a read of `operation_mapping` is used for.
 const MAPPING_TTL_MS: u64 = 5 * 60 * 1000;

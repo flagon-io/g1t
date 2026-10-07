@@ -63,7 +63,7 @@
 		{ "binding": "EVENTS", "service": "g1t-events" }
 	],
 	// A sweep for lifecycle steps whose trigger was missed or whose sandbox
-	// died before reporting.
+	// died before reporting, which also starts queued nightly backups.
 	"triggers": { "crons": ["*/5 * * * *"] },
 	// Events it reacts to: a pull request ready for review, or its head moving.
 	"queues": {
@@ -98,7 +98,12 @@
 		// Sandboxes stop themselves when they look like they are mining
 		// (crates/runner abuse.rs). "off" turns the CPU watch off; miners
 		// named in commands are refused either way.
-		"ABUSE_WATCH": "on"
+		"ABUSE_WATCH": "on",
+		// Nightly backups (src/backup.ts): each sweep starts this many of the
+		// backups the repos service queued, with at most BACKUPS_RUNNING at
+		// once. "0" starts none.
+		"BACKUPS_PER_SWEEP": "4",
+		"BACKUPS_RUNNING": "6"
 	},
 	"observability": { "enabled": true }
 }

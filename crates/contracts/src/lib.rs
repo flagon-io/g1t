@@ -9,6 +9,7 @@ pub mod accounts;
 pub mod actions;
 pub mod agents;
 pub mod audit;
+pub mod backups;
 pub mod billing;
 pub mod capture;
 pub mod credentials;

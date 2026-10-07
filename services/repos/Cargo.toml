@@ -13,6 +13,7 @@ g1t-contracts.workspace = true
 g1t-kit.workspace = true
 g1t-scan.workspace = true
 g1t-secrets.workspace = true
+g1t-blobstore.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 worker.workspace = true

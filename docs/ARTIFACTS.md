@@ -28,7 +28,8 @@ missing outright. Five things are not yet safe at a few thousand workspaces.
    128 MB Worker isolate that buffers each push body twice. Large pushes and imports fail late, without a
    message git can show.
 5. **No backup, no exit drill.** Cloudflare replicates data, but there is no SLA, no documented export
-   besides git itself, and the self-host git store is not a production fallback yet.
+   besides git itself, and the self-host git store is not a production fallback yet. Nightly bundles
+   to R2 and a restore drill are now built (R11, section 9); the fallback store is not (R12).
 
 None of these blocks an invite-only launch. Items 1 and 2 must be answered before billing starts on
 2026-10-14, and the fork cleanup must ship before agent pull requests reach thousands a day.
@@ -350,7 +351,9 @@ competition entrant (due 2026-10-14) we can also ask the competition organisers.
 
 Code in `services/repos` unless named; one migration,
 `migrations/0011_artifacts_meters_forks_health.sql` (new columns on `repos`, new tables
-`artifacts_meters`, `operation_mapping`, `store_health`; additive, no backfill).
+`artifacts_meters`, `operation_mapping`, `store_health`; additive, no backfill). R11 added
+`migrations/0013_backups.sql` (a new table, `repo_backups`, and one `operation_mapping` row;
+additive).
 
 | # | Status | What |
 | --- | --- | --- |
@@ -365,6 +368,7 @@ Code in `services/repos` unless named; one migration,
 | R7 | Groundwork | `shards.rs`: bindings named in `ARTIFACTS_NAMESPACES` (JSON, binding → namespace; `ARTIFACTS` → `g1t` always there), a repository's namespace kept in its `store` column as `<namespace>/<key>` (no prefix means the `ARTIFACTS` namespace, so every existing key reads the same), new repositories placed by `ARTIFACTS_NEW_REPOS` (comma-separated, spread by an FNV hash of the repository id; names not bound are skipped), forks always in their repository's namespace, `ARTIFACTS_EU_NAMESPACE` reserved for EU residency (no workspace setting yet). Works with only `ARTIFACTS` bound, as today. |
 | R8 | Built | `crates/runner/src/clone.rs`: every sandbox clones at `--depth=1` (a full g1t clone took 5.4 s, depth 1 took 3.8 s). Work that merges (catch-up, the merge queue, merge checks, a review's diff) deepens 50, 500, then 5000 commits until the two sides share one, and fetches everything only as the last resort (`share_history`). `G1T_CLONE_DEPTH` (0 or `full` for everything) and `G1T_CLONE_FILTER=blob:none` change it per runner. |
 | R6 | Built; the bucket must exist before it deploys | `pack_cache.rs`: an upload-pack POST with wants and no `have` or `shallow` lines (a fresh clone, the sandboxes' `deepen 1` ones included), uncompressed and at most 1 MiB, is keyed `packs/<repo id>/<refs_version>/<sha256>` over the request normalized: protocol v2 capabilities without `agent=`/`session-id=` and its arguments, each sorted and deduplicated; v0/v1 wants sorted, the first want's capabilities split off, sorted and without `agent=`, then `deepen`/`filter` lines, a flush and `done`. Only while `refs_cache::usable` (the version known, and no push credential out of g1t's hands), so never across a refs change. Looked up after authorization, alongside the free-workspace limits and the kept refs answer; a hit streams from the bucket (`Server-Timing` `pack;desc=hit`). A miss streams the store's 200 to git through a tee that copies it to a fill in `ctx.wait_until` (at most 5 MiB queued between them, 2 fills per isolate, one per key): under 5 MiB it is one `put` once it all arrived; larger, 5 MiB multipart parts completed only after the last part and a check that it is one whole side-band pack (well-formed pkt-lines, `PACK` on channel 1, no `ERR` or channel 3, a closing flush). Over 200 MB, a queue that falls behind, git going away or the store's stream failing lets the fill go and aborts the upload; nothing partial can be read. Meters `pack_cache.hit` (with the bytes served) and `pack_cache.miss` (counted with `record`, bytes added at the end), neither an operation by default; a hit records no `git.fetch`. Storage is behind the `PackStore` port with an R2 adapter (`GIT_PACKS`, bucket `g1t-git-packs`, lifecycle: packs deleted after 7 days, unfinished uploads after 1); without the binding (self-hosted) nothing is kept. |
+| R11 | Built; not yet deployed | Nightly `git bundle` backups to the `g1t-backups` R2 bucket, and a restore drill. Migration `0013_backups.sql` (`repo_backups`, and an `operation_mapping` row). See "R11: backups and the restore drill" below. |
 
 ### R1: reading `scripts/ops/artifacts-usage.mjs`
 
@@ -498,6 +502,127 @@ Existing repositories stay where they are (`store` without a prefix). Deploy the
 naming its namespace in `ARTIFACTS_NEW_REPOS`; a name that is not bound is skipped, never used.
 Moving an existing repository between namespaces is not built (a clone and push, then a `store`
 update).
+
+### R11: backups and the restore drill
+
+Every repository whose refs moved is bundled once a night and kept outside the git store, so a
+repository can be rebuilt without Artifacts. The flow is in `crates/contracts/src/backups.rs`;
+the chain, the manifest and the record are in `services/repos/src/backups.rs`.
+
+1. **Queued.** At 02:53 UTC (`53 2 * * *` in `services/repos/wrangler.jsonc`) the repos service
+   queues the repositories that are due, at most `BACKUPS_PER_NIGHT` (200), the longest since
+   their last backup first. A repository is due when it has never been backed up, when its
+   `refs_version` went past the one its last backup was cut at, or when a credential that can
+   push was handed out (`refs_open_until`) after that backup's clone began: a push with such a
+   credential does not move `refs_version`. Deleted repositories, retired working copies and
+   pull request working copies (`pulls/…`, whose heads end up in their repository as
+   `refs/pull/<id>/head`) are not backed up.
+2. **Claimed.** The runner's five-minute sweep claims `BACKUPS_PER_SWEEP` (4) at a time, with at
+   most `BACKUPS_RUNNING` (6) running (`claim_backups`), and starts a sandbox for each in
+   `MODE=backup` (`crates/runner/src/backup.rs`). The sandbox is given the job's id and a token
+   for it, nothing else; the repos service keeps only the token's hash. It has a 60-minute time
+   cap. Its time is g1t's: it is not metered to the workspace.
+3. **Cut.** The sandbox asks for its job (`POST api.g1t.sh/backups/{job}/spec`, the token in
+   `x-g1t-backup-token`) and gets a read-only credential for the repository in the store (a
+   `git_access`-style handout, 5 minutes), the bundle's kind, and the commits the last bundle
+   ended at. It clones with `--mirror` (every ref, never shallow), writes those commits as refs
+   of its own, and runs `git bundle create --all --not <them>`, then `git bundle verify`.
+   When the clone has exactly the refs of the last backup, or git finds nothing new to bundle
+   (a branch deleted, a ref moved to a commit already kept), no bundle is cut and only the refs
+   are recorded.
+4. **Sent.** The bundle goes in 32 MiB parts (`PUT /backups/{job}/parts/{n}`), which the API
+   passes to the repos service and the repos service to an R2 multipart upload; then
+   `POST /backups/{job}/complete` with every ref, the size, the SHA-256 and the parts. A failure
+   is `POST /backups/{job}/fail`; a sandbox that dies is failed by the runner. A job is tried 3
+   times a night; one running past 3 hours is queued again.
+5. **Recorded.** The manifest gains the entry, and `repo_backups` the refs version the clone began
+   at, so a push during the backup leaves the repository due the next night.
+
+Storage, through the `BlobStore` port in `crates/blobstore` (the adapters packages already used):
+the `BACKUPS` binding (bucket `g1t-backups`) with `BACKUP_STORE=r2`; any S3-compatible store with
+`BACKUP_STORE=s3` and `BACKUP_S3_BUCKET` (self-hosted: MinIO). Without either, backups are off and
+the nightly cron does nothing.
+
+```text
+backups/<repo id>/manifest.json
+backups/<repo id>/20261006T025300Z-full.bundle
+backups/<repo id>/20261007T025302Z-incr.bundle
+```
+
+The manifest (version 1) lists `chain`, oldest first, and `previous`, the chain before it. Each
+entry has `id`, `kind` (`full` or `incremental`), `key` (null when only refs moved),
+`created_at`, `refs_version`, `refs` (every ref and `HEAD` once it is applied), `prerequisites`,
+`size` and `sha256`. The first backup is full; the next ones are incremental, their
+prerequisites the last entry's tips, until the chain holds `BACKUP_FULL_EVERY` (30) incremental
+ones, when a full one starts a new chain. The chain before that is kept until the next full one
+replaces it, so the oldest backup kept is about two chains old. Backups of purged repositories
+are removed the night after (50 a night).
+
+Meters: the clone counts as `internal.git.info_refs` and `internal.git.backup_fetch` with the
+bytes it read, on the repository (they show in `artifacts_usage` and
+`scripts/ops/artifacts-usage.mjs`). `operation_mapping` has `internal.git.backup_fetch` at 1 for
+`cost_operations` and 0 for `billable_operations`: an operation on g1t's bill, never on the
+workspace's. The credential's `binding.create_token` is metered as before.
+
+**The restore drill** (read-only against production: SELECTs on `g1t-repos`, reads of
+`g1t-backups` through Wrangler, `git ls-remote` of the live repository):
+
+```sh
+node scripts/ops/backup-restore-drill.mjs                      # a repository unchanged since its last backup
+node scripts/ops/backup-restore-drill.mjs --repo acme/rocket   # this one
+G1T_USER=you G1T_TOKEN=g1t_... node scripts/ops/backup-restore-drill.mjs --repo acme/private-thing
+```
+
+It downloads the manifest and each bundle of the chain, checks each against its size and SHA-256,
+`git bundle verify`s it, fetches it into a new bare repository without following tags, sets every
+ref to what the last entry says (and removes the rest), points `HEAD` at the branch at its commit,
+and runs `git fsck --connectivity-only`. Then it compares every ref with the manifest and with
+`git ls-remote` of the live repository and prints each difference. Exit 0: every ref matches;
+1: a difference; 2: it could not run (a bundle that does not match its manifest is this). Picked
+at random, the repository is one whose refs have not moved since its last backup, so any
+difference is the backup's. Run it after the first night, then monthly, and after any change to
+`backups.rs` or `backup.rs`. `--bundles <dir>` reads a local copy of the bucket instead
+(self-hosted: `mc mirror local/g1t-backups <dir>`), with `--repo-id` and `--live <url or path>`.
+`npm run test:ops` runs it against bundles cut with git.
+
+**A real restore into the store**, as it can be done today:
+
+1. Run the drill for the repository with `--keep`. It prints where the restored copy is
+   (`…/restored.git`). Go on only if every ref matches the manifest; differences from the live
+   repository are what the restore is for.
+2. Tell the workspace, and stop the repository's agents and merge queue for the time.
+3. If its default branch is protected, turn protection off in the repository's settings for the
+   push: a push that changes a protected branch is declined.
+4. From the restored copy, push every ref as an owner, with an access token that has
+   `code:write`:
+
+   ```sh
+   cd /tmp/g1t-drill-…/restored.git
+   git -c "http.extraHeader=Authorization: Basic $(printf 'you:g1t_...' | base64)" \
+     push --force https://g1t.sh/acme/rocket.git 'refs/*:refs/*'
+   ```
+
+   It goes through the git door like any push: size limits, push protection (pushes over 24 MiB
+   per `LARGE_PUSHES`) and the audit log apply, and the refs version moves, so the next night
+   backs the repository up again. `--force` rewinds refs that went wrong; refs the live
+   repository has that the backup does not are left alone (`git push --mirror` would delete
+   them).
+5. Turn protection back on, and run the drill again: every ref now matches the live repository.
+
+When the repository is gone from the store itself (its key answers not found), there is no
+operator call yet to make an empty repository under an existing row's key; that is part of R12.
+
+To deploy: make the bucket (`npx wrangler r2 bucket create g1t-backups`, a setup step of `repos`
+in `deploy/stack.jsonc`), then migration 0013, then `g1t-repos` (the `BACKUPS` binding and the
+new cron), `g1t-api` (the `/backups/` door), and `g1t-runner` (a new image: the `backup` mode).
+Until the runner is out, queued backups wait; nothing fails. Set `BACKUPS_PER_SWEEP` to `0` on the
+runner to stop starting them.
+
+What is not covered: a pull request's working copy while its pull request is open (its head is
+kept in the repository only once the working copy is retired), and anything that is not a git
+ref (issues, pull requests and the rest live in D1, which has its own Time Travel). Every backup
+clones the whole repository, so a night reads each changed repository in full from the store;
+incremental bundles save storage, not reads.
 
 ### Deploy order and what to watch
 

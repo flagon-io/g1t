@@ -68,7 +68,17 @@
 	// ARTIFACTS_REMOTE_BASE (optional): where remotes start,
 	//   https://<account>.artifacts.cloudflare.net/git, so a new isolate
 	//   needs no info() call before its first credential (src/store.rs).
+	//
+	// Backups (src/backups.rs):
+	// BACKUP_STORE: r2 (the BACKUPS bucket) or s3 (BACKUP_S3_BUCKET on the
+	//   installation's S3_ENDPOINT, as self-hosting uses).
+	// BACKUPS_PER_NIGHT: how many repositories one night queues, those
+	//   longest since their last backup first.
+	// BACKUP_FULL_EVERY: incremental bundles before a full one again.
 	"vars": {
+		"BACKUP_STORE": "r2",
+		"BACKUPS_PER_NIGHT": "200",
+		"BACKUP_FULL_EVERY": "30",
 		"GIT_OPERATIONS_FREE_CAP": "50000",
 		"GIT_OPERATIONS_FREE_HOURLY": "60",
 		"FREE_PRIVATE_STORAGE_BYTES": "1000000000",
@@ -81,8 +91,14 @@
 	// Every hour, deleted repositories whose 30 days to be restored have
 	// passed are purged, their git data with them (src/lifecycle.rs), and
 	// pull request working copies past FORK_RETENTION_DAYS are removed
-	// (src/forks.rs).
-	"triggers": { "crons": ["23 * * * *"] },
+	// (src/forks.rs). At 02:53 UTC, the repositories whose refs moved since
+	// their last backup are queued for one (src/backups.rs, BACKUP_CRON);
+	// the runner's sweep starts them a few at a time.
+	"triggers": { "crons": ["23 * * * *", "53 2 * * *"] },
+	// Nightly backups: a git bundle per repository and a manifest of each
+	// chain (src/backups.rs). Made by
+	// `npx wrangler r2 bucket create g1t-backups`.
+	"r2_buckets": [{ "binding": "BACKUPS", "bucket_name": "g1t-backups" }],
 	// A workspace renamed moves its repositories to the new slug; one
 	// deleted purges the repositories it left in Recently deleted.
 	"queues": {

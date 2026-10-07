@@ -323,6 +323,65 @@ async fn report_mergecheck(
     }
 }
 
+/// A backup's sandbox, passed on to the repos service, which holds the
+/// job (services/repos/src/backups.rs; the flow is in
+/// `g1t_contracts::backups`):
+///
+/// - `POST /backups/{job}/spec`: what to cut, and a read-only git credential
+/// - `PUT /backups/{job}/parts/{n}`: one part of the bundle, as bytes
+/// - `POST /backups/{job}/complete` with `{ refs, size, sha256, parts, fetched_bytes }`
+/// - `POST /backups/{job}/fail` with `{ error, fetched_bytes }`
+///
+/// Bodies are passed through as they are: snake_case already, and a
+/// bundle's refs are keyed by ref names, which must not be converted.
+async fn backup_job(request: &mut Request, services: &Services, method: &str, path: &str) -> Result<Response> {
+    use g1t_contracts::backups::TOKEN_HEADER;
+    let token = request.headers().get(TOKEN_HEADER)?.unwrap_or_default();
+    let rest = path.trim_start_matches("/backups/");
+    let (job, action) = rest.split_once('/').unwrap_or((rest, ""));
+    if job.is_empty() || token.is_empty() {
+        return fail(FailureCode::Unauthenticated, "A backup job's token is required.");
+    }
+    if method == "PUT" && action.starts_with("parts/") {
+        let bytes = request.bytes().await?;
+        if bytes.len() as u64 > g1t_contracts::backups::PART_BYTES {
+            return fail(FailureCode::Invalid, "A part holds 32 MiB at most.");
+        }
+        let headers = worker::Headers::new();
+        headers.set(TOKEN_HEADER, &token)?;
+        let mut init = worker::RequestInit::new();
+        init.with_method(Method::Put)
+            .with_headers(headers)
+            .with_body(Some(worker::js_sys::Uint8Array::from(bytes.as_slice()).into()));
+        let forwarded = Request::new_with_init(&format!("https://repos/backups/{job}/{action}"), &init)?;
+        let mut answered = services.repos.fetch_request(forwarded).await?;
+        return outcome_as_given(answered.json().await?);
+    }
+    let rpc = match (method, action) {
+        ("POST", "spec") => "backup_spec",
+        ("POST", "complete") => "backup_complete",
+        ("POST", "fail") => "backup_fail",
+        _ => return fail(FailureCode::NotFound, "No such endpoint."),
+    };
+    let mut body = json_body(request).await;
+    if !body.is_object() {
+        body = json!({});
+    }
+    body["job_id"] = json!(job);
+    body["token"] = json!(token);
+    let answered: Value = g1t_kit::call(&services.repos, rpc, &body).await?;
+    outcome_as_given(answered)
+}
+
+/// An `Outcome` from a service whose keys are already the API's: the value,
+/// or the failure in the shape every endpoint uses.
+fn outcome_as_given(answered: Value) -> Result<Response> {
+    match serde_json::from_value::<Outcome<Value>>(answered)? {
+        Outcome::Ok(value) => Response::from_json(&value),
+        Outcome::Fail(refused) => failure(&refused),
+    }
+}
+
 /// A sandbox reporting the review its agent wrote. As with checks, the
 /// run's own token is the credential.
 async fn report_review(
@@ -564,6 +623,11 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         ("POST", path) if path.starts_with("/mergechecks/") => {
             let pull_id = path.trim_start_matches("/mergechecks/").to_owned();
             return report_mergecheck(&mut request, &services, &pull_id).await;
+        }
+        // A sandbox making a repository's nightly backup. The job's own
+        // token, in its header, is the credential.
+        (method, path) if path.starts_with("/backups/") => {
+            return backup_job(&mut request, &services, method, path).await;
         }
         ("POST", path) if path.starts_with("/queue/") => {
             let entry_id = path.trim_start_matches("/queue/").to_owned();

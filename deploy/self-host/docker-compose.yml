@@ -51,6 +51,9 @@ services:
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-g1t}
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-g1t-packages-secret}
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
+      # Nightly backups' bundles and manifests, in a bucket of their own on
+      # the same store (docs/SELF_HOSTING.md, "Backups").
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-g1t-backups}
     volumes:
       - g1t-data:/data
       - g1t-secrets:/secrets:ro
@@ -111,7 +114,7 @@ services:
       retries: 20
     restart: unless-stopped
 
-  # Makes the bucket once, then exits.
+  # Makes the buckets once, then exits: packages' files, and backups.
   minio-setup:
     image: minio/mc:latest
     depends_on:
@@ -120,11 +123,12 @@ services:
     entrypoint:
       - sh
       - -c
-      - mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" && mc mb --ignore-existing "local/$$S3_BUCKET"
+      - mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" && mc mb --ignore-existing "local/$$S3_BUCKET" && mc mb --ignore-existing "local/$$BACKUP_S3_BUCKET"
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-g1t}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-g1t-packages-secret}
       S3_BUCKET: ${S3_BUCKET:-g1t-packages}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-g1t-backups}
 
   mailpit:
     image: axllent/mailpit:latest

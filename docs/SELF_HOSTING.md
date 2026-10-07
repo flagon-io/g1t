@@ -84,7 +84,7 @@ is graded:
 | **Static Assets** | `apps/web` (Vite plugin build), `apps/docs`, `apps/sudo` (`run_worker_first`) | thin | workerd serves them. |
 | **`placement`, `observability`, routes, custom domains** | every `wrangler.jsonc` | config only | Dropped by `deploy/self-host/configs.mjs`. |
 | **`cf-ray`** | Used as an audit request id, with a fallback: `services/repos/src/run_access.rs:131`, `apps/api/src/audit.rs:37` | thin | Falls back already. |
-| **R2** | `services/packages` (`BLOBS`: container layers and other package files, `src/store/r2.rs`), the API's Actions cache (`ACTIONS_CACHE`), the runner's downloads | thin | **S3-compatible storage**: the packages service's `BlobStore` port has an S3 adapter (`src/store/s3.rs`, SigV4 over fetch), run against MinIO in the compose file. |
+| **R2** | `services/packages` (`BLOBS`: container layers and other package files), `services/repos` (`BACKUPS`: nightly backup bundles), the API's Actions cache (`ACTIONS_CACHE`), the runner's downloads | thin | **S3-compatible storage**: the `BlobStore` port in `crates/blobstore` has an R2 adapter and an S3 one (`s3.rs`, SigV4 over fetch); each service names its own bucket (`BLOB_STORE`/`S3_BUCKET` for packages, `BACKUP_STORE`/`BACKUP_S3_BUCKET` for backups), run against MinIO in the compose file. |
 | **Not used** | Hyperdrive, Workflows, Analytics Engine, Browser Rendering, Images, Turnstile, Secrets Store, `connect()`, HTMLRewriter, `request.cf` | — | — |
 
 ### By service
@@ -102,7 +102,7 @@ checks this table names every unit.
 | `apps/docs` | Static | — | Not run (docs.g1t.sh serves them) |
 | `apps/status` | TS Worker | Email Sending, cron; bound only to billing | Runs in a process of its own (`status.sh`), so it stays up when the site does not |
 | `services/identity` | Rust | Email Sending, KV `AVATARS` | Runs unchanged; `EMAIL` goes to the mail shim |
-| `services/repos` | Rust | **Artifacts**, Cache API, optional KV `GIT_CACHE` with `REPOS_KEY`, optional R2 `GIT_PACKS` | Runs unchanged; `ARTIFACTS` goes to the git store. Without `GIT_CACHE` and `REPOS_KEY`, credentials and ref listings are kept per isolate only. `GIT_PACKS` (the clone pack cache, behind the `PackStore` port in `src/pack_cache.rs`) is not given, so every clone goes to the git store; an S3 adapter like packages' would turn it on |
+| `services/repos` | Rust | **Artifacts**, **R2** (`BACKUPS`), Cache API, optional KV `GIT_CACHE` with `REPOS_KEY`, optional R2 `GIT_PACKS` | Runs unchanged; `ARTIFACTS` goes to the git store, and backups to MinIO's `g1t-backups` bucket (`BACKUP_STORE=s3`). Without `GIT_CACHE` and `REPOS_KEY`, credentials and ref listings are kept per isolate only. Its nightly cron queues backups, but bundles are cut by the runner, which is off in phase 1: none are made yet. `GIT_PACKS` (the clone pack cache, behind the `PackStore` port in `src/pack_cache.rs`) is not given, so every clone goes to the git store; an S3 adapter like packages' would turn it on |
 | `services/work` | Rust | Queue consumer | Runs unchanged |
 | `services/events` | Rust | Queues (producer and fan-out) | Runs unchanged; the off services' queues are not produced to |
 | `services/projects` | TS | Queue consumer | Runs unchanged |
@@ -381,8 +381,14 @@ on every page, but with `FREE_WHILE_BUILDING=true` and no Stripe key.
   a backfill a self-hoster's start can run.
 - **Backups.** Phase 1: stop, then tar the `g1t-data` and `g1t-git`
   volumes (documented in the guide). Phase 2: online backups with
-  `sqlite3 .backup` per database and `git bundle` or rsync of the bare
-  repositories, or Litestream for continuous replication.
+  `sqlite3 .backup` per database, or Litestream for continuous
+  replication. The repositories get hosted g1t's nightly bundles
+  (docs/ARTIFACTS.md, R11) once the runner runs: the storage is already
+  configured (`BACKUP_STORE=s3`, the `g1t-backups` bucket that
+  `minio-setup` makes, `BACKUP_S3_BUCKET` to choose another), and the
+  restore drill reads a copy of that bucket
+  (`mc mirror local/g1t-backups ./copy`, then
+  `node scripts/ops/backup-restore-drill.mjs --bundles ./copy --repo-id <id> --live <bare repository>`).
 
 ## 3. Phase 1: what works today
 

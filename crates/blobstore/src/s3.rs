@@ -1,16 +1,16 @@
 //! The S3 adapter, for self-hosted installations: any S3-compatible store
 //! (MinIO, Ceph, Garage, AWS) over fetch, signed with SigV4, path-style.
-//! S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY and
-//! S3_REGION say where; S3_PUBLIC_ENDPOINT, when set, is the address
-//! clients reach the store at, and large downloads are then sent there
-//! with a signed URL instead of through the Worker.
+//! S3_ENDPOINT, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY and S3_REGION say
+//! where, and the service's own variable (`Config::s3_bucket`) which
+//! bucket. Its public endpoint variable, when it names one and that is
+//! set, is the address clients reach the store at, and large downloads are
+//! then sent there with a signed URL instead of through the Worker.
 
 use worker::wasm_bindgen::JsValue;
 use worker::{Env, Fetch, Headers, Method, Request, RequestInit, Response, Result, Url};
 
-use super::{BlobStore, Got, Part, var};
-use crate::range::Wanted;
 use crate::sigv4::{Credentials, UNSIGNED, amz_date};
+use crate::{BlobStore, Config, Got, Part, Wanted, var};
 
 pub struct S3Store {
     /// `http://minio:9000`, without a trailing slash.
@@ -45,14 +45,20 @@ fn host_of(endpoint: &str) -> String {
 }
 
 impl S3Store {
-    pub fn from_env(env: &Env) -> Result<S3Store> {
+    pub fn from_env(env: &Env, config: &Config) -> Result<S3Store> {
         let endpoint = var(env, "S3_ENDPOINT").trim_end_matches('/').to_owned();
-        let bucket = var(env, "S3_BUCKET");
+        let bucket = var(env, config.s3_bucket);
         if endpoint.is_empty() || bucket.is_empty() {
-            return Err(worker::Error::RustError("BLOB_STORE is s3, but S3_ENDPOINT or S3_BUCKET is not set".into()));
+            return Err(worker::Error::RustError(format!(
+                "{} is s3, but S3_ENDPOINT or {} is not set",
+                config.kind, config.s3_bucket
+            )));
         }
         let region = var(env, "S3_REGION");
-        let public = var(env, "S3_PUBLIC_ENDPOINT").trim_end_matches('/').to_owned();
+        let public = config
+            .s3_public_endpoint
+            .map(|name| var(env, name).trim_end_matches('/').to_owned())
+            .unwrap_or_default();
         Ok(S3Store {
             endpoint,
             public_endpoint: (!public.is_empty()).then_some(public),

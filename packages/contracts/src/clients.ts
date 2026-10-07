@@ -292,6 +292,9 @@ export function reposClient(service: ServiceBinding): ReposApi {
     commitFile: (repo, actor, file) => call("commit_file", { repo, actor, ...file }),
     land: (sourceId, actor, branch) => call("land", { sourceId, actor, branch }),
     compare: (repoId, viewer, base, head) => call("compare", { repoId, viewer, base, head }),
+    claimBackups: (limit, maxRunning) => call("claim_backups", { limit, maxRunning }),
+    // The sandbox's own calls are snake_case (they come through the API).
+    failBackup: (jobId, token, error) => call("backup_fail", { job_id: jobId, token, error }),
   };
 }
 
