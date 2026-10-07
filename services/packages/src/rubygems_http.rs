@@ -6,7 +6,10 @@
 //!
 //! Bundler installs from the compact index (`versions`, `info/<gem>`,
 //! `names`), made from the versions on each read, with each file's MD5 as
-//! its `ETag` as Bundler checks it. A `.gem` is stored once, by its
+//! its `ETag` as Bundler checks it. `gem install --source` and `gem search`
+//! read the full index: `specs.4.8.gz` (and `latest_` and `prerelease_`),
+//! and a version's `quick/Marshal.4.8/<gem>.gemspec.rz`, made from what
+//! each version keeps, in Ruby's Marshal format. A `.gem` is stored once, by its
 //! SHA-256, which is also its index `checksum`. `gem yank` takes a version
 //! out of the index; its file stays for lockfiles that name it.
 
@@ -63,6 +66,16 @@ fn index_file(request: &Request, body: String, head: bool) -> Result<Response> {
     }
     headers.set("content-length", &body.len().to_string())?;
     let body = if head { ResponseBody::Empty } else { ResponseBody::Body(body.into_bytes()) };
+    Ok(Response::from_body(body)?.with_headers(headers))
+}
+
+/// A full index file or a specification, which `gem` reads as bytes.
+fn binary(bytes: Vec<u8>, head: bool, cache: &str) -> Result<Response> {
+    let headers = Headers::new();
+    headers.set("content-type", "application/octet-stream")?;
+    headers.set("content-length", &bytes.len().to_string())?;
+    headers.set("cache-control", cache)?;
+    let body = if head { ResponseBody::Empty } else { ResponseBody::Body(bytes) };
     Ok(Response::from_body(body)?.with_headers(headers))
 }
 
@@ -128,6 +141,8 @@ impl Packages {
             GemRoute::Names if read => self.gem_names(&request, workspace, viewer, head).await,
             GemRoute::Info { name } if read => self.gem_info(&request, workspace, &name, viewer, head).await,
             GemRoute::Gem { stem } if read => self.gem_download(workspace, &stem, viewer, head, ctx).await,
+            GemRoute::Specs(which) if read => self.gem_specs(workspace, which, viewer, head).await,
+            GemRoute::QuickSpec { stem } if read => self.gem_quick_spec(workspace, &stem, viewer, head).await,
             GemRoute::Push if method == Method::Post => self.gem_push(&mut request, workspace, viewer).await,
             GemRoute::Yank if method == Method::Delete => self.gem_yank(&mut request, url, workspace, viewer).await,
             _ => error(405, "Not a method this address takes."),
@@ -222,6 +237,37 @@ impl Packages {
         }
         rows.reverse();
         index_file(request, rubygems::info(&rows.iter().map(line).collect::<Vec<_>>()), head)
+    }
+
+    /// A full index file: the versions in the index of every gem the
+    /// viewer may see, as `[name, Gem::Version, platform]`.
+    async fn gem_specs(&self, workspace: &str, which: rubygems::Specs, viewer: Option<&User>, head: bool) -> Result<Response> {
+        let gems = match self.gem_index(workspace, viewer).await? {
+            Ok(gems) => gems,
+            Err(refused) => return Ok(refused),
+        };
+        let tuples: Vec<rubygems::Tuple> =
+            gems.iter().flat_map(|(package, rows)| rows.iter().map(|row| rubygems::Tuple::of(&package.name, &row.version, &row.meta()))).collect();
+        binary(rubygems::specs_file(which, &tuples), head, "no-cache")
+    }
+
+    /// A version's specification, marshalled and deflated, which `gem
+    /// install` reads before the gem. Yanked versions' too, as their files.
+    async fn gem_quick_spec(&self, workspace: &str, stem: &str, viewer: Option<&User>, head: bool) -> Result<Response> {
+        for (name, key) in rubygems::candidates(stem).into_iter().rev() {
+            let Some(package) = self.db.package(workspace, RUBYGEMS, &name).await?.filter(|p| !p.hidden()) else {
+                continue;
+            };
+            if let Some(refusal) = self.gem_check(viewer, &package, Action::Pull).await? {
+                return Ok(refusal);
+            }
+            let Some(row) = self.db.version_named(&package.id, &key).await? else {
+                continue;
+            };
+            let spec = rubygems::quick_spec(&package.name, &row.version, &row.meta(), &row.published_at);
+            return binary(spec, head, "max-age=300");
+        }
+        self.gem_absent(workspace, viewer).await
     }
 
     /// A `.gem`, yanked ones too: a lockfile may still name them.

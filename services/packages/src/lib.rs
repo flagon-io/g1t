@@ -17,6 +17,7 @@ mod db;
 mod digest;
 mod limits;
 mod manifest;
+mod marshal;
 mod maven;
 mod maven_http;
 mod names;
