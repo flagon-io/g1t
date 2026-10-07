@@ -49,6 +49,11 @@
 starlight-theme-select {
 	display: none;
 }
+/* Starlight's divider between the links and the theme and language
+   pickers; with neither shown, it is a line before nothing. */
+.social-icons::after {
+	display: none;
+}
 
 /* --- Header --------------------------------------------------------------- */
 
