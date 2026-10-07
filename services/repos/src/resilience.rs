@@ -151,7 +151,6 @@ impl Breaker {
         };
     }
 
-    #[cfg(test)]
     pub fn is_open(&self, now: u64) -> bool {
         matches!(self.state, State::Open { until } if now < until)
     }
@@ -166,21 +165,43 @@ pub fn with_breaker<T>(store: &str, f: impl FnOnce(&mut Breaker) -> T) -> T {
     BREAKERS.with(|breakers| f(breakers.borrow_mut().entry(store.to_owned()).or_default()))
 }
 
+/// Whether namespace `store`'s breaker refuses calls in this isolate now.
+pub fn open_now(store: &str, now: u64) -> bool {
+    BREAKERS.with(|breakers| breakers.borrow().get(store).is_some_and(|breaker| breaker.is_open(now)))
+}
+
 /// What marks an error as the git store being busy, through every `?` and
 /// `format!` it passes.
 const BUSY: &str = "git-store-busy:";
 
 /// The git store is busy: rate limited, unavailable after retries, or its
-/// breaker open. Seconds to wait.
+/// breaker open; or read-only for now, served from the fallback store
+/// (fallback.rs). Seconds to wait.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Busy {
     pub rate_limited: bool,
     pub retry_after: u64,
+    /// Reads work; writes wait until the store is back.
+    pub read_only: bool,
 }
 
+/// How long a writer is told to wait while the store is read-only.
+pub const READ_ONLY_RETRY_AFTER: u64 = 300;
+
 impl Busy {
+    /// Writes refused while the store is read-only.
+    pub fn read_only() -> Self {
+        Busy { rate_limited: false, retry_after: READ_ONLY_RETRY_AFTER, read_only: true }
+    }
+
     pub fn error(self, detail: &str) -> worker::Error {
-        let kind = if self.rate_limited { "rate-limited" } else { "unavailable" };
+        let kind = if self.read_only {
+            "read-only"
+        } else if self.rate_limited {
+            "rate-limited"
+        } else {
+            "unavailable"
+        };
         worker::Error::RustError(format!("{BUSY}{kind}:{}: {detail}", self.retry_after))
     }
 
@@ -191,7 +212,9 @@ impl Busy {
 
     /// What people are told.
     pub fn message(self) -> String {
-        if self.rate_limited {
+        if self.read_only {
+            "g1t's git storage is read-only while it recovers: clones, fetches and pages work, and pushes, merges and new repositories wait until it is back. https://status.g1t.sh has the latest.\n".to_owned()
+        } else if self.rate_limited {
             format!("g1t's git storage is handling more requests than it allows right now. Try again in {} seconds.\n", self.retry_after)
         } else {
             format!("g1t's git storage is not answering right now. Try again in {} seconds; https://status.g1t.sh has the latest.\n", self.retry_after)
@@ -203,9 +226,9 @@ impl Busy {
 pub fn busy(message: &str) -> Option<Busy> {
     let at = message.find(BUSY)? + BUSY.len();
     let mut parts = message[at..].splitn(3, ':');
-    let rate_limited = parts.next()? == "rate-limited";
+    let kind = parts.next()?;
     let retry_after = parts.next()?.trim().parse().ok()?;
-    Some(Busy { rate_limited, retry_after })
+    Some(Busy { rate_limited: kind == "rate-limited", retry_after, read_only: kind == "read-only" })
 }
 
 /// Seconds to tell a caller to wait, from milliseconds, at least one.
@@ -284,10 +307,15 @@ mod tests {
 
     #[test]
     fn busy_survives_being_passed_along() {
-        let busy_error = Busy { rate_limited: true, retry_after: 7 }.error("log failed");
+        let busy_error = Busy { rate_limited: true, retry_after: 7, read_only: false }.error("log failed");
         let wrapped = format!("divergence failed: {busy_error}");
-        assert_eq!(busy(&wrapped), Some(Busy { rate_limited: true, retry_after: 7 }));
-        let down = Busy { rate_limited: false, retry_after: 10 };
+        assert_eq!(busy(&wrapped), Some(Busy { rate_limited: true, retry_after: 7, read_only: false }));
+        // Read-only: writes wait, said so in words.
+        let read_only = Busy::read_only();
+        assert_eq!(busy(&format!("land: {}", read_only.error("push"))), Some(read_only));
+        assert_eq!(read_only.status(), 503);
+        assert!(read_only.message().contains("read-only"));
+        let down = Busy { rate_limited: false, retry_after: 10, read_only: false };
         assert_eq!(busy(&down.error("x").to_string()), Some(down));
         assert_eq!(down.status(), 503);
         assert!(down.message().contains("10 seconds"));

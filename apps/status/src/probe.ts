@@ -50,6 +50,12 @@ export function judgeStorage(report: StorageReport): ProbeResult {
     return { ok: false, ms, error: `${Math.round((100 * errors) / calls)}% of calls failed` };
   }
   if (limited > 0) return { ok: true, ms, degraded: `Rate limited ${limited} times in ${report.minutes} minutes` };
+  // A namespace served from the fallback store (`<namespace>@fallback`,
+  // repos src/fallback.rs): reads work from the last backup, writes wait.
+  const fallback = report.stores.filter((row) => row.store.endsWith("@fallback") && Number(row.calls) > 0);
+  if (fallback.length > 0) {
+    return { ok: true, ms, degraded: "Served from the backup store: reads work, pushes and merges wait" };
+  }
   return { ok: true, ms };
 }
 

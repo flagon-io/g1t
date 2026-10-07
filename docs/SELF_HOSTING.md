@@ -277,10 +277,20 @@ lines of Node with no dependencies) provides the same:
 Hosted is untouched: `ArtifactsStore` is still the only adapter compiled
 into `services/repos`. Self-hosted, the `ARTIFACTS` binding is a service
 binding to `deploy/self-host/workers/artifacts`, which offers Artifacts'
-methods and calls the git store. Long term, a `LocalGitStore` adapter in
-Rust should call the git store's API directly, which removes the shim. The
-git store can later gain `git gc` scheduling and object-store-backed packs
-for large installations.
+methods and calls the git store. The git store can later gain `git gc`
+scheduling and object-store-backed packs for large installations.
+
+The same git store is hosted g1t's cold fallback for an Artifacts outage
+(docs/ARTIFACTS.md, R12). For that it takes namespaced keys as well as
+plain ones (`g1t-us-1/acme--rocket`, kept at
+`<GITSTORE_ROOT>/g1t-us-1/acme--rocket.git` and served at
+`/git/g1t-us-1/acme--rocket.git`, the shape Artifacts gives remotes), and
+`GITSTORE_READ_ONLY=1` refuses pushes, write tokens and making, forking or
+deleting repositories. `services/repos/src/fallback.rs` calls its API from
+Rust, the start of the `LocalGitStore` adapter: a namespace named in
+`GIT_FALLBACK_NAMESPACES` is served from it, with the shim out of the path.
+Self-hosted installations keep using the shim, with plain keys; nothing
+changes for them.
 
 ### Search and context
 

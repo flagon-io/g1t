@@ -45,6 +45,17 @@ impl Repo {
     }
 }
 
+/// `storage_options` (no arguments, `{}`): what a workspace may choose
+/// about where its repositories are kept. `eu_available`: an EU namespace
+/// is configured and takes new repositories, so a workspace may keep its
+/// data in the EU (`set_workspace_residency` on identity). Returns
+/// `StorageOptions`.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageOptions {
+    pub eu_available: bool,
+}
+
 /// How long a deleted repository can be restored before it is purged.
 pub const RESTORE_DAYS: u64 = 30;
 

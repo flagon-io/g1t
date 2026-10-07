@@ -29,6 +29,7 @@ Every workspace keeps an audit log. It records:
 | `repo.collaborator_added`, `repo.collaborator_role_changed`, `repo.collaborator_removed` | Someone was given a role on it, had it changed, or lost it. See [access and roles](/guides/access-and-roles/). |
 | `repo.invitation_created`, `repo.invitation_revoked` | Someone was invited to it, or an invitation was withdrawn. |
 | `workspace.base_permission_changed` | An owner changed what members get on every repository. |
+| `workspace.residency_changed` | An owner changed where the workspace's new repositories are stored. See [data residency](/guides/workspaces/#data-residency). |
 | `workspace.deleted`, `workspace.restored`, `workspace.purged` | An owner deleted the workspace, g1t's support restored it, or it was removed for good. See [deleting a workspace](/guides/workspaces/#delete-a-workspace). |
 
 Through the API and the MCP server, the call itself is recorded under its

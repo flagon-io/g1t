@@ -65,6 +65,8 @@ export function identityClient(service: ServiceBinding): IdentityApi {
       call("update_oauth_grant", { user, id, scopes: grant.scopes }),
     createWorkspace: (user, slug, name) => call("create_workspace", { user, slug, name }),
     getWorkspace: (slug) => call("get_workspace", { slug }),
+    workspaceResidency: (slug) => call("workspace_residency", { slug }),
+    setWorkspaceResidency: (actor, slug, residency) => call("set_workspace_residency", { actor, slug, residency }),
     listMembers: (slug, viewer) => call("list_members", { slug, viewer }),
     addMember: (actor, slug, username) => call("add_member", { actor, slug, username }),
     removeMember: (actor, slug, username) =>
@@ -273,6 +275,7 @@ export function reposClient(service: ServiceBinding): ReposApi {
     renameBranch: (actor, path, from, to) => call("rename_branch", { actor, path, from, to }),
     resolveBranch: (repoId, branch) => call("resolve_branch", { repoId, branch }),
     statusById: (id) => call("status_by_id", { id }),
+    storageOptions: () => call("storage_options", {}),
     resolvePath: (path) => call("resolve_path", { path }),
     tree: (path, viewer, ref, treePath) =>
       call("tree", { path, viewer, ref, treePath }),

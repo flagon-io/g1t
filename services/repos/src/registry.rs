@@ -47,6 +47,39 @@ pub(crate) struct RepoRow {
     retired_at: Option<String>,
     #[serde(default)]
     retired_head: Option<String>,
+    /// Until when writes wait, and why: a move between namespaces
+    /// (moves.rs). Absent before the columns existed.
+    #[serde(default)]
+    writes_paused_until: Option<f64>,
+    #[serde(default)]
+    writes_paused_for: Option<String>,
+}
+
+thread_local! {
+    /// Repositories whose writes wait, by id: until when, and why. Filled
+    /// whenever a row is read.
+    static PAUSED: RefCell<HashMap<String, (u64, String)>> = RefCell::new(HashMap::new());
+}
+
+/// Records whether writes to the repository with this id wait, as its row says.
+pub fn note_paused(id: &str, until: Option<u64>, reason: Option<&str>) {
+    PAUSED.with(|paused| {
+        let mut paused = paused.borrow_mut();
+        match until {
+            Some(until) => {
+                paused.insert(id.to_owned(), (until, reason.unwrap_or("maintenance").to_owned()));
+            }
+            None => {
+                paused.remove(id);
+            }
+        }
+    });
+}
+
+/// Why writes to the repository with this id wait at `now`, if they do, as
+/// its row last read here said.
+pub fn paused(id: &str, now: u64) -> Option<String> {
+    PAUSED.with(|paused| paused.borrow().get(id).filter(|(until, _)| *until > now).map(|(_, reason)| reason.clone()))
 }
 
 /// Where a repository's refs stand, as its row last said: `version` goes up
@@ -131,8 +164,10 @@ thread_local! {
     /// Store keys that differ from the one a repository's path gives: those
     /// of repositories whose workspace was renamed after they were made.
     /// Filled whenever a row is read or written, so every `Repo` this
-    /// service holds has its key here. A key never changes once given, so
-    /// requests sharing the isolate can share the map.
+    /// service holds has its key here. A key changes only when a move
+    /// between namespaces switches it (moves.rs), and every row read
+    /// after that brings the new one, so requests sharing the isolate can
+    /// share the map.
     static MOVED: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
 }
 
@@ -177,11 +212,18 @@ pub fn path_key(repo: &Repo) -> String {
     format!("{}--{}", repo.namespace, repo.name)
 }
 
-/// Records where a repository is stored, when its path does not say.
+/// Records where a repository is stored, when its path does not say. A
+/// key changes when the repository moves between namespaces (moves.rs),
+/// so one that is the path's again is forgotten.
 pub fn remember_store(repo: &Repo, store: &str) {
-    if store != path_key(repo) {
-        MOVED.with(|moved| moved.borrow_mut().insert(repo.id.clone(), store.to_owned()));
-    }
+    MOVED.with(|moved| {
+        let mut moved = moved.borrow_mut();
+        if store != path_key(repo) {
+            moved.insert(repo.id.clone(), store.to_owned());
+        } else {
+            moved.remove(&repo.id);
+        }
+    });
 }
 
 impl From<RepoRow> for Repo {
@@ -210,6 +252,7 @@ impl From<RepoRow> for Repo {
         }
         note_refs(&repo.id, row.refs_version, row.refs_open_until);
         note_retired(&repo.id, row.retired_at.as_ref().and(row.retired_head.as_deref()));
+        note_paused(&repo.id, row.writes_paused_until.map(|until| until as u64), row.writes_paused_for.as_deref());
         repo
     }
 }
@@ -598,7 +641,9 @@ impl Registry {
             .db
             .prepare(
                 "SELECT 1 AS held FROM repos
-                 WHERE store = ?1 OR (instr(store, '/') > 0 AND substr(store, instr(store, '/') + 1) = ?1)",
+                 WHERE store = ?1 OR (instr(store, '/') > 0 AND substr(store, instr(store, '/') + 1) = ?1)
+                 UNION ALL
+                 SELECT 1 AS held FROM repo_move_copies WHERE name = ?1 AND cleaned_ms IS NULL",
             )
             .bind(&[wanted.as_str().into()])?
             .first::<serde_json::Value>(None)
@@ -780,6 +825,8 @@ mod tests {
             refs_open_until: None,
             retired_at: None,
             retired_head: None,
+            writes_paused_until: None,
+            writes_paused_for: None,
         };
         let old = Repo::from(row(None));
         assert_eq!(refs_state(&old.id), None);

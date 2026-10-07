@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Form, data, redirect, useFetcher, useNavigation } from "react-router";
 
 import {
+  type DataResidency,
   RENAME_COOLDOWN_HOURS,
   SLUG_HOLD_DAYS,
   WORKSPACE_RESTORE_DAYS,
@@ -27,8 +28,9 @@ import {
 } from "../../components/ui/alert-dialog";
 import { FieldDescription, FieldLabel, Field as FormField } from "../../components/ui/field";
 import { InputAddon, InputGroup, Input as TextInput } from "../../components/ui/input";
+import { RadioGroup, RadioOption } from "../../components/ui/radio-group";
 import { readAvatarUpload } from "../../lib/avatar-upload";
-import { deployments, identity } from "../../lib/services.server";
+import { deployments, identity, repos } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 import { forgetWorkspace } from "../../lib/workspace-choice";
 import { confirmsSlug, deletionRefusal, whatGoes } from "../../lib/workspace-deletion";
@@ -71,7 +73,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     deletion = found?.ok ? found.value : null;
     apps = usage?.ok ? usage.value.apps : null;
   }
-  return { workspace, check, deletion, apps };
+  // Where its repositories are kept: offered once g1t can keep them in the
+  // EU, and shown to a workspace that chose it whatever happens since.
+  const [storage, residency] = await Promise.all([
+    repos.storageOptions().catch(() => ({ euAvailable: false })),
+    identity.workspaceResidency(params.owner).catch(() => null),
+  ]);
+  return { workspace, check, deletion, apps, euAvailable: storage.euAvailable, residency: residency ?? "anywhere" };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -101,6 +109,13 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     if (!result.ok) return { deleteError: result.error.message };
     const secure = new URL(request.url).protocol === "https:";
     throw redirect("/", { headers: { "Set-Cookie": forgetWorkspace(secure) } });
+  }
+  // Where new repositories keep their data: identity checks the owner.
+  if (intent === "residency") {
+    const wanted = form.get("residency") === "eu" ? "eu" : "anywhere";
+    const result = await identity.setWorkspaceResidency(user, params.owner, wanted);
+    if (!result.ok) return { residencyError: result.error.message };
+    return { saved: "residency" as const };
   }
   if (intent === "rename") {
     const newSlug = String(form.get("newSlug") ?? "").trim().toLowerCase();
@@ -155,6 +170,15 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
         error={actionData && "renameError" in actionData ? actionData.renameError : undefined}
       />
 
+      {(loaderData.euAvailable || loaderData.residency === "eu") && (
+        <ResidencySection
+          residency={loaderData.residency}
+          euAvailable={loaderData.euAvailable}
+          saved={Boolean(actionData && "saved" in actionData && actionData.saved === "residency")}
+          error={actionData && "residencyError" in actionData ? actionData.residencyError : undefined}
+        />
+      )}
+
       <DangerZone>
         <DeleteAction
           workspace={workspace}
@@ -164,6 +188,66 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
         />
       </DangerZone>
     </div>
+  );
+}
+
+/**
+ * Where the workspace's new repositories keep their git data. Shown only
+ * once g1t has EU storage (or to a workspace that already chose it), so
+ * nobody is offered a choice that does nothing.
+ */
+function ResidencySection({
+  residency,
+  euAvailable,
+  saved,
+  error,
+}: {
+  residency: DataResidency;
+  euAvailable: boolean;
+  saved: boolean;
+  error?: string;
+}) {
+  const [choice, setChoice] = useState<DataResidency>(residency);
+  const navigation = useNavigation();
+  const saving = navigation.state !== "idle" && navigation.formData?.get("intent") === "residency";
+  return (
+    <section>
+      <h2 className="font-medium">Data residency</h2>
+      <p className="mt-1.5 text-xs text-faint">
+        Where the git data of repositories made from now on is stored. Repositories the workspace already has stay
+        where they are; ask support to move them. Issues, pull requests and settings are not affected.
+      </p>
+      <Form method="post" className="mt-5 space-y-4">
+        <input type="hidden" name="intent" value="residency" />
+        <RadioGroup
+          name="residency"
+          value={choice}
+          onValueChange={(value) => setChoice(value as DataResidency)}
+          aria-label="Where new repositories are stored"
+        >
+          <RadioOption value="anywhere" label="Anywhere" description="Wherever g1t stores repositories. The default." />
+          <RadioOption
+            value="eu"
+            label="EU only"
+            description={
+              euAvailable
+                ? "New repositories are stored in the EU, and are not made if EU storage cannot take them."
+                : "EU storage cannot take new repositories right now."
+            }
+            disabled={!euAvailable && residency !== "eu"}
+          />
+        </RadioGroup>
+        <ErrorText>{error}</ErrorText>
+        {saved && !error && (
+          <p role="status" className="text-xs text-muted">
+            Saved.
+          </p>
+        )}
+        <Button type="submit" disabled={saving || choice === residency}>
+          Save
+        </Button>
+      </Form>
+    </section>
   );
 }
 

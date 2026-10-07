@@ -141,6 +141,39 @@ READMEs and docs, CI configuration, API clients and MCP clients.
   digits and single hyphens, up to 39 characters, not a reserved word, and
   not another workspace's slug or someone else's username.
 
+## Data residency
+
+Data residency says where the git data of the workspace's new repositories
+is stored. The section appears in **Settings** once g1t can store
+repositories in the EU. Until then it is not shown, and every repository is
+stored wherever g1t stores repositories.
+
+| Setting | What it does |
+| --- | --- |
+| Anywhere | New repositories are stored wherever g1t stores repositories. The default. |
+| EU only | New repositories are stored in the EU. If EU storage cannot take one right now, the repository is not made, and you are told why. It is never stored somewhere else instead. |
+
+To change it:
+
+1. Open the workspace, then **Settings**. Only owners see the page.
+2. Under **Data residency**, choose **Anywhere** or **EU only**.
+3. Select **Save**.
+
+The setting applies to repositories made after you save it, however they
+are made: from the site, with the API, by pushing to a new address, or by
+importing. Repositories the workspace already has stay where they are. To
+move them, contact support; a move keeps each repository's address, history
+and settings, and pushes to it wait a few minutes while it happens.
+
+Data residency covers the git data: commits, branches, tags and files,
+including pull requests' working copies, which are stored with their
+repository. Issues, pull requests, comments and settings are not affected.
+A repository [transferred](/guides/transferring-repositories/) to another
+workspace stays where it is stored.
+
+Changing the setting is recorded in the
+[audit log](/guides/audit-log/) as `workspace.residency_changed`.
+
 ## Delete a workspace
 
 Deleting a workspace takes everything in it with it, in one step: its

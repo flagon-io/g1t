@@ -12,6 +12,16 @@
 // able to reach it: the API takes a shared secret, and git requests a
 // short-lived token the shim minted with the same secret.
 //
+// A key is a repository's name (`acme--rocket`), or a namespace and a name
+// (`g1t/acme--rocket`): hosted g1t's fallback store (docs/ARTIFACTS.md, R12)
+// keeps each Artifacts namespace's repositories in a directory of their
+// own, so a remote reads `<GITSTORE_URL>/git/<namespace>/<name>.git`, the
+// shape Artifacts gives remotes.
+//
+// GITSTORE_READ_ONLY=1 refuses everything that writes: pushes, creating,
+// forking, deleting, and minting write tokens. As a fallback the store
+// serves reads until told otherwise; the repos service refuses writes too.
+//
 // No dependencies beyond Node and git.
 
 import { spawn } from "node:child_process";
@@ -27,6 +37,7 @@ const SECRET = loadSecret();
 // How the repos service reaches this server; it becomes each repository's
 // `remote`, exactly as Artifacts hands one out.
 const PUBLIC_URL = (process.env.GITSTORE_URL ?? `http://localhost:${PORT}`).replace(/\/$/, "");
+const READ_ONLY = ["1", "true", "yes"].includes(String(process.env.GITSTORE_READ_ONLY ?? "").toLowerCase());
 
 /**
  * The secret shared with the Artifacts shim: GITSTORE_SECRET, or else the
@@ -50,7 +61,7 @@ if (SECRET.length < 16) {
 }
 mkdirSync(ROOT, { recursive: true });
 
-const KEY = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,199}$/;
+const NAME = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,199}$/;
 const HASH = /^[0-9a-f]{40}$/;
 
 class StoreError extends Error {
@@ -61,11 +72,22 @@ class StoreError extends Error {
   }
 }
 
+/** Whether `key` is a name, or a namespace and a name. */
+function validKey(key) {
+  if (typeof key !== "string" || key.includes("..")) return false;
+  const parts = key.split("/");
+  return parts.length <= 2 && parts.every((part) => NAME.test(part));
+}
+
 function repoDir(key) {
-  if (!KEY.test(key) || key.includes("..")) {
+  if (!validKey(key)) {
     throw new StoreError("INVALID_REPO_NAME", `invalid repository name: ${key}`);
   }
   return join(ROOT, `${key}.git`);
+}
+
+function refuseWrites(what) {
+  if (READ_ONLY) throw new StoreError("READ_ONLY", `the git store is read-only: ${what} is refused`, 403);
 }
 
 function exists(key) {
@@ -140,6 +162,7 @@ async function info(key) {
 }
 
 async function create(key, { description, defaultBranch, readOnly, source } = {}) {
+  refuseWrites("creating a repository");
   const dir = repoDir(key);
   if (exists(key)) throw new StoreError("ALREADY_EXISTS", `${key} already exists`, 409);
   mkdirSync(dir, { recursive: true });
@@ -164,6 +187,7 @@ async function configure(dir) {
 }
 
 async function fork(key, target, { description, readOnly, defaultBranchOnly = true } = {}) {
+  refuseWrites("forking");
   const source = requireRepo(key);
   const dir = repoDir(target);
   if (exists(target)) throw new StoreError("ALREADY_EXISTS", `${target} already exists`, 409);
@@ -298,6 +322,7 @@ function sign(payload) {
 }
 
 function mintToken(key, scope = "write", ttl = 86400) {
+  if (scope === "write") refuseWrites("a write token");
   const seconds = Math.max(60, Math.min(Number(ttl) || 86400, 31536000));
   const expires = Math.floor(Date.now() / 1000) + seconds;
   const id = randomUUID();
@@ -343,6 +368,7 @@ function smartHttp(request, response, key, rest, query) {
   }
   const service = rest === "info/refs" ? new URLSearchParams(query).get("service") : rest;
   if (service === "git-receive-pack" && claims.s !== "write") return send(response, 403, "read-only token");
+  if (service === "git-receive-pack" && READ_ONLY) return send(response, 403, "the git store is read-only");
   if (service !== "git-upload-pack" && service !== "git-receive-pack") return send(response, 404, "not found");
 
   const env = {
@@ -445,6 +471,7 @@ async function api(request, response, parts, params) {
   if (method === "GET" && !action) return send(response, 200, await info(key));
   // DELETE /api/repos/<key>               delete (a purged repository)
   if (method === "DELETE" && !action) {
+    refuseWrites("deleting a repository");
     if (!exists(key)) return send(response, 404, { code: "NOT_FOUND", message: "no such repository" });
     await rm(repoDir(key), { recursive: true, force: true });
     return send(response, 200, { deleted: true });
@@ -478,8 +505,8 @@ async function api(request, response, parts, params) {
 const server = createServer(async (request, response) => {
   const url = new URL(request.url, "http://gitstore");
   try {
-    if (url.pathname === "/healthz") return send(response, 200, "ok");
-    const git = /^\/git\/([^/]+)\.git\/(info\/refs|git-upload-pack|git-receive-pack)$/.exec(url.pathname);
+    if (url.pathname === "/healthz") return send(response, 200, READ_ONLY ? "ok read-only" : "ok");
+    const git = /^\/git\/((?:[^/]+\/)?[^/]+)\.git\/(info\/refs|git-upload-pack|git-receive-pack)$/.exec(url.pathname);
     if (git) return smartHttp(request, response, decodeURIComponent(git[1]), git[2], url.search.slice(1));
     if (url.pathname === "/api/repos" || url.pathname.startsWith("/api/repos/")) {
       const parts = url.pathname.slice("/api/repos".length).split("/").filter(Boolean).map(decodeURIComponent);
@@ -496,7 +523,7 @@ const server = createServer(async (request, response) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`g1t gitstore: ${ROOT} on :${PORT} (remote ${PUBLIC_URL})`);
+  console.log(`g1t gitstore: ${ROOT} on :${PORT} (remote ${PUBLIC_URL})${READ_ONLY ? ", read-only" : ""}`);
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

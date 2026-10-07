@@ -21,8 +21,10 @@
 	// More namespaces (src/shards.rs) are more bindings, named in
 	// ARTIFACTS_NAMESPACES below, e.g.
 	//   { "binding": "ARTIFACTS_1", "namespace": "g1t-us-1" },
-	//   { "binding": "ARTIFACTS_EU", "namespace": "g1t-eu", "jurisdiction": "eu" }
-	// and new repositories go to those named in ARTIFACTS_NEW_REPOS.
+	//   { "binding": "ARTIFACTS_EU", "namespace": "g1t-eu" }
+	// and new repositories go to those named in ARTIFACTS_NEW_REPOS. A
+	// namespace's jurisdiction is set when it is made (docs/ARTIFACTS.md,
+	// R7), never in the binding.
 	"artifacts": [{ "binding": "ARTIFACTS", "namespace": "g1t" }],
 	// Shared between isolates (src/shared.rs): the git store's credentials
 	// (src/store.rs) and the ref listings git asks for first
@@ -70,7 +72,19 @@
 	//   after its pull request merges or closes (src/forks.rs).
 	// ARTIFACTS_NAMESPACES: JSON, each Artifacts binding and its namespace;
 	//   ARTIFACTS_NEW_REPOS: comma-separated namespaces new repositories go
-	//   to (empty: g1t); ARTIFACTS_EU_NAMESPACE: for EU residency (src/shards.rs).
+	//   to, the emptier healthy ones first (empty: g1t); ARTIFACTS_EU_NAMESPACE:
+	//   where workspaces that keep their data in the EU put new repositories,
+	//   and unset until that namespace exists (src/shards.rs);
+	//   ARTIFACTS_NAMESPACE_LIMITS (optional): JSON, {"g1t": {"max_repos": N}},
+	//   past which a namespace takes no new repositories while another can.
+	//
+	// The fallback git store (src/fallback.rs; docs/ARTIFACTS.md, R12), all
+	// unset: nothing changes. Set as secrets, so switching takes no build:
+	//   npx wrangler secret put GIT_FALLBACK_URL         # https://gitstore.example
+	//   npx wrangler secret put GIT_FALLBACK_SECRET      # the store's API secret
+	//   npx wrangler secret put GIT_FALLBACK_NAMESPACES  # g1t (or g1t,g1t-us-1, or *)
+	// GIT_FALLBACK_WRITES: unset or "refuse" keeps a switched namespace
+	//   read-only; "allow" lets it take pushes (reconcile them afterwards).
 	// ARTIFACTS_REMOTE_BASE (optional): where remotes start,
 	//   https://<account>.artifacts.cloudflare.net/git, so a new isolate
 	//   needs no info() call before its first credential (src/store.rs).
@@ -97,7 +111,8 @@
 	// Every hour, deleted repositories whose 30 days to be restored have
 	// passed are purged, their git data with them (src/lifecycle.rs), and
 	// pull request working copies past FORK_RETENTION_DAYS are removed
-	// (src/forks.rs). At 02:53 UTC, the repositories whose refs moved since
+	// (src/forks.rs), and a repository queued to move to another namespace
+	// is moved (src/moves.rs). At 02:53 UTC, the repositories whose refs moved since
 	// their last backup are queued for one (src/backups.rs, BACKUP_CRON);
 	// the runner's sweep starts them a few at a time.
 	"triggers": { "crons": ["23 * * * *", "53 2 * * *"] },

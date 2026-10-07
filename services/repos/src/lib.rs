@@ -11,6 +11,7 @@ mod catch_up;
 mod coalesce;
 mod commit_file;
 mod diff;
+mod fallback;
 mod forks;
 mod git_http;
 mod git_ops;
@@ -21,6 +22,8 @@ mod lifecycle;
 mod listing;
 mod meters;
 mod mirror;
+mod moves;
+mod namespaces;
 mod pack_cache;
 mod pack_limits;
 mod refs;
@@ -192,8 +195,10 @@ pub(crate) struct Repos<S: GitStore> {
     /// to a push too large to scan.
     repo_limit: u64,
     large_pushes: git_http::LargePushes,
-    /// Which git store namespace new repositories go in (shards.rs).
+    /// Which git store namespace new repositories go in (shards.rs), and
+    /// the most each should hold (`ARTIFACTS_NAMESPACE_LIMITS`).
     placement: shards::Placement,
+    limits: HashMap<String, u64>,
     /// What isolates share: answers that list refs (refs_cache.rs).
     shared: Option<Rc<shared::Shared>>,
     /// Packs for fresh clones (pack_cache.rs); `None` without the bucket.
@@ -551,7 +556,10 @@ impl<S: GitStore> Repos<S> {
             website: None,
             archived_at: None,
         };
-        let namespace = self.placement.place(&repo.id, shards::Residency::Anywhere, &self.store.namespaces());
+        let namespace = match self.place(&repo).await? {
+            Ok(namespace) => namespace,
+            Err(unplaced) => return Ok(Outcome::fail(FailureCode::Conflict, unplaced.message())),
+        };
         self.registry
             .claim_store_key(&repo, namespace.as_deref(), &self.store.default_namespace())
             .await?;
@@ -634,6 +642,87 @@ impl<S: GitStore> Repos<S> {
             self.publish_push(&repo, git_ref, None, head, None).await?;
         }
         Ok(Outcome::Ok(repo))
+    }
+
+    /// Where a workspace keeps its data, asked of identity only when an EU
+    /// namespace is configured: without one, every workspace's
+    /// repositories go anywhere and identity is never asked.
+    async fn residency_of(&self, workspace: &str) -> Result<shards::Residency> {
+        if self.placement.eu.is_none() {
+            return Ok(shards::Residency::Anywhere);
+        }
+        let Some(identity) = &self.identity else {
+            return Ok(shards::Residency::Anywhere);
+        };
+        let residency: Option<g1t_contracts::identity::DataResidency> = g1t_kit::call(
+            identity,
+            "workspace_residency",
+            &g1t_contracts::identity::SlugArgs { slug: workspace.to_owned() },
+        )
+        .await?;
+        Ok(match residency {
+            Some(g1t_contracts::identity::DataResidency::Eu) => shards::Residency::Eu,
+            _ => shards::Residency::Anywhere,
+        })
+    }
+
+    /// How each bound namespace stands (namespaces.rs).
+    async fn standings(&self) -> Result<Vec<namespaces::Standing>> {
+        let bound = self.store.namespaces();
+        let default = self.store.default_namespace();
+        let now = now_ms();
+        let config = namespaces::Configured {
+            bound: &bound,
+            default: &default,
+            placement: &self.placement,
+            limits: &self.limits,
+            on_fallback: &|namespace| self.store.on_fallback(&shards::compose(Some(namespace), "x", &default)),
+            writable: &|namespace| self.store.writable(namespace),
+            breaker_open: &|namespace| resilience::open_now(namespace, now),
+        };
+        let (held, recent) = futures_util::future::join(namespaces::held(&self.registry.db), namespaces::recent(&self.registry.db, now)).await;
+        Ok(namespaces::standings(&config, &held?, &recent?))
+    }
+
+    /// The namespace a new repository goes in (shards.rs): its workspace's
+    /// residency, then how each namespace stands, read only when there is
+    /// a choice to make. `Ok(None)` for the default.
+    async fn place(&self, repo: &Repo) -> Result<std::result::Result<Option<String>, shards::Unplaced>> {
+        let residency = self.residency_of(&repo.namespace).await?;
+        let bound = self.store.namespaces();
+        let loads = if residency == shards::Residency::Anywhere && !self.placement.needs_loads(&bound) {
+            // One namespace to choose from at most: nothing to read.
+            bound
+                .iter()
+                .map(|namespace| shards::Load {
+                    namespace: namespace.clone(),
+                    bound: true,
+                    writable: self.store.writable(namespace),
+                    ..shards::Load::default()
+                })
+                .collect()
+        } else {
+            let default = self.store.default_namespace();
+            let now = now_ms();
+            let config = namespaces::Configured {
+                bound: &bound,
+                default: &default,
+                placement: &self.placement,
+                limits: &self.limits,
+                on_fallback: &|namespace| self.store.on_fallback(&shards::compose(Some(namespace), "x", &default)),
+                writable: &|namespace| self.store.writable(namespace),
+                breaker_open: &|namespace| resilience::open_now(namespace, now),
+            };
+            namespaces::loads(&self.registry.db, &config, now).await?
+        };
+        Ok(self.placement.choose(&repo.id, residency, &loads))
+    }
+
+    /// `storage_options`: what a workspace may choose about where its
+    /// repositories are kept.
+    fn storage_options(&self) -> StorageOptions {
+        let bound = self.store.namespaces();
+        StorageOptions { eu_available: self.placement.eu_available(&bound, |namespace| self.store.writable(namespace)) }
     }
 
     async fn tree(&self, a: TreeArgs) -> Result<Outcome<TreeView>> {
@@ -978,6 +1067,10 @@ impl<S: GitStore> Repos<S> {
         let Some(repo) = self.registry.by_id(&a.repo_id).await? else {
             return Ok(not_found());
         };
+        let repo = match self.unpaused(repo).await? {
+            Ok(repo) => repo,
+            Err((code, message)) => return Ok(Outcome::fail(code, message)),
+        };
         self.live(&repo).await?;
         let git = self.store.open(&store_key(&repo)).await?;
         let Some(old) = git
@@ -1014,6 +1107,11 @@ impl<S: GitStore> Repos<S> {
         if let Some((code, message)) = lifecycle::archived_refusal(&source) {
             return Ok(Outcome::fail(code, message));
         }
+        // Its working copy is made in its namespace: not while it moves.
+        let source = match self.unpaused(source).await? {
+            Ok(source) => source,
+            Err((code, message)) => return Ok(Outcome::fail(code, message)),
+        };
         let now = now_ms();
         let fork = Repo {
             id: new_id("rep", now),
@@ -1182,6 +1280,14 @@ impl<S: GitStore> Repos<S> {
                 }
             }
         };
+        // A push, or a credential to push with, waits while the repository
+        // moves between namespaces (moves.rs), and goes to where it is now.
+        if write {
+            return Ok(match self.unpaused(repo).await? {
+                Ok(repo) => Outcome::Ok(repo),
+                Err((code, message)) => Outcome::fail(code, format!("{message}\n")),
+            });
+        }
         Ok(Outcome::Ok(repo))
     }
 
@@ -1210,6 +1316,12 @@ impl<S: GitStore> Repos<S> {
         if let Some((code, message)) = lifecycle::archived_refusal(&target) {
             return Ok(Outcome::fail(code, message));
         }
+        // Moving between namespaces: wait for it (moves.rs). Both are read
+        // again once it is done, for their new keys.
+        let (source, target) = match (self.unpaused(source).await?, self.unpaused(target).await?) {
+            (Ok(source), Ok(target)) => (source, target),
+            (Err((code, message)), _) | (_, Err((code, message))) => return Ok(Outcome::fail(code, message)),
+        };
 
         let branch = &target.default_branch;
         let from_fork = source.id != target.id;
@@ -1511,8 +1623,12 @@ impl<S: GitStore> Repos<S> {
         let body = if !write && !get { Some(request.bytes().await?) } else { None };
         // What it asks the store, for the meters (meters.rs).
         let call = git_ops::classify(git.service, git.endpoint, get, body.as_deref());
+        // Answers kept from the usual store may name refs the fallback
+        // store does not have (fallback.rs): none are used, or kept.
+        let fallback = self.store.on_fallback(&key);
         // An answer that lists refs may have been kept: see refs_cache.rs.
         let kept_key = refs_cache::kind(git, get, protocol, body.as_deref())
+            .filter(|_| !fallback)
             .zip(refs_cache::usable(registry::refs_state(&repo.id), now_ms()))
             .map(|(kind, version)| {
                 refs_cache::Key::new(&repo.id, version, default_branch.as_deref(), protocol, &kind)
@@ -1522,6 +1638,7 @@ impl<S: GitStore> Repos<S> {
         let pack_key = self
             .packs
             .as_ref()
+            .filter(|_| !fallback)
             .and_then(|_| {
                 let encoding = request.headers().get("content-encoding").ok().flatten();
                 pack_cache::cacheable(git, get, protocol, encoding.as_deref(), body.as_deref())
@@ -1950,6 +2067,7 @@ fn service(env: &Env) -> Result<Repos<ArtifactsStore>> {
             env.var("ARTIFACTS_NEW_REPOS").ok().map(|value| value.to_string()).as_deref(),
             env.var("ARTIFACTS_EU_NAMESPACE").ok().map(|value| value.to_string()).as_deref(),
         ),
+        limits: shards::limits(env.var("ARTIFACTS_NAMESPACE_LIMITS").ok().map(|value| value.to_string()).as_deref()),
     })
 }
 
@@ -2175,6 +2293,16 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
             let a: meters::HealthArgs = args(body)?;
             reply(&meters::health(&repos.registry.db, &a).await?)
         }
+        // Where repositories may be kept, for a workspace's settings.
+        "storage_options" => reply(&repos.storage_options()),
+        // Services and operators only: how each namespace stands, and
+        // moving a repository between them (namespaces.rs, moves.rs).
+        "namespaces" => reply(&repos.standings().await?),
+        "move_repository" => reply(&repos.move_repository(args(body)?).await?),
+        "repository_moves" => {
+            let a: moves::ListMovesArgs = args(body)?;
+            reply(&repos.registry.moves(a.limit.unwrap_or(50)).await?)
+        }
         _ => Response::error("Unknown method", 404),
     } }
     .await;
@@ -2230,6 +2358,12 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
         Ok(0) => {}
         Ok(count) => worker::console_log!("repos: removed {count} pull request working copies"),
         Err(error) => worker::console_error!("repos: the working copy sweep failed: {error}"),
+    }
+    // Repositories moving between namespaces, and old copies (moves.rs).
+    match repos.run_moves().await {
+        Ok(0) => {}
+        Ok(count) => worker::console_log!("repos: moved {count} repositories between namespaces"),
+        Err(error) => worker::console_error!("repos: the move sweep failed: {error}"),
     }
     meters::flush(&repos.registry.db).await;
 }

@@ -317,6 +317,45 @@ pub struct Member {
     pub avatar: Option<String>,
 }
 
+/// Where a workspace keeps its repositories' git data: anywhere g1t
+/// stores it (the default), or in the EU only. It applies to repositories
+/// made after it is set; the repos service reads it when it places a new
+/// one (`storage_options` says whether the EU can be chosen).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DataResidency {
+    #[default]
+    Anywhere,
+    Eu,
+}
+
+impl DataResidency {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DataResidency::Anywhere => "anywhere",
+            DataResidency::Eu => "eu",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "anywhere" => Some(DataResidency::Anywhere),
+            "eu" => Some(DataResidency::Eu),
+            _ => None,
+        }
+    }
+}
+
+/// `workspace_residency` takes [`SlugArgs`] and returns
+/// `Option<DataResidency>` (null when there is no such workspace).
+/// `set_workspace_residency`: owners only. Returns `Outcome<DataResidency>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetResidencyArgs {
+    pub actor: User,
+    pub slug: String,
+    pub residency: DataResidency,
+}
+
 /// `create_workspace`. Returns `Outcome<Workspace>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateWorkspaceArgs {
