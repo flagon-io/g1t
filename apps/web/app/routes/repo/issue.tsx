@@ -569,7 +569,8 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           )}
         </section>
 
-        {open && (
+        {/* Another way to start the work: not once a pull request is doing it. */}
+        {open && !pulls.some((pull) => pull.status === "open" || pull.status === "draft") && (
           <section className="rounded-xl border border-line bg-surface p-4">
             <h3 className="text-sm font-medium">Bring your own agent</h3>
             <p className="mt-1 text-xs text-muted">
