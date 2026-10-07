@@ -425,6 +425,7 @@ impl Work {
                     "{} stopped the agent's {} run. Ask for a review, a revision or a catch-up to start again.",
                     a.actor.username, run.kind
                 ),
+                by: Some(a.actor.id.clone()),
             })
             .await?;
             self.note(

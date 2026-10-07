@@ -19,6 +19,24 @@ export type PackageEventData = {
   repoId: string | null;
 };
 
+/** What `deployment.succeeded` and `deployment.failed` carry. */
+export type DeploymentEventData = {
+  deploymentId: string;
+  projectId: string;
+  repoId: string;
+  workspace: string;
+  project: string;
+  kind: "production" | "preview";
+  branch: string | null;
+  number: number | null;
+  commit: string;
+  path: string;
+  error: string | null;
+  recovered: boolean;
+  /** A username, or `g1t`. */
+  triggeredBy: string;
+};
+
 /** The payload of the `repo.collaborator_*` events. */
 export type RepoCollaboratorData = {
   repoId: string;
@@ -121,8 +139,8 @@ export type EventPayloads = {
     requestedBy?: { id: string; username: string };
   };
   "issue.updated": { issueId: string; repoId: string; number: number };
-  /** The people an issue is assigned to changed; `assignees` is the new set. */
-  "issue.assigned": { issueId: string; repoId: string; number: number; assignees: string[] };
+  /** The people an issue is assigned to changed; `assignees` is the new set, `added` those newly assigned. */
+  "issue.assigned": { issueId: string; repoId: string; number: number; assignees: string[]; added?: string[] };
   /** `resolvedBy` is the number of the pull request whose merge closed it. */
   "issue.closed": {
     issueId: string;
@@ -153,6 +171,15 @@ export type EventPayloads = {
   /** A merge was asked for while the pull request was behind; it has to catch up first. */
   "pull.merge_requested": { pullId: string; repoId: string; number: number; issue?: number; confidence?: Confidence };
   "pull.closed": { pullId: string; repoId: string; number: number; issue?: number; confidence?: Confidence };
+  /** People were assigned to a pull request: `assignees` is the new set, `added` those newly assigned. */
+  "pull.assigned": { pullId: string; repoId: string; number: number; issue?: number; assignees: string[]; added: string[] };
+  /** Reviewers were asked for a pull request (`reviewers`), or no longer are. */
+  "pull.review_requested": { pullId: string; repoId: string; number: number; issue?: number; reviewers: string[] };
+  "pull.review_request_removed": { pullId: string; repoId: string; number: number; issue?: number; reviewers: string[] };
+  /** g1t stopped seeing a pull request through until a person steps in; `detail` says why. */
+  "pull.stalled": { pullId: string; repoId: string; number: number; issue?: number; detail: string };
+  /** A pull request g1t had stopped on is going again. */
+  "pull.resumed": { pullId: string; repoId: string; number: number; issue?: number };
   /**
    * The pull request's head or its target moved and the files both changed
    * overlap: a sandbox should find out whether it still merges cleanly.
@@ -196,6 +223,13 @@ export type EventPayloads = {
     verdict?: Verdict;
   };
   "session.appended": { pullId: string; repoId: string; number: number; count: number };
+  /**
+   * A build of a project finished, for production or one pull request's
+   * preview (`number`). `path` is the deployment's page on the site;
+   * `recovered`, on a success, says the build before it failed.
+   */
+  "deployment.succeeded": DeploymentEventData;
+  "deployment.failed": DeploymentEventData;
   /**
    * A package version was published, such as an image pushed by
    * `docker push`. `tags` are the tags that now point to it; `repoId` (and

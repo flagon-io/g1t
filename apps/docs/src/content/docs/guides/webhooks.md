@@ -75,12 +75,16 @@ With these headers:
 | `repo.collaborator_added`, `repo.collaborator_role_changed`, `repo.collaborator_removed` | Someone was given a role on it, had their role changed, or lost it. `data.username`, `data.role`, `data.previous_role`. See [access and roles](/guides/access-and-roles/). |
 | `repo.archived`, `repo.unarchived` | It was made read-only, or writable again. |
 | `repo.deleted`, `repo.restored`, `repo.purged` | It was deleted, restored within its 30 days, or removed for good. |
-| `issue.opened`, `issue.updated`, `issue.assigned`, `issue.closed`, `issue.reopened` | An issue changed. `data.number` and `data.author` (`id` and `username`); on close, `data.reason` and `data.resolved_by`. For an issue g1t's agent filed while at work, `data.author` is g1t and `data.requested_by` is the person it was working for. |
+| `issue.opened`, `issue.updated`, `issue.assigned`, `issue.closed`, `issue.reopened` | An issue changed. `data.number` and `data.author` (`id` and `username`); on close, `data.reason` and `data.resolved_by`; on assignment, `data.assignees` and the newly assigned `data.added`. For an issue g1t's agent filed while at work, `data.author` is g1t and `data.requested_by` is the person it was working for. |
 | `comment.created` | A comment or review on an issue or pull request. |
 | `pull.opened`, `pull.ready`, `pull.updated`, `pull.merge_requested`, `pull.merged`, `pull.closed` | A pull request changed. `data.number`, `data.issue` and `data.author` (`id` and `username`); on merge, `data.commit`. For a change g1t made, `data.author` is g1t and `data.requested_by` is the person who asked for it; `actor` is still whoever caused the event. On a change by g1t, once g1t has worked it out, `data.confidence`: `level` (`high`, `medium` or `low`), `reasons`, `self_reported`, `uncertain_about`, `run_id` and `assessed_at`. See [how sure the agent is](/guides/working-with-g1t/#how-sure-the-agent-is). |
+| `pull.assigned` | People were assigned to a pull request. `data.assignees` is everyone assigned now, `data.added` those newly assigned. |
+| `pull.review_requested`, `pull.review_request_removed` | Reviewers were asked for a pull request, or no longer are. `data.reviewers` names them. |
+| `pull.stalled`, `pull.resumed` | g1t stopped seeing a pull request through until a person steps in, with why in `data.detail`; or it picked back up. |
 | `checks.completed` | A pull request's checks finished: every status on its head has reported and none is still pending, or the merge queue took it out. `data.number`, `data.commit`, and `data.status`, `passed` or `failed`. |
 | `review.completed` | g1t reviewed a pull request. `data.verdict`. |
 | `workflow.completed` | A [workflow](/guides/actions/) run finished. `data.workflow`, `data.conclusion`, `data.run_id`, `data.sha`, `data.pull`. |
+| `deployment.succeeded`, `deployment.failed` | A build of a [project](/guides/deployments/) finished, for production or a pull request's preview. `data.deployment_id`, `data.project`, `data.kind` (`production` or `preview`), `data.number` for a preview, `data.commit`, `data.path`, `data.error` on failure, and `data.recovered` when a success follows a failure. |
 | `queue.changed` | The merge queue gained, lost or settled an entry. |
 | `session.appended` | An agent's session grew. Busy: choose it only if you need it. |
 | `agent.asked` | An agent asked the agent on another pull request a question, or handed it work, while that one was not at work; g1t wakes it to answer. |

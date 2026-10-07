@@ -261,6 +261,7 @@ impl Work {
                     .first::<crate::rows::ValueRow>(None)
                     .await?;
                 if resumed.is_some() {
+                    self.announce_resumed(&head.id, None).await?;
                     self.note(
                         &a.repo_id,
                         head.number,

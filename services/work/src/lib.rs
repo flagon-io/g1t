@@ -648,12 +648,14 @@ impl Work {
                 ("assigned", "unassigned"),
             )
             .await?;
+            let added: Vec<String> = assignees.iter().filter(|name| !before.contains(name)).cloned().collect();
             self.publish(
                 "issue.assigned",
                 &issue.repo_id,
                 &a.actor,
                 IssueEvent {
                     assignees: Some(assignees),
+                    added: Some(added),
                     ..Self::issue_event(&issue)
                 },
             )
@@ -1471,6 +1473,46 @@ impl Work {
                 ),
             )
             .await?;
+        }
+        // Who was newly assigned or asked to review, and whose request was
+        // withdrawn: the inbox tells them, and webhooks say so.
+        let newly = |after: &[String], before: &[String]| -> Vec<String> {
+            after.iter().filter(|name| !before.contains(name)).cloned().collect()
+        };
+        if let Some(assignees) = &assignees {
+            let added = newly(assignees, &pull.assignees);
+            if !added.is_empty() {
+                self.publish(
+                    "pull.assigned",
+                    &pull.repo_id,
+                    &a.actor,
+                    PullEvent {
+                        assignees: Some(assignees.clone()),
+                        added: Some(added),
+                        ..Self::pull_event(&pull)
+                    },
+                )
+                .await?;
+            }
+        }
+        if let Some(reviewers) = &reviewers {
+            for (kind, names) in [
+                ("pull.review_requested", newly(reviewers, &pull.reviewers)),
+                ("pull.review_request_removed", newly(&pull.reviewers, reviewers)),
+            ] {
+                if !names.is_empty() {
+                    self.publish(
+                        kind,
+                        &pull.repo_id,
+                        &a.actor,
+                        PullEvent {
+                            reviewers: Some(names),
+                            ..Self::pull_event(&pull)
+                        },
+                    )
+                    .await?;
+                }
+            }
         }
         Ok(match self.pull(&pull.repo_id, pull.number).await? {
             Some(pull) => Outcome::Ok(pull),

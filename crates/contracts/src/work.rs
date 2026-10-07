@@ -1136,6 +1136,10 @@ pub struct Wake {
 pub struct StallArgs {
     pub pull_id: String,
     pub reason: String,
+    /// The person who stopped it, by id, when someone did: they are not
+    /// told it needs them.
+    #[serde(default)]
+    pub by: Option<String>,
 }
 
 /// `managed_pulls`: ids of the open pull requests g1t is seeing through,

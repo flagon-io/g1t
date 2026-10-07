@@ -313,6 +313,7 @@ impl Work {
             self.stall(StallArgs {
                 pull_id: pull_id.to_owned(),
                 reason,
+                by: None,
             })
             .await?;
             self.note(repo_id, number, (AGENT_ID, AGENT_NAME), &noted).await?;

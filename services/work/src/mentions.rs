@@ -567,11 +567,15 @@ impl Work {
             return Ok(Outcome::fail(FailureCode::NotFound, "Pull request not found."));
         };
         // A person asking outranks a stop and the limit on revisions.
+        let was_stalled = self.is_stalled(&pull.id).await?;
         self.db
             .prepare("UPDATE pulls SET stalled = NULL WHERE id = ?")
             .bind(&[pull.id.as_str().into()])?
             .run()
             .await?;
+        if was_stalled {
+            self.announce_resumed(&pull.id, Some(actor.id.clone())).await?;
+        }
         if !self.claim(&pull.id, "revision", REVISION_MINUTES, true).await? {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,

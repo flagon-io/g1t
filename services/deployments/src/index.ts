@@ -40,6 +40,7 @@ import {
   sandboxEstimateMicros,
   currentMovedPath,
   currentWorkspaceSlug,
+  eventsClient,
   fail,
   identityClient,
   isProtectedWorkspace,
@@ -92,6 +93,8 @@ type Env = {
   PROJECTS: ServiceBinding;
   /** Secrets and variables: the actions service holds the one store. */
   ACTIONS: ServiceBinding;
+  /** The bus: each build that finishes is published, for the inbox, webhooks and workflows. */
+  EVENTS?: ServiceBinding;
   /** Secret: scoped to Workers scripts and analytics on g1t's account. */
   CLOUDFLARE_API_TOKEN?: string;
   CLOUDFLARE_ACCOUNT_ID: string;
@@ -1057,6 +1060,7 @@ class Deployments {
         await this.chargeBuild(row, seconds);
         await this.notePeak(row.workspace);
         await this.statusFor(row, "success", row.kind === "preview" ? "Preview is live" : "Production is live", appUrl(row.script));
+        await this.announce(row, null);
         // A screenshot of production as it now is, for the project's overview.
         if (row.kind === "production") {
           await this.env.SCREENSHOTS?.capture({ host: appHost(row.script), commit: row.commit_sha }).catch((error) =>
@@ -1137,6 +1141,51 @@ class Deployments {
     // A failed build still used its sandbox.
     if (seconds) await this.chargeBuild(row, seconds);
     await this.statusFor(row, "failure", "Deployment failed", `${this.env.SITE}/${row.workspace}/${row.slug}/deployments/${id}`);
+    await this.announce(row, message.slice(0, 300));
+  }
+
+  /**
+   * Publishes a finished build: `deployment.failed` with what went wrong,
+   * or `deployment.succeeded`, saying whether the build of the same app
+   * before it failed. Whoever started it is the actor when it was a
+   * person known by id; otherwise `triggeredBy` names them, or g1t.
+   */
+  private async announce(row: DeploymentRow, error: string | null): Promise<void> {
+    if (!this.env.EVENTS) return;
+    const previous = error
+      ? null
+      : await this.db
+          .prepare(
+            `SELECT status FROM deployments
+             WHERE script = ? AND id != ? AND created_at < ? AND status IN ('ready', 'replaced', 'down', 'failed')
+             ORDER BY created_at DESC LIMIT 1`,
+          )
+          .bind(row.script, row.id, row.created_at)
+          .first<{ status: string }>();
+    const byId = row.created_by.startsWith("usr_");
+    const event = {
+      source: "deployments",
+      repoId: row.repo_id,
+      actor: byId ? row.created_by : null,
+      data: {
+        deploymentId: row.id,
+        projectId: row.project_id,
+        repoId: row.repo_id,
+        workspace: row.workspace,
+        project: row.slug,
+        kind: row.kind,
+        branch: row.branch,
+        number: row.kind === "preview" ? row.number : null,
+        commit: row.commit_sha,
+        path: `/${row.workspace}/${row.slug}/deployments/${row.id}`,
+        error,
+        recovered: previous?.status === "failed",
+        triggeredBy: byId ? "" : row.created_by,
+      },
+    };
+    await eventsClient(this.env.EVENTS)
+      .publish([error == null ? { type: "deployment.succeeded", ...event } : { type: "deployment.failed", ...event }])
+      .catch((reason: unknown) => console.error("deployment not published", row.id, String(reason)));
   }
 
   /** Each build is charged by the second, from the first, at the container price plus the margin. */

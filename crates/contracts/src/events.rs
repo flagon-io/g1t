@@ -96,10 +96,17 @@ pub struct IssueEvent {
     /// On `issue.assigned`: the people it is now assigned to.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assignees: Option<Vec<String>>,
+    /// On `issue.assigned`: those of them who were not before.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub added: Option<Vec<String>>,
 }
 
 /// The payload of `pull.opened`, `pull.ready`, `pull.updated` (its head
-/// moved), `pull.closed` and `pull.merged`; each uses the fields that apply to it.
+/// moved), `pull.closed`, `pull.merged`, `pull.assigned`,
+/// `pull.review_requested` and `pull.review_request_removed` (reviewers
+/// asked, or no longer), `pull.stalled` (g1t stopped seeing it through
+/// until a person steps in) and `pull.resumed` (it picked back up); each
+/// uses the fields that apply to it.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PullEvent {
@@ -127,6 +134,47 @@ pub struct PullEvent {
     /// How sure g1t is of a g1t agent's change, once it has worked that out.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub confidence: Option<crate::work::Confidence>,
+    /// On `pull.assigned`: the people it is now assigned to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assignees: Option<Vec<String>>,
+    /// On `pull.assigned`: those newly assigned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub added: Option<Vec<String>>,
+    /// On `pull.review_requested`: the reviewers newly asked; on
+    /// `pull.review_request_removed`, those no longer asked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reviewers: Option<Vec<String>>,
+    /// On `pull.stalled`: why g1t stopped, and what would start it again.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+/// `deployment.succeeded` and `deployment.failed`: a build of a project
+/// finished, for production or for one pull request's preview.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeploymentEvent {
+    pub deployment_id: String,
+    pub project_id: String,
+    pub repo_id: String,
+    pub workspace: String,
+    /// The project's slug.
+    pub project: String,
+    /// `production` or `preview`.
+    pub kind: String,
+    pub branch: Option<String>,
+    /// For a preview: its pull request.
+    pub number: Option<u32>,
+    pub commit: String,
+    /// Where the deployment is on the site, such as
+    /// `/acme/rocket/deployments/dpl_1`.
+    pub path: String,
+    /// For a failure: what went wrong.
+    pub error: Option<String>,
+    /// For a success: whether the deployment before it, of the same app, failed.
+    pub recovered: bool,
+    /// Who started it, by username, or `g1t`.
+    pub triggered_by: String,
 }
 
 /// `checks.completed`: a run of an issue's acceptance checks against a pull

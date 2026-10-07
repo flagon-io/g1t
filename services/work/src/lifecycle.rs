@@ -1140,6 +1140,7 @@ impl Work {
                 self.stall(StallArgs {
                     pull_id: pull.id.clone(),
                     reason: format!("g1t could not merge this: {}", failure.message),
+                    by: None,
                 })
                 .await?;
                 Ok(())
@@ -1275,6 +1276,7 @@ impl Work {
                     "It was brought up to date but could not be merged: {}",
                     failure.message
                 ),
+                by: None,
             })
             .await?;
         }
@@ -1341,7 +1343,12 @@ impl Work {
         })
     }
 
+    /// Stops seeing a pull request through until a person steps in. The
+    /// first stop is published (`pull.stalled`), which tells its people
+    /// that it needs them; a stop on one already stopped only says why.
     pub(crate) async fn stall(&self, a: StallArgs) -> Result<bool> {
+        let before = self.pull_by_id(&a.pull_id).await?;
+        let was_stalled = self.is_stalled(&a.pull_id).await?;
         self.db
             .prepare(
                 "UPDATE pulls
@@ -1354,10 +1361,42 @@ impl Work {
             .await?;
         self.db
             .prepare("UPDATE pulls SET stage = 'needs_you', stage_detail = ? WHERE id = ?")
-            .bind(&[a.reason.trim().into(), a.pull_id.into()])?
+            .bind(&[a.reason.trim().into(), a.pull_id.as_str().into()])?
             .run()
             .await?;
+        if let Some(pull) = before.filter(|pull| !was_stalled && pull.status == PullStatus::Open) {
+            self.publish_as(
+                "pull.stalled",
+                &pull.repo_id,
+                a.by.clone(),
+                g1t_contracts::events::PullEvent {
+                    detail: Some(a.reason.trim().to_owned()),
+                    ..Self::pull_event(&pull)
+                },
+            )
+            .await?;
+        }
         Ok(true)
+    }
+
+    /// Whether g1t has stopped seeing the pull request through.
+    pub(crate) async fn is_stalled(&self, pull_id: &str) -> Result<bool> {
+        Ok(self
+            .db
+            .prepare("SELECT 1 AS value FROM pulls WHERE id = ? AND stalled IS NOT NULL")
+            .bind(&[pull_id.into()])?
+            .first::<u32>(Some("value"))
+            .await?
+            .is_some())
+    }
+
+    /// Says that a pull request g1t had stopped on is going again, which
+    /// closes what it was waiting on a person for.
+    pub(crate) async fn announce_resumed(&self, pull_id: &str, actor: Option<String>) -> Result<()> {
+        if let Some(pull) = self.pull_by_id(pull_id).await? {
+            self.publish_as("pull.resumed", &pull.repo_id, actor, Self::pull_event(&pull)).await?;
+        }
+        Ok(())
     }
 
     pub(crate) async fn managed_pulls(&self, a: ManagedPullsArgs) -> Result<Vec<String>> {

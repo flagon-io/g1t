@@ -26,7 +26,10 @@
 		// Secrets and variables, with who may read each.
 		{ "binding": "ACTIONS", "service": "g1t-actions" },
 		// Production's screenshot, asked for once per deploy (services/og).
-		{ "binding": "SCREENSHOTS", "service": "g1t-og", "entrypoint": "Screenshots" }
+		{ "binding": "SCREENSHOTS", "service": "g1t-og", "entrypoint": "Screenshots" },
+		// Each finished build is published: deployment.succeeded or
+		// deployment.failed, for the inbox, webhooks and workflows.
+		{ "binding": "EVENTS", "service": "g1t-events" }
 	],
 	// Pull requests opened, pushed to, closed and merged; pushes to the
 	// default branch.
