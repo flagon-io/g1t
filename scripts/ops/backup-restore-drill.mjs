@@ -30,10 +30,10 @@
 // The live repository is read as G1T_USER with G1T_TOKEN (an access token
 // with code:read) when they are set, which private repositories need. The
 // database and the bucket are read through Wrangler, as you are logged in
-// (`npx wrangler login`), or with CLOUDFLARE_DEPLOY_TOKEN.
+// (`npx wrangler login`), or with CLOUDFLARE_DEPLOY_TOKEN when that is set.
 
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { createReadStream, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -51,6 +51,13 @@ async function git(args, { cwd, input } = {}) {
   const { code, out } = await exec("git", args, { cwd, input });
   if (code !== 0) throw new Error(`git ${args.find((arg) => !arg.startsWith("-")) ?? ""} failed: ${out.trim().slice(-600)}`);
   return out.trim();
+}
+
+/** A file's SHA-256, read as a stream: a bundle can be a gigabyte. */
+async function sha256Of(file) {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(file)) hash.update(chunk);
+  return hash.digest("hex");
 }
 
 /** `<hash> <name>` lines (for-each-ref) or `<hash>\t<name>` (ls-remote), as a map. Peeled tags are left out. */
@@ -111,7 +118,7 @@ export async function restore(manifest, fetchObject, dir, work) {
     const size = statSync(file).size;
     if (size !== entry.size) throw new Error(`${entry.key}: ${size} bytes, the manifest says ${entry.size}`);
     if (entry.sha256) {
-      const sha256 = createHash("sha256").update(readFileSync(file)).digest("hex");
+      const sha256 = await sha256Of(file);
       if (sha256 !== entry.sha256) throw new Error(`${entry.key}: SHA-256 ${sha256}, the manifest says ${entry.sha256}`);
     }
     await git(["bundle", "verify", "--quiet", file], { cwd: dir });
@@ -135,8 +142,7 @@ export async function restore(manifest, fetchObject, dir, work) {
 // ---------------------------------------------------------------------
 
 async function d1(sql) {
-  const env = { ...wranglerEnv({ ...process.env, CI: "true" }) };
-  if (!process.env.CLOUDFLARE_DEPLOY_TOKEN) env.CLOUDFLARE_API_TOKEN = "";
+  const env = wranglerEnv();
   const { code, out } = await exec(process.execPath, [WRANGLER, "d1", "execute", DATABASE, "--remote", "--json", "--command", sql], {
     cwd: join(ROOT, "services/repos"),
     env,
@@ -175,8 +181,7 @@ async function pick({ repo, repoId }) {
 function bucketReader(localCopy) {
   if (localCopy) return async (key) => join(localCopy, key);
   return async (key, file) => {
-    const env = { ...wranglerEnv({ ...process.env, CI: "true" }) };
-    if (!process.env.CLOUDFLARE_DEPLOY_TOKEN) env.CLOUDFLARE_API_TOKEN = "";
+    const env = wranglerEnv();
     const { code, out } = await exec(process.execPath, [WRANGLER, "r2", "object", "get", `${BUCKET}/${key}`, "--remote", "--file", file], { env });
     if (code !== 0) throw new Error(`${key} could not be read: ${out.slice(-400)}`);
     return file;
