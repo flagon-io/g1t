@@ -9,6 +9,7 @@ import { CodeLines } from "./code-lines";
 import { AgentSetup } from "./agent-setup";
 import { CloneBox } from "./clone-box";
 import { Markdown } from "./markdown";
+import { Topics } from "./topics";
 import { Avatar, CopyLine, TimeAgo, notACredential } from "./ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -268,6 +269,7 @@ export function TreeView({ tree, branches = null }: { tree: Tree; branches?: Bra
         <aside>
           <h2 className="text-base font-semibold">About</h2>
           <p className="mt-2.5 text-sm text-fg-soft">{repo.description ?? "No description."}</p>
+          <Topics topics={repo.topics} className="mt-3" />
           <ul className="mt-4 space-y-2.5 text-sm text-muted">
             {readme && (
               <li>

@@ -4,6 +4,7 @@ import { Link, NavLink, Outlet, type ShouldRevalidateFunctionArgs, data, useLoca
 import type { Project } from "@g1t/contracts";
 
 import type { Route } from "./+types/layout";
+import { Topics } from "../../components/topics";
 import { page } from "../../lib/meta";
 import { type Tab as PageTab, tabsFor } from "../../lib/project-nav";
 import { Pill } from "../../components/ui";
@@ -74,23 +75,6 @@ export function useProject() {
 }
 
 /** A repository's topics, each a way into Explore. */
-function Topics({ topics }: { topics: string[] | undefined }) {
-  if (!topics?.length) return null;
-  return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
-      {topics.map((topic) => (
-        <Link
-          key={topic}
-          to={`/explore?topic=${encodeURIComponent(topic)}`}
-          className="rounded-full bg-accent/10 px-2 py-px text-xs text-accent ring-1 ring-accent/30 transition-colors hover:bg-accent/20"
-        >
-          {topic}
-        </Link>
-      ))}
-    </div>
-  );
-}
-
 function Header({ project, isPrivate, archived, namespace, name, description, large }: {
   project: Project | null;
   isPrivate: boolean;
@@ -171,6 +155,8 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
   const description = (project && !project.descriptionInherited ? project.description : null) ?? repo.description;
   const { pathname } = useLocation();
   const tabs = tabsFor(pathname.slice(base.length + 1), member, access.can);
+  // The files' own About says what it is and its topics, as the one place.
+  const filesPage = /^(code|tree)(\/|$)/.test(pathname.slice(base.length + 1));
   // Everyone, signed in or not, finds the project's pages in the sidebar;
   // the page shows its name, and the views of the page it is on as tabs.
   return (
@@ -184,9 +170,10 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
             namespace={repo.namespace}
             name={repo.name}
             // The files' own About says it there, as the one place.
-            description={/^(code|tree)(\/|$)/.test(pathname.slice(base.length + 1)) ? null : description}
+            description={filesPage ? null : description}
           />
-          <Topics topics={repo.topics} />
+          {/* On the files' pages, About shows them. */}
+          {!filesPage && <Topics topics={repo.topics} />}
           {tabs && (
             <div className="mt-3">
               <PageTabs base={base} tabs={tabs} />
