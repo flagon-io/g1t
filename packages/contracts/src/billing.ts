@@ -1081,6 +1081,8 @@ export type OverallMargin = {
   givenTrialMicros?: number;
   givenPoolMicros?: number;
   /** costMicros by who g1t pays: Cloudflare's bill (billed, after included allowances) and model providers (tokens, not on Cloudflare's bill). */
+  /** What the plan's included usage paid for, at price: money in for usage, paid out of plansMicros. */
+  includedMicros?: number;
   cloudflareCostMicros?: number;
   modelsCostMicros?: number;
 };

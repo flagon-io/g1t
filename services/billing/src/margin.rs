@@ -1447,8 +1447,28 @@ impl Billing {
         let sold = (overall.cost_micros - overall.given_micros).max(0);
         overall.sold_margin_micros = revenue - sold;
         overall.sold_margin_percent = margin_percent(revenue, sold);
-        overall.usage_margin_micros = overall.usage_micros - overall.usage_cost_micros;
-        overall.usage_margin_percent = margin_percent(overall.usage_micros, overall.usage_cost_micros);
+        // The plan's included usage was paid for by the plan's price: it is
+        // money in for the usage it covered, and out of what the plans
+        // leave for running g1t.
+        #[derive(Deserialize)]
+        struct Included {
+            micros: Option<i64>,
+        }
+        overall.included_micros = self
+            .db
+            .prepare(format!(
+                "SELECT SUM(COALESCE(credit_micros, 0)) AS micros FROM ledger
+                 WHERE kind = 'usage' AND created_at >= ?1 AND created_at <= ?2 AND workspace NOT IN ({})",
+                crate::sales::INTERNAL_SQL
+            ))
+            .bind(&[since.as_str().into(), format!("{until}T23:59:59.999Z").into()])?
+            .first::<Included>(None)
+            .await?
+            .and_then(|r| r.micros)
+            .unwrap_or(0);
+        let usage_in = overall.usage_micros + overall.included_micros;
+        overall.usage_margin_micros = usage_in - overall.usage_cost_micros;
+        overall.usage_margin_percent = margin_percent(usage_in, overall.usage_cost_micros);
         let mut products: Vec<ProductMargin> = products.into_values().collect();
         products.sort_by_key(|p| std::cmp::Reverse(p.cost_micros.max(p.value_micros)));
 

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Form, Link, data, redirect, useNavigation } from "react-router";
+import { Link, data, redirect } from "react-router";
 
 import type { CostsReport, PriceProposal } from "@g1t/contracts";
 
@@ -613,18 +613,23 @@ function CapMeter({ label, used, cap, hint }: { label: string; used: number; cap
 }
 
 /** g1t's own spend: the daily breaker, comped budgets, and this month by what paid. */
-/** The button that runs the nightly analysis now, saying so while it runs. */
+/**
+ * The button that runs the nightly analysis now. sudo runs no JavaScript,
+ * so app.css's run-button rules say it is running while the page waits.
+ */
 function RunButton() {
-  const navigation = useNavigation();
-  const running = navigation.state !== "idle" && navigation.formData?.get("intent") === "run";
   return (
-    <Form method="post" className="flex items-center gap-3">
+    <form method="post" className="flex items-center gap-3">
       <input type="hidden" name="intent" value="run" />
-      <Button variant="quiet" type="submit" disabled={running}>
-        {running ? "Running the analysis…" : "Run the analysis now"}
+      <Button variant="quiet" type="submit" className="run-button">
+        <span className="run-idle">Run the analysis now</span>
+        <span className="run-busy">
+          <span className="run-spinner" aria-hidden="true" />
+          Running the analysis…
+        </span>
       </Button>
-      {running && <span className="text-xs text-muted">Reading the bill and reconciling 31 days; about a minute.</span>}
-    </Form>
+      <span className="run-note text-xs text-muted">Reading the bill and reconciling 31 days; about a minute.</span>
+    </form>
   );
 }
 
@@ -638,7 +643,9 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
   // Reports from before the statement have only the totals.
   const given = o.givenMicros ?? 0;
   const usageCost = o.usageCostMicros ?? o.costMicros - given;
-  const usageMargin = o.usageMarginMicros ?? o.usageMicros - usageCost;
+  const included = o.includedMicros ?? 0;
+  const usageIn = o.usageMicros + included;
+  const usageMargin = o.usageMarginMicros ?? usageIn - usageCost;
   const usagePercent = o.usageMarginPercent !== undefined ? o.usageMarginPercent : null;
   const running = o.runningCostMicros ?? 0;
   const unmapped = o.unmappedCostMicros ?? 0;
@@ -656,19 +663,25 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
   const rows: { title: string; note: string; in: number | null; cost: number; result: number | null; tone?: "danger" | "warn" | "muted" }[] = [
     {
       title: "Usage sold",
-      note: "What workspaces paid for usage, against what that usage cost",
-      in: o.usageMicros,
+      note:
+        included > 0
+          ? `What workspaces paid for usage (${usd(o.usageMicros)}) and their plan's included usage (${usd(included)}), against what it cost`
+          : "What workspaces paid for usage, against what that usage cost",
+      in: usageIn,
       cost: usageCost,
       result: usageMargin,
       tone: usageMargin < 0 ? "danger" : undefined,
     },
     {
       title: "Running g1t",
-      note: "Plans, against Workers, D1, KV, Queues and the rest of the platform",
-      in: o.plansMicros,
+      note:
+        included > 0
+          ? `Plans (${usd(o.plansMicros)}) less the included usage they paid for, against Workers, D1, KV, Queues and the rest`
+          : "Plans, against Workers, D1, KV, Queues and the rest of the platform",
+      in: o.plansMicros - included,
       cost: running,
-      result: o.plansMicros - running,
-      tone: o.plansMicros - running < 0 ? "warn" : undefined,
+      result: o.plansMicros - included - running,
+      tone: o.plansMicros - included - running < 0 ? "warn" : undefined,
     },
     {
       title: "Cloudflare subscriptions",
@@ -697,7 +710,7 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
         <Stat
           label="Margin on usage sold"
           value={percentLabel(usagePercent)}
-          hint={`${usd(o.usageMicros)} paid for usage that cost ${usd(usageCost)}`}
+          hint={`${usd(usageIn)} paid for usage that cost ${usd(usageCost)}`}
           tone={marginTone(usagePercent, floor)}
         />
         <Stat

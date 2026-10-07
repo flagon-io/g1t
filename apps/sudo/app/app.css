@@ -65,3 +65,43 @@ body {
     font-variant-numeric: tabular-nums;
   }
 }
+
+/*
+ * sudo ships no JavaScript, so a long-running button says it is running
+ * with CSS alone: a clicked button keeps focus while the old page waits for
+ * the response. `:focus-visible` is left out, so tabbing to it does not
+ * read as running.
+ */
+.run-button .run-busy,
+.run-button + .run-note {
+  display: none;
+}
+.run-button:focus:not(:focus-visible) .run-idle {
+  display: none;
+}
+.run-button:focus:not(:focus-visible) .run-busy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.run-button:focus:not(:focus-visible) + .run-note {
+  display: inline;
+}
+.run-spinner {
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 9999px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: run-spin 0.8s linear infinite;
+}
+@keyframes run-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .run-spinner {
+    animation: none;
+  }
+}

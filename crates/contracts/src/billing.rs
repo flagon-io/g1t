@@ -2432,6 +2432,11 @@ pub struct OverallMargin {
     /// `cost_micros` by who g1t pays: Cloudflare's bill (billed amounts,
     /// after the included allowances), and model providers (the ledger's
     /// cost of the tokens, which Cloudflare's bill does not show).
+    /// What the plan's included usage paid for, at price (the ledger's
+    /// `credit_micros`, comped workspaces left out): money in for usage,
+    /// paid out of `plans_micros`.
+    #[serde(default)]
+    pub included_micros: i64,
     #[serde(default)]
     pub cloudflare_cost_micros: i64,
     #[serde(default)]
