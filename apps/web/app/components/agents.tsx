@@ -473,9 +473,10 @@ export function useActiveRuns(owner: string, repo: string): Map<number, AgentRun
 /** Nothing running, said plainly. */
 export function Idle({ children }: { children: ReactNode }) {
   return (
-    <p className="flex items-center gap-2 rounded-xl border border-dashed border-line px-4 py-6 text-sm text-muted">
-      <CircleSlash size={15} className="text-faint" />
-      {children}
+    <p className="flex items-start gap-2 rounded-xl border border-dashed border-line px-4 py-6 text-sm text-muted">
+      <CircleSlash size={15} className="mt-0.5 shrink-0 text-faint" />
+      {/* One run of text: a link inside it stays in the sentence. */}
+      <span className="min-w-0">{children}</span>
     </p>
   );
 }

@@ -31,7 +31,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     soft(deployments.list({ workspace: params.owner, slug: params.repo }, viewer)),
   ]);
   const found = unwrap(repo);
-  const all = unwrap(list);
+  // The merge queue's own branches (g1t-queue/<entry>) are its working
+  // copies, not anyone's branch to look at.
+  const all = unwrap(list).filter((branch) => !branch.name.startsWith("g1t-queue/"));
   const matching = query ? all.filter((branch) => branch.name === found.defaultBranch || branch.name.toLowerCase().includes(query)) : all;
   const read = await readBranches(
     path,
