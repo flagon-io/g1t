@@ -337,6 +337,14 @@ counted. g1t meters every request it makes to the store, and
 what counts follows what Cloudflare confirms it bills; this page changes
 with it.
 
+Your agents' git counts the same as yours. Agent runs, checks, reviews,
+builds and workflow jobs clone, fetch and push through the same git
+endpoints you use, and so does any git command an agent runs itself. Each
+counts for the workspace whose repository it is. A pull request's working
+copy, where an agent clones and pushes its changes, counts for the
+workspace of the repository the pull request is in. g1t's own nightly
+backups are never counted for your workspace.
+
 | | Each month (UTC) |
 | --- | --- |
 | Free, on every workspace | 50,000 |

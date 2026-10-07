@@ -30,8 +30,10 @@ use crate::shards;
 /// minutes, so each one used has at least ten minutes left.
 const INTERNAL_TTL_SECONDS: u32 = 3_600;
 const INTERNAL_REUSE_MS: u64 = 50 * 60 * 1000;
-/// Credentials handed out (`git_access`, to sandboxes): five minutes, used
-/// for three, so whoever gets one has at least two.
+/// Credentials handed out: to a nightly backup's sandbox (backups.rs), and
+/// by `git_access`, which nothing deployed asks yet (git over SSH will).
+/// Other sandboxes never get one: they use g1t's git endpoints. Five
+/// minutes, used for three, so whoever gets one has at least two.
 const HANDOUT_TTL_SECONDS: u32 = 300;
 const HANDOUT_REUSE_MS: u64 = 180_000;
 /// How long a handed-out credential stays valid, in milliseconds.

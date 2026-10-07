@@ -186,7 +186,9 @@ and [status.g1t.sh](https://status.g1t.sh) shows **Git storage**.
 
 ### Git operations
 
-Each clone, fetch and push is a git operation. Every workspace has 50,000
+Each clone, fetch and push is a git operation, your agents' included:
+their sandboxes use the same git endpoints you do, and a pull request's
+working copy counts for its repository's workspace. Every workspace has 50,000
 a month included. Past that, a workspace on the g1t plan pays $0.18 per
 1,000, and a free workspace is never charged: past 50,000 in a month, its
 git requests past 60 in an hour are answered `429` with when to try again,

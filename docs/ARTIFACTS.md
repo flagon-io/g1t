@@ -235,7 +235,7 @@ Observations:
 | M12 | Errors | Typed `ArtifactsError`, `rateLimited` events | `ALREADY_EXISTS`/`NOT_FOUND` tolerated; everything else returns 500; no retry, no breaker | Brief Artifacts errors become user-visible failures | R5 |
 | M13 | Durability | Synchronous replication, asynchronous snapshots; no SLA; no export | No copy outside Artifacts | Beta incident or account issue with no recovery path | R11 |
 | M14 | Data location | Jurisdiction per namespace, fixed | `PLAN.md` promises residency per workspace; only `g1t` exists | EU customers cannot be offered residency | R7 |
-| M15 | Direct credentials | Tokens are bearer, repo-scoped | `git_access` hands out raw write tokens; pushes with them skip branch protection and push protection (`refs_open` only stops caching) | Policy bypass if a token leaks out of a sandbox | Keep TTL minimal on this path |
+| M15 | Direct credentials | Tokens are bearer, repo-scoped | `git_access` hands out raw write tokens (no caller is deployed today: sandboxes use g1t's git endpoints, and only backups get a read token); pushes with them skip branch protection and push protection (`refs_open` only stops caching) | Policy bypass if a token leaks out of a sandbox | Keep TTL minimal on this path |
 | M16 | Hot repository | 2,000 git requests per 10 s per repository; DO soft limit 1,000 req/s | Agents clone the same repository many times per pull request | Not near the limit today; a monorepo with many agents could be | R6 |
 
 ## 5. Capacity model: 3,000 workspaces
@@ -363,7 +363,7 @@ additive) and, in identity, `services/identity/migrations/0026_workspace_residen
 
 | # | Status | What |
 | --- | --- | --- |
-| R1 | Built; Cloudflare's answer still needed | Every interaction with the store is metered raw (`meters.rs` → `artifacts_meters`, per day, namespace, repository, workspace and meter, with bytes where known): client git (`git.info_refs`, `git.ls_refs`, `git.fetch`, `git.receive_pack`), g1t's own git (`internal.git.*`: landing, catch-up, mirrors, branch listings, fork retirement), every binding call (`binding.get`, `binding.create_token`, `binding.log`, `binding.read_tree`, …, each retry included), and answers g1t served from its own cache (`cache.*`, never operations). Which meters are operations is data: `operation_mapping` (`cost_operations` for g1t's bill, `billable_operations` for workspaces), read every 5 minutes, changed with `set_operation_mapping` without a deploy. Default: `git.fetch`, `git.receive_pack`, `internal.git.fetch`, `internal.git.receive_pack`, `binding.create`, `binding.fork`, `binding.delete` = 1, everything else 0. `git_operations` (what billing reads) is filled from the meters × `billable_operations`, by the hour. RPCs: `artifacts_usage { from, to, workspace?, by_repo? }` (raw meters and the mapping, for the reconciler), `operation_mapping`, `set_operation_mapping { meter, cost_operations, billable_operations, note? }`. Script: `scripts/ops/artifacts-usage.mjs`. |
+| R1 | Built; Cloudflare's answer still needed | Every interaction with the store is metered raw (`meters.rs` → `artifacts_meters`, per day, namespace, repository, workspace and meter, with bytes where known): client git (`git.info_refs`, `git.ls_refs`, `git.fetch`, `git.receive_pack`), g1t's own git (`internal.git.*`: landing, catch-up, mirrors, branch listings, fork retirement), every binding call (`binding.get`, `binding.create_token`, `binding.log`, `binding.read_tree`, …, each retry included), and answers g1t served from its own cache (`cache.*`, never operations). Which meters are operations is data: `operation_mapping` (`cost_operations` for g1t's bill, `billable_operations` for workspaces), read every 5 minutes, changed with `set_operation_mapping` without a deploy. Default: `git.fetch`, `git.receive_pack`, `internal.git.fetch`, `internal.git.receive_pack`, `binding.create`, `binding.fork`, `binding.delete` = 1, everything else 0. `git_operations` (what billing reads) is filled from the meters × `billable_operations`, by the hour. RPCs: `artifacts_usage { from, to, workspace?, by_repo? }` (raw meters and the mapping, for the reconciler), `operation_mapping`, `set_operation_mapping { meter, cost_operations, billable_operations, note? }`. Script: `scripts/ops/artifacts-usage.mjs`. Sandboxes' git goes through `git_http` and is metered there; a pull request's working copy counts for its repository's workspace; a request that counts something plans the write that follows in its own `wait_until`, so counts are not stranded in an idle isolate (2026-10-07, see "2026-10-07: where the gap came from"). |
 | R13 | Built | Nothing on the request path writes D1 for counting. Meters add up per isolate and are written in one batch from `ctx.wait_until` after every request (and at the end of the cron and queue handlers); a failed write is kept for the next. The free-workspace slow-down decides from counts the isolate read back after its last write plus what it added since (`git_ops::standing`, at most 10 minutes old) and billing's plan answer kept 5 minutes. The 63–98 ms `kept` step's D1 upsert is gone. A workspace whose counts this isolate never read is not slowed: nothing slows anyone on a guess. |
 | R2 | Built; the fork storage test is yours to run | `pull.merged` and `pull.closed` set the fork's `retire_after` (`FORK_RETENTION_DAYS`, 1 day in production; 7 when unset); `pull.reopened` clears it, or makes the fork again. The hourly sweep (`23 * * * *`, 25 a run) keeps the fork's head in its repository as `refs/pull/<pull id>/head` (only missing objects travel; an empty pack when merged), records `retired_at` and `retired_head`, then deletes the fork from the store (a failed delete puts the row back). Reads of a retired fork (the pull request's changes, divergence, tree, blob, log, branches) are answered from the repository with the fork's branch mapped to the kept head (`forks.rs` `Viewed`). Anything that writes or uses git on it (git over HTTPS, `git_access`, catch-up, land, `delete_branch`) makes it again first (`revive`: fork, then move its branch to the head) and schedules it to go again. Work never emits `pull.reopened` today; the handler is ready for it. Script: `scripts/ops/fork-storage-test.mjs`. |
 | R3 | Built | Credentials g1t uses itself: TTL 3,600 s, reused for 50 minutes (isolate and KV, key `cred2:<key>:<scope>:internal`). `git_access` hands out its own: TTL 300 s, reused 180 s (`…:handout`); `refs_open` still uses 300 s. Every internal path (land, catch-up, mirrors, branch listing, commits, deleting a branch) now reuses kept credentials instead of minting each time. The remote is worked out as `https://<account>.artifacts.cloudflare.net/git/<namespace>/<name>.git` (the documented format, `api/git-protocol`), learned per namespace from the first `info()` an isolate makes, which runs alongside `createToken` and so costs no time; after that a mint is `get` and `createToken`. Optional `ARTIFACTS_REMOTE_BASE` skips even the first `info()`. |
@@ -396,8 +396,9 @@ the ratio Cloudflare ÷ g1t for several combinations of meters. Read it like thi
   `cost_operations` for those meters to 1 (`set_operation_mapping`), and decide whether
   `billable_operations` follows (cost pass-through says yes).
 - Every ratio well under 1: Cloudflare counts per clone or fetch session, not per request.
-  Ratios over 1: something reaches Artifacts that g1t does not meter, such as sandboxes pushing
-  directly with handed-out credentials.
+  Ratios over 1: something reaches Artifacts that g1t does not meter, or metered counts were
+  lost before they were written. Sandboxes are not it: every sandbox but a backup's clones,
+  fetches and pushes through g1t's git endpoints (see "2026-10-07: where the gap came from").
 - Only days after the meters were deployed compare; before that only `git_operations` exists.
 - Binding calls do appear: Cloudflare's events include `read` and `token_create` actions (and
   `namespace_*`) besides the five documented ones. If Cloudflare says they are billed, map the
@@ -435,6 +436,53 @@ A global API key works in place of the token: `CLOUDFLARE_API_KEY` with `CLOUDFL
   attribution in the meters.
 - 476 client errors on 2026-10-06 are unexplained; the fetch fix below accounts for some (every
   failed negotiation was one).
+
+**2026-10-07: where the gap came from.** Cloudflare counted 581 operations (pull 535, push 39,
+create 3, fork 4) against g1t's 458 (`git.fetch` 417, `git.receive_pack` 33, ...). The suspicion
+was that agents' sandboxes clone and push straight to the store with `git_access` credentials.
+They do not. Read from the code:
+
+- Every sandbox's remote is `https://g1t.sh/<path>.git` (`services/runner/src/index.ts`,
+  `bump.ts`; Actions' checkout from `services/actions/src/plan.rs`), with a run credential passed
+  per command (`crates/runner/src/main.rs` `auth_option`, `clone.rs`). Agent runs, answers,
+  checks, reviews, plans, updates, the merge queue, merge checks, bumps, deploys and workflow
+  jobs all clone, fetch, deepen (`share_history`) and push through `git_http`, metered as
+  `git.info_refs`, `git.ls_refs`, `git.fetch` and `git.receive_pack`. Git an agent runs itself
+  in its sandbox has the same remote and no other credential, so it is metered the same way.
+- `git_access` has no caller that is deployed: only `crates/sshd`, whose `/_internal/ssh/*`
+  endpoints do not exist yet. When git over SSH ships, its bridge talks to the store directly
+  and must report what it does (as backups do) or go through `git_http`.
+- The one sandbox that reads the store directly is a nightly backup (`backups.rs`
+  `store.handout`): its runner reports the clone with `fetched_bytes`, metered as
+  `internal.git.info_refs` and `internal.git.backup_fetch` (g1t's cost, never a workspace's).
+  A clone that fails before reading anything, or a sandbox that dies without reporting, is not
+  metered.
+
+Two things were wrong instead, both fixed:
+
+1. **Counts left in memory.** An isolate wrote its counts only when a request found the last
+   write 5 s old. Whatever was counted since stayed in memory until the next request on that
+   isolate, and was lost if none came: when the isolate went idle, or a deploy replaced it. A
+   clone is `info/refs`, `ls-refs` and `fetch` within a second, so its last request, the fetch
+   (the one that is an operation), was the one most often stranded. Now a request that counts
+   something before a write is due plans that write in its own `wait_until`, waiting until it is
+   due (`meters::plan_flush`, `flush_after`): still one write per isolate every 5 s at most, and
+   nothing on the request path. Only an isolate that dies outright loses its last few seconds.
+2. **Working copies counted for nobody.** A pull request's working copy has the path
+   `pulls/<pull id>`, so everything asked of it (an agent cloning it and pushing to it, checks
+   and reviews cloning it, catching up, landing's fetch from it, making it with `fork`, removing
+   it with `delete`) was counted for a workspace called `pulls`, which nobody is charged as. The
+   counts now go to the workspace of the repository it came from, looked up when they are written
+   (one query per write, kept 10 minutes), in `artifacts_meters.workspace` and `git_operations`
+   alike. `artifacts_meters.repo` keeps the working copy's own name. The free-workspace limits
+   still go by the path asked for, so requests to a working copy are counted but never slowed.
+
+What can still differ from Cloudflare's count: an isolate that dies with counts in memory; a
+store request that fails on g1t's side before it is metered; an `info/refs` GET retried after
+the store refused a kept credential (asked twice, metered once; not an operation by default);
+backups' unreported clones; and whatever Cloudflare counts that g1t does not ask (its `pull` may
+include ref listings, still open). Compare again with `scripts/ops/artifacts-usage.mjs` a day
+after this deploys. No migration: `operation_mapping` is unchanged.
 
 ### R2: running and reading `scripts/ops/fork-storage-test.mjs`
 
