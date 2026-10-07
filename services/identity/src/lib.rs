@@ -240,6 +240,20 @@ impl Identity {
                 None => true,
             };
         if allowed && let Some(target) = self.reset_target(&a.email).await? {
+            // A failure from here on happens only for a real account, so it
+            // is logged, never answered: the reply below stays the same.
+            if let Err(error) = self.send_reset(&target).await {
+                worker::console_error!("password reset for a known address failed: {error}");
+            }
+        }
+        // The same answer either way, so addresses cannot be probed.
+        Ok(true)
+    }
+
+    /// Saves a reset link for `target` and mails it, telling the account's
+    /// other addresses.
+    async fn send_reset(&self, target: &emails::ResetTarget) -> Result<()> {
+        {
             let token = crypto::random_hex(32);
             self.db
                 .prepare(format!(
@@ -264,8 +278,7 @@ impl Identity {
                 }
             }
         }
-        // The same answer either way, so addresses cannot be probed.
-        Ok(true)
+        Ok(())
     }
 
     async fn reset_password(&self, a: ResetPasswordArgs) -> Result<Outcome<User>> {
