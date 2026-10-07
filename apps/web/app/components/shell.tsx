@@ -1225,6 +1225,16 @@ const SECTIONS: Record<string, string> = {
   audit: "Audit log",
   tree: "Files",
   blob: "Files",
+  agents: "Agents",
+  context: "Context",
+  memory: "Memory",
+  security: "Security",
+  packages: "Packages",
+  runners: "Runners",
+  workflows: "Workflows",
+  observability: "Observability",
+  insights: "Insights",
+  sessions: "Sessions",
 };
 
 /** Where the page is, as a trail of links: workspace / repository / section. */

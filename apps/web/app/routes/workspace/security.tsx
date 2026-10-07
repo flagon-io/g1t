@@ -1,4 +1,4 @@
-import { ChevronRight, ShieldCheck } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { Link, data } from "react-router";
 
 import { SEVERITIES, type SeverityCounts } from "@g1t/contracts";
@@ -8,7 +8,7 @@ import { page } from "../../lib/meta";
 import { SeverityCountsGrid, SeverityCountsInline } from "../../components/security";
 import { TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
-import { security } from "../../lib/services.server";
+import { repos, security } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -18,7 +18,14 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
-  const projects = unwrap(await security.workspace(params.owner, viewer));
+  const [scanned, current] = await Promise.all([
+    security.workspace(params.owner, viewer),
+    repos.list(viewer, { namespace: params.owner.toLowerCase() }),
+  ]);
+  // Only repositories that are still there: a deleted one's alerts stay
+  // with it for its 30 days, but not on this page.
+  const live = new Set(current.map((repo) => repo.id));
+  const projects = unwrap(scanned).filter((project) => live.has(project.repoId));
   const total = Object.fromEntries(SEVERITIES.map((severity) => [severity, 0])) as SeverityCounts;
   for (const project of projects) {
     for (const severity of SEVERITIES) total[severity] += project.counts[severity];
@@ -35,16 +42,6 @@ export default function WorkspaceSecurity({ loaderData, params }: Route.Componen
   const { projects, total } = loaderData;
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
-          <ShieldCheck size={19} className="text-accent" />
-          Security across projects
-        </h2>
-        <p className="mt-1.5 max-w-2xl text-sm text-muted">
-          Open alerts in every project of {params.owner}: secrets found in pushes and history, and vulnerable
-          dependencies. Each project's Security page has the details and the security update g1t opened for each.
-        </p>
-      </div>
       <div>
         <SeverityCountsGrid counts={total} />
         <p className="mt-2 text-xs text-faint">
