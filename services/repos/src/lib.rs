@@ -1558,19 +1558,21 @@ impl<S: GitStore> Repos<S> {
             }
         };
         timing.mark("kept");
-        if let Some((response, status, message)) = limited? {
-            after.ended(status, Some(message.to_owned()));
-            after.spawn(env, ctx);
-            return Ok(response);
-        }
+        // A kept pack first: it never reaches the store, so it is never an
+        // operation, and a free workspace past its operation cap still gets
+        // it. (The other limits are a push's, and a pack is only a fetch.)
         if let Some(kept) = pack {
             timing.note("pack", "hit");
-            // Never reached the store: never an operation.
             let sent = body.as_ref().map_or(0, |body| body.len() as u64);
             meters::record(pack_cache::HIT, &key, sent, kept.size);
             after.ended(200, None);
             after.spawn(env, ctx);
             return kept.response();
+        }
+        if let Some((response, status, message)) = limited? {
+            after.ended(status, Some(message.to_owned()));
+            after.spawn(env, ctx);
+            return Ok(response);
         }
         if pack_key.is_some() {
             timing.note("pack", "miss");
