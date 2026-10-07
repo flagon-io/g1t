@@ -1,0 +1,6 @@
+// The stand-in services for running repos on its own (dev/stubs.js).
+{
+	"name": "g1t-repos-stubs",
+	"main": "stubs.js",
+	"compatibility_date": "2026-09-26"
+}
