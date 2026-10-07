@@ -303,7 +303,7 @@ thread_local! {
 /// The workspace of the repository each of `pulls`' working copies came
 /// from: as kept for a while, else read in one query. Off the request
 /// path (from `flush`).
-async fn pull_owners(db: &D1Database, pulls: &[String]) -> Result<HashMap<String, String>> {
+pub(crate) async fn pull_owners(db: &D1Database, pulls: &[String]) -> Result<HashMap<String, String>> {
     let now = g1t_kit::now_ms();
     let mut owners = HashMap::new();
     let mut missing = Vec::new();

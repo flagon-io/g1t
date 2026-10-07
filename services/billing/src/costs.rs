@@ -28,7 +28,7 @@
 //! Account Analytics Read), or the keeper's `CLOUDFLARE_USAGE_TOKEN`,
 //! which has both. Without either, nothing is read and nothing fails.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use g1t_contracts::repos::{GitOperationsArgs, WorkspaceGitOperations};
 use g1t_contracts::time::rfc3339;
@@ -239,16 +239,35 @@ pub(crate) fn lines_from_artifacts(body: &Value) -> std::result::Result<Vec<Cost
 }
 
 /// The workspace a repository in the store belongs to: keys are
-/// `<workspace>--<repo>`; a pull request's fork (`pulls--<id>`) says none.
-pub(crate) fn workspace_of_store_key(key: &str) -> Option<String> {
+/// `<workspace>--<repo>`; a pull request's working copy (`pulls--<id>`) is
+/// its repository's workspace's, from `owners` (repos' `pull_owners`), else
+/// no one's.
+pub(crate) fn workspace_of_store_key(key: &str, owners: &BTreeMap<String, String>) -> Option<String> {
     let (workspace, rest) = key.split_once("--")?;
-    (!workspace.is_empty() && !rest.is_empty() && workspace != "pulls").then(|| workspace.to_lowercase())
+    if workspace.is_empty() || rest.is_empty() {
+        return None;
+    }
+    if workspace == "pulls" {
+        return owners.get(rest).map(|w| w.to_lowercase());
+    }
+    Some(workspace.to_lowercase())
+}
+
+/// The pull request ids whose working copies Artifacts counted events for.
+pub(crate) fn pull_ids(body: &Value) -> Vec<String> {
+    let groups = body["data"]["viewer"]["accounts"][0]["artifactsEventsAdaptiveGroups"].as_array().cloned().unwrap_or_default();
+    let ids: BTreeSet<String> = groups
+        .iter()
+        .filter_map(|g| g["dimensions"]["repositoryName"].as_str()?.strip_prefix("pulls--").map(str::to_owned))
+        .filter(|id| !id.is_empty())
+        .collect();
+    ids.into_iter().collect()
 }
 
 /// Artifacts' billable operations per workspace and day, by repository
 /// name: how Cloudflare's own count shares out. The meter is
 /// `cloudflare_git`, which shares out the git bucket's cost (`margin`).
-pub(crate) fn artifacts_by_workspace(body: &Value) -> Vec<(String, String, f64)> {
+pub(crate) fn artifacts_by_workspace(body: &Value, owners: &BTreeMap<String, String>) -> Vec<(String, String, f64)> {
     let groups = body["data"]["viewer"]["accounts"][0]["artifactsEventsAdaptiveGroups"].as_array().cloned().unwrap_or_default();
     let mut out: BTreeMap<(String, String), f64> = BTreeMap::new();
     for g in &groups {
@@ -256,7 +275,7 @@ pub(crate) fn artifacts_by_workspace(body: &Value) -> Vec<(String, String, f64)>
         if day.len() < 10 || !ARTIFACTS_OPERATIONS.contains(&format!("events_{}", slug(kind)).as_str()) {
             continue;
         }
-        let Some(workspace) = g["dimensions"]["repositoryName"].as_str().and_then(workspace_of_store_key) else { continue };
+        let Some(workspace) = g["dimensions"]["repositoryName"].as_str().and_then(|key| workspace_of_store_key(key, owners)) else { continue };
         *out.entry((day[..10].to_owned(), workspace)).or_default() += g["count"].as_f64().unwrap_or(0.0);
     }
     out.into_iter().map(|((day, workspace), count)| (day, workspace, count)).collect()
@@ -437,7 +456,8 @@ impl Billing {
             Ok(body) => match lines_from_artifacts(&body) {
                 Ok(lines) => {
                     written += self.upsert_lines(&lines, &fetched_at).await?;
-                    self.keep_cloudflare_counts(&since, &until, &artifacts_by_workspace(&body), &fetched_at).await?;
+                    let owners = self.pull_owners(&pull_ids(&body)).await;
+                    self.keep_cloudflare_counts(&since, &until, &artifacts_by_workspace(&body, &owners), &fetched_at).await?;
                 }
                 Err(error) => problems.push(format!("Artifacts events could not be read: {error}")),
             },
@@ -448,6 +468,25 @@ impl Billing {
 
     /// Cloudflare's own per-workspace counts for the days, replacing what
     /// was kept for them.
+    /// The workspace of each pull request's working copy, from repos;
+    /// nothing while repos does not answer (those events stay no one's).
+    async fn pull_owners(&self, pulls: &[String]) -> BTreeMap<String, String> {
+        let Some(repos) = &self.repos else { return BTreeMap::new() };
+        if pulls.is_empty() {
+            return BTreeMap::new();
+        }
+        match g1t_kit::call::<_, Value>(repos, "pull_owners", &json!({ "pulls": pulls })).await {
+            Ok(body) => body["owners"]
+                .as_object()
+                .map(|o| o.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_owned()))).collect())
+                .unwrap_or_default(),
+            Err(error) => {
+                worker::console_error!("pull_owners: {error}");
+                BTreeMap::new()
+            }
+        }
+    }
+
     async fn keep_cloudflare_counts(&self, since: &str, until: &str, counts: &[(String, String, f64)], fetched_at: &str) -> Result<()> {
         self.db
             .prepare("DELETE FROM own_counts WHERE meter = 'cloudflare_git' AND day >= ?1 AND day <= ?2")
@@ -721,10 +760,14 @@ mod tests {
             { "count": 7, "dimensions": { "date": "2026-10-05", "eventType": "fork", "repositoryName": "pulls--123" } },
             { "count": 3, "dimensions": { "date": "2026-10-05", "eventType": "serverError", "repositoryName": "beta--x" } }
         ] }] } } });
-        assert_eq!(artifacts_by_workspace(&by_repo), vec![("2026-10-05".to_string(), "acme".to_string(), 120.0)]);
-        assert_eq!(workspace_of_store_key("Acme--api"), Some("acme".into()));
-        assert_eq!(workspace_of_store_key("pulls--9"), None);
-        assert_eq!(workspace_of_store_key("plain"), None);
+        assert_eq!(artifacts_by_workspace(&by_repo, &BTreeMap::new()), vec![("2026-10-05".to_string(), "acme".to_string(), 120.0)]);
+        let none = BTreeMap::new();
+        assert_eq!(workspace_of_store_key("Acme--api", &none), Some("acme".into()));
+        assert_eq!(workspace_of_store_key("pulls--9", &none), None);
+        assert_eq!(workspace_of_store_key("plain", &none), None);
+        let owners = BTreeMap::from([("9".to_string(), "Acme".to_string())]);
+        assert_eq!(workspace_of_store_key("pulls--9", &owners), Some("acme".into()));
+        assert_eq!(workspace_of_store_key("pulls--10", &owners), None);
         let operations: f64 = lines
             .iter()
             .filter(|l| l.day == "2026-10-05" && ARTIFACTS_OPERATIONS.contains(&l.meter.as_str()))

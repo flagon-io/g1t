@@ -2261,6 +2261,17 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
             reply(&meters::usage(&repos.registry.db, &a).await?)
         }
         "operation_mapping" => reply(&meters::read_mapping(&repos.registry.db).await?),
+        // Billing: the workspace each pull request's working copy is counted
+        // for, so Cloudflare's own count of `pulls--<id>` shares out too.
+        "pull_owners" => {
+            #[derive(serde::Deserialize)]
+            struct PullOwnersArgs {
+                pulls: Vec<String>,
+            }
+            let a: PullOwnersArgs = args(body)?;
+            let pulls: Vec<String> = a.pulls.into_iter().take(500).collect();
+            reply(&serde_json::json!({ "owners": meters::pull_owners(&repos.registry.db, &pulls).await? }))
+        }
         // Services only: which meters are operations, changed without a deploy.
         "set_operation_mapping" => {
             let row: meters::MappingRow = args(body)?;
