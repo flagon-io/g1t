@@ -2406,6 +2406,36 @@ pub struct OverallMargin {
     pub sold_margin_micros: i64,
     #[serde(default)]
     pub sold_margin_percent: Option<f64>,
+    /// What was sold, apart: usage (`usage_micros` against what that usage
+    /// cost, less what was given), running g1t (`plans_micros` against the
+    /// platform's cost, less its given share) and what no mapping names.
+    #[serde(default)]
+    pub usage_cost_micros: i64,
+    #[serde(default)]
+    pub usage_margin_micros: i64,
+    #[serde(default)]
+    pub usage_margin_percent: Option<f64>,
+    #[serde(default)]
+    pub running_cost_micros: i64,
+    #[serde(default)]
+    pub unmapped_cost_micros: i64,
+    /// `given_micros` by why: comped workspaces, free use (free periods,
+    /// free allowances, overruns g1t covered), the trial, the open-source pool.
+    #[serde(default)]
+    pub given_comped_micros: i64,
+    #[serde(default)]
+    pub given_free_micros: i64,
+    #[serde(default)]
+    pub given_trial_micros: i64,
+    #[serde(default)]
+    pub given_pool_micros: i64,
+    /// `cost_micros` by who g1t pays: Cloudflare's bill (billed amounts,
+    /// after the included allowances), and model providers (the ledger's
+    /// cost of the tokens, which Cloudflare's bill does not show).
+    #[serde(default)]
+    pub cloudflare_cost_micros: i64,
+    #[serde(default)]
+    pub models_cost_micros: i64,
 }
 
 /// A count, cost or leak that does not add up.

@@ -1067,6 +1067,22 @@ export type OverallMargin = {
   /** Money in against costMicros - givenMicros. */
   soldMarginMicros?: number;
   soldMarginPercent?: number | null;
+  /** Usage sold: usageMicros against what that usage cost, less what was given. */
+  usageCostMicros?: number;
+  usageMarginMicros?: number;
+  usageMarginPercent?: number | null;
+  /** Running g1t: plansMicros against the platform's cost, less its given share. */
+  runningCostMicros?: number;
+  /** Cost no mapping names, less its given share. */
+  unmappedCostMicros?: number;
+  /** givenMicros by why. Free is free periods, free allowances and overruns g1t covered. */
+  givenCompedMicros?: number;
+  givenFreeMicros?: number;
+  givenTrialMicros?: number;
+  givenPoolMicros?: number;
+  /** costMicros by who g1t pays: Cloudflare's bill (billed, after included allowances) and model providers (tokens, not on Cloudflare's bill). */
+  cloudflareCostMicros?: number;
+  modelsCostMicros?: number;
 };
 
 /** A count, cost or leak that does not add up. */

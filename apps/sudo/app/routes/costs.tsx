@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link, data, redirect } from "react-router";
+import { Form, Link, data, redirect, useNavigation } from "react-router";
 
 import type { CostsReport, PriceProposal } from "@g1t/contracts";
 
@@ -143,25 +143,12 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
   // Margin under the floor at the top; drift and leaks are in their own table, workspaces on Reach out.
   const banner = report.alerts.filter((a) => a.kind === "overall" || a.kind === "margin");
   const elsewhere = report.alerts.length - banner.length;
-  // What g1t gave away on purpose (comped workspaces, free periods, the
-  // trial, the pools) is a budget, watched under g1t's own spend; the
-  // margin is measured on what was sold. Older reports lack the fields.
-  const given = report.overall.givenMicros ?? 0;
-  const soldMicros = report.overall.soldMarginMicros ?? report.overall.marginMicros;
-  const soldPercent = report.overall.soldMarginPercent !== undefined ? report.overall.soldMarginPercent : report.overall.marginPercent;
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
       <PageHeader
         title="Costs & margin"
-        description="What Cloudflare charged g1t, day by day, against what g1t charged for the same things. Prices are cost plus 20%; this is where that is checked against the bill, where drift and leaks show, and where price changes wait for a decision."
-        actions={
-          <form method="post">
-            <input type="hidden" name="intent" value="run" />
-            <Button variant="quiet" type="submit">
-              Run the analysis now
-            </Button>
-          </form>
-        }
+        description="What g1t cost to run (Cloudflare's bill and the model providers') against what workspaces paid. Prices are cost plus 20%; this is where that is checked against the bill, where drift and leaks show, and where price changes wait for a decision."
+        actions={<RunButton />}
       />
       <nav aria-label="Range" className="mt-5 flex flex-wrap gap-2">
         {RANGES.map((days) => (
@@ -199,30 +186,7 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
         )}
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat
-          label="Money in"
-          value={usd(report.overall.usageMicros + report.overall.plansMicros)}
-          hint={`${usd(report.overall.usageMicros)} usage, ${usd(report.overall.plansMicros)} plans`}
-        />
-        <Stat
-          label="Cost"
-          value={usd(report.overall.costMicros)}
-          hint={given > 0 ? `${usd(given)} of it given away` : `${report.since} to ${report.until}`}
-        />
-        <Stat
-          label="Margin on what was sold"
-          value={percentLabel(soldPercent)}
-          hint={given > 0 ? `${usd(soldMicros)}; ${percentLabel(report.overall.marginPercent)} with what was given` : usd(soldMicros)}
-          tone={marginTone(soldPercent, floor)}
-        />
-        <Stat
-          label="Proposals waiting"
-          value={String(open.length)}
-          hint={report.fetchedAt ? <>Bill read <When at={report.fetchedAt} time /></> : "The bill has not been read yet"}
-          tone={open.length > 0 ? "warn" : undefined}
-        />
-      </div>
+      <Statement report={report} floor={floor} range={range} proposals={open.length} />
 
       <SpendSection caps={report.caps} error={failed?.section === "lift" ? failed.error : null} />
 
@@ -649,6 +613,154 @@ function CapMeter({ label, used, cap, hint }: { label: string; used: number; cap
 }
 
 /** g1t's own spend: the daily breaker, comped budgets, and this month by what paid. */
+/** The button that runs the nightly analysis now, saying so while it runs. */
+function RunButton() {
+  const navigation = useNavigation();
+  const running = navigation.state !== "idle" && navigation.formData?.get("intent") === "run";
+  return (
+    <Form method="post" className="flex items-center gap-3">
+      <input type="hidden" name="intent" value="run" />
+      <Button variant="quiet" type="submit" disabled={running}>
+        {running ? "Running the analysis…" : "Run the analysis now"}
+      </Button>
+      {running && <span className="text-xs text-muted">Reading the bill and reconciling 31 days; about a minute.</span>}
+    </Form>
+  );
+}
+
+/**
+ * Where the money went, as a short statement: usage sold and running g1t
+ * (each against what paid for it), what g1t gave away on purpose (a budget,
+ * never a loss), and who was paid.
+ */
+function Statement({ report, floor, range, proposals }: { report: CostsReport; floor: number; range: number; proposals: number }) {
+  const o = report.overall;
+  // Reports from before the statement have only the totals.
+  const given = o.givenMicros ?? 0;
+  const usageCost = o.usageCostMicros ?? o.costMicros - given;
+  const usageMargin = o.usageMarginMicros ?? o.usageMicros - usageCost;
+  const usagePercent = o.usageMarginPercent !== undefined ? o.usageMarginPercent : null;
+  const running = o.runningCostMicros ?? 0;
+  const unmapped = o.unmappedCostMicros ?? 0;
+  // Cloudflare's subscriptions are not on the usage bill: the estimate, over the range.
+  const subscriptions = Math.round((report.caps.fixedMonthlyMicros * range) / 30);
+  const moneyIn = o.usageMicros + o.plansMicros;
+  const spent = o.costMicros + subscriptions;
+  const net = moneyIn - spent;
+  const givenParts = [
+    ["comped", o.givenCompedMicros ?? 0],
+    ["free use", o.givenFreeMicros ?? 0],
+    ["trial", o.givenTrialMicros ?? 0],
+    ["open-source pool", o.givenPoolMicros ?? 0],
+  ].filter(([, micros]) => (micros as number) > 0) as [string, number][];
+  const rows: { title: string; note: string; in: number | null; cost: number; result: number | null; tone?: "danger" | "warn" | "muted" }[] = [
+    {
+      title: "Usage sold",
+      note: "What workspaces paid for usage, against what that usage cost",
+      in: o.usageMicros,
+      cost: usageCost,
+      result: usageMargin,
+      tone: usageMargin < 0 ? "danger" : undefined,
+    },
+    {
+      title: "Running g1t",
+      note: "Plans, against Workers, D1, KV, Queues and the rest of the platform",
+      in: o.plansMicros,
+      cost: running,
+      result: o.plansMicros - running,
+      tone: o.plansMicros - running < 0 ? "warn" : undefined,
+    },
+    {
+      title: "Cloudflare subscriptions",
+      note: "Fixed, an estimate (CLOUDFLARE_FIXED_MONTHLY_MICROS), not on the usage bill",
+      in: null,
+      cost: subscriptions,
+      result: -subscriptions,
+      tone: "muted",
+    },
+    ...(unmapped > 0
+      ? [{ title: "Not mapped", note: "Billed by Cloudflare, charged for by nothing yet", in: null, cost: unmapped, result: -unmapped, tone: "danger" as const }]
+      : []),
+    {
+      title: "Given away",
+      note: givenParts.length > 0 ? givenParts.map(([why, micros]) => `${why} ${usd(micros)}`).join(" · ") : "Nothing this range",
+      in: null,
+      cost: given,
+      result: null,
+      tone: "muted",
+    },
+  ];
+  const resultClass = (tone?: string) => (tone === "danger" ? "text-danger" : tone === "warn" ? "text-warn" : tone === "muted" ? "text-muted" : "text-fg");
+  return (
+    <>
+      <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat
+          label="Margin on usage sold"
+          value={percentLabel(usagePercent)}
+          hint={`${usd(o.usageMicros)} paid for usage that cost ${usd(usageCost)}`}
+          tone={marginTone(usagePercent, floor)}
+        />
+        <Stat
+          label="Given away on purpose"
+          value={usd(given)}
+          hint={givenParts.length > 0 ? givenParts.map(([why, micros]) => `${usd(micros)} ${why}`).join(", ") : "Nothing given this range"}
+        />
+        <Stat
+          label="Who g1t paid"
+          value={usd(o.costMicros)}
+          hint={`Cloudflare ${usd(o.cloudflareCostMicros ?? o.costMicros - (o.modelsCostMicros ?? 0))}, model providers ${usd(o.modelsCostMicros ?? 0)}`}
+        />
+        <Stat
+          label="Proposals waiting"
+          value={String(proposals)}
+          hint={report.fetchedAt ? <>Bill read <When at={report.fetchedAt} time /></> : "The bill has not been read yet"}
+          tone={proposals > 0 ? "warn" : undefined}
+        />
+      </div>
+      <div className="mt-3 overflow-x-auto rounded-lg border border-line bg-surface">
+        <table className="w-full min-w-[36rem] text-sm">
+          <thead>
+            <tr className="border-b border-line text-left text-xs text-muted">
+              <th className="px-4 py-2 font-medium sm:px-5">
+                {report.since} to {report.until}
+              </th>
+              <th className="px-4 py-2 text-right font-medium">Paid in</th>
+              <th className="px-4 py-2 text-right font-medium">Cost</th>
+              <th className="px-4 py-2 text-right font-medium sm:pr-5">Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.title} className="border-b border-line">
+                <td className="px-4 py-2.5 sm:px-5">
+                  <span className="text-fg">{row.title}</span>
+                  <span className="block text-xs text-faint">{row.note}</span>
+                </td>
+                <td className="tabular px-4 py-2.5 text-right">{row.in == null ? <span className="text-faint">—</span> : usd(row.in)}</td>
+                <td className="tabular px-4 py-2.5 text-right">{usd(row.cost)}</td>
+                <td className={`tabular px-4 py-2.5 text-right sm:pr-5 ${resultClass(row.tone)}`}>
+                  {row.result == null ? "a budget" : usd(row.result, { signed: true })}
+                </td>
+              </tr>
+            ))}
+            <tr>
+              <td className="px-4 py-2.5 sm:px-5">
+                <span className="font-medium text-fg">All in</span>
+                <span className="block text-xs text-faint">
+                  {given > 0 ? `${usd(given)} of the cost was given away on purpose; without it, ${usd(net + given, { signed: true })}` : "Everything above"}
+                </span>
+              </td>
+              <td className="tabular px-4 py-2.5 text-right font-medium">{usd(moneyIn)}</td>
+              <td className="tabular px-4 py-2.5 text-right font-medium">{usd(spent)}</td>
+              <td className="tabular px-4 py-2.5 text-right font-medium text-fg sm:pr-5">{usd(net, { signed: true })}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
 function SpendSection({ caps, error }: { caps: CostsReport["caps"]; error: string | null }) {
   const { rows, totalMicros } = spendRows(caps);
   const net = caps.revenueMicros - totalMicros;

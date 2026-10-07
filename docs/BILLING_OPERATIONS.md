@@ -101,8 +101,11 @@ prefix, `*` last. A line no row claims goes to `unmapped`.
 
 For each day and bucket:
 
-- **Cloudflare cost** = Σ the bucket's lines' cost. `models` uses the
-  ledger's cost instead.
+- **Cloudflare cost** = Σ the bucket's lines' cost, as billed: after the
+  included allowances, so a month inside them costs $0 here as on
+  Cloudflare's Billable usage page. `models` uses the ledger's cost of the
+  tokens instead; that is paid to the model providers and is not on
+  Cloudflare's bill.
 - **Own cost** = Σ the ledger's `cost_micros` for the bucket's keys (the
   price book's cost when charged), plus month-end deltas. A workspace's own
   model provider is no cost to g1t.
@@ -111,21 +114,39 @@ For each day and bucket:
   g1t's own (comped) workspaces are valued at cost plus the margin.
 - **Cash** = what workspaces paid: `-amount_micros`, and the plan's price.
 - **Given away** = the part of the cost that went on usage g1t paid for
-  itself on purpose: all of a comped workspace's, all of a free period's,
-  and what the trial and the open-source pool paid. Each workspace's day
-  is split by the share of its value at price that was given (value less
-  cash less the plan's included usage, which the plan's price paid for),
-  and that share of each of its buckets' cost is given, its part of
-  running g1t included. Stored as `given_micros` on `margin_days` and
-  `workspace_costs`.
+  itself on purpose, by why:
+  - **comped**: all of a comped workspace's cost, every bucket;
+  - **free use**: a free period's usage, the overruns g1t covered
+    (`ledger.given_micros`), and all of a workspace's cost on a day it had
+    nothing priced (free allowances);
+  - **trial** and **open-source pool**: what `trial_micros` and
+    `oss_micros` paid.
+
+  Otherwise a workspace's day is split by those shares of its value at
+  price, and the same shares of each of its buckets' cost are given, its
+  part of running g1t included. The Team plan's included usage is sold:
+  the plan's price paid for it. Stored on `margin_days` (`given_micros`
+  and `given_<why>_micros`) and `workspace_costs` (`given_micros`).
 - **Month-end meters**: a day's figure is that day's `pending_days`
   snapshot less the day before's, within a month. Their month-end ledger
   entries are left out, so nothing is counted twice.
-- **Product margin** = (value − cost) / value. **Margin on what was
-  sold**, sudo's headline and the overall alert = (Σ cash − (Σ cost − Σ
-  given)) / Σ cash. The margin with what was given, (Σ cash − Σ cost) / Σ
-  cash, shows under it. What was given is a budget, watched under g1t's own
-  spend, not a price below cost.
+- **Product margin** = (value − cost) / value.
+- **Sudo's statement** keeps apart:
+  - **Usage sold**: cash for usage against the cost of the usage buckets
+    less what was given. Its margin is the headline; at cost plus 20% it
+    sits near 16.7%.
+  - **Running g1t**: the plan's price against `platform` less its given
+    share.
+  - **Cloudflare subscriptions**: `CLOUDFLARE_FIXED_MONTHLY_MICROS` over
+    the range, an estimate, since they are not on the usage bill.
+  - **Not mapped**: billed, charged for by nothing.
+  - **Given away**: by why. A budget, watched under g1t's own spend, never
+    shown as a loss.
+  - **All in**: money in against all of it, with the figure without what
+    was given beside it. **Who g1t paid** splits the cost into Cloudflare
+    and the model providers.
+
+  The overall alert is (Σ cash − (Σ cost − Σ given)) / Σ cash.
 - **Quantities**: where a mapping names an `own_meter`, Cloudflare's
   billed quantity of those lines (or, without one, Artifacts' operation
   events) against g1t's own count.
@@ -133,7 +154,8 @@ For each day and bucket:
 **Shared costs to workspaces.** A bucket's cost is shared in proportion
 to, first available: Cloudflare's own per-workspace count
 (`cloudflare_<bucket>`, today the Artifacts events by repository), g1t's
-own count, what each was charged for it, what its usage cost. `platform`
+own count, what its usage cost (so free use carries its own cost), what
+each was charged for it. `platform`
 and `unmapped` are shared by each workspace's share of all usage that
 day. Shares are whole micros that add up to the bill exactly (largest
 remainder).
