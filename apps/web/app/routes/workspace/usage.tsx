@@ -273,7 +273,7 @@ export default function UsagePage({ loaderData, params }: Route.ComponentProps) 
 
       <section className="rounded-2xl bg-surface p-5 ring-1 ring-line">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h3 className="text-sm font-medium">{usage.free ? "Usage per day" : "Spend per day"}</h3>
+          <h3 className="text-sm font-medium">{atCost ? "Usage per day" : "Spend per day"}</h3>
           <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
             {byTask.map((slice) => (
               <li key={slice.key} className="flex items-center gap-1.5">
