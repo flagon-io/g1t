@@ -191,8 +191,11 @@ export default function UsagePage({ loaderData, params }: Route.ComponentProps) 
   const days = Math.max(1, Math.ceil((Date.now() - new Date(since).getTime()) / 86_400_000));
   // While g1t is free nothing is charged, so usage is measured at cost
   // and credit is not drawn down.
-  const total = usage.free ? usage.usedMicros : usage.spentMicros;
-  const perDay = usage.free ? 0 : total / days;
+  // Free or comped, nothing is charged: what the runs used, at cost, is
+  // what there is to show.
+  const atCost = usage.free || comped;
+  const total = atCost ? usage.usedMicros : usage.spentMicros;
+  const perDay = atCost ? 0 : total / days;
   const runway = perDay > 0 ? Math.floor(account.balanceMicros / perDay) : null;
   return (
     <div className="space-y-8">
@@ -214,11 +217,11 @@ export default function UsagePage({ loaderData, params }: Route.ComponentProps) 
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {usage.free ? (
+        {atCost ? (
           <Stat
             label="Used"
             value={dollars(total)}
-            note="At cost. Nothing is charged while g1t is being built out."
+            note={comped ? "At cost. The workspace is comped: nothing is charged." : "At cost. Nothing is charged while g1t is being built out."}
           />
         ) : (
           <Stat
