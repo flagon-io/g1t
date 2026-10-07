@@ -10,22 +10,21 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 }
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
-  const role = roleIn(getViewer(context), params.owner);
-  if (!role) throw new Response(null, { status: 404 });
+  // The workspace's own machines and their tokens: owners only.
+  if (roleIn(getViewer(context), params.owner) !== "owner") throw new Response(null, { status: 404 });
   const user = requireUser(context, request);
   const workspace = params.owner.toLowerCase();
-  // Members see the runners; owners add, remove and group them.
-  const names = role === "owner" ? (await repos.list(user, { namespace: workspace })).map((repo) => repo.name) : [];
-  return { role, ...(await loadRunners({ workspace }, user, names)) };
+  const names = (await repos.list(user, { namespace: workspace })).map((repo) => repo.name);
+  return loadRunners({ workspace }, user, names);
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
+  if (roleIn(getViewer(context), params.owner) !== "owner") throw new Response(null, { status: 404 });
   const user = requireUser(context, request);
   return actOnRunners({ workspace: params.owner.toLowerCase() }, user, await request.formData());
 }
 
 export default function WorkspaceRunners({ loaderData, actionData }: Route.ComponentProps) {
-  const { role, ...data } = loaderData;
-  return <RunnersPanel data={data} action={actionData} scope="workspace" manage={role === "owner"} />;
+  return <RunnersPanel data={loaderData} action={actionData} scope="workspace" manage />;
 }

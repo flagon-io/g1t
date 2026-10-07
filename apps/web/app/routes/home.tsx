@@ -66,7 +66,7 @@ import {
   repos as reposApi,
   work,
 } from "../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser } from "../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser, roleIn } from "../lib/session.server";
 import { runners } from "../lib/runners.server";
 import { readableRepos } from "../lib/access.server";
 
@@ -431,7 +431,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
         { label: "Labels", value: job.labels, tone: null },
         { label: "Waiting", value: `${minutes} min`, tone: "warn" },
       ],
-      link: { label: "Runners", to: `/${namespace}/-/runners` },
+      // Runners are the owners' to see to.
+      ...(namespace && roleIn(viewer, namespace) === "owner" ? { link: { label: "Runners", to: `/${namespace}/-/runners` } } : {}),
     });
   }
   for (const run of liveRuns) {

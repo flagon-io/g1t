@@ -723,9 +723,11 @@ function SettingsMenu({ slug, owner }: { slug: string; owner: boolean }) {
         <SidebarLink to={`/${slug}/-/secrets`} icon={<Lock size={15} />}>
           Secrets and variables
         </SidebarLink>
-        <SidebarLink to={`/${slug}/-/runners`} icon={<ServerCog size={15} />}>
-          Runners
-        </SidebarLink>
+        {owner && (
+          <SidebarLink to={`/${slug}/-/runners`} icon={<ServerCog size={15} />}>
+            Runners
+          </SidebarLink>
+        )}
       </SidebarGroup>
       <SidebarGroup title="Connections" className="mt-3">
         <SidebarLink to={`/${slug}/-/integrations`} icon={<Plug size={15} />}>

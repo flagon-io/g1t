@@ -1,6 +1,6 @@
 import { AlertTriangle, ChevronRight, Cloud, Download, GitBranch, GitCommitHorizontal, Info, Package, RotateCw, ServerCog, Square, XCircle } from "lucide-react";
 import { type ReactNode } from "react";
-import { Form, Link, useNavigation, useSearchParams } from "react-router";
+import { Form, Link, useLoaderData, useNavigation, useSearchParams } from "react-router";
 
 import type { Annotation, Job, StepState } from "@g1t/contracts";
 
@@ -10,7 +10,7 @@ import { LogText, Notes, StatusIcon, duration, shortRef, standingWord, useJobLog
 import { Button, ErrorText, TimeAgo } from "../../components/ui";
 import { listArtifacts } from "../../lib/artifacts.server";
 import { actions } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 import { accessTo, refusal } from "../../lib/access.server";
 import { useRefreshWhile } from "../../lib/refresh";
 
@@ -24,7 +24,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const detail = unwrap(await actions.run({ namespace: params.owner, name: params.repo }, viewer, params.id));
   const artifacts = await listArtifacts(params.id).catch(() => []);
   // Cancelling and re-running need Write.
-  return { detail, artifacts, member: (await accessTo(context, params)).can.run };
+  return {
+    detail,
+    artifacts,
+    member: (await accessTo(context, params)).can.run,
+    // The runners page is the workspace owners'.
+    runnersPage: roleIn(viewer, params.owner) === "owner",
+  };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -89,16 +95,24 @@ function Reason({ text, workspace }: { text: string; workspace: string }) {
 
 /** Where the job ran: g1t's own runners, or a self-hosted one by name. */
 function RanOn({ job, workspace }: { job: Job; workspace: string }) {
+  const runnersPage = useLoaderData<typeof loader>().runnersPage;
   if (job.selfHosted) {
-    return (
-      <Link
-        to={`/${workspace}/-/runners`}
-        className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-0.5 text-xs text-muted hover:text-fg"
-        title="Self-hosted runner"
-      >
+    const badge = "ml-auto inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-0.5 text-xs text-muted";
+    const label = (
+      <>
         <ServerCog size={13} />
         {job.runner ? `Self-hosted: ${job.runner}` : "Self-hosted"}
+      </>
+    );
+    // A link to the runners for those who manage them, a label for everyone else.
+    return runnersPage ? (
+      <Link to={`/${workspace}/-/runners`} className={`${badge} hover:text-fg`} title="Self-hosted runner">
+        {label}
       </Link>
+    ) : (
+      <span className={badge} title="Self-hosted runner">
+        {label}
+      </span>
     );
   }
   if (!job.startedAt) return null;
