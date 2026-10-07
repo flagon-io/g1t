@@ -38,7 +38,7 @@ A branch per pull request means a repository with thousands of refs, each
 listed to every client on every fetch, and each needing cleanup once the
 work is merged or closed.
 
-Forks add nothing to the repository's branches. A week after a pull request
+Forks add nothing to the repository's branches. A day after a pull request
 merges or closes, its fork is removed, and only its head is kept in the
 repository, as `refs/pull/<pull request id>/head`, which clones and fetches
 do not download. The repository's branches stay the handful that describe

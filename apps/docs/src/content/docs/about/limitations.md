@@ -142,9 +142,9 @@ pull request's own working copy, made when the pull request is opened.
   in your workspace; pushing creates it.
 - **Status.** Not scheduled.
 
-### Pull request forks are removed a week after they close
+### Pull request forks are removed a day after they close
 
-Seven days after a pull request merges or closes, its fork's git data is
+A day after a pull request merges or closes, its fork's git data is
 removed. The pull request's changes stay readable: its head is kept in the
 repository as `refs/pull/<pull request id>/head`. Pushing to the fork, or
 reopening the pull request, makes the fork again from there.
