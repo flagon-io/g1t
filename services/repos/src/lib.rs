@@ -197,7 +197,7 @@ pub(crate) struct Repos<S: GitStore> {
     /// What isolates share: answers that list refs (refs_cache.rs).
     shared: Option<Rc<shared::Shared>>,
     /// Packs for fresh clones (pack_cache.rs); `None` without the bucket.
-    packs: Option<Rc<pack_cache::R2Packs>>,
+    packs: Option<Rc<pack_cache::Packs>>,
 }
 
 impl<S: GitStore> Repos<S> {
@@ -1933,7 +1933,7 @@ fn service(env: &Env) -> Result<Repos<ArtifactsStore>> {
         registry: Registry { db: env.d1("DB")? },
         store: ArtifactsStore::new(env, shared.clone())?,
         shared,
-        packs: pack_cache::R2Packs::from_env(env).map(Rc::new),
+        packs: pack_cache::Packs::from_env(env).map(Rc::new),
         events: env.service("EVENTS")?,
         security: env.service("SECURITY").ok(),
         billing: env.service("BILLING").ok(),

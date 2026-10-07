@@ -47,6 +47,8 @@ pub struct Services {
     pub audit: crate::audit::AuditContext,
     /// Set for a request made with an agent's token: all it may do.
     pub scope: Option<AgentScope>,
+    /// Where this installation is reached (addresses.rs).
+    pub addresses: crate::addresses::Addresses,
 }
 
 impl Services {
@@ -66,6 +68,7 @@ impl Services {
             security: env.service("SECURITY")?,
             scope: None,
             audit: crate::audit::AuditContext::default(),
+            addresses: crate::addresses::Addresses::from_env(env),
         })
     }
 }
@@ -2834,7 +2837,7 @@ impl Op {
                 // Where to push. A pull request from a branch has no fork:
                 // push to that branch of the repository.
                 let source = pull.fork.as_ref().unwrap_or(&repo);
-                let remote = format!("https://g1t.sh/{}/{}.git", source.namespace, source.name);
+                let remote = services.addresses.git_remote(&source.namespace, &source.name);
                 ok(&json!({
                     "pull": pull,
                     "git": {

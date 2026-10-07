@@ -40,8 +40,12 @@ The user guide is `apps/docs/src/content/docs/guides/self-hosting.md`.
     answers "agents are off" instead of failing.
 - **Proven on this machine with Docker:** sign up, confirm the email
   through Mailpit, create a workspace and a repository, push and clone over
-  HTTP, open an issue, and browse code, commits and files in the site. All
-  of it runs against local storage. See [Phase 1: what works today](#phase-1-what-works-today).
+  HTTP (the second clone from the clone pack cache in MinIO), open an
+  issue, and browse code, commits and files in the site; then the REST API,
+  OAuth metadata and MCP on their own port, pull requests from a branch and
+  from a fork merged onto `main`, the merge queue taking a pull request and
+  giving it back, and every cron handler the scheduler runs. All of it runs
+  against local storage. See [Phase 1: what works today](#3-phase-1-what-works-today).
 - **Long term:** keep workerd as the runtime, because it is what hosted
   runs. Replace `wrangler dev` with a production workerd configuration.
   Move the binding shims into code-level ports in `g1t_kit` and a TS
@@ -79,12 +83,12 @@ is graded:
 | **Cloudflare REST API** | deployments: script upload, list, delete, assets, GraphQL usage. Billing keeper: AI Gateway logs, `billable-usage`, GraphQL container usage. Ops scripts in `scripts/`. | thin (deployments), woven (keeper pricing) | Deployments: the app-host adapter. Keeper: off when self-hosted, because there is no bill to reconcile. |
 | **Email Sending** | `services/identity/src/email.rs` (`EMAIL.send({to, from, subject, text, html})`); callers: verification, password reset, `admin.rs` limit warnings | thin | Built in phase 1: a shim that logs and hands mail to Mailpit, which relays over SMTP. Later: a `Mailer` port with an SMTP adapter. |
 | **Cloudflare Access** | `apps/sudo/app/lib/access.ts` (verifies `Cf-Access-Jwt-Assertion` against `/cdn-cgi/access/certs`, `ACCESS_AUD`, `STAFF_EMAILS`) | woven, in sudo only | A local admin flag: `G1T_ADMINS` usernames checked against the normal g1t session. Self-hosters rarely need sudo, which is about billing. |
-| **Cron Triggers** | actions (every minute), webhooks (every minute), identity (`*/15`), security (`*/30`), repos and packages (hourly), events (daily), billing (`*/15` and daily), deployments (`*/10`), runner (`*/5`) | thin | workerd runs `scheduled()` when asked, but never on its own. `deploy/self-host/scheduler.mjs` asks: once a minute, inside the g1t container, it runs each due cron through Wrangler's local API (`POST /cdn-cgi/local/explorer/api/local/scheduled?worker=<name>`, answered only on localhost), the same handler Cron Triggers run. The services and crons come from `schedules.json`, which `configs.mjs` writes from each `wrangler.jsonc` for the services in its `SELF_HOST_CRONS`: repos, events, identity, security, webhooks and packages. Not run: actions (it would start scheduled workflows with no runner), billing (Cloudflare and Stripe) and deployments (Cloudflare's API). The status page has its own loop (`status.sh`). |
+| **Cron Triggers** | actions (every minute), webhooks (every minute), identity (`*/15`), security (`*/30`), repos and packages (hourly), events (daily), billing (`*/15` and daily), deployments (`*/10`), runner (`*/5`) | thin | workerd runs `scheduled()` when asked, but never on its own. `deploy/self-host/scheduler.mjs` asks: once a minute, inside the g1t container, it runs each due cron through Wrangler's local API (`POST /cdn-cgi/local/explorer/api/local/scheduled?worker=<name>`, answered only on localhost), the same handler Cron Triggers run. The services and crons come from `schedules.json`, which `configs.mjs` writes from each `wrangler.jsonc` for the services in its `SELF_HOST_CRONS`: repos, events, identity, security, webhooks and packages. Not run: actions (it would start scheduled workflows with no runner), billing (Cloudflare and Stripe) and deployments (Cloudflare's API). A handler still running from the minute before is not started again, and one is given up on after ten minutes. `scheduler.mjs --once` runs every cron of every service now and exits non-zero if one failed (smoke.sh uses it). The status page has its own loop (`status.sh`). |
 | **`cloudflare:workers` imports** | `apps/web` (`env` in 15 files), `apps/sudo`, `services/runner` (`WorkerEntrypoint`) | thin | Provided by workerd. A Node port would pass `env` through context instead. |
 | **Static Assets** | `apps/web` (Vite plugin build), `apps/docs`, `apps/sudo` (`run_worker_first`) | thin | workerd serves them. |
 | **`placement`, `observability`, routes, custom domains** | every `wrangler.jsonc` | config only | Dropped by `deploy/self-host/configs.mjs`. |
 | **`cf-ray`** | Used as an audit request id, with a fallback: `services/repos/src/run_access.rs:131`, `apps/api/src/audit.rs:37` | thin | Falls back already. |
-| **R2** | `services/packages` (`BLOBS`: container layers and other package files), `services/repos` (`BACKUPS`: nightly backup bundles), the API's Actions cache (`ACTIONS_CACHE`), the runner's downloads | thin | **S3-compatible storage**: the `BlobStore` port in `crates/blobstore` has an R2 adapter and an S3 one (`s3.rs`, SigV4 over fetch); each service names its own bucket (`BLOB_STORE`/`S3_BUCKET` for packages, `BACKUP_STORE`/`BACKUP_S3_BUCKET` for backups), run against MinIO in the compose file. |
+| **R2** | `services/packages` (`BLOBS`: container layers and other package files), `services/repos` (`BACKUPS`: nightly backup bundles; `GIT_PACKS`: the clone pack cache), the API's Actions cache (`ACTIONS_CACHE`), the runner's downloads | thin | **S3-compatible storage**: the `BlobStore` port in `crates/blobstore` has an R2 adapter and an S3 one (`s3.rs`, SigV4 over fetch); each service names its own bucket (`BLOB_STORE`/`S3_BUCKET` for packages, `BACKUP_STORE`/`BACKUP_S3_BUCKET` for backups, `PACK_STORE`/`PACK_S3_BUCKET` for clone packs), run against MinIO in the compose file. |
 | **Not used** | Hyperdrive, Workflows, Analytics Engine, Browser Rendering, Images, Turnstile, Secrets Store, `connect()`, HTMLRewriter, `request.cf` | — | — |
 
 ### By service
@@ -97,12 +101,12 @@ checks this table names every unit.
 | Service | Runs on | Cloudflare dependencies beyond Workers and D1 | Phase 1 self-hosted |
 | --- | --- | --- | --- |
 | `apps/web` | TS Worker plus assets | KV (`BLOBS`, `AVATARS`), Cache API, `cloudflare:workers` `env`, RPC to `RUNNER` | Runs unchanged |
-| `apps/api` | Rust Worker | KV `BLOBS`; hard-coded `api.g1t.sh`/`mcp.g1t.sh` issuer | Not started yet (phase 2) |
+| `apps/api` | Rust Worker | KV `BLOBS`, R2 `ACTIONS_CACHE`; `api.g1t.sh`/`mcp.g1t.sh` addresses (now the `API_URL`, `MCP_URL` and `SITE_URL` settings, hosted defaults when unset: `src/addresses.rs`) | Runs in a second workerd on its own port (`API_PORT`, 8789; `self_host: "separate"`), started by `start.sh` once the first is up. Its service bindings reach the other Workers through Wrangler's dev registry. `API_URL` (default: `PUBLIC_URL`'s host on `API_PORT`) is its OAuth issuer; MCP is the path `/mcp` on it (`MCP_URL`). Its KV is its own, apart from the site's: Actions artifacts need the runner, which is off |
 | `apps/sudo` | TS Worker plus assets | Access JWT | Not run |
 | `apps/docs` | Static | — | Not run (docs.g1t.sh serves them) |
 | `apps/status` | TS Worker | Email Sending, cron; bound only to billing | Runs in a process of its own (`status.sh`), so it stays up when the site does not |
 | `services/identity` | Rust | Email Sending, KV `AVATARS` | Runs unchanged; `EMAIL` goes to the mail shim |
-| `services/repos` | Rust | **Artifacts**, **R2** (`BACKUPS`), Cache API, optional KV `GIT_CACHE` with `REPOS_KEY`, optional R2 `GIT_PACKS` | Runs unchanged; `ARTIFACTS` goes to the git store, and backups to MinIO's `g1t-backups` bucket (`BACKUP_STORE=s3`). Without `GIT_CACHE` and `REPOS_KEY`, credentials and ref listings are kept per isolate only. Its nightly cron queues backups, but bundles are cut by the runner, which is off in phase 1: none are made yet. `GIT_PACKS` (the clone pack cache, behind the `PackStore` port in `src/pack_cache.rs`) is not given, so every clone goes to the git store; an S3 adapter like packages' would turn it on |
+| `services/repos` | Rust | **Artifacts**, **R2** (`BACKUPS`), Cache API, optional KV `GIT_CACHE` with `REPOS_KEY`, optional R2 `GIT_PACKS` | Runs unchanged; `ARTIFACTS` goes to the git store, backups to MinIO's `g1t-backups` bucket (`BACKUP_STORE=s3`), and the clone pack cache to `g1t-git-packs` (`PACK_STORE=s3`: the `PackStore` port in `src/pack_cache.rs` over the shared `BlobStore`, multipart, an object only once whole; `minio-setup` gives the bucket a rule that deletes packs after 7 days, and MinIO removes unfinished uploads after 24 hours). Without `GIT_CACHE` and `REPOS_KEY`, credentials and ref listings are kept per isolate only. Its nightly cron queues backups, but bundles are cut by the runner, which is off in phase 1: none are made yet |
 | `services/work` | Rust | Queue consumer | Runs unchanged |
 | `services/events` | Rust | Queues (producer and fan-out) | Runs unchanged; the off services' queues are not produced to |
 | `services/projects` | TS | Queue consumer | Runs unchanged |
@@ -124,15 +128,27 @@ checks this table names every unit.
 
 ### Hard-coded hosted addresses
 
-Self-hosting needs one setting, `PUBLIC_URL`, in place of these. Phase 1
-gets around the ones on its path: the mail shim rewrites `https://g1t.sh`
-links in mail, and `configs.mjs` rewrites `SITE_URL`/`API_URL`/`SITE`
-variables. The rest are listed here so phase 2 can make them settings:
+Self-hosting needs one setting, `PUBLIC_URL`, in place of these, and
+`configs.mjs` derives the rest from it. These are settings now, each with
+the hosted address as its default, so hosted g1t sets nothing:
 
-- `apps/web/app/lib/meta.ts` (`SITE`, `OG`); `clone-box.tsx` (clone URL,
-  `mcp.g1t.sh`); `workers/app.ts` (`DOCS`).
-- `apps/api/src/lib.rs` (`API`); `oauth.rs` (issuer, MCP resource).
-- `services/identity/src/email.rs` (`SITE`, `FROM`).
+- The site (`apps/web/app/lib/addresses.ts`): `SITE_URL`, `API_URL`,
+  `MCP_URL` and `OG_URL` (empty: no social card tags). The root loader
+  hands them to the page; `meta.ts`, the clone box, agent setup, the
+  pull request and merge box remotes, the tokens page and the OAuth
+  consent's `iss` read them.
+- The API (`apps/api/src/addresses.rs`): `SITE_URL`, `API_URL` (the OAuth
+  issuer) and `MCP_URL` (the protected resource; a path on the API's host
+  self-hosted).
+- Identity's mail (`services/identity/src/email.rs`): `SITE_URL` for
+  links and the logo, `MAIL_FROM` for the sender. The mail shim still
+  rewrites any `https://g1t.sh` link left in a message.
+
+Still hard-coded, for phase 2:
+
+- `apps/web/workers/app.ts` (`DOCS`); defaults in
+  `components/invites-section.tsx`, `components/runners.tsx`,
+  `lib/invites.ts` and `lib/legal.ts`.
 - `services/runner/src/index.ts` (`G1T_API`, `GIT_REMOTE` and the other
   remotes handed to sandboxes, in 12 places).
 - `services/billing` (`stripe.rs`, `accounts.rs`, `limits.rs`).
@@ -177,7 +193,8 @@ docs links and copy, and need no change.
 | `Bus` | Queues | Miniflare Queues now; SQLite outbox later | `services/events`, `g1t_kit` | Works (runtime) |
 | `Database` | D1 | SQLite files through workerd | — | Works (runtime) |
 | `Blobs` | KV | Miniflare KV now; filesystem/S3 later | — | Works (runtime) |
-| `Scheduler` | Cron Triggers | `scheduler.mjs`: a ticker that calls `scheduled()` through Wrangler's local API | `deploy/self-host` | Works for the services in `SELF_HOST_CRONS` |
+| `Scheduler` | Cron Triggers | `scheduler.mjs`: a ticker that calls `scheduled()` through Wrangler's local API | `deploy/self-host` | **Built** for the services in `SELF_HOST_CRONS`; each handler checked by `smoke.sh` |
+| `PackStore` | R2 `GIT_PACKS` | S3 (`PACK_STORE=s3`) through `crates/blobstore` | `services/repos/src/pack_cache.rs` | **Built** |
 | `UsageKeeper` | Cloudflare bill plus AI Gateway logs | None (billing off) | `services/billing` | Off |
 
 For Rust, the code-level ports go in `crates/kit` as traits (`g1t_kit::ports`),
@@ -315,7 +332,10 @@ on every page, but with `FREE_WHILE_BUILDING=true` and no Stripe key.
 | Feature | Hosted (g1t.sh) | Self-hosted default | Self-hosted, when turned on |
 | --- | --- | --- | --- |
 | Accounts, workspaces, repos, git over HTTP | On | On | — |
-| Issues, pull requests, review, merge queue | On | On | — |
+| Issues, pull requests, review | On | On | — |
+| Merge queue | On | Takes pull requests; testing and landing them needs sandboxes | Phase 2 |
+| Bringing a pull request up to date before it lands (catch-up) | On | Off: needs a sandbox | Phase 2 |
+| Clone pack cache | R2 | MinIO (`g1t-git-packs`) | — |
 | Site search (FTS5) | On | On | — |
 | Email | Email Sending | Mailpit, logged | SMTP relay |
 | Webhooks, integrations | On | On (retries through `scheduler.mjs`) | — |
@@ -328,7 +348,8 @@ on every page, but with `FREE_WHILE_BUILDING=true` and no Stripe key.
 | Billing, limits, Stripe, keeper | On | Off | Not planned |
 | sudo (staff console) | Access | Off | Phase 4: `G1T_ADMINS` |
 | Git over SSH | Not yet | Off | Phase 3 (`crates/sshd`, which is native already) |
-| REST API, MCP, CLI | On | Off | Phase 2 |
+| REST API, OAuth, MCP | On | On, on `API_PORT` | — |
+| CLI | On | Off | Phase 2 |
 
 ### Auth, Access and email
 
@@ -348,7 +369,8 @@ on every page, but with `FREE_WHILE_BUILDING=true` and no Stripe key.
 ### Configuration, upgrades and backups
 
 - **Today:** environment variables in the compose file (`PUBLIC_URL`,
-  `G1T_PORT`, `MAIL_URL`, `MAIL_FROM`). Keys (`ACTIONS_KEY`,
+  `G1T_PORT`, `API_PORT`, `API_URL`, `MCP_URL`, `MAIL_URL`, `MAIL_FROM`,
+  the S3 store and its buckets). Keys (`ACTIONS_KEY`,
   `INTEGRATIONS_KEY`, `WEBHOOKS_KEY`, the git store secret) are generated on
   first start and kept on volumes.
 - **Phase 2:** one `g1t.toml`, read by the launcher and turned into
@@ -396,20 +418,22 @@ Everything is in `deploy/self-host/`:
 
 | File | What it is |
 | --- | --- |
-| `docker-compose.yml` | Three services: `g1t` (every core Worker in one workerd), `gitstore` (bare repositories), and `mailpit` (mail). Volumes: `g1t-data`, `g1t-git`, `g1t-secrets`. |
+| `docker-compose.yml` | `g1t` (every core Worker in one workerd on 8787, and the API in a second on 8789), `status`, `gitstore` (bare repositories), `minio` and `minio-setup` (packages, backups and clone packs, with the packs' expiry rule), and `mailpit` (mail). Volumes: `g1t-data`, `g1t-git`, `g1t-packages`, `g1t-status`, `g1t-secrets`. MinIO no longer publishes `minio/minio` or `minio/mc` images; `MINIO_IMAGE` (default `pgsty/minio`, a community build with `mc` in it) is the server. |
 | `Dockerfile` | Compiles the ten Rust services to WebAssembly with `worker-build`, as hosted does. Builds the site with React Router. The runtime image has Node, Wrangler, workerd and the built Workers. |
 | `Dockerfile.dockerignore` | Build-context rules for this image only (the root `.dockerignore` leaves out the site). |
-| `start.sh` | Makes the sealing keys once, writes the configs, applies migrations, and runs `wrangler dev` with every config on `0.0.0.0:8787`, persisting to `/data/state`. |
+| `start.sh` | Makes the sealing keys once, writes the configs, applies migrations, runs `wrangler dev` with every config on `0.0.0.0:8787`, persisting to `/data/state`, and the API's `wrangler dev` on `0.0.0.0:8789` once the first answers. Starts `scheduler.mjs`. |
+| `scheduler.mjs` | The cron ticker (see Cron Triggers above). |
 | `configs.mjs` | Derives each self-hosted Wrangler config from the hosted `wrangler.jsonc`. It drops routes, account and placement, rebinds `ARTIFACTS`/`EMAIL` and the off services, and rewrites hosted URLs. Derived, so it cannot drift. |
 | `gitstore/server.mjs`, `gitstore/Dockerfile` | The git store. |
 | `workers/artifacts/index.js` | The `ARTIFACTS` binding, implemented against the git store. |
 | `workers/mail/index.js` | The `EMAIL` binding: logs, then sends to Mailpit. |
 | `workers/off/index.js` | The runner and the context hub when they are off. |
-| `smoke.sh` | The end-to-end check. |
+| `smoke.sh` | The end-to-end check, including the API, pull requests, the merge queue and (with `SCHEDULER_ONCE`) every cron handler. |
 
 Workers running: the site; identity, repos, work, events, projects, search,
-billing, security, actions, webhooks, integrations and deployments; and the
-artifacts, mail and two off stand-ins.
+billing, security, actions, webhooks, integrations, packages and
+deployments; the artifacts, mail and two off stand-ins; and, in a second
+workerd, the API.
 
 ### Verified
 
@@ -425,15 +449,35 @@ On this machine (Windows 11, Docker Desktop 29.8, engine on Linux):
    security, people, usage, explore, search, account settings and tree.
    The workspace context page answered 403 from the off stand-in, as
    intended.
-2. **With Docker Compose.** See the [Docker run](#docker-run) section below.
+2. **With Docker Compose** (2026-10-07, `docker compose up --build`, with
+   `API_PORT=18789` because 8789 was taken on this machine). `smoke.sh`
+   passed every step: the ones above; a second clone answered from the pack
+   cache (`Server-Timing: pack;desc=hit`), with the packs in MinIO's
+   `g1t-git-packs` and its 7-day rule in place; an access token made in the
+   site; `GET /user`, the API index (`mcp_url`, `git_url`), the OAuth
+   metadata (`issuer` the API's address, `authorization_endpoint` on the
+   site), MCP's 401 challenge and `tools/list`; a pull request from a branch
+   and one from a fork (`create_pull_request` without a branch: a fork in
+   the git store, pushed to with the token, marked ready) merged onto
+   `main`; the merge queue turned on, a pull request merged into it and
+   shown `waiting`, taken out (`unqueue`), the queue turned off and the
+   pull request merged; and `scheduler.mjs --once`, every handler `ok`.
+   The repository page's clone box and MCP line named the installation's
+   own addresses, with no social card tags.
+3. **The clone pack cache against MinIO without the stack.**
+   `node services/repos/dev/clone-check.mjs --s3` (MinIO in Docker):
+   misses then hits for full and shallow clones over protocol v2 and v0, a
+   miss after the refs version moves, five whole packs in the bucket (12 MB
+   each, so uploaded in parts), no unfinished upload, and the expiry rule.
 
 ### Not verified, or not working yet
 
-- Pull requests between branches and forks, the merge queue and catch-up.
-  They use `fork` and smart-HTTP pushes, which the git store implements,
-  but they have not been exercised end to end.
+- The merge queue past `waiting`, and catch-up (bringing a pull request
+  up to date before it lands): both need a sandbox, and the runner is off.
 - Actions schedules (`on: schedule`), and billing's and deployments' crons.
-- The REST API, MCP, the CLI, and git over SSH.
+- The CLI, and git over SSH.
+- An OAuth sign-in from start to finish (the metadata and issuer are
+  checked, the consent flow is not).
 - Anything on an address other than `localhost` without HTTPS (the
   session cookie is `Secure`).
 - Restart durability beyond one restart, upgrades across schema changes,
@@ -446,7 +490,7 @@ agents. They include docs and tests.
 
 | Phase | Scope | Estimate |
 | --- | --- | --- |
-| **1. Core forge** | **Done in this change:** compose stack, git store, Artifacts/Email shims, off stand-ins, config generator, smoke test, guide. **Left:** run the API worker (REST, MCP, OAuth) on its own port with `PUBLIC_URL` issuer; make `PUBLIC_URL` a setting in identity mail, `meta.ts`, `clone-box.tsx` and the API; fire cron (a ticker calling each Worker's `scheduled`); exercise pull requests and the merge queue in `smoke.sh`; optional Caddy for HTTPS; CI job that builds the images and runs `smoke.sh`. | 1–1.5 weeks left |
+| **1. Core forge** | **Done:** compose stack, git store, Artifacts/Email shims, off stand-ins, config generator, smoke test, guide; the API (REST, MCP, OAuth) on its own port with a `PUBLIC_URL`-derived issuer; `PUBLIC_URL`-derived settings in identity mail, the site's meta tags, clone box and agent setup, and the API; the cron ticker; the clone pack cache on S3; pull requests from branches and forks and the merge queue's enqueue and removal in `smoke.sh`. **Left:** optional Caddy for HTTPS; a CI job that builds the images and runs `smoke.sh`; the remaining hard-coded addresses listed above. | 2–3 days left |
 | **2. Agents with Docker sandboxes** | Test Wrangler's local Containers first. Otherwise: `g1t-sandboxd` supervisor, `DockerSandbox` adapter in the runner, egress allow-list proxy and internal network, runner addresses from `PUBLIC_URL`, models through a workspace's own provider, `g1t.toml` and a launcher that replaces `wrangler dev`. | 2–3 weeks |
 | **3. Search, context and deployments** | `Embedder` (OpenAI-compatible) and `VectorIndex` (sqlite-vec first) ports in context; app host on workerd with Worker Loader; Caddy on-demand TLS for app and custom domains; git over SSH through `crates/sshd` plus the missing `/_internal/ssh/*` endpoints. | 3–4 weeks |
 | **4. Parity and upgrade path** | Code-level ports in `g1t_kit` / `@g1t/platform` replacing the binding shims (`LocalGitStore` in Rust, `Mailer` with SMTP); `AdminAuth` for sudo; online backups (Litestream or `.backup`); versioned releases with published images; an upgrade test in CI that migrates a snapshot of the previous release; a self-host column in the docs for every feature. | 3–4 weeks |
@@ -462,6 +506,14 @@ Total to parity: about 10–13 weeks. Phase 1 alone is already a credible
   network only** until the launcher in phase 2 replaces it. Its flags and
   behaviour can also change between Wrangler releases. Pin the Wrangler
   version, as the lockfile already does.
+- **The API reaches the other Workers through Wrangler's dev registry.**
+  Two `wrangler dev` processes in one container find each other through
+  a registry directory, a development feature like the rest. If the API
+  starts and a binding says `[not connected]`, restart the container. The
+  phase 2 launcher serves both from one workerd.
+- **The MinIO image.** MinIO stopped publishing `minio/minio` and
+  `minio/mc`. The compose file uses a community build (`MINIO_IMAGE`,
+  `pgsty/minio`); any S3-compatible store can take its place.
 - **Cron goes through Wrangler's local API.** `scheduler.mjs` asks
   `/cdn-cgi/local/explorer/api/local/scheduled`, a development endpoint
   that may change between Wrangler releases (pinned by the lockfile).
@@ -495,7 +547,6 @@ Total to parity: about 10–13 weeks. Phase 1 alone is already a credible
 - **Image size and build time.** The first build compiles ten Rust crates
   to WebAssembly and installs the site's dependencies. Expect minutes and
   several GB. Published images remove this for users.
-- **Hard-coded hosted URLs.** About a dozen code paths name `g1t.sh` or
-  `api.g1t.sh`. Until they read `PUBLIC_URL`, some links and redirects
-  (OG images, the docs link, the clone box's MCP line) point at the hosted
-  service.
+- **Hard-coded hosted URLs.** The few left (listed above) point at the
+  hosted service until they read a setting: the docs link, invite and
+  runner defaults, and the runner's remotes.

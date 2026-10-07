@@ -7,6 +7,25 @@ use worker::{Env, Result};
 const FROM: &str = "g1t <noreply@g1t.sh>";
 const SITE: &str = "https://g1t.sh";
 
+/// Where links in mail point: SITE_URL, or g1t.sh when it is not set (a
+/// self-hosted installation sets it from its PUBLIC_URL).
+pub fn site(env: &Env) -> String {
+    let value = env.var("SITE_URL").map(|value| value.to_string()).unwrap_or_default();
+    let value = value.trim().trim_end_matches('/');
+    if value.is_empty() { SITE.to_owned() } else { value.to_owned() }
+}
+
+/// Who mail is from: MAIL_FROM, or g1t.sh's address when it is not set.
+fn from(env: &Env) -> String {
+    let value = env.var("MAIL_FROM").map(|value| value.to_string()).unwrap_or_default();
+    if value.trim().is_empty() { FROM.to_owned() } else { value.trim().to_owned() }
+}
+
+/// A site's address without its scheme, as mail names it in a sentence.
+fn bare(site: &str) -> &str {
+    site.split_once("://").map_or(site, |(_, rest)| rest)
+}
+
 #[derive(Serialize)]
 struct Message<'a> {
     to: &'a str,
@@ -30,11 +49,11 @@ pub struct Letter {
 
 /// The plain text and HTML of a letter. Everything in it is escaped:
 /// names, notes and requests people wrote can reach every line.
-pub fn render(letter: &Letter) -> (String, String) {
+pub fn render(letter: &Letter, site: &str) -> (String, String) {
     let mut text = String::new();
     let mut html = format!(
         "<div style=\"font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 16px;color:#16150f\">\
-         <p style=\"margin:0 0 20px\"><img src=\"{SITE}/brand/g1t-logo.png\" width=\"60\" height=\"28\" alt=\"g1t\" style=\"display:block;border:0\"></p>"
+         <p style=\"margin:0 0 20px\"><img src=\"{site}/brand/g1t-logo.png\" width=\"60\" height=\"28\" alt=\"g1t\" style=\"display:block;border:0\"></p>"
     );
     for paragraph in &letter.paragraphs {
         text.push_str(paragraph);
@@ -73,10 +92,11 @@ pub fn render(letter: &Letter) -> (String, String) {
 
 /// Sends a letter.
 pub async fn send(env: &Env, to: &str, subject: &str, letter: &Letter) -> Result<()> {
-    let (text, html) = render(letter);
+    let (text, html) = render(letter, &site(env));
+    let from = from(env);
     let message = Message {
         to,
-        from: FROM,
+        from: &from,
         subject,
         text,
         html,
@@ -128,7 +148,7 @@ pub async fn send_verification(env: &Env, to: &str, username: &str, token: &str)
         "Confirm your email for g1t",
         &format!("Welcome to g1t, {username}. Confirm this address to finish creating your account."),
         "Confirm email",
-        &format!("{SITE}/verify?token={token}"),
+        &format!("{}/verify?token={token}", site(env)),
         "This link works for 24 hours. If you did not create a g1t account, you can ignore this message.",
     )
     .await
@@ -141,7 +161,7 @@ pub async fn send_password_reset(env: &Env, to: &str, username: &str, token: &st
         "Reset your g1t password",
         &format!("Someone asked to reset the password for the g1t account {username}."),
         "Choose a new password",
-        &format!("{SITE}/reset?token={token}"),
+        &format!("{}/reset?token={token}", site(env)),
         "This link works for 1 hour. If this was not you, ignore this message and your password stays the same.",
     )
     .await
@@ -155,7 +175,7 @@ pub async fn send_added_address(env: &Env, to: &str, username: &str, token: &str
         "Confirm your email for g1t",
         &format!("Confirm this address to add it to the g1t account {username}."),
         "Confirm email",
-        &format!("{SITE}/verify?token={token}"),
+        &format!("{}/verify?token={token}", site(env)),
         "This link works for 24 hours. If you did not add this address to a g1t account, you can ignore this message.",
     )
     .await
@@ -178,8 +198,11 @@ pub async fn send_security_notice(env: &Env, to: &str, username: &str, change: &
         &subject,
         &intro,
         "Review your email settings",
-        &format!("{SITE}/settings/emails"),
-        "If this was you, there is nothing to do. If it was not, reset your password at g1t.sh/forgot straight away and remove any address you do not recognise.",
+        &format!("{}/settings/emails", site(env)),
+        &format!(
+            "If this was you, there is nothing to do. If it was not, reset your password at {}/forgot straight away and remove any address you do not recognise.",
+            bare(&site(env))
+        ),
     )
     .await
 }
@@ -200,7 +223,7 @@ pub struct InviteEmail<'a> {
 }
 
 /// The subject and letter of an invite email.
-pub fn invite_letter(invite: &InviteEmail) -> (String, Letter) {
+pub fn invite_letter(invite: &InviteEmail, site: &str) -> (String, Letter) {
     let (subject, intro) = invite_wording(invite.from, invite.workspace, invite.joins_existing_account);
     let action = match invite.workspace {
         Some(workspace) if invite.joins_existing_account => format!("Join {workspace}"),
@@ -219,7 +242,7 @@ pub fn invite_letter(invite: &InviteEmail) -> (String, Letter) {
     let letter = Letter {
         paragraphs: vec![intro],
         quotes,
-        action: Some((action, format!("{SITE}/invite/{}", invite.code))),
+        action: Some((action, format!("{site}/invite/{}", invite.code))),
         footer: format!(
             "This invite works for {} days, only for this address. If you were not expecting it, you can ignore this message.",
             invite.days
@@ -229,7 +252,7 @@ pub fn invite_letter(invite: &InviteEmail) -> (String, Letter) {
 }
 
 pub async fn send_invite(env: &Env, invite: &InviteEmail<'_>) -> Result<()> {
-    let (subject, letter) = invite_letter(invite);
+    let (subject, letter) = invite_letter(invite, &site(env));
     send(env, invite.to, &subject, &letter).await
 }
 
@@ -237,7 +260,7 @@ pub async fn send_invite(env: &Env, invite: &InviteEmail<'_>) -> Result<()> {
 pub const SUDO_WAITLIST: &str = "https://sudo.g1t.sh/invites?tab=waitlist";
 
 /// The one confirmation someone gets after asking for access.
-pub fn waitlist_confirmation() -> (String, Letter) {
+pub fn waitlist_confirmation(site: &str) -> (String, Letter) {
     (
         "You're on the list for g1t".to_owned(),
         Letter {
@@ -247,13 +270,13 @@ pub fn waitlist_confirmation() -> (String, Letter) {
             ],
             quotes: Vec::new(),
             action: None,
-            footer: "You're getting this because this address asked for access at g1t.sh/register. If that wasn't you, ignore this message; nothing more is sent unless you're invited.".to_owned(),
+            footer: format!("You're getting this because this address asked for access at {}/register. If that wasn't you, ignore this message; nothing more is sent unless you're invited.", bare(site)),
         },
     )
 }
 
 pub async fn send_waitlist_confirmation(env: &Env, to: &str) -> Result<()> {
-    let (subject, letter) = waitlist_confirmation();
+    let (subject, letter) = waitlist_confirmation(&site(env));
     send(env, to, &subject, &letter).await
 }
 
@@ -329,8 +352,8 @@ pub async fn send_repo_invite(
 ) -> Result<()> {
     let (subject, intro) = repo_invite_wording(from, repo, role, code.is_some());
     let link = match code {
-        Some(code) => format!("{SITE}/invite/{code}"),
-        None => format!("{SITE}/{repo}/invitations"),
+        Some(code) => format!("{}/invite/{code}", site(env)),
+        None => format!("{}/{repo}/invitations", site(env)),
     };
     send_link(
         env,
@@ -422,25 +445,38 @@ mod tests {
 
     #[test]
     fn an_invite_links_to_its_page_and_carries_a_note() {
-        let (subject, letter) = invite_letter(&invite(Some("Welcome aboard <3"), None));
+        let (subject, letter) = invite_letter(&invite(Some("Welcome aboard <3"), None), SITE);
         assert_eq!(subject, "The g1t team invited you to Flagon, Inc. on g1t");
         assert_eq!(letter.action.as_ref().unwrap().1, "https://g1t.sh/invite/g1t-abcd");
         assert_eq!(letter.quotes, vec![("A note from the g1t team".to_owned(), "Welcome aboard <3".to_owned())]);
-        let (text, html) = render(&letter);
+        let (text, html) = render(&letter, SITE);
         assert!(text.contains("> Welcome aboard <3"));
         assert!(html.contains("Welcome aboard &lt;3"));
         assert!(!html.contains("<3"));
         // No note, no quote; a blank note is no note.
-        assert!(invite_letter(&invite(None, Some("Chase Pierce"))).1.quotes.is_empty());
-        assert!(invite_letter(&invite(Some("  "), Some("Chase Pierce"))).1.quotes.is_empty());
-        assert_eq!(invite_letter(&invite(Some("hi"), Some("Chase Pierce"))).1.quotes[0].0, "A note from Chase Pierce");
+        assert!(invite_letter(&invite(None, Some("Chase Pierce")), SITE).1.quotes.is_empty());
+        assert!(invite_letter(&invite(Some("  "), Some("Chase Pierce")), SITE).1.quotes.is_empty());
+        assert_eq!(invite_letter(&invite(Some("hi"), Some("Chase Pierce")), SITE).1.quotes[0].0, "A note from Chase Pierce");
+    }
+
+    #[test]
+    fn links_point_at_the_site_they_are_given() {
+        let (_, letter) = invite_letter(&invite(None, None), "http://localhost:8787");
+        assert_eq!(letter.action.as_ref().unwrap().1, "http://localhost:8787/invite/g1t-abcd");
+        let (text, html) = render(&letter, "http://localhost:8787");
+        assert!(html.contains("http://localhost:8787/brand/g1t-logo.png"));
+        assert!(!text.contains("g1t.sh/") && !html.contains("https://g1t.sh"));
+        let (_, letter) = waitlist_confirmation("http://localhost:8787");
+        assert!(letter.footer.contains("localhost:8787/register"));
+        assert_eq!(bare("https://git.example.com"), "git.example.com");
     }
 
     #[test]
     fn the_waitlist_confirmation_promises_no_date() {
-        let (subject, letter) = waitlist_confirmation();
+        let (subject, letter) = waitlist_confirmation(SITE);
         assert_eq!(subject, "You're on the list for g1t");
-        let (text, _) = render(&letter);
+        let (text, _) = render(&letter, SITE);
+        assert!(text.contains("g1t.sh/register"));
         assert!(text.contains("we'll email you an invite"));
         assert!(text.contains("can't say exactly when"));
         assert!(letter.action.is_none());
@@ -453,7 +489,7 @@ mod tests {
         assert_eq!(subject, "g1t access request from ada@example.com");
         assert_eq!(letter.paragraphs, vec!["Someone asked for access to g1t."]);
         assert_eq!(letter.action.as_ref().unwrap().1, SUDO_WAITLIST);
-        let (_, html) = render(&letter);
+        let (_, html) = render(&letter, SITE);
         assert!(html.contains("A compiler &lt;for&gt; fun"));
 
         let many: Vec<Requested> = (0..25).map(|n| Requested { email: format!("p{n}@example.com"), about: None }).collect();
@@ -474,15 +510,14 @@ mod tests {
     fn write_emails() {
         let Ok(dir) = std::env::var("G1T_WRITE_EMAILS") else { return };
         let page = |name: &str, subject: &str, letter: &Letter| {
-            let (_, html) = render(letter);
-            let html = html.replace(SITE, "https://g1t.sh");
+            let (_, html) = render(letter, SITE);
             std::fs::write(
                 format!("{dir}/{name}.html"),
                 format!("<!doctype html><meta charset=utf-8><title>{}</title><body style=\"margin:0;background:#fff\">{html}", escape(subject)),
             )
             .unwrap();
         };
-        let (subject, letter) = waitlist_confirmation();
+        let (subject, letter) = waitlist_confirmation(SITE);
         page("waitlist-confirmation", &subject, &letter);
         let requests = [
             Requested { email: "ada@example.com".into(), about: Some("A compiler for a teaching language, with agents writing the test suite.".into()) },
@@ -498,7 +533,7 @@ mod tests {
             code: "g1t-k7m2-q9xd-4hpw-abcd-0123-4567-89ef-ghjk",
             days: 30,
             note: None,
-        });
+        }, SITE);
         page("workspace-invite", &subject, &letter);
         let (subject, letter) = invite_letter(&InviteEmail {
             to: "ada@example.com",
@@ -508,7 +543,7 @@ mod tests {
             code: "g1t-k7m2-q9xd-4hpw-abcd-0123-4567-89ef-ghjk",
             days: 30,
             note: Some("Thanks for waiting. We would love to see the compiler."),
-        });
+        }, SITE);
         page("waitlist-approved", &subject, &letter);
     }
 }

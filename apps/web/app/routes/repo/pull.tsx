@@ -41,6 +41,7 @@ import {
 import type { Route } from "./+types/pull";
 import { excerpt, page } from "../../lib/meta";
 import { openedBy } from "../../lib/opened-by";
+import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { DiffView } from "../../components/diff-view";
 import { LifecyclePanel } from "../../components/lifecycle";
 import { AgentPanel } from "../../components/agents";
@@ -555,9 +556,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
       error={actionData?.action === "rerun-failed" || actionData?.action === "rerun-workflow" ? actionData.error : null}
     />
   );
+  const addresses = useAddresses();
   const remote = pull.fork
-    ? `https://g1t.sh/${pull.fork.namespace}/${pull.fork.name}.git`
-    : `https://g1t.sh/${params.owner}/${params.repo}.git`;
+    ? cloneUrl(addresses, `${pull.fork.namespace}/${pull.fork.name}`)
+    : cloneUrl(addresses, `${params.owner}/${params.repo}`);
   const active = pull.status === "draft" || pull.status === "open";
 
   // Follow an agent at work, or checks in progress, without a manual reload.

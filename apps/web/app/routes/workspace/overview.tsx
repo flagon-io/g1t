@@ -10,6 +10,7 @@ import { UsageCard } from "../../components/usage-card";
 import { PullIcon } from "../../components/work-icons";
 import { planStatus, type UsageGlance, usageGlance } from "../../lib/billing";
 import { openedBy } from "../../lib/opened-by";
+import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { libraryPackages, packageLine, packagePath } from "../../lib/project-kind";
 import { billing, deployments, identity, packages, projects as projectsApi, work } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
@@ -122,6 +123,7 @@ function Stat({ value, label }: { value: number; label: string }) {
 
 /** What a member sees in a workspace with no projects yet. */
 function GetStarted({ slug }: { slug: string }) {
+  const addresses = useAddresses();
   return (
     <div className="rounded-2xl border border-line bg-surface p-8">
       <span className="flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent ring-1 ring-accent/30">
@@ -140,7 +142,7 @@ function GetStarted({ slug }: { slug: string }) {
       </div>
       <p className="mt-6 text-sm text-muted">Or push code you already have, and it becomes a project:</p>
       <div className="mt-2 max-w-xl">
-        <CopyLine prompt text={`git push https://g1t.sh/${slug}/my-project.git main`} />
+        <CopyLine prompt text={`git push ${cloneUrl(addresses, `${slug}/my-project`)} main`} />
       </div>
     </div>
   );

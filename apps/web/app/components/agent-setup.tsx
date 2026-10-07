@@ -1,16 +1,17 @@
 import { Check, Copy, ExternalLink } from "lucide-react";
-import { type KeyboardEvent, useId, useState, useSyncExternalStore } from "react";
+import { type KeyboardEvent, useId, useMemo, useState, useSyncExternalStore } from "react";
 
 import {
-  AGENTS,
   AGENT_IDS,
   type AgentId,
   DEFAULT_AGENT,
+  agentsFor,
   cursorInstallLink,
   getAgentChoice,
   setAgentChoice,
   subscribeAgentChoice,
 } from "../lib/agent-setup";
+import { useAddresses } from "../lib/addresses";
 import { cn } from "../lib/cn";
 
 /** The agent this browser chose last; every toggle on the page shares it. */
@@ -28,7 +29,9 @@ export function AgentSetup({ hint = true, className }: { hint?: boolean; classNa
   const [chosen, choose] = useAgentChoice();
   const [copied, setCopied] = useState(false);
   const base = useId();
-  const agent = AGENTS[chosen];
+  const { mcp } = useAddresses();
+  const agents = useMemo(() => agentsFor(mcp), [mcp]);
+  const agent = agents[chosen];
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
@@ -75,7 +78,7 @@ export function AgentSetup({ hint = true, className }: { hint?: boolean; classNa
                   on ? "bg-raised text-fg" : "text-muted hover:text-fg",
                 )}
               >
-                {AGENTS[id].label}
+                {agents[id].label}
               </button>
             );
           })}
@@ -120,7 +123,7 @@ export function AgentSetup({ hint = true, className }: { hint?: boolean; classNa
           {chosen === "cursor" && (
             <>
               {" "}
-              <a href={cursorInstallLink()} className="inline-flex items-center gap-1 text-fg underline underline-offset-4">
+              <a href={cursorInstallLink(mcp)} className="inline-flex items-center gap-1 text-fg underline underline-offset-4">
                 Add to Cursor <ExternalLink size={11} />
               </a>
             </>

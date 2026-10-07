@@ -39,6 +39,23 @@ mkdirSync(out, { recursive: true });
 
 const PUBLIC_URL = (process.env.PUBLIC_URL ?? "http://localhost:8787").replace(/\/$/, "");
 
+/**
+ * Where the API (REST, OAuth) is reached: API_URL, or PUBLIC_URL's host on
+ * API_PORT (8789). The MCP server is a path on it: MCP_URL, or
+ * `<API_URL>/mcp`. The API's OAuth issuer is API_URL.
+ */
+export function apiAddresses(env = process.env, publicUrl = PUBLIC_URL) {
+  let api = (env.API_URL ?? "").trim().replace(/\/$/, "");
+  if (!api) {
+    const url = new URL(publicUrl);
+    url.port = env.API_PORT || "8789";
+    api = url.origin;
+  }
+  const mcp = (env.MCP_URL ?? "").trim().replace(/\/$/, "") || `${api}/mcp`;
+  return { api, mcp };
+}
+const { api: API_URL, mcp: MCP_URL } = apiAddresses();
+
 // What runs, and what is off, is each unit's `self_host` in
 // deploy/stack.jsonc: the list hosted g1t deploys from.
 const STACK = Object.values(parseJsonc(readFileSync(join(root, "deploy/stack.jsonc"), "utf8")).units);
@@ -115,7 +132,9 @@ function parseJsonc(text) {
 const rel = (path) => relative(out, resolve(root, path)).replaceAll("\\", "/");
 
 function hostedUrl(value) {
-  return typeof value === "string" ? value.replace(/https:\/\/(api\.)?g1t\.sh/g, PUBLIC_URL) : value;
+  return typeof value === "string"
+    ? value.replace(/https:\/\/api\.g1t\.sh/g, API_URL).replace(/https:\/\/g1t\.sh/g, PUBLIC_URL)
+    : value;
 }
 
 function selfHosted(service) {
@@ -217,12 +236,22 @@ function selfHosted(service) {
     delete config.vars.R2_ACCOUNT_ID;
     delete config.vars.R2_BUCKET;
   }
+  // Where this installation is reached, for the links and addresses each
+  // shows: the site's clone URLs, meta tags and agent setup, the API's
+  // OAuth issuer and MCP server, and identity's mail. No social cards: the
+  // card service (services/og) is not run here.
+  if (service.web) Object.assign(config.vars, { SITE_URL: PUBLIC_URL, API_URL, MCP_URL, OG_URL: "" });
+  if (hosted.name === "g1t-api") Object.assign(config.vars, { SITE_URL: PUBLIC_URL, API_URL, MCP_URL });
+  if (hosted.name === "g1t-identity") config.vars.SITE_URL = PUBLIC_URL;
   // Nightly backups' bundles go to a bucket of their own on the same
-  // S3-compatible store, instead of the BACKUPS R2 bucket.
+  // S3-compatible store, instead of the BACKUPS R2 bucket, and so do the
+  // packs kept for fresh clones (src/pack_cache.rs), instead of GIT_PACKS.
   if (hosted.name === "g1t-repos") {
     Object.assign(config.vars, {
       BACKUP_STORE: "s3",
       BACKUP_S3_BUCKET: process.env.BACKUP_S3_BUCKET ?? "g1t-backups",
+      PACK_STORE: "s3",
+      PACK_S3_BUCKET: process.env.PACK_S3_BUCKET ?? "g1t-git-packs",
       S3_ENDPOINT: process.env.S3_ENDPOINT ?? "http://minio:9000",
       S3_REGION: process.env.S3_REGION ?? "us-east-1",
       S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID ?? "",
@@ -285,6 +314,16 @@ for (const [service, feature] of Object.entries(OFF)) {
 
 // The order Wrangler takes them in: the site first, as the one that serves.
 writeFileSync(join(out, "workers.txt"), `${files.map((file) => relative(out, file)).join("\n")}\n`);
+
+// The API (REST, MCP and OAuth) is served on a port of its own (API_PORT),
+// by a second `wrangler dev` (start.sh): not in workers.txt. Its service
+// bindings reach the Workers above through Wrangler's dev registry, as
+// any two `wrangler dev` sessions on one machine do.
+{
+  const api = STACK.find((unit) => unit.worker === "g1t-api");
+  write("g1t-api", selfHosted({ name: api.worker, dir: api.path, web: false }));
+  writeFileSync(join(out, "api.json"), `${JSON.stringify({ api: API_URL, mcp: MCP_URL }, null, 2)}\n`);
+}
 
 // What scheduler.mjs runs: each service's own crons, as hosted g1t's Cron
 // Triggers run them, for the services in SELF_HOST_CRONS.

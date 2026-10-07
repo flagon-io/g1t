@@ -6,8 +6,12 @@
  * The commands follow each agent's own documentation for adding a remote
  * MCP server; keep them in step with `apps/docs/src/data/agents.ts`, the
  * docs' copy.
+ *
+ * Each snippet is built for an MCP server URL: g1t.sh's by default, or a
+ * self-hosted g1t's own (`useAddresses().mcp`).
  */
 
+/** g1t.sh's MCP server, the same as HOSTED_ADDRESSES.mcp in ./addresses. */
 export const MCP_URL = "https://mcp.g1t.sh";
 
 export const AGENT_IDS = ["claude-code", "codex", "opencode", "cursor"] as const;
@@ -31,51 +35,57 @@ export type AgentSetup = {
 
 const json = (value: unknown) => JSON.stringify(value, null, 2);
 
-export const AGENTS: Record<AgentId, AgentSetup> = {
-  "claude-code": {
-    id: "claude-code",
-    label: "Claude Code",
-    file: null,
-    lang: "sh",
-    code: `claude mcp add --transport http g1t ${MCP_URL}`,
-    then: "Then run `/mcp` in Claude Code and choose g1t to sign in through your browser.",
-    instructions: "CLAUDE.md",
-  },
-  codex: {
-    id: "codex",
-    label: "Codex",
-    file: null,
-    lang: "sh",
-    code: `codex mcp add g1t --url ${MCP_URL}\ncodex mcp login g1t`,
-    then: "The login opens your browser to sign in to g1t.",
-    instructions: "AGENTS.md",
-  },
-  opencode: {
-    id: "opencode",
-    label: "OpenCode",
-    file: "opencode.json",
-    lang: "json",
-    code: json({
-      $schema: "https://opencode.ai/config.json",
-      mcp: { g1t: { type: "remote", url: MCP_URL, enabled: true } },
-    }),
-    then: "OpenCode signs you in through your browser when it first connects; `opencode mcp auth g1t` starts it by hand.",
-    instructions: "AGENTS.md",
-  },
-  cursor: {
-    id: "cursor",
-    label: "Cursor",
-    file: ".cursor/mcp.json",
-    lang: "json",
-    code: json({ mcpServers: { g1t: { url: MCP_URL } } }),
-    then: "Use `~/.cursor/mcp.json` for every project. Cursor signs you in through your browser when it first connects.",
-    instructions: "AGENTS.md",
-  },
-};
+/** How each agent adds the MCP server at `mcp`. */
+export function agentsFor(mcp: string = MCP_URL): Record<AgentId, AgentSetup> {
+  return {
+    "claude-code": {
+      id: "claude-code",
+      label: "Claude Code",
+      file: null,
+      lang: "sh",
+      code: `claude mcp add --transport http g1t ${mcp}`,
+      then: "Then run `/mcp` in Claude Code and choose g1t to sign in through your browser.",
+      instructions: "CLAUDE.md",
+    },
+    codex: {
+      id: "codex",
+      label: "Codex",
+      file: null,
+      lang: "sh",
+      code: `codex mcp add g1t --url ${mcp}\ncodex mcp login g1t`,
+      then: "The login opens your browser to sign in to g1t.",
+      instructions: "AGENTS.md",
+    },
+    opencode: {
+      id: "opencode",
+      label: "OpenCode",
+      file: "opencode.json",
+      lang: "json",
+      code: json({
+        $schema: "https://opencode.ai/config.json",
+        mcp: { g1t: { type: "remote", url: mcp, enabled: true } },
+      }),
+      then: "OpenCode signs you in through your browser when it first connects; `opencode mcp auth g1t` starts it by hand.",
+      instructions: "AGENTS.md",
+    },
+    cursor: {
+      id: "cursor",
+      label: "Cursor",
+      file: ".cursor/mcp.json",
+      lang: "json",
+      code: json({ mcpServers: { g1t: { url: mcp } } }),
+      then: "Use `~/.cursor/mcp.json` for every project. Cursor signs you in through your browser when it first connects.",
+      instructions: "AGENTS.md",
+    },
+  };
+}
+
+/** The snippets for g1t.sh. */
+export const AGENTS: Record<AgentId, AgentSetup> = agentsFor();
 
 /** Opens Cursor with g1t ready to add, from Cursor's install-link format. */
-export function cursorInstallLink(): string {
-  const config = btoa(JSON.stringify({ url: MCP_URL }));
+export function cursorInstallLink(mcp: string = MCP_URL): string {
+  const config = btoa(JSON.stringify({ url: mcp }));
   return `cursor://anysphere.cursor-deeplink/mcp/install?name=g1t&config=${encodeURIComponent(config)}`;
 }
 

@@ -1,11 +1,13 @@
 import { Link } from "react-router";
 
+import { cloneUrl, useAddresses } from "../lib/addresses";
 import { AgentSetup } from "./agent-setup";
 import { CopyLine } from "./ui";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
 /** The ways to get a repository onto a machine or in front of an agent. */
 export function CloneBox({ path }: { path: string }) {
+  const addresses = useAddresses();
   return (
     <Tabs defaultValue="https">
       <TabsList>
@@ -14,7 +16,7 @@ export function CloneBox({ path }: { path: string }) {
         <TabsTrigger value="agent">Agent</TabsTrigger>
       </TabsList>
       <TabsContent value="https">
-        <CopyLine text={`https://g1t.sh/${path}.git`} />
+        <CopyLine text={cloneUrl(addresses, path)} />
         <p className="mt-2 text-xs text-muted">
           To push, use your username and an{" "}
           <Link to="/settings/tokens" className="text-fg underline underline-offset-4">
