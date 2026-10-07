@@ -56,6 +56,29 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/repos/:owner/:name/invitations", Op::ListRepoInvitations, &[]),
     route("DELETE", "/repos/:owner/:name/invitations/:id", Op::RevokeRepoInvitation, &[]),
     route("GET", "/user/repository_invitations", Op::ListMyRepoInvitations, &[]),
+    // Your notifications: threads, marking them, and what you subscribe
+    // to and watch. GitHub's addresses, with g1t's saved and snoozed.
+    route("GET", "/notifications", Op::ListNotifications, &[("all", "all"), ("participating", "participating"), ("view", "view"), ("reason", "reason"), ("severity", "severity"), ("since", "since"), ("before", "before"), ("cursor", "cursor"), ("per_page", "per_page")]),
+    route("PUT", "/notifications", Op::MarkNotificationsRead, &[]),
+    route("GET", "/notifications/threads/:id", Op::GetNotificationThread, &[]),
+    route("PATCH", "/notifications/threads/:id", Op::MarkThreadRead, &[]),
+    route("DELETE", "/notifications/threads/:id", Op::MarkThreadDone, &[]),
+    route("PUT", "/notifications/threads/:id/saved", Op::SaveThread, &[]),
+    route("DELETE", "/notifications/threads/:id/saved", Op::SaveThread, &[]),
+    route("PUT", "/notifications/threads/:id/snooze", Op::SnoozeThread, &[]),
+    route("DELETE", "/notifications/threads/:id/snooze", Op::SnoozeThread, &[]),
+    route("GET", "/notifications/threads/:id/subscription", Op::GetThreadSubscription, &[]),
+    route("PUT", "/notifications/threads/:id/subscription", Op::SetThreadSubscription, &[]),
+    route("DELETE", "/notifications/threads/:id/subscription", Op::DeleteThreadSubscription, &[]),
+    route("GET", "/repos/:owner/:name/notifications", Op::ListNotifications, &[("all", "all"), ("participating", "participating"), ("view", "view"), ("reason", "reason"), ("severity", "severity"), ("since", "since"), ("before", "before"), ("cursor", "cursor"), ("per_page", "per_page")]),
+    route("PUT", "/repos/:owner/:name/notifications", Op::MarkNotificationsRead, &[]),
+    route("GET", "/repos/:owner/:name/subscription", Op::GetRepoSubscription, &[]),
+    route("PUT", "/repos/:owner/:name/subscription", Op::SetRepoSubscription, &[]),
+    route("DELETE", "/repos/:owner/:name/subscription", Op::DeleteRepoSubscription, &[]),
+    route("GET", "/repos/:owner/:name/issues/:number/subscription", Op::GetThreadSubscription, &[]),
+    route("PUT", "/repos/:owner/:name/issues/:number/subscription", Op::SetThreadSubscription, &[]),
+    route("DELETE", "/repos/:owner/:name/issues/:number/subscription", Op::DeleteThreadSubscription, &[]),
+    route("GET", "/user/subscriptions", Op::ListWatchedRepos, &[]),
     route("PATCH", "/user/repository_invitations/:id", Op::AcceptRepoInvitation, &[]),
     route("DELETE", "/user/repository_invitations/:id", Op::DeclineRepoInvitation, &[]),
     route("PATCH", "/workspaces/:workspace", Op::UpdateWorkspace, &[]),
@@ -691,6 +714,13 @@ pub fn resolve(
     if route.path.ends_with("/rerun-failed-jobs") {
         input.insert("failed_only".to_owned(), Value::Bool(true));
     }
+    // Unsaving and waking a thread are a DELETE of what PUT made.
+    if route.method == "DELETE" && route.path.ends_with("/saved") {
+        input.insert("saved".to_owned(), Value::Bool(false));
+    }
+    if route.method == "DELETE" && route.path.ends_with("/snooze") {
+        input.remove("until");
+    }
     if let Some(number) = param("number") {
         // Not a number: zero, which no issue or pull request has.
         input.insert(
@@ -756,6 +786,27 @@ mod tests {
         let (route, input) = resolve("DELETE", "/user/repository_invitations/rin_1", &[], Value::Null).unwrap();
         assert_eq!(route.op, Op::DeclineRepoInvitation);
         assert_eq!(input, json!({ "id": "rin_1" }));
+    }
+
+    #[test]
+    fn notifications_are_addressed_as_threads_and_by_issue() {
+        let (route, input) = resolve("DELETE", "/notifications/threads/ntf_1", &[], Value::Null).unwrap();
+        assert_eq!(route.op, Op::MarkThreadDone);
+        assert_eq!(input, json!({ "id": "ntf_1" }));
+        let (route, input) = resolve("DELETE", "/notifications/threads/ntf_1/saved", &[], Value::Null).unwrap();
+        assert_eq!(route.op, Op::SaveThread);
+        assert_eq!(input, json!({ "id": "ntf_1", "saved": false }));
+        let (route, input) = resolve("DELETE", "/notifications/threads/ntf_1/snooze", &[], json!({ "until": "x" })).unwrap();
+        assert_eq!(route.op, Op::SnoozeThread);
+        assert_eq!(input, json!({ "id": "ntf_1" }));
+        let query = [("all".to_owned(), "true".to_owned()), ("per_page".to_owned(), "50".to_owned())];
+        let (route, input) = resolve("GET", "/repos/acme/rocket/notifications", &query, Value::Null).unwrap();
+        assert_eq!(route.op, Op::ListNotifications);
+        assert_eq!(input, json!({ "all": "true", "per_page": "50", "repo": "acme/rocket" }));
+        let (route, input) = resolve("PUT", "/repos/acme/rocket/issues/7/subscription", &[], json!({ "ignored": true })).unwrap();
+        assert_eq!(route.op, Op::SetThreadSubscription);
+        assert_eq!(input, json!({ "ignored": true, "number": 7, "repo": "acme/rocket" }));
+        assert_eq!(resolve("GET", "/user/subscriptions", &[], Value::Null).unwrap().0.op, Op::ListWatchedRepos);
     }
 
     #[test]

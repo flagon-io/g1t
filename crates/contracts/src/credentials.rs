@@ -263,6 +263,11 @@ pub const READ_OPERATIONS: &[&str] = &[
     "list_actions_secrets",
     "list_actions_variables",
     "list_security_alerts",
+    "list_notifications",
+    "get_notification_thread",
+    "get_thread_subscription",
+    "get_repo_subscription",
+    "list_watched_repos",
 ];
 
 /// What no agent's token may ever do, whatever its scope says: workspaces,
@@ -329,6 +334,21 @@ pub const NEVER: &[&str] = &[
     // Dismissing a secret lets it through push protection.
     "dismiss_security_alert",
     "reopen_security_alert",
+    // A person's own inbox: g1t's agents act as g1t, which has none.
+    "list_notifications",
+    "get_notification_thread",
+    "mark_notifications_read",
+    "mark_thread_read",
+    "mark_thread_done",
+    "save_thread",
+    "snooze_thread",
+    "get_thread_subscription",
+    "set_thread_subscription",
+    "delete_thread_subscription",
+    "get_repo_subscription",
+    "set_repo_subscription",
+    "delete_repo_subscription",
+    "list_watched_repos",
 ];
 
 /// Reading what an agent needs to know about its repository.

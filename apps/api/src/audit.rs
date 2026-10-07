@@ -187,6 +187,10 @@ async fn record(
     if !actor.records_reads() && is_read(op.name()) {
         return;
     }
+    // A person's own inbox is nobody else's business.
+    if op.personal() {
+        return;
+    }
     let mut entry = NewAuditEntry::new(
         actor,
         op.name(),

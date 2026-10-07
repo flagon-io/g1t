@@ -9,6 +9,7 @@ mod alerts;
 mod audit;
 mod blobs;
 mod mcp;
+mod notifications;
 mod oauth;
 mod openapi;
 mod operations;

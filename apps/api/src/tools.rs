@@ -245,6 +245,28 @@ pub const TOOLS: &[Tool] = &[
         ],
     },
     Tool {
+        name: "notifications",
+        title: "Notifications",
+        description: "Your inbox: what needs you, and what you follow. One thread per issue, pull request, workflow or deployment, with why you were told (`reason`): an agent waiting on you, a review asked of you, an assignment, a mention, your work's checks, or what you subscribe to and watch. Mark threads read or done once handled, and choose what you hear of with subscribe, unsubscribe and watch. Your own: a personal token.",
+        default_action: Some("list"),
+        actions: &[
+            a("list", Op::ListNotifications, "Unread threads, latest first; all, a view, a reason, a repository"),
+            a("get", Op::GetNotificationThread, "One thread with its recent activity and your subscription"),
+            a("mark_read", Op::MarkThreadRead, "Mark a thread read, or unread"),
+            a("mark_all_read", Op::MarkNotificationsRead, "Mark everything read up to a time, or one repository's"),
+            a("done", Op::MarkThreadDone, "Mark a thread done; new activity brings it back"),
+            a("save", Op::SaveThread, "Save a thread, or unsave it"),
+            a("snooze", Op::SnoozeThread, "Snooze a thread until a time, or bring it back"),
+            a("subscription", Op::GetThreadSubscription, "Your subscription to an issue or pull request"),
+            a("subscribe", Op::SetThreadSubscription, "Subscribe to an issue or pull request, or ignore it"),
+            a("unsubscribe", Op::DeleteThreadSubscription, "Unsubscribe until you comment or are mentioned"),
+            a("watching", Op::GetRepoSubscription, "How you watch a repository"),
+            a("watch", Op::SetRepoSubscription, "Watch a repository: participating, all, ignore or custom"),
+            a("unwatch", Op::DeleteRepoSubscription, "Stop watching a repository"),
+            a("watched", Op::ListWatchedRepos, "Repositories you watch other than the default way"),
+        ],
+    },
+    Tool {
         name: "account",
         title: "Your account",
         description: "Who this token acts as and its workspaces (`whoami`), your email addresses, your invites, and invitations to repositories waiting for you.",
@@ -613,6 +635,16 @@ mod tests {
         let access = token(Some(vec![Scope::IssuesWrite]));
         let names: Vec<Value> = listed(&Gate::Token(&access)).into_iter().map(|tool| tool["name"].clone()).collect();
         assert_eq!(names, vec![json!("issue"), json!("plan"), json!("account")]);
+        // Notifications are a resource of their own: reading them lists
+        // only what reads.
+        let reader = token(Some(vec![Scope::NotificationsRead]));
+        let tools = listed(&Gate::Token(&reader));
+        let notifications = tools.iter().find(|tool| tool["name"] == "notifications").unwrap();
+        assert_eq!(
+            notifications["inputSchema"]["properties"]["action"]["enum"],
+            json!(["list", "get", "subscription", "watching", "watched"])
+        );
+        assert_eq!(notifications["annotations"]["readOnlyHint"], true);
         let full = token(None);
         assert_eq!(listed(&Gate::Token(&full)).len(), TOOLS.len());
         assert_eq!(listed(&Gate::Everything).len(), TOOLS.len());

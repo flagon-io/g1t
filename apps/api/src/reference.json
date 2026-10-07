@@ -4234,5 +4234,748 @@
 			"dismissed_at": null
 		},
 		"notes": "The alert is `open` again, and a reopened secret stops pushes that carry it. The same roles as dismissing: Admin for a secret, Write for a dependency."
+	},
+	"list_notifications": {
+		"query": {
+			"participating": "true"
+		},
+		"response": {
+			"items": [
+				{
+					"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a",
+					"reason": "review_requested",
+					"severity": "warning",
+					"title": "ada asked you to review flagon-io/hello#14",
+					"body": "Add a greeting to the README",
+					"event": "pull.review_requested",
+					"repo": "flagon-io/hello",
+					"workspace": "flagon-io",
+					"subject": "pull",
+					"number": 14,
+					"url": "/flagon-io/hello/pull/14",
+					"actor": "ada",
+					"count": 3,
+					"created_at": "2026-10-06T15:02:11.000Z",
+					"updated_at": "2026-10-07T09:41:30.000Z",
+					"read_at": null,
+					"done_at": null,
+					"saved": false,
+					"snoozed_until": null
+				},
+				{
+					"id": "ntf_01kp7k9a8b7c6d5e4f3g2h1j0k",
+					"reason": "ci_activity",
+					"severity": "error",
+					"title": "Production of hello failed to deploy",
+					"body": "The build failed: npm run build exited with 1.",
+					"event": "deployment.failed",
+					"repo": "flagon-io/hello",
+					"workspace": "flagon-io",
+					"subject": "deploy",
+					"number": null,
+					"url": "/flagon-io/hello/deployments/dpl_01kp7k8z7y6x5w4v3t2s1r0q9p",
+					"actor": "syntaqx",
+					"count": 1,
+					"created_at": "2026-10-07T08:12:40.000Z",
+					"updated_at": "2026-10-07T08:12:40.000Z",
+					"read_at": null,
+					"done_at": null,
+					"saved": false,
+					"snoozed_until": null
+				}
+			],
+			"next": null
+		},
+		"notes": "Unread threads only, unless `all=true`. Threads that wait on you (an agent, or a review asked of you) have severity `warning`.\n\n| `reason` | You were told because |\n| --- | --- |\n| `agent` | An agent is waiting on you: it asked a question, or g1t stopped until a person steps in |\n| `review_requested` | You were asked to review |\n| `assign` | You were assigned |\n| `mention` | Someone mentioned you by `@username` |\n| `ci_activity` | Checks, a workflow or a deployment on your work finished |\n| `security_alert` | A security alert on a repository you look after |\n| `state_change` | It was closed, reopened or merged |\n| `author` | You opened it, or asked g1t for it |\n| `comment` | You commented on it |\n| `manual` | You subscribed to it by hand |\n| `subscribed` | You watch its repository |\n\nWith `participating=true`, threads you only follow (`manual`, `subscribed`) are left out. For the next page, pass `next` as `cursor`; `next` is null on the last."
+	},
+	"list_repo_notifications": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"query": {
+			"all": "true"
+		},
+		"response": {
+			"items": [
+				{
+					"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a",
+					"reason": "review_requested",
+					"severity": "warning",
+					"title": "ada asked you to review flagon-io/hello#14",
+					"body": "Add a greeting to the README",
+					"event": "pull.review_requested",
+					"repo": "flagon-io/hello",
+					"workspace": "flagon-io",
+					"subject": "pull",
+					"number": 14,
+					"url": "/flagon-io/hello/pull/14",
+					"actor": "ada",
+					"count": 3,
+					"created_at": "2026-10-06T15:02:11.000Z",
+					"updated_at": "2026-10-07T09:41:30.000Z",
+					"read_at": "2026-10-07T09:50:00.000Z",
+					"done_at": null,
+					"saved": false,
+					"snoozed_until": null
+				},
+				{
+					"id": "ntf_01kp7k9a8b7c6d5e4f3g2h1j0k",
+					"reason": "ci_activity",
+					"severity": "error",
+					"title": "Production of hello failed to deploy",
+					"body": "The build failed: npm run build exited with 1.",
+					"event": "deployment.failed",
+					"repo": "flagon-io/hello",
+					"workspace": "flagon-io",
+					"subject": "deploy",
+					"number": null,
+					"url": "/flagon-io/hello/deployments/dpl_01kp7k8z7y6x5w4v3t2s1r0q9p",
+					"actor": "syntaqx",
+					"count": 1,
+					"created_at": "2026-10-07T08:12:40.000Z",
+					"updated_at": "2026-10-07T08:12:40.000Z",
+					"read_at": null,
+					"done_at": null,
+					"saved": false,
+					"snoozed_until": null
+				}
+			],
+			"next": "ntf_01kp7k9a8b7c6d5e4f3g2h1j0k"
+		},
+		"notes": "The same as `GET /notifications`, for one repository you can read."
+	},
+	"mark_notifications_read": {
+		"request": {
+			"last_read_at": "2026-10-07T10:00:00Z"
+		},
+		"response": {
+			"marked": 12,
+			"last_read_at": "2026-10-07T10:00:00.000Z"
+		},
+		"notes": "Threads with activity after `last_read_at` stay unread, so send the time you last listed them."
+	},
+	"mark_repo_notifications_read": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"request": {},
+		"response": {
+			"marked": 3,
+			"last_read_at": "2026-10-07T10:02:41.512Z"
+		}
+	},
+	"get_notification_thread": {
+		"params": {
+			"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+		},
+		"response": {
+			"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a",
+			"reason": "review_requested",
+			"severity": "warning",
+			"title": "ada asked you to review flagon-io/hello#14",
+			"body": "Add a greeting to the README",
+			"event": "pull.review_requested",
+			"repo": "flagon-io/hello",
+			"workspace": "flagon-io",
+			"subject": "pull",
+			"number": 14,
+			"url": "/flagon-io/hello/pull/14",
+			"actor": "ada",
+			"count": 3,
+			"created_at": "2026-10-06T15:02:11.000Z",
+			"updated_at": "2026-10-07T09:41:30.000Z",
+			"read_at": null,
+			"done_at": null,
+			"saved": false,
+			"snoozed_until": null,
+			"activity": [
+				{
+					"reason": "review_requested",
+					"severity": "warning",
+					"title": "ada asked you to review flagon-io/hello#14",
+					"body": "Add a greeting to the README",
+					"event": "pull.review_requested",
+					"actor": "ada",
+					"created_at": "2026-10-07T09:41:30.000Z"
+				},
+				{
+					"reason": "comment",
+					"severity": "info",
+					"title": "ada commented on flagon-io/hello#14",
+					"body": "Pushed the fix for the heading.",
+					"event": "comment.created",
+					"actor": "ada",
+					"created_at": "2026-10-06T18:20:02.000Z"
+				},
+				{
+					"reason": "comment",
+					"severity": "info",
+					"title": "g1t commented on flagon-io/hello#14",
+					"body": "The heading level is off by one.",
+					"event": "comment.created",
+					"actor": "g1t",
+					"created_at": "2026-10-06T15:02:11.000Z"
+				}
+			],
+			"subscription": {
+				"subscribed": true,
+				"ignored": false,
+				"reason": "review_requested",
+				"repo": "flagon-io/hello",
+				"number": 14,
+				"updated_at": null
+			}
+		},
+		"notes": "`activity` keeps the last 10 things that happened on the thread, newest first; `count` is how many there have been. `subscription` is null for a workflow or a deployment, which nobody subscribes to."
+	},
+	"mark_thread_read": {
+		"params": {
+			"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+		},
+		"request": {},
+		"response": {
+			"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a",
+			"reason": "review_requested",
+			"severity": "warning",
+			"title": "ada asked you to review flagon-io/hello#14",
+			"body": "Add a greeting to the README",
+			"event": "pull.review_requested",
+			"repo": "flagon-io/hello",
+			"workspace": "flagon-io",
+			"subject": "pull",
+			"number": 14,
+			"url": "/flagon-io/hello/pull/14",
+			"actor": "ada",
+			"count": 3,
+			"created_at": "2026-10-06T15:02:11.000Z",
+			"updated_at": "2026-10-07T09:41:30.000Z",
+			"read_at": "2026-10-07T10:03:00.000Z",
+			"done_at": null,
+			"saved": false,
+			"snoozed_until": null,
+			"activity": [
+				{
+					"reason": "review_requested",
+					"severity": "warning",
+					"title": "ada asked you to review flagon-io/hello#14",
+					"body": "Add a greeting to the README",
+					"event": "pull.review_requested",
+					"actor": "ada",
+					"created_at": "2026-10-07T09:41:30.000Z"
+				},
+				{
+					"reason": "comment",
+					"severity": "info",
+					"title": "ada commented on flagon-io/hello#14",
+					"body": "Pushed the fix for the heading.",
+					"event": "comment.created",
+					"actor": "ada",
+					"created_at": "2026-10-06T18:20:02.000Z"
+				},
+				{
+					"reason": "comment",
+					"severity": "info",
+					"title": "g1t commented on flagon-io/hello#14",
+					"body": "The heading level is off by one.",
+					"event": "comment.created",
+					"actor": "g1t",
+					"created_at": "2026-10-06T15:02:11.000Z"
+				}
+			],
+			"subscription": {
+				"subscribed": true,
+				"ignored": false,
+				"reason": "review_requested",
+				"repo": "flagon-io/hello",
+				"number": 14,
+				"updated_at": null
+			}
+		}
+	},
+	"mark_thread_done": {
+		"params": {
+			"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+		},
+		"response": {
+			"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a",
+			"reason": "review_requested",
+			"severity": "warning",
+			"title": "ada asked you to review flagon-io/hello#14",
+			"body": "Add a greeting to the README",
+			"event": "pull.review_requested",
+			"repo": "flagon-io/hello",
+			"workspace": "flagon-io",
+			"subject": "pull",
+			"number": 14,
+			"url": "/flagon-io/hello/pull/14",
+			"actor": "ada",
+			"count": 3,
+			"created_at": "2026-10-06T15:02:11.000Z",
+			"updated_at": "2026-10-07T09:41:30.000Z",
+			"read_at": "2026-10-07T10:03:00.000Z",
+			"done_at": "2026-10-07T10:03:00.000Z",
+			"saved": false,
+			"snoozed_until": null,
+			"activity": [
+				{
+					"reason": "review_requested",
+					"severity": "warning",
+					"title": "ada asked you to review flagon-io/hello#14",
+					"body": "Add a greeting to the README",
+					"event": "pull.review_requested",
+					"actor": "ada",
+					"created_at": "2026-10-07T09:41:30.000Z"
+				},
+				{
+					"reason": "comment",
+					"severity": "info",
+					"title": "ada commented on flagon-io/hello#14",
+					"body": "Pushed the fix for the heading.",
+					"event": "comment.created",
+					"actor": "ada",
+					"created_at": "2026-10-06T18:20:02.000Z"
+				},
+				{
+					"reason": "comment",
+					"severity": "info",
+					"title": "g1t commented on flagon-io/hello#14",
+					"body": "The heading level is off by one.",
+					"event": "comment.created",
+					"actor": "g1t",
+					"created_at": "2026-10-06T15:02:11.000Z"
+				}
+			],
+			"subscription": {
+				"subscribed": true,
+				"ignored": false,
+				"reason": "review_requested",
+				"repo": "flagon-io/hello",
+				"number": 14,
+				"updated_at": null
+			}
+		},
+		"notes": "New activity on a done thread brings it back to the inbox, unread."
+	},
+	"save_thread": {
+		"params": {
+			"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+		},
+		"request": {},
+		"response": {
+			"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a",
+			"reason": "review_requested",
+			"severity": "warning",
+			"title": "ada asked you to review flagon-io/hello#14",
+			"body": "Add a greeting to the README",
+			"event": "pull.review_requested",
+			"repo": "flagon-io/hello",
+			"workspace": "flagon-io",
+			"subject": "pull",
+			"number": 14,
+			"url": "/flagon-io/hello/pull/14",
+			"actor": "ada",
+			"count": 3,
+			"created_at": "2026-10-06T15:02:11.000Z",
+			"updated_at": "2026-10-07T09:41:30.000Z",
+			"read_at": null,
+			"done_at": null,
+			"saved": true,
+			"snoozed_until": null,
+			"activity": [
+				{
+					"reason": "review_requested",
+					"severity": "warning",
+					"title": "ada asked you to review flagon-io/hello#14",
+					"body": "Add a greeting to the README",
+					"event": "pull.review_requested",
+					"actor": "ada",
+					"created_at": "2026-10-07T09:41:30.000Z"
+				},
+				{
+					"reason": "comment",
+					"severity": "info",
+					"title": "ada commented on flagon-io/hello#14",
+					"body": "Pushed the fix for the heading.",
+					"event": "comment.created",
+					"actor": "ada",
+					"created_at": "2026-10-06T18:20:02.000Z"
+				},
+				{
+					"reason": "comment",
+					"severity": "info",
+					"title": "g1t commented on flagon-io/hello#14",
+					"body": "The heading level is off by one.",
+					"event": "comment.created",
+					"actor": "g1t",
+					"created_at": "2026-10-06T15:02:11.000Z"
+				}
+			],
+			"subscription": {
+				"subscribed": true,
+				"ignored": false,
+				"reason": "review_requested",
+				"repo": "flagon-io/hello",
+				"number": 14,
+				"updated_at": null
+			}
+		}
+	},
+	"unsave_thread": {
+		"params": {
+			"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+		},
+		"response": {
+			"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a",
+			"reason": "review_requested",
+			"severity": "warning",
+			"title": "ada asked you to review flagon-io/hello#14",
+			"body": "Add a greeting to the README",
+			"event": "pull.review_requested",
+			"repo": "flagon-io/hello",
+			"workspace": "flagon-io",
+			"subject": "pull",
+			"number": 14,
+			"url": "/flagon-io/hello/pull/14",
+			"actor": "ada",
+			"count": 3,
+			"created_at": "2026-10-06T15:02:11.000Z",
+			"updated_at": "2026-10-07T09:41:30.000Z",
+			"read_at": null,
+			"done_at": null,
+			"saved": false,
+			"snoozed_until": null,
+			"activity": [
+				{
+					"reason": "review_requested",
+					"severity": "warning",
+					"title": "ada asked you to review flagon-io/hello#14",
+					"body": "Add a greeting to the README",
+					"event": "pull.review_requested",
+					"actor": "ada",
+					"created_at": "2026-10-07T09:41:30.000Z"
+				},
+				{
+					"reason": "comment",
+					"severity": "info",
+					"title": "ada commented on flagon-io/hello#14",
+					"body": "Pushed the fix for the heading.",
+					"event": "comment.created",
+					"actor": "ada",
+					"created_at": "2026-10-06T18:20:02.000Z"
+				},
+				{
+					"reason": "comment",
+					"severity": "info",
+					"title": "g1t commented on flagon-io/hello#14",
+					"body": "The heading level is off by one.",
+					"event": "comment.created",
+					"actor": "g1t",
+					"created_at": "2026-10-06T15:02:11.000Z"
+				}
+			],
+			"subscription": {
+				"subscribed": true,
+				"ignored": false,
+				"reason": "review_requested",
+				"repo": "flagon-io/hello",
+				"number": 14,
+				"updated_at": null
+			}
+		}
+	},
+	"snooze_thread": {
+		"params": {
+			"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+		},
+		"request": {
+			"until": "2026-10-08T09:00:00Z"
+		},
+		"response": {
+			"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a",
+			"reason": "review_requested",
+			"severity": "warning",
+			"title": "ada asked you to review flagon-io/hello#14",
+			"body": "Add a greeting to the README",
+			"event": "pull.review_requested",
+			"repo": "flagon-io/hello",
+			"workspace": "flagon-io",
+			"subject": "pull",
+			"number": 14,
+			"url": "/flagon-io/hello/pull/14",
+			"actor": "ada",
+			"count": 3,
+			"created_at": "2026-10-06T15:02:11.000Z",
+			"updated_at": "2026-10-07T09:41:30.000Z",
+			"read_at": "2026-10-07T10:03:00.000Z",
+			"done_at": null,
+			"saved": false,
+			"snoozed_until": "2026-10-08T09:00:00.000Z",
+			"activity": [
+				{
+					"reason": "review_requested",
+					"severity": "warning",
+					"title": "ada asked you to review flagon-io/hello#14",
+					"body": "Add a greeting to the README",
+					"event": "pull.review_requested",
+					"actor": "ada",
+					"created_at": "2026-10-07T09:41:30.000Z"
+				},
+				{
+					"reason": "comment",
+					"severity": "info",
+					"title": "ada commented on flagon-io/hello#14",
+					"body": "Pushed the fix for the heading.",
+					"event": "comment.created",
+					"actor": "ada",
+					"created_at": "2026-10-06T18:20:02.000Z"
+				},
+				{
+					"reason": "comment",
+					"severity": "info",
+					"title": "g1t commented on flagon-io/hello#14",
+					"body": "The heading level is off by one.",
+					"event": "comment.created",
+					"actor": "g1t",
+					"created_at": "2026-10-06T15:02:11.000Z"
+				}
+			],
+			"subscription": {
+				"subscribed": true,
+				"ignored": false,
+				"reason": "review_requested",
+				"repo": "flagon-io/hello",
+				"number": 14,
+				"updated_at": null
+			}
+		}
+	},
+	"unsnooze_thread": {
+		"params": {
+			"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+		},
+		"response": {
+			"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a",
+			"reason": "review_requested",
+			"severity": "warning",
+			"title": "ada asked you to review flagon-io/hello#14",
+			"body": "Add a greeting to the README",
+			"event": "pull.review_requested",
+			"repo": "flagon-io/hello",
+			"workspace": "flagon-io",
+			"subject": "pull",
+			"number": 14,
+			"url": "/flagon-io/hello/pull/14",
+			"actor": "ada",
+			"count": 3,
+			"created_at": "2026-10-06T15:02:11.000Z",
+			"updated_at": "2026-10-07T09:41:30.000Z",
+			"read_at": "2026-10-07T10:03:00.000Z",
+			"done_at": null,
+			"saved": false,
+			"snoozed_until": null,
+			"activity": [
+				{
+					"reason": "review_requested",
+					"severity": "warning",
+					"title": "ada asked you to review flagon-io/hello#14",
+					"body": "Add a greeting to the README",
+					"event": "pull.review_requested",
+					"actor": "ada",
+					"created_at": "2026-10-07T09:41:30.000Z"
+				},
+				{
+					"reason": "comment",
+					"severity": "info",
+					"title": "ada commented on flagon-io/hello#14",
+					"body": "Pushed the fix for the heading.",
+					"event": "comment.created",
+					"actor": "ada",
+					"created_at": "2026-10-06T18:20:02.000Z"
+				},
+				{
+					"reason": "comment",
+					"severity": "info",
+					"title": "g1t commented on flagon-io/hello#14",
+					"body": "The heading level is off by one.",
+					"event": "comment.created",
+					"actor": "g1t",
+					"created_at": "2026-10-06T15:02:11.000Z"
+				}
+			],
+			"subscription": {
+				"subscribed": true,
+				"ignored": false,
+				"reason": "review_requested",
+				"repo": "flagon-io/hello",
+				"number": 14,
+				"updated_at": null
+			}
+		}
+	},
+	"get_thread_subscription": {
+		"params": {
+			"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+		},
+		"response": {
+			"subscribed": true,
+			"ignored": false,
+			"reason": "review_requested",
+			"repo": "flagon-io/hello",
+			"number": 14,
+			"updated_at": null
+		}
+	},
+	"set_thread_subscription": {
+		"params": {
+			"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+		},
+		"request": {
+			"ignored": true
+		},
+		"response": {
+			"subscribed": false,
+			"ignored": true,
+			"reason": null,
+			"repo": "flagon-io/hello",
+			"number": 14,
+			"updated_at": "2026-10-07T10:04:00.000Z"
+		},
+		"notes": "| Body | Then |\n| --- | --- |\n| `{}` or `{\"subscribed\": true}` | You hear of what happens on it |\n| `{\"subscribed\": false}` | You hear only of what is asked of you |\n| `{\"ignored\": true}` | You hear of nothing on it, not even a mention |"
+	},
+	"delete_thread_subscription": {
+		"params": {
+			"id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+		},
+		"response": {
+			"subscribed": false,
+			"ignored": false,
+			"reason": null,
+			"repo": "flagon-io/hello",
+			"number": 14,
+			"updated_at": "2026-10-07T10:04:00.000Z"
+		}
+	},
+	"get_issue_subscription": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"number": 14
+		},
+		"response": {
+			"subscribed": true,
+			"ignored": false,
+			"reason": "author",
+			"repo": null,
+			"number": 14,
+			"updated_at": null
+		}
+	},
+	"set_issue_subscription": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"number": 14
+		},
+		"request": {
+			"subscribed": true
+		},
+		"response": {
+			"subscribed": true,
+			"ignored": false,
+			"reason": "manual",
+			"repo": null,
+			"number": 14,
+			"updated_at": "2026-10-07T10:05:00.000Z"
+		}
+	},
+	"delete_issue_subscription": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"number": 14
+		},
+		"response": {
+			"subscribed": false,
+			"ignored": false,
+			"reason": null,
+			"repo": null,
+			"number": 14,
+			"updated_at": "2026-10-07T10:05:30.000Z"
+		}
+	},
+	"get_repo_subscription": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"response": {
+			"repo": "flagon-io/hello",
+			"level": "participating",
+			"events": [],
+			"subscribed": false,
+			"ignored": false,
+			"updated_at": null
+		}
+	},
+	"set_repo_subscription": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"request": {
+			"level": "custom",
+			"events": [
+				"pulls",
+				"deployments"
+			]
+		},
+		"response": {
+			"repo": "flagon-io/hello",
+			"level": "custom",
+			"events": [
+				"pulls",
+				"deployments"
+			],
+			"subscribed": true,
+			"ignored": false,
+			"updated_at": "2026-10-07T10:06:00.000Z"
+		},
+		"notes": "| `level` | You hear of |\n| --- | --- |\n| `participating` | What you take part in, or are mentioned in (the default) |\n| `all` | Every issue and pull request opened, commented on, closed or merged, and every deployment |\n| `custom` | What you take part in, and the kinds in `events`: `issues`, `pulls`, `deployments`, `security` |\n| `ignore` | Nothing, not even a mention |\n\nInstead of `level`, `{\"subscribed\": true}` is `all`, `{\"subscribed\": false}` is `participating` and `{\"ignored\": true}` is `ignore`."
+	},
+	"delete_repo_subscription": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"response": {
+			"repo": "flagon-io/hello",
+			"level": "participating",
+			"events": [],
+			"subscribed": false,
+			"ignored": false,
+			"updated_at": null
+		}
+	},
+	"list_watched_repos": {
+		"response": [
+			{
+				"repo": "flagon-io/hello",
+				"level": "all",
+				"events": [],
+				"subscribed": true,
+				"ignored": false,
+				"updated_at": "2026-10-07T10:00:00.000Z"
+			},
+			{
+				"repo": "flagon-io/docs",
+				"level": "ignore",
+				"events": [],
+				"subscribed": false,
+				"ignored": true,
+				"updated_at": "2026-10-05T14:30:00.000Z"
+			}
+		]
 	}
 }

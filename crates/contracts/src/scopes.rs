@@ -23,6 +23,7 @@ use crate::credentials::Decision;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Resource {
     Account,
+    Notifications,
     Workspace,
     Repo,
     Code,
@@ -39,7 +40,7 @@ pub enum Resource {
 }
 
 impl Resource {
-    pub const ALL: [Resource; 14] = [
+    pub const ALL: [Resource; 15] = [
         Resource::Repo,
         Resource::Code,
         Resource::Packages,
@@ -49,6 +50,7 @@ impl Resource {
         Resource::Workflows,
         Resource::Memory,
         Resource::Account,
+        Resource::Notifications,
         Resource::Workspace,
         Resource::Access,
         Resource::Webhooks,
@@ -59,6 +61,7 @@ impl Resource {
     pub fn as_str(self) -> &'static str {
         match self {
             Resource::Account => "account",
+            Resource::Notifications => "notifications",
             Resource::Workspace => "workspace",
             Resource::Repo => "repo",
             Resource::Code => "code",
@@ -79,6 +82,7 @@ impl Resource {
     pub fn label(self) -> &'static str {
         match self {
             Resource::Account => "Your account",
+            Resource::Notifications => "Notifications",
             Resource::Workspace => "Workspaces",
             Resource::Repo => "Repositories",
             Resource::Code => "Code",
@@ -143,6 +147,8 @@ pub enum Scope {
     MemoryWrite,
     AccountRead,
     AccountWrite,
+    NotificationsRead,
+    NotificationsWrite,
     WorkspaceRead,
     WorkspaceAdmin,
     AccessRead,
@@ -157,7 +163,7 @@ pub enum Scope {
 
 impl Scope {
     /// Every scope, grouped by resource, least first.
-    pub const ALL: [Scope; 29] = [
+    pub const ALL: [Scope; 31] = [
         Scope::RepoRead,
         Scope::RepoWrite,
         Scope::RepoAdmin,
@@ -177,6 +183,8 @@ impl Scope {
         Scope::MemoryWrite,
         Scope::AccountRead,
         Scope::AccountWrite,
+        Scope::NotificationsRead,
+        Scope::NotificationsWrite,
         Scope::WorkspaceRead,
         Scope::WorkspaceAdmin,
         Scope::AccessRead,
@@ -210,6 +218,8 @@ impl Scope {
             Scope::MemoryWrite => "memory:write",
             Scope::AccountRead => "account:read",
             Scope::AccountWrite => "account:write",
+            Scope::NotificationsRead => "notifications:read",
+            Scope::NotificationsWrite => "notifications:write",
             Scope::WorkspaceRead => "workspace:read",
             Scope::WorkspaceAdmin => "workspace:admin",
             Scope::AccessRead => "access:read",
@@ -280,6 +290,8 @@ impl Scope {
             Scope::MemoryWrite => "Save memory for the next agent",
             Scope::AccountRead => "Read your email addresses, invites and invitations",
             Scope::AccountWrite => "Change your email addresses, make invites and answer invitations",
+            Scope::NotificationsRead => "See your inbox, its threads, and what you subscribe to and watch",
+            Scope::NotificationsWrite => "Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories",
             Scope::WorkspaceRead => "Read workspace invites, integrations and model routes",
             Scope::WorkspaceAdmin => "Create and delete workspaces, invite members, connect integrations",
             Scope::AccessRead => "See who has access to repositories",
@@ -373,12 +385,15 @@ impl Preset {
                 // Not the machines work runs on: an agent has no business
                 // knowing a workspace's own runners.
                 let mut scopes: Vec<Scope> = reads().filter(|scope| scope.resource() != Resource::Runners).collect();
+                // And answering what needs the person it works for: marking
+                // it done, subscribing, watching.
                 scopes.extend([
                     Scope::CodeWrite,
                     Scope::IssuesWrite,
                     Scope::PullRequestsWrite,
                     Scope::AgentsRun,
                     Scope::MemoryWrite,
+                    Scope::NotificationsWrite,
                 ]);
                 normalize(&mut scopes);
                 Some(scopes)
@@ -460,6 +475,21 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("list_my_repo_invitations", Scope::AccountRead),
     ("accept_repo_invitation", Scope::AccountWrite),
     ("decline_repo_invitation", Scope::AccountWrite),
+    // Your inbox: notifications, subscriptions and watching.
+    ("list_notifications", Scope::NotificationsRead),
+    ("get_notification_thread", Scope::NotificationsRead),
+    ("get_thread_subscription", Scope::NotificationsRead),
+    ("get_repo_subscription", Scope::NotificationsRead),
+    ("list_watched_repos", Scope::NotificationsRead),
+    ("mark_notifications_read", Scope::NotificationsWrite),
+    ("mark_thread_read", Scope::NotificationsWrite),
+    ("mark_thread_done", Scope::NotificationsWrite),
+    ("save_thread", Scope::NotificationsWrite),
+    ("snooze_thread", Scope::NotificationsWrite),
+    ("set_thread_subscription", Scope::NotificationsWrite),
+    ("delete_thread_subscription", Scope::NotificationsWrite),
+    ("set_repo_subscription", Scope::NotificationsWrite),
+    ("delete_repo_subscription", Scope::NotificationsWrite),
     // Workspaces, their invites and integrations.
     ("create_workspace", Scope::WorkspaceAdmin),
     ("delete_workspace", Scope::WorkspaceAdmin),

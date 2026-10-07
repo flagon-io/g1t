@@ -18,6 +18,7 @@ export type ScopeResource =
   | "workflows"
   | "memory"
   | "account"
+  | "notifications"
   | "workspace"
   | "access"
   | "webhooks"
@@ -47,6 +48,8 @@ export const SCOPES = [
   { scope: "memory:write", description: "Save memory for the next agent" },
   { scope: "account:read", description: "Read your email addresses, invites and invitations" },
   { scope: "account:write", description: "Change your email addresses, make invites and answer invitations" },
+  { scope: "notifications:read", description: "See your inbox, its threads, and what you subscribe to and watch" },
+  { scope: "notifications:write", description: "Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories" },
   { scope: "workspace:read", description: "Read workspace invites, integrations and model routes" },
   { scope: "workspace:admin", description: "Create and delete workspaces, invite members, connect integrations" },
   { scope: "access:read", description: "See who has access to repositories" },
@@ -72,6 +75,7 @@ export const SCOPE_RESOURCES: { resource: ScopeResource; label: string }[] = [
   { resource: "workflows", label: "Workflows" },
   { resource: "memory", label: "Memory and context" },
   { resource: "account", label: "Your account" },
+  { resource: "notifications", label: "Notifications" },
   { resource: "workspace", label: "Workspaces" },
   { resource: "access", label: "Who has access" },
   { resource: "webhooks", label: "Webhooks" },
@@ -130,10 +134,10 @@ export type PresetId = "read_only" | "agent" | "ci" | "full";
 /** Starting points for choosing scopes. `*` is full access. */
 export const PRESET_SCOPES = {
   read_only: [
-    "repo:read", "code:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "memory:read", "account:read", "workspace:read", "access:read", "webhooks:read", "secrets:read", "runners:read",
+    "repo:read", "code:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "memory:read", "account:read", "notifications:read", "workspace:read", "access:read", "webhooks:read", "secrets:read", "runners:read",
   ] as const,
   agent: [
-    "repo:read", "code:read", "code:write", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "agents:run", "workflows:read", "memory:read", "memory:write", "account:read", "workspace:read", "access:read", "webhooks:read", "secrets:read",
+    "repo:read", "code:read", "code:write", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "agents:run", "workflows:read", "memory:read", "memory:write", "account:read", "notifications:read", "notifications:write", "workspace:read", "access:read", "webhooks:read", "secrets:read",
   ] as const,
   ci: [
     "repo:read", "code:read", "code:write", "packages:read", "packages:write", "workflows:read", "workflows:write",
@@ -171,6 +175,21 @@ export const OPERATION_SCOPES = [
   ["list_my_repo_invitations", "account:read"],
   ["accept_repo_invitation", "account:write"],
   ["decline_repo_invitation", "account:write"],
+  // Your inbox: notifications, subscriptions and watching.
+  ["list_notifications", "notifications:read"],
+  ["get_notification_thread", "notifications:read"],
+  ["get_thread_subscription", "notifications:read"],
+  ["get_repo_subscription", "notifications:read"],
+  ["list_watched_repos", "notifications:read"],
+  ["mark_notifications_read", "notifications:write"],
+  ["mark_thread_read", "notifications:write"],
+  ["mark_thread_done", "notifications:write"],
+  ["save_thread", "notifications:write"],
+  ["snooze_thread", "notifications:write"],
+  ["set_thread_subscription", "notifications:write"],
+  ["delete_thread_subscription", "notifications:write"],
+  ["set_repo_subscription", "notifications:write"],
+  ["delete_repo_subscription", "notifications:write"],
   ["create_workspace", "workspace:admin"],
   ["delete_workspace", "workspace:admin"],
   ["update_workspace", "workspace:admin"],
@@ -303,6 +322,7 @@ export const SCOPE_GROUPS: { id: string; label: string; scopes: Scope[] }[] = [
   { id: "workflows", label: "Workflows", scopes: ["workflows:read", "workflows:write"] },
   { id: "memory", label: "Memory & search", scopes: ["memory:read", "memory:write"] },
   { id: "account", label: "Account", scopes: ["account:read", "account:write"] },
+  { id: "notifications", label: "Notifications", scopes: ["notifications:read", "notifications:write"] },
   { id: "workspace", label: "Workspace", scopes: ["workspace:read", "access:read", "webhooks:read", "secrets:read"] },
   { id: "runners", label: "Runners", scopes: ["runners:read"] },
 ];

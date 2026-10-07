@@ -19,6 +19,7 @@ use g1t_contracts::security::{
 };
 
 use crate::alerts::{AlertKind, SecurityAlert};
+use g1t_contracts::inbox::{Reason, Severity, WATCH_EVENTS, WatchLevel};
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome, Viewer};
 use serde::Serialize;
@@ -192,6 +193,20 @@ pub enum Op {
     ListSecurityAlerts,
     DismissSecurityAlert,
     ReopenSecurityAlert,
+    ListNotifications,
+    MarkNotificationsRead,
+    GetNotificationThread,
+    MarkThreadRead,
+    MarkThreadDone,
+    SaveThread,
+    SnoozeThread,
+    GetThreadSubscription,
+    SetThreadSubscription,
+    DeleteThreadSubscription,
+    GetRepoSubscription,
+    SetRepoSubscription,
+    DeleteRepoSubscription,
+    ListWatchedRepos,
 }
 
 fn failed(code: FailureCode, message: &str) -> Result<Outcome<Value>> {
@@ -279,7 +294,7 @@ fn state(input: &Value) -> Option<State> {
 }
 
 /// The repository named by `repo`, written `owner/name`.
-fn repo_path(input: &Value) -> Option<RepoPath> {
+pub(crate) fn repo_path(input: &Value) -> Option<RepoPath> {
     let mut parts = input["repo"].as_str()?.split('/');
     match (parts.next(), parts.next(), parts.next()) {
         (Some(namespace), Some(name), None) if !namespace.is_empty() && !name.is_empty() => {
@@ -413,6 +428,24 @@ fn role_schema() -> Value {
     })
 }
 
+fn thread_id_schema() -> Value {
+    json!({ "type": "string", "description": "The thread's id, from list_notifications." })
+}
+
+/// The inputs that name an issue or pull request to subscribe to: a
+/// thread's id, or a repository and number; with `more` added.
+fn subscription_target(more: Value) -> Value {
+    let mut properties = json!({
+        "id": { "type": "string", "description": "A thread's id, from list_notifications. Or give repo and number." },
+        "repo": { "type": "string", "description": "Instead of id: the repository, as \"owner/name\"." },
+        "number": { "type": "integer", "description": "With repo: the issue or pull request's number." },
+    });
+    if let (Some(all), Value::Object(more)) = (properties.as_object_mut(), more) {
+        all.extend(more);
+    }
+    properties
+}
+
 fn alert_id_schema() -> Value {
     json!({
         "type": "string",
@@ -421,7 +454,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 117] = [
+    pub const ALL: [Op; 131] = [
         Op::Whoami,
         Op::CreateWorkspace,
         Op::DeleteWorkspace,
@@ -539,6 +572,20 @@ impl Op {
         Op::ListSecurityAlerts,
         Op::DismissSecurityAlert,
         Op::ReopenSecurityAlert,
+        Op::ListNotifications,
+        Op::MarkNotificationsRead,
+        Op::GetNotificationThread,
+        Op::MarkThreadRead,
+        Op::MarkThreadDone,
+        Op::SaveThread,
+        Op::SnoozeThread,
+        Op::GetThreadSubscription,
+        Op::SetThreadSubscription,
+        Op::DeleteThreadSubscription,
+        Op::GetRepoSubscription,
+        Op::SetRepoSubscription,
+        Op::DeleteRepoSubscription,
+        Op::ListWatchedRepos,
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -665,6 +712,20 @@ impl Op {
             Op::ListSecurityAlerts => "list_security_alerts",
             Op::DismissSecurityAlert => "dismiss_security_alert",
             Op::ReopenSecurityAlert => "reopen_security_alert",
+            Op::ListNotifications => "list_notifications",
+            Op::MarkNotificationsRead => "mark_notifications_read",
+            Op::GetNotificationThread => "get_notification_thread",
+            Op::MarkThreadRead => "mark_thread_read",
+            Op::MarkThreadDone => "mark_thread_done",
+            Op::SaveThread => "save_thread",
+            Op::SnoozeThread => "snooze_thread",
+            Op::GetThreadSubscription => "get_thread_subscription",
+            Op::SetThreadSubscription => "set_thread_subscription",
+            Op::DeleteThreadSubscription => "delete_thread_subscription",
+            Op::GetRepoSubscription => "get_repo_subscription",
+            Op::SetRepoSubscription => "set_repo_subscription",
+            Op::DeleteRepoSubscription => "delete_repo_subscription",
+            Op::ListWatchedRepos => "list_watched_repos",
         }
     }
 
@@ -986,6 +1047,48 @@ impl Op {
             }
             Op::ReopenSecurityAlert => {
                 "Open a dismissed alert again. A reopened secret stops pushes that carry it again. The same roles as dismissing: Admin for a secret, Write for a dependency. Returns the alert as it is now."
+            }
+            Op::ListNotifications => {
+                "Your notifications: one thread for each thing you were told about (an issue, a pull request, a workflow on a branch, a deployment), latest activity first. As in your inbox, only unread threads unless `all` is true; `view` `saved` or `done` lists those instead, read or not. Each thread has a `reason`, why you were told (`agent`, `review_requested`, `assign`, `mention`, `ci_activity`, `security_alert`, `state_change`, `author`, `comment`, `manual` or `subscribed`), a `severity`, the latest activity's `title`, and `count`, how many things have happened on it. Filter by `reason` or `severity`, by `participating` (leaving out what you only watch or subscribed to by hand), by `since` and `before` (RFC 3339, the latest activity), or to one repository. A page holds `per_page` threads, 30 unless you say (at most 100); pass `next` back as `cursor` for the next. Threads about repositories you can no longer read are left out. Your own: a personal access token or a session, never a workspace's."
+            }
+            Op::MarkNotificationsRead => {
+                "Mark every thread in your inbox read, or every thread about one repository. Threads whose latest activity came after `last_read_at` (now, when left out) stay unread, so nothing that arrived while you looked is lost. With `read` false they are marked unread instead. Returns how many changed."
+            }
+            Op::GetNotificationThread => {
+                "One of your threads: what it is about, its latest activity, its last 10 things that happened (`activity`, newest first), and for an issue or pull request your `subscription` to it."
+            }
+            Op::MarkThreadRead => {
+                "Mark one thread read, or with `read` false, unread. Returns the thread."
+            }
+            Op::MarkThreadDone => {
+                "Mark one thread done: it leaves your inbox for Done, read. New activity on it brings it back. With `done` false it moves back now. Done threads are removed after 30 days unless saved. Returns the thread."
+            }
+            Op::SaveThread => {
+                "Save one thread, which keeps it under Saved, and kept, even once it is done. With `saved` false it is unsaved. Returns the thread."
+            }
+            Op::SnoozeThread => {
+                "Snooze one thread out of your inbox until `until` (RFC 3339, a time to come); it is marked read and comes back at that time. Leave `until` out to bring it back now. Returns the thread."
+            }
+            Op::GetThreadSubscription => {
+                "Your subscription to an issue or pull request, named by a thread's `id`, or by `repo` and `number`. `subscribed` says whether you hear of what happens on it, `ignored` whether you hear of nothing at all, and `reason` why you are subscribed: you opened it or asked g1t for it (`author`), are assigned (`assign`), were asked to review (`review_requested`), commented (`comment`), were mentioned (`mention`), or subscribed by hand (`manual`)."
+            }
+            Op::SetThreadSubscription => {
+                "Subscribe to an issue or pull request (`subscribed`, true unless you say), unsubscribe (`subscribed` false), or ignore it (`ignored` true): hear of nothing on it, not even a mention. Unsubscribed, you still hear of what is asked of you (a review, an assignment, a mention, an agent waiting on you), and commenting or being mentioned subscribes you again. Name it by a thread's `id`, or by `repo` and `number`. Returns your subscription."
+            }
+            Op::DeleteThreadSubscription => {
+                "Unsubscribe from an issue or pull request until you comment on it or are mentioned. What is asked of you directly (a review, an assignment, a mention, an agent waiting on you) still reaches you. Name it by a thread's `id`, or by `repo` and `number`. Returns your subscription."
+            }
+            Op::GetRepoSubscription => {
+                "How you watch a repository. `level` is `participating` (the default: only what you take part in or are mentioned in), `all` (every issue and pull request opened, commented on, closed or merged, and every deployment), `ignore` (nothing, not even a mention) or `custom` (what you take part in, and the kinds in `events`: `issues`, `pulls`, `deployments`, `security`). `subscribed` is true for `all` and `custom`, and `ignored` for `ignore`."
+            }
+            Op::SetRepoSubscription => {
+                "Watch a repository you can read: give `level`, with `events` for `custom`; or, as booleans, `subscribed` (all its activity, or with false, only what you take part in) and `ignored` (nothing at all). Returns how you watch it now."
+            }
+            Op::DeleteRepoSubscription => {
+                "Stop watching a repository: back to the default, hearing only of what you take part in or are mentioned in. Returns how you watch it now."
+            }
+            Op::ListWatchedRepos => {
+                "The repositories you watch other than the default way: all activity, custom or ignored, each with its `level` and `events`."
             }
         }
     }
@@ -1876,6 +1979,107 @@ impl Op {
                 &["repo", "id", "reason"],
             ),
             Op::ReopenSecurityAlert => object(json!({ "repo": repo_schema(), "id": alert_id_schema() }), &["repo", "id"]),
+            Op::ListNotifications => object(
+                json!({
+                    "repo": {
+                        "type": "string",
+                        "description": "Only threads about this repository, as \"owner/name\".",
+                    },
+                    "all": {
+                        "type": "boolean",
+                        "description": "Read threads too. Left out: only unread ones, in the inbox view.",
+                    },
+                    "participating": {
+                        "type": "boolean",
+                        "description": "Only threads you take part in: not those you only watch or subscribed to by hand.",
+                    },
+                    "view": {
+                        "type": "string",
+                        "enum": ["inbox", "saved", "done"],
+                        "description": "inbox (the default): not done and not snoozed. saved: what you saved. done: what you marked done.",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "enum": Reason::ALL.map(Reason::as_str),
+                        "description": "Only threads you were told of for this reason.",
+                    },
+                    "severity": {
+                        "type": "string",
+                        "enum": Severity::ALL.map(Severity::as_str),
+                        "description": "Only threads of this severity. warning is what is waiting on you: an agent, or a review.",
+                    },
+                    "since": { "type": "string", "description": "RFC 3339: only threads with activity at or after this time." },
+                    "before": { "type": "string", "description": "RFC 3339: only threads whose latest activity was before this time." },
+                    "cursor": { "type": "string", "description": "The next page: the `next` of the page before." },
+                    "per_page": { "type": "integer", "description": "Threads a page: 30 unless you say, at most 100." },
+                }),
+                &[],
+            ),
+            Op::MarkNotificationsRead => object(
+                json!({
+                    "repo": {
+                        "type": "string",
+                        "description": "Only threads about this repository, as \"owner/name\".",
+                    },
+                    "last_read_at": {
+                        "type": "string",
+                        "description": "RFC 3339: threads with activity after this stay unread. Now, when left out.",
+                    },
+                    "read": { "type": "boolean", "description": "False marks them unread instead." },
+                }),
+                &[],
+            ),
+            Op::GetNotificationThread => object(json!({ "id": thread_id_schema() }), &["id"]),
+            Op::MarkThreadRead => object(
+                json!({ "id": thread_id_schema(), "read": { "type": "boolean", "description": "False marks it unread." } }),
+                &["id"],
+            ),
+            Op::MarkThreadDone => object(
+                json!({ "id": thread_id_schema(), "done": { "type": "boolean", "description": "False moves it back to the inbox." } }),
+                &["id"],
+            ),
+            Op::SaveThread => object(
+                json!({ "id": thread_id_schema(), "saved": { "type": "boolean", "description": "False unsaves it." } }),
+                &["id"],
+            ),
+            Op::SnoozeThread => object(
+                json!({
+                    "id": thread_id_schema(),
+                    "until": {
+                        "type": "string",
+                        "description": "RFC 3339, a time to come. Left out: back in the inbox now.",
+                    },
+                }),
+                &["id"],
+            ),
+            Op::GetThreadSubscription | Op::DeleteThreadSubscription => object(subscription_target(json!({})), &[]),
+            Op::SetThreadSubscription => object(
+                subscription_target(json!({
+                    "subscribed": { "type": "boolean", "description": "True (the default) to subscribe, false to unsubscribe." },
+                    "ignored": { "type": "boolean", "description": "True to hear of nothing on it, not even a mention." },
+                })),
+                &[],
+            ),
+            Op::GetRepoSubscription | Op::DeleteRepoSubscription => repo_only(),
+            Op::SetRepoSubscription => object(
+                json!({
+                    "repo": repo_schema(),
+                    "level": {
+                        "type": "string",
+                        "enum": WatchLevel::ALL.map(WatchLevel::as_str),
+                        "description": "participating: only what you take part in. all: all its activity. ignore: nothing. custom: what you take part in, and events.",
+                    },
+                    "events": {
+                        "type": "array",
+                        "items": { "type": "string", "enum": WATCH_EVENTS },
+                        "description": "With custom: the kinds of activity to hear of.",
+                    },
+                    "subscribed": { "type": "boolean", "description": "Instead of level: true for all its activity, false for only what you take part in." },
+                    "ignored": { "type": "boolean", "description": "Instead of level: true to hear of nothing on it." },
+                }),
+                &["repo"],
+            ),
+            Op::ListWatchedRepos => object(json!({}), &[]),
         }
     }
 
@@ -1962,6 +2166,39 @@ impl Op {
                 | Op::DeclineRepoInvitation
                 | Op::SetBasePermission
                 | Op::ListOutsideCollaborators
+                | Op::ListNotifications
+                | Op::MarkNotificationsRead
+                | Op::GetNotificationThread
+                | Op::MarkThreadRead
+                | Op::MarkThreadDone
+                | Op::SaveThread
+                | Op::SnoozeThread
+                | Op::GetThreadSubscription
+                | Op::SetThreadSubscription
+                | Op::DeleteThreadSubscription
+                | Op::ListWatchedRepos
+        )
+    }
+
+    /// Whether the operation is about the caller's own inbox: notifications,
+    /// subscriptions and watching. Nobody else's business, so not audited.
+    pub(crate) fn personal(self) -> bool {
+        matches!(
+            self,
+            Op::ListNotifications
+                | Op::MarkNotificationsRead
+                | Op::GetNotificationThread
+                | Op::MarkThreadRead
+                | Op::MarkThreadDone
+                | Op::SaveThread
+                | Op::SnoozeThread
+                | Op::GetThreadSubscription
+                | Op::SetThreadSubscription
+                | Op::DeleteThreadSubscription
+                | Op::GetRepoSubscription
+                | Op::SetRepoSubscription
+                | Op::DeleteRepoSubscription
+                | Op::ListWatchedRepos
         )
     }
 
@@ -3365,6 +3602,21 @@ impl Op {
                 .await?;
                 changed_alert(changed)
             }
+            // A person's own inbox: the events service keeps it.
+            Op::ListNotifications
+            | Op::MarkNotificationsRead
+            | Op::GetNotificationThread
+            | Op::MarkThreadRead
+            | Op::MarkThreadDone
+            | Op::SaveThread
+            | Op::SnoozeThread
+            | Op::GetThreadSubscription
+            | Op::SetThreadSubscription
+            | Op::DeleteThreadSubscription
+            | Op::GetRepoSubscription
+            | Op::SetRepoSubscription
+            | Op::DeleteRepoSubscription
+            | Op::ListWatchedRepos => crate::notifications::run(self, services, viewer, input).await,
             Op::ReopenSecurityAlert => {
                 let changed: Outcome<AlertChange> = call(
                     &services.security,

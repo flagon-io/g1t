@@ -19,6 +19,26 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         &[Op::Whoami, Op::ListEmails, Op::AddEmail, Op::RemoveEmail, Op::UpdateEmailSettings],
     ),
     (
+        "Notifications",
+        "Your inbox: a thread for each thing you were told about (an issue, a pull request, a workflow on a branch, a deployment), why you were told, and what you subscribe to and watch. Your own: personal tokens and sessions only.",
+        &[
+            Op::ListNotifications,
+            Op::MarkNotificationsRead,
+            Op::GetNotificationThread,
+            Op::MarkThreadRead,
+            Op::MarkThreadDone,
+            Op::SaveThread,
+            Op::SnoozeThread,
+            Op::GetThreadSubscription,
+            Op::SetThreadSubscription,
+            Op::DeleteThreadSubscription,
+            Op::GetRepoSubscription,
+            Op::SetRepoSubscription,
+            Op::DeleteRepoSubscription,
+            Op::ListWatchedRepos,
+        ],
+    ),
+    (
         "Workspaces",
         "A workspace owns repositories and is the first part of their address. People and agents work in workspaces.",
         &[Op::CreateWorkspace, Op::UpdateWorkspace, Op::DeleteWorkspace],
@@ -339,6 +359,20 @@ fn title(op: Op) -> &'static str {
         Op::ListSecurityAlerts => "List security alerts",
         Op::DismissSecurityAlert => "Dismiss a security alert",
         Op::ReopenSecurityAlert => "Reopen a security alert",
+        Op::ListNotifications => "List notifications",
+        Op::MarkNotificationsRead => "Mark notifications read",
+        Op::GetNotificationThread => "Get a thread",
+        Op::MarkThreadRead => "Mark a thread read",
+        Op::MarkThreadDone => "Mark a thread done",
+        Op::SaveThread => "Save a thread",
+        Op::SnoozeThread => "Snooze a thread",
+        Op::GetThreadSubscription => "Get a thread subscription",
+        Op::SetThreadSubscription => "Set a thread subscription",
+        Op::DeleteThreadSubscription => "Unsubscribe from a thread",
+        Op::GetRepoSubscription => "Get how you watch a repository",
+        Op::SetRepoSubscription => "Watch a repository",
+        Op::DeleteRepoSubscription => "Stop watching a repository",
+        Op::ListWatchedRepos => "List repositories you watch",
     }
 }
 
@@ -422,6 +456,19 @@ fn operation_id(route: &Route) -> String {
         ("POST", "rerun-failed-jobs") => "rerun_failed_jobs".to_owned(),
         ("PATCH", ":setting") => "update_actions_variable".to_owned(),
         ("GET", "runs") if route.path.contains("/workflows/:workflow/") => "list_runs_of_workflow".to_owned(),
+        // One repository's notifications, and an issue's subscription by
+        // its number rather than a thread's id.
+        (_, "notifications") if route.path.starts_with("/repos/") => match op {
+            Op::ListNotifications => "list_repo_notifications".to_owned(),
+            _ => "mark_repo_notifications_read".to_owned(),
+        },
+        (method, "subscription") if route.path.contains("/issues/:number/") => match method {
+            "GET" => "get_issue_subscription".to_owned(),
+            "PUT" => "set_issue_subscription".to_owned(),
+            _ => "delete_issue_subscription".to_owned(),
+        },
+        ("DELETE", "saved") => "unsave_thread".to_owned(),
+        ("DELETE", "snooze") => "unsnooze_thread".to_owned(),
         _ => op.name().to_owned(),
     };
     if route.path.starts_with("/workspaces/") && ROUTES.iter().any(|other| other.op == op && other.path.starts_with("/repos/")) {
@@ -440,6 +487,13 @@ fn summary(route: &Route, id: &str) -> String {
         "rerun_failed_jobs" => "Re-run failed jobs",
         "update_actions_variable" => "Update a variable",
         "list_runs_of_workflow" => "List a workflow's runs",
+        "list_repo_notifications" => "List a repository's notifications",
+        "mark_repo_notifications_read" => "Mark a repository's notifications read",
+        "get_issue_subscription" => "Get your subscription to an issue",
+        "set_issue_subscription" => "Subscribe to an issue",
+        "delete_issue_subscription" => "Unsubscribe from an issue",
+        "unsave_thread" => "Unsave a thread",
+        "unsnooze_thread" => "Bring a snoozed thread back",
         _ => title(route.op),
     };
     if id.ends_with("_for_workspace") {

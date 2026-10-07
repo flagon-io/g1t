@@ -33,6 +33,26 @@
       ]
     },
     {
+      "name": "Notifications",
+      "description": "Your inbox: a thread for each thing you were told about (an issue, a pull request, a workflow on a branch, a deployment), why you were told, and what you subscribe to and watch. Your own: personal tokens and sessions only.",
+      "x-tools": [
+        "list_notifications",
+        "mark_notifications_read",
+        "get_notification_thread",
+        "mark_thread_read",
+        "mark_thread_done",
+        "save_thread",
+        "snooze_thread",
+        "get_thread_subscription",
+        "set_thread_subscription",
+        "delete_thread_subscription",
+        "get_repo_subscription",
+        "set_repo_subscription",
+        "delete_repo_subscription",
+        "list_watched_repos"
+      ]
+    },
+    {
       "name": "Workspaces",
       "description": "A workspace owns repositories and is the first part of their address. People and agents work in workspaces.",
       "x-tools": [
@@ -3081,6 +3101,3077 @@
                     "status": "pending",
                     "created_at": "2026-10-05T17:00:00.000Z",
                     "expires_at": "2026-10-12T17:00:00.000Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications": {
+      "get": {
+        "operationId": "list_notifications",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "List notifications",
+        "description": "Your notifications: one thread for each thing you were told about (an issue, a pull request, a workflow on a branch, a deployment), latest activity first. As in your inbox, only unread threads unless `all` is true; `view` `saved` or `done` lists those instead, read or not. Each thread has a `reason`, why you were told (`agent`, `review_requested`, `assign`, `mention`, `ci_activity`, `security_alert`, `state_change`, `author`, `comment`, `manual` or `subscribed`), a `severity`, the latest activity's `title`, and `count`, how many things have happened on it. Filter by `reason` or `severity`, by `participating` (leaving out what you only watch or subscribed to by hand), by `since` and `before` (RFC 3339, the latest activity), or to one repository. A page holds `per_page` threads, 30 unless you say (at most 100); pass `next` back as `cursor` for the next. Threads about repositories you can no longer read are left out. Your own: a personal access token or a session, never a workspace's.\n\nUnread threads only, unless `all=true`. Threads that wait on you (an agent, or a review asked of you) have severity `warning`.\n\n| `reason` | You were told because |\n| --- | --- |\n| `agent` | An agent is waiting on you: it asked a question, or g1t stopped until a person steps in |\n| `review_requested` | You were asked to review |\n| `assign` | You were assigned |\n| `mention` | Someone mentioned you by `@username` |\n| `ci_activity` | Checks, a workflow or a deployment on your work finished |\n| `security_alert` | A security alert on a repository you look after |\n| `state_change` | It was closed, reopened or merged |\n| `author` | You opened it, or asked g1t for it |\n| `comment` | You commented on it |\n| `manual` | You subscribed to it by hand |\n| `subscribed` | You watch its repository |\n\nWith `participating=true`, threads you only follow (`manual`, `subscribed`) are left out. For the next page, pass `next` as `cursor`; `next` is null on the last.",
+        "x-operation": "list_notifications",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "list",
+        "x-scope": "notifications:read",
+        "security": [
+          {
+            "token": [
+              "notifications:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "all",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Read threads too. Left out: only unread ones, in the inbox view."
+          },
+          {
+            "name": "participating",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Only threads you take part in: not those you only watch or subscribed to by hand."
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "inbox",
+                "saved",
+                "done"
+              ]
+            },
+            "description": "inbox (the default): not done and not snoozed. saved: what you saved. done: what you marked done."
+          },
+          {
+            "name": "reason",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "review_requested",
+                "assign",
+                "mention",
+                "ci_activity",
+                "security_alert",
+                "state_change",
+                "author",
+                "comment",
+                "manual",
+                "subscribed"
+              ]
+            },
+            "description": "Only threads you were told of for this reason."
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "error",
+                "warning",
+                "success",
+                "info"
+              ]
+            },
+            "description": "Only threads of this severity. warning is what is waiting on you: an agent, or a review."
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "RFC 3339: only threads with activity at or after this time."
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "RFC 3339: only threads whose latest activity was before this time."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The next page: the `next` of the page before."
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Threads a page: 30 unless you say, at most 100."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a",
+                      "reason": "review_requested",
+                      "severity": "warning",
+                      "title": "ada asked you to review flagon-io/hello#14",
+                      "body": "Add a greeting to the README",
+                      "event": "pull.review_requested",
+                      "repo": "flagon-io/hello",
+                      "workspace": "flagon-io",
+                      "subject": "pull",
+                      "number": 14,
+                      "url": "/flagon-io/hello/pull/14",
+                      "actor": "ada",
+                      "count": 3,
+                      "created_at": "2026-10-06T15:02:11.000Z",
+                      "updated_at": "2026-10-07T09:41:30.000Z",
+                      "read_at": null,
+                      "done_at": null,
+                      "saved": false,
+                      "snoozed_until": null
+                    },
+                    {
+                      "id": "ntf_01kp7k9a8b7c6d5e4f3g2h1j0k",
+                      "reason": "ci_activity",
+                      "severity": "error",
+                      "title": "Production of hello failed to deploy",
+                      "body": "The build failed: npm run build exited with 1.",
+                      "event": "deployment.failed",
+                      "repo": "flagon-io/hello",
+                      "workspace": "flagon-io",
+                      "subject": "deploy",
+                      "number": null,
+                      "url": "/flagon-io/hello/deployments/dpl_01kp7k8z7y6x5w4v3t2s1r0q9p",
+                      "actor": "syntaqx",
+                      "count": 1,
+                      "created_at": "2026-10-07T08:12:40.000Z",
+                      "updated_at": "2026-10-07T08:12:40.000Z",
+                      "read_at": null,
+                      "done_at": null,
+                      "saved": false,
+                      "snoozed_until": null
+                    }
+                  ],
+                  "next": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-query": {
+          "participating": "true"
+        }
+      },
+      "put": {
+        "operationId": "mark_notifications_read",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Mark notifications read",
+        "description": "Mark every thread in your inbox read, or every thread about one repository. Threads whose latest activity came after `last_read_at` (now, when left out) stay unread, so nothing that arrived while you looked is lost. With `read` false they are marked unread instead. Returns how many changed.\n\nThreads with activity after `last_read_at` stay unread, so send the time you last listed them.",
+        "x-operation": "mark_notifications_read",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "mark_all_read",
+        "x-scope": "notifications:write",
+        "security": [
+          {
+            "token": [
+              "notifications:write"
+            ]
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "marked": 12,
+                  "last_read_at": "2026-10-07T10:00:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "last_read_at": {
+                    "type": "string",
+                    "description": "RFC 3339: threads with activity after this stay unread. Now, when left out."
+                  },
+                  "read": {
+                    "type": "boolean",
+                    "description": "False marks them unread instead."
+                  }
+                }
+              },
+              "example": {
+                "last_read_at": "2026-10-07T10:00:00Z"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/threads/{id}": {
+      "get": {
+        "operationId": "get_notification_thread",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Get a thread",
+        "description": "One of your threads: what it is about, its latest activity, its last 10 things that happened (`activity`, newest first), and for an issue or pull request your `subscription` to it.\n\n`activity` keeps the last 10 things that happened on the thread, newest first; `count` is how many there have been. `subscription` is null for a workflow or a deployment, which nobody subscribes to.",
+        "x-operation": "get_notification_thread",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "get",
+        "x-scope": "notifications:read",
+        "security": [
+          {
+            "token": [
+              "notifications:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The thread's id, from list_notifications."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a",
+                  "reason": "review_requested",
+                  "severity": "warning",
+                  "title": "ada asked you to review flagon-io/hello#14",
+                  "body": "Add a greeting to the README",
+                  "event": "pull.review_requested",
+                  "repo": "flagon-io/hello",
+                  "workspace": "flagon-io",
+                  "subject": "pull",
+                  "number": 14,
+                  "url": "/flagon-io/hello/pull/14",
+                  "actor": "ada",
+                  "count": 3,
+                  "created_at": "2026-10-06T15:02:11.000Z",
+                  "updated_at": "2026-10-07T09:41:30.000Z",
+                  "read_at": null,
+                  "done_at": null,
+                  "saved": false,
+                  "snoozed_until": null,
+                  "activity": [
+                    {
+                      "reason": "review_requested",
+                      "severity": "warning",
+                      "title": "ada asked you to review flagon-io/hello#14",
+                      "body": "Add a greeting to the README",
+                      "event": "pull.review_requested",
+                      "actor": "ada",
+                      "created_at": "2026-10-07T09:41:30.000Z"
+                    },
+                    {
+                      "reason": "comment",
+                      "severity": "info",
+                      "title": "ada commented on flagon-io/hello#14",
+                      "body": "Pushed the fix for the heading.",
+                      "event": "comment.created",
+                      "actor": "ada",
+                      "created_at": "2026-10-06T18:20:02.000Z"
+                    },
+                    {
+                      "reason": "comment",
+                      "severity": "info",
+                      "title": "g1t commented on flagon-io/hello#14",
+                      "body": "The heading level is off by one.",
+                      "event": "comment.created",
+                      "actor": "g1t",
+                      "created_at": "2026-10-06T15:02:11.000Z"
+                    }
+                  ],
+                  "subscription": {
+                    "subscribed": true,
+                    "ignored": false,
+                    "reason": "review_requested",
+                    "repo": "flagon-io/hello",
+                    "number": 14,
+                    "updated_at": null
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+        }
+      },
+      "patch": {
+        "operationId": "mark_thread_read",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Mark a thread read",
+        "description": "Mark one thread read, or with `read` false, unread. Returns the thread.",
+        "x-operation": "mark_thread_read",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "mark_read",
+        "x-scope": "notifications:write",
+        "security": [
+          {
+            "token": [
+              "notifications:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The thread's id, from list_notifications."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a",
+                  "reason": "review_requested",
+                  "severity": "warning",
+                  "title": "ada asked you to review flagon-io/hello#14",
+                  "body": "Add a greeting to the README",
+                  "event": "pull.review_requested",
+                  "repo": "flagon-io/hello",
+                  "workspace": "flagon-io",
+                  "subject": "pull",
+                  "number": 14,
+                  "url": "/flagon-io/hello/pull/14",
+                  "actor": "ada",
+                  "count": 3,
+                  "created_at": "2026-10-06T15:02:11.000Z",
+                  "updated_at": "2026-10-07T09:41:30.000Z",
+                  "read_at": "2026-10-07T10:03:00.000Z",
+                  "done_at": null,
+                  "saved": false,
+                  "snoozed_until": null,
+                  "activity": [
+                    {
+                      "reason": "review_requested",
+                      "severity": "warning",
+                      "title": "ada asked you to review flagon-io/hello#14",
+                      "body": "Add a greeting to the README",
+                      "event": "pull.review_requested",
+                      "actor": "ada",
+                      "created_at": "2026-10-07T09:41:30.000Z"
+                    },
+                    {
+                      "reason": "comment",
+                      "severity": "info",
+                      "title": "ada commented on flagon-io/hello#14",
+                      "body": "Pushed the fix for the heading.",
+                      "event": "comment.created",
+                      "actor": "ada",
+                      "created_at": "2026-10-06T18:20:02.000Z"
+                    },
+                    {
+                      "reason": "comment",
+                      "severity": "info",
+                      "title": "g1t commented on flagon-io/hello#14",
+                      "body": "The heading level is off by one.",
+                      "event": "comment.created",
+                      "actor": "g1t",
+                      "created_at": "2026-10-06T15:02:11.000Z"
+                    }
+                  ],
+                  "subscription": {
+                    "subscribed": true,
+                    "ignored": false,
+                    "reason": "review_requested",
+                    "repo": "flagon-io/hello",
+                    "number": 14,
+                    "updated_at": null
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "read": {
+                    "type": "boolean",
+                    "description": "False marks it unread."
+                  }
+                }
+              },
+              "example": {}
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+        }
+      },
+      "delete": {
+        "operationId": "mark_thread_done",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Mark a thread done",
+        "description": "Mark one thread done: it leaves your inbox for Done, read. New activity on it brings it back. With `done` false it moves back now. Done threads are removed after 30 days unless saved. Returns the thread.\n\nNew activity on a done thread brings it back to the inbox, unread.",
+        "x-operation": "mark_thread_done",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "done",
+        "x-scope": "notifications:write",
+        "security": [
+          {
+            "token": [
+              "notifications:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The thread's id, from list_notifications."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a",
+                  "reason": "review_requested",
+                  "severity": "warning",
+                  "title": "ada asked you to review flagon-io/hello#14",
+                  "body": "Add a greeting to the README",
+                  "event": "pull.review_requested",
+                  "repo": "flagon-io/hello",
+                  "workspace": "flagon-io",
+                  "subject": "pull",
+                  "number": 14,
+                  "url": "/flagon-io/hello/pull/14",
+                  "actor": "ada",
+                  "count": 3,
+                  "created_at": "2026-10-06T15:02:11.000Z",
+                  "updated_at": "2026-10-07T09:41:30.000Z",
+                  "read_at": "2026-10-07T10:03:00.000Z",
+                  "done_at": "2026-10-07T10:03:00.000Z",
+                  "saved": false,
+                  "snoozed_until": null,
+                  "activity": [
+                    {
+                      "reason": "review_requested",
+                      "severity": "warning",
+                      "title": "ada asked you to review flagon-io/hello#14",
+                      "body": "Add a greeting to the README",
+                      "event": "pull.review_requested",
+                      "actor": "ada",
+                      "created_at": "2026-10-07T09:41:30.000Z"
+                    },
+                    {
+                      "reason": "comment",
+                      "severity": "info",
+                      "title": "ada commented on flagon-io/hello#14",
+                      "body": "Pushed the fix for the heading.",
+                      "event": "comment.created",
+                      "actor": "ada",
+                      "created_at": "2026-10-06T18:20:02.000Z"
+                    },
+                    {
+                      "reason": "comment",
+                      "severity": "info",
+                      "title": "g1t commented on flagon-io/hello#14",
+                      "body": "The heading level is off by one.",
+                      "event": "comment.created",
+                      "actor": "g1t",
+                      "created_at": "2026-10-06T15:02:11.000Z"
+                    }
+                  ],
+                  "subscription": {
+                    "subscribed": true,
+                    "ignored": false,
+                    "reason": "review_requested",
+                    "repo": "flagon-io/hello",
+                    "number": 14,
+                    "updated_at": null
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "done": {
+                    "type": "boolean",
+                    "description": "False moves it back to the inbox."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+        }
+      }
+    },
+    "/notifications/threads/{id}/saved": {
+      "put": {
+        "operationId": "save_thread",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Save a thread",
+        "description": "Save one thread, which keeps it under Saved, and kept, even once it is done. With `saved` false it is unsaved. Returns the thread.",
+        "x-operation": "save_thread",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "save",
+        "x-scope": "notifications:write",
+        "security": [
+          {
+            "token": [
+              "notifications:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The thread's id, from list_notifications."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a",
+                  "reason": "review_requested",
+                  "severity": "warning",
+                  "title": "ada asked you to review flagon-io/hello#14",
+                  "body": "Add a greeting to the README",
+                  "event": "pull.review_requested",
+                  "repo": "flagon-io/hello",
+                  "workspace": "flagon-io",
+                  "subject": "pull",
+                  "number": 14,
+                  "url": "/flagon-io/hello/pull/14",
+                  "actor": "ada",
+                  "count": 3,
+                  "created_at": "2026-10-06T15:02:11.000Z",
+                  "updated_at": "2026-10-07T09:41:30.000Z",
+                  "read_at": null,
+                  "done_at": null,
+                  "saved": true,
+                  "snoozed_until": null,
+                  "activity": [
+                    {
+                      "reason": "review_requested",
+                      "severity": "warning",
+                      "title": "ada asked you to review flagon-io/hello#14",
+                      "body": "Add a greeting to the README",
+                      "event": "pull.review_requested",
+                      "actor": "ada",
+                      "created_at": "2026-10-07T09:41:30.000Z"
+                    },
+                    {
+                      "reason": "comment",
+                      "severity": "info",
+                      "title": "ada commented on flagon-io/hello#14",
+                      "body": "Pushed the fix for the heading.",
+                      "event": "comment.created",
+                      "actor": "ada",
+                      "created_at": "2026-10-06T18:20:02.000Z"
+                    },
+                    {
+                      "reason": "comment",
+                      "severity": "info",
+                      "title": "g1t commented on flagon-io/hello#14",
+                      "body": "The heading level is off by one.",
+                      "event": "comment.created",
+                      "actor": "g1t",
+                      "created_at": "2026-10-06T15:02:11.000Z"
+                    }
+                  ],
+                  "subscription": {
+                    "subscribed": true,
+                    "ignored": false,
+                    "reason": "review_requested",
+                    "repo": "flagon-io/hello",
+                    "number": 14,
+                    "updated_at": null
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "saved": {
+                    "type": "boolean",
+                    "description": "False unsaves it."
+                  }
+                }
+              },
+              "example": {}
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+        }
+      },
+      "delete": {
+        "operationId": "unsave_thread",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Unsave a thread",
+        "description": "Save one thread, which keeps it under Saved, and kept, even once it is done. With `saved` false it is unsaved. Returns the thread.",
+        "x-operation": "save_thread",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "save",
+        "x-scope": "notifications:write",
+        "security": [
+          {
+            "token": [
+              "notifications:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The thread's id, from list_notifications."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a",
+                  "reason": "review_requested",
+                  "severity": "warning",
+                  "title": "ada asked you to review flagon-io/hello#14",
+                  "body": "Add a greeting to the README",
+                  "event": "pull.review_requested",
+                  "repo": "flagon-io/hello",
+                  "workspace": "flagon-io",
+                  "subject": "pull",
+                  "number": 14,
+                  "url": "/flagon-io/hello/pull/14",
+                  "actor": "ada",
+                  "count": 3,
+                  "created_at": "2026-10-06T15:02:11.000Z",
+                  "updated_at": "2026-10-07T09:41:30.000Z",
+                  "read_at": null,
+                  "done_at": null,
+                  "saved": false,
+                  "snoozed_until": null,
+                  "activity": [
+                    {
+                      "reason": "review_requested",
+                      "severity": "warning",
+                      "title": "ada asked you to review flagon-io/hello#14",
+                      "body": "Add a greeting to the README",
+                      "event": "pull.review_requested",
+                      "actor": "ada",
+                      "created_at": "2026-10-07T09:41:30.000Z"
+                    },
+                    {
+                      "reason": "comment",
+                      "severity": "info",
+                      "title": "ada commented on flagon-io/hello#14",
+                      "body": "Pushed the fix for the heading.",
+                      "event": "comment.created",
+                      "actor": "ada",
+                      "created_at": "2026-10-06T18:20:02.000Z"
+                    },
+                    {
+                      "reason": "comment",
+                      "severity": "info",
+                      "title": "g1t commented on flagon-io/hello#14",
+                      "body": "The heading level is off by one.",
+                      "event": "comment.created",
+                      "actor": "g1t",
+                      "created_at": "2026-10-06T15:02:11.000Z"
+                    }
+                  ],
+                  "subscription": {
+                    "subscribed": true,
+                    "ignored": false,
+                    "reason": "review_requested",
+                    "repo": "flagon-io/hello",
+                    "number": 14,
+                    "updated_at": null
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "saved": {
+                    "type": "boolean",
+                    "description": "False unsaves it."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+        }
+      }
+    },
+    "/notifications/threads/{id}/snooze": {
+      "put": {
+        "operationId": "snooze_thread",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Snooze a thread",
+        "description": "Snooze one thread out of your inbox until `until` (RFC 3339, a time to come); it is marked read and comes back at that time. Leave `until` out to bring it back now. Returns the thread.",
+        "x-operation": "snooze_thread",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "snooze",
+        "x-scope": "notifications:write",
+        "security": [
+          {
+            "token": [
+              "notifications:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The thread's id, from list_notifications."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a",
+                  "reason": "review_requested",
+                  "severity": "warning",
+                  "title": "ada asked you to review flagon-io/hello#14",
+                  "body": "Add a greeting to the README",
+                  "event": "pull.review_requested",
+                  "repo": "flagon-io/hello",
+                  "workspace": "flagon-io",
+                  "subject": "pull",
+                  "number": 14,
+                  "url": "/flagon-io/hello/pull/14",
+                  "actor": "ada",
+                  "count": 3,
+                  "created_at": "2026-10-06T15:02:11.000Z",
+                  "updated_at": "2026-10-07T09:41:30.000Z",
+                  "read_at": "2026-10-07T10:03:00.000Z",
+                  "done_at": null,
+                  "saved": false,
+                  "snoozed_until": "2026-10-08T09:00:00.000Z",
+                  "activity": [
+                    {
+                      "reason": "review_requested",
+                      "severity": "warning",
+                      "title": "ada asked you to review flagon-io/hello#14",
+                      "body": "Add a greeting to the README",
+                      "event": "pull.review_requested",
+                      "actor": "ada",
+                      "created_at": "2026-10-07T09:41:30.000Z"
+                    },
+                    {
+                      "reason": "comment",
+                      "severity": "info",
+                      "title": "ada commented on flagon-io/hello#14",
+                      "body": "Pushed the fix for the heading.",
+                      "event": "comment.created",
+                      "actor": "ada",
+                      "created_at": "2026-10-06T18:20:02.000Z"
+                    },
+                    {
+                      "reason": "comment",
+                      "severity": "info",
+                      "title": "g1t commented on flagon-io/hello#14",
+                      "body": "The heading level is off by one.",
+                      "event": "comment.created",
+                      "actor": "g1t",
+                      "created_at": "2026-10-06T15:02:11.000Z"
+                    }
+                  ],
+                  "subscription": {
+                    "subscribed": true,
+                    "ignored": false,
+                    "reason": "review_requested",
+                    "repo": "flagon-io/hello",
+                    "number": 14,
+                    "updated_at": null
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "until": {
+                    "type": "string",
+                    "description": "RFC 3339, a time to come. Left out: back in the inbox now."
+                  }
+                }
+              },
+              "example": {
+                "until": "2026-10-08T09:00:00Z"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+        }
+      },
+      "delete": {
+        "operationId": "unsnooze_thread",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Bring a snoozed thread back",
+        "description": "Snooze one thread out of your inbox until `until` (RFC 3339, a time to come); it is marked read and comes back at that time. Leave `until` out to bring it back now. Returns the thread.",
+        "x-operation": "snooze_thread",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "snooze",
+        "x-scope": "notifications:write",
+        "security": [
+          {
+            "token": [
+              "notifications:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The thread's id, from list_notifications."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a",
+                  "reason": "review_requested",
+                  "severity": "warning",
+                  "title": "ada asked you to review flagon-io/hello#14",
+                  "body": "Add a greeting to the README",
+                  "event": "pull.review_requested",
+                  "repo": "flagon-io/hello",
+                  "workspace": "flagon-io",
+                  "subject": "pull",
+                  "number": 14,
+                  "url": "/flagon-io/hello/pull/14",
+                  "actor": "ada",
+                  "count": 3,
+                  "created_at": "2026-10-06T15:02:11.000Z",
+                  "updated_at": "2026-10-07T09:41:30.000Z",
+                  "read_at": "2026-10-07T10:03:00.000Z",
+                  "done_at": null,
+                  "saved": false,
+                  "snoozed_until": null,
+                  "activity": [
+                    {
+                      "reason": "review_requested",
+                      "severity": "warning",
+                      "title": "ada asked you to review flagon-io/hello#14",
+                      "body": "Add a greeting to the README",
+                      "event": "pull.review_requested",
+                      "actor": "ada",
+                      "created_at": "2026-10-07T09:41:30.000Z"
+                    },
+                    {
+                      "reason": "comment",
+                      "severity": "info",
+                      "title": "ada commented on flagon-io/hello#14",
+                      "body": "Pushed the fix for the heading.",
+                      "event": "comment.created",
+                      "actor": "ada",
+                      "created_at": "2026-10-06T18:20:02.000Z"
+                    },
+                    {
+                      "reason": "comment",
+                      "severity": "info",
+                      "title": "g1t commented on flagon-io/hello#14",
+                      "body": "The heading level is off by one.",
+                      "event": "comment.created",
+                      "actor": "g1t",
+                      "created_at": "2026-10-06T15:02:11.000Z"
+                    }
+                  ],
+                  "subscription": {
+                    "subscribed": true,
+                    "ignored": false,
+                    "reason": "review_requested",
+                    "repo": "flagon-io/hello",
+                    "number": 14,
+                    "updated_at": null
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "until": {
+                    "type": "string",
+                    "description": "RFC 3339, a time to come. Left out: back in the inbox now."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+        }
+      }
+    },
+    "/notifications/threads/{id}/subscription": {
+      "get": {
+        "operationId": "get_thread_subscription",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Get a thread subscription",
+        "description": "Your subscription to an issue or pull request, named by a thread's `id`, or by `repo` and `number`. `subscribed` says whether you hear of what happens on it, `ignored` whether you hear of nothing at all, and `reason` why you are subscribed: you opened it or asked g1t for it (`author`), are assigned (`assign`), were asked to review (`review_requested`), commented (`comment`), were mentioned (`mention`), or subscribed by hand (`manual`).",
+        "x-operation": "get_thread_subscription",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "subscription",
+        "x-scope": "notifications:read",
+        "security": [
+          {
+            "token": [
+              "notifications:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A thread's id, from list_notifications. Or give repo and number."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "subscribed": true,
+                  "ignored": false,
+                  "reason": "review_requested",
+                  "repo": "flagon-io/hello",
+                  "number": 14,
+                  "updated_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+        }
+      },
+      "put": {
+        "operationId": "set_thread_subscription",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Set a thread subscription",
+        "description": "Subscribe to an issue or pull request (`subscribed`, true unless you say), unsubscribe (`subscribed` false), or ignore it (`ignored` true): hear of nothing on it, not even a mention. Unsubscribed, you still hear of what is asked of you (a review, an assignment, a mention, an agent waiting on you), and commenting or being mentioned subscribes you again. Name it by a thread's `id`, or by `repo` and `number`. Returns your subscription.\n\n| Body | Then |\n| --- | --- |\n| `{}` or `{\"subscribed\": true}` | You hear of what happens on it |\n| `{\"subscribed\": false}` | You hear only of what is asked of you |\n| `{\"ignored\": true}` | You hear of nothing on it, not even a mention |",
+        "x-operation": "set_thread_subscription",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "subscribe",
+        "x-scope": "notifications:write",
+        "security": [
+          {
+            "token": [
+              "notifications:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A thread's id, from list_notifications. Or give repo and number."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "subscribed": false,
+                  "ignored": true,
+                  "reason": null,
+                  "repo": "flagon-io/hello",
+                  "number": 14,
+                  "updated_at": "2026-10-07T10:04:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "number": {
+                    "type": "integer",
+                    "description": "With repo: the issue or pull request's number."
+                  },
+                  "subscribed": {
+                    "type": "boolean",
+                    "description": "True (the default) to subscribe, false to unsubscribe."
+                  },
+                  "ignored": {
+                    "type": "boolean",
+                    "description": "True to hear of nothing on it, not even a mention."
+                  }
+                }
+              },
+              "example": {
+                "ignored": true
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+        }
+      },
+      "delete": {
+        "operationId": "delete_thread_subscription",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Unsubscribe from a thread",
+        "description": "Unsubscribe from an issue or pull request until you comment on it or are mentioned. What is asked of you directly (a review, an assignment, a mention, an agent waiting on you) still reaches you. Name it by a thread's `id`, or by `repo` and `number`. Returns your subscription.",
+        "x-operation": "delete_thread_subscription",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "unsubscribe",
+        "x-scope": "notifications:write",
+        "security": [
+          {
+            "token": [
+              "notifications:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A thread's id, from list_notifications. Or give repo and number."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "subscribed": false,
+                  "ignored": false,
+                  "reason": null,
+                  "repo": "flagon-io/hello",
+                  "number": 14,
+                  "updated_at": "2026-10-07T10:04:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "number": {
+                    "type": "integer",
+                    "description": "With repo: the issue or pull request's number."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/notifications": {
+      "get": {
+        "operationId": "list_repo_notifications",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "List a repository's notifications",
+        "description": "Your notifications: one thread for each thing you were told about (an issue, a pull request, a workflow on a branch, a deployment), latest activity first. As in your inbox, only unread threads unless `all` is true; `view` `saved` or `done` lists those instead, read or not. Each thread has a `reason`, why you were told (`agent`, `review_requested`, `assign`, `mention`, `ci_activity`, `security_alert`, `state_change`, `author`, `comment`, `manual` or `subscribed`), a `severity`, the latest activity's `title`, and `count`, how many things have happened on it. Filter by `reason` or `severity`, by `participating` (leaving out what you only watch or subscribed to by hand), by `since` and `before` (RFC 3339, the latest activity), or to one repository. A page holds `per_page` threads, 30 unless you say (at most 100); pass `next` back as `cursor` for the next. Threads about repositories you can no longer read are left out. Your own: a personal access token or a session, never a workspace's.\n\nThe same as `GET /notifications`, for one repository you can read.",
+        "x-operation": "list_notifications",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "list",
+        "x-scope": "notifications:read",
+        "security": [
+          {
+            "token": [
+              "notifications:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "all",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Read threads too. Left out: only unread ones, in the inbox view."
+          },
+          {
+            "name": "participating",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Only threads you take part in: not those you only watch or subscribed to by hand."
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "inbox",
+                "saved",
+                "done"
+              ]
+            },
+            "description": "inbox (the default): not done and not snoozed. saved: what you saved. done: what you marked done."
+          },
+          {
+            "name": "reason",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "review_requested",
+                "assign",
+                "mention",
+                "ci_activity",
+                "security_alert",
+                "state_change",
+                "author",
+                "comment",
+                "manual",
+                "subscribed"
+              ]
+            },
+            "description": "Only threads you were told of for this reason."
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "error",
+                "warning",
+                "success",
+                "info"
+              ]
+            },
+            "description": "Only threads of this severity. warning is what is waiting on you: an agent, or a review."
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "RFC 3339: only threads with activity at or after this time."
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "RFC 3339: only threads whose latest activity was before this time."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The next page: the `next` of the page before."
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Threads a page: 30 unless you say, at most 100."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "id": "ntf_01kp7m2q3r4s5t6v7w8x9y0z1a",
+                      "reason": "review_requested",
+                      "severity": "warning",
+                      "title": "ada asked you to review flagon-io/hello#14",
+                      "body": "Add a greeting to the README",
+                      "event": "pull.review_requested",
+                      "repo": "flagon-io/hello",
+                      "workspace": "flagon-io",
+                      "subject": "pull",
+                      "number": 14,
+                      "url": "/flagon-io/hello/pull/14",
+                      "actor": "ada",
+                      "count": 3,
+                      "created_at": "2026-10-06T15:02:11.000Z",
+                      "updated_at": "2026-10-07T09:41:30.000Z",
+                      "read_at": "2026-10-07T09:50:00.000Z",
+                      "done_at": null,
+                      "saved": false,
+                      "snoozed_until": null
+                    },
+                    {
+                      "id": "ntf_01kp7k9a8b7c6d5e4f3g2h1j0k",
+                      "reason": "ci_activity",
+                      "severity": "error",
+                      "title": "Production of hello failed to deploy",
+                      "body": "The build failed: npm run build exited with 1.",
+                      "event": "deployment.failed",
+                      "repo": "flagon-io/hello",
+                      "workspace": "flagon-io",
+                      "subject": "deploy",
+                      "number": null,
+                      "url": "/flagon-io/hello/deployments/dpl_01kp7k8z7y6x5w4v3t2s1r0q9p",
+                      "actor": "syntaqx",
+                      "count": 1,
+                      "created_at": "2026-10-07T08:12:40.000Z",
+                      "updated_at": "2026-10-07T08:12:40.000Z",
+                      "read_at": null,
+                      "done_at": null,
+                      "saved": false,
+                      "snoozed_until": null
+                    }
+                  ],
+                  "next": "ntf_01kp7k9a8b7c6d5e4f3g2h1j0k"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        },
+        "x-example-query": {
+          "all": "true"
+        }
+      },
+      "put": {
+        "operationId": "mark_repo_notifications_read",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Mark a repository's notifications read",
+        "description": "Mark every thread in your inbox read, or every thread about one repository. Threads whose latest activity came after `last_read_at` (now, when left out) stay unread, so nothing that arrived while you looked is lost. With `read` false they are marked unread instead. Returns how many changed.",
+        "x-operation": "mark_notifications_read",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "mark_all_read",
+        "x-scope": "notifications:write",
+        "security": [
+          {
+            "token": [
+              "notifications:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "marked": 3,
+                  "last_read_at": "2026-10-07T10:02:41.512Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "last_read_at": {
+                    "type": "string",
+                    "description": "RFC 3339: threads with activity after this stay unread. Now, when left out."
+                  },
+                  "read": {
+                    "type": "boolean",
+                    "description": "False marks them unread instead."
+                  }
+                }
+              },
+              "example": {}
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/subscription": {
+      "get": {
+        "operationId": "get_repo_subscription",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Get how you watch a repository",
+        "description": "How you watch a repository. `level` is `participating` (the default: only what you take part in or are mentioned in), `all` (every issue and pull request opened, commented on, closed or merged, and every deployment), `ignore` (nothing, not even a mention) or `custom` (what you take part in, and the kinds in `events`: `issues`, `pulls`, `deployments`, `security`). `subscribed` is true for `all` and `custom`, and `ignored` for `ignore`.",
+        "x-operation": "get_repo_subscription",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "watching",
+        "x-scope": "notifications:read",
+        "security": [
+          {
+            "token": [
+              "notifications:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "repo": "flagon-io/hello",
+                  "level": "participating",
+                  "events": [],
+                  "subscribed": false,
+                  "ignored": false,
+                  "updated_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        }
+      },
+      "put": {
+        "operationId": "set_repo_subscription",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Watch a repository",
+        "description": "Watch a repository you can read: give `level`, with `events` for `custom`; or, as booleans, `subscribed` (all its activity, or with false, only what you take part in) and `ignored` (nothing at all). Returns how you watch it now.\n\n| `level` | You hear of |\n| --- | --- |\n| `participating` | What you take part in, or are mentioned in (the default) |\n| `all` | Every issue and pull request opened, commented on, closed or merged, and every deployment |\n| `custom` | What you take part in, and the kinds in `events`: `issues`, `pulls`, `deployments`, `security` |\n| `ignore` | Nothing, not even a mention |\n\nInstead of `level`, `{\"subscribed\": true}` is `all`, `{\"subscribed\": false}` is `participating` and `{\"ignored\": true}` is `ignore`.",
+        "x-operation": "set_repo_subscription",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "watch",
+        "x-scope": "notifications:write",
+        "security": [
+          {
+            "token": [
+              "notifications:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "repo": "flagon-io/hello",
+                  "level": "custom",
+                  "events": [
+                    "pulls",
+                    "deployments"
+                  ],
+                  "subscribed": true,
+                  "ignored": false,
+                  "updated_at": "2026-10-07T10:06:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "level": {
+                    "type": "string",
+                    "enum": [
+                      "participating",
+                      "all",
+                      "ignore",
+                      "custom"
+                    ],
+                    "description": "participating: only what you take part in. all: all its activity. ignore: nothing. custom: what you take part in, and events."
+                  },
+                  "events": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "issues",
+                        "pulls",
+                        "deployments",
+                        "security"
+                      ]
+                    },
+                    "description": "With custom: the kinds of activity to hear of."
+                  },
+                  "subscribed": {
+                    "type": "boolean",
+                    "description": "Instead of level: true for all its activity, false for only what you take part in."
+                  },
+                  "ignored": {
+                    "type": "boolean",
+                    "description": "Instead of level: true to hear of nothing on it."
+                  }
+                }
+              },
+              "example": {
+                "level": "custom",
+                "events": [
+                  "pulls",
+                  "deployments"
+                ]
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        }
+      },
+      "delete": {
+        "operationId": "delete_repo_subscription",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Stop watching a repository",
+        "description": "Stop watching a repository: back to the default, hearing only of what you take part in or are mentioned in. Returns how you watch it now.",
+        "x-operation": "delete_repo_subscription",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "unwatch",
+        "x-scope": "notifications:write",
+        "security": [
+          {
+            "token": [
+              "notifications:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "repo": "flagon-io/hello",
+                  "level": "participating",
+                  "events": [],
+                  "subscribed": false,
+                  "ignored": false,
+                  "updated_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/issues/{number}/subscription": {
+      "get": {
+        "operationId": "get_issue_subscription",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Get your subscription to an issue",
+        "description": "Your subscription to an issue or pull request, named by a thread's `id`, or by `repo` and `number`. `subscribed` says whether you hear of what happens on it, `ignored` whether you hear of nothing at all, and `reason` why you are subscribed: you opened it or asked g1t for it (`author`), are assigned (`assign`), were asked to review (`review_requested`), commented (`comment`), were mentioned (`mention`), or subscribed by hand (`manual`).",
+        "x-operation": "get_thread_subscription",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "subscription",
+        "x-scope": "notifications:read",
+        "security": [
+          {
+            "token": [
+              "notifications:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "With repo: the issue or pull request's number."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "subscribed": true,
+                  "ignored": false,
+                  "reason": "author",
+                  "repo": null,
+                  "number": 14,
+                  "updated_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "number": 14
+        }
+      },
+      "put": {
+        "operationId": "set_issue_subscription",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Subscribe to an issue",
+        "description": "Subscribe to an issue or pull request (`subscribed`, true unless you say), unsubscribe (`subscribed` false), or ignore it (`ignored` true): hear of nothing on it, not even a mention. Unsubscribed, you still hear of what is asked of you (a review, an assignment, a mention, an agent waiting on you), and commenting or being mentioned subscribes you again. Name it by a thread's `id`, or by `repo` and `number`. Returns your subscription.",
+        "x-operation": "set_thread_subscription",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "subscribe",
+        "x-scope": "notifications:write",
+        "security": [
+          {
+            "token": [
+              "notifications:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "With repo: the issue or pull request's number."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "subscribed": true,
+                  "ignored": false,
+                  "reason": "manual",
+                  "repo": null,
+                  "number": 14,
+                  "updated_at": "2026-10-07T10:05:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "A thread's id, from list_notifications. Or give repo and number."
+                  },
+                  "subscribed": {
+                    "type": "boolean",
+                    "description": "True (the default) to subscribe, false to unsubscribe."
+                  },
+                  "ignored": {
+                    "type": "boolean",
+                    "description": "True to hear of nothing on it, not even a mention."
+                  }
+                }
+              },
+              "example": {
+                "subscribed": true
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "number": 14
+        }
+      },
+      "delete": {
+        "operationId": "delete_issue_subscription",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Unsubscribe from an issue",
+        "description": "Unsubscribe from an issue or pull request until you comment on it or are mentioned. What is asked of you directly (a review, an assignment, a mention, an agent waiting on you) still reaches you. Name it by a thread's `id`, or by `repo` and `number`. Returns your subscription.",
+        "x-operation": "delete_thread_subscription",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "unsubscribe",
+        "x-scope": "notifications:write",
+        "security": [
+          {
+            "token": [
+              "notifications:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "With repo: the issue or pull request's number."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "subscribed": false,
+                  "ignored": false,
+                  "reason": null,
+                  "repo": null,
+                  "number": 14,
+                  "updated_at": "2026-10-07T10:05:30.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "A thread's id, from list_notifications. Or give repo and number."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "number": 14
+        }
+      }
+    },
+    "/user/subscriptions": {
+      "get": {
+        "operationId": "list_watched_repos",
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "List repositories you watch",
+        "description": "The repositories you watch other than the default way: all activity, custom or ignored, each with its `level` and `events`.",
+        "x-operation": "list_watched_repos",
+        "x-mcp-tool": "notifications",
+        "x-mcp-action": "watched",
+        "x-scope": "notifications:read",
+        "security": [
+          {
+            "token": [
+              "notifications:read"
+            ]
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "repo": "flagon-io/hello",
+                    "level": "all",
+                    "events": [],
+                    "subscribed": true,
+                    "ignored": false,
+                    "updated_at": "2026-10-07T10:00:00.000Z"
+                  },
+                  {
+                    "repo": "flagon-io/docs",
+                    "level": "ignore",
+                    "events": [],
+                    "subscribed": false,
+                    "ignored": true,
+                    "updated_at": "2026-10-05T14:30:00.000Z"
                   }
                 ]
               }
@@ -10196,10 +13287,17 @@
                         "pull.merge_requested",
                         "pull.merged",
                         "pull.closed",
+                        "pull.assigned",
+                        "pull.review_requested",
+                        "pull.review_request_removed",
+                        "pull.stalled",
+                        "pull.resumed",
                         "agent.asked",
                         "checks.completed",
                         "review.completed",
                         "workflow.completed",
+                        "deployment.succeeded",
+                        "deployment.failed",
                         "queue.changed",
                         "session.appended",
                         "package.published",
@@ -10404,10 +13502,17 @@
                         "pull.merge_requested",
                         "pull.merged",
                         "pull.closed",
+                        "pull.assigned",
+                        "pull.review_requested",
+                        "pull.review_request_removed",
+                        "pull.stalled",
+                        "pull.resumed",
                         "agent.asked",
                         "checks.completed",
                         "review.completed",
                         "workflow.completed",
+                        "deployment.succeeded",
+                        "deployment.failed",
                         "queue.changed",
                         "session.appended",
                         "package.published",
@@ -11258,10 +14363,17 @@
                         "pull.merge_requested",
                         "pull.merged",
                         "pull.closed",
+                        "pull.assigned",
+                        "pull.review_requested",
+                        "pull.review_request_removed",
+                        "pull.stalled",
+                        "pull.resumed",
                         "agent.asked",
                         "checks.completed",
                         "review.completed",
                         "workflow.completed",
+                        "deployment.succeeded",
+                        "deployment.failed",
                         "queue.changed",
                         "session.appended",
                         "package.published",
@@ -11452,10 +14564,17 @@
                         "pull.merge_requested",
                         "pull.merged",
                         "pull.closed",
+                        "pull.assigned",
+                        "pull.review_requested",
+                        "pull.review_request_removed",
+                        "pull.stalled",
+                        "pull.resumed",
                         "agent.asked",
                         "checks.completed",
                         "review.completed",
                         "workflow.completed",
+                        "deployment.succeeded",
+                        "deployment.failed",
                         "queue.changed",
                         "session.appended",
                         "package.published",
