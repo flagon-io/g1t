@@ -199,7 +199,12 @@ export function spendRows(caps: SpendCaps): { rows: { key: string; title: string
   };
   const rows = caps.monthBuckets.map((b) => ({ key: b.bucket, title: b.title, micros: b.micros, note: notes[b.bucket] ?? "" }));
   rows.push({ key: "free", title: "Free tier", micros: caps.freeTierMicros, note: "Free workspaces' share of git, storage and platform, reconciled through yesterday" });
-  rows.push({ key: "fixed", title: "Cloudflare subscriptions", micros: caps.fixedMonthlyMicros, note: "A month, estimated (CLOUDFLARE_FIXED_MONTHLY_MICROS)" });
+  rows.push({
+    key: "fixed",
+    title: "Cloudflare subscriptions",
+    micros: caps.fixedMonthlyMicros,
+    note: caps.fixedSource === "cloudflare" ? "A month, as Cloudflare lists them" : "A month, estimated (CLOUDFLARE_FIXED_MONTHLY_MICROS)",
+  });
   return { rows, totalMicros: rows.reduce((sum, row) => sum + row.micros, 0) };
 }
 

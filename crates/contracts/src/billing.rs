@@ -2649,6 +2649,14 @@ pub struct CostsReport {
 
 /// What g1t itself pays for, against its caps (billing's `budget`): the
 /// daily breaker on all of it, and each comped account's monthly budget.
+/// One of Cloudflare's subscriptions, at what it comes to a month.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FixedCost {
+    pub name: String,
+    pub monthly_micros: i64,
+}
+
 /// At cost, never at price. What sudo's Costs page and its red bar show.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -2678,8 +2686,17 @@ pub struct SpendCaps {
     /// Free workspaces' share of this month's reconciled costs (git,
     /// storage, platform), through yesterday.
     pub free_tier_micros: i64,
-    /// `CLOUDFLARE_FIXED_MONTHLY_MICROS`: Cloudflare subscriptions, an estimate.
+    /// Cloudflare's subscriptions a month: as read from Cloudflare each
+    /// day, else `CLOUDFLARE_FIXED_MONTHLY_MICROS`, an estimate.
     pub fixed_monthly_micros: i64,
+    /// `cloudflare` or `estimate`.
+    #[serde(default)]
+    pub fixed_source: String,
+    #[serde(default)]
+    pub fixed_read_at: Option<String>,
+    /// Each subscription, when read from Cloudflare.
+    #[serde(default)]
+    pub fixed_items: Vec<FixedCost>,
     /// Money in this month, through the last reconciled day.
     pub revenue_micros: i64,
 }

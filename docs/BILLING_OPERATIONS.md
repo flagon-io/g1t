@@ -25,6 +25,7 @@ to what g1t sells is data you change from sudo, without a deploy.
 | `pending_usage` | Month-end meters (git, storage, scans, embeddings, the cache) as they stand. | snapshotted daily into `pending_days` |
 | `plan_payments` | The plan's $20. | read |
 | repos `git_operations` | Operations customers are charged for, per workspace, counted by repos through its `operation_mapping`. | `own_counts` meter `git_operations` |
+| Subscriptions, `GET /accounts/{account}/subscriptions` | What g1t pays each month whatever it uses (Workers Paid, add-ons): each subscription that is paid, trialing or awaiting payment, at its price over its frequency. Not on the billable-usage bill. Read in the daily run with the bill's token; a failure is logged and the last read stays. | `cf_subscriptions` (one row) |
 | repos `artifacts_usage` | Every raw meter of the git store (`git.fetch`, `git.receive_pack`, `binding.*`, …) per day and workspace, with repos' `operation_mapping`. | `own_counts` meters `artifacts_<raw meter>`, and `cost_operations` (raw counts × the mapping's `cost_operations`: what g1t expects Cloudflare to bill) |
 
 A meter's slug is Cloudflare's name lower-cased with words joined by `_`
@@ -37,7 +38,7 @@ and the "(First … included)" note dropped: `Workers for Platforms CPU ms
 
 | Secret on g1t-billing | Permissions | Used for |
 | --- | --- | --- |
-| `CLOUDFLARE_BILLING_TOKEN` (optional) | Account: **Billing Read**, Account: **Account Analytics Read**, for the g1t account only | Reading the bill and the Artifacts events |
+| `CLOUDFLARE_BILLING_TOKEN` (optional) | Account: **Billing Read**, Account: **Account Analytics Read**, for the g1t account only | Reading the bill, the Artifacts events and the subscriptions |
 | `CLOUDFLARE_USAGE_TOKEN` (exists) | Billing Read, Account Analytics Read, AI Gateway Read | The keeper; also the bill when `CLOUDFLARE_BILLING_TOKEN` is not set |
 
 With neither, the daily run reconciles only what g1t counted itself, and
@@ -75,7 +76,7 @@ The daily cron (`17 4 * * *`, `keeper::DAILY`) runs, in order:
    8. Open, update and close margin alerts; email new ones.
    9. Email owners on the plan about rises to come.
 
-**Run the analysis now** at the top of sudo's Costs & margin page
+**Run the analysis now** at the top of sudo's Costs & margin and Bill & pricing pages
 (`admin_run_costs`) runs all of step 2 at once, alerts included, with no
 need to wait for 04:17 UTC. Running it twice is safe: every step replaces
 what it wrote.
@@ -137,8 +138,9 @@ For each day and bucket:
     sits near 16.7%.
   - **Running g1t**: the plan's price against `platform` less its given
     share.
-  - **Cloudflare subscriptions**: `CLOUDFLARE_FIXED_MONTHLY_MICROS` over
-    the range, an estimate, since they are not on the usage bill.
+  - **Cloudflare subscriptions**: what Cloudflare lists, a month, over
+    the range (`cf_subscriptions`); until a read has worked,
+    `CLOUDFLARE_FIXED_MONTHLY_MICROS`, an estimate.
   - **Not mapped**: billed, charged for by nothing.
   - **Given away**: by why. A budget, watched under g1t's own spend, never
     shown as a loss.
@@ -196,7 +198,7 @@ remainder).
 
 ## Changing a mapping
 
-In sudo, Costs & margin → **Mappings**: Cloudflare's product and meter
+In sudo, Costs & margin → Bill & pricing → **Mappings**: Cloudflare's product and meter
 prefix (as **Cloudflare's lines** lists them; `*` for the rest of the
 product), g1t's product, and optionally:
 
@@ -311,8 +313,9 @@ backfills the current month from the ledger.
 | A comped account's monthly budget | `COMPED_MONTHLY_CEILING_MICROS`, or the account's own **Limit** in its terms | $150 a month | New work on the account (agents, checks, workflows, builds) is refused with "<name>'s monthly budget for g1t's own agents is used up … Staff can raise it in sudo". Runs already going finish; the per-run cap still applies to them. It lifts when staff raise the budget or the month turns (UTC). |
 | The daily breaker | `PLATFORM_DAILY_SPEND_CAP_MICROS` | $75 a day (UTC) | New agent runs on g1t's hosted models that g1t would pay for are refused until 00:00 UTC. Not paused: agents on the workspace's own model provider, checks and builds, and workspaces paying with live payments on the plan (not given by staff) or an enterprise contract. In test mode that exemption covers no one. |
 
-`0` turns either off. `CLOUDFLARE_FIXED_MONTHLY_MICROS` ($30: Workers
-Paid and Workers for Platforms) is shown on the page only.
+`0` turns either off. Cloudflare's subscriptions are read from Cloudflare
+each day (`cf_subscriptions`) and shown on the page only;
+`CLOUDFLARE_FIXED_MONTHLY_MICROS` ($30) stands in until a read works.
 
 The checks are cheap: `reserve` reads today's total (one indexed sum) and,
 for a comped account, its month's comped rows. Refusals come back as

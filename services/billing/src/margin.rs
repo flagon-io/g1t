@@ -696,6 +696,12 @@ impl Billing {
                 costs::window(last.as_deref(), now_ms())
             }
         };
+        // Not a problem for the run: the last read, or the estimate, stays.
+        if keeper.can_read_bill()
+            && let Err(error) = self.read_subscriptions(keeper).await
+        {
+            worker::console_error!("Cloudflare's subscriptions were not read: {error}");
+        }
         if let Err(error) = self.count_own(&since, &until).await {
             run.problems.push(format!("g1t's own counts could not be read: {error}"));
         }

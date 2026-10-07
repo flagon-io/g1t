@@ -1241,8 +1241,12 @@ export type SpendCaps = {
   comped: CompedBudget[];
   /** Free workspaces' share of reconciled costs this month (git, storage, platform). */
   freeTierMicros: number;
-  /** `CLOUDFLARE_FIXED_MONTHLY_MICROS`: Cloudflare subscriptions, an estimate. */
+  /** Cloudflare's subscriptions a month: read from Cloudflare each day, else `CLOUDFLARE_FIXED_MONTHLY_MICROS`, an estimate. */
   fixedMonthlyMicros: number;
+  fixedSource?: "cloudflare" | "estimate" | string;
+  fixedReadAt?: string | null;
+  /** Each subscription, when read from Cloudflare. */
+  fixedItems?: { name: string; monthlyMicros: number }[];
   /** Money in this month, through the last reconciled day. */
   revenueMicros: number;
 };

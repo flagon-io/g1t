@@ -503,6 +503,7 @@ impl Billing {
             .await?
             .and_then(|s| s.micros)
             .unwrap_or(0);
+        let fixed = self.fixed_monthly(self.caps.fixed_monthly).await?;
         Ok(SpendCaps {
             day,
             month,
@@ -516,7 +517,10 @@ impl Billing {
             month_buckets,
             comped,
             free_tier_micros,
-            fixed_monthly_micros: self.caps.fixed_monthly,
+            fixed_monthly_micros: fixed.monthly_micros,
+            fixed_source: fixed.source.into(),
+            fixed_read_at: fixed.read_at,
+            fixed_items: fixed.items,
             revenue_micros,
         })
     }

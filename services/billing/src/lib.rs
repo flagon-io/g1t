@@ -41,6 +41,7 @@ mod reset;
 mod retention;
 mod stripe;
 mod stripe_sync;
+mod subscriptions;
 mod tokens;
 
 use g1t_contracts::billing::*;

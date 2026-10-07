@@ -223,7 +223,7 @@ export const NAV: NavGroup[] = [
         label: "Costs & margin",
         to: "/costs",
         icon: "costs",
-        about: "What Cloudflare charged g1t against what g1t charged, by product: margin, drift, and price proposals.",
+        about: "Where g1t's money goes, with what it gave away kept apart; on Bill & pricing, Cloudflare's bill, drift and the price book.",
       },
       {
         label: "Agents & models",

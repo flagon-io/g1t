@@ -91,6 +91,12 @@ impl Keeper {
         send_with(self.billing_token()?, Method::Get, &self.api(&format!("/billable-usage?from={from}&to={to}")), None).await
     }
 
+    /// The account's subscriptions (Workers Paid, add-ons), as Cloudflare
+    /// answers them. Needs Account: Billing Read.
+    pub(crate) async fn subscriptions_body(&self) -> Result<Value> {
+        send_with(self.billing_token()?, Method::Get, &self.api("/subscriptions"), None).await
+    }
+
     /// A GraphQL Analytics query, as Cloudflare answers it, errors and all.
     pub(crate) async fn graphql(&self, body: Value) -> Result<Value> {
         send_with(self.billing_token()?, Method::Post, "https://api.cloudflare.com/client/v4/graphql", Some(body)).await
