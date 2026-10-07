@@ -95,7 +95,9 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
     }
     case "remove": {
       const removed = await identity.removeCollaborator(user, params.owner, params.repo, text("username"));
-      return removed.ok ? { intent, ok: true, error: null, message: null } : failed(removed.error.message);
+      return removed.ok
+        ? { intent, ok: true, error: null, message: `${text("username")} no longer has a role given here.` }
+        : failed(removed.error.message);
     }
     case "revoke": {
       const revoked = await identity.revokeRepoInvitation(user, params.owner, params.repo, text("id"));
@@ -121,6 +123,9 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
     (a, b) => REPO_ROLES.indexOf(b.role) - REPO_ROLES.indexOf(a.role) || a.username.localeCompare(b.username),
   );
   const result = actionData?.intent === "add" ? actionData : undefined;
+  // Roles are changed and people removed from their own rows, which say
+  // what went wrong; what went right is said once, under the list.
+  const [notice, setNotice] = useState<string | null>(null);
   return (
     <>
       <RepoSettingsHeading base={base} />
@@ -170,15 +175,20 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
         >
           <ul className="divide-y divide-line rounded-xl border border-line">
             {people.map((person) => (
-              <PersonRow key={person.username} person={person} manage={manage} base={access.base_permission} full={full} />
+              <PersonRow
+                key={person.username}
+                person={person}
+                manage={manage}
+                base={access.base_permission}
+                full={full}
+                onDone={setNotice}
+              />
             ))}
           </ul>
-          {actionData && ["role", "remove"].includes(actionData.intent) && (
-            actionData.ok ? (
-              actionData.message && <p className="text-sm text-muted" role="status">{actionData.message}</p>
-            ) : (
-              <ErrorText>{actionData.error}</ErrorText>
-            )
+          {notice && (
+            <p className="text-sm text-accent" role="status">
+              {notice}
+            </p>
           )}
         </Section>
 
@@ -195,7 +205,6 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
                 ))}
               </ul>
             )}
-            {actionData?.intent === "revoke" && !actionData.ok && <ErrorText>{actionData.error}</ErrorText>}
           </Section>
         )}
 
@@ -264,13 +273,18 @@ function PersonRow({
   manage,
   base,
   full,
+  onDone,
 }: {
   person: Collaborator;
   manage: boolean;
   base: Parameters<typeof baseRole>[0];
   full: string;
+  onDone: (notice: string | null) => void;
 }) {
   const fetcher = useFetcher<Outcome>();
+  useEffect(() => {
+    if (fetcher.data) onDone(fetcher.data.ok ? fetcher.data.message : null);
+  }, [fetcher.data, onDone]);
   const outside = person.workspace_role == null;
   // A member keeps the base permission whatever role they are given here,
   // so only higher roles mean anything for them.
@@ -317,7 +331,9 @@ function PersonRow({
         {/* The same room for Remove on every row, so the roles line up. */}
         {manage && (
           <span className="flex w-[5.5rem] justify-end">
-            {editable && person.direct != null && <RemoveButton person={person} full={full} outside={outside} />}
+            {editable && person.direct != null && (
+              <RemoveButton person={person} full={full} outside={outside} onDone={onDone} />
+            )}
           </span>
         )}
       </div>
@@ -326,9 +342,23 @@ function PersonRow({
 }
 
 /** Taking someone's role here away, after saying what that means. */
-function RemoveButton({ person, full, outside }: { person: Collaborator; full: string; outside: boolean }) {
+function RemoveButton({
+  person,
+  full,
+  outside,
+  onDone,
+}: {
+  person: Collaborator;
+  full: string;
+  outside: boolean;
+  onDone: (notice: string | null) => void;
+}) {
   const fetcher = useFetcher<Outcome>();
   const [open, setOpen] = useState(false);
+  // Said as soon as the answer comes, before the row leaves the list.
+  useEffect(() => {
+    if (fetcher.data) onDone(fetcher.data.ok ? fetcher.data.message : null);
+  }, [fetcher.data, onDone]);
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data?.ok) setOpen(false);
   }, [fetcher.state, fetcher.data]);
