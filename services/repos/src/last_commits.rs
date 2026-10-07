@@ -19,6 +19,8 @@ pub const MAX_COMMITS: u32 = 300;
 /// Commits whose trees are read together, ahead of the walk: each read is a
 /// round trip to the store, so reading them one by one is what is slow.
 const READ_AHEAD: usize = 24;
+/// Commits of history read at a time.
+const PAGE: u32 = 48;
 
 /// Reads trees, remembering those already read: commits share most of them.
 struct Trees<'a, R: GitRepo> {
@@ -96,8 +98,10 @@ pub async fn last_commits<R: GitRepo>(
     path: &str,
     out_of_time: &dyn Fn() -> bool,
 ) -> Result<(Vec<LastCommit>, bool)> {
-    let history = repo.log(git_ref, MAX_COMMITS).await?;
-    let Some(head) = history.first() else {
+    // History a page at a time, so a walk that is out of time stops
+    // between pages rather than after reading all of it.
+    let mut history = repo.log(git_ref, PAGE).await?;
+    let Some(head) = history.first().cloned() else {
         return Ok((Vec::new(), true));
     };
     let mut trees = Trees { repo, read: HashMap::new() };
@@ -106,9 +110,14 @@ pub async fn last_commits<R: GitRepo>(
     let mut open: Vec<String> = current.keys().cloned().collect();
     let mut found: Vec<LastCommit> = Vec::new();
     let give = |found: &mut Vec<LastCommit>, name: String, commit: &Commit| found.push(LastCommit { name, commit: commit.clone() });
-    for (index, commit) in history.iter().enumerate() {
-        if open.is_empty() {
-            break;
+    let mut index = 0;
+    while !open.is_empty() && index < history.len() {
+        // Read the next page once the walk reaches the end of this one.
+        if index + 1 >= history.len() && history.len() < MAX_COMMITS as usize && !out_of_time() {
+            if let Some(parent) = history.last().and_then(|commit| commit.parents.first()).cloned() {
+                let more = repo.log(&parent, PAGE).await?;
+                history.extend(more);
+            }
         }
         if index % READ_AHEAD == 0 {
             if index > 0 && out_of_time() {
@@ -117,16 +126,18 @@ pub async fn last_commits<R: GitRepo>(
             let ahead = history.iter().skip(index + 1).take(READ_AHEAD).map(|commit| commit.tree_hash.clone()).collect();
             trees.prefetch_dirs(ahead, path).await?;
         }
-        let Some(parent) = history.get(index + 1) else {
+        let commit = history[index].clone();
+        let Some(parent) = history.get(index + 1).cloned() else {
             // The oldest commit read. If it is the first commit there is,
             // what is left was added by it.
             if commit.parents.is_empty() {
                 for name in open.drain(..) {
-                    give(&mut found, name, commit);
+                    give(&mut found, name, &commit);
                 }
             }
             break;
         };
+        index += 1;
         let parent_dir = trees.dir(&parent.tree_hash, path).await?;
         if parent_dir == dir {
             continue;
@@ -134,7 +145,7 @@ pub async fn last_commits<R: GitRepo>(
         let before = trees.entries(parent_dir.as_deref()).await?;
         let (changed, still): (Vec<String>, Vec<String>) = open.into_iter().partition(|name| before.get(name) != current.get(name));
         for name in changed {
-            give(&mut found, name, commit);
+            give(&mut found, name, &commit);
         }
         open = still;
         dir = parent_dir;
@@ -175,8 +186,10 @@ mod tests {
         async fn branches(&self) -> Result<Vec<Branch>> {
             Ok(Vec::new())
         }
-        async fn log(&self, _git_ref: &str, limit: u32) -> Result<Vec<Commit>> {
-            Ok(self.history.iter().take(limit as usize).cloned().collect())
+        async fn log(&self, git_ref: &str, limit: u32) -> Result<Vec<Commit>> {
+            // A branch name starts at the head; a hash at that commit; anything else is unknown.
+            let start = if git_ref == "main" { Some(0) } else { self.history.iter().position(|commit| commit.hash == git_ref) };
+            Ok(start.map(|start| self.history.iter().skip(start).take(limit as usize).cloned().collect()).unwrap_or_default())
         }
         async fn parents(&self, _commit_hash: &str) -> Result<Option<Vec<String>>> {
             Ok(None)
