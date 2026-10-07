@@ -44,6 +44,22 @@ impl Job {
         matches!(process::run(command, Duration::from_secs(600), &mut self.log, &mut commands), Ok(Ended::Exited(0)))
     }
 
+    /// A fetch, tried again after a short wait when it fails: a transfer
+    /// cut short on the way ("transfer closed with N bytes remaining") is
+    /// over by the next try. Three tries in all, as actions/checkout does.
+    fn fetch_retrying(&mut self, dir: &Path, args: &[&str], auth: Option<&str>) -> bool {
+        for (attempt, wait) in [0u64, 2, 5].into_iter().enumerate() {
+            if attempt > 0 {
+                self.log.line(&format!("The fetch failed; trying again in {wait} s ({} of 3).", attempt + 1));
+                std::thread::sleep(Duration::from_secs(wait));
+            }
+            if self.git(dir, args, auth) {
+                return true;
+            }
+        }
+        false
+    }
+
     /// `actions/checkout`, against g1t.
     fn checkout(&mut self, with: &BTreeMap<String, String>) -> (bool, BTreeMap<String, String>) {
         let checkout = self.spec["checkout"].clone();
@@ -93,14 +109,14 @@ impl Job {
         }
         args.push("origin");
         args.push(&fetch);
-        if !self.git(&path, &args, auth.as_deref()) {
+        if !self.fetch_retrying(&path, &args, auth.as_deref()) {
             self.log.line(&format!("##[error]Could not fetch {fetch} from {repository}."));
             return (false, BTreeMap::new());
         }
         let target = sha.clone().unwrap_or_else(|| "FETCH_HEAD".into());
         // The commit may be further back than a shallow fetch reaches.
         let present = Command::new("git").current_dir(&path).args(["cat-file", "-e", &format!("{target}^{{commit}}")]).status().is_ok_and(|s| s.success());
-        if !present && !self.git(&path, &["fetch", "--no-tags", "--quiet", "origin"], auth.as_deref()) {
+        if !present && !self.fetch_retrying(&path, &["fetch", "--no-tags", "--quiet", "origin"], auth.as_deref()) {
             return (false, BTreeMap::new());
         }
         let checked_out = match &branch {
