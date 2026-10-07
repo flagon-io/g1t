@@ -22,7 +22,6 @@ mod npm_http;
 mod oci;
 mod quota;
 mod range;
-mod sigv4;
 mod store;
 mod token;
 mod upload;
@@ -166,7 +165,7 @@ impl Packages {
         let host = store::var(env, "REGISTRY_HOST");
         Ok(Packages {
             db: Db { db: env.d1("DB")? },
-            store: Store::from_env(env)?,
+            store: store::from_env(env)?,
             identity: env.service("IDENTITY")?,
             repos: env.service("REPOS")?,
             events: env.service("EVENTS")?,

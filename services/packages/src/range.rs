@@ -27,18 +27,7 @@ pub fn upload_range(offset: u64) -> String {
 }
 
 /// A part of a blob a download asks for, resolved against its size.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Wanted {
-    pub offset: u64,
-    pub length: u64,
-}
-
-impl Wanted {
-    /// `bytes <first>-<last>/<size>`.
-    pub fn content_range(&self, size: u64) -> String {
-        format!("bytes {}-{}/{size}", self.offset, self.offset + self.length - 1)
-    }
-}
+pub use g1t_blobstore::Wanted;
 
 /// What a download's `Range` header asks for, against a blob of `size`
 /// bytes. `Ok(None)`: the whole blob (no header, or one this does not

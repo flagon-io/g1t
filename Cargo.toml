@@ -9,6 +9,7 @@ repository = "https://g1t.sh/flagon-io/g1t"
 
 [workspace.dependencies]
 g1t-actions = { path = "crates/actions" }
+g1t-blobstore = { path = "crates/blobstore" }
 g1t-contracts = { path = "crates/contracts" }
 g1t-kit = { path = "crates/kit" }
 g1t-scan = { path = "crates/scan" }

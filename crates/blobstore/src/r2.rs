@@ -1,13 +1,12 @@
-//! The R2 adapter: the `BLOBS` bucket binding for everything, and R2's S3
-//! endpoint only to sign download URLs, when R2_ACCESS_KEY_ID,
-//! R2_SECRET_ACCESS_KEY, R2_ACCOUNT_ID and R2_BUCKET are set. Without
-//! them, large blobs stream through the Worker like small ones.
+//! The R2 adapter: the service's bucket binding for everything, and R2's S3
+//! endpoint only to sign download URLs, when the service names signing
+//! variables (`Config::r2_signer`) and they are set. Without them, large
+//! objects stream through the Worker like small ones.
 
 use worker::{Bucket, Env, Range, Result, UploadedPart};
 
-use super::{BlobStore, Got, Part, var};
-use crate::range::Wanted;
 use crate::sigv4::{Credentials, amz_date};
+use crate::{BlobStore, Config, Got, Part, Wanted, var};
 
 pub struct R2Store {
     bucket: Bucket,
@@ -15,13 +14,11 @@ pub struct R2Store {
 }
 
 impl R2Store {
-    pub fn from_env(env: &Env) -> Result<R2Store> {
-        let (key, secret, account, bucket) = (
-            var(env, "R2_ACCESS_KEY_ID"),
-            var(env, "R2_SECRET_ACCESS_KEY"),
-            var(env, "R2_ACCOUNT_ID"),
-            var(env, "R2_BUCKET"),
-        );
+    pub fn from_env(env: &Env, config: &Config) -> Result<R2Store> {
+        let [key, secret, account, bucket] = config
+            .r2_signer
+            .map(|names| names.map(|name| var(env, name)))
+            .unwrap_or_default();
         let signer = (!key.is_empty() && !secret.is_empty() && !account.is_empty() && !bucket.is_empty()).then(|| {
             (
                 Credentials { access_key_id: key, secret_access_key: secret, region: "auto".to_owned() },
@@ -29,7 +26,7 @@ impl R2Store {
                 bucket,
             )
         });
-        Ok(R2Store { bucket: env.bucket("BLOBS")?, signer })
+        Ok(R2Store { bucket: env.bucket(config.binding)?, signer })
     }
 }
 
